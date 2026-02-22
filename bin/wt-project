@@ -118,7 +118,22 @@ if old in content:
         success "  Updated Persistent Memory citation instruction in CLAUDE.md"
     fi
 
-    # 6. Register unified wt-tools MCP server for the project path (and any extra paths, e.g. worktree)
+    # 6. Ensure CLAUDE.md has the Auto-Commit After Apply section
+    local commit_marker="## Auto-Commit After Apply"
+    if [[ -f "$claude_md" ]] && ! grep -q "$commit_marker" "$claude_md" 2>/dev/null; then
+        local commit_snippet
+        commit_snippet=$(cat << 'COMMIT_SNIPPET'
+
+## Auto-Commit After Apply
+
+After a skill-driven apply (e.g. `/opsx:apply`) finishes or pauses, automatically commit all changes. Follow the standard commit flow (stage relevant files, write a concise commit message).
+COMMIT_SNIPPET
+)
+        echo "$commit_snippet" >> "$claude_md"
+        success "  Added Auto-Commit After Apply section to CLAUDE.md"
+    fi
+
+    # 7. Register unified wt-tools MCP server for the project path (and any extra paths, e.g. worktree)
     _register_mcp_server "$project_path" "$@" || ((_warnings++))
 
     return $(( _warnings > 0 ? 1 : 0 ))

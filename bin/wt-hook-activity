@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# wt-hook-activity - Claude Code PreToolUse hook for tracking skill activity
+#
+# Called by Claude Code before every Skill tool invocation.
+# Writes .claude/activity.json with current skill info for agent coordination.
+# Throttled (10s) and designed to run quickly.
+#
+# Designed to be referenced by name in .claude/settings.json:
+#   "command": "wt-hook-activity"
+# The script is on PATH via install.sh symlink.
+
+set -euo pipefail
+
+THROTTLE_SECONDS=10
+ACTIVITY_FILE=".claude/activity.json"
+
+# Read hook input from stdin
+INPUT=$(cat)
+
+# Extract skill and args from hook input JSON
+SKILL=$(echo "$INPUT" | jq -r '.tool_input.skill // empty' 2>/dev/null) || true
+SKILL_ARGS=$(echo "$INPUT" | jq -r '.tool_input.args // empty' 2>/dev/null) || true
+
+# Only track if we got a skill name
+if [[ -z "$SKILL" ]]; then
+    exit 0
+fi
+
+# Throttle: skip if activity file was updated less than THROTTLE_SECONDS ago
+if [[ -f "$ACTIVITY_FILE" ]]; then
+    last_modified=$(stat -c %Y "$ACTIVITY_FILE" 2>/dev/null || stat -f %m "$ACTIVITY_FILE" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    elapsed=$(( now - last_modified ))
+    if (( elapsed < THROTTLE_SECONDS )); then
+        exit 0
+    fi
+fi
+
+# Read existing activity to preserve broadcast and modified_files
+EXISTING_BROADCAST=""
+EXISTING_MODIFIED=""
+if [[ -f "$ACTIVITY_FILE" ]]; then
+    EXISTING_BROADCAST=$(jq -r '.broadcast // empty' "$ACTIVITY_FILE" 2>/dev/null) || true
+    EXISTING_MODIFIED=$(jq -c '.modified_files // []' "$ACTIVITY_FILE" 2>/dev/null) || true
+fi
+[[ -z "$EXISTING_MODIFIED" || "$EXISTING_MODIFIED" == "null" ]] && EXISTING_MODIFIED='[]'
+
+# Ensure .claude directory exists
+mkdir -p "$(dirname "$ACTIVITY_FILE")"
+
+# Write activity JSON
+NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+jq -n \
+    --arg skill "$SKILL" \
+    --arg skill_args "$SKILL_ARGS" \
+    --arg broadcast "$EXISTING_BROADCAST" \
+    --argjson modified_files "$EXISTING_MODIFIED" \
+    --arg updated_at "$NOW" \
+    '{
+        skill: $skill,
+        skill_args: (if $skill_args == "" then null else $skill_args end),
+        broadcast: (if $broadcast == "" then null else $broadcast end),
+        modified_files: $modified_files,
+        updated_at: $updated_at
+    }' > "$ACTIVITY_FILE"

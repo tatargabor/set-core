@@ -96,7 +96,7 @@ hook_json=$(cat << 'HOOKJSON'
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/activity-track.sh",
+            "command": "wt-hook-activity",
             "timeout": 5
           }
         ]
@@ -266,9 +266,9 @@ if [[ -f "$settings_file" ]]; then
             | .hooks.PostToolUse = [.hooks.PostToolUse // [] | .[] | select(
                 ((.hooks[]?.command == "wt-hook-memory PostToolUse") and (.matcher != "Read" and .matcher != "Bash")) | not
             )]
-            # Ensure Skill/activity-track.sh is present in PreToolUse
+            # Ensure Skill/wt-hook-activity is present in PreToolUse
             | if ([.hooks.PreToolUse[]? | select(.matcher == "Skill")] | length) == 0
-              then .hooks.PreToolUse += [{"matcher": "Skill", "hooks": [{"type": "command", "command": ".claude/hooks/activity-track.sh", "timeout": 5}]}]
+              then .hooks.PreToolUse += [{"matcher": "Skill", "hooks": [{"type": "command", "command": "wt-hook-activity", "timeout": 5}]}]
               else . end
         ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
         _success "Downgraded: $settings_file (removed $stale_pre stale PreToolUse, $stale_post stale PostToolUse)"
