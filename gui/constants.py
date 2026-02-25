@@ -54,7 +54,7 @@ COLOR_PROFILES = {
         # UI element colors
         "bar_background": "#e5e7eb",
         "bar_border": "#cccccc",
-        "bar_time": "#94a3b8",
+        "bar_time": "#60a5fa",
         "border": "#d1d5db",
         # Text colors
         "text_primary": "#1f2937",  # dark gray for light backgrounds
@@ -100,7 +100,7 @@ COLOR_PROFILES = {
         "burn_high": "#f87171",
         "bar_background": "#374151",
         "bar_border": "#4b5563",
-        "bar_time": "#64748b",
+        "bar_time": "#60a5fa",
         "border": "#4b5563",
         "text_primary": "#f9fafb",  # near white for dark backgrounds
         "text_muted": "#9ca3af",
@@ -144,7 +144,7 @@ COLOR_PROFILES = {
         # UI element colors
         "bar_background": "#4b5563",
         "bar_border": "#6b7280",
-        "bar_time": "#6b7280",
+        "bar_time": "#60a5fa",
         "border": "#6b7280",
         # Text colors
         "text_primary": "#f3f4f6",  # light gray for gray backgrounds
@@ -190,7 +190,7 @@ COLOR_PROFILES = {
         "burn_high": "#ff0000",
         "bar_background": "#333333",
         "bar_border": "#ffffff",
-        "bar_time": "#9ca3af",
+        "bar_time": "#00aaff",
         "border": "#ffffff",
         "text_primary": "#ffffff",  # white for high contrast dark backgrounds
         "text_muted": "#aaaaaa",
