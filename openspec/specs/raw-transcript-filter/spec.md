@@ -3,6 +3,10 @@
 ### Requirement: Rule-based transcript filter replaces Haiku LLM extraction
 The Stop handler SHALL process the full JSONL transcript using rule-based filters instead of calling Claude Haiku LLM. The filter SHALL run as a background process (disowned) and complete in under 500ms for a typical session transcript.
 
+**The filter SHALL sanitize all string content after `json.loads()` to replace lone surrogate codepoints with U+FFFD (REPLACEMENT CHARACTER).** This prevents `UnicodeEncodeError` when content is later passed to `wt-memory remember` via `subprocess.run(..., text=True)`.
+
+**The filter SHALL NOT silently swallow exceptions.** The `except Exception: pass` block around `subprocess.run` SHALL be replaced with specific `UnicodeEncodeError` handling that logs the error to stderr (which flows to `$STOP_LOG_FILE`) and continues processing remaining entries.
+
 #### Scenario: Normal session end with meaningful conversation
 - **WHEN** the Stop event fires with a valid transcript path
 - **AND** the transcript contains 30 user+assistant turns
@@ -10,6 +14,19 @@ The Stop handler SHALL process the full JSONL transcript using rule-based filter
 - **AND** SHALL apply word-count and pattern filters
 - **AND** SHALL save filtered turns directly via `wt-memory remember`
 - **AND** SHALL NOT call Claude Haiku or any LLM
+
+#### Scenario: Transcript with Hungarian content and lone surrogates
+- **WHEN** a JSONL transcript line contains `\ud800` (lone high surrogate from Node.js)
+- **AND** the line also contains valid Hungarian text "Ez a Prisma config működik"
+- **THEN** the surrogate SHALL be replaced with `�`
+- **AND** the valid Hungarian text SHALL be preserved
+- **AND** the filtered entry SHALL be saved successfully to memory
+
+#### Scenario: UnicodeEncodeError logged instead of swallowed
+- **WHEN** `subprocess.run(['wt-memory', ...], input=content, text=True)` raises `UnicodeEncodeError`
+- **THEN** the error SHALL be logged with the entry index and a content preview
+- **AND** processing SHALL continue with the next entry
+- **AND** the final `saved=N/M` count SHALL reflect the skip
 
 #### Scenario: Empty or trivial session
 - **WHEN** the Stop event fires

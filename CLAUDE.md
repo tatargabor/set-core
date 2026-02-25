@@ -43,6 +43,10 @@ PYTHONPATH=. python -m pytest tests/gui/ -v --tb=short
 
 **Do NOT run tests automatically.** Only run tests when the user explicitly asks for it (e.g. "futtass tesztet", "run tests", "teljes teszt").
 
+## OpenSpec Artifacts — No Project-Specific Content
+
+This is an open-source project. OpenSpec change artifacts (proposal, design, tasks, specs) must NOT contain project-specific references — no client/project names, no absolute paths like `/home/user/code/project`, no specific metrics tied to a single deployment. Use generic descriptions instead (e.g., "projects with non-ASCII content" instead of naming a specific project). If investigation was done on a specific project, generalize the findings before writing artifacts.
+
 ## Auto-Commit After Apply
 
 After a skill-driven apply (e.g. `/opsx:apply`) finishes or pauses, automatically commit all changes. Follow the standard commit flow (stage relevant files, write a concise commit message).
