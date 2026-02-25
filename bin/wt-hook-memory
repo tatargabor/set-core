@@ -818,40 +818,147 @@ _write_save() {
     local py_tmp
     py_tmp=$(mktemp /tmp/wt-write-save.XXXXXX.py)
     cat > "$py_tmp" <<'WRITE_SAVE_PY'
-import json, sys, re
+import json, sys, re, os
 
 data = json.load(open(sys.argv[1]))
 tool = data.get('tool_name', '')
 ti = data.get('tool_input', {})
 
+def basename(fp):
+    return os.path.basename(fp)
+
+def rel_path(fp):
+    """Shorten absolute path to project-relative."""
+    parts = fp.split('/')
+    # Find common project markers
+    for i, p in enumerate(parts):
+        if p in ('src', 'lib', 'app', 'packages', 'openspec', 'bin', 'tests', 'docs', 'components'):
+            return '/'.join(parts[i:])
+    # Fallback: last 3 segments
+    return '/'.join(parts[-3:]) if len(parts) > 3 else fp
+
+def summarize_write(fp, content):
+    """Extract meaningful summary from written file content."""
+    rp = rel_path(fp)
+    ext = os.path.splitext(fp)[1].lower()
+    lines = (content or '').split('\n')
+    non_empty = [l.strip() for l in lines if l.strip()]
+
+    # Markdown: extract title
+    if ext == '.md':
+        for l in non_empty:
+            if l.startswith('# '):
+                return f'Created {rp}: {l[2:].strip()}'
+        return f'Created {rp} ({len(non_empty)} lines)'
+
+    # YAML/JSON config
+    if ext in ('.yaml', '.yml', '.json', '.toml'):
+        return f'Created {rp} (config, {len(non_empty)} lines)'
+
+    # Code: extract key definitions (first class/function/export)
+    if ext in ('.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.sh'):
+        defs = []
+        for l in non_empty[:60]:
+            # TypeScript/JS
+            m = re.match(r'(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type|const|enum)\s+(\w+)', l)
+            if m:
+                defs.append(m.group(1))
+            # Python
+            m = re.match(r'(?:class|def|async\s+def)\s+(\w+)', l)
+            if m:
+                defs.append(m.group(1))
+            if len(defs) >= 3:
+                break
+        if defs:
+            return f'Created {rp}: {", ".join(defs)}'
+        return f'Created {rp} ({len(non_empty)} lines)'
+
+    return f'Created {rp} ({len(non_empty)} lines)'
+
+def summarize_edit(fp, old_str, new_str):
+    """Summarize what changed in an edit."""
+    rp = rel_path(fp)
+    old_lines = [l.strip() for l in (old_str or '').split('\n') if l.strip()]
+    new_lines = [l.strip() for l in (new_str or '').split('\n') if l.strip()]
+
+    # Detect: added lines (new - old)
+    added = [l for l in new_lines if l not in old_lines]
+    removed = [l for l in old_lines if l not in new_lines]
+
+    # Small change: show inline
+    if len(old_lines) <= 2 and len(new_lines) <= 2:
+        o = ' '.join(old_lines)[:80]
+        n = ' '.join(new_lines)[:80]
+        return f'Edited {rp}: "{o}" → "{n}"'
+
+    # Detect function/class changes
+    for l in added[:5]:
+        m = re.match(r'(?:export\s+)?(?:async\s+)?(?:function|class|def|const|interface|type)\s+(\w+)', l)
+        if m:
+            if removed:
+                return f'Edited {rp}: modified/added {m.group(1)} ({len(added)} lines added, {len(removed)} removed)'
+            return f'Edited {rp}: added {m.group(1)} ({len(added)} lines)'
+
+    # General summary
+    parts = []
+    if added:
+        first_added = added[0][:60]
+        parts.append(f'+{len(added)} lines (e.g. "{first_added}")')
+    if removed:
+        parts.append(f'-{len(removed)} lines')
+    detail = ', '.join(parts) if parts else f'{len(new_lines)} lines replaced'
+    return f'Edited {rp}: {detail}'
+
+def summarize_commit(cmd, desc):
+    """Extract commit message from git commit command."""
+    # Try parsing the actual commit message first — it's more specific than description
+
+    # 1. Heredoc pattern: git commit -m "$(cat <<'EOF'\n message \n EOF)"
+    heredoc_m = re.search(r"cat\s*<<\s*['\"]?(\w+)['\"]?", cmd)
+    if heredoc_m:
+        marker = heredoc_m.group(1)
+        lines = cmd.split('\n')
+        in_heredoc = False
+        msg_lines = []
+        for line in lines:
+            if in_heredoc:
+                stripped = line.strip()
+                if stripped == marker or stripped in (f'{marker})', f"'{marker}'", f'{marker}"'):
+                    break
+                if stripped and stripped not in (')', ')"', ")'"):
+                    msg_lines.append(stripped)
+            elif re.search(r"cat\s*<<", line):
+                in_heredoc = True
+        if msg_lines:
+            return f'Committed: {msg_lines[0][:200]}'
+
+    # 3. Simple -m "message" or -m 'message'
+    q = chr(34) + chr(39)
+    m = re.search(r'git commit.*?-m\s+[' + q + r']([^' + q + r']+)[' + q + r']', cmd)
+    if m:
+        return f'Committed: {m.group(1)[:200]}'
+
+    # 4. Fallback to description if available
+    if desc:
+        return f'Committed: {desc[:200]}'
+
+    return 'Committed: (message not parsed)'
+
+# === Main dispatch ===
 if tool == 'Write':
+    content = ti.get('content', '')
     fp = ti.get('file_path', '')
-    print(f'Modified {fp} (new file)')
+    print(summarize_write(fp, content))
 elif tool == 'Edit':
     fp = ti.get('file_path', '')
-    old = ti.get('old_string', '')[:100].replace(chr(10), ' ')
-    print(f'Modified {fp}: {old} -> changed')
+    old = ti.get('old_string', '')
+    new = ti.get('new_string', '')
+    print(summarize_edit(fp, old, new))
 elif tool == 'Bash':
     cmd = ti.get('command', '')
-    q = chr(34) + chr(39)  # double and single quote chars
-    pattern = r'git commit.*?-m\s+[' + q + r']([^' + q + r']+)[' + q + r']'
-    m = re.search(pattern, cmd)
-    if m:
-        print(f'Committed: {m.group(1)[:200]}')
-    else:
-        # Heredoc pattern
-        m2 = re.search(r'git commit.*?-m\s+', cmd)
-        if m2:
-            lines = cmd.split(chr(10))
-            for line in lines[1:]:
-                line = line.strip()
-                if line and line not in ('EOF', 'HEREDOC', ')"', ")'"):
-                    print(f'Committed: {line[:200]}')
-                    break
-            else:
-                print('Committed: (heredoc commit)')
-        else:
-            print('')
+    desc = ti.get('description', '')
+    result = summarize_commit(cmd, desc)
+    print(result if result else '')
 else:
     print('')
 WRITE_SAVE_PY
