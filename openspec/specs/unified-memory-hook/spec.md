@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## Requirements
 
 ### Requirement: Single unified handler script
 A single script `bin/wt-hook-memory` SHALL handle all memory hook events. It SHALL accept the event name as its first argument and dispatch to event-specific logic internally. Each event handler SHALL additionally record injection metrics when metrics collection is enabled.
@@ -20,7 +20,7 @@ A single script `bin/wt-hook-memory` SHALL handle all memory hook events. It SHA
 
 #### Scenario: PostToolUse event
 - **WHEN** `wt-hook-memory PostToolUse` is called
-- **THEN** it SHALL check if the tool is Write or Edit, and if so, execute write-save logic (save what changed, dedup by file path)
-- **AND** SHALL check if the tool is Bash with a git commit command, and if so, save the commit message
-- **AND** for Read and Bash tools (non-commit), SHALL recall memories and inject as additionalContext
+- **THEN** for Bash tool with git commit command, it SHALL save the commit message as a Learning memory (commit-save)
+- **AND** for Read and Bash tools, SHALL recall memories and inject as additionalContext
 - **AND** SHALL record an L3 metrics entry with timing, result counts, relevance scores, and dedup hit/miss (if metrics enabled)
+- **AND** for any tool not in scope (not Read or Bash), SHALL exit immediately
