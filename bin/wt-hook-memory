@@ -43,6 +43,9 @@ _dbg() {
 
 _dbg "=== START ==="
 
+# --- Checkpoint configuration ---
+CHECKPOINT_INTERVAL=15  # Save checkpoint every N user prompts
+
 # --- Metrics collection ---
 METRICS_ENABLED_FLAG="${HOME}/.local/share/wt-tools/metrics/.enabled"
 METRICS_ENABLED=0
@@ -515,6 +518,108 @@ for m in memories:
 }
 
 # ============================================================
+# Helper: Mid-session checkpoint save
+# ============================================================
+
+_checkpoint_save() {
+    local turn_count="$1" last_checkpoint="$2"
+    _log "checkpoint: saving turns $((last_checkpoint + 1))-$turn_count"
+
+    local SUMMARY
+    SUMMARY=$(python3 -c "
+import json, sys, os
+
+cache_file = sys.argv[1]
+last_cp = int(sys.argv[2])
+current = int(sys.argv[3])
+
+cache = {}
+if os.path.exists(cache_file):
+    try:
+        with open(cache_file) as f:
+            cache = json.load(f)
+    except: pass
+
+metrics = cache.get('_metrics', [])
+
+# Collect activity since last checkpoint
+# Count L2 (UserPromptSubmit) entries to map metrics to turns
+files_read = set()
+commands_run = 0
+topics = []
+l2_count = 0
+
+for m in metrics:
+    # Only process metrics recorded after last checkpoint turn
+    if m.get('event') == 'UserPromptSubmit':
+        l2_count += 1
+        if l2_count <= last_cp:
+            continue
+        q = m.get('query', '')
+        if q and len(q) > 10:
+            # Extract meaningful topic (skip change name prefix)
+            words = q.split()[:6]
+            topics.append(' '.join(words))
+    elif m.get('event') == 'PostToolUse' and l2_count > last_cp:
+        q = m.get('query', '')
+        if '/' in q and not q.startswith('git '):
+            files_read.add(q)
+        elif q:
+            commands_run += 1
+
+# Build summary
+parts = []
+if files_read:
+    flist = ', '.join(sorted(files_read)[:8])
+    if len(files_read) > 8:
+        flist += f' (+{len(files_read)-8} more)'
+    parts.append(f'Files: {flist}')
+if commands_run:
+    parts.append(f'Commands: {commands_run}')
+if topics:
+    # Deduplicate and limit topics
+    seen = set()
+    unique_topics = []
+    for t in topics:
+        key = t[:30].lower()
+        if key not in seen:
+            seen.add(key)
+            unique_topics.append(t[:60])
+    if unique_topics:
+        parts.append(f'Topics: {chr(10).join(unique_topics[:5])}')
+
+if not parts:
+    parts.append('(conversation-only, no tool activity)')
+
+summary = f'[session checkpoint, turns {last_cp+1}-{current}] ' + ' | '.join(parts)
+print(summary[:800])
+" "$CACHE_FILE" "$last_checkpoint" "$turn_count" 2>/dev/null)
+
+    if [[ -n "$SUMMARY" ]]; then
+        echo "$SUMMARY" | wt-memory remember --type Context --tags "phase:checkpoint,source:hook" 2>/dev/null || true
+        _log "checkpoint: saved"
+
+        # Update last_checkpoint_turn in cache
+        python3 -c "
+import json, sys, os
+cache_file = sys.argv[1]
+new_turn = int(sys.argv[2])
+cache = {}
+if os.path.exists(cache_file):
+    try:
+        with open(cache_file) as f:
+            cache = json.load(f)
+    except: pass
+cache['last_checkpoint_turn'] = new_turn
+with open(cache_file, 'w') as f:
+    json.dump(cache, f)
+" "$CACHE_FILE" "$turn_count" 2>/dev/null || true
+    else
+        _dbg "checkpoint: empty summary, skipped"
+    fi
+}
+
+# ============================================================
 # Event: UserPromptSubmit
 # ============================================================
 
@@ -524,6 +629,32 @@ handle_user_prompt() {
     PROMPT=$(python3 -c "import json; print(json.load(open('$INPUT_FILE')).get('prompt',''))" 2>/dev/null)
     _dbg "prompt='${PROMPT:0:120}'"
     [[ -z "$PROMPT" ]] && { _dbg "empty prompt, exiting"; exit 0; }
+
+    # --- Turn counter ---
+    local TURN_COUNT LAST_CHECKPOINT_TURN
+    read -r TURN_COUNT LAST_CHECKPOINT_TURN < <(python3 -c "
+import json, sys, os
+cache_file = sys.argv[1]
+cache = {}
+if os.path.exists(cache_file):
+    try:
+        with open(cache_file) as f:
+            cache = json.load(f)
+    except: pass
+tc = cache.get('turn_count', 0) + 1
+lct = cache.get('last_checkpoint_turn', 0)
+cache['turn_count'] = tc
+cache['last_checkpoint_turn'] = lct
+with open(cache_file, 'w') as f:
+    json.dump(cache, f)
+print(tc, lct)
+" "$CACHE_FILE" 2>/dev/null) || { TURN_COUNT=1; LAST_CHECKPOINT_TURN=0; }
+    _dbg "turn=$TURN_COUNT last_checkpoint=$LAST_CHECKPOINT_TURN"
+
+    # --- Checkpoint trigger ---
+    if (( TURN_COUNT - LAST_CHECKPOINT_TURN >= CHECKPOINT_INTERVAL )); then
+        _checkpoint_save "$TURN_COUNT" "$LAST_CHECKPOINT_TURN"
+    fi
 
     # --- Emotion detection ---
     local EMOTION_RESULT=""
@@ -677,7 +808,78 @@ handle_pre_tool() {
 }
 
 # ============================================================
-# Event: PostToolUse (Read + Bash only, recall with dedup)
+# Helper: Write-save after file modifications
+# ============================================================
+
+_write_save() {
+    local tool_name="$1"
+    local SAVE_CONTENT KEY
+
+    local py_tmp
+    py_tmp=$(mktemp /tmp/wt-write-save.XXXXXX.py)
+    cat > "$py_tmp" <<'WRITE_SAVE_PY'
+import json, sys, re
+
+data = json.load(open(sys.argv[1]))
+tool = data.get('tool_name', '')
+ti = data.get('tool_input', {})
+
+if tool == 'Write':
+    fp = ti.get('file_path', '')
+    print(f'Modified {fp} (new file)')
+elif tool == 'Edit':
+    fp = ti.get('file_path', '')
+    old = ti.get('old_string', '')[:100].replace(chr(10), ' ')
+    print(f'Modified {fp}: {old} -> changed')
+elif tool == 'Bash':
+    cmd = ti.get('command', '')
+    q = chr(34) + chr(39)  # double and single quote chars
+    pattern = r'git commit.*?-m\s+[' + q + r']([^' + q + r']+)[' + q + r']'
+    m = re.search(pattern, cmd)
+    if m:
+        print(f'Committed: {m.group(1)[:200]}')
+    else:
+        # Heredoc pattern
+        m2 = re.search(r'git commit.*?-m\s+', cmd)
+        if m2:
+            lines = cmd.split(chr(10))
+            for line in lines[1:]:
+                line = line.strip()
+                if line and line not in ('EOF', 'HEREDOC', ')"', ")'"):
+                    print(f'Committed: {line[:200]}')
+                    break
+            else:
+                print('Committed: (heredoc commit)')
+        else:
+            print('')
+else:
+    print('')
+WRITE_SAVE_PY
+    SAVE_CONTENT=$(python3 "$py_tmp" "$INPUT_FILE" 2>/dev/null)
+    rm -f "$py_tmp"
+
+    [[ -z "$SAVE_CONTENT" ]] && { _dbg "write_save: empty content, skipping"; return 0; }
+
+    # Dedup by file/commit
+    local DEDUP_QUERY
+    if [[ "$tool_name" == "Bash" ]]; then
+        DEDUP_QUERY="git-commit"
+    else
+        DEDUP_QUERY=$(python3 -c "import json; print(json.load(open('$INPUT_FILE')).get('tool_input',{}).get('file_path',''))" 2>/dev/null)
+    fi
+    KEY=$(make_dedup_key "WriteSave" "$tool_name" "$DEDUP_QUERY")
+    if dedup_check "$KEY"; then
+        _dbg "write_save: dedup hit for $tool_name:$DEDUP_QUERY"
+        return 0
+    fi
+
+    echo "$SAVE_CONTENT" | wt-memory remember --type Learning --tags "phase:write-save,source:hook" 2>/dev/null || true
+    dedup_add "$KEY"
+    _log "write_save: $tool_name → ${SAVE_CONTENT:0:80}"
+}
+
+# ============================================================
+# Event: PostToolUse (Read/Bash recall + Write/Edit/commit save)
 # ============================================================
 
 handle_post_tool() {
@@ -686,9 +888,24 @@ handle_post_tool() {
     TOOL_NAME=$(python3 -c "import json; print(json.load(open('$INPUT_FILE')).get('tool_name',''))" 2>/dev/null)
     _dbg "tool=$TOOL_NAME"
 
-    # Only process Read and Bash — exit immediately for all others
+    # Write/Edit → save what changed, then exit (no recall needed)
+    if [[ "$TOOL_NAME" == "Write" || "$TOOL_NAME" == "Edit" ]]; then
+        _write_save "$TOOL_NAME"
+        exit 0
+    fi
+
+    # Bash → check for git commit (save + continue to recall)
+    if [[ "$TOOL_NAME" == "Bash" ]]; then
+        local BASH_CMD
+        BASH_CMD=$(python3 -c "import json; print(json.load(open('$INPUT_FILE')).get('tool_input',{}).get('command','')[:300])" 2>/dev/null)
+        if [[ "$BASH_CMD" == *"git commit"* ]]; then
+            _write_save "Bash"
+        fi
+    fi
+
+    # Only recall for Read and Bash — exit for all others
     if [[ "$TOOL_NAME" != "Read" && "$TOOL_NAME" != "Bash" ]]; then
-        _dbg "tool=$TOOL_NAME not in scope, exiting"
+        _dbg "tool=$TOOL_NAME not in recall scope, exiting"
         exit 0
     fi
 
