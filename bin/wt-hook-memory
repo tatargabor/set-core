@@ -160,8 +160,25 @@ _dbg "session=$SESSION_ID"
 # ============================================================
 
 dedup_clear() {
-    _dbg "dedup_clear: removing $CACHE_FILE"
-    rm -f "$CACHE_FILE"
+    _dbg "dedup_clear: clearing dedup keys (preserving turn_count, metrics)"
+    python3 -c "
+import json, sys, os
+cache_file = sys.argv[1]
+if not os.path.exists(cache_file):
+    sys.exit(0)
+try:
+    with open(cache_file) as f:
+        cache = json.load(f)
+except:
+    sys.exit(0)
+# Preserve persistent keys, remove dedup hashes
+keep = {}
+for k in ('turn_count', 'last_checkpoint_turn', '_metrics', 'frustration_history'):
+    if k in cache:
+        keep[k] = cache[k]
+with open(cache_file, 'w') as f:
+    json.dump(keep, f)
+" "$CACHE_FILE" 2>/dev/null || rm -f "$CACHE_FILE"
 }
 
 dedup_check() {
@@ -1062,7 +1079,19 @@ handle_stop() {
     # Flush metrics to SQLite before clearing dedup cache
     _stop_flush_metrics
 
-    # Clean up dedup cache
+    # Clear metrics from cache (already flushed) to avoid double-flush on continued sessions
+    python3 -c "
+import json, sys, os
+cf = sys.argv[1]
+if not os.path.exists(cf): sys.exit(0)
+try:
+    with open(cf) as f: cache = json.load(f)
+except: sys.exit(0)
+cache.pop('_metrics', None)
+with open(cf, 'w') as f: json.dump(cache, f)
+" "$CACHE_FILE" 2>/dev/null || true
+
+    # Clean up dedup cache (preserves turn_count, frustration_history)
     dedup_clear
 
     local TRANSCRIPT_PATH
