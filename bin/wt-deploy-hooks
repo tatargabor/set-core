@@ -7,7 +7,7 @@
 #   - SessionStart: unified memory handler (timeout: 10s)
 #   - UserPromptSubmit: skill detection + unified memory handler (timeout: 15s)
 #   - PreToolUse[Skill]: activity tracking only (timeout: 5s)
-#   - PostToolUse[Read,Bash]: unified memory handler (timeout: 5s)
+#   - PostToolUse[Read,Bash,Write,Edit]: unified memory handler (timeout: 5s)
 #   - PostToolUseFailure[Bash]: unified memory handler (timeout: 5s)
 #   - SubagentStop: unified memory handler (timeout: 5s)
 #   - Stop: stop hook + unified memory handler (timeout: 30s)
@@ -115,6 +115,26 @@ hook_json=$(cat << 'HOOKJSON'
       },
       {
         "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wt-hook-memory PostToolUse",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wt-hook-memory PostToolUse",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
         "hooks": [
           {
             "type": "command",
@@ -235,14 +255,24 @@ if [[ -f "$settings_file" ]]; then
         has_old_individual=true
     fi
 
-    # Stale wt-hook-memory entries? (PreToolUse memory hooks or PostToolUse non-Read/Bash memory hooks)
+    # Stale wt-hook-memory entries? (PreToolUse memory hooks or PostToolUse with unknown matchers)
     if ! $NO_MEMORY; then
         # Stale PreToolUse: any entry with wt-hook-memory PreToolUse command
         stale_pre=$(jq '[.hooks.PreToolUse // [] | .[] | select(.hooks[]?.command == "wt-hook-memory PreToolUse")] | length' "$settings_file" 2>/dev/null || echo 0)
-        # Stale PostToolUse: wt-hook-memory PostToolUse entries whose matcher is NOT Read or Bash
-        stale_post=$(jq '[.hooks.PostToolUse // [] | .[] | select(.hooks[]?.command == "wt-hook-memory PostToolUse") | select(.matcher != "Read" and .matcher != "Bash")] | length' "$settings_file" 2>/dev/null || echo 0)
+        # Stale PostToolUse: wt-hook-memory PostToolUse entries whose matcher is NOT Read, Bash, Write, or Edit
+        stale_post=$(jq '[.hooks.PostToolUse // [] | .[] | select(.hooks[]?.command == "wt-hook-memory PostToolUse") | select(.matcher != "Read" and .matcher != "Bash" and .matcher != "Write" and .matcher != "Edit")] | length' "$settings_file" 2>/dev/null || echo 0)
         if [[ "$stale_pre" -gt 0 ]] || [[ "$stale_post" -gt 0 ]]; then
             has_stale=true
+        fi
+    fi
+
+    # Missing Write/Edit PostToolUse matchers? (upgrade from pre-mid-session-save)
+    has_missing_write_edit=false
+    if ! $NO_MEMORY && $has_unified; then
+        write_count=$(jq '[.hooks.PostToolUse // [] | .[] | select(.matcher == "Write")] | length' "$settings_file" 2>/dev/null || echo 0)
+        edit_count=$(jq '[.hooks.PostToolUse // [] | .[] | select(.matcher == "Edit")] | length' "$settings_file" 2>/dev/null || echo 0)
+        if [[ "$write_count" -eq 0 ]] || [[ "$edit_count" -eq 0 ]]; then
+            has_missing_write_edit=true
         fi
     fi
 
@@ -252,8 +282,8 @@ if [[ -f "$settings_file" ]]; then
         has_old_activity=true
     fi
 
-    # Already canonical? (unified + base + no stale entries + no old activity path)
-    if $has_unified && $has_base && ! $has_stale && ! $has_old_activity && ! $NO_MEMORY; then
+    # Already canonical? (unified + base + no stale entries + no old activity path + no missing matchers)
+    if $has_unified && $has_base && ! $has_stale && ! $has_old_activity && ! $has_missing_write_edit && ! $NO_MEMORY; then
         return 0 2>/dev/null || exit 0
     fi
     if $has_base && $NO_MEMORY && ! $has_old_individual && ! $has_unified; then
@@ -273,14 +303,34 @@ if [[ -f "$settings_file" ]]; then
             ]
         ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
         _success "Migrated: $settings_file (activity-track.sh → wt-hook-activity)"
+    elif $has_missing_write_edit && $has_unified && ! $has_stale; then
+        # Add Write/Edit PostToolUse matchers for mid-session write-save
+        jq '
+            .hooks.PostToolUse = (.hooks.PostToolUse // [])
+            + (if ([.hooks.PostToolUse[]? | select(.matcher == "Write")] | length) == 0
+               then [{"matcher":"Write","hooks":[{"type":"command","command":"wt-hook-memory PostToolUse","timeout":5}]}]
+               else [] end)
+            + (if ([.hooks.PostToolUse[]? | select(.matcher == "Edit")] | length) == 0
+               then [{"matcher":"Edit","hooks":[{"type":"command","command":"wt-hook-memory PostToolUse","timeout":5}]}]
+               else [] end)
+        ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
+        # Also migrate activity if needed
+        if $has_old_activity; then
+            jq '.hooks.PreToolUse = [.hooks.PreToolUse // [] | .[] |
+                if (.hooks[]?.command == ".claude/hooks/activity-track.sh")
+                then .hooks = [.hooks[] | if .command == ".claude/hooks/activity-track.sh" then .command = "wt-hook-activity" else . end]
+                else . end
+            ]' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
+        fi
+        _success "Upgraded: $settings_file (added Write/Edit PostToolUse hooks for mid-session memory save)"
     elif $has_stale && $has_unified; then
         # Downgrade path: remove stale wt-hook-memory entries, preserve everything else
         jq '
             # Remove stale PreToolUse: any entry whose hooks contain "wt-hook-memory PreToolUse"
             .hooks.PreToolUse = [.hooks.PreToolUse // [] | .[] | select((.hooks[]?.command == "wt-hook-memory PreToolUse") | not)]
-            # Remove stale PostToolUse: wt-hook-memory PostToolUse entries where matcher is NOT Read or Bash
+            # Remove stale PostToolUse: wt-hook-memory PostToolUse entries where matcher is NOT Read, Bash, Write, or Edit
             | .hooks.PostToolUse = [.hooks.PostToolUse // [] | .[] | select(
-                ((.hooks[]?.command == "wt-hook-memory PostToolUse") and (.matcher != "Read" and .matcher != "Bash")) | not
+                ((.hooks[]?.command == "wt-hook-memory PostToolUse") and (.matcher != "Read" and .matcher != "Bash" and .matcher != "Write" and .matcher != "Edit")) | not
             )]
             # Ensure Skill/wt-hook-activity is present in PreToolUse
             | if ([.hooks.PreToolUse[]? | select(.matcher == "Skill")] | length) == 0
