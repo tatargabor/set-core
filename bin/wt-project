@@ -67,18 +67,21 @@ deploy_wt_tools() {
         fi
         if [[ "$is_self" == "false" ]]; then
             # Deploy with wt- prefix to avoid conflicts with project-specific rules
+            # Skip gui/ rules for non-wt-tools projects (only wt-tools has gui/)
             local rule_count=0
             while IFS= read -r -d '' src_file; do
                 local rel_path="${src_file#"$src_rules/"}"
                 local dir_part
                 dir_part=$(dirname "$rel_path")
+                # Skip gui/ rules — they're wt-tools-specific (path-scoped to gui/**)
+                [[ "$dir_part" == gui ]] && continue
                 local base_name
                 base_name=$(basename "$rel_path")
                 local dst_dir="$dst_rules"
                 [[ "$dir_part" != "." ]] && dst_dir="$dst_rules/$dir_part"
                 mkdir -p "$dst_dir"
                 cp "$src_file" "$dst_dir/wt-$base_name"
-                ((rule_count++))
+                rule_count=$((rule_count + 1))
             done < <(find "$src_rules" -name '*.md' -print0)
             success "  Deployed $rule_count rule(s) to .claude/rules/ (wt-* prefix)"
         else

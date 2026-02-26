@@ -133,7 +133,7 @@ hook_json=$(cat << 'HOOKJSON'
             "timeout": 5
           }
         ]
-      },
+      }
     ],
     "PostToolUseFailure": [
       {
