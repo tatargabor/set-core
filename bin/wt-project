@@ -57,6 +57,48 @@ deploy_wt_tools() {
         warn "  Source skills not found: $src_skills"
     fi
 
+    # 3b. Deploy rules (path-scoped project rules)
+    local src_rules="$WT_TOOLS_ROOT/.claude/rules"
+    local dst_rules="$claude_dir/rules"
+    if [[ -d "$src_rules" ]]; then
+        local is_self=false
+        if [[ -d "$dst_rules" ]] && [[ "$(realpath "$src_rules")" == "$(realpath "$dst_rules")" ]]; then
+            is_self=true
+        fi
+        if [[ "$is_self" == "false" ]]; then
+            # Deploy with wt- prefix to avoid conflicts with project-specific rules
+            local rule_count=0
+            while IFS= read -r -d '' src_file; do
+                local rel_path="${src_file#"$src_rules/"}"
+                local dir_part
+                dir_part=$(dirname "$rel_path")
+                local base_name
+                base_name=$(basename "$rel_path")
+                local dst_dir="$dst_rules"
+                [[ "$dir_part" != "." ]] && dst_dir="$dst_rules/$dir_part"
+                mkdir -p "$dst_dir"
+                cp "$src_file" "$dst_dir/wt-$base_name"
+                ((rule_count++))
+            done < <(find "$src_rules" -name '*.md' -print0)
+            success "  Deployed $rule_count rule(s) to .claude/rules/ (wt-* prefix)"
+        else
+            success "  Rules: self-deploy detected, skipping"
+        fi
+    fi
+
+    # 3c. Deploy agents (custom subagent definitions)
+    local src_agents="$WT_TOOLS_ROOT/.claude/agents"
+    local dst_agents="$claude_dir/agents"
+    if [[ -d "$src_agents" ]]; then
+        mkdir -p "$dst_agents"
+        if [[ "$(realpath "$src_agents")" != "$(realpath "$dst_agents")" ]]; then
+            cp "$src_agents"/*.md "$dst_agents/" 2>/dev/null || true
+        fi
+        local agent_count
+        agent_count=$(ls -1 "$src_agents"/*.md 2>/dev/null | wc -l)
+        success "  Deployed $agent_count agent(s) to .claude/agents/"
+    fi
+
     # 4. Remove deprecated inline memory hooks from OpenSpec skill/command files
     if command -v wt-memory-hooks &>/dev/null; then
         (cd "$project_path" && wt-memory-hooks remove --quiet) 2>/dev/null || true

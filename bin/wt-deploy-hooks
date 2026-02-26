@@ -9,6 +9,7 @@
 #   - PreToolUse[Skill]: activity tracking only (timeout: 5s)
 #   - PostToolUse[Read,Bash]: unified memory handler (timeout: 5s)
 #   - PostToolUseFailure[Bash]: unified memory handler (timeout: 5s)
+#   - SubagentStart: unified memory handler (timeout: 10s)
 #   - SubagentStop: unified memory handler (timeout: 5s)
 #   - Stop: stop hook + unified memory handler (timeout: 30s)
 #
@@ -64,6 +65,16 @@ hook_json=$(cat << 'HOOKJSON'
     "SessionStart": [
       {
         "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wt-hook-memory SessionStart",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
         "hooks": [
           {
             "type": "command",
@@ -132,6 +143,18 @@ hook_json=$(cat << 'HOOKJSON'
             "type": "command",
             "command": "wt-hook-memory PostToolUseFailure",
             "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wt-hook-memory SubagentStart",
+            "timeout": 10
           }
         ]
       }
@@ -226,6 +249,7 @@ if [[ -f "$settings_file" ]]; then
     # Unified handler already deployed?
     if jq -e '.hooks.SessionStart[0].hooks[] | select(.command == "wt-hook-memory SessionStart")' "$settings_file" &>/dev/null \
         && jq -e '.hooks.PostToolUse' "$settings_file" &>/dev/null \
+        && jq -e '.hooks.SubagentStart' "$settings_file" &>/dev/null \
         && jq -e '.hooks.SubagentStop' "$settings_file" &>/dev/null; then
         has_unified=true
     fi
@@ -293,7 +317,7 @@ if [[ -f "$settings_file" ]]; then
         jq --argjson hooks "$(echo "$deploy_json" | jq '.hooks')" \
             '.hooks = $hooks + (
                 .hooks | to_entries
-                | map(select(.key as $k | ["SessionStart","UserPromptSubmit","PreToolUse","PostToolUse","PostToolUseFailure","SubagentStop","Stop"] | index($k) | not))
+                | map(select(.key as $k | ["SessionStart","UserPromptSubmit","PreToolUse","PostToolUse","PostToolUseFailure","SubagentStart","SubagentStop","Stop"] | index($k) | not))
                 | from_entries
             )' \
             "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"

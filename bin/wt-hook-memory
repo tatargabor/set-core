@@ -5,7 +5,7 @@
 # Usage: wt-hook-memory <EventName>
 #
 # Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse,
-#         PostToolUseFailure, SubagentStop, Stop
+#         PostToolUseFailure, SubagentStart, SubagentStop, Stop
 #
 # Configuration in .claude/settings.json via wt-deploy-hooks.
 
@@ -1009,6 +1009,39 @@ print(error[:300])
 }
 
 # ============================================================
+# Event: SubagentStart
+# ============================================================
+
+handle_subagent_start() {
+    # Extract task description from SubagentStart input
+    local TASK_DESC
+    TASK_DESC=$(python3 -c "
+import json, sys
+data = json.load(open(sys.argv[1]))
+# SubagentStart provides task description in tool_input.prompt or tool_input.description
+ti = data.get('tool_input', {})
+desc = ti.get('prompt', '') or ti.get('description', '') or ''
+print(desc[:300])
+" "$INPUT_FILE" 2>/dev/null)
+    _dbg "subagent_task='${TASK_DESC:0:100}'"
+    if [[ -z "$TASK_DESC" ]]; then
+        _dbg "no task description, exiting"
+        exit 0
+    fi
+
+    # Proactive recall based on task description
+    local FORMATTED=""
+    FORMATTED=$(proactive_and_format "$TASK_DESC" 3) || true
+    if [[ -z "$FORMATTED" ]]; then
+        _dbg "no proactive results, exiting"
+        exit 0
+    fi
+
+    _dbg "=== OUTPUT ==="
+    output_hook_context "SubagentStart" "=== MEMORY: Context for subagent ===\n$FORMATTED"
+}
+
+# ============================================================
 # Event: SubagentStop
 # ============================================================
 
@@ -1529,6 +1562,7 @@ case "$EVENT" in
     PreToolUse)         handle_pre_tool ;;
     PostToolUse)        handle_post_tool ;;
     PostToolUseFailure) handle_post_tool_failure ;;
+    SubagentStart)      handle_subagent_start ;;
     SubagentStop)       handle_subagent_stop ;;
     Stop)               handle_stop ;;
     *)                  _log "unknown event, skipping"; exit 0 ;;

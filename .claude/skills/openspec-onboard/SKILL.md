@@ -3,6 +3,7 @@ name: openspec-onboard
 description: Guided onboarding for OpenSpec - walk through a complete workflow cycle with narration and real codebase work.
 license: MIT
 compatibility: Requires openspec CLI.
+disable-model-invocation: true
 metadata:
   author: openspec
   version: "1.0"
