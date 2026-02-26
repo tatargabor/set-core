@@ -195,3 +195,27 @@ wt-merge implement-feature
 # 5. Worktree is cleaned up automatically (or use wt-close)
 ```
 
+## Project Health Audit
+
+### Scan Project Health
+
+```bash
+wt-audit scan              # Human-readable report
+wt-audit scan --json       # Machine-readable JSON
+wt-audit scan --condensed  # Summary line only
+```
+
+Scans 6 project health dimensions:
+- **Claude Code Config** — permissions, hooks, agents, rules
+- **Design Documentation** — docs/design/*.md coverage
+- **OpenSpec Config** — config.yaml context population
+- **Code Quality Signals** — large files, unused code tooling
+- **CLAUDE.md Structure** — conventions, managed sections
+- **Gitignore Coverage** — sensitive file patterns
+
+Output includes evidence (what exists), delta (✅/⚠️/❌), and guidance (source pointers for what the LLM should READ to create missing content).
+
+### Interactive Remediation
+
+Use `/wt:audit` to scan and interactively address gaps. The skill runs the scan, presents findings, and helps create project-specific content by reading the actual codebase — not templates.
+

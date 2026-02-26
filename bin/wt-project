@@ -419,6 +419,12 @@ cmd_init() {
     else
         success "wt-tools deployment complete for '$name'"
     fi
+
+    # Run health audit if wt-audit is available
+    if command -v wt-audit &>/dev/null; then
+        echo ""
+        (cd "$git_root" && wt-audit scan --condensed 2>/dev/null) || true
+    fi
 }
 
 cmd_list() {
