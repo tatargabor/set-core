@@ -35,6 +35,11 @@ DEFAULT_TEST_COMMAND=""
 DEFAULT_NOTIFICATION="desktop"
 DEFAULT_TOKEN_BUDGET=0
 DEFAULT_PAUSE_ON_EXIT="false"
+DEFAULT_AUTO_REPLAN="false"
+
+# Runtime state
+CLI_TIME_LIMIT=""   # set via --time-limit <duration>
+ORCHESTRATOR_START_EPOCH=""  # set at start time
 
 # ─── Logging ─────────────────────────────────────────────────────────
 
@@ -101,6 +106,69 @@ rotate_log() {
         tail -c "$LOG_KEEP_SIZE" "$LOG_FILE" > "$tmp"
         mv "$tmp" "$LOG_FILE"
         log_info "Log rotated (was ${size} bytes)"
+    fi
+}
+
+# ─── Duration Parsing ────────────────────────────────────────────────
+
+# Parse a human-readable duration string into seconds.
+# Supports: 30m, 4h, 2h30m, 1h15m, 90 (plain number = minutes)
+# Returns 0 on invalid input.
+parse_duration() {
+    local input="$1"
+    local total=0
+
+    # Plain number → minutes
+    if [[ "$input" =~ ^[0-9]+$ ]]; then
+        total=$((input * 60))
+        echo "$total"
+        return 0
+    fi
+
+    # Extract hours
+    if [[ "$input" =~ ([0-9]+)h ]]; then
+        total=$((total + BASH_REMATCH[1] * 3600))
+    fi
+
+    # Extract minutes
+    if [[ "$input" =~ ([0-9]+)m ]]; then
+        total=$((total + BASH_REMATCH[1] * 60))
+    fi
+
+    if [[ "$total" -eq 0 ]]; then
+        echo "0"
+        return 1
+    fi
+
+    echo "$total"
+}
+
+# Check if time limit has been exceeded.
+# Returns 0 (true) if exceeded, 1 (false) if still within limit.
+check_time_limit() {
+    local limit_seconds="$1"
+    [[ "$limit_seconds" -le 0 ]] && return 1
+
+    local now
+    now=$(date +%s)
+    local elapsed=$((now - ORCHESTRATOR_START_EPOCH))
+    if [[ "$elapsed" -ge "$limit_seconds" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Format seconds into human-readable duration
+format_duration() {
+    local secs="$1"
+    local h=$((secs / 3600))
+    local m=$(( (secs % 3600) / 60 ))
+    if [[ "$h" -gt 0 && "$m" -gt 0 ]]; then
+        echo "${h}h${m}m"
+    elif [[ "$h" -gt 0 ]]; then
+        echo "${h}h"
+    else
+        echo "${m}m"
     fi
 }
 
@@ -228,6 +296,7 @@ parse_directives() {
     local notification="$DEFAULT_NOTIFICATION"
     local token_budget="$DEFAULT_TOKEN_BUDGET"
     local pause_on_exit="$DEFAULT_PAUSE_ON_EXIT"
+    local auto_replan="$DEFAULT_AUTO_REPLAN"
 
     while IFS= read -r line; do
         # Detect ## Orchestrator Directives header
@@ -295,6 +364,13 @@ parse_directives() {
                         warn "Invalid pause_on_exit '$val', using default $DEFAULT_PAUSE_ON_EXIT"
                     fi
                     ;;
+                auto_replan)
+                    if [[ "$val" =~ ^(true|false)$ ]]; then
+                        auto_replan="$val"
+                    else
+                        warn "Invalid auto_replan '$val', using default $DEFAULT_AUTO_REPLAN"
+                    fi
+                    ;;
                 *)
                     warn "Unknown directive '$key', ignoring"
                     ;;
@@ -311,6 +387,7 @@ parse_directives() {
         --arg notification "$notification" \
         --argjson token_budget "$token_budget" \
         --argjson pause_on_exit "$pause_on_exit" \
+        --argjson auto_replan "$auto_replan" \
         '{
             max_parallel: $max_parallel,
             merge_policy: $merge_policy,
@@ -318,7 +395,8 @@ parse_directives() {
             test_command: $test_command,
             notification: $notification,
             token_budget: $token_budget,
-            pause_on_exit: $pause_on_exit
+            pause_on_exit: $pause_on_exit,
+            auto_replan: $auto_replan
         }'
 }
 
@@ -814,9 +892,19 @@ $active_changes
 
 ## Project Memory
 $memory_context
+$(if [[ -n "${_REPLAN_COMPLETED:-}" ]]; then
+cat <<REPLAN_CTX
+
+## Already Completed (from previous orchestration cycles)
+The following roadmap items have ALREADY been implemented and merged (cycle ${_REPLAN_CYCLE:-1}):
+$_REPLAN_COMPLETED
+
+DO NOT re-plan any of these items. Focus on the NEXT incomplete phase/priority after these.
+REPLAN_CTX
+fi)
 
 ## Task
-1. **Analyze the specification** — identify which items are completed (look for status markers: checkboxes, ✅/❌ emoji, "done"/"implemented"/"kész"/"ready" text, strikethrough, progress tables) and which are pending.
+1. **Analyze the specification** — identify which items are completed (look for status markers: checkboxes, ✅/❌ emoji, "done"/"implemented"/"kész"/"ready" text, strikethrough, progress tables) and which are pending. Also consider the "Already Completed" section above if present.
 2. **Determine the next batch** — respect explicit phases, priorities, or numbered ordering in the document. Pick the first incomplete phase/priority group.
 $phase_instruction
 3. **Decompose** the selected batch into concrete, implementable OpenSpec changes.
@@ -1000,12 +1088,66 @@ cmd_start() {
         return 1
     fi
 
+    # Record start time for time-limit tracking
+    ORCHESTRATOR_START_EPOCH=$(date +%s)
+
     if [[ -f "$STATE_FILENAME" ]]; then
         local current_status
         current_status=$(jq -r '.status' "$STATE_FILENAME")
         if [[ "$current_status" == "running" ]]; then
             warn "Orchestrator is already running. Use 'wt-orchestrate status' to check progress."
             return 1
+        fi
+        # Resume from time_limit or stopped: continue where we left off
+        if [[ "$current_status" == "time_limit" || "$current_status" == "stopped" ]]; then
+            info "Resuming from previous run (status: $current_status)"
+            log_info "Resuming orchestration (was: $current_status)"
+            update_state_field "status" '"running"'
+
+            # Restore input path from plan
+            if [[ -z "${INPUT_PATH:-}" || ! -f "${INPUT_PATH:-}" ]]; then
+                INPUT_MODE=$(jq -r '.input_mode // empty' "$PLAN_FILENAME")
+                INPUT_PATH=$(jq -r '.input_path // empty' "$PLAN_FILENAME")
+                if [[ -z "$INPUT_PATH" || ! -f "$INPUT_PATH" ]]; then
+                    error "Cannot find input file from plan: $INPUT_PATH"
+                    return 1
+                fi
+            fi
+
+            local directives
+            directives=$(resolve_directives "$INPUT_PATH")
+            local max_parallel
+            max_parallel=$(echo "$directives" | jq -r '.max_parallel')
+            local pause_on_exit_val
+            pause_on_exit_val=$(echo "$directives" | jq -r '.pause_on_exit')
+
+            # Setup cleanup trap
+            local cleanup_done=false
+            cleanup_orchestrator() {
+                [[ "$cleanup_done" == true ]] && return
+                cleanup_done=true
+                echo ""
+                warn "Orchestrator interrupted, saving state..."
+                log_info "Orchestrator interrupted by signal"
+                if [[ -f "$STATE_FILENAME" ]]; then
+                    update_state_field "status" '"stopped"'
+                fi
+                if [[ "$pause_on_exit_val" == "true" ]]; then
+                    local running_changes
+                    running_changes=$(get_changes_by_status "running" 2>/dev/null || true)
+                    while IFS= read -r name; do
+                        [[ -z "$name" ]] && continue
+                        pause_change "$name" 2>/dev/null || true
+                    done <<< "$running_changes"
+                fi
+                log_info "Orchestrator stopped"
+            }
+            trap 'cleanup_orchestrator' EXIT SIGTERM SIGINT SIGHUP
+
+            # Resume running changes and dispatch pending
+            dispatch_ready_changes "$max_parallel"
+            monitor_loop "$directives"
+            return 0
         fi
     fi
 
@@ -1106,6 +1248,14 @@ cmd_status() {
     echo "  Progress: $merged merged, $done_count done, $running running, $pending pending"
     [[ "$failed" -gt 0 ]] && echo "  Failed:   $failed"
     [[ "$stalled" -gt 0 ]] && echo "  Stalled:  $stalled"
+
+    local replan_cycle
+    replan_cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME" 2>/dev/null)
+    [[ "$replan_cycle" -gt 0 ]] && echo "  Replan:   cycle $replan_cycle"
+
+    if [[ "$status" == "time_limit" ]]; then
+        echo "  Note:     Stopped by time limit. Run 'wt-orchestrate start' to continue."
+    fi
 
     # Input staleness check
     local stored_path
@@ -1420,6 +1570,34 @@ TESTEOF
         fail=$((fail + 1))
     fi
 
+    # Test 7: parse_duration
+    local dur_ok=true
+    [[ $(parse_duration "4h") == "14400" ]] || dur_ok=false
+    [[ $(parse_duration "30m") == "1800" ]] || dur_ok=false
+    [[ $(parse_duration "2h30m") == "9000" ]] || dur_ok=false
+    [[ $(parse_duration "90") == "5400" ]] || dur_ok=false
+    [[ $(parse_duration "1h15m") == "4500" ]] || dur_ok=false
+    if $dur_ok; then
+        success "  PASS: parse_duration"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: parse_duration"
+        fail=$((fail + 1))
+    fi
+
+    # Test 8: format_duration
+    local fmt_ok=true
+    [[ $(format_duration 14400) == "4h" ]] || fmt_ok=false
+    [[ $(format_duration 1800) == "30m" ]] || fmt_ok=false
+    [[ $(format_duration 9000) == "2h30m" ]] || fmt_ok=false
+    if $fmt_ok; then
+        success "  PASS: format_duration"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: format_duration"
+        fail=$((fail + 1))
+    fi
+
     # Cleanup
     rm -f "$test_brief" "$test_brief2" "$test_plan" "$test_plan_circular"
 
@@ -1647,11 +1825,35 @@ monitor_loop() {
     merge_policy=$(echo "$directives" | jq -r '.merge_policy')
     local token_budget
     token_budget=$(echo "$directives" | jq -r '.token_budget')
+    local auto_replan
+    auto_replan=$(echo "$directives" | jq -r '.auto_replan')
 
-    info "Monitor loop started (poll every ${POLL_INTERVAL}s)"
+    # Parse time limit
+    local time_limit_secs=0
+    if [[ -n "$CLI_TIME_LIMIT" ]]; then
+        time_limit_secs=$(parse_duration "$CLI_TIME_LIMIT")
+        if [[ "$time_limit_secs" -le 0 ]]; then
+            warn "Invalid --time-limit '$CLI_TIME_LIMIT', ignoring"
+            time_limit_secs=0
+        else
+            info "Time limit: $(format_duration "$time_limit_secs")"
+        fi
+    fi
+
+    info "Monitor loop started (poll every ${POLL_INTERVAL}s, auto_replan=$auto_replan)"
 
     while true; do
         sleep "$POLL_INTERVAL"
+
+        # Check time limit
+        if [[ "$time_limit_secs" -gt 0 ]] && check_time_limit "$time_limit_secs"; then
+            local elapsed=$(($(date +%s) - ORCHESTRATOR_START_EPOCH))
+            warn "Time limit reached ($(format_duration "$elapsed") elapsed)"
+            log_info "Time limit reached after $(format_duration "$elapsed")"
+            update_state_field "status" '"time_limit"'
+            send_notification "wt-orchestrate" "Time limit reached ($(format_duration "$elapsed")). Run 'wt-orchestrate start' to continue." "normal"
+            break
+        fi
 
         # Check if we've been stopped externally
         local orch_status
@@ -1703,13 +1905,117 @@ monitor_loop() {
 
         if [[ "$done_or_merged" -ge "$total_changes" ]]; then
             trigger_checkpoint "completion"
-            update_state_field "status" '"done"'
-            success "All changes complete!"
-            log_info "Orchestration complete"
+            log_info "All $total_changes changes complete"
             send_notification "wt-orchestrate" "All $total_changes changes complete!" "normal"
-            break
+
+            # Auto-replan: generate next plan and continue if new work found
+            if [[ "$auto_replan" == "true" ]]; then
+                info "All changes done. Auto-replanning..."
+                log_info "Auto-replan triggered"
+
+                # Track replan cycle in state
+                local cycle
+                cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME")
+                cycle=$((cycle + 1))
+
+                if auto_replan_cycle "$directives" "$cycle"; then
+                    # New plan dispatched, continue monitoring
+                    info "Replan cycle $cycle: new changes dispatched, continuing..."
+                    log_info "Replan cycle $cycle started"
+                    continue
+                else
+                    # No new work found
+                    update_state_field "status" '"done"'
+                    success "All work complete! No more phases to implement."
+                    log_info "Auto-replan found no new work — orchestration complete"
+                    break
+                fi
+            else
+                update_state_field "status" '"done"'
+                success "All changes complete!"
+                log_info "Orchestration complete"
+                break
+            fi
         fi
     done
+}
+
+# Auto-replan cycle: re-run plan from spec, integrate new changes into state.
+# Returns 0 if new changes were found and dispatched, 1 if nothing new.
+auto_replan_cycle() {
+    local directives="$1"
+    local cycle="$2"
+    local max_parallel
+    max_parallel=$(echo "$directives" | jq -r '.max_parallel')
+
+    # Collect completed change names for context
+    local completed_names
+    completed_names=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged") | .name] | join(", ")' "$STATE_FILENAME")
+    local completed_roadmap
+    completed_roadmap=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged") | .roadmap_item] | join("; ")' "$STATE_FILENAME")
+
+    info "Completed so far: $completed_names"
+    log_info "Auto-replan cycle $cycle — completed: $completed_names"
+
+    # Re-run plan (cmd_plan knows how to handle spec mode, phase hints, etc.)
+    # Temporarily save old plan for comparison
+    local old_plan
+    old_plan=$(mktemp)
+    cp "$PLAN_FILENAME" "$old_plan"
+
+    # Store completed info for the planner prompt to use
+    export _REPLAN_COMPLETED="$completed_roadmap"
+    export _REPLAN_CYCLE="$cycle"
+
+    if ! cmd_plan 2>/dev/null; then
+        log_error "Auto-replan failed — cmd_plan returned error"
+        rm -f "$old_plan"
+        unset _REPLAN_COMPLETED _REPLAN_CYCLE
+        return 1
+    fi
+    unset _REPLAN_COMPLETED _REPLAN_CYCLE
+
+    # Check if new plan has any changes not in old plan
+    local new_changes
+    new_changes=$(jq -r '[.changes[].name]' "$PLAN_FILENAME")
+    local old_changes
+    old_changes=$(jq -r '[.changes[].name]' "$old_plan")
+    rm -f "$old_plan"
+
+    local novel_count
+    novel_count=$(python3 -c "
+import json, sys
+new = set(json.loads('$new_changes'))
+old = set(json.loads('$old_changes'))
+novel = new - old
+print(len(novel))
+" 2>/dev/null || echo "0")
+
+    if [[ "$novel_count" -eq 0 ]]; then
+        log_info "No new changes found in replan — all work done"
+        return 1
+    fi
+
+    info "Replan found $novel_count new change(s)"
+    log_info "Replan cycle $cycle found $novel_count new changes"
+
+    # Re-initialize state from new plan, preserving history
+    # Save cumulative stats before reinit
+    local prev_total_tokens
+    prev_total_tokens=$(jq '[.changes[].tokens_used] | add // 0' "$STATE_FILENAME")
+    local prev_cycles
+    prev_cycles=$(jq '.replan_cycle // 0' "$STATE_FILENAME")
+
+    init_state "$PLAN_FILENAME"
+
+    # Restore cumulative metadata
+    update_state_field "replan_cycle" "$cycle"
+    update_state_field "prev_total_tokens" "$prev_total_tokens"
+
+    # Dispatch newly ready changes
+    dispatch_ready_changes "$max_parallel"
+
+    return 0
 }
 
 poll_change() {
@@ -1998,6 +2304,7 @@ Input Options (mutually exclusive):
 Spec Options:
   --phase <hint>         Phase hint for --spec (number or text, e.g., "1" or "Security fixes")
   --max-parallel <N>     Override max parallel changes (overrides config and directives)
+  --time-limit <dur>     Stop after duration (e.g., 4h, 30m, 2h30m). Resume with 'start'.
 
 Commands:
   plan [--show]          Generate change plan from spec/brief (or show existing)
@@ -2023,8 +2330,13 @@ Examples:
   wt-orchestrate plan --show                            # Show current plan
   wt-orchestrate start                                  # Start executing
   wt-orchestrate --max-parallel 3 start                 # Start with 3 parallel
+  wt-orchestrate --time-limit 4h start                  # Stop after 4 hours
   wt-orchestrate status                                 # Check progress
   wt-orchestrate approve --merge                        # Approve + merge
+
+Config (.claude/orchestration.yaml):
+  auto_replan: true      # Auto-plan next phase when all changes complete
+  merge_policy: eager    # Merge immediately (vs checkpoint, manual)
 EOF
 }
 
@@ -2064,6 +2376,14 @@ main() {
                 ;;
             --max-parallel=*)
                 CLI_MAX_PARALLEL="${1#--max-parallel=}"
+                shift
+                ;;
+            --time-limit)
+                CLI_TIME_LIMIT="$2"
+                shift 2
+                ;;
+            --time-limit=*)
+                CLI_TIME_LIMIT="${1#--time-limit=}"
                 shift
                 ;;
             *)
