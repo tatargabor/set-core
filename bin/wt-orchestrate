@@ -1453,7 +1453,7 @@ dispatch_change() {
     if [[ -d "$wt_path" ]]; then
         info "Worktree already exists: $wt_path"
     else
-        wt-new "$change_name" 2>/dev/null || {
+        wt-new "$change_name" --skip-open 2>/dev/null || {
             error "Failed to create worktree for $change_name"
             update_change_field "$change_name" "status" '"failed"'
             log_error "Failed to create worktree for $change_name"
