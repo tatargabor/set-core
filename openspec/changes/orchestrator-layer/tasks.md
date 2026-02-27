@@ -69,10 +69,18 @@
 - [ ] 9.3 Verify Ralph restart in existing worktree works: `wt-loop start` with existing tasks.md preserves checked tasks, detect_next_change_action picks up remaining work
 - [ ] 9.4 Add integration test: start Ralph, send SIGTERM, verify loop-state.json has status "stopped", restart, verify it continues from correct position
 
-## 10. GUI Orchestrator View (Phase 2)
+## 10. Testing
 
-- [ ] 10.1 Add orchestrator status indicator to project row in wt-control: detect `orchestration-state.json` existence, show "O" badge with status color (green=running, yellow=checkpoint, red=failed)
-- [ ] 10.2 Add orchestrator detail panel: read orchestration-state.json, display per-change progress cards with status, iteration count, token usage
-- [ ] 10.3 Add dependency graph visualization: render change DAG with status colors using QPainter (similar to DualStripeBar widget pattern)
-- [ ] 10.4 Add approve button: when orchestrator is in "checkpoint" status, show approve button that writes approval signal to state file
-- [ ] 10.5 Add GUI test for orchestrator panel: test with mock orchestration-state.json, verify status display and approve button interaction
+- [ ] 10.1 Implement `wt-orchestrate self-test` subcommand: run Level 1 unit tests internally — parse_brief with sample input, parse_directives defaults/validation, topological_sort with known graph, state JSON roundtrip, circular dependency detection
+- [ ] 10.2 Create test fixture: `tests/orchestrator/sample-brief.md` with 3 dummy features (A independent, B depends on A, C independent) and all directives set
+- [ ] 10.3 Level 2 integration test script: `tests/orchestrator/test-plan.sh` — create temp project dir, copy sample brief, run `wt-orchestrate plan`, validate orchestration-plan.json structure (change names kebab-case, deps valid, no circular deps)
+- [ ] 10.4 Level 3 end-to-end test script: `tests/orchestrator/test-e2e.sh` — create temp git repo with trivial brief ("add hello.txt"), run `wt-orchestrate plan` + `start`, wait for completion, verify change went through full lifecycle (pending→dispatched→running→done→merged), verify hello.txt exists on main
+- [ ] 10.5 Document parallel execution safety model in tests/orchestrator/README.md: worktree isolation, sequential merges, dependency ordering, conflict detection, and how to run each test level
+
+## 11. GUI Orchestrator View (Phase 2)
+
+- [ ] 11.1 Add orchestrator status indicator to project row in wt-control: detect `orchestration-state.json` existence, show "O" badge with status color (green=running, yellow=checkpoint, red=failed)
+- [ ] 11.2 Add orchestrator detail panel: read orchestration-state.json, display per-change progress cards with status, iteration count, token usage
+- [ ] 11.3 Add dependency graph visualization: render change DAG with status colors using QPainter (similar to DualStripeBar widget pattern)
+- [ ] 11.4 Add approve button: when orchestrator is in "checkpoint" status, show approve button that writes approval signal to state file
+- [ ] 11.5 Add GUI test for orchestrator panel: test with mock orchestration-state.json, verify status display and approve button interaction

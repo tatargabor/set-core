@@ -1,0 +1,45 @@
+# Project Brief
+
+<!-- This is the primary input document for the orchestrator.
+     Maintain this document as the living source of truth for your project.
+     The orchestrator reads the "Next" section and "Orchestrator Directives"
+     to plan and execute changes autonomously. -->
+
+## Purpose
+
+<!-- What is this project? Who is it for? -->
+
+## Tech Stack
+
+<!-- Languages, frameworks, key dependencies -->
+
+## Domain Context
+
+<!-- Core domain concepts, entities, business rules -->
+
+## Feature Roadmap
+
+### Done
+<!-- Completed capabilities — informational, not processed by orchestrator -->
+
+### Next
+<!-- Items to implement. Each bullet becomes a candidate change.
+     Be specific — include constraints, dependencies, and key details.
+     Examples:
+     - User authentication: JWT-based, support email/password login
+     - Data export: CSV and JSON formats, max 10k rows per export
+     - Real-time notifications: SSE-based, per-user channel -->
+
+### Ideas
+<!-- Future considerations — not processed by orchestrator -->
+
+## Orchestrator Directives
+
+<!-- Key-value configuration for the orchestrator. All are optional with defaults. -->
+- max_parallel: 2
+- merge_policy: checkpoint
+- checkpoint_every: 3
+- test_command:
+- notification: desktop
+- token_budget: 0
+- pause_on_exit: false

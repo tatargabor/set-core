@@ -328,3 +328,42 @@ Default: no limit (0 = unlimited). This is a soft limit — it pauses for approv
 
 **[Complexity]** The orchestrator adds a new layer of abstraction on top of already complex tooling.
 → Mitigation: The orchestrator is optional — all existing manual workflows continue to work. Incremental adoption: start with `wt-orchestrate plan` only (review decomposition), then graduate to `wt-orchestrate start`.
+
+## Testing Strategy
+
+### Parallel execution model
+
+Multiple worktrees run simultaneously, each on its own branch. Key invariants:
+
+- **Worktrees are fully isolated**: separate directories, separate branches, separate `.claude/` state
+- **Merges are sequential**: the orchestrator merges one change at a time to main, never concurrently
+- **Dependencies enforce ordering**: a change with `depends_on: [X]` does NOT start until X is merged
+- **Merge conflicts detected pre-merge**: dry-run `git merge --no-commit --no-ff` + `git merge --abort` before real merge. If conflict → mark "merge-blocked", notify developer.
+
+### Test levels
+
+**Level 1 — Unit tests (bash functions, no Claude calls):**
+- `parse_brief`: feed sample project-brief.md, verify extracted Next items and directives
+- `parse_directives`: verify defaults for missing keys, warning on invalid values
+- `topological_sort`: verify dependency ordering, circular dependency detection
+- `update_state` / `get_change_status`: verify JSON read/write roundtrip
+- Method: `wt-orchestrate self-test` subcommand that runs assertions internally
+
+**Level 2 — Integration test (plan generation, requires Claude):**
+- Create a dummy `project-brief.md` with 3 features in Next section
+- Run `wt-orchestrate plan` → verify `orchestration-plan.json` structure
+- Verify: change names are kebab-case, dependencies are valid, no circular deps
+- Cost: one Claude decomposition call (~5-10k tokens)
+
+**Level 3 — End-to-end (single change through full pipeline):**
+- Dummy project with one trivial feature in brief (e.g., "add a hello.txt file")
+- `wt-orchestrate start` → Ralph creates worktree, runs ff+apply, completes
+- Verify: change goes through pending→dispatched→running→done→merged
+- Verify: worktree created, proposal pre-created, tasks checked, merge to main
+- Cost: one Ralph session (~20-50k tokens)
+
+**Level 4 — Pilot (real project, multiple features):**
+- Real project with 2-3 actual features in brief
+- Full parallel execution with dependencies
+- Validates: decomposition quality, parallel safety, merge pipeline, checkpoints
+- This is the final validation before trusting the orchestrator for production use
