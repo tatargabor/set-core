@@ -48,5 +48,10 @@ benchmark/synthetic/**/memory_index/
 # Nested .wt-tools runtime state (any subdirectory)
 **/.wt-tools/
 
+# Orchestrator runtime state
+orchestration-state.json
+orchestration-plan.json
+orchestration-summary.md
+
 # Test results
 test-results/
