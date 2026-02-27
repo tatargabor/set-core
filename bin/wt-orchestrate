@@ -65,19 +65,27 @@ run_claude() {
     local tmpprompt tmpscript
     tmpprompt=$(mktemp)
     tmpscript=$(mktemp --suffix=.sh)
+    # Ensure cleanup on any exit path (signal, set -e, normal return)
+    trap 'rm -f "$tmpprompt" "$tmpscript"' RETURN
+
     # Read prompt from stdin
     cat > "$tmpprompt"
+
+    # Safely quote extra args for embedding in wrapper script
+    local quoted_args=""
+    if [[ $# -gt 0 ]]; then
+        printf -v quoted_args '%q ' "$@"
+    fi
 
     # Build wrapper script (avoids quoting hell with script -c)
     cat > "$tmpscript" <<WRAPPER
 #!/bin/bash
-exec env -u CLAUDECODE claude -p "\$(cat '$tmpprompt')" --dangerously-skip-permissions $@
+exec env -u CLAUDECODE claude -p "\$(cat '$tmpprompt')" --dangerously-skip-permissions $quoted_args
 WRAPPER
     chmod +x "$tmpscript"
 
     local output rc=0
     output=$(timeout --foreground 180 script -f -q /dev/null -c "$tmpscript" 2>/dev/null) || rc=$?
-    rm -f "$tmpprompt" "$tmpscript"
     [[ $rc -ne 0 ]] && return $rc
     # Strip terminal escape codes (CSI sequences, OSC sequences, carriage returns)
     printf '%s' "$output" | sed 's/\x1b\[[^a-zA-Z]*[a-zA-Z]//g; s/\x1b\][^\x07]*\x07//g; s/\r//g'
@@ -565,10 +573,10 @@ deps_satisfied() {
 topological_sort() {
     local plan_file="$1"
 
-    python3 -c "
-import json, sys
+    _TOPO_FILE="$plan_file" python3 -c "
+import json, sys, os
 
-with open('$plan_file') as f:
+with open(os.environ['_TOPO_FILE']) as f:
     plan = json.load(f)
 
 changes = {c['name']: c.get('depends_on', []) for c in plan['changes']}
@@ -612,7 +620,7 @@ if len(result) != len(changes):
 
 for name in result:
     print(name)
-" 2>&1
+"
 }
 
 # Validate plan for issues
@@ -676,9 +684,9 @@ send_notification() {
     local urgency="${3:-normal}"  # normal or critical
 
     local notification_type="$DEFAULT_NOTIFICATION"
-    if [[ -n "$INPUT_PATH" && -f "$INPUT_PATH" ]]; then
-        notification_type=$(resolve_directives "$INPUT_PATH" | jq -r '.notification')
-    elif find_input 2>/dev/null; then
+    # Only resolve from INPUT_PATH if already set — do NOT call find_input here
+    # as it mutates global INPUT_MODE/INPUT_PATH mid-run
+    if [[ -n "${INPUT_PATH:-}" && -f "$INPUT_PATH" ]]; then
         notification_type=$(resolve_directives "$INPUT_PATH" | jq -r '.notification')
     fi
 
@@ -1489,13 +1497,21 @@ PROPOSAL_EOF
     # Start Ralph loop in worktree
     (
         cd "$wt_path" || exit 1
-        wt-loop start --max 30 --done openspec --label "$change_name" 2>/dev/null
+        wt-loop start --max 30 --done openspec --label "$change_name"
     ) &
+    local ralph_pid=$!
 
-    # Give Ralph a moment to start and write PID
-    sleep 2
+    # Give Ralph a moment to start, then verify it's alive
+    sleep 3
+    if ! kill -0 "$ralph_pid" 2>/dev/null; then
+        error "wt-loop exited immediately for $change_name"
+        log_error "wt-loop failed to start for $change_name (PID $ralph_pid died)"
+        update_change_field "$change_name" "status" '"failed"'
+        return 1
+    fi
+    update_change_field "$change_name" "ralph_pid" "$ralph_pid"
     update_change_field "$change_name" "status" '"running"'
-    log_info "Ralph started for $change_name in $wt_path"
+    log_info "Ralph started for $change_name in $wt_path (PID $ralph_pid)"
 }
 
 dispatch_ready_changes() {
@@ -1563,10 +1579,18 @@ resume_change() {
 
     (
         cd "$wt_path" || exit 1
-        wt-loop start --max 30 --done openspec --label "$change_name" 2>/dev/null
+        wt-loop start --max 30 --done openspec --label "$change_name"
     ) &
+    local ralph_pid=$!
 
-    sleep 2
+    sleep 3
+    if ! kill -0 "$ralph_pid" 2>/dev/null; then
+        error "wt-loop exited immediately on resume for $change_name"
+        log_error "wt-loop failed to resume for $change_name (PID $ralph_pid died)"
+        update_change_field "$change_name" "status" '"failed"'
+        return 1
+    fi
+    update_change_field "$change_name" "ralph_pid" "$ralph_pid"
     update_change_field "$change_name" "status" '"running"'
 }
 
@@ -1660,7 +1684,16 @@ poll_change() {
     [[ -z "$wt_path" ]] && return
 
     local loop_state="$wt_path/.claude/loop-state.json"
-    [[ -f "$loop_state" ]] || return
+    if [[ ! -f "$loop_state" ]]; then
+        # Check if the ralph process is still alive
+        local ralph_pid
+        ralph_pid=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .ralph_pid // empty' "$STATE_FILENAME")
+        if [[ -n "$ralph_pid" ]] && ! kill -0 "$ralph_pid" 2>/dev/null; then
+            log_error "Ralph process $ralph_pid for $change_name is dead, no loop-state found"
+            update_change_field "$change_name" "status" '"failed"'
+        fi
+        return
+    fi
 
     local ralph_status
     ralph_status=$(jq -r '.status // "unknown"' "$loop_state" 2>/dev/null)
@@ -2011,6 +2044,15 @@ main() {
         error "--spec and --brief are mutually exclusive"
         return 1
     fi
+
+    # Resolve state file paths to absolute (prevents breakage when subshells cd)
+    local _root
+    _root=$(pwd)
+    PLAN_FILENAME="$_root/$PLAN_FILENAME"
+    STATE_FILENAME="$_root/$STATE_FILENAME"
+    SUMMARY_FILENAME="$_root/$SUMMARY_FILENAME"
+    LOG_FILE="$_root/$LOG_FILE"
+    CONFIG_FILE="$_root/$CONFIG_FILE"
 
     local command="${1:-}"
     shift 2>/dev/null || true
