@@ -1879,13 +1879,17 @@ monitor_loop() {
 
         # Retry merge-blocked items (branch may have been merged manually, or
         # generated-file conflicts now auto-resolvable after code changes)
-        local blocked_changes
-        blocked_changes=$(get_changes_by_status "merge-blocked")
+        # Retry merge for blocked items AND done items stuck in merge queue
+        local merge_retry_names
+        merge_retry_names=$(jq -r '.changes[] | select(.status == "merge-blocked" or (.status == "done" and (.name as $n | any(input.merge_queue[]?; . == $n)))) | .name' "$STATE_FILENAME" "$STATE_FILENAME" 2>/dev/null || true)
+        # Simpler: just process the merge queue directly
+        local queue_items
+        queue_items=$(jq -r '.merge_queue[]?' "$STATE_FILENAME" 2>/dev/null)
         while IFS= read -r name; do
             [[ -z "$name" ]] && continue
-            log_info "Retrying merge for blocked change: $name"
-            merge_change "$name"
-        done <<< "$blocked_changes"
+            log_info "Retrying merge for queued change: $name"
+            merge_change "$name" 2>/dev/null || true
+        done <<< "$queue_items"
 
         # Check token budget
         if [[ "$token_budget" -gt 0 ]]; then
@@ -2142,7 +2146,13 @@ handle_change_done() {
     # Handle merge policy
     case "$merge_policy" in
         eager)
-            merge_change "$change_name"
+            # Try eager merge — if merge_change fails for any reason, fall back to queue
+            if ! merge_change "$change_name" 2>/dev/null; then
+                log_warn "Eager merge failed for $change_name, adding to merge queue for retry"
+                local tmp
+                tmp=$(mktemp)
+                jq --arg n "$change_name" '.merge_queue += [$n]' "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
+            fi
             ;;
         checkpoint)
             # Add to merge queue
