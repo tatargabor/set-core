@@ -1012,8 +1012,18 @@ cmd_start() {
     info "Starting orchestration..."
     log_info "Orchestration started"
 
-    # Read directives (resolve from config chain)
-    find_input || return 1
+    # Restore input path from plan (so --spec is not needed again)
+    if [[ -z "${INPUT_PATH:-}" || ! -f "${INPUT_PATH:-}" ]]; then
+        INPUT_MODE=$(jq -r '.input_mode // empty' "$PLAN_FILENAME")
+        INPUT_PATH=$(jq -r '.input_path // empty' "$PLAN_FILENAME")
+        if [[ -z "$INPUT_PATH" || ! -f "$INPUT_PATH" ]]; then
+            error "Cannot find input file from plan: $INPUT_PATH"
+            error "Re-run with --spec or --brief, or regenerate the plan."
+            return 1
+        fi
+        log_info "Restored input from plan: $INPUT_MODE @ $INPUT_PATH"
+    fi
+
     local directives
     directives=$(resolve_directives "$INPUT_PATH")
     local max_parallel
@@ -1184,9 +1194,14 @@ cmd_resume() {
         return 1
     fi
 
+    # Restore input from plan if not provided via flags
+    if [[ -z "${INPUT_PATH:-}" ]] && [[ -f "$PLAN_FILENAME" ]]; then
+        INPUT_MODE=$(jq -r '.input_mode // empty' "$PLAN_FILENAME" 2>/dev/null)
+        INPUT_PATH=$(jq -r '.input_path // empty' "$PLAN_FILENAME" 2>/dev/null)
+    fi
     find_input 2>/dev/null || true  # best-effort for directives
     local max_parallel="$DEFAULT_MAX_PARALLEL"
-    if [[ -n "$INPUT_PATH" ]]; then
+    if [[ -n "${INPUT_PATH:-}" ]]; then
         max_parallel=$(resolve_directives "$INPUT_PATH" | jq -r '.max_parallel')
     fi
 
