@@ -2153,13 +2153,28 @@ merge_change() {
     log_info "Merging $change_name..."
     info "Merging: $change_name"
 
-    # Dry-run conflict check
     local wt_path
     wt_path=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
-    local source_branch
-    source_branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null)
-    local project_path
-    project_path=$(pwd)
+
+    # Check if branch is already merged into current branch (e.g., manual merge)
+    if [[ -n "$wt_path" ]]; then
+        local source_branch
+        source_branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        if [[ -n "$source_branch" ]]; then
+            local source_sha
+            source_sha=$(git rev-parse "$source_branch" 2>/dev/null || true)
+            if [[ -n "$source_sha" ]] && git merge-base --is-ancestor "$source_sha" HEAD 2>/dev/null; then
+                info "Already merged: $change_name (branch $source_branch is ancestor of HEAD)"
+                log_info "Skipping merge for $change_name — already merged"
+                update_change_field "$change_name" "status" '"merged"'
+                cleanup_worktree "$change_name" "$wt_path"
+                local tmp
+                tmp=$(mktemp)
+                jq --arg n "$change_name" '.merge_queue -= [$n]' "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
+                return 0
+            fi
+        fi
+    fi
 
     # Try merge
     if wt-merge "$change_name" --no-push 2>/dev/null; then
@@ -2167,8 +2182,7 @@ merge_change() {
         log_info "Merged $change_name"
         success "Merged: $change_name"
 
-        # Close worktree
-        wt-close "$change_name" 2>/dev/null || true
+        cleanup_worktree "$change_name" "$wt_path"
 
         # Remove from merge queue if present
         local tmp
@@ -2179,6 +2193,30 @@ merge_change() {
         update_change_field "$change_name" "status" '"merge-blocked"'
         log_error "Merge conflict for $change_name"
         send_notification "wt-orchestrate" "Merge conflict: $change_name" "critical"
+    fi
+}
+
+# Clean up worktree and branch after successful merge
+cleanup_worktree() {
+    local change_name="$1"
+    local wt_path="$2"
+
+    # Try wt-close first (handles both worktree removal and branch deletion)
+    if wt-close "$change_name" 2>/dev/null; then
+        log_info "Cleaned up worktree for $change_name"
+        return 0
+    fi
+
+    # Fallback: manual cleanup if wt-close fails
+    if [[ -n "$wt_path" && -d "$wt_path" ]]; then
+        git worktree remove "$wt_path" --force 2>/dev/null || true
+        log_info "Force-removed worktree $wt_path"
+    fi
+
+    local branch="change/$change_name"
+    if git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
+        git branch -D "$branch" 2>/dev/null || true
+        log_info "Deleted branch $branch"
     fi
 }
 
