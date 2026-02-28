@@ -2,7 +2,7 @@
 
 A toolkit for managing parallel AI agent development with git worktrees, a real-time GUI, and spec-driven workflows.
 
-> **Latest update:** 2026-02-20
+> **Latest update:** 2026-02-28
 
 ---
 
@@ -12,7 +12,7 @@ I built wt-tools because I was running Claude Code agents across multiple projec
 
 The **Control Center** is a compact, always-on-top GUI that shows every worktree and agent across all your projects in real-time. You see at a glance which agents are running, which are waiting for you (blinking row — click to jump straight there), and how much API capacity you have left (hourly and daily burn rate). Double-click any row to open the editor — if it's already open, it focuses the window. Need a new worktree? Click "+ New", pick the project, name it, and you're working. Everything also has a CLI command and a Claude Code slash command, so you never leave the agent to manage worktrees.
 
-Beyond the basics: the **Ralph Loop** runs agents autonomously through task lists, **Team Sync** coordinates multiple machines through a git branch (no server needed), the **MCP Server** lets agents see each other's progress, and **Developer Memory** gives agents persistent, cross-session recall — decisions, learnings, and context accumulate across sessions so future agents don't start from zero (synthetic benchmarks show +34% convention compliance improvement).
+Beyond the basics: the **Ralph Loop** runs agents autonomously through task lists, **Orchestration** decomposes a spec document into multiple changes and dispatches them to parallel worktrees autonomously, **Team Sync** coordinates multiple machines through a git branch (no server needed), the **MCP Server** lets agents see each other's progress, and **Developer Memory** gives agents persistent, cross-session recall — decisions, learnings, and context accumulate across sessions so future agents don't start from zero (synthetic benchmarks show +34% convention compliance improvement).
 
 wt-tools is a modular collection — cherry-pick what's useful to you. The GUI is optional: CLI tools, Claude Code skills (`/wt:new`, `/wt:merge`, etc.), Developer Memory, and the MCP server all work independently from the command line. You can use just the skills, just memory, or the full stack. The project is useful today — AI tooling evolves fast and something may replace it eventually, but right now it fills a real gap.
 
@@ -44,7 +44,7 @@ This is a solo-developer project and I have limited resources for cross-platform
 
 ### Architecture
 
-wt-tools has three layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle, a **PySide6 GUI** for real-time monitoring, and an **MCP server** that connects Claude Code agents to the system. Everything is file-based — no daemon, no database, no external service.
+wt-tools has four layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle, an **orchestration engine** (`wt-orchestrate`) for autonomous multi-change execution, a **PySide6 GUI** for real-time monitoring, and an **MCP server** that connects Claude Code agents to the system. Everything is file-based — no daemon, no database, no external service.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -71,6 +71,10 @@ wt-tools has three layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle
            │                       │
            ▼                       ▼
   ┌──────────────────────────────────────────┐
+  │  Orchestration Engine (wt-orchestrate)   │
+  │  spec → plan → dispatch → monitor       │
+  │  parallel worktrees + merge queue        │
+  ├──────────────────────────────────────────┤
   │  Git worktrees + wt-control branch       │
   │  (file-based state, git for team sync)   │
   └──────────────────────────────────────────┘
@@ -81,6 +85,7 @@ wt-tools has three layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle
 | Component | Technology | Why |
 |-----------|------------|-----|
 | CLI tools | Bash | Zero dependencies, works everywhere, fast |
+| Orchestration | Bash + Claude LLM | Spec decomposition, dependency DAG, parallel dispatch |
 | GUI | Python + PySide6 (Qt) | Native look, always-on-top, system tray, cross-platform |
 | MCP server | Python | Exposes worktree/agent data to Claude Code |
 | State | JSON files + git | No database — `wt-status` reads `/proc`, agent PIDs, git state |
@@ -93,6 +98,7 @@ wt-tools has three layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle
 - **Context usage**: how full each agent's context window is (%)
 - **API burn rate**: hourly and daily token usage with visual bars — know when to slow down
 - **Ralph Loop progress**: iteration count and task completion for autonomous runs
+- **Orchestration status**: when `wt-orchestrate` is running, see dispatched changes and merge progress
 - **Team members**: what other machines/agents are working on (if Team Sync is enabled)
 
 Double-click a row → opens editor + focuses the window. Blinking red row → agent is waiting for you. Right-click → context menu with merge, close, start Ralph loop, and more.
@@ -134,6 +140,24 @@ Full set of shell commands for worktree lifecycle, project management, editor co
 ### Ralph Loop
 
 Autonomous agent execution — runs Claude Code in iterations, checking task completion between runs. Start with `wt-loop start`, monitor with `wt-loop monitor`.
+
+### Orchestration
+
+Autonomous multi-change execution from a specification document. Give `wt-orchestrate` a spec or project brief, and it uses an LLM to decompose it into independent changes, builds a dependency DAG, and dispatches each change to its own worktree with a Ralph loop — all running in parallel. The orchestrator monitors progress, manages a merge queue, runs test verification, and supports checkpoints for human review.
+
+![Orchestration architecture](docs/images/wt-orchestrate-architecture.png)
+
+*Full lifecycle: spec → plan → dispatch → monitor → merge → done. Supports pause/resume, auto-replan, and configurable merge policies.*
+
+**Key capabilities:**
+- **Spec-driven input**: accepts any specification document (`--spec`) or a structured project brief with a `### Next` section
+- **LLM-powered planning**: Claude decomposes the spec into sized changes (S/M/L) with a dependency graph
+- **Parallel execution**: dispatches up to N changes simultaneously (configurable via `--max-parallel` or `.claude/orchestration.yaml`)
+- **Merge queue**: automatic merge with conflict detection, test verification, and rollback on failure
+- **Phase support**: large specs can be split into phases (`--phase`), with auto-replan advancing to the next phase when all changes complete
+- **Safety**: 5-hour default time limit, pause/resume support, crash recovery from state files
+
+See [docs/orchestration.md](docs/orchestration.md) for a walkthrough with examples.
 
 ### Team Sync & Messaging (Experimental)
 
@@ -254,6 +278,21 @@ QT_PLUGIN_PATH="$(python -c 'import PySide6; print(PySide6.__path__[0])')/Qt/plu
 | `wt-loop list` | List all active loops |
 | `wt-loop history [change-id]` | Show iteration history |
 | `wt-loop monitor [change-id]` | Watch loop progress live |
+
+### Orchestration
+
+| Command | Description |
+|---------|-------------|
+| `wt-orchestrate plan` | Generate change plan from spec/brief |
+| `wt-orchestrate plan --show` | Show existing plan |
+| `wt-orchestrate start` | Execute the plan (dispatch + monitor) |
+| `wt-orchestrate status` | Show current orchestration state |
+| `wt-orchestrate pause <name\|--all>` | Pause a change or all changes |
+| `wt-orchestrate resume <name\|--all>` | Resume a paused change or all |
+| `wt-orchestrate replan` | Re-plan from updated spec, preserving completed work |
+| `wt-orchestrate approve [--merge]` | Approve a checkpoint (optionally flush merge queue) |
+
+Options: `--spec <path>`, `--brief <path>`, `--phase <hint>`, `--max-parallel <N>`, `--time-limit <dur>`
 
 ### Team & Sync
 
@@ -529,6 +568,47 @@ wt-loop stop add-user-auth      # stop if needed
 
 **Best for:** Well-scoped tasks with clear completion criteria (task lists, test suites, migrations). Not ideal for exploratory or design-heavy work.
 
+### Orchestration: spec in, features out
+
+You have a spec document describing 8 changes for the next release. Instead of creating worktrees and starting agents one by one, orchestrate the whole thing:
+
+```bash
+# 1. Plan from your spec
+wt-orchestrate --spec docs/v3-release.md plan
+
+# Review the plan — see the dependency graph and sizing
+wt-orchestrate plan --show
+```
+
+```
+Changes planned: 8  (3×S, 4×M, 1×L)
+Dependencies:
+  add-auth → add-user-roles → add-permissions
+  add-api-v2 → update-docs
+  fix-caching, add-logging, update-ci (independent)
+Max parallel: 2
+```
+
+```bash
+# 2. Execute — orchestrator creates worktrees, starts Ralph loops, monitors
+wt-orchestrate start
+
+# 3. Check progress any time
+wt-orchestrate status
+```
+
+The orchestrator dispatches changes respecting the dependency graph, merges completed work back to main, runs tests after each merge, and advances to the next batch. If something fails, it pauses and waits for you. If your spec is too large for one pass, use phases:
+
+```bash
+wt-orchestrate --spec docs/v3-release.md --phase 1 plan   # plan phase 1
+wt-orchestrate start                                        # execute phase 1
+# when done, auto-replan picks up phase 2 (if configured)
+```
+
+Configure via `.claude/orchestration.yaml` — merge policy (eager/checkpoint/manual), max parallel, auto-replan, test command, and more.
+
+**Best for:** Release-sized work with multiple independent or loosely dependent changes. Turns a spec document into parallel agent execution with minimal manual oversight.
+
 ### Multi-project daily workflow
 
 A typical day with 4 projects:
@@ -633,6 +713,7 @@ Memory also works outside OpenSpec. During any conversation, if you share someth
 | Working on a feature and a bugfix simultaneously | `wt-new` for parallel worktrees |
 | Need to see API usage and burn rate at a glance | Control Center usage bar |
 | Well-defined task list to grind through | Ralph Loop (`wt-loop start`) |
+| Multiple changes from a spec or release plan | Orchestration (`wt-orchestrate --spec`) |
 | Multiple machines or team members on same project | Team Sync (`wt-control-init`) |
 | Want agents to coordinate without you relaying messages | Agent Messaging (`/wt:msg`) |
 | Want agents to see each other's progress | MCP Server (`get_team_status`, `get_worktree_tasks`) |
@@ -679,22 +760,22 @@ The AI-assisted development tooling space is growing fast. Here's how wt-tools f
 ### Feature Comparison
 
 ```
-                    Native  Worktree  Ralph  Team   MCP   Cross-
-                    GUI     Isolation  Loop   Sync  Server Platform
-────────────────────────────────────────────────────────────────
-wt-tools             ✅      ✅        ✅     ✅     ✅     ✅
-claude-squad         TUI     ✅        ✗      ✗      ✗     ✅
-ccpm                 ✗       ✅        ✗      ✗      ✗     ✅
-automaker            ✅*     ✅        ✗      ✗      ✗     ✅*
-claude-flow          ✗       ✗         ✅     ✗      ✅    ✅
-ralph-orchestrator   ✗       ✗         ✅     ✗      ✗     ✅
-agent-deck           TUI     ✗         ✗      ✗      ✅    ✅
-Agentrooms           ✅*     ✗         ✗      ✅     ✗     ✅*
-────────────────────────────────────────────────────────────────
+                    Native  Worktree  Ralph  Orchestr- Team   MCP   Cross-
+                    GUI     Isolation  Loop  ation     Sync  Server Platform
+──────────────────────────────────────────────────────────────────────────
+wt-tools             ✅      ✅        ✅     ✅        ✅     ✅     ✅
+claude-squad         TUI     ✅        ✗      ✗         ✗      ✗     ✅
+ccpm                 ✗       ✅        ✗      ✗         ✗      ✗     ✅
+automaker            ✅*     ✅        ✗      ✗         ✗      ✗     ✅*
+claude-flow          ✗       ✗         ✅     ✅        ✗      ✅    ✅
+ralph-orchestrator   ✗       ✗         ✅     ✗         ✗      ✗     ✅
+agent-deck           TUI     ✗         ✗      ✗         ✗      ✅    ✅
+Agentrooms           ✅*     ✗         ✗      ✗         ✅     ✗     ✅*
+──────────────────────────────────────────────────────────────────────────
 ✅* = Electron (not native)
 ```
 
-No single tool combines all of these. wt-tools is the only one with a native desktop GUI, worktree isolation, autonomous loops, team sync, and MCP server together.
+No single tool combines all of these. wt-tools is the only one with a native desktop GUI, worktree isolation, autonomous loops, spec-driven orchestration, team sync, and MCP server together.
 
 ---
 

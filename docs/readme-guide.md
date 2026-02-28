@@ -16,6 +16,7 @@ The README MUST contain these sections in this exact order:
 ### 2. Overview
 - 3-5 sentences explaining what wt-tools is and who it's for
 - Emphasize modularity: wt-tools is a collection — users cherry-pick what they need. GUI is optional; CLI tools, Claude Code skills, Developer Memory, and MCP server all work independently from the command line
+- Mention Orchestration: `wt-orchestrate` decomposes a spec into parallel changes executed autonomously
 - Mention Developer Memory with benchmark result (+34% convention compliance in synthetic benchmarks)
 - Screenshot of Control Center GUI (`docs/images/control-center.gif`)
 - Keep it high-level — details come later
@@ -36,8 +37,8 @@ The README MUST contain these sections in this exact order:
 - Update this table when platform support changes
 
 ### 4. How It Works
-- Architecture diagram (CLI + GUI + MCP layers)
-- Technologies table (Bash, PySide6, Python, JSON/git, NaCl)
+- Architecture diagram (CLI + Orchestration + GUI + MCP layers)
+- Technologies table (Bash, Orchestration, PySide6, Python, JSON/git, NaCl)
 - "What the GUI shows you" — agent status, context %, burn rate, Ralph progress, team
 - Interactive walkthrough: double-click, blinking rows, right-click context menu
 
@@ -51,6 +52,7 @@ The README MUST contain these sections in this exact order:
   - **Control Center GUI** — status table, shortcuts, themes
   - **CLI Tools** — worktree commands, project management
   - **Ralph Loop** — autonomous agent loop
+  - **Orchestration** — spec-driven multi-change execution with parallel dispatch
   - **Team Sync & Messaging** — cross-machine coordination
   - **Developer Memory** (see detailed instructions below)
   - **MCP Server** — Claude Code tool integration
@@ -79,7 +81,7 @@ The README MUST contain these sections in this exact order:
 
 ### 8. CLI Reference
 - Categorized tables of all user-facing `bin/wt-*` commands
-- Categories: Worktree Management, Project Management, Ralph Loop, Team & Sync, Developer Memory, Utilities
+- Categories: Worktree Management, Project Management, Ralph Loop, Orchestration, Team & Sync, Developer Memory, Utilities
 - Internal/hook scripts (wt-common.sh, wt-hook-*) get a brief note, not full table entries
 - Each command: name + one-line description
 - **Developer Memory category must include:** `wt-memory remember`, `wt-memory recall`, `wt-memory list`, `wt-memory status`, `wt-memory forget`, `wt-memory context`, `wt-memory brain`, `wt-memory get`, `wt-memory export`, `wt-memory import`, `wt-memory repair`, `wt-memory audit`, `wt-memory dedup`, `wt-memory sync`, `wt-memory sync push`, `wt-memory sync pull`, `wt-memory sync status`, `wt-memory proactive`, `wt-memory stats`, `wt-memory cleanup`, `wt-memory projects`, `wt-memory-hooks check`, `wt-memory-hooks remove` (note: `wt-memory-hooks install` is deprecated — 5-layer hook system in settings.json handles all operations)
@@ -107,7 +109,7 @@ The README MUST contain these sections in this exact order:
 
 ### 13. Use Cases
 - Practical examples showing when and why each feature is useful
-- Start from basics (why the GUI?) and build up to advanced (Ralph Loop, Team Sync, Developer Memory)
+- Start from basics (why the GUI?) and build up to advanced (Ralph Loop, Orchestration, Team Sync, Developer Memory)
 - Include CLI examples and ASCII sketches where helpful
 - End with a "When to use what" summary table
 - Keep it grounded — honest about what works well and what's experimental
@@ -118,11 +120,20 @@ The README MUST contain these sections in this exact order:
   - Include a "Best for" line: projects with multiple agents or contributors over time, where institutional knowledge matters.
   - Mark as experimental. Link to `docs/developer-memory.md`.
   - Add entry to the "When to use what" summary table: "Want agents to learn from past sessions" → "Developer Memory (`wt-memory remember/recall`)"
+- **Orchestration use case instructions:**
+  - Title: "Orchestration: spec in, features out"
+  - Scenario: user has a spec document with multiple changes for a release. Show `wt-orchestrate --spec <path> plan`, `plan --show`, `start`, `status` commands with realistic output
+  - Explain the lifecycle: plan → dispatch → monitor → merge → done
+  - Mention phase support for large specs
+  - Mention configuration via `.claude/orchestration.yaml`
+  - Include a "Best for" line: release-sized work with multiple independent or loosely dependent changes
+  - Link to `docs/orchestration.md` for full guide
+  - Add entry to the "When to use what" summary table: "Multiple changes from a spec or release plan" → "Orchestration (`wt-orchestrate --spec`)"
 
 ### 14. Related Projects
 - Categorized tables: Worktree+Agent Managers, Multi-Agent Orchestration, Desktop Apps & Monitoring
 - Include star counts for context
-- Feature comparison matrix (ASCII table): GUI, Worktree, Ralph Loop, Team Sync, MCP, Cross-Platform
+- Feature comparison matrix (ASCII table): GUI, Worktree, Ralph Loop, Orchestration, Team Sync, MCP, Cross-Platform
 - Update periodically — this space moves fast
 
 ### 15. Future Development
@@ -178,7 +189,7 @@ wt-tools aims to elevate the Claude Code experience — reducing technical frict
 
 When documenting CLI tools:
 
-- **User-facing commands** (wt-new, wt-work, wt-list, wt-close, wt-merge, wt-status, wt-loop, wt-project, wt-usage, wt-config, wt-control, wt-version, wt-deploy-hooks, wt-focus, wt-openspec, wt-add): Full table entry with description
+- **User-facing commands** (wt-new, wt-work, wt-list, wt-close, wt-merge, wt-status, wt-loop, wt-orchestrate, wt-project, wt-usage, wt-config, wt-control, wt-version, wt-deploy-hooks, wt-focus, wt-openspec, wt-add): Full table entry with description
 - **Internal/hook scripts** (wt-common.sh, wt-hook-skill, wt-hook-stop, wt-hook-memory-recall, wt-hook-memory-save, wt-skill-start, wt-control-init, wt-control-sync, wt-control-chat, wt-control-gui, wt-completions.*): Mention in an "Internals" note, not in the main CLI table
 - **Discovering new commands**: Run `ls bin/wt-*` and cross-reference with the CLI Reference section
 
