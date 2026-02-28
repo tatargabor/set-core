@@ -1043,6 +1043,42 @@ send_notification() {
     log_info "Notification [$urgency]: $title — $body"
 }
 
+# ─── Worktree Bootstrap ──────────────────────────────────────────────
+
+# Bootstrap a worktree: copy missing .env files + install deps if needed.
+# Safe to call on already-bootstrapped worktrees (idempotent).
+bootstrap_worktree() {
+    local project_path="$1"
+    local wt_path="$2"
+
+    [[ -d "$wt_path" ]] || return 0
+
+    # Copy .env files
+    local copied=0
+    for envfile in .env .env.local .env.development .env.development.local; do
+        if [[ -f "$project_path/$envfile" && ! -f "$wt_path/$envfile" ]]; then
+            cp "$project_path/$envfile" "$wt_path/$envfile"
+            copied=$((copied + 1))
+        fi
+    done
+    [[ $copied -gt 0 ]] && log_info "Bootstrap: copied $copied env file(s) to $wt_path"
+
+    # Install dependencies
+    if [[ -f "$wt_path/package.json" && ! -d "$wt_path/node_modules" ]]; then
+        local pm=""
+        [[ -f "$wt_path/pnpm-lock.yaml" ]] && pm="pnpm"
+        [[ -f "$wt_path/yarn.lock" ]] && pm="yarn"
+        [[ -f "$wt_path/bun.lockb" || -f "$wt_path/bun.lock" ]] && pm="bun"
+        [[ -f "$wt_path/package-lock.json" ]] && pm="npm"
+
+        if [[ -n "$pm" ]] && command -v "$pm" &>/dev/null; then
+            log_info "Bootstrap: installing deps with $pm in $wt_path"
+            (cd "$wt_path" && "$pm" install --frozen-lockfile 2>/dev/null || "$pm" install 2>/dev/null) || \
+                log_warn "Bootstrap: dep install failed in $wt_path (non-fatal)"
+        fi
+    fi
+}
+
 # ─── Memory Helpers ──────────────────────────────────────────────────
 
 # Cumulative memory operation stats (reset per orchestration run)
@@ -2186,6 +2222,9 @@ dispatch_change() {
 
     # Find actual worktree path
     wt_path=$(find_existing_worktree "$(pwd)" "$change_name" 2>/dev/null || echo "${project_path}-${change_name}")
+
+    # Bootstrap existing worktrees that missed wt-new bootstrap
+    bootstrap_worktree "$project_path" "$wt_path"
 
     # Recall change-specific memories for proposal enrichment
     local dispatch_memory=""
