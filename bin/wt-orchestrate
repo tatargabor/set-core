@@ -3061,9 +3061,17 @@ poll_change() {
                 fi
             fi
 
-            # If loop-state hasn't been updated in 5+ minutes, the process is likely dead
+            # If loop-state hasn't been updated in 5+ minutes, check if process is actually dead
             if [[ "$stale_secs" -gt 300 ]]; then
-                log_warn "Change $change_name loop-state is stale (${stale_secs}s old, status=running) — treating as stopped"
+                # Check terminal PID — if still alive, the agent is in a long iteration (not stale)
+                local terminal_pid
+                terminal_pid=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .ralph_pid // 0' "$STATE_FILENAME")
+                if [[ "$terminal_pid" -gt 0 ]] && kill -0 "$terminal_pid" 2>/dev/null; then
+                    log_info "Change $change_name loop-state stale (${stale_secs}s) but PID $terminal_pid still alive — long iteration, skipping"
+                    return
+                fi
+
+                log_warn "Change $change_name loop-state is stale (${stale_secs}s old, PID $terminal_pid dead) — treating as stopped"
                 # Fall through to stall handling
                 local stall_count
                 stall_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .stall_count // 0' "$STATE_FILENAME")
