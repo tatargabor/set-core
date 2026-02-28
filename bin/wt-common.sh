@@ -900,3 +900,45 @@ info() { echo -e "${BLUE}$*${NC}"; }
 success() { echo -e "${GREEN}$*${NC}"; }
 warn() { echo -e "${YELLOW}$*${NC}" >&2; }
 error() { echo -e "${RED}Error: $*${NC}" >&2; }
+
+# =============================================================================
+# Claude CLI Helper
+# =============================================================================
+
+# Run claude CLI safely from non-interactive context (e.g. inside Claude Code session)
+# Uses script(1) to provide a PTY, strips terminal escape codes, unsets CLAUDECODE.
+# Reads prompt from stdin, passes extra flags as arguments.
+# Usage: echo "$prompt" | run_claude [extra claude flags...]
+#   e.g.: echo "$prompt" | run_claude --output-format json
+#         echo "$prompt" | run_claude --model haiku
+# Set RUN_CLAUDE_TIMEOUT (seconds) to override the default 180s timeout.
+run_claude() {
+    local tmpprompt tmpscript
+    tmpprompt=$(mktemp)
+    tmpscript=$(mktemp --suffix=.sh)
+    # Ensure cleanup on any exit path (signal, set -e, normal return)
+    trap 'rm -f "$tmpprompt" "$tmpscript"' RETURN
+
+    # Read prompt from stdin
+    cat > "$tmpprompt"
+
+    # Safely quote extra args for embedding in wrapper script
+    local quoted_args=""
+    if [[ $# -gt 0 ]]; then
+        printf -v quoted_args '%q ' "$@"
+    fi
+
+    # Build wrapper script (avoids quoting hell with script -c)
+    cat > "$tmpscript" <<WRAPPER
+#!/bin/bash
+exec env -u CLAUDECODE claude -p "\$(cat '$tmpprompt')" --dangerously-skip-permissions $quoted_args
+WRAPPER
+    chmod +x "$tmpscript"
+
+    local timeout_secs="${RUN_CLAUDE_TIMEOUT:-180}"
+    local output rc=0
+    output=$(timeout --foreground "$timeout_secs" script -f -q /dev/null -c "$tmpscript" 2>/dev/null) || rc=$?
+    [[ $rc -ne 0 ]] && return $rc
+    # Strip terminal escape codes (CSI sequences, OSC sequences, carriage returns)
+    printf '%s' "$output" | sed 's/\x1b\[[^a-zA-Z]*[a-zA-Z]//g; s/\x1b\][^\x07]*\x07//g; s/\r//g'
+}

@@ -61,41 +61,7 @@ log_info()  { log "INFO" "$@"; }
 log_warn()  { log "WARN" "$@"; }
 log_error() { log "ERROR" "$@"; }
 
-# Run claude CLI safely from non-interactive context (e.g. inside Claude Code session)
-# Uses script(1) to provide a PTY, strips terminal escape codes, unsets CLAUDECODE.
-# Reads prompt from stdin, passes extra flags as arguments.
-# Usage: echo "$prompt" | run_claude [extra claude flags...]
-#   e.g.: echo "$prompt" | run_claude --output-format json
-#         echo "$prompt" | run_claude --model haiku
-run_claude() {
-    local tmpprompt tmpscript
-    tmpprompt=$(mktemp)
-    tmpscript=$(mktemp --suffix=.sh)
-    # Ensure cleanup on any exit path (signal, set -e, normal return)
-    trap 'rm -f "$tmpprompt" "$tmpscript"' RETURN
-
-    # Read prompt from stdin
-    cat > "$tmpprompt"
-
-    # Safely quote extra args for embedding in wrapper script
-    local quoted_args=""
-    if [[ $# -gt 0 ]]; then
-        printf -v quoted_args '%q ' "$@"
-    fi
-
-    # Build wrapper script (avoids quoting hell with script -c)
-    cat > "$tmpscript" <<WRAPPER
-#!/bin/bash
-exec env -u CLAUDECODE claude -p "\$(cat '$tmpprompt')" --dangerously-skip-permissions $quoted_args
-WRAPPER
-    chmod +x "$tmpscript"
-
-    local output rc=0
-    output=$(timeout --foreground 180 script -f -q /dev/null -c "$tmpscript" 2>/dev/null) || rc=$?
-    [[ $rc -ne 0 ]] && return $rc
-    # Strip terminal escape codes (CSI sequences, OSC sequences, carriage returns)
-    printf '%s' "$output" | sed 's/\x1b\[[^a-zA-Z]*[a-zA-Z]//g; s/\x1b\][^\x07]*\x07//g; s/\r//g'
-}
+# run_claude() is provided by wt-common.sh (sourced above)
 
 rotate_log() {
     [[ -f "$LOG_FILE" ]] || return 0
@@ -2313,8 +2279,8 @@ merge_change() {
         return 0
     fi
 
-    # Case 3: Normal merge
-    if wt-merge "$change_name" --no-push 2>/dev/null; then
+    # Case 3: Normal merge (with LLM conflict resolution)
+    if wt-merge "$change_name" --no-push --llm-resolve 2>/dev/null; then
         update_change_field "$change_name" "status" '"merged"'
         log_info "Merged $change_name"
         success "Merged: $change_name"
