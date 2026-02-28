@@ -3209,96 +3209,8 @@ handle_change_done() {
         return
     fi
 
-    # ── Step 2: LLM Code Review (VG-4) ──
-    if [[ "$review_before_merge" == "true" ]]; then
-        info "Running code review for $change_name..."
-        log_info "Verify gate: review start for $change_name"
-
-        local scope
-        scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
-
-        local _r_start=$(($(date +%s%N) / 1000000))
-        if ! review_change "$change_name" "$wt_path" "$scope" "$review_model"; then
-            gate_review_ms=$(( $(date +%s%N) / 1000000 - _r_start ))
-            update_change_field "$change_name" "gate_review_ms" "$gate_review_ms"
-            log_info "Verify gate: review took ${gate_review_ms}ms for $change_name (CRITICAL)"
-            log_error "Verify gate: review found CRITICAL issues in $change_name"
-            update_change_field "$change_name" "review_result" '"critical"'
-            update_change_field "$change_name" "review_output" "$(printf '%s' "$REVIEW_OUTPUT" | head -c 2000 | jq -Rs .)"
-            orch_remember "Code review found CRITICAL issues in $change_name: ${REVIEW_OUTPUT:0:500}" Learning "phase:review,change:$change_name"
-
-            # Retry with review feedback
-            if [[ "$verify_retry_count" -lt "$max_verify_retries" ]]; then
-                verify_retry_count=$((verify_retry_count + 1))
-                info "Review found critical issues in $change_name — retrying ($verify_retry_count/$max_verify_retries)..."
-                log_info "Verify gate: review critical retry $verify_retry_count/$max_verify_retries for $change_name"
-                update_change_field "$change_name" "verify_retry_count" "$verify_retry_count"
-                update_change_field "$change_name" "status" '"verify-failed"'
-                # Build retry context with review feedback
-                local retry_prompt="Code review found CRITICAL issues. Fix these issues.\n\nReview feedback:\n${REVIEW_OUTPUT:0:500}\n\nOriginal scope: $scope"
-                # Recall relevant memories for retry context
-                local _mem_ctx
-                _mem_ctx=$(orch_recall "$scope" 3 "")
-                if [[ -n "$_mem_ctx" ]]; then
-                    retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
-                fi
-                update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
-                # Snapshot tokens before retry for cost tracking
-                local _snap_tokens
-                _snap_tokens=$(jq -r '.total_tokens // 0' "$wt_path/.claude/loop-state.json" 2>/dev/null || echo "0")
-                update_change_field "$change_name" "retry_tokens_start" "$_snap_tokens"
-                resume_change "$change_name"
-                return
-            fi
-            update_change_field "$change_name" "status" '"failed"'
-            send_notification "wt-orchestrate" "Change '$change_name' has critical review issues after retries" "critical"
-            return
-        fi
-        gate_review_ms=$(( $(date +%s%N) / 1000000 - _r_start ))
-        update_change_field "$change_name" "gate_review_ms" "$gate_review_ms"
-        log_info "Verify gate: review took ${gate_review_ms}ms for $change_name (pass)"
-        update_change_field "$change_name" "review_result" '"pass"'
-        log_info "Verify gate: review passed for $change_name"
-        orch_remember "Code review passed for $change_name — no critical issues" Context "phase:review,change:$change_name"
-    fi
-
-    # ── Step 3: Run verify step (existing) ──
-    info "Running verify for $change_name..."
-    local _v_start=$(($(date +%s%N) / 1000000))
-    local verify_ok=true
-    if command -v claude &>/dev/null; then
-        (cd "$wt_path" && echo "Run /opsx:verify $change_name" | run_claude --max-turns 5 &>/dev/null) || verify_ok=false
-    fi
-    gate_verify_ms=$(( $(date +%s%N) / 1000000 - _v_start ))
-    update_change_field "$change_name" "gate_verify_ms" "$gate_verify_ms"
-    log_info "Verify gate: verify took ${gate_verify_ms}ms for $change_name"
-
-    if [[ "$verify_ok" != "true" ]]; then
-        if [[ "$verify_retry_count" -lt "$max_verify_retries" ]]; then
-            verify_retry_count=$((verify_retry_count + 1))
-            info "Verify failed, retrying $change_name ($verify_retry_count/$max_verify_retries)..."
-            update_change_field "$change_name" "verify_retry_count" "$verify_retry_count"
-            resume_change "$change_name"
-            return
-        fi
-        update_change_field "$change_name" "status" '"failed"'
-        send_notification "wt-orchestrate" "Change '$change_name' failed verify after retries" "critical"
-        return
-    fi
-
-    # ── Step 3b: Check for test file existence (warning only) ──
-    local test_files_count=0
-    test_files_count=$(cd "$wt_path" && git diff --name-only "$(git merge-base HEAD origin/HEAD 2>/dev/null || git merge-base HEAD main 2>/dev/null || echo HEAD~5)..HEAD" 2>/dev/null | grep -cE '\.(test|spec)\.' || true)
-    if [[ "$test_files_count" -eq 0 ]]; then
-        log_warn "Verify gate: $change_name has NO test files in the diff — consider adding tests"
-        update_change_field "$change_name" "has_tests" "false"
-        send_notification "wt-orchestrate" "Change '$change_name' has no test files" "warning"
-    else
-        log_info "Verify gate: $change_name has $test_files_count test file(s)"
-        update_change_field "$change_name" "has_tests" "true"
-    fi
-
-    # ── Step 4: Build verification (if build command detectable) ──
+    # ── Step 2: Build verification — cheap, no LLM cost (VG-BUILD) ──
+    # Run build BEFORE expensive LLM review/verify to catch failures early and save tokens
     local gate_build_ms=0
     local build_command=""
     if [[ -f "$wt_path/package.json" ]]; then
@@ -3353,7 +3265,7 @@ handle_change_done() {
                     if [[ $rerun_rc -eq 0 ]]; then
                         log_info "Verify gate: build passed for $change_name after main fix"
                         update_change_field "$change_name" "build_result" '"pass"'
-                        # fall through to merge
+                        # fall through to review/verify
                     else
                         log_error "Verify gate: build still failed for $change_name after main fix"
                         # Fall through to normal retry logic below
@@ -3413,6 +3325,96 @@ handle_change_done() {
         update_change_field "$change_name" "build_result" '"pass"'
     fi
 
+    # ── Step 2b: Check for test file existence (warning only) ──
+    local test_files_count=0
+    test_files_count=$(cd "$wt_path" && git diff --name-only "$(git merge-base HEAD origin/HEAD 2>/dev/null || git merge-base HEAD main 2>/dev/null || echo HEAD~5)..HEAD" 2>/dev/null | grep -cE '\.(test|spec)\.' || true)
+    if [[ "$test_files_count" -eq 0 ]]; then
+        log_warn "Verify gate: $change_name has NO test files in the diff — consider adding tests"
+        update_change_field "$change_name" "has_tests" "false"
+        send_notification "wt-orchestrate" "Change '$change_name' has no test files" "warning"
+    else
+        log_info "Verify gate: $change_name has $test_files_count test file(s)"
+        update_change_field "$change_name" "has_tests" "true"
+    fi
+
+    # ── Step 3: LLM Code Review (VG-4) ──
+    # Runs after build so we don't waste LLM tokens reviewing code that doesn't compile
+    if [[ "$review_before_merge" == "true" ]]; then
+        info "Running code review for $change_name..."
+        log_info "Verify gate: review start for $change_name"
+
+        local scope
+        scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
+
+        local _r_start=$(($(date +%s%N) / 1000000))
+        if ! review_change "$change_name" "$wt_path" "$scope" "$review_model"; then
+            gate_review_ms=$(( $(date +%s%N) / 1000000 - _r_start ))
+            update_change_field "$change_name" "gate_review_ms" "$gate_review_ms"
+            log_info "Verify gate: review took ${gate_review_ms}ms for $change_name (CRITICAL)"
+            log_error "Verify gate: review found CRITICAL issues in $change_name"
+            update_change_field "$change_name" "review_result" '"critical"'
+            update_change_field "$change_name" "review_output" "$(printf '%s' "$REVIEW_OUTPUT" | head -c 2000 | jq -Rs .)"
+            orch_remember "Code review found CRITICAL issues in $change_name: ${REVIEW_OUTPUT:0:500}" Learning "phase:review,change:$change_name"
+
+            # Retry with review feedback
+            if [[ "$verify_retry_count" -lt "$max_verify_retries" ]]; then
+                verify_retry_count=$((verify_retry_count + 1))
+                info "Review found critical issues in $change_name — retrying ($verify_retry_count/$max_verify_retries)..."
+                log_info "Verify gate: review critical retry $verify_retry_count/$max_verify_retries for $change_name"
+                update_change_field "$change_name" "verify_retry_count" "$verify_retry_count"
+                update_change_field "$change_name" "status" '"verify-failed"'
+                # Build retry context with review feedback
+                local retry_prompt="Code review found CRITICAL issues. Fix these issues.\n\nReview feedback:\n${REVIEW_OUTPUT:0:500}\n\nOriginal scope: $scope"
+                # Recall relevant memories for retry context
+                local _mem_ctx
+                _mem_ctx=$(orch_recall "$scope" 3 "")
+                if [[ -n "$_mem_ctx" ]]; then
+                    retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
+                fi
+                update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
+                # Snapshot tokens before retry for cost tracking
+                local _snap_tokens
+                _snap_tokens=$(jq -r '.total_tokens // 0' "$wt_path/.claude/loop-state.json" 2>/dev/null || echo "0")
+                update_change_field "$change_name" "retry_tokens_start" "$_snap_tokens"
+                resume_change "$change_name"
+                return
+            fi
+            update_change_field "$change_name" "status" '"failed"'
+            send_notification "wt-orchestrate" "Change '$change_name' has critical review issues after retries" "critical"
+            return
+        fi
+        gate_review_ms=$(( $(date +%s%N) / 1000000 - _r_start ))
+        update_change_field "$change_name" "gate_review_ms" "$gate_review_ms"
+        log_info "Verify gate: review took ${gate_review_ms}ms for $change_name (pass)"
+        update_change_field "$change_name" "review_result" '"pass"'
+        log_info "Verify gate: review passed for $change_name"
+        orch_remember "Code review passed for $change_name — no critical issues" Context "phase:review,change:$change_name"
+    fi
+
+    # ── Step 4: Run verify step (existing) ──
+    info "Running verify for $change_name..."
+    local _v_start=$(($(date +%s%N) / 1000000))
+    local verify_ok=true
+    if command -v claude &>/dev/null; then
+        (cd "$wt_path" && echo "Run /opsx:verify $change_name" | run_claude --max-turns 5 &>/dev/null) || verify_ok=false
+    fi
+    gate_verify_ms=$(( $(date +%s%N) / 1000000 - _v_start ))
+    update_change_field "$change_name" "gate_verify_ms" "$gate_verify_ms"
+    log_info "Verify gate: verify took ${gate_verify_ms}ms for $change_name"
+
+    if [[ "$verify_ok" != "true" ]]; then
+        if [[ "$verify_retry_count" -lt "$max_verify_retries" ]]; then
+            verify_retry_count=$((verify_retry_count + 1))
+            info "Verify failed, retrying $change_name ($verify_retry_count/$max_verify_retries)..."
+            update_change_field "$change_name" "verify_retry_count" "$verify_retry_count"
+            resume_change "$change_name"
+            return
+        fi
+        update_change_field "$change_name" "status" '"failed"'
+        send_notification "wt-orchestrate" "Change '$change_name' failed verify after retries" "critical"
+        return
+    fi
+
     # ── Store gate total ──
     local gate_total_ms=$((gate_test_ms + gate_review_ms + gate_verify_ms + gate_build_ms))
     update_change_field "$change_name" "gate_total_ms" "$gate_total_ms"
@@ -3422,7 +3424,7 @@ handle_change_done() {
     gate_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .gate_retry_count // 0' "$STATE_FILENAME")
     log_info "Verify gate: $change_name total ${gate_total_ms}ms (test=${gate_test_ms}ms, review=${gate_review_ms}ms, verify=${gate_verify_ms}ms, build=${gate_build_ms}ms, retries=${gate_retry_count}, retry_tokens=${gate_retry_tokens})"
 
-    # ── Step 4: Mark done and handle merge ──
+    # ── Step 5: Mark done and handle merge ──
     update_change_field "$change_name" "status" '"done"'
     update_change_field "$change_name" "completed_at" "\"$(date -Iseconds)\""
     log_info "Change $change_name done (tests: $test_result, review: $([[ "$review_before_merge" == "true" ]] && echo "pass" || echo "skipped"), verify: ok)"
