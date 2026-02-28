@@ -1874,7 +1874,8 @@ cmd_start() {
                 fi
                 log_info "Orchestrator stopped"
             }
-            trap 'cleanup_orchestrator' EXIT SIGTERM SIGINT SIGHUP
+            trap 'cleanup_orchestrator' EXIT
+            trap 'exit 0' SIGTERM SIGINT SIGHUP
 
             # Retry merge queue immediately on resume (don't wait 30s)
             retry_merge_queue
@@ -1946,7 +1947,8 @@ cmd_start() {
 
         log_info "Orchestrator stopped"
     }
-    trap 'cleanup_orchestrator' EXIT SIGTERM SIGINT SIGHUP
+    trap 'cleanup_orchestrator' EXIT
+    trap 'exit 0' SIGTERM SIGINT SIGHUP
 
     # Dispatch initial changes
     dispatch_ready_changes "$max_parallel"
