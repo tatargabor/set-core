@@ -3499,6 +3499,10 @@ merge_change() {
         log_info "Merged $change_name"
         success "Merged: $change_name"
 
+        # Invalidate base build cache — merge changes main, old result is stale
+        BASE_BUILD_STATUS=""
+        BASE_BUILD_OUTPUT=""
+
         local iter_count
         iter_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .iterations // 0' "$STATE_FILENAME" 2>/dev/null || echo "?")
         orch_remember "Merged $change_name successfully ($iter_count iterations)" Context "phase:merge,change:$change_name"
