@@ -254,6 +254,37 @@ In spec mode, mention dependencies naturally in the item description — the LLM
 
 The orchestrator's decomposition prompt converts these into `depends_on` arrays in the plan.
 
+### Change-Type Ordering Heuristics
+
+The decomposition prompt classifies each change by type and applies ordering rules automatically. You don't need to specify these dependencies explicitly — but understanding them helps you write better specs.
+
+**Change types** (in natural execution order):
+
+| Type | Examples | Runs... |
+|------|----------|---------|
+| `infrastructure` | test setup, build config, CI | First — everything depends on it |
+| `schema` | DB migrations, model changes | Before data-layer/API changes |
+| `foundational` | auth, shared types, base components | Before features that consume them |
+| `feature` | new functionality | Bulk of parallel work |
+| `cleanup-before` | refactor, rename, reorganize | Before features in same area |
+| `cleanup-after` | dead code removal, cosmetic fixes | After features they relate to |
+
+**Key pattern — cleanup before features:**
+
+```markdown
+# BAD: cleanup and features in parallel
+- UI cleanup: consolidate duplicate form components
+- Add impersonation: new admin UI panel with forms
+- Unify form submissions: rewrite all form handlers
+
+# GOOD: cleanup first, then features
+- UI cleanup: consolidate duplicate form components
+- Add impersonation: new admin panel. depends_on: ui-cleanup
+- Unify form submissions: rewrite form handlers. depends_on: ui-cleanup
+```
+
+The planner recognizes this pattern: if a change involves refactoring or reorganizing code, and other changes add features in the same area, the cleanup runs first.
+
 ---
 
 ## 4. Testing Requirements

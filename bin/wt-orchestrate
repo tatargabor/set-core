@@ -1440,7 +1440,7 @@ cmd_plan() {
         echo ""
         info "═══ Orchestration Plan ═══"
         echo ""
-        jq -r '.changes[] | "  \(.name) [\(.complexity)] — \(.scope[:80])...\n    depends_on: \(.depends_on | if length == 0 then "(none)" else join(", ") end)"' "$PLAN_FILENAME"
+        jq -r '.changes[] | "  \(.name) [\(.complexity)] (\(.change_type // "feature")) — \(.scope[:80])...\n    depends_on: \(.depends_on | if length == 0 then "(none)" else join(", ") end)"' "$PLAN_FILENAME"
         echo ""
         info "Dependency order:"
         local order
@@ -1645,6 +1645,15 @@ Rules:
 - If no test infrastructure exists, the FIRST change MUST be "test-infrastructure-setup" setting up the test framework, config, helpers, and an example test. ALL other changes MUST depend on it.
 - If test infrastructure exists, follow existing test patterns (framework and naming conventions noted above)
 
+Dependency ordering heuristics — classify each change by type and apply ordering:
+- Classify each change as one of: infrastructure (test/build setup, CI), schema (DB migrations, model changes), foundational (auth, shared types, base components), feature (new functionality), cleanup-before (refactor/rename/reorganize existing code), cleanup-after (dead code removal, cosmetic fixes)
+- infrastructure changes run first — all others depend on them
+- schema/migration changes run before data-layer or API changes that use those tables
+- foundational changes (auth, shared types) run before features that consume them
+- cleanup-before/refactor changes run before feature changes that touch the same area (e.g., a UI cleanup should complete before new UI features are built on that code)
+- cleanup-after changes run last — they depend on the features they clean up around
+- If the spec contains explicit dependency hints (e.g., "depends_on: X", "requires X", "after X is complete"), preserve them in the output depends_on array
+
 Output ONLY valid JSON (no markdown, no explanation):
 {
   "phase_detected": "Description of which phase/section was selected and why",
@@ -1654,6 +1663,7 @@ Output ONLY valid JSON (no markdown, no explanation):
       "name": "change-name",
       "scope": "Detailed description of what this change implements, including key requirements and constraints. This becomes the proposal for the change. Tests: describe required tests.",
       "complexity": "S|M|L",
+      "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
       "depends_on": ["other-change-name"],
       "roadmap_item": "The spec section/item this implements"
     }
@@ -1698,6 +1708,15 @@ Rules:
 - If no test infrastructure exists, the FIRST change MUST be "test-infrastructure-setup" setting up the test framework, config, helpers, and an example test. ALL other changes MUST depend on it.
 - If test infrastructure exists, follow existing test patterns (framework and naming conventions noted above)
 
+Dependency ordering heuristics — classify each change by type and apply ordering:
+- Classify each change as one of: infrastructure (test/build setup, CI), schema (DB migrations, model changes), foundational (auth, shared types, base components), feature (new functionality), cleanup-before (refactor/rename/reorganize existing code), cleanup-after (dead code removal, cosmetic fixes)
+- infrastructure changes run first — all others depend on them
+- schema/migration changes run before data-layer or API changes that use those tables
+- foundational changes (auth, shared types) run before features that consume them
+- cleanup-before/refactor changes run before feature changes that touch the same area (e.g., a UI cleanup should complete before new UI features are built on that code)
+- cleanup-after changes run last — they depend on the features they clean up around
+- If the spec contains explicit dependency hints (e.g., "depends_on: X", "requires X", "after X is complete"), preserve them in the output depends_on array
+
 Output ONLY valid JSON (no markdown, no explanation):
 {
   "changes": [
@@ -1705,6 +1724,7 @@ Output ONLY valid JSON (no markdown, no explanation):
       "name": "change-name",
       "scope": "Detailed description of what this change implements, including key requirements and constraints. This becomes the proposal for the change. Tests: describe required tests.",
       "complexity": "S|M|L",
+      "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
       "depends_on": ["other-change-name"],
       "roadmap_item": "The exact Next bullet this implements"
     }

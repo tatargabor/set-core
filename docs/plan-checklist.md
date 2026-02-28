@@ -20,6 +20,8 @@ Quick pre-flight check before running `wt-orchestrate start`. Review the plan (`
 - [ ] **Shared type changes extracted** — If multiple changes add to the same union type/enum, extract a shared change
 - [ ] **No circular dependencies** — A depends on B which depends on A (the validator catches this, but check anyway)
 - [ ] **Package.json conflicts considered** — Multiple changes adding different npm packages should be chained
+- [ ] **Cleanup/refactor runs before features** — If a cleanup change touches the same area as feature changes, features should depend on the cleanup
+- [ ] **Change types considered** — Each item classified as infrastructure, schema, foundational, feature, or cleanup; ordering follows naturally from type
 
 ## Testing
 

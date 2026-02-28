@@ -35,6 +35,24 @@ Review a spec document against the orchestration planning guide and checklist.
    - Are shared type changes identified?
    - Any missing implicit dependencies (barrel exports, config files)?
 
+   **Dependency Graph Analysis**
+   Classify each spec item by change type and detect ordering issues:
+
+   Change types (in natural execution order):
+   - `infrastructure` — test/build setup, CI config
+   - `schema` — DB migrations, model changes
+   - `foundational` — auth, shared types, base components
+   - `feature` — new functionality
+   - `cleanup-before` — refactor/rename/reorganize that should precede features in same area
+   - `cleanup-after` — dead code removal, cosmetic fixes after features
+
+   Check for these ordering issues:
+   - Cleanup/refactor items alongside feature items that touch the same area → cleanup should run first
+   - Schema/migration items alongside data-layer or API items → schema should run first
+   - Auth/role/permission items alongside features that need auth → auth should run first
+   - Multiple items extending the same type/enum/interface → extract shared change or chain them
+   - Items with no declared dependencies that clearly depend on each other semantically
+
    **Testing**
    - Does each item mention what to test?
    - Is test infrastructure addressed?
@@ -103,6 +121,20 @@ Review a spec document against the orchestration planning guide and checklist.
 
    **<Feature 2>**
    ...
+
+   ### Dependency Graph
+
+   **Change Types:**
+   | Item | Type | Notes |
+   |------|------|-------|
+   | <item 1> | feature | — |
+   | <item 2> | cleanup-before | touches same UI area as item 1 |
+
+   **Suggested Dependencies:**
+   - `<Feature X>`: add `depends_on: <cleanup-change>` (cleanup should precede feature work on shared components)
+   - `<Data layer Y>`: add `depends_on: <schema-change>` (schema migration must complete first)
+
+   Or if no issues: "Dependency ordering looks good — items are independent (touch different modules/areas)."
 
    ### Suggested Improvements
    1. <Concrete, actionable suggestion>
