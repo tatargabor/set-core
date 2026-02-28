@@ -40,6 +40,14 @@ Quick pre-flight check before running `wt-orchestrate start`. Review the plan (`
 - [ ] **`test_command` set** — Points to your project's test runner (e.g., `pnpm test`)
 - [ ] **`auto_replan` considered** — Set to `true` for multi-phase specs if you want hands-off execution
 
+## Runtime & Post-Merge
+
+- [ ] **Runtime dependencies explicit** — If a feature needs a new npm package, mention it in scope (build passes in worktree but main may lack it after merge)
+- [ ] **Error handling for missing data** — Features that query DB records should handle "not found" cases (agents often skip existence checks before `.update()`)
+- [ ] **Feature completeness verifiable** — Each scope item has clear acceptance criteria so you can verify nothing was silently dropped by the agent
+- [ ] **Generated file conflicts expected** — `.claude/reflection.md` and similar AI-generated files will conflict on every merge; ensure they're in `wt-merge`'s `GENERATED_FILE_PATTERNS`
+- [ ] **Shared type accumulation considered** — If 3+ changes add to the same union type, later merges get progressively harder; extract a shared-types change or chain all of them
+
 ## Web Project Specifics
 
 - [ ] **Tech stack documented** — Framework, ORM, CSS, component library specified in spec

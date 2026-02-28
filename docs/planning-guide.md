@@ -824,3 +824,77 @@ These are auto-resolved by `wt-merge` and shouldn't cause manual intervention. I
 ## Phase 2 — Core Features (5 changes)
 ## Phase 3 — Polish (6 changes)
 ```
+
+### Anti-pattern: Missing Runtime Dependency Awareness
+
+**Symptom**: Build passes in the worktree, merge succeeds, but the app crashes at runtime with `Module not found` or `Cannot resolve` errors.
+
+Each worktree has its own `node_modules` populated during `wt-new`. But after merge, main's `node_modules` may be stale — it doesn't have packages added by the merged branch. The orchestrator now runs post-merge `pnpm install` when `package.json` changes, but your spec should still be explicit about new dependencies:
+
+```markdown
+# Good: explicit about new packages
+- Rich text editor for email templates. Uses TipTap editor (new dependency: @tiptap/react, @tiptap/starter-kit).
+
+# Bad: agent picks a library, you don't know it needs install
+- Rich text editor for email templates.
+```
+
+### Anti-pattern: No Existence Checks Before Updates
+
+**Symptom**: `PrismaClientKnownRequestError: Record not found` at runtime because agent wrote `.update()` without checking if the record exists.
+
+This is a code quality issue but you can prevent it in the spec:
+
+```markdown
+# Good: error handling is part of the spec
+- Update draft status: find draft by ID, return error if not found, then update.
+  Handle concurrent deletion gracefully.
+
+# Bad: assumes happy path only
+- Update draft status
+```
+
+Agents tend to skip existence checks before `.update()` and `.delete()` calls. Mentioning error handling in the scope makes the agent write defensive code.
+
+### Anti-pattern: Silent Feature Omission
+
+**Symptom**: The agent implements 80% of a feature and marks the change as done. Missing parts are only discovered during manual testing.
+
+This happens when the scope is vague enough that the agent can justify skipping parts. Prevent it with explicit acceptance criteria:
+
+```markdown
+# Good: enumerated deliverables
+- Admin dashboard:
+  1. User list with search, filter by role, sort by last login
+  2. User detail page with edit form and role assignment
+  3. Impersonation button (admin can view app as another user)
+  4. Navigation link in sidebar (visible only to ADMIN role)
+
+# Bad: agent decides what "admin dashboard" means
+- Admin dashboard for user management
+```
+
+### Anti-pattern: Progressive Type Accumulation
+
+**Symptom**: First merge succeeds. Second merge has a minor conflict. Third merge is stuck because the same union type file has been modified by every prior merge.
+
+When 3+ changes each add to the same type (union types, enums, activity action lists), the conflict surface grows with each merge. Even with dependency chains, the diff gets harder:
+
+```markdown
+# Bad: 4 parallel changes all adding ActivityAction types
+- Audit logging (adds: audit_created, audit_viewed)
+- CSV import (adds: import_started, import_completed)
+- Email templates (adds: template_created, template_used)
+- Follow-up tasks (adds: task_created, task_completed)
+
+# Good: extract shared type changes as Phase 0
+## Phase 0
+- Extend ActivityAction type with all v4 variants:
+  audit_created, audit_viewed, import_started, import_completed,
+  template_created, template_used, task_created, task_completed
+
+## Phase 1 (depends on Phase 0)
+- Audit logging (uses existing ActivityAction types)
+- CSV import (uses existing ActivityAction types)
+- ...
+```
