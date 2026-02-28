@@ -79,8 +79,8 @@ is_generated_file() {
                 fi
                 ;;
             *)
-                # Exact basename match
-                if [[ "$basename" == "$pattern" ]]; then
+                # Exact match: try full path first, then basename
+                if [[ "$file" == "$pattern" || "$basename" == "$pattern" ]]; then
                     return 0
                 fi
                 ;;
