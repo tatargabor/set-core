@@ -2,94 +2,89 @@
 
 ## Purpose
 Display Claude usage statistics in the Control Center GUI, showing session (5h) and weekly capacity percentages with time remaining until reset.
-
 ## Requirements
-
 ### Requirement: Display Claude Capacity Statistics
-The Control Center GUI SHALL display Claude Code capacity statistics via progress bars.
+The Control Center GUI SHALL display Claude Code capacity statistics via dual progress bars — a time-elapsed bar above a usage bar for each time window (5h session, 7d weekly).
 
-#### Scenario: Capacity displayed via progress bars
+#### Scenario: Dual bars displayed per time window
 Given the Control Center is running
 And usage data is available from the API
 When the GUI refreshes
-Then it displays 5h session capacity as a progress bar with percentage and time remaining
-And it displays weekly capacity as a progress bar with percentage and time remaining
+Then each time window (5h, 7d) SHALL display two bars stacked vertically with 0px gap:
+  - Top bar: time-elapsed percentage (how far through the window)
+  - Bottom bar: usage percentage (how much quota consumed)
 
-#### Scenario: Display format matches claude.ai
+#### Scenario: Display format with comma separator
 Given usage data is available from the API
 When displaying session usage
-Then it shows format like "17% | 1h 37m" (percentage and time until reset)
-And weekly shows format like "3% | 6d 16h"
+Then the time label SHALL show format like "60%, 2h" (time-elapsed percentage, comma, remaining time)
+And the usage label SHALL show format like "42%" (usage percentage only)
+And weekly time label SHALL show format like "71%, 2d" (time-elapsed percentage, comma, remaining time)
+And weekly usage label SHALL show format like "55%" (usage percentage only)
 
 #### Scenario: Local-only data shows unknown state
 Given usage data comes from local JSONL parsing (no session key)
 When displaying capacity
-Then labels show "--/5h" and "--/7d" (percentages are unreliable from local data)
-And progress bars remain empty
+Then time labels SHALL show "--"
+And usage labels SHALL show "--/5h" and "--/7d"
+And all four progress bars SHALL remain empty
 And tooltips show token counts and suggest setting session key
 
-#### Scenario: Capacity color coding
+#### Scenario: Burn-rate-relative color coding
 Given usage data is available from the API
-When capacity is below 90%
-Then the progress bar is displayed in green
-When capacity is between 90% and 110%
-Then the progress bar is displayed in yellow
-When capacity is above 110%
-Then the progress bar is displayed in red
+When usage percentage is more than 5 points below time-elapsed percentage
+Then the usage bar SHALL be displayed in green (under pace)
+When usage percentage is within 5 points of time-elapsed percentage
+Then the usage bar SHALL be displayed in yellow (on pace)
+When usage percentage is more than 5 points above time-elapsed percentage
+Then the usage bar SHALL be displayed in red (over pace)
+
+#### Scenario: Time bar color
+Given usage data is available from the API
+When displaying the time-elapsed bar
+Then the time bar SHALL use a neutral color (`bar_time` theme color) regardless of percentage
 
 #### Scenario: Graceful fallback when data unavailable
 Given usage data cannot be fetched from any source
 When the GUI attempts to display capacity
-Then it displays "--/5h" and "--/7d"
+Then it displays "--" for time labels and "--/5h", "--/7d" for usage labels
+And all four bars remain empty
 And does not show errors to the user
 
 ### Requirement: Usage Data Sources
-Usage data SHALL be fetched from multiple sources with automatic fallback.
+Usage data SHALL be fetched from multiple sources with automatic fallback, supporting multiple accounts.
 
-#### Scenario: Primary - Claude.ai API via curl-cffi
-Given a saved session key exists in `~/.config/wt-tools/claude-session.json`
-And `curl-cffi` Python package is installed
-When fetching usage data
-Then the worker calls the claude.ai organizations API using `curl-cffi` with `impersonate='chrome'`
-And retrieves exact utilization percentages and reset times
+#### Scenario: Multi-account fetch cycle
+Given multiple accounts are configured with session keys
+When the 30-second polling cycle fires
+Then the worker fetches usage for each account using the existing fallback chain
+And emits a list of per-account usage dicts
 
-#### Scenario: Fallback chain
-Given a saved session key exists
-When fetching usage data
-Then the worker tries sources in this order:
-1. `curl-cffi` (Chrome TLS fingerprint, bypasses Cloudflare)
-2. Plain `curl` subprocess
-3. `urllib.request` (stdlib)
-4. Local JSONL parsing (no auth needed)
-And uses the first source that returns valid data
-
-#### Scenario: Graceful degradation without curl-cffi
-Given `curl-cffi` is not installed
-When the worker first attempts an API call
-Then it logs a one-time warning suggesting `pip install curl-cffi`
-And falls back to curl subprocess and urllib
-
-#### Scenario: Fallback - Local JSONL Parsing
-Given no session key is available or all API call methods fail
-When fetching usage data
-Then the worker parses `~/.claude/projects/*/*.jsonl` files
-And calculates token usage for 5h and 7d windows
-
-#### Scenario: Configurable estimation limits
-Given local JSONL parsing is used
-When calculating percentages
-Then `usage.estimated_5h_limit` config (default 500000) is used for 5h percentage
-And `usage.estimated_weekly_limit` config (default 5000000) is used for weekly percentage
+#### Scenario: Per-account error isolation
+Given multiple accounts are configured
+When one account's API call fails
+Then that account shows "--" state
+And other accounts continue showing their data normally
 
 ### Requirement: GUI session key input dialog
-The GUI SHALL provide a menu option to set the Claude session key via a simple input dialog.
+The GUI SHALL provide menu actions to manage multiple Claude account session keys.
 
-#### Scenario: Set session key via menu
-- **WHEN** user selects "Set Session Key..." from the menu
+#### Scenario: Add account via menu
+- **WHEN** user selects "Add Account..." from the menu
 - **THEN** the main window hides to prevent always-on-top conflicts
-- **AND** a `QInputDialog` appears prompting for the session key
-- **AND** the entered key is saved to `~/.config/wt-tools/claude-session.json`
+- **AND** a dialog prompts for account name and session key
+- **AND** the entered account is appended to `~/.config/wt-tools/claude-session.json`
 - **AND** the main window reappears after the dialog closes
+
+#### Scenario: Remove account via menu
+- **WHEN** user selects "Remove Account..." from the menu
+- **AND** more than one account exists
+- **THEN** a selection dialog lists all account names
+- **AND** the selected account is removed from `~/.config/wt-tools/claude-session.json`
+
+#### Scenario: Backward compatible with old single-key format
+- **WHEN** `claude-session.json` contains old format `{"sessionKey": "..."}`
+- **THEN** the system reads it as a single account named "Default"
 
 ### Requirement: Cost estimation support
 The `UsageCalculator` SHALL support estimated USD cost calculation.
@@ -120,6 +115,30 @@ Given the application runs on any supported OS
 When accessing Claude data
 Then it uses `pathlib.Path.home() / ".claude"` for the Claude directory
 And handles missing directories gracefully
+
+### Requirement: Time-Elapsed Percentage Calculation
+The GUI SHALL calculate how far through each time window the user currently is, derived from the reset timestamp.
+
+#### Scenario: Time-elapsed from reset timestamp
+- **WHEN** the API returns a `session_reset` or `weekly_reset` ISO timestamp
+- **THEN** the time-elapsed percentage SHALL be calculated as: `(now - (reset - window)) / window * 100`
+- **AND** the result SHALL be clamped to 0-100%
+
+#### Scenario: 5h session window
+- **WHEN** calculating time-elapsed for the session bar
+- **THEN** the window size SHALL be 5 hours
+
+#### Scenario: 7d weekly window
+- **WHEN** calculating time-elapsed for the weekly bar
+- **THEN** the window size SHALL be 7 days (168 hours)
+
+### Requirement: Time Bar Theme Color
+A new `bar_time` color SHALL be added to all theme color profiles.
+
+#### Scenario: Theme color values
+- **WHEN** rendering the time-elapsed bar
+- **THEN** the bar color SHALL use `bar_time` from the active theme
+- **AND** `bar_time` SHALL be a muted neutral tone (slate/gray family) in all themes
 
 ## Implementation Notes
 
