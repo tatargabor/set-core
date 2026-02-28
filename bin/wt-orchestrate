@@ -2856,13 +2856,21 @@ monitor_loop() {
             continue
         fi
 
-        # Check if all done (include merge-blocked — retry_merge_queue handles those)
+        # Check if all done — only merged/done count as complete, not merge-blocked/failed
         local total_changes
         total_changes=$(jq '.changes | length' "$STATE_FILENAME")
-        local done_or_merged
-        done_or_merged=$(jq '[.changes[] | select(.status == "done" or .status == "merged" or .status == "merge-blocked" or .status == "failed")] | length' "$STATE_FILENAME")
+        local truly_complete
+        truly_complete=$(jq '[.changes[] | select(.status == "done" or .status == "merged")] | length' "$STATE_FILENAME")
+        local merge_blocked_count
+        merge_blocked_count=$(jq '[.changes[] | select(.status == "merge-blocked")] | length' "$STATE_FILENAME")
+        local active_count
+        active_count=$(jq '[.changes[] | select(.status == "running" or .status == "pending" or .status == "verifying" or .status == "stalled")] | length' "$STATE_FILENAME")
 
-        if [[ "$done_or_merged" -ge "$total_changes" ]]; then
+        if [[ "$active_count" -eq 0 && "$merge_blocked_count" -gt 0 ]]; then
+            log_info "$truly_complete changes complete, $merge_blocked_count merge-blocked — not triggering replan"
+        fi
+
+        if [[ "$truly_complete" -ge "$total_changes" ]]; then
             log_info "All $total_changes changes complete"
             send_notification "wt-orchestrate" "All $total_changes changes complete!" "normal"
 
@@ -3286,20 +3294,36 @@ handle_change_done() {
     merge_rebase_pending=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .merge_rebase_pending // false' "$STATE_FILENAME")
     if [[ "$merge_rebase_pending" == "true" ]]; then
         update_change_field "$change_name" "merge_rebase_pending" "false"
-        log_info "Change $change_name returning from agent-assisted rebase — skipping verify gate, attempting merge"
-        info "Agent rebase complete for $change_name, retrying merge..."
-        if merge_change "$change_name" 2>/dev/null; then
-            log_info "Merge succeeded after agent rebase for $change_name"
-            return 0
-        else
-            # Agent rebase didn't fully resolve — fall through to retry_merge_queue
-            log_warn "Merge still failed after agent rebase for $change_name — entering retry queue"
-            local merge_retry_count
-            merge_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .merge_retry_count // 0' "$STATE_FILENAME")
-            update_change_field "$change_name" "merge_retry_count" "$((merge_retry_count + 1))"
-            update_change_field "$change_name" "status" '"merge-blocked"'
-            return 0
+        log_info "Change $change_name returning from agent-assisted rebase — testing merge cleanness"
+        info "Agent rebase complete for $change_name, testing merge..."
+
+        # Dry-run: test if branch merges cleanly before calling full wt-merge
+        local source_branch="change/$change_name"
+        local main_branch
+        main_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+        git fetch origin "$main_branch" 2>/dev/null || true
+        local merge_base
+        merge_base=$(git merge-base "$source_branch" "origin/$main_branch" 2>/dev/null || true)
+        local test_merge_rc=0
+        if [[ -n "$merge_base" ]]; then
+            git merge-tree "$merge_base" "origin/$main_branch" "$source_branch" 2>/dev/null | grep -q "^<<<<<<<" && test_merge_rc=1 || true
         fi
+
+        if [[ $test_merge_rc -eq 0 ]]; then
+            # Branch merges cleanly — proceed with full merge
+            if merge_change "$change_name" 2>/dev/null; then
+                log_info "Merge succeeded after agent rebase for $change_name"
+                return 0
+            fi
+        fi
+
+        # Agent rebase didn't fully resolve — enter retry queue
+        log_warn "Merge still has conflicts after agent rebase for $change_name — entering retry queue"
+        local merge_retry_count
+        merge_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .merge_retry_count // 0' "$STATE_FILENAME")
+        update_change_field "$change_name" "merge_retry_count" "$((merge_retry_count + 1))"
+        update_change_field "$change_name" "status" '"merge-blocked"'
+        return 0
     fi
 
     # Gate timing accumulators
@@ -3677,6 +3701,28 @@ merge_change() {
         BASE_BUILD_STATUS=""
         BASE_BUILD_OUTPUT=""
 
+        # Post-merge dependency install: if package.json changed, run package manager install
+        local pkg_changed=false
+        git diff HEAD~1 --name-only 2>/dev/null | grep -q '^package\.json$' && pkg_changed=true
+        if $pkg_changed; then
+            local install_cmd=""
+            if [[ -f "pnpm-lock.yaml" ]]; then
+                install_cmd="pnpm install"
+            elif [[ -f "yarn.lock" ]]; then
+                install_cmd="yarn install"
+            elif [[ -f "package-lock.json" ]]; then
+                install_cmd="npm install"
+            fi
+            if [[ -n "$install_cmd" ]]; then
+                log_info "Post-merge: package.json changed, running $install_cmd"
+                if $install_cmd >> "$LOG_FILE" 2>&1; then
+                    log_info "Post-merge: $install_cmd succeeded"
+                else
+                    log_warn "Post-merge: $install_cmd failed (merge not reverted)"
+                fi
+            fi
+        fi
+
         local iter_count
         iter_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .iterations // 0' "$STATE_FILENAME" 2>/dev/null || echo "?")
         orch_remember "Merged $change_name successfully ($iter_count iterations)" Context "phase:merge,change:$change_name"
@@ -3688,9 +3734,16 @@ merge_change() {
         tmp=$(mktemp)
         jq --arg n "$change_name" '.merge_queue -= [$n]' "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
     else
-        warn "Merge conflict for $change_name"
-        log_error "Merge conflict for $change_name"
-        orch_remember "Merge conflict for $change_name — consider sequencing this change after its conflicting dependencies in future plans" Decision "phase:merge,change:$change_name"
+        # Log level: ERROR on first conflict, INFO on subsequent (retry) calls
+        local merge_retry_count
+        merge_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .merge_retry_count // 0' "$STATE_FILENAME")
+        if [[ "$merge_retry_count" -eq 0 ]]; then
+            warn "Merge conflict for $change_name"
+            log_error "Merge conflict for $change_name"
+            orch_remember "Merge conflict for $change_name — consider sequencing this change after its conflicting dependencies in future plans" Decision "phase:merge,change:$change_name"
+        else
+            log_info "Merge conflict for $change_name (retry $merge_retry_count)"
+        fi
 
         # Check if this is the first conflict — try agent-assisted rebase
         local agent_rebase_done
@@ -3786,6 +3839,28 @@ _try_merge() {
 
     if merge_change "$name" 2>/dev/null; then
         return 0
+    fi
+
+    # Conflict fingerprint dedup: capture conflicted files and compare with previous attempt
+    local conflict_fingerprint=""
+    local source_branch="change/$name"
+    local main_ref
+    main_ref=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+    local merge_base_ref
+    merge_base_ref=$(git merge-base "$source_branch" "origin/$main_ref" 2>/dev/null || true)
+    if [[ -n "$merge_base_ref" ]]; then
+        conflict_fingerprint=$(git merge-tree "$merge_base_ref" "origin/$main_ref" "$source_branch" 2>/dev/null | grep "^+++ b/" | sort | md5sum | cut -d' ' -f1)
+    fi
+    local prev_fingerprint
+    prev_fingerprint=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .last_conflict_fingerprint // empty' "$STATE_FILENAME")
+    if [[ -n "$conflict_fingerprint" ]]; then
+        update_change_field "$name" "last_conflict_fingerprint" "\"$conflict_fingerprint\""
+        if [[ "$conflict_fingerprint" == "$prev_fingerprint" ]]; then
+            log_info "Same conflict fingerprint as previous attempt for $name — stopping retries"
+            update_change_field "$name" "status" '"merge-blocked"'
+            send_notification "wt-orchestrate" "Merge permanently blocked: $name (same conflict repeating)" "critical"
+            return 0
+        fi
     fi
 
     if [[ "$retry_count" -ge "$MAX_MERGE_RETRIES" ]]; then
