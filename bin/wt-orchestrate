@@ -1145,6 +1145,86 @@ FIX_EOF
     fi
 }
 
+# Sync a worktree branch with main to pick up fixes that landed after the branch was created.
+# Uses git merge (not rebase) to preserve commit history and avoid force-push issues.
+# Returns 0 if sync succeeded (or was unnecessary), 1 if merge conflicts occurred.
+sync_worktree_with_main() {
+    local wt_path="$1"
+    local change_name="$2"
+
+    # Determine the main branch name
+    local main_branch=""
+    if git -C "$wt_path" show-ref --verify --quiet refs/heads/main 2>/dev/null; then
+        main_branch="main"
+    elif git -C "$wt_path" show-ref --verify --quiet refs/heads/master 2>/dev/null; then
+        main_branch="master"
+    else
+        log_warn "Sync: could not find main/master branch for $change_name"
+        return 1
+    fi
+
+    # Check if worktree is already up to date with main
+    local wt_branch
+    wt_branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    local main_head wt_merge_base
+    main_head=$(git -C "$wt_path" rev-parse "$main_branch" 2>/dev/null)
+    wt_merge_base=$(git -C "$wt_path" merge-base "$wt_branch" "$main_branch" 2>/dev/null)
+
+    if [[ "$main_head" == "$wt_merge_base" ]]; then
+        log_info "Sync: $change_name already up to date with $main_branch"
+        return 0
+    fi
+
+    local behind_count
+    behind_count=$(git -C "$wt_path" rev-list --count "$wt_merge_base..$main_head" 2>/dev/null || echo "?")
+    log_info "Sync: $change_name is $behind_count commit(s) behind $main_branch — merging"
+
+    # Merge main into the worktree branch
+    local merge_rc=0
+    local merge_output=""
+    merge_output=$(git -C "$wt_path" merge "$main_branch" -m "Merge $main_branch into $wt_branch (auto-sync)" 2>&1) || merge_rc=$?
+
+    if [[ $merge_rc -eq 0 ]]; then
+        log_info "Sync: successfully merged $main_branch into $change_name"
+        return 0
+    fi
+
+    # Try auto-resolving generated file conflicts (lock files, build artifacts)
+    local conflicted_files
+    conflicted_files=$(git -C "$wt_path" diff --name-only --diff-filter=U 2>/dev/null || true)
+
+    if [[ -n "$conflicted_files" ]]; then
+        # Check if all conflicts are in generated files
+        local has_non_generated=false
+        while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            local basename
+            basename=$(basename "$file")
+            case "$basename" in
+                *.tsbuildinfo|package-lock.json|yarn.lock|pnpm-lock.yaml) ;;
+                *) has_non_generated=true; break ;;
+            esac
+        done <<< "$conflicted_files"
+
+        if ! $has_non_generated; then
+            # All conflicts in generated files — accept ours and continue
+            while IFS= read -r file; do
+                [[ -z "$file" ]] && continue
+                git -C "$wt_path" checkout --ours "$file" 2>/dev/null
+                git -C "$wt_path" add "$file" 2>/dev/null
+            done <<< "$conflicted_files"
+            git -C "$wt_path" commit --no-edit 2>/dev/null
+            log_info "Sync: auto-resolved generated file conflicts for $change_name"
+            return 0
+        fi
+    fi
+
+    # Real conflicts — abort merge
+    git -C "$wt_path" merge --abort 2>/dev/null || true
+    log_warn "Sync: merge conflicts for $change_name — cannot auto-sync with $main_branch"
+    return 1
+}
+
 # ─── Worktree Bootstrap ──────────────────────────────────────────────
 
 # Bootstrap a worktree: copy missing .env files + install deps if needed.
@@ -3237,7 +3317,8 @@ handle_change_done() {
                 log_warn "Verify gate: main branch also fails build — attempting LLM fix on main"
                 info "Main branch is broken — fixing main before retrying $change_name..."
                 if fix_base_build_with_llm "$main_path"; then
-                    # Main fixed — re-run the worktree build without consuming a retry
+                    # Main fixed — sync worktree and re-run build without consuming a retry
+                    sync_worktree_with_main "$wt_path" "$change_name" || true
                     log_info "Verify gate: re-running build for $change_name after main fix"
                     local rerun_rc=0
                     build_output=$(cd "$wt_path" && timeout 300 "$pm" run "$build_command" 2>&1) || rerun_rc=$?
@@ -3258,6 +3339,23 @@ handle_change_done() {
                 fi
                 # If build now passes, skip the retry logic
                 [[ "$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .build_result // ""' "$STATE_FILENAME")" == "pass" ]] && { log_info "Verify gate: build gate resolved via main fix for $change_name"; }
+            else
+                # ── Main builds OK but worktree doesn't — try syncing main fixes ──
+                log_info "Verify gate: main builds OK, syncing $change_name with main before retry"
+                if sync_worktree_with_main "$wt_path" "$change_name"; then
+                    # Worktree synced — rebuild to see if the inherited issue is gone
+                    log_info "Verify gate: re-running build for $change_name after sync"
+                    local sync_rerun_rc=0
+                    build_output=$(cd "$wt_path" && timeout 300 "$pm" run "$build_command" 2>&1) || sync_rerun_rc=$?
+                    if [[ $sync_rerun_rc -eq 0 ]]; then
+                        log_info "Verify gate: build passed for $change_name after sync with main"
+                        update_change_field "$change_name" "build_result" '"pass"'
+                        build_rc=0  # Clear the failure
+                    else
+                        log_info "Verify gate: build still failed for $change_name after sync (agent code issue)"
+                        build_rc=$sync_rerun_rc
+                    fi
+                fi
             fi
 
             # Only retry agent if build still failing and it's not a main-side issue
