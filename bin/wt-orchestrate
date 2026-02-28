@@ -2773,9 +2773,10 @@ handle_change_done() {
     fi
 
     # ── Merge-rebase fast path: skip verify gate, go straight to merge ──
-    local prev_status
-    prev_status=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .status // ""' "$STATE_FILENAME")
-    if [[ "$prev_status" == "merge-rebase" ]]; then
+    local merge_rebase_pending
+    merge_rebase_pending=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .merge_rebase_pending // false' "$STATE_FILENAME")
+    if [[ "$merge_rebase_pending" == "true" ]]; then
+        update_change_field "$change_name" "merge_rebase_pending" "false"
         log_info "Change $change_name returning from agent-assisted rebase — skipping verify gate, attempting merge"
         info "Agent rebase complete for $change_name, retrying merge..."
         if merge_change "$change_name" 2>/dev/null; then
@@ -3057,7 +3058,7 @@ merge_change() {
                 retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
             fi
             update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
-            update_change_field "$change_name" "status" '"merge-rebase"'
+            update_change_field "$change_name" "merge_rebase_pending" "true"
             resume_change "$change_name"
         else
             update_change_field "$change_name" "status" '"merge-blocked"'
@@ -3140,7 +3141,7 @@ retry_merge_queue() {
     done <<< "$queue_items"
 
     # Also find merge-blocked items not in the queue (safety net)
-    # Skip merge-rebase items — agent is actively working on rebase
+    # Note: merge_rebase_pending changes have status "running", not "merge-blocked", so they're naturally skipped
     local blocked
     blocked=$(jq -r '.changes[] | select(.status == "merge-blocked") | .name' "$STATE_FILENAME" 2>/dev/null || true)
     while IFS= read -r name; do
