@@ -165,6 +165,9 @@ main() {
             else
                 action="local"
             fi
+        elif [[ ! -t 0 ]]; then
+            # Non-interactive (e.g. orchestrator) — delete local branch by default
+            action="local"
         else
             # Interactive mode
             echo ""
