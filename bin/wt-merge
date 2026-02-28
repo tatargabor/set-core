@@ -432,18 +432,14 @@ main() {
     if $delete_branch; then
         echo ""
         info "Deleting source branch '$source_branch'..."
-        git branch -d "$source_branch" 2>/dev/null
-        if [[ $? -eq 0 ]]; then
+        if git branch -d "$source_branch" 2>/dev/null; then
             success "Branch '$source_branch' deleted"
-        else
+        elif git branch -D "$source_branch" 2>/dev/null; then
             # Force delete if not fully merged (squash case)
-            git branch -D "$source_branch" 2>/dev/null
-            if [[ $? -eq 0 ]]; then
-                success "Branch '$source_branch' deleted (force)"
-            else
-                warn "Could not delete branch (still checked out in worktree)"
-                echo "  Branch will be deleted when you run: wt-close $change_id"
-            fi
+            success "Branch '$source_branch' deleted (force)"
+        else
+            warn "Could not delete branch (still checked out in worktree)"
+            echo "  Branch will be deleted when you run: wt-close $change_id"
         fi
     fi
 
