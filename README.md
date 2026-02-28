@@ -149,6 +149,10 @@ Autonomous multi-change execution from a specification document. Give `wt-orches
 
 *Full lifecycle: spec → plan → dispatch → monitor → merge → done. Supports pause/resume, auto-replan, and configurable merge policies.*
 
+![Orchestrator TUI — live terminal dashboard](docs/images/orchestrator-tui.png)
+
+*Live TUI dashboard showing change status, iteration progress, token usage, quality gates, and log stream. Press `a` to approve checkpoints, `l` to toggle full-screen log.*
+
 **Key capabilities:**
 - **Spec-driven input**: accepts any specification document (`--spec`) or a structured project brief with a `### Next` section
 - **LLM-powered planning**: Claude decomposes the spec into sized changes (S/M/L) with a dependency graph
