@@ -2018,6 +2018,16 @@ auto_replan_cycle() {
     export _REPLAN_COMPLETED="$completed_roadmap"
     export _REPLAN_CYCLE="$cycle"
 
+    # Restore input path from plan so cmd_plan's find_input() can find it
+    local plan_input_mode plan_input_path
+    plan_input_mode=$(jq -r '.input_mode // empty' "$PLAN_FILENAME")
+    plan_input_path=$(jq -r '.input_path // empty' "$PLAN_FILENAME")
+    if [[ "$plan_input_mode" == "spec" && -n "$plan_input_path" ]]; then
+        SPEC_OVERRIDE="$plan_input_path"
+    elif [[ "$plan_input_mode" == "brief" && -n "$plan_input_path" ]]; then
+        BRIEF_OVERRIDE="$plan_input_path"
+    fi
+
     if ! cmd_plan 2>>"$LOG_FILE"; then
         log_error "Auto-replan failed — cmd_plan returned error"
         rm -f "$old_plan"
