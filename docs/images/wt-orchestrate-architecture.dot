@@ -1,87 +1,233 @@
-// wt-orchestrate Architecture Diagram
+// wt-orchestrate Architecture Diagram (Layered v4)
 // Generate: dot -Tpng -Gdpi=150 wt-orchestrate-architecture.dot -o wt-orchestrate-architecture.png
+//
+// Design notes (for future iteration):
+// - 5 layer clusters (L1-L5) stacked top-to-bottom as main flow
+// - Cross-cutting cluster at bottom: Memory, Cost, Notifications, Files
+// - Change Lifecycle state machine as compact reference
+// - Legend + Key Numbers + Stop Conditions grouped together
+// - Inline badges: + mem (memory), $ (cost/tokens), ! (notification)
+// - Happy path = green thick edges, failure = red, retry = orange dashed
+// - Step numbers ①-⑩ for reading order
+// - Use `weight` on forward edges to keep them tight
+// - Use `constraint=false` on back-edges to avoid rank disruption
+// - Use invisible edges for vertical cluster ordering
+// - Known limitation: back-edge arcs (retry→ralph, replan→dispatch)
+//   create wide curves — this is inherent to DOT layout engine
 
 digraph orchestrate {
     graph [
-        label="wt-orchestrate — Autonomous Multi-Phase Spec Orchestration"
-        labelloc=t fontname="Helvetica" fontsize=20
-        bgcolor="white" pad=0.3 nodesep=0.5 ranksep=0.6
+        label="wt-orchestrate — Autonomous Multi-Phase Spec Orchestration\n "
+        labelloc=t fontname="Helvetica" fontsize=22 fontcolor="#212121"
+        bgcolor="white" pad=0.5 nodesep=0.7 ranksep=0.55
+        compound=true newrank=true
     ]
-    node [fontname="Helvetica" fontsize=9 style="filled,rounded" shape=box margin="0.12,0.06"]
+    node [fontname="Helvetica" fontsize=9 style="filled,rounded" shape=box margin="0.14,0.07"]
     edge [fontname="Helvetica" fontsize=7 arrowsize=0.7]
 
-    // ═══ MAIN VERTICAL FLOW ═══
+    // ════════════════════════════════════════════════════════════════
+    // L1: INPUT & CONFIGURATION
+    // ════════════════════════════════════════════════════════════════
+    subgraph cluster_L1 {
+        label="L1  INPUT & CONFIGURATION"
+        labeljust=l style="filled,rounded" fillcolor="#FFF3E0" color="#E65100"
+        penwidth=2 fontname="Helvetica Bold" fontsize=10 fontcolor="#BF360C"
 
-    input [label="1 INPUT\nSpec (.spec) or Brief (.md)" fillcolor="#FFE0B2" color="#F57C00"]
+        input [label="① Input\nSpec (.spec) or Brief (.md)" fillcolor="#FFE0B2" color="#F57C00"]
 
-    plan [label="3 PLAN (Opus)\ndecompose → changes[]\ntest-aware: \"every scope MUST have tests\"\nif no infra → test-setup-first rule\n+ test infra scan context" fillcolor="#FFF9C4" color="#F9A825"]
+        summarize [label="① Summarize [Haiku]\nif >8k tokens: condense\nTOC + next-phase focus\nfallback: truncate 32k" fillcolor="#E1BEE7" color="#7B1FA2" fontsize=8]
 
-    dispatch [label="4 DISPATCH\nmax_parallel | topo order\nwt-new → openspec ff → wt-loop" fillcolor="#BBDEFB" color="#1565C0"]
+        directives [label="② Directives (4-level precedence)\nCLI > yaml > in-doc > defaults\n────────────────────────────\nmax_parallel  merge_policy\nreview_before_merge  test_timeout\nmax_verify_retries  token_budget\nsummarize_model  review_model" fillcolor="#FFE0B2" color="#F57C00" fontsize=7]
 
-    ralph [label="5 RALPH LOOP\nClaude agent in git worktree\niterative implementation\nloop-state.json tracking" fillcolor="#A5D6A7" color="#2E7D32"]
-
-    monitor [label="6 MONITOR\npoll 15s | active_seconds tracking\ntoken budget | stall detect (3x)" fillcolor="#BBDEFB" color="#1565C0"]
-
-    // ═══ QUALITY GATE (cluster for visual grouping) ═══
-    subgraph cluster_gate {
-        label="7 QUALITY GATE (on ralph done)"
-        style="filled,rounded,bold" fillcolor="#FCE4EC" color="#C62828"
-        fontsize=10 fontname="Helvetica Bold" penwidth=2
-        labeljust=l
-
-        g_test [label="Test Execution\nrun_tests_in_worktree()\ntimeout: test_timeout (300s)\ncapture output (2000 chars)" fillcolor="#FFCDD2" color="#C62828"]
-        g_review [label="LLM Code Review (Sonnet)\ngit diff → check CRITICAL severity\n(if review_before_merge: true)" fillcolor="#FFCDD2" color="#C62828"]
-        g_verify [label="/opsx:verify\nartifact coherence check" fillcolor="#FFCDD2" color="#C62828" fontsize=8]
-
-        g_test -> g_review [label="pass" color="#388E3C" penwidth=1.5]
-        g_review -> g_verify [label="pass / skipped" color="#388E3C" penwidth=1.5]
+        input -> summarize [label=">8k tok" style=dashed]
+        { rank=same; input; summarize; directives }
     }
 
-    retry [label="Retry Ralph\nresume + failure context\nstatus: verify-failed\n(max_verify_retries, default 1)" fillcolor="#EF9A9A" color="#B71C1C" fontsize=8]
-    failed [label="FAILED" fillcolor="#EF5350" color="#B71C1C" fontcolor=white shape=octagon fontsize=9]
+    // ════════════════════════════════════════════════════════════════
+    // L2: PLANNING
+    // ════════════════════════════════════════════════════════════════
+    subgraph cluster_L2 {
+        label="L2  PLANNING"
+        labeljust=l style="filled,rounded" fillcolor="#FFFDE7" color="#F9A825"
+        penwidth=2 fontname="Helvetica Bold" fontsize=10 fontcolor="#F57F17"
 
-    merge [label="8 MERGE\ngit merge + auto-resolve\neager | checkpoint | manual\nfail → merge-blocked → retry" fillcolor="#C5CAE9" color="#303F9F"]
+        mem_warm [label="③ Memory Warm-Start\nrecall per-item / per-phase\n+ operational context\n(tag: source:orchestrator)\nmax 2000 chars injected" fillcolor="#EDE7F6" color="#7B1FA2" fontsize=8]
 
-    replan [label="9 AUTO-REPLAN (Opus)\ncollect completed → compare state\nadvance to NEXT phase" fillcolor="#FFF9C4" color="#F9A825"]
+        test_scan [label="③ Test Infra Scan\nvitest / jest / mocha / pytest\npackage.json scripts\ntest file count" fillcolor="#FFF9C4" color="#F9A825" fontsize=8]
 
-    all_done [label="ALL DONE" fillcolor="#A5D6A7" color="#2E7D32" fontsize=10 shape=doubleoctagon]
+        plan [label="④ Decompose [Opus]\nspec + memory + test_infra  →  changes[]\ntopo sort (Kahn's algorithm)\ntest-aware: every scope MUST have tests\nif no infra → test-setup-first rule" fillcolor="#FFF9C4" color="#F9A825"]
 
-    // ═══ SIDE NODES ═══
-    config [label="2 DIRECTIVES\n4-level: CLI > yaml > doc > defaults\n──────────────────────────\norchestration.yaml:\nmerge_policy | max_parallel\nreview_before_merge | test_timeout\nmax_verify_retries | token_budget\nsummarize_model | review_model" fillcolor="#FFE0B2" color="#F57C00" fontsize=7]
+        mem_warm -> plan [weight=5]
+        test_scan -> plan [style=dashed weight=5]
+        { rank=same; mem_warm; test_scan }
+    }
 
-    models [label="Model Tiering\n─────────────\nOpus: plan decomposition\nSonnet: code review + fix\nHaiku: spec summarization\n(configurable via directives)" fillcolor="#E1BEE7" color="#7B1FA2" fontsize=7 shape=note]
+    // ════════════════════════════════════════════════════════════════
+    // L3: EXECUTION
+    // ════════════════════════════════════════════════════════════════
+    subgraph cluster_L3 {
+        label="L3  EXECUTION"
+        labeljust=l style="filled,rounded" fillcolor="#E3F2FD" color="#1565C0"
+        penwidth=2 fontname="Helvetica Bold" fontsize=10 fontcolor="#0D47A1"
 
-    stop [label="STOP CONDITIONS\nTime limit (5h active) | Ctrl+C\nToken budget exceeded → wait\nCrash: stale >2min → auto-recover\nAll resumable" fillcolor="#FFCDD2" color="#C62828" fontsize=7]
+        dispatch [label="⑤ Dispatch\nmax_parallel  |  topo order\nwt-new → openspec ff → wt-loop\n+ mem recall for proposal (max 1000 ch)" fillcolor="#BBDEFB" color="#1565C0"]
 
-    files [label="Files\n─────────────\norchestration-{plan,state}.json\norchestration-summary.md\n.claude/orchestration.{yaml,log}\n<wt>/.claude/loop-state.json" fillcolor="#CFD8DC" color="#455A64" fontsize=7 shape=note]
+        ralph [label="⑥ Ralph Loop\nClaude agent in git worktree\niterative implementation\nloop-state.json + terminal PID\n$ tokens polled every 15s" fillcolor="#C8E6C9" color="#2E7D32"]
 
-    // ═══ MAIN FLOW EDGES ═══
-    input -> plan [penwidth=2]
-    plan -> dispatch [label="changes[]" penwidth=2]
-    dispatch -> ralph [penwidth=2]
-    ralph -> monitor [label="loop-state" style=dashed]
-    monitor -> g_test [label="ralph done" penwidth=2 color="#C62828"]
-    g_verify -> merge [label="all pass" penwidth=2 color="#388E3C"]
-    merge -> monitor [label="continue polling" style=dashed constraint=false]
-    monitor -> dispatch [label="dispatch ready" style=dashed constraint=false]
-    monitor -> replan [label="all done + auto_replan" penwidth=1.5]
-    replan -> dispatch [label="new changes" penwidth=1.5 constraint=false]
-    replan -> all_done [label="no more phases"]
-    monitor -> all_done [label="all done\nno replan" style=dashed]
+        monitor [label="⑦ Monitor (poll 15s)\nactive_seconds (fresh loops only)\nstall detect: 3x → auto-resume (300s cd)\ntoken budget: pause dispatch if exceeded\nhousekeeping ~2.5 min:\n  mem stats + gate stats + mem audit" fillcolor="#BBDEFB" color="#1565C0"]
 
-    // Quality gate failure edges
-    g_test -> retry [label="fail" color="#C62828"]
-    g_review -> retry [label="CRITICAL" color="#C62828"]
-    g_verify -> retry [label="fail" color="#C62828" style=dashed]
-    retry -> ralph [label="resume\n+ context" style=dashed color="#FF6F00" constraint=false]
-    retry -> failed [label="retries exhausted" color="#C62828"]
+        dispatch -> ralph [penwidth=2.5 color="#388E3C" weight=5]
+        ralph -> monitor [label="loop-state" style=dashed weight=5]
+    }
 
-    // Side connections
-    config -> plan [style=dashed]
-    config -> monitor [style=dashed constraint=false]
+    // ════════════════════════════════════════════════════════════════
+    // L4: QUALITY GATE
+    // ════════════════════════════════════════════════════════════════
+    subgraph cluster_L4 {
+        label="L4  QUALITY GATE  (triggered on ralph done)"
+        labeljust=l style="filled,rounded,bold" fillcolor="#FCE4EC" color="#C62828"
+        penwidth=2.5 fontname="Helvetica Bold" fontsize=10 fontcolor="#B71C1C"
 
-    // Layout hints
-    { rank=same; input; config }
-    { rank=same; models; files; stop }
-    { rank=same; replan; all_done }
+        g_test [label="⑧a Test Execution\nrun_tests_in_worktree()\ntimeout: test_timeout (300s)\ncapture output (max 2000 ch)\n$ gate_test_ms\n+ mem: remember pass/fail" fillcolor="#FFCDD2" color="#C62828"]
+
+        g_review [label="⑧b Code Review [Sonnet]\ngit diff (max 30k chars)\ncheck for CRITICAL severity\n(if review_before_merge: true)\n$ gate_review_ms\n+ mem: remember pass/critical" fillcolor="#FFCDD2" color="#C62828"]
+
+        g_verify [label="⑧c /opsx:verify\nartifact coherence\n(max-turns 5)\n$ gate_verify_ms" fillcolor="#FFCDD2" color="#C62828" fontsize=8]
+
+        retry [label="Retry Ralph\nresume + failure context\nmax_verify_retries (default 1)\n$ snapshot retry_tokens_start\n$ accumulate gate_retry_tokens" fillcolor="#EF9A9A" color="#B71C1C" fontsize=8]
+
+        failed [label="FAILED\n! notify critical\n+ mem: failure" fillcolor="#EF5350" color="#B71C1C" fontcolor=white shape=octagon fontsize=9]
+
+        gate_cost [label="Gate Cost Totals\n──────────────────────\ngate_total_ms = test+review+verify\ngate_retry_tokens (cumulative)\ngate_retry_count\nlogged as % of active time" fillcolor="#F8BBD0" color="#AD1457" fontsize=7 shape=note]
+
+        g_test -> g_review [label="pass" color="#388E3C" penwidth=2]
+        g_review -> g_verify [label="pass / skip" color="#388E3C" penwidth=2]
+
+        g_test -> retry [label="fail" color="#C62828" penwidth=1.2]
+        g_review -> retry [label="CRITICAL" color="#C62828" penwidth=1.2]
+        g_verify -> retry [label="fail" color="#C62828" style=dashed]
+        retry -> failed [label="retries\nexhausted" color="#C62828"]
+
+        { rank=same; g_verify; retry; failed; gate_cost }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // L5: DELIVERY
+    // ════════════════════════════════════════════════════════════════
+    subgraph cluster_L5 {
+        label="L5  DELIVERY"
+        labeljust=l style="filled,rounded" fillcolor="#E8EAF6" color="#303F9F"
+        penwidth=2 fontname="Helvetica Bold" fontsize=10 fontcolor="#1A237E"
+
+        merge [label="⑨ Merge\nwt-merge --no-push --llm-resolve\npolicy: eager | checkpoint | manual\n+ mem: remember success/conflict" fillcolor="#C5CAE9" color="#303F9F"]
+
+        checkpoint [label="Checkpoint\nevery N changes (checkpoint_every)\npause for user approval\n! notify progress (N/total)\nmerge queued on approve" fillcolor="#D1C4E9" color="#512DA8" fontsize=8]
+
+        merge_queue [label="Merge Queue\nretry 5x per change\nmerge-blocked + cooldown\n! notify on permanent fail\n+ mem: remember perm-fail" fillcolor="#C5CAE9" color="#303F9F" fontsize=8]
+
+        replan [label="⑩ Auto-Replan [Opus]\ncollect completed → compare spec\n+ mem: recall orch history (limit 5)\npreserve: prev_total_tokens,\n  active_seconds, replan_cycle\nadvance to NEXT phase" fillcolor="#FFF9C4" color="#F9A825"]
+
+        all_done [label="✓  ALL DONE\n! notify completion\n$ final token + gate stats\n+ mem: final stats" fillcolor="#A5D6A7" color="#2E7D32" fontsize=11 shape=doubleoctagon]
+
+        merge -> merge_queue [label="conflict" style=dashed]
+        merge_queue -> merge [label="retry" style=dashed constraint=false]
+        merge -> checkpoint [label="checkpoint\npolicy" style=dashed]
+        checkpoint -> merge_queue [label="approved" style=dashed]
+        replan -> all_done [label="no more\nphases" color="#388E3C" penwidth=2]
+        { rank=same; merge; checkpoint; merge_queue }
+        { rank=same; replan; all_done }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // BOTTOM SECTION: Cross-cutting + Lifecycle + Legend
+    // ════════════════════════════════════════════════════════════════
+
+    // --- Cross-cutting concerns ---
+    subgraph cluster_cross {
+        label="CROSS-CUTTING CONCERNS"
+        labeljust=l style="filled,rounded,dashed" fillcolor="#FAFAFA" color="#757575"
+        penwidth=1.5 fontname="Helvetica Bold" fontsize=10 fontcolor="#424242"
+
+        xc_mem [label="Memory (shodh-memory)\n──────────────────────────\nRECALL: plan warm-start,\n  dispatch proposal, replan history\nREMEMBER: gate results, merge\n  outcomes, stalls, failures\nPERIODIC (~2.5 min):\n  stats: ops count + avg ms\n  audit: health + spot-check\nTAGS: source:orchestrator\n  + phase:* + change:*" fillcolor="#EDE7F6" color="#6A1B9A" fontsize=7]
+
+        xc_cost [label="Cost & Token Tracking\n──────────────────────────\nPER-CHANGE: tokens_used\n  (loop-state.json every poll)\nGATE TIMING: test/review/verify ms\n  gate_total_ms = sum\nRETRY COST: gate_retry_tokens\n  (snapshot → diff on re-entry)\nBUDGET: pause dispatch if over\nTIME: active_seconds (fresh only)\nCROSS-REPLAN: prev_total_tokens" fillcolor="#FFF3E0" color="#E65100" fontsize=7]
+
+        xc_notify [label="Notifications\n──────────────────────────\nBACKEND: notify-send (desktop)\nLOG: always orchestration.log\n──────────────────────────\nCRITICAL:\n  test fail | review CRITICAL\n  stall x3 | merge perm-fail\nNORMAL:\n  time limit | all done\n  checkpoint (N/total)" fillcolor="#FFEBEE" color="#C62828" fontsize=7]
+
+        xc_files [label="State & Files\n──────────────────────────\norchestration-plan.json\norchestration-state.json\norchestration-summary.md\n.claude/orchestration.yaml\n.claude/orchestration.log\n  (rotate 100KB → 50KB)\norchestration-last-response.txt\n<wt>/.claude/loop-state.json\n<wt>/.claude/ralph-terminal.pid" fillcolor="#ECEFF1" color="#455A64" fontsize=7 shape=note]
+
+        { rank=same; xc_mem; xc_cost; xc_notify; xc_files }
+    }
+
+    // --- Change Lifecycle (compact horizontal) ---
+    subgraph cluster_lifecycle {
+        label="CHANGE LIFECYCLE"
+        labeljust=l style="filled,rounded" fillcolor="#F3E5F5" color="#8E24AA"
+        penwidth=1.5 fontname="Helvetica Bold" fontsize=9 fontcolor="#6A1B9A"
+        rankdir=LR
+
+        s_flow [label="pending → dispatched → running → verifying → done → merged" fillcolor="#E1BEE7" color="#8E24AA" fontsize=8]
+        s_alt [label="Alternate paths:\nrunning → stalled → running (resume, 300s cd)\nstalled → failed (after 3x)\nverifying → running (retry, gate fail)\nverifying → failed (retries exhausted)\ndone → merge-blocked → merged (retry 5x)\nmerge-blocked → failed (after 5x)" fillcolor="#EDE7F6" color="#8E24AA" fontsize=7]
+
+        s_flow -> s_alt [style=invis]
+    }
+
+    // --- Legend, Stop, Key Numbers ---
+    subgraph cluster_ref {
+        label="REFERENCE"
+        labeljust=l style="filled,rounded" fillcolor="white" color="#E0E0E0"
+        penwidth=1 fontname="Helvetica Bold" fontsize=9 fontcolor="#616161"
+
+        legend [label="LEGEND\n──────────────────────────\nLAYERS\nL1 Input & Config    (orange)\nL2 Planning             (yellow)\nL3 Execution             (blue)\nL4 Quality Gate        (red)\nL5 Delivery               (indigo)\n──────────────────────────\nINLINE BADGES\n+ mem  memory operation\n$         cost / token tracking\n!          notification trigger\n──────────────────────────\nMODEL TIERS\n[Opus]     plan + replan\n[Sonnet]  code review\n[Haiku]   spec summarize\n──────────────────────────\nEDGES\ngreen thick = happy path\nred               = failure / gate\norange dash = retry / resume\ngray dash     = data / config" fillcolor="white" color="#E0E0E0" fontsize=7 shape=note]
+
+        stop [label="STOP CONDITIONS\n──────────────────────────\nTime limit (active_seconds)\nCtrl+C: graceful shutdown\nToken budget: pause dispatch\nCrash: stale >2min → recover\nExternal: status = stopped\nAll states fully resumable" fillcolor="#FFCDD2" color="#C62828" fontsize=7]
+
+        key_nums [label="KEY NUMBERS\n──────────────────────────\npoll interval: 15s\nstall threshold: 3 resumes\nstall cooldown: 300s\nmerge retries: 5x\ntest timeout: 300s (default)\nlog rotate: 100KB → 50KB\nhousekeeping: every ~2.5 min\nmax diff for review: 30k chars\nmax test output: 2000 chars\nmemory cap: 2000 / 1000 chars" fillcolor="#E8F5E9" color="#2E7D32" fontsize=7 shape=note]
+
+        { rank=same; legend; stop; key_nums }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // INTER-LAYER EDGES
+    // ════════════════════════════════════════════════════════════════
+
+    // L1 → L2 (happy path green)
+    input -> mem_warm [penwidth=2.5 color="#388E3C" weight=8]
+    summarize -> mem_warm [style=dashed weight=3]
+    directives -> plan [style=dashed constraint=false color="#9E9E9E"]
+
+    // L2 → L3
+    plan -> dispatch [label="changes[]" penwidth=2.5 color="#388E3C" weight=8]
+
+    // L3 internal
+    monitor -> dispatch [label="dispatch\nready" style=dashed constraint=false color="#9E9E9E"]
+
+    // L3 → L4
+    monitor -> g_test [label="ralph done" penwidth=2.5 color="#C62828" weight=8]
+
+    // L4 retry → L3 (back-edge)
+    retry -> ralph [label="resume +\ncontext" style=dashed color="#FF6F00" constraint=false]
+
+    // L4 → L5 (happy path green)
+    g_verify -> merge [label="all pass ✓" penwidth=2.5 color="#388E3C" weight=8]
+
+    // L5 loops
+    merge -> replan [label="all phases\n+ auto_replan" penwidth=1.5 weight=5]
+    replan -> dispatch [label="new changes" penwidth=1.5 color="#1565C0" constraint=false]
+    monitor -> all_done [label="all done\nno replan" style=dashed constraint=false color="#9E9E9E"]
+
+    // Stall recovery
+    monitor -> ralph [label="resume stalled\n(300s cd)" style=dashed color="#FF6F00" constraint=false]
+
+    // Config → monitor
+    directives -> monitor [style=dashed constraint=false color="#9E9E9E"]
+
+    // ════════════════════════════════════════════════════════════════
+    // LAYOUT ORDERING (invisible edges)
+    // ════════════════════════════════════════════════════════════════
+    all_done -> xc_mem [style=invis weight=10]
+    failed -> xc_cost [style=invis weight=10]
+    xc_mem -> s_flow [style=invis weight=10]
+    xc_files -> legend [style=invis weight=10]
+    s_alt -> stop [style=invis weight=10]
 }
