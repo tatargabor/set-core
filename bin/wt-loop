@@ -622,6 +622,13 @@ cmd_run() {
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
 
+    if [[ -n "$claude_model" ]]; then
+        echo "🤖 Claude model: $claude_model"
+    else
+        echo "🤖 Claude model: (router default)"
+    fi
+    echo ""
+
     local iteration=0
     local stall_count=0
     local repeated_msg_count=0
