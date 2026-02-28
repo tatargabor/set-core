@@ -4,7 +4,7 @@
 # Reads a project brief, decomposes into OpenSpec changes via Claude,
 # dispatches to worktrees with Ralph loops, and monitors progress.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 source "$SCRIPT_DIR/wt-common.sh"
 
 # ─── Constants ───────────────────────────────────────────────────────
