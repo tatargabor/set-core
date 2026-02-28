@@ -35,6 +35,12 @@ Review a spec document against the orchestration planning guide and checklist.
    - Are shared type changes identified?
    - Any missing implicit dependencies (barrel exports, config files)?
 
+   **Manual/Human Tasks**
+   - Do any items involve external services (Stripe, Firebase, AWS, OAuth providers)?
+   - Do any items require API keys, tokens, or secrets that must be provided by a human?
+   - Do any items need external account creation, webhook setup, or DNS configuration?
+   - If yes: flag a warning if the spec doesn't mention manual steps, and suggest adding `[?]` tasks with `[input:KEY]` or `[confirm]` annotations in the tasks.md
+
    **Dependency Graph Analysis**
    Classify each spec item by change type and detect ordering issues:
 

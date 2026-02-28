@@ -722,6 +722,7 @@ init_state() {
         model: (.model // null),
         skip_review: (.skip_review // false),
         skip_test: (.skip_test // false),
+        has_manual_tasks: (.has_manual_tasks // false),
         status: "pending",
         worktree_path: null,
         ralph_pid: null,
@@ -1710,6 +1711,11 @@ Model selection — suggest a model per change based on task nature:
 - "sonnet" for doc sync, doc audit, simple cleanup, mechanical refactors, S-complexity tasks
 - When in doubt, use "opus"
 
+Manual tasks — flag changes that require human intervention:
+- Set "has_manual_tasks": true when a change involves: external API keys/secrets (Stripe, AWS, Firebase), third-party account/project creation, OAuth app registration, DNS configuration, webhook setup, or any step that cannot be automated
+- Examples: "integrate Stripe payments" (needs API key), "set up Firebase auth" (needs project creation), "configure custom domain" (needs DNS records)
+- When false or omitted, all tasks are assumed automatable
+
 Output ONLY valid JSON (no markdown, no explanation):
 {
   "phase_detected": "Description of which phase/section was selected and why",
@@ -1721,6 +1727,7 @@ Output ONLY valid JSON (no markdown, no explanation):
       "complexity": "S|M|L",
       "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
       "model": "opus|sonnet",
+      "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
       "roadmap_item": "The spec section/item this implements"
     }
@@ -1779,6 +1786,11 @@ Model selection — suggest a model per change based on task nature:
 - "sonnet" for doc sync, doc audit, simple cleanup, mechanical refactors, S-complexity tasks
 - When in doubt, use "opus"
 
+Manual tasks — flag changes that require human intervention:
+- Set "has_manual_tasks": true when a change involves: external API keys/secrets (Stripe, AWS, Firebase), third-party account/project creation, OAuth app registration, DNS configuration, webhook setup, or any step that cannot be automated
+- Examples: "integrate Stripe payments" (needs API key), "set up Firebase auth" (needs project creation), "configure custom domain" (needs DNS records)
+- When false or omitted, all tasks are assumed automatable
+
 Output ONLY valid JSON (no markdown, no explanation):
 {
   "changes": [
@@ -1788,6 +1800,7 @@ Output ONLY valid JSON (no markdown, no explanation):
       "complexity": "S|M|L",
       "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
       "model": "opus|sonnet",
+      "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
       "roadmap_item": "The exact Next bullet this implements"
     }
@@ -2135,6 +2148,10 @@ cmd_status() {
     [[ "$failed" -gt 0 ]] && echo "  Failed:   $failed"
     [[ "$stalled" -gt 0 ]] && echo "  Stalled:  $stalled"
 
+    local waiting_human
+    waiting_human=$(count_changes_by_status "waiting:human")
+    [[ "$waiting_human" -gt 0 ]] && echo "  ⏸ Human:  $waiting_human waiting for manual input"
+
     local replan_cycle
     replan_cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME" 2>/dev/null)
     [[ "$replan_cycle" -gt 0 ]] && echo "  Replan:   cycle $replan_cycle"
@@ -2219,6 +2236,22 @@ cmd_status() {
         fi
         printf "  %-25s %-14s %-15s %-8s %-8s %-10s %-14s\n" "$name" "$change_status" "$progress" "$test_res" "$review_res" "$tokens" "$gate_col"
     done
+
+    # Manual task hints for waiting:human changes
+    if [[ "$waiting_human" -gt 0 ]]; then
+        echo ""
+        info "⏸ Changes waiting for manual input:"
+        jq -r '.changes[] | select(.status == "waiting:human") | .name' "$STATE_FILENAME" | while read -r wh_name; do
+            local wh_wt
+            wh_wt=$(jq -r --arg n "$wh_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+            local wh_summary=""
+            if [[ -n "$wh_wt" && -f "$wh_wt/.claude/loop-state.json" ]]; then
+                wh_summary=$(jq -r '.manual_tasks[0]? | "[\(.id)] \(.description)"' "$wh_wt/.claude/loop-state.json" 2>/dev/null)
+            fi
+            echo "  $wh_name: ${wh_summary:-details unavailable}"
+            echo "    → wt-manual show $wh_name"
+        done
+    fi
 
     # Merge queue
     local queue_size
@@ -3287,6 +3320,32 @@ poll_change() {
                     update_change_field "$change_name" "status" '"failed"'
                     send_notification "wt-orchestrate" "Change '$change_name' failed — process died 3 times" "critical"
                 fi
+            fi
+            ;;
+        "waiting:human")
+            # Human action required — do NOT auto-resume or increment stall count
+            local cur_status
+            cur_status=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .status // ""' "$STATE_FILENAME")
+
+            # Check if wt-manual has resolved manual tasks and set status to "dispatched"
+            if [[ "$cur_status" == "dispatched" ]]; then
+                log_info "Change $change_name manual tasks resolved — resuming"
+                info "▶ $change_name — manual tasks resolved, resuming..."
+                resume_change "$change_name"
+                return
+            fi
+
+            if [[ "$cur_status" != "waiting:human" ]]; then
+                update_change_field "$change_name" "status" '"waiting:human"'
+                # Log manual task summary
+                local manual_summary
+                manual_summary=$(jq -r '.manual_tasks[]? | "[\(.id)] \(.description) (\(.type))"' "$loop_state" 2>/dev/null | head -5)
+                log_info "Change $change_name waiting for human input:"
+                while IFS= read -r line; do
+                    [[ -n "$line" ]] && log_info "  $line"
+                done <<< "$manual_summary"
+                info "⏸ $change_name — waiting for human input. Run: wt-manual show $change_name"
+                send_notification "wt-orchestrate" "Change '$change_name' needs human action. Run: wt-manual show $change_name" "warning"
             fi
             ;;
         stopped|stalled|stuck)

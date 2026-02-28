@@ -280,7 +280,64 @@ update_terminal_title() {
     printf '\033]0;%s\007' "$title"
 }
 
-# Check if tasks.md is complete (all tasks checked)
+# Count manual/human tasks ([?] pattern) in tasks.md
+count_manual_tasks() {
+    local wt_path="$1"
+
+    local tasks_file
+    tasks_file=$(find_tasks_file "$wt_path")
+    [[ -z "$tasks_file" ]] && echo 0 && return
+
+    local count
+    count=$(grep -cE '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null)
+    count=${count//[^0-9]/}
+    echo "${count:-0}"
+}
+
+# Parse manual tasks into JSON array: [{id, description, type, input_key}]
+parse_manual_tasks() {
+    local wt_path="$1"
+
+    local tasks_file
+    tasks_file=$(find_tasks_file "$wt_path")
+    [[ -z "$tasks_file" ]] && echo "[]" && return
+
+    local result="["
+    local first=true
+
+    while IFS= read -r line; do
+        # Extract task id (e.g. "3.3") and rest of the line
+        local task_id="" description="" task_type="confirm" input_key=""
+
+        # Match: - [?] 3.3 Description [input:KEY] or [confirm]
+        if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*\[\?\][[:space:]]+([0-9]+\.[0-9]+)[[:space:]]+(.*) ]]; then
+            task_id="${BASH_REMATCH[1]}"
+            local rest="${BASH_REMATCH[2]}"
+
+            # Extract type annotation if present
+            if [[ "$rest" =~ \[input:([^\]]+)\] ]]; then
+                task_type="input"
+                input_key="${BASH_REMATCH[1]}"
+                description="${rest% \[input:*}"
+            elif [[ "$rest" =~ \[confirm\] ]]; then
+                task_type="confirm"
+                description="${rest% \[confirm\]}"
+            else
+                description="$rest"
+            fi
+
+            $first || result+=","
+            first=false
+            result+=$(printf '{"id":"%s","description":%s,"type":"%s","input_key":"%s"}' \
+                "$task_id" "$(echo "$description" | jq -Rs .)" "$task_type" "$input_key")
+        fi
+    done < <(grep -E '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null)
+
+    result+="]"
+    echo "$result"
+}
+
+# Check if tasks.md is complete (all auto-tasks checked)
 check_tasks_done() {
     local wt_path="$1"
 
@@ -293,14 +350,17 @@ check_tasks_done() {
         return 1
     fi
 
-    # Count incomplete tasks (- [ ] pattern)
+    # Count incomplete auto-tasks (- [ ] pattern only)
+    # Note: [?] manual tasks are NOT counted here — they are handled
+    # separately by the waiting:human detection. The regex \[\s*\] matches
+    # only whitespace inside brackets, so [?] is naturally excluded.
     local count
     count=$(grep -cE '^\s*-\s*\[\s*\]' "$tasks_file" 2>/dev/null)
     count=${count//[^0-9]/}  # Strip any non-digit characters
     count=${count:-0}
 
     if [[ "$count" -eq 0 ]]; then
-        return 0  # All done
+        return 0  # All auto-tasks done
     else
         return 1  # Not done
     fi
@@ -535,6 +595,18 @@ Before you stop, write .claude/reflection.md with 3-5 bullet points:
 If nothing notable happened, write \"No notable issues.\" to the file."
     fi
 
+    # Detect manual tasks and add instruction to skip them
+    local manual_task_instruction=""
+    local manual_count
+    manual_count=$(count_manual_tasks "$wt_path")
+    if [[ "$manual_count" -gt 0 ]]; then
+        manual_task_instruction="
+# Manual Tasks
+Tasks marked with [?] in tasks.md require human action (e.g., providing API keys, external setup).
+Do NOT attempt to complete [?] tasks — skip them entirely and focus only on [ ] tasks.
+If all [ ] tasks are done but [?] tasks remain, commit your work and stop."
+    fi
+
     cat <<EOF
 # Task
 $effective_task
@@ -549,6 +621,7 @@ Previous work is visible in the git history and current file state.
 3. Do ONLY what is specified in YOUR TASK above — nothing more
 4. If stuck on the same issue, try a different approach
 $openspec_instructions
+$manual_task_instruction
 # Previous Work
 $prev_text
 
@@ -887,6 +960,33 @@ except:
 
             # Check for stall condition
             if [[ $stall_count -ge $stall_threshold ]]; then
+                # Before declaring stall, check if this is actually a waiting:human situation
+                # Auto-tasks done + manual tasks remain = waiting for human, not stalled
+                local manual_count
+                manual_count=$(count_manual_tasks "$wt_path")
+                if check_tasks_done "$wt_path" && [[ "$manual_count" -gt 0 ]]; then
+                    local manual_tasks_json
+                    manual_tasks_json=$(parse_manual_tasks "$wt_path")
+                    echo ""
+                    echo "╔════════════════════════════════════════════════════════════════╗"
+                    echo "║  ⏸  WAITING FOR HUMAN: $manual_count manual task(s) pending      ║"
+                    echo "║  All automated tasks complete. Human action required.            ║"
+                    echo "║  Run: wt-manual show $(basename "$wt_path")                      ║"
+                    echo "╚════════════════════════════════════════════════════════════════╝"
+                    update_loop_state "$state_file" "status" '"waiting:human"'
+                    # Write manual task details to loop-state
+                    local tmp_state
+                    tmp_state=$(jq --argjson mt "$manual_tasks_json" \
+                        --arg ws "$(date -Iseconds)" \
+                        '.manual_tasks = $mt | .waiting_since = $ws' "$state_file")
+                    echo "$tmp_state" > "$state_file"
+                    update_terminal_title "Ralph: ${worktree_name}${title_suffix} [waiting:human]"
+                    notify-send "Ralph Loop — Human Action Required" \
+                        "$worktree_name has $manual_count manual task(s) pending" 2>/dev/null || true
+                    trap - EXIT SIGTERM SIGINT
+                    exit 0
+                fi
+
                 echo ""
                 echo "╔════════════════════════════════════════════════════════════════╗"
                 echo "║  🛑 STALLED: No commits in $stall_count iteration(s)            ║"
@@ -1377,6 +1477,7 @@ cmd_status() {
         stuck) status_icon="⚠️" ;;
         stalled) status_icon="❓" ;;
         stopped) status_icon="⏹️" ;;
+        waiting:human) status_icon="⏸" ;;
         *) status_icon="❓" ;;
     esac
 
@@ -1384,6 +1485,21 @@ cmd_status() {
     echo "  Iteration: $iteration / $max_iter"
     echo "  Task: ${task:0:50}..."
     echo "  Started: $started"
+
+    # Show manual task info when waiting for human
+    if [[ "$status" == "waiting:human" ]]; then
+        local manual_count
+        manual_count=$(jq -r '.manual_tasks | length // 0' "$state_file" 2>/dev/null)
+        if [[ "$manual_count" -gt 0 ]]; then
+            echo ""
+            echo "  ⏸ Manual tasks pending ($manual_count):"
+            jq -r '.manual_tasks[]? | "    - [\(.id)] \(.description) (\(.type)\(if .input_key != "" then ":" + .input_key else "" end))"' "$state_file" 2>/dev/null
+            echo ""
+            local wt_name
+            wt_name=$(jq -r '.worktree_name // empty' "$state_file")
+            echo "  Run: wt-manual show ${wt_name:-$(basename "$(pwd)")}"
+        fi
+    fi
 
     # Show token usage if available
     local total_tokens
