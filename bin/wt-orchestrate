@@ -1020,7 +1020,7 @@ try:
     if 'changes' in data:
         print(json.dumps(data))
         sys.exit(0)
-except:
+except Exception:
     pass
 # 3. Find JSON by trying from first { to each } from end backwards
 first_brace = raw.find('{')
@@ -1032,7 +1032,7 @@ if first_brace >= 0:
                 if 'changes' in data:
                     print(json.dumps(data))
                     sys.exit(0)
-            except:
+            except Exception:
                 continue
 print('ERROR: Could not parse JSON from Claude output', file=sys.stderr)
 print('Parse error: ' + best_err, file=sys.stderr)
