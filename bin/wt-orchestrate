@@ -3692,7 +3692,7 @@ merge_change() {
     fi
 
     # Case 3: Normal merge (with LLM conflict resolution)
-    if wt-merge "$change_name" --no-push --llm-resolve 2>/dev/null; then
+    if wt-merge "$change_name" --no-push --llm-resolve >>"$LOG_FILE" 2>&1; then
         update_change_field "$change_name" "status" '"merged"'
         log_info "Merged $change_name"
         success "Merged: $change_name"
