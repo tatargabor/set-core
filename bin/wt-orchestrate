@@ -2662,7 +2662,8 @@ resume_change() {
     terminal_pid=$(jq -r '.terminal_pid // empty' "$loop_state" 2>/dev/null)
     update_change_field "$change_name" "ralph_pid" "${terminal_pid:-0}"
     update_change_field "$change_name" "status" '"running"'
-    update_change_field "$change_name" "stall_count" "0"
+    # Note: do NOT reset stall_count here — the agent hasn't proven it's alive yet.
+    # stall_count is reset in poll_change() when we see a fresh loop-state mtime.
 }
 
 # ─── Monitor Loop ────────────────────────────────────────────────────
@@ -3049,6 +3050,16 @@ poll_change() {
             local now_epoch
             now_epoch=$(date +%s)
             local stale_secs=$(( now_epoch - loop_mtime ))
+
+            # If loop-state is fresh, the agent is alive — reset stall counter
+            if [[ "$stale_secs" -le 300 ]]; then
+                local cur_stall
+                cur_stall=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .stall_count // 0' "$STATE_FILENAME")
+                if [[ "$cur_stall" -gt 0 ]]; then
+                    update_change_field "$change_name" "stall_count" "0"
+                    log_info "Change $change_name recovered — stall_count reset to 0"
+                fi
+            fi
 
             # If loop-state hasn't been updated in 5+ minutes, the process is likely dead
             if [[ "$stale_secs" -gt 300 ]]; then
@@ -3708,6 +3719,18 @@ _try_merge() {
     update_change_field "$name" "merge_retry_count" "$retry_count"
 
     log_info "Merge attempt $retry_count/$MAX_MERGE_RETRIES for $name"
+
+    # Update the change branch to include latest main before retrying merge.
+    # This handles the case where main moved (other merges landed) since the branch was created.
+    local wt_path
+    wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+    if [[ -n "$wt_path" && -d "$wt_path" ]]; then
+        local main_branch
+        main_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+        log_info "Updating $name branch with latest $main_branch before merge retry"
+        (cd "$wt_path" && git fetch origin "$main_branch" 2>/dev/null && git merge "origin/$main_branch" --no-edit 2>/dev/null) || true
+    fi
+
     if merge_change "$name" 2>/dev/null; then
         return 0
     fi
