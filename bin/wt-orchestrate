@@ -1832,6 +1832,15 @@ cmd_start() {
             cleanup_orchestrator() {
                 [[ "${cleanup_done:-}" == true ]] && return
                 cleanup_done=true
+                # Don't overwrite "done" status — only set "stopped" if still running
+                local current_status=""
+                if [[ -f "$STATE_FILENAME" ]]; then
+                    current_status=$(jq -r '.status // ""' "$STATE_FILENAME" 2>/dev/null || true)
+                fi
+                if [[ "$current_status" == "done" ]]; then
+                    log_info "Orchestrator exiting normally (status=done)"
+                    return
+                fi
                 echo ""
                 warn "Orchestrator interrupted, saving state..."
                 log_info "Orchestrator interrupted by signal"
@@ -1889,6 +1898,16 @@ cmd_start() {
     cleanup_orchestrator() {
         [[ "${cleanup_done:-}" == true ]] && return
         cleanup_done=true
+
+        # Don't overwrite "done" status — only set "stopped" if still running
+        local current_status=""
+        if [[ -f "$STATE_FILENAME" ]]; then
+            current_status=$(jq -r '.status // ""' "$STATE_FILENAME" 2>/dev/null || true)
+        fi
+        if [[ "$current_status" == "done" ]]; then
+            log_info "Orchestrator exiting normally (status=done)"
+            return
+        fi
 
         echo ""
         warn "Orchestrator interrupted, saving state..."
