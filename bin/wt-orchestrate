@@ -1892,7 +1892,8 @@ monitor_loop() {
         sleep "$POLL_INTERVAL"
 
         # Track active time: only count this interval if loops are making progress
-        if any_loop_active; then
+        # Skip entirely during token_wait — rate limit pause should not count
+        if [[ "$token_wait" != true ]] && any_loop_active; then
             active_seconds=$((active_seconds + POLL_INTERVAL))
             update_state_field "active_seconds" "$active_seconds"
         fi
@@ -1954,6 +1955,9 @@ monitor_loop() {
 
         # Retry merge queue + any merge-blocked items not in queue
         retry_merge_queue
+
+        # Resume stalled changes after cooldown (handles rate limit recovery)
+        resume_stalled_changes
 
         # Check if checkpoint needed
         local changes_since
@@ -2138,10 +2142,22 @@ poll_change() {
             handle_change_done "$change_name" "$wt_path" "$test_command" "$merge_policy"
             ;;
         stalled|stuck)
-            log_warn "Change $change_name $ralph_status"
-            update_change_field "$change_name" "status" "\"$ralph_status\""
-            send_notification "wt-orchestrate" "Change '$change_name' $ralph_status" "critical"
-            trigger_checkpoint "failure"
+            local stall_count
+            stall_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .stall_count // 0' "$STATE_FILENAME")
+            stall_count=$((stall_count + 1))
+            update_change_field "$change_name" "stall_count" "$stall_count"
+
+            if [[ "$stall_count" -le 3 ]]; then
+                log_warn "Change $change_name $ralph_status (attempt $stall_count/3) — will auto-resume"
+                info "$change_name stalled (attempt $stall_count/3), resuming..."
+                update_change_field "$change_name" "status" '"stalled"'
+                update_change_field "$change_name" "stalled_at" "$(date +%s)"
+            else
+                log_error "Change $change_name $ralph_status after 3 resume attempts — giving up"
+                update_change_field "$change_name" "status" '"failed"'
+                send_notification "wt-orchestrate" "Change '$change_name' failed after 3 resume attempts" "critical"
+                trigger_checkpoint "failure"
+            fi
             ;;
     esac
 }
@@ -2359,6 +2375,26 @@ retry_merge_queue() {
         log_info "Retrying merge for blocked (not in queue): $name"
         merge_change "$name" 2>/dev/null || true
     done <<< "$blocked"
+}
+
+# Resume stalled changes after a cooldown period.
+# Stalled changes get a 5-minute cooldown before resume attempt.
+# This handles transient failures like API rate limits.
+resume_stalled_changes() {
+    local now
+    now=$(date +%s)
+    local stalled
+    stalled=$(jq -r '.changes[] | select(.status == "stalled") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        local stalled_at
+        stalled_at=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .stalled_at // 0' "$STATE_FILENAME")
+        local cooldown=$((now - stalled_at))
+        if [[ "$cooldown" -ge 300 ]]; then
+            log_info "Resuming stalled change $name after ${cooldown}s cooldown"
+            resume_change "$name" || true
+        fi
+    done <<< "$stalled"
 }
 
 # ─── Checkpoint ──────────────────────────────────────────────────────
