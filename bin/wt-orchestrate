@@ -896,11 +896,16 @@ $memory_context
 $(if [[ -n "${_REPLAN_COMPLETED:-}" ]]; then
 cat <<REPLAN_CTX
 
-## Already Completed (from previous orchestration cycles)
-The following roadmap items have ALREADY been implemented and merged (cycle ${_REPLAN_CYCLE:-1}):
-$_REPLAN_COMPLETED
+## IMPORTANT: Already Completed (cycle ${_REPLAN_CYCLE:-1})
+The following roadmap items have ALREADY been implemented and merged.
+Roadmap items: $_REPLAN_COMPLETED
 
-DO NOT re-plan any of these items. Focus on the NEXT incomplete phase/priority after these.
+CRITICAL INSTRUCTIONS FOR REPLAN:
+- DO NOT regenerate changes for any of these completed items
+- You MUST advance to the NEXT phase/priority group in the spec
+- If Phase/Priority 1 items are all completed, plan Phase/Priority 2 items
+- Generate changes with NEW names (not the same names as completed changes)
+- If no more phases remain in the spec, return an empty changes array: {"changes": [], "phase_detected": "all done", "reasoning": "all phases completed"}
 REPLAN_CTX
 fi)
 
@@ -1994,11 +1999,11 @@ auto_replan_cycle() {
     local max_parallel
     max_parallel=$(echo "$directives" | jq -r '.max_parallel')
 
-    # Collect completed change names for context
+    # Collect completed change names for context (include merge-blocked — work is done, just merge issues)
     local completed_names
-    completed_names=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged") | .name] | join(", ")' "$STATE_FILENAME")
+    completed_names=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged" or .status == "merge-blocked") | .name] | join(", ")' "$STATE_FILENAME")
     local completed_roadmap
-    completed_roadmap=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged") | .roadmap_item] | join("; ")' "$STATE_FILENAME")
+    completed_roadmap=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged" or .status == "merge-blocked") | .roadmap_item] | join("; ")' "$STATE_FILENAME")
 
     info "Completed so far: $completed_names"
     log_info "Auto-replan cycle $cycle — completed: $completed_names"
@@ -2013,7 +2018,7 @@ auto_replan_cycle() {
     export _REPLAN_COMPLETED="$completed_roadmap"
     export _REPLAN_CYCLE="$cycle"
 
-    if ! cmd_plan 2>/dev/null; then
+    if ! cmd_plan 2>>"$LOG_FILE"; then
         log_error "Auto-replan failed — cmd_plan returned error"
         rm -f "$old_plan"
         unset _REPLAN_COMPLETED _REPLAN_CYCLE
