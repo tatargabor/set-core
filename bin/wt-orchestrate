@@ -1011,8 +1011,8 @@ try:
         sys.exit(0)
 except:
     pass
-# Try extracting from markdown code block
-match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw, re.DOTALL)
+# Try extracting from markdown code block (greedy inside fences)
+match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', raw, re.DOTALL)
 if match:
     try:
         data = json.loads(match.group(1))
@@ -1021,17 +1021,28 @@ if match:
             sys.exit(0)
     except:
         pass
-# Try finding first { ... } block (greedy)
-match = re.search(r'(\{.*\})', raw, re.DOTALL)
-if match:
-    try:
-        data = json.loads(match.group(1))
-        if 'changes' in data:
-            print(json.dumps(data))
-            sys.exit(0)
-    except:
-        pass
+# Try finding valid JSON by scanning for { and finding matching }
+# Use bracket counting for robustness
+text = raw
+start = text.find('{')
+while start != -1:
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == '{': depth += 1
+        elif text[i] == '}': depth -= 1
+        if depth == 0:
+            candidate = text[start:i+1]
+            try:
+                data = json.loads(candidate)
+                if 'changes' in data:
+                    print(json.dumps(data))
+                    sys.exit(0)
+            except:
+                pass
+            break
+    start = text.find('{', start + 1)
 print('ERROR: Could not parse JSON from Claude output', file=sys.stderr)
+print('Raw output (first 500 chars): ' + raw[:500], file=sys.stderr)
 sys.exit(1)
 PYEOF
 ) || {
