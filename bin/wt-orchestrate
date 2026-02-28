@@ -41,6 +41,7 @@ DEFAULT_TEST_TIMEOUT=300
 DEFAULT_MAX_VERIFY_RETRIES=2
 DEFAULT_SUMMARIZE_MODEL="haiku"
 DEFAULT_REVIEW_MODEL="sonnet"
+DEFAULT_IMPL_MODEL="opus"  # set from directives.default_model in monitor_loop
 
 # Runtime state
 MAX_REPLAN_RETRIES=3     # max consecutive replan failures before giving up
@@ -715,8 +716,12 @@ init_state() {
         name: .name,
         scope: .scope,
         complexity: .complexity,
+        change_type: (.change_type // "feature"),
         depends_on: .depends_on,
         roadmap_item: .roadmap_item,
+        model: (.model // null),
+        skip_review: (.skip_review // false),
+        skip_test: (.skip_test // false),
         status: "pending",
         worktree_path: null,
         ralph_pid: null,
@@ -768,6 +773,42 @@ update_change_field() {
     jq --arg name "$change_name" --argjson val "$value" \
         '(.changes[] | select(.name == $name)).'$field' = $val' \
         "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
+}
+
+# Resolve effective model for a change: explicit > directive > heuristic
+# Args: change_name, default_model (from directives)
+resolve_change_model() {
+    local change_name="$1"
+    local default_model="${2:-opus}"
+
+    # 1. Per-change explicit model
+    local explicit_model
+    explicit_model=$(jq -r --arg n "$change_name" \
+        '.changes[] | select(.name == $n) | .model // empty' "$STATE_FILENAME")
+    if [[ -n "$explicit_model" && "$explicit_model" != "null" ]]; then
+        echo "$explicit_model"
+        return
+    fi
+
+    # 2. Directive default_model (if not "opus" — i.e., user explicitly set it)
+    if [[ "$default_model" != "opus" ]]; then
+        echo "$default_model"
+        return
+    fi
+
+    # 3. Complexity-based heuristic
+    local complexity change_type
+    complexity=$(jq -r --arg n "$change_name" \
+        '.changes[] | select(.name == $n) | .complexity // "M"' "$STATE_FILENAME")
+    change_type=$(jq -r --arg n "$change_name" \
+        '.changes[] | select(.name == $n) | .change_type // "feature"' "$STATE_FILENAME")
+
+    if [[ "$complexity" == "S" && ("$change_type" == "cleanup-before" || "$change_type" == "cleanup-after") ]]; then
+        echo "sonnet"
+        return
+    fi
+
+    echo "$default_model"
 }
 
 # Get a change's status
@@ -2591,9 +2632,12 @@ MEMORY_EOF
     # Start Ralph loop in worktree
     # wt-loop spawns a terminal process and returns, so we check loop-state.json
     local task_desc="Implement $change_name: ${scope:0:200}"
+    local impl_model
+    impl_model=$(resolve_change_model "$change_name" "$DEFAULT_IMPL_MODEL")
+    log_info "Dispatch $change_name with model=$impl_model (default=$DEFAULT_IMPL_MODEL)"
     (
         cd "$wt_path" || exit 1
-        wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model opus
+        wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model "$impl_model"
     ) &
     wait $! 2>/dev/null || true
 
@@ -2720,9 +2764,12 @@ resume_change() {
     else
         task_desc="Continue $change_name: ${scope:0:200}"
     fi
+    local impl_model
+    impl_model=$(resolve_change_model "$change_name" "$DEFAULT_IMPL_MODEL")
+    log_info "Resume $change_name with model=$impl_model (done=$done_criteria, max=$max_iter)"
     (
         cd "$wt_path" || exit 1
-        wt-loop start "$task_desc" --max "$max_iter" --done "$done_criteria" --label "$change_name" --model opus
+        wt-loop start "$task_desc" --max "$max_iter" --done "$done_criteria" --label "$change_name" --model "$impl_model"
     ) &
     wait $! 2>/dev/null || true
 
@@ -2773,6 +2820,7 @@ monitor_loop() {
     review_before_merge=$(echo "$directives" | jq -r '.review_before_merge // false')
     local review_model
     review_model=$(echo "$directives" | jq -r '.review_model // "sonnet"')
+    DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
 
     # Parse time limit (default 5h, --time-limit none to disable)
     local time_limit_secs=0
@@ -3411,10 +3459,18 @@ handle_change_done() {
     local gate_review_ms=0
     local gate_verify_ms=0
 
+    # ── Read per-change gate skip flags ──
+    local skip_test skip_review
+    skip_test=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .skip_test // false' "$STATE_FILENAME")
+    skip_review=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .skip_review // false' "$STATE_FILENAME")
+
     # ── Step 1: Run tests if configured (VG-1) ──
     local test_result="skip"
     local test_output=""
-    if [[ -n "$test_command" ]]; then
+    if [[ "$skip_test" == "true" ]]; then
+        test_result="skipped"
+        log_info "Verify gate: tests skipped for $change_name (skip_test=true)"
+    elif [[ -n "$test_command" ]]; then
         update_change_field "$change_name" "status" '"verifying"'
         info "Running tests for $change_name..."
         log_info "Verify gate: test start for $change_name"
@@ -3608,7 +3664,10 @@ handle_change_done() {
 
     # ── Step 3: LLM Code Review (VG-4) ──
     # Runs after build so we don't waste LLM tokens reviewing code that doesn't compile
-    if [[ "$review_before_merge" == "true" ]]; then
+    if [[ "$skip_review" == "true" ]]; then
+        update_change_field "$change_name" "review_result" '"skipped"'
+        log_info "Verify gate: review skipped for $change_name (skip_review=true)"
+    elif [[ "$review_before_merge" == "true" ]]; then
         info "Running code review for $change_name..."
         log_info "Verify gate: review start for $change_name"
 

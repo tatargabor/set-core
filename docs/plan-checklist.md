@@ -41,6 +41,9 @@ Quick pre-flight check before running `wt-orchestrate start`. Review the plan (`
 - [ ] **`merge_policy` chosen** — `eager` for trusted batches, `checkpoint` for review between merges, `manual` for full control
 - [ ] **`test_command` set** — Points to your project's test runner (e.g., `pnpm test`)
 - [ ] **`auto_replan` considered** — Set to `true` for multi-phase specs if you want hands-off execution
+- [ ] **`default_model` considered** — Set to `sonnet` for cost-sensitive batches; default is `opus`
+- [ ] **Per-change `model` set where needed** — S-complexity cleanup/doc changes can use `sonnet`; complex features should use `opus`
+- [ ] **`skip_review`/`skip_test` for doc-only changes** — Doc changes that don't touch code can skip test and review gates
 
 ## Runtime & Post-Merge
 

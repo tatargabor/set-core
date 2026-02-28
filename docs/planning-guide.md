@@ -17,6 +17,7 @@ How to write effective inputs for `wt-orchestrate` so your batch runs succeed on
 7. [Design Rules](#7-design-rules) — what to specify vs leave open
 8. [Web Project Patterns](#8-web-project-patterns) — DB, auth, API, deployment
 9. [Anti-patterns](#9-anti-patterns) — common mistakes and how to avoid them
+10. [Model Selection](#10-model-selection) — cost/quality tradeoffs per change
 
 See also: [Plan Review Checklist](plan-checklist.md) for a quick pre-flight check.
 
@@ -929,3 +930,64 @@ When 3+ changes each add to the same type (union types, enums, activity action l
 - CSV import (uses existing ActivityAction types)
 - ...
 ```
+
+---
+
+## 10. Model Selection
+
+The orchestrator supports per-change model selection. By default, all changes use `opus`. You can override at three levels:
+
+### Per-change `model` field
+
+Set directly in the plan JSON or spec input:
+
+```json
+{
+  "name": "doc-sync-ui-conventions",
+  "model": "sonnet",
+  "scope": "Sync UI convention docs with current codebase...",
+  "complexity": "S",
+  "change_type": "cleanup-after"
+}
+```
+
+### Global `default_model` directive
+
+Set in the directives block to change the default for all changes:
+
+```markdown
+## Orchestrator Directives
+default_model: sonnet
+```
+
+### Automatic heuristic
+
+When no explicit model is set, the orchestrator uses a complexity-based heuristic:
+- **S-complexity cleanup changes** → `sonnet` (cheap, good enough)
+- **Everything else** → `opus` (best quality for features)
+
+### When to use which model
+
+| Scenario | Model | Why |
+|----------|-------|-----|
+| Complex features (M/L) | opus | Better architecture decisions, fewer retries |
+| Doc sync / doc audit | sonnet | Mechanical text work, opus is overkill |
+| S-complexity cleanup | sonnet | Auto-selected by heuristic |
+| Security-sensitive features | opus | Review quality matters |
+| Large batches (8+ changes) | sonnet default, opus override for critical ones | Cost control |
+
+### Gate skip flags
+
+Doc-only or trivial changes can skip the test and review gates:
+
+```json
+{
+  "name": "doc-sync-data-model",
+  "model": "sonnet",
+  "skip_test": true,
+  "skip_review": true,
+  "scope": "Update data model documentation..."
+}
+```
+
+Use sparingly — only when a change genuinely doesn't touch code.

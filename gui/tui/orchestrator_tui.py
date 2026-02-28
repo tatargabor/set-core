@@ -40,6 +40,7 @@ STATUS_DISPLAY = {
 
 GATE_PASS = "[green]✓[/]"
 GATE_FAIL = "[red bold]✗[/]"
+GATE_SKIP = "[dim]⊘[/]"
 GATE_NONE = "[dim]-[/]"
 
 
@@ -78,6 +79,8 @@ def gate_str(result):
         return GATE_PASS
     if result == "fail":
         return GATE_FAIL
+    if result == "skipped":
+        return GATE_SKIP
     return GATE_NONE
 
 
