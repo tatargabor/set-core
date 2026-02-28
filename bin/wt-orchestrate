@@ -2802,6 +2802,40 @@ monitor_loop() {
             fi
         fi
 
+        # Resume verify-failed changes (orphaned by restart or manual state edit).
+        # resume_change() sets status to "running", so this won't re-trigger next poll.
+        local vf_changes
+        vf_changes=$(jq -r '.changes[]? | select(.status == "verify-failed") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+        while IFS= read -r name; do
+            [[ -z "$name" ]] && continue
+            local vf_retry_count
+            vf_retry_count=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .verify_retry_count // 0' "$STATE_FILENAME")
+            if [[ "$vf_retry_count" -lt "$max_verify_retries" ]]; then
+                log_info "Recovering verify-failed change $name (retry $vf_retry_count/$max_verify_retries)"
+                info "Recovering verify-failed: $name"
+                local vf_new_count=$((vf_retry_count + 1))
+                update_change_field "$name" "verify_retry_count" "$vf_new_count"
+                # Rebuild retry_context from stored build_output if missing
+                local existing_ctx
+                existing_ctx=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .retry_context // empty' "$STATE_FILENAME")
+                if [[ -z "$existing_ctx" || "$existing_ctx" == "null" ]]; then
+                    local stored_build_output
+                    stored_build_output=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .build_output // empty' "$STATE_FILENAME")
+                    local stored_scope
+                    stored_scope=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .scope // empty' "$STATE_FILENAME")
+                    if [[ -n "$stored_build_output" ]]; then
+                        local rebuild_prompt="Build failed after implementation. Fix the build errors.\n\nBuild output (last 2000 chars):\n${stored_build_output: -2000}\n\nOriginal scope: $stored_scope"
+                        update_change_field "$name" "retry_context" "$(printf '%s' "$rebuild_prompt" | jq -Rs .)"
+                        log_info "Rebuilt retry_context for $name from stored build_output"
+                    fi
+                fi
+                resume_change "$name"
+            else
+                log_info "Verify-failed change $name exhausted retries ($vf_retry_count/$max_verify_retries) — marking failed"
+                update_change_field "$name" "status" '"failed"'
+            fi
+        done <<< "$vf_changes"
+
         # Dispatch newly ready changes (skipped during token_wait)
         dispatch_ready_changes "$max_parallel"
 
