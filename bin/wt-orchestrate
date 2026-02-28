@@ -2311,7 +2311,7 @@ merge_change() {
         warn "Merge conflict for $change_name"
         update_change_field "$change_name" "status" '"merge-blocked"'
         log_error "Merge conflict for $change_name"
-        send_notification "wt-orchestrate" "Merge conflict: $change_name" "critical"
+        # No notification here — retry_merge_queue sends one only on final failure
     fi
 }
 
