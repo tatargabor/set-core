@@ -63,8 +63,9 @@ The orchestrator SHALL save a memory after each code review with the outcome.
 The orchestrator SHALL save a memory when a change stalls or fails permanently.
 
 #### Scenario: Change stall saved
-- **WHEN** `poll_change()` detects a stalled/stuck change on the final retry attempt (attempt 3/3)
-- **THEN** the orchestrator SHALL call `orch_remember` with type `Learning`, tags `phase:monitor,change:<name>`, and content noting the change stalled after 3 attempts
+- **WHEN** `poll_change()` detects a stalled/stuck change and stall_count exceeds the max retries (give-up branch, stall_count > 3)
+- **THEN** the orchestrator SHALL call `orch_remember` with type `Learning`, tags `phase:monitor,change:<name>`, and content noting the change stalled after max attempts
+- **NOTE**: The memory save fires when the change is marked as "failed" (the give-up branch), not on the last retry attempt
 
 #### Scenario: Change failure saved
 - **WHEN** a change transitions to `failed` status
@@ -122,6 +123,17 @@ When `dispatch_change()` creates a proposal.md in a worktree, it SHALL recall me
 - **WHEN** `dispatch_change()` performs recall
 - **THEN** the query SHALL use the change's scope text (not the kebab-case name)
 - **AND** the recall SHALL NOT filter by `source:orchestrator` tags (to capture both agent and orchestrator memories)
+
+### Requirement: Memory audit periodic health check
+The orchestrator SHALL run `orch_memory_audit()` periodically during the monitor loop (approximately every 10 poll cycles). The audit SHALL check wt-memory health, count orchestrator memories, and spot-check the latest memory content.
+
+#### Scenario: Memory system healthy
+- **WHEN** orch_memory_audit runs and wt-memory health returns OK
+- **THEN** the audit SHALL log memory count and pass silently
+
+#### Scenario: Memory system unhealthy
+- **WHEN** wt-memory health fails or memory count is 0
+- **THEN** the audit SHALL log a warning but NOT block orchestration
 
 ### Requirement: Quality gate steps are timed
 Each quality gate step in `handle_change_done()` SHALL measure elapsed wall-clock time in milliseconds and store the result in the change's state.

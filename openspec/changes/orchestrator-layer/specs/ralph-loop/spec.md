@@ -42,3 +42,27 @@ The Ralph loop SHALL support restarting in a worktree that has prior loop state.
 - **WHEN** the orchestrator resumes a paused change
 - **THEN** it SHALL NOT create a new worktree
 - **AND** SHALL run `wt-loop start` in the existing worktree path from orchestration-state.json
+
+### Requirement: Stale loop-state detection
+When a change has status "running" but its `loop-state.json` file has not been modified for more than 5 minutes, the orchestrator SHALL treat this as a stall and auto-resume the change.
+
+#### Scenario: Loop state file goes stale
+- **WHEN** loop-state.json mtime is older than 5 minutes for a running change
+- **THEN** the orchestrator SHALL increment stall_count and resume the change
+- **AND** status SHALL be set to "stalled" before calling resume_change()
+
+#### Scenario: Max stall retries exceeded
+- **WHEN** stall_count exceeds 3 for a stale running change
+- **THEN** the change SHALL be marked as "failed" with a critical notification
+
+### Requirement: Ralph loop launch flags
+The orchestrator SHALL launch Ralph loops with the following flags:
+
+#### Scenario: Dispatch start
+- **WHEN** dispatch_change() starts a new Ralph loop
+- **THEN** it SHALL run: `wt-loop start "<task description>" --max 30 --done openspec --label "<change-name>" --model opus`
+- **AND** the task description SHALL be the first positional argument (the change scope)
+
+#### Scenario: Resume start
+- **WHEN** resume_change() restarts a Ralph loop
+- **THEN** it SHALL use the same flags: task description as positional arg, --max, --done, --label, --model

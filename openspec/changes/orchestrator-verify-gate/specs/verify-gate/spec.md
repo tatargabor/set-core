@@ -13,9 +13,10 @@ Test execution and optional code review gate between Ralph completion and merge.
 
 ### VG-2: Test failure retry
 - On test failure (non-zero exit), restart Ralph with context: "Tests failed. Fix these failures:\n<test output>"
-- Set `verify_retried` flag on the change to prevent infinite retry loops
-- Maximum 1 retry (configurable via `max_verify_retries` directive)
-- If retry also fails, mark change as `verify-failed` status and send critical notification
+- Track retries via integer `verify_retry_count` (not a boolean `verify_retried`)
+- Maximum retries configurable via `max_verify_retries` directive (default: 2)
+- `verify_retry_count` is incremented on each retry attempt
+- If `verify_retry_count >= max_verify_retries`, mark change as `verify-failed` status and send critical notification
 - `verify-failed` changes do NOT block other changes or replan
 
 ### VG-3: test_command auto-detection
@@ -35,7 +36,17 @@ Test execution and optional code review gate between Ralph completion and merge.
 - If no critical issues → proceed to merge
 - Review is skipped if `review_before_merge` is false/unset (default)
 
-### VG-5: Verify gate state tracking
+### VG-5: Verify gate step order
+The verify gate in `handle_change_done()` SHALL execute quality checks in this order:
+1. **Tests** — run test_command, fail-fast on failure
+2. **Build** — run build command, fail-fast on failure (saves token cost of review/verify)
+3. **Test file existence** — check test files exist
+4. **LLM code review** — if review_before_merge is true
+5. **Verify** — run /opsx:verify
+
+This order places build verification before LLM review/verify to catch compilation failures early and save tokens on changes that don't compile.
+
+### VG-6: Verify gate state tracking
 - New change statuses: `verifying`, `verify-failed`
 - State transitions: `done` → `verifying` → `merged` (pass) or `verify-failed` (fail after retries)
 - `tokens_used` for review/fix charged to the change's token count

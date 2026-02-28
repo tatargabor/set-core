@@ -31,3 +31,10 @@
 #### Scenario: node_modules already exists
 - **WHEN** the worktree already has `node_modules`
 - **THEN** dependency install is skipped
+
+### Requirement: Retroactive worktree bootstrap
+When `dispatch_change()` finds an existing worktree that was not bootstrapped (missing .env or node_modules), it SHALL call `bootstrap_worktree()` to copy env files and install dependencies.
+
+#### Scenario: Existing worktree without bootstrap
+- **WHEN** a worktree exists but has no .env files or node_modules
+- **THEN** bootstrap_worktree SHALL copy env files and install dependencies before starting the Ralph loop

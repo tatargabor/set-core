@@ -20,3 +20,21 @@ The verify gate SHALL detect the project's build command from `package.json` scr
 #### Scenario: No build command detected
 - **WHEN** the worktree has no `package.json` or no `build`/`build:ci` script
 - **THEN** the build step is skipped entirely
+
+### Requirement: Base build verification
+When a worktree build fails, the orchestrator SHALL check if the main branch itself builds (`check_base_build()`). If main also fails, the orchestrator SHALL attempt an LLM-based fix (`fix_base_build_with_llm()`) and sync the worktree after the fix (`sync_worktree_with_main()`).
+
+#### Scenario: Main branch build broken
+- **WHEN** worktree build fails AND main branch build also fails
+- **THEN** the orchestrator SHALL attempt LLM fix on main, commit the fix, and sync the worktree
+
+#### Scenario: Main branch builds fine
+- **WHEN** worktree build fails AND main branch build passes
+- **THEN** the build failure is attributed to the change code and normal retry proceeds
+
+### Requirement: Base build cache
+The orchestrator SHALL cache the main branch build result in `BASE_BUILD_STATUS`/`BASE_BUILD_OUTPUT` variables. When a merge completes successfully, the cache SHALL be invalidated.
+
+#### Scenario: Cache invalidation after merge
+- **WHEN** a change is successfully merged to main
+- **THEN** BASE_BUILD_STATUS and BASE_BUILD_OUTPUT SHALL be set to empty strings to force a fresh build check

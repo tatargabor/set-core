@@ -166,8 +166,9 @@ The orchestrator SHALL support a total token budget across all changes.
 #### Scenario: Token budget exceeded
 - **WHEN** the `token_budget` directive is set to a positive integer
 - **AND** cumulative tokens across all changes exceed the budget
-- **THEN** the orchestrator SHALL trigger a checkpoint
-- **AND** include per-change token breakdown in the summary
+- **THEN** the orchestrator SHALL enter wait mode (skip dispatching new changes, wait for running loops to finish)
+- **AND** log a warning with per-change token breakdown
+- **NOTE**: The orchestrator enters wait mode, not checkpoint mode, on budget exceeded
 
 #### Scenario: No token budget
 - **WHEN** the `token_budget` directive is not set or is 0
@@ -249,6 +250,59 @@ The system SHALL support re-planning from an updated brief while preserving comp
 #### Scenario: Brief staleness warning
 - **WHEN** the orchestrator detects that `project-brief.md` has a different SHA-256 hash than `brief_hash` in the state
 - **THEN** it SHALL display a warning: "Brief has changed since plan was created. Consider running 'wt-orchestrate replan'."
+
+### Requirement: Auto-replan system
+The orchestrator SHALL support automatic replanning via the `auto_replan` directive (default: false). When all changes complete and auto_replan is true, the orchestrator SHALL re-run cmd_plan to find new work.
+
+#### Scenario: Auto-replan finds new work
+- **WHEN** all changes reach terminal status and auto_replan is true
+- **AND** auto_replan_cycle returns rc=0 with novel changes
+- **THEN** new changes SHALL be dispatched and the monitor loop SHALL continue
+- **AND** replan_cycle SHALL be incremented in state
+
+#### Scenario: Auto-replan finds no new work
+- **WHEN** auto_replan_cycle returns rc=1
+- **THEN** status SHALL be set to "done" and the orchestrator SHALL exit
+
+#### Scenario: Cumulative stats preserved across replans
+- **WHEN** a replan reinitializes state
+- **THEN** prev_total_tokens, active_seconds, started_epoch, and time_limit_secs SHALL be preserved
+
+### Requirement: Time limit safety net
+The orchestrator SHALL support a `--time-limit` flag (default: 5h, "none" to disable). Active time is tracked only when loops are making progress.
+
+#### Scenario: Time limit reached
+- **WHEN** active_seconds exceeds time_limit_secs
+- **THEN** the orchestrator SHALL log a warning, stop dispatching, and wait for running loops
+
+#### Scenario: Time limit disabled
+- **WHEN** --time-limit is set to "none"
+- **THEN** the orchestrator SHALL run indefinitely
+
+#### Scenario: Duration parsing
+- **WHEN** --time-limit is provided
+- **THEN** parse_duration() SHALL accept formats like "5h", "30m", "2h30m", "7200"
+- **AND** format_duration() SHALL render seconds back to human-readable form
+
+### Requirement: Flexible worktree path discovery
+dispatch_change() SHALL use find_existing_worktree() to discover worktree paths that may not follow the default `<project>-wt-<changename>` naming convention.
+
+#### Scenario: Non-standard worktree path
+- **WHEN** a worktree exists at a path different from the default convention
+- **THEN** find_existing_worktree SHALL locate it via `git worktree list` and return the correct path
+
+### Requirement: Auto-merge approach
+The system SHALL merge completed changes using `wt-merge --llm-resolve` directly without a dry-run pre-check.
+
+#### Scenario: Merge with conflict resolution
+- **WHEN** the orchestrator merges a completed change
+- **THEN** it SHALL call `wt-merge <change-name> --no-push --llm-resolve`
+- **AND** LLM-based conflict resolution SHALL be attempted automatically
+
+### Deferred
+
+- **Self-test Level 2-4 fixtures**: Integration test scripts with fixture worktrees and mock states. Not yet implemented.
+- **ASCII DAG dependency graph**: Visualization of change dependency graph in `--show` output. Not yet implemented.
 
 ### Requirement: Status display
 The system SHALL provide a human-readable status overview.

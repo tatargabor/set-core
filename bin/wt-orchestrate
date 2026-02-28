@@ -1509,11 +1509,27 @@ ${orch_mem}"
         local token_est
         token_est=$(estimate_tokens "$INPUT_PATH")
         if [[ "$token_est" -gt 8000 ]]; then
-            info "Large spec detected (~${token_est} tokens). Summarizing..."
-            log_info "Spec summarization triggered (est. $token_est tokens)"
-            local sum_model
-            sum_model=$(echo "$directives" | jq -r '.summarize_model // "haiku"')
-            input_content=$(summarize_spec "$INPUT_PATH" "$PHASE_HINT" "$sum_model")
+            # Check spec summary cache
+            local cache_file=".claude/spec-summary-cache.json"
+            local cached_hash=""
+            if [[ -f "$cache_file" ]]; then
+                cached_hash=$(jq -r '.brief_hash // ""' "$cache_file" 2>/dev/null)
+            fi
+            if [[ "$cached_hash" == "$hash" && -n "$cached_hash" ]]; then
+                log_info "Using cached spec summary (hash=$hash)"
+                input_content=$(jq -r '.summary' "$cache_file")
+            else
+                info "Large spec detected (~${token_est} tokens). Summarizing..."
+                log_info "Spec summarization triggered (est. $token_est tokens)"
+                local sum_model
+                sum_model=$(echo "$directives" | jq -r '.summarize_model // "haiku"')
+                input_content=$(summarize_spec "$INPUT_PATH" "$PHASE_HINT" "$sum_model")
+                # Cache the summary
+                mkdir -p .claude
+                jq -n --arg bh "$hash" --arg sum "$input_content" --arg ca "$(date -Iseconds)" \
+                    '{brief_hash: $bh, summary: $sum, created_at: $ca}' > "$cache_file"
+                log_info "Spec summary cached (hash=$hash)"
+            fi
         else
             input_content=$(cat "$INPUT_PATH")
         fi
@@ -2457,7 +2473,13 @@ dispatch_change() {
 
         # Initialize OpenSpec change if not exists
         if [[ ! -d "openspec/changes/$change_name" ]]; then
-            openspec new change "$change_name" 2>/dev/null || true
+            local _opsx_err
+            if ! _opsx_err=$(openspec new change "$change_name" 2>&1); then
+                log_error "openspec new change failed for $change_name: $_opsx_err"
+            fi
+            if [[ ! -d "openspec/changes/$change_name" ]]; then
+                log_error "openspec change directory not created for $change_name"
+            fi
         fi
 
         # Pre-create proposal.md from scope
@@ -2640,6 +2662,7 @@ resume_change() {
     terminal_pid=$(jq -r '.terminal_pid // empty' "$loop_state" 2>/dev/null)
     update_change_field "$change_name" "ralph_pid" "${terminal_pid:-0}"
     update_change_field "$change_name" "status" '"running"'
+    update_change_field "$change_name" "stall_count" "0"
 }
 
 # ─── Monitor Loop ────────────────────────────────────────────────────
@@ -2779,6 +2802,9 @@ monitor_loop() {
         # Resume stalled changes after cooldown (handles rate limit recovery)
         resume_stalled_changes
 
+        # Retry failed builds before declaring all-done (cheaper than replan)
+        retry_failed_builds "$max_verify_retries"
+
         # Check if checkpoint needed
         local changes_since
         changes_since=$(jq -r '.changes_since_checkpoint // 0' "$STATE_FILENAME")
@@ -2847,7 +2873,7 @@ monitor_loop() {
                 update_state_field "status" '"done"'
                 success "All changes complete!"
                 orch_memory_stats
-            orch_gate_stats
+                orch_gate_stats
                 log_info "Orchestration complete"
                 break
             fi
@@ -2899,7 +2925,7 @@ auto_replan_cycle() {
         BRIEF_OVERRIDE="$plan_input_path"
     fi
 
-    if ! cmd_plan 2>>"$LOG_FILE"; then
+    if ! cmd_plan &>>"$LOG_FILE"; then
         log_error "Auto-replan failed — cmd_plan returned error"
         rm -f "$old_plan"
         unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY
@@ -2926,6 +2952,24 @@ print(len(novel))
 
     if [[ "$novel_count" -eq 0 ]]; then
         log_info "No new changes found in replan — all work done"
+        return 1
+    fi
+
+    # Check if ALL novel changes are just re-discoveries of previously failed changes
+    local failed_changes
+    failed_changes=$(jq -c '[.changes[]? | select(.status == "failed") | .name]' "$STATE_FILENAME")
+    local all_failed
+    all_failed=$(python3 -c "
+import json, sys
+new = set(json.loads(sys.argv[1]))
+completed = set(json.loads(sys.argv[2]))
+failed = set(json.loads(sys.argv[3]))
+novel = new - completed
+print('true' if novel and novel <= failed else 'false')
+" "$new_changes" "$completed_changes" "$failed_changes" 2>/dev/null || echo "false")
+
+    if [[ "$all_failed" == "true" ]]; then
+        log_info "Replan only found previously-failed changes — no genuinely new work"
         return 1
     fi
 
@@ -3018,6 +3062,7 @@ poll_change() {
                 if [[ "$stall_count" -le 3 ]]; then
                     log_info "Resuming stale $change_name (attempt $stall_count/3)"
                     info "$change_name stale (attempt $stall_count/3), resuming..."
+                    update_change_field "$change_name" "status" '"stalled"'
                     resume_change "$change_name"
                 else
                     log_error "Change $change_name stale after 3 resume attempts — giving up"
@@ -3454,8 +3499,9 @@ handle_change_done() {
     info "Running verify for $change_name..."
     local _v_start=$(($(date +%s%N) / 1000000))
     local verify_ok=true
+    local verify_output=""
     if command -v claude &>/dev/null; then
-        (cd "$wt_path" && echo "Run /opsx:verify $change_name" | run_claude --max-turns 5 &>/dev/null) || verify_ok=false
+        verify_output=$( (cd "$wt_path" && echo "Run /opsx:verify $change_name" | run_claude --max-turns 5) 2>&1) || verify_ok=false
     fi
     gate_verify_ms=$(( $(date +%s%N) / 1000000 - _v_start ))
     update_change_field "$change_name" "gate_verify_ms" "$gate_verify_ms"
@@ -3466,6 +3512,12 @@ handle_change_done() {
             verify_retry_count=$((verify_retry_count + 1))
             info "Verify failed, retrying $change_name ($verify_retry_count/$max_verify_retries)..."
             update_change_field "$change_name" "verify_retry_count" "$verify_retry_count"
+            update_change_field "$change_name" "status" '"verify-failed"'
+            # Store verify output as retry context so agent knows what to fix
+            local scope
+            scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
+            local retry_prompt="Verify failed after implementation. Fix the issues found by verify.\n\nVerify output:\n${verify_output:0:2000}\n\nOriginal scope: $scope"
+            update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
             resume_change "$change_name"
             return
         fi
@@ -3643,32 +3695,31 @@ execute_merge_queue() {
 # Retry merge queue items + any merge-blocked changes not in the queue.
 # Safe to call from any context (monitor loop, resume, etc.)
 # Max 5 retries per change to prevent infinite loops.
+MAX_MERGE_RETRIES=5
+
+_try_merge() {
+    local name="$1"
+    local retry_count
+    retry_count=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .merge_retry_count // 0' "$STATE_FILENAME")
+    if [[ "$retry_count" -ge "$MAX_MERGE_RETRIES" ]]; then
+        return 0  # silently skip — already logged at the limit
+    fi
+    retry_count=$((retry_count + 1))
+    update_change_field "$name" "merge_retry_count" "$retry_count"
+
+    log_info "Merge attempt $retry_count/$MAX_MERGE_RETRIES for $name"
+    if merge_change "$name" 2>/dev/null; then
+        return 0
+    fi
+
+    if [[ "$retry_count" -ge "$MAX_MERGE_RETRIES" ]]; then
+        log_error "Merge failed after $MAX_MERGE_RETRIES attempts for $name — giving up"
+        send_notification "wt-orchestrate" "Merge permanently blocked: $name (after $MAX_MERGE_RETRIES attempts)" "critical"
+        orch_remember "Merge permanently failed for $name after $MAX_MERGE_RETRIES attempts — this change has unresolvable conflicts" Decision "phase:merge,change:$name"
+    fi
+}
+
 retry_merge_queue() {
-    local max_merge_retries=5
-
-    # Helper: attempt merge with retry counting
-    _try_merge() {
-        local name="$1"
-        local retry_count
-        retry_count=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .merge_retry_count // 0' "$STATE_FILENAME")
-        if [[ "$retry_count" -ge "$max_merge_retries" ]]; then
-            return 0  # silently skip — already logged at the limit
-        fi
-        retry_count=$((retry_count + 1))
-        update_change_field "$name" "merge_retry_count" "$retry_count"
-
-        log_info "Merge attempt $retry_count/$max_merge_retries for $name"
-        if merge_change "$name" 2>/dev/null; then
-            return 0
-        fi
-
-        if [[ "$retry_count" -ge "$max_merge_retries" ]]; then
-            log_error "Merge failed after $max_merge_retries attempts for $name — giving up"
-            send_notification "wt-orchestrate" "Merge permanently blocked: $name (after $max_merge_retries attempts)" "critical"
-            orch_remember "Merge permanently failed for $name after $max_merge_retries attempts — this change has unresolvable conflicts" Decision "phase:merge,change:$name"
-        fi
-    }
-
     # Process merge queue items
     local queue_items
     queue_items=$(jq -r '.merge_queue[]?' "$STATE_FILENAME" 2>/dev/null || true)
@@ -3709,6 +3760,36 @@ resume_stalled_changes() {
             resume_change "$name" || true
         fi
     done <<< "$stalled"
+}
+
+# Retry failed builds: give build failures a chance to self-repair
+# before triggering a full replan cycle.
+retry_failed_builds() {
+    local max_retries="${1:-2}"
+    local failed_builds
+    failed_builds=$(jq -r '.changes[] | select(.status == "failed" and .build_result == "fail") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        local gate_retry_count
+        gate_retry_count=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .gate_retry_count // 0' "$STATE_FILENAME")
+        if [[ "$gate_retry_count" -ge "$max_retries" ]]; then
+            continue  # already exhausted retries
+        fi
+        gate_retry_count=$((gate_retry_count + 1))
+        update_change_field "$name" "gate_retry_count" "$gate_retry_count"
+        log_info "Retrying failed build for $name (attempt $gate_retry_count/$max_retries)"
+        info "Retrying build failure: $name ($gate_retry_count/$max_retries)"
+
+        # Set retry context with build output
+        local build_output
+        build_output=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .build_output // ""' "$STATE_FILENAME")
+        local scope
+        scope=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
+        local retry_prompt="Build failed. Fix the build error.\n\nBuild output:\n${build_output:0:2000}\n\nOriginal scope: $scope"
+        update_change_field "$name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
+        update_change_field "$name" "status" '"pending"'
+        resume_change "$name" || true
+    done <<< "$failed_builds"
 }
 
 # ─── Checkpoint ──────────────────────────────────────────────────────

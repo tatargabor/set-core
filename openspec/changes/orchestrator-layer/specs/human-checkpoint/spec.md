@@ -80,6 +80,10 @@ The system SHALL block at checkpoints until the developer provides approval.
 - **THEN** the system SHALL send a reminder notification
 - **AND** remain in checkpoint status (no auto-timeout)
 
+### Deferred
+
+- **24-hour checkpoint reminder**: The scenario above (Approve timeout) is not yet implemented. The orchestrator currently waits indefinitely without sending reminders.
+
 ### Requirement: GUI dashboard integration
 The wt-control GUI SHALL display orchestration status when a plan is active.
 
