@@ -1102,12 +1102,11 @@ check_base_build() {
 fix_base_build_with_llm() {
     local project_path="$1"
 
-    # Guard: don't retry LLM fix in the same session if it already failed
-    if [[ "$BASE_BUILD_FIX_ATTEMPTED" == "true" ]]; then
-        log_info "Base build fix: already attempted this session — skipping"
+    # Guard: don't retry if both sonnet and opus already failed this session
+    if [[ "$BASE_BUILD_FIX_ATTEMPTED" == "both" ]]; then
+        log_info "Base build fix: both sonnet and opus failed this session — skipping"
         return 1
     fi
-    BASE_BUILD_FIX_ATTEMPTED=true
 
     log_info "Base build fix: attempting LLM-assisted fix on main branch"
     info "Main branch has build errors — attempting LLM fix..."
@@ -1146,28 +1145,43 @@ Do NOT create a worktree — fix directly in the current directory.
 FIX_EOF
 )
 
+    # Try sonnet first, then escalate to opus if sonnet fails
+    local model
+    if [[ "$BASE_BUILD_FIX_ATTEMPTED" == "sonnet" ]]; then
+        model="$(model_id opus)"
+        log_info "Base build fix: sonnet failed previously, escalating to opus"
+        info "Sonnet couldn't fix build — trying with Opus..."
+    else
+        model="$(model_id sonnet)"
+    fi
+
     local fix_rc=0
-    (cd "$project_path" && echo "$fix_prompt" | run_claude --model "$(model_id sonnet)" --max-turns 20) || fix_rc=$?
+    (cd "$project_path" && echo "$fix_prompt" | run_claude --model "$model" --max-turns 20) || fix_rc=$?
 
     if [[ $fix_rc -eq 0 ]]; then
         log_info "Base build fix: LLM fix attempted, re-checking build..."
         BASE_BUILD_STATUS=""  # Reset cache to re-check
         BASE_BUILD_OUTPUT=""
         if check_base_build "$project_path"; then
-            log_info "Base build fix: SUCCESS — main branch now builds"
+            log_info "Base build fix: SUCCESS — main branch now builds (model: $model)"
             info "Main branch build fixed successfully"
-            orch_remember "LLM fixed main branch build errors" Learning "phase:build,scope:main"
+            orch_remember "LLM fixed main branch build errors (model: $model)" Learning "phase:build,scope:main"
+            BASE_BUILD_FIX_ATTEMPTED="done"
             return 0
-        else
-            log_error "Base build fix: LLM fix did not resolve build errors"
-            send_notification "wt-orchestrate" "Main branch build fix FAILED — manual intervention needed" "critical"
-            return 1
         fi
-    else
-        log_error "Base build fix: LLM agent failed (exit $fix_rc)"
-        send_notification "wt-orchestrate" "Main branch build fix FAILED — manual intervention needed" "critical"
-        return 1
     fi
+
+    # Mark which model we tried
+    if [[ "$BASE_BUILD_FIX_ATTEMPTED" == "sonnet" ]]; then
+        BASE_BUILD_FIX_ATTEMPTED="both"
+        log_error "Base build fix: opus also failed — manual intervention needed"
+    else
+        BASE_BUILD_FIX_ATTEMPTED="sonnet"
+        log_warn "Base build fix: sonnet failed — will try opus on next attempt"
+        # Return 1 but allow retry with opus
+    fi
+    send_notification "wt-orchestrate" "Main branch build fix FAILED (tried: ${BASE_BUILD_FIX_ATTEMPTED}) — manual intervention needed" "critical"
+    return 1
 }
 
 # Sync a worktree branch with main to pick up fixes that landed after the branch was created.
