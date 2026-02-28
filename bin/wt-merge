@@ -139,12 +139,15 @@ llm_resolve_conflicts() {
 
     info "Attempting LLM conflict resolution..."
 
-    # Build prompt with all conflicted files
+    # Extract only conflict hunks with context (not entire files)
+    # This dramatically reduces prompt size for large files
     local prompt="You are resolving git merge conflicts.
 Source branch: $source_branch (being merged INTO target)
 Target branch: $target_branch
 
-Below are the files with conflict markers. Resolve each conflict by keeping both sides' changes where possible (integrate, don't pick one side). If changes are contradictory, prefer the source branch (the feature being merged).
+Below are the CONFLICT HUNKS extracted from each file (with 3 lines of surrounding context).
+Resolve each conflict by keeping both sides' changes where possible (integrate, don't pick one side).
+If changes are contradictory, prefer the source branch (the feature being merged).
 
 Output ONLY the resolved files. For each file, output a header line exactly like:
 --- FILE: <path> ---
@@ -153,14 +156,42 @@ Do not output anything else — no explanations, no markdown fences.
 
 Conflicted files:
 "
-
+    local total_lines=0
     while IFS= read -r file; do
         [[ -z "$file" ]] && continue
-        prompt+="
+        # Extract conflict hunks with 3 lines of context before/after
+        local hunks
+        hunks=$(awk '
+            BEGIN { ctx=3 }
+            /^<{7}/ { for(i=ctx;i>=1;i--) if(before[i]!="") print before[i]; collecting=1 }
+            collecting { print; if(/^>{7}/) { collecting=0; after=ctx; next } }
+            !collecting && after>0 { print; after-- }
+            !collecting { for(i=ctx;i>=2;i--) before[i]=before[i-1]; before[1]=$0 }
+        ' "$file")
+        local hunk_lines
+        hunk_lines=$(echo "$hunks" | wc -l)
+        local file_lines
+        file_lines=$(wc -l < "$file")
+        total_lines=$((total_lines + hunk_lines))
+        if [[ $hunk_lines -lt $((file_lines / 2)) ]]; then
+            # Hunks are significantly smaller than full file — use hunks
+            prompt+="
+--- FILE: $file (conflict hunks only, full file is ${file_lines} lines) ---
+$hunks"
+        else
+            # Hunks are most of the file anyway — send full file
+            prompt+="
 --- FILE: $file ---
 $(cat "$file")
 "
+            total_lines=$((total_lines - hunk_lines + file_lines))
+        fi
     done <<< "$conflicted_files"
+
+    local prompt_len=${#prompt}
+    if [[ $prompt_len -gt 100000 ]]; then
+        warn "LLM merge prompt is large (${prompt_len} chars) — may be slow"
+    fi
 
     # Call Claude — try sonnet first, escalate to opus on failure
     local llm_output rc=0
@@ -177,19 +208,19 @@ $(cat "$file")
         return 1
     fi
 
-    # Parse output: extract each file block
+    # Parse output: extract each file block (full file content from LLM)
     local current_file="" current_content="" files_resolved=0
     while IFS= read -r line; do
         if [[ "$line" =~ ^---\ FILE:\ (.+)\ ---$ ]]; then
             # Write previous file if any
             if [[ -n "$current_file" ]]; then
                 printf '%s\n' "$current_content" > "$current_file"
-                git checkout --ours "$current_file" 2>/dev/null || true
-                printf '%s\n' "$current_content" > "$current_file"
                 git add "$current_file"
                 files_resolved=$((files_resolved + 1))
             fi
             current_file="${BASH_REMATCH[1]}"
+            # Strip trailing whitespace and parenthetical notes from filename
+            current_file=$(echo "$current_file" | sed 's/ *(.*//')
             current_content=""
         elif [[ -n "$current_file" ]]; then
             if [[ -z "$current_content" ]]; then
@@ -202,8 +233,6 @@ $(cat "$file")
 
     # Write last file
     if [[ -n "$current_file" ]]; then
-        printf '%s\n' "$current_content" > "$current_file"
-        git checkout --ours "$current_file" 2>/dev/null || true
         printf '%s\n' "$current_content" > "$current_file"
         git add "$current_file"
         files_resolved=$((files_resolved + 1))
