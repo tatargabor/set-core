@@ -1045,6 +1045,7 @@ send_notification() {
 # Cached base build result: "pass", "fail:<output>", or "" (unchecked)
 BASE_BUILD_STATUS=""
 BASE_BUILD_OUTPUT=""
+BASE_BUILD_FIX_ATTEMPTED=false
 
 # Run build on the main project directory (not a worktree).
 # Caches result in BASE_BUILD_STATUS / BASE_BUILD_OUTPUT for the session.
@@ -1101,21 +1102,44 @@ check_base_build() {
 fix_base_build_with_llm() {
     local project_path="$1"
 
+    # Guard: don't retry LLM fix in the same session if it already failed
+    if [[ "$BASE_BUILD_FIX_ATTEMPTED" == "true" ]]; then
+        log_info "Base build fix: already attempted this session — skipping"
+        return 1
+    fi
+    BASE_BUILD_FIX_ATTEMPTED=true
+
     log_info "Base build fix: attempting LLM-assisted fix on main branch"
     info "Main branch has build errors — attempting LLM fix..."
+
+    # Detect build command for the prompt
+    local pm="npm"
+    [[ -f "$project_path/pnpm-lock.yaml" ]] && pm="pnpm"
+    [[ -f "$project_path/yarn.lock" ]] && pm="yarn"
+    [[ -f "$project_path/bun.lockb" || -f "$project_path/bun.lock" ]] && pm="bun"
+    local build_cmd="build"
+    if [[ -f "$project_path/package.json" ]]; then
+        build_cmd=$(cd "$project_path" && node -e "
+            const p = require('./package.json');
+            const s = p.scripts || {};
+            if (s['build:ci']) console.log('build:ci');
+            else if (s['build']) console.log('build');
+        " 2>/dev/null || echo "build")
+    fi
 
     local fix_prompt
     fix_prompt=$(cat <<FIX_EOF
 The main branch has build errors that are blocking all worktree builds.
 Fix these TypeScript/build errors directly on the main branch.
 
+Build command: $pm run $build_cmd
 Build output (last 3000 chars):
 ${BASE_BUILD_OUTPUT: -3000}
 
 Instructions:
-1. Analyze the build errors
-2. Fix the root cause (type errors, missing imports, schema mismatches, etc.)
-3. Run the build command to confirm it passes
+1. Analyze the build errors above carefully
+2. Fix the root cause (type errors, missing imports, missing @types packages, schema mismatches, etc.)
+3. Run: $pm run $build_cmd — confirm it passes
 4. Commit the fix with message: "fix: repair main branch build errors"
 
 Do NOT create a worktree — fix directly in the current directory.
@@ -3712,6 +3736,7 @@ merge_change() {
         # Invalidate base build cache — merge changes main, old result is stale
         BASE_BUILD_STATUS=""
         BASE_BUILD_OUTPUT=""
+        BASE_BUILD_FIX_ATTEMPTED=false
 
         # Post-merge dependency install: if package.json changed, run package manager install
         local pkg_changed=false
