@@ -3723,6 +3723,27 @@ merge_change() {
             fi
         fi
 
+        # Post-merge build verification: ensure main still builds after merge
+        if [[ -n "$test_command" || -n "$(jq -r '.directives.test_command // empty' "$STATE_FILENAME" 2>/dev/null)" ]]; then
+            local build_command="build"
+            local pm="pnpm"
+            [[ -f "yarn.lock" ]] && pm="yarn"
+            [[ -f "package-lock.json" ]] && pm="npm"
+            log_info "Post-merge: verifying build on main after merging $change_name"
+            local post_merge_build_output=""
+            local post_merge_rc=0
+            post_merge_build_output=$(timeout 300 $pm run $build_command 2>&1) || post_merge_rc=$?
+            if [[ $post_merge_rc -ne 0 ]]; then
+                log_error "Post-merge: build FAILED on main after merging $change_name"
+                log_error "Post-merge build output: ${post_merge_build_output: -500}"
+                send_notification "wt-orchestrate" "Post-merge build broken after $change_name merge! Manual fix needed." "critical"
+                orch_remember "Post-merge build failed after merging $change_name — main branch is broken" Decision "phase:post-merge,change:$change_name"
+                # Don't revert — the merge is done, but alert the user
+            else
+                log_info "Post-merge: build passed on main"
+            fi
+        fi
+
         local iter_count
         iter_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .iterations // 0' "$STATE_FILENAME" 2>/dev/null || echo "?")
         orch_remember "Merged $change_name successfully ($iter_count iterations)" Context "phase:merge,change:$change_name"
