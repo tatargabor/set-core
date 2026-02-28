@@ -2243,7 +2243,24 @@ resume_change() {
 
     local scope
     scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // empty' "$STATE_FILENAME")
-    local task_desc="Continue $change_name: ${scope:0:200}"
+
+    # Read retry_context from state (stored as double-JSON-escaped string)
+    local retry_ctx
+    retry_ctx=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .retry_context // empty' "$STATE_FILENAME")
+    if [[ -n "$retry_ctx" ]]; then
+        # Unescape JSON string (retry_context is stored as a JSON-encoded string)
+        retry_ctx=$(echo "$retry_ctx" | jq -r '. // empty' 2>/dev/null || true)
+    fi
+
+    local task_desc
+    if [[ -n "$retry_ctx" ]]; then
+        task_desc="$retry_ctx"
+        log_info "Resuming $change_name with retry context (${#retry_ctx} chars)"
+        # Clear retry_context to prevent stale context on future resumes
+        update_change_field "$change_name" "retry_context" "null"
+    else
+        task_desc="Continue $change_name: ${scope:0:200}"
+    fi
     (
         cd "$wt_path" || exit 1
         wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name"
@@ -2755,6 +2772,26 @@ handle_change_done() {
         log_info "Verify gate: retry cost for $change_name: +${retry_diff} tokens (total retries: $((prev_retry_count + 1)))"
     fi
 
+    # ── Merge-rebase fast path: skip verify gate, go straight to merge ──
+    local prev_status
+    prev_status=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .status // ""' "$STATE_FILENAME")
+    if [[ "$prev_status" == "merge-rebase" ]]; then
+        log_info "Change $change_name returning from agent-assisted rebase — skipping verify gate, attempting merge"
+        info "Agent rebase complete for $change_name, retrying merge..."
+        if merge_change "$change_name" 2>/dev/null; then
+            log_info "Merge succeeded after agent rebase for $change_name"
+            return 0
+        else
+            # Agent rebase didn't fully resolve — fall through to retry_merge_queue
+            log_warn "Merge still failed after agent rebase for $change_name — entering retry queue"
+            local merge_retry_count
+            merge_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .merge_retry_count // 0' "$STATE_FILENAME")
+            update_change_field "$change_name" "merge_retry_count" "$((merge_retry_count + 1))"
+            update_change_field "$change_name" "status" '"merge-blocked"'
+            return 0
+        fi
+    fi
+
     # Gate timing accumulators
     local gate_test_ms=0
     local gate_review_ms=0
@@ -2805,6 +2842,12 @@ handle_change_done() {
             local scope
             scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
             local retry_prompt="Tests failed after implementation. Fix the failing tests.\n\nTest command: $test_command\nTest output:\n$test_output\n\nOriginal scope: $scope"
+            # Recall relevant memories for retry context
+            local _mem_ctx
+            _mem_ctx=$(orch_recall "$scope" 3 "")
+            if [[ -n "$_mem_ctx" ]]; then
+                retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
+            fi
             update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
             # Snapshot tokens before retry for cost tracking
             local _snap_tokens
@@ -2846,6 +2889,15 @@ handle_change_done() {
                 log_info "Verify gate: review critical retry $verify_retry_count/$max_verify_retries for $change_name"
                 update_change_field "$change_name" "verify_retry_count" "$verify_retry_count"
                 update_change_field "$change_name" "status" '"verify-failed"'
+                # Build retry context with review feedback
+                local retry_prompt="Code review found CRITICAL issues. Fix these issues.\n\nReview feedback:\n${REVIEW_OUTPUT:0:500}\n\nOriginal scope: $scope"
+                # Recall relevant memories for retry context
+                local _mem_ctx
+                _mem_ctx=$(orch_recall "$scope" 3 "")
+                if [[ -n "$_mem_ctx" ]]; then
+                    retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
+                fi
+                update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
                 # Snapshot tokens before retry for cost tracking
                 local _snap_tokens
                 _snap_tokens=$(jq -r '.total_tokens // 0' "$wt_path/.claude/loop-state.json" 2>/dev/null || echo "0")
@@ -2987,10 +3039,30 @@ merge_change() {
         jq --arg n "$change_name" '.merge_queue -= [$n]' "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
     else
         warn "Merge conflict for $change_name"
-        update_change_field "$change_name" "status" '"merge-blocked"'
         log_error "Merge conflict for $change_name"
         orch_remember "Merge conflict for $change_name — consider sequencing this change after its conflicting dependencies in future plans" Decision "phase:merge,change:$change_name"
-        # No notification here — retry_merge_queue sends one only on final failure
+
+        # Check if this is the first conflict — try agent-assisted rebase
+        local merge_retry_count
+        merge_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .merge_retry_count // 0' "$STATE_FILENAME")
+        if [[ "$merge_retry_count" -eq 0 && -n "$wt_path" && -d "$wt_path" ]]; then
+            log_info "First merge conflict for $change_name — triggering agent-assisted rebase"
+            local main_branch
+            main_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+            local retry_prompt="Merge conflict: your branch conflicts with $main_branch. Resolve the conflict by merging $main_branch into your branch.\n\nRun: git fetch origin $main_branch && git merge origin/$main_branch\n\nResolve any conflicts, keeping both sides' changes where possible. Prefer your changes (the feature) when they contradict $main_branch. After resolving, commit the merge."
+            # Recall memories about recent merges for context
+            local _mem_ctx
+            _mem_ctx=$(orch_recall "$change_name merge conflict recent merges" 3 "")
+            if [[ -n "$_mem_ctx" ]]; then
+                retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
+            fi
+            update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
+            update_change_field "$change_name" "status" '"merge-rebase"'
+            resume_change "$change_name"
+        else
+            update_change_field "$change_name" "status" '"merge-blocked"'
+            # No notification here — retry_merge_queue sends one only on final failure
+        fi
     fi
 }
 
@@ -3068,6 +3140,7 @@ retry_merge_queue() {
     done <<< "$queue_items"
 
     # Also find merge-blocked items not in the queue (safety net)
+    # Skip merge-rebase items — agent is actively working on rebase
     local blocked
     blocked=$(jq -r '.changes[] | select(.status == "merge-blocked") | .name' "$STATE_FILENAME" 2>/dev/null || true)
     while IFS= read -r name; do
