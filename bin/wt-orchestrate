@@ -38,7 +38,7 @@ DEFAULT_PAUSE_ON_EXIT="false"
 DEFAULT_AUTO_REPLAN="false"
 DEFAULT_REVIEW_BEFORE_MERGE="false"
 DEFAULT_TEST_TIMEOUT=300
-DEFAULT_MAX_VERIFY_RETRIES=1
+DEFAULT_MAX_VERIFY_RETRIES=2
 DEFAULT_SUMMARIZE_MODEL="haiku"
 DEFAULT_REVIEW_MODEL="sonnet"
 
@@ -1737,6 +1737,24 @@ PYEOF
         '. + {plan_version: $pv, brief_hash: $hash, created_at: $created, input_mode: $imode, input_path: $ipath}' \
         > "$PLAN_FILENAME"
 
+    # During replan, strip depends_on references to completed changes from prior cycles
+    # The LLM correctly models dependencies on prior work, but they're not in the new plan
+    if [[ -n "${_REPLAN_CYCLE:-}" && -f "$STATE_FILENAME" ]]; then
+        local completed_names_json
+        completed_names_json=$(jq -c '[.changes[]? | select(.status == "done" or .status == "merged" or .status == "merge-blocked") | .name]' "$STATE_FILENAME" 2>/dev/null || echo "[]")
+        if [[ "$completed_names_json" != "[]" ]]; then
+            local plan_names_json
+            plan_names_json=$(jq -c '[.changes[].name]' "$PLAN_FILENAME")
+            # Remove depends_on entries that are NOT in the new plan but ARE completed
+            local tmp_plan
+            tmp_plan=$(mktemp)
+            jq --argjson completed "$completed_names_json" --argjson plan_names "$plan_names_json" '
+                .changes = [.changes[] | .depends_on = [(.depends_on // [])[] | select(. as $d | $plan_names | index($d) != null)]]
+            ' "$PLAN_FILENAME" > "$tmp_plan" && mv "$tmp_plan" "$PLAN_FILENAME"
+            log_info "Replan: stripped resolved depends_on references from prior cycles"
+        fi
+    fi
+
     # Validate
     if ! validate_plan "$PLAN_FILENAME"; then
         error "Plan validation failed. Review $PLAN_FILENAME manually."
@@ -2768,19 +2786,29 @@ monitor_loop() {
                 cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME")
                 cycle=$((cycle + 1))
 
-                if auto_replan_cycle "$directives" "$cycle"; then
+                local replan_rc=0
+                auto_replan_cycle "$directives" "$cycle" || replan_rc=$?
+
+                if [[ $replan_rc -eq 0 ]]; then
                     # New plan dispatched, continue monitoring
                     info "Replan cycle $cycle: new changes dispatched, continuing..."
                     log_info "Replan cycle $cycle started"
                     continue
-                else
-                    # No new work found
+                elif [[ $replan_rc -eq 1 ]]; then
+                    # No new work found — genuinely done
                     update_state_field "status" '"done"'
                     orch_memory_stats
-            orch_gate_stats
-                success "All work complete! No more phases to implement."
+                    orch_gate_stats
+                    success "All work complete! No more phases to implement."
                     log_info "Auto-replan found no new work — orchestration complete"
                     break
+                else
+                    # Replan failed (rc=2) — retry next cycle, don't declare "done"
+                    warn "Replan failed (cycle $cycle) — will retry on next poll cycle"
+                    log_error "Auto-replan error (cycle $cycle, rc=$replan_rc) — NOT marking complete, retrying"
+                    # Don't increment cycle on failure so it retries with same number
+                    sleep 30
+                    continue
                 fi
             else
                 trigger_checkpoint "completion"
@@ -2843,7 +2871,7 @@ auto_replan_cycle() {
         log_error "Auto-replan failed — cmd_plan returned error"
         rm -f "$old_plan"
         unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY
-        return 1
+        return 2  # Error (distinct from 1=no new work)
     fi
     unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY
 
