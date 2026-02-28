@@ -162,12 +162,18 @@ $(cat "$file")
 "
     done <<< "$conflicted_files"
 
-    # Call Claude with longer timeout for merge resolution
+    # Call Claude — try sonnet first, escalate to opus on failure
     local llm_output rc=0
     llm_output=$(export RUN_CLAUDE_TIMEOUT=300; echo "$prompt" | run_claude --model "$(resolve_model_id sonnet)" --max-turns 1) || rc=$?
 
     if [[ $rc -ne 0 || -z "$llm_output" ]]; then
-        warn "LLM conflict resolution failed (exit code: $rc)"
+        warn "LLM conflict resolution failed with sonnet (exit code: $rc), escalating to opus"
+        rc=0
+        llm_output=$(export RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$(resolve_model_id opus)" --max-turns 1) || rc=$?
+    fi
+
+    if [[ $rc -ne 0 || -z "$llm_output" ]]; then
+        warn "LLM conflict resolution failed with opus (exit code: $rc)"
         return 1
     fi
 
