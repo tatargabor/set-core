@@ -426,11 +426,39 @@ Each phase should produce **4–6 changes**. If a phase decomposes into 8+ chang
 
 ## 7. Design Rules
 
+The spec you write is a contract between you and the agent. Too vague — the agent guesses wrong. Too detailed — you're doing the agent's job and wasting tokens. This section helps you find the right level.
+
+### Think in Layers
+
+When writing a spec, think about each feature at four layers. Specify the top two, leave the bottom two to the agent:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Layer 1: BUSINESS INTENT (always specify)          │
+│  What does the user want to achieve?                │
+│  "Users can import companies from a CSV file"       │
+├─────────────────────────────────────────────────────┤
+│  Layer 2: CONSTRAINTS & BOUNDARIES (always specify) │
+│  What MUST or MUST NOT happen?                      │
+│  "Validate emails, deduplicate by domain,           │
+│   max 5000 rows, server actions not API routes"     │
+├─────────────────────────────────────────────────────┤
+│  Layer 3: SOLUTION SHAPE (specify selectively)      │
+│  Which patterns, libraries, UI layout?              │
+│  Only specify if you have a strong preference       │
+│  or the codebase has an established pattern         │
+├─────────────────────────────────────────────────────┤
+│  Layer 4: IMPLEMENTATION DETAILS (never specify)    │
+│  File paths, function names, variable names,        │
+│  internal decomposition, import order               │
+└─────────────────────────────────────────────────────┘
+```
+
 ### What to Specify (High Impact)
 
 These constraints save the agent from making wrong architectural decisions:
 
-**Tech stack and patterns:**
+**Tech stack and patterns** — the foundation that everything else builds on:
 ```markdown
 ## Tech Stack
 Next.js 15 (App Router), Prisma ORM, PostgreSQL, Tailwind CSS, shadcn/ui
@@ -442,7 +470,7 @@ Next.js 15 (App Router), Prisma ORM, PostgreSQL, Tailwind CSS, shadcn/ui
 - Zod for validation at API boundaries
 ```
 
-**Auth and authorization approach:**
+**Auth and authorization approach** — wrong choices here break everything:
 ```markdown
 ## Auth
 - NextAuth.js with credentials provider
@@ -451,7 +479,7 @@ Next.js 15 (App Router), Prisma ORM, PostgreSQL, Tailwind CSS, shadcn/ui
 - Middleware checks auth on all /dashboard/* routes
 ```
 
-**Error handling strategy:**
+**Error handling strategy** — inconsistency here makes debugging painful:
 ```markdown
 ## Error Handling
 - Server actions return { data?, error? } — never throw
@@ -459,7 +487,7 @@ Next.js 15 (App Router), Prisma ORM, PostgreSQL, Tailwind CSS, shadcn/ui
 - Log errors to structured logger (not console.log)
 ```
 
-**Naming conventions:**
+**Naming conventions** — agents follow existing code, but if it's inconsistent, specify:
 ```markdown
 ## Conventions
 - Files: kebab-case (add-company-form.tsx)
@@ -468,38 +496,136 @@ Next.js 15 (App Router), Prisma ORM, PostgreSQL, Tailwind CSS, shadcn/ui
 - Server actions: camelCase functions in *-actions.ts files
 ```
 
-**Database patterns:**
+**Database patterns** — consistency here prevents schema drift:
 ```markdown
 ## DB Patterns
 - All tables have: id (cuid), createdAt, updatedAt
 - Soft delete: deletedAt nullable DateTime (not boolean isDeleted)
 - Audit: separate audit_log table, not per-table columns
+- Relations: always define both sides in Prisma schema
+```
+
+**UI patterns** — if you have a component library or layout convention:
+```markdown
+## UI Patterns
+- Use shadcn/ui components (not custom implementations)
+- Data tables: use DataTable pattern with column definitions
+- Forms: use react-hook-form + zod resolver
+- Loading states: use Skeleton components, not spinners
+- Toast notifications for success/error feedback
+```
+
+### The Spec-Writing Checklist
+
+Before finalizing each feature in your spec, mentally walk through these questions:
+
+| Question | If you skip it... |
+|---|---|
+| **What data does this feature read/write?** | Agent may invent tables or misuse existing ones |
+| **Who can access this?** | Agent may skip auth checks or add wrong ones |
+| **What happens on error?** | Agent may throw exceptions, show raw errors, or silently fail |
+| **What's the happy path AND edge cases?** | Agent only builds the happy path |
+| **Does this interact with existing features?** | Agent may duplicate logic or break existing behavior |
+| **What's the UI entry point?** | Agent may create orphan pages with no navigation link |
+
+Example — applying the checklist to "email template editor":
+
+```markdown
+- Email template editor:
+  Data: new EmailTemplate table (name, subject, body, variables, createdBy).
+  Access: any authenticated user can CRUD their own templates. Admin sees all.
+  Errors: save failures show toast. Invalid variable syntax highlighted inline.
+  Edge cases: empty template, template with undefined variables, very long body.
+  Integration: drafts page should show "Use template" button to pre-fill.
+  UI: new /templates page linked from sidebar. TipTap editor for body.
+  Tests: CRUD operations, variable interpolation, access control.
 ```
 
 ### What to Leave Open (Low Impact)
 
 Over-specifying these wastes tokens and constrains the agent unnecessarily:
 
-- **Exact file paths** — "put the component in `src/app/(dashboard)/companies/components/import-dialog.tsx`" → The agent will find the right place
-- **Internal function decomposition** — "create a `parseCSV()` helper that calls `validateRow()` which calls `normalizeEmail()`" → Let the agent decompose
+- **Exact file paths** — "put the component in `src/app/(dashboard)/companies/components/import-dialog.tsx`" → The agent will find the right place based on existing structure
+- **Internal function decomposition** — "create a `parseCSV()` helper that calls `validateRow()` which calls `normalizeEmail()`" → Let the agent decompose naturally
 - **Variable and parameter names** — The agent follows existing codebase conventions
 - **Import organization** — Auto-handled by the project's linter/formatter
 - **Comment placement** — The agent adds comments where logic isn't self-evident
+- **Exact component hierarchy** — "wrap in a Card, inside a div with flex" → Just say what data to show; the agent matches existing UI patterns
+
+### What to Specify Selectively (Layer 3)
+
+These are worth specifying when you have a reason, but fine to omit:
+
+| Concern | Specify when... | Skip when... |
+|---|---|---|
+| **Specific library** (e.g., TipTap, papaparse) | You've evaluated options and have a preference | Any standard library would work |
+| **UI layout** (e.g., 3-step wizard, split panel) | UX is critical and you have a wireframe in mind | Standard CRUD layout is fine |
+| **API shape** (e.g., REST vs GraphQL, endpoint naming) | Public API or shared with other services | Internal server actions |
+| **Caching strategy** | Performance is a known concern | Standard request-response is fine |
+| **State management** (e.g., zustand, context) | Complex client-side state | Server-rendered pages |
 
 ### The Sweet Spot
 
-Specify **what** and **constraints**. Leave **how** to the agent:
+Specify **what** + **constraints** + **integration points**. Leave **how** to the agent:
 
 ```markdown
-# Good: what + constraints
+# Good: what + constraints + integration
 - CSV import: upload CSV, map columns to Company fields, preview first 10 rows,
   then import. Validate emails with zod. Deduplicate by domain.
   Use server actions, not API routes. Show progress with shadcn Progress component.
+  Add "Import" button to company list page toolbar.
+  Tests: valid CSV, invalid format, duplicate handling, >1000 rows.
 
 # Bad: over-specified implementation
 - CSV import: create src/lib/import/csv-parser.ts with parseCsvFile() function
   that uses papaparse. Create src/app/(dashboard)/companies/import/page.tsx
   with a 3-step wizard using useState for step tracking. In step 1...
+
+# Also bad: too vague
+- CSV import
+```
+
+### Spec Patterns for Common Feature Types
+
+**CRUD feature:**
+```markdown
+- [Entity] management: full CRUD for [Entity].
+  Fields: [list key fields and types].
+  Access: [who can read/write].
+  UI: list page with search/filter, detail page with edit form.
+  Validation: [key validation rules].
+  Tests: create, read, update, delete, validation errors, access control.
+```
+
+**Integration/import feature:**
+```markdown
+- [Source] import: [describe input format and source].
+  Mapping: [how input fields map to DB fields].
+  Validation: [what makes input valid/invalid].
+  Deduplication: [how to handle duplicates].
+  Error handling: [skip row vs abort vs report].
+  Limits: [max rows, file size, rate limits].
+  Tests: valid input, invalid input, duplicates, large dataset, edge cases.
+```
+
+**Background job / automation:**
+```markdown
+- [Action] automation: [what triggers it, what it does].
+  Schedule: [cron / event-driven / manual trigger].
+  Idempotency: [what happens if it runs twice].
+  Failure handling: [retry strategy, notification on failure].
+  Observability: [how to check status, logs, history].
+  Tests: trigger, execution, failure, retry, concurrent runs.
+```
+
+**Dashboard / analytics:**
+```markdown
+- [Name] dashboard: [what questions does it answer].
+  Metrics: [list specific metrics with calculation method].
+  Time range: [default period, selectable ranges].
+  Data source: [which tables/queries, pre-aggregated or live].
+  Performance: [acceptable load time, caching strategy if needed].
+  Tests: metric calculation accuracy, empty state, date range filtering.
 ```
 
 ---
