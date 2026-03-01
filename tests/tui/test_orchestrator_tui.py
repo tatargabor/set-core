@@ -202,11 +202,11 @@ class TestApprove:
 class TestGateFormatting:
     def test_all_pass(self):
         change = {"test_result": "pass", "build_result": "pass",
-                  "review_result": "pass", "status": "done"}
+                  "smoke_result": "pass", "review_result": "pass", "status": "done"}
         result = format_gates(change)
-        assert "T" in result and "B" in result and "R" in result and "V" in result
+        assert "T" in result and "B" in result and "S" in result and "R" in result and "V" in result
         # All should contain the pass marker
-        assert result.count("✓") == 4
+        assert result.count("✓") == 5
 
     def test_build_fail(self):
         change = {"test_result": "pass", "build_result": "fail",
@@ -217,23 +217,23 @@ class TestGateFormatting:
 
     def test_pending_no_gates(self):
         change = {"test_result": None, "build_result": None,
-                  "review_result": None, "status": "pending"}
+                  "smoke_result": None, "review_result": None, "status": "pending"}
         result = format_gates(change)
         # All should be NONE markers
-        assert result.count("-") == 4
+        assert result.count("-") == 5
 
     def test_verify_pass_when_done(self):
         change = {"test_result": "pass", "build_result": "pass",
-                  "review_result": "pass", "status": "merged"}
+                  "smoke_result": "pass", "review_result": "pass", "status": "merged"}
         result = format_gates(change)
-        assert result.count("✓") == 4
+        assert result.count("✓") == 5
 
     def test_verify_fail(self):
         change = {"test_result": "pass", "build_result": "pass",
-                  "review_result": "pass", "status": "verify-failed"}
+                  "smoke_result": "pass", "review_result": "pass", "status": "verify-failed"}
         result = format_gates(change)
-        # T, B, R pass but V fails
-        assert result.count("✓") == 3
+        # T, B, S, R pass but V fails
+        assert result.count("✓") == 4
         assert "✗" in result  # verify failed
 
     def test_gate_str(self):

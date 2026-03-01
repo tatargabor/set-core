@@ -42,6 +42,10 @@ DEFAULT_MAX_VERIFY_RETRIES=2
 DEFAULT_SUMMARIZE_MODEL="haiku"
 DEFAULT_REVIEW_MODEL="sonnet"
 DEFAULT_IMPL_MODEL="opus"  # set from directives.default_model in monitor_loop
+DEFAULT_SMOKE_COMMAND=""
+DEFAULT_SMOKE_TIMEOUT=120
+DEFAULT_DEPLOY_SMOKE_URL=""
+DEFAULT_DEPLOY_HEALTHCHECK="/api/health"
 
 # Runtime state
 MAX_REPLAN_RETRIES=3     # max consecutive replan failures before giving up
@@ -296,6 +300,10 @@ parse_directives() {
     local max_verify_retries="$DEFAULT_MAX_VERIFY_RETRIES"
     local summarize_model="$DEFAULT_SUMMARIZE_MODEL"
     local review_model="$DEFAULT_REVIEW_MODEL"
+    local smoke_command="$DEFAULT_SMOKE_COMMAND"
+    local smoke_timeout="$DEFAULT_SMOKE_TIMEOUT"
+    local deploy_smoke_url="$DEFAULT_DEPLOY_SMOKE_URL"
+    local deploy_healthcheck="$DEFAULT_DEPLOY_HEALTHCHECK"
 
     while IFS= read -r line; do
         # Detect ## Orchestrator Directives header
@@ -405,6 +413,22 @@ parse_directives() {
                         warn "Invalid review_model '$val', using default $DEFAULT_REVIEW_MODEL"
                     fi
                     ;;
+                smoke_command)
+                    smoke_command="$val"
+                    ;;
+                smoke_timeout)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        smoke_timeout="$val"
+                    else
+                        warn "Invalid smoke_timeout '$val', using default $DEFAULT_SMOKE_TIMEOUT"
+                    fi
+                    ;;
+                deploy_smoke_url)
+                    deploy_smoke_url="$val"
+                    ;;
+                deploy_healthcheck)
+                    deploy_healthcheck="$val"
+                    ;;
                 *)
                     warn "Unknown directive '$key', ignoring"
                     ;;
@@ -435,6 +459,10 @@ parse_directives() {
         --argjson max_verify_retries "$max_verify_retries" \
         --arg summarize_model "$summarize_model" \
         --arg review_model "$review_model" \
+        --arg smoke_command "$smoke_command" \
+        --argjson smoke_timeout "$smoke_timeout" \
+        --arg deploy_smoke_url "$deploy_smoke_url" \
+        --arg deploy_healthcheck "$deploy_healthcheck" \
         '{
             max_parallel: $max_parallel,
             merge_policy: $merge_policy,
@@ -448,7 +476,11 @@ parse_directives() {
             test_timeout: $test_timeout,
             max_verify_retries: $max_verify_retries,
             summarize_model: $summarize_model,
-            review_model: $review_model
+            review_model: $review_model,
+            smoke_command: $smoke_command,
+            smoke_timeout: $smoke_timeout,
+            deploy_smoke_url: $deploy_smoke_url,
+            deploy_healthcheck: $deploy_healthcheck
         }'
 }
 
@@ -731,6 +763,8 @@ init_state() {
         tokens_used: 0,
         tokens_used_prev: 0,
         test_result: null,
+        smoke_result: null,
+        deploy_smoke_result: null,
         verify_retry_count: 0
     }]' "$plan_file")
 
@@ -1712,6 +1746,10 @@ Shared resource awareness:
 - Prefer serialization over parallel execution when shared files are involved
 - Common shared resources: design/convention docs, shared type definitions, package.json, layout components
 
+Smoke test awareness:
+- If the project has smoke tests configured (smoke_command directive), changes that modify user-facing flows (login, navigation, forms, API endpoints) should include updates to relevant smoke test files as part of the change scope
+- Organize smoke tests by functional group (auth, CRUD, navigation), not per-change
+
 Model selection — suggest a model per change based on task nature:
 - "opus" for complex features, security-sensitive changes, architectural decisions
 - "sonnet" for doc sync, doc audit, simple cleanup, mechanical refactors, S-complexity tasks
@@ -1791,6 +1829,10 @@ Shared resource awareness:
 - If 2+ parallel changes would likely modify the same shared file (conventions docs, shared types, config files, common UI components), chain them via depends_on to prevent merge conflicts
 - Prefer serialization over parallel execution when shared files are involved
 - Common shared resources: design/convention docs, shared type definitions, package.json, layout components
+
+Smoke test awareness:
+- If the project has smoke tests configured (smoke_command directive), changes that modify user-facing flows (login, navigation, forms, API endpoints) should include updates to relevant smoke test files as part of the change scope
+- Organize smoke tests by functional group (auth, CRUD, navigation), not per-change
 
 Model selection — suggest a model per change based on task nature:
 - "opus" for complex features, security-sensitive changes, architectural decisions
@@ -2916,6 +2958,14 @@ monitor_loop() {
     local review_model
     review_model=$(echo "$directives" | jq -r '.review_model // "sonnet"')
     DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
+    local smoke_command
+    smoke_command=$(echo "$directives" | jq -r '.smoke_command // ""')
+    local smoke_timeout
+    smoke_timeout=$(echo "$directives" | jq -r '.smoke_timeout // 120')
+    local deploy_smoke_url
+    deploy_smoke_url=$(echo "$directives" | jq -r '.deploy_smoke_url // ""')
+    local deploy_healthcheck
+    deploy_healthcheck=$(echo "$directives" | jq -r '.deploy_healthcheck // "/api/health"')
 
     # Parse time limit (default 5h, --time-limit none to disable)
     local time_limit_secs=0
@@ -2944,7 +2994,7 @@ monitor_loop() {
     local replan_retry_count=0  # consecutive replan failures, reset on success
 
     info "Monitor loop started (poll every ${POLL_INTERVAL}s, auto_replan=$auto_replan)"
-    log_info "Directives: test_command=$test_command, review_before_merge=$review_before_merge, review_model=$review_model, test_timeout=$test_timeout, max_verify_retries=$max_verify_retries"
+    log_info "Directives: test_command=$test_command, review_before_merge=$review_before_merge, review_model=$review_model, test_timeout=$test_timeout, max_verify_retries=$max_verify_retries, smoke_command=$smoke_command"
 
     local _poll_count=0
     while true; do
@@ -3332,7 +3382,8 @@ poll_change() {
     case "$ralph_status" in
         done)
             handle_change_done "$change_name" "$wt_path" "$test_command" "$merge_policy" \
-                "$test_timeout" "$max_verify_retries" "$review_before_merge" "$review_model"
+                "$test_timeout" "$max_verify_retries" "$review_before_merge" "$review_model" \
+                "$smoke_command" "$smoke_timeout" "$deploy_smoke_url" "$deploy_healthcheck"
             ;;
         running)
             # Check if the loop process is actually alive
@@ -3539,6 +3590,10 @@ handle_change_done() {
     local max_verify_retries="${6:-$DEFAULT_MAX_VERIFY_RETRIES}"
     local review_before_merge="${7:-false}"
     local review_model="${8:-$DEFAULT_REVIEW_MODEL}"
+    local smoke_command="${9:-}"
+    local smoke_timeout="${10:-$DEFAULT_SMOKE_TIMEOUT}"
+    local deploy_smoke_url="${11:-}"
+    local deploy_healthcheck="${12:-$DEFAULT_DEPLOY_HEALTHCHECK}"
 
     log_info "Change $change_name completed, running checks... (review_before_merge=$review_before_merge, test_command=$test_command, test_timeout=$test_timeout)"
 
@@ -3809,8 +3864,68 @@ handle_change_done() {
         update_change_field "$change_name" "has_tests" "true"
     fi
 
+    # ── Step 2c: Smoke test (local e2e) ──
+    # Runs after build, before LLM review — saves tokens if smoke fails
+    # Serialized via flock: all worktrees share the same DB, and we don't want to overload the machine
+    local gate_smoke_ms=0
+    local smoke_result="skip"
+    local smoke_output=""
+    if [[ -n "$smoke_command" ]]; then
+        update_change_field "$change_name" "status" '"verifying"'
+        info "Running smoke tests for $change_name..."
+        log_info "Verify gate: smoke start for $change_name (flock serialized)"
+
+        local _s_start=$(($(date +%s%N) / 1000000))
+        local smoke_rc=0
+        smoke_output=$(flock --timeout 180 /tmp/wt-smoke-gate.lock bash -c "cd '$wt_path' && timeout '$smoke_timeout' bash -c '$smoke_command'" 2>&1) || smoke_rc=$?
+
+        gate_smoke_ms=$(( $(date +%s%N) / 1000000 - _s_start ))
+        update_change_field "$change_name" "gate_smoke_ms" "$gate_smoke_ms"
+
+        if [[ $smoke_rc -eq 1 ]] && [[ -z "$smoke_output" ]]; then
+            # flock timeout (exit 1 with no output) — skip, don't block
+            log_warn "Verify gate: flock timeout for smoke gate — skipping smoke for $change_name"
+            smoke_result="skip"
+        elif [[ $smoke_rc -eq 0 ]]; then
+            smoke_result="pass"
+            log_info "Verify gate: smoke passed for $change_name (${gate_smoke_ms}ms)"
+        else
+            smoke_result="fail"
+            log_error "Verify gate: smoke failed for $change_name (exit $smoke_rc)"
+        fi
+    fi
+
+    update_change_field "$change_name" "smoke_result" "\"$smoke_result\""
+    local escaped_smoke
+    escaped_smoke=$(printf '%s' "$smoke_output" | head -c 2000 | jq -Rs .)
+    update_change_field "$change_name" "smoke_output" "$escaped_smoke"
+
+    if [[ "$smoke_result" == "fail" ]]; then
+        if [[ "$verify_retry_count" -lt "$max_verify_retries" ]]; then
+            verify_retry_count=$((verify_retry_count + 1))
+            info "Smoke tests failed for $change_name — retrying ($verify_retry_count/$max_verify_retries)..."
+            log_info "Verify gate: smoke fail retry $verify_retry_count/$max_verify_retries for $change_name"
+            update_change_field "$change_name" "verify_retry_count" "$verify_retry_count"
+            update_change_field "$change_name" "status" '"verify-failed"'
+            local scope
+            scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
+            local retry_prompt="Smoke tests failed after implementation. Fix the failing smoke/e2e tests.\n\nSmoke command: $smoke_command\nSmoke output:\n${smoke_output:0:2000}\n\nOriginal scope: $scope"
+            update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
+            local _snap_tokens
+            _snap_tokens=$(jq -r '.total_tokens // 0' "$wt_path/.claude/loop-state.json" 2>/dev/null || echo "0")
+            update_change_field "$change_name" "retry_tokens_start" "$_snap_tokens"
+            resume_change "$change_name"
+            return
+        fi
+        update_change_field "$change_name" "status" '"failed"'
+        send_notification "wt-orchestrate" "Change '$change_name' failed smoke tests after $max_verify_retries retries" "critical"
+        log_error "Verify gate: $change_name failed smoke tests permanently"
+        trigger_checkpoint "failure"
+        return
+    fi
+
     # ── Step 3: LLM Code Review (VG-4) ──
-    # Runs after build so we don't waste LLM tokens reviewing code that doesn't compile
+    # Runs after build and smoke so we don't waste LLM tokens reviewing code that fails gates
     if [[ "$skip_review" == "true" ]]; then
         update_change_field "$change_name" "review_result" '"skipped"'
         log_info "Verify gate: review skipped for $change_name (skip_review=true)"
@@ -3898,13 +4013,13 @@ handle_change_done() {
     fi
 
     # ── Store gate total ──
-    local gate_total_ms=$((gate_test_ms + gate_review_ms + gate_verify_ms + gate_build_ms))
+    local gate_total_ms=$((gate_test_ms + gate_review_ms + gate_verify_ms + gate_build_ms + gate_smoke_ms))
     update_change_field "$change_name" "gate_total_ms" "$gate_total_ms"
     local gate_retry_tokens
     gate_retry_tokens=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .gate_retry_tokens // 0' "$STATE_FILENAME")
     local gate_retry_count
     gate_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .gate_retry_count // 0' "$STATE_FILENAME")
-    log_info "Verify gate: $change_name total ${gate_total_ms}ms (test=${gate_test_ms}ms, review=${gate_review_ms}ms, verify=${gate_verify_ms}ms, build=${gate_build_ms}ms, retries=${gate_retry_count}, retry_tokens=${gate_retry_tokens})"
+    log_info "Verify gate: $change_name total ${gate_total_ms}ms (test=${gate_test_ms}ms, build=${gate_build_ms}ms, smoke=${gate_smoke_ms}ms, review=${gate_review_ms}ms, verify=${gate_verify_ms}ms, retries=${gate_retry_count}, retry_tokens=${gate_retry_tokens})"
 
     # ── Step 5: Mark done and handle merge ──
     update_change_field "$change_name" "status" '"done"'
@@ -3936,6 +4051,49 @@ handle_change_done() {
             info "$change_name ready for manual merge"
             ;;
     esac
+}
+
+deploy_smoke() {
+    local change_name="$1"
+    local smoke_command="$2"
+    local smoke_timeout="${3:-120}"
+    local deploy_smoke_url="$4"
+    local deploy_healthcheck="${5:-/api/health}"
+
+    # Skip if not configured
+    [[ -n "$deploy_smoke_url" && -n "$smoke_command" ]] || return 0
+
+    log_info "Deploy smoke: polling $deploy_smoke_url$deploy_healthcheck for $change_name"
+    local healthy=false
+    for i in $(seq 1 30); do
+        if curl -sf "${deploy_smoke_url}${deploy_healthcheck}" >/dev/null 2>&1; then
+            healthy=true
+            break
+        fi
+        sleep 10
+    done
+
+    if ! $healthy; then
+        log_warn "Deploy smoke: healthcheck timeout for $change_name — skipping"
+        send_notification "wt-orchestrate" "Deploy healthcheck timeout — skipping deploy smoke for $change_name" "warning"
+        update_change_field "$change_name" "deploy_smoke_result" '"skip"'
+        return 0
+    fi
+
+    log_info "Deploy smoke: running against $deploy_smoke_url for $change_name"
+    local deploy_output=""
+    local deploy_rc=0
+    deploy_output=$(SMOKE_BASE_URL="$deploy_smoke_url" timeout "$smoke_timeout" bash -c "$smoke_command" 2>&1) || deploy_rc=$?
+
+    if [[ $deploy_rc -eq 0 ]]; then
+        log_info "Deploy smoke: passed for $change_name"
+        update_change_field "$change_name" "deploy_smoke_result" '"pass"'
+    else
+        log_warn "Deploy smoke: failed for $change_name (exit $deploy_rc) — advisory only"
+        send_notification "wt-orchestrate" "Deploy smoke failed for $change_name (advisory)" "warning"
+        update_change_field "$change_name" "deploy_smoke_result" '"fail"'
+    fi
+    return 0
 }
 
 archive_change() {
@@ -4068,6 +4226,7 @@ merge_change() {
 
         cleanup_worktree "$change_name" "$wt_path"
         archive_change "$change_name"
+        deploy_smoke "$change_name" "$smoke_command" "$smoke_timeout" "$deploy_smoke_url" "$deploy_healthcheck"
 
         # Remove from merge queue if present
         local tmp

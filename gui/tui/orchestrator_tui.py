@@ -85,9 +85,10 @@ def gate_str(result):
 
 
 def format_gates(change):
-    """Format gate results in execution order: T/B/R/V."""
+    """Format gate results in execution order: T/B/S/R/V."""
     test = change.get("test_result")
     build = change.get("build_result")
+    smoke = change.get("smoke_result")
     review = change.get("review_result")
     # Verify is implied by status
     status = change.get("status", "")
@@ -98,6 +99,7 @@ def format_gates(change):
     parts = []
     parts.append(f"T{gate_str(test)}")
     parts.append(f"B{gate_str(build)}")
+    parts.append(f"S{gate_str(smoke)}")
     parts.append(f"R{gate_str(review)}")
     parts.append(f"V{gate_str(verify)}")
     return " ".join(parts)

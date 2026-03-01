@@ -340,6 +340,30 @@ Test files live next to source files as `*.test.ts`.
 Use `createMockDb()` from `src/test/helpers.ts` for DB mocking.
 ```
 
+### Smoke / E2E Tests
+
+If your project has a `smoke_command` directive configured (e.g., Playwright e2e tests), the verify gate runs them locally after build, before merge. Changes that modify user-facing flows should include smoke test updates.
+
+**Organize by functional group, not by change:**
+
+```
+e2e/smoke/
+├── auth.spec.ts          ← login, logout, session
+├── navigation.spec.ts    ← dashboard, sidebar, routing
+├── campaigns.spec.ts     ← campaign CRUD
+└── contacts.spec.ts      ← contact list, search, detail
+```
+
+When writing specs or briefs, include smoke coverage:
+
+```markdown
+- Add password reset flow.
+  Tests: unit tests for token generation, email sending.
+  Smoke: update auth.spec.ts with password reset scenario.
+```
+
+**Important:** Smoke tests that modify DB state (create records) need a `globalSetup` that resets and re-seeds the database before each suite run. The orchestrator serializes smoke execution via `flock` — only one smoke gate runs at a time — because all worktrees share the same database.
+
 ---
 
 ## 5. Plan Sizing
