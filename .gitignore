@@ -55,3 +55,6 @@ orchestration-summary.md
 
 # Test results
 test-results/
+
+# Local docs (project-specific notes, not pushed to remote)
+local-docs/
