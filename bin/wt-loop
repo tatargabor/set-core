@@ -491,7 +491,14 @@ detect_next_change_action() {
         local tasks_file="$change_dir/tasks.md"
 
         if [[ ! -d "$change_dir" ]]; then
-            echo "none"
+            # Check if change was archived (moved to archive/ with date prefix)
+            local archived
+            archived=$(find "$wt_path/openspec/changes/archive" -maxdepth 1 -type d -name "*-$target_change" 2>/dev/null | head -1)
+            if [[ -n "$archived" ]]; then
+                echo "done"
+            else
+                echo "none"
+            fi
             return
         fi
 
