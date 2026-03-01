@@ -860,18 +860,11 @@ resolve_change_model() {
     change_type=$(jq -r --arg n "$change_name" \
         '.changes[] | select(.name == $n) | .change_type // "feature"' "$STATE_FILENAME")
 
-    # S-complexity cleanup/doc changes → sonnet
-    if [[ "$complexity" == "S" ]]; then
-        case "$change_type" in
-            cleanup-before|cleanup-after)
-                echo "sonnet"
-                return ;;
-        esac
-        # Name-based hint: doc-sync, doc-audit, etc.
-        if [[ "$change_name" == doc-* || "$change_name" == *-doc-* ]]; then
-            echo "sonnet"
-            return
-        fi
+    # Only doc-named changes → sonnet (mechanical text work, no code)
+    # All code-writing changes (including S cleanup) MUST use opus
+    if [[ "$change_name" == doc-* || "$change_name" == *-doc-* || "$change_name" == *-docs || "$change_name" == *-docs-* ]]; then
+        echo "sonnet"
+        return
     fi
 
     echo "$default_model"
@@ -1772,9 +1765,10 @@ Smoke test awareness:
 - Organize smoke tests by functional group (auth, CRUD, navigation), not per-change
 
 Model selection — suggest a model per change based on task nature:
-- "opus" for complex features, security-sensitive changes, architectural decisions
-- "sonnet" for doc sync, doc audit, simple cleanup, mechanical refactors, S-complexity tasks
-- When in doubt, use "opus"
+- "opus" for ALL changes that write functional code (features, bug fixes, refactors, cleanup, tests)
+- "sonnet" ONLY for doc-only changes (doc sync, doc audit, README updates) — zero code writing
+- Sonnet cannot follow OpenSpec workflows, make architecture decisions, or write quality code
+- When in doubt, always use "opus"
 
 Manual tasks — flag changes that require human intervention:
 - Set "has_manual_tasks": true when a change involves: external API keys/secrets (Stripe, AWS, Firebase), third-party account/project creation, OAuth app registration, DNS configuration, webhook setup, or any step that cannot be automated
@@ -1856,9 +1850,10 @@ Smoke test awareness:
 - Organize smoke tests by functional group (auth, CRUD, navigation), not per-change
 
 Model selection — suggest a model per change based on task nature:
-- "opus" for complex features, security-sensitive changes, architectural decisions
-- "sonnet" for doc sync, doc audit, simple cleanup, mechanical refactors, S-complexity tasks
-- When in doubt, use "opus"
+- "opus" for ALL changes that write functional code (features, bug fixes, refactors, cleanup, tests)
+- "sonnet" ONLY for doc-only changes (doc sync, doc audit, README updates) — zero code writing
+- Sonnet cannot follow OpenSpec workflows, make architecture decisions, or write quality code
+- When in doubt, always use "opus"
 
 Manual tasks — flag changes that require human intervention:
 - Set "has_manual_tasks": true when a change involves: external API keys/secrets (Stripe, AWS, Firebase), third-party account/project creation, OAuth app registration, DNS configuration, webhook setup, or any step that cannot be automated

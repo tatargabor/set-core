@@ -1058,6 +1058,18 @@ Feature-specific flows (fill form → submit → verify result) belong in functi
 
 The orchestrator supports per-change model selection. By default, all changes use `opus`. You can override at three levels:
 
+### The Core Rule
+
+> **Any change that writes functional code MUST use opus.**
+
+Sonnet cannot reliably handle OpenSpec-driven workflows (artifact creation, spec interpretation, multi-file feature implementation). It struggles with:
+- Understanding and following OpenSpec artifacts (proposal → design → specs → tasks)
+- Architectural decisions across multiple files
+- Complex feature implementation that requires reasoning about existing codebase patterns
+- Correctly using project-specific skills and conventions
+
+**Sonnet is appropriate ONLY for mechanical, non-creative tasks** where the instructions are trivially clear and no architectural judgment is needed.
+
 ### Per-change `model` field
 
 Set directly in the plan JSON or spec input:
@@ -1078,24 +1090,37 @@ Set in the directives block to change the default for all changes:
 
 ```markdown
 ## Orchestrator Directives
-default_model: sonnet
+default_model: opus
 ```
+
+**Do NOT set `default_model: sonnet`** — this will cause feature changes to fail or produce low-quality results.
 
 ### Automatic heuristic
 
 When no explicit model is set, the orchestrator uses a complexity-based heuristic:
-- **S-complexity cleanup changes** → `sonnet` (cheap, good enough)
-- **Everything else** → `opus` (best quality for features)
+- **S-complexity cleanup/doc changes** → `sonnet` (mechanical text work)
+- **Everything else** → `opus` (required for code quality)
 
 ### When to use which model
 
 | Scenario | Model | Why |
 |----------|-------|-----|
-| Complex features (M/L) | opus | Better architecture decisions, fewer retries |
-| Doc sync / doc audit | sonnet | Mechanical text work, opus is overkill |
-| S-complexity cleanup | sonnet | Auto-selected by heuristic |
-| Security-sensitive features | opus | Review quality matters |
-| Large batches (8+ changes) | sonnet default, opus override for critical ones | Cost control |
+| **Any feature implementation** (S/M/L) | **opus** | Sonnet cannot follow OpenSpec workflows or make architecture decisions |
+| **Any code-writing change** | **opus** | Even "simple" code changes require understanding codebase patterns |
+| **Bug fixes** | **opus** | Diagnosis and fix require reasoning about existing code |
+| Doc sync / doc audit | sonnet | Mechanical text replacement, no code judgment needed |
+| Smoke test execution only | sonnet | Running existing tests, no new code |
+| Trivial file renames / moves | sonnet | Purely mechanical operations |
+| Large batches — cost control | **opus for all code changes**, sonnet only for doc/test-run tasks | Don't sacrifice quality for cost |
+
+### What goes wrong with sonnet on code tasks
+
+Real-world failure modes observed:
+- **OpenSpec confusion**: Sonnet can't follow the `/opsx:apply` workflow — misinterprets artifacts, skips tasks, or creates wrong file structure
+- **Stalling loops**: Sonnet gets stuck in iteration loops without making progress, burning tokens without useful output
+- **Shallow implementation**: Implements the happy path only, misses error handling, validation, and edge cases that opus catches
+- **Pattern blindness**: Doesn't recognize existing codebase conventions, creates inconsistent code that requires manual cleanup
+- **Wrong abstractions**: Makes poor architectural choices that are harder to fix than writing from scratch
 
 ### Gate skip flags
 
