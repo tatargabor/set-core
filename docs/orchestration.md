@@ -258,6 +258,64 @@ wt-orchestrate replan
 
 ---
 
+## Verification Gates
+
+Changes go through pre-merge and post-merge quality gates before completion.
+
+### Pre-merge gate (worktree)
+
+Runs inside the worktree before merge:
+
+1. **Build** — `tsc --noEmit` (or configured build command)
+2. **Unit tests** — `vitest run` (or configured test command)
+3. **Code review** — optional LLM review (`review_before_merge: true`)
+
+If any step fails, the Ralph loop gets the error output and retries (up to `max_verify_retries`, default 2).
+
+### Pre-merge: E2E gate (worktree) — PLANNED
+
+Runs per-change functional e2e tests in the worktree. Unlike smoke (post-merge, whole app), e2e validates the specific feature the agent built. Failure means the implementation is incomplete.
+
+1. **Trigger**: If `e2e_command` configured AND change scope includes a `Functional:` line
+2. **Server**: Starts own dev server on dynamic port in worktree
+3. **Run**: `e2e_command` with `SMOKE_BASE_URL=http://localhost:<port>`
+4. **If pass** → continue to code review
+5. **If fail** → Ralph gets failure output + screenshots, retries
+
+**DB handling:** `globalSetup` reset+seed (same as smoke). `flock` ensures only one worktree runs tests at a time, so there are no DB conflicts.
+
+### Post-merge smoke gate (main repo) — PLANNED
+
+> **Status: Not yet implemented.** Currently smoke tests run pre-merge in the worktree, which fails because the worktree can't start its own dev server (port conflict with the main repo dev server). The fix is to move smoke to post-merge.
+
+After merge, the orchestrator runs smoke/e2e tests against the **running dev server on main**:
+
+1. Health check loop — poll `GET /api/health` until 200 (max 60s wait for hot-reload)
+2. Run smoke: `SMOKE_BASE_URL=http://localhost:3002 pnpm test:smoke`
+3. If pass → continue to next change
+4. If fail → fix forward on main (Ralph gets smoke output + failure screenshots from `e2e/test-results/`)
+5. If fix fails → `git revert HEAD` + retry the change in its worktree
+
+**Config:**
+```yaml
+smoke_command: pnpm test:smoke     # the command to run
+smoke_timeout: 120                 # seconds
+smoke_base_url: http://localhost:3002  # dev server URL (optional, auto-detected)
+```
+
+**Why post-merge:**
+- Worktrees can't start their own dev server (port conflict, `.next` cache mismatch)
+- Smoke tests validate the **integrated** state (merge conflicts, cross-change interactions)
+- The already-running dev server hot-reloads after merge — no startup overhead
+- Failure screenshots in `e2e/test-results/` aid debugging (gitignored, local only)
+
+**Known issues to handle:**
+- Prisma AI Safety Guard blocks `prisma db push --force-reset` when invoked by AI agents — `global-setup.ts` must set `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=yes`
+- Hot-reload delay after merge — need health check polling before running smoke
+- If dev server crashes after merge — orchestrator should detect and either restart or escalate
+
+---
+
 ## Safety
 
 - **Time limit**: default 5 hours. Override with `--time-limit 2h` or `--time-limit none`

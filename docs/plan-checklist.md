@@ -28,6 +28,9 @@ Quick pre-flight check before running `wt-orchestrate start`. Review the plan (`
 - [ ] **Test requirements specified** — Each change scope mentions what to test (happy path, error cases)
 - [ ] **Test infrastructure exists or is first change** — If no test setup, first change must be `test-infrastructure-setup`
 - [ ] **Existing patterns referenced** — If project has tests, spec mentions framework and conventions
+- [ ] **Functional e2e for UI features** — Changes with forms/CRUD/flows include `Functional:` line with spec file path
+- [ ] **Smoke updates for new routes** — Changes adding new pages include smoke navigation update
+- [ ] **Three-layer separation clear** — Unit tests validate logic, e2e validates feature flow, smoke validates navigation
 
 ## Sizing & Phases
 

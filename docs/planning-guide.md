@@ -364,6 +364,46 @@ When writing specs or briefs, include smoke coverage:
 
 **Important:** Smoke tests that modify DB state (create records) need a `globalSetup` that resets and re-seeds the database before each suite run. The orchestrator serializes smoke execution via `flock` — only one smoke gate runs at a time — because all worktrees share the same database.
 
+### Functional E2E Tests (per-feature acceptance)
+
+Functional e2e tests validate that a specific feature's happy path works end-to-end (login → navigate → fill form → submit → verify result). They are different from smoke tests:
+
+| | Smoke | Functional E2E |
+|---|---|---|
+| Goal | Page loads, no 500 | Feature works end-to-end |
+| Depth | Shallow (goto + check render) | Deep (fill form → submit → verify) |
+| Scope | Whole app, every route | One feature, one flow |
+| Gate | Post-merge (main dev server) | Pre-merge (worktree dev server) |
+| On failure | Regression — revert/fix | Implementation incomplete — agent retry |
+
+**When to include:** Any change that adds user-facing UI with forms, CRUD, multi-step flows, or interactive features.
+
+**Organization:** `e2e/features/` directory, one spec per feature domain:
+
+```
+e2e/features/
+├── company-crud.spec.ts     ← create, edit, delete company
+├── campaign-flow.spec.ts    ← create campaign, add companies, generate emails
+├── csv-import.spec.ts       ← upload, map, preview, import
+└── auth-flow.spec.ts        ← login, register, password reset
+```
+
+**In spec format:**
+
+```markdown
+- Add campaign management: create, edit, status changes.
+  Tests: CRUD validation, status transitions, empty state.
+  Functional: e2e/features/campaign-crud.spec.ts — create campaign,
+  add target segment, verify campaign appears in list.
+  Smoke: update navigation.spec.ts with /campaigns route.
+```
+
+**Scope guideline:** Test ONE happy path per feature, not exhaustive scenarios. The goal is "agent didn't forget a route/button/action", not "every edge case works".
+
+**Prerequisites pattern:** Auth fixtures, seed data, shared test helpers — reuse from smoke setup or create a shared `e2e/fixtures/` directory.
+
+**DB handling:** `globalSetup` reset+seed (same as smoke). Self-cleaning tests (delete what you create) are fragile — test failure leaves orphan data, cascading deletes are hard to manage, and tests become order-dependent. The `flock` serialization ensures only one worktree runs tests at a time, so there are no DB conflicts.
+
 ---
 
 ## 5. Plan Sizing
@@ -784,6 +824,26 @@ List required env vars so the agent adds them to `.env.example`:
 - S3_BUCKET, S3_REGION, S3_ACCESS_KEY: file uploads
 ```
 
+### Testing Strategy
+
+Three-layer testing for web projects:
+
+| Layer | Framework | Command | Gate | Timing |
+|---|---|---|---|---|
+| Unit tests | Vitest/Jest | `pnpm test` | test | Pre-merge (worktree) |
+| Functional e2e | Playwright | `pnpm test:e2e` | e2e | Pre-merge (worktree) |
+| Smoke navigation | Playwright | `pnpm test:smoke` | smoke | Post-merge (main) |
+
+Specify in directives:
+
+```yaml
+test_command: pnpm test
+e2e_command: pnpm test:e2e        # per-feature acceptance
+smoke_command: pnpm test:smoke    # broad navigation
+```
+
+Unit tests validate logic. Functional e2e validates the feature works end-to-end (one happy path). Smoke validates nothing regressed across the whole app.
+
 ---
 
 ## 9. Anti-patterns
@@ -954,6 +1014,17 @@ When 3+ changes each add to the same type (union types, enums, activity action l
 - CSV import (uses existing ActivityAction types)
 - ...
 ```
+
+### Anti-pattern: Smoke Tests as Feature Tests
+
+**Symptom**: Smoke test spec files grow large with feature-specific assertions (form fills, multi-step flows, data validation).
+
+Smoke tests should ONLY verify:
+1. Page loads (no 500)
+2. Something renders (not empty)
+3. No console errors
+
+Feature-specific flows (fill form → submit → verify result) belong in functional e2e tests (`e2e/features/`), not in smoke specs (`e2e/smoke/`). When smoke tests contain feature logic, they become slow, brittle, and hard to maintain — and they run post-merge where failures are expensive to fix.
 
 ---
 
