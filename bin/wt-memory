@@ -3219,7 +3219,7 @@ else:
 cmd_tui() {
     local since_days=7
     local json_output=false
-    local live_mode=false
+    local live_mode=true
     local poll_interval=10
 
     while [[ $# -gt 0 ]]; do
@@ -3231,10 +3231,11 @@ cmd_tui() {
                 ;;
             --json)
                 json_output=true
+                live_mode=false
                 shift
                 ;;
-            --live)
-                live_mode=true
+            --once)
+                live_mode=false
                 shift
                 ;;
             --interval)
