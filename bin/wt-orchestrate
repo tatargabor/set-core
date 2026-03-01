@@ -747,7 +747,8 @@ init_state() {
             changes: $changes,
             checkpoints: [],
             merge_queue: [],
-            changes_since_checkpoint: 0
+            changes_since_checkpoint: 0,
+            cycle_started_at: null
         }' > "$STATE_FILENAME"
 
     local change_count
@@ -1706,6 +1707,11 @@ Dependency ordering heuristics — classify each change by type and apply orderi
 - cleanup-after changes run last — they depend on the features they clean up around
 - If the spec contains explicit dependency hints (e.g., "depends_on: X", "requires X", "after X is complete"), preserve them in the output depends_on array
 
+Shared resource awareness:
+- If 2+ parallel changes would likely modify the same shared file (conventions docs, shared types, config files, common UI components), chain them via depends_on to prevent merge conflicts
+- Prefer serialization over parallel execution when shared files are involved
+- Common shared resources: design/convention docs, shared type definitions, package.json, layout components
+
 Model selection — suggest a model per change based on task nature:
 - "opus" for complex features, security-sensitive changes, architectural decisions
 - "sonnet" for doc sync, doc audit, simple cleanup, mechanical refactors, S-complexity tasks
@@ -1780,6 +1786,11 @@ Dependency ordering heuristics — classify each change by type and apply orderi
 - cleanup-before/refactor changes run before feature changes that touch the same area (e.g., a UI cleanup should complete before new UI features are built on that code)
 - cleanup-after changes run last — they depend on the features they clean up around
 - If the spec contains explicit dependency hints (e.g., "depends_on: X", "requires X", "after X is complete"), preserve them in the output depends_on array
+
+Shared resource awareness:
+- If 2+ parallel changes would likely modify the same shared file (conventions docs, shared types, config files, common UI components), chain them via depends_on to prevent merge conflicts
+- Prefer serialization over parallel execution when shared files are involved
+- Common shared resources: design/convention docs, shared type definitions, package.json, layout components
 
 Model selection — suggest a model per change based on task nature:
 - "opus" for complex features, security-sensitive changes, architectural decisions
@@ -3140,6 +3151,7 @@ auto_replan_cycle() {
     local completed_roadmap
     completed_roadmap=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged" or .status == "merge-blocked") | .roadmap_item] | join("; ")' "$STATE_FILENAME")
 
+    log_info "========== REPLAN CYCLE $cycle =========="
     info "Completed so far: $completed_names"
     log_info "Auto-replan cycle $cycle — completed: $completed_names"
 
@@ -3243,6 +3255,7 @@ print('true' if novel and novel <= failed else 'false')
     update_state_field "active_seconds" "$prev_active_seconds"
     update_state_field "started_epoch" "$prev_started_epoch"
     update_state_field "time_limit_secs" "$prev_time_limit"
+    update_state_field "cycle_started_at" "\"$(date -Iseconds)\""
 
     # Dispatch newly ready changes
     dispatch_ready_changes "$max_parallel"
@@ -3315,7 +3328,7 @@ poll_change() {
                 local terminal_pid
                 terminal_pid=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .ralph_pid // 0' "$STATE_FILENAME")
                 if [[ "$terminal_pid" -gt 0 ]] && kill -0 "$terminal_pid" 2>/dev/null; then
-                    log_info "Change $change_name loop-state stale (${stale_secs}s) but PID $terminal_pid still alive — long iteration, skipping"
+                    # PID alive = long iteration, not stale. Don't log every poll cycle (noise).
                     return
                 fi
 

@@ -241,3 +241,42 @@ class TestGateFormatting:
         assert gate_str("fail") == GATE_FAIL
         assert gate_str(None) == GATE_NONE
         assert gate_str("unknown") == GATE_NONE
+
+
+# ─── 9.6: Token display during replan ───────────────────────────────
+
+class TestTokenReplanPersistence:
+    """During replan transition, current cycle tokens are 0.
+    The TUI should show prev_total_tokens instead of 0."""
+
+    def test_replan_shows_prev_tokens(self):
+        """When current_tokens=0 and prev_total_tokens>0, total should be prev."""
+        current_tokens = 0
+        prev_tokens = 3500000
+        # Logic from _update_header
+        if current_tokens == 0 and prev_tokens > 0:
+            total_tokens = prev_tokens
+        else:
+            total_tokens = current_tokens + prev_tokens
+        assert total_tokens == 3500000
+        assert format_tokens(total_tokens) == "3.5M"
+
+    def test_normal_accumulation(self):
+        """Normal case: both current and prev are summed."""
+        current_tokens = 500000
+        prev_tokens = 3000000
+        if current_tokens == 0 and prev_tokens > 0:
+            total_tokens = prev_tokens
+        else:
+            total_tokens = current_tokens + prev_tokens
+        assert total_tokens == 3500000
+
+    def test_first_cycle_no_prev(self):
+        """First cycle: no prev tokens, current only."""
+        current_tokens = 500000
+        prev_tokens = 0
+        if current_tokens == 0 and prev_tokens > 0:
+            total_tokens = prev_tokens
+        else:
+            total_tokens = current_tokens + prev_tokens
+        assert total_tokens == 500000

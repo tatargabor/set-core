@@ -297,7 +297,11 @@ class OrchestratorTUI(App):
         # Cumulative tokens: current cycle + previous cycles
         current_tokens = sum(c.get("tokens_used", 0) or 0 for c in changes)
         prev_tokens = state.get("prev_total_tokens", 0) or 0
-        total_tokens = current_tokens + prev_tokens
+        # During replan transition, current cycle tokens are 0 briefly — show prev total
+        if current_tokens == 0 and prev_tokens > 0:
+            total_tokens = prev_tokens
+        else:
+            total_tokens = current_tokens + prev_tokens
 
         # Time tracking
         active_secs = state.get("active_seconds", 0) or 0
@@ -396,8 +400,10 @@ class OrchestratorTUI(App):
             line = line.rstrip()
             if not line:
                 continue
-            # Color by log level
-            if "[ERROR]" in line:
+            # Color by log level and special markers
+            if "========== REPLAN CYCLE" in line:
+                log_widget.write(f"[bold cyan]{line}[/]")
+            elif "[ERROR]" in line:
                 log_widget.write(f"[red bold]{line}[/]")
             elif "[WARN]" in line:
                 log_widget.write(f"[yellow]{line}[/]")

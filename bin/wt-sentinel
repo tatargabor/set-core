@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# wt-sentinel — Supervised wrapper for wt-orchestrate start.
+# Restarts the orchestrator on crash with backoff. Stops on clean exit or user interrupt.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+    cat <<EOF
+Usage: wt-sentinel [wt-orchestrate start options...]
+
+Runs 'wt-orchestrate start' in a supervised loop. If the orchestrator
+crashes (non-zero exit), it restarts after a 30s backoff. Stops on:
+  - Clean exit with state "done" (orchestration complete)
+  - Clean exit with state "stopped" (user Ctrl+C)
+  - 5 rapid consecutive crashes (each <5 min runtime)
+  - SIGINT/SIGTERM (forwarded to child, no restart)
+
+All arguments are passed through to 'wt-orchestrate start'.
+
+Examples:
+  wt-sentinel
+  wt-sentinel --spec docs/v5.md --max-parallel 3
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+STATE_FILE="orchestration-state.json"
+PID_FILE="sentinel.pid"
+MAX_RAPID_CRASHES=5
+SUSTAINED_RUN_SECS=300  # 5 minutes
+BACKOFF_SECS=30
+
+# Signal handling — don't restart after user interrupt
+interrupted=false
+child_pid=0
+
+cleanup() {
+    rm -f "$PID_FILE"
+}
+
+handle_signal() {
+    interrupted=true
+    if [[ $child_pid -gt 0 ]]; then
+        kill -TERM "$child_pid" 2>/dev/null || true
+    fi
+}
+
+trap cleanup EXIT
+trap handle_signal SIGINT SIGTERM SIGHUP
+
+# Write PID file
+echo $$ > "$PID_FILE"
+
+rapid_crashes=0
+
+while true; do
+    # Fix stale state: if state says "running" but no orchestrator is active, reset to "stopped"
+    if [[ -f "$STATE_FILE" ]]; then
+        current_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
+        if [[ "$current_status" == "running" ]]; then
+            echo "[sentinel] Stale state detected (status=running but no process) — resetting to stopped"
+            jq '.status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+        fi
+    fi
+
+    # Launch orchestrator
+    start_epoch=$(date +%s)
+    child_pid=0
+    "$SCRIPT_DIR/wt-orchestrate" start "$@" &
+    child_pid=$!
+    wait $child_pid || true
+    exit_code=$?
+    child_pid=0
+    end_epoch=$(date +%s)
+    runtime=$((end_epoch - start_epoch))
+
+    # Don't restart if we received a signal
+    if $interrupted; then
+        echo "[sentinel] Interrupted — exiting"
+        exit 0
+    fi
+
+    # Check state to decide whether to restart
+    final_status=""
+    if [[ -f "$STATE_FILE" ]]; then
+        final_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
+    fi
+
+    # Clean exit + done = orchestration complete
+    if [[ $exit_code -eq 0 && "$final_status" == "done" ]]; then
+        echo "[sentinel] Orchestration complete (status=done)"
+        exit 0
+    fi
+
+    # Clean exit + stopped = user stopped it (Ctrl+C reached orchestrator)
+    if [[ $exit_code -eq 0 && "$final_status" == "stopped" ]]; then
+        echo "[sentinel] Orchestrator stopped cleanly"
+        exit 0
+    fi
+
+    # Non-zero exit = crash — track rapid crashes
+    if [[ $runtime -ge $SUSTAINED_RUN_SECS ]]; then
+        rapid_crashes=0  # Ran long enough — reset counter
+    else
+        rapid_crashes=$((rapid_crashes + 1))
+    fi
+
+    if [[ $rapid_crashes -ge $MAX_RAPID_CRASHES ]]; then
+        echo "[sentinel] ERROR: $MAX_RAPID_CRASHES rapid crashes — giving up"
+        exit 1
+    fi
+
+    echo "[sentinel] Orchestrator exited (code=$exit_code, runtime=${runtime}s, rapid_crashes=$rapid_crashes/$MAX_RAPID_CRASHES)"
+    echo "[sentinel] Restarting in ${BACKOFF_SECS}s..."
+    sleep $BACKOFF_SECS
+done
