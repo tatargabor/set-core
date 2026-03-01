@@ -109,7 +109,7 @@ extract_manual_section() {
 count_pending_manual() {
     local tasks_file="$1"
     local count
-    count=$(grep -cE '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null)
+    count=$(grep -cE '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null || true)
     echo "${count:-0}"
 }
 

@@ -318,7 +318,7 @@ count_manual_tasks() {
     [[ -z "$tasks_file" ]] && echo 0 && return
 
     local count
-    count=$(grep -cE '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null)
+    count=$(grep -cE '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null || true)
     count=${count//[^0-9]/}
     echo "${count:-0}"
 }
@@ -384,7 +384,7 @@ check_tasks_done() {
     # separately by the waiting:human detection. The regex \[\s*\] matches
     # only whitespace inside brackets, so [?] is naturally excluded.
     local count
-    count=$(grep -cE '^\s*-\s*\[\s*\]' "$tasks_file" 2>/dev/null)
+    count=$(grep -cE '^\s*-\s*\[\s*\]' "$tasks_file" 2>/dev/null || true)
     count=${count//[^0-9]/}  # Strip any non-digit characters
     count=${count:-0}
 
@@ -410,7 +410,7 @@ check_done() {
             # When --change is not set, scan all changes (existing behavior)
             local action
             action=$(detect_next_change_action "$wt_path" "$target_change")
-            # debug: warn "check_done openspec: action='$action' target='$target_change'"
+            warn "check_done openspec: action='$action' target='$target_change'"
             [[ "$action" == "done" ]]
             ;;
         manual)
@@ -511,7 +511,7 @@ detect_next_change_action() {
 
         # Are all tasks checked? (apply done)
         local unchecked
-        unchecked=$(grep -cE '^\s*-\s*\[\s*\]' "$tasks_file" 2>/dev/null)
+        unchecked=$(grep -cE '^\s*-\s*\[\s*\]' "$tasks_file" 2>/dev/null || true)
         unchecked=${unchecked//[^0-9]/}
         unchecked=${unchecked:-0}
         if [[ "$unchecked" -gt 0 ]]; then
@@ -570,7 +570,7 @@ detect_next_change_action() {
 
         # Check 2: Are all tasks checked? (apply done)
         local unchecked
-        unchecked=$(grep -cE '^\s*-\s*\[\s*\]' "$tasks_file" 2>/dev/null)
+        unchecked=$(grep -cE '^\s*-\s*\[\s*\]' "$tasks_file" 2>/dev/null || true)
         unchecked=${unchecked//[^0-9]/}  # Strip non-digit chars
         unchecked=${unchecked:-0}
         if [[ "$unchecked" -gt 0 ]]; then
