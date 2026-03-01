@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## Requirements
 
 ### Requirement: Ralph loop state file format
 The Ralph loop SHALL write state to `<worktree>/.claude/loop-state.json` with a documented, stable format for MCP consumption.
@@ -36,10 +36,11 @@ The Ralph loop SHALL write state to `<worktree>/.claude/loop-state.json` with a 
   - `commits`: array - commit hashes made
   - `tokens_used`: number - tokens consumed this iteration
   - `timed_out`: boolean - whether iteration was killed by timeout (optional, only if true)
+  - `no_op`: boolean - whether iteration produced no meaningful work (optional, only if true)
+  - `ff_exhausted`: boolean - whether ff retry limit was exceeded (optional, only if true)
+  - `ff_recovered`: boolean - whether fallback tasks.md was generated (optional, only if true)
   - `log_file`: string - path to per-iteration log file
   - `resumed`: boolean - whether this iteration used `--resume` (optional, only if true)
-
-## ADDED Requirements
 
 ### Requirement: Universal done detection safety net
 The Ralph loop SHALL have a fallback done check that catches completion regardless of the primary `done_criteria` setting.

@@ -1,18 +1,17 @@
-## ADDED Requirements
+## Requirements
 
-### Requirement: Real-time terminal output via PTY wrapper
-The Ralph loop SHALL display Claude's output in real-time during execution using a PTY wrapper.
+### Requirement: Real-time terminal output during iterations
+The Ralph loop SHALL display Claude output in real-time during each iteration, not buffered until completion.
 
-#### Scenario: PTY wrapper for line-buffered output
-- **WHEN** Claude is invoked during an iteration
-- **THEN** the invocation SHALL use `script -f -q -c "claude ..."` (Linux) or equivalent PTY wrapper
-- **AND** output SHALL appear on the terminal as it is generated (line-buffered, not block-buffered)
-- **AND** output SHALL simultaneously be written to the per-iteration log file
+#### Scenario: Line-buffered output with stdbuf available
+- **WHEN** `stdbuf` is available on the system
+- **THEN** the Claude invocation pipe SHALL use `stdbuf -oL` for both `claude` and `tee` commands
+- **AND** terminal output SHALL appear line-by-line as Claude generates it
 
-#### Scenario: Fallback when script command unavailable
-- **WHEN** the `script` command is not available
-- **THEN** the Ralph loop SHALL fall back to direct pipe invocation (`echo "$prompt" | claude`)
-- **AND** log a warning: "PTY wrapper unavailable, output may be buffered"
+#### Scenario: Fallback without stdbuf
+- **WHEN** `stdbuf` is not available on the system
+- **THEN** the Claude invocation pipe SHALL fall back to the existing unbuffered pipe
+- **AND** a one-time warning SHALL be logged: "stdbuf not found — output may be buffered"
 
 ### Requirement: Verbose mode for tool use visibility
 The Ralph loop SHALL enable verbose output so tool use events are visible during execution.
