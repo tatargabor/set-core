@@ -3219,6 +3219,8 @@ else:
 cmd_tui() {
     local since_days=7
     local json_output=false
+    local live_mode=false
+    local poll_interval=10
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -3231,6 +3233,15 @@ cmd_tui() {
                 json_output=true
                 shift
                 ;;
+            --live)
+                live_mode=true
+                shift
+                ;;
+            --interval)
+                shift
+                poll_interval="$1"
+                shift
+                ;;
             *)
                 echo "Unknown option: $1" >&2
                 return 1
@@ -3241,13 +3252,32 @@ cmd_tui() {
     local py
     py=$(find_python)
 
-    "$py" -c "
+    _tui_render() {
+        "$py" -c "
 import sys, json, os, subprocess
+from datetime import datetime
 sys.path.insert(0, '$_wt_memory_bin_dir/..')
 from lib.metrics import query_report, is_enabled
 
 json_mode = $( [[ "$json_output" == "true" ]] && echo "True" || echo "False" )
+live_mode = $( [[ "$live_mode" == "true" ]] && echo "True" || echo "False" )
 since_days = $since_days
+
+# ANSI colors
+use_color = sys.stdout.isatty()
+if use_color:
+    BOLD = '\033[1m'
+    DIM  = '\033[2m'
+    RST  = '\033[0m'
+    CYN  = '\033[36m'
+    GRN  = '\033[32m'
+    YEL  = '\033[33m'
+    RED  = '\033[31m'
+    BLU  = '\033[34m'
+    MAG  = '\033[35m'
+    WHT  = '\033[37m'
+else:
+    BOLD = DIM = RST = CYN = GRN = YEL = RED = BLU = MAG = WHT = ''
 
 # --- Section 1: Memory Database ---
 mem_stats = None
@@ -3276,118 +3306,163 @@ if json_mode:
 
 # --- TUI output ---
 lines = []
-lines.append('Memory Overview Dashboard')
-lines.append('=' * 64)
+now = datetime.now().strftime('%H:%M:%S')
+title = f'  Memory Overview Dashboard'
+lines.append(f'{BOLD}{CYN}{title}{RST}  {DIM}(last {since_days}d, updated {now}){RST}')
+lines.append(f'{CYN}{'━' * 66}{RST}')
 lines.append('')
 
 # Section 1: Memory Database
-lines.append('  MEMORY DATABASE')
-lines.append('  ' + '-' * 60)
+lines.append(f'  {BOLD}{BLU}MEMORY DATABASE{RST}')
 if mem_stats:
     total = mem_stats.get('total', mem_stats.get('total_memories', 0))
-    noise = mem_stats.get('noise_ratio', 0)
+    noise_raw = mem_stats.get('noise_ratio', 0)
+    try:
+        noise_val = float(noise_raw) if not isinstance(noise_raw, str) else float(noise_raw.rstrip('%'))
+    except (ValueError, TypeError):
+        noise_val = 0
+    noise_color = GRN if noise_val < 15 else (YEL if noise_val < 30 else RED)
     types = mem_stats.get('type_distribution', {})
     tags = mem_stats.get('tag_distribution', mem_stats.get('top_tags', {}))
 
     type_parts = []
-    for t in ['Learning', 'Context', 'Decision']:
+    for t, clr in [('Learning', GRN), ('Context', BLU), ('Decision', MAG)]:
         c = types.get(t, 0)
         if c > 0:
-            type_parts.append(f'{t}: {c}')
+            type_parts.append(f'{clr}{t}: {c}{RST}')
 
-    lines.append(f'  Total: {total}    Noise: {noise}%    Types: {\"  \".join(type_parts)}')
+    lines.append(f'  {BOLD}{total}{RST} memories    Noise: {noise_color}{noise_val:.0f}%{RST}    {\"  \".join(type_parts)}')
 
     if tags:
-        tag_str = ', '.join(f'{k}: {v}' for k, v in list(tags.items())[:5])
-        lines.append(f'  Top tags: {tag_str}')
+        tag_items = list(tags.items())[:5]
+        tag_str = f'{DIM}' + ', '.join(f'{k}: {v}' for k, v in tag_items) + f'{RST}'
+        lines.append(f'  Tags: {tag_str}')
 else:
-    lines.append('  Memory DB: unavailable')
+    lines.append(f'  {DIM}Memory DB: unavailable{RST}')
 lines.append('')
 
 if not report:
     if not is_enabled():
-        lines.append('  No metrics data. Enable with: wt-memory metrics --enable')
+        lines.append(f'  {YEL}No metrics data. Enable with: wt-memory metrics --enable{RST}')
     else:
-        lines.append('  No metrics data yet.')
+        lines.append(f'  {DIM}No metrics data yet.{RST}')
+    if live_mode:
+        lines.append(f'{DIM}  Refreshing every $poll_interval seconds... (Ctrl+C to exit){RST}')
     print('\n'.join(lines))
     sys.exit(0)
 
 # Section 2: Hook Overhead
-lines.append(f'  HOOK OVERHEAD (last {since_days} days)')
-lines.append('  ' + '-' * 60)
-lines.append(f'  Sessions: {report[\"session_count\"]:>6}    Injections: {report[\"total_injections\"]:>6}    Tokens: {report[\"total_tokens\"]:>8}')
+lines.append(f'  {BOLD}{BLU}HOOK OVERHEAD{RST}')
+sessions = report['session_count']
+injections = report['total_injections']
+tokens = report['total_tokens']
+lines.append(f'  Sessions: {BOLD}{sessions}{RST}    Injections: {BOLD}{injections}{RST}    Tokens: {BOLD}{tokens:,}{RST}')
 
-avg_tok_session = report['total_tokens'] / report['session_count'] if report['session_count'] > 0 else 0
+avg_tok_session = tokens / sessions if sessions > 0 else 0
 budget_pct = avg_tok_session / 200000 * 100
-lines.append(f'  Avg tokens/session: {avg_tok_session:>6.0f}    Est. budget: {budget_pct:>5.2f}%')
+budget_color = GRN if budget_pct < 3 else (YEL if budget_pct < 5 else RED)
+lines.append(f'  Avg/session: {avg_tok_session:,.0f} tok    Budget: {budget_color}{budget_pct:.2f}%{RST}')
 lines.append('')
 
-lines.append('  Layer                Count   Avg tok   Avg rel')
-lines.append('  ' + '-' * 60)
+lines.append(f'  {DIM}Layer                Count   Avg tok   Avg rel{RST}')
 for layer in report.get('layers', []):
     avg_rel = layer.get('avg_rel', 0)
+    layer_name = layer['layer']
+    cnt = layer['cnt']
+    avg_tok = layer['avg_tok']
+    # Color relevance
+    rel_color = GRN if avg_rel >= 0.5 else (YEL if avg_rel >= 0.3 else (RED if avg_rel > 0 else DIM))
     lines.append(
-        f'  {layer[\"layer\"]:<20} {layer[\"cnt\"]:>5}x  {layer[\"avg_tok\"]:>7.0f}   {avg_rel:>7.2f}'
+        f'  {CYN}{layer_name:<20}{RST} {cnt:>5}x  {avg_tok:>7.0f}   {rel_color}{avg_rel:>7.2f}{RST}'
     )
 lines.append('')
 
 # Section 3: Usage Signals
-lines.append('  USAGE SIGNALS')
-lines.append('  ' + '-' * 60)
+lines.append(f'  {BOLD}{BLU}USAGE SIGNALS{RST}')
 
 usage_rate = report.get('usage_rate')
 injected_ids = report.get('total_injected_ids', 0)
 matched_ids = report.get('total_matched_ids', 0)
 if usage_rate is not None:
-    lines.append(f'  Usage rate:        {usage_rate:>5.1f}% ({matched_ids}/{injected_ids} memories used)')
+    u_color = GRN if usage_rate >= 30 else (YEL if usage_rate >= 10 else RED)
+    lines.append(f'  Usage rate:        {u_color}{BOLD}{usage_rate:>5.1f}%{RST} ({matched_ids}/{injected_ids} memories used)')
 else:
-    lines.append(f'  Usage rate:          N/A  (context_id tracking not yet active)')
-lines.append(f'  Citation rate:     {report[\"citation_rate\"]:>5.1f}% ({report[\"total_citations\"]} explicit)')
-lines.append(f'  Dedup hit rate:    {report[\"dedup_rate\"]:>5.1f}% ({report[\"dedup_hits\"]} saved)')
-lines.append(f'  Empty injections:  {report[\"empty_rate\"]:>5.1f}% ({report[\"empty_count\"]} empty)')
+    lines.append(f'  Usage rate:        {DIM}  N/A  (awaiting context_id data){RST}')
+
+cite_rate = report['citation_rate']
+c_color = GRN if cite_rate >= 2 else (YEL if cite_rate >= 0.5 else DIM)
+lines.append(f'  Explicit cites:    {c_color}{cite_rate:>5.1f}%{RST} ({report[\"total_citations\"]} found)')
+
+dedup_rate = report['dedup_rate']
+d_color = GRN if dedup_rate >= 10 else DIM
+lines.append(f'  Dedup saved:       {d_color}{dedup_rate:>5.1f}%{RST} ({report[\"dedup_hits\"]} skipped)')
+
+empty_rate = report['empty_rate']
+e_color = GRN if empty_rate < 5 else (YEL if empty_rate < 15 else RED)
+lines.append(f'  Empty injections:  {e_color}{empty_rate:>5.1f}%{RST} ({report[\"empty_count\"]} empty)')
 lines.append('')
 
 # Relevance histogram
 rel = report.get('relevance', {})
 total_rel = rel.get('strong', 0) + rel.get('partial', 0) + rel.get('weak', 0)
 if total_rel > 0:
-    lines.append('  RELEVANCE DISTRIBUTION')
-    lines.append('  ' + '-' * 60)
-    for label, key, char in [('strong >0.7', 'strong', '#'), ('partial 0.3-0.7', 'partial', '='), ('weak <0.3', 'weak', '.')]:
+    lines.append(f'  {BOLD}{BLU}RELEVANCE DISTRIBUTION{RST}')
+    for label, key, bar_color in [('strong >0.7', 'strong', GRN), ('partial 0.3-0.7', 'partial', YEL), ('weak <0.3', 'weak', RED)]:
         val = rel.get(key, 0)
         pct = val / total_rel * 100
-        bar = char * int(pct / 3)
-        lines.append(f'  {label:<18} {bar:<33} {pct:>5.1f}% ({val})')
+        bar_len = int(pct / 3)
+        bar = f'{bar_color}{'█' * bar_len}{RST}'
+        lines.append(f'  {label:<18} {bar}{'·' * (33 - bar_len)} {pct:>5.1f}% {DIM}({val}){RST}')
     lines.append('')
 
 # Section 4: Daily Trend (sparklines)
 daily_tokens = report.get('daily_tokens', [])
 daily_relevance = report.get('daily_relevance', [])
 if len(daily_tokens) >= 3:
-    lines.append('  DAILY TREND')
-    lines.append('  ' + '-' * 60)
+    lines.append(f'  {BOLD}{BLU}DAILY TREND{RST}')
 
-    def sparkline(values):
+    def sparkline(values, color=WHT):
         if not values:
             return ''
         mn, mx = min(values), max(values)
         rng = mx - mn if mx > mn else 1
         chars = ' ▁▂▃▄▅▆▇█'
-        return ''.join(chars[min(8, int((v - mn) / rng * 8))] for v in values)
+        return color + ''.join(chars[min(8, int((v - mn) / rng * 8))] for v in values) + RST
 
     tok_values = [d['tokens'] for d in daily_tokens]
-    tok_spark = sparkline(tok_values)
-    lines.append(f'  Tokens:    {tok_spark}  ({min(tok_values):>6} - {max(tok_values):>6})')
+    tok_spark = sparkline(tok_values, CYN)
+    lines.append(f'  Tokens:    {tok_spark}  {DIM}({min(tok_values):>6,} - {max(tok_values):>6,}){RST}')
 
     if daily_relevance:
         rel_values = [d['avg_relevance'] for d in daily_relevance]
-        rel_spark = sparkline(rel_values)
-        lines.append(f'  Relevance: {rel_spark}  ({min(rel_values):>.3f} - {max(rel_values):>.3f})')
+        rel_spark = sparkline(rel_values, GRN)
+        lines.append(f'  Relevance: {rel_spark}  {DIM}({min(rel_values):>.3f} - {max(rel_values):>.3f}){RST}')
 
     lines.append('')
 
+if live_mode:
+    lines.append(f'{DIM}  Refreshing every $poll_interval seconds... (Ctrl+C to exit){RST}')
+
 print('\n'.join(lines))
 "
+    }
+
+    if [[ "$json_output" == "true" ]]; then
+        _tui_render
+        return 0
+    fi
+
+    if [[ "$live_mode" == "true" ]]; then
+        trap 'printf "\033[?25h"; exit 0' INT TERM
+        printf "\033[?25h"  # ensure cursor visible on exit
+        while true; do
+            clear
+            _tui_render
+            sleep "$poll_interval"
+        done
+    else
+        _tui_render
+    fi
 }
 
 cmd_dashboard() {
