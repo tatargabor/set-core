@@ -402,6 +402,24 @@ e2e/features/
 
 **Prerequisites pattern:** Auth fixtures, seed data, shared test helpers — reuse from smoke setup or create a shared `e2e/fixtures/` directory.
 
+**Test data strategies:** The agent has three tools for ensuring test data exists. Choose based on what the test needs:
+
+| Strategy | When to use | Example |
+|---|---|---|
+| **Extend seed** | Feature needs pre-existing data to test (edit, delete, filter) | Add SalesTask records to seed so the edit dialog test has something to click on |
+| **UI-driven setup** | Test validates the create→edit flow itself, or seed doesn't cover the entity | Test creates a task via "Új feladat" button, then edits it |
+| **Combine** | Some data must pre-exist (reference entities), some is created by the test | Seed has companies; test creates a task linked to a seeded company, then edits it |
+
+In the spec, describe what data the test needs — don't prescribe the strategy:
+
+```markdown
+Functional: e2e/features/task-edit.spec.ts — open existing task,
+change title and priority, verify changes persist.
+Test data: needs at least 1 open task with assignee and due date.
+```
+
+The agent decides whether to extend the seed or create via UI. If the project seed script exists, prefer extending it (faster, more stable). If no seed exists or the entity is new, use UI-driven setup.
+
 **DB handling:** `globalSetup` reset+seed (same as smoke). Self-cleaning tests (delete what you create) are fragile — test failure leaves orphan data, cascading deletes are hard to manage, and tests become order-dependent. The `flock` serialization ensures only one worktree runs tests at a time, so there are no DB conflicts.
 
 ---
