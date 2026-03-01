@@ -54,7 +54,9 @@ while true; do
     if [[ "$STATUS" == "checkpoint" ]]; then
         REASON=$(jq -r '.checkpoints[-1].reason // "unknown"' "$STATE_FILE" 2>/dev/null || echo "unknown")
         APPROVED=$(jq -r '.checkpoints[-1].approved // false' "$STATE_FILE" 2>/dev/null || echo "false")
-        if [[ "$APPROVED" != "true" ]]; then
+        if [[ "$APPROVED" == "true" ]]; then
+            true  # already approved, continue polling
+        else
             echo "EVENT:checkpoint|reason=$REASON"
             break
         fi
