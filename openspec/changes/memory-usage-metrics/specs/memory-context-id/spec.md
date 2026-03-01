@@ -26,46 +26,46 @@ Each injection metrics record SHALL include the list of context IDs that were in
 - **WHEN** a hook produces no results (dedup hit or no matches)
 - **THEN** the metrics record SHALL include `"context_ids": []`
 
-### Requirement: CLAUDE.md cite rule deployment
-The `wt-project init` command SHALL add a managed section to target project CLAUDE.md instructing the agent to emit `[MEM_CITE:xxxx]` when a memory influences its response.
+### Requirement: Injected content stored for passive matching
+Each injection SHALL store the raw memory content alongside its context ID in the session cache, enabling post-session transcript matching.
 
-#### Scenario: Fresh project init
-- **WHEN** `wt-project init` runs on a project without the cite rule section
-- **THEN** a managed section with marker `<!-- wt-tools:managed:mem-cite -->` SHALL be added to CLAUDE.md containing the cite instruction
+#### Scenario: Content stored in session cache
+- **WHEN** a hook injects a memory with ID `a1b2` and content "flock-based locking for RocksDB per-project"
+- **THEN** the session cache `_injected_content` dict SHALL contain `{"a1b2": "flock-based locking for RocksDB per-project"}`
 
-#### Scenario: Re-run updates content
-- **WHEN** `wt-project init` runs on a project that already has the cite rule section
-- **THEN** the managed section content SHALL be replaced with the latest version
+#### Scenario: Content accumulates across invocations
+- **WHEN** multiple hook invocations inject memories within a session
+- **THEN** all injected content SHALL be accumulated in `_injected_content` (not overwritten)
 
-#### Scenario: Cite rule content
-- **WHEN** the managed section is deployed
-- **THEN** it SHALL instruct: "When information from a `[MEM#xxxx]` tagged memory in a system-reminder directly influences your response, include `[MEM_CITE:xxxx]` in your output (inline, not as a separate line). This is optional — only cite when a memory actually changed what you would have done."
+### Requirement: Passive transcript matching
+The Stop hook SHALL detect memory usage by comparing injected memory content against agent responses in the transcript, without requiring any agent action.
 
-### Requirement: Transcript cite scanning
-The Stop hook SHALL scan the session transcript for `[MEM_CITE:xxxx]` patterns and record matched citations.
+#### Scenario: Agent uses injected memory content
+- **WHEN** a memory with ID `a1b2` was injected with content "flock-based locking for RocksDB per-project" and an assistant message within 5 turns contains "flock" and "RocksDB"
+- **THEN** the memory SHALL be marked as "passively matched" with `context_id=a1b2`
 
-#### Scenario: Agent cites a memory
-- **WHEN** the transcript contains assistant text with `[MEM_CITE:a1b2]`
-- **THEN** the Stop hook SHALL record a citation with `context_id=a1b2` and `session_id` in the SQLite `mem_cites` table
+#### Scenario: No keyword overlap
+- **WHEN** a memory was injected but no assistant message contains 2+ significant keywords from that memory
+- **THEN** the memory SHALL NOT be marked as matched
 
-#### Scenario: Multiple cites in one message
-- **WHEN** the transcript contains assistant text with `[MEM_CITE:a1b2]` and `[MEM_CITE:c3d4]`
-- **THEN** both citations SHALL be recorded as separate rows
+#### Scenario: Common words excluded
+- **WHEN** keyword extraction runs on memory content
+- **THEN** common words (the, a, is, file, function, code, etc.) SHALL be excluded from the keyword set
 
-#### Scenario: No cites in session
-- **WHEN** the transcript contains no `[MEM_CITE:xxxx]` patterns
-- **THEN** no rows SHALL be inserted into `mem_cites` and the session's `cite_count` SHALL be 0
+#### Scenario: Turn window for matching
+- **WHEN** checking if an assistant message matches an injected memory
+- **THEN** only assistant messages within 5 turns after the injection point SHALL be considered
 
-#### Scenario: Duplicate cite IDs
-- **WHEN** the same `[MEM_CITE:a1b2]` appears multiple times in a transcript
-- **THEN** only one citation row SHALL be recorded per unique context_id per session
+#### Scenario: Legacy explicit citations still detected
+- **WHEN** the transcript contains "From memory:" or other legacy citation patterns
+- **THEN** these SHALL be detected as before (backward compatible) with `type: "explicit"`
 
 ### Requirement: Usage rate calculation
-The metrics system SHALL calculate a usage rate as `cited_ids / injected_ids` per session and across sessions.
+The metrics system SHALL calculate a usage rate as `matched_ids / injected_ids` per session and across sessions.
 
-#### Scenario: Session with 15 injected IDs and 3 cited
-- **WHEN** a session injected 15 unique context IDs and the transcript contains 3 unique MEM_CITE matches
-- **THEN** the session usage rate SHALL be `3/15 = 20.0%`
+#### Scenario: Session with 15 injected IDs and 5 passively matched
+- **WHEN** a session injected 15 unique context IDs and passive matching found 5 matches
+- **THEN** the session usage rate SHALL be `5/15 = 33.3%`
 
 #### Scenario: Session with no injections
 - **WHEN** a session had zero memory injections
@@ -73,4 +73,4 @@ The metrics system SHALL calculate a usage rate as `cited_ids / injected_ids` pe
 
 #### Scenario: Aggregate usage rate
 - **WHEN** reporting across multiple sessions
-- **THEN** the aggregate usage rate SHALL be `total_cited_ids / total_injected_ids` across all sessions in the time range
+- **THEN** the aggregate usage rate SHALL be `total_matched_ids / total_injected_ids` across all sessions in the time range

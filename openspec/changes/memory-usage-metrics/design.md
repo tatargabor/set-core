@@ -6,7 +6,7 @@ Key files:
 - `bin/wt-hook-memory` — unified hook handler, dispatches by event type
 - `lib/metrics.py` — SQLite metrics storage and reporting
 - `bin/wt-memory` — CLI with existing `metrics` and `dashboard` subcommands
-- `bin/wt-project` — manages CLAUDE.md sections per project
+- `bin/wt-project` — manages CLAUDE.md sections per project (no changes needed for this change)
 
 ## Goals / Non-Goals
 
@@ -33,16 +33,18 @@ Key files:
 
 **Rationale**: 4 hex chars = 16 bits = 65,536 unique IDs per session. Average session has ~50 injections with ~3 results each = ~150 IDs needed. Collision probability negligible. Adds only 10 chars overhead per memory line.
 
-### Decision 2: Cite tracking via CLAUDE.md managed section
+### Decision 2: Passive transcript matching (not active LLM citation)
 
-**Choice**: `wt-project init` adds a managed section to CLAUDE.md instructing the agent to emit `[MEM_CITE:xxxx]` when a memory influences its response.
+**Choice**: The Stop hook passively detects memory usage by comparing injected memory content against agent responses in the transcript. No CLAUDE.md rule, no agent burden.
 
 **Alternatives considered:**
-- rules.yaml topic match: too narrow, only fires on keyword match
-- Inline in hook output: LLM might not see instructions buried in system-reminder
-- SKILL.md hooks: only covers skill invocations, not general prompts
+- CLAUDE.md rule asking LLM to emit `[MEM_CITE:xxxx]`: adds cognitive load to the agent, unreliable (current explicit citation rate is 0.59%), creates overhead without guaranteed data
+- Inline reminder in hook output: still depends on LLM compliance
+- rules.yaml topic match: too narrow
 
-**Rationale**: CLAUDE.md is always in context. The managed section approach (already used for "Persistent Memory" and "Auto-Commit") ensures the rule is present and survives updates. The LLM can choose not to cite — that's signal too (injected but not useful = waste).
+**Rationale**: The transcript already contains both the injected memories (in system-reminder blocks) and the agent's responses. A keyword overlap check at session end can detect when injected content influenced a response — without asking the agent to do anything extra. This is heuristic (not 100% precise) but always produces data, unlike active citation which produces nothing when the LLM ignores the rule.
+
+**Algorithm**: For each injected memory, extract 3-5 significant keywords. Scan assistant messages for keyword co-occurrence. If overlap exceeds a threshold (e.g., 2+ keywords from the same memory appear in an assistant message within 5 turns of injection), mark as "passively matched". Also continue detecting legacy explicit patterns ("From memory:", etc.) as bonus signal.
 
 ### Decision 3: Store inject+cite pairs in existing SQLite
 
@@ -66,7 +68,7 @@ Key files:
 
 ## Risks / Trade-offs
 
-- **[Risk] LLM ignores MEM_CITE rule** → Mitigation: the cite-rate metric itself measures compliance. If consistently low, we know the CLAUDE.md rule isn't effective and can iterate. Even partial compliance gives signal.
+- **[Risk] Passive matching false positives** → Mitigation: require 2+ keyword overlap (not single word), skip common words (the, a, function, file, etc.), and use a conservative threshold. False positives are less harmful than false negatives — overstating usage by 10% is better than showing 0% like the current explicit citation approach.
 - **[Risk] Context ID adds token overhead** → Mitigation: 10 chars per memory line × ~3 results per injection = 30 chars = ~8 tokens per injection. Negligible vs. 622 avg tokens per L2 injection.
 - **[Risk] ALTER TABLE on live metrics.db** → Mitigation: SQLite handles ALTER TABLE ADD COLUMN safely. Schema migration runs on first access after update.
 - **[Risk] TUI data staleness** → Mitigation: TUI reads from SQLite which is flushed at session end. Clearly label "Last updated: <timestamp>" in output.
