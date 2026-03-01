@@ -2265,9 +2265,12 @@ cmd_status() {
     [[ "$failed" -gt 0 ]] && echo "  Failed:   $failed"
     [[ "$stalled" -gt 0 ]] && echo "  Stalled:  $stalled"
 
+    local waiting_budget
+    waiting_budget=$(count_changes_by_status "waiting:budget")
     local budget_exceeded
     budget_exceeded=$(count_changes_by_status "budget_exceeded")
-    [[ "$budget_exceeded" -gt 0 ]] && echo "  Budget:   $budget_exceeded exceeded token budget"
+    local total_budget=$((waiting_budget + budget_exceeded))
+    [[ "$total_budget" -gt 0 ]] && echo "  ⏸ Budget: $total_budget waiting for budget approval"
 
     local waiting_human
     waiting_human=$(count_changes_by_status "waiting:human")
@@ -3517,19 +3520,19 @@ poll_change() {
                 send_notification "wt-orchestrate" "Change '$change_name' needs human action. Run: wt-manual show $change_name" "warning"
             fi
             ;;
-        budget_exceeded)
+        budget_exceeded|waiting:budget)
+            # Both old budget_exceeded and new waiting:budget — do NOT auto-restart, treat like waiting:human
             local cur_budget_status
             cur_budget_status=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .status // ""' "$STATE_FILENAME")
-            if [[ "$cur_budget_status" != "budget_exceeded" ]]; then
-                update_change_field "$change_name" "status" '"budget_exceeded"'
+            if [[ "$cur_budget_status" != "waiting:budget" && "$cur_budget_status" != "budget_exceeded" ]]; then
+                update_change_field "$change_name" "status" '"waiting:budget"'
                 local budget_tokens
                 budget_tokens=$(jq -r '.total_tokens // 0' "$loop_state" 2>/dev/null)
                 local budget_limit
                 budget_limit=$(jq -r '.token_budget // 0' "$loop_state" 2>/dev/null)
-                log_warn "Change $change_name exceeded token budget: $((budget_tokens / 1000))K / $((budget_limit / 1000))K"
-                info "💰 $change_name — token budget exceeded ($((budget_tokens / 1000))K / $((budget_limit / 1000))K)"
-                send_notification "wt-orchestrate" "Change '$change_name' exceeded token budget" "warning"
-                trigger_checkpoint "budget"
+                log_warn "Change $change_name budget checkpoint: $((budget_tokens / 1000))K / $((budget_limit / 1000))K — waiting for human"
+                info "⏸ $change_name — budget checkpoint ($((budget_tokens / 1000))K / $((budget_limit / 1000))K). Run: wt-loop resume"
+                send_notification "wt-orchestrate" "Change '$change_name' budget checkpoint — run 'wt-loop resume' to continue" "warning"
             fi
             ;;
         stopped|stalled|stuck)

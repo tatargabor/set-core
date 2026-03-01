@@ -34,6 +34,8 @@ Run from within a worktree directory. The worktree is detected from CWD.
 Commands:
   start "<task>" [opts]    Start a new loop
   stop                     Stop a running loop
+  resume                   Resume a paused loop (waiting:budget or waiting:human)
+  budget <N>               Update token budget (in K) and resume
   status                   Show loop status
   list                     List all active loops (global)
   history                  Show iteration history
@@ -106,9 +108,17 @@ get_loop_state_file() {
     echo "$wt_path/.claude/loop-state.json"
 }
 
-get_loop_log_file() {
+get_loop_log_dir() {
     local wt_path="$1"
-    echo "$wt_path/.claude/ralph-loop.log"
+    echo "$wt_path/.claude/logs"
+}
+
+get_iter_log_file() {
+    local wt_path="$1"
+    local iteration="$2"
+    local log_dir
+    log_dir=$(get_loop_log_dir "$wt_path")
+    printf '%s/ralph-iter-%03d.log' "$log_dir" "$iteration"
 }
 
 # Get terminal PID file path
@@ -177,6 +187,8 @@ init_loop_state() {
   "total_tokens": 0,
   "token_budget": 0,
   "ff_attempts": 0,
+  "session_id": null,
+  "resume_failures": 0,
   "label": $(if [[ -n "$label" ]]; then echo "\"$label\""; else echo "null"; fi),
   "change": $(if [[ -n "$change" ]]; then echo "\"$change\""; else echo "null"; fi)
 }
@@ -207,6 +219,8 @@ add_iteration() {
     local tokens_estimated="${9:-false}"
     local no_op="${10:-false}"
     local ff_exhausted="${11:-false}"
+    local log_file="${12:-}"
+    local resumed="${13:-false}"
 
     local tmp
     tmp=$(mktemp)
@@ -220,6 +234,8 @@ add_iteration() {
        --argjson tokens_estimated "$tokens_estimated" \
        --argjson no_op "$no_op" \
        --argjson ff_exhausted "$ff_exhausted" \
+       --arg log_file "$log_file" \
+       --argjson resumed "$resumed" \
        '.iterations += [{
          "n": $n,
          "started": $started,
@@ -230,7 +246,9 @@ add_iteration() {
          "timed_out": $timed_out,
          "tokens_estimated": $tokens_estimated,
          "no_op": $no_op,
-         "ff_exhausted": $ff_exhausted
+         "ff_exhausted": $ff_exhausted,
+         "log_file": $log_file,
+         "resumed": $resumed
        }]' "$state_file" > "$tmp" && mv "$tmp" "$state_file"
 }
 
@@ -754,6 +772,11 @@ cmd_run() {
 
     cd "$wt_path" || exit 1
 
+    # Ensure per-iteration log directory exists (task 1.1)
+    local log_dir
+    log_dir=$(get_loop_log_dir "$wt_path")
+    mkdir -p "$log_dir"
+
     # Gather context for banner
     local git_branch
     git_branch=$(git -C "$wt_path" branch --show-current 2>/dev/null || echo "unknown")
@@ -776,6 +799,8 @@ cmd_run() {
     echo "║  Branch: $git_branch"
     echo "║  Task: $task"
     echo "║  ──────────────────────────────────────────────────────────────"
+    local token_budget
+    token_budget=$(jq -r '.token_budget // 0' "$state_file")
     local budget_display="unlimited"
     if [[ "$token_budget" -gt 0 ]] 2>/dev/null; then
         budget_display="$((token_budget / 1000))K"
@@ -800,8 +825,6 @@ cmd_run() {
     local ff_attempts=0
     local ff_max_retries
     ff_max_retries=$(jq -r '.ff_max_retries // 2' "$state_file")
-    local token_budget
-    token_budget=$(jq -r '.token_budget // 0' "$state_file")
     local start_time
     start_time=$(date -Iseconds)
 
@@ -834,9 +857,13 @@ cmd_run() {
         local prompt
         prompt=$(build_prompt "$task" "$iteration" "$max_iter" "$wt_path" "$done_criteria" "$change_name")
 
+        # Per-iteration log file (task 1.2)
+        local iter_log_file
+        iter_log_file=$(get_iter_log_file "$wt_path" "$iteration")
+
         # Run Claude with retry logic and per-iteration timeout
         local timeout_seconds=$((iteration_timeout_min * 60))
-        echo "Starting Claude Code... (timeout: ${iteration_timeout_min}m)"
+        echo "Starting Claude Code... (timeout: ${iteration_timeout_min}m, log: $iter_log_file)"
         echo ""
 
         local claude_exit_code=0
@@ -858,20 +885,52 @@ cmd_run() {
             model_flag="--model $state_model"
         fi
 
+        # Session continuation flags (task 2.2, 2.3)
+        local session_flags=""
+        local is_resumed=false
+        local session_id
+        session_id=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null)
+        local resume_failures
+        resume_failures=$(jq -r '.resume_failures // 0' "$state_file" 2>/dev/null)
+
+        if [[ $iteration -eq 1 ]] || [[ -z "$session_id" ]] || [[ "$resume_failures" -ge 3 ]]; then
+            # First iteration or no session or too many resume failures: new session
+            session_id=$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+            session_flags="--session-id $session_id"
+            update_loop_state "$state_file" "session_id" "\"$session_id\""
+            if [[ "$resume_failures" -ge 3 ]]; then
+                echo "⚠️  Too many resume failures ($resume_failures), using fresh session"
+            fi
+        else
+            # Subsequent iteration: resume existing session
+            session_flags="--resume $session_id"
+            is_resumed=true
+        fi
+
+        # Build effective prompt: short for resumed sessions (task 2.4)
+        local effective_prompt="$prompt"
+        if $is_resumed; then
+            effective_prompt="Continue where you left off. Check the task status and complete remaining work."
+        fi
+
         while [[ $retry_count -lt $max_retries ]]; do
             # Pipe prompt via stdin to run in interactive mode (not -p print mode).
             # Interactive mode enables skills (/opsx:ff, /opsx:apply) and hooks.
             # - env -u CLAUDECODE: allow claude when invoked from a Claude session
             # - --foreground: keep child in foreground process group (prevents Tl stops)
+            # - Output tee'd to per-iteration log file (task 1.3)
+            local iter_start_epoch_resume
+            iter_start_epoch_resume=$(date +%s)
+
             if [[ -n "$TIMEOUT_CMD" ]]; then
-                echo "$prompt" | env -u CLAUDECODE $TIMEOUT_CMD --foreground --signal=TERM "$timeout_seconds" \
-                    claude $perm_flags $model_flag \
-                       --verbose
+                echo "$effective_prompt" | env -u CLAUDECODE $TIMEOUT_CMD --foreground --signal=TERM "$timeout_seconds" \
+                    claude $perm_flags $model_flag $session_flags \
+                       --verbose 2>&1 | tee -a "$iter_log_file"
             else
-                echo "$prompt" | env -u CLAUDECODE claude $perm_flags $model_flag \
-                   --verbose
+                echo "$effective_prompt" | env -u CLAUDECODE claude $perm_flags $model_flag $session_flags \
+                   --verbose 2>&1 | tee -a "$iter_log_file"
             fi
-            claude_exit_code=$?
+            claude_exit_code=${PIPESTATUS[0]:-$?}
 
             if [[ $claude_exit_code -eq 124 ]]; then
                 # Timeout exit code
@@ -884,6 +943,24 @@ cmd_run() {
 
             if [[ $claude_exit_code -eq 0 ]]; then
                 break  # Success
+            fi
+
+            # Resume failure detection (task 2.5): if resumed session failed quickly, fallback
+            if $is_resumed; then
+                local elapsed=$(( $(date +%s) - iter_start_epoch_resume ))
+                if [[ $elapsed -lt 5 ]]; then
+                    echo "⚠️  Session resume failed (exit $claude_exit_code in ${elapsed}s), falling back to fresh session"
+                    resume_failures=$((resume_failures + 1))
+                    update_loop_state "$state_file" "resume_failures" "$resume_failures"
+                    # Generate new session ID and retry with fresh session
+                    session_id=$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+                    session_flags="--session-id $session_id"
+                    update_loop_state "$state_file" "session_id" "\"$session_id\""
+                    is_resumed=false
+                    effective_prompt="$prompt"
+                    retry_count=$((retry_count + 1))
+                    continue
+                fi
             fi
 
             retry_count=$((retry_count + 1))
@@ -1000,6 +1077,18 @@ except:
         else
             echo ""
             echo "📊 Iteration tokens: $tokens_used (total: $tokens_after)"
+        fi
+
+        # Post-iteration log summary (task 1.5)
+        if [[ -s "$iter_log_file" ]]; then
+            local log_reads log_writes log_skills log_errors
+            log_reads=$(grep -c 'Read(' "$iter_log_file" 2>/dev/null || echo 0)
+            log_writes=$(grep -c -E 'Write\(|Edit\(' "$iter_log_file" 2>/dev/null || echo 0)
+            log_skills=$(grep -c -E '/opsx:|/wt:' "$iter_log_file" 2>/dev/null || echo 0)
+            log_errors=$(grep -c -iE 'error|Error:' "$iter_log_file" 2>/dev/null || echo 0)
+            echo "📋 Log summary: ${log_reads} reads, ${log_writes} writes, ${log_skills} skills, ${log_errors} errors"
+        elif [[ -f "$iter_log_file" ]]; then
+            echo "📋 No log output captured"
         fi
 
         # Stall detection: no commits = no progress
@@ -1131,8 +1220,17 @@ except:
             is_done=true
         fi
 
+        # Universal done detection safety net (tasks 5.1-5.4)
+        # If primary criteria says not done, check if tasks.md has all tasks [x]
+        if ! $is_done && [[ "$done_criteria" != "tasks" ]]; then
+            if find_tasks_file "$wt_path" &>/dev/null && check_tasks_done "$wt_path" 2>/dev/null; then
+                is_done=true
+                warn "Done by tasks.md fallback (primary criteria '$done_criteria' said not done)"
+            fi
+        fi
+
         # Add iteration to state with token tracking
-        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted"
+        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed"
 
         # Handle ff exhaustion (after recording iteration)
         if $iter_ff_exhausted; then
@@ -1147,20 +1245,42 @@ except:
         # Update total tokens in state
         update_loop_state "$state_file" "total_tokens" "$tokens_after"
 
-        # Token budget enforcement
+        # Token budget enforcement → waiting:budget human checkpoint (task 3.1-3.3)
         if [[ "$token_budget" -gt 0 && "$tokens_after" -gt "$token_budget" ]] 2>/dev/null; then
             local budget_k=$((token_budget / 1000))
             local used_k=$((tokens_after / 1000))
             echo ""
             echo "╔════════════════════════════════════════════════════════════════╗"
-            echo "║  Token budget exceeded: ${used_k}K / ${budget_k}K               ║"
-            echo "║  Stopping loop. Resume with extended budget to continue.         ║"
+            echo "║  ⏸  BUDGET CHECKPOINT: ${used_k}K / ${budget_k}K                 ║"
+            echo "║  The loop exceeded the estimated token budget.                   ║"
+            echo "║                                                                  ║"
+            echo "║  Continue:  wt-loop resume                                       ║"
+            echo "║  Raise:     wt-loop budget <N>                                   ║"
+            echo "║  Stop:      wt-loop stop                                         ║"
             echo "╚════════════════════════════════════════════════════════════════╝"
-            update_loop_state "$state_file" "status" '"budget_exceeded"'
-            update_terminal_title "Ralph: ${worktree_name}${title_suffix} [budget_exceeded]"
-            trap - EXIT SIGTERM SIGINT
-            notify-send "Ralph Loop Budget Exceeded" "$worktree_name: ${used_k}K / ${budget_k}K tokens" 2>/dev/null || true
-            exit 0
+            update_loop_state "$state_file" "status" '"waiting:budget"'
+            update_terminal_title "Ralph: ${worktree_name}${title_suffix} [waiting:budget]"
+            notify-send "Ralph Loop — Budget Checkpoint" "$worktree_name: ${used_k}K / ${budget_k}K tokens — waiting for approval" 2>/dev/null || true
+
+            # Wait loop: poll state file every 30s for status change (task 3.2)
+            while true; do
+                sleep 30
+                local current_budget_status
+                current_budget_status=$(jq -r '.status' "$state_file" 2>/dev/null)
+                if [[ "$current_budget_status" == "running" ]]; then
+                    echo ""
+                    echo "✅ Budget checkpoint approved, continuing..."
+                    # Re-read token_budget in case it was updated via wt-loop budget
+                    token_budget=$(jq -r '.token_budget // 0' "$state_file")
+                    break
+                elif [[ "$current_budget_status" == "stopped" ]]; then
+                    echo ""
+                    echo "Loop stopped by user."
+                    trap - EXIT SIGTERM SIGINT
+                    exit 0
+                fi
+                # Still waiting:budget — continue polling
+            done
         fi
 
         if $is_done; then
@@ -1430,29 +1550,23 @@ cmd_start() {
     if [[ -n "$label" ]]; then
         terminal_title="Ralph: $worktree_name ($label)"
     fi
-    local log_file
-    log_file=$(get_loop_log_file "$wt_path")
+    local log_dir
+    log_dir=$(get_loop_log_dir "$wt_path")
+    mkdir -p "$log_dir"
 
-    # Clear previous log
-    > "$log_file"
-
-    # Save log path to state
+    # Save log dir path to state
     local state_file
     state_file=$(get_loop_state_file "$wt_path")
-    jq --arg log "$log_file" '.log_file = $log' "$state_file" > "$state_file.tmp" && mv "$state_file.tmp" "$state_file"
+    jq --arg log "$log_dir" '.log_dir = $log' "$state_file" > "$state_file.tmp" && mv "$state_file.tmp" "$state_file"
 
     local fs_flag=""
     if [[ "$fullscreen" == true ]]; then
         fs_flag="--full-screen"
     fi
 
-    # The run command: cd to worktree and run wt-loop run with tee for logging.
-    # NOTE: We intentionally do NOT use `script` here. `script` creates a PTY that
-    # makes Claude think it's in interactive mode, preventing it from exiting after
-    # processing piped input. The terminal emulator already provides a TTY for the
-    # parent shell; Claude's stdin comes from a pipe (echo | claude) which properly
-    # closes on EOF without `script` interference.
-    local run_cmd="cd \"$wt_path\" && \"$SCRIPT_DIR/wt-loop\" run 2>&1 | tee \"$log_file\""
+    # The run command: cd to worktree and run wt-loop run.
+    # Per-iteration logging is handled inside cmd_run() using script(1) PTY wrapper.
+    local run_cmd="cd \"$wt_path\" && \"$SCRIPT_DIR/wt-loop\" run"
 
     if [[ "$(uname)" == "Darwin" ]]; then
         # macOS: Use Terminal.app via osascript
@@ -1460,7 +1574,7 @@ cmd_start() {
         cat > "$temp_script" << SCRIPT
 #!/bin/bash
 cd "$wt_path"
-"$SCRIPT_DIR/wt-loop" run 2>&1 | tee "$log_file"
+"$SCRIPT_DIR/wt-loop" run
 SCRIPT
         chmod +x "$temp_script"
         # Launch in Terminal.app with auto-close
@@ -1866,6 +1980,64 @@ cmd_history() {
 }
 
 # Main
+# Resume a paused loop (waiting:budget or waiting:human → running)
+cmd_resume() {
+    local wt_path
+    wt_path=$(get_worktree_path_from_cwd)
+    local worktree_name
+    worktree_name=$(basename "$wt_path")
+
+    local state_file
+    state_file=$(get_loop_state_file "$wt_path")
+
+    if [[ ! -f "$state_file" ]]; then
+        error "No loop found in: $worktree_name"
+        exit 1
+    fi
+
+    local current_status
+    current_status=$(jq -r '.status' "$state_file" 2>/dev/null)
+
+    case "$current_status" in
+        waiting:budget|waiting:human)
+            update_loop_state "$state_file" "status" '"running"'
+            success "Loop resumed: $worktree_name (was $current_status)"
+            ;;
+        *)
+            error "Cannot resume: loop status is '$current_status' (expected waiting:budget or waiting:human)"
+            exit 1
+            ;;
+    esac
+}
+
+# Update token budget for a running/paused loop
+cmd_budget() {
+    local wt_path
+    wt_path=$(get_worktree_path_from_cwd)
+    local worktree_name
+    worktree_name=$(basename "$wt_path")
+
+    local state_file
+    state_file=$(get_loop_state_file "$wt_path")
+
+    if [[ ! -f "$state_file" ]]; then
+        error "No loop found in: $worktree_name"
+        exit 1
+    fi
+
+    local new_budget_k="${1:-}"
+    if [[ -z "$new_budget_k" ]] || ! [[ "$new_budget_k" =~ ^[0-9]+$ ]]; then
+        error "Usage: wt-loop budget <N> (budget in thousands of tokens)"
+        exit 1
+    fi
+
+    local new_budget_raw=$((new_budget_k * 1000))
+    local tmp
+    tmp=$(mktemp)
+    jq --argjson b "$new_budget_raw" '.token_budget = $b | .status = "running"' "$state_file" > "$tmp" && mv "$tmp" "$state_file"
+    success "Budget updated to ${new_budget_k}K and loop resumed: $worktree_name"
+}
+
 main() {
     local cmd="${1:-}"
     shift || true
@@ -1876,6 +2048,12 @@ main() {
             ;;
         stop)
             cmd_stop "$@"
+            ;;
+        resume)
+            cmd_resume "$@"
+            ;;
+        budget)
+            cmd_budget "$@"
             ;;
         status)
             cmd_status "$@"

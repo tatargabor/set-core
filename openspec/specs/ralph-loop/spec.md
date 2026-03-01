@@ -12,13 +12,13 @@ The Ralph loop SHALL write state to `<worktree>/.claude/loop-state.json` with a 
 - **WHEN** Ralph writes loop-state.json
 - **THEN** JSON includes required fields:
   - `change_id`: string - the change identifier
-  - `status`: string - one of "starting", "running", "done", "stuck", "stalled", "stopped"
+  - `status`: string - one of "starting", "running", "done", "stuck", "stalled", "stopped", "budget_exceeded", "waiting:human"
   - `current_iteration`: number - current iteration (1-based)
   - `max_iterations`: number - configured maximum
   - `started_at`: string - ISO 8601 timestamp
   - `task`: string - the task description
   - `iterations`: array - history of completed iterations
-  - `done_criteria`: string - "tasks" or "manual"
+  - `done_criteria`: string - "tasks", "openspec", or "manual"
   - `stall_threshold`: number - consecutive commit-less iterations before stall
   - `iteration_timeout_min`: number - per-iteration timeout in minutes
   - `total_tokens`: number - cumulative token count across all iterations
