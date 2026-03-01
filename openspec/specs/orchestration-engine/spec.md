@@ -73,7 +73,9 @@ The orchestrator SHALL dispatch changes respecting the dependency graph and para
 
 #### Scenario: Worktree creation and Ralph launch
 - **WHEN** a change is dispatched
-- **THEN** the orchestrator SHALL create a worktree via `wt-new`, bootstrap it (env files + dependencies), create the OpenSpec change, pre-create proposal.md, and start a Ralph loop via `wt-loop start --max 30 --done openspec --label {name} --model opus`
+- **THEN** the orchestrator SHALL create a worktree via `wt-new`, bootstrap it (env files + dependencies), create the OpenSpec change, pre-create proposal.md, and start a Ralph loop via `wt-loop start --max 30 --done openspec --label {name} --model {effective_model} --change {name}`
+- **AND** the effective model SHALL be resolved via `resolve_change_model()` (see per-change-model spec)
+- **AND** no per-change token budget SHALL be passed — the iteration limit (`--max 30`) provides the safety net instead (see B1: budget restart cascade in lessons learned)
 
 ### Requirement: Monitor loop polling
 The orchestrator monitor loop SHALL poll active changes every 15 seconds.

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Dependency detection in plan review
-The `/wt:plan-review` skill detects implicit ordering relationships between spec items and suggests concrete `depends_on` annotations.
+The `/wt:plan-review` skill SHALL detect implicit ordering relationships between spec items and suggest concrete `depends_on` annotations.
 
 #### Scenario: Cleanup change detected alongside feature changes
 - **WHEN** a spec contains a cleanup/refactor change AND feature changes that touch the same area

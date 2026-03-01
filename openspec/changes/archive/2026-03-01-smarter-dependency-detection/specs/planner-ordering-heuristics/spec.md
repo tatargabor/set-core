@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Change-type classification in decomposition prompt
-The decomposition prompt instructs Claude to classify each change by type and apply ordering rules.
+The decomposition prompt SHALL instruct Claude to classify each change by type and apply ordering rules.
 
 #### Scenario: Change types defined
 - **WHEN** Claude decomposes a spec into changes
@@ -20,7 +20,7 @@ The decomposition prompt instructs Claude to classify each change by type and ap
 - **THEN** consumer changes depend on the foundational change
 
 ### Requirement: Respect spec-level dependency hints
-The decomposition prompt explicitly instructs Claude to preserve dependency annotations from the input spec.
+The decomposition prompt SHALL explicitly instruct Claude to preserve dependency annotations from the input spec.
 
 #### Scenario: Spec contains dependency annotations
 - **WHEN** the input spec contains text like "depends_on: X" or "requires X to be done first" or "after X is complete"
@@ -31,7 +31,7 @@ The decomposition prompt explicitly instructs Claude to preserve dependency anno
 - **THEN** Claude infers dependencies from the ordering heuristics above
 
 ### Requirement: Ordering heuristic rules added to prompt text
-The actual prompt text in `wt-orchestrate` gains new rules.
+The prompt text in `wt-orchestrate` SHALL include ordering heuristic rules.
 
 #### Scenario: Prompt text includes ordering rules
 - **WHEN** the decomposition prompt is built (both spec-mode and brief-mode)

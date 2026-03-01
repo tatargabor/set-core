@@ -43,3 +43,9 @@ The Ralph loop SHALL enforce a maximum token budget per change, pausing for huma
 - **THEN** it SHALL NOT increment `stall_count`
 - **AND** it SHALL NOT attempt to restart the loop
 - **AND** it SHALL treat it the same as `"waiting:human"` (requires manual intervention)
+
+#### Scenario: Orchestrator does not set per-change token budget
+- **WHEN** the orchestrator dispatches a change via `dispatch_change()`
+- **THEN** it SHALL NOT pass `--token-budget` to `wt-loop start`
+- **AND** the iteration limit (`--max 30`) SHALL serve as the per-change safety net
+- **AND** the `wt-loop` token budget feature remains available for manual use outside orchestrator context

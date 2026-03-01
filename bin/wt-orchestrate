@@ -2821,19 +2821,11 @@ MEMORY_EOF
     local impl_model
     impl_model=$(resolve_change_model "$change_name" "$DEFAULT_IMPL_MODEL")
 
-    # Token budget based on change complexity
-    local complexity
-    complexity=$(jq -r --arg n "$change_name" \
-        '.changes[] | select(.name == $n) | .complexity // "M"' "$STATE_FILENAME")
+    # Token budget disabled — iteration limit (--max) provides the safety net.
+    # See: docs/tanulsagok/wt-orchestration-tanulsagok.md B1 (budget restart cascade)
     local token_budget_flag=""
-    case "$complexity" in
-        S)  token_budget_flag="--token-budget 100" ;;
-        M)  token_budget_flag="--token-budget 300" ;;
-        L)  token_budget_flag="--token-budget 500" ;;
-        XL) token_budget_flag="--token-budget 1000" ;;
-    esac
 
-    log_info "Dispatch $change_name with model=$impl_model (default=$DEFAULT_IMPL_MODEL) budget=${token_budget_flag:---token-budget unlimited}"
+    log_info "Dispatch $change_name with model=$impl_model (default=$DEFAULT_IMPL_MODEL) budget=unlimited (iter limit: --max 30)"
     (
         cd "$wt_path" || exit 1
         wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model "$impl_model" --change "$change_name" $token_budget_flag

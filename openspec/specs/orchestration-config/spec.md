@@ -20,6 +20,15 @@ The system SHALL support a `.claude/orchestration.yaml` file for orchestrator di
   - `notification`: one of "desktop", "gui", "none" (default: "desktop")
   - `token_budget`: integer, 0 = unlimited (default: 0)
   - `pause_on_exit`: boolean (default: false)
+  - `default_model`: one of "opus", "sonnet", "haiku" (default: "opus") — global model for implementation work
+  - `review_model`: one of "opus", "sonnet", "haiku" (default: "sonnet") — model for code review in verify gate
+  - `summarize_model`: one of "opus", "sonnet", "haiku" (default: "haiku") — model for spec summarization
+  - `smoke_command`: string (default: empty) — command to run as smoke test after merge
+  - `smoke_timeout`: integer in seconds (default: 60) — timeout for smoke command
+  - `review_before_merge`: boolean (default: false) — whether to run code review in verify gate
+  - `max_verify_retries`: integer (default: 1) — max retries for failed verify gate
+  - `test_timeout`: integer in seconds (default: 300) — timeout for test command
+  - `auto_replan`: boolean (default: false) — re-plan when all changes complete
 
 #### Scenario: Config file absent
 - **WHEN** `.claude/orchestration.yaml` does not exist
