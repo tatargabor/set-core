@@ -255,7 +255,8 @@ class ControlCenter(QMainWindow, TeamMixin, TableMixin, MenusMixin, HandlersMixi
         header_height = self.table.horizontalHeader().height()
         table_height = header_height + (row_count * row_height) + row_height // 2 + 12
 
-        other_height = 125
+        usage_rows = max(1, len(self.account_widgets))
+        other_height = 125 + (usage_rows - 1) * 14
         total_height = table_height + other_height
         total_height = max(100, min(total_height, 700))
 
