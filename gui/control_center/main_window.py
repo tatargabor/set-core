@@ -701,19 +701,18 @@ class ControlCenter(QMainWindow, TeamMixin, TableMixin, MenusMixin, HandlersMixi
             return 0
 
     def _burn_rate_color(self, usage_pct, time_pct=None):
-        """Return burn-rate-relative color string for usage stripe"""
+        """Return burn-rate-relative color string for usage stripe.
+
+        Binary: green if under budget, red if at/over budget.
+        """
         if time_pct is not None:
-            if usage_pct < time_pct - 5:
+            if usage_pct < time_pct:
                 return self.get_color("burn_low")
-            elif usage_pct <= time_pct + 5:
-                return self.get_color("burn_medium")
             else:
                 return self.get_color("burn_high")
         else:
-            if usage_pct < 90:
+            if usage_pct < 80:
                 return self.get_color("burn_low")
-            elif usage_pct <= 110:
-                return self.get_color("burn_medium")
             else:
                 return self.get_color("burn_high")
 

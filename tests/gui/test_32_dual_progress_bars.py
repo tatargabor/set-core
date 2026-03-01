@@ -65,20 +65,32 @@ def test_time_elapsed_pct_clamped(control_center):
 
 
 def test_burn_rate_color_under_pace(control_center):
-    """_burn_rate_color should return green when usage < time - 5."""
+    """_burn_rate_color should return green when usage < time (binary)."""
     color = control_center._burn_rate_color(30, 60)
     assert color == control_center.get_color("burn_low")
 
 
-def test_burn_rate_color_on_pace(control_center):
-    """_burn_rate_color should return yellow when usage ~ time."""
-    color = control_center._burn_rate_color(58, 60)
-    assert color == control_center.get_color("burn_medium")
+def test_burn_rate_color_at_pace(control_center):
+    """_burn_rate_color should return red when usage == time (binary, at/over = red)."""
+    color = control_center._burn_rate_color(60, 60)
+    assert color == control_center.get_color("burn_high")
 
 
 def test_burn_rate_color_over_pace(control_center):
-    """_burn_rate_color should return red when usage > time + 5."""
+    """_burn_rate_color should return red when usage > time."""
     color = control_center._burn_rate_color(80, 60)
+    assert color == control_center.get_color("burn_high")
+
+
+def test_burn_rate_color_no_time_under(control_center):
+    """_burn_rate_color without time_pct: green when usage < 80%."""
+    color = control_center._burn_rate_color(50)
+    assert color == control_center.get_color("burn_low")
+
+
+def test_burn_rate_color_no_time_over(control_center):
+    """_burn_rate_color without time_pct: red when usage >= 80%."""
+    color = control_center._burn_rate_color(80)
     assert color == control_center.get_color("burn_high")
 
 
@@ -138,3 +150,25 @@ def test_bar_time_color_in_all_profiles(control_center):
     from gui.constants import COLOR_PROFILES
     for profile_name, profile in COLOR_PROFILES.items():
         assert "bar_time" in profile, f"bar_time missing from {profile_name} profile"
+
+
+def test_bar_time_color_is_gray(control_center):
+    """bar_time should be gray (not blue) in all profiles."""
+    from gui.constants import COLOR_PROFILES
+    blue_values = {"#60a5fa", "#00aaff"}
+    for profile_name, profile in COLOR_PROFILES.items():
+        assert profile["bar_time"] not in blue_values, (
+            f"bar_time in {profile_name} is still blue ({profile['bar_time']}), should be gray"
+        )
+
+
+def test_stripe_order_usage_on_top():
+    """DualStripeBar should render usage stripe on top, time on bottom."""
+    # Verify by reading the paintEvent source — the first fillRect should use _usage_color
+    import inspect
+    source = inspect.getsource(DualStripeBar.paintEvent)
+    usage_pos = source.find("_usage_color")
+    time_pos = source.find("_time_color")
+    assert usage_pos < time_pos, (
+        "Usage stripe should be rendered before (on top of) time stripe in paintEvent"
+    )

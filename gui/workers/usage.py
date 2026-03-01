@@ -244,6 +244,7 @@ class UsageWorker(QThread):
             accounts = load_accounts()
 
             if accounts:
+                logger.debug("polling %d accounts", len(accounts))
                 # Fetch usage for each account
                 results = []
                 for account in accounts:
@@ -253,24 +254,30 @@ class UsageWorker(QThread):
                     if api_data:
                         api_data["name"] = account["name"]
                         results.append(api_data)
+                        logger.debug("account %s: ok (source=%s)", account["name"], api_data.get("source"))
                     else:
                         results.append({
                             "name": account["name"],
                             "available": False,
                             "source": "none",
                         })
+                        logger.warning("account %s: all API fallbacks failed", account["name"])
                 self.usage_updated.emit(results)
+                logger.debug("poll complete, sleeping 30s")
                 self._interruptible_sleep(30000)
                 continue
 
             # No accounts configured — fall back to local JSONL parsing
             local_data = self.fetch_local_usage()
             if local_data:
+                logger.debug("local usage: ok (estimated=%s)", local_data.get("is_estimated"))
                 self.usage_updated.emit([local_data])
+                logger.debug("poll complete, sleeping 30s")
                 self._interruptible_sleep(30000)
                 continue
 
             # No data available
+            logger.debug("no accounts and no local data, sleeping 30s")
             self.usage_updated.emit([{"available": False, "source": "none"}])
             self._interruptible_sleep(30000)
 

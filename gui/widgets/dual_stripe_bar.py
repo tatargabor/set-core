@@ -1,7 +1,7 @@
 """
 DualStripeBar - Compact dual-stripe progress bar widget.
 
-Renders two stacked horizontal stripes (time elapsed on top, usage consumed
+Renders two stacked horizontal stripes (usage consumed on top, time elapsed
 on bottom) in a single 10px-tall widget using QPainter.
 """
 
@@ -63,17 +63,17 @@ class DualStripeBar(QWidget):
         inner_w = w - 2
         stripe_h = (h - 2) // 2  # 2 stripes in remaining height
 
-        # Top stripe: time elapsed
-        if self._time_pct > 0 and inner_w > 0:
-            fill_w = int(inner_w * self._time_pct / 100)
-            if fill_w > 0:
-                p.fillRect(inner_x, 1, fill_w, stripe_h, self._time_color)
-
-        # Bottom stripe: usage consumed
-        top_of_bottom = 1 + stripe_h
+        # Top stripe: usage consumed
         if self._usage_pct > 0 and inner_w > 0:
             fill_w = int(inner_w * self._usage_pct / 100)
             if fill_w > 0:
-                p.fillRect(inner_x, top_of_bottom, fill_w, stripe_h, self._usage_color)
+                p.fillRect(inner_x, 1, fill_w, stripe_h, self._usage_color)
+
+        # Bottom stripe: time elapsed
+        top_of_bottom = 1 + stripe_h
+        if self._time_pct > 0 and inner_w > 0:
+            fill_w = int(inner_w * self._time_pct / 100)
+            if fill_w > 0:
+                p.fillRect(inner_x, top_of_bottom, fill_w, stripe_h, self._time_color)
 
         p.end()
