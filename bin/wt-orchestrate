@@ -2968,7 +2968,7 @@ resume_change() {
     log_info "Resume $change_name with model=$impl_model (done=$done_criteria, max=$max_iter)"
     (
         cd "$wt_path" || exit 1
-        wt-loop start "$task_desc" --max "$max_iter" --done "$done_criteria" --label "$change_name" --model "$impl_model"
+        wt-loop start "$task_desc" --max "$max_iter" --done "$done_criteria" --label "$change_name" --model "$impl_model" --change "$change_name"
     ) &
     wait $! 2>/dev/null || true
 
