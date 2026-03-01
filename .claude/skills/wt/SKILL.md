@@ -219,3 +219,24 @@ Output includes evidence (what exists), delta (✅/⚠️/❌), and guidance (so
 
 Use `/wt:audit` to scan and interactively address gaps. The skill runs the scan, presents findings, and helps create project-specific content by reading the actual codebase — not templates.
 
+## Orchestration Supervisor
+
+### Sentinel (Agent Mode)
+
+Use `/wt:sentinel` to start and supervise a `wt-orchestrate` run with intelligent monitoring. The agent starts the orchestrator in background, polls state every 15s, and makes decisions on crashes (log diagnosis), checkpoints (auto-approve periodic), and completion (summary report).
+
+```bash
+/wt:sentinel                                    # basic supervision
+/wt:sentinel --spec docs/v5.md --max-parallel 3 # with options
+```
+
+### Sentinel (Bash Fallback)
+
+For environments without Claude agent access:
+
+```bash
+wt-sentinel                                      # basic crash recovery
+wt-sentinel --spec docs/v5.md --max-parallel 3   # with options
+```
+
+See `docs/sentinel.md` for full documentation.

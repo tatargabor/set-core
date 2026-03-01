@@ -31,10 +31,17 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 STATE_FILE="orchestration-state.json"
+LOG_FILE="orchestration.log"
 PID_FILE="sentinel.pid"
 MAX_RAPID_CRASHES=5
 SUSTAINED_RUN_SECS=300  # 5 minutes
 BACKOFF_SECS=30
+
+sentinel_log() {
+    local msg="[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
 
 # Signal handling — don't restart after user interrupt
 interrupted=false
@@ -60,12 +67,16 @@ echo $$ > "$PID_FILE"
 rapid_crashes=0
 
 while true; do
-    # Fix stale state: if state says "running" but no orchestrator is active, reset to "stopped"
+    # Fix stale state before restart
     if [[ -f "$STATE_FILE" ]]; then
         current_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
         if [[ "$current_status" == "running" ]]; then
-            echo "[sentinel] Stale state detected (status=running but no process) — resetting to stopped"
+            # No orchestrator process but state says running — reset to stopped
+            sentinel_log "Stale state detected (status=running but no process) — resetting to stopped"
             jq '.status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+        elif [[ "$current_status" == "checkpoint" ]]; then
+            # Checkpoint persists across restarts — don't modify
+            sentinel_log "State is checkpoint — preserving (orchestrator will resume from checkpoint)"
         fi
     fi
 
@@ -82,7 +93,7 @@ while true; do
 
     # Don't restart if we received a signal
     if $interrupted; then
-        echo "[sentinel] Interrupted — exiting"
+        sentinel_log "Interrupted — exiting"
         exit 0
     fi
 
@@ -94,13 +105,25 @@ while true; do
 
     # Clean exit + done = orchestration complete
     if [[ $exit_code -eq 0 && "$final_status" == "done" ]]; then
-        echo "[sentinel] Orchestration complete (status=done)"
+        sentinel_log "Orchestration complete (status=done)"
         exit 0
     fi
 
     # Clean exit + stopped = user stopped it (Ctrl+C reached orchestrator)
     if [[ $exit_code -eq 0 && "$final_status" == "stopped" ]]; then
-        echo "[sentinel] Orchestrator stopped cleanly"
+        sentinel_log "Orchestrator stopped cleanly"
+        exit 0
+    fi
+
+    # Clean exit + time_limit = user set a limit, respect it
+    if [[ $exit_code -eq 0 && "$final_status" == "time_limit" ]]; then
+        sentinel_log "Time limit reached — stopping (run 'wt-orchestrate start' to resume)"
+        exit 0
+    fi
+
+    # Any other clean exit = unexpected state, default to stop (safe)
+    if [[ $exit_code -eq 0 ]]; then
+        sentinel_log "Orchestrator exited cleanly with unexpected state '$final_status' — stopping"
         exit 0
     fi
 
@@ -112,11 +135,11 @@ while true; do
     fi
 
     if [[ $rapid_crashes -ge $MAX_RAPID_CRASHES ]]; then
-        echo "[sentinel] ERROR: $MAX_RAPID_CRASHES rapid crashes — giving up"
+        sentinel_log "ERROR: $MAX_RAPID_CRASHES rapid crashes — giving up"
         exit 1
     fi
 
-    echo "[sentinel] Orchestrator exited (code=$exit_code, runtime=${runtime}s, rapid_crashes=$rapid_crashes/$MAX_RAPID_CRASHES)"
-    echo "[sentinel] Restarting in ${BACKOFF_SECS}s..."
+    sentinel_log "Orchestrator exited (code=$exit_code, runtime=${runtime}s, rapid_crashes=$rapid_crashes/$MAX_RAPID_CRASHES)"
+    sentinel_log "Restarting in ${BACKOFF_SECS}s..."
     sleep $BACKOFF_SECS
 done
