@@ -4,15 +4,15 @@
 Display Claude usage statistics in the Control Center GUI, showing session (5h) and weekly capacity percentages with time remaining until reset.
 ## Requirements
 ### Requirement: Display Claude Capacity Statistics
-The Control Center GUI SHALL display Claude Code capacity statistics via dual progress bars — a time-elapsed bar above a usage bar for each time window (5h session, 7d weekly).
+The Control Center GUI SHALL display Claude Code capacity statistics via dual progress bars — a usage bar above a time-elapsed bar for each time window (5h session, 7d weekly).
 
 #### Scenario: Dual bars displayed per time window
 Given the Control Center is running
 And usage data is available from the API
 When the GUI refreshes
 Then each time window (5h, 7d) SHALL display two bars stacked vertically with 0px gap:
-  - Top bar: time-elapsed percentage (how far through the window)
-  - Bottom bar: usage percentage (how much quota consumed)
+  - Top bar: usage percentage (how much quota consumed)
+  - Bottom bar: time-elapsed percentage (how far through the window)
 
 #### Scenario: Display format with comma separator
 Given usage data is available from the API
@@ -32,17 +32,15 @@ And tooltips show token counts and suggest setting session key
 
 #### Scenario: Burn-rate-relative color coding
 Given usage data is available from the API
-When usage percentage is more than 5 points below time-elapsed percentage
-Then the usage bar SHALL be displayed in green (under pace)
-When usage percentage is within 5 points of time-elapsed percentage
-Then the usage bar SHALL be displayed in yellow (on pace)
-When usage percentage is more than 5 points above time-elapsed percentage
-Then the usage bar SHALL be displayed in red (over pace)
+When usage percentage is below time-elapsed percentage
+Then the usage bar SHALL be displayed in green (under budget)
+When usage percentage is equal to or above time-elapsed percentage
+Then the usage bar SHALL be displayed in red (over budget)
 
 #### Scenario: Time bar color
 Given usage data is available from the API
 When displaying the time-elapsed bar
-Then the time bar SHALL use a neutral color (`bar_time` theme color) regardless of percentage
+Then the time bar SHALL use a light gray color (`bar_time` theme color) regardless of percentage
 
 #### Scenario: Graceful fallback when data unavailable
 Given usage data cannot be fetched from any source
@@ -50,6 +48,13 @@ When the GUI attempts to display capacity
 Then it displays "--" for time labels and "--/5h", "--/7d" for usage labels
 And all four bars remain empty
 And does not show errors to the user
+
+#### Scenario: Burn rate color without time data
+Given usage data is available but time-elapsed percentage is unknown
+When usage percentage is below 80%
+Then the usage bar SHALL be displayed in green
+When usage percentage is 80% or above
+Then the usage bar SHALL be displayed in red
 
 ### Requirement: Usage Data Sources
 Usage data SHALL be fetched from multiple sources with automatic fallback, supporting multiple accounts.

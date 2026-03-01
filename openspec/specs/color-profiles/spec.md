@@ -37,6 +37,22 @@ Then text_primary is white (#ffffff)
 And text_secondary is bright blue (#00aaff)
 And bg_dialog is very dark (#222222)
 
+#### Scenario: Light profile bar_time color
+Given the color profile is set to "light"
+Then bar_time color SHALL be light gray (#d1d5db)
+
+#### Scenario: Dark profile bar_time color
+Given the color profile is set to "dark"
+Then bar_time color SHALL be medium gray (#4b5563)
+
+#### Scenario: Gray profile bar_time color
+Given the color profile is set to "gray"
+Then bar_time color SHALL be medium gray (#6b7280)
+
+#### Scenario: High contrast profile bar_time color
+Given the color profile is set to "high_contrast"
+Then bar_time color SHALL be gray (#888888)
+
 ### Requirement: Semantic Color Names
 All colors SHALL be referenced by semantic names (e.g., "status_running", "burn_high") rather than hardcoded hex values.
 
