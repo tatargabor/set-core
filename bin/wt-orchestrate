@@ -2028,6 +2028,11 @@ cmd_start() {
     if [[ "$need_plan" == true ]]; then
         info "Creating plan..."
         cmd_plan || return 1
+        # Fresh plan means fresh start — remove stale state from previous run
+        if [[ -f "$STATE_FILENAME" ]]; then
+            log_info "Removing stale state file (fresh plan created)"
+            rm -f "$STATE_FILENAME"
+        fi
     fi
 
     # Record start time for time-limit tracking
@@ -2040,8 +2045,13 @@ cmd_start() {
             warn "Orchestrator is already running. Use 'wt-orchestrate status' to check progress."
             return 1
         fi
+        # Previous run completed — start fresh
+        if [[ "$current_status" == "done" ]]; then
+            log_info "Previous run completed (status=done) — starting fresh"
+            rm -f "$STATE_FILENAME"
+        fi
         # Resume from time_limit or stopped: continue where we left off
-        if [[ "$current_status" == "time_limit" || "$current_status" == "stopped" ]]; then
+        if [[ -f "$STATE_FILENAME" ]] && [[ "$current_status" == "time_limit" || "$current_status" == "stopped" ]]; then
             info "Resuming from previous run (status: $current_status)"
             log_info "Resuming orchestration (was: $current_status)"
             update_state_field "status" '"running"'
