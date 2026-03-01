@@ -129,7 +129,7 @@ The orchestrator exited unexpectedly. **Read the last 50 lines of orchestration.
 6. Restart:
    ```bash
    sleep 30
-   wt-orchestrate start &
+   wt-orchestrate start $ARGUMENTS &
    ORCH_PID=$!
    ```
    Then go back to Step 2 (poll loop).

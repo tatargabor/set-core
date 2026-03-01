@@ -300,6 +300,7 @@ parse_directives() {
     local max_verify_retries="$DEFAULT_MAX_VERIFY_RETRIES"
     local summarize_model="$DEFAULT_SUMMARIZE_MODEL"
     local review_model="$DEFAULT_REVIEW_MODEL"
+    local default_model="$DEFAULT_IMPL_MODEL"
     local smoke_command="$DEFAULT_SMOKE_COMMAND"
     local smoke_timeout="$DEFAULT_SMOKE_TIMEOUT"
     local deploy_smoke_url="$DEFAULT_DEPLOY_SMOKE_URL"
@@ -413,6 +414,13 @@ parse_directives() {
                         warn "Invalid review_model '$val', using default $DEFAULT_REVIEW_MODEL"
                     fi
                     ;;
+                default_model)
+                    if [[ "$val" =~ ^(haiku|sonnet|opus)$ ]]; then
+                        default_model="$val"
+                    else
+                        warn "Invalid default_model '$val', using default $DEFAULT_IMPL_MODEL"
+                    fi
+                    ;;
                 smoke_command)
                     smoke_command="$val"
                     ;;
@@ -459,6 +467,7 @@ parse_directives() {
         --argjson max_verify_retries "$max_verify_retries" \
         --arg summarize_model "$summarize_model" \
         --arg review_model "$review_model" \
+        --arg default_model "$default_model" \
         --arg smoke_command "$smoke_command" \
         --argjson smoke_timeout "$smoke_timeout" \
         --arg deploy_smoke_url "$deploy_smoke_url" \
@@ -477,6 +486,7 @@ parse_directives() {
             max_verify_retries: $max_verify_retries,
             summarize_model: $summarize_model,
             review_model: $review_model,
+            default_model: $default_model,
             smoke_command: $smoke_command,
             smoke_timeout: $smoke_timeout,
             deploy_smoke_url: $deploy_smoke_url,
