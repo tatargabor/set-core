@@ -200,13 +200,22 @@ class TestApprove:
 # ─── 9.5: Gate formatting ────────────────────────────────────────────
 
 class TestGateFormatting:
-    def test_all_pass(self):
+    def test_all_pass_with_smoke(self):
+        # Merged change with post-merge smoke — shows T/B/R/V + S
         change = {"test_result": "pass", "build_result": "pass",
-                  "smoke_result": "pass", "review_result": "pass", "status": "done"}
+                  "smoke_result": "pass", "review_result": "pass", "status": "merged"}
         result = format_gates(change)
-        assert "T" in result and "B" in result and "S" in result and "R" in result and "V" in result
-        # All should contain the pass marker
+        assert "T" in result and "B" in result and "R" in result and "V" in result and "S" in result
         assert result.count("✓") == 5
+
+    def test_pre_merge_no_smoke(self):
+        # Done (pre-merge) change — no smoke column
+        change = {"test_result": "pass", "build_result": "pass",
+                  "smoke_result": None, "review_result": "pass", "status": "done"}
+        result = format_gates(change)
+        assert "T" in result and "B" in result and "R" in result and "V" in result
+        assert "S" not in result
+        assert result.count("✓") == 4
 
     def test_build_fail(self):
         change = {"test_result": "pass", "build_result": "fail",
@@ -219,10 +228,11 @@ class TestGateFormatting:
         change = {"test_result": None, "build_result": None,
                   "smoke_result": None, "review_result": None, "status": "pending"}
         result = format_gates(change)
-        # All should be NONE markers
-        assert result.count("-") == 5
+        # T/B/R/V all NONE, no S (smoke is None)
+        assert result.count("-") == 4
+        assert "S" not in result
 
-    def test_verify_pass_when_done(self):
+    def test_verify_pass_when_merged(self):
         change = {"test_result": "pass", "build_result": "pass",
                   "smoke_result": "pass", "review_result": "pass", "status": "merged"}
         result = format_gates(change)
@@ -230,11 +240,12 @@ class TestGateFormatting:
 
     def test_verify_fail(self):
         change = {"test_result": "pass", "build_result": "pass",
-                  "smoke_result": "pass", "review_result": "pass", "status": "verify-failed"}
+                  "smoke_result": None, "review_result": "pass", "status": "verify-failed"}
         result = format_gates(change)
-        # T, B, S, R pass but V fails
-        assert result.count("✓") == 4
+        # T, B, R pass but V fails, no S (not merged yet)
+        assert result.count("✓") == 3
         assert "✗" in result  # verify failed
+        assert "S" not in result
 
     def test_gate_str(self):
         assert gate_str("pass") == GATE_PASS
