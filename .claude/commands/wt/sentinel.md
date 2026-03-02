@@ -32,13 +32,17 @@ Then immediately go to Step 2.
 
 Run this single-shot poll command with `run_in_background: true`. Replace `$ORCH_PID` with the actual PID number.
 
+**IMPORTANT: Claude Code Bash tool escapes `!` as `\!` which breaks bash syntax. NEVER use `!` in the poll script. Use the workarounds below (kill -0 with || instead of if !, test -f instead of -f inline, etc.)**
+
 ```bash
 sleep 30
 STATE_FILE="orchestration-state.json"
 ORCH_PID=<actual PID number>
 
-# Check if process is alive
-if ! kill -0 "$ORCH_PID" 2>/dev/null; then
+# Check if process is alive (avoid "!" — Claude Code escapes it)
+ALIVE=true
+kill -0 "$ORCH_PID" 2>/dev/null || ALIVE=false
+if [ "$ALIVE" = "false" ]; then
     STATUS=$(jq -r '.status // "unknown"' "$STATE_FILE" 2>/dev/null || echo "unknown")
     echo "EVENT:process_exit|status=$STATUS"
     exit 0
@@ -48,16 +52,16 @@ fi
 STATUS=$(jq -r '.status // "unknown"' "$STATE_FILE" 2>/dev/null || echo "unknown")
 
 # Terminal states
-if [[ "$STATUS" == "done" || "$STATUS" == "stopped" || "$STATUS" == "time_limit" ]]; then
+if [ "$STATUS" = "done" ] || [ "$STATUS" = "stopped" ] || [ "$STATUS" = "time_limit" ]; then
     echo "EVENT:terminal|status=$STATUS"
     exit 0
 fi
 
 # Checkpoint
-if [[ "$STATUS" == "checkpoint" ]]; then
+if [ "$STATUS" = "checkpoint" ]; then
     REASON=$(jq -r '.checkpoints[-1].reason // "unknown"' "$STATE_FILE" 2>/dev/null || echo "unknown")
     APPROVED=$(jq -r '.checkpoints[-1].approved // false' "$STATE_FILE" 2>/dev/null || echo "false")
-    if [[ "$APPROVED" == "true" ]]; then
+    if [ "$APPROVED" = "true" ]; then
         echo "EVENT:running|status=checkpoint_approved"
     else
         echo "EVENT:checkpoint|reason=$REASON"
@@ -65,12 +69,12 @@ if [[ "$STATUS" == "checkpoint" ]]; then
     exit 0
 fi
 
-# Stale detection
-if [[ "$STATUS" == "running" && -f "$STATE_FILE" ]]; then
+# Stale detection (use test -f separately to avoid complex [[ ]])
+if [ "$STATUS" = "running" ] && test -f "$STATE_FILE"; then
     MTIME=$(stat -c %Y "$STATE_FILE" 2>/dev/null || stat -f %m "$STATE_FILE" 2>/dev/null || echo 0)
     NOW=$(date +%s)
     AGE=$(( NOW - MTIME ))
-    if [[ $AGE -gt 120 ]]; then
+    if [ $AGE -gt 120 ]; then
         echo "EVENT:stale|age=${AGE}s"
         exit 0
     fi
