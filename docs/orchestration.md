@@ -206,6 +206,9 @@ max_parallel: 3
 merge_policy: checkpoint    # eager | checkpoint | manual
 checkpoint_every: 3         # merge-checkpoint after every N changes
 test_command: npm test       # run after each merge
+smoke_command: pnpm test:smoke  # post-merge smoke test
+smoke_timeout: 120              # seconds
+post_merge_command: pnpm db:generate  # custom command after merge (e.g., Prisma generate)
 auto_replan: true            # auto-advance to next phase
 pause_on_exit: false         # pause running changes on Ctrl+C
 ```
@@ -233,9 +236,11 @@ Settings are resolved in order (highest wins):
 
 | Policy | Behavior |
 |--------|----------|
-| `eager` | Merge each change immediately when done |
+| `eager` | Queue changes for sequential merge as they complete (one at a time) |
 | `checkpoint` | Batch merges every N completed changes, wait for approval |
 | `manual` | Queue merges, only flush on `wt-orchestrate approve --merge` |
+
+All merge policies use a sequential queue — only one merge runs at a time. Each merge runs the full post-merge pipeline (dep install, custom command, scope verify, build verify, smoke test) before the next merge starts.
 
 ---
 
@@ -260,7 +265,7 @@ wt-orchestrate replan
 
 ## Verification Gates
 
-Changes go through pre-merge and post-merge quality gates before completion.
+Changes go through pre-merge and post-merge quality gates.
 
 ### Pre-merge gate (worktree)
 
@@ -272,47 +277,30 @@ Runs inside the worktree before merge:
 
 If any step fails, the Ralph loop gets the error output and retries (up to `max_verify_retries`, default 2).
 
-### Pre-merge: E2E gate (worktree) — PLANNED
+### Post-merge pipeline (main repo)
 
-Runs per-change functional e2e tests in the worktree. Unlike smoke (post-merge, whole app), e2e validates the specific feature the agent built. Failure means the implementation is incomplete.
+After a successful merge to main, the orchestrator runs a sequential pipeline. Only one merge runs at a time.
 
-1. **Trigger**: If `e2e_command` configured AND change scope includes a `Functional:` line
-2. **Server**: Starts own dev server on dynamic port in worktree
-3. **Run**: `e2e_command` with `SMOKE_BASE_URL=http://localhost:<port>`
-4. **If pass** → continue to code review
-5. **If fail** → Ralph gets failure output + screenshots, retries
-
-**DB handling:** `globalSetup` reset+seed (same as smoke). `flock` ensures only one worktree runs tests at a time, so there are no DB conflicts.
-
-### Post-merge smoke gate (main repo) — PLANNED
-
-> **Status: Not yet implemented.** Currently smoke tests run pre-merge in the worktree, which fails because the worktree can't start its own dev server (port conflict with the main repo dev server). The fix is to move smoke to post-merge.
-
-After merge, the orchestrator runs smoke/e2e tests against the **running dev server on main**:
-
-1. Health check loop — poll `GET /api/health` until 200 (max 60s wait for hot-reload)
-2. Run smoke: `SMOKE_BASE_URL=http://localhost:3002 pnpm test:smoke`
-3. If pass → continue to next change
-4. If fail → fix forward on main (Ralph gets smoke output + failure screenshots from `e2e/test-results/`)
-5. If fix fails → `git revert HEAD` + retry the change in its worktree
+1. **Base build cache invalidation** — force rebuild on next verify
+2. **Dependency install** — if `package.json` changed
+3. **Custom command** — `post_merge_command` if configured (e.g., `pnpm db:generate` for Prisma)
+4. **Scope verification** — checks `git diff HEAD~1` for non-artifact files (warns if only openspec files merged)
+5. **Build verification** — runs `test_command` on main to ensure the build still passes
+6. **Smoke test** — runs `smoke_command` if configured; on failure, an LLM agent (sonnet, 20 turns) attempts to fix the code or tests on main
+7. **Memory logging** — records merge result
+8. **Worktree cleanup** — removes the merged worktree
+9. **Change archive** — archives the completed change
 
 **Config:**
 ```yaml
 smoke_command: pnpm test:smoke     # the command to run
 smoke_timeout: 120                 # seconds
-smoke_base_url: http://localhost:3002  # dev server URL (optional, auto-detected)
+post_merge_command: pnpm db:generate  # project-specific command after dep install
 ```
 
-**Why post-merge:**
-- Worktrees can't start their own dev server (port conflict, `.next` cache mismatch)
-- Smoke tests validate the **integrated** state (merge conflicts, cross-change interactions)
-- The already-running dev server hot-reloads after merge — no startup overhead
-- Failure screenshots in `e2e/test-results/` aid debugging (gitignored, local only)
+**Smoke failure handling:** If smoke fails, the orchestrator spawns a sonnet agent on the main worktree with the failure output and lets it fix the issue (code or test). If the fix succeeds and smoke passes on re-run, the pipeline continues. If the fix fails, a critical notification is sent and the pipeline continues (no revert).
 
-**Known issues to handle:**
-- Prisma AI Safety Guard blocks `prisma db push --force-reset` when invoked by AI agents — `global-setup.ts` must set `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=yes`
-- Hot-reload delay after merge — need health check polling before running smoke
-- If dev server crashes after merge — orchestrator should detect and either restart or escalate
+**Scope verification:** Detects "merged but no implementation" — when a change only committed openspec artifacts without actual code. This is non-blocking (warning only).
 
 ---
 
@@ -321,7 +309,7 @@ smoke_base_url: http://localhost:3002  # dev server URL (optional, auto-detected
 - **Time limit**: default 5 hours. Override with `--time-limit 2h` or `--time-limit none`
 - **Crash recovery**: state is persisted to `orchestration-state.json`. Run `wt-orchestrate start` again to resume
 - **Ctrl+C**: saves state and optionally pauses running changes (`pause_on_exit: true`)
-- **Test verification**: if `test_command` is set, tests run after each merge — failures block further merges
+- **Post-merge verification**: if `test_command` or `smoke_command` is set, they run after each merge. Failures attempt LLM auto-fix; if auto-fix fails, a critical notification is sent (pipeline continues)
 
 ---
 

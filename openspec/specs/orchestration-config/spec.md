@@ -25,6 +25,7 @@ The system SHALL support a `.claude/orchestration.yaml` file for orchestrator di
   - `summarize_model`: one of "opus", "sonnet", "haiku" (default: "haiku") — model for spec summarization
   - `smoke_command`: string (default: empty) — command to run as smoke test after merge
   - `smoke_timeout`: integer in seconds (default: 60) — timeout for smoke command
+  - `post_merge_command`: string (default: empty) — custom command to run after dep install, before build verify (e.g., `pnpm db:generate`)
   - `review_before_merge`: boolean (default: false) — whether to run code review in verify gate
   - `max_verify_retries`: integer (default: 1) — max retries for failed verify gate
   - `test_timeout`: integer in seconds (default: 300) — timeout for test command

@@ -342,7 +342,7 @@ Use `createMockDb()` from `src/test/helpers.ts` for DB mocking.
 
 ### Smoke / E2E Tests
 
-If your project has a `smoke_command` directive configured (e.g., Playwright e2e tests), the verify gate runs them locally after build, before merge. Changes that modify user-facing flows should include smoke test updates.
+If your project has a `smoke_command` directive configured (e.g., Playwright e2e tests), the orchestrator runs them **post-merge on main** as part of the sequential merge pipeline. Changes that modify user-facing flows should include smoke test updates.
 
 **Organize by functional group, not by change:**
 
@@ -362,7 +362,7 @@ When writing specs or briefs, include smoke coverage:
   Smoke: update auth.spec.ts with password reset scenario.
 ```
 
-**Important:** Smoke tests that modify DB state (create records) need a `globalSetup` that resets and re-seeds the database before each suite run. The orchestrator serializes smoke execution via `flock` — only one smoke gate runs at a time — because all worktrees share the same database.
+**Important:** Smoke tests that modify DB state (create records) need a `globalSetup` that resets and re-seeds the database before each suite run. Smoke tests run post-merge on the main branch — the sequential merge queue ensures only one merge (and its smoke) runs at a time.
 
 ### Functional E2E Tests (per-feature acceptance)
 
