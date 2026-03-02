@@ -144,9 +144,10 @@ find_tasks_file() {
         return
     fi
 
-    # Fallback: search in subdirectories (maxdepth 3), excluding archive/node_modules
+    # Fallback: search in subdirectories (maxdepth 4), excluding archive/node_modules
+    # Depth 4 needed for openspec/changes/<name>/tasks.md
     local found
-    found=$(find "$wt_path" -maxdepth 3 -name "tasks.md" -type f \
+    found=$(find "$wt_path" -maxdepth 4 -name "tasks.md" -type f \
         ! -path "*/archive/*" ! -path "*/node_modules/*" 2>/dev/null | head -1)
     if [[ -n "$found" ]]; then
         echo "$found"
@@ -1065,10 +1066,10 @@ cmd_run() {
                     local last_msg
                     last_msg=$(cd "$wt_path" && git log -1 --format='%s' 2>/dev/null || echo "")
                     if [[ "$last_msg" == *:* ]]; then
-                        local change_name="${last_msg%%:*}"
+                        local commit_change_name="${last_msg%%:*}"
                         # Validate: change name should be kebab-case, not too long
-                        if [[ "$change_name" =~ ^[a-z][a-z0-9-]+$ && ${#change_name} -lt 40 ]]; then
-                            change_tag="change:$change_name,"
+                        if [[ "$commit_change_name" =~ ^[a-z][a-z0-9-]+$ && ${#commit_change_name} -lt 40 ]]; then
+                            change_tag="change:$commit_change_name,"
                         fi
                     fi
 
