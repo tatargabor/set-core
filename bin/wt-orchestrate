@@ -838,31 +838,30 @@ resolve_change_model() {
     local change_name="$1"
     local default_model="${2:-opus}"
 
-    # 1. Per-change explicit model
+    # Doc-named changes can use sonnet (mechanical text work, no code)
+    local is_doc_change=false
+    if [[ "$change_name" == doc-* || "$change_name" == *-doc-* || "$change_name" == *-docs || "$change_name" == *-docs-* ]]; then
+        is_doc_change=true
+    fi
+
+    # 1. Per-change explicit model from plan
     local explicit_model
     explicit_model=$(jq -r --arg n "$change_name" \
         '.changes[] | select(.name == $n) | .model // empty' "$STATE_FILENAME")
     if [[ -n "$explicit_model" && "$explicit_model" != "null" ]]; then
-        echo "$explicit_model"
+        # Guard: sonnet only allowed for doc-named changes
+        # All code-writing changes MUST use opus regardless of what the planner suggested
+        if [[ "$explicit_model" == "sonnet" && "$is_doc_change" == "false" ]]; then
+            log_warn "Overriding planner model=sonnet → opus for code change '$change_name'"
+            echo "opus"
+        else
+            echo "$explicit_model"
+        fi
         return
     fi
 
-    # 2. Directive default_model (if not "opus" — i.e., user explicitly set it)
-    if [[ "$default_model" != "opus" ]]; then
-        echo "$default_model"
-        return
-    fi
-
-    # 3. Complexity-based heuristic
-    local complexity change_type
-    complexity=$(jq -r --arg n "$change_name" \
-        '.changes[] | select(.name == $n) | .complexity // "M"' "$STATE_FILENAME")
-    change_type=$(jq -r --arg n "$change_name" \
-        '.changes[] | select(.name == $n) | .change_type // "feature"' "$STATE_FILENAME")
-
-    # Only doc-named changes → sonnet (mechanical text work, no code)
-    # All code-writing changes (including S cleanup) MUST use opus
-    if [[ "$change_name" == doc-* || "$change_name" == *-doc-* || "$change_name" == *-docs || "$change_name" == *-docs-* ]]; then
+    # 2. Directive default_model
+    if [[ "$is_doc_change" == "true" ]]; then
         echo "sonnet"
         return
     fi
