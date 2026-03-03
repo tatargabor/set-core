@@ -305,13 +305,141 @@ def test_scan_end_to_end(tmp_path, monkeypatch):
         monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
         monkeypatch.setattr(mod, "_get_chrome_password", lambda: "mock-password")
 
-        result = mod.scan_chrome_sessions()
+        result = mod.scan_chrome_sessions(force_refresh=True)
 
     assert len(result) == 2
     assert result[0]["name"] == "Alice (Default)"
     assert result[0]["sessionKey"] == "sk-alice"
+    assert result[0]["source"] == "chrome-scan"
     assert result[1]["name"] == "Work"
     assert result[1]["sessionKey"] == "sk-work"
+    assert result[1]["source"] == "chrome-scan"
+
+
+# --- Org name caching tests ---
+
+
+def test_scan_uses_cached_org_name(tmp_path, monkeypatch):
+    """Scan skips _fetch_org_name when cache has valid org_name for same sessionKey."""
+    from gui.workers import chrome_cookies as mod
+
+    p1 = tmp_path / "Default"
+    p1.mkdir()
+    (p1 / "Preferences").write_text(json.dumps({"profile": {"name": "Fallback"}}))
+    (p1 / "Cookies").touch()
+
+    def mock_chrome_cookies(url, cookie_file=None, password=None, **kwargs):
+        return {"sessionKey": "sk-cached"}
+
+    monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
+    monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
+
+    fetch_calls = []
+    original_fetch = mod._fetch_org_name
+    def tracking_fetch(sk):
+        fetch_calls.append(sk)
+        return original_fetch(sk)
+    monkeypatch.setattr(mod, "_fetch_org_name", tracking_fetch)
+
+    existing = [{"name": "Cached Org", "sessionKey": "sk-cached", "org_name": "Cached Org", "source": "chrome-scan"}]
+
+    mock_module = MagicMock()
+    mock_module.chrome_cookies = mock_chrome_cookies
+    with patch.dict("sys.modules", {"pycookiecheat": mock_module}):
+        import importlib
+        importlib.reload(mod)
+        monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
+        monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
+        monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
+        monkeypatch.setattr(mod, "_fetch_org_name", tracking_fetch)
+
+        result = mod.scan_chrome_sessions(force_refresh=False, existing_accounts=existing)
+
+    assert len(result) == 1
+    assert result[0]["name"] == "Cached Org"
+    assert result[0]["org_name"] == "Cached Org"
+    assert fetch_calls == []  # _fetch_org_name was NOT called
+
+
+def test_scan_force_refresh_ignores_cache(tmp_path, monkeypatch):
+    """force_refresh=True always calls _fetch_org_name even with valid cache."""
+    from gui.workers import chrome_cookies as mod
+
+    p1 = tmp_path / "Default"
+    p1.mkdir()
+    (p1 / "Preferences").write_text(json.dumps({"profile": {"name": "Fallback"}}))
+    (p1 / "Cookies").touch()
+
+    def mock_chrome_cookies(url, cookie_file=None, password=None, **kwargs):
+        return {"sessionKey": "sk-cached"}
+
+    fetch_calls = []
+    def mock_fetch(sk):
+        fetch_calls.append(sk)
+        return "Fresh Org"
+
+    monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
+    monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
+
+    existing = [{"name": "Old", "sessionKey": "sk-cached", "org_name": "Old", "source": "chrome-scan"}]
+
+    mock_module = MagicMock()
+    mock_module.chrome_cookies = mock_chrome_cookies
+    with patch.dict("sys.modules", {"pycookiecheat": mock_module}):
+        import importlib
+        importlib.reload(mod)
+        monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
+        monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
+        monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
+        monkeypatch.setattr(mod, "_fetch_org_name", mock_fetch)
+
+        result = mod.scan_chrome_sessions(force_refresh=True, existing_accounts=existing)
+
+    assert len(result) == 1
+    assert result[0]["name"] == "Fresh Org"
+    assert fetch_calls == ["sk-cached"]
+
+
+# --- Merge logic tests ---
+
+
+def test_merge_preserves_manual_accounts():
+    """merge_scan_results keeps manual accounts and adds scan results."""
+    from gui.workers.chrome_cookies import merge_scan_results
+
+    existing = [
+        {"name": "Manual", "sessionKey": "sk-manual", "source": "manual"},
+        {"name": "Old Scan", "sessionKey": "sk-old", "source": "chrome-scan"},
+    ]
+    scan_results = [
+        {"name": "New Scan", "sessionKey": "sk-new", "source": "chrome-scan"},
+    ]
+
+    merged = merge_scan_results(scan_results, existing)
+
+    names = [a["name"] for a in merged]
+    assert "Manual" in names      # manual preserved
+    assert "Old Scan" not in names  # old chrome-scan replaced
+    assert "New Scan" in names     # new scan added
+    assert len(merged) == 2
+
+
+# --- Platform module fix test ---
+
+
+def test_stdlib_platform_not_shadowed():
+    """Verify importing gui.platform doesn't break stdlib platform.system()."""
+    import platform as stdlib_platform
+    # gui.platform is already imported at this point via gui.workers imports
+    import gui.platform  # noqa: F401
+
+    # stdlib platform should still work
+    system = stdlib_platform.system()
+    assert system in ("Linux", "Darwin", "Windows")
+    assert hasattr(stdlib_platform, "system")
+    assert hasattr(stdlib_platform, "machine")
 
 
 # --- Menu integration test (requires pytest-qt) ---

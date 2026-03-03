@@ -355,6 +355,9 @@ class ControlCenter(QMainWindow, TeamMixin, TableMixin, MenusMixin, HandlersMixi
         self.btn_scan.setFixedWidth(30)
         self.btn_scan.setToolTip("Scan Chrome Sessions")
         self.btn_scan.clicked.connect(self.on_scan_chrome_sessions)
+        from ..workers.chrome_cookies import is_pycookiecheat_available
+        if not is_pycookiecheat_available():
+            self.btn_scan.setVisible(False)
         btn_layout.addWidget(self.btn_scan)
 
         self.btn_minimize = QPushButton("−")

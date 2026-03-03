@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-__all__ = ["scan_chrome_sessions", "is_pycookiecheat_available"]
+__all__ = ["scan_chrome_sessions", "is_pycookiecheat_available", "ChromeScanWorker"]
 
 logger = logging.getLogger("wt-control.chrome-cookies")
 
@@ -197,31 +197,17 @@ def _fetch_org_name(session_key: str) -> str | None:
     return None
 
 
-def _load_9router_names() -> dict[str, str]:
-    """Load Claude connection names from 9router db.json.
 
-    Returns a dict mapping email prefix (from org name) to 9router connection name.
-    E.g. {"tatar.gabor": "20x - tg", "info": "20x - tgh"}
-    """
-    db_path = Path.home() / ".9router" / "db.json"
-    if not db_path.exists():
-        return {}
-    try:
-        with open(db_path) as f:
-            db = json.load(f)
-        return {
-            conn["name"]: conn["name"]
-            for conn in db.get("providerConnections", [])
-            if conn.get("provider") == "claude" and conn.get("isActive")
-        }
-    except Exception:
-        return {}
-
-
-def scan_chrome_sessions() -> list[dict]:
+def scan_chrome_sessions(force_refresh: bool = False, existing_accounts: list[dict] | None = None) -> list[dict]:
     """Scan all Chrome profiles for Claude session cookies.
 
-    Returns a list of {"name": str, "sessionKey": str} dicts,
+    Args:
+        force_refresh: If True, always re-fetch org names from the API.
+            If False, use cached org_name when sessionKey hasn't changed.
+        existing_accounts: Current accounts list for cache lookup.
+            Only accounts with source="chrome-scan" are considered for caching.
+
+    Returns a list of {"name": str, "sessionKey": str, "org_name": str|None, "source": "chrome-scan"} dicts,
     one per profile that has a valid sessionKey cookie.
     Returns empty list if Chrome is not found or no sessions exist.
     Raises ImportError if pycookiecheat is not installed.
@@ -239,6 +225,13 @@ def scan_chrome_sessions() -> list[dict]:
         logger.info("No Chrome profiles found in %s", chrome_dir)
         return []
 
+    # Build cache: sessionKey -> org_name from existing chrome-scan accounts
+    cache: dict[str, str] = {}
+    if not force_refresh and existing_accounts:
+        for acct in existing_accounts:
+            if acct.get("source") == "chrome-scan" and acct.get("org_name") and acct.get("sessionKey"):
+                cache[acct["sessionKey"]] = acct["org_name"]
+
     # Get keyring password once for all profiles
     password = _get_chrome_password()
 
@@ -250,8 +243,13 @@ def scan_chrome_sessions() -> list[dict]:
             logger.debug("No Claude session in profile: %s", profile_dir.name)
             continue
 
-        # Try to get org name from Claude API (more descriptive than profile name)
-        org_name = _fetch_org_name(session_key)
+        # Use cached org name if available, otherwise fetch from API
+        org_name = cache.get(session_key)
+        if org_name:
+            logger.debug("Using cached org name for profile: %s", profile_dir.name)
+        else:
+            org_name = _fetch_org_name(session_key)
+
         name = org_name if org_name else _resolve_profile_name(profile_dir)
 
         # Deduplicate by name (same account from multiple Chrome profiles)
@@ -260,7 +258,52 @@ def scan_chrome_sessions() -> list[dict]:
             continue
         seen_names.add(name)
 
-        results.append({"name": name, "sessionKey": session_key})
+        results.append({
+            "name": name,
+            "sessionKey": session_key,
+            "org_name": org_name,
+            "source": "chrome-scan",
+        })
         logger.info("Found session: %s", name)
 
     return results
+
+
+def merge_scan_results(scan_results: list[dict], existing_accounts: list[dict]) -> list[dict]:
+    """Merge scan results with existing accounts.
+
+    Preserves manual accounts, updates/adds chrome-scan accounts.
+    """
+    # Keep all manual accounts
+    merged = [a for a in existing_accounts if a.get("source") != "chrome-scan"]
+    # Add scan results
+    merged.extend(scan_results)
+    return merged
+
+
+try:
+    from PySide6.QtCore import QThread, Signal
+
+    class ChromeScanWorker(QThread):
+        """Background thread for Chrome session scanning."""
+        scan_finished = Signal(list)
+        scan_error = Signal(str)
+
+        def __init__(self, force_refresh: bool = False, existing_accounts: list[dict] | None = None):
+            super().__init__()
+            self._force_refresh = force_refresh
+            self._existing_accounts = existing_accounts
+
+        def run(self):
+            try:
+                results = scan_chrome_sessions(
+                    force_refresh=self._force_refresh,
+                    existing_accounts=self._existing_accounts,
+                )
+                self.scan_finished.emit(results)
+            except Exception as e:
+                self.scan_error.emit(str(e))
+
+except ImportError:
+    # PySide6 not available (e.g. in tests without Qt)
+    ChromeScanWorker = None  # type: ignore[assignment, misc]

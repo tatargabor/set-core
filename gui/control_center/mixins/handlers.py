@@ -325,18 +325,28 @@ class HandlersMixin:
 
     def _auto_scan_chrome(self):
         """Auto-scan Chrome sessions on startup (silent — no dialogs)."""
-        from ...workers.chrome_cookies import scan_chrome_sessions, is_pycookiecheat_available
-        from ...workers.usage import save_accounts
+        from ...workers.chrome_cookies import is_pycookiecheat_available, ChromeScanWorker
+        from ...workers.usage import load_accounts
 
         if not is_pycookiecheat_available():
             logger.info("auto-scan: pycookiecheat not available")
             return
 
-        try:
-            sessions = scan_chrome_sessions()
-        except Exception as e:
-            logger.warning("auto-scan: scan failed: %s", e)
+        if hasattr(self, '_chrome_scan_worker') and self._chrome_scan_worker.isRunning():
+            logger.debug("auto-scan: scan already in progress")
             return
+
+        existing = load_accounts()
+        self._chrome_scan_worker = ChromeScanWorker(force_refresh=False, existing_accounts=existing)
+        self._chrome_scan_worker.scan_finished.connect(self._on_auto_scan_finished)
+        self._chrome_scan_worker.scan_error.connect(self._on_auto_scan_error)
+        self._chrome_scan_worker.start()
+
+    @log_exceptions
+    def _on_auto_scan_finished(self, sessions):
+        """Handle auto-scan results (silent)."""
+        from ...workers.chrome_cookies import merge_scan_results
+        from ...workers.usage import load_accounts, save_accounts
 
         if not sessions:
             logger.info("auto-scan: no sessions found")
@@ -344,17 +354,24 @@ class HandlersMixin:
 
         logger.info("auto-scan: found %d sessions", len(sessions))
         try:
-            save_accounts(sessions)
+            existing = load_accounts()
+            merged = merge_scan_results(sessions, existing)
+            save_accounts(merged)
         except Exception as e:
             logger.warning("auto-scan: save failed: %s", e)
             return
 
         self._restart_usage_worker()
 
+    @log_exceptions
+    def _on_auto_scan_error(self, error_msg):
+        """Handle auto-scan error (silent)."""
+        logger.warning("auto-scan: scan failed: %s", error_msg)
+
     def on_scan_chrome_sessions(self):
         """Scan Chrome profiles for Claude session cookies and update accounts."""
-        from ...workers.chrome_cookies import scan_chrome_sessions, is_pycookiecheat_available
-        from ...workers.usage import save_accounts
+        from ...workers.chrome_cookies import is_pycookiecheat_available, ChromeScanWorker
+        from ...workers.usage import load_accounts
 
         if not is_pycookiecheat_available():
             show_warning(
@@ -365,11 +382,21 @@ class HandlersMixin:
             )
             return
 
-        try:
-            sessions = scan_chrome_sessions()
-        except Exception as e:
-            show_warning(self, "Scan Error", f"Failed to scan Chrome sessions: {e}")
+        if hasattr(self, '_chrome_scan_worker') and self._chrome_scan_worker.isRunning():
+            logger.debug("manual-scan: scan already in progress")
             return
+
+        existing = load_accounts()
+        self._chrome_scan_worker = ChromeScanWorker(force_refresh=True, existing_accounts=existing)
+        self._chrome_scan_worker.scan_finished.connect(self._on_manual_scan_finished)
+        self._chrome_scan_worker.scan_error.connect(self._on_manual_scan_error)
+        self._chrome_scan_worker.start()
+
+    @log_exceptions
+    def _on_manual_scan_finished(self, sessions):
+        """Handle manual scan results (show dialog)."""
+        from ...workers.chrome_cookies import merge_scan_results
+        from ...workers.usage import load_accounts, save_accounts
 
         if not sessions:
             show_information(
@@ -380,7 +407,9 @@ class HandlersMixin:
 
         names = [s["name"] for s in sessions]
         try:
-            save_accounts(sessions)
+            existing = load_accounts()
+            merged = merge_scan_results(sessions, existing)
+            save_accounts(merged)
         except Exception as e:
             show_warning(self, "Error", f"Failed to save accounts: {e}")
             return
@@ -390,6 +419,11 @@ class HandlersMixin:
             self, "Scan Chrome Sessions",
             f"Found {len(sessions)} account(s):\n" + "\n".join(f"  - {n}" for n in names)
         )
+
+    @log_exceptions
+    def _on_manual_scan_error(self, error_msg):
+        """Handle manual scan error (show dialog)."""
+        show_warning(self, "Scan Error", f"Failed to scan Chrome sessions: {error_msg}")
 
     def show_add_account(self):
         """Show dialog to add a new Claude account"""
@@ -411,7 +445,7 @@ class HandlersMixin:
         )
         if ok2 and key.strip():
             accounts = load_accounts()
-            accounts.append({"name": name.strip(), "sessionKey": key.strip()})
+            accounts.append({"name": name.strip(), "sessionKey": key.strip(), "source": "manual"})
             try:
                 save_accounts(accounts)
             except Exception as e:
