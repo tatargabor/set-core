@@ -163,6 +163,61 @@ def _extract_session_cookie(profile_dir: Path, password: str | None = None) -> s
         return None
 
 
+def _fetch_org_name(session_key: str) -> str | None:
+    """Fetch the Claude organization name using a session key."""
+    try:
+        from curl_cffi import requests as cffi_requests
+        r = cffi_requests.get(
+            "https://claude.ai/api/organizations",
+            cookies={"sessionKey": session_key},
+            impersonate="chrome",
+            timeout=10,
+        )
+        orgs = r.json()
+    except Exception:
+        try:
+            result = subprocess.run(
+                ["curl", "-s", "-m", "10",
+                 "-b", f"sessionKey={session_key}",
+                 "https://claude.ai/api/organizations"],
+                capture_output=True, text=True, timeout=15,
+            )
+            orgs = json.loads(result.stdout)
+        except Exception:
+            return None
+
+    if isinstance(orgs, list) and orgs:
+        name = orgs[0].get("name", "")
+        # Strip common suffixes for shorter display names
+        for suffix in ("'s Organization", "'s Individual Org"):
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        return name or None
+    return None
+
+
+def _load_9router_names() -> dict[str, str]:
+    """Load Claude connection names from 9router db.json.
+
+    Returns a dict mapping email prefix (from org name) to 9router connection name.
+    E.g. {"tatar.gabor": "20x - tg", "info": "20x - tgh"}
+    """
+    db_path = Path.home() / ".9router" / "db.json"
+    if not db_path.exists():
+        return {}
+    try:
+        with open(db_path) as f:
+            db = json.load(f)
+        return {
+            conn["name"]: conn["name"]
+            for conn in db.get("providerConnections", [])
+            if conn.get("provider") == "claude" and conn.get("isActive")
+        }
+    except Exception:
+        return {}
+
+
 def scan_chrome_sessions() -> list[dict]:
     """Scan all Chrome profiles for Claude session cookies.
 
@@ -188,13 +243,24 @@ def scan_chrome_sessions() -> list[dict]:
     password = _get_chrome_password()
 
     results = []
+    seen_names: set[str] = set()
     for profile_dir in profiles:
         session_key = _extract_session_cookie(profile_dir, password=password)
-        if session_key:
-            name = _resolve_profile_name(profile_dir)
-            results.append({"name": name, "sessionKey": session_key})
-            logger.info("Found session for profile: %s", name)
-        else:
+        if not session_key:
             logger.debug("No Claude session in profile: %s", profile_dir.name)
+            continue
+
+        # Try to get org name from Claude API (more descriptive than profile name)
+        org_name = _fetch_org_name(session_key)
+        name = org_name if org_name else _resolve_profile_name(profile_dir)
+
+        # Deduplicate by name (same account from multiple Chrome profiles)
+        if name in seen_names:
+            logger.debug("Duplicate account %s in profile: %s", name, profile_dir.name)
+            continue
+        seen_names.add(name)
+
+        results.append({"name": name, "sessionKey": session_key})
+        logger.info("Found session: %s", name)
 
     return results
