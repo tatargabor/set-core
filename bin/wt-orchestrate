@@ -44,7 +44,11 @@ DEFAULT_REVIEW_MODEL="sonnet"
 DEFAULT_IMPL_MODEL="opus"  # set from directives.default_model in monitor_loop
 DEFAULT_SMOKE_COMMAND=""
 DEFAULT_SMOKE_TIMEOUT=120
-
+DEFAULT_SMOKE_BLOCKING=false
+DEFAULT_SMOKE_FIX_TOKEN_BUDGET=500000
+DEFAULT_SMOKE_FIX_MAX_TURNS=15
+DEFAULT_SMOKE_FIX_MAX_RETRIES=3
+DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT=30
 
 DEFAULT_POST_MERGE_COMMAND=""       # project-specific command to run after merge (e.g. "pnpm db:generate")
 DEFAULT_TOKEN_HARD_LIMIT=20000000  # 20M tokens — checkpoint to ask human before spending more
@@ -305,7 +309,12 @@ parse_directives() {
     local default_model="$DEFAULT_IMPL_MODEL"
     local smoke_command="$DEFAULT_SMOKE_COMMAND"
     local smoke_timeout="$DEFAULT_SMOKE_TIMEOUT"
-
+    local smoke_blocking="$DEFAULT_SMOKE_BLOCKING"
+    local smoke_fix_token_budget="$DEFAULT_SMOKE_FIX_TOKEN_BUDGET"
+    local smoke_fix_max_turns="$DEFAULT_SMOKE_FIX_MAX_TURNS"
+    local smoke_fix_max_retries="$DEFAULT_SMOKE_FIX_MAX_RETRIES"
+    local smoke_health_check_url=""
+    local smoke_health_check_timeout="$DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT"
 
     local post_merge_command="$DEFAULT_POST_MERGE_COMMAND"
     local token_hard_limit="$DEFAULT_TOKEN_HARD_LIMIT"
@@ -442,7 +451,44 @@ parse_directives() {
                         warn "Invalid smoke_timeout '$val', using default $DEFAULT_SMOKE_TIMEOUT"
                     fi
                     ;;
-
+                smoke_blocking)
+                    if [[ "$val" =~ ^(true|false)$ ]]; then
+                        smoke_blocking="$val"
+                    else
+                        warn "Invalid smoke_blocking '$val', using default $DEFAULT_SMOKE_BLOCKING"
+                    fi
+                    ;;
+                smoke_fix_token_budget)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        smoke_fix_token_budget="$val"
+                    else
+                        warn "Invalid smoke_fix_token_budget '$val', using default $DEFAULT_SMOKE_FIX_TOKEN_BUDGET"
+                    fi
+                    ;;
+                smoke_fix_max_turns)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        smoke_fix_max_turns="$val"
+                    else
+                        warn "Invalid smoke_fix_max_turns '$val', using default $DEFAULT_SMOKE_FIX_MAX_TURNS"
+                    fi
+                    ;;
+                smoke_fix_max_retries)
+                    if [[ "$val" =~ ^[0-9]+$ ]]; then
+                        smoke_fix_max_retries="$val"
+                    else
+                        warn "Invalid smoke_fix_max_retries '$val', using default $DEFAULT_SMOKE_FIX_MAX_RETRIES"
+                    fi
+                    ;;
+                smoke_health_check_url)
+                    smoke_health_check_url="$val"
+                    ;;
+                smoke_health_check_timeout)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        smoke_health_check_timeout="$val"
+                    else
+                        warn "Invalid smoke_health_check_timeout '$val', using default $DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT"
+                    fi
+                    ;;
 
                 post_merge_command)
                     post_merge_command="$val"
@@ -480,6 +526,12 @@ parse_directives() {
         --arg default_model "$default_model" \
         --arg smoke_command "$smoke_command" \
         --argjson smoke_timeout "$smoke_timeout" \
+        --argjson smoke_blocking "$smoke_blocking" \
+        --argjson smoke_fix_token_budget "$smoke_fix_token_budget" \
+        --argjson smoke_fix_max_turns "$smoke_fix_max_turns" \
+        --argjson smoke_fix_max_retries "$smoke_fix_max_retries" \
+        --arg smoke_health_check_url "$smoke_health_check_url" \
+        --argjson smoke_health_check_timeout "$smoke_health_check_timeout" \
         --arg post_merge_command "$post_merge_command" \
         --argjson token_hard_limit "$token_hard_limit" \
         '{
@@ -499,6 +551,12 @@ parse_directives() {
             default_model: $default_model,
             smoke_command: $smoke_command,
             smoke_timeout: $smoke_timeout,
+            smoke_blocking: $smoke_blocking,
+            smoke_fix_token_budget: $smoke_fix_token_budget,
+            smoke_fix_max_turns: $smoke_fix_max_turns,
+            smoke_fix_max_retries: $smoke_fix_max_retries,
+            smoke_health_check_url: $smoke_health_check_url,
+            smoke_health_check_timeout: $smoke_health_check_timeout,
             post_merge_command: $post_merge_command,
             token_hard_limit: $token_hard_limit
         }'
@@ -3072,7 +3130,18 @@ monitor_loop() {
     smoke_command=$(echo "$directives" | jq -r '.smoke_command // ""')
     local smoke_timeout
     smoke_timeout=$(echo "$directives" | jq -r '.smoke_timeout // 120')
-
+    local smoke_blocking
+    smoke_blocking=$(echo "$directives" | jq -r '.smoke_blocking // false')
+    local smoke_fix_token_budget
+    smoke_fix_token_budget=$(echo "$directives" | jq -r ".smoke_fix_token_budget // $DEFAULT_SMOKE_FIX_TOKEN_BUDGET")
+    local smoke_fix_max_turns
+    smoke_fix_max_turns=$(echo "$directives" | jq -r ".smoke_fix_max_turns // $DEFAULT_SMOKE_FIX_MAX_TURNS")
+    local smoke_fix_max_retries
+    smoke_fix_max_retries=$(echo "$directives" | jq -r ".smoke_fix_max_retries // $DEFAULT_SMOKE_FIX_MAX_RETRIES")
+    local smoke_health_check_url
+    smoke_health_check_url=$(echo "$directives" | jq -r '.smoke_health_check_url // ""')
+    local smoke_health_check_timeout
+    smoke_health_check_timeout=$(echo "$directives" | jq -r ".smoke_health_check_timeout // $DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT")
 
     local token_hard_limit
     token_hard_limit=$(echo "$directives" | jq -r ".token_hard_limit // $DEFAULT_TOKEN_HARD_LIMIT")
@@ -4198,6 +4267,134 @@ verify_merge_scope() {
     fi
 }
 
+# Extract health check URL from smoke command
+# Looks for localhost:PORT pattern
+extract_health_check_url() {
+    local smoke_cmd="$1"
+    local port
+    port=$(echo "$smoke_cmd" | grep -oP 'localhost:\K[0-9]+' | head -1)
+    if [[ -n "$port" ]]; then
+        echo "http://localhost:$port"
+    fi
+}
+
+# Health check: verify dev server is responding
+# Returns 0 on success, 1 on timeout
+health_check() {
+    local url="$1"
+    local timeout_secs="${2:-30}"
+
+    if [[ -z "$url" ]]; then
+        return 0  # No URL to check — skip
+    fi
+
+    log_info "Health check: waiting for $url (timeout: ${timeout_secs}s)"
+    local elapsed=0
+    while [[ $elapsed -lt $timeout_secs ]]; do
+        local http_code
+        http_code=$(curl -s -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000")
+        if [[ "$http_code" =~ ^[23] ]]; then
+            log_info "Health check: server responding ($http_code)"
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    log_error "Health check: server not responding after ${timeout_secs}s"
+    return 1
+}
+
+# Scoped smoke fix agent: uses change context for higher fix rate
+# Returns 0 if smoke eventually passes, 1 if all retries exhausted
+smoke_fix_scoped() {
+    local change_name="$1"
+    local smoke_cmd="$2"
+    local smoke_tout="$3"
+    local max_retries="${4:-3}"
+    local max_turns="${5:-15}"
+    local smoke_output="$6"
+
+    # Get modified files from the merge commit
+    local modified_files
+    modified_files=$(git diff HEAD~1 --name-only 2>/dev/null || echo "")
+
+    # Get change scope from state
+    local change_scope
+    change_scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME" 2>/dev/null || echo "")
+
+    local attempt=0
+    while [[ $attempt -lt $max_retries ]]; do
+        attempt=$((attempt + 1))
+        update_change_field "$change_name" "smoke_fix_attempts" "$attempt"
+        update_change_field "$change_name" "smoke_status" '"fixing"'
+        log_info "Smoke fix attempt $attempt/$max_retries for $change_name"
+
+        local fix_prompt
+        fix_prompt=$(cat <<SCOPED_FIX_EOF
+Post-merge smoke/e2e tests failed on main after merging "$change_name".
+
+## Change scope
+$change_scope
+
+## Files modified by this change
+$modified_files
+
+## Smoke command
+$smoke_cmd
+
+## Smoke output
+$smoke_output
+
+## Constraints
+- MAY ONLY modify files that were part of this change (listed above)
+- MUST NOT delete or weaken existing test assertions
+- MUST NOT modify files outside the change scope
+- Fix the root cause — either implementation code or test expectations
+
+## Steps
+1. Analyze the smoke test failures
+2. Fix the root cause in the modified files
+3. Commit with message: "fix: repair smoke after $change_name merge"
+SCOPED_FIX_EOF
+)
+        local fix_rc=0
+        echo "$fix_prompt" | run_claude --model "$(model_id sonnet)" --max-turns "$max_turns" >>"$LOG_FILE" 2>&1 || fix_rc=$?
+
+        if [[ $fix_rc -ne 0 ]]; then
+            log_error "Smoke fix agent failed (exit $fix_rc) for $change_name attempt $attempt"
+            continue
+        fi
+
+        # Verify fix didn't break unit tests or build
+        local test_cmd
+        test_cmd=$(echo "$directives" | jq -r '.test_command // ""' 2>/dev/null || echo "")
+        if [[ -n "$test_cmd" ]]; then
+            local test_rc=0
+            timeout 300 bash -c "$test_cmd" >>"$LOG_FILE" 2>&1 || test_rc=$?
+            if [[ $test_rc -ne 0 ]]; then
+                log_error "Smoke fix broke unit tests — reverting (attempt $attempt)"
+                git revert HEAD --no-edit >>"$LOG_FILE" 2>&1 || true
+                continue
+            fi
+        fi
+
+        # Re-run smoke to verify the fix
+        local recheck_rc=0
+        local recheck_output
+        recheck_output=$(timeout "$smoke_tout" bash -c "$smoke_cmd" 2>&1) || recheck_rc=$?
+        if [[ $recheck_rc -eq 0 ]]; then
+            log_info "Smoke fix SUCCEEDED for $change_name (attempt $attempt)"
+            return 0
+        else
+            log_error "Smoke still failing after fix attempt $attempt"
+            smoke_output="$recheck_output"  # Update for next attempt
+        fi
+    done
+
+    log_error "Smoke fix exhausted all $max_retries retries for $change_name"
+    return 1
+}
+
 merge_change() {
     local change_name="$1"
 
@@ -4322,21 +4519,83 @@ merge_change() {
 
         # Post-merge smoke/e2e tests: run on main after merge (not pre-merge — worktree code isn't on localhost)
         if [[ -n "$smoke_command" ]]; then
-            log_info "Post-merge: running smoke/e2e tests on main for $change_name"
-            local pm_smoke_output=""
-            local pm_smoke_rc=0
-            pm_smoke_output=$(timeout "$smoke_timeout" bash -c "$smoke_command" 2>&1) || pm_smoke_rc=$?
-            if [[ $pm_smoke_rc -eq 0 ]]; then
-                log_info "Post-merge: smoke tests passed for $change_name"
-                update_change_field "$change_name" "smoke_result" '"pass"'
+            update_change_field "$change_name" "smoke_status" '"pending"'
+
+            if [[ "$smoke_blocking" == "true" ]]; then
+                # === BLOCKING SMOKE PIPELINE ===
+                # flock is already held from merge — extends through smoke+fix
+                log_info "Post-merge: blocking smoke pipeline for $change_name"
+
+                # Health check: verify dev server is responding
+                local hc_url="$smoke_health_check_url"
+                if [[ -z "$hc_url" ]]; then
+                    hc_url=$(extract_health_check_url "$smoke_command")
+                fi
+                update_change_field "$change_name" "smoke_status" '"checking"'
+                if [[ -n "$hc_url" ]] && ! health_check "$hc_url" "$smoke_health_check_timeout"; then
+                    log_error "Post-merge: health check FAILED for $change_name — no server at $hc_url"
+                    update_change_field "$change_name" "smoke_result" '"blocked"'
+                    update_change_field "$change_name" "smoke_status" '"blocked"'
+                    update_change_field "$change_name" "status" '"smoke_blocked"'
+                    send_notification "wt-orchestrate" "Smoke blocked for $change_name — no server at $hc_url" "critical"
+                    orch_remember "Smoke blocked for $change_name — dev server not responding at $hc_url" Decision "phase:post-merge,change:$change_name"
+                    # Don't proceed to cleanup/archive — leave for sentinel
+                    return 0
+                fi
+
+                # Recompile buffer
+                sleep 5
+
+                # Run smoke
+                update_change_field "$change_name" "smoke_status" '"running"'
+                log_info "Post-merge: running smoke tests (blocking) for $change_name"
+                local pm_smoke_output=""
+                local pm_smoke_rc=0
+                pm_smoke_output=$(timeout "$smoke_timeout" bash -c "$smoke_command" 2>&1) || pm_smoke_rc=$?
+
+                if [[ $pm_smoke_rc -eq 0 ]]; then
+                    log_info "Post-merge: smoke tests passed for $change_name"
+                    update_change_field "$change_name" "smoke_result" '"pass"'
+                    update_change_field "$change_name" "smoke_status" '"done"'
+                else
+                    log_error "Post-merge: smoke tests FAILED for $change_name (exit $pm_smoke_rc)"
+                    update_change_field "$change_name" "smoke_result" '"fail"'
+                    update_change_field "$change_name" "smoke_fix_attempts" "0"
+
+                    # Scoped fix agent with retries
+                    if smoke_fix_scoped "$change_name" "$smoke_command" "$smoke_timeout" \
+                            "$smoke_fix_max_retries" "$smoke_fix_max_turns" "$pm_smoke_output"; then
+                        update_change_field "$change_name" "smoke_result" '"fixed"'
+                        update_change_field "$change_name" "smoke_status" '"done"'
+                        orch_remember "Scoped fix resolved post-merge smoke failure for $change_name" Learning "phase:post-merge,change:$change_name"
+                    else
+                        update_change_field "$change_name" "smoke_status" '"failed"'
+                        update_change_field "$change_name" "status" '"smoke_failed"'
+                        send_notification "wt-orchestrate" "Post-merge smoke FAILED for $change_name — scoped fix exhausted ($smoke_fix_max_retries retries)" "critical"
+                        orch_remember "Post-merge smoke failed for $change_name — scoped fix exhausted" Decision "phase:post-merge,change:$change_name"
+                        # Don't proceed to cleanup/archive — leave for sentinel
+                        return 0
+                    fi
+                fi
             else
-                log_error "Post-merge: smoke tests FAILED for $change_name (exit $pm_smoke_rc)"
-                log_error "Post-merge smoke output: ${pm_smoke_output: -500}"
-                update_change_field "$change_name" "smoke_result" '"fail"'
-                # Attempt LLM fix on main — same pattern as build fix
-                log_info "Post-merge: attempting LLM smoke fix on main for $change_name"
-                local smoke_fix_prompt
-                smoke_fix_prompt=$(cat <<SMOKE_FIX_EOF
+                # === NON-BLOCKING SMOKE (legacy behavior) ===
+                log_info "Post-merge: running smoke/e2e tests on main for $change_name"
+                local pm_smoke_output=""
+                local pm_smoke_rc=0
+                pm_smoke_output=$(timeout "$smoke_timeout" bash -c "$smoke_command" 2>&1) || pm_smoke_rc=$?
+                if [[ $pm_smoke_rc -eq 0 ]]; then
+                    log_info "Post-merge: smoke tests passed for $change_name"
+                    update_change_field "$change_name" "smoke_result" '"pass"'
+                    update_change_field "$change_name" "smoke_status" '"done"'
+                else
+                    log_error "Post-merge: smoke tests FAILED for $change_name (exit $pm_smoke_rc)"
+                    log_error "Post-merge smoke output: ${pm_smoke_output: -500}"
+                    update_change_field "$change_name" "smoke_result" '"fail"'
+                    update_change_field "$change_name" "smoke_status" '"failed"'
+                    # Attempt generic LLM fix (legacy — no change context)
+                    log_info "Post-merge: attempting LLM smoke fix on main for $change_name"
+                    local smoke_fix_prompt
+                    smoke_fix_prompt=$(cat <<SMOKE_FIX_EOF
 Post-merge smoke/e2e tests failed on main after merging $change_name.
 Fix the code or tests so smoke tests pass again.
 
@@ -4353,24 +4612,25 @@ Instructions:
 Do NOT create a worktree — fix directly in the current directory.
 SMOKE_FIX_EOF
 )
-                local smoke_fix_rc=0
-                echo "$smoke_fix_prompt" | run_claude --model "$(model_id sonnet)" --max-turns 20 >>"$LOG_FILE" 2>&1 || smoke_fix_rc=$?
-                if [[ $smoke_fix_rc -eq 0 ]]; then
-                    # Re-run smoke to verify the fix
-                    local recheck_rc=0
-                    timeout "$smoke_timeout" bash -c "$smoke_command" >>"$LOG_FILE" 2>&1 || recheck_rc=$?
-                    if [[ $recheck_rc -eq 0 ]]; then
-                        log_info "Post-merge: smoke fix SUCCEEDED for $change_name"
-                        update_change_field "$change_name" "smoke_result" '"fixed"'
-                        orch_remember "LLM fixed post-merge smoke failure for $change_name" Learning "phase:post-merge,change:$change_name"
+                    local smoke_fix_rc=0
+                    echo "$smoke_fix_prompt" | run_claude --model "$(model_id sonnet)" --max-turns 20 >>"$LOG_FILE" 2>&1 || smoke_fix_rc=$?
+                    if [[ $smoke_fix_rc -eq 0 ]]; then
+                        local recheck_rc=0
+                        timeout "$smoke_timeout" bash -c "$smoke_command" >>"$LOG_FILE" 2>&1 || recheck_rc=$?
+                        if [[ $recheck_rc -eq 0 ]]; then
+                            log_info "Post-merge: smoke fix SUCCEEDED for $change_name"
+                            update_change_field "$change_name" "smoke_result" '"fixed"'
+                            update_change_field "$change_name" "smoke_status" '"done"'
+                            orch_remember "LLM fixed post-merge smoke failure for $change_name" Learning "phase:post-merge,change:$change_name"
+                        else
+                            log_error "Post-merge: smoke fix attempt did not resolve failures for $change_name"
+                            send_notification "wt-orchestrate" "Post-merge smoke FAILED for $change_name — LLM fix attempted but smoke still failing" "critical"
+                            orch_remember "Post-merge smoke failed for $change_name — LLM fix attempt did not resolve" Decision "phase:post-merge,change:$change_name"
+                        fi
                     else
-                        log_error "Post-merge: smoke fix attempt did not resolve failures for $change_name"
-                        send_notification "wt-orchestrate" "Post-merge smoke FAILED for $change_name — LLM fix attempted but smoke still failing" "critical"
-                        orch_remember "Post-merge smoke failed for $change_name — LLM fix attempt did not resolve" Decision "phase:post-merge,change:$change_name"
+                        send_notification "wt-orchestrate" "Post-merge smoke FAILED for $change_name — LLM fix also failed" "critical"
+                        orch_remember "Post-merge smoke failed for $change_name — LLM fix failed" Decision "phase:post-merge,change:$change_name"
                     fi
-                else
-                    send_notification "wt-orchestrate" "Post-merge smoke FAILED for $change_name — LLM fix also failed" "critical"
-                    orch_remember "Post-merge smoke failed for $change_name — LLM fix failed" Decision "phase:post-merge,change:$change_name"
                 fi
             fi
         fi

@@ -149,6 +149,25 @@ Below are the CONFLICT HUNKS extracted from each file (with 3 lines of surroundi
 Resolve each conflict by keeping both sides' changes where possible (integrate, don't pick one side).
 If changes are contradictory, prefer the source branch (the feature being merged).
 
+IMPORTANT — Additive conflict pattern:
+When both sides ADD new entries to the same list, array, object literal, import block,
+enum, or similar collection — KEEP ALL entries from BOTH sides. Do NOT pick one side.
+
+Example:
+<<<<<<< HEAD
+  \"action_a\",
+  \"action_b\",
+=======
+  \"action_x\",
+  \"action_y\",
+>>>>>>> feature
+
+Correct resolution (keep all):
+  \"action_a\",
+  \"action_b\",
+  \"action_x\",
+  \"action_y\",
+
 Output ONLY the resolved files. For each file, output a header line exactly like:
 --- FILE: <path> ---
 followed by the COMPLETE file content (no conflict markers, no truncation).

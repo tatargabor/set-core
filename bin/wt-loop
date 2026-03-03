@@ -53,6 +53,7 @@ Start Options:
   --done <criteria>        Done detection: tasks|openspec|manual (default: tasks, auto-detects openspec)
   --max <n>                Max iterations (default: 10)
   --stall-threshold <n>    Stall after N commit-less iterations (default: 2)
+  --max-idle <n>           Stop after N identical-output iterations (default: 3)
   --iteration-timeout <n>  Per-iteration timeout in minutes (default: 45)
   --capacity-limit <pct>   Stop if capacity exceeds (default: 80%)
   --permission-mode <mode> Claude permission mode: auto-accept|allowedTools|plan (default: config)
@@ -195,6 +196,9 @@ init_loop_state() {
   "total_tokens": 0,
   "token_budget": 0,
   "ff_attempts": 0,
+  "max_idle_iterations": 3,
+  "idle_count": 0,
+  "last_output_hash": null,
   "session_id": null,
   "resume_failures": 0,
   "label": $(if [[ -n "$label" ]]; then echo "\"$label\""; else echo "null"; fi),
@@ -780,6 +784,8 @@ cmd_run() {
     task=$(jq -r '.task' "$state_file")
     capacity_limit=$(jq -r '.capacity_limit_pct' "$state_file")
     stall_threshold=$(jq -r '.stall_threshold // 2' "$state_file")
+    local max_idle_iters
+    max_idle_iters=$(jq -r '.max_idle_iterations // 3' "$state_file")
     iteration_timeout_min=$(jq -r '.iteration_timeout_min // 45' "$state_file")
     label=$(jq -r '.label // empty' "$state_file")
     permission_mode=$(jq -r '.permission_mode // "default"' "$state_file")
@@ -863,7 +869,7 @@ cmd_run() {
     if [[ "$token_budget" -gt 0 ]] 2>/dev/null; then
         budget_display="$((token_budget / 1000))K"
     fi
-    echo "║  Mode: $permission_mode | Model: ${claude_model:-default} | Max: $max_iter | Stall: $stall_threshold | Timeout: ${iteration_timeout_min}m"
+    echo "║  Mode: $permission_mode | Model: ${claude_model:-default} | Max: $max_iter | Stall: $stall_threshold | Idle: $max_idle_iters | Timeout: ${iteration_timeout_min}m"
     echo "║  Memory: $memory_status | Budget: $budget_display"
     echo "║  Started: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "╚════════════════════════════════════════════════════════════════╝"
@@ -880,6 +886,8 @@ cmd_run() {
     local stall_count=0
     local repeated_msg_count=0
     local last_commit_msg=""
+    local idle_count=0
+    local last_output_hash=""
     local ff_attempts=0
     local ff_max_retries
     ff_max_retries=$(jq -r '.ff_max_retries // 2' "$state_file")
@@ -1149,6 +1157,38 @@ except:
             echo "📋 No log output captured"
         fi
 
+        # Output-level idle detection: stop if same output repeats N times
+        if [[ -s "$iter_log_file" ]]; then
+            local current_hash
+            current_hash=$(tail -200 "$iter_log_file" | md5sum | cut -d' ' -f1)
+            if [[ -n "$last_output_hash" && "$current_hash" == "$last_output_hash" ]]; then
+                idle_count=$((idle_count + 1))
+                echo "⚠️  Identical output detected ($idle_count/$max_idle_iters)"
+                if [[ $idle_count -ge $max_idle_iters ]]; then
+                    echo ""
+                    echo "╔════════════════════════════════════════════════════════════════╗"
+                    echo "║  🛑 IDLE: Identical output for $idle_count consecutive iterations  ║"
+                    echo "║  The agent is repeating the same response without progress.       ║"
+                    echo "╚════════════════════════════════════════════════════════════════╝"
+                    update_loop_state "$state_file" "status" '"idle"'
+                    update_loop_state "$state_file" "idle_count" "$idle_count"
+                    update_terminal_title "Ralph: ${worktree_name}${title_suffix} [idle]"
+                    trap - EXIT SIGTERM SIGINT
+                    notify-send "Ralph Loop Idle" "$worktree_name: identical output $idle_count times" 2>/dev/null || true
+                    # Record this iteration before exiting
+                    local idle_iter_end
+                    idle_iter_end=$(date -Iseconds)
+                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false"
+                    exit 0
+                fi
+            else
+                idle_count=0
+            fi
+            last_output_hash="$current_hash"
+            update_loop_state "$state_file" "idle_count" "$idle_count"
+            update_loop_state "$state_file" "last_output_hash" "\"$current_hash\""
+        fi
+
         # Stall detection: no commits = no progress
         # Exception: ff iterations create artifacts without committing — check for new/modified files
         local has_artifact_progress=false
@@ -1269,6 +1309,55 @@ except:
                 if [[ $ff_attempts -gt 0 ]]; then
                     ff_attempts=0
                     update_loop_state "$state_file" "ff_attempts" "0"
+                fi
+
+                # ff→apply chaining: if ff just created tasks.md, chain apply in same iteration
+                # This eliminates the iteration boundary where memory injection confuses the agent
+                if [[ "$post_action" == apply:* ]] && $has_artifact_progress; then
+                    local chain_change="${post_action#apply:}"
+                    echo ""
+                    echo "🔗 Chaining: ff created tasks.md → running apply in same iteration"
+                    echo ""
+
+                    # Build apply prompt
+                    local chain_prompt
+                    chain_prompt=$(build_prompt "$task" "$iteration" "$max_iter" "$wt_path" "$done_criteria" "$chain_change")
+
+                    # Run chained Claude invocation (fresh session — resume won't have apply context)
+                    local chain_session_id chain_log_file chain_exit=0
+                    chain_session_id=$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
+                    chain_log_file="${iter_log_file%.log}-chain.log"
+
+                    if [[ -n "$TIMEOUT_CMD" ]]; then
+                        echo "$chain_prompt" | env -u CLAUDECODE $STDBUF_PREFIX $TIMEOUT_CMD --foreground --signal=TERM "$timeout_seconds" \
+                            claude $perm_flags $model_flag --session-id "$chain_session_id" \
+                               --verbose 2>&1 | $STDBUF_PREFIX tee -a "$chain_log_file"
+                    else
+                        echo "$chain_prompt" | env -u CLAUDECODE $STDBUF_PREFIX claude $perm_flags $model_flag --session-id "$chain_session_id" \
+                           --verbose 2>&1 | $STDBUF_PREFIX tee -a "$chain_log_file"
+                    fi
+                    chain_exit=${PIPESTATUS[0]:-$?}
+
+                    # Collect chained commits
+                    local chain_commits
+                    chain_commits=$(get_new_commits "$wt_path" "$iter_end")
+                    if [[ "$chain_commits" != "[]" ]] && [[ -n "$chain_commits" ]]; then
+                        echo "🔗 Chained apply produced commits"
+                        # Merge chained commits into this iteration's commits
+                        new_commits=$(echo "[$new_commits, $chain_commits]" | jq -s 'flatten' 2>/dev/null || echo "$new_commits")
+                        # Reset stall counter — chained apply made progress
+                        stall_count=0
+                    fi
+
+                    # Update iter_end and tokens after chain
+                    iter_end=$(date -Iseconds)
+                    local chain_tokens_after
+                    chain_tokens_after=$(get_current_tokens "$start_time")
+                    local chain_tokens_used=$((chain_tokens_after - tokens_after))
+                    [[ $chain_tokens_used -lt 0 ]] && chain_tokens_used=0
+                    tokens_used=$((tokens_used + chain_tokens_used))
+                    tokens_after=$chain_tokens_after
+                    echo "🔗 Chain complete (exit: $chain_exit, +${chain_tokens_used} tokens)"
                 fi
             fi
         fi
@@ -1438,6 +1527,7 @@ cmd_start() {
     local done_criteria="$DEFAULT_DONE_CRITERIA"
     local capacity_limit="$DEFAULT_CAPACITY_LIMIT"
     local stall_threshold="$DEFAULT_STALL_THRESHOLD"
+    local max_idle_iterations=3
     local iteration_timeout=45
     local fullscreen=false
     local permission_mode_override=""
@@ -1460,6 +1550,10 @@ cmd_start() {
                 ;;
             --stall-threshold)
                 stall_threshold="$2"
+                shift 2
+                ;;
+            --max-idle)
+                max_idle_iterations="$2"
                 shift 2
                 ;;
             --iteration-timeout)
@@ -1588,12 +1682,13 @@ cmd_start() {
     info "Initializing loop state..."
     init_loop_state "$wt_path" "$worktree_name" "$task" "$max_iter" "$done_criteria" "$capacity_limit" "$stall_threshold" "$iteration_timeout" "$label" "$change_name"
 
-    # Save permission mode in state
+    # Save permission mode and idle threshold in state
     local state_file_init
     state_file_init=$(get_loop_state_file "$wt_path")
     local tmp_pm
     tmp_pm=$(mktemp)
-    jq --arg pm "$effective_permission_mode" '.permission_mode = $pm' "$state_file_init" > "$tmp_pm" && mv "$tmp_pm" "$state_file_init"
+    jq --arg pm "$effective_permission_mode" --argjson mi "$max_idle_iterations" \
+        '.permission_mode = $pm | .max_idle_iterations = $mi' "$state_file_init" > "$tmp_pm" && mv "$tmp_pm" "$state_file_init"
 
     # Resolve and save model in state (default: opus)
     local effective_model
@@ -1691,6 +1786,7 @@ APPLESCRIPT
     echo "  Max iterations: $max_iter"
     echo "  Done criteria: $done_criteria"
     echo "  Stall threshold: $stall_threshold"
+    echo "  Idle threshold: $max_idle_iterations"
     echo "  Iteration timeout: ${iteration_timeout}m"
     echo ""
     echo "Commands:"
