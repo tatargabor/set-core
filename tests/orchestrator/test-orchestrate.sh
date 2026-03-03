@@ -591,10 +591,10 @@ cat > "$MINIMAL_BRIEF2" <<'EOF'
 ## Orchestrator Directives
 EOF
 
-test_start "parse_directives defaults smoke_blocking to false"
+test_start "parse_directives defaults smoke_blocking to true"
 directives=$(parse_directives "$MINIMAL_BRIEF2" 2>/dev/null)
 sb=$(echo "$directives" | jq -r '.smoke_blocking')
-assert_equals "false" "$sb"
+assert_equals "true" "$sb"
 
 test_start "parse_directives defaults smoke_fix_max_retries to 3"
 sfmr=$(echo "$directives" | jq -r '.smoke_fix_max_retries')
@@ -620,7 +620,7 @@ EOF
 test_start "parse_directives rejects invalid smoke_blocking"
 directives=$(parse_directives "$INVALID_SMOKE_BRIEF" 2>/dev/null)
 sb=$(echo "$directives" | jq -r '.smoke_blocking')
-assert_equals "false" "$sb"
+assert_equals "true" "$sb"
 
 test_start "parse_directives rejects invalid smoke_fix_token_budget"
 sftb=$(echo "$directives" | jq -r '.smoke_fix_token_budget')
