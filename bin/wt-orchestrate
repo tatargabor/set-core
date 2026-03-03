@@ -2135,7 +2135,9 @@ cmd_start() {
 
             # Retry merge queue immediately on resume (don't wait 30s)
             retry_merge_queue
-            # Resume running changes and dispatch pending
+            # Resume changes that were running when we were interrupted
+            resume_stopped_changes
+            # Dispatch any remaining pending changes
             dispatch_ready_changes "$max_parallel"
             monitor_loop "$directives"
             return 0
@@ -2231,6 +2233,8 @@ cmd_start() {
     trap 'cleanup_orchestrator' EXIT
     trap 'exit 0' SIGTERM SIGINT SIGHUP
 
+    # Resume any stopped changes from a previous interrupted run
+    resume_stopped_changes
     # Dispatch initial changes
     dispatch_ready_changes "$max_parallel"
 
@@ -2882,6 +2886,28 @@ MEMORY_EOF
     update_change_field "$change_name" "ralph_pid" "${terminal_pid:-0}"
     update_change_field "$change_name" "status" '"running"'
     log_info "Ralph started for $change_name in $wt_path (terminal PID ${terminal_pid:-unknown})"
+}
+
+# Resume changes that were running when the orchestrator was interrupted.
+# Called on restart before dispatch_ready_changes() so stopped changes
+# get picked up without manual intervention.
+resume_stopped_changes() {
+    local stopped_changes
+    stopped_changes=$(jq -r '.changes[] | select(.status == "stopped") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        local wt_path
+        wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+        if [[ -n "$wt_path" && -d "$wt_path" ]]; then
+            log_info "Resuming stopped change: $name"
+            info "Resuming stopped change: $name"
+            resume_change "$name" || true
+        else
+            log_info "Resetting stopped change $name to pending (worktree missing)"
+            info "Resetting stopped change $name to pending (worktree missing)"
+            update_change_field "$name" "status" '"pending"'
+        fi
+    done <<< "$stopped_changes"
 }
 
 dispatch_ready_changes() {
