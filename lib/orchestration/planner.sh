@@ -306,9 +306,48 @@ check_scope_overlap() {
         fi
     fi
 
+    # Check cross-cutting file mentions if project-knowledge.yaml exists
+    local pk_file
+    pk_file=$(find_project_knowledge_file)
+    if [[ -n "$pk_file" ]]; then
+        local cc_paths
+        cc_paths=$(yq -r '.cross_cutting_files[]?.path // empty' "$pk_file" 2>/dev/null || true)
+        if [[ -n "$cc_paths" ]]; then
+            while IFS= read -r cc_path; do
+                [[ -z "$cc_path" ]] && continue
+                local cc_basename
+                cc_basename=$(basename "$cc_path")
+                local touching_changes=()
+                for name in "${names[@]}"; do
+                    local scope_text
+                    scope_text=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .scope // ""' "$plan_file")
+                    if echo "$scope_text" | grep -qi "$cc_basename"; then
+                        touching_changes+=("$name")
+                    fi
+                done
+                if [[ ${#touching_changes[@]} -ge 2 ]]; then
+                    warn "Cross-cutting file '$cc_path' may be touched by: ${touching_changes[*]}"
+                    log_warn "Cross-cutting hazard: $cc_path touched by ${touching_changes[*]}"
+                    warnings=$((warnings + 1))
+                fi
+            done <<< "$cc_paths"
+        fi
+    fi
+
     if [[ $warnings -gt 0 ]]; then
         send_notification "wt-orchestrate" "Plan has $warnings scope overlap warning(s) — review for duplicates" "normal"
     fi
+}
+
+# Find project-knowledge.yaml in the project root
+find_project_knowledge_file() {
+    local candidates=("project-knowledge.yaml" "project-knowledge.yml")
+    for c in "${candidates[@]}"; do
+        if [[ -f "$c" ]]; then
+            echo "$c"
+            return
+        fi
+    done
 }
 
 # ─── Subcommands ─────────────────────────────────────────────────────
@@ -467,6 +506,20 @@ ${orch_mem}"
         input_content=$(cat "$INPUT_PATH")
     fi
 
+    # Build project knowledge context if project-knowledge.yaml exists
+    local pk_context=""
+    local pk_file
+    pk_file=$(find_project_knowledge_file)
+    if [[ -n "$pk_file" ]]; then
+        local cc_files
+        cc_files=$(yq -r '.cross_cutting_files[]? | "- \(.path): \(.description // "")"' "$pk_file" 2>/dev/null || true)
+        if [[ -n "$cc_files" ]]; then
+            pk_context="## Cross-Cutting Files (merge hazards)
+These files are shared across features. Changes touching them should be serialized via depends_on:
+$cc_files"
+        fi
+    fi
+
     local prompt
     if [[ "$INPUT_MODE" == "spec" ]]; then
         # Spec-mode prompt: LLM determines what's next
@@ -492,6 +545,10 @@ cat <<MEM_CTX
 ## Project Memory
 $memory_context
 MEM_CTX
+fi)
+$(if [[ -n "$pk_context" ]]; then
+echo ""
+echo "$pk_context"
 fi)
 
 ## $test_infra_context
@@ -604,6 +661,10 @@ cat <<MEM_CTX
 ## Project Memory
 $memory_context
 MEM_CTX
+fi)
+$(if [[ -n "$pk_context" ]]; then
+echo ""
+echo "$pk_context"
 fi)
 
 ## $test_infra_context
@@ -851,6 +912,30 @@ auto_replan_cycle() {
     # Store completed info for the planner prompt to use
     export _REPLAN_COMPLETED="$completed_roadmap"
     export _REPLAN_CYCLE="$cycle"
+
+    # Inject git log of completed changes with their file lists to prevent duplication
+    local completed_file_context=""
+    local merged_names
+    merged_names=$(jq -r '.changes[] | select(.status == "merged") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+    if [[ -n "$merged_names" ]]; then
+        while IFS= read -r cname; do
+            [[ -z "$cname" ]] && continue
+            # Get files from the merge commit (branch was squash-merged to main)
+            local branch_name="$cname"
+            local files_list
+            files_list=$(git log --all --oneline --diff-filter=ACMR --name-only --format="" --grep="$cname" -- 2>/dev/null | sort -u | head -20 || true)
+            if [[ -n "$files_list" ]]; then
+                completed_file_context+="$cname: $files_list"$'\n'
+            fi
+        done <<< "$merged_names"
+        if [[ -n "$completed_file_context" ]]; then
+            _REPLAN_COMPLETED="${_REPLAN_COMPLETED}
+
+Files modified by completed changes (avoid re-implementing):
+$completed_file_context"
+            export _REPLAN_COMPLETED
+        fi
+    fi
 
     # Recall orchestrator operational history for replan context
     local replan_memory

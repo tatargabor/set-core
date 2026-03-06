@@ -734,6 +734,20 @@ cmd_start() {
         done
         info "Creating plan..."
         cmd_plan || return 1
+
+        # Plan approval gate: if directive set, wait for user to approve
+        local directives_for_gate
+        directives_for_gate=$(parse_directives)
+        local need_approval
+        need_approval=$(echo "$directives_for_gate" | jq -r '.plan_approval // false')
+        if [[ "$need_approval" == "true" ]]; then
+            info "Plan generated. Review with 'wt-orchestrate plan --show'"
+            info "Approve with 'wt-orchestrate approve' to begin dispatch."
+            log_info "Plan approval required — entering plan_review state"
+            init_state "$PLAN_FILENAME" "$directives_for_gate"
+            update_state_field "status" '"plan_review"'
+            return 0
+        fi
     fi
 
     # Record start time for time-limit tracking
@@ -750,6 +764,12 @@ cmd_start() {
         if [[ "$current_status" == "done" ]]; then
             log_info "Previous run completed (status=done) — starting fresh"
             rm -f "$STATE_FILENAME"
+        fi
+        # Plan review: wait for approval
+        if [[ "$current_status" == "plan_review" ]]; then
+            info "Plan is pending approval. Review with 'wt-orchestrate plan --show'"
+            info "Approve with 'wt-orchestrate approve' to begin dispatch."
+            return 0
         fi
         # Resume from time_limit or stopped: continue where we left off
         if [[ -f "$STATE_FILENAME" ]] && [[ "$current_status" == "time_limit" || "$current_status" == "stopped" ]]; then

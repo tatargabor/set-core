@@ -58,10 +58,10 @@
 
 ## 6. Planner Enhancements
 
-- [ ] 6.1 Enhance `check_scope_overlap()` — read `cross_cutting_files` from project-knowledge.yaml, detect file-path overlap between parallel changes
-- [ ] 6.2 Inject merge hazard analysis into `cmd_plan()` decompose prompt when project-knowledge.yaml exists
-- [ ] 6.3 Enhance `auto_replan_cycle()` — inject git log of completed changes and their file lists into replanner prompt to prevent duplication
-- [ ] 6.4 Add `plan_approval` directive (default: false). When true, orchestrator enters `plan_review` status after plan generation — user must `wt-orchestrate approve` before dispatch begins
+- [x] 6.1 Enhance `check_scope_overlap()` — read `cross_cutting_files` from project-knowledge.yaml, detect file-path overlap between parallel changes
+- [x] 6.2 Inject merge hazard analysis into `cmd_plan()` decompose prompt when project-knowledge.yaml exists
+- [x] 6.3 Enhance `auto_replan_cycle()` — inject git log of completed changes and their file lists into replanner prompt to prevent duplication
+- [x] 6.4 Add `plan_approval` directive (default: false). When true, orchestrator enters `plan_review` status after plan generation — user must `wt-orchestrate approve` before dispatch begins
 
 ## 7. Per-Change Model Routing
 
