@@ -229,6 +229,7 @@ parse_directives() {
     local watchdog_timeout=""
     local watchdog_loop_threshold=""
     local max_tokens_per_change=""
+    local context_pruning="true"
 
     while IFS= read -r line; do
         # Detect ## Orchestrator Directives header
@@ -435,6 +436,13 @@ parse_directives() {
                         warn "Invalid max_tokens_per_change '$val', ignoring"
                     fi
                     ;;
+                context_pruning)
+                    if [[ "$val" =~ ^(true|false)$ ]]; then
+                        context_pruning="$val"
+                    else
+                        warn "Invalid context_pruning '$val', using default true"
+                    fi
+                    ;;
                 *)
                     warn "Unknown directive '$key', ignoring"
                     ;;
@@ -481,6 +489,7 @@ parse_directives() {
         --arg watchdog_timeout "$watchdog_timeout" \
         --arg watchdog_loop_threshold "$watchdog_loop_threshold" \
         --arg max_tokens_per_change "$max_tokens_per_change" \
+        --argjson context_pruning "$context_pruning" \
         '{
             max_parallel: $max_parallel,
             merge_policy: $merge_policy,
@@ -510,7 +519,8 @@ parse_directives() {
             events_max_size: $events_max_size,
             watchdog_timeout: (if $watchdog_timeout != "" then ($watchdog_timeout | tonumber) else null end),
             watchdog_loop_threshold: (if $watchdog_loop_threshold != "" then ($watchdog_loop_threshold | tonumber) else null end),
-            max_tokens_per_change: (if $max_tokens_per_change != "" then ($max_tokens_per_change | tonumber) else null end)
+            max_tokens_per_change: (if $max_tokens_per_change != "" then ($max_tokens_per_change | tonumber) else null end),
+            context_pruning: $context_pruning
         } | with_entries(select(.value != null))'
 }
 

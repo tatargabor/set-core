@@ -265,6 +265,31 @@ bootstrap_worktree() {
     fi
 }
 
+# ─── Context Pruning ─────────────────────────────────────────────────
+
+# Remove orchestrator-level commands/skills from worktree .claude/ directory.
+# Agent workers don't need orchestrate, sentinel, or manual commands.
+# Preserves: .claude/rules/, .claude/skills/, CLAUDE.md, loop*.md
+prune_worktree_context() {
+    local wt_path="$1"
+    [[ -d "$wt_path/.claude" ]] || return 0
+
+    local pruned=0
+    local cmd_dir="$wt_path/.claude/commands/wt"
+    if [[ -d "$cmd_dir" ]]; then
+        for pattern in orchestrate sentinel manual; do
+            for f in "$cmd_dir"/${pattern}*.md; do
+                [[ -f "$f" ]] || continue
+                rm -f "$f"
+                pruned=$((pruned + 1))
+            done
+        done
+    fi
+
+    [[ "$pruned" -gt 0 ]] && log_info "Pruned $pruned orchestrator command(s) from worktree"
+    return 0
+}
+
 # ─── Model Routing ───────────────────────────────────────────────────
 
 # Resolve effective model for a change: explicit > directive > heuristic
@@ -339,6 +364,11 @@ dispatch_change() {
 
     # Bootstrap existing worktrees that missed wt-new bootstrap
     bootstrap_worktree "$project_path" "$wt_path"
+
+    # Prune orchestrator-level context from worktree (agent doesn't need to orchestrate itself)
+    if [[ "${CONTEXT_PRUNING:-true}" == "true" ]]; then
+        prune_worktree_context "$wt_path"
+    fi
 
     # Recall change-specific memories for proposal enrichment
     local dispatch_memory=""
@@ -1016,6 +1046,9 @@ monitor_loop() {
     local wd_max_tokens
     wd_max_tokens=$(echo "$directives" | jq -r '.max_tokens_per_change // empty')
     [[ -n "$wd_max_tokens" ]] && WATCHDOG_MAX_TOKENS_PER_CHANGE="$wd_max_tokens"
+
+    # Apply context pruning directive to global
+    CONTEXT_PRUNING=$(echo "$directives" | jq -r '.context_pruning // true')
 
     # Parse time limit (default 5h, --time-limit none to disable)
     local time_limit_secs=0

@@ -43,10 +43,10 @@
 
 ## 4. Worktree Context Pruning
 
-- [ ] 4.1 Implement `prune_worktree_context()` in dispatcher.sh — remove `.claude/commands/wt/orchestrate*.md`, `sentinel*.md`, `manual*.md` from worktree
-- [ ] 4.2 Add `context_pruning` directive to `parse_directives()` (default: true)
-- [ ] 4.3 Call `prune_worktree_context()` from `bootstrap_worktree()` after worktree setup, before dispatch
-- [ ] 4.4 Log count of pruned files — no error on empty glob match
+- [x] 4.1 Implement `prune_worktree_context()` in dispatcher.sh — remove `.claude/commands/wt/orchestrate*.md`, `sentinel*.md`, `manual*.md` from worktree
+- [x] 4.2 Add `context_pruning` directive to `parse_directives()` (default: true)
+- [x] 4.3 Call `prune_worktree_context()` from `bootstrap_worktree()` after worktree setup, before dispatch
+- [x] 4.4 Log count of pruned files — no error on empty glob match
 - [ ] 4.5 Verify preservation — negative test that `.claude/rules/`, `.claude/skills/`, `CLAUDE.md`, and `loop*.md` survive pruning
 
 ## 5. Project Knowledge System
