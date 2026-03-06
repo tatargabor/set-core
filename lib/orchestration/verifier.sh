@@ -309,6 +309,7 @@ poll_change() {
         ralph_pid=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .ralph_pid // empty' "$STATE_FILENAME")
         if [[ -n "$ralph_pid" && "$ralph_pid" != "0" ]] && ! kill -0 "$ralph_pid" 2>/dev/null; then
             log_error "Terminal process $ralph_pid for $change_name is dead, no loop-state found"
+            emit_event "ERROR" "$change_name" '{"error":"terminal process died without loop-state"}'
             update_change_field "$change_name" "status" '"failed"'
             orch_remember "Change $change_name failed — terminal process died without producing loop-state" Learning "phase:monitor,change:$change_name"
         fi
@@ -825,6 +826,16 @@ handle_change_done() {
     local gate_retry_count
     gate_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .gate_retry_count // 0' "$STATE_FILENAME")
     log_info "Verify gate: $change_name total ${gate_total_ms}ms (test=${gate_test_ms}ms, build=${gate_build_ms}ms, review=${gate_review_ms}ms, verify=${gate_verify_ms}ms, retries=${gate_retry_count}, retry_tokens=${gate_retry_tokens})"
+    emit_event "VERIFY_GATE" "$change_name" "$(jq -cn \
+        --arg test "$test_result" \
+        --argjson test_ms "$gate_test_ms" \
+        --argjson build_ms "$gate_build_ms" \
+        --argjson review_ms "$gate_review_ms" \
+        --argjson verify_ms "$gate_verify_ms" \
+        --argjson total_ms "$gate_total_ms" \
+        --argjson retries "$gate_retry_count" \
+        --argjson retry_tokens "$gate_retry_tokens" \
+        '{test:$test, test_ms:$test_ms, build_ms:$build_ms, review_ms:$review_ms, verify_ms:$verify_ms, total_ms:$total_ms, retries:$retries, retry_tokens:$retry_tokens}')"
 
     # ── Step 5: Mark done and handle merge ──
     update_change_field "$change_name" "status" '"done"'

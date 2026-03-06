@@ -441,6 +441,7 @@ MEMORY_EOF
     if [[ ! -f "$loop_state" ]]; then
         error "wt-loop failed to start for $change_name (no loop-state.json after ${retries}s)"
         log_error "wt-loop failed to start for $change_name"
+        emit_event "ERROR" "$change_name" '{"error":"wt-loop failed to start"}'
         update_change_field "$change_name" "status" '"failed"'
         return 1
     fi
@@ -595,6 +596,7 @@ resume_change() {
     if [[ ! -f "$loop_state" ]]; then
         error "wt-loop failed to resume for $change_name"
         log_error "wt-loop failed to resume for $change_name"
+        emit_event "ERROR" "$change_name" '{"error":"wt-loop failed to resume"}'
         update_change_field "$change_name" "status" '"failed"'
         return 1
     fi
@@ -1002,6 +1004,10 @@ monitor_loop() {
 
     local token_hard_limit
     token_hard_limit=$(echo "$directives" | jq -r ".token_hard_limit // $DEFAULT_TOKEN_HARD_LIMIT")
+
+    # Apply events directives to globals
+    EVENTS_ENABLED=$(echo "$directives" | jq -r '.events_log // "true"')
+    EVENTS_MAX_SIZE=$(echo "$directives" | jq -r ".events_max_size // $EVENTS_MAX_SIZE")
 
     # Parse time limit (default 5h, --time-limit none to disable)
     local time_limit_secs=0

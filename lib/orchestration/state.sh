@@ -224,6 +224,8 @@ parse_directives() {
 
     local post_merge_command="$DEFAULT_POST_MERGE_COMMAND"
     local token_hard_limit="$DEFAULT_TOKEN_HARD_LIMIT"
+    local events_log="true"
+    local events_max_size="$EVENTS_MAX_SIZE"
 
     while IFS= read -r line; do
         # Detect ## Orchestrator Directives header
@@ -399,6 +401,16 @@ parse_directives() {
                 post_merge_command)
                     post_merge_command="$val"
                     ;;
+                events_log)
+                    if [[ "$val" =~ ^(true|false)$ ]]; then
+                        events_log="$val"
+                    fi
+                    ;;
+                events_max_size)
+                    if [[ "$val" =~ ^[0-9]+$ ]]; then
+                        events_max_size="$val"
+                    fi
+                    ;;
                 *)
                     warn "Unknown directive '$key', ignoring"
                     ;;
@@ -440,6 +452,8 @@ parse_directives() {
         --argjson smoke_health_check_timeout "$smoke_health_check_timeout" \
         --arg post_merge_command "$post_merge_command" \
         --argjson token_hard_limit "$token_hard_limit" \
+        --arg events_log "$events_log" \
+        --argjson events_max_size "$events_max_size" \
         '{
             max_parallel: $max_parallel,
             merge_policy: $merge_policy,
@@ -464,7 +478,9 @@ parse_directives() {
             smoke_health_check_url: $smoke_health_check_url,
             smoke_health_check_timeout: $smoke_health_check_timeout,
             post_merge_command: $post_merge_command,
-            token_hard_limit: $token_hard_limit
+            token_hard_limit: $token_hard_limit,
+            events_log: $events_log,
+            events_max_size: $events_max_size
         }'
 }
 
@@ -1222,6 +1238,33 @@ generate_summary() {
         echo ""
         echo "- **Total tokens:** $total_tokens"
         echo ""
+
+        # Event-based timeline (if events log exists)
+        if [[ -n "${EVENTS_LOG_FILE:-}" && -f "${EVENTS_LOG_FILE:-}" ]]; then
+            local event_count
+            event_count=$(wc -l < "$EVENTS_LOG_FILE" 2>/dev/null || echo 0)
+            if [[ "$event_count" -gt 0 ]]; then
+                echo "## Event Timeline"
+                echo ""
+                echo "- **Total events:** $event_count"
+                # Count by type
+                local type_counts
+                type_counts=$(jq -r '.type' "$EVENTS_LOG_FILE" 2>/dev/null | sort | uniq -c | sort -rn | head -10)
+                if [[ -n "$type_counts" ]]; then
+                    echo "- **By type:**"
+                    echo "$type_counts" | while read -r cnt typ; do
+                        echo "  - $typ: $cnt"
+                    done
+                fi
+                # Show errors
+                local error_count
+                error_count=$(jq -r 'select(.type == "ERROR") | .change' "$EVENTS_LOG_FILE" 2>/dev/null | wc -l)
+                if [[ "$error_count" -gt 0 ]]; then
+                    echo "- **Errors:** $error_count"
+                fi
+                echo ""
+            fi
+        fi
     } > "$SUMMARY_FILENAME"
 
     log_info "Summary written to $SUMMARY_FILENAME"

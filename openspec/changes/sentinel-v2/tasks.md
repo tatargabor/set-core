@@ -18,13 +18,13 @@
 - [x] 2.4 Hook token tracking for automatic `TOKENS` event emission on `tokens_used` updates
 - [x] 2.5 Add `DISPATCH` event emission in `dispatch_change()`
 - [x] 2.6 Add `MERGE_ATTEMPT` event emission in `merge_change()` / `_try_merge()`
-- [ ] 2.7 Add `VERIFY_GATE` event emission in `handle_change_done()` for test/build/review/smoke results
+- [x] 2.7 Add `VERIFY_GATE` event emission in `handle_change_done()` for test/build/review/smoke results
 - [x] 2.8 Add `REPLAN` event emission in `auto_replan_cycle()`
-- [ ] 2.9 Add `CHECKPOINT` event emission in `trigger_checkpoint()`
-- [ ] 2.10 Add `ERROR` event emission for error conditions
-- [ ] 2.11 Add `events_log`, `events_max_size` directives to `parse_directives()`. Only emit `TOKENS` events on significant deltas (>10K tokens change) to reduce I/O overhead
+- [x] 2.9 Add `CHECKPOINT` event emission in `trigger_checkpoint()`
+- [x] 2.10 Add `ERROR` event emission for error conditions
+- [x] 2.11 Add `events_log`, `events_max_size` directives to `parse_directives()`. Only emit `TOKENS` events on significant deltas (>10K tokens change) to reduce I/O overhead
 - [x] 2.12 Implement `cmd_events()` subcommand — `wt-orchestrate events` with `--type`, `--change`, `--since`, `--last N`, `--json` filters
-- [ ] 2.13 Implement event-based auto run report in `generate_summary()` — markdown summary from events at orchestration completion
+- [x] 2.13 Implement event-based auto run report in `generate_summary()` — markdown summary from events at orchestration completion
 
 ## 3. Watchdog
 
