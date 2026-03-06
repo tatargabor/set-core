@@ -1,34 +1,34 @@
 ## 1. Module Extraction (mechanical refactor)
 
-- [ ] 1.1 Create `lib/orchestration/` directory
-- [ ] 1.2 Extract `lib/orchestration/state.sh` — move `init_state`, `update_state_field`, `update_change_field`, `get_change_status`, `get_changes_by_status`, `count_changes_by_status`, `deps_satisfied`, `topological_sort`, `generate_summary`, `trigger_checkpoint`, `brief_hash`, `load_config_file`, `resolve_directives`, `parse_directives`, `parse_next_items`, `find_brief`, `find_input`, `find_openspec_dir`, `parse_duration`, `any_loop_active`, `format_duration`, `send_notification`, `orch_remember`, `orch_recall`, `orch_memory_stats`, `orch_memory_audit`, `orch_gate_stats`, `cmd_status`, `cmd_approve`
-- [ ] 1.3 Extract `lib/orchestration/planner.sh` — move `cmd_plan`, `validate_plan`, `check_scope_overlap`, `summarize_spec`, `estimate_tokens`, `detect_test_infra`, `auto_detect_test_command`, `auto_replan_cycle`, `cmd_replan`
-- [ ] 1.4 Extract `lib/orchestration/dispatcher.sh` — move `dispatch_change`, `dispatch_ready_changes`, `resume_stopped_changes`, `resume_change`, `pause_change`, `resume_stalled_changes`, `retry_failed_builds`, `resolve_change_model`, `bootstrap_worktree`, `sync_worktree_with_main`, `check_base_build`, `fix_base_build_with_llm`, `cmd_start`, `cmd_pause`, `cmd_resume`, `monitor_loop`
-- [ ] 1.5 Extract `lib/orchestration/verifier.sh` — move `poll_change`, `handle_change_done`, `run_tests_in_worktree`, `review_change`, `verify_merge_scope`, `extract_health_check_url`, `health_check`, `smoke_fix_scoped`. Convert `smoke_command`, `smoke_timeout`, `smoke_blocking` from `monitor_loop()` local closures to explicit function arguments — these variables are accessed by verifier functions but declared local in dispatcher's `monitor_loop()`
-- [ ] 1.6 Extract `lib/orchestration/merger.sh` — move `merge_change`, `cleanup_worktree`, `cleanup_all_worktrees`, `execute_merge_queue`, `retry_merge_queue`, `_try_merge`, `archive_change`
-- [ ] 1.7 Reduce `bin/wt-orchestrate` to thin wrapper — keep constants, logging, `model_id`, `rotate_log`, `cmd_self_test`, `usage`, `main`; add `source` statements for all modules. Source order must match design D1: `events.sh` first (other modules emit events), then `state.sh`, `watchdog.sh`, `planner.sh`, `dispatcher.sh`, `verifier.sh`, `merger.sh`
-- [ ] 1.8 Verify `cmd_self_test` passes after extraction — all functions callable, no missing variables
+- [x] 1.1 Create `lib/orchestration/` directory
+- [x] 1.2 Extract `lib/orchestration/state.sh` — move `init_state`, `update_state_field`, `update_change_field`, `get_change_status`, `get_changes_by_status`, `count_changes_by_status`, `deps_satisfied`, `topological_sort`, `generate_summary`, `trigger_checkpoint`, `brief_hash`, `load_config_file`, `resolve_directives`, `parse_directives`, `parse_next_items`, `find_brief`, `find_input`, `find_openspec_dir`, `parse_duration`, `any_loop_active`, `format_duration`, `send_notification`, `orch_remember`, `orch_recall`, `orch_memory_stats`, `orch_memory_audit`, `orch_gate_stats`, `cmd_status`, `cmd_approve`
+- [x] 1.3 Extract `lib/orchestration/planner.sh` — move `cmd_plan`, `validate_plan`, `check_scope_overlap`, `summarize_spec`, `estimate_tokens`, `detect_test_infra`, `auto_detect_test_command`, `auto_replan_cycle`, `cmd_replan`
+- [x] 1.4 Extract `lib/orchestration/dispatcher.sh` — move `dispatch_change`, `dispatch_ready_changes`, `resume_stopped_changes`, `resume_change`, `pause_change`, `resume_stalled_changes`, `retry_failed_builds`, `resolve_change_model`, `bootstrap_worktree`, `sync_worktree_with_main`, `check_base_build`, `fix_base_build_with_llm`, `cmd_start`, `cmd_pause`, `cmd_resume`, `monitor_loop`
+- [x] 1.5 Extract `lib/orchestration/verifier.sh` — move `poll_change`, `handle_change_done`, `run_tests_in_worktree`, `review_change`, `verify_merge_scope`, `extract_health_check_url`, `health_check`, `smoke_fix_scoped`. Convert `smoke_command`, `smoke_timeout`, `smoke_blocking` from `monitor_loop()` local closures to explicit function arguments — these variables are accessed by verifier functions but declared local in dispatcher's `monitor_loop()`
+- [x] 1.6 Extract `lib/orchestration/merger.sh` — move `merge_change`, `cleanup_worktree`, `cleanup_all_worktrees`, `execute_merge_queue`, `retry_merge_queue`, `_try_merge`, `archive_change`
+- [x] 1.7 Reduce `bin/wt-orchestrate` to thin wrapper — keep constants, logging, `model_id`, `rotate_log`, `cmd_self_test`, `usage`, `main`; add `source` statements for all modules. Source order must match design D1: `events.sh` first (other modules emit events), then `state.sh`, `watchdog.sh`, `planner.sh`, `dispatcher.sh`, `verifier.sh`, `merger.sh`
+- [x] 1.8 Verify `cmd_self_test` passes after extraction — all functions callable, no missing variables
 - [ ] 1.9 Migrate existing `stall_count` detection in `poll_change()` to watchdog infrastructure — remove legacy stall logic, prevent dual-detection conflicts with new watchdog
 
 ## 2. Events System
 
-- [ ] 2.1 Create `lib/orchestration/events.sh` with `emit_event(type, change_name, data)` — append JSONL to `orchestration-events.jsonl`. Include `trace_id` field (per-change, set at dispatch) and `span_id` field (per-operation) in schema for future observability
-- [ ] 2.2 Implement event log rotation — archive at `events_max_size` (1MB default), keep last 3 archives
-- [ ] 2.3 Hook `update_change_field()` in state.sh for automatic `STATE_CHANGE` emission on status field changes
-- [ ] 2.4 Hook token tracking for automatic `TOKENS` event emission on `tokens_used` updates
-- [ ] 2.5 Add `DISPATCH` event emission in `dispatch_change()`
-- [ ] 2.6 Add `MERGE_ATTEMPT` event emission in `merge_change()` / `_try_merge()`
+- [x] 2.1 Create `lib/orchestration/events.sh` with `emit_event(type, change_name, data)` — append JSONL to `orchestration-events.jsonl`. Include `trace_id` field (per-change, set at dispatch) and `span_id` field (per-operation) in schema for future observability
+- [x] 2.2 Implement event log rotation — archive at `events_max_size` (1MB default), keep last 3 archives
+- [x] 2.3 Hook `update_change_field()` in state.sh for automatic `STATE_CHANGE` emission on status field changes
+- [x] 2.4 Hook token tracking for automatic `TOKENS` event emission on `tokens_used` updates
+- [x] 2.5 Add `DISPATCH` event emission in `dispatch_change()`
+- [x] 2.6 Add `MERGE_ATTEMPT` event emission in `merge_change()` / `_try_merge()`
 - [ ] 2.7 Add `VERIFY_GATE` event emission in `handle_change_done()` for test/build/review/smoke results
-- [ ] 2.8 Add `REPLAN` event emission in `auto_replan_cycle()`
+- [x] 2.8 Add `REPLAN` event emission in `auto_replan_cycle()`
 - [ ] 2.9 Add `CHECKPOINT` event emission in `trigger_checkpoint()`
 - [ ] 2.10 Add `ERROR` event emission for error conditions
 - [ ] 2.11 Add `events_log`, `events_max_size` directives to `parse_directives()`. Only emit `TOKENS` events on significant deltas (>10K tokens change) to reduce I/O overhead
-- [ ] 2.12 Implement `cmd_events()` subcommand — `wt-orchestrate events` with `--type`, `--change`, `--since`, `--last N`, `--json` filters
+- [x] 2.12 Implement `cmd_events()` subcommand — `wt-orchestrate events` with `--type`, `--change`, `--since`, `--last N`, `--json` filters
 - [ ] 2.13 Implement event-based auto run report in `generate_summary()` — markdown summary from events at orchestration completion
 
 ## 3. Watchdog
 
-- [ ] 3.1 Create `lib/orchestration/watchdog.sh` with `watchdog_check(change_name)` function
+- [x] 3.1 Create `lib/orchestration/watchdog.sh` with `watchdog_check(change_name)` function
 - [ ] 3.2 Implement per-state timeout detection — track `last_activity_epoch`, check loop-state.json mtime, verify Ralph PID is dead before triggering
 - [ ] 3.3 Implement action hash loop detection — compute MD5 of `(loop-state mtime, tokens_used, ralph_status)`, maintain ring buffer, detect consecutive identical hashes
 - [ ] 3.4 Implement escalation chain — levels 0-4 with persist per change, reset on successful activity
