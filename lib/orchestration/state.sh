@@ -226,6 +226,8 @@ parse_directives() {
     local token_hard_limit="$DEFAULT_TOKEN_HARD_LIMIT"
     local events_log="true"
     local events_max_size="$EVENTS_MAX_SIZE"
+    local watchdog_timeout=""
+    local watchdog_loop_threshold=""
 
     while IFS= read -r line; do
         # Detect ## Orchestrator Directives header
@@ -411,6 +413,20 @@ parse_directives() {
                         events_max_size="$val"
                     fi
                     ;;
+                watchdog_timeout)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        watchdog_timeout="$val"
+                    else
+                        warn "Invalid watchdog_timeout '$val', ignoring"
+                    fi
+                    ;;
+                watchdog_loop_threshold)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        watchdog_loop_threshold="$val"
+                    else
+                        warn "Invalid watchdog_loop_threshold '$val', ignoring"
+                    fi
+                    ;;
                 *)
                     warn "Unknown directive '$key', ignoring"
                     ;;
@@ -454,6 +470,8 @@ parse_directives() {
         --argjson token_hard_limit "$token_hard_limit" \
         --arg events_log "$events_log" \
         --argjson events_max_size "$events_max_size" \
+        --arg watchdog_timeout "$watchdog_timeout" \
+        --arg watchdog_loop_threshold "$watchdog_loop_threshold" \
         '{
             max_parallel: $max_parallel,
             merge_policy: $merge_policy,
@@ -480,8 +498,10 @@ parse_directives() {
             post_merge_command: $post_merge_command,
             token_hard_limit: $token_hard_limit,
             events_log: $events_log,
-            events_max_size: $events_max_size
-        }'
+            events_max_size: $events_max_size,
+            watchdog_timeout: (if $watchdog_timeout != "" then ($watchdog_timeout | tonumber) else null end),
+            watchdog_loop_threshold: (if $watchdog_loop_threshold != "" then ($watchdog_loop_threshold | tonumber) else null end)
+        } | with_entries(select(.value != null))'
 }
 
 # Compute SHA-256 hash of input file

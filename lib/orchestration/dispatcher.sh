@@ -1009,6 +1009,13 @@ monitor_loop() {
     EVENTS_ENABLED=$(echo "$directives" | jq -r '.events_log // "true"')
     EVENTS_MAX_SIZE=$(echo "$directives" | jq -r ".events_max_size // $EVENTS_MAX_SIZE")
 
+    # Apply watchdog directives to globals
+    local wd_timeout wd_loop_thresh
+    wd_timeout=$(echo "$directives" | jq -r '.watchdog_timeout // empty')
+    wd_loop_thresh=$(echo "$directives" | jq -r '.watchdog_loop_threshold // empty')
+    [[ -n "$wd_timeout" ]] && WATCHDOG_TIMEOUT_RUNNING="$wd_timeout" && WATCHDOG_TIMEOUT_VERIFYING="$wd_timeout" && WATCHDOG_TIMEOUT_DISPATCHED="$wd_timeout"
+    [[ -n "$wd_loop_thresh" ]] && WATCHDOG_LOOP_THRESHOLD="$wd_loop_thresh"
+
     # Parse time limit (default 5h, --time-limit none to disable)
     local time_limit_secs=0
     local time_limit_input="${CLI_TIME_LIMIT:-$DEFAULT_TIME_LIMIT}"
@@ -1092,6 +1099,7 @@ monitor_loop() {
                 "$smoke_command" "$smoke_timeout" "$smoke_blocking" \
                 "$smoke_fix_max_retries" "$smoke_fix_max_turns" \
                 "$smoke_health_check_url" "$smoke_health_check_timeout"
+            watchdog_check "$name"
         done <<< "$active_changes"
 
         # Check token budget — if exceeded, skip dispatch but keep polling
@@ -1188,6 +1196,9 @@ monitor_loop() {
                 fi
             fi
         fi
+
+        # Watchdog heartbeat (sentinel monitors events.jsonl mtime)
+        watchdog_heartbeat
 
         # Check if checkpoint needed
         local changes_since

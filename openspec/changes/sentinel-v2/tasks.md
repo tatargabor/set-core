@@ -29,15 +29,15 @@
 ## 3. Watchdog
 
 - [x] 3.1 Create `lib/orchestration/watchdog.sh` with `watchdog_check(change_name)` function
-- [ ] 3.2 Implement per-state timeout detection — track `last_activity_epoch`, check loop-state.json mtime, verify Ralph PID is dead before triggering
-- [ ] 3.3 Implement action hash loop detection — compute MD5 of `(loop-state mtime, tokens_used, ralph_status)`, maintain ring buffer, detect consecutive identical hashes
-- [ ] 3.4 Implement escalation chain — levels 0-4 with persist per change, reset on successful activity
-- [ ] 3.5 Implement `watchdog_heartbeat()` — emit `WATCHDOG_HEARTBEAT` event every poll cycle
-- [ ] 3.6 Emit `WATCHDOG_WARN`, `WATCHDOG_RESUME`, `WATCHDOG_KILL`, `WATCHDOG_FAILED` events at each escalation level
-- [ ] 3.7 Add watchdog state storage in `orchestration-state.json` per change (`watchdog` sub-object)
-- [ ] 3.8 Hook `watchdog_check()` into `monitor_loop()` after each `poll_change()` call
-- [ ] 3.9 Hook `watchdog_heartbeat()` at end of each poll cycle in `monitor_loop()`
-- [ ] 3.10 Add `watchdog_timeout` and `watchdog_loop_threshold` directives to `parse_directives()`
+- [x] 3.2 Implement per-state timeout detection — track `last_activity_epoch`, check loop-state.json mtime, verify Ralph PID is dead before triggering
+- [x] 3.3 Implement action hash loop detection — compute MD5 of `(loop-state mtime, tokens_used, ralph_status)`, maintain ring buffer, detect consecutive identical hashes
+- [x] 3.4 Implement escalation chain — levels 0-4 with persist per change, reset on successful activity
+- [x] 3.5 Implement `watchdog_heartbeat()` — emit `WATCHDOG_HEARTBEAT` event every poll cycle
+- [x] 3.6 Emit `WATCHDOG_WARN`, `WATCHDOG_RESUME`, `WATCHDOG_KILL`, `WATCHDOG_FAILED` events at each escalation level
+- [x] 3.7 Add watchdog state storage in `orchestration-state.json` per change (`watchdog` sub-object)
+- [x] 3.8 Hook `watchdog_check()` into `monitor_loop()` after each `poll_change()` call
+- [x] 3.9 Hook `watchdog_heartbeat()` at end of each poll cycle in `monitor_loop()`
+- [x] 3.10 Add `watchdog_timeout` and `watchdog_loop_threshold` directives to `parse_directives()`
 - [ ] 3.11 Implement per-change token budget enforcement — `max_tokens_per_change` directive (default: 2M). Watchdog checks `tokens_used` each poll: warn at 80%, pause at 100%, fail at 120%. Complexity-based defaults: S=500K, M=2M, L=5M, XL=10M
 - [ ] 3.12 Implement partial work salvage on failure — before marking change `failed`, capture `git diff` from worktree, save as `partial-diff.patch` in change state, record modified files list. Dispatcher can provide patch as "previous progress" context on retry/replan
 
