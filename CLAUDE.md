@@ -40,6 +40,32 @@ When the user asks how a feature works or needs help with wt-tools:
 
 After a skill-driven apply (e.g. `/opsx:apply`) finishes or pauses, automatically commit all changes. Follow the standard commit flow (stage relevant files, write a concise commit message).
 
+## Consumer Project Diagnostics
+
+wt-tools is developed and battle-tested through consumer projects. Before fixing bugs or adding features, always consult the primary consumer for real-world diagnostics.
+
+### Workflow
+
+1. **Read the latest orchestration run log** — each log has a "wt-tools Bugs to Report" section and "Conclusions for wt-tools Development" with prioritized issues, root cause analysis, and design decisions.
+2. **Diff .claude/ for upstream changes** — during orchestration, the sentinel or user may improve commands, skills, or configs in the consumer's `.claude/`. Diff against wt-tools source to find changes to adopt.
+3. **Check orchestration.yaml** — the consumer's config reflects production usage. Understand what directives are actually used before changing defaults.
+4. **Use run comparison data** — run logs contain quantitative comparisons (wasted iterations, token efficiency, intervention count). Use these to validate whether a fix actually improved things.
+
+### Bidirectional flow
+
+```
+wt-tools (source)                     consumer project
+   │                                      │
+   ├── wt-project init ──────────────────►│  deploy .claude/ files
+   │                                      │
+   │◄── run logs (bugs, design) ──────────┤  diagnostics after each run
+   │◄── .claude/ diffs ──────────────────┤  sentinel/user improvements
+   │◄── orchestration.yaml ──────────────┤  config evolution
+   │                                      │
+   ├── fix bugs, add features             │
+   ├── wt-project init ──────────────────►│  redeploy
+```
+
 ## Compact Instructions
 
 When compacting context, always preserve:
