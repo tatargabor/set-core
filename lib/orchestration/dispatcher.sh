@@ -605,8 +605,6 @@ resume_change() {
     terminal_pid=$(jq -r '.terminal_pid // empty' "$loop_state" 2>/dev/null)
     update_change_field "$change_name" "ralph_pid" "${terminal_pid:-0}"
     update_change_field "$change_name" "status" '"running"'
-    # Note: do NOT reset stall_count here — the agent hasn't proven it's alive yet.
-    # stall_count is reset in poll_change() when we see a fresh loop-state mtime.
 }
 
 # Resume stalled changes after a cooldown period.
@@ -1015,6 +1013,9 @@ monitor_loop() {
     wd_loop_thresh=$(echo "$directives" | jq -r '.watchdog_loop_threshold // empty')
     [[ -n "$wd_timeout" ]] && WATCHDOG_TIMEOUT_RUNNING="$wd_timeout" && WATCHDOG_TIMEOUT_VERIFYING="$wd_timeout" && WATCHDOG_TIMEOUT_DISPATCHED="$wd_timeout"
     [[ -n "$wd_loop_thresh" ]] && WATCHDOG_LOOP_THRESHOLD="$wd_loop_thresh"
+    local wd_max_tokens
+    wd_max_tokens=$(echo "$directives" | jq -r '.max_tokens_per_change // empty')
+    [[ -n "$wd_max_tokens" ]] && WATCHDOG_MAX_TOKENS_PER_CHANGE="$wd_max_tokens"
 
     # Parse time limit (default 5h, --time-limit none to disable)
     local time_limit_secs=0

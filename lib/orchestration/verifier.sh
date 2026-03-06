@@ -334,50 +334,23 @@ poll_change() {
                 "$smoke_health_check_url" "$smoke_health_check_timeout"
             ;;
         running)
-            # Check if the loop process is actually alive
+            # Watchdog handles timeout/stall detection via watchdog_check() after poll_change().
+            # Here we only detect immediate death (stale + dead PID) and mark stalled for watchdog.
             local loop_mtime
             loop_mtime=$(stat -c %Y "$loop_state" 2>/dev/null || echo 0)
             local now_epoch
             now_epoch=$(date +%s)
             local stale_secs=$(( now_epoch - loop_mtime ))
 
-            # If loop-state is fresh, the agent is alive — reset stall counter
-            if [[ "$stale_secs" -le 300 ]]; then
-                local cur_stall
-                cur_stall=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .stall_count // 0' "$STATE_FILENAME")
-                if [[ "$cur_stall" -gt 0 ]]; then
-                    update_change_field "$change_name" "stall_count" "0"
-                    log_info "Change $change_name recovered — stall_count reset to 0"
-                fi
-            fi
-
-            # If loop-state hasn't been updated in 5+ minutes, check if process is actually dead
             if [[ "$stale_secs" -gt 300 ]]; then
-                # Check terminal PID — if still alive, the agent is in a long iteration (not stale)
                 local terminal_pid
                 terminal_pid=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .ralph_pid // 0' "$STATE_FILENAME")
                 if [[ "$terminal_pid" -gt 0 ]] && kill -0 "$terminal_pid" 2>/dev/null; then
-                    # PID alive = long iteration, not stale. Don't log every poll cycle (noise).
-                    return
+                    return  # PID alive = long iteration, not stale
                 fi
-
-                log_warn "Change $change_name loop-state is stale (${stale_secs}s old, PID $terminal_pid dead) — treating as stopped"
-                # Fall through to stall handling
-                local stall_count
-                stall_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .stall_count // 0' "$STATE_FILENAME")
-                stall_count=$((stall_count + 1))
-                update_change_field "$change_name" "stall_count" "$stall_count"
-
-                if [[ "$stall_count" -le 3 ]]; then
-                    log_info "Resuming stale $change_name (attempt $stall_count/3)"
-                    info "$change_name stale (attempt $stall_count/3), resuming..."
-                    update_change_field "$change_name" "status" '"stalled"'
-                    resume_change "$change_name"
-                else
-                    log_error "Change $change_name stale after 3 resume attempts — giving up"
-                    update_change_field "$change_name" "status" '"failed"'
-                    send_notification "wt-orchestrate" "Change '$change_name' failed — process died 3 times" "critical"
-                fi
+                log_warn "Change $change_name loop-state stale (${stale_secs}s, PID $terminal_pid dead) — marking stalled for watchdog"
+                update_change_field "$change_name" "status" '"stalled"'
+                update_change_field "$change_name" "stalled_at" "$(date +%s)"
             fi
             ;;
         "waiting:human")
@@ -422,23 +395,10 @@ poll_change() {
             fi
             ;;
         stopped|stalled|stuck)
-            local stall_count
-            stall_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .stall_count // 0' "$STATE_FILENAME")
-            stall_count=$((stall_count + 1))
-            update_change_field "$change_name" "stall_count" "$stall_count"
-
-            if [[ "$stall_count" -le 3 ]]; then
-                log_warn "Change $change_name $ralph_status (attempt $stall_count/3) — will auto-resume"
-                info "$change_name $ralph_status (attempt $stall_count/3), resuming..."
-                update_change_field "$change_name" "status" '"stalled"'
-                update_change_field "$change_name" "stalled_at" "$(date +%s)"
-            else
-                log_error "Change $change_name $ralph_status after 3 resume attempts — giving up"
-                update_change_field "$change_name" "status" '"failed"'
-                send_notification "wt-orchestrate" "Change '$change_name' failed after 3 resume attempts" "critical"
-                orch_remember "Change $change_name $ralph_status after 3 resume attempts — agent could not complete this task" Learning "phase:monitor,change:$change_name"
-                trigger_checkpoint "failure"
-            fi
+            # Mark stalled — watchdog handles escalation (resume, kill, fail)
+            log_warn "Change $change_name $ralph_status — marking stalled for watchdog"
+            update_change_field "$change_name" "status" '"stalled"'
+            update_change_field "$change_name" "stalled_at" "$(date +%s)"
             ;;
     esac
 }

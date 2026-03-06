@@ -20,6 +20,10 @@ WATCHDOG_TIMEOUT_DISPATCHED=120
 WATCHDOG_LOOP_THRESHOLD=5
 WATCHDOG_HASH_RING_SIZE=5
 
+# Per-change token budget (0 = use complexity-based defaults)
+# Overridden by max_tokens_per_change directive.
+WATCHDOG_MAX_TOKENS_PER_CHANGE=0
+
 # ─── Watchdog Check ─────────────────────────────────────────────────
 
 # Main watchdog check for a single change. Called after poll_change() in monitor_loop.
@@ -119,6 +123,9 @@ watchdog_check() {
         _watchdog_escalate "$change_name" "$escalation_level"
         _watchdog_update "$change_name" "$now" "$escalation_level" "$consecutive_same"
     fi
+
+    # ── Token budget enforcement (independent of escalation) ──
+    _watchdog_check_token_budget "$change_name"
 }
 
 # ─── Heartbeat ───────────────────────────────────────────────────────
@@ -219,6 +226,70 @@ _watchdog_timeout_for_status() {
     esac
 }
 
+# Per-change token budget enforcement.
+# Complexity-based defaults: S=500K, M=2M, L=5M, XL=10M.
+# Warn at 80%, pause at 100%, fail at 120%.
+_watchdog_check_token_budget() {
+    local change_name="$1"
+
+    local limit
+    limit=$(_watchdog_token_limit_for_change "$change_name")
+    [[ "$limit" -le 0 ]] && return 0
+
+    local tokens_used
+    tokens_used=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .tokens_used // 0' "$STATE_FILENAME")
+
+    local pct=0
+    [[ "$limit" -gt 0 ]] && pct=$(( (tokens_used * 100) / limit ))
+
+    if [[ "$pct" -ge 120 ]]; then
+        _watchdog_salvage_partial_work "$change_name"
+        log_error "Watchdog: $change_name token budget exceeded (${tokens_used}/${limit}, ${pct}%) — marking failed"
+        emit_event "WATCHDOG_TOKEN_BUDGET" "$change_name" "{\"tokens_used\":$tokens_used,\"limit\":$limit,\"pct\":$pct,\"action\":\"fail\"}"
+        update_change_field "$change_name" "status" '"failed"'
+        send_notification "wt-orchestrate" "Token budget exceeded for '$change_name' (${pct}%)" "critical"
+    elif [[ "$pct" -ge 100 ]]; then
+        log_warn "Watchdog: $change_name token budget reached (${tokens_used}/${limit}, ${pct}%) — pausing"
+        emit_event "WATCHDOG_TOKEN_BUDGET" "$change_name" "{\"tokens_used\":$tokens_used,\"limit\":$limit,\"pct\":$pct,\"action\":\"pause\"}"
+        pause_change "$change_name" || true
+    elif [[ "$pct" -ge 80 ]]; then
+        # Only warn once per threshold crossing — check if we already warned
+        local prev_warned
+        prev_warned=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .watchdog.token_budget_warned // false' "$STATE_FILENAME" 2>/dev/null)
+        if [[ "$prev_warned" != "true" ]]; then
+            log_warn "Watchdog: $change_name token budget warning (${tokens_used}/${limit}, ${pct}%)"
+            emit_event "WATCHDOG_TOKEN_BUDGET" "$change_name" "{\"tokens_used\":$tokens_used,\"limit\":$limit,\"pct\":$pct,\"action\":\"warn\"}"
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$change_name" \
+                '(.changes[] | select(.name == $n) | .watchdog.token_budget_warned) = true' \
+                "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
+        fi
+    fi
+}
+
+# Get token limit for a change. Priority: WATCHDOG_MAX_TOKENS_PER_CHANGE > complexity-based default.
+_watchdog_token_limit_for_change() {
+    local change_name="$1"
+
+    # Explicit directive overrides everything
+    if [[ "${WATCHDOG_MAX_TOKENS_PER_CHANGE:-0}" -gt 0 ]]; then
+        echo "$WATCHDOG_MAX_TOKENS_PER_CHANGE"
+        return
+    fi
+
+    # Complexity-based defaults
+    local complexity
+    complexity=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .complexity // "M"' "$STATE_FILENAME" 2>/dev/null)
+    case "$complexity" in
+        S)  echo 500000 ;;
+        M)  echo 2000000 ;;
+        L)  echo 5000000 ;;
+        XL) echo 10000000 ;;
+        *)  echo 2000000 ;;
+    esac
+}
+
 # Escalation chain: level 1=warn, 2=resume, 3=kill+resume, 4=fail
 _watchdog_escalate() {
     local change_name="$1"
@@ -249,11 +320,50 @@ _watchdog_escalate() {
             resume_change "$change_name" || true
             ;;
         *)
-            # Level 4+: give up
+            # Level 4+: give up — salvage partial work first
+            _watchdog_salvage_partial_work "$change_name"
             log_error "Watchdog: $change_name escalation level $level — marking failed"
             emit_event "WATCHDOG_FAILED" "$change_name" "{\"level\":$level}"
             update_change_field "$change_name" "status" '"failed"'
             send_notification "wt-orchestrate" "Watchdog: change '$change_name' failed after escalation level $level" "critical"
             ;;
     esac
+}
+
+# Capture partial work from a failing change's worktree before marking failed.
+# Saves git diff as partial-diff.patch and records modified files list in state.
+_watchdog_salvage_partial_work() {
+    local change_name="$1"
+
+    local wt_path
+    wt_path=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+    [[ -z "$wt_path" || ! -d "$wt_path" ]] && return 0
+
+    # Capture diff (staged + unstaged) relative to HEAD
+    local diff_output
+    diff_output=$(cd "$wt_path" && git diff HEAD 2>/dev/null || true)
+    if [[ -z "$diff_output" ]]; then
+        log_info "Watchdog: no partial work to salvage for $change_name"
+        return 0
+    fi
+
+    # Save patch file in worktree
+    local patch_file="$wt_path/partial-diff.patch"
+    echo "$diff_output" > "$patch_file"
+
+    # Record modified files list in state
+    local modified_files
+    modified_files=$(cd "$wt_path" && git diff HEAD --name-only 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' || echo '[]')
+    local tmp
+    tmp=$(mktemp)
+    jq --arg n "$change_name" --argjson files "$modified_files" --arg patch "$patch_file" \
+        '(.changes[] | select(.name == $n)) |= (
+            .partial_diff_patch = $patch |
+            .partial_diff_files = $files
+        )' "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
+
+    local file_count
+    file_count=$(echo "$modified_files" | jq 'length')
+    log_info "Watchdog: salvaged partial work for $change_name ($file_count files, patch at $patch_file)"
+    emit_event "WATCHDOG_SALVAGE" "$change_name" "{\"files\":$file_count,\"patch\":\"$patch_file\"}"
 }

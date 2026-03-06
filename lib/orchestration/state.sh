@@ -228,6 +228,7 @@ parse_directives() {
     local events_max_size="$EVENTS_MAX_SIZE"
     local watchdog_timeout=""
     local watchdog_loop_threshold=""
+    local max_tokens_per_change=""
 
     while IFS= read -r line; do
         # Detect ## Orchestrator Directives header
@@ -427,6 +428,13 @@ parse_directives() {
                         warn "Invalid watchdog_loop_threshold '$val', ignoring"
                     fi
                     ;;
+                max_tokens_per_change)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        max_tokens_per_change="$val"
+                    else
+                        warn "Invalid max_tokens_per_change '$val', ignoring"
+                    fi
+                    ;;
                 *)
                     warn "Unknown directive '$key', ignoring"
                     ;;
@@ -472,6 +480,7 @@ parse_directives() {
         --argjson events_max_size "$events_max_size" \
         --arg watchdog_timeout "$watchdog_timeout" \
         --arg watchdog_loop_threshold "$watchdog_loop_threshold" \
+        --arg max_tokens_per_change "$max_tokens_per_change" \
         '{
             max_parallel: $max_parallel,
             merge_policy: $merge_policy,
@@ -500,7 +509,8 @@ parse_directives() {
             events_log: $events_log,
             events_max_size: $events_max_size,
             watchdog_timeout: (if $watchdog_timeout != "" then ($watchdog_timeout | tonumber) else null end),
-            watchdog_loop_threshold: (if $watchdog_loop_threshold != "" then ($watchdog_loop_threshold | tonumber) else null end)
+            watchdog_loop_threshold: (if $watchdog_loop_threshold != "" then ($watchdog_loop_threshold | tonumber) else null end),
+            max_tokens_per_change: (if $max_tokens_per_change != "" then ($max_tokens_per_change | tonumber) else null end)
         } | with_entries(select(.value != null))'
 }
 

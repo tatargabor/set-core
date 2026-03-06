@@ -8,7 +8,7 @@
 - [x] 1.6 Extract `lib/orchestration/merger.sh` — move `merge_change`, `cleanup_worktree`, `cleanup_all_worktrees`, `execute_merge_queue`, `retry_merge_queue`, `_try_merge`, `archive_change`
 - [x] 1.7 Reduce `bin/wt-orchestrate` to thin wrapper — keep constants, logging, `model_id`, `rotate_log`, `cmd_self_test`, `usage`, `main`; add `source` statements for all modules. Source order must match design D1: `events.sh` first (other modules emit events), then `state.sh`, `watchdog.sh`, `planner.sh`, `dispatcher.sh`, `verifier.sh`, `merger.sh`
 - [x] 1.8 Verify `cmd_self_test` passes after extraction — all functions callable, no missing variables
-- [ ] 1.9 Migrate existing `stall_count` detection in `poll_change()` to watchdog infrastructure — remove legacy stall logic, prevent dual-detection conflicts with new watchdog
+- [x] 1.9 Migrate existing `stall_count` detection in `poll_change()` to watchdog infrastructure — remove legacy stall logic, prevent dual-detection conflicts with new watchdog
 
 ## 2. Events System
 
@@ -38,8 +38,8 @@
 - [x] 3.8 Hook `watchdog_check()` into `monitor_loop()` after each `poll_change()` call
 - [x] 3.9 Hook `watchdog_heartbeat()` at end of each poll cycle in `monitor_loop()`
 - [x] 3.10 Add `watchdog_timeout` and `watchdog_loop_threshold` directives to `parse_directives()`
-- [ ] 3.11 Implement per-change token budget enforcement — `max_tokens_per_change` directive (default: 2M). Watchdog checks `tokens_used` each poll: warn at 80%, pause at 100%, fail at 120%. Complexity-based defaults: S=500K, M=2M, L=5M, XL=10M
-- [ ] 3.12 Implement partial work salvage on failure — before marking change `failed`, capture `git diff` from worktree, save as `partial-diff.patch` in change state, record modified files list. Dispatcher can provide patch as "previous progress" context on retry/replan
+- [x] 3.11 Implement per-change token budget enforcement — `max_tokens_per_change` directive (default: 2M). Watchdog checks `tokens_used` each poll: warn at 80%, pause at 100%, fail at 120%. Complexity-based defaults: S=500K, M=2M, L=5M, XL=10M
+- [x] 3.12 Implement partial work salvage on failure — before marking change `failed`, capture `git diff` from worktree, save as `partial-diff.patch` in change state, record modified files list. Dispatcher can provide patch as "previous progress" context on retry/replan
 
 ## 4. Worktree Context Pruning
 
