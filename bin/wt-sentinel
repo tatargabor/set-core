@@ -11,10 +11,11 @@ usage() {
 Usage: wt-sentinel [wt-orchestrate start options...]
 
 Runs 'wt-orchestrate start' in a supervised loop. If the orchestrator
-crashes (non-zero exit), it restarts after a 30s backoff. Stops on:
+crashes (non-zero exit), it restarts after exponential backoff. Stops on:
   - Clean exit with state "done" (orchestration complete)
   - Clean exit with state "stopped" (user Ctrl+C)
   - 5 rapid consecutive crashes (each <5 min runtime)
+  - Stuck orchestrator (no events for sentinel_stuck_timeout seconds)
   - SIGINT/SIGTERM (forwarded to child, no restart)
 
 All arguments are passed through to 'wt-orchestrate start'.
@@ -31,16 +32,33 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 STATE_FILE="orchestration-state.json"
+EVENTS_FILE="orchestration-events.jsonl"
 LOG_FILE="orchestration.log"
 PID_FILE="sentinel.pid"
 MAX_RAPID_CRASHES=5
 SUSTAINED_RUN_SECS=300  # 5 minutes
-BACKOFF_SECS=30
+POLL_INTERVAL=10        # Check child every 10s
+SENTINEL_STUCK_TIMEOUT=180  # 3 minutes no activity = stuck
+
+# Exponential backoff: 30s → 60s → 120s → 240s (with 0-25% jitter)
+BACKOFF_BASE=30
+BACKOFF_MAX=240
 
 sentinel_log() {
     local msg="[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] $*"
     echo "$msg"
     echo "$msg" >> "$LOG_FILE"
+}
+
+# Emit event directly to events.jsonl (no dependency on events.sh)
+sentinel_emit_event() {
+    local event_type="$1"
+    local data="${2:-{}}"
+    local ts
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    local epoch
+    epoch=$(date +%s)
+    echo "{\"ts\":\"$ts\",\"epoch\":$epoch,\"type\":\"$event_type\",\"change\":\"\",\"data\":$data}" >> "$EVENTS_FILE" 2>/dev/null || true
 }
 
 # Signal handling — don't restart after user interrupt
@@ -65,29 +83,145 @@ trap handle_signal SIGINT SIGTERM SIGHUP
 echo $$ > "$PID_FILE"
 
 rapid_crashes=0
+backoff_secs=$BACKOFF_BASE
+
+# Check orchestrator liveness via events.jsonl mtime
+check_orchestrator_liveness() {
+    [[ ! -f "$EVENTS_FILE" ]] && return 0  # No events file yet — still starting
+
+    local events_mtime
+    events_mtime=$(stat -c %Y "$EVENTS_FILE" 2>/dev/null || echo 0)
+    local now
+    now=$(date +%s)
+    local idle=$((now - events_mtime))
+
+    if [[ "$idle" -ge "$SENTINEL_STUCK_TIMEOUT" ]]; then
+        sentinel_log "Orchestrator stuck: no events for ${idle}s (threshold: ${SENTINEL_STUCK_TIMEOUT}s)"
+        return 1
+    fi
+    return 0
+}
+
+# Kill orchestrator with SIGTERM, wait, then SIGKILL if needed
+kill_orchestrator() {
+    local pid="$1"
+    [[ "$pid" -le 0 ]] && return
+
+    sentinel_log "Sending SIGTERM to orchestrator PID $pid"
+    kill -TERM "$pid" 2>/dev/null || return 0
+
+    # Wait up to 30s for graceful shutdown
+    local waited=0
+    while [[ $waited -lt 30 ]] && kill -0 "$pid" 2>/dev/null; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        sentinel_log "Orchestrator still alive after 30s — sending SIGKILL"
+        kill -KILL "$pid" 2>/dev/null || true
+        sleep 1
+    fi
+}
+
+# Fix stale state: running changes with no live PID → stopped
+fix_stale_state() {
+    [[ ! -f "$STATE_FILE" ]] && return
+
+    local current_status
+    current_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
+    if [[ "$current_status" == "running" ]]; then
+        sentinel_log "Stale state detected (status=running but no process) — resetting to stopped"
+        jq '.status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    elif [[ "$current_status" == "checkpoint" ]]; then
+        sentinel_log "State is checkpoint — preserving (orchestrator will resume from checkpoint)"
+    fi
+
+    # Reset any running changes to stalled (watchdog will handle them)
+    local running_changes
+    running_changes=$(jq -r '.changes[]? | select(.status == "running") | .name' "$STATE_FILE" 2>/dev/null || true)
+    if [[ -n "$running_changes" ]]; then
+        while IFS= read -r name; do
+            [[ -z "$name" ]] && continue
+            local pid
+            pid=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .ralph_pid // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+            if [[ "$pid" -gt 0 ]] && ! kill -0 "$pid" 2>/dev/null; then
+                sentinel_log "Change $name: PID $pid dead — marking stalled"
+                local tmp
+                tmp=$(mktemp)
+                jq --arg n "$name" '(.changes[] | select(.name == $n) | .status) = "stalled"' "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            fi
+        done <<< "$running_changes"
+    fi
+}
+
+# Classify exit as transient or permanent
+# Transient: PID died, API timeout, crash → auto-retry
+# Permanent: state says done/stopped/time_limit → don't retry
+is_transient_failure() {
+    local exit_code="$1"
+    local final_status="$2"
+
+    # Clean exits with terminal states are permanent
+    case "$final_status" in
+        done|stopped|time_limit|plan_review) return 1 ;;
+    esac
+
+    # Non-zero exit = crash = transient
+    [[ "$exit_code" -ne 0 ]] && return 0
+
+    # Clean exit with non-terminal state = unexpected but transient
+    return 0
+}
+
+# Calculate backoff with jitter (0-25%)
+calculate_backoff() {
+    local base="$1"
+    local jitter_max=$((base / 4))
+    local jitter=0
+    if [[ "$jitter_max" -gt 0 ]]; then
+        jitter=$((RANDOM % jitter_max))
+    fi
+    echo $((base + jitter))
+}
 
 while true; do
-    # Fix stale state before restart
-    if [[ -f "$STATE_FILE" ]]; then
-        current_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
-        if [[ "$current_status" == "running" ]]; then
-            # No orchestrator process but state says running — reset to stopped
-            sentinel_log "Stale state detected (status=running but no process) — resetting to stopped"
-            jq '.status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
-        elif [[ "$current_status" == "checkpoint" ]]; then
-            # Checkpoint persists across restarts — don't modify
-            sentinel_log "State is checkpoint — preserving (orchestrator will resume from checkpoint)"
-        fi
-    fi
+    fix_stale_state
 
     # Launch orchestrator
     start_epoch=$(date +%s)
     child_pid=0
     "$SCRIPT_DIR/wt-orchestrate" start "$@" &
     child_pid=$!
-    wait $child_pid || true
-    exit_code=$?
-    child_pid=0
+    sentinel_log "Started orchestrator (PID: $child_pid)"
+
+    # Poll loop instead of wait — allows liveness checking
+    exit_code=0
+    while kill -0 "$child_pid" 2>/dev/null; do
+        sleep "$POLL_INTERVAL"
+
+        # Check for user interrupt
+        if $interrupted; then
+            break
+        fi
+
+        # Check liveness
+        if ! check_orchestrator_liveness; then
+            sentinel_log "Orchestrator appears stuck — killing and restarting"
+            sentinel_emit_event "SENTINEL_RESTART" "{\"reason\":\"stuck\",\"stuck_timeout\":$SENTINEL_STUCK_TIMEOUT}"
+            kill_orchestrator "$child_pid"
+            exit_code=1
+            child_pid=0
+            break
+        fi
+    done
+
+    # Reap child if still set (normal exit path)
+    if [[ "$child_pid" -gt 0 ]]; then
+        wait "$child_pid" || exit_code=$?
+        child_pid=0
+    fi
+
     end_epoch=$(date +%s)
     runtime=$((end_epoch - start_epoch))
 
@@ -109,37 +243,53 @@ while true; do
         exit 0
     fi
 
-    # Clean exit + stopped = user stopped it (Ctrl+C reached orchestrator)
+    # Clean exit + stopped = user stopped it
     if [[ $exit_code -eq 0 && "$final_status" == "stopped" ]]; then
         sentinel_log "Orchestrator stopped cleanly"
         exit 0
     fi
 
-    # Clean exit + time_limit = user set a limit, respect it
+    # Clean exit + time_limit
     if [[ $exit_code -eq 0 && "$final_status" == "time_limit" ]]; then
         sentinel_log "Time limit reached — stopping (run 'wt-orchestrate start' to resume)"
         exit 0
     fi
 
-    # Any other clean exit = unexpected state, default to stop (safe)
-    if [[ $exit_code -eq 0 ]]; then
-        sentinel_log "Orchestrator exited cleanly with unexpected state '$final_status' — stopping"
+    # Plan review — waiting for user approval
+    if [[ "$final_status" == "plan_review" ]]; then
+        sentinel_log "Plan awaiting approval — stopping (run 'wt-orchestrate approve' then restart)"
         exit 0
     fi
 
-    # Non-zero exit = crash — track rapid crashes
+    # Classify failure
+    if ! is_transient_failure "$exit_code" "$final_status"; then
+        sentinel_log "Permanent exit (code=$exit_code, status=$final_status) — not restarting"
+        exit "$exit_code"
+    fi
+
+    # Track rapid crashes
     if [[ $runtime -ge $SUSTAINED_RUN_SECS ]]; then
-        rapid_crashes=0  # Ran long enough — reset counter
+        rapid_crashes=0
+        backoff_secs=$BACKOFF_BASE  # Reset backoff after sustained run
     else
         rapid_crashes=$((rapid_crashes + 1))
     fi
 
     if [[ $rapid_crashes -ge $MAX_RAPID_CRASHES ]]; then
         sentinel_log "ERROR: $MAX_RAPID_CRASHES rapid crashes — giving up"
+        sentinel_emit_event "SENTINEL_FAILED" "{\"rapid_crashes\":$rapid_crashes}"
         exit 1
     fi
 
+    # Emit restart event
+    sentinel_emit_event "SENTINEL_RESTART" "{\"exit_code\":$exit_code,\"runtime\":$runtime,\"rapid_crashes\":$rapid_crashes,\"backoff\":$backoff_secs}"
+
+    actual_backoff=$(calculate_backoff "$backoff_secs")
     sentinel_log "Orchestrator exited (code=$exit_code, runtime=${runtime}s, rapid_crashes=$rapid_crashes/$MAX_RAPID_CRASHES)"
-    sentinel_log "Restarting in ${BACKOFF_SECS}s..."
-    sleep $BACKOFF_SECS
+    sentinel_log "Restarting in ${actual_backoff}s..."
+    sleep "$actual_backoff"
+
+    # Exponential backoff for next crash (capped)
+    backoff_secs=$((backoff_secs * 2))
+    [[ $backoff_secs -gt $BACKOFF_MAX ]] && backoff_secs=$BACKOFF_MAX
 done

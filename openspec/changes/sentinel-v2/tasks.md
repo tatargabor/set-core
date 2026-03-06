@@ -80,12 +80,12 @@
 
 ## 9. Enhanced Sentinel
 
-- [ ] 9.1 Replace `wait $child_pid` with polling loop in `bin/wt-sentinel` — `kill -0` check with sleep interval
-- [ ] 9.2 Implement `check_orchestrator_liveness()` — monitor `orchestration-events.jsonl` mtime, detect no-activity for `sentinel_stuck_timeout` (180s default)
-- [ ] 9.3 Implement controlled restart with exponential backoff — SIGTERM, wait 30s, SIGKILL if still alive, fix stale state (set status=stopped). Backoff: 30s→60s→120s→240s with 0-25% jitter between restart attempts
-- [ ] 9.4 Emit `SENTINEL_RESTART` event — implement inline JSONL append in wt-sentinel (no dependency on events.sh sourcing, just direct echo >> events.jsonl)
-- [ ] 9.5 Add `sentinel_stuck_timeout` to sentinel configuration
-- [ ] 9.6 Classify failures as transient (PID died, API timeout) vs permanent (test failures, scope violation) — only auto-retry transient failures. Add `max_retries_per_change` directive (default: 3)
+- [x] 9.1 Replace `wait $child_pid` with polling loop in `bin/wt-sentinel` — `kill -0` check with sleep interval
+- [x] 9.2 Implement `check_orchestrator_liveness()` — monitor `orchestration-events.jsonl` mtime, detect no-activity for `sentinel_stuck_timeout` (180s default)
+- [x] 9.3 Implement controlled restart with exponential backoff — SIGTERM, wait 30s, SIGKILL if still alive, fix stale state (set status=stopped). Backoff: 30s→60s→120s→240s with 0-25% jitter between restart attempts
+- [x] 9.4 Emit `SENTINEL_RESTART` event — implement inline JSONL append in wt-sentinel (no dependency on events.sh sourcing, just direct echo >> events.jsonl)
+- [x] 9.5 Add `sentinel_stuck_timeout` to sentinel configuration
+- [x] 9.6 Classify failures as transient (PID died, API timeout) vs permanent (test failures, scope violation) — only auto-retry transient failures. Add `max_retries_per_change` directive (default: 3)
 
 ## 10. Dispatcher Enhancements
 
