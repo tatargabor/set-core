@@ -254,6 +254,8 @@ for ep in eps:
 _save_project_type() {
     local project_path="$1"
     local type_name="$2"
+    local init_template="${3:-}"
+    local init_modules="${4:-}"
     local pt_file="$project_path/wt/plugins/project-type.yaml"
 
     # Validate project type exists
@@ -280,6 +282,8 @@ type: $type_name
 version: $version
 description: "$description"
 $([ -n "$parent" ] && echo "parent: $parent" || true)
+$([ -n "$init_template" ] && echo "template: $init_template" || true)
+$(if [ -n "$init_modules" ]; then echo "modules:"; IFS=',' read -ra _mods <<< "$init_modules"; for _m in "${_mods[@]}"; do [ -n "$_m" ] && echo "  - $_m"; done; fi)
 
 # Stats: ${rules_count} verification rules, ${directives_count} orchestration directives
 # Rules and directives are loaded dynamically from the installed package.
@@ -413,12 +417,13 @@ Options:
   --name <name>           Custom project name (default: directory name)
   --project-type <type>   Set project type (e.g., base, web)
   --template <name>       Template variant to deploy (e.g., nextjs, spa)
+  --modules <list>        Comma-separated optional modules (e.g., gdpr,integrations)
   --dry-run               Show what would change without modifying files
   -h, --help              Show this help
 
 Examples:
   cd /path/to/myproject && wt-project init
-  wt-project init --name myproj --project-type web --template nextjs
+  wt-project init --name myproj --project-type web --template nextjs --modules integrations
   wt-project init --dry-run
   wt-project init-knowledge
   wt-project list-types
@@ -431,17 +436,21 @@ EOF
 DRY_RUN=false
 
 # Deploy template files from a project type into the target project.
-# Usage: _deploy_project_templates <project-path> <type-name> [template-name]
+# Usage: _deploy_project_templates <project-path> <type-name> [template-name] [modules]
 _deploy_project_templates() {
     local project_path="$1"
     local type_name="$2"
     local template_name="${3:-}"
+    local modules="${4:-}"
     local py
     py=$(_wt_python)
 
     local cmd=("$py" -m wt_project_base.cli deploy-templates --project-dir "$project_path" --type "$type_name")
     if [[ -n "$template_name" ]]; then
         cmd+=(--template "$template_name")
+    fi
+    if [[ -n "$modules" ]]; then
+        cmd+=(--modules "$modules")
     fi
     if [[ "$DRY_RUN" == "true" ]]; then
         cmd+=(--dry-run)
@@ -453,10 +462,106 @@ _deploy_project_templates() {
     return $?
 }
 
+# Read tracked modules from project-type.yaml
+# Usage: _read_tracked_modules <project-path>
+# Prints comma-separated module list or empty string
+_read_tracked_modules() {
+    local project_path="$1"
+    local pt_file="$project_path/wt/plugins/project-type.yaml"
+    [[ -f "$pt_file" ]] || return 0
+    grep '^modules:' "$pt_file" &>/dev/null || return 0
+    # Extract module list (YAML array to comma-separated; handles "- x" or "  - x")
+    awk '/^modules:/{found=1; next} found && /^ *- /{gsub(/^ *- /,""); printf sep $0; sep=","} found && !/^ *- / && !/^$/{exit}' "$pt_file"
+}
+
+# Save template and modules to project-type.yaml (update in-place)
+# Usage: _save_template_modules <project-path> <template-name> <modules-csv>
+_save_template_modules() {
+    local project_path="$1"
+    local template_name="$2"
+    local modules_csv="$3"
+    local pt_file="$project_path/wt/plugins/project-type.yaml"
+    [[ -f "$pt_file" ]] || return 0
+
+    # Use Python for safe YAML update (avoids grep -v destroying other arrays)
+    local py
+    py=$(_wt_python)
+    "$py" -c "
+import yaml, sys
+with open('$pt_file') as f:
+    data = yaml.safe_load(f) or {}
+if '$template_name':
+    data['template'] = '$template_name'
+mods = '$modules_csv'
+if mods:
+    data['modules'] = [m.strip() for m in mods.split(',') if m.strip()]
+elif 'modules' in data:
+    del data['modules']
+with open('$pt_file', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+" 2>/dev/null
+}
+
+# List available optional modules for a project type template.
+# Usage: _list_available_modules <type-name> [template-name]
+# Prints module lines: "  module-id — description"
+_list_available_modules() {
+    local type_name="$1"
+    local template_name="${2:-}"
+    local py
+    py=$(_wt_python)
+    "$py" -c "
+import sys
+try:
+    from importlib.metadata import entry_points
+except ImportError:
+    from importlib_metadata import entry_points
+try:
+    eps = entry_points(group='wt_tools.project_types')
+except TypeError:
+    eps = entry_points().get('wt_tools.project_types', [])
+for ep in eps:
+    if ep.name == '$type_name':
+        cls = ep.load()
+        pt = cls()
+        from wt_project_base.deploy import resolve_template, get_available_modules
+        try:
+            tname = '${template_name}' if '${template_name}' else None
+            tid, tdir = resolve_template(pt, tname)
+        except ValueError:
+            sys.exit(1)
+        mods = get_available_modules(tdir)
+        for mid, desc in mods.items():
+            print(f'  {mid} — {desc}')
+        sys.exit(0)
+sys.exit(1)
+" 2>/dev/null
+}
+
+# Prompt user to select optional modules interactively.
+# Usage: _prompt_modules <type-name> [template-name]
+# Sets SELECTED_MODULES variable (comma-separated) or empty.
+_prompt_modules() {
+    local type_name="$1"
+    local template_name="${2:-}"
+    SELECTED_MODULES=""
+
+    local available
+    available=$(_list_available_modules "$type_name" "$template_name")
+    [[ -z "$available" ]] && return 0
+
+    echo ""
+    info "Optional modules available:"
+    echo "$available"
+    echo ""
+    read -rp "  Select modules (comma-separated, or enter to skip): " SELECTED_MODULES
+}
+
 cmd_init() {
     local name=""
     local project_type=""
     local template=""
+    local modules=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -470,6 +575,10 @@ cmd_init() {
                 ;;
             --template)
                 template="$2"
+                shift 2
+                ;;
+            --modules)
+                modules="$2"
                 shift 2
                 ;;
             --dry-run)
@@ -555,9 +664,31 @@ cmd_init() {
 
     # Save project type if specified
     if [[ -n "$project_type" ]]; then
-        _save_project_type "$git_root" "$project_type"
+        # Resolve modules: CLI flag > tracked (before overwrite) > interactive prompt
+        local deploy_modules="$modules"
+        if [[ -z "$deploy_modules" ]]; then
+            deploy_modules=$(_read_tracked_modules "$git_root")
+        fi
+        # Read tracked template too, for re-init without --template
+        local deploy_template="$template"
+        if [[ -z "$deploy_template" ]]; then
+            local pt_file="$git_root/wt/plugins/project-type.yaml"
+            if [[ -f "$pt_file" ]]; then
+                deploy_template=$(grep '^template:' "$pt_file" 2>/dev/null | sed 's/^template: *//' || true)
+            fi
+        fi
+        _save_project_type "$git_root" "$project_type" "$deploy_template" "$deploy_modules"
+        # If still no modules, prompt interactively
+        if [[ -z "$deploy_modules" ]]; then
+            _prompt_modules "$project_type" "$deploy_template"
+            deploy_modules="$SELECTED_MODULES"
+        fi
         # Deploy templates from the project type
-        _deploy_project_templates "$git_root" "$project_type" "$template" || true
+        _deploy_project_templates "$git_root" "$project_type" "$deploy_template" "$deploy_modules" || true
+        # Save template and module selection for re-init
+        if [[ -n "$deploy_template" || -n "$deploy_modules" ]]; then
+            _save_template_modules "$git_root" "$deploy_template" "$deploy_modules"
+        fi
     fi
 
     # If called from a worktree, also deploy to the worktree's own .claude/ dir
