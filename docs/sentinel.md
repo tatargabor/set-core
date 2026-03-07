@@ -33,7 +33,7 @@ All arguments are passed through to `wt-orchestrate start`.
 
 ### Bash mode (fallback): `wt-sentinel`
 
-A simple bash wrapper for environments without Claude agent access:
+A robust bash supervisor for environments without Claude agent access:
 
 ```bash
 wt-sentinel
@@ -41,15 +41,18 @@ wt-sentinel --spec docs/v5.md --max-parallel 3
 ```
 
 **What it does:**
-- Restarts on crash with 30s backoff
-- Stops on clean exit (`done`, `stopped`, `time_limit`)
+- **Polling-based monitoring** — checks child process every 10s via `kill -0`
+- **Liveness detection** — monitors `orchestration-events.jsonl` mtime, detects stuck orchestrator (no events for 180s)
+- **Exponential backoff** — 30s → 60s → 120s → 240s with 0-25% jitter between restart attempts
+- **Failure classification** — distinguishes transient failures (crash, dead PID) from permanent exits (done, stopped, plan_review)
+- **Stale state recovery** — fixes running changes with dead PIDs on startup, reconstructs state from events when inconsistent
+- **Event emission** — emits `SENTINEL_RESTART` and `SENTINEL_FAILED` events directly to the JSONL log
 - Gives up after 5 rapid crashes (<5 min each)
 - Logs to both stdout and `orchestration.log`
 
 **What it doesn't do** (vs agent mode):
 - No log-based crash diagnosis
 - No checkpoint auto-approve
-- No stale investigation
 - No completion report
 
 ## State Handling

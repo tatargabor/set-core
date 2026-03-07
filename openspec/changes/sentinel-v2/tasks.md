@@ -47,7 +47,7 @@
 - [x] 4.2 Add `context_pruning` directive to `parse_directives()` (default: true)
 - [x] 4.3 Call `prune_worktree_context()` from `bootstrap_worktree()` after worktree setup, before dispatch
 - [x] 4.4 Log count of pruned files — no error on empty glob match
-- [ ] 4.5 Verify preservation — negative test that `.claude/rules/`, `.claude/skills/`, `CLAUDE.md`, and `loop*.md` survive pruning
+- [x] 4.5 Verify preservation — negative test that `.claude/rules/`, `.claude/skills/`, `CLAUDE.md`, and `loop*.md` survive pruning
 
 ## 5. Project Knowledge System
 
@@ -102,37 +102,37 @@
 
 ## 12. Crash-Safe State Recovery
 
-- [ ] 12.1 Implement `reconstruct_state_from_events()` — rebuild `orchestration-state.json` from `orchestration-events.jsonl` by replaying state transitions
-- [ ] 12.2 Sentinel calls `reconstruct_state_from_events()` on startup if state appears inconsistent (running change with no PID, or state mtime older than events mtime)
+- [x] 12.1 Implement `reconstruct_state_from_events()` — rebuild `orchestration-state.json` from `orchestration-events.jsonl` by replaying state transitions
+- [x] 12.2 Sentinel calls `reconstruct_state_from_events()` on startup if state appears inconsistent (running change with no PID, or state mtime older than events mtime)
 
 ## 13. Consumer Project Migration
 
-- [ ] 13.1 Store wt-tools version in consumer project — `wt-project init` writes `.claude/.wt-version` (git short hash or semver tag). On subsequent runs, compare stored vs current version to detect drift
-- [ ] 13.2 Enhance `wt-project init` with migration logic — when stored version is older than current:
+- [x] 13.1 Store wt-tools version in consumer project — `wt-project init` writes `.claude/.wt-version` (git short hash or semver tag). On subsequent runs, compare stored vs current version to detect drift
+- [x] 13.2 Enhance `wt-project init` with migration logic — when stored version is older than current:
   - Merge new directives into `orchestration.yaml` (additive only, never overwrite existing values)
   - Scaffold `project-knowledge.yaml` via `init-knowledge` if missing
   - Deploy `cross-cutting-checklist.md` rule template if missing
   - Report summary: "Updated from <old> to <new>: added N directives, created M new files"
-- [ ] 13.3 Add `wt-project init --dry-run` flag — show what would change without modifying files
-- [ ] 13.4 Directive schema validation — warn if consumer's `orchestration.yaml` has unknown or deprecated directives after migration
+- [x] 13.3 Add `wt-project init --dry-run` flag — show what would change without modifying files
+- [x] 13.4 Directive schema validation — warn if consumer's `orchestration.yaml` has unknown or deprecated directives after migration
 
 ## 14. Documentation
 
-- [ ] 14.1 Create `docs/project-management.md` — consumer project lifecycle guide covering: initial setup (`wt-project init`), version tracking (`.wt-version`), migration on update, `--dry-run` preview, directive schema reference
-- [ ] 14.2 Document `project-knowledge.yaml` format — schema reference with all fields, example entries, how planner/dispatcher/verifier use it, `init-knowledge` scaffolding workflow
-- [ ] 14.3 Document `orchestration.yaml` directive reference — all directives (existing + new sentinel-v2 ones) with types, defaults, and examples. Include watchdog, events, hooks, model routing, token budgets sections
-- [ ] 14.4 Document orchestration event types — `orchestration-events.jsonl` format, all event types with example payloads, `wt-orchestrate events` query usage
-- [ ] 14.5 Add troubleshooting section — common scenarios: stuck orchestrator (watchdog handles), merge-blocked (manual resolve + approve), token budget exceeded, state reconstruction from events
+- [x] 14.1 Create `docs/project-management.md` — consumer project lifecycle guide covering: initial setup (`wt-project init`), version tracking (`.wt-version`), migration on update, `--dry-run` preview, directive schema reference
+- [x] 14.2 Document `project-knowledge.yaml` format — schema reference with all fields, example entries, how planner/dispatcher/verifier use it, `init-knowledge` scaffolding workflow
+- [x] 14.3 Document `orchestration.yaml` directive reference — all directives (existing + new sentinel-v2 ones) with types, defaults, and examples. Include watchdog, events, hooks, model routing, token budgets sections
+- [x] 14.4 Document orchestration event types — `orchestration-events.jsonl` format, all event types with example payloads, `wt-orchestrate events` query usage
+- [x] 14.5 Add troubleshooting section — common scenarios: stuck orchestrator (watchdog handles), merge-blocked (manual resolve + approve), token budget exceeded, state reconstruction from events
 
 ## 15. Integration Testing
 
-- [ ] 15.1 Run `cmd_self_test` with all sourced modules — verify function availability and basic operations
-- [ ] 15.2 Test event emission — emit events, verify JSONL format, test rotation, verify trace_id/span_id fields
-- [ ] 15.3 Test watchdog — simulate stuck change (dead PID + stale mtime), verify escalation chain including per-change token budget enforcement
-- [ ] 15.4 Test context pruning — create worktree, verify orchestrator commands removed, agent-essential files preserved
-- [ ] 15.5 Test verification rules — create mock project-knowledge.yaml, verify rule evaluation against git diff
-- [ ] 15.6 Test partial work salvage — simulate failed change, verify diff captured and available for retry
-- [ ] 15.7 Test merge-blocked state — simulate LLM resolver failure, verify orchestrator continues with other changes
-- [ ] 15.8 Test state reconstruction — corrupt state.json, verify reconstruction from events.jsonl
-- [ ] 15.9 Test quality gate hooks — verify hook execution, blocking, and error reporting
-- [ ] 15.10 Test consumer migration — deploy to consumer project via `wt-project init`, verify version tracking, directive merge, and no regressions
+- [x] 15.1 Run `cmd_self_test` with all sourced modules — verify function availability and basic operations
+- [x] 15.2 Test event emission — emit events, verify JSONL format, test rotation, verify trace_id/span_id fields
+- [x] 15.3 Test watchdog — simulate stuck change (dead PID + stale mtime), verify escalation chain including per-change token budget enforcement
+- [x] 15.4 Test context pruning — create worktree, verify orchestrator commands removed, agent-essential files preserved
+- [x] 15.5 Test verification rules — create mock project-knowledge.yaml, verify rule evaluation against git diff
+- [x] 15.6 Test partial work salvage — simulate failed change, verify diff captured and available for retry
+- [x] 15.7 Test merge-blocked state — simulate LLM resolver failure, verify orchestrator continues with other changes
+- [x] 15.8 Test state reconstruction — corrupt state.json, verify reconstruction from events.jsonl
+- [x] 15.9 Test quality gate hooks — verify hook execution, blocking, and error reporting
+- [x] 15.10 Test consumer migration — deploy to consumer project via `wt-project init`, verify version tracking, directive merge, and no regressions

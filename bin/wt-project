@@ -12,6 +12,106 @@ while [[ -L "$_wt_project_script" ]]; do
 done
 WT_TOOLS_ROOT="$(cd "$(dirname "$_wt_project_script")/.." && pwd)"
 
+# Get wt-tools version (git short hash or tag)
+_get_wt_tools_version() {
+    local version=""
+    if [[ -d "$WT_TOOLS_ROOT/.git" ]] || git -C "$WT_TOOLS_ROOT" rev-parse --git-dir &>/dev/null; then
+        # Prefer tag if on a tagged commit
+        version=$(git -C "$WT_TOOLS_ROOT" describe --tags --exact-match 2>/dev/null || true)
+        if [[ -z "$version" ]]; then
+            version=$(git -C "$WT_TOOLS_ROOT" rev-parse --short HEAD 2>/dev/null || true)
+        fi
+    fi
+    echo "${version:-unknown}"
+}
+
+# Known orchestration directives with defaults (for migration additive merge)
+_KNOWN_DIRECTIVES='{"max_parallel":2,"default_model":"opus","time_limit":"","checkpoint_interval":5,"smoke_command":"","smoke_timeout":120,"smoke_blocking":true,"test_command":"","build_command":"","review_model":"","events_log":"","events_max_size":"","watchdog_timeout":"","watchdog_loop_threshold":"","max_tokens_per_change":"","context_pruning":true,"plan_approval":false,"model_routing":"off"}'
+
+# Migrate consumer project on version change — additive only, never overwrites.
+# Usage: _migrate_consumer <project-path> <old-version> <new-version>
+_migrate_consumer() {
+    local project_path="$1"
+    local old_ver="$2"
+    local new_ver="$3"
+    local added_directives=0
+    local created_files=0
+
+    # 1. Additive directive merge for orchestration.yaml
+    local orch_yaml="$project_path/.claude/orchestration.yaml"
+    if [[ -f "$orch_yaml" ]]; then
+        # Find directives in our known set that are missing from consumer's yaml
+        local existing_keys
+        existing_keys=$(grep -E '^[a-z_]+:' "$orch_yaml" 2>/dev/null | sed 's/:.*//' | tr '\n' '|' || true)
+
+        if [[ -n "$existing_keys" ]]; then
+            # Check each known directive
+            local all_keys
+            all_keys=$(echo "$_KNOWN_DIRECTIVES" | jq -r 'keys[]')
+            while IFS= read -r key; do
+                [[ -z "$key" ]] && continue
+                if ! echo "$existing_keys" | grep -q "${key}|"; then
+                    # Missing directive — add with comment
+                    local default_val
+                    default_val=$(echo "$_KNOWN_DIRECTIVES" | jq -r --arg k "$key" '.[$k] // ""')
+                    if [[ "$DRY_RUN" == "true" ]]; then
+                        info "  Would add directive: $key: $default_val"
+                    else
+                        echo "# $key: $default_val  # added by migration $old_ver → $new_ver" >> "$orch_yaml"
+                    fi
+                    added_directives=$((added_directives + 1))
+                fi
+            done <<< "$all_keys"
+        fi
+    fi
+
+    # 2. Scaffold project-knowledge.yaml if missing
+    local pk_file="$project_path/project-knowledge.yaml"
+    if [[ ! -f "$pk_file" && -f "$WT_TOOLS_ROOT/templates/project-knowledge.yaml" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            info "  Would scaffold project-knowledge.yaml"
+        else
+            # Don't auto-create — just inform. Use init-knowledge for proper scaffolding
+            info "  project-knowledge.yaml missing — run 'wt-project init-knowledge' to scaffold"
+        fi
+        created_files=$((created_files + 1))
+    fi
+
+    # 3. Deploy cross-cutting checklist if missing
+    local checklist_dst="$project_path/.claude/rules/cross-cutting-checklist.md"
+    if [[ ! -f "$checklist_dst" && -f "$WT_TOOLS_ROOT/templates/cross-cutting-checklist.md" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            info "  Would deploy cross-cutting-checklist.md"
+        else
+            mkdir -p "$(dirname "$checklist_dst")"
+            cp "$WT_TOOLS_ROOT/templates/cross-cutting-checklist.md" "$checklist_dst"
+        fi
+        created_files=$((created_files + 1))
+    fi
+
+    # 4. Warn about unknown or deprecated directives
+    if [[ -f "$orch_yaml" ]]; then
+        local consumer_keys
+        consumer_keys=$(grep -E '^[a-z_]+:' "$orch_yaml" 2>/dev/null | sed 's/:.*//' || true)
+        local known_keys
+        known_keys=$(echo "$_KNOWN_DIRECTIVES" | jq -r 'keys[]')
+        # Also allow hook_* directives
+        while IFS= read -r ckey; do
+            [[ -z "$ckey" ]] && continue
+            [[ "$ckey" == hook_* ]] && continue  # hook_* are valid
+            if ! echo "$known_keys" | grep -qx "$ckey"; then
+                warn "  Unknown directive in orchestration.yaml: $ckey"
+            fi
+        done <<< "$consumer_keys"
+    fi
+
+    if [[ $added_directives -gt 0 || $created_files -gt 0 ]]; then
+        local verb="Updated"
+        [[ "$DRY_RUN" == "true" ]] && verb="Would update"
+        info "  $verb from $old_ver to $new_ver: added $added_directives directive(s), created $created_files file(s)"
+    fi
+}
+
 # Deploy wt-tools hooks, commands, and skills to a project's .claude/ directory.
 # Usage: deploy_wt_tools <project-path> [<extra-mcp-path> ...]
 # extra-mcp-path: additional paths to register MCP for (e.g. current worktree)
@@ -20,6 +120,30 @@ deploy_wt_tools() {
     shift
     local claude_dir="$project_path/.claude"
     local _warnings=0
+
+    # 0. Version tracking — store wt-tools version in consumer project
+    local current_version
+    current_version=$(_get_wt_tools_version)
+    local version_file="$claude_dir/.wt-version"
+    local old_version=""
+    if [[ -f "$version_file" ]]; then
+        old_version=$(cat "$version_file" 2>/dev/null || true)
+    fi
+    mkdir -p "$claude_dir"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        if [[ -n "$old_version" && "$old_version" != "$current_version" ]]; then
+            info "  Would update wt-tools: $old_version → $current_version"
+            _migrate_consumer "$project_path" "$old_version" "$current_version"
+        elif [[ -z "$old_version" ]]; then
+            info "  Would write version: $current_version"
+        fi
+        return 0
+    fi
+    echo "$current_version" > "$version_file"
+    if [[ -n "$old_version" && "$old_version" != "$current_version" ]]; then
+        info "  wt-tools updated: $old_version → $current_version"
+        _migrate_consumer "$project_path" "$old_version" "$current_version"
+    fi
 
     # 1. Deploy hooks via wt-deploy-hooks
     if "$SCRIPT_DIR/wt-deploy-hooks" --quiet "$project_path"; then
@@ -339,22 +463,28 @@ Usage: wt-project <command> [options]
 
 Commands:
   init [--name <name>]    Register current git repo as a project
+  init-knowledge          Scaffold project-knowledge.yaml from project scan
   list                    List all registered projects
   remove <name>           Remove a project from registry
   default <name>          Set default project
 
 Options:
   --name <name>           Custom project name (default: directory name)
+  --dry-run               Show what would change without modifying files
   -h, --help              Show this help
 
 Examples:
   cd /path/to/myproject && wt-project init
   wt-project init --name myproj
+  wt-project init --dry-run
+  wt-project init-knowledge
   wt-project list
   wt-project default myproj
   wt-project remove myproj
 EOF
 }
+
+DRY_RUN=false
 
 cmd_init() {
     local name=""
@@ -364,6 +494,10 @@ cmd_init() {
             --name)
                 name="$2"
                 shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
                 ;;
             *)
                 error "Unknown option: $1"

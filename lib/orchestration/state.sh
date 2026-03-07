@@ -1235,17 +1235,37 @@ cmd_status() {
 
 cmd_approve() {
     local merge_flag=false
+    local change_name=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --merge) merge_flag=true; shift ;;
-            *) error "Unknown option: $1"; return 1 ;;
+            -*) error "Unknown option: $1"; return 1 ;;
+            *) change_name="$1"; shift ;;
         esac
     done
 
     if [[ ! -f "$STATE_FILENAME" ]]; then
         error "No orchestration state found."
         return 1
+    fi
+
+    # Per-change approval (e.g., unblocking a merge-blocked change)
+    if [[ -n "$change_name" ]]; then
+        local cs
+        cs=$(get_change_status "$change_name" 2>/dev/null || true)
+        if [[ "$cs" == "merge-blocked" ]]; then
+            update_change_field "$change_name" "status" '"done"'
+            log_info "Change $change_name unblocked — ready for merge retry"
+            success "Change '$change_name' unblocked"
+            return 0
+        elif [[ -z "$cs" ]]; then
+            error "Change '$change_name' not found"
+            return 1
+        else
+            warn "Change '$change_name' is not merge-blocked (status: $cs)"
+            return 1
+        fi
     fi
 
     local status
@@ -1397,4 +1417,137 @@ generate_summary() {
     } > "$SUMMARY_FILENAME"
 
     log_info "Summary written to $SUMMARY_FILENAME"
+}
+
+# ─── Crash-Safe State Recovery ──────────────────────────────────────
+
+# Rebuild orchestration-state.json from orchestration-events.jsonl by replaying
+# state transitions. Called by sentinel on startup when state appears inconsistent.
+# Returns 0 if reconstruction succeeded, 1 if not possible (no events file).
+reconstruct_state_from_events() {
+    local events_file="${1:-}"
+    local state_file="${2:-$STATE_FILENAME}"
+
+    # Derive events file from state file if not provided
+    if [[ -z "$events_file" ]]; then
+        events_file="${state_file%.json}-events.jsonl"
+    fi
+
+    if [[ ! -f "$events_file" ]]; then
+        log_warn "Cannot reconstruct state: no events file at $events_file"
+        return 1
+    fi
+
+    if [[ ! -f "$state_file" ]]; then
+        log_warn "Cannot reconstruct state: no state file at $state_file (need base structure)"
+        return 1
+    fi
+
+    local event_count
+    event_count=$(wc -l < "$events_file" 2>/dev/null || echo 0)
+    if [[ "$event_count" -eq 0 ]]; then
+        log_warn "Cannot reconstruct state: events file is empty"
+        return 1
+    fi
+
+    log_info "Reconstructing state from $event_count events in $events_file"
+
+    # Strategy: start from existing state file (has plan structure, change metadata),
+    # then replay events to fix status, tokens, timestamps.
+    # This preserves fields that events don't track (scope, complexity, depends_on, etc.)
+
+    local tmp_state
+    tmp_state=$(mktemp)
+    cp "$state_file" "$tmp_state"
+
+    # 1. Replay STATE_CHANGE events to get final per-change status
+    #    Each STATE_CHANGE has: {"from":"X","to":"Y"} in data, and change name
+    local state_changes
+    state_changes=$(jq -c 'select(.type == "STATE_CHANGE" and .change != null and .change != "")' "$events_file" 2>/dev/null || true)
+
+    if [[ -n "$state_changes" ]]; then
+        # Get the last status for each change name
+        local final_statuses
+        final_statuses=$(echo "$state_changes" | jq -c '{change: .change, status: .data.to}' | \
+            jq -s 'group_by(.change) | map({key: .[0].change, value: .[-1].status}) | from_entries' 2>/dev/null || echo '{}')
+
+        # Apply final statuses to state
+        if [[ "$final_statuses" != "{}" ]]; then
+            local change_names
+            change_names=$(echo "$final_statuses" | jq -r 'keys[]' 2>/dev/null || true)
+            while IFS= read -r cname; do
+                [[ -z "$cname" ]] && continue
+                local final_status
+                final_status=$(echo "$final_statuses" | jq -r --arg n "$cname" '.[$n] // empty')
+                [[ -z "$final_status" ]] && continue
+                jq --arg n "$cname" --arg s "$final_status" \
+                    '(.changes[] | select(.name == $n) | .status) = $s' \
+                    "$tmp_state" > "${tmp_state}.2" && mv "${tmp_state}.2" "$tmp_state"
+            done <<< "$change_names"
+        fi
+    fi
+
+    # 2. Replay TOKENS events to get latest token counts
+    local token_events
+    token_events=$(jq -c 'select(.type == "TOKENS" and .change != null and .change != "")' "$events_file" 2>/dev/null || true)
+
+    if [[ -n "$token_events" ]]; then
+        local final_tokens
+        final_tokens=$(echo "$token_events" | jq -c '{change: .change, total: .data.total}' | \
+            jq -s 'group_by(.change) | map({key: .[0].change, value: .[-1].total}) | from_entries' 2>/dev/null || echo '{}')
+
+        if [[ "$final_tokens" != "{}" ]]; then
+            local tnames
+            tnames=$(echo "$final_tokens" | jq -r 'keys[]' 2>/dev/null || true)
+            while IFS= read -r tname; do
+                [[ -z "$tname" ]] && continue
+                local tokens
+                tokens=$(echo "$final_tokens" | jq -r --arg n "$tname" '.[$n] // 0')
+                jq --arg n "$tname" --argjson t "$tokens" \
+                    '(.changes[] | select(.name == $n) | .tokens_used) = $t' \
+                    "$tmp_state" > "${tmp_state}.2" && mv "${tmp_state}.2" "$tmp_state"
+            done <<< "$tnames"
+        fi
+    fi
+
+    # 3. Derive overall orchestration status from change statuses
+    #    If all changes are done/merged/completed/archived → done
+    #    If any are running → running (but we clear running since process is dead)
+    #    Otherwise → stopped
+    local all_done=true any_active=false
+    local change_statuses
+    change_statuses=$(jq -r '.changes[].status' "$tmp_state" 2>/dev/null || true)
+    while IFS= read -r cs; do
+        case "$cs" in
+            done|merged|completed|archived|skipped) ;;
+            running|stalled|stuck)
+                all_done=false
+                any_active=true
+                # Running changes with no live process should be stalled
+                jq '(.changes[] | select(.status == "running") | .status) = "stalled"' \
+                    "$tmp_state" > "${tmp_state}.2" && mv "${tmp_state}.2" "$tmp_state"
+                ;;
+            *)
+                all_done=false
+                ;;
+        esac
+    done <<< "$change_statuses"
+
+    if $all_done; then
+        jq '.status = "done"' "$tmp_state" > "${tmp_state}.2" && mv "${tmp_state}.2" "$tmp_state"
+    else
+        jq '.status = "stopped"' "$tmp_state" > "${tmp_state}.2" && mv "${tmp_state}.2" "$tmp_state"
+    fi
+
+    # 4. Write reconstructed state
+    mv "$tmp_state" "$state_file"
+
+    local final_orch_status
+    final_orch_status=$(jq -r '.status' "$state_file" 2>/dev/null)
+    log_info "State reconstructed: orchestration status=$final_orch_status"
+
+    emit_event "STATE_RECONSTRUCTED" "" \
+        "{\"event_count\":$event_count,\"status\":\"$final_orch_status\"}"
+
+    return 0
 }

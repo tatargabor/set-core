@@ -230,6 +230,41 @@ Settings are resolved in order (highest wins):
 3. In-document directives (`## Orchestrator Directives`)
 4. Defaults
 
+### Full Directive Reference
+
+| Directive | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max_parallel` | int | `2` | Max concurrent changes |
+| `default_model` | string | `opus` | Default LLM model for changes |
+| `time_limit` | duration | `5h` | Stop after duration (`2h`, `4h30m`, `none`) |
+| `checkpoint_interval` | int | `5` | Merge-checkpoint every N completed changes |
+| `test_command` | string | `""` | Test command run in worktree before merge |
+| `build_command` | string | `""` | Build command run in worktree before merge |
+| `smoke_command` | string | `""` | Post-merge smoke test command |
+| `smoke_timeout` | int | `120` | Smoke test timeout in seconds |
+| `smoke_blocking` | bool | `true` | Whether smoke failure blocks the pipeline |
+| `review_model` | string | `""` | Model for code review gate (auto-escalates on failure) |
+| `model_routing` | string | `off` | `off` or `complexity` — auto-route S-complexity non-feature changes to sonnet |
+| `plan_approval` | bool | `false` | Require `wt-orchestrate approve` after plan generation |
+| `context_pruning` | bool | `true` | Remove orchestrator commands from agent worktrees |
+| `max_tokens_per_change` | int | `0` | Per-change token budget (0 = complexity defaults: S=500K, M=2M, L=5M, XL=10M) |
+| `watchdog_timeout` | int | `""` | Seconds before watchdog considers a change stuck |
+| `watchdog_loop_threshold` | int | `""` | Consecutive identical hashes before loop detection |
+| `events_log` | string | `""` | Custom path for events JSONL log |
+| `events_max_size` | int | `1048576` | Events log rotation threshold in bytes (1MB default) |
+
+#### Hooks
+
+| Directive | Description |
+|-----------|-------------|
+| `hook_pre_dispatch` | Script run before dispatching a change (non-zero blocks) |
+| `hook_post_verify` | Script run after verification passes (non-zero blocks merge) |
+| `hook_pre_merge` | Script run before merge (non-zero blocks) |
+| `hook_post_merge` | Script run after successful merge (non-blocking) |
+| `hook_on_fail` | Script run when a change transitions to `failed` |
+
+Hook scripts receive `(change_name, status, worktree_path)` as arguments. Non-zero exit blocks the transition (except `post_merge` and `on_fail` which are non-blocking).
+
 ---
 
 ## Merge Policies
@@ -313,17 +348,126 @@ post_merge_command: pnpm db:generate  # project-specific command after dep insta
 
 ---
 
+## Events
+
+The orchestrator emits structured events to `orchestration-events.jsonl` for audit trails and observability.
+
+### Event Format
+
+```json
+{"ts":"2026-03-07T14:30:00+01:00","type":"STATE_CHANGE","change":"add-auth","data":{"from":"running","to":"done"}}
+```
+
+Each event has: `ts` (ISO timestamp), `type`, optional `change` (change name), and `data` (type-specific payload).
+
+### Event Types
+
+| Type | Emitted By | Data Fields | Description |
+|------|-----------|-------------|-------------|
+| `STATE_CHANGE` | `update_change_field` | `from`, `to` | Change status transition |
+| `DISPATCH` | `dispatch_change` | `scope` | Change dispatched to worktree |
+| `TOKENS` | `update_change_field` | `delta`, `total` | Token usage update (>10K delta) |
+| `MERGE_ATTEMPT` | `merge_change` | — | Merge started |
+| `VERIFY_GATE` | `handle_change_done` | `test`, `build`, `review`, `smoke` | Verification results |
+| `VERIFY_RULE` | `evaluate_verification_rules` | `rule`, `severity`, `check` | Project knowledge rule result |
+| `REPLAN` | `auto_replan_cycle` | `cycle`, `completed`, `novel_count` | Replan cycle |
+| `CHECKPOINT` | `trigger_checkpoint` | `reason` | Merge checkpoint triggered |
+| `ERROR` | various | `error` | Error condition |
+| `HOOK_BLOCKED` | `run_hook` | `hook`, `reason` | Lifecycle hook blocked transition |
+| `WATCHDOG_HEARTBEAT` | `watchdog_heartbeat` | `active`, `stalled`, `stuck` | Per-poll-cycle health |
+| `WATCHDOG_WARN` | `_watchdog_escalate` | `level` | Watchdog warning (level 1) |
+| `WATCHDOG_RESUME` | `_watchdog_escalate` | `level` | Watchdog resume attempt (level 2) |
+| `WATCHDOG_KILL` | `_watchdog_escalate` | `level` | Watchdog kill (level 3) |
+| `WATCHDOG_FAILED` | `_watchdog_escalate` | `level` | Watchdog failure (level 4+) |
+| `WATCHDOG_TOKEN_BUDGET` | `_watchdog_check_token_budget` | `tokens_used`, `limit`, `pct`, `action` | Token budget enforcement |
+| `WATCHDOG_SALVAGE` | `_watchdog_salvage_partial_work` | `files`, `patch` | Partial work salvaged before failure |
+| `SENTINEL_RESTART` | `wt-sentinel` | `exit_code`, `runtime`, `reason` | Sentinel restarted orchestrator |
+| `SENTINEL_FAILED` | `wt-sentinel` | `rapid_crashes` | Sentinel gave up |
+| `STATE_RECONSTRUCTED` | `reconstruct_state_from_events` | `event_count`, `status` | State rebuilt from events |
+
+### Querying Events
+
+```bash
+# Show all events (table format)
+wt-orchestrate events
+
+# Filter by type
+wt-orchestrate events --type STATE_CHANGE
+
+# Filter by change
+wt-orchestrate events --change add-auth
+
+# Recent events
+wt-orchestrate events --last 20
+
+# Since a timestamp
+wt-orchestrate events --since 2026-03-07T14:00:00
+
+# JSON output for scripting
+wt-orchestrate events --type ERROR --json
+```
+
+### Log Rotation
+
+The events log rotates when it exceeds `events_max_size` (default 1MB). The last 3 archives are kept, named with timestamps (e.g., `orchestration-events-20260307143000.jsonl`).
+
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `orchestration-plan.json` | LLM-generated change plan with dependency graph |
 | `orchestration-state.json` | Runtime state (change statuses, merge queue) |
+| `orchestration-events.jsonl` | Structured event log (JSONL format) |
 | `orchestration-summary.md` | Human-readable summary (generated on completion) |
 | `.claude/orchestration.yaml` | Optional configuration |
 | `.claude/orchestration.log` | Debug log (auto-rotated at 100KB) |
+| `project-knowledge.yaml` | Optional project knowledge for smarter orchestration |
 
 ---
+
+## Troubleshooting
+
+### Stuck orchestrator
+
+The **watchdog** monitors each change for progress. If a change's `loop-state.json` stops updating and the Ralph PID is dead, the watchdog escalates through levels:
+
+1. **Warn** — log warning, emit `WATCHDOG_WARN` event
+2. **Resume** — attempt to resume the stalled change
+3. **Kill** — terminate the process, attempt resume
+4. **Fail** — mark change as failed, salvage partial work as `partial-diff.patch`
+
+The **sentinel** independently monitors `orchestration-events.jsonl` mtime. If no events are emitted for `sentinel_stuck_timeout` (default 180s), the sentinel kills and restarts the entire orchestrator.
+
+### Merge-blocked changes
+
+When a merge conflict can't be auto-resolved (LLM resolver output is empty), the change enters `merge-blocked` status. The orchestrator continues with other changes.
+
+To resolve:
+1. Manually resolve conflicts in the change's worktree
+2. Run `wt-orchestrate approve <change-name>` to retry merge
+
+### Token budget exceeded
+
+The watchdog enforces per-change token budgets based on complexity:
+
+| Complexity | Default Budget |
+|------------|---------------|
+| S | 500K tokens |
+| M | 2M tokens |
+| L | 5M tokens |
+| XL | 10M tokens |
+
+Override with `max_tokens_per_change` directive. At 80% the watchdog warns, at 100% it pauses the change, at 120% it fails it.
+
+### State reconstruction
+
+If `orchestration-state.json` becomes inconsistent (e.g., running changes with dead PIDs, state older than events), the sentinel automatically reconstructs state from `orchestration-events.jsonl` on startup.
+
+Manual reconstruction is also available via the `reconstruct_state_from_events()` function in `state.sh`.
+
+### Plan approval gate
+
+With `plan_approval: true`, the orchestrator enters `plan_review` status after generating the plan. Review with `wt-orchestrate plan --show`, then `wt-orchestrate approve` to start dispatch.
 
 ## CLI Reference
 
@@ -341,8 +485,9 @@ Commands:
   plan [--show]          Generate or show plan
   start                  Execute the plan
   status                 Show progress
+  events [filters]       Query event log (--type, --change, --since, --last, --json)
   pause <name|--all>     Pause changes
   resume <name|--all>    Resume changes
   replan                 Re-plan from updated spec
-  approve [--merge]      Approve checkpoint / flush merge queue
+  approve [name|--merge] Approve checkpoint / flush merge queue / unblock change
 ```

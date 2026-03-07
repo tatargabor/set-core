@@ -21,7 +21,7 @@ emit_event() {
 
     local type="$1"
     local change_name="${2:-}"
-    local data="${3:-{}}"
+    local data="${3:-"{}"}"
     local ts
     ts=$(date -Iseconds)
 

@@ -124,9 +124,104 @@ kill_orchestrator() {
     fi
 }
 
+# Reconstruct state from events when state appears inconsistent.
+# Detects: running change with dead PID and state mtime older than events mtime.
+# Replays STATE_CHANGE and TOKENS events to rebuild per-change status and tokens.
+reconstruct_state_from_events() {
+    [[ ! -f "$STATE_FILE" || ! -f "$EVENTS_FILE" ]] && return 1
+
+    local state_mtime events_mtime
+    state_mtime=$(stat -c %Y "$STATE_FILE" 2>/dev/null || echo 0)
+    events_mtime=$(stat -c %Y "$EVENTS_FILE" 2>/dev/null || echo 0)
+
+    # Only reconstruct if events are newer than state (state is stale)
+    if [[ "$state_mtime" -ge "$events_mtime" ]]; then
+        return 1
+    fi
+
+    # Check for inconsistency: running changes with dead PIDs
+    local has_inconsistency=false
+    local running_pids
+    running_pids=$(jq -r '.changes[]? | select(.status == "running") | "\(.name)\t\(.ralph_pid // 0)"' "$STATE_FILE" 2>/dev/null || true)
+    if [[ -n "$running_pids" ]]; then
+        while IFS=$'\t' read -r cname cpid; do
+            [[ -z "$cname" ]] && continue
+            if [[ "$cpid" -gt 0 ]] && ! kill -0 "$cpid" 2>/dev/null; then
+                has_inconsistency=true
+                break
+            fi
+        done <<< "$running_pids"
+    fi
+
+    if ! $has_inconsistency; then
+        return 1
+    fi
+
+    local event_count
+    event_count=$(wc -l < "$EVENTS_FILE" 2>/dev/null || echo 0)
+    sentinel_log "State inconsistent (state_mtime=$state_mtime < events_mtime=$events_mtime) — reconstructing from $event_count events"
+
+    # Replay STATE_CHANGE events: get last status per change
+    local final_statuses
+    final_statuses=$(jq -c 'select(.type == "STATE_CHANGE" and .change != null and .change != "")' "$EVENTS_FILE" 2>/dev/null | \
+        jq -c '{change: .change, status: .data.to}' | \
+        jq -s 'group_by(.change) | map({key: .[0].change, value: .[-1].status}) | from_entries' 2>/dev/null || echo '{}')
+
+    if [[ "$final_statuses" != "{}" ]]; then
+        local names
+        names=$(echo "$final_statuses" | jq -r 'keys[]' 2>/dev/null || true)
+        while IFS= read -r cname; do
+            [[ -z "$cname" ]] && continue
+            local fstatus
+            fstatus=$(echo "$final_statuses" | jq -r --arg n "$cname" '.[$n] // empty')
+            [[ -z "$fstatus" ]] && continue
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$cname" --arg s "$fstatus" \
+                '(.changes[] | select(.name == $n) | .status) = $s' \
+                "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            sentinel_log "  Restored change $cname → $fstatus"
+        done <<< "$names"
+    fi
+
+    # Replay TOKENS events: get last total per change
+    local final_tokens
+    final_tokens=$(jq -c 'select(.type == "TOKENS" and .change != null and .change != "") | {change: .change, total: .data.total}' "$EVENTS_FILE" 2>/dev/null | \
+        jq -s 'group_by(.change) | map({key: .[0].change, value: .[-1].total}) | from_entries' 2>/dev/null || echo '{}')
+
+    if [[ "$final_tokens" != "{}" ]]; then
+        local tnames
+        tnames=$(echo "$final_tokens" | jq -r 'keys[]' 2>/dev/null || true)
+        while IFS= read -r tname; do
+            [[ -z "$tname" ]] && continue
+            local tokens
+            tokens=$(echo "$final_tokens" | jq -r --arg n "$tname" '.[$n] // 0')
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$tname" --argjson t "$tokens" \
+                '(.changes[] | select(.name == $n) | .tokens_used) = $t' \
+                "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+        done <<< "$tnames"
+    fi
+
+    # Mark running changes with dead PIDs as stalled
+    jq '(.changes[] | select(.status == "running") | .status) = "stalled"' \
+        "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+
+    # Set orchestration status
+    jq '.status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+
+    sentinel_emit_event "STATE_RECONSTRUCTED" "{\"event_count\":$event_count}"
+    sentinel_log "State reconstruction complete"
+    return 0
+}
+
 # Fix stale state: running changes with no live PID → stopped
 fix_stale_state() {
     [[ ! -f "$STATE_FILE" ]] && return
+
+    # Try event-based reconstruction first if state appears inconsistent
+    reconstruct_state_from_events 2>/dev/null || true
 
     local current_status
     current_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
