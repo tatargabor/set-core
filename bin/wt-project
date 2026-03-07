@@ -484,6 +484,7 @@ scaffold_wt_directory() {
     mkdir -p \
         "$wt_dir/orchestration/runs" \
         "$wt_dir/orchestration/plans" \
+        "$wt_dir/orchestration/specs/archive" \
         "$wt_dir/knowledge/patterns" \
         "$wt_dir/knowledge/lessons" \
         "$wt_dir/requirements" \
