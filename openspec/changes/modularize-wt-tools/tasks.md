@@ -68,5 +68,5 @@
 
 ## 8. Documentation
 
-- [ ] 8.1 Add source-order and dependency header comments to all extracted modules
-- [ ] 8.2 Update docs/design/modularization-plan.md with completion notes
+- [x] 8.1 Add source-order and dependency header comments to all extracted modules
+- [x] 8.2 Update docs/design/modularization-plan.md with completion notes
