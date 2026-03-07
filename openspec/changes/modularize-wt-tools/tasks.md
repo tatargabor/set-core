@@ -45,7 +45,7 @@
 - [x] 5.5 Create `lib/orchestration/builder.sh` — extract check_base_build, fix_base_build_with_llm from dispatcher.sh
 - [x] 5.6 Create `lib/orchestration/monitor.sh` — extract monitor_loop, poll_change, dispatch_queued_changes from dispatcher.sh
 - [x] 5.7 Refactor `lib/orchestration/dispatcher.sh` — keep dispatch/resume/pause core (~350 lines)
-- [ ] 5.8 Update merger.sh — use builder.sh instead of duplicated BASE_BUILD_* logic (SKIPPED: too risky, tight coupling)
+- [x] 5.8 Update merger.sh — use builder.sh instead of duplicated BASE_BUILD_* logic (resolved: builder.sh sourced before merger.sh, no duplication)
 - [x] 5.9 Update `bin/wt-orchestrate` — adjust source order for new modules
 - [x] 5.10 Create `tests/unit/test_orch_state.sh` — test state query functions
 - [x] 5.11 Run orchestration integration tests
