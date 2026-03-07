@@ -62,9 +62,9 @@
 
 ## 7. Phase 6 — wt-project Deploy Refactor
 
-- [ ] 7.1 Split deploy_wt_tools() into deploy_hooks(), deploy_commands(), deploy_skills(), deploy_mcp(), deploy_memory()
-- [ ] 7.2 Update cmd_init() to call the new focused functions
-- [ ] 7.3 Run `wt-project init` on a test project to verify
+- [x] 7.1 Split deploy_wt_tools() into deploy_hooks(), deploy_commands(), deploy_skills(), deploy_mcp(), deploy_memory()
+- [x] 7.2 Update cmd_init() to call the new focused functions
+- [x] 7.3 Run `wt-project init` on a test project to verify
 
 ## 8. Documentation
 
