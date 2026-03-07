@@ -18,7 +18,8 @@ The README MUST contain these 10 sections in this exact order:
 - **Sentinel-first narrative**: lead with autonomous orchestration ("give it a spec, get merged features"), not the GUI
 - Mention modularity: users cherry-pick what they need
 - Mention Developer Memory with benchmark result (+34% convention compliance)
-- Screenshot of Control Center GUI
+- Simple ASCII architecture diagram (sentinel-centric, max 10 lines)
+- NO screenshots on the main README — GUI images belong in `docs/gui.md`
 - Keep it high-level — details live in doc pages
 
 ### 3. Quick Start
@@ -32,12 +33,15 @@ The README MUST contain these 10 sections in this exact order:
 - 1-2 sentences per feature, each linking to its dedicated doc page
 - **Feature order** (reflects priority, not alphabetical):
   1. Sentinel & Orchestration → `docs/sentinel.md`, `docs/orchestration.md`
-  2. Worktrees → `docs/worktrees.md`
-  3. Ralph Loop → `docs/ralph.md`
-  4. Developer Memory → `docs/developer-memory.md`
-  5. Control Center GUI → `docs/gui.md`
-  6. Team Sync & Messaging → `docs/team-sync.md`
-  7. MCP Server → `docs/mcp-server.md`
+  2. Project Setup → `docs/project-setup.md`
+  3. OpenSpec Workflow → `docs/openspec.md`
+  4. Worktrees → `docs/worktrees.md`
+  5. Ralph Loop → `docs/ralph.md`
+  6. Developer Memory → `docs/developer-memory.md`
+  7. Control Center GUI → `docs/gui.md`
+  8. Team Sync & Messaging → `docs/team-sync.md`
+  9. MCP Server → `docs/mcp-server.md`
+- Include a "When to use what" summary table after features
 - No CLI reference here — link to `docs/cli-reference.md`
 - No configuration details — link to `docs/configuration.md`
 
@@ -110,6 +114,8 @@ The README links to these doc pages. Each page is self-contained with navigation
 | `docs/getting-started.md` | Detailed install, prerequisites, first-run tutorial |
 | `docs/sentinel.md` | Sentinel supervisor |
 | `docs/orchestration.md` | Orchestration engine |
+| `docs/project-setup.md` | Project registration, templates, scraping |
+| `docs/openspec.md` | OpenSpec spec-driven development workflow |
 | `docs/worktrees.md` | Worktree CLI and skills |
 | `docs/ralph.md` | Ralph loop guide |
 | `docs/developer-memory.md` | Memory system |
@@ -120,7 +126,7 @@ The README links to these doc pages. Each page is self-contained with navigation
 | `docs/cli-reference.md` | Complete CLI reference |
 | `docs/configuration.md` | All config files and options |
 | `docs/architecture.md` | Technical architecture and vision |
-| `docs/project-management.md` | Consumer project setup |
+| `docs/project-management.md` | Consumer project maintenance (legacy — see project-setup.md) |
 
 ---
 

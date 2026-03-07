@@ -105,9 +105,23 @@ wt-merge add-user-auth    # merge branch back to main
 wt-close add-user-auth    # remove worktree and branch
 ```
 
+## When to Use What
+
+| Situation | Tool |
+|-----------|------|
+| 1 agent, 1 project | You probably don't need wt-tools yet |
+| 2+ agents or switching projects often | Control Center GUI + `wt-work` |
+| Structured feature development | OpenSpec (`/opsx:new` → `/opsx:apply`) |
+| Well-defined task list to grind through | Ralph Loop (`wt-loop start`) |
+| Multiple changes from a spec | Sentinel (`/wt:sentinel --spec`) |
+| Want agents to learn across sessions | Developer Memory (`wt-memory`) |
+| Multiple machines or team members | Team Sync (`wt-control-init`) |
+
 ## Next Steps
 
 - [Sentinel & Orchestration](sentinel.md) — autonomous multi-change execution
+- [Project Setup](project-setup.md) — project registration and templates
+- [OpenSpec Workflow](openspec.md) — spec-driven development skills
 - [Worktree Management](worktrees.md) — CLI commands and skills
 - [Ralph Loop](ralph.md) — autonomous single-change execution
 - [Developer Memory](developer-memory.md) — cross-session agent recall

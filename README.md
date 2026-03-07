@@ -23,8 +23,6 @@ spec.md ──► /wt:sentinel ──► orchestrate ──► worktrees (parall
                  loops         recall        & merge
 ```
 
-![Always-on-top Control Center alongside your editor](docs/images/control-center-full.gif)
-
 ---
 
 ## Quick Start
@@ -52,6 +50,10 @@ See [Getting Started](docs/getting-started.md) for the full guide.
 
 **[Sentinel & Orchestration](docs/sentinel.md)** — Supervises autonomous multi-change execution. Decomposes a spec into parallel changes, dispatches each to its own worktree, monitors progress, and merges results with verification gates. [Orchestration details](docs/orchestration.md).
 
+**[Project Setup](docs/project-setup.md)** — Register projects, deploy hooks and skills, scaffold templates, and analyze codebases. `wt-project init` is the single entry point — re-run to update. Includes project knowledge scaffolding and codebase scraping for context.
+
+**[OpenSpec Workflow](docs/openspec.md)** — Spec-driven development skills (`/opsx:new`, `/opsx:ff`, `/opsx:apply`, `/opsx:verify`, `/opsx:archive`). Structure changes as proposal → design → specs → tasks → implementation with artifact tracking.
+
 **[Worktrees](docs/worktrees.md)** — Git worktree management with editor integration and Claude Code auto-launch. Create, open, merge, and close worktrees from CLI (`wt-new`, `wt-work`) or from inside the agent (`/wt:new`, `/wt:merge`).
 
 **[Ralph Loop](docs/ralph.md)** — Autonomous agent execution. Runs Claude Code in iterations through task lists, checking completion between runs. Start with `wt-loop start`, monitor with `wt-loop monitor`.
@@ -65,6 +67,17 @@ See [Getting Started](docs/getting-started.md) for the full guide.
 **[MCP Server](docs/mcp-server.md)** — Exposes worktree status, Ralph progress, team activity, and memory tools to Claude Code agents via Model Context Protocol.
 
 See [CLI Reference](docs/cli-reference.md) for all commands · [Configuration](docs/configuration.md) for all settings.
+
+### When to use what
+
+| Situation | Tool |
+|-----------|------|
+| 1 agent, 1 project | You probably don't need wt-tools yet |
+| 2+ agents or switching projects often | Control Center GUI + `wt-work` |
+| Structured feature development | OpenSpec (`/opsx:new` → `/opsx:apply`) |
+| Well-defined task list to grind through | Ralph Loop (`wt-loop start`) |
+| Multiple changes from a spec | Sentinel (`/wt:sentinel --spec`) |
+| Want agents to learn across sessions | Developer Memory (`wt-memory`) |
 
 ---
 
