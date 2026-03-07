@@ -25,6 +25,30 @@ _get_wt_tools_version() {
     echo "${version:-unknown}"
 }
 
+# Find a Python 3 interpreter that has wt-project-base installed.
+# Tries: miniconda, uv-managed, system python3 — returns first that works.
+_wt_python() {
+    local candidates=(
+        "$HOME/miniconda3/bin/python"
+        "$HOME/.local/share/uv/python/cpython-*/bin/python3"
+        "$(command -v python3 2>/dev/null)"
+        "$(command -v python 2>/dev/null)"
+    )
+    for py in "${candidates[@]}"; do
+        [[ -z "$py" ]] && continue
+        # Expand globs
+        for resolved in $py; do
+            [[ -x "$resolved" ]] || continue
+            if "$resolved" -c "import wt_project_base" 2>/dev/null; then
+                echo "$resolved"
+                return 0
+            fi
+        done
+    done
+    # Fallback to plain python3 even if package not installed
+    echo "python3"
+}
+
 # Known orchestration directives with defaults (for migration additive merge)
 _KNOWN_DIRECTIVES='{"max_parallel":2,"default_model":"opus","time_limit":"","checkpoint_interval":5,"smoke_command":"","smoke_timeout":120,"smoke_blocking":true,"test_command":"","build_command":"","review_model":"","events_log":"","events_max_size":"","watchdog_timeout":"","watchdog_loop_threshold":"","max_tokens_per_change":"","context_pruning":true,"plan_approval":false,"model_routing":"off"}'
 
@@ -475,6 +499,116 @@ if cleaned != content:
     fi
 }
 
+# Resolve a project type name via Python entry points.
+# Prints JSON with info, rules, and directives.
+# Returns 1 if the project type is not found.
+_resolve_project_type() {
+    local type_name="$1"
+    local py
+    py=$(_wt_python)
+    "$py" -c "
+import json, sys
+try:
+    from importlib.metadata import entry_points
+except ImportError:
+    from importlib_metadata import entry_points
+
+try:
+    eps = entry_points(group='wt_tools.project_types')
+except TypeError:
+    eps = entry_points().get('wt_tools.project_types', [])
+
+for ep in eps:
+    if ep.name == '$type_name':
+        cls = ep.load()
+        pt = cls()
+        info = pt.info
+        rules = [{'id': r.id, 'description': r.description, 'check': r.check, 'severity': r.severity} for r in pt.get_verification_rules()]
+        directives = [{'id': d.id, 'description': d.description, 'trigger': d.trigger, 'action': d.action} for d in pt.get_orchestration_directives()]
+        print(json.dumps({'name': info.name, 'version': info.version, 'description': info.description, 'parent': info.parent, 'rules_count': len(rules), 'directives_count': len(directives)}))
+        sys.exit(0)
+
+print(json.dumps({'error': 'not_found'}), file=sys.stderr)
+sys.exit(1)
+" 2>/dev/null
+}
+
+# List available project types via Python entry points.
+_list_project_types() {
+    local py
+    py=$(_wt_python)
+    "$py" -c "
+import sys
+try:
+    from importlib.metadata import entry_points
+except ImportError:
+    from importlib_metadata import entry_points
+
+try:
+    eps = entry_points(group='wt_tools.project_types')
+except TypeError:
+    eps = entry_points().get('wt_tools.project_types', [])
+
+for ep in eps:
+    try:
+        cls = ep.load()
+        pt = cls()
+        info = pt.info
+        print(f'  {ep.name:12s} — {info.description}')
+    except Exception as e:
+        print(f'  {ep.name:12s} — (failed to load: {e})', file=sys.stderr)
+" 2>/dev/null
+}
+
+# Save project type to wt/plugins/project-type.yaml
+_save_project_type() {
+    local project_path="$1"
+    local type_name="$2"
+    local pt_file="$project_path/wt/plugins/project-type.yaml"
+
+    # Validate project type exists
+    local pt_info
+    pt_info=$(_resolve_project_type "$type_name")
+    if [[ $? -ne 0 || -z "$pt_info" ]]; then
+        warn "  Project type '$type_name' not found. Available types:"
+        _list_project_types
+        return 1
+    fi
+
+    local version description parent rules_count directives_count
+    version=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))")
+    description=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('description',''))")
+    parent=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('parent','') or '')")
+    rules_count=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('rules_count',0))")
+    directives_count=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('directives_count',0))")
+
+    mkdir -p "$(dirname "$pt_file")"
+    cat > "$pt_file" << YAML
+# Project type configuration — managed by wt-project init
+# Change with: wt-project init --project-type <type>
+type: $type_name
+version: $version
+description: "$description"
+$([ -n "$parent" ] && echo "parent: $parent" || true)
+
+# Stats: ${rules_count} verification rules, ${directives_count} orchestration directives
+# Rules and directives are loaded dynamically from the installed package.
+YAML
+
+    success "  Project type set to '$type_name' ($rules_count rules, $directives_count directives)"
+
+    # Also register in projects.json
+    local name
+    name=$(basename "$project_path")
+    if [[ -f "$CONFIG_FILE" ]]; then
+        local tmp
+        tmp=$(mktemp)
+        jq --arg name "$name" --arg pt "$type_name" \
+            'if .projects[$name] then .projects[$name].project_type = $pt else . end' \
+            "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+    fi
+}
+
 # Scaffold wt/ directory structure in a project.
 # Creates all standard subdirectories. Idempotent — safe to re-run.
 scaffold_wt_directory() {
@@ -539,19 +673,22 @@ Commands:
   init-knowledge          Scaffold project-knowledge.yaml from project scan
   migrate                 Migrate legacy files to wt/ directory structure
   list                    List all registered projects
+  list-types              List available project types
   remove <name>           Remove a project from registry
   default <name>          Set default project
 
 Options:
   --name <name>           Custom project name (default: directory name)
+  --project-type <type>   Set project type (e.g., base, web)
   --dry-run               Show what would change without modifying files
   -h, --help              Show this help
 
 Examples:
   cd /path/to/myproject && wt-project init
-  wt-project init --name myproj
+  wt-project init --name myproj --project-type web
   wt-project init --dry-run
   wt-project init-knowledge
+  wt-project list-types
   wt-project list
   wt-project default myproj
   wt-project remove myproj
@@ -562,11 +699,16 @@ DRY_RUN=false
 
 cmd_init() {
     local name=""
+    local project_type=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --name)
                 name="$2"
+                shift 2
+                ;;
+            --project-type)
+                project_type="$2"
                 shift 2
                 ;;
             --dry-run)
@@ -649,6 +791,11 @@ cmd_init() {
     echo ""
     info "Deploying wt-tools to $git_root..."
     deploy_wt_tools "$git_root" || ((_deploy_warnings++))
+
+    # Save project type if specified
+    if [[ -n "$project_type" ]]; then
+        _save_project_type "$git_root" "$project_type"
+    fi
 
     # If called from a worktree, also deploy to the worktree's own .claude/ dir
     # and register MCP for the worktree path scope
@@ -1012,6 +1159,10 @@ case "$1" in
         ;;
     list|ls)
         cmd_list
+        ;;
+    list-types)
+        echo "Available project types:"
+        _list_project_types
         ;;
     remove|rm)
         shift
