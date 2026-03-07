@@ -412,12 +412,13 @@ Commands:
 Options:
   --name <name>           Custom project name (default: directory name)
   --project-type <type>   Set project type (e.g., base, web)
+  --template <name>       Template variant to deploy (e.g., nextjs, spa)
   --dry-run               Show what would change without modifying files
   -h, --help              Show this help
 
 Examples:
   cd /path/to/myproject && wt-project init
-  wt-project init --name myproj --project-type web
+  wt-project init --name myproj --project-type web --template nextjs
   wt-project init --dry-run
   wt-project init-knowledge
   wt-project list-types
@@ -429,9 +430,33 @@ EOF
 
 DRY_RUN=false
 
+# Deploy template files from a project type into the target project.
+# Usage: _deploy_project_templates <project-path> <type-name> [template-name]
+_deploy_project_templates() {
+    local project_path="$1"
+    local type_name="$2"
+    local template_name="${3:-}"
+    local py
+    py=$(_wt_python)
+
+    local cmd=("$py" -m wt_project_base.cli deploy-templates --project-dir "$project_path" --type "$type_name")
+    if [[ -n "$template_name" ]]; then
+        cmd+=(--template "$template_name")
+    fi
+    if [[ "$DRY_RUN" == "true" ]]; then
+        cmd+=(--dry-run)
+    fi
+
+    echo ""
+    info "Deploying project templates..."
+    "${cmd[@]}" 2>&1
+    return $?
+}
+
 cmd_init() {
     local name=""
     local project_type=""
+    local template=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -441,6 +466,10 @@ cmd_init() {
                 ;;
             --project-type)
                 project_type="$2"
+                shift 2
+                ;;
+            --template)
+                template="$2"
                 shift 2
                 ;;
             --dry-run)
@@ -527,6 +556,8 @@ cmd_init() {
     # Save project type if specified
     if [[ -n "$project_type" ]]; then
         _save_project_type "$git_root" "$project_type"
+        # Deploy templates from the project type
+        _deploy_project_templates "$git_root" "$project_type" "$template" || true
     fi
 
     # If called from a worktree, also deploy to the worktree's own .claude/ dir
@@ -779,6 +810,27 @@ cmd_init_knowledge() {
         return 0
     fi
 
+    # Check if a project type is configured — use its templates instead of generic
+    local pt_yaml="$git_root/wt/plugins/project-type.yaml"
+    if [[ -f "$pt_yaml" ]]; then
+        local pt_name
+        pt_name=$(grep '^type:' "$pt_yaml" 2>/dev/null | awk '{print $2}' || true)
+        if [[ -n "$pt_name" && "$pt_name" != "base" ]]; then
+            info "Project type '$pt_name' configured — deploying type-specific templates"
+            _deploy_project_templates "$git_root" "$pt_name" "" || true
+            # Deploy cross-cutting checklist if not exists
+            local checklist_src="$WT_TOOLS_ROOT/templates/cross-cutting-checklist.md"
+            local checklist_dst="$git_root/.claude/rules/cross-cutting-checklist.md"
+            if [[ -f "$checklist_src" && ! -f "$checklist_dst" ]]; then
+                mkdir -p "$(dirname "$checklist_dst")"
+                cp "$checklist_src" "$checklist_dst"
+                success "Deployed cross-cutting-checklist.md to .claude/rules/"
+            fi
+            return 0
+        fi
+    fi
+
+    # Fallback to generic template
     if [[ ! -f "$template" ]]; then
         error "Template not found: $template"
         exit 1
