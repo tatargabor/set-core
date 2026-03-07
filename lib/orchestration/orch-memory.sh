@@ -27,13 +27,42 @@ orch_recall() {
     start_ms=$(($(date +%s%N) / 1000000))
     local result
     result=$(wt-memory recall "$query" --limit "$limit" --tags "$tags" --mode hybrid 2>/dev/null | \
-        jq -r '.[].content' 2>/dev/null | head -c 2000 || true)
+        jq -r '[.[] | select(.tags // "" | test("stale:true") | not)] | .[].content' 2>/dev/null | head -c 2000 || true)
     local elapsed_ms=$(( $(date +%s%N) / 1000000 - start_ms ))
     local result_len=${#result}
     _MEM_RECALL_COUNT=$((_MEM_RECALL_COUNT + 1))
     _MEM_RECALL_TOTAL_MS=$((_MEM_RECALL_TOTAL_MS + elapsed_ms))
     log_info "Memory recall: ${elapsed_ms}ms, ${result_len} chars (query='${query:0:60}', limit=$limit)"
     echo "$result"
+}
+
+# Pre-decomposition memory hygiene — lightweight health check before planning.
+# Best-effort: failure does not block planning.
+plan_memory_hygiene() {
+    command -v wt-memory &>/dev/null || return 0
+
+    local start_ms
+    start_ms=$(($(date +%s%N) / 1000000))
+
+    # 1. Dedup dry-run — log duplicate count
+    local dedup_output dedup_count=0
+    dedup_output=$(wt-memory dedup --dry-run 2>/dev/null || true)
+    dedup_count=$(echo "$dedup_output" | grep -oP '\d+ duplicates' | grep -oP '\d+' || echo "0")
+
+    # 2. Memory stats — total count
+    local mem_count=0
+    mem_count=$(wt-memory list --limit 1 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+    local stats_output
+    stats_output=$(wt-memory stats --json 2>/dev/null || true)
+    local total_memories=0
+    if [[ -n "$stats_output" ]]; then
+        total_memories=$(echo "$stats_output" | jq -r '.total_memories // 0' 2>/dev/null || echo "0")
+    fi
+
+    local elapsed_ms=$(( $(date +%s%N) / 1000000 - start_ms ))
+
+    log_info "Memory hygiene: ${elapsed_ms}ms — $total_memories memories, $dedup_count duplicates found (dry-run)"
+    emit_event "MEMORY_HYGIENE" "" "{\"total\":$total_memories,\"duplicates\":$dedup_count,\"elapsed_ms\":$elapsed_ms}"
 }
 
 # Log cumulative memory stats. Called periodically from monitor loop.

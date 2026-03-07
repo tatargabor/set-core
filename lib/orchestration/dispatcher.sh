@@ -242,7 +242,7 @@ dispatch_change() {
 
     # Recall change-specific memories for proposal enrichment
     local dispatch_memory=""
-    dispatch_memory=$(orch_recall "$scope" 3 "" || true)
+    dispatch_memory=$(orch_recall "$scope" 3 "phase:execution" || true)
     dispatch_memory="${dispatch_memory:0:1000}"
 
     # Build cross-cutting context from project-knowledge.yaml
@@ -345,6 +345,16 @@ MEMORY_EOF
             if [[ -n "$sibling_context" ]]; then
                 echo "" >> "$proposal_path"
                 echo "$sibling_context" >> "$proposal_path"
+            fi
+            # Add source spec reference for spec-mode orchestration
+            if [[ "${INPUT_MODE:-}" == "spec" && -n "${INPUT_PATH:-}" ]]; then
+                cat >> "$proposal_path" <<SPECREF_EOF
+
+## Source Spec
+- Path: \`$INPUT_PATH\`
+- Section: \`$roadmap_item\`
+- Full spec available via: \`cat $INPUT_PATH\`
+SPECREF_EOF
             fi
             log_info "Pre-created proposal.md for $change_name"
         fi

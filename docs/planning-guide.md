@@ -1137,3 +1137,55 @@ Doc-only or trivial changes can skip the test and review gates:
 ```
 
 Use sparingly — only when a change genuinely doesn't touch code.
+
+## Agent-Based Planning
+
+By default, planning uses a single API call (`plan_method: api`). For complex specs or projects where codebase exploration is needed, enable agent-based planning:
+
+```yaml
+plan_method: agent
+```
+
+### How it works
+
+1. Orchestrator creates a planning worktree (`wt-planning-v{N}`)
+2. A Ralph loop runs with the `/wt:decompose` skill
+3. The planning agent reads the spec, explores the codebase (via Agent tool sub-agents), recalls relevant memories, and generates `orchestration-plan.json`
+4. The plan is validated and extracted; the planning worktree is cleaned up
+5. If agent planning fails, it falls back to the API method automatically
+
+### When to use agent planning
+
+- Large specs (>200 lines) where context summarization loses important detail
+- Projects with complex codebase structure where existing implementations matter
+- When past orchestration runs revealed decomposition issues (wrong dependencies, scope overlaps)
+- When project type rules and verification conventions should inform the plan
+
+### Plan metadata
+
+Plans now include `plan_phase` and `plan_method` fields:
+
+```json
+{
+  "plan_version": 2,
+  "plan_phase": "initial",
+  "plan_method": "agent",
+  "changes": [...]
+}
+```
+
+- `plan_phase`: `"initial"` (first decomposition) or `"iteration"` (auto-replan cycle)
+- `plan_method`: `"api"` or `"agent"`
+
+### Memory phase tags
+
+Memory recall is now filtered by phase to prevent cross-contamination:
+
+| Phase | Tag | Used during |
+|-------|-----|-------------|
+| Planning | `phase:planning` | Decomposition/planning |
+| Execution | `phase:execution` | Worker agent dispatch |
+| Verification | `phase:verification` | Test/review retries |
+| Orchestration | `phase:orchestration` | Replan, operational decisions |
+
+Memories tagged `stale:true` are excluded from all recall.

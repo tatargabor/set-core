@@ -59,6 +59,8 @@ DEFAULT_SMOKE_FIX_MAX_TURNS=15
 DEFAULT_SMOKE_FIX_MAX_RETRIES=3
 DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT=30
 
+DEFAULT_PLAN_METHOD="api"           # "api" (single LLM call) or "agent" (planning worktree with Ralph loop)
+DEFAULT_PLAN_TOKEN_BUDGET=500000    # 500K tokens max for agent-based planning
 DEFAULT_POST_MERGE_COMMAND=""       # project-specific command to run after merge (e.g. "pnpm db:generate")
 DEFAULT_TOKEN_HARD_LIMIT=20000000  # 20M tokens — checkpoint to ask human before spending more
 

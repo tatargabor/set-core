@@ -10,6 +10,10 @@ init_state() {
     plan_version=$(jq -r '.plan_version' "$plan_file")
     local plan_brief_hash
     plan_brief_hash=$(jq -r '.brief_hash' "$plan_file")
+    local plan_phase
+    plan_phase=$(jq -r '.plan_phase // "initial"' "$plan_file")
+    local plan_method
+    plan_method=$(jq -r '.plan_method // "api"' "$plan_file")
 
     # Build changes array from plan
     local changes
@@ -43,9 +47,13 @@ init_state() {
         --arg brief_hash "$plan_brief_hash" \
         --arg created_at "$(date -Iseconds)" \
         --argjson changes "$changes" \
+        --arg plan_phase "$plan_phase" \
+        --arg plan_method "$plan_method" \
         '{
             plan_version: $plan_version,
             brief_hash: $brief_hash,
+            plan_phase: $plan_phase,
+            plan_method: $plan_method,
             status: "running",
             created_at: $created_at,
             changes: $changes,
@@ -313,7 +321,10 @@ cmd_status() {
     echo ""
     info "═══ Orchestrator Status ═══"
     echo ""
-    echo "  Status:   $status (plan v$plan_version)"
+    local plan_phase plan_method
+    plan_phase=$(jq -r '.plan_phase // "initial"' "$STATE_FILENAME")
+    plan_method=$(jq -r '.plan_method // "api"' "$STATE_FILENAME")
+    echo "  Status:   $status (plan v$plan_version, $plan_phase/$plan_method)"
     local verifying
     verifying=$(count_changes_by_status "verifying")
     local verify_failed

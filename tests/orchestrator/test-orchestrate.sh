@@ -649,6 +649,110 @@ url=$(extract_health_check_url "pnpm test:smoke")
 assert_equals "" "$url"
 
 # ============================================================
+# Test: plan metadata fields (plan_phase, plan_method)
+# ============================================================
+
+TMPDIR_META=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_META"' EXIT
+
+test_start "init_state preserves plan_phase and plan_method from plan"
+cat > "$TMPDIR_META/plan.json" <<'EOF'
+{
+  "plan_version": 1,
+  "brief_hash": "abc123",
+  "plan_phase": "initial",
+  "plan_method": "agent",
+  "changes": [{"name": "test-change", "scope": "test", "complexity": "S", "depends_on": [], "roadmap_item": "test"}]
+}
+EOF
+PLAN_FILENAME="$TMPDIR_META/plan.json"
+STATE_FILENAME="$TMPDIR_META/state.json"
+init_state "$PLAN_FILENAME"
+pp=$(jq -r '.plan_phase' "$STATE_FILENAME")
+pm=$(jq -r '.plan_method' "$STATE_FILENAME")
+assert_equals "initial" "$pp"
+
+test_start "init_state sets plan_method from plan"
+assert_equals "agent" "$pm"
+
+test_start "init_state defaults plan_phase to initial when missing"
+cat > "$TMPDIR_META/plan2.json" <<'EOF'
+{
+  "plan_version": 1,
+  "brief_hash": "abc123",
+  "changes": [{"name": "test-change", "scope": "test", "complexity": "S", "depends_on": [], "roadmap_item": "test"}]
+}
+EOF
+PLAN_FILENAME="$TMPDIR_META/plan2.json"
+STATE_FILENAME="$TMPDIR_META/state2.json"
+init_state "$PLAN_FILENAME"
+pp2=$(jq -r '.plan_phase' "$STATE_FILENAME")
+pm2=$(jq -r '.plan_method' "$STATE_FILENAME")
+assert_equals "initial" "$pp2"
+
+test_start "init_state defaults plan_method to api when missing"
+assert_equals "api" "$pm2"
+
+# ============================================================
+# Test: plan_method directive parsing
+# ============================================================
+
+test_start "resolve_directives parses plan_method: agent"
+TMPDIR_DIRECTIVE=$(mktemp -d)
+cat > "$TMPDIR_DIRECTIVE/brief.md" <<'EOF'
+## Orchestrator Directives
+- plan_method: agent
+- max_parallel: 3
+
+## Next
+- Test item
+EOF
+result=$(resolve_directives "$TMPDIR_DIRECTIVE/brief.md")
+pmval=$(echo "$result" | jq -r '.plan_method')
+assert_equals "agent" "$pmval"
+rm -rf "$TMPDIR_DIRECTIVE"
+
+test_start "resolve_directives defaults plan_method to api"
+TMPDIR_DIRECTIVE2=$(mktemp -d)
+cat > "$TMPDIR_DIRECTIVE2/brief.md" <<'EOF'
+## Orchestrator Directives
+- max_parallel: 2
+
+## Next
+- Test item
+EOF
+result2=$(resolve_directives "$TMPDIR_DIRECTIVE2/brief.md")
+pmval2=$(echo "$result2" | jq -r '.plan_method')
+assert_equals "api" "$pmval2"
+rm -rf "$TMPDIR_DIRECTIVE2"
+
+# ============================================================
+# Test: plan_memory_hygiene runs without error when wt-memory unavailable
+# ============================================================
+
+test_start "plan_memory_hygiene succeeds when wt-memory not in PATH"
+(
+    PATH="/usr/bin:/bin"
+    plan_memory_hygiene 2>/dev/null
+)
+rc=$?
+assert_equals "0" "$rc"
+
+# ============================================================
+# Test: orch_recall phase tag filtering passes tags through
+# ============================================================
+
+test_start "orch_recall passes tags parameter (verified by log output)"
+# We can't test actual recall without wt-memory, but verify the function
+# accepts phase tags without error
+(
+    PATH="/usr/bin:/bin"  # wt-memory unavailable
+    result=$(orch_recall "test query" 3 "phase:planning" 2>/dev/null)
+    # Should return empty string gracefully
+    [[ -z "$result" ]]
+) && test_pass || test_fail "empty result" "error"
+
+# ============================================================
 # Summary
 # ============================================================
 

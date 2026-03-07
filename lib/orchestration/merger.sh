@@ -348,7 +348,7 @@ SMOKE_FIX_EOF
             local retry_prompt="Merge conflict: your branch conflicts with $main_branch. Resolve the conflict by merging $main_branch into your branch.\n\nRun: git fetch origin $main_branch && git merge origin/$main_branch\n\nResolve any conflicts, keeping both sides' changes where possible. Prefer your changes (the feature) when they contradict $main_branch. After resolving, commit the merge."
             # Recall memories about recent merges for context
             local _mem_ctx
-            _mem_ctx=$(orch_recall "$change_name merge conflict recent merges" 3 "")
+            _mem_ctx=$(orch_recall "$change_name merge conflict recent merges" 3 "phase:merge")
             if [[ -n "$_mem_ctx" ]]; then
                 retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
             fi

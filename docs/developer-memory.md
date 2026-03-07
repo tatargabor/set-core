@@ -152,6 +152,25 @@ wt-memory recall "project structure"
 
 **Legacy aliases:** `Observation` maps to `Learning`, `Event` maps to `Context`. These still work but print a deprecation warning.
 
+### Phase Tags (Orchestration)
+
+When memories are created during orchestration, they are tagged with a phase to enable filtered recall:
+
+| Tag | Source | Recalled during |
+|-----|--------|-----------------|
+| `phase:planning` | Decomposition learnings | Planning/decomposition |
+| `phase:execution` | Worker agent learnings | Change dispatch |
+| `phase:verification` | Test/review/smoke results | Verification retries |
+| `phase:orchestration` | Operational decisions (replan, merge) | Iteration replans |
+| `phase:merge` | Merge outcomes | Merge conflict resolution |
+| `phase:test` | Test pass/fail results | Test retries |
+| `phase:review` | Code review results | Review retries |
+| `phase:post-merge` | Post-merge pipeline results | Post-merge fixes |
+
+The `orch_recall` function filters by phase tag, so planning memories don't leak into execution and vice versa.
+
+Memories tagged `stale:true` are excluded from all orchestrator recall.
+
 ---
 
 ## Branch Awareness

@@ -619,7 +619,7 @@ handle_change_done() {
             local retry_prompt="Tests failed after implementation. Fix the failing tests.\n\nTest command: $test_command\nTest output:\n$test_output\n\nOriginal scope: $scope"
             # Recall relevant memories for retry context
             local _mem_ctx
-            _mem_ctx=$(orch_recall "$scope" 3 "")
+            _mem_ctx=$(orch_recall "$scope" 3 "phase:verification")
             if [[ -n "$_mem_ctx" ]]; then
                 retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
             fi
@@ -799,7 +799,7 @@ handle_change_done() {
                 local retry_prompt="Code review found CRITICAL issues. Fix these issues.\n\nReview feedback:\n${REVIEW_OUTPUT:0:500}\n\nOriginal scope: $scope"
                 # Recall relevant memories for retry context
                 local _mem_ctx
-                _mem_ctx=$(orch_recall "$scope" 3 "")
+                _mem_ctx=$(orch_recall "$scope" 3 "phase:verification")
                 if [[ -n "$_mem_ctx" ]]; then
                     retry_prompt="$retry_prompt\n\n## Context from Memory\n${_mem_ctx:0:1000}"
                 fi

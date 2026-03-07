@@ -225,6 +225,7 @@ parse_directives() {
     local max_tokens_per_change=""
     local context_pruning="true"
     local plan_approval="false"
+    local plan_method="$DEFAULT_PLAN_METHOD"
     local model_routing="off"
     local hook_pre_dispatch=""
     local hook_post_verify=""
@@ -451,6 +452,13 @@ parse_directives() {
                         warn "Invalid plan_approval '$val', using default false"
                     fi
                     ;;
+                plan_method)
+                    if [[ "$val" =~ ^(api|agent)$ ]]; then
+                        plan_method="$val"
+                    else
+                        warn "Invalid plan_method '$val', using default $DEFAULT_PLAN_METHOD"
+                    fi
+                    ;;
                 model_routing)
                     if [[ "$val" =~ ^(off|complexity)$ ]]; then
                         model_routing="$val"
@@ -511,6 +519,7 @@ parse_directives() {
         --arg max_tokens_per_change "$max_tokens_per_change" \
         --argjson context_pruning "$context_pruning" \
         --argjson plan_approval "$plan_approval" \
+        --arg plan_method "$plan_method" \
         --arg model_routing "$model_routing" \
         --arg hook_pre_dispatch "$hook_pre_dispatch" \
         --arg hook_post_verify "$hook_post_verify" \
@@ -549,6 +558,7 @@ parse_directives() {
             max_tokens_per_change: (if $max_tokens_per_change != "" then ($max_tokens_per_change | tonumber) else null end),
             context_pruning: $context_pruning,
             plan_approval: $plan_approval,
+            plan_method: $plan_method,
             model_routing: $model_routing,
             hook_pre_dispatch: (if $hook_pre_dispatch != "" then $hook_pre_dispatch else null end),
             hook_post_verify: (if $hook_post_verify != "" then $hook_post_verify else null end),

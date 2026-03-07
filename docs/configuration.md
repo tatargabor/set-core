@@ -70,6 +70,7 @@ pause_on_exit: false
 context_pruning: true
 model_routing: off          # off | complexity
 plan_approval: false
+plan_method: api               # api | agent
 ```
 
 ### Full Directive Reference
@@ -88,6 +89,7 @@ plan_approval: false
 | `review_model` | string | `""` | Model for code review gate |
 | `model_routing` | string | `off` | `off` or `complexity` |
 | `plan_approval` | bool | `false` | Require approval after plan |
+| `plan_method` | string | `api` | `api` (single LLM call) or `agent` (planning worktree with Ralph) |
 | `context_pruning` | bool | `true` | Remove orchestrator commands from agent worktrees |
 | `max_tokens_per_change` | int | `0` | Per-change token budget (0 = complexity defaults) |
 | `watchdog_timeout` | int | `""` | Seconds before watchdog considers change stuck |

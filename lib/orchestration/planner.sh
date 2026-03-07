@@ -365,6 +365,11 @@ cmd_plan() {
         echo ""
         info "═══ Orchestration Plan ═══"
         echo ""
+        local pp pm
+        pp=$(jq -r '.plan_phase // "initial"' "$PLAN_FILENAME")
+        pm=$(jq -r '.plan_method // "api"' "$PLAN_FILENAME")
+        echo "  Phase: $pp | Method: $pm"
+        echo ""
         jq -r '.changes[] | "  \(.name) [\(.complexity)] (\(.change_type // "feature")) — \(.scope[:80])...\n    depends_on: \(.depends_on | if length == 0 then "(none)" else join(", ") end)"' "$PLAN_FILENAME"
         echo ""
         info "Dependency order:"
@@ -379,6 +384,9 @@ cmd_plan() {
         return 0
     fi
 
+    # Pre-decomposition memory hygiene (best-effort)
+    plan_memory_hygiene || true
+
     # Find and validate input (spec or brief)
     find_input || return 1
 
@@ -388,6 +396,42 @@ cmd_plan() {
     local directives
     directives=$(resolve_directives "$INPUT_PATH")
     info "Directives: $(echo "$directives" | jq -c .)"
+
+    # Check if agent-based planning is requested
+    local plan_method
+    plan_method=$(echo "$directives" | jq -r '.plan_method // "api"')
+    if [[ "$plan_method" == "agent" ]]; then
+        export _PLAN_METHOD="agent"
+        info "Using agent-based decomposition (plan_method: agent)"
+        if plan_via_agent "$INPUT_PATH" "${PHASE_HINT:-}"; then
+            # Agent produced and validated the plan — add remaining metadata
+            local plan_version=1
+            if [[ -f "$PLAN_FILENAME" ]]; then
+                plan_version=$(jq -r '.plan_version // 1' "$PLAN_FILENAME")
+            fi
+
+            # Save plan history
+            local _proj_root
+            _proj_root=$(dirname "$PLAN_FILENAME")
+            if [[ -d "${_proj_root}/wt/orchestration/plans" ]]; then
+                local plan_date
+                plan_date=$(date +%Y%m%d)
+                cp "$PLAN_FILENAME" "${_proj_root}/wt/orchestration/plans/plan-v${plan_version}-${plan_date}.json"
+            fi
+
+            success "Plan created: $(jq '.changes | length' "$PLAN_FILENAME") changes (v$plan_version, agent)"
+            cmd_plan --show
+            echo ""
+            info "Review the plan above. Start with: wt-orchestrate start"
+            return 0
+        else
+            warn "Agent-based planning failed — falling back to API method"
+            log_warn "plan_via_agent failed, falling back to API-based planning"
+            export _PLAN_METHOD="api"
+        fi
+    else
+        export _PLAN_METHOD="api"
+    fi
 
     # Brief mode: validate Next items exist (already checked in find_input, but log count)
     if [[ "$INPUT_MODE" == "brief" ]]; then
@@ -419,20 +463,20 @@ cmd_plan() {
             while IFS= read -r item; do
                 [[ -z "$item" ]] && continue
                 local item_mem
-                item_mem=$(orch_recall "$item" 2 "" || true)
+                item_mem=$(orch_recall "$item" 2 "phase:planning" || true)
                 [[ -n "$item_mem" ]] && item_texts+=("$item_mem")
             done < <(echo "$next_items" | jq -r '.[]' 2>/dev/null)
             # Also recall orchestrator operational context
             local orch_mem
-            orch_mem=$(orch_recall "orchestration merge conflict test failure" 3 "source:orchestrator" || true)
+            orch_mem=$(orch_recall "orchestration merge conflict test failure" 3 "phase:orchestration" || true)
             [[ -n "$orch_mem" ]] && item_texts+=("$orch_mem")
             memory_context=$(printf '%s\n' "${item_texts[@]}" | head -c 2000)
         else
             # Spec mode: recall using phase hint or general query + orchestrator context
             local spec_query="${PHASE_HINT:-project architecture and features}"
-            memory_context=$(orch_recall "$spec_query" 3 "" || true)
+            memory_context=$(orch_recall "$spec_query" 3 "phase:planning" || true)
             local orch_mem
-            orch_mem=$(orch_recall "orchestration merge conflict test failure" 3 "source:orchestrator" || true)
+            orch_mem=$(orch_recall "orchestration merge conflict test failure" 3 "phase:orchestration" || true)
             [[ -n "$orch_mem" ]] && memory_context="${memory_context}
 ${orch_mem}"
             memory_context=$(echo "$memory_context" | head -c 2000)
@@ -834,6 +878,13 @@ PYEOF
     if [[ -n "$INPUT_PATH" && -f "$INPUT_PATH" ]]; then
         input_content_hash=$(sha256sum "$INPUT_PATH" 2>/dev/null | cut -d' ' -f1)
     fi
+    # Determine plan_phase: "iteration" if inside a replan cycle, "initial" otherwise
+    local plan_phase="initial"
+    [[ -n "${_REPLAN_CYCLE:-}" ]] && plan_phase="iteration"
+
+    # plan_method: "agent" if dispatched via agent planning, "api" otherwise
+    local plan_method="${_PLAN_METHOD:-api}"
+
     echo "$plan_json" | jq \
         --argjson pv "$plan_version" \
         --arg hash "$hash" \
@@ -841,7 +892,9 @@ PYEOF
         --arg imode "$INPUT_MODE" \
         --arg ipath "$INPUT_PATH" \
         --arg ihash "$input_content_hash" \
-        '. + {plan_version: $pv, brief_hash: $hash, created_at: $created, input_mode: $imode, input_path: $ipath, input_hash: $ihash}' \
+        --arg pphase "$plan_phase" \
+        --arg pmethod "$plan_method" \
+        '. + {plan_version: $pv, brief_hash: $hash, created_at: $created, input_mode: $imode, input_path: $ipath, input_hash: $ihash, plan_phase: $pphase, plan_method: $pmethod}' \
         > "$PLAN_FILENAME"
 
     # During replan, strip depends_on references to completed changes from prior cycles
@@ -906,6 +959,100 @@ PYEOF
     cmd_plan --show
     echo ""
     info "Review the plan above. Start with: wt-orchestrate start"
+}
+
+# Agent-based planning: create a planning worktree, dispatch Ralph loop with
+# decomposition skill, wait for completion, extract orchestration-plan.json.
+# Returns 0 on success (plan extracted), 1 on failure (caller should fallback to API).
+plan_via_agent() {
+    local spec_path="$1"
+    local phase_hint="${2:-}"
+
+    # Determine planning worktree name
+    local plan_version=1
+    if [[ -f "$PLAN_FILENAME" ]]; then
+        plan_version=$(( $(jq -r '.plan_version // 0' "$PLAN_FILENAME") + 1 ))
+    fi
+    local wt_name="wt-planning-v${plan_version}"
+
+    info "Agent-based decomposition: creating planning worktree $wt_name..."
+    log_info "plan_via_agent: starting (spec=$spec_path, phase_hint=$phase_hint)"
+
+    # Create planning worktree
+    local wt_path
+    wt_path=$(wt-new "$wt_name" 2>/dev/null) || {
+        log_error "plan_via_agent: failed to create worktree $wt_name"
+        return 1
+    }
+    # wt-new outputs the path on stdout
+    if [[ -z "$wt_path" || ! -d "$wt_path" ]]; then
+        # Try finding it
+        wt_path=$(git worktree list --porcelain 2>/dev/null | grep "^worktree.*${wt_name}" | head -1 | sed 's/^worktree //')
+        if [[ -z "$wt_path" || ! -d "$wt_path" ]]; then
+            log_error "plan_via_agent: worktree path not found for $wt_name"
+            return 1
+        fi
+    fi
+    log_info "plan_via_agent: worktree created at $wt_path"
+
+    # Build task description for Ralph
+    local task_desc="Decompose the specification at '$spec_path' into an orchestration execution plan."
+    if [[ -n "$phase_hint" ]]; then
+        task_desc="$task_desc Focus on phase: $phase_hint."
+    fi
+    task_desc="$task_desc Use the /wt:decompose skill. Write the result to orchestration-plan.json in the project root."
+
+    # Set environment for the planning agent
+    export SPEC_PATH="$spec_path"
+    [[ -n "$phase_hint" ]] && export PHASE_HINT="$phase_hint"
+
+    # Dispatch Ralph loop
+    info "Dispatching planning agent..."
+    local loop_rc=0
+    (
+        cd "$wt_path" || exit 1
+        wt-loop start "$task_desc" \
+            --max 10 \
+            --model opus \
+            --label "$wt_name" \
+            --change "$wt_name" 2>&1
+    ) || loop_rc=$?
+
+    unset SPEC_PATH PHASE_HINT
+
+    # Check if plan was produced
+    local agent_plan="$wt_path/orchestration-plan.json"
+    if [[ ! -f "$agent_plan" ]]; then
+        log_error "plan_via_agent: no orchestration-plan.json produced (loop rc=$loop_rc)"
+        # Cleanup
+        wt-close "$wt_name" --force 2>/dev/null || true
+        return 1
+    fi
+
+    # Validate the agent-produced plan
+    if ! validate_plan "$agent_plan"; then
+        log_error "plan_via_agent: agent plan failed validation"
+        wt-close "$wt_name" --force 2>/dev/null || true
+        return 1
+    fi
+
+    # Extract plan to project root
+    cp "$agent_plan" "$PLAN_FILENAME"
+    log_info "plan_via_agent: plan extracted from $agent_plan"
+
+    # Add agent-specific metadata
+    local tmp_plan
+    tmp_plan=$(mktemp)
+    jq --arg wt "$wt_name" '. + {planning_worktree: $wt}' "$PLAN_FILENAME" > "$tmp_plan" && mv "$tmp_plan" "$PLAN_FILENAME"
+
+    # Cleanup planning worktree
+    info "Cleaning up planning worktree..."
+    wt-close "$wt_name" --force 2>/dev/null || {
+        log_warn "plan_via_agent: failed to cleanup worktree $wt_name (non-fatal)"
+    }
+
+    success "Agent-based decomposition complete"
+    return 0
 }
 
 cmd_replan() {
@@ -984,7 +1131,7 @@ $completed_file_context"
 
     # Recall orchestrator operational history for replan context
     local replan_memory
-    replan_memory=$(orch_recall "orchestration merge conflict test failure review" 5 "source:orchestrator" || true)
+    replan_memory=$(orch_recall "orchestration merge conflict test failure review" 5 "phase:orchestration" || true)
     if [[ -n "$replan_memory" ]]; then
         export _REPLAN_MEMORY="${replan_memory:0:2000}"
     fi
