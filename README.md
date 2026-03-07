@@ -156,7 +156,7 @@ claude-flow          -       -        Y      Y        -      Y      -
 
 Built and used in production by [ITLine Kft.](https://itline.hu) and [Zengo Kft.](https://zengo.eu)
 
-Thanks to our collaboration partners: [BlackBelt](https://blackbelt.hu) · [AIOrigo](https://aiorigo.hu) · [MKIK (Hungarian Chamber of Commerce)](https://mkik.hu)
+Thanks to our collaboration partners: [BlackBelt](https://blackbelt.hu) · [AIOrigo](https://aiorigo.com) · [MKIK (Hungarian Chamber of Commerce)](https://mkik.hu)
 
 ---
 
