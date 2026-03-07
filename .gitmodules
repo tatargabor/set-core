@@ -1,6 +1,0 @@
-[submodule "plugins/wt-web"]
-	path = plugins/wt-web
-	url = https://github.com/tatargabor/wt-web.git
-[submodule "plugins/wt-spec-capture"]
-	path = plugins/wt-spec-capture
-	url = https://github.com/tatargabor/wt-spec-capture.git
