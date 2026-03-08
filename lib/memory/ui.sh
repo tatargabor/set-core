@@ -134,6 +134,34 @@ cmd_tui() {
     local py
     py=$(find_python)
 
+    # --- Try Textual TUI for live mode (scrollable, full-screen) ---
+    if [[ "$live_mode" == "true" && "$json_output" == "false" ]]; then
+        local tui_script="$_wt_memory_bin_dir/../gui/tui/memory_tui.py"
+        if [[ -f "$tui_script" ]]; then
+            # Find a python that has textual installed
+            local tui_py=""
+            if "$py" -c "import textual" 2>/dev/null; then
+                tui_py="$py"
+            else
+                # Try conda/system fallbacks
+                for candidate in \
+                    "$(command -v python3 2>/dev/null)" \
+                    "$HOME/miniconda3/bin/python3" \
+                    "$HOME/anaconda3/bin/python3" \
+                    "/usr/bin/python3"; do
+                    if [[ -n "$candidate" && -x "$candidate" ]] && "$candidate" -c "import textual" 2>/dev/null; then
+                        tui_py="$candidate"
+                        break
+                    fi
+                done
+            fi
+            if [[ -n "$tui_py" ]]; then
+                exec "$tui_py" "$tui_script" "$_wt_memory_bin_dir/.." "${tui_project:-}" "$since_days"
+            fi
+        fi
+        # Falls through to ANSI if textual not available
+    fi
+
     _tui_render() {
         "$py" -c "
 import sys, json, os, subprocess
@@ -288,7 +316,7 @@ if not wide_mode:
             lines.append(row(f'{DIM}No metrics data yet.{RST}'))
         lines.append(f'{CYN}└{\"─\" * w}┘{RST}')
         if live_mode:
-            lines.append(f'{DIM} Refreshing every $poll_interval s... (Ctrl+C){RST}')
+            lines.append(f' {WHT}q{RST} {DIM}Quit{RST}  {WHT}r{RST} {DIM}Refresh{RST}')
         print('\n'.join(lines))
         sys.exit(0)
 
@@ -416,7 +444,7 @@ if not wide_mode:
     # Footer
     lines.append(f'{CYN}└{\"─\" * w}┘{RST}')
     if live_mode:
-        lines.append(f'{DIM} Refreshing every $poll_interval s... (Ctrl+C){RST}')
+        lines.append(f' {WHT}q{RST} {DIM}Quit{RST}  {WHT}r{RST} {DIM}Refresh{RST}')
     print('\n'.join(lines))
     sys.exit(0)
 
@@ -634,7 +662,7 @@ footer = f'{CYN}└{\"─\" * col_l}┴{\"─\" * (col_c + 2)}┴{\"─\" * col_
 output_lines.append(footer)
 
 if live_mode:
-    output_lines.append(f'{DIM} Refreshing every $poll_interval seconds... (Ctrl+C to exit){RST}')
+    output_lines.append(f' {WHT}q{RST} {DIM}Quit{RST}  {WHT}r{RST} {DIM}Refresh{RST}')
 
 print('\n'.join(output_lines))
 "
@@ -646,9 +674,13 @@ print('\n'.join(output_lines))
     fi
 
     if [[ "$live_mode" == "true" ]]; then
-        trap 'printf "\033[?25h\033[?7h"; exit 0' INT TERM
+        # Save terminal state before modifying
+        local old_stty
+        old_stty=$(stty -g 2>/dev/null || true)
+        trap 'printf "\033[?25h\033[?7h"; [[ -n "$old_stty" ]] && stty "$old_stty" 2>/dev/null || stty sane 2>/dev/null; exit 0' INT TERM
         printf "\033[?25l"   # hide cursor during live mode
         printf "\033[?7l"    # disable line wrap to prevent scroll glitch
+        stty -echo -icanon min 0 time 0 2>/dev/null || true
         local first_render=true
         while true; do
             if $first_render; then
@@ -658,7 +690,21 @@ print('\n'.join(output_lines))
             printf "\033[H"        # cursor home (no clear = no flicker)
             _tui_render
             printf "\033[J"        # erase from cursor to end (clean stale lines)
-            sleep "$poll_interval"
+            # Wait for keypress or timeout (poll_interval seconds)
+            local waited=0
+            while [[ $waited -lt $poll_interval ]]; do
+                local key=""
+                read -rsn1 -t 1 key 2>/dev/null || true
+                if [[ "$key" == "q" || "$key" == "Q" ]]; then
+                    printf "\033[?25h\033[?7h"
+                    [[ -n "$old_stty" ]] && stty "$old_stty" 2>/dev/null
+                    exit 0
+                fi
+                if [[ "$key" == "r" || "$key" == "R" ]]; then
+                    break  # immediate refresh
+                fi
+                waited=$((waited + 1))
+            done
         done
     else
         _tui_render
