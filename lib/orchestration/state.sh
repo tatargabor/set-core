@@ -35,6 +35,14 @@ init_state() {
         completed_at: null,
         tokens_used: 0,
         tokens_used_prev: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_create_tokens: 0,
+        input_tokens_prev: 0,
+        output_tokens_prev: 0,
+        cache_read_tokens_prev: 0,
+        cache_create_tokens_prev: 0,
         test_result: null,
         smoke_result: null,
 
@@ -472,11 +480,15 @@ cmd_status() {
         done
     fi
 
-    # Total tokens
-    local total_tokens
+    # Total tokens (with per-type breakdown)
+    local total_tokens total_in total_out total_cr total_cc
     total_tokens=$(jq '[.changes[].tokens_used] | add // 0' "$STATE_FILENAME")
+    total_in=$(jq '[.changes[].input_tokens // 0] | add // 0' "$STATE_FILENAME")
+    total_out=$(jq '[.changes[].output_tokens // 0] | add // 0' "$STATE_FILENAME")
+    total_cr=$(jq '[.changes[].cache_read_tokens // 0] | add // 0' "$STATE_FILENAME")
+    total_cc=$(jq '[.changes[].cache_create_tokens // 0] | add // 0' "$STATE_FILENAME")
     echo ""
-    echo "  Total tokens: $total_tokens"
+    echo "  Total tokens: $total_tokens (in:$total_in out:$total_out cr:$total_cr cc:$total_cc)"
 
     # Aggregate gate costs
     local agg_gate_ms agg_retry_tok agg_retry_cnt agg_gated

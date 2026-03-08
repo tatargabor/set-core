@@ -79,6 +79,10 @@ init_loop_state() {
   "stall_threshold": $stall_threshold,
   "iteration_timeout_min": $iteration_timeout,
   "total_tokens": 0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "total_cache_read": 0,
+  "total_cache_create": 0,
   "token_budget": 0,
   "ff_attempts": 0,
   "max_idle_iterations": 3,
@@ -119,6 +123,10 @@ add_iteration() {
     local log_file="${12:-}"
     local resumed="${13:-false}"
     local ff_recovered="${14:-false}"
+    local input_tokens="${15:-0}"
+    local output_tokens="${16:-0}"
+    local cache_read_tokens="${17:-0}"
+    local cache_create_tokens="${18:-0}"
 
     local tmp
     tmp=$(mktemp)
@@ -135,6 +143,10 @@ add_iteration() {
        --arg log_file "$log_file" \
        --argjson resumed "$resumed" \
        --argjson ff_recovered "$ff_recovered" \
+       --argjson in_tok "$input_tokens" \
+       --argjson out_tok "$output_tokens" \
+       --argjson cr_tok "$cache_read_tokens" \
+       --argjson cc_tok "$cache_create_tokens" \
        '.iterations += [{
          "n": $n,
          "started": $started,
@@ -142,6 +154,10 @@ add_iteration() {
          "done_check": $done,
          "commits": $commits,
          "tokens_used": $tokens,
+         "input_tokens": $in_tok,
+         "output_tokens": $out_tok,
+         "cache_read_tokens": $cr_tok,
+         "cache_create_tokens": $cc_tok,
          "timed_out": $timed_out,
          "tokens_estimated": $tokens_estimated,
          "no_op": $no_op,
@@ -153,9 +169,11 @@ add_iteration() {
 }
 
 # Get current token usage from wt-usage
+# Returns JSON: {"input_tokens":N,"output_tokens":N,"cache_read_tokens":N,"cache_create_tokens":N,"total_tokens":N}
 get_current_tokens() {
     local since="${1:-}"
     local usage_json
+    local zero_json='{"input_tokens":0,"output_tokens":0,"cache_read_tokens":0,"cache_create_tokens":0,"total_tokens":0}'
 
     # Derive project dir from $PWD: replace / with -
     # Claude's project dirs keep the leading dash (e.g. -home-tg-code-project)
@@ -170,19 +188,25 @@ get_current_tokens() {
     fi
 
     if [[ -n "$since" ]]; then
-        usage_json=$("$SCRIPT_DIR/wt-usage" --since "$since" $project_dir_flag --format json 2>/dev/null || echo '{"total_tokens": 0}')
+        usage_json=$("$SCRIPT_DIR/wt-usage" --since "$since" $project_dir_flag --format json 2>/dev/null || echo "$zero_json")
     else
-        usage_json=$("$SCRIPT_DIR/wt-usage" $project_dir_flag --format json 2>/dev/null || echo '{"total_tokens": 0}')
+        usage_json=$("$SCRIPT_DIR/wt-usage" $project_dir_flag --format json 2>/dev/null || echo "$zero_json")
     fi
 
-    # Extract input + output tokens (excludes cache_read/cache_creation which inflate counts)
-    local tokens
-    tokens=$(echo "$usage_json" | jq -r '(.input_tokens // 0) + (.output_tokens // 0)' 2>/dev/null)
-    if [[ "$tokens" =~ ^[0-9]+$ ]]; then
-        echo "$tokens"
-    else
-        echo "0"
-    fi
+    # Extract all token types; total = input + output (excludes cache which inflates counts)
+    echo "$usage_json" | jq -c '{
+        input_tokens: (.input_tokens // 0),
+        output_tokens: (.output_tokens // 0),
+        cache_read_tokens: (.cache_read_tokens // 0),
+        cache_create_tokens: (.cache_creation_tokens // 0),
+        total_tokens: ((.input_tokens // 0) + (.output_tokens // 0))
+    }' 2>/dev/null || echo "$zero_json"
+}
+
+# Helper: extract a field from get_current_tokens() JSON
+# Usage: tokens_total=$(extract_token_field "$json" "total_tokens")
+extract_token_field() {
+    echo "$1" | jq -r ".$2 // 0" 2>/dev/null || echo "0"
 }
 
 # Estimate tokens from session file size growth

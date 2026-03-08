@@ -157,9 +157,14 @@ cmd_run() {
         current_iter_started="$iter_start"
         current_iter_num="$iteration"
 
-        # Record tokens before iteration for tracking
-        local tokens_before
-        tokens_before=$(get_current_tokens "$start_time")
+        # Record tokens before iteration for tracking (JSON with per-type breakdown)
+        local tokens_before_json tokens_before in_before out_before cr_before cc_before
+        tokens_before_json=$(get_current_tokens "$start_time")
+        tokens_before=$(extract_token_field "$tokens_before_json" "total_tokens")
+        in_before=$(extract_token_field "$tokens_before_json" "input_tokens")
+        out_before=$(extract_token_field "$tokens_before_json" "output_tokens")
+        cr_before=$(extract_token_field "$tokens_before_json" "cache_read_tokens")
+        cc_before=$(extract_token_field "$tokens_before_json" "cache_create_tokens")
 
         # Build prompt
         local prompt
@@ -363,11 +368,23 @@ except:
             rm -f "$reflection_file"
         fi
 
-        # Calculate tokens used this iteration
-        local tokens_after tokens_used tokens_estimated=false
-        tokens_after=$(get_current_tokens "$start_time")
+        # Calculate tokens used this iteration (per-type breakdown)
+        local tokens_after_json tokens_after tokens_used tokens_estimated=false
+        local in_after out_after cr_after cc_after
+        local in_used=0 out_used=0 cr_used=0 cc_used=0
+        tokens_after_json=$(get_current_tokens "$start_time")
+        tokens_after=$(extract_token_field "$tokens_after_json" "total_tokens")
+        in_after=$(extract_token_field "$tokens_after_json" "input_tokens")
+        out_after=$(extract_token_field "$tokens_after_json" "output_tokens")
+        cr_after=$(extract_token_field "$tokens_after_json" "cache_read_tokens")
+        cc_after=$(extract_token_field "$tokens_after_json" "cache_create_tokens")
+
         tokens_used=$((tokens_after - tokens_before))
         [[ $tokens_used -lt 0 ]] && tokens_used=0
+        in_used=$((in_after - in_before)); [[ $in_used -lt 0 ]] && in_used=0
+        out_used=$((out_after - out_before)); [[ $out_used -lt 0 ]] && out_used=0
+        cr_used=$((cr_after - cr_before)); [[ $cr_used -lt 0 ]] && cr_used=0
+        cc_used=$((cc_after - cc_before)); [[ $cc_used -lt 0 ]] && cc_used=0
 
         # Fallback: if tokens is 0 after claude ran, estimate from session file sizes
         if [[ $tokens_used -eq 0 && $claude_exit_code -ne 1 ]]; then
@@ -379,6 +396,8 @@ except:
                 if [[ $tokens_used -gt 0 ]]; then
                     tokens_estimated=true
                     tokens_after=$((tokens_before + tokens_used))
+                    # Per-type unknown for estimation — leave at 0
+                    in_used=0; out_used=0; cr_used=0; cc_used=0
                     echo "📊 Iteration tokens: ~$tokens_used (estimated from file sizes)"
                 else
                     echo "📊 Iteration tokens: 0"
@@ -388,7 +407,7 @@ except:
             fi
         else
             echo ""
-            echo "📊 Iteration tokens: $tokens_used (total: $tokens_after)"
+            echo "📊 Iteration tokens: $tokens_used (in:$in_used out:$out_used cr:$cr_used cc:$cc_used)"
         fi
 
         # Post-iteration log summary
@@ -424,7 +443,7 @@ except:
                     # Record this iteration before exiting
                     local idle_iter_end
                     idle_iter_end=$(date -Iseconds)
-                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false"
+                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false" "$in_used" "$out_used" "$cr_used" "$cc_used"
                     exit 0
                 fi
             else
@@ -595,14 +614,32 @@ except:
                         stall_count=0
                     fi
 
-                    # Update iter_end and tokens after chain
+                    # Update iter_end and tokens after chain (per-type)
                     iter_end=$(date -Iseconds)
-                    local chain_tokens_after
-                    chain_tokens_after=$(get_current_tokens "$start_time")
+                    local chain_tokens_after_json chain_tokens_after
+                    chain_tokens_after_json=$(get_current_tokens "$start_time")
+                    chain_tokens_after=$(extract_token_field "$chain_tokens_after_json" "total_tokens")
                     local chain_tokens_used=$((chain_tokens_after - tokens_after))
                     [[ $chain_tokens_used -lt 0 ]] && chain_tokens_used=0
                     tokens_used=$((tokens_used + chain_tokens_used))
+
+                    # Accumulate per-type deltas from chain
+                    local chain_in chain_out chain_cr chain_cc
+                    chain_in=$(extract_token_field "$chain_tokens_after_json" "input_tokens")
+                    chain_out=$(extract_token_field "$chain_tokens_after_json" "output_tokens")
+                    chain_cr=$(extract_token_field "$chain_tokens_after_json" "cache_read_tokens")
+                    chain_cc=$(extract_token_field "$chain_tokens_after_json" "cache_create_tokens")
+                    local chain_in_d=$((chain_in - in_after)); [[ $chain_in_d -lt 0 ]] && chain_in_d=0
+                    local chain_out_d=$((chain_out - out_after)); [[ $chain_out_d -lt 0 ]] && chain_out_d=0
+                    local chain_cr_d=$((chain_cr - cr_after)); [[ $chain_cr_d -lt 0 ]] && chain_cr_d=0
+                    local chain_cc_d=$((chain_cc - cc_after)); [[ $chain_cc_d -lt 0 ]] && chain_cc_d=0
+                    in_used=$((in_used + chain_in_d))
+                    out_used=$((out_used + chain_out_d))
+                    cr_used=$((cr_used + chain_cr_d))
+                    cc_used=$((cc_used + chain_cc_d))
+
                     tokens_after=$chain_tokens_after
+                    in_after=$chain_in; out_after=$chain_out; cr_after=$chain_cr; cc_after=$chain_cc
                     echo "🔗 Chain complete (exit: $chain_exit, +${chain_tokens_used} tokens)"
                 fi
             fi
@@ -632,7 +669,7 @@ except:
         fi
 
         # Add iteration to state with token tracking
-        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed" "$iter_ff_recovered"
+        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed" "$iter_ff_recovered" "$in_used" "$out_used" "$cr_used" "$cc_used"
 
         # Handle ff exhaustion (after recording iteration)
         if $iter_ff_exhausted; then
@@ -644,8 +681,12 @@ except:
         fi
         current_iter_started=""  # Clear so trap doesn't double-record
 
-        # Update total tokens in state
+        # Update total tokens in state (all types)
         update_loop_state "$state_file" "total_tokens" "$tokens_after"
+        update_loop_state "$state_file" "total_input_tokens" "$in_after"
+        update_loop_state "$state_file" "total_output_tokens" "$out_after"
+        update_loop_state "$state_file" "total_cache_read" "$cr_after"
+        update_loop_state "$state_file" "total_cache_create" "$cc_after"
 
         # Token budget enforcement → waiting:budget human checkpoint
         if [[ "$token_budget" -gt 0 && "$tokens_after" -gt "$token_budget" ]] 2>/dev/null; then

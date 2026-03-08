@@ -227,6 +227,14 @@ dispatch_change() {
     # resume_change() intentionally preserves cumulative tokens; only dispatch resets.
     update_change_field "$change_name" "tokens_used_prev" "0"
     update_change_field "$change_name" "tokens_used" "0"
+    update_change_field "$change_name" "input_tokens" "0"
+    update_change_field "$change_name" "output_tokens" "0"
+    update_change_field "$change_name" "cache_read_tokens" "0"
+    update_change_field "$change_name" "cache_create_tokens" "0"
+    update_change_field "$change_name" "input_tokens_prev" "0"
+    update_change_field "$change_name" "output_tokens_prev" "0"
+    update_change_field "$change_name" "cache_read_tokens_prev" "0"
+    update_change_field "$change_name" "cache_create_tokens_prev" "0"
 
     # Create worktree
     local project_path
@@ -552,6 +560,16 @@ resume_change() {
     local cumulative_tokens
     cumulative_tokens=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .tokens_used // 0' "$STATE_FILENAME")
     update_change_field "$change_name" "tokens_used_prev" "$cumulative_tokens"
+    # Snapshot per-type tokens for retry accumulation
+    local cum_in cum_out cum_cr cum_cc
+    cum_in=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .input_tokens // 0' "$STATE_FILENAME")
+    cum_out=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .output_tokens // 0' "$STATE_FILENAME")
+    cum_cr=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .cache_read_tokens // 0' "$STATE_FILENAME")
+    cum_cc=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .cache_create_tokens // 0' "$STATE_FILENAME")
+    update_change_field "$change_name" "input_tokens_prev" "$cum_in"
+    update_change_field "$change_name" "output_tokens_prev" "$cum_out"
+    update_change_field "$change_name" "cache_read_tokens_prev" "$cum_cr"
+    update_change_field "$change_name" "cache_create_tokens_prev" "$cum_cc"
 
     local scope
     scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // empty' "$STATE_FILENAME")

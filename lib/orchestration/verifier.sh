@@ -405,8 +405,12 @@ poll_change() {
 
     local ralph_status
     ralph_status=$(jq -r '.status // "unknown"' "$loop_state" 2>/dev/null)
-    local tokens
+    local tokens in_tok out_tok cr_tok cc_tok
     tokens=$(jq -r '.total_tokens // 0' "$loop_state" 2>/dev/null)
+    in_tok=$(jq -r '.total_input_tokens // 0' "$loop_state" 2>/dev/null)
+    out_tok=$(jq -r '.total_output_tokens // 0' "$loop_state" 2>/dev/null)
+    cr_tok=$(jq -r '.total_cache_read // 0' "$loop_state" 2>/dev/null)
+    cc_tok=$(jq -r '.total_cache_create // 0' "$loop_state" 2>/dev/null)
 
     # If loop-state hasn't recorded tokens yet (mid-iteration), query wt-usage directly
     if [[ "$tokens" -eq 0 && "$ralph_status" == "running" ]]; then
@@ -416,16 +420,29 @@ poll_change() {
         # (which may include tokens from previous killed/restarted loops)
         loop_started=$(jq -r '.started_at // empty' "$loop_state" 2>/dev/null)
         if [[ -n "$loop_started" && -d "$HOME/.claude/projects/$derived_dir" ]]; then
-            tokens=$("$SCRIPT_DIR/wt-usage" --since "$loop_started" --project-dir="$derived_dir" --format json 2>/dev/null \
-                | jq -r '.total_tokens // 0' 2>/dev/null) || tokens=0
+            local usage_json
+            usage_json=$("$SCRIPT_DIR/wt-usage" --since "$loop_started" --project-dir="$derived_dir" --format json 2>/dev/null || echo '{}')
+            tokens=$(echo "$usage_json" | jq -r '((.input_tokens // 0) + (.output_tokens // 0))' 2>/dev/null) || tokens=0
+            in_tok=$(echo "$usage_json" | jq -r '.input_tokens // 0' 2>/dev/null) || in_tok=0
+            out_tok=$(echo "$usage_json" | jq -r '.output_tokens // 0' 2>/dev/null) || out_tok=0
+            cr_tok=$(echo "$usage_json" | jq -r '.cache_read_tokens // 0' 2>/dev/null) || cr_tok=0
+            cc_tok=$(echo "$usage_json" | jq -r '.cache_creation_tokens // 0' 2>/dev/null) || cc_tok=0
             [[ ! "$tokens" =~ ^[0-9]+$ ]] && tokens=0
         fi
     fi
 
     # Add accumulated tokens from previous loop(s) so retries don't reset the counter
-    local tokens_prev
+    local tokens_prev in_prev out_prev cr_prev cc_prev
     tokens_prev=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .tokens_used_prev // 0' "$STATE_FILENAME")
+    in_prev=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .input_tokens_prev // 0' "$STATE_FILENAME")
+    out_prev=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .output_tokens_prev // 0' "$STATE_FILENAME")
+    cr_prev=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .cache_read_tokens_prev // 0' "$STATE_FILENAME")
+    cc_prev=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .cache_create_tokens_prev // 0' "$STATE_FILENAME")
     update_change_field "$change_name" "tokens_used" "$((tokens_prev + tokens))"
+    update_change_field "$change_name" "input_tokens" "$((in_prev + in_tok))"
+    update_change_field "$change_name" "output_tokens" "$((out_prev + out_tok))"
+    update_change_field "$change_name" "cache_read_tokens" "$((cr_prev + cr_tok))"
+    update_change_field "$change_name" "cache_create_tokens" "$((cc_prev + cc_tok))"
 
     case "$ralph_status" in
         done)
