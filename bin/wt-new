@@ -186,6 +186,10 @@ main() {
         timeout 10 git -C "$project_path" fetch origin 2>/dev/null || warn "Fetch timed out or failed, continuing..."
     fi
 
+    # Prune stale worktree references (e.g., from a failed previous attempt
+    # where the branch was created but the worktree directory was removed)
+    git -C "$project_path" worktree prune 2>/dev/null
+
     # Check if branch exists locally
     local local_branch_exists=false
     if git -C "$project_path" show-ref --verify --quiet "refs/heads/$branch_name" 2>/dev/null; then
