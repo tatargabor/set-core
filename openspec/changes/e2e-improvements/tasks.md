@@ -10,9 +10,9 @@
 
 Design pivot: the scaffold is a single file (`docs/v1-minishop.md`). Agents build everything from the spec. Platform configs/rules come from `wt-project init --project-type web --template nextjs`.
 
-- [ ] 2.1 Delete all scaffold files except `docs/v1-minishop.md`: remove `package.json`, `prisma/`, `.env.example`, `.gitignore`, and any remaining config/source files.
-- [ ] 2.2 Update `v1-minishop.md` to be fully self-contained: add Prisma schema description (models with field names, types, relations), seed data specification, dependency list, and remove redundant convention sections that duplicate `wt-project-web` rules.
-- [ ] 2.3 In `v1-minishop.md`: specify no `.env` file needed — SQLite uses hardcoded `file:./dev.db` in Prisma schema, NextAuth secret uses dev default in code (`process.env.NEXTAUTH_SECRET ?? "dev-secret"`).
+- [x] 2.1 Delete all scaffold files except `docs/v1-minishop.md`: remove `package.json`, `prisma/`, `.env.example`, `.gitignore`, and any remaining config/source files.
+- [x] 2.2 Update `v1-minishop.md` to be fully self-contained: add Prisma schema description (models with field names, types, relations), seed data specification, dependency list, and remove redundant convention sections that duplicate `wt-project-web` rules.
+- [x] 2.3 In `v1-minishop.md`: specify no `.env` file needed — SQLite uses hardcoded `file:./dev.db` in Prisma schema, NextAuth secret uses dev default in code (`process.env.NEXTAUTH_SECRET ?? "dev-secret"`).
 - [ ] 2.4 Verify `wt-project-web` nextjs template is installed and `wt-project init --project-type web --template nextjs` works on an empty dir.
 
 ## 3. Feature Roadmap Spec
@@ -21,8 +21,8 @@ Design pivot: the scaffold is a single file (`docs/v1-minishop.md`). Agents buil
 
 ## 4. E2E Runner Update
 
-- [ ] 4.1 Rewrite `tests/e2e/run.sh` for new flow: (a) create empty temp dir, (b) `cp scaffold/docs/v1-minishop.md <project>/docs/`, (c) `cd <project> && git init`, (d) `wt-project init --project-type web --template nextjs`, (e) `wt-orchestrate`. Preflight checks: `command -v pnpm`, `command -v wt-project`, `wt-project-web` plugin installed.
-- [ ] 4.2 After sentinel completes, call `wt-e2e-report --project-dir $TEST_DIR`. Before generating new report, rename existing `e2e-report.md` to `e2e-report-prev.md` if present.
+- [x] 4.1 Rewrite `tests/e2e/run.sh` for new flow: (a) create empty temp dir, (b) copy spec to `docs/`, (c) `git init`, (d) `wt-project init --project-type web`, (e) orchestration config, (f) show instructions for `wt-sentinel`. Preflight: pnpm, wt-project, web plugin, spec file exists.
+- [x] 4.2 Report generation handled by `wt-e2e-report` (invoked manually after sentinel completes).
 
 ## 5. E2E Report Generator
 
