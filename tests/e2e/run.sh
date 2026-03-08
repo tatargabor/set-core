@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # MiniShop E2E Test Runner
 # Sets up a test project for wt-tools end-to-end testing.
+# The scaffold is a single file (docs/v1-minishop.md). Agents build everything from the spec.
 #
 # Usage:
 #   ./tests/e2e/run.sh              # Use default dir ($TMPDIR/minishop-e2e or /tmp/minishop-e2e)
@@ -9,7 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCAFFOLD_DIR="$SCRIPT_DIR/scaffold"
+SPEC_FILE="$SCRIPT_DIR/scaffold/docs/v1-minishop.md"
 DEFAULT_DIR="${TMPDIR:-/tmp}/minishop-e2e"
 TEST_DIR="${1:-$DEFAULT_DIR}"
 PROJECT_NAME="minishop-e2e"
@@ -42,6 +43,8 @@ preflight() {
     if ! wt-project list-types 2>/dev/null | grep -q "web"; then
         die "wt-project-web plugin not installed (wt-project list-types does not show 'web')"
     fi
+
+    [[ -f "$SPEC_FILE" ]] || die "Spec file not found: $SPEC_FILE"
 
     success "All prerequisites met"
 }
@@ -91,61 +94,31 @@ check_existing() {
 # ── Main initialization ──
 
 init_project() {
-    step "Scaffold copy"
-    mkdir -p "$TEST_DIR"
-    cp -r "$SCAFFOLD_DIR"/. "$TEST_DIR/"
-    # Create .env from example
-    if [[ -f "$TEST_DIR/.env.example" && ! -f "$TEST_DIR/.env" ]]; then
-        cp "$TEST_DIR/.env.example" "$TEST_DIR/.env"
-    fi
-    # Inject Resend email credentials from wt-tools .env (for E2E email reports)
-    local wt_env="$SCRIPT_DIR/../../.env"
-    if [[ -f "$wt_env" ]]; then
-        local resend_key resend_from resend_to
-        resend_key=$(grep '^RESEND_API_KEY=' "$wt_env" | cut -d= -f2-)
-        resend_from=$(grep '^RESEND_FROM=' "$wt_env" | cut -d= -f2-)
-        resend_to=$(grep '^RESEND_TO=' "$wt_env" | cut -d= -f2-)
-        if [[ -n "$resend_key" && -n "$resend_to" ]]; then
-            {
-                echo ""
-                echo "# Email notifications (injected from wt-tools)"
-                echo "RESEND_API_KEY=$resend_key"
-                [[ -n "$resend_from" ]] && echo "RESEND_FROM=$resend_from"
-                echo "RESEND_TO=$resend_to"
-            } >> "$TEST_DIR/.env"
-            success "Injected Resend email config into .env"
-        fi
-    fi
-    success "Scaffold copied to $TEST_DIR"
+    step "Copy spec"
+    mkdir -p "$TEST_DIR/docs"
+    cp "$SPEC_FILE" "$TEST_DIR/docs/"
+    success "Spec copied to $TEST_DIR/docs/v1-minishop.md"
 
     cd "$TEST_DIR"
 
     step "Git init"
     git init
     git add -A
-    git commit -m "initial: minishop scaffold"
-    git tag v0-scaffold
-    success "Git initialized, tagged v0-scaffold"
+    git commit -m "initial: minishop spec"
+    git tag v0-spec
+    success "Git initialized, tagged v0-spec"
 
     step "wt-project init"
     handle_name_conflict
-    # wt-project init may return non-zero due to deploy warnings (MCP, legacy files)
-    # so we check for .claude/ directory instead of exit code
     wt-project init --name "$PROJECT_NAME" --project-type web || true
 
     if [[ ! -d ".claude" ]]; then
         die ".claude/ directory not created by wt-project init"
     fi
-    success "wt-project initialized"
+    success "wt-project initialized (configs, rules, CLAUDE.md deployed)"
 
-    # Create orchestration config BEFORE the v1-initialized commit
     step "Orchestration config"
     mkdir -p wt/orchestration
-    # Determine notification channel based on whether Resend is configured
-    local notif_channel="desktop"
-    if [[ -f ".env" ]] && grep -q '^RESEND_API_KEY=' ".env" 2>/dev/null; then
-        notif_channel="desktop+email"
-    fi
     cat > wt/orchestration/config.yaml <<YAML
 # Orchestration config for MiniShop E2E test
 smoke_command: pnpm test
@@ -155,37 +128,16 @@ max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
-notification: $notif_channel
 YAML
     success "Created wt/orchestration/config.yaml"
 
     git add -A
     git commit -m "chore: wt-project init + orchestration config"
-    git tag v1-initialized
-    success "Tagged v1-initialized"
-
-    step "pnpm install"
-    pnpm install || die "pnpm install failed"
-
-    step "Prisma setup"
-    pnpm prisma generate || die "prisma generate failed"
-    pnpm prisma migrate dev --name init || die "prisma migrate failed"
-    pnpm prisma db seed || die "prisma seed failed"
-    success "Prisma: generated, migrated, seeded"
-
-    step "Playwright install"
-    pnpm exec playwright install chromium --with-deps || warn "Playwright install failed (non-fatal)"
-
-    step "pnpm test (smoke check)"
-    pnpm test || die "pnpm test failed — scaffold tests broken"
-
-    git add -A
-    git commit -m "chore: pnpm install + prisma init"
-    git tag v2-ready
-    success "Tagged v2-ready"
+    git tag v1-ready
+    success "Tagged v1-ready"
 }
 
-# ── Cleanup info ──
+# ── Completion info ──
 
 show_completion() {
     step "Ready!"
