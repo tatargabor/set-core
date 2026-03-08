@@ -6,13 +6,19 @@
 
 | What | Status |
 |---|---|
-| `package.json` with all dependencies | Done |
-| Prisma schema (Product, User, Order, OrderItem, CartItem) | Done |
-| Prisma seed (6 products, Hungarian names, HUF prices) | Done |
-| Tailwind + PostCSS + TypeScript config | Done |
-| `.env` with DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL | Done |
+| `package.json` with all dependencies | Done (scaffold) |
+| Prisma schema (Product, User, Order, OrderItem, CartItem) | Done (scaffold) |
+| Prisma seed (6 products, Hungarian names, HUF prices) | Done (scaffold) |
+| `.env.example` with DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL | Done (scaffold) |
+| Tailwind + PostCSS + TypeScript + Next.js config | Deployed by `wt-project init --project-type web` |
+| `components.json` (shadcn/ui) | Deployed by `wt-project init --project-type web` |
 | Root layout (`src/app/layout.tsx`) | **Not started** — agents create |
 | Pages, components, actions | **Not started** — agents create |
+
+**Setup (done by `run.sh` before orchestration):**
+1. `cp .env.example .env`
+2. `pnpm install`
+3. `pnpm prisma generate && pnpm prisma migrate dev --name init && pnpm prisma db seed`
 
 **Important:** There is NO app code in the scaffold. The agents must create everything under `src/` from scratch: root layout, all pages, all components, all Server Actions, all tests.
 
@@ -51,6 +57,7 @@ Build the product catalog — the storefront landing page.
 - `/products` shows all 6 seeded products in a Card grid
 - `/products/[id]` shows single product detail
 - Price displayed as `XX XXX Ft` (e.g., `349 990 Ft`)
+- Stock=0 products: badge shows "Out of Stock", "Add to Cart" button disabled
 - Responsive: 1 col on mobile, 2 on tablet, 3 on desktop
 - Navigation header visible on all pages
 - `pnpm test` passes
@@ -67,7 +74,7 @@ Server-side shopping cart with anonymous sessions (no auth required).
 
 - `src/lib/session.ts` — Helper to get/set session ID from cookies. Use `cookies()` from `next/headers`. If no `session_id` cookie, generate UUID with `crypto.randomUUID()` and set it as httpOnly cookie.
 - `src/actions/cart.ts` — Server Actions:
-  - `addToCart(productId: number, quantity: number)` — upsert CartItem (if exists, increment quantity). Validate product exists and has stock.
+  - `addToCart(productId: number, quantity: number)` — upsert CartItem (if exists, increment quantity). Validate product exists and has stock > 0. Return error if out of stock.
   - `removeFromCart(cartItemId: number)` — delete CartItem
   - `updateCartQuantity(cartItemId: number, quantity: number)` — update quantity, delete if quantity <= 0
   - All actions call `revalidatePath("/cart")`
@@ -99,7 +106,7 @@ Checkout: convert cart to order, manage stock, show order history.
 **Create these files:**
 
 - `src/actions/orders.ts` — Server Actions:
-  - `placeOrder()` — Transactional: get session cart items → create Order + OrderItems (snapshot current prices) → decrement product stock → clear cart. Return error if cart empty or insufficient stock.
+  - `placeOrder()` — Transactional (`prisma.$transaction`): get session cart items → verify each product has sufficient stock → create Order + OrderItems (snapshot current prices) → decrement product stock → clear cart. Return error if cart empty or any product has insufficient stock. The stock check and decrement must be inside the same transaction to prevent race conditions.
   - Calls `revalidatePath("/orders")` and `revalidatePath("/products")`
 - `src/app/orders/page.tsx` — Order history page. Shows orders for current session: order ID, date, status badge, total. Link to detail.
 - `src/app/orders/[id]/page.tsx` — Order detail: line items with product name, quantity, price, subtotal. Order total and status.
