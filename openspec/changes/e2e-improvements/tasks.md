@@ -6,14 +6,14 @@
 - [x] 1.4 Verify `get_current_tokens()` fallback: when `wt-usage` is unavailable, the existing `estimate_tokens_from_files()` in `lib/loop/state.sh` should return a non-zero estimate. Confirm this works or fix if broken.
 - [x] 1.5 Verify: run `wt-usage --since <time> --project-dir <name> --format json` for a known project dir, confirm it only counts that project's tokens.
 
-## 2. Next.js Scaffold — Minimal (agents build everything from spec)
+## 2. Scaffold = Spec Only
 
-- [x] 2.1 Create `tests/e2e/scaffold/package.json` with Next.js 14+, Prisma, shadcn/ui deps, Tailwind, next-auth@5 (Auth.js), bcryptjs, zod, react-hook-form, @tanstack/react-table. Dev deps: TypeScript, @types/*, jest, @testing-library/react, playwright. Scripts: dev, build, start, test, test:e2e, prisma generate/migrate/seed.
-- [x] 2.2 Create `tests/e2e/scaffold/prisma/schema.prisma` with models: Product, User, Order, OrderItem, CartItem. SQLite provider.
-- [x] 2.3 Create `tests/e2e/scaffold/prisma/seed.ts` — seed 6 products with Hungarian names, prices in HUF.
-- [x] 2.4 Config files (tsconfig.json, tailwind.config.ts, postcss.config.mjs, next.config.js, components.json) moved to `wt-project-web` nextjs template — deployed via `wt-project init --project-type web --template nextjs`. Manifest updated.
-- ~~2.5-2.9, 2.11-2.12~~ N/A — design pivot: agents build the entire web app from the spec. No pre-built layout, pages, components, CLAUDE.md, or jest config in scaffold.
-- [x] 2.10 Create `.env.example`.
+Design pivot: the scaffold is a single file (`docs/v1-minishop.md`). Agents build everything from the spec. Platform configs/rules come from `wt-project init --project-type web --template nextjs`.
+
+- [ ] 2.1 Delete all scaffold files except `docs/v1-minishop.md`: remove `package.json`, `prisma/`, `.env.example`, `.gitignore`, and any remaining config/source files.
+- [ ] 2.2 Update `v1-minishop.md` to be fully self-contained: add Prisma schema description (models with field names, types, relations), seed data specification, dependency list, and remove redundant convention sections that duplicate `wt-project-web` rules.
+- [ ] 2.3 In `v1-minishop.md`: specify no `.env` file needed — SQLite uses hardcoded `file:./dev.db` in Prisma schema, NextAuth secret uses dev default in code (`process.env.NEXTAUTH_SECRET ?? "dev-secret"`).
+- [ ] 2.4 Verify `wt-project-web` nextjs template is installed and `wt-project init --project-type web --template nextjs` works on an empty dir.
 
 ## 3. Feature Roadmap Spec
 
@@ -21,8 +21,8 @@
 
 ## 4. E2E Runner Update
 
-- [x] 4.1 Update `tests/e2e/run.sh`: replace `command -v npm` preflight with `command -v pnpm`, replace all `npm` calls with `pnpm`, add `pnpm prisma migrate dev --name init` and `pnpm prisma db seed` steps, add `pnpm exec playwright install chromium --with-deps` step. Update embedded `config.yaml` template: `smoke_command: pnpm test`, `test_command: pnpm test`.
-- [x] 4.2 Update run.sh: after sentinel completes, call `wt-e2e-report --project-dir $TEST_DIR`. Before generating new report, rename existing `e2e-report.md` to `e2e-report-prev.md` if present.
+- [ ] 4.1 Rewrite `tests/e2e/run.sh` for new flow: (a) create empty temp dir, (b) `cp scaffold/docs/v1-minishop.md <project>/docs/`, (c) `cd <project> && git init`, (d) `wt-project init --project-type web --template nextjs`, (e) `wt-orchestrate`. Preflight checks: `command -v pnpm`, `command -v wt-project`, `wt-project-web` plugin installed.
+- [ ] 4.2 After sentinel completes, call `wt-e2e-report --project-dir $TEST_DIR`. Before generating new report, rename existing `e2e-report.md` to `e2e-report-prev.md` if present.
 
 ## 5. E2E Report Generator
 
@@ -33,5 +33,6 @@
 
 ## 6. Validation
 
-- [ ] 6.1 Run `tests/e2e/run.sh` on a fresh dir. Confirm: scaffold inits correctly (pnpm install, prisma migrate, prisma seed, `pnpm test` passes, health endpoint responds).
-- [ ] 6.2 Run full E2E with sentinel. Confirm: 6 changes orchestrated, per-change tokens are realistic (no cross-project inflation), screenshots captured, report generated.
+- [ ] 6.1 Verify `wt-project init --project-type web --template nextjs` on empty dir: configs deployed, rules in `.claude/rules/`, CLAUDE.md created.
+- [ ] 6.2 Run `tests/e2e/run.sh` on a fresh dir. Confirm: project init works, orchestration starts, agents can read spec and create project files.
+- [ ] 6.3 Run full E2E with sentinel. Confirm: 6 changes orchestrated, per-change tokens are realistic (no cross-project inflation), screenshots captured, report generated.
