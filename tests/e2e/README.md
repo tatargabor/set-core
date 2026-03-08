@@ -14,7 +14,7 @@ command -v wt-sentinel   # wt-tools orchestration sentinel
 wt-project list-types    # should show "web"
 
 # If not installed:
-cd /home/tg/code2/wt-project-web && pip install -e .
+pip install -e /path/to/wt-project-web
 ```
 
 ## Run
@@ -30,7 +30,7 @@ wt-sentinel --spec docs/v1-minishop.md
 ```
 
 The sentinel will:
-- Plan 6 changes from the spec (products-page, cart-feature, orders-checkout, admin-auth, admin-products, playwright-e2e)
+- Plan changes from the spec (the planner may add a bootstrap change before the 6 feature changes)
 - Dispatch agents in parallel (max 2)
 - Manage merges, smoke tests, and checkpoints
 
@@ -50,7 +50,7 @@ wt-e2e-report --project-dir .
 
 Check `e2e-report.md` and the verification checklist at the end of `docs/v1-minishop.md`. Key items:
 
-- 6 changes all completed
+- All changes completed
 - `pnpm test` passes
 - `pnpm build` succeeds
 - Products page shows 6 products with EUR prices
@@ -69,7 +69,7 @@ wt-project remove minishop-e2e
 
 | Problem | Fix |
 |---|---|
-| `wt-project-web plugin not installed` | `cd /home/tg/code2/wt-project-web && pip install -e .` |
+| `wt-project-web plugin not installed` | `pip install -e /path/to/wt-project-web` |
 | `run.sh` says existing project detected | Delete the test dir or use a different path |
 | Agent can't find spec | Check `docs/v1-minishop.md` exists in the test project |
 | Port 3000 in use | Kill existing process: `lsof -ti:3000 \| xargs kill` |
