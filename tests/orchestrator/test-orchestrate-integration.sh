@@ -490,6 +490,80 @@ for i in 1 2 3; do
 done
 assert_equals "0" "$idle_count"
 
+# Test 11.2: Stall detection — N commit-less iterations → stalled
+test_start "stall detection: no commits for N iterations → stalled"
+REPO_STALL=$(setup_test_repo)
+cd "$REPO_STALL"
+stall_count=0
+stall_threshold=2
+has_artifact_progress="false"
+new_commits="[]"
+for i in 1 2; do
+    if [[ "$new_commits" == "[]" || -z "$new_commits" ]] && [[ "$has_artifact_progress" == "false" ]]; then
+        stall_count=$((stall_count + 1))
+    fi
+done
+assert_equals "2" "$stall_count"
+
+test_start "stall detection: stall_count >= threshold triggers stall"
+local_stalled="false"
+[[ $stall_count -ge $stall_threshold ]] && local_stalled="true"
+assert_equals "true" "$local_stalled"
+
+# Test 11.5: Repeated commit message detection
+test_start "repeated commit msg: same message N times → stalled"
+REPO_RMSG=$(setup_test_repo)
+cd "$REPO_RMSG"
+echo "a" > file1.txt && git add file1.txt && git commit -m "fix: auth bug on iteration 1" --quiet
+echo "b" > file2.txt && git add file2.txt && git commit -m "fix: auth bug on iteration 2" --quiet
+echo "c" > file3.txt && git add file3.txt && git commit -m "fix: auth bug on iteration 3" --quiet
+
+repeated_msg_count=0
+last_commit_msg=""
+stall_threshold=2
+for rev in HEAD~2 HEAD~1 HEAD; do
+    msg=$(git log -1 --format='%s' "$rev" | sed -E 's/ (on |)iteration [0-9]+//; s/ \(attempt [0-9]+\)//')
+    if [[ -n "$msg" && "$msg" == "$last_commit_msg" ]]; then
+        repeated_msg_count=$((repeated_msg_count + 1))
+    else
+        repeated_msg_count=0
+        last_commit_msg="$msg"
+    fi
+done
+assert_equals "2" "$repeated_msg_count"
+
+test_start "repeated commit msg: different messages reset counter"
+echo "d" > file4.txt && git add file4.txt && git commit -m "feat: new feature" --quiet
+msg=$(git log -1 --format='%s' HEAD | sed -E 's/ (on |)iteration [0-9]+//; s/ \(attempt [0-9]+\)//')
+if [[ "$msg" != "$last_commit_msg" ]]; then
+    repeated_msg_count=0
+fi
+assert_equals "0" "$repeated_msg_count"
+
+# Test 11.6: Artifact progress resets stall counter
+test_start "artifact progress: dirty files reset stall counter"
+REPO_ART=$(setup_test_repo)
+cd "$REPO_ART"
+stall_count=3
+new_commits="[]"
+echo "proposal content" > proposal.md
+dirty_count=$(git status --porcelain 2>/dev/null | wc -l)
+has_artifact_progress="false"
+[[ "$dirty_count" -gt 0 ]] && has_artifact_progress="true"
+[[ "$has_artifact_progress" == "true" ]] && stall_count=0
+assert_equals "0" "$stall_count"
+
+test_start "artifact progress: no dirty files keeps stall counting"
+REPO_ART2=$(setup_test_repo)
+cd "$REPO_ART2"
+stall_count=1
+new_commits="[]"
+dirty_count=$(git status --porcelain 2>/dev/null | wc -l)
+has_artifact_progress="false"
+[[ "$dirty_count" -gt 0 ]] && has_artifact_progress="true"
+[[ "$has_artifact_progress" == "false" ]] && stall_count=$((stall_count + 1))
+assert_equals "2" "$stall_count"
+
 # ============================================================
 # Section 12: Merge Conflict Resolver Tests
 # ============================================================

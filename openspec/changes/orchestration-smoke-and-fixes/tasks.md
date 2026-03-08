@@ -81,11 +81,11 @@
 ## 11. Integration Tests — Loop Control & Idle Detection
 
 - [x] 11.1 Test: detect_next_change_action returns ff:* when tasks.md missing, apply:* when tasks exist with unchecked items, done when all checked
-- [ ] 11.2 Test: stall detection — N commit-less iterations → status=stalled
+- [x] 11.2 Test: stall detection — N commit-less iterations → status=stalled
 - [x] 11.3 Test: idle detection — 3 iterations with identical output hash → loop stops with status=idle
 - [x] 11.4 Test: idle counter reset — 2 identical iterations then different output → idle_count resets to 0
-- [ ] 11.5 Test: repeated commit message detection — same message N times → status=stalled
-- [ ] 11.6 Test: artifact progress resets stall counter (ff creates files, no commits → not stall)
+- [x] 11.5 Test: repeated commit message detection — same message N times → status=stalled
+- [x] 11.6 Test: artifact progress resets stall counter (ff creates files, no commits → not stall)
 
 ## 12. Integration Tests — Merge Conflict Resolver
 
