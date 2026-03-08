@@ -679,11 +679,25 @@ Shared resource awareness:
 - Common shared resources: design/convention docs, shared type definitions, package.json, layout components
 
 Test-per-change requirement:
-- Each change that adds a user-facing route, feature, or API endpoint MUST include its own functional tests. Do NOT defer all testing to a final "e2e" change.
+- Each change that adds a user-facing route, feature, or API endpoint MUST include its own tests. Do NOT defer all testing to a final "e2e" change.
 - The quality gate BLOCKS changes without test files for feature/infrastructure types.
-- If smoke_command is configured, user-facing changes should also update smoke/E2E test files.
-- The last change may run ALL E2E tests for cross-feature integration, but each preceding change must have its own tests.
-- Explicitly list test files in scope (e.g., "Tests: Create orders.test.ts with order creation, validation, checkout tests").
+- Explicitly list test files in scope (e.g., "Tests: Create orders.test.ts").
+
+Functional test planning (when smoke_command is configured):
+- For each user-facing feature change, include a "Functional tests:" section in the scope with CONCRETE test scenarios:
+  * Page URL to visit
+  * User interactions: what to click, what data to type, what to select
+  * Expected outcomes: visible text, redirects, error messages, DB state changes
+  * Auth scenarios: verify protected routes redirect unauthenticated users to login
+  * Error scenarios: invalid form input, missing required fields
+- Example:
+  Functional tests (tests/e2e/orders.spec.ts):
+  - Visit /products → click "Add to Cart" on first product → cart badge shows "1"
+  - Visit /cart → verify product name and price → click "Checkout" → fill name="Test User", email="test@test.com" → click "Place Order" → verify redirect to /orders/[id] with "Order confirmed"
+  - Visit /admin/orders without login → verify redirect to /admin/login
+  - Visit /admin/login → fill email="admin@test.com", password="admin123" → click "Sign in" → verify redirect to /admin
+- These tests run post-merge via smoke_command against a live dev server — they catch runtime bugs that mocked unit tests miss (cookies(), headers(), middleware, DB queries).
+- The last change may consolidate all E2E tests for cross-feature integration, but each preceding feature change must specify its own functional test scenarios.
 
 Model selection — suggest a model per change based on task nature:
 - "opus" for ALL changes that write functional code (features, bug fixes, refactors, cleanup, tests)
@@ -775,11 +789,25 @@ Shared resource awareness:
 - Common shared resources: design/convention docs, shared type definitions, package.json, layout components
 
 Test-per-change requirement:
-- Each change that adds a user-facing route, feature, or API endpoint MUST include its own functional tests. Do NOT defer all testing to a final "e2e" change.
+- Each change that adds a user-facing route, feature, or API endpoint MUST include its own tests. Do NOT defer all testing to a final "e2e" change.
 - The quality gate BLOCKS changes without test files for feature/infrastructure types.
-- If smoke_command is configured, user-facing changes should also update smoke/E2E test files.
-- The last change may run ALL E2E tests for cross-feature integration, but each preceding change must have its own tests.
-- Explicitly list test files in scope (e.g., "Tests: Create orders.test.ts with order creation, validation, checkout tests").
+- Explicitly list test files in scope (e.g., "Tests: Create orders.test.ts").
+
+Functional test planning (when smoke_command is configured):
+- For each user-facing feature change, include a "Functional tests:" section in the scope with CONCRETE test scenarios:
+  * Page URL to visit
+  * User interactions: what to click, what data to type, what to select
+  * Expected outcomes: visible text, redirects, error messages, DB state changes
+  * Auth scenarios: verify protected routes redirect unauthenticated users to login
+  * Error scenarios: invalid form input, missing required fields
+- Example:
+  Functional tests (tests/e2e/orders.spec.ts):
+  - Visit /products → click "Add to Cart" on first product → cart badge shows "1"
+  - Visit /cart → verify product name and price → click "Checkout" → fill name="Test User", email="test@test.com" → click "Place Order" → verify redirect to /orders/[id] with "Order confirmed"
+  - Visit /admin/orders without login → verify redirect to /admin/login
+  - Visit /admin/login → fill email="admin@test.com", password="admin123" → click "Sign in" → verify redirect to /admin
+- These tests run post-merge via smoke_command against a live dev server — they catch runtime bugs that mocked unit tests miss (cookies(), headers(), middleware, DB queries).
+- The last change may consolidate all E2E tests for cross-feature integration, but each preceding feature change must specify its own functional test scenarios.
 
 Model selection — suggest a model per change based on task nature:
 - "opus" for ALL changes that write functional code (features, bug fixes, refactors, cleanup, tests)
