@@ -8,7 +8,7 @@
 |---|---|
 | `package.json` with all dependencies | Done (scaffold) |
 | Prisma schema (Product, User, Order, OrderItem, CartItem) | Done (scaffold) |
-| Prisma seed (6 products, Hungarian names, HUF prices) | Done (scaffold) |
+| Prisma seed (6 products, English names, EUR prices) | Done (scaffold) |
 | `.env.example` with DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL | Done (scaffold) |
 | Tailwind + PostCSS + TypeScript + Next.js config | Deployed by `wt-project init --project-type web` |
 | `components.json` (shadcn/ui) | Deployed by `wt-project init --project-type web` |
@@ -31,8 +31,7 @@
 - **cn() helper:** Create at `src/lib/utils.ts`: `import { clsx } from "clsx"; import { twMerge } from "tailwind-merge"; export function cn(...inputs) { return twMerge(clsx(inputs)); }`
 - **Auth:** NextAuth.js v5 — Credentials provider, JWT strategy, bcryptjs passwords. Use `auth()` for session.
 - **Database:** SQLite (`file:./dev.db`). Prisma schema at `prisma/schema.prisma`.
-- **Currency:** Hungarian Forint (HUF). Format prices as `XX XXX Ft` with space as thousands separator (e.g., `349 990 Ft`). Prices stored as integers (fillér nélkül).
-- **Language:** Product names and descriptions in Hungarian.
+- **Currency:** Euro (EUR). Prices stored as integers in cents. Format as `€X,XXX.XX` (e.g., price 129999 → `€1,299.99`). Use `(price / 100).toFixed(2)` for display.
 - **Tests:** Jest + `@testing-library/react`. Files: `tests/*.test.tsx`. Run: `pnpm test`.
 
 ## Feature Roadmap
@@ -48,7 +47,7 @@ Build the product catalog — the storefront landing page.
 - `src/app/globals.css` — Tailwind directives (`@tailwind base/components/utilities`) + shadcn CSS variables (`:root` with `--background`, `--foreground`, `--primary`, etc.)
 - `src/app/layout.tsx` — Root layout: `<html>`, `<body>` with Inter font, globals.css import. Navigation header with links: Products, Cart, Orders, Admin. Use shadcn Button for nav links.
 - `src/app/page.tsx` — Redirect to `/products`
-- `src/app/products/page.tsx` — Product grid. Server Component that queries `prisma.product.findMany()`. Renders products in a responsive grid (1 col mobile, 2 col tablet, 3 col desktop) using shadcn Card. Each card: product image (use `<img>` with imageUrl), name, description, price formatted as `XX XXX Ft` (Hungarian format, space as thousands separator), stock badge (green if >0, red if 0).
+- `src/app/products/page.tsx` — Product grid. Server Component that queries `prisma.product.findMany()`. Renders products in a responsive grid (1 col mobile, 2 col tablet, 3 col desktop) using shadcn Card. Each card: product image (use `<img>` with imageUrl), name, description, price formatted as `€X,XXX.XX`, stock badge (green if >0, red if 0).
 - `src/app/products/[id]/page.tsx` — Product detail page. Shows full product info with larger image, full description, price, stock status, "Add to Cart" button (disabled for now, wired in cart-feature change).
 - `src/components/product-card.tsx` — Reusable product card component used in the grid.
 - `tests/products.test.tsx` — Tests: product list renders, product detail page renders, price formatting correct.
@@ -58,7 +57,7 @@ Build the product catalog — the storefront landing page.
 **Acceptance criteria:**
 - `/products` shows all 6 seeded products in a Card grid
 - `/products/[id]` shows single product detail
-- Price displayed as `XX XXX Ft` (e.g., `349 990 Ft`)
+- Price displayed as `€X,XXX.XX` (e.g., `€1,299.99`)
 - Stock=0 products: badge shows "Out of Stock", "Add to Cart" button disabled
 - Responsive: 1 col on mobile, 2 on tablet, 3 on desktop
 - Navigation header visible on all pages
