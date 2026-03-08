@@ -407,6 +407,19 @@ poll_change() {
     ralph_status=$(jq -r '.status // "unknown"' "$loop_state" 2>/dev/null)
     local tokens
     tokens=$(jq -r '.total_tokens // 0' "$loop_state" 2>/dev/null)
+
+    # If loop-state hasn't recorded tokens yet (mid-iteration), query wt-usage directly
+    if [[ "$tokens" -eq 0 && "$ralph_status" == "running" ]]; then
+        local derived_dir started_at
+        derived_dir=$(echo "$wt_path" | sed 's|/|-|g')
+        started_at=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .started_at // empty' "$STATE_FILENAME")
+        if [[ -n "$started_at" && -d "$HOME/.claude/projects/$derived_dir" ]]; then
+            tokens=$("$SCRIPT_DIR/wt-usage" --since "$started_at" --project-dir="$derived_dir" --format json 2>/dev/null \
+                | jq -r '.total_tokens // 0' 2>/dev/null) || tokens=0
+            [[ ! "$tokens" =~ ^[0-9]+$ ]] && tokens=0
+        fi
+    fi
+
     # Add accumulated tokens from previous loop(s) so retries don't reset the counter
     local tokens_prev
     tokens_prev=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .tokens_used_prev // 0' "$STATE_FILENAME")
