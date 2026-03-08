@@ -410,11 +410,13 @@ poll_change() {
 
     # If loop-state hasn't recorded tokens yet (mid-iteration), query wt-usage directly
     if [[ "$tokens" -eq 0 && "$ralph_status" == "running" ]]; then
-        local derived_dir started_at
+        local derived_dir loop_started
         derived_dir=$(echo "$wt_path" | sed 's|/|-|g')
-        started_at=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .started_at // empty' "$STATE_FILENAME")
-        if [[ -n "$started_at" && -d "$HOME/.claude/projects/$derived_dir" ]]; then
-            tokens=$("$SCRIPT_DIR/wt-usage" --since "$started_at" --project-dir="$derived_dir" --format json 2>/dev/null \
+        # Use loop-state started_at (current loop start), not orchestrator started_at
+        # (which may include tokens from previous killed/restarted loops)
+        loop_started=$(jq -r '.started_at // empty' "$loop_state" 2>/dev/null)
+        if [[ -n "$loop_started" && -d "$HOME/.claude/projects/$derived_dir" ]]; then
+            tokens=$("$SCRIPT_DIR/wt-usage" --since "$loop_started" --project-dir="$derived_dir" --format json 2>/dev/null \
                 | jq -r '.total_tokens // 0' 2>/dev/null) || tokens=0
             [[ ! "$tokens" =~ ^[0-9]+$ ]] && tokens=0
         fi
