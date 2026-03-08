@@ -215,9 +215,16 @@ class UsageCalculator:
                         if usage is None or timestamp is None:
                             continue
 
-                        # Filter by time window
-                        if since is not None and timestamp < since:
-                            continue
+                        # Filter by time window (handle naive/aware mismatch)
+                        if since is not None:
+                            cmp_ts = timestamp
+                            cmp_since = since
+                            if cmp_ts.tzinfo is not None and cmp_since.tzinfo is None:
+                                cmp_ts = cmp_ts.replace(tzinfo=None)
+                            elif cmp_ts.tzinfo is None and cmp_since.tzinfo is not None:
+                                cmp_since = cmp_since.replace(tzinfo=None)
+                            if cmp_ts < cmp_since:
+                                continue
 
                         total = total + usage
 

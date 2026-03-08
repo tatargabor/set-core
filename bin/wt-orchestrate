@@ -63,6 +63,7 @@ DEFAULT_PLAN_METHOD="api"           # "api" (single LLM call) or "agent" (planni
 DEFAULT_PLAN_TOKEN_BUDGET=500000    # 500K tokens max for agent-based planning
 DEFAULT_POST_MERGE_COMMAND=""       # project-specific command to run after merge (e.g. "pnpm db:generate")
 DEFAULT_TOKEN_HARD_LIMIT=20000000  # 20M tokens — checkpoint to ask human before spending more
+DEFAULT_CHECKPOINT_AUTO_APPROVE="false"  # auto-approve checkpoints (for unattended/E2E runs)
 
 # Runtime state
 MAX_REPLAN_RETRIES=3     # max consecutive replan failures before giving up

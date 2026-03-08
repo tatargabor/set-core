@@ -69,6 +69,18 @@ watchdog_check() {
         return 0
     fi
 
+    # ── Artifact creation grace: skip hash detection if loop-state.json absent ──
+    # After dispatch, Ralph spends 1-2 min creating artifacts (proposal, design, specs, tasks)
+    # before the loop starts and creates loop-state.json. Without this guard, the watchdog
+    # sees identical hashes ("0:0:unknown") and escalates L1→L3 in ~30s (false positive kill).
+    local wt_path_wd
+    wt_path_wd=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+    if [[ -n "$wt_path_wd" && ! -f "$wt_path_wd/.claude/loop-state.json" ]]; then
+        # No loop-state yet — artifact creation phase. Skip hash detection.
+        # Timeout check (below) with PID-alive guard remains active as safety net.
+        return 0
+    fi
+
     # ── Action hash loop detection ──
     local current_hash
     current_hash=$(_watchdog_action_hash "$change_name")

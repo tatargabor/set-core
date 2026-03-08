@@ -588,6 +588,16 @@ trigger_checkpoint() {
     running=$(count_changes_by_status "running")
     send_notification "wt-orchestrate" "Checkpoint ($reason): $done_count/$total done, $running running. Run 'wt-orchestrate approve' to continue."
 
+    # Auto-approve if directive is set (unattended/E2E mode)
+    if [[ "${CHECKPOINT_AUTO_APPROVE:-false}" == "true" ]]; then
+        log_info "Checkpoint auto-approved (checkpoint_auto_approve=true)"
+        local tmp2
+        tmp2=$(mktemp)
+        jq '.checkpoints[-1].approved = true' "$STATE_FILENAME" > "$tmp2" && mv "$tmp2" "$STATE_FILENAME"
+        update_state_field "status" '"running"'
+        return
+    fi
+
     # Set status and wait for approval
     update_state_field "status" '"checkpoint"'
     info "Checkpoint: $reason. Waiting for approval..."

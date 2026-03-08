@@ -153,6 +153,7 @@ smoke_blocking: true
 test_command: npm test
 max_parallel: 2
 merge_policy: checkpoint
+checkpoint_auto_approve: true
 auto_replan: true
 notification: $notif_channel
 YAML

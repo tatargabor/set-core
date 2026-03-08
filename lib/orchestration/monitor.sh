@@ -61,6 +61,9 @@ monitor_loop() {
     # Apply model routing directive to global
     MODEL_ROUTING=$(echo "$directives" | jq -r '.model_routing // "off"')
 
+    # Apply checkpoint auto-approve directive to global
+    CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r '.checkpoint_auto_approve // false')
+
     # Apply hook directives to globals (used by run_hook via indirect variable reference)
     hook_pre_dispatch=$(echo "$directives" | jq -r '.hook_pre_dispatch // empty')
     hook_post_verify=$(echo "$directives" | jq -r '.hook_post_verify // empty')

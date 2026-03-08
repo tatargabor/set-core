@@ -15,12 +15,27 @@ import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-# Add project root to path for imports
-script_dir = Path(__file__).parent
+# Add project root to path for imports (resolve symlinks so ~/.local/bin/wt-usage → wt-tools/bin/)
+script_dir = Path(__file__).resolve().parent
 project_root = script_dir.parent
 sys.path.insert(0, str(project_root))
 
-from gui.usage_calculator import UsageCalculator, UsageData
+try:
+    # Import directly to avoid gui/__init__.py pulling in PySide6 (not needed for CLI)
+    from gui.usage_calculator import UsageCalculator, UsageData
+except ImportError:
+    # Fallback: import the module file directly, bypassing gui package init
+    import importlib.util
+    uc_path = project_root / "gui" / "usage_calculator.py"
+    if uc_path.exists():
+        spec = importlib.util.spec_from_file_location("usage_calculator", uc_path)
+        uc_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(uc_mod)
+        UsageCalculator = uc_mod.UsageCalculator
+        UsageData = uc_mod.UsageData
+    else:
+        print(json.dumps({"error": "usage_calculator not found", "total_tokens": 0}))
+        sys.exit(1)
 
 CONFIG_DIR = Path.home() / ".config" / "wt-tools"
 SESSION_FILE = CONFIG_DIR / "claude-session.json"

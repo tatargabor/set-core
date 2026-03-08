@@ -238,6 +238,7 @@ parse_directives() {
     local max_tokens_per_change=""
     local context_pruning="true"
     local plan_approval="false"
+    local checkpoint_auto_approve="$DEFAULT_CHECKPOINT_AUTO_APPROVE"
     local plan_method="$DEFAULT_PLAN_METHOD"
     local model_routing="off"
     local hook_pre_dispatch=""
@@ -465,6 +466,13 @@ parse_directives() {
                         warn "Invalid plan_approval '$val', using default false"
                     fi
                     ;;
+                checkpoint_auto_approve)
+                    if [[ "$val" =~ ^(true|false)$ ]]; then
+                        checkpoint_auto_approve="$val"
+                    else
+                        warn "Invalid checkpoint_auto_approve '$val', using default $DEFAULT_CHECKPOINT_AUTO_APPROVE"
+                    fi
+                    ;;
                 plan_method)
                     if [[ "$val" =~ ^(api|agent)$ ]]; then
                         plan_method="$val"
@@ -532,6 +540,7 @@ parse_directives() {
         --arg max_tokens_per_change "$max_tokens_per_change" \
         --argjson context_pruning "$context_pruning" \
         --argjson plan_approval "$plan_approval" \
+        --argjson checkpoint_auto_approve "$checkpoint_auto_approve" \
         --arg plan_method "$plan_method" \
         --arg model_routing "$model_routing" \
         --arg hook_pre_dispatch "$hook_pre_dispatch" \
@@ -571,6 +580,7 @@ parse_directives() {
             max_tokens_per_change: (if $max_tokens_per_change != "" then ($max_tokens_per_change | tonumber) else null end),
             context_pruning: $context_pruning,
             plan_approval: $plan_approval,
+            checkpoint_auto_approve: $checkpoint_auto_approve,
             plan_method: $plan_method,
             model_routing: $model_routing,
             hook_pre_dispatch: (if $hook_pre_dispatch != "" then $hook_pre_dispatch else null end),
