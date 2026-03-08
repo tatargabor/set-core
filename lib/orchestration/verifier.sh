@@ -471,6 +471,19 @@ poll_change() {
             fi
             ;;
         stopped|stalled|stuck)
+            # Re-read loop-state: Ralph may have transitioned to "done" between
+            # our first read and now (race window: loop writes "stopped" briefly
+            # before final "done" update).
+            local recheck_status
+            recheck_status=$(jq -r '.status // "unknown"' "$loop_state" 2>/dev/null)
+            if [[ "$recheck_status" == "done" ]]; then
+                handle_change_done "$change_name" "$wt_path" "$test_command" "$merge_policy" \
+                    "$test_timeout" "$max_verify_retries" "$review_before_merge" "$review_model" \
+                    "$smoke_command" "$smoke_timeout" "$smoke_blocking" \
+                    "$smoke_fix_max_retries" "$smoke_fix_max_turns" \
+                    "$smoke_health_check_url" "$smoke_health_check_timeout"
+                return
+            fi
             # Mark stalled — watchdog handles escalation (resume, kill, fail)
             log_warn "Change $change_name $ralph_status — marking stalled for watchdog"
             update_change_field "$change_name" "status" '"stalled"'
