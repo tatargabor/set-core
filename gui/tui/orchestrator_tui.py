@@ -292,6 +292,7 @@ class OrchestratorTUI(App):
         color, icon = STATUS_DISPLAY.get(orch_status, ("white", "?"))
         plan_version = state.get("plan_version", "?")
         replan_cycle = state.get("replan_cycle", 0)
+        project_name = self.reader.state_path.parent.name
 
         # Progress counts
         changes = state.get("changes", [])
@@ -337,7 +338,7 @@ class OrchestratorTUI(App):
             token_text = f"Tokens: {format_tokens(current_tokens)} (plan) / {format_tokens(total_tokens)} all"
         else:
             token_text = f"Tokens: {format_tokens(total_tokens)}"
-        line1 = f"  {status_text}  {plan_text}  {done}/{total} done  {token_text}"
+        line1 = f"  [bold]{project_name}[/]  {status_text}  {plan_text}  {done}/{total} done  {token_text}"
         line2 = f"  {time_text}"
 
         # Extra note for time_limit status
