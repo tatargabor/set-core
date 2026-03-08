@@ -1,0 +1,5 @@
+node_modules/
+*.sqlite
+minishop.db
+.env
+.claude/orchestration.log

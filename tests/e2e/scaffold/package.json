@@ -1,0 +1,22 @@
+{
+  "name": "minishop",
+  "version": "1.0.0",
+  "description": "Minimal Express webshop API for wt-tools E2E testing",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest --forceExit --detectOpenHandles",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.0.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4"
+  }
+}
