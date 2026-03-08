@@ -158,6 +158,31 @@ monitor_loop() {
             watchdog_check "$name"
         done <<< "$active_changes"
 
+        # Safety net: check paused/waiting changes for completed loop-state.
+        # Covers race where watchdog paused a change that finished between poll and watchdog check.
+        local suspended_changes
+        suspended_changes=$(jq -r '.changes[]? | select(.status == "paused" or .status == "waiting:budget" or .status == "budget_exceeded") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+        while IFS= read -r name; do
+            [[ -z "$name" ]] && continue
+            local _wt_path
+            _wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+            local _loop_state="$_wt_path/.claude/loop-state.json"
+            if [[ -n "$_wt_path" && -f "$_loop_state" ]]; then
+                local _ls_status
+                _ls_status=$(jq -r '.status // "unknown"' "$_loop_state" 2>/dev/null)
+                if [[ "$_ls_status" == "done" ]]; then
+                    log_info "Monitor: suspended change $name has loop-state=done — processing via poll_change"
+                    # Temporarily set to running so poll_change can process the done state
+                    update_change_field "$name" "status" '"running"'
+                    poll_change "$name" "$test_command" "$merge_policy" \
+                        "$test_timeout" "$max_verify_retries" "$review_before_merge" "$review_model" \
+                        "$smoke_command" "$smoke_timeout" "$smoke_blocking" \
+                        "$smoke_fix_max_retries" "$smoke_fix_max_turns" \
+                        "$smoke_health_check_url" "$smoke_health_check_timeout"
+                fi
+            fi
+        done <<< "$suspended_changes"
+
         # Check token budget — if exceeded, skip dispatch but keep polling
         # (waiting for rate limit window to reset; running loops will finish naturally)
         if [[ "$token_budget" -gt 0 ]]; then

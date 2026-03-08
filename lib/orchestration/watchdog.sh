@@ -242,6 +242,22 @@ _watchdog_check_token_budget() {
     local pct=0
     [[ "$limit" -gt 0 ]] && pct=$(( (tokens_used * 100) / limit ))
 
+    # Before pausing/failing, check if loop already finished (race: watchdog runs
+    # in the same poll cycle as poll_change, Ralph may have written "done" by now)
+    if [[ "$pct" -ge 100 ]]; then
+        local wt_path
+        wt_path=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+        local loop_state_file="$wt_path/.claude/loop-state.json"
+        if [[ -n "$wt_path" && -f "$loop_state_file" ]]; then
+            local loop_status
+            loop_status=$(jq -r '.status // "unknown"' "$loop_state_file" 2>/dev/null)
+            if [[ "$loop_status" == "done" ]]; then
+                log_info "Watchdog: $change_name budget at ${pct}% but loop already done — skipping pause"
+                return 0
+            fi
+        fi
+    fi
+
     if [[ "$pct" -ge 120 ]]; then
         _watchdog_salvage_partial_work "$change_name"
         log_error "Watchdog: $change_name token budget exceeded (${tokens_used}/${limit}, ${pct}%) — marking failed"
