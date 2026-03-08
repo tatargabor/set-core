@@ -388,6 +388,15 @@ scaffold_wt_directory() {
         legacy_msgs+=("    docs/orchestration-runs/ → wt/orchestration/runs/")
         found_legacy=true
     fi
+    # Check for legacy spec files (docs/v1.md, docs/v2.md, etc.)
+    local has_legacy_specs=false
+    for f in "$project_path"/docs/v[0-9]*.md; do
+        [[ -f "$f" ]] && has_legacy_specs=true && break
+    done
+    if $has_legacy_specs; then
+        legacy_msgs+=("    docs/v*.md → wt/orchestration/specs/archive/")
+        found_legacy=true
+    fi
 
     if $found_legacy; then
         echo ""
@@ -905,6 +914,23 @@ cmd_migrate() {
         # Remove empty source dir
         rmdir "$runs_src" 2>/dev/null || true
         success "  Migrated docs/orchestration-runs/ → wt/orchestration/runs/"
+        migrated=$((migrated + 1))
+    fi
+
+    # 4. docs/v[0-9]*.md (legacy spec files) → wt/orchestration/specs/archive/
+    local specs_dst="$git_root/wt/orchestration/specs/archive"
+    local found_specs=false
+    for f in "$git_root"/docs/v[0-9]*.md; do
+        [[ -f "$f" ]] || continue
+        found_specs=true
+        local fname
+        fname=$(basename "$f")
+        if [[ ! -f "$specs_dst/$fname" ]]; then
+            _migrate_move "$f" "$specs_dst/$fname"
+        fi
+    done
+    if $found_specs; then
+        success "  Migrated docs/v*.md spec files → wt/orchestration/specs/archive/"
         migrated=$((migrated + 1))
     fi
 

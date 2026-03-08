@@ -105,13 +105,26 @@ find_brief() {
 find_input() {
     # --spec takes priority
     if [[ -n "$SPEC_OVERRIDE" ]]; then
-        if [[ ! -f "$SPEC_OVERRIDE" ]]; then
-            error "Spec file not found: $SPEC_OVERRIDE"
-            return 1
+        if [[ -f "$SPEC_OVERRIDE" ]]; then
+            INPUT_MODE="spec"
+            INPUT_PATH="$(cd "$(dirname "$SPEC_OVERRIDE")" && pwd)/$(basename "$SPEC_OVERRIDE")"
+            return 0
         fi
-        INPUT_MODE="spec"
-        INPUT_PATH="$SPEC_OVERRIDE"
-        return 0
+        # Short-name resolution: try wt/orchestration/specs/
+        local wt_spec="wt/orchestration/specs/${SPEC_OVERRIDE}.md"
+        local wt_spec_sub="wt/orchestration/specs/${SPEC_OVERRIDE}"
+        if [[ -f "$wt_spec" ]]; then
+            INPUT_MODE="spec"
+            INPUT_PATH="$(cd "$(dirname "$wt_spec")" && pwd)/$(basename "$wt_spec")"
+            return 0
+        elif [[ -f "$wt_spec_sub" ]]; then
+            INPUT_MODE="spec"
+            INPUT_PATH="$(cd "$(dirname "$wt_spec_sub")" && pwd)/$(basename "$wt_spec_sub")"
+            return 0
+        fi
+        error "Spec file not found: $SPEC_OVERRIDE"
+        error "  Checked: $SPEC_OVERRIDE, $wt_spec"
+        return 1
     fi
 
     # --brief or auto-detect brief

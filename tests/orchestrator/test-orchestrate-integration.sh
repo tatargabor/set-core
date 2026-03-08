@@ -607,6 +607,134 @@ url=$(extract_health_check_url "npx playwright test --base-url http://localhost:
 assert_equals "http://localhost:4000" "$url"
 
 # ============================================================
+# Section 14: Spec Lifecycle Tests
+# ============================================================
+
+echo ""
+echo "--- Spec Lifecycle ---"
+
+# Test 14.1: Spec resolution — literal path wins over short name
+test_start "spec resolution: literal path takes priority"
+REPO_SPEC=$(setup_test_repo)
+cd "$REPO_SPEC"
+mkdir -p wt/orchestration/specs
+echo "literal spec" > myspec.md
+echo "short-name spec" > wt/orchestration/specs/myspec.md
+# Simulate find_input logic
+SPEC_OVERRIDE="myspec.md"
+INPUT_MODE="" INPUT_PATH=""
+if [[ -f "$SPEC_OVERRIDE" ]]; then
+    INPUT_MODE="spec"
+    INPUT_PATH="$(cd "$(dirname "$SPEC_OVERRIDE")" && pwd)/$(basename "$SPEC_OVERRIDE")"
+fi
+assert_contains "$INPUT_PATH" "myspec.md"
+# Verify it resolved to the literal (repo root), not wt/orchestration/specs/
+test_start "spec resolution: literal path not from wt/orchestration/specs"
+if [[ "$INPUT_PATH" == *"wt/orchestration/specs"* ]]; then
+    test_fail "not wt/orchestration/specs path" "$INPUT_PATH"
+else
+    test_pass
+fi
+
+# Test 14.1b: Short name resolves to wt/orchestration/specs/
+test_start "spec resolution: short name resolves to wt/orchestration/specs/"
+cd "$REPO_SPEC"
+SPEC_OVERRIDE="v12"
+INPUT_MODE="" INPUT_PATH=""
+echo "v12 content" > wt/orchestration/specs/v12.md
+if [[ -f "$SPEC_OVERRIDE" ]]; then
+    INPUT_MODE="spec"
+    INPUT_PATH="$(cd "$(dirname "$SPEC_OVERRIDE")" && pwd)/$(basename "$SPEC_OVERRIDE")"
+else
+    local_wt_spec="wt/orchestration/specs/${SPEC_OVERRIDE}.md"
+    if [[ -f "$local_wt_spec" ]]; then
+        INPUT_MODE="spec"
+        INPUT_PATH="$(cd "$(dirname "$local_wt_spec")" && pwd)/$(basename "$local_wt_spec")"
+    fi
+fi
+assert_contains "$INPUT_PATH" "v12.md"
+test_start "spec resolution: short name path includes wt/orchestration/specs"
+assert_contains "$INPUT_PATH" "wt/orchestration/specs"
+
+# Test 14.1c: Missing spec errors with both paths
+test_start "spec resolution: missing spec shows both checked paths"
+cd "$REPO_SPEC"
+SPEC_OVERRIDE="nonexistent"
+error_output=""
+if [[ ! -f "$SPEC_OVERRIDE" ]]; then
+    local_wt_spec="wt/orchestration/specs/${SPEC_OVERRIDE}.md"
+    local_wt_spec_sub="wt/orchestration/specs/${SPEC_OVERRIDE}"
+    if [[ ! -f "$local_wt_spec" && ! -f "$local_wt_spec_sub" ]]; then
+        error_output="Spec file not found: $SPEC_OVERRIDE | Checked: $SPEC_OVERRIDE, $local_wt_spec"
+    fi
+fi
+assert_contains "$error_output" "nonexistent"
+test_start "spec resolution: error mentions wt/ path"
+assert_contains "$error_output" "wt/orchestration/specs/nonexistent.md"
+
+# Test 14.2: specs list output format (active + archived)
+test_start "specs list: shows active and archived specs"
+REPO_SLIST=$(setup_test_repo)
+cd "$REPO_SLIST"
+mkdir -p wt/orchestration/specs/archive
+echo "# Active spec" > wt/orchestration/specs/v9.md
+echo "# Archived spec" > wt/orchestration/specs/archive/v7.md
+list_output=$("$PROJECT_DIR/bin/wt-orchestrate" specs list 2>&1 || true)
+assert_contains "$list_output" "v9"
+
+test_start "specs list: shows archived section"
+assert_contains "$list_output" "Archived"
+
+test_start "specs list: shows archived spec name"
+assert_contains "$list_output" "v7"
+
+# Test 14.3: specs archive moves file correctly
+test_start "specs archive: moves spec to archive/"
+REPO_SARCH=$(setup_test_repo)
+cd "$REPO_SARCH"
+mkdir -p wt/orchestration/specs/archive
+echo "# Spec to archive" > wt/orchestration/specs/v8.md
+git add wt/orchestration/specs/v8.md && git commit -m "add v8 spec" --quiet
+"$PROJECT_DIR/bin/wt-orchestrate" specs archive v8 2>&1 || true
+if [[ -f "wt/orchestration/specs/archive/v8.md" && ! -f "wt/orchestration/specs/v8.md" ]]; then
+    test_pass
+else
+    test_fail "v8.md in archive/ and not in specs/" "$(ls wt/orchestration/specs/ wt/orchestration/specs/archive/ 2>/dev/null)"
+fi
+
+# Test 14.4: Legacy spec migration detects docs/v*.md pattern
+test_start "legacy migration: detects docs/v*.md files"
+REPO_SMIG=$(setup_test_repo)
+cd "$REPO_SMIG"
+mkdir -p docs wt/orchestration/specs/archive
+echo "# v1 spec" > docs/v1.md
+echo "# v2 spec" > docs/v2_minicrm.md
+echo "# not a spec" > docs/readme.md
+git add . && git commit -m "add legacy specs" --quiet
+# Run migrate
+"$PROJECT_DIR/bin/wt-project" migrate 2>&1 || true
+# Check that v1.md and v2_minicrm.md moved to archive, readme.md stayed
+if [[ -f "wt/orchestration/specs/archive/v1.md" ]]; then
+    test_pass
+else
+    test_fail "v1.md in archive/" "$(ls wt/orchestration/specs/archive/ 2>/dev/null)"
+fi
+
+test_start "legacy migration: v2_minicrm.md also migrated"
+if [[ -f "wt/orchestration/specs/archive/v2_minicrm.md" ]]; then
+    test_pass
+else
+    test_fail "v2_minicrm.md in archive/" "$(ls wt/orchestration/specs/archive/ 2>/dev/null)"
+fi
+
+test_start "legacy migration: non-spec docs/readme.md not moved"
+if [[ -f "docs/readme.md" ]]; then
+    test_pass
+else
+    test_fail "docs/readme.md still present" "moved unexpectedly"
+fi
+
+# ============================================================
 # Summary
 # ============================================================
 

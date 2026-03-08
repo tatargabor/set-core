@@ -300,6 +300,100 @@ TESTEOF
     fi
 }
 
+# ─── Spec Management ─────────────────────────────────────────────────
+
+cmd_specs() {
+    local specs_dir="wt/orchestration/specs"
+    local subcmd="${1:-list}"
+    shift 2>/dev/null || true
+
+    case "$subcmd" in
+        list)
+            if [[ ! -d "$specs_dir" ]]; then
+                info "No specs directory found at $specs_dir"
+                return 0
+            fi
+            # Active specs
+            local found=false
+            for f in "$specs_dir"/*.md; do
+                [[ -f "$f" ]] || continue
+                found=true
+                local name
+                name=$(basename "$f" .md)
+                local size
+                size=$(wc -c < "$f" | tr -d ' ')
+                local modified
+                modified=$(date -r "$f" '+%Y-%m-%d' 2>/dev/null || stat -c '%y' "$f" 2>/dev/null | cut -d' ' -f1)
+                echo "  $name  (${size}B, $modified)"
+            done
+            if ! $found; then
+                info "  (no active specs)"
+            fi
+            # Archived specs
+            if [[ -d "$specs_dir/archive" ]]; then
+                local arch_found=false
+                for f in "$specs_dir/archive"/*.md; do
+                    [[ -f "$f" ]] || continue
+                    if ! $arch_found; then
+                        echo ""
+                        echo "  Archived:"
+                        arch_found=true
+                    fi
+                    local name
+                    name=$(basename "$f" .md)
+                    echo "    $name"
+                done
+            fi
+            ;;
+        show)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                error "Usage: wt-orchestrate specs show <name>"
+                return 1
+            fi
+            # Resolve short name
+            local spec_path=""
+            if [[ -f "$specs_dir/${name}.md" ]]; then
+                spec_path="$specs_dir/${name}.md"
+            elif [[ -f "$specs_dir/${name}" ]]; then
+                spec_path="$specs_dir/${name}"
+            elif [[ -f "$specs_dir/archive/${name}.md" ]]; then
+                spec_path="$specs_dir/archive/${name}.md"
+            else
+                error "Spec not found: $name"
+                error "  Checked: $specs_dir/${name}.md, $specs_dir/archive/${name}.md"
+                return 1
+            fi
+            cat "$spec_path"
+            ;;
+        archive)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                error "Usage: wt-orchestrate specs archive <name>"
+                return 1
+            fi
+            local src="$specs_dir/${name}.md"
+            if [[ ! -f "$src" ]]; then
+                error "Spec not found: $src"
+                return 1
+            fi
+            mkdir -p "$specs_dir/archive"
+            local dst="$specs_dir/archive/${name}.md"
+            if git rev-parse --is-inside-work-tree &>/dev/null; then
+                git mv "$src" "$dst" 2>/dev/null || mv "$src" "$dst"
+            else
+                mv "$src" "$dst"
+            fi
+            success "Archived: $name → archive/${name}.md"
+            ;;
+        *)
+            error "Unknown specs subcommand: $subcmd"
+            echo "Usage: wt-orchestrate specs [list|show|archive] [name]"
+            return 1
+            ;;
+    esac
+}
+
 # ─── Usage ───────────────────────────────────────────────────────────
 
 usage() {
@@ -325,6 +419,7 @@ Commands:
   resume <name|--all>    Resume a paused change or all
   replan                 Re-plan from updated spec/brief, preserving completed work
   approve [--merge]      Approve a checkpoint (--merge: also flush merge queue)
+  specs [list|show|archive] Manage spec documents in wt/orchestration/specs/
   events                 Query event log (--type, --change, --since, --last N, --json)
   tui                    Launch live terminal dashboard (requires textual)
   self-test              Run internal unit tests
@@ -334,9 +429,14 @@ Input Resolution (when no --spec or --brief given):
   2. openspec/project.md (fallback)
   3. Error with usage hint
 
+Spec Resolution (--spec <name>):
+  1. Literal path (e.g., docs/v3.md)
+  2. wt/orchestration/specs/<name>.md (short-name, e.g., --spec v12)
+
 Config: .claude/orchestration.yaml (optional, overrides in-document directives)
 
 Examples:
+  wt-orchestrate --spec v12 plan                       # Plan from wt/orchestration/specs/v12.md
   wt-orchestrate --spec docs/v3.md plan                # Plan from spec
   wt-orchestrate --spec docs/v3.md --phase 1 plan      # Plan phase 1 only
   wt-orchestrate plan                                   # Plan from project-brief.md
@@ -523,6 +623,7 @@ main() {
             fi
             exec "$py" "$tui_script" "$STATE_FILENAME" "$LOG_FILE"
             ;;
+        specs)      cmd_specs "$@" ;;
         self-test)  cmd_self_test "$@" ;;
         -h|--help|help|"")
             usage
