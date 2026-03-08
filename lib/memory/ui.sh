@@ -238,8 +238,8 @@ proj_label = project_filter if project_filter else 'all projects'
 now = datetime.now().strftime('%H:%M:%S')
 
 if not wide_mode:
-    # === COMPACT LAYOUT (< 120 cols) — fits 80x24+ ===
-    w = min(78, term_width - 2)
+    # === COMPACT LAYOUT (< 120 cols) — dynamic width ===
+    w = term_width - 2
     lines = []
 
     # Header
@@ -646,11 +646,18 @@ print('\n'.join(output_lines))
     fi
 
     if [[ "$live_mode" == "true" ]]; then
-        trap 'printf "\033[?25h"; exit 0' INT TERM
-        printf "\033[?25h"  # ensure cursor visible on exit
+        trap 'printf "\033[?25h\033[?7h"; exit 0' INT TERM
+        printf "\033[?25l"   # hide cursor during live mode
+        printf "\033[?7l"    # disable line wrap to prevent scroll glitch
+        local first_render=true
         while true; do
-            clear
+            if $first_render; then
+                printf "\033[2J"   # full clear on first render only
+                first_render=false
+            fi
+            printf "\033[H"        # cursor home (no clear = no flicker)
             _tui_render
+            printf "\033[J"        # erase from cursor to end (clean stale lines)
             sleep "$poll_interval"
         done
     else
