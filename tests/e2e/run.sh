@@ -108,6 +108,14 @@ init_project() {
     git tag v0-spec
     success "Git initialized, tagged v0-spec"
 
+    step "Clean stale memory"
+    local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/wt-tools/memory}/${PROJECT_NAME}"
+    if [[ -d "$mem_storage" ]]; then
+        info "Removing stale memory storage: $mem_storage"
+        rm -rf "$mem_storage"
+        success "Memory storage cleaned"
+    fi
+
     step "wt-project init"
     handle_name_conflict
     wt-project init --name "$PROJECT_NAME" --project-type web --template nextjs || true
@@ -155,6 +163,7 @@ show_completion() {
     echo ""
     info "When done, cleanup:"
     echo "  rm -rf $TEST_DIR"
+    echo "  rm -rf ~/.local/share/wt-tools/memory/$PROJECT_NAME"
     echo "  wt-project remove $PROJECT_NAME"
 }
 

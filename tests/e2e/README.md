@@ -43,8 +43,9 @@ To wipe a previous run and start fresh:
 pkill -f "wt-sentinel.*minishop" 2>/dev/null || true
 pkill -f "claude.*minishop" 2>/dev/null || true
 
-# 2. Remove old project
+# 2. Remove old project + memory
 rm -rf /tmp/minishop-e2e
+rm -rf ~/.local/share/wt-tools/memory/minishop-e2e
 wt-project remove minishop-e2e 2>/dev/null || true
 
 # 3. Re-initialize and run
@@ -81,6 +82,7 @@ Check `e2e-report.md` and the verification checklist at the end of `docs/v1-mini
 
 ```bash
 rm -rf /tmp/minishop-e2e
+rm -rf ~/.local/share/wt-tools/memory/minishop-e2e
 wt-project remove minishop-e2e
 ```
 
