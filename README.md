@@ -57,8 +57,6 @@ merged, tested, done
 
 </details>
 
-![Orchestrator workspace — TUI, memory dashboard, agent terminal](docs/images/orchestrator-workspace.png)
-
 ### What we've learned pushing the limits
 
 | Capability | What wt-tools adds |
@@ -126,6 +124,8 @@ See [Getting Started](docs/getting-started.md) for the full guide.
 | Agents learning across sessions | Developer Memory (`wt-memory`) |
 
 ---
+
+![Orchestrator workspace — TUI, memory dashboard, agent terminal](docs/images/orchestrator-workspace.png)
 
 ## Fork & Adapt
 
