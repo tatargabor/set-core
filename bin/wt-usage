@@ -234,6 +234,7 @@ def main():
             "output_tokens": usage.output_tokens,
             "cache_read_tokens": usage.cache_read_tokens,
             "cache_creation_tokens": usage.cache_creation_tokens,
+            "api_tokens": usage.api_tokens,
             "total_tokens": usage.total_tokens,
         }
         if args.cost:
@@ -256,7 +257,8 @@ def main():
         print(f"  Output tokens:    {usage.output_tokens:>12,}")
         print(f"  Cache read:       {usage.cache_read_tokens:>12,}")
         print(f"  Cache creation:   {usage.cache_creation_tokens:>12,}")
-        print(f"  Total:            {usage.total_tokens:>12,}")
+        print(f"  API (in+out):     {usage.api_tokens:>12,}")
+        print(f"  Total (w/cache):  {usage.total_tokens:>12,}")
 
         if args.cost:
             cost = usage.estimate_cost()

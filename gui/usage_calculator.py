@@ -56,6 +56,11 @@ class UsageData:
     per_model: Dict[str, Dict[str, int]] = field(default_factory=dict)
 
     @property
+    def api_tokens(self) -> int:
+        """Tokens sent/received (input + output only, excludes cache)"""
+        return self.input_tokens + self.output_tokens
+
+    @property
     def total_tokens(self) -> int:
         """Total tokens including cache operations"""
         return (
@@ -269,7 +274,7 @@ class UsageCalculator:
         """
         if limit <= 0:
             return 0.0
-        return (usage.total_tokens / limit) * 100
+        return (usage.api_tokens / limit) * 100
 
     def get_usage_summary(
         self,
@@ -297,11 +302,11 @@ class UsageCalculator:
             "session_pct": session_pct,
             "session_reset": None,  # No reset time available from local data
             "session_burn": None,   # Can't calculate burn rate without reset time
-            "session_tokens": usage_5h.total_tokens,
+            "session_tokens": usage_5h.api_tokens,
             "weekly_pct": weekly_pct,
             "weekly_reset": None,
             "weekly_burn": None,
-            "weekly_tokens": usage_weekly.total_tokens,
+            "weekly_tokens": usage_weekly.api_tokens,
             "estimated_cost_usd": usage_weekly.estimate_cost(),
             "source": "local",
             "is_estimated": True,
