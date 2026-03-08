@@ -57,7 +57,7 @@ merged, tested, done
 
 </details>
 
-![Orchestrator TUI — live dashboard](docs/images/orchestrator-tui.png)
+![Orchestrator workspace — TUI, memory dashboard, agent terminal](docs/images/orchestrator-workspace.png)
 
 ### What we've learned pushing the limits
 
