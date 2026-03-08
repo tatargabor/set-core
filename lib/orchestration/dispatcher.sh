@@ -212,6 +212,13 @@ dispatch_change() {
     info "Dispatching: $change_name"
     emit_event "DISPATCH" "$change_name" "{\"scope\":$(printf '%s' "$scope" | jq -Rs .)}"
 
+    # Reset token counters for fresh dispatch.
+    # On restart, stale tokens_used_prev from a previous run would inflate the
+    # watchdog's budget calculation (tokens_used = tokens_used_prev + current).
+    # resume_change() intentionally preserves cumulative tokens; only dispatch resets.
+    update_change_field "$change_name" "tokens_used_prev" "0"
+    update_change_field "$change_name" "tokens_used" "0"
+
     # Create worktree
     local project_path
     project_path=$(pwd)
