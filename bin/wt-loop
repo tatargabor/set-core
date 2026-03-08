@@ -13,7 +13,7 @@
 #   prompt.sh — OpenSpec change detection, prompt building
 #   engine.sh — cmd_run (main iteration loop)
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 source "$SCRIPT_DIR/wt-common.sh"
 
 # Find timeout command (macOS uses gtimeout from coreutils)
