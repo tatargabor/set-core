@@ -25,6 +25,8 @@ spec.md ──► /wt:sentinel ──► orchestrate ──► worktrees (parall
                  loops         recall        & merge
 ```
 
+![Orchestrator TUI — live dashboard](docs/images/orchestrator-tui.png)
+
 ---
 
 ## Quick Start
