@@ -378,49 +378,10 @@ run_hook "pre_dispatch" "test-change" "running" "/tmp" 2>/dev/null || rc=$?
 assert_equals "0" "$rc"
 
 # ============================================================
-# Test: Watchdog token budget helpers (15.3)
+# Test: Watchdog token budget helpers — REMOVED (15.3)
+# Per-change token budget replaced by progress-based trend detection.
+# See: openspec/changes/trend-based-watchdog/
 # ============================================================
-
-# Set up state with changes of different complexities for watchdog tests
-WD_STATE="$TMPDIR_TEST/wd-state.json"
-cat > "$WD_STATE" <<'EOF'
-{
-  "status": "running",
-  "changes": [
-    {"name": "small-change", "status": "running", "complexity": "S", "tokens_used": 0},
-    {"name": "medium-change", "status": "running", "complexity": "M", "tokens_used": 0},
-    {"name": "large-change", "status": "running", "complexity": "L", "tokens_used": 0},
-    {"name": "xlarge-change", "status": "running", "complexity": "XL", "tokens_used": 0}
-  ]
-}
-EOF
-OLD_STATE="$STATE_FILENAME"
-STATE_FILENAME="$WD_STATE"
-
-test_start "watchdog token limit S=500000"
-WATCHDOG_MAX_TOKENS_PER_CHANGE=0
-limit=$(_watchdog_token_limit_for_change "small-change")
-assert_equals "500000" "$limit"
-
-test_start "watchdog token limit M=2000000"
-limit=$(_watchdog_token_limit_for_change "medium-change")
-assert_equals "2000000" "$limit"
-
-test_start "watchdog token limit L=5000000"
-limit=$(_watchdog_token_limit_for_change "large-change")
-assert_equals "5000000" "$limit"
-
-test_start "watchdog token limit XL=10000000"
-limit=$(_watchdog_token_limit_for_change "xlarge-change")
-assert_equals "10000000" "$limit"
-
-test_start "watchdog token limit with override"
-WATCHDOG_MAX_TOKENS_PER_CHANGE=999999
-limit=$(_watchdog_token_limit_for_change "medium-change")
-assert_equals "999999" "$limit"
-WATCHDOG_MAX_TOKENS_PER_CHANGE=0
-
-STATE_FILENAME="$OLD_STATE"
 
 # ============================================================
 # Test: Merge-blocked state (15.7)

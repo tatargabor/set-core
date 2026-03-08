@@ -55,10 +55,6 @@ monitor_loop() {
     wd_loop_thresh=$(echo "$directives" | jq -r '.watchdog_loop_threshold // empty')
     [[ -n "$wd_timeout" ]] && WATCHDOG_TIMEOUT_RUNNING="$wd_timeout" && WATCHDOG_TIMEOUT_VERIFYING="$wd_timeout" && WATCHDOG_TIMEOUT_DISPATCHED="$wd_timeout"
     [[ -n "$wd_loop_thresh" ]] && WATCHDOG_LOOP_THRESHOLD="$wd_loop_thresh"
-    local wd_max_tokens
-    wd_max_tokens=$(echo "$directives" | jq -r '.max_tokens_per_change // empty')
-    [[ -n "$wd_max_tokens" ]] && WATCHDOG_MAX_TOKENS_PER_CHANGE="$wd_max_tokens"
-
     # Apply context pruning directive to global
     CONTEXT_PRUNING=$(echo "$directives" | jq -r '.context_pruning // true')
 
@@ -131,6 +127,7 @@ monitor_loop() {
             send_notification "wt-orchestrate" "Time limit reached ($(format_duration "$active_seconds") active). Run 'wt-orchestrate start' to continue." "normal"
             orch_memory_stats
             orch_gate_stats
+            send_summary_email "time-limit" "$(basename "$(pwd)")" "$STATE_FILENAME" 2>/dev/null || true
             break
         fi
 
@@ -342,6 +339,7 @@ monitor_loop() {
                     cleanup_all_worktrees
                     orch_memory_stats
                     orch_gate_stats
+                    send_summary_email "complete" "$(basename "$(pwd)")" "$STATE_FILENAME" 2>/dev/null || true
                     success "All work complete! No more phases to implement."
                     log_info "Auto-replan found no new work — orchestration complete"
                     break
@@ -361,6 +359,7 @@ monitor_loop() {
                         update_state_field "status" '"done"'
                         update_state_field "replan_exhausted" 'true'
                         update_state_field "replan_attempt" "0"
+                        send_summary_email "replan-exhausted" "$(basename "$(pwd)")" "$STATE_FILENAME" 2>/dev/null || true
                         break
                     fi
                     warn "Replan failed (cycle $cycle, attempt $replan_retry_count/$MAX_REPLAN_RETRIES) — will retry"
@@ -375,6 +374,7 @@ monitor_loop() {
                 success "All changes complete!"
                 orch_memory_stats
                 orch_gate_stats
+                send_summary_email "complete" "$(basename "$(pwd)")" "$STATE_FILENAME" 2>/dev/null || true
                 log_info "Orchestration complete"
                 break
             fi

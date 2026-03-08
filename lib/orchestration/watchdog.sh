@@ -6,8 +6,12 @@
 #
 # Per-change watchdog state stored in orchestration-state.json:
 #   .changes[].watchdog = {
-#     last_activity_epoch, action_hash_ring[], consecutive_same_hash, escalation_level
+#     last_activity_epoch, action_hash_ring[], consecutive_same_hash,
+#     escalation_level, progress_baseline
 #   }
+#
+# Progress detection reads loop-state.json iterations to detect spinning/stuck patterns.
+# Global token safety nets (token_budget, token_hard_limit) remain in monitor.sh.
 
 # ─── Configuration ───────────────────────────────────────────────────
 
@@ -19,10 +23,6 @@ WATCHDOG_TIMEOUT_DISPATCHED=120
 # Loop detection: consecutive identical action hashes before declaring stuck
 WATCHDOG_LOOP_THRESHOLD=5
 WATCHDOG_HASH_RING_SIZE=5
-
-# Per-change token budget (0 = use complexity-based defaults)
-# Overridden by max_tokens_per_change directive.
-WATCHDOG_MAX_TOKENS_PER_CHANGE=0
 
 # ─── Watchdog Check ─────────────────────────────────────────────────
 
@@ -124,8 +124,8 @@ watchdog_check() {
         _watchdog_update "$change_name" "$now" "$escalation_level" "$consecutive_same"
     fi
 
-    # ── Token budget enforcement (independent of escalation) ──
-    _watchdog_check_token_budget "$change_name"
+    # ── Progress-based trend detection (independent of escalation) ──
+    _watchdog_check_progress "$change_name"
 }
 
 # ─── Heartbeat ───────────────────────────────────────────────────────
@@ -226,85 +226,100 @@ _watchdog_timeout_for_status() {
     esac
 }
 
-# Per-change token budget enforcement.
-# Complexity-based defaults: S=2M, M=5M, L=10M, XL=20M.
-# Warn at 80%, pause at 100%, fail at 120%.
-_watchdog_check_token_budget() {
+# Progress-based trend detection.
+# Reads completed iterations from loop-state.json to detect:
+#   - Spinning: 3+ consecutive no_op iterations with no commits → fail
+#   - Stuck: 3+ consecutive iterations without commits (but not all no_op) → pause
+# Replaces the old complexity-based token budget enforcement.
+_watchdog_check_progress() {
     local change_name="$1"
 
-    local limit
-    limit=$(_watchdog_token_limit_for_change "$change_name")
-    [[ "$limit" -le 0 ]] && return 0
+    local wt_path
+    wt_path=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+    local loop_state_file="$wt_path/.claude/loop-state.json"
 
-    local tokens_used
-    tokens_used=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .tokens_used // 0' "$STATE_FILENAME")
-
-    local pct=0
-    [[ "$limit" -gt 0 ]] && pct=$(( (tokens_used * 100) / limit ))
-
-    # Before pausing/failing, check if loop already finished (race: watchdog runs
-    # in the same poll cycle as poll_change, Ralph may have written "done" by now)
-    if [[ "$pct" -ge 100 ]]; then
-        local wt_path
-        wt_path=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
-        local loop_state_file="$wt_path/.claude/loop-state.json"
-        if [[ -n "$wt_path" && -f "$loop_state_file" ]]; then
-            local loop_status
-            loop_status=$(jq -r '.status // "unknown"' "$loop_state_file" 2>/dev/null)
-            if [[ "$loop_status" == "done" ]]; then
-                log_info "Watchdog: $change_name budget at ${pct}% but loop already done — skipping pause"
-                return 0
-            fi
-        fi
+    # Guard: loop-state must exist and be readable
+    if [[ -z "$wt_path" || ! -f "$loop_state_file" ]]; then
+        return 0
     fi
 
-    if [[ "$pct" -ge 120 ]]; then
-        _watchdog_salvage_partial_work "$change_name"
-        log_error "Watchdog: $change_name token budget exceeded (${tokens_used}/${limit}, ${pct}%) — marking failed"
-        emit_event "WATCHDOG_TOKEN_BUDGET" "$change_name" "{\"tokens_used\":$tokens_used,\"limit\":$limit,\"pct\":$pct,\"action\":\"fail\"}"
-        update_change_field "$change_name" "status" '"failed"'
-        send_notification "wt-orchestrate" "Token budget exceeded for '$change_name' (${pct}%)" "critical"
-    elif [[ "$pct" -ge 100 ]]; then
-        log_warn "Watchdog: $change_name token budget reached (${tokens_used}/${limit}, ${pct}%) — pausing"
-        emit_event "WATCHDOG_TOKEN_BUDGET" "$change_name" "{\"tokens_used\":$tokens_used,\"limit\":$limit,\"pct\":$pct,\"action\":\"pause\"}"
-        pause_change "$change_name" || true
-    elif [[ "$pct" -ge 80 ]]; then
-        # Only warn once per threshold crossing — check if we already warned
-        local prev_warned
-        prev_warned=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .watchdog.token_budget_warned // false' "$STATE_FILENAME" 2>/dev/null)
-        if [[ "$prev_warned" != "true" ]]; then
-            log_warn "Watchdog: $change_name token budget warning (${tokens_used}/${limit}, ${pct}%)"
-            emit_event "WATCHDOG_TOKEN_BUDGET" "$change_name" "{\"tokens_used\":$tokens_used,\"limit\":$limit,\"pct\":$pct,\"action\":\"warn\"}"
-            local tmp
-            tmp=$(mktemp)
-            jq --arg n "$change_name" \
-                '(.changes[] | select(.name == $n) | .watchdog.token_budget_warned) = true' \
-                "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
-        fi
-    fi
-}
-
-# Get token limit for a change. Priority: WATCHDOG_MAX_TOKENS_PER_CHANGE > complexity-based default.
-_watchdog_token_limit_for_change() {
-    local change_name="$1"
-
-    # Explicit directive overrides everything
-    if [[ "${WATCHDOG_MAX_TOKENS_PER_CHANGE:-0}" -gt 0 ]]; then
-        echo "$WATCHDOG_MAX_TOKENS_PER_CHANGE"
-        return
-    fi
-
-    # Complexity-based defaults (calibrated from E2E data:
-    # S tasks routinely use 1-1.5M, M tasks 2-3M with artifact creation overhead)
-    local complexity
-    complexity=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .complexity // "M"' "$STATE_FILENAME" 2>/dev/null)
-    case "$complexity" in
-        S)  echo 2000000 ;;
-        M)  echo 5000000 ;;
-        L)  echo 10000000 ;;
-        XL) echo 20000000 ;;
-        *)  echo 5000000 ;;
+    # Guard: re-read change status — skip if already failed/paused/waiting by escalation
+    local current_status
+    current_status=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .status // ""' "$STATE_FILENAME" 2>/dev/null)
+    case "$current_status" in
+        failed|paused|waiting:budget) return 0 ;;
     esac
+
+    # Guard: skip if loop already done
+    local loop_status
+    loop_status=$(jq -r '.status // "unknown"' "$loop_state_file" 2>/dev/null)
+    if [[ "$loop_status" == "done" ]]; then
+        return 0
+    fi
+
+    # Read completed iterations array
+    local iterations_json
+    iterations_json=$(jq -c '.iterations // []' "$loop_state_file" 2>/dev/null) || return 0
+    local total_iterations
+    total_iterations=$(echo "$iterations_json" | jq 'length')
+
+    # Guard: need at least 2 completed iterations
+    if [[ "$total_iterations" -lt 2 ]]; then
+        return 0
+    fi
+
+    # Guard: progress baseline — only examine iterations after resume baseline
+    local baseline
+    baseline=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .watchdog.progress_baseline // 0' "$STATE_FILENAME" 2>/dev/null)
+    [[ -z "$baseline" || "$baseline" == "null" ]] && baseline=0
+
+    # Filter to iterations after baseline and get tail 3
+    local tail_json
+    tail_json=$(echo "$iterations_json" | jq --argjson b "$baseline" \
+        '[.[] | select(.n > $b)] | .[-3:]')
+    local tail_count
+    tail_count=$(echo "$tail_json" | jq 'length')
+
+    # Need at least 3 post-baseline iterations to detect patterns
+    if [[ "$tail_count" -lt 3 ]]; then
+        return 0
+    fi
+
+    # Check if all tail iterations have empty commits
+    local all_no_commits
+    all_no_commits=$(echo "$tail_json" | jq 'all(.commits == [] or .commits == null)')
+    if [[ "$all_no_commits" != "true" ]]; then
+        # Progress detected — recent commits exist
+        return 0
+    fi
+
+    # All tail iterations have no commits — determine pattern
+    local all_no_op
+    all_no_op=$(echo "$tail_json" | jq 'all(.no_op == true)')
+
+    # TOCTOU guard: re-read loop-state status before taking action
+    local recheck_status
+    recheck_status=$(jq -r '.status // "unknown"' "$loop_state_file" 2>/dev/null)
+    if [[ "$recheck_status" == "done" ]]; then
+        return 0
+    fi
+
+    if [[ "$all_no_op" == "true" ]]; then
+        # Spinning: all no_op=true AND no commits → fail
+        log_error "Watchdog: $change_name spinning — $tail_count consecutive no-op iterations, failing"
+        emit_event "WATCHDOG_NO_PROGRESS" "$change_name" \
+            "{\"pattern\":\"spinning\",\"action\":\"fail\",\"iterations\":$tail_count}"
+        _watchdog_salvage_partial_work "$change_name"
+        update_change_field "$change_name" "status" '"failed"'
+        send_notification "wt-orchestrate" "Watchdog: '$change_name' spinning — $tail_count consecutive no-op iterations, failing" "critical"
+    else
+        # Stuck: no commits but some iterations had no_op=false → pause
+        log_warn "Watchdog: $change_name stuck — $tail_count iterations without commits, pausing"
+        emit_event "WATCHDOG_NO_PROGRESS" "$change_name" \
+            "{\"pattern\":\"stuck\",\"action\":\"pause\",\"iterations\":$tail_count}"
+        pause_change "$change_name" || true
+        send_notification "wt-orchestrate" "Watchdog: '$change_name' stuck — $tail_count iterations without commits, pausing" "normal"
+    fi
 }
 
 # Escalation chain: level 1=warn, 2=resume, 3=kill+resume, 4=fail

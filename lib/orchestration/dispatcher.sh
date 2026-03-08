@@ -534,6 +534,19 @@ resume_change() {
     info "Resuming: $change_name"
     log_info "Resuming $change_name in $wt_path"
 
+    # Store progress baseline for watchdog: only evaluate iterations after this point
+    local loop_state_file="$wt_path/.claude/loop-state.json"
+    if [[ -f "$loop_state_file" ]]; then
+        local iter_count
+        iter_count=$(jq '[.iterations // [] | length] | .[0]' "$loop_state_file" 2>/dev/null || echo 0)
+        local tmp
+        tmp=$(mktemp)
+        jq --arg n "$change_name" --argjson b "$iter_count" \
+            '(.changes[] | select(.name == $n) | .watchdog.progress_baseline) = $b' \
+            "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
+        log_info "Set watchdog progress_baseline=$iter_count for $change_name"
+    fi
+
     # Snapshot cumulative tokens before new loop resets total_tokens to 0.
     # tokens_used already = tokens_used_prev + current_loop_tokens, so just carry it forward.
     local cumulative_tokens
