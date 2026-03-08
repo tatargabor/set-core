@@ -378,6 +378,17 @@ poll_change() {
 
     [[ -z "$wt_path" ]] && return
 
+    # Worktree may have been deleted by merge+archive in a previous cycle.
+    # Don't check dead PID / missing loop-state — the change is already done.
+    if [[ ! -d "$wt_path" ]]; then
+        local cur_status
+        cur_status=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .status // ""' "$STATE_FILENAME")
+        if [[ "$cur_status" == "running" || "$cur_status" == "verifying" ]]; then
+            log_info "Worktree $wt_path gone for $change_name (status=$cur_status) — likely merged+archived, skipping poll"
+        fi
+        return
+    fi
+
     local loop_state="$wt_path/.claude/loop-state.json"
     if [[ ! -f "$loop_state" ]]; then
         # No loop-state yet — check if terminal process is alive via state file
