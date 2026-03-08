@@ -227,7 +227,7 @@ _watchdog_timeout_for_status() {
 }
 
 # Per-change token budget enforcement.
-# Complexity-based defaults: S=500K, M=2M, L=5M, XL=10M.
+# Complexity-based defaults: S=2M, M=5M, L=10M, XL=20M.
 # Warn at 80%, pause at 100%, fail at 120%.
 _watchdog_check_token_budget() {
     local change_name="$1"
@@ -294,15 +294,16 @@ _watchdog_token_limit_for_change() {
         return
     fi
 
-    # Complexity-based defaults
+    # Complexity-based defaults (calibrated from E2E data:
+    # S tasks routinely use 1-1.5M, M tasks 2-3M with artifact creation overhead)
     local complexity
     complexity=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .complexity // "M"' "$STATE_FILENAME" 2>/dev/null)
     case "$complexity" in
-        S)  echo 500000 ;;
-        M)  echo 2000000 ;;
-        L)  echo 5000000 ;;
-        XL) echo 10000000 ;;
-        *)  echo 2000000 ;;
+        S)  echo 2000000 ;;
+        M)  echo 5000000 ;;
+        L)  echo 10000000 ;;
+        XL) echo 20000000 ;;
+        *)  echo 5000000 ;;
     esac
 }
 
