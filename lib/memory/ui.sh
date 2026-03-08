@@ -359,11 +359,10 @@ if not wide_mode:
 
     lines.append(section_sep())
 
-    # --- Daily activity (compact, last 10) ---
+    # --- Daily activity (2-column, last 10) ---
     daily_sess = report.get('daily_sessions', [])[:10]
     if daily_sess:
-        lines.append(row(f'{BOLD}{BLU}DAILY{RST}'))
-        for d in daily_sess:
+        def fmt_day(d):
             day = d.get('day', '?')
             try:
                 day_short = day[5:]
@@ -377,7 +376,19 @@ if not wide_mode:
                 cnt_str = f'{YEL}{cnt:>3}{RST}'
             else:
                 cnt_str = f'{cnt:>3}'
-            lines.append(row(f'{DIM}{day_short}{RST}  {cnt_str} sess  {fmt_count(tok):>7} tok'))
+            return f'{DIM}{day_short}{RST} {cnt_str}s {fmt_count(tok):>7}t'
+
+        col_w = (w - 4) // 2  # half width for each column
+        lines.append(row(f'{BOLD}{BLU}DAILY{RST}'))
+        for i in range(0, len(daily_sess), 2):
+            left_cell = fmt_day(daily_sess[i])
+            if i + 1 < len(daily_sess):
+                right_cell = fmt_day(daily_sess[i + 1])
+                # Pad left cell to col_w visible chars
+                left_pad = col_w - visible_len(left_cell)
+                lines.append(row(f'{left_cell}{\" \" * max(1, left_pad)}{right_cell}'))
+            else:
+                lines.append(row(left_cell))
 
     # --- Sparklines ---
     daily_tokens = report.get('daily_tokens', [])
