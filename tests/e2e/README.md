@@ -34,6 +34,25 @@ The sentinel will:
 - Dispatch agents in parallel (max 2)
 - Manage merges, smoke tests, and checkpoints
 
+## Re-run (clean slate)
+
+To wipe a previous run and start fresh:
+
+```bash
+# 1. Kill any running agents/sentinels
+pkill -f "wt-sentinel.*minishop" 2>/dev/null || true
+pkill -f "claude.*minishop" 2>/dev/null || true
+
+# 2. Remove old project
+rm -rf /tmp/minishop-e2e
+wt-project remove minishop-e2e 2>/dev/null || true
+
+# 3. Re-initialize and run
+./tests/e2e/run.sh
+cd /tmp/minishop-e2e
+wt-sentinel --spec docs/v1-minishop.md
+```
+
 ## After Completion
 
 ```bash
