@@ -1,6 +1,9 @@
 # MCP configuration with credentials
 .mcp.json
 
+# Environment variables (secrets)
+.env
+
 # Editor directories
 .zed/
 

@@ -129,6 +129,7 @@ source "$LIB_DIR/dispatcher.sh"    # change lifecycle: dispatch, resume, pause
 source "$LIB_DIR/verifier.sh"
 source "$LIB_DIR/merger.sh"
 source "$LIB_DIR/monitor.sh"       # monitor loop (extracted from dispatcher.sh)
+source "$SCRIPT_DIR/../lib/notify-email.sh"  # email notifications via Resend
 
 # ─── Self-Test ───────────────────────────────────────────────────────
 

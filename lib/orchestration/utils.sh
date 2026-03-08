@@ -292,10 +292,10 @@ parse_directives() {
                     test_command="$val"
                     ;;
                 notification)
-                    if [[ "$val" =~ ^(desktop|gui|none)$ ]]; then
+                    if [[ "$val" =~ ^(desktop|email|desktop\+email|gui|none)$ ]]; then
                         notification="$val"
                     else
-                        warn "Invalid notification '$val', using default $DEFAULT_NOTIFICATION"
+                        warn "Invalid notification '$val' (valid: desktop, email, desktop+email, none), using default $DEFAULT_NOTIFICATION"
                     fi
                     ;;
                 token_budget)

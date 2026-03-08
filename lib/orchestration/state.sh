@@ -258,11 +258,24 @@ send_notification() {
     fi
 
     if [[ "$notification_type" == "none" ]]; then
+        log_info "Notification [$urgency]: $title — $body"
         return 0
     fi
 
-    if [[ "$notification_type" == "desktop" ]] && command -v notify-send &>/dev/null; then
+    # Desktop channel: notify-send
+    if [[ "$notification_type" == *"desktop"* ]] && command -v notify-send &>/dev/null; then
         notify-send -u "$urgency" "$title" "$body" 2>/dev/null || true
+    fi
+
+    # Email channel: send via Resend API (requires .env with RESEND_* vars)
+    if [[ "$notification_type" == *"email"* ]] && type send_email &>/dev/null; then
+        local project_name
+        project_name="$(basename "$(pwd)")"
+        local email_prefix="[info]"
+        [[ "$urgency" == "critical" ]] && email_prefix="[CRITICAL]"
+        send_email "$email_prefix $title — $project_name" \
+            "<h3>$title</h3><p>$body</p><p style='color:#888;font-size:12px;'>$(date '+%Y-%m-%d %H:%M:%S') | $project_name | $urgency</p>" \
+            2>/dev/null || true
     fi
 
     log_info "Notification [$urgency]: $title — $body"

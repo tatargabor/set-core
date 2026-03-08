@@ -371,6 +371,26 @@ scaffold_wt_directory() {
         echo 'wt/.work/' > "$gitignore"
     fi
 
+    # Create .env.example with Resend email config template (if not exists)
+    local env_example="$project_path/.env.example"
+    if [[ ! -f "$env_example" ]]; then
+        cat > "$env_example" <<'ENVEOF'
+# wt-tools email notifications (optional)
+# Set notification: email or notification: desktop+email in orchestration config to enable.
+# Then fill in the values below and copy this file to .env
+# RESEND_API_KEY=re_xxxx
+# RESEND_FROM=noreply@yourdomain.com
+# RESEND_TO=you@yourdomain.com
+ENVEOF
+    fi
+
+    # Ensure .env is in .gitignore (credentials must not be committed)
+    if [[ -f "$gitignore" ]]; then
+        if ! grep -qx '.env' "$gitignore" 2>/dev/null; then
+            echo '.env' >> "$gitignore"
+        fi
+    fi
+
     success "  Scaffolded wt/ directory structure"
 
     # Detect legacy files and print migration suggestions

@@ -98,6 +98,24 @@ init_project() {
     if [[ -f "$TEST_DIR/.env.example" && ! -f "$TEST_DIR/.env" ]]; then
         cp "$TEST_DIR/.env.example" "$TEST_DIR/.env"
     fi
+    # Inject Resend email credentials from wt-tools .env (for E2E email reports)
+    local wt_env="$SCRIPT_DIR/../../.env"
+    if [[ -f "$wt_env" ]]; then
+        local resend_key resend_from resend_to
+        resend_key=$(grep '^RESEND_API_KEY=' "$wt_env" | cut -d= -f2-)
+        resend_from=$(grep '^RESEND_FROM=' "$wt_env" | cut -d= -f2-)
+        resend_to=$(grep '^RESEND_TO=' "$wt_env" | cut -d= -f2-)
+        if [[ -n "$resend_key" && -n "$resend_to" ]]; then
+            {
+                echo ""
+                echo "# Email notifications (injected from wt-tools)"
+                echo "RESEND_API_KEY=$resend_key"
+                [[ -n "$resend_from" ]] && echo "RESEND_FROM=$resend_from"
+                echo "RESEND_TO=$resend_to"
+            } >> "$TEST_DIR/.env"
+            success "Injected Resend email config into .env"
+        fi
+    fi
     success "Scaffold copied to $TEST_DIR"
 
     cd "$TEST_DIR"
@@ -123,7 +141,12 @@ init_project() {
     # Create orchestration config BEFORE the v1-initialized commit
     step "Orchestration config"
     mkdir -p wt/orchestration
-    cat > wt/orchestration/config.yaml << 'YAML'
+    # Determine notification channel based on whether Resend is configured
+    local notif_channel="desktop"
+    if [[ -f ".env" ]] && grep -q '^RESEND_API_KEY=' ".env" 2>/dev/null; then
+        notif_channel="desktop+email"
+    fi
+    cat > wt/orchestration/config.yaml <<YAML
 # Orchestration config for MiniShop E2E test
 smoke_command: npm test
 smoke_blocking: true
@@ -131,6 +154,7 @@ test_command: npm test
 max_parallel: 2
 merge_policy: checkpoint
 auto_replan: true
+notification: $notif_channel
 YAML
     success "Created wt/orchestration/config.yaml"
 
