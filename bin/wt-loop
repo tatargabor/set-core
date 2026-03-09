@@ -477,6 +477,7 @@ cmd_status() {
         stalled) status_icon="❓" ;;
         stopped) status_icon="⏹️" ;;
         waiting:human) status_icon="⏸" ;;
+        waiting:api) status_icon="⏳" ;;
         *) status_icon="❓" ;;
     esac
 

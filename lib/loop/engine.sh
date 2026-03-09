@@ -3,6 +3,45 @@
 # Dependencies: lib/loop/state.sh, lib/loop/tasks.sh, lib/loop/prompt.sh must be sourced first
 # Also requires: TIMEOUT_CMD, STDBUF_PREFIX, wt-common.sh (get_claude_permission_flags, etc.)
 
+# ─── API Error Detection ────────────────────────────────────────────────────
+# Backoff constants
+API_BACKOFF_BASE=30
+API_BACKOFF_MAX=240
+API_BACKOFF_MAX_ATTEMPTS=10
+
+# Classify whether a claude CLI failure is an API error by scanning the log.
+# Returns 0 if API error detected, 1 otherwise.
+# Usage: classify_api_error "$iter_log_file" "$claude_exit_code"
+classify_api_error() {
+    local log_file="$1"
+    local exit_code="$2"
+
+    # Only check non-zero exits
+    [[ "$exit_code" -eq 0 ]] && return 1
+    [[ ! -f "$log_file" ]] && return 1
+
+    # Grep the last 50 lines of the log for API error patterns
+    local tail_content
+    tail_content=$(tail -50 "$log_file" 2>/dev/null) || return 1
+
+    # Rate limit errors
+    if echo "$tail_content" | grep -qiE '429|rate.?limit|overloaded|too many requests'; then
+        return 0
+    fi
+
+    # Server errors
+    if echo "$tail_content" | grep -qiE '50[0-3]|internal server error|bad gateway|service unavailable'; then
+        return 0
+    fi
+
+    # Connection errors
+    if echo "$tail_content" | grep -qiE 'ECONNRESET|connection reset|ETIMEDOUT|socket hang up|ECONNREFUSED'; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Run the actual loop (called in the spawned terminal)
 cmd_run() {
     # Derive worktree from CWD
@@ -131,6 +170,8 @@ cmd_run() {
     local idle_count=0
     local last_output_hash=""
     local ff_attempts=0
+    local api_backoff_count=0
+    local api_backoff_delay=$API_BACKOFF_BASE
     local ff_max_retries
     ff_max_retries=$(jq -r '.ff_max_retries // 2' "$state_file")
     local start_time
@@ -259,7 +300,33 @@ cmd_run() {
             fi
 
             if [[ $claude_exit_code -eq 0 ]]; then
+                # Reset API backoff on success
+                api_backoff_count=0
+                api_backoff_delay=$API_BACKOFF_BASE
                 break  # Success
+            fi
+
+            # API error detection — check before generic retry
+            if classify_api_error "$iter_log_file" "$claude_exit_code"; then
+                api_backoff_count=$((api_backoff_count + 1))
+                if [[ $api_backoff_count -ge $API_BACKOFF_MAX_ATTEMPTS ]]; then
+                    echo ""
+                    echo "⚠️  API unavailable after $API_BACKOFF_MAX_ATTEMPTS backoff attempts. Marking as stalled."
+                    update_loop_state "$state_file" "status" '"stalled"'
+                    update_loop_state "$state_file" "stall_reason" '"api_unavailable"'
+                    break 2  # Break out of both retry and iteration loops
+                fi
+                echo ""
+                echo "⏳ API error detected (attempt $api_backoff_count/$API_BACKOFF_MAX_ATTEMPTS). Backing off ${api_backoff_delay}s..."
+                update_loop_state "$state_file" "status" '"waiting:api"'
+                sleep "$api_backoff_delay"
+                # Exponential backoff: double delay, cap at max
+                api_backoff_delay=$((api_backoff_delay * 2))
+                if [[ $api_backoff_delay -gt $API_BACKOFF_MAX ]]; then
+                    api_backoff_delay=$API_BACKOFF_MAX
+                fi
+                update_loop_state "$state_file" "status" '"running"'
+                continue  # Retry same iteration
             fi
 
             # Resume failure detection: if resumed session failed quickly, fallback

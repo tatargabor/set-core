@@ -262,10 +262,10 @@ _watchdog_check_progress() {
         failed|paused|waiting:budget) return 0 ;;
     esac
 
-    # Guard: skip if loop already done
+    # Guard: skip if loop already done or waiting for API recovery
     local loop_status
     loop_status=$(jq -r '.status // "unknown"' "$loop_state_file" 2>/dev/null)
-    if [[ "$loop_status" == "done" ]]; then
+    if [[ "$loop_status" == "done" || "$loop_status" == "waiting:api" ]]; then
         return 0
     fi
 
