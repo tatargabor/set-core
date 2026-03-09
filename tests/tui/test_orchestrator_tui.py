@@ -15,6 +15,7 @@ from gui.tui.orchestrator_tui import (
     StateReader,
     format_tokens,
     format_duration,
+    format_change_duration,
     format_gates,
     gate_str,
     GATE_PASS,
@@ -291,3 +292,93 @@ class TestTokenReplanPersistence:
         else:
             total_tokens = current_tokens + prev_tokens
         assert total_tokens == 500000
+
+
+# ─── Per-change duration ─────────────────────────────────────────────
+
+class TestFormatChangeDuration:
+    def test_completed_change(self):
+        change = {
+            "started_at": "2026-03-09T11:22:20+01:00",
+            "completed_at": "2026-03-09T11:43:25+01:00",
+        }
+        result = format_change_duration(change)
+        assert result == "21m"
+
+    def test_no_started_at(self):
+        change = {"completed_at": "2026-03-09T11:43:25+01:00"}
+        assert format_change_duration(change) == "-"
+
+    def test_empty_change(self):
+        assert format_change_duration({}) == "-"
+
+    def test_short_duration(self):
+        change = {
+            "started_at": "2026-03-09T11:22:20+01:00",
+            "completed_at": "2026-03-09T11:22:50+01:00",
+        }
+        assert format_change_duration(change) == "30s"
+
+    def test_long_duration(self):
+        change = {
+            "started_at": "2026-03-09T11:00:00+01:00",
+            "completed_at": "2026-03-09T12:05:00+01:00",
+        }
+        assert format_change_duration(change) == "1h05m"
+
+
+# ─── Smoke fix gate display ─────────────────────────────────────────
+
+class TestSmokeFixGate:
+    def test_smoke_pass_no_fix(self):
+        change = {"test_result": "pass", "build_result": "pass",
+                  "smoke_result": "pass", "review_result": "pass",
+                  "status": "merged"}
+        result = format_gates(change)
+        assert "S" in result
+        assert "(fix)" not in result
+
+    def test_smoke_pass_with_smoke_fixed(self):
+        change = {"test_result": "pass", "build_result": "pass",
+                  "smoke_result": "pass", "review_result": "pass",
+                  "status": "merged", "smoke_fixed": True}
+        result = format_gates(change)
+        assert "(fix)" in result
+
+    def test_smoke_pass_with_smoke_status_fixed(self):
+        change = {"test_result": "pass", "build_result": "pass",
+                  "smoke_result": "pass", "review_result": "pass",
+                  "status": "merged", "smoke_status": "fixed"}
+        result = format_gates(change)
+        assert "(fix)" in result
+
+    def test_smoke_fail(self):
+        change = {"test_result": "pass", "build_result": "pass",
+                  "smoke_result": "fail", "review_result": "pass",
+                  "status": "merged"}
+        result = format_gates(change)
+        assert "S" in result
+        assert "✗" in result
+        assert "(fix)" not in result
+
+
+# ─── Summary row token calculation ──────────────────────────────────
+
+class TestSummaryRowTokens:
+    def test_total_billed_tokens(self):
+        changes = [
+            {"input_tokens": 100000, "output_tokens": 10000, "cache_read_tokens": 500000},
+            {"input_tokens": 200000, "output_tokens": 20000, "cache_read_tokens": 800000},
+        ]
+        total_billed = sum((c.get("input_tokens") or 0) + (c.get("output_tokens") or 0) for c in changes)
+        assert total_billed == 330000
+        assert format_tokens(total_billed) == "330K"
+
+    def test_missing_token_fields(self):
+        changes = [
+            {"input_tokens": 100000},
+            {"output_tokens": 20000},
+            {},
+        ]
+        total_billed = sum((c.get("input_tokens") or 0) + (c.get("output_tokens") or 0) for c in changes)
+        assert total_billed == 120000
