@@ -296,21 +296,31 @@ monitor_loop() {
             continue
         fi
 
-        # Check if all done — only merged/done count as complete, not merge-blocked/failed
+        # Check if all done — count resolved changes (success + terminal failures)
         local total_changes
         total_changes=$(jq '.changes | length' "$STATE_FILENAME")
         local truly_complete
         truly_complete=$(jq '[.changes[] | select(.status == "done" or .status == "merged")] | length' "$STATE_FILENAME")
+        local failed_count
+        failed_count=$(jq '[.changes[] | select(.status == "failed")] | length' "$STATE_FILENAME")
         local merge_blocked_count
         merge_blocked_count=$(jq '[.changes[] | select(.status == "merge-blocked")] | length' "$STATE_FILENAME")
         local active_count
         active_count=$(jq '[.changes[] | select(.status == "running" or .status == "pending" or .status == "verifying" or .status == "stalled")] | length' "$STATE_FILENAME")
 
-        if [[ "$active_count" -eq 0 && "$merge_blocked_count" -gt 0 ]]; then
-            log_info "$truly_complete changes complete, $merge_blocked_count merge-blocked — not triggering replan"
+        # When no active changes remain but some are merge-blocked/failed,
+        # nothing can unblock them — transition to done with partial completion
+        if [[ "$active_count" -eq 0 && "$truly_complete" -lt "$total_changes" ]]; then
+            local terminal_count=$((truly_complete + failed_count + merge_blocked_count))
+            if [[ "$terminal_count" -ge "$total_changes" ]]; then
+                log_info "$truly_complete succeeded, $failed_count failed, $merge_blocked_count merge-blocked — all resolved"
+                send_notification "wt-orchestrate" "$truly_complete/$total_changes changes complete ($failed_count failed, $merge_blocked_count merge-blocked)" "warning"
+                # Fall through to completion handling below
+            fi
         fi
 
-        if [[ "$truly_complete" -ge "$total_changes" ]]; then
+        local all_resolved=$(( truly_complete + failed_count + merge_blocked_count ))
+        if [[ "$truly_complete" -ge "$total_changes" || ("$active_count" -eq 0 && "$all_resolved" -ge "$total_changes") ]]; then
             log_info "All $total_changes changes complete"
             send_notification "wt-orchestrate" "All $total_changes changes complete!" "normal"
 

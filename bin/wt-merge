@@ -132,6 +132,67 @@ auto_resolve_generated_files() {
     return 0
 }
 
+# Programmatic package.json merge — resolves additive dependency conflicts
+# that LLM resolvers consistently fail on. Uses jq to merge all object fields,
+# keeping entries from both sides.
+# Returns 0 if package.json conflict resolved, 1 if not applicable or failed.
+auto_resolve_package_json() {
+    local conflicted_files="$1"
+    local source_branch="$2"
+    local target_branch="$3"
+
+    # Check if package.json is among conflicted files
+    local has_pkg=false
+    while IFS= read -r file; do
+        [[ "$file" == "package.json" ]] && has_pkg=true
+    done <<< "$conflicted_files"
+    $has_pkg || return 1
+
+    # Get both versions
+    local ours_json theirs_json
+    ours_json=$(git show ":2:package.json" 2>/dev/null) || return 1
+    theirs_json=$(git show ":3:package.json" 2>/dev/null) || return 1
+
+    # Validate both are valid JSON
+    echo "$ours_json" | jq empty 2>/dev/null || return 1
+    echo "$theirs_json" | jq empty 2>/dev/null || return 1
+
+    # Deep merge: theirs (source/feature) wins on scalar conflicts,
+    # but objects are recursively merged (keeps deps from both sides)
+    local merged
+    merged=$(jq -s '
+        def deep_merge:
+            if length == 2 then
+                .[0] as $a | .[1] as $b |
+                if ($a | type) == "object" and ($b | type) == "object" then
+                    ($a | keys) + ($b | keys) | unique | map(
+                        . as $k |
+                        if ($a | has($k)) and ($b | has($k)) then
+                            {($k): ([$a[$k], $b[$k]] | deep_merge)}
+                        elif ($b | has($k)) then
+                            {($k): $b[$k]}
+                        else
+                            {($k): $a[$k]}
+                        end
+                    ) | add // {}
+                else
+                    .[1]  # scalar conflict: prefer theirs (feature branch)
+                end
+            else .[0]
+            end;
+        deep_merge
+    ' <(echo "$ours_json") <(echo "$theirs_json") 2>/dev/null) || return 1
+
+    # Validate merged result
+    echo "$merged" | jq empty 2>/dev/null || return 1
+
+    # Write merged package.json and stage it
+    echo "$merged" > package.json
+    git add package.json
+    info "Auto-resolved package.json conflict (programmatic deep merge)"
+    return 0
+}
+
 llm_resolve_conflicts() {
     local source_branch="$1"
     local target_branch="$2"
@@ -469,6 +530,20 @@ main() {
             # All conflicts were in generated files and have been resolved
             git commit --no-edit 2>/dev/null
             merge_result=$?
+        fi
+
+        # Try programmatic package.json merge before expensive LLM resolution
+        if [[ $merge_result -ne 0 ]]; then
+            conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null)
+            if [[ -n "$conflicted_files" ]]; then
+                auto_resolve_package_json "$conflicted_files" "$source_branch" "$target_branch" || true
+                # Re-check if conflicts remain
+                conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null)
+                if [[ -z "$conflicted_files" ]]; then
+                    git commit --no-edit 2>/dev/null
+                    merge_result=$?
+                fi
+            fi
         fi
 
         # Try LLM resolution for remaining conflicts

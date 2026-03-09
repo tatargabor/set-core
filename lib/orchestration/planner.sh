@@ -663,6 +663,7 @@ Rules:
 - For security-related changes: include tenant isolation tests, auth guard tests
 - If no test infrastructure exists, the FIRST change MUST be "test-infrastructure-setup" setting up the test framework, config, helpers, and an example test. ALL other changes MUST depend on it.
 - If test infrastructure exists, follow existing test patterns (framework and naming conventions noted above)
+- NEVER create a standalone "e2e-consolidation", "playwright-e2e", or "e2e-tests" change that only writes E2E tests. This anti-pattern overloads one agent with all cross-feature tests and wastes tokens. Each feature change MUST include its OWN E2E tests inline.
 
 Dependency ordering heuristics — classify each change by type and apply ordering:
 - Classify each change as one of: infrastructure (test/build setup, CI), schema (DB migrations, model changes), foundational (auth, shared types, base components), feature (new functionality), cleanup-before (refactor/rename/reorganize existing code), cleanup-after (dead code removal, cosmetic fixes)
@@ -779,6 +780,7 @@ Rules:
 - For security-related changes: include tenant isolation tests, auth guard tests
 - If no test infrastructure exists, the FIRST change MUST be "test-infrastructure-setup" setting up the test framework, config, helpers, and an example test. ALL other changes MUST depend on it.
 - If test infrastructure exists, follow existing test patterns (framework and naming conventions noted above)
+- NEVER create a standalone "e2e-consolidation", "playwright-e2e", or "e2e-tests" change that only writes E2E tests. This anti-pattern overloads one agent with all cross-feature tests and wastes tokens. Each feature change MUST include its OWN E2E tests inline.
 
 Dependency ordering heuristics — classify each change by type and apply ordering:
 - Classify each change as one of: infrastructure (test/build setup, CI), schema (DB migrations, model changes), foundational (auth, shared types, base components), feature (new functionality), cleanup-before (refactor/rename/reorganize existing code), cleanup-after (dead code removal, cosmetic fixes)
