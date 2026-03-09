@@ -129,9 +129,11 @@ init_project() {
     mkdir -p wt/orchestration
     cat > wt/orchestration/config.yaml <<YAML
 # Orchestration config for MiniShop E2E test
+test_command: pnpm test
+e2e_command: npx playwright test
+e2e_timeout: 120
 smoke_command: pnpm test
 smoke_blocking: true
-test_command: pnpm test
 max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true

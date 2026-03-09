@@ -864,7 +864,10 @@ handle_change_done() {
     local e2e_result="skip"
     local e2e_output=""
     if [[ -n "$e2e_command" ]]; then
-        if [[ -f "$wt_path/playwright.config.ts" || -f "$wt_path/playwright.config.js" ]]; then
+        # Check both: playwright config exists AND there are actual test files
+        local e2e_test_count=0
+        e2e_test_count=$(find "$wt_path/tests/e2e" -name "*.spec.ts" -o -name "*.spec.js" 2>/dev/null | wc -l || echo 0)
+        if [[ (-f "$wt_path/playwright.config.ts" || -f "$wt_path/playwright.config.js") && "$e2e_test_count" -gt 0 ]]; then
             update_change_field "$change_name" "status" '"verifying"'
             local e2e_port=$((3100 + RANDOM % 900))
             info "Running E2E tests for $change_name (port=$e2e_port)..."
@@ -888,7 +891,11 @@ handle_change_done() {
             log_info "Verify gate: e2e took ${gate_e2e_ms}ms for $change_name"
         else
             e2e_result="skipped"
-            log_warn "Verify gate: e2e skipped for $change_name (no playwright.config.ts)"
+            if [[ "$e2e_test_count" -eq 0 ]]; then
+                log_warn "Verify gate: e2e skipped for $change_name (no .spec.ts files in tests/e2e/)"
+            else
+                log_warn "Verify gate: e2e skipped for $change_name (no playwright.config.ts)"
+            fi
         fi
     fi
 
