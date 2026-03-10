@@ -70,10 +70,11 @@ cache_all_windows() {
 
 # Find the window that owns an agent process by walking the PPID chain
 # Uses the pre-cached window data (no osascript calls)
-# Args: $1 = agent PID
+# Args: $1 = agent PID, $2 = worktree basename (optional, for multi-window disambiguation)
 # Returns (stdout): "window_id|process_name" if found, empty if not
 find_window_for_agent() {
     local agent_pid="$1"
+    local wt_basename="${2:-}"
     local current_pid="$agent_pid"
     local depth=0
     local max_depth=20
@@ -82,9 +83,29 @@ find_window_for_agent() {
 
     while [[ "$depth" -lt "$max_depth" && "$current_pid" -gt 1 ]] 2>/dev/null; do
         # Check if this PID owns any window in the cache
-        local match
-        match=$(echo "$_WINDOW_CACHE" | grep "^${current_pid}|" | head -1) || true
-        if [[ -n "$match" ]]; then
+        local matches
+        matches=$(echo "$_WINDOW_CACHE" | grep "^${current_pid}|") || true
+        if [[ -n "$matches" ]]; then
+            local match_count
+            match_count=$(echo "$matches" | wc -l)
+
+            if [[ "$match_count" -gt 1 && -n "$wt_basename" ]]; then
+                # Multi-window process (e.g. Zed): match by worktree basename in title
+                local title_match
+                title_match=$(echo "$matches" | grep -F "$wt_basename" | head -1) || true
+                if [[ -n "$title_match" ]]; then
+                    local proc_name wid
+                    IFS='|' read -r _ proc_name wid _ <<< "$title_match"
+                    echo "$wid|$proc_name"
+                    return 0
+                fi
+                # No title match — this agent's window is not open
+                return 1
+            fi
+
+            # Single window or no basename hint — use first match
+            local match
+            match=$(echo "$matches" | head -1)
             local proc_name wid
             # Format: pid|proc_name|window_id|window_name
             IFS='|' read -r _ proc_name wid _ <<< "$match"
@@ -467,9 +488,11 @@ detect_agents() {
         fi
 
         # Per-agent window detection via PPID chain
+        # Pass worktree basename for multi-window disambiguation (e.g. Zed)
         local agent_wid="" agent_etype=""
-        local win_result
-        win_result=$(find_window_for_agent "$pid") || true
+        local win_result wt_basename
+        wt_basename=$(basename "$wt_path")
+        win_result=$(find_window_for_agent "$pid" "$wt_basename") || true
         if [[ -n "$win_result" ]]; then
             agent_wid="${win_result%%|*}"
             agent_etype="${win_result#*|}"
