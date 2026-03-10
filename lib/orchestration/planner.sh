@@ -697,8 +697,10 @@ Playwright E2E test planning (when e2e_command is configured):
   * Expected outcomes: visible text, redirects, error messages
   * Auth scenarios: verify protected routes redirect unauthenticated users
   * Error scenarios: invalid form input, missing required fields
+  * COLD-VISIT test: navigate directly to the page as the FIRST action (no prior login, no add-to-cart, no session cookie). This catches Server Component cookie/session bugs where cookies().set() crashes outside a Server Action.
 - Example scope:
   Create tests/e2e/orders.spec.ts:
+  - Cold visit: go to /cart directly (no prior actions) → should show empty state, NOT crash
   - Visit /products → click "Add to Cart" on first product → cart badge shows "1"
   - Visit /cart → verify product name and price → click "Checkout" → fill form → verify redirect to /orders/[id]
   - Visit /admin/orders without login → verify redirect to /admin/login
@@ -814,8 +816,10 @@ Playwright E2E test planning (when e2e_command is configured):
   * Expected outcomes: visible text, redirects, error messages
   * Auth scenarios: verify protected routes redirect unauthenticated users
   * Error scenarios: invalid form input, missing required fields
+  * COLD-VISIT test: navigate directly to the page as the FIRST action (no prior login, no add-to-cart, no session cookie). This catches Server Component cookie/session bugs where cookies().set() crashes outside a Server Action.
 - Example scope:
   Create tests/e2e/orders.spec.ts:
+  - Cold visit: go to /cart directly (no prior actions) → should show empty state, NOT crash
   - Visit /products → click "Add to Cart" on first product → cart badge shows "1"
   - Visit /cart → verify product name and price → click "Checkout" → fill form → verify redirect to /orders/[id]
   - Visit /admin/orders without login → verify redirect to /admin/login
