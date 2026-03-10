@@ -1200,7 +1200,7 @@ PROMPT_EOF
     log_info "Plan decomposition started (brief hash: $hash)"
 
     local claude_output
-    claude_output=$(export RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$(model_id opus)") || {
+    claude_output=$(export RUN_CLAUDE_TIMEOUT=1800; echo "$prompt" | run_claude --model "$(model_id opus)") || {
         error "Claude decomposition failed. Check your Claude CLI setup."
         log_error "Claude decomposition failed"
         return 1

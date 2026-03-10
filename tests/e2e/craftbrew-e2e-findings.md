@@ -222,6 +222,13 @@
 - **Érintett fájlok**: monitor.sh (directive parse + phase-end trigger), verifier.sh (run_phase_end_e2e func), planner.sh (E2E fail context injection), reporter.sh (phase-end E2E results section + e2e_mode display)
 - **Státusz**: Implementálva, nem tesztelve élesben
 
+### 20. Replan decomposition timeout (600s nem elég cycle 3-tól)
+- **Tünet**: Cycle 3 replan 3x timeout-ol 600s-nél (attempt 1: 20:47→20:57, attempt 2: 20:58→21:08, attempt 3: 21:09→TBD)
+- **Ok**: Cycle 3 replan prompt tartalmazza az összes eddigi completed change-t (12 merged) + coverage context + remaining 100+ REQ → nagyobb prompt mint cycle 2
+- **Fix**: `RUN_CLAUDE_TIMEOUT=600` → `900` a planner decomposition-ben (planner.sh:1203)
+- **Megjegyzés**: Cycle 2 pont beleférte a 600s-be (~6 perc), de cycle 3 már nem. A timeout növelés nem hot-reload-ból jön, orchestrator restart kell.
+- **Státusz**: Fixelve (900s), de a futó orchestrator még a régi 600s-sel dolgozik
+
 ### Observations (Run #2)
 - Granularity rules működnek: 8 change, mind ≤6 REQ
 - Sub-domain dependency chaining működik: product-catalog chain (list→detail→filter→search), user chain (auth→profile→addresses)
