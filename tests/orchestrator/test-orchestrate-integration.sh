@@ -144,20 +144,66 @@ cleanup_all() {
 trap cleanup_all EXIT
 
 # ============================================================
-# Source wt-orchestrate functions (without running main)
+# Source orchestration modules directly (not via eval+sed)
 # ============================================================
 
-# Source the functions we need by stripping the main call
-eval "$(sed '/^main /d; /^main$/d' "$PROJECT_DIR/bin/wt-orchestrate" | grep -v '^exec ' || true)" 2>/dev/null || true
+# Constants from wt-orchestrate that modules depend on
+STATE_FILENAME=""          # set per-test
+LOG_FILE="/dev/null"
+EVENTS_ENABLED="false"     # disable event logging in tests
 
-# Also source wt-loop for detect_next_change_action and related functions
-eval "$(sed -n '/^detect_next_change_action()/,/^}/p' "$PROJECT_DIR/bin/wt-loop")" 2>/dev/null || true
+# Directive defaults (copied from wt-orchestrate)
+DEFAULT_MAX_PARALLEL=3
+DEFAULT_MERGE_POLICY="checkpoint"
+DEFAULT_CHECKPOINT_EVERY=3
+DEFAULT_TEST_COMMAND=""
+DEFAULT_NOTIFICATION="desktop"
+DEFAULT_TOKEN_BUDGET=0
+DEFAULT_PAUSE_ON_EXIT="false"
+DEFAULT_AUTO_REPLAN="false"
+DEFAULT_REVIEW_BEFORE_MERGE="false"
+DEFAULT_TEST_TIMEOUT=300
+DEFAULT_MAX_VERIFY_RETRIES=2
+DEFAULT_SUMMARIZE_MODEL="haiku"
+DEFAULT_REVIEW_MODEL="sonnet"
+DEFAULT_IMPL_MODEL="opus"
+DEFAULT_SMOKE_COMMAND=""
+DEFAULT_SMOKE_TIMEOUT=120
+DEFAULT_SMOKE_BLOCKING=true
+DEFAULT_SMOKE_FIX_TOKEN_BUDGET=500000
+DEFAULT_SMOKE_FIX_MAX_TURNS=15
+DEFAULT_SMOKE_FIX_MAX_RETRIES=3
+DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT=30
+DEFAULT_POST_MERGE_COMMAND=""
+DEFAULT_TOKEN_HARD_LIMIT=20000000
+DEFAULT_CHECKPOINT_AUTO_APPROVE="false"
+DEFAULT_PLAN_METHOD="api"
+DEFAULT_PLAN_TOKEN_BUDGET=500000
+DEFAULT_TIME_LIMIT="5h"
+PLAN_FILENAME="orchestration-plan.json"
+SUMMARY_FILENAME="orchestration-summary.md"
 
-# Override functions that would make real API calls
+# Pre-source stubs (needed during module loading)
+log_info()  { :; }
+log_warn()  { :; }
+log_error() { :; }
 run_claude() { return 0; }
+model_id() { echo "test-model"; }
+
+# Source modules in dependency order
+LIB_DIR="$PROJECT_DIR/lib/orchestration"
+source "$LIB_DIR/events.sh"        # emit_event (no-op with EVENTS_ENABLED=false)
+source "$LIB_DIR/config.sh"        # wt_find_config
+source "$LIB_DIR/utils.sh"         # parse_duration, format_duration, brief_hash
+source "$LIB_DIR/state.sh"         # update_change_field, run_hook, etc.
+source "$LIB_DIR/verifier.sh"      # health_check, extract_health_check_url
+
+# Source loop modules for detect_next_change_action
+source "$PROJECT_DIR/lib/loop/prompt.sh"
+
+# Post-source stubs (override real implementations that make external calls)
 send_notification() { echo "NOTIFICATION: $*" >> "${NOTIFICATION_LOG:-/dev/null}"; }
 orch_remember() { return 0; }
-model_id() { echo "test-model"; }
 
 echo "============================================================"
 echo "Integration Tests: wt-orchestrate"
