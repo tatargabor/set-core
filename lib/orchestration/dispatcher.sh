@@ -928,6 +928,9 @@ retry_failed_builds() {
 # ─── Command Handlers ────────────────────────────────────────────────
 
 cmd_start() {
+    # In automated mode, auto-defer untriaged ambiguities instead of pausing
+    export TRIAGE_AUTO_DEFER=true
+
     # Auto-plan if no plan exists or CLI --spec/--brief differs from plan's input
     local need_plan=false
     if [[ ! -f "$PLAN_FILENAME" ]]; then

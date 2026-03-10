@@ -377,6 +377,74 @@ find_project_knowledge_file() {
     wt_find_config project-knowledge
 }
 
+# ─── Triage Gate ─────────────────────────────────────────────────────
+
+# Check triage status for ambiguities. Returns one of:
+#   no_ambiguities — zero ambiguities, skip entirely
+#   needs_triage   — ambiguities exist but no triage.md
+#   has_untriaged  — triage.md exists but has blank decisions
+#   has_fixes      — all triaged but some marked "fix" (spec needs correction)
+#   passed         — all triaged, no fixes, ready to proceed
+check_triage_gate() {
+    if [[ ! -f "$DIGEST_DIR/ambiguities.json" ]]; then
+        echo "no_ambiguities"
+        return 0
+    fi
+
+    local amb_count
+    amb_count=$(jq '.ambiguities | length' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo 0)
+    if [[ "$amb_count" -eq 0 ]]; then
+        echo "no_ambiguities"
+        return 0
+    fi
+
+    # In automated mode (orchestrator), auto-defer everything
+    if [[ "${TRIAGE_AUTO_DEFER:-false}" == "true" ]]; then
+        # Auto-defer: generate triage if missing, mark all as defer
+        if [[ ! -f "$DIGEST_DIR/triage.md" ]]; then
+            generate_triage_md "$DIGEST_DIR/ambiguities.json" "$DIGEST_DIR/triage.md"
+        fi
+        # Build auto-defer decisions for all ambiguities
+        local auto_decisions
+        auto_decisions=$(jq '[.ambiguities[].id] | map({key: ., value: {decision: "defer", note: ""}}) | from_entries' "$DIGEST_DIR/ambiguities.json")
+        merge_triage_to_ambiguities "$DIGEST_DIR/ambiguities.json" "$auto_decisions" "auto"
+        info "Auto-deferred $amb_count ambiguities (automated mode)"
+        echo "passed"
+        return 0
+    fi
+
+    if [[ ! -f "$DIGEST_DIR/triage.md" ]]; then
+        echo "needs_triage"
+        return 0
+    fi
+
+    # Parse triage decisions
+    local decisions
+    decisions=$(parse_triage_md "$DIGEST_DIR/triage.md")
+
+    # Check for untriaged items (blank decision)
+    local untriaged_count
+    untriaged_count=$(jq -r --argjson decisions "$decisions" \
+        '[.ambiguities[].id] | map(. as $id | if $decisions[$id].decision == "" or ($decisions[$id] | not) then 1 else 0 end) | add // 0' \
+        "$DIGEST_DIR/ambiguities.json")
+
+    if [[ "$untriaged_count" -gt 0 ]]; then
+        echo "has_untriaged"
+        return 0
+    fi
+
+    # Check for "fix" items
+    local fix_count
+    fix_count=$(echo "$decisions" | jq '[.[] | select(.decision == "fix")] | length')
+
+    if [[ "$fix_count" -gt 0 ]]; then
+        echo "has_fixes"
+        return 0
+    fi
+
+    echo "passed"
+}
+
 # ─── Subcommands ─────────────────────────────────────────────────────
 
 cmd_plan() {
@@ -448,6 +516,43 @@ cmd_plan() {
                     error "Auto-digest failed"
                     return 1
                 }
+                ;;
+        esac
+    fi
+
+    # Triage gate: check ambiguities before planning
+    if [[ "$INPUT_MODE" == "digest" ]]; then
+        local triage_result
+        triage_result=$(check_triage_gate)
+        case "$triage_result" in
+            no_ambiguities)
+                ;; # proceed
+            needs_triage)
+                # Generate triage.md and pause
+                generate_triage_md "$DIGEST_DIR/ambiguities.json" "$DIGEST_DIR/triage.md"
+                local _nt_count
+                _nt_count=$(jq '.ambiguities | length' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo 0)
+                info "Triage required: $_nt_count ambiguities detected."
+                info "Review $DIGEST_DIR/triage.md, then re-run plan."
+                return 0
+                ;;
+            has_untriaged)
+                local _ut_count
+                _ut_count=$(parse_triage_md "$DIGEST_DIR/triage.md" | jq '[.[] | select(.decision == "")] | length')
+                info "$_ut_count untriaged ambiguities remain. Review $DIGEST_DIR/triage.md."
+                return 0
+                ;;
+            has_fixes)
+                local _fx_count
+                _fx_count=$(parse_triage_md "$DIGEST_DIR/triage.md" | jq '[.[] | select(.decision == "fix")] | length')
+                info "$_fx_count ambiguities marked 'fix' — update specs and re-run digest."
+                return 0
+                ;;
+            passed)
+                local _triage_decisions
+                _triage_decisions=$(parse_triage_md "$DIGEST_DIR/triage.md")
+                merge_triage_to_ambiguities "$DIGEST_DIR/ambiguities.json" "$_triage_decisions"
+                info "Triage complete — proceeding with planning"
                 ;;
         esac
     fi
@@ -663,13 +768,17 @@ $deps_content
 "
         fi
 
-        # Ambiguities (informational)
+        # Ambiguities — only include deferred items that need planner resolution
         if [[ -f "$DIGEST_DIR/ambiguities.json" ]]; then
-            local amb_count
-            amb_count=$(jq '.ambiguities | length' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo 0)
-            if [[ "$amb_count" -gt 0 ]]; then
-                digest_content+="## Ambiguities ($amb_count detected — decide or flag for human review)
-$(cat "$DIGEST_DIR/ambiguities.json")
+            local deferred_ambs
+            deferred_ambs=$(jq '{ambiguities: [.ambiguities[] | select(.resolution == "deferred" or (has("resolution") | not))]}' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo '{"ambiguities":[]}')
+            local deferred_count
+            deferred_count=$(echo "$deferred_ambs" | jq '.ambiguities | length')
+            if [[ "$deferred_count" -gt 0 ]]; then
+                digest_content+="## Deferred Ambiguities ($deferred_count items — you MUST resolve each)
+For each deferred ambiguity below, include a \"resolved_ambiguities\" entry in the change that addresses the affected requirements. Specify your decision and rationale.
+
+$deferred_ambs
 
 "
             fi
@@ -937,7 +1046,8 @@ Output ONLY valid JSON (no markdown, no explanation):
       "roadmap_item": "The spec section/item this implements"$(if [[ "$INPUT_MODE" == "digest" ]]; then echo ',
       "spec_files": ["path/relative/to/spec-base-dir.md"],
       "requirements": ["REQ-DOMAIN-001"],
-      "also_affects_reqs": ["REQ-CROSS-001"]'; fi)
+      "also_affects_reqs": ["REQ-CROSS-001"],
+      "resolved_ambiguities": [{"id": "AMB-001", "resolution_note": "Decision rationale"}]'; fi)
     }
   ]
 }
@@ -1195,6 +1305,11 @@ PYEOF
             error "Plan validation failed: incomplete requirement coverage"
             return 1
         fi
+    fi
+
+    # Merge planner's ambiguity resolutions back into ambiguities.json
+    if [[ "$INPUT_MODE" == "digest" && -f "$DIGEST_DIR/ambiguities.json" ]]; then
+        merge_planner_resolutions "$DIGEST_DIR/ambiguities.json" "$PLAN_FILENAME"
     fi
 
     generate_report 2>/dev/null || true

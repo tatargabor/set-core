@@ -121,14 +121,22 @@ render_digest_section() {
         echo "</table>"
     fi
 
-    # Ambiguities
+    # Ambiguities — table with resolution status
     if [[ -f "$DIGEST_DIR/ambiguities.json" ]]; then
         local amb_count
         amb_count=$(jq '.ambiguities | length' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo 0)
         if [[ "$amb_count" -gt 0 ]]; then
-            echo "<h3>Ambiguities ($amb_count)</h3><ul>"
-            jq -r '.ambiguities[] | "<li>\(.description // .text // .)</li>"' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || true
-            echo "</ul>"
+            echo "<h3>Ambiguities ($amb_count)</h3>"
+            echo "<table><tr><th>ID</th><th>Type</th><th>Description</th><th>Resolution</th><th>Note</th><th>By</th></tr>"
+            jq -r '.ambiguities[] |
+                (.resolution // "UNRESOLVED") as $res |
+                (if $res == "fixed" then "background:#2e4a2e"
+                 elif $res == "deferred" or $res == "planner-resolved" then "background:#2a3a4e"
+                 elif $res == "ignored" then "background:#3a3a3a"
+                 else "background:#4e2a2a" end) as $color |
+                "<tr style=\"\($color)\"><td>\(.id // "-")</td><td>\(.type // "-")</td><td>\(.description // "-")</td><td>\($res)</td><td>\(.resolution_note // "")</td><td>\(.resolved_by // "-")</td></tr>"
+            ' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || true
+            echo "</table>"
         fi
     fi
 }
