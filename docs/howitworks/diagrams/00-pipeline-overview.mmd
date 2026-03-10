@@ -1,0 +1,60 @@
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '14px'}}}%%
+flowchart TB
+    subgraph L1["<b>L1 — Input</b>"]
+        spec["Specifikáció<br/>(MD fájlok)"]
+        config["orchestration.yaml<br/>(direktívák)"]
+    end
+
+    subgraph L2["<b>L2 — Tervezés</b>"]
+        digest["Digest generálás<br/>(REQ-XXX azonosítók)"]
+        triage["Ambiguity Triage<br/>(kérdéses pontok szűrése)"]
+        plan["Dekompozíció<br/>(change-ek, DAG)"]
+    end
+
+    subgraph L3["<b>L3 — Végrehajtás</b>"]
+        dispatch["Dispatch<br/>(worktree + Ralph)"]
+        ralph["Ralph Loop<br/>(iteratív fejlesztés)"]
+        monitor["Monitor<br/>(15s poll ciklus)"]
+        watchdog["Watchdog<br/>(stall detekció)"]
+    end
+
+    subgraph L4["<b>L4 — Minőség</b>"]
+        test["Teszt futtatás"]
+        review["Code Review<br/>(LLM)"]
+        verify["Verify Gate"]
+        smoke["Smoke Test"]
+        e2e["E2E Teszt"]
+    end
+
+    subgraph L5["<b>L5 — Delivery</b>"]
+        merge["Merge<br/>(3-rétegű conflict res.)"]
+        postmerge["Post-Merge<br/>(build, archive)"]
+        replan["Auto-Replan<br/>(következő fázis)"]
+    end
+
+    spec --> digest
+    config --> plan
+    digest --> triage --> plan
+    plan --> dispatch
+    dispatch --> ralph
+    ralph --> monitor
+    monitor --> watchdog
+    ralph -- "done" --> test
+    test -- "pass" --> review
+    review -- "ok" --> verify
+    verify -- "pass" --> smoke
+    smoke -- "pass" --> e2e
+    e2e -- "pass" --> merge
+    merge --> postmerge
+    postmerge --> replan
+    replan -. "új fázis" .-> plan
+
+    test -- "fail" --> ralph
+    verify -- "fail" --> ralph
+    smoke -- "fail" --> ralph
+
+    style L1 fill:#e8f4fd,stroke:#2196F3
+    style L2 fill:#e8f5e9,stroke:#4CAF50
+    style L3 fill:#fff3e0,stroke:#FF9800
+    style L4 fill:#fce4ec,stroke:#E91E63
+    style L5 fill:#f3e5f5,stroke:#9C27B0

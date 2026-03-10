@@ -1,0 +1,37 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    start(["Monitor loop indítás"])
+    sleep["sleep 15s"]
+    check_status["Orchestrátor státusz<br/>ellenőrzés"]
+
+    subgraph poll["Aktív change-ek pollozása"]
+        poll_change["poll_change()<br/>(loop-state olvasás)"]
+        watchdog["watchdog_check()<br/>(stall detekció)"]
+    end
+
+    subgraph actions["Ciklus műveletek"]
+        dispatch["dispatch_ready_changes()<br/>(új change-ek indítása)"]
+        merge_q["retry_merge_queue()<br/>(merge sor feldolgozás)"]
+        stall_r["resume_stalled_changes()<br/>(stall recovery)"]
+        cascade["cascade_failed_deps()<br/>(függőség hiba terjedés)"]
+        retry_b["retry_failed_builds()<br/>(build újrapróbálás)"]
+    end
+
+    check_done{"Minden<br/>kész?"}
+    replan{"Auto-replan<br/>aktív?"}
+    done(["Vége"])
+    next_phase["cmd_replan()<br/>→ új fázis"]
+
+    start --> sleep --> check_status
+    check_status -- "running" --> poll
+    check_status -- "stopped/done" --> done
+    check_status -- "paused" --> sleep
+    poll --> actions
+    actions --> check_done
+    check_done -- "nem" --> sleep
+    check_done -- "igen" --> replan
+    replan -- "igen" --> next_phase --> sleep
+    replan -- "nem" --> done
+
+    style poll fill:#fff3e0,stroke:#FF9800
+    style actions fill:#e8f5e9,stroke:#4CAF50

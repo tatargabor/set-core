@@ -1,0 +1,24 @@
+%%{init: {'theme': 'neutral', 'sequence': {'mirrorActors': false}}}%%
+sequenceDiagram
+    participant O as Orchestrátor
+    participant G as Git
+    participant W as Worktree
+    participant R as Ralph Loop
+    participant C as Claude Agent
+
+    O->>G: git worktree add (wt-new)
+    G-->>W: change/feature-name branch
+    O->>W: bootstrap (.env, deps)
+    O->>W: sync with main
+    O->>R: wt-loop start (PID mentés)
+
+    loop Ralph iteráció
+        R->>C: Claude Code session indítás
+        C->>W: Kód írás / módosítás
+        C->>W: loop-state.json frissítés
+        R-->>R: Iteráció ellenőrzés
+        Note over R: max_turns, token limit,<br/>context pruning
+    end
+
+    R-->>O: loop-state.status = "done"
+    Note over O: Poll ciklus detektálja<br/>→ verify gate indul

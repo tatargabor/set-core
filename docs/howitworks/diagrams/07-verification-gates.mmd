@@ -1,0 +1,33 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart LR
+    done["Ralph: done"]
+
+    subgraph gates["Minőségi kapuk (szekvenciális)"]
+        test["<b>Test Gate</b><br/>test_command futtatás<br/>(timeout: 300s)"]
+        review["<b>Review Gate</b><br/>LLM code review<br/>(review_model: sonnet)"]
+        verify["<b>Verify Gate</b><br/>Scope ellenőrzés<br/>(max_verify_retries: 2)"]
+        smoke["<b>Smoke Gate</b><br/>smoke_command futtatás<br/>(blocking: true/false)"]
+        e2e["<b>E2E Gate</b><br/>e2e_command<br/>(per_change / phase_end)"]
+    end
+
+    merge["→ Merge Queue"]
+    retry["Ralph retry<br/>(hibaleírással)"]
+    fail["→ Failed"]
+
+    done --> test
+    test -- "pass" --> review
+    test -- "fail" --> retry
+    review -- "pass" --> verify
+    review -- "issues" --> retry
+    verify -- "pass" --> smoke
+    verify -- "fail (retry < max)" --> retry
+    verify -- "fail (retry ≥ max)" --> fail
+    smoke -- "pass" --> e2e
+    smoke -- "fail + blocking" --> retry
+    e2e -- "pass" --> merge
+    e2e -- "fail" --> retry
+
+    style gates fill:#fce4ec,stroke:#E91E63
+    style merge fill:#e8f5e9,stroke:#4CAF50
+    style fail fill:#ef9a9a,stroke:#F44336
+    style retry fill:#fff3e0,stroke:#FF9800

@@ -1,0 +1,49 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    queue["Merge Queue"]
+
+    subgraph policy["Merge Policy"]
+        eager["<b>eager</b><br/>Azonnal merge"]
+        checkpoint["<b>checkpoint</b><br/>N change után megáll"]
+        manual["<b>manual</b><br/>Emberi jóváhagyás"]
+    end
+
+    subgraph merge_proc["Merge folyamat"]
+        pre_hook["pre_merge hook"]
+        check_branch{"Branch<br/>létezik?"}
+        already{"Már<br/>mergelve?"}
+        wt_merge["wt-merge --llm-resolve<br/>(3-rétegű conflict res.)"]
+    end
+
+    subgraph conflict["Conflict Resolution"]
+        auto_gen["1. Generált fájlok<br/>(lock, tsbuildinfo)<br/>→ accept ours"]
+        llm_res["2. LLM merge<br/>(Claude conflict fix)"]
+        human["3. Emberi beavatkozás<br/>(ha LLM nem sikerül)"]
+    end
+
+    subgraph post["Post-Merge"]
+        sync["Futó worktree-k<br/>szinkronizálása"]
+        build_check["Base build ellenőrzés"]
+        post_cmd["post_merge_command<br/>(pl. pnpm db:generate)"]
+        archive["Change archiválás"]
+        post_hook["post_merge hook"]
+    end
+
+    queue --> policy
+    eager --> pre_hook
+    checkpoint --> pre_hook
+    manual --> pre_hook
+    pre_hook --> check_branch
+    check_branch -- "nem" --> archive
+    check_branch -- "igen" --> already
+    already -- "igen" --> archive
+    already -- "nem" --> wt_merge
+    wt_merge -- "conflict" --> conflict
+    auto_gen --> llm_res --> human
+    wt_merge -- "ok" --> post
+    conflict --> post
+    sync --> build_check --> post_cmd --> archive --> post_hook
+
+    style policy fill:#e8f4fd,stroke:#2196F3
+    style conflict fill:#fff3e0,stroke:#FF9800
+    style post fill:#e8f5e9,stroke:#4CAF50

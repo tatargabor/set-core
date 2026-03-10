@@ -1,0 +1,33 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart LR
+    subgraph input["Input módok"]
+        spec["--spec docs/v3.md<br/>(specifikáció)"]
+        brief["--brief project-brief.md<br/>(roadmap brief)"]
+        auto["Auto-detect<br/>(openspec/project-brief.md)"]
+    end
+
+    subgraph resolve["Feloldás"]
+        specr["Spec könyvtár vagy fájl<br/>→ scan_spec_directory()"]
+        briefr["Brief parsing<br/>→ parse_next_items()"]
+    end
+
+    subgraph config["Konfiguráció"]
+        yaml[".claude/orchestration.yaml"]
+        directives["Dokumentum-beli direktívák<br/>(## Orchestrator Directives)"]
+    end
+
+    subgraph output["Eredmény"]
+        merged["Összevont direktívák<br/>(CLI > YAML > doc > default)"]
+    end
+
+    spec --> specr
+    brief --> briefr
+    auto --> briefr
+    specr --> merged
+    briefr --> merged
+    yaml --> merged
+    directives --> merged
+
+    style input fill:#e8f4fd,stroke:#2196F3
+    style config fill:#fff3e0,stroke:#FF9800
+    style output fill:#e8f5e9,stroke:#4CAF50

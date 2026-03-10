@@ -1,0 +1,33 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    check(["watchdog_check()"])
+    activity{"Van új<br/>aktivitás?"}
+    reset["Eszkaláció reset<br/>(level → 0)"]
+    hash["Action hash<br/>összehasonlítás"]
+    loop_detect{"Ismétlődő<br/>hash?"}
+    timeout{"Timeout<br/>lejárt?"}
+
+    subgraph escalation["Eszkalációs szintek"]
+        L1["<b>L1 — Figyelmeztetés</b><br/>Log + notification<br/>(nincs beavatkozás)"]
+        L2["<b>L2 — Újraindítás</b><br/>Ralph loop restart<br/>(context pruning)"]
+        L3["<b>L3 — Redispatch</b><br/>Worktree újraépítés<br/>(max 2 retry)"]
+        L4["<b>L4 — Feladás</b><br/>Change → failed<br/>(notification)"]
+    end
+
+    check --> activity
+    activity -- "igen" --> reset
+    activity -- "nem" --> hash
+    hash --> loop_detect
+    loop_detect -- "igen" --> timeout
+    loop_detect -- "nem" --> timeout
+    timeout -- "nem" --> check
+    timeout -- "L1 küszöb" --> L1
+    L1 -- "folytatódik" --> L2
+    L2 -- "folytatódik" --> L3
+    L3 -- "folytatódik" --> L4
+
+    style escalation fill:#fce4ec,stroke:#E91E63
+    style L1 fill:#fff9c4,stroke:#FFC107
+    style L2 fill:#ffe0b2,stroke:#FF9800
+    style L3 fill:#ffccbc,stroke:#FF5722
+    style L4 fill:#ef9a9a,stroke:#F44336

@@ -1,0 +1,28 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    specdir["Spec könyvtár<br/>(docs/v*.md)"]
+    scan["scan_spec_directory()<br/>fájlok feltérképezése"]
+    hash["source_hash generálás<br/>(frissesség ellenőrzés)"]
+    prompt["build_digest_prompt()<br/>LLM prompt összeállítás"]
+    api["Claude API hívás<br/>(strukturált digest)"]
+    parse["parse_digest_response()<br/>JSON kimenet"]
+
+    subgraph output["Digest kimenet"]
+        reqs["requirements.json<br/>(REQ-001, REQ-002...)"]
+        phases["phases.json<br/>(fázis struktúra)"]
+        meta["digest-meta.json<br/>(hash, dátum)"]
+        amb["ambiguities.json<br/>(kérdéses pontok)"]
+    end
+
+    triage["Ambiguity Triage<br/>(triage.md generálás)"]
+    human["Emberi döntés<br/>(triage.md kitöltése)"]
+    merge_t["Triage eredmény<br/>visszaírás digest-be"]
+
+    specdir --> scan --> hash --> prompt --> api --> parse
+    parse --> reqs & phases & meta & amb
+    amb --> triage --> human --> merge_t
+    merge_t --> amb
+
+    style output fill:#e8f5e9,stroke:#4CAF50
+    style triage fill:#fff3e0,stroke:#FF9800
+    style human fill:#fce4ec,stroke:#E91E63

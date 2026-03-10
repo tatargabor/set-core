@@ -1,0 +1,42 @@
+%%{init: {'theme': 'neutral'}}%%
+stateDiagram-v2
+    [*] --> pending : Plan generálás
+
+    pending --> dispatched : dispatch_change()
+    dispatched --> running : Ralph loop elindul
+
+    running --> verifying : loop-state = done
+    running --> stalled : Watchdog L1-L2
+    running --> paused : cmd_pause / budget
+
+    stalled --> running : Activity detected
+    stalled --> dispatched : Watchdog L3 (redispatch)
+    stalled --> failed : Watchdog L4
+
+    verifying --> merge_queue : Minden gate pass
+    verifying --> verify_failed : Gate fail
+    verify_failed --> running : Retry (< max)
+    verify_failed --> failed : Retry exhausted
+
+    paused --> running : cmd_resume
+    paused --> running : Budget available
+
+    merge_queue --> merging : Policy allows
+    merging --> merged : Merge OK
+    merging --> merge_blocked : Conflict
+    merge_blocked --> merging : Retry / LLM fix
+
+    merged --> smoking : smoke_command
+    smoking --> completed : Smoke pass
+    smoking --> smoke_failed : Smoke fail
+    smoke_failed --> running : Smoke fix retry
+
+    completed --> [*]
+    failed --> [*]
+    skipped --> [*]
+
+    pending --> skipped : Dependency failed
+
+    note right of running : 15s poll ciklus\nToken tracking\nWatchdog figyelés
+    note right of verifying : Test → Review → Verify\n→ Smoke → E2E
+    note right of merge_queue : eager / checkpoint / manual

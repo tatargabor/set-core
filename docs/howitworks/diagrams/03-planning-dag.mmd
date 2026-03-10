@@ -1,0 +1,36 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    subgraph input["Bemenetek"]
+        digest["digest.json<br/>(requirements)"]
+        config["Direktívák<br/>(max_parallel, stb.)"]
+        prev["Korábbi állapot<br/>(completed changes)"]
+    end
+
+    decompose["Dekompozíció<br/>(Claude API vagy Agent)"]
+
+    subgraph plan["orchestration-plan.json"]
+        direction TB
+        a["change/auth-system<br/>complexity: L"]
+        b["change/user-profile<br/>complexity: M"]
+        c["change/api-endpoints<br/>complexity: M"]
+        d["change/dashboard<br/>complexity: S"]
+        e["change/e2e-tests<br/>complexity: M"]
+    end
+
+    topo["Topológiai rendezés<br/>(DAG validálás)"]
+
+    subgraph dag["Végrehajtási sorrend"]
+        direction LR
+        t1["T1: auth-system"]
+        t2["T2: user-profile<br/>T2: api-endpoints"]
+        t3["T3: dashboard<br/>T3: e2e-tests"]
+    end
+
+    input --> decompose --> plan --> topo --> dag
+    a --> b & c
+    b --> d
+    c --> e
+
+    style input fill:#e8f4fd,stroke:#2196F3
+    style plan fill:#fff3e0,stroke:#FF9800
+    style dag fill:#e8f5e9,stroke:#4CAF50
