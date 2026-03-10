@@ -293,7 +293,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and pull request gu
 
 ## Acknowledgements
 
-Built by [Gabor Tatar](https://itline.hu) (ITLine Kft.) and used across production projects. Partners: [Zengo Kft.](https://zengo.eu) · [BlackBelt](https://blackbelt.hu) · [AIOrigo](https://aiorigo.com) · [MKIK](https://mkik.hu).
+Built by [Gabor Tatar](https://itline.hu) (ITLine Kft.) and used across production projects.
+
+Partners: [Zengo Kft.](https://zengo.eu)
+
+Special thanks: [BlackBelt](https://blackbelt.hu) · [AIOrigo](https://aiorigo.com) · [MKIK](https://mkik.hu)
 
 ## License
 
