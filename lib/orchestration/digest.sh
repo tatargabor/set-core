@@ -969,6 +969,24 @@ populate_coverage() {
         done <<< "$_aa_reqs"
     done <<< "$changes"
 
+    # Restore previously-merged requirements from persistent history
+    local merged_history="$DIGEST_DIR/coverage-merged.json"
+    if [[ -f "$merged_history" ]]; then
+        local prev_ids
+        prev_ids=$(jq -r 'keys[]' "$merged_history" 2>/dev/null || true)
+        while IFS= read -r prev_id; do
+            [[ -z "$prev_id" ]] && continue
+            local already_covered
+            already_covered=$(echo "$coverage" | jq --arg id "$prev_id" 'has($id)')
+            if [[ "$already_covered" == "false" ]]; then
+                local prev_entry
+                prev_entry=$(jq --arg id "$prev_id" '.[$id]' "$merged_history")
+                coverage=$(echo "$coverage" | jq --arg id "$prev_id" --argjson entry "$prev_entry" '.[$id] = $entry')
+            fi
+        done <<< "$prev_ids"
+        log_info "Restored $(echo "$prev_ids" | grep -c . || true) previously-merged requirements from history"
+    fi
+
     # Write coverage.json
     local uncovered
     uncovered=$(check_coverage_gaps_internal "$coverage")
@@ -1078,6 +1096,22 @@ update_coverage_status() {
         '.coverage = (.coverage | to_entries | map(
             if .value.change == $change then .value.status = $status else . end
         ) | from_entries)' "$DIGEST_DIR/coverage.json" > "$tmp" && mv "$tmp" "$DIGEST_DIR/coverage.json"
+
+    # Persist merged requirements to history (survives replan)
+    if [[ "$new_status" == "merged" ]]; then
+        local merged_history="$DIGEST_DIR/coverage-merged.json"
+        local merged_entries
+        merged_entries=$(jq --arg change "$change_name" \
+            '[.coverage | to_entries[] | select(.value.change == $change)] | from_entries' \
+            "$DIGEST_DIR/coverage.json" 2>/dev/null || echo '{}')
+        if [[ -f "$merged_history" ]]; then
+            local merged_tmp
+            merged_tmp=$(mktemp)
+            jq --argjson new "$merged_entries" '. * $new' "$merged_history" > "$merged_tmp" && mv "$merged_tmp" "$merged_history"
+        else
+            echo "$merged_entries" > "$merged_history"
+        fi
+    fi
 
     log_info "Coverage status updated: $change_name → $new_status"
 }

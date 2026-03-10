@@ -192,9 +192,11 @@ render_execution_section() {
 
     # Change timeline
     echo "<table>"
-    echo "<tr><th>Change</th><th>Status</th><th>Tokens</th><th>Test</th><th>Smoke</th></tr>"
+    echo "<tr><th>Change</th><th>Status</th><th>Duration</th><th>Tokens</th><th>Test</th><th>Smoke</th></tr>"
 
-    while IFS=$'\t' read -r name status tokens test_res smoke_res; do
+    local total_tokens=0 total_duration_s=0 total_tests=0
+
+    while IFS=$'\t' read -r name status tokens test_res smoke_res started_at completed_at test_stats; do
         [[ -z "$name" ]] && continue
 
         local test_class="gate-na" smoke_class="gate-na"
@@ -212,22 +214,81 @@ render_execution_section() {
             smoke_class="gate-fail"; smoke_display="&#10007;"
         fi
 
+        # Duration calculation
+        local duration_display="-"
+        if [[ -n "$started_at" && "$started_at" != "null" ]]; then
+            local start_epoch end_epoch dur_s
+            start_epoch=$(date -d "$started_at" +%s 2>/dev/null || echo 0)
+            if [[ -n "$completed_at" && "$completed_at" != "null" ]]; then
+                end_epoch=$(date -d "$completed_at" +%s 2>/dev/null || echo 0)
+            else
+                end_epoch=$(date +%s)
+            fi
+            if [[ "$start_epoch" -gt 0 ]]; then
+                dur_s=$((end_epoch - start_epoch))
+                total_duration_s=$((total_duration_s + dur_s))
+                local dur_m=$((dur_s / 60)) dur_rem=$((dur_s % 60))
+                duration_display="${dur_m}m${dur_rem}s"
+            fi
+        fi
+
+        # Test stats (if stored)
+        local test_stat_display=""
+        if [[ -n "$test_stats" && "$test_stats" != "null" && "$test_stats" != "{}" ]]; then
+            local t_pass t_fail t_total
+            t_pass=$(echo "$test_stats" | jq -r '.passed // 0' 2>/dev/null || echo 0)
+            t_fail=$(echo "$test_stats" | jq -r '.failed // 0' 2>/dev/null || echo 0)
+            t_total=$((t_pass + t_fail))
+            if [[ "$t_total" -gt 0 ]]; then
+                test_display="${test_display} <small>${t_pass}/${t_total}</small>"
+                total_tests=$((total_tests + t_total))
+            fi
+        fi
+
+        # Token formatting
+        local token_display="$tokens"
+        if [[ "$tokens" -gt 999999 ]]; then
+            token_display="$(echo "scale=1; $tokens / 1000000" | bc)M"
+        elif [[ "$tokens" -gt 999 ]]; then
+            token_display="$(echo "scale=0; $tokens / 1000" | bc)K"
+        fi
+        total_tokens=$((total_tokens + tokens))
+
         echo "<tr>"
         echo "<td>$name</td>"
         echo "<td><span class=\"status-$status\">$status</span></td>"
-        echo "<td>$tokens</td>"
+        echo "<td>$duration_display</td>"
+        echo "<td>$token_display</td>"
         echo "<td><span class=\"$test_class\">$test_display</span></td>"
         echo "<td><span class=\"$smoke_class\">$smoke_display</span></td>"
         echo "</tr>"
-    done < <(jq -r '.changes[] | "\(.name)\t\(.status)\t\(.tokens_used // 0)\t\(.test_result // "-")\t\(.smoke_result // "-")"' "$STATE_FILENAME" 2>/dev/null || true)
+    done < <(jq -r '.changes[] | "\(.name)\t\(.status)\t\(.tokens_used // 0)\t\(.test_result // "-")\t\(.smoke_result // "-")\t\(.started_at // "null")\t\(.completed_at // "null")\t\(.test_stats // {} | tostring)"' "$STATE_FILENAME" 2>/dev/null || true)
 
+    # Summary row
+    local total_token_display="$total_tokens"
+    if [[ "$total_tokens" -gt 999999 ]]; then
+        total_token_display="$(echo "scale=1; $total_tokens / 1000000" | bc)M"
+    elif [[ "$total_tokens" -gt 999 ]]; then
+        total_token_display="$(echo "scale=0; $total_tokens / 1000" | bc)K"
+    fi
+    local total_dur_m=$((total_duration_s / 60))
+
+    echo "<tr style=\"border-top:2px solid #666;font-weight:bold\">"
+    echo "<td>Total</td><td></td><td>${total_dur_m}m</td><td>$total_token_display</td>"
+    if [[ "$total_tests" -gt 0 ]]; then
+        echo "<td colspan=\"2\">$total_tests tests</td>"
+    else
+        echo "<td colspan=\"2\"></td>"
+    fi
+    echo "</tr>"
     echo "</table>"
 }
 
 # ─── Coverage Section ───────────────────────────────────────────────
 
 render_coverage_section() {
-    echo "<h2>Requirement Coverage</h2>"
+    echo '<h2>Requirement Coverage <label style="font-size:14px;font-weight:normal;margin-left:16px;cursor:pointer"><input type="checkbox" id="cov-all-toggle" onchange="toggleCovPhase()" checked> Include previous phases</label></h2>'
+    echo '<script>function toggleCovPhase(){var c=document.getElementById("cov-all-toggle").checked;document.querySelectorAll("[data-phase=previous]").forEach(function(r){r.style.display=c?"":"none"});document.querySelectorAll(".cov-summary").forEach(function(e){var t=parseInt(e.dataset.total),m=parseInt(e.dataset.merged),i=parseInt(e.dataset.inprog),pm=parseInt(e.dataset.prevMerged);if(!c){m-=pm;t-=pm}var a=m+i,p=t>0?Math.round(a*100/t):0,mp=t>0?Math.round(m*100/t):0,ip=t>0?Math.round(i*100/t):0;e.querySelector(".cov-num").textContent=a+"/"+t+" requirements active ("+p+"%)";e.querySelector(".cov-detail").innerHTML="<span class=status-merged>"+m+" merged ("+mp+"%)</span> + <span class=status-running>"+i+" in-progress ("+ip+"%)</span>";e.querySelector(".coverage-fill").style.width=mp+"%";e.querySelector(".coverage-fill-inprogress").style.width=ip+"%";var uc=e.querySelector(".cov-uncovered");if(uc)uc.textContent=(t-a)+" uncovered"})}</script>'
 
     if [[ ! -f "$DIGEST_DIR/requirements.json" || ! -f "$DIGEST_DIR/coverage.json" ]]; then
         echo '<p class="not-available">Not available — no digest or coverage data.</p>'
@@ -242,7 +303,7 @@ render_coverage_section() {
 
     # First pass: collect data for summary + per-domain
     local -a domain_list=()
-    local -A domain_totals=() domain_merged=() domain_inprogress=() domain_rows=()
+    local -A domain_totals=() domain_merged=() domain_inprogress=() domain_prev_merged=() domain_rows=()
 
     while IFS= read -r domain; do
         [[ -z "$domain" ]] && continue
@@ -250,6 +311,7 @@ render_coverage_section() {
         domain_totals[$domain]=0
         domain_merged[$domain]=0
         domain_inprogress[$domain]=0
+        domain_prev_merged[$domain]=0
         domain_rows[$domain]=""
 
         while IFS=$'\t' read -r req_id title; do
@@ -257,11 +319,18 @@ render_coverage_section() {
             domain_totals[$domain]=$(( ${domain_totals[$domain]} + 1 ))
             grand_total=$((grand_total + 1))
 
-            local cov_change effective_status
+            local cov_change effective_status cov_phase=""
             cov_change=$(jq -r --arg id "$req_id" '.coverage[$id].change // empty' "$DIGEST_DIR/coverage.json" 2>/dev/null || true)
+            cov_phase=$(jq -r --arg id "$req_id" '.coverage[$id].phase // empty' "$DIGEST_DIR/coverage.json" 2>/dev/null || true)
 
             if [[ -z "$cov_change" ]]; then
                 effective_status="uncovered"
+            elif [[ "$cov_phase" == "previous" ]]; then
+                # Previously merged from earlier orchestration phase
+                effective_status="merged"
+                domain_merged[$domain]=$(( ${domain_merged[$domain]} + 1 ))
+                domain_prev_merged[$domain]=$(( ${domain_prev_merged[$domain]} + 1 ))
+                grand_covered=$((grand_covered + 1))
             elif [[ -f "$STATE_FILENAME" ]]; then
                 local state_status
                 state_status=$(jq -r --arg n "$cov_change" '.changes[] | select(.name == $n) | .status // "planned"' "$STATE_FILENAME" 2>/dev/null || echo "planned")
@@ -284,7 +353,9 @@ render_coverage_section() {
                 effective_status="planned"
             fi
 
-            domain_rows[$domain]+="<tr><td>$req_id</td><td>$title</td><td>$cov_change</td><td><span class=\"status-$effective_status\">$effective_status</span></td></tr>"
+            local row_phase_attr=""
+            [[ "$cov_phase" == "previous" ]] && row_phase_attr=" data-phase=\"previous\" style=\"opacity:0.7\""
+            domain_rows[$domain]+="<tr${row_phase_attr}><td>$req_id</td><td>$title</td><td>$cov_change</td><td><span class=\"status-$effective_status\">$effective_status</span></td></tr>"
         done < <(jq -r --arg d "$domain" '.requirements[] | select(.domain == $d and .status != "removed") | "\(.id)\t\(.title // "-")"' "$DIGEST_DIR/requirements.json" 2>/dev/null || true)
     done <<< "$domains"
 
@@ -297,12 +368,17 @@ render_coverage_section() {
     local grand_active=$((grand_covered + grand_inprogress))
     local grand_active_pct=$((grand_merged_pct + grand_inprog_pct))
 
-    echo "<div class=\"coverage-summary\">"
-    echo "<strong style=\"font-size:18px\">$grand_active/$grand_total requirements active ($grand_active_pct%)</strong>"
-    echo " — <span class=\"status-merged\">$grand_covered merged ($grand_merged_pct%)</span>"
-    echo " + <span class=\"status-running\">$grand_inprogress in-progress ($grand_inprog_pct%)</span>"
+    # Count previously-merged (phase=previous)
+    local grand_prev_merged=0
+    for domain in "${domain_list[@]}"; do
+        grand_prev_merged=$((grand_prev_merged + ${domain_prev_merged[$domain]:-0}))
+    done
+
+    echo "<div class=\"coverage-summary cov-summary\" data-total=\"$grand_total\" data-merged=\"$grand_covered\" data-inprog=\"$grand_inprogress\" data-prev-merged=\"$grand_prev_merged\">"
+    echo "<strong style=\"font-size:18px\" class=\"cov-num\">$grand_active/$grand_total requirements active ($grand_active_pct%)</strong>"
+    echo " — <span class=\"cov-detail\"><span class=\"status-merged\">$grand_covered merged ($grand_merged_pct%)</span> + <span class=\"status-running\">$grand_inprogress in-progress ($grand_inprog_pct%)</span></span>"
     echo "<br><span class=\"coverage-bar\" style=\"width:200px\"><span class=\"coverage-fill\" style=\"width:${grand_merged_pct}%\"></span><span class=\"coverage-fill-inprogress\" style=\"width:${grand_inprog_pct}%\"></span></span>"
-    echo "<p style=\"color:#888\">$((grand_total - grand_active)) uncovered</p>"
+    echo "<p style=\"color:#888\" class=\"cov-uncovered\">$((grand_total - grand_active)) uncovered</p>"
     echo "</div>"
 
     # Per-domain details
@@ -310,6 +386,7 @@ render_coverage_section() {
         local dt=${domain_totals[$domain]}
         local dm=${domain_merged[$domain]}
         local di=${domain_inprogress[$domain]}
+        local dpm=${domain_prev_merged[$domain]:-0}
         local da=$((dm + di))
 
         local pct_m=0 pct_i=0
@@ -319,8 +396,8 @@ render_coverage_section() {
         fi
         local pct_a=$((pct_m + pct_i))
 
-        echo "<details>"
-        echo "<summary><strong>$domain</strong> — $da/$dt ($pct_a%) <span class=\"coverage-bar\"><span class=\"coverage-fill\" style=\"width:${pct_m}%\"></span><span class=\"coverage-fill-inprogress\" style=\"width:${pct_i}%\"></span></span></summary>"
+        echo "<details class=\"cov-summary\" data-total=\"$dt\" data-merged=\"$dm\" data-inprog=\"$di\" data-prev-merged=\"$dpm\">"
+        echo "<summary><strong>$domain</strong> — <span class=\"cov-num\">$da/$dt ($pct_a%)</span> <span class=\"coverage-bar\"><span class=\"coverage-fill\" style=\"width:${pct_m}%\"></span><span class=\"coverage-fill-inprogress\" style=\"width:${pct_i}%\"></span></span></summary>"
         echo "<table><tr><th>REQ</th><th>Title</th><th>Change</th><th>Status</th></tr>"
         echo "${domain_rows[$domain]}"
         echo "</table>"

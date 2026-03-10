@@ -46,6 +46,8 @@ monitor_loop() {
     e2e_command=$(echo "$directives" | jq -r '.e2e_command // ""')
     local e2e_timeout
     e2e_timeout=$(echo "$directives" | jq -r '.e2e_timeout // 120')
+    local e2e_mode
+    e2e_mode=$(echo "$directives" | jq -r '.e2e_mode // "per_change"')
 
     local token_hard_limit
     token_hard_limit=$(echo "$directives" | jq -r ".token_hard_limit // $DEFAULT_TOKEN_HARD_LIMIT")
@@ -158,6 +160,10 @@ monitor_loop() {
         fi
 
         # Poll each active change (running + verifying — verifying may have been interrupted mid-gate)
+        # In phase_end mode, skip per-change E2E (runs on main after all changes merge)
+        local _poll_e2e_cmd="$e2e_command"
+        [[ "$e2e_mode" == "phase_end" ]] && _poll_e2e_cmd=""
+
         local active_changes
         active_changes=$(jq -r '.changes[]? | select(.status == "running" or .status == "verifying") | .name' "$STATE_FILENAME" 2>/dev/null || true)
         while IFS= read -r name; do
@@ -167,7 +173,7 @@ monitor_loop() {
                 "$smoke_command" "$smoke_timeout" "$smoke_blocking" \
                 "$smoke_fix_max_retries" "$smoke_fix_max_turns" \
                 "$smoke_health_check_url" "$smoke_health_check_timeout" \
-                "$e2e_command" "$e2e_timeout"
+                "$_poll_e2e_cmd" "$e2e_timeout"
             watchdog_check "$name"
         done <<< "$active_changes"
 
@@ -192,7 +198,7 @@ monitor_loop() {
                         "$smoke_command" "$smoke_timeout" "$smoke_blocking" \
                         "$smoke_fix_max_retries" "$smoke_fix_max_turns" \
                         "$smoke_health_check_url" "$smoke_health_check_timeout" \
-                        "$e2e_command" "$e2e_timeout"
+                        "$_poll_e2e_cmd" "$e2e_timeout"
                 fi
             fi
         done <<< "$suspended_changes"
@@ -301,12 +307,14 @@ monitor_loop() {
         # Watchdog heartbeat (sentinel monitors events.jsonl mtime)
         watchdog_heartbeat
 
-        # Check if checkpoint needed
-        local changes_since
-        changes_since=$(jq -r '.changes_since_checkpoint // 0' "$STATE_FILENAME")
-        if [[ "$changes_since" -ge "$checkpoint_every" ]]; then
-            trigger_checkpoint "periodic"
-            continue
+        # Check if checkpoint needed (skip if checkpoint_every is null/empty/0)
+        if [[ -n "$checkpoint_every" && "$checkpoint_every" != "null" && "$checkpoint_every" -gt 0 ]] 2>/dev/null; then
+            local changes_since
+            changes_since=$(jq -r '.changes_since_checkpoint // 0' "$STATE_FILENAME")
+            if [[ "$changes_since" -ge "$checkpoint_every" ]]; then
+                trigger_checkpoint "periodic"
+                continue
+            fi
         fi
 
         # Check if all done — count resolved changes (success + terminal failures)
@@ -336,6 +344,11 @@ monitor_loop() {
         if [[ "$truly_complete" -ge "$total_changes" || ("$active_count" -eq 0 && "$all_resolved" -ge "$total_changes") ]]; then
             log_info "All $total_changes changes complete"
             send_notification "wt-orchestrate" "All $total_changes changes complete!" "normal"
+
+            # ── Phase-end E2E: run Playwright on main after all changes merged ──
+            if [[ "$e2e_mode" == "phase_end" && -n "$e2e_command" && "$truly_complete" -gt 0 ]]; then
+                run_phase_end_e2e "$e2e_command" "$e2e_timeout"
+            fi
 
             # Auto-replan: generate next plan and continue if new work found
             if [[ "$auto_replan" == "true" ]]; then

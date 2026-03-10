@@ -44,8 +44,9 @@ init_state() {
         cache_read_tokens_prev: 0,
         cache_create_tokens_prev: 0,
         test_result: null,
+        test_stats: null,
         smoke_result: null,
-
+        smoke_stats: null,
 
         verify_retry_count: 0,
         redispatch_count: 0
@@ -639,8 +640,8 @@ trigger_checkpoint() {
     log_info "Checkpoint triggered: $reason"
     emit_event "CHECKPOINT" "" "{\"reason\":\"$reason\"}"
 
-    # Generate summary
-    generate_summary "$reason"
+    # Generate summary (non-fatal — don't let summary crash kill the orchestrator)
+    generate_summary "$reason" || log_warn "Summary generation failed (non-fatal)"
 
     # Add checkpoint to state
     local tmp

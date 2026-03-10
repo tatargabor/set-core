@@ -498,6 +498,79 @@ SCOPED_FIX_EOF
     return 1
 }
 
+# ─── Phase-End E2E ───────────────────────────────────────────────────
+# Run Playwright E2E tests on main after all changes in a phase have merged.
+# Results are stored in state for reporting and passed to replan as context.
+# Returns 0 regardless — failures don't block replan, they inform it.
+
+run_phase_end_e2e() {
+    local e2e_command="$1"
+    local e2e_timeout="${2:-180}"
+
+    log_info "Phase-end E2E: starting on main branch"
+    emit_event "PHASE_E2E_STARTED" "" "{}"
+
+    local e2e_port=$((3100 + RANDOM % 900))
+    local _start=$(($(date +%s%N) / 1000000))
+    local e2e_output=""
+    local e2e_rc=0
+    local e2e_result="pass"
+
+    info "Running phase-end E2E tests on main (port=$e2e_port)..."
+
+    # Run E2E in project root (main branch) — not a worktree
+    if PW_PORT=$e2e_port run_tests_in_worktree "$(pwd)" "$e2e_command" "$e2e_timeout" 8000; then
+        e2e_output="$TEST_OUTPUT"
+        log_info "Phase-end E2E: all tests passed"
+    else
+        e2e_rc=$?
+        e2e_output="$TEST_OUTPUT"
+        e2e_result="fail"
+        log_error "Phase-end E2E: tests failed (rc=$e2e_rc)"
+    fi
+
+    # Cleanup dev server
+    pkill -f "pnpm dev.*--port $e2e_port" 2>/dev/null || true
+    pkill -f "next dev.*--port $e2e_port" 2>/dev/null || true
+
+    local _elapsed=$(( $(date +%s%N) / 1000000 - _start ))
+    log_info "Phase-end E2E: took ${_elapsed}ms, result=$e2e_result"
+
+    # Store results in state for reporting
+    local cycle
+    cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME")
+    local escaped_output
+    escaped_output=$(printf '%s' "$e2e_output" | head -c 8000 | jq -Rs .)
+
+    local tmp
+    tmp=$(mktemp)
+    jq --arg result "$e2e_result" \
+       --argjson ms "$_elapsed" \
+       --arg output "$escaped_output" \
+       --argjson cycle "$cycle" \
+       '.phase_e2e_results = (.phase_e2e_results // []) + [{
+            cycle: $cycle,
+            result: $result,
+            duration_ms: $ms,
+            output: $output,
+            timestamp: (now | todate)
+        }]' "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
+
+    emit_event "PHASE_E2E_COMPLETED" "" "{\"result\":\"$e2e_result\",\"duration_ms\":$_elapsed,\"cycle\":$cycle}"
+
+    if [[ "$e2e_result" == "fail" ]]; then
+        send_notification "wt-orchestrate" "Phase-end E2E failed! Failures will be included in replan context." "warning"
+        # Store failure context for replan to consume
+        update_state_field "phase_e2e_failure_context" "$escaped_output"
+    else
+        send_notification "wt-orchestrate" "Phase-end E2E passed! All integrated tests green." "normal"
+        # Clear any previous failure context
+        update_state_field "phase_e2e_failure_context" '""'
+    fi
+
+    return 0
+}
+
 # ─── Poll Change ─────────────────────────────────────────────────────
 
 poll_change() {
@@ -809,6 +882,33 @@ handle_change_done() {
     local escaped_output
     escaped_output=$(printf '%s' "$test_output" | head -c 2000 | jq -Rs .)
     update_change_field "$change_name" "test_output" "$escaped_output"
+
+    # Parse test counts from output (Jest/Vitest/Playwright formats)
+    local t_passed=0 t_failed=0 t_suites=0 t_type="unknown"
+    if [[ -n "$test_output" ]]; then
+        # Jest/Vitest: "Tests:  X passed, Y total" or "Tests:  X failed, Y passed, Z total"
+        local jest_passed jest_failed
+        jest_passed=$(echo "$test_output" | grep -oP 'Tests:\s+.*?(\d+)\s+passed' | grep -oP '\d+(?=\s+passed)' | tail -1 || true)
+        jest_failed=$(echo "$test_output" | grep -oP 'Tests:\s+.*?(\d+)\s+failed' | grep -oP '\d+(?=\s+failed)' | tail -1 || true)
+        local jest_suites
+        jest_suites=$(echo "$test_output" | grep -oP 'Test Suites:\s+.*?(\d+)\s+passed' | grep -oP '\d+(?=\s+passed)' | tail -1 || true)
+
+        # Playwright: "X passed" or "X failed, Y passed"
+        local pw_passed pw_failed
+        pw_passed=$(echo "$test_output" | grep -oP '\d+(?=\s+passed)' | tail -1 || true)
+        pw_failed=$(echo "$test_output" | grep -oP '\d+(?=\s+failed)' | tail -1 || true)
+
+        if [[ -n "$jest_passed" ]]; then
+            t_passed=$jest_passed; t_failed=${jest_failed:-0}; t_suites=${jest_suites:-0}; t_type="jest"
+        elif [[ -n "$pw_passed" ]]; then
+            t_passed=$pw_passed; t_failed=${pw_failed:-0}; t_type="playwright"
+        fi
+
+        if [[ "$((t_passed + t_failed))" -gt 0 ]]; then
+            update_change_field "$change_name" "test_stats" \
+                "{\"passed\":$t_passed,\"failed\":$t_failed,\"suites\":$t_suites,\"type\":\"$t_type\"}"
+        fi
+    fi
 
     if [[ "$test_result" == "fail" ]]; then
         # Retry with test failure context (VG-2)
