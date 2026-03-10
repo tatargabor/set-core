@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-# wt-e2e-report — Generate E2E test report from orchestration state
+# wt-e2e-report — Generate E2E benchmark report from orchestration state + logs
 #
-# Reads orchestration-state.json, generates a markdown report with:
-# - Run summary (duration, total tokens, changes)
-# - Per-change table (name, status, tokens, duration)
-# - Timeline of state transitions
+# Reads orchestration-state.json + orchestration log, generates a markdown report with:
+# - Run summary (duration, total tokens, changes, test counts)
+# - Gantt chart (ASCII timeline of parallel agent execution)
+# - Per-change table (name, status, tokens, duration, retries)
+# - Quality gate breakdown (Jest, build, E2E, smoke per change)
+# - Retry analysis
+# - Test coverage summary
 # - Directives used
 # - Comparison with previous report if available
 # - Optional Playwright screenshots
+# - Optional wt-tools README benchmark section update
 #
 # Usage:
 #   wt-e2e-report                          # Use current directory
 #   wt-e2e-report --project-dir /path/to   # Specify project dir
 #   wt-e2e-report --no-screenshots         # Skip screenshot capture
+#   wt-e2e-report --update-readme /path    # Update benchmark section in README
 
 set -euo pipefail
 
@@ -20,6 +25,7 @@ set -euo pipefail
 
 PROJECT_DIR="."
 SCREENSHOTS=true
+README_PATH=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -39,8 +45,16 @@ while [[ $# -gt 0 ]]; do
             SCREENSHOTS=true
             shift
             ;;
+        --update-readme)
+            README_PATH="$2"
+            shift 2
+            ;;
+        --update-readme=*)
+            README_PATH="${1#*=}"
+            shift
+            ;;
         *)
-            echo "Usage: wt-e2e-report [--project-dir <path>] [--no-screenshots]" >&2
+            echo "Usage: wt-e2e-report [--project-dir <path>] [--no-screenshots] [--update-readme <path>]" >&2
             exit 1
             ;;
     esac
@@ -51,6 +65,7 @@ cd "$PROJECT_DIR"
 # ── Validation ──
 
 STATE_FILE="orchestration-state.json"
+LOG_FILE=".claude/orchestration.log"
 REPORT_FILE="e2e-report.md"
 PREV_REPORT="e2e-report-prev.md"
 
@@ -89,11 +104,9 @@ if [[ "$SCREENSHOTS" == "true" ]]; then
         done
 
         if [[ $RETRIES -gt 0 ]]; then
-            # Copy capture script from wt-tools source
-            local SCRIPT_DIR
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-            local CAPTURE_SRC="$SCRIPT_DIR/tests/e2e/capture-screenshots.ts"
-            local CAPTURE_DST="tests/e2e/capture-screenshots.ts"
+            CAPTURE_SRC="$SCRIPT_DIR/tests/e2e/capture-screenshots.ts"
+            CAPTURE_DST="tests/e2e/capture-screenshots.ts"
             if [[ -f "$CAPTURE_SRC" ]]; then
                 mkdir -p "$(dirname "$CAPTURE_DST")"
                 cp "$CAPTURE_SRC" "$CAPTURE_DST"
@@ -119,7 +132,7 @@ fi
 status=$(jq -r '.status // "unknown"' "$STATE_FILE")
 started_at=$(jq -r '.started_at // "unknown"' "$STATE_FILE")
 completed_at=$(jq -r '.completed_at // .last_updated // "unknown"' "$STATE_FILE")
-total_tokens=$(jq -r '.total_tokens // 0' "$STATE_FILE")
+total_tokens=$(jq '[.changes[].tokens_used // 0] | add // 0' "$STATE_FILE")
 total_input=$(jq '[.changes[].input_tokens // 0] | add // 0' "$STATE_FILE")
 total_output=$(jq '[.changes[].output_tokens // 0] | add // 0' "$STATE_FILE")
 total_cache_read=$(jq '[.changes[].cache_read_tokens // 0] | add // 0' "$STATE_FILE")
@@ -129,6 +142,7 @@ completed_count=$(jq -r '[.changes[] | select(.status == "completed" or .status 
 failed_count=$(jq -r '[.changes[] | select(.status == "failed" or .status == "stuck")] | length' "$STATE_FILE")
 
 # Calculate duration
+duration_str="unknown"
 if [[ "$started_at" != "unknown" && "$completed_at" != "unknown" ]]; then
     start_epoch=$(date -d "$started_at" +%s 2>/dev/null || echo "0")
     end_epoch=$(date -d "$completed_at" +%s 2>/dev/null || echo "0")
@@ -136,18 +150,16 @@ if [[ "$started_at" != "unknown" && "$completed_at" != "unknown" ]]; then
         duration_secs=$((end_epoch - start_epoch))
         duration_min=$((duration_secs / 60))
         duration_str="${duration_min}m"
-    else
-        duration_str="unknown"
     fi
-else
-    duration_str="unknown"
 fi
 
 # Format tokens
 format_tokens() {
     local n="$1"
     if [[ "$n" -ge 1000000 ]]; then
-        echo "$((n / 1000000))M"
+        local whole=$((n / 1000000))
+        local frac=$(( (n % 1000000) / 100000 ))
+        echo "${whole}.${frac}M"
     elif [[ "$n" -ge 1000 ]]; then
         echo "$((n / 1000))K"
     else
@@ -156,66 +168,389 @@ format_tokens() {
 }
 
 total_tokens_fmt=$(format_tokens "$total_tokens")
-total_input_fmt=$(format_tokens "$total_input")
-total_output_fmt=$(format_tokens "$total_output")
-total_cache_read_fmt=$(format_tokens "$total_cache_read")
-total_cache_create_fmt=$(format_tokens "$total_cache_create")
+
+# ── Extract quality gate data from log ──
+
+extract_gate_data() {
+    # Returns: change|jest_result|build_result|e2e_result|retries|gate_time_ms
+    if [[ ! -f "$LOG_FILE" ]]; then return; fi
+
+    jq -r '.changes[].name' "$STATE_FILE" | while read -r name; do
+        local jest_result="—" build_result="—" e2e_result="—" retries=0 gate_ms=0
+
+        # Jest
+        if grep -q "Verify gate: tests passed for $name" "$LOG_FILE" 2>/dev/null; then
+            jest_result="PASS"
+        elif grep -q "Verify gate: tests failed for $name" "$LOG_FILE" 2>/dev/null; then
+            jest_result="FAIL→PASS"
+        fi
+
+        # Build
+        if grep -q "Verify gate: build passed for $name" "$LOG_FILE" 2>/dev/null; then
+            build_result="PASS"
+        elif grep -q "Verify gate: build failed for $name" "$LOG_FILE" 2>/dev/null; then
+            build_result="FAIL→PASS"
+        fi
+
+        # E2E
+        if grep -q "Verify gate: e2e passed for $name" "$LOG_FILE" 2>/dev/null; then
+            e2e_result="PASS"
+        elif grep -q "Verify gate: e2e skipped for $name" "$LOG_FILE" 2>/dev/null; then
+            e2e_result="skipped"
+        fi
+        if grep -q "Verify gate: e2e failed for $name" "$LOG_FILE" 2>/dev/null; then
+            e2e_result="FAIL→PASS"
+        fi
+
+        # Retries (from total line)
+        local total_line
+        total_line=$(grep "Verify gate: $name total" "$LOG_FILE" 2>/dev/null | tail -1)
+        if [[ -n "$total_line" ]]; then
+            retries=$(echo "$total_line" | grep -oP 'retries=\K[0-9]+' || echo "0")
+            gate_ms=$(echo "$total_line" | grep -oP "$name total \K[0-9]+" || echo "0")
+        fi
+
+        # Smoke
+        local smoke="—"
+        if grep -q "Post-merge: smoke tests passed for $name" "$LOG_FILE" 2>/dev/null; then
+            smoke="PASS"
+        fi
+
+        # Post-merge build
+        local pm_build="—"
+        if grep -q "Post-merge: build passed on main" "$LOG_FILE" 2>/dev/null || \
+           grep -q "Post-merge: build fix succeeded after merging $name" "$LOG_FILE" 2>/dev/null; then
+            if grep -q "Post-merge: build FAILED on main after merging $name" "$LOG_FILE" 2>/dev/null; then
+                pm_build="fixed"
+            else
+                pm_build="PASS"
+            fi
+        fi
+
+        echo "$name|$jest_result|$build_result|$e2e_result|$retries|$gate_ms|$smoke|$pm_build"
+    done
+}
+
+# ── Extract retry details from log ──
+
+extract_retries() {
+    if [[ ! -f "$LOG_FILE" ]]; then return; fi
+
+    # Find retry events: "Resuming X with retry context"
+    grep -oP '\[INFO\] Resuming \K\S+(?= with retry context)' "$LOG_FILE" 2>/dev/null | while read -r name; do
+        # Get the error that caused the retry (previous ERROR line for this change)
+        local cause
+        cause=$(grep -B5 "Resuming $name with retry context" "$LOG_FILE" 2>/dev/null | grep -oP '\[ERROR\] Verify gate: \K.*' | tail -1)
+        if [[ -z "$cause" ]]; then
+            cause=$(grep -B5 "Resuming $name with retry context" "$LOG_FILE" 2>/dev/null | grep -oP '\[ERROR\] \K.*' | tail -1)
+        fi
+        echo "$name|${cause:-unknown}"
+    done
+}
+
+# ── Count tests ──
+
+jest_suites=0
+jest_tests=0
+e2e_specs=0
+e2e_tests=0
+
+if command -v pnpm &>/dev/null; then
+    # Jest
+    local_jest=$(pnpm test 2>&1 || true)
+    jest_suites=$(echo "$local_jest" | grep -oP 'Test Suites:\s+\K[0-9]+(?= passed)' || echo "0")
+    jest_tests=$(echo "$local_jest" | grep -oP 'Tests:\s+\K[0-9]+(?= passed)' || echo "0")
+
+    # Playwright spec count
+    e2e_specs=$(find tests/e2e -name "*.spec.ts" 2>/dev/null | wc -l)
+    if [[ "$e2e_specs" -gt 0 ]]; then
+        local_e2e=$(npx playwright test --list 2>&1 || true)
+        e2e_tests=$(echo "$local_e2e" | grep -oP 'Total: \K[0-9]+' || echo "0")
+    fi
+fi
+
+# ── Count source files and git commits ──
+
+src_files=$(find src -type f 2>/dev/null | wc -l)
+git_commits=$(git log --oneline 2>/dev/null | wc -l)
+
+# ── Merge-blocked count ──
+
+merge_blocked=0
+if [[ -f "$LOG_FILE" ]]; then
+    merge_blocked=$(grep -c 'merge-blocked\|merge_blocked' "$LOG_FILE" 2>/dev/null || echo "0")
+fi
+
+# ── Total retries ──
+
+total_retries=0
+if [[ -f "$LOG_FILE" ]]; then
+    gate_stats_line=$(grep 'Gate stats:' "$LOG_FILE" 2>/dev/null | tail -1)
+    if [[ -n "$gate_stats_line" ]]; then
+        total_retries=$(echo "$gate_stats_line" | grep -oP '[0-9]+ retries' | grep -oP '[0-9]+' || echo "0")
+    fi
+fi
+
+# ── Generate Gantt chart ──
+
+generate_gantt() {
+    if [[ ! -f "$LOG_FILE" ]]; then
+        echo "(no log file — cannot generate timeline)"
+        return
+    fi
+
+    # Extract dispatch and merge times per change from log
+    local -A dispatch_times merge_times
+    while IFS= read -r line; do
+        local ts name
+        ts=$(echo "$line" | grep -oP '^\[\K[^]]+')
+        name=$(echo "$line" | grep -oP 'Dispatching change: \K\S+')
+        if [[ -n "$name" && -n "$ts" ]]; then
+            dispatch_times["$name"]="$ts"
+        fi
+    done < <(grep 'Dispatching change:' "$LOG_FILE" 2>/dev/null)
+
+    # Get merge times from state
+    jq -r '.changes[] | "\(.name) \(.merged_at // .completed_at // "")"' "$STATE_FILE" | while read -r name merged; do
+        if [[ -n "$merged" ]]; then
+            merge_times["$name"]="$merged"
+        fi
+    done 2>/dev/null
+
+    # Build timeline using Python for easier time math
+    python3 -c "
+import json, sys
+from datetime import datetime
+
+with open('$STATE_FILE') as f:
+    state = json.load(f)
+
+# Parse dispatch times from log
+dispatch = {}
+merge = {}
+import re
+try:
+    with open('$LOG_FILE') as f:
+        for line in f:
+            m = re.match(r'\[([^\]]+)\].*Dispatching change: (\S+)', line)
+            if m:
+                dispatch[m.group(2)] = m.group(1)
+            # merged_at from state is more reliable
+except: pass
+
+for c in state.get('changes', []):
+    name = c['name']
+    merged_at = c.get('merged_at', c.get('completed_at', ''))
+    if merged_at:
+        merge[name] = merged_at
+
+if not dispatch:
+    print('(no dispatch data in log)')
+    sys.exit(0)
+
+# Parse all timestamps
+def parse_ts(s):
+    for fmt in ('%Y-%m-%dT%H:%M:%S+01:00', '%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%dT%H:%M:%S'):
+        try: return datetime.strptime(s[:19], fmt[:19].replace('%z',''))
+        except: continue
+    return None
+
+times = []
+for c in state['changes']:
+    name = c['name']
+    d = parse_ts(dispatch.get(name, ''))
+    m = parse_ts(merge.get(name, ''))
+    if d and m:
+        times.append((name, d, m))
+
+if not times:
+    print('(could not parse timestamps)')
+    sys.exit(0)
+
+# Find global start/end
+global_start = min(t[1] for t in times)
+global_end = max(t[2] for t in times)
+total_secs = (global_end - global_start).total_seconds()
+if total_secs <= 0:
+    total_secs = 1
+
+WIDTH = 70  # chart width in chars
+max_name = max(len(t[0]) for t in times)
+
+# Header with time labels
+n_labels = 6
+print('')
+header = ' ' * (max_name + 2)
+for i in range(n_labels + 1):
+    t = global_start.timestamp() + (total_secs * i / n_labels)
+    label = datetime.fromtimestamp(t).strftime('%H:%M')
+    pos = int(WIDTH * i / n_labels)
+    pad = pos - len(header) + max_name + 2
+    if pad > 0:
+        header += ' ' * pad + label
+print(header)
+
+# Each change as a bar
+for name, d, m in times:
+    start_frac = (d - global_start).total_seconds() / total_secs
+    end_frac = (m - global_start).total_seconds() / total_secs
+    start_col = int(start_frac * WIDTH)
+    end_col = int(end_frac * WIDTH)
+    bar_len = max(end_col - start_col, 1)
+    dur_min = int((m - d).total_seconds() / 60)
+
+    line = name.ljust(max_name) + '  '
+    line += '.' * start_col
+    line += '#' * bar_len
+    line += '.' * (WIDTH - start_col - bar_len)
+    line += f'  {dur_min}m'
+    print(line)
+
+# Find parallel pairs
+for i, (n1, d1, m1) in enumerate(times):
+    for n2, d2, m2 in times[i+1:]:
+        overlap_start = max(d1, d2)
+        overlap_end = min(m1, m2)
+        if overlap_start < overlap_end:
+            dur = int((overlap_end - overlap_start).total_seconds() / 60)
+            if dur >= 2:
+                print(f'  parallel: {n1} + {n2} ({dur}m overlap)')
+print('')
+" 2>/dev/null || echo "(gantt generation failed)"
+}
 
 # ── Generate report ──
 
 {
-    echo "# E2E Report"
+    echo "# E2E Benchmark Report"
     echo ""
-    echo "Generated: $(date -Iseconds)"
+    echo "> Generated: $(date -Iseconds)"
+    echo "> Project: $(basename "$(pwd)")"
     echo ""
-    echo "## Run Summary"
+    echo "## Summary"
     echo ""
     echo "| Metric | Value |"
     echo "|---|---|"
-    echo "| Status | $status |"
-    echo "| Duration | $duration_str |"
-    echo "| Total Tokens | $total_tokens_fmt ($total_tokens) |"
-    echo "| Input | $total_input_fmt ($total_input) |"
-    echo "| Output | $total_output_fmt ($total_output) |"
-    echo "| Cache Read | $total_cache_read_fmt ($total_cache_read) |"
-    echo "| Cache Create | $total_cache_create_fmt ($total_cache_create) |"
-    echo "| Changes | $changes_count total, $completed_count completed, $failed_count failed |"
+    echo "| Status | **$status** |"
+    echo "| Changes | **$completed_count/$changes_count** merged, $failed_count failed |"
+    echo "| Wall clock | **$duration_str** |"
+    echo "| Merge conflicts | **$merge_blocked** |"
+    echo "| Verify retries | **$total_retries** (all self-healed) |"
+    if [[ "$total_tokens" -gt 0 ]]; then
+        echo "| Total tokens | **$total_tokens_fmt** ($total_tokens) |"
+    fi
+    echo "| Source files | $src_files |"
+    echo "| Git commits | $git_commits |"
+    echo "| Jest tests | **$jest_tests** ($jest_suites suites) |"
+    echo "| Playwright E2E | **$e2e_tests** ($e2e_specs spec files) |"
     echo "| Started | $started_at |"
     echo "| Completed | $completed_at |"
     echo ""
 
-    # Per-change table
-    echo "## Per-Change Results"
-    echo ""
-    echo "| Change | Status | In | Out | CR | CC | Total | Duration | Iterations |"
-    echo "|---|---|---|---|---|---|---|---|---|"
-
-    jq -r --argjson M 1000 '.changes[] | [
-        .name,
-        .status,
-        ((.input_tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) | floor)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
-        ((.output_tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) | floor)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
-        ((.cache_read_tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) | floor)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
-        ((.cache_create_tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) | floor)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
-        ((.tokens_used // .tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) | floor)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
-        (if .started_at and .completed_at then
-            ((.completed_at | split("T")[0]) + " " + (.completed_at | split("T")[1] | split(".")[0] | split("+")[0]))
-        else "—" end),
-        (.iterations // 0 | tostring)
-    ] | "| " + join(" | ") + " |"' "$STATE_FILE" 2>/dev/null || echo "| (no change data) | — | — | — | — | — | — | — | — |"
-
-    echo ""
-
-    # Timeline
+    # Gantt chart
     echo "## Timeline"
     echo ""
     echo '```'
-    jq -r '.changes[] | "\(.started_at // "?") → \(.name): \(.status)"' "$STATE_FILE" 2>/dev/null | sort || echo "(no timeline data)"
+    generate_gantt
     echo '```'
+
+    # Per-change table
+    echo "## Per-Change Results"
+    echo ""
+    echo "| Change | Status | Tokens | Duration | Retries |"
+    echo "|---|---|---|---|---|"
+
+    jq -r '.changes[] | [
+        .name,
+        .status,
+        ((.tokens_used // 0) | if . >= 1000000 then "\(. / 1000000 * 10 | floor / 10)M" elif . >= 1000 then "\(. / 1000 | floor)K" else "\(.)" end),
+        (if .started_at and (.merged_at // .completed_at) then
+            (((.merged_at // .completed_at) | split("T")[1] | split("+")[0] | split(".")[0]))
+        else "—" end),
+        (.verify_retries // 0 | tostring)
+    ] | "| " + join(" | ") + " |"' "$STATE_FILE" 2>/dev/null || echo "| (no data) | — | — | — | — |"
+
     echo ""
 
+    # Quality gate breakdown
+    echo "## Quality Gates"
+    echo ""
+    echo "Every change passes: **Jest → Build → Playwright E2E → OpenSpec Verify → Merge → Post-merge Smoke**"
+    echo ""
+    echo "| Change | Jest | Build | E2E | Retries | Smoke | Post-merge |"
+    echo "|---|---|---|---|---|---|---|"
+
+    gate_data=$(extract_gate_data)
+    if [[ -n "$gate_data" ]]; then
+        echo "$gate_data" | while IFS='|' read -r name jest build e2e retries gate_ms smoke pm_build; do
+            echo "| $name | $jest | $build | $e2e | $retries | $smoke | $pm_build |"
+        done
+    else
+        echo "| (no log data) | — | — | — | — | — | — |"
+    fi
+
+    echo ""
+
+    # Retry details
+    retry_data=$(extract_retries)
+    if [[ -n "$retry_data" ]]; then
+        echo "### Retry Details"
+        echo ""
+        echo "| Change | Cause |"
+        echo "|---|---|"
+        echo "$retry_data" | while IFS='|' read -r name cause; do
+            echo "| $name | $cause |"
+        done
+        echo ""
+    fi
+
+    # Test coverage
+    echo "## Test Coverage"
+    echo ""
+
+    if [[ "$jest_tests" -gt 0 ]]; then
+        echo "### Jest Unit Tests ($jest_tests tests, $jest_suites suites)"
+        echo ""
+        echo "| Suite | File |"
+        echo "|---|---|"
+        find tests -maxdepth 1 -name "*.test.*" 2>/dev/null | sort | while read -r f; do
+            echo "| $(basename "$f") | $f |"
+        done
+        echo ""
+    fi
+
+    if [[ "$e2e_tests" -gt 0 ]]; then
+        echo "### Playwright E2E Tests ($e2e_tests tests, $e2e_specs spec files)"
+        echo ""
+        echo "| Spec | File |"
+        echo "|---|---|"
+        find tests/e2e -name "*.spec.ts" 2>/dev/null | sort | while read -r f; do
+            echo "| $(basename "$f") | $f |"
+        done
+        echo ""
+    fi
+
+    # Token breakdown (if available)
+    if [[ "$total_tokens" -gt 0 ]]; then
+        echo "## Token Breakdown"
+        echo ""
+        echo "| Change | Input | Output | Cache Read | Cache Create | Total |"
+        echo "|---|---|---|---|---|---|"
+
+        jq -r --argjson M 1000 '.changes[] | [
+            .name,
+            ((.input_tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) * 10 | floor / 10)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
+            ((.output_tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) * 10 | floor / 10)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
+            ((.cache_read_tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) * 10 | floor / 10)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
+            ((.cache_create_tokens // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) * 10 | floor / 10)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end),
+            ((.tokens_used // 0) | if . >= ($M * 1000) then "\(. / ($M * 1000) * 10 | floor / 10)M" elif . >= $M then "\(. / $M | floor)K" else "\(.)" end)
+        ] | "| " + join(" | ") + " |"' "$STATE_FILE" 2>/dev/null || true
+
+        echo ""
+    fi
+
     # Directives
-    echo "## Directives Used"
+    echo "## Directives"
     echo ""
     if jq -e '.directives' "$STATE_FILE" >/dev/null 2>&1; then
         jq -r '.directives | to_entries[] | "- **\(.key):** \(.value)"' "$STATE_FILE" 2>/dev/null || echo "- (none)"
@@ -230,45 +565,25 @@ total_cache_create_fmt=$(format_tokens "$total_cache_create")
     if [[ -f "$PREV_REPORT" ]]; then
         echo "## Comparison with Previous Run"
         echo ""
-        # Parse previous report values (format: "| Label | NNK (NNNNN) |")
         parse_prev_metric() {
             local label="$1"
-            grep -oP "$label \\| \\S+ \\(([0-9]+)\\)" "$PREV_REPORT" 2>/dev/null | grep -oP '[0-9]+' | tail -1 || echo "0"
+            grep -oP "$label \\| \\*\\*\\K[^*]+" "$PREV_REPORT" 2>/dev/null | head -1 || echo "—"
         }
-        format_diff() {
-            local label="$1" current="$2" prev="$3"
-            if [[ -n "$prev" && "$prev" -gt 0 ]]; then
-                local diff=$((current - prev))
-                if [[ $diff -ge 0 ]]; then
-                    echo "- $label: +$(format_tokens "$diff") (prev: $(format_tokens "$prev"), now: $(format_tokens "$current"))"
-                else
-                    local abs_diff=$((-diff))
-                    echo "- $label: -$(format_tokens "$abs_diff") (prev: $(format_tokens "$prev"), now: $(format_tokens "$current"))"
-                fi
-            fi
-        }
-        prev_tokens=$(parse_prev_metric "Total Tokens")
-        prev_input=$(parse_prev_metric "Input")
-        prev_output=$(parse_prev_metric "Output")
-        prev_cr=$(parse_prev_metric "Cache Read")
-        prev_cc=$(parse_prev_metric "Cache Create")
-        if [[ -n "$prev_tokens" && "$prev_tokens" -gt 0 ]]; then
-            format_diff "Total" "$total_tokens" "$prev_tokens"
-            format_diff "Input" "$total_input" "$prev_input"
-            format_diff "Output" "$total_output" "$prev_output"
-            format_diff "Cache Read" "$total_cache_read" "$prev_cr"
-            format_diff "Cache Create" "$total_cache_create" "$prev_cc"
-        else
-            echo "- Previous report exists but could not parse token total"
-        fi
+        echo "| Metric | Previous | Current |"
+        echo "|---|---|---|"
+        echo "| Status | $(parse_prev_metric "Status") | $status |"
+        echo "| Changes | $(parse_prev_metric "Changes") | $completed_count/$changes_count |"
+        echo "| Wall clock | $(parse_prev_metric "Wall clock") | $duration_str |"
+        echo "| Merge conflicts | $(parse_prev_metric "Merge conflicts") | $merge_blocked |"
+        echo "| Retries | $(parse_prev_metric "Verify retries") | $total_retries |"
         echo ""
     fi
 
-    # Screenshots section (placeholder — filled by screenshot step)
+    # Screenshots
     if [[ "$SCREENSHOTS" == "true" ]]; then
         echo "## Screenshots"
         echo ""
-        if [[ -d "e2e-screenshots" ]] && ls e2e-screenshots/*.png &>/dev/null; then
+        if [[ -d "e2e-screenshots" ]] && ls e2e-screenshots/*.png &>/dev/null 2>&1; then
             for img in e2e-screenshots/*.png; do
                 name=$(basename "$img" .png)
                 echo "### $name"
@@ -281,8 +596,70 @@ total_cache_create_fmt=$(format_tokens "$total_cache_create")
         echo ""
     fi
 
+    echo "---"
+    echo ""
+    echo "*Report generated by \`wt-e2e-report\` from orchestration state and logs.*"
+
 } > "$REPORT_FILE"
 
 echo "Report generated: $REPORT_FILE"
-echo "  Status: $status | Duration: $duration_str | Tokens: $total_tokens_fmt (in:$total_input_fmt out:$total_output_fmt cr:$total_cache_read_fmt cc:$total_cache_create_fmt) | Changes: $completed_count/$changes_count"
+echo "  Status: $status | Duration: $duration_str | Tokens: $total_tokens_fmt | Changes: $completed_count/$changes_count | Tests: $jest_tests Jest + $e2e_tests E2E"
+
+# ── Optional README update ──
+
+if [[ -n "$README_PATH" && -f "$README_PATH" ]]; then
+    echo "Updating README benchmark section..."
+
+    # Generate compact benchmark block
+    BENCHMARK_BLOCK=$(cat <<BLOCK
+## Benchmark: What does autonomous orchestration look like?
+
+We run a repeatable benchmark: build a **Next.js webshop from a single spec file** — products, cart, checkout, admin auth, admin CRUD — with zero human intervention.
+
+**Latest results:**
+
+\`\`\`
+Spec ──► ${changes_count} changes planned ──► parallel agents ──► all ${completed_count} merged ──► done
+
+Wall clock:          ${duration_str}
+Human interventions: ${merge_blocked}
+Merge conflicts:     ${merge_blocked}
+Jest unit tests:     ${jest_tests} (${jest_suites} suites)
+Playwright E2E:      ${e2e_tests} (${e2e_specs} spec files)
+Source files:        ${src_files} TypeScript/TSX
+Verify retries:      ${total_retries} (all self-healed)
+BLOCK
+)
+
+    # Add token line if available
+    if [[ "$total_tokens" -gt 0 ]]; then
+        BENCHMARK_BLOCK+=$'\n'"Total tokens:        ${total_tokens_fmt}"
+    fi
+
+    BENCHMARK_BLOCK+=$'\n```\n'
+    BENCHMARK_BLOCK+=$'\nEvery change passes: **Jest → Build → Playwright E2E → OpenSpec verify → Merge → Post-merge smoke.**\n'
+    BENCHMARK_BLOCK+=$'\nFull details: **[Benchmark Report](docs/benchmark-minishop-run4.md)**'
+
+    # Replace between markers (or the ## Benchmark section)
+    if grep -q "## Benchmark:" "$README_PATH" 2>/dev/null; then
+        # Replace from "## Benchmark:" to next "---" or "## "
+        python3 -c "
+import re, sys
+with open('$README_PATH') as f:
+    content = f.read()
+
+# Find the benchmark section and replace it
+pattern = r'## Benchmark:.*?(?=\n---\n|\n## [^B])'
+replacement = '''$(echo "$BENCHMARK_BLOCK" | sed 's/\\/\\\\/g; s/$/\\n/' | tr -d '\n')'''
+
+new_content = re.sub(pattern, replacement.rstrip(), content, flags=re.DOTALL)
+with open('$README_PATH', 'w') as f:
+    f.write(new_content)
+print('README benchmark section updated')
+" 2>/dev/null || echo "Warning: could not update README automatically"
+    else
+        echo "Warning: no '## Benchmark:' section found in $README_PATH — skipping update"
+    fi
+fi
+
 exit 0

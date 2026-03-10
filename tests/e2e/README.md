@@ -57,14 +57,32 @@ wt-sentinel --spec docs/v1-minishop.md
 ## After Completion
 
 ```bash
-# Generate E2E report with screenshots
 cd /tmp/minishop-e2e
+
+# Step 3: Generate benchmark report
 wt-e2e-report --project-dir .
 
-# Report output:
-# - e2e-report.md        (summary, per-change stats, timeline)
-# - e2e-screenshots/     (Playwright screenshots of each page)
+# Step 4 (optional): Update wt-tools README benchmark section
+wt-e2e-report --project-dir . --update-readme /path/to/wt-tools/README.md
 ```
+
+The report generator extracts all data from `orchestration-state.json` and `.claude/orchestration.log`:
+
+| Output | Contents |
+|---|---|
+| `e2e-report.md` | Full benchmark: summary, Gantt chart, quality gates, retries, test counts |
+| `e2e-screenshots/` | Playwright screenshots of each page (optional) |
+| `e2e-report-prev.md` | Previous report (rotated automatically) |
+
+### What the report includes
+
+- **Summary table** — wall clock, tokens, changes merged/failed, test counts
+- **Gantt chart** — ASCII timeline showing parallel agent execution with overlap detection
+- **Per-change results** — status, tokens, duration, retries per change
+- **Quality gate breakdown** — Jest/Build/E2E/Smoke result per change, retry causes
+- **Test coverage** — Jest suite list + Playwright spec list
+- **Token breakdown** — input/output/cache per change (when token tracking is active)
+- **Run comparison** — diff table against previous report (if rotated)
 
 ## Verification
 
