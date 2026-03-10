@@ -85,6 +85,26 @@
 - **Log**: `[sentinel] Stale state detected (status=running but no process) — resetting to stopped`
 - **Státusz**: Működik correctly
 
+### 11. user-auth-and-accounts FAILED — túl nagy change (14 REQ)
+- **Tünet**: 3x verify-failed → failed, 708K token elégetve
+- **Timeline**: dispatch 14:03 → 66 watchdog warn → verify-fail 14:34, 14:39, 14:43 → failed
+- **Ok**: 14 requirement egy change-ben (auth + regisztráció + login + password reset + profil + címkezelés + rendelés-történet + API route-ok + tesztek). Túl nagy scope, agent nem tudta a verify gate-et teljesíteni 3 próbálkozásra sem.
+- **Összehasonlítás**: 5-7 REQ-es change-ek (első 4) mind 12-19 perc alatt merged, 0 retry. 14 REQ-es change 41 perc + failed.
+- **Fix**: Planner granularity rules commitolva (max 6 REQ/change, M complexity cap, sub-domain chaining). Következő run-tól hatályos.
+- **Státusz**: Root cause fixelve (planner prompt), ez a run a régi szabályokkal futott
+
+### 12. product-catalog 1M+ token és még fut (22 REQ)
+- **Tünet**: 22 requirement, 1M+ token, még running ~45 perc után
+- **Ok**: Ugyanaz mint #11 — túl nagy change. List + detail + filters + search + equipment + merch + bundles mind egy change-ben.
+- **Prognózis**: Ha átmegy verify-en, nagyon drága. Ha nem, újabb failed.
+- **Státusz**: Következő run-ban max 4 change-re bomlik az új szabályokkal
+
+### 13. Watchdog event spam — 66+ WARN egy change-hez
+- **Tünet**: user-auth-and-accounts 66 db WATCHDOG_WARN event (hash_loop_pid_alive), product-catalog-nál még több
+- **Ok**: emit_event hívás nem volt throttle-ölve, csak a log üzenet
+- **Fix**: emit_event bekerült a throttle condition-be (minden 20. occurrence). Commitolva.
+- **Státusz**: Fixelve
+
 ## Observations
 - Sentinel auto-restart működik: digest crash → restart → digest fresh (skip) → planner újra
 - Sentinel events fájlnév mismatch BLOKKOLÓ volt — stuck detection killed healthy orchestrator after 183s
