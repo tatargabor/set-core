@@ -192,6 +192,12 @@ test_start "prompt is substantial (>5000 chars)"
 prompt_len=${#prompt}
 assert_gt "$prompt_len" "5000"
 
+test_start "prompt includes CRUD granularity rule"
+assert_contains "$prompt" "CRUD"
+
+test_start "prompt includes compound description granularity rule"
+assert_contains "$prompt" "Compound"
+
 echo ""
 
 # ============================================================

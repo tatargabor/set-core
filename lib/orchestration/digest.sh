@@ -287,6 +287,14 @@ From files classified as **feature**, extract discrete, independently testable r
 
 **Granularity**: One requirement = one independently testable behavior. If it needs its own test case, it is a separate requirement. "Cart supports coupons" is too broad; "ELSO10 coupon gives 10% on first order only" is the right granularity.
 
+**REQUIREMENT GRANULARITY RULES:**
+- Each requirement MUST describe exactly ONE testable behavior
+- CRUD operations on an entity = minimum 4 separate requirements (create, read, update, delete)
+- If a spec section lists multiple distinct user actions, create one REQ per action
+- Edge cases and error handling explicitly mentioned in spec = separate requirements
+- Compound descriptions like "Users can X and Y" = TWO requirements, not one
+- A requirement is too coarse if you cannot write a single test for it without covering multiple independent behaviors
+
 **ID format**: REQ-{DOMAIN_SHORT}-{NNN} (e.g., REQ-CART-001, REQ-SUB-003)
 
 Each requirement must have: id, title, source (file path), source_section (heading), domain, brief (1-2 sentence summary).

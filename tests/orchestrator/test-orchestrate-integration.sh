@@ -781,6 +781,99 @@ else
 fi
 
 # ============================================================
+# Section: State Initialization — Requirements Copying
+# ============================================================
+
+echo ""
+echo "--- State Init: Requirements ---"
+
+# Test: init_state copies requirements[] and also_affects_reqs[] from digest-mode plan
+test_start "init_state copies requirements and also_affects_reqs from plan"
+REPO=$(setup_test_repo)
+STATE_FILENAME="$REPO/orchestration-state.json"
+LOG_FILE="$REPO/orchestrate.log"
+touch "$LOG_FILE"
+
+# Create a mock digest-mode plan with requirements fields
+cat > "$REPO/orchestration-plan.json" <<'PLAN_EOF'
+{
+  "plan_version": 1,
+  "brief_hash": "test-hash",
+  "changes": [
+    {
+      "name": "add-cart",
+      "scope": "Cart feature",
+      "complexity": "medium",
+      "depends_on": [],
+      "roadmap_item": null,
+      "requirements": ["REQ-CART-001", "REQ-CART-002", "REQ-CART-003"],
+      "also_affects_reqs": ["REQ-I18N-001"]
+    },
+    {
+      "name": "add-auth",
+      "scope": "Auth feature",
+      "complexity": "high",
+      "depends_on": ["add-cart"],
+      "roadmap_item": null,
+      "requirements": ["REQ-AUTH-001"],
+      "also_affects_reqs": []
+    }
+  ]
+}
+PLAN_EOF
+
+init_state "$REPO/orchestration-plan.json"
+
+# Verify requirements[] appear in state
+cart_reqs=$(jq -r '[.changes[] | select(.name == "add-cart") | .requirements[]] | join(",")' "$STATE_FILENAME")
+cart_also=$(jq -r '[.changes[] | select(.name == "add-cart") | .also_affects_reqs[]] | join(",")' "$STATE_FILENAME")
+auth_reqs=$(jq -r '[.changes[] | select(.name == "add-auth") | .requirements[]] | join(",")' "$STATE_FILENAME")
+
+if [[ "$cart_reqs" == "REQ-CART-001,REQ-CART-002,REQ-CART-003" ]] && \
+   [[ "$cart_also" == "REQ-I18N-001" ]] && \
+   [[ "$auth_reqs" == "REQ-AUTH-001" ]]; then
+    test_pass
+else
+    test_fail "cart_reqs=REQ-CART-001,REQ-CART-002,REQ-CART-003 cart_also=REQ-I18N-001 auth_reqs=REQ-AUTH-001" \
+              "cart_reqs=$cart_reqs cart_also=$cart_also auth_reqs=$auth_reqs"
+fi
+
+# Test: init_state with non-digest plan (no requirements fields) → no empty arrays added
+test_start "init_state omits requirements fields for non-digest plan"
+REPO2=$(setup_test_repo)
+STATE_FILENAME="$REPO2/orchestration-state.json"
+LOG_FILE="$REPO2/orchestrate.log"
+touch "$LOG_FILE"
+
+cat > "$REPO2/orchestration-plan.json" <<'PLAN_EOF'
+{
+  "plan_version": 1,
+  "brief_hash": "test-hash",
+  "changes": [
+    {
+      "name": "simple-fix",
+      "scope": "Bug fix",
+      "complexity": "low",
+      "depends_on": [],
+      "roadmap_item": null
+    }
+  ]
+}
+PLAN_EOF
+
+init_state "$REPO2/orchestration-plan.json"
+
+# Verify no requirements or also_affects_reqs fields present
+has_reqs=$(jq '.changes[0] | has("requirements")' "$STATE_FILENAME")
+has_also=$(jq '.changes[0] | has("also_affects_reqs")' "$STATE_FILENAME")
+
+if [[ "$has_reqs" == "false" ]] && [[ "$has_also" == "false" ]]; then
+    test_pass
+else
+    test_fail "has_reqs=false has_also=false" "has_reqs=$has_reqs has_also=$has_also"
+fi
+
+# ============================================================
 # Summary
 # ============================================================
 

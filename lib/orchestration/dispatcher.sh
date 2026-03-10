@@ -836,7 +836,10 @@ cmd_start() {
         # short names like "v12" → wt/orchestration/specs/v12.md, relative paths → absolute
         local resolved_cli="$cli_input"
         if [[ -n "$SPEC_OVERRIDE" ]]; then
-            if [[ -f "$cli_input" ]]; then
+            if [[ -d "$cli_input" ]]; then
+                # Directory spec (digest mode)
+                resolved_cli="$(cd "$cli_input" && pwd)"
+            elif [[ -f "$cli_input" ]]; then
                 resolved_cli="$(cd "$(dirname "$cli_input")" && pwd)/$(basename "$cli_input")"
             else
                 # Try short-name resolution: wt/orchestration/specs/<name>.md
@@ -863,11 +866,22 @@ cmd_start() {
             # Same path — check if content changed since last plan
             local plan_hash current_hash
             plan_hash=$(jq -r '.input_hash // ""' "$PLAN_FILENAME" 2>/dev/null)
-            current_hash=$(sha256sum "$resolved_cli" 2>/dev/null | cut -d' ' -f1)
-            if [[ -n "$plan_hash" && -n "$current_hash" && "$plan_hash" != "$current_hash" ]]; then
-                info "Spec content changed since last plan — replanning"
-                log_info "Content hash mismatch: plan=$plan_hash current=$current_hash"
-                need_plan=true
+            if [[ -d "$resolved_cli" ]]; then
+                # Directory spec: use digest freshness check
+                local freshness
+                freshness=$(check_digest_freshness "$resolved_cli" 2>/dev/null || echo "missing")
+                if [[ "$freshness" != "fresh" ]]; then
+                    info "Spec directory changed since last digest — replanning"
+                    log_info "Digest freshness: $freshness for $resolved_cli"
+                    need_plan=true
+                fi
+            else
+                current_hash=$(sha256sum "$resolved_cli" 2>/dev/null | cut -d' ' -f1)
+                if [[ -n "$plan_hash" && -n "$current_hash" && "$plan_hash" != "$current_hash" ]]; then
+                    info "Spec content changed since last plan — replanning"
+                    log_info "Content hash mismatch: plan=$plan_hash current=$current_hash"
+                    need_plan=true
+                fi
             fi
         fi
     fi

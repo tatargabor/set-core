@@ -48,7 +48,10 @@ init_state() {
 
 
         verify_retry_count: 0
-    }]' "$plan_file")
+    }
+    + (if .requirements then {requirements: .requirements} else {} end)
+    + (if .also_affects_reqs then {also_affects_reqs: .also_affects_reqs} else {} end)
+    ]' "$plan_file")
 
     jq -n \
         --argjson plan_version "$plan_version" \
