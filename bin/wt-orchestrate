@@ -129,6 +129,7 @@ source "$LIB_DIR/builder.sh"       # base build health (extracted from dispatche
 source "$LIB_DIR/dispatcher.sh"    # change lifecycle: dispatch, resume, pause
 source "$LIB_DIR/verifier.sh"
 source "$LIB_DIR/merger.sh"
+source "$LIB_DIR/digest.sh"        # multi-file spec digest, coverage tracking
 source "$LIB_DIR/monitor.sh"       # monitor loop (extracted from dispatcher.sh)
 source "$SCRIPT_DIR/../lib/notify-email.sh"  # email notifications via Resend
 
@@ -421,6 +422,8 @@ Commands:
   resume <name|--all>    Resume a paused change or all
   replan                 Re-plan from updated spec/brief, preserving completed work
   approve [--merge]      Approve a checkpoint (--merge: also flush merge queue)
+  digest --spec <path>   Generate structured digest from multi-file spec directory
+  coverage               Show requirement coverage report
   specs [list|show|archive] Manage spec documents in wt/orchestration/specs/
   events                 Query event log (--type, --change, --since, --last N, --json)
   tui                    Launch live terminal dashboard (requires textual)
@@ -625,6 +628,8 @@ main() {
             fi
             exec "$py" "$tui_script" "$STATE_FILENAME" "$LOG_FILE"
             ;;
+        digest)     cmd_digest "$@" ;;
+        coverage)   cmd_coverage "$@" ;;
         specs)      cmd_specs "$@" ;;
         self-test)  cmd_self_test "$@" ;;
         -h|--help|help|"")

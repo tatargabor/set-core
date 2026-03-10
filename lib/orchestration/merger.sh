@@ -60,6 +60,7 @@ merge_change() {
         info "Already handled: $change_name (branch $source_branch no longer exists)"
         log_info "Skipping merge for $change_name — branch deleted (assumed merged)"
         update_change_field "$change_name" "status" '"merged"'
+        update_coverage_status "$change_name" "merged" 2>/dev/null || true
         cleanup_worktree "$change_name" "$wt_path"
         archive_change "$change_name"
         local tmp
@@ -75,6 +76,7 @@ merge_change() {
         info "Already merged: $change_name (branch $source_branch is ancestor of HEAD)"
         log_info "Skipping merge for $change_name — already merged"
         update_change_field "$change_name" "status" '"merged"'
+        update_coverage_status "$change_name" "merged" 2>/dev/null || true
         cleanup_worktree "$change_name" "$wt_path"
         archive_change "$change_name"
         local tmp
@@ -86,6 +88,7 @@ merge_change() {
     # Case 3: Normal merge (with LLM conflict resolution)
     if wt-merge "$change_name" --no-push --llm-resolve >>"$LOG_FILE" 2>&1; then
         update_change_field "$change_name" "status" '"merged"'
+        update_coverage_status "$change_name" "merged" 2>/dev/null || true
         log_info "Merged $change_name"
         success "Merged: $change_name"
 
@@ -334,6 +337,7 @@ SMOKE_FIX_EOF
             log_info "No real conflict markers for $change_name — retrying merge"
             if wt-merge "$change_name" --no-push --llm-resolve >>"$LOG_FILE" 2>&1; then
                 update_change_field "$change_name" "status" '"merged"'
+                update_coverage_status "$change_name" "merged" 2>/dev/null || true
                 return 0
             fi
             log_warn "wt-merge failed for $change_name but no conflict markers — marking merge-blocked"

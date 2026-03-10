@@ -385,7 +385,108 @@ MEMORY_EOF
 - Full spec available via: \`cat $INPUT_PATH\`
 SPECREF_EOF
             fi
+
+            # Digest mode: add spec context references and requirement IDs to proposal
+            if [[ "${INPUT_MODE:-}" == "digest" ]]; then
+                local digest_dir="$project_path/$DIGEST_DIR"
+
+                # Add Source Specifications section (spec files copied to worktree)
+                local spec_files_list
+                spec_files_list=$(jq -r --arg n "$change_name" \
+                    '.changes[] | select(.name == $n) | .spec_files[]? // empty' "$STATE_FILENAME" 2>/dev/null || true)
+                if [[ -n "$spec_files_list" ]]; then
+                    echo "" >> "$proposal_path"
+                    echo "## Source Specifications" >> "$proposal_path"
+                    echo "Read these for detailed requirements:" >> "$proposal_path"
+                    while IFS= read -r sf; do
+                        [[ -z "$sf" ]] && continue
+                        echo "- \`.claude/spec-context/$sf\`" >> "$proposal_path"
+                    done <<< "$spec_files_list"
+                fi
+
+                # Add Requirements section
+                local change_reqs
+                change_reqs=$(jq -r --arg n "$change_name" \
+                    '.changes[] | select(.name == $n) | .requirements[]? // empty' "$STATE_FILENAME" 2>/dev/null || true)
+                if [[ -n "$change_reqs" && -f "$digest_dir/requirements.json" ]]; then
+                    echo "" >> "$proposal_path"
+                    echo "## Requirements" >> "$proposal_path"
+                    echo "This change covers:" >> "$proposal_path"
+                    while IFS= read -r rid; do
+                        [[ -z "$rid" ]] && continue
+                        local rtitle rbrief
+                        rtitle=$(jq -r --arg id "$rid" '.requirements[] | select(.id == $id) | .title // ""' "$digest_dir/requirements.json" 2>/dev/null || true)
+                        rbrief=$(jq -r --arg id "$rid" '.requirements[] | select(.id == $id) | .brief // ""' "$digest_dir/requirements.json" 2>/dev/null || true)
+                        echo "- $rid: $rtitle — $rbrief" >> "$proposal_path"
+                    done <<< "$change_reqs"
+                fi
+
+                # Add Cross-Cutting Requirements section
+                local also_affects
+                also_affects=$(jq -r --arg n "$change_name" \
+                    '.changes[] | select(.name == $n) | .also_affects_reqs[]? // empty' "$STATE_FILENAME" 2>/dev/null || true)
+                if [[ -n "$also_affects" && -f "$digest_dir/requirements.json" ]]; then
+                    echo "" >> "$proposal_path"
+                    echo "## Cross-Cutting Requirements" >> "$proposal_path"
+                    echo "These requirements are owned by other changes — incorporate their constraints, do not re-implement from scratch:" >> "$proposal_path"
+                    while IFS= read -r rid; do
+                        [[ -z "$rid" ]] && continue
+                        local rtitle rbrief
+                        rtitle=$(jq -r --arg id "$rid" '.requirements[] | select(.id == $id) | .title // ""' "$digest_dir/requirements.json" 2>/dev/null || true)
+                        rbrief=$(jq -r --arg id "$rid" '.requirements[] | select(.id == $id) | .brief // ""' "$digest_dir/requirements.json" 2>/dev/null || true)
+                        echo "- $rid: $rtitle — $rbrief" >> "$proposal_path"
+                    done <<< "$also_affects"
+                fi
+            fi
+
             log_info "Pre-created proposal.md for $change_name"
+        fi
+
+        # Digest mode: copy spec files to worktree .claude/spec-context/
+        if [[ "${INPUT_MODE:-}" == "digest" ]]; then
+            local digest_dir="$project_path/$DIGEST_DIR"
+            if [[ -f "$digest_dir/index.json" ]]; then
+                local spec_base_dir
+                spec_base_dir=$(jq -r '.spec_base_dir' "$digest_dir/index.json")
+
+                # Copy change-specific spec files
+                local spec_files_json
+                spec_files_json=$(jq -r --arg n "$change_name" \
+                    '.changes[] | select(.name == $n) | .spec_files[]? // empty' "$STATE_FILENAME" 2>/dev/null || true)
+                if [[ -n "$spec_files_json" ]]; then
+                    mkdir -p ".claude/spec-context"
+                    while IFS= read -r sf; do
+                        [[ -z "$sf" ]] && continue
+                        local src_file="$spec_base_dir/$sf"
+                        if [[ -f "$src_file" ]]; then
+                            local target_dir=".claude/spec-context/$(dirname "$sf")"
+                            mkdir -p "$target_dir"
+                            cp "$src_file" "$target_dir/"
+                        else
+                            log_warn "Spec file not found: $src_file"
+                        fi
+                    done <<< "$spec_files_json"
+                fi
+
+                # Copy conventions.json and data-definitions.md to every worktree
+                if [[ -f "$digest_dir/conventions.json" ]]; then
+                    mkdir -p ".claude/spec-context"
+                    cp "$digest_dir/conventions.json" ".claude/spec-context/"
+                fi
+                if [[ -f "$digest_dir/data-definitions.md" ]]; then
+                    mkdir -p ".claude/spec-context"
+                    cp "$digest_dir/data-definitions.md" ".claude/spec-context/"
+                fi
+
+                # Add .claude/spec-context/ to .gitignore
+                if [[ -f ".gitignore" ]]; then
+                    if ! grep -qxF '.claude/spec-context/' ".gitignore" 2>/dev/null; then
+                        echo '.claude/spec-context/' >> ".gitignore"
+                    fi
+                else
+                    echo '.claude/spec-context/' > ".gitignore"
+                fi
+            fi
         fi
 
         # Check artifact readiness — if tasks.md exists, agent can go straight to apply
@@ -405,6 +506,9 @@ SPECREF_EOF
     update_change_field "$change_name" "status" '"dispatched"'
     update_change_field "$change_name" "worktree_path" "\"$wt_path\""
     update_change_field "$change_name" "started_at" "\"$(date -Iseconds)\""
+
+    # Update coverage status → dispatched
+    update_coverage_status "$change_name" "dispatched" 2>/dev/null || true
 
     # Pre-dispatch hook
     if ! run_hook "pre_dispatch" "$change_name" "dispatched" "$wt_path"; then
@@ -460,6 +564,9 @@ dispatch_via_wt_loop() {
     update_change_field "$change_name" "ralph_pid" "${terminal_pid:-0}"
     update_change_field "$change_name" "status" '"running"'
     log_info "Ralph started for $change_name in $wt_path (terminal PID ${terminal_pid:-unknown})"
+
+    # Update coverage status → running
+    update_coverage_status "$change_name" "running" 2>/dev/null || true
 }
 
 # Resume changes that were running when the orchestrator was interrupted.

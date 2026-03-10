@@ -210,6 +210,39 @@ validate_plan() {
         errors=$((errors + 1))
     fi
 
+    # Digest-mode validation: check spec_files, requirements, also_affects_reqs
+    if [[ "${INPUT_MODE:-}" == "digest" && -f "$DIGEST_DIR/requirements.json" ]]; then
+        local all_req_ids
+        all_req_ids=$(jq -r '[.requirements[]? | select(.status != "removed") | .id] | .[]' "$DIGEST_DIR/requirements.json" 2>/dev/null || true)
+
+        # Check requirements reference valid IDs
+        local plan_req_ids
+        plan_req_ids=$(jq -r '.changes[]? | (.requirements[]?, .also_affects_reqs[]?)' "$plan_file" 2>/dev/null || true)
+        if [[ -n "$plan_req_ids" ]]; then
+            while IFS= read -r rid; do
+                [[ -z "$rid" ]] && continue
+                if ! echo "$all_req_ids" | grep -qxF "$rid"; then
+                    warn "Plan references non-existent requirement: $rid"
+                    # Non-fatal warning, don't increment errors
+                fi
+            done <<< "$plan_req_ids"
+        fi
+
+        # Check also_affects_reqs have a primary owner
+        local also_affects_ids
+        also_affects_ids=$(jq -r '.changes[]? | .also_affects_reqs[]?' "$plan_file" 2>/dev/null | sort -u || true)
+        if [[ -n "$also_affects_ids" ]]; then
+            local primary_owned_ids
+            primary_owned_ids=$(jq -r '.changes[]? | .requirements[]?' "$plan_file" 2>/dev/null | sort -u || true)
+            while IFS= read -r aaid; do
+                [[ -z "$aaid" ]] && continue
+                if ! echo "$primary_owned_ids" | grep -qxF "$aaid"; then
+                    warn "also_affects_reqs '$aaid' has no primary owner in any change's requirements[]"
+                fi
+            done <<< "$also_affects_ids"
+        fi
+    fi
+
     # Check for scope overlap between planned changes
     check_scope_overlap "$plan_file"
 
@@ -392,9 +425,51 @@ cmd_plan() {
 
     info "Reading input ($INPUT_MODE): $INPUT_PATH"
 
+    # Auto-digest trigger: if directory input, ensure digest exists and is fresh
+    if [[ "$INPUT_MODE" == "digest" ]]; then
+        local freshness
+        freshness=$(check_digest_freshness "$INPUT_PATH")
+        case "$freshness" in
+            fresh)
+                info "Using existing digest (fresh)"
+                ;;
+            stale)
+                info "Digest is stale — auto-re-digesting..."
+                log_info "Auto-digest triggered (stale)"
+                cmd_digest --spec "$INPUT_PATH" || {
+                    error "Auto-digest failed"
+                    return 1
+                }
+                ;;
+            missing)
+                info "Auto-generating digest..."
+                log_info "Auto-digest triggered (no existing digest)"
+                cmd_digest --spec "$INPUT_PATH" || {
+                    error "Auto-digest failed"
+                    return 1
+                }
+                ;;
+        esac
+    fi
+
     # Resolve directives (4-level precedence chain)
     local directives
-    directives=$(resolve_directives "$INPUT_PATH")
+    # In digest mode, resolve from index.json (no document directives)
+    if [[ "$INPUT_MODE" == "digest" ]]; then
+        directives=$(load_config_file)
+        # Apply defaults for missing keys
+        directives=$(echo '{}' | jq --argjson cfg "$directives" \
+            --argjson mp "$DEFAULT_MAX_PARALLEL" \
+            --arg mpol "$DEFAULT_MERGE_POLICY" \
+            --argjson cp "$DEFAULT_CHECKPOINT_EVERY" \
+            '{
+                max_parallel: ($cfg.max_parallel // $mp),
+                merge_policy: ($cfg.merge_policy // $mpol),
+                checkpoint_every: ($cfg.checkpoint_every // $cp)
+            } + $cfg')
+    else
+        directives=$(resolve_directives "$INPUT_PATH")
+    fi
     info "Directives: $(echo "$directives" | jq -c .)"
 
     # Check if agent-based planning is requested
@@ -506,12 +581,99 @@ ${orch_mem}"
         test_infra_context="Test Infrastructure: NONE — first change must set up test framework"
     fi
 
-    # Build decomposition prompt (dual-mode: brief vs spec)
+    # Build decomposition prompt (tri-mode: digest vs spec vs brief)
     local input_content
     local hash
-    hash=$(brief_hash "$INPUT_PATH")
 
-    if [[ "$INPUT_MODE" == "spec" ]]; then
+    if [[ "$INPUT_MODE" == "digest" ]]; then
+        # Digest mode: read structured digest instead of raw spec
+        hash=$(jq -r '.source_hash' "$DIGEST_DIR/index.json")
+
+        # Build digest content for planner prompt
+        local digest_content=""
+
+        # Conventions first (project-wide rules)
+        if [[ -f "$DIGEST_DIR/conventions.json" ]]; then
+            local conv_content
+            conv_content=$(cat "$DIGEST_DIR/conventions.json")
+            digest_content+="## Project Conventions (apply to ALL changes)
+$conv_content
+
+"
+        fi
+
+        # Data model reference
+        if [[ -f "$DIGEST_DIR/data-definitions.md" ]]; then
+            local data_content
+            data_content=$(cat "$DIGEST_DIR/data-definitions.md")
+            digest_content+="## Data Model Reference
+$data_content
+
+"
+        fi
+
+        # Execution hints (optional guidance)
+        local exec_hints
+        exec_hints=$(jq -r '.execution_hints // {} | if . == {} then empty else tostring end' "$DIGEST_DIR/index.json" 2>/dev/null || true)
+        if [[ -n "$exec_hints" ]]; then
+            digest_content+="## Execution Hints (optional guidance from spec author)
+$exec_hints
+
+"
+        fi
+
+        # Domain summaries
+        if [[ -d "$DIGEST_DIR/domains" ]]; then
+            digest_content+="## Domain Summaries
+"
+            for domain_file in "$DIGEST_DIR/domains"/*.md; do
+                [[ -f "$domain_file" ]] || continue
+                local dname
+                dname=$(basename "$domain_file" .md)
+                digest_content+="### $dname
+$(cat "$domain_file")
+
+"
+            done
+        fi
+
+        # Requirements
+        if [[ -f "$DIGEST_DIR/requirements.json" ]]; then
+            local reqs_content
+            reqs_content=$(cat "$DIGEST_DIR/requirements.json")
+            local req_count
+            req_count=$(echo "$reqs_content" | jq '.requirements | length')
+            digest_content+="## Requirements ($req_count total)
+$reqs_content
+
+"
+        fi
+
+        # Dependencies
+        if [[ -f "$DIGEST_DIR/dependencies.json" ]]; then
+            local deps_content
+            deps_content=$(cat "$DIGEST_DIR/dependencies.json")
+            digest_content+="## Cross-references
+$deps_content
+
+"
+        fi
+
+        # Ambiguities (informational)
+        if [[ -f "$DIGEST_DIR/ambiguities.json" ]]; then
+            local amb_count
+            amb_count=$(jq '.ambiguities | length' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo 0)
+            if [[ "$amb_count" -gt 0 ]]; then
+                digest_content+="## Ambiguities ($amb_count detected — decide or flag for human review)
+$(cat "$DIGEST_DIR/ambiguities.json")
+
+"
+            fi
+        fi
+
+        input_content="$digest_content"
+    elif [[ "$INPUT_MODE" == "spec" ]]; then
+        hash=$(brief_hash "$INPUT_PATH")
         # Spec mode: check if summarization is needed
         local token_est
         token_est=$(estimate_tokens "$INPUT_PATH")
@@ -541,6 +703,7 @@ ${orch_mem}"
             input_content=$(cat "$INPUT_PATH")
         fi
     else
+        hash=$(brief_hash "$INPUT_PATH")
         input_content=$(cat "$INPUT_PATH")
     fi
 
@@ -587,8 +750,8 @@ $req_entries"
     fi
 
     local prompt
-    if [[ "$INPUT_MODE" == "spec" ]]; then
-        # Spec-mode prompt: LLM determines what's next
+    if [[ "$INPUT_MODE" == "spec" || "$INPUT_MODE" == "digest" ]]; then
+        # Spec/digest-mode prompt: LLM determines what's next
         local phase_instruction=""
         if [[ -n "$PHASE_HINT" ]]; then
             phase_instruction="The user requested phase: $PHASE_HINT. Focus decomposition on items matching this phase."
@@ -622,6 +785,18 @@ echo "$req_context"
 fi)
 
 ## $test_infra_context
+$(if [[ "${INPUT_MODE:-}" == "digest" && -f "$DIGEST_DIR/coverage.json" ]]; then
+    local cov_merged cov_running
+    cov_merged=$(jq -r '[.coverage | to_entries[] | select(.value.status == "merged") | .key] | join(", ")' "$DIGEST_DIR/coverage.json" 2>/dev/null || true)
+    cov_running=$(jq -r '[.coverage | to_entries[] | select(.value.status == "running") | .key] | join(", ")' "$DIGEST_DIR/coverage.json" 2>/dev/null || true)
+    if [[ -n "$cov_merged" || -n "$cov_running" ]]; then
+        echo ""
+        echo "## Coverage Status (from digest)"
+        [[ -n "$cov_merged" ]] && echo "Already covered (merged): $cov_merged"
+        [[ -n "$cov_running" ]] && echo "Already covered (running): $cov_running"
+        echo "Do NOT re-plan requirements that are already merged or running."
+    fi
+fi)
 $(if [[ -n "${_REPLAN_COMPLETED:-}" ]]; then
 cat <<REPLAN_CTX
 
@@ -719,6 +894,16 @@ Manual tasks — flag changes that require human intervention:
 - Examples: "integrate Stripe payments" (needs API key), "set up Firebase auth" (needs project creation), "configure custom domain" (needs DNS records)
 - When false or omitted, all tasks are assumed automatable
 
+$(if [[ "$INPUT_MODE" == "digest" ]]; then
+cat <<'DIGEST_FIELDS'
+Digest-mode additional requirements:
+- Each change MUST include "spec_files": an array of raw spec file paths (relative to spec base dir) that this change needs for implementation. These files will be copied into the worktree.
+- Each change MUST include "requirements": an array of REQ-* IDs from the digest that this change owns and implements.
+- If a change must incorporate a cross-cutting requirement owned by another change, list it in "also_affects_reqs" (not in "requirements").
+- Every non-removed REQ-* ID in the digest MUST appear in exactly one change's "requirements" array. Cross-cutting requirements appear in one change's "requirements" (primary owner) and other changes' "also_affects_reqs".
+DIGEST_FIELDS
+fi)
+
 Output ONLY valid JSON (no markdown, no explanation):
 {
   "phase_detected": "Description of which phase/section was selected and why",
@@ -732,7 +917,10 @@ Output ONLY valid JSON (no markdown, no explanation):
       "model": "opus|sonnet",
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
-      "roadmap_item": "The spec section/item this implements"
+      "roadmap_item": "The spec section/item this implements"$(if [[ "$INPUT_MODE" == "digest" ]]; then echo ',
+      "spec_files": ["path/relative/to/spec-base-dir.md"],
+      "requirements": ["REQ-DOMAIN-001"],
+      "also_affects_reqs": ["REQ-CROSS-001"]'; fi)
     }
   ]
 }
@@ -971,6 +1159,11 @@ PYEOF
         return 1
     fi
 
+    # Populate coverage mapping for digest-mode plans
+    if [[ "$INPUT_MODE" == "digest" && -f "$DIGEST_DIR/requirements.json" ]]; then
+        populate_coverage "$PLAN_FILENAME"
+    fi
+
     local change_count
     change_count=$(jq '.changes | length' "$PLAN_FILENAME")
 
@@ -1193,6 +1386,8 @@ $completed_file_context"
     plan_input_mode=$(jq -r '.input_mode // empty' "$PLAN_FILENAME")
     plan_input_path=$(jq -r '.input_path // empty' "$PLAN_FILENAME")
     if [[ "$plan_input_mode" == "spec" && -n "$plan_input_path" ]]; then
+        SPEC_OVERRIDE="$plan_input_path"
+    elif [[ "$plan_input_mode" == "digest" && -n "$plan_input_path" ]]; then
         SPEC_OVERRIDE="$plan_input_path"
     elif [[ "$plan_input_mode" == "brief" && -n "$plan_input_path" ]]; then
         BRIEF_OVERRIDE="$plan_input_path"

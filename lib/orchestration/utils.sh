@@ -105,6 +105,12 @@ find_brief() {
 find_input() {
     # --spec takes priority
     if [[ -n "$SPEC_OVERRIDE" ]]; then
+        # Directory input → digest mode
+        if [[ -d "$SPEC_OVERRIDE" ]]; then
+            INPUT_MODE="digest"
+            INPUT_PATH="$(cd "$SPEC_OVERRIDE" && pwd)"
+            return 0
+        fi
         if [[ -f "$SPEC_OVERRIDE" ]]; then
             INPUT_MODE="spec"
             INPUT_PATH="$(cd "$(dirname "$SPEC_OVERRIDE")" && pwd)/$(basename "$SPEC_OVERRIDE")"
