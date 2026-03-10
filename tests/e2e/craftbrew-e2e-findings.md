@@ -207,6 +207,21 @@
 | user-profile | 4 | pending | — | **deadlocked** (depends on user-auth) |
 | user-addresses-orders | 4 | pending | — | **deadlocked** (depends on user-profile) |
 
+### 18. Checkpoint crash loop — BLOKKOLÓ BUG
+- **Tünet**: Orchestrator ~20s-nél meghalt minden restart-nál. Log: "Checkpoint triggered: periodic" → "Orchestrator interrupted by signal"
+- **Ok**: `checkpoint_every=3` (default), `changes_since_checkpoint=3` (3 merged change a run során). Restart-nál a monitor loop azonnal triggerelte a checkpoint-ot (3 >= 3). A `trigger_checkpoint()` → `generate_summary()` crashelt `set -e` alatt, ami a signal trap-et hívta → exit.
+- **Másodlagos ok**: A `checkpoint_every` null check hiányzott — ha a directive nincs beállítva, jq `"null"` stringet ad, bash `[[ "3" -ge "null" ]]` → "null" = 0 numerikusan → mindig triggerel
+- **Fix**: (1) Null/empty guard a `checkpoint_every` check-ben (monitor.sh), (2) Counter reset 0-ra restart-nál
+- **Megjegyzés**: MiniShop-nál nem jött elő mert mind a 6-7 change egy fázisban volt, a counter soha nem érte el a 3-as threshold-ot merge között
+- **Státusz**: Fixelve
+
+### 19. Phase-end E2E mode implementálva
+- **Motiváció**: Per-change E2E retry drága (~20-30 perc + token waste phase 2-ben: 4/7 change E2E fail → retry)
+- **Megoldás**: Új `e2e_mode` directive: `per_change` (default, mai viselkedés) | `phase_end` (E2E futtatás phase végén, main-en)
+- **Működés**: `phase_end` módban per-change verify = test+build only (~15-20s). Phase végén `run_phase_end_e2e()` az integrált kódon. Ha fail → context megy a replan-be (`_REPLAN_E2E_FAILURES`)
+- **Érintett fájlok**: monitor.sh (directive parse + phase-end trigger), verifier.sh (run_phase_end_e2e func), planner.sh (E2E fail context injection), reporter.sh (phase-end E2E results section + e2e_mode display)
+- **Státusz**: Implementálva, nem tesztelve élesben
+
 ### Observations (Run #2)
 - Granularity rules működnek: 8 change, mind ≤6 REQ
 - Sub-domain dependency chaining működik: product-catalog chain (list→detail→filter→search), user chain (auth→profile→addresses)

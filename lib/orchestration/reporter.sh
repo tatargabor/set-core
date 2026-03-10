@@ -190,22 +190,39 @@ render_execution_section() {
     orch_status=$(jq -r '.status // "unknown"' "$STATE_FILENAME" 2>/dev/null || echo "unknown")
     echo "<p><strong>Status:</strong> <span class=\"status-$orch_status\">$orch_status</span></p>"
 
+    # E2E mode
+    local e2e_mode
+    e2e_mode=$(jq -r '.directives.e2e_mode // "per_change"' "$STATE_FILENAME" 2>/dev/null || echo "per_change")
+    echo "<p><strong>E2E mode:</strong> $e2e_mode</p>"
+
     # Change timeline
     echo "<table>"
-    echo "<tr><th>Change</th><th>Status</th><th>Duration</th><th>Tokens</th><th>Test</th><th>Smoke</th></tr>"
+    if [[ "$e2e_mode" == "phase_end" ]]; then
+        echo "<tr><th>Change</th><th>Status</th><th>Duration</th><th>Tokens</th><th>Test</th><th>Smoke</th></tr>"
+    else
+        echo "<tr><th>Change</th><th>Status</th><th>Duration</th><th>Tokens</th><th>Test</th><th>E2E</th><th>Smoke</th></tr>"
+    fi
 
     local total_tokens=0 total_duration_s=0 total_tests=0
 
-    while IFS=$'\t' read -r name status tokens test_res smoke_res started_at completed_at test_stats; do
+    while IFS=$'\t' read -r name status tokens test_res e2e_res smoke_res started_at completed_at test_stats; do
         [[ -z "$name" ]] && continue
 
-        local test_class="gate-na" smoke_class="gate-na"
-        local test_display="-" smoke_display="-"
+        local test_class="gate-na" smoke_class="gate-na" e2e_class="gate-na"
+        local test_display="-" smoke_display="-" e2e_display="-"
 
         if [[ "$test_res" == "pass" ]]; then
             test_class="gate-pass"; test_display="&#10003;"
         elif [[ "$test_res" == "fail" ]]; then
             test_class="gate-fail"; test_display="&#10007;"
+        fi
+
+        if [[ "$e2e_res" == "pass" ]]; then
+            e2e_class="gate-pass"; e2e_display="&#10003;"
+        elif [[ "$e2e_res" == "fail" ]]; then
+            e2e_class="gate-fail"; e2e_display="&#10007;"
+        elif [[ "$e2e_res" == "skipped" || "$e2e_res" == "skip" ]]; then
+            e2e_display="skip"
         fi
 
         if [[ "$smoke_res" == "pass" ]]; then
@@ -260,9 +277,12 @@ render_execution_section() {
         echo "<td>$duration_display</td>"
         echo "<td>$token_display</td>"
         echo "<td><span class=\"$test_class\">$test_display</span></td>"
+        if [[ "$e2e_mode" != "phase_end" ]]; then
+            echo "<td><span class=\"$e2e_class\">$e2e_display</span></td>"
+        fi
         echo "<td><span class=\"$smoke_class\">$smoke_display</span></td>"
         echo "</tr>"
-    done < <(jq -r '.changes[] | "\(.name)\t\(.status)\t\(.tokens_used // 0)\t\(.test_result // "-")\t\(.smoke_result // "-")\t\(.started_at // "null")\t\(.completed_at // "null")\t\(.test_stats // {} | tostring)"' "$STATE_FILENAME" 2>/dev/null || true)
+    done < <(jq -r '.changes[] | "\(.name)\t\(.status)\t\(.tokens_used // 0)\t\(.test_result // "-")\t\(.e2e_result // "-")\t\(.smoke_result // "-")\t\(.started_at // "null")\t\(.completed_at // "null")\t\(.test_stats // {} | tostring)"' "$STATE_FILENAME" 2>/dev/null || true)
 
     # Summary row
     local total_token_display="$total_tokens"
@@ -273,15 +293,69 @@ render_execution_section() {
     fi
     local total_dur_m=$((total_duration_s / 60))
 
+    local summary_colspan=2
+    [[ "$e2e_mode" != "phase_end" ]] && summary_colspan=3
+
     echo "<tr style=\"border-top:2px solid #666;font-weight:bold\">"
     echo "<td>Total</td><td></td><td>${total_dur_m}m</td><td>$total_token_display</td>"
     if [[ "$total_tests" -gt 0 ]]; then
-        echo "<td colspan=\"2\">$total_tests tests</td>"
+        echo "<td colspan=\"$summary_colspan\">$total_tests tests</td>"
     else
-        echo "<td colspan=\"2\"></td>"
+        echo "<td colspan=\"$summary_colspan\"></td>"
     fi
     echo "</tr>"
     echo "</table>"
+
+    # Phase-end E2E results (when e2e_mode=phase_end)
+    local phase_e2e_count
+    phase_e2e_count=$(jq '.phase_e2e_results // [] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+    if [[ "$phase_e2e_count" -gt 0 ]]; then
+        echo "<h3>Phase-End E2E Results</h3>"
+        echo "<table>"
+        echo "<tr><th>Phase</th><th>Result</th><th>Duration</th><th>Screenshots</th><th>Time</th></tr>"
+        while IFS=$'\t' read -r pe_cycle pe_result pe_ms pe_sc_count pe_sc_dir pe_ts; do
+            [[ -z "$pe_cycle" ]] && continue
+            local pe_class="gate-pass"
+            [[ "$pe_result" == "fail" ]] && pe_class="gate-fail"
+            local pe_dur_s=$((pe_ms / 1000))
+            local sc_display="-"
+            if [[ "$pe_sc_count" -gt 0 && -n "$pe_sc_dir" && "$pe_sc_dir" != "null" ]]; then
+                sc_display="<a href=\"../../$pe_sc_dir\" style=\"color:#64b5f6\">${pe_sc_count} images</a>"
+            elif [[ "$pe_sc_count" -gt 0 ]]; then
+                sc_display="${pe_sc_count} images"
+            fi
+            echo "<tr>"
+            echo "<td>Cycle $pe_cycle</td>"
+            echo "<td><span class=\"$pe_class\">$pe_result</span></td>"
+            echo "<td>${pe_dur_s}s</td>"
+            echo "<td>$sc_display</td>"
+            echo "<td>$pe_ts</td>"
+            echo "</tr>"
+        done < <(jq -r '.phase_e2e_results[]? | "\(.cycle)\t\(.result)\t\(.duration_ms)\t\(.screenshot_count // 0)\t\(.screenshot_dir // "null")\t\(.timestamp // "-")"' "$STATE_FILENAME" 2>/dev/null || true)
+        echo "</table>"
+
+        # Inline screenshot gallery for the latest cycle
+        local latest_sc_dir
+        latest_sc_dir=$(jq -r '.phase_e2e_results[-1].screenshot_dir // ""' "$STATE_FILENAME" 2>/dev/null)
+        if [[ -n "$latest_sc_dir" && -d "$latest_sc_dir" ]]; then
+            local png_files
+            png_files=$(find "$latest_sc_dir" -name "*.png" 2>/dev/null | sort | head -20)
+            if [[ -n "$png_files" ]]; then
+                echo "<details><summary>Screenshot Gallery (latest cycle)</summary>"
+                echo '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">'
+                while IFS= read -r png; do
+                    local rel_path="../../$png"
+                    local fname
+                    fname=$(basename "$png")
+                    echo "<div style=\"text-align:center\">"
+                    echo "<a href=\"$rel_path\" target=\"_blank\"><img src=\"$rel_path\" style=\"max-width:320px;max-height:200px;border:1px solid #444;border-radius:4px\" alt=\"$fname\"></a>"
+                    echo "<br><small style=\"color:#888\">$fname</small>"
+                    echo "</div>"
+                done <<< "$png_files"
+                echo "</div></details>"
+            fi
+        fi
+    fi
 }
 
 # ─── Coverage Section ───────────────────────────────────────────────

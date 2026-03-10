@@ -516,10 +516,18 @@ run_phase_end_e2e() {
     local e2e_rc=0
     local e2e_result="pass"
 
-    info "Running phase-end E2E tests on main (port=$e2e_port)..."
+    # Screenshot output directory for this cycle
+    local cycle
+    cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME")
+    local screenshot_dir="wt/orchestration/e2e-screenshots/cycle-${cycle}"
+    mkdir -p "$screenshot_dir"
 
-    # Run E2E in project root (main branch) — not a worktree
-    if PW_PORT=$e2e_port run_tests_in_worktree "$(pwd)" "$e2e_command" "$e2e_timeout" 8000; then
+    info "Running phase-end E2E tests on main (port=$e2e_port, screenshots=$screenshot_dir)..."
+
+    # Run E2E in project root (main branch) with Playwright screenshot/trace output
+    # PLAYWRIGHT_OUTPUT_DIR tells our run to save artifacts; consumer's playwright.config
+    # should respect this or use default test-results/
+    if PLAYWRIGHT_OUTPUT_DIR="$screenshot_dir" PW_PORT=$e2e_port run_tests_in_worktree "$(pwd)" "$e2e_command" "$e2e_timeout" 8000; then
         e2e_output="$TEST_OUTPUT"
         log_info "Phase-end E2E: all tests passed"
     else
@@ -533,8 +541,17 @@ run_phase_end_e2e() {
     pkill -f "pnpm dev.*--port $e2e_port" 2>/dev/null || true
     pkill -f "next dev.*--port $e2e_port" 2>/dev/null || true
 
+    # Collect Playwright artifacts (screenshots, traces) into our output dir
+    # Playwright writes to test-results/ by default
+    if [[ -d "test-results" ]]; then
+        cp -r test-results/* "$screenshot_dir/" 2>/dev/null || true
+        log_info "Phase-end E2E: copied test-results/ to $screenshot_dir"
+    fi
+
     local _elapsed=$(( $(date +%s%N) / 1000000 - _start ))
-    log_info "Phase-end E2E: took ${_elapsed}ms, result=$e2e_result"
+    local screenshot_count
+    screenshot_count=$(find "$screenshot_dir" -name "*.png" 2>/dev/null | wc -l)
+    log_info "Phase-end E2E: took ${_elapsed}ms, result=$e2e_result, screenshots=$screenshot_count"
 
     # Store results in state for reporting
     local cycle
@@ -548,11 +565,15 @@ run_phase_end_e2e() {
        --argjson ms "$_elapsed" \
        --arg output "$escaped_output" \
        --argjson cycle "$cycle" \
+       --arg screenshots "$screenshot_dir" \
+       --argjson sc_count "$screenshot_count" \
        '.phase_e2e_results = (.phase_e2e_results // []) + [{
             cycle: $cycle,
             result: $result,
             duration_ms: $ms,
             output: $output,
+            screenshot_dir: $screenshots,
+            screenshot_count: $sc_count,
             timestamp: (now | todate)
         }]' "$STATE_FILENAME" > "$tmp" && mv "$tmp" "$STATE_FILENAME"
 

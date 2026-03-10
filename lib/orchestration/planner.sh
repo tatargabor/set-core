@@ -933,6 +933,17 @@ Past operational events from previous cycles — use this to avoid repeating mis
 $_REPLAN_MEMORY
 ORCH_HIST
 fi)
+$(if [[ -n "${_REPLAN_E2E_FAILURES:-}" ]]; then
+cat <<E2E_CTX
+
+## Phase-End E2E Test Failures
+The previous phase's integrated E2E tests (Playwright) failed on main after all changes were merged.
+These are integration bugs that individual change tests did not catch.
+You MUST include fix changes for these failures in the next phase:
+
+$_REPLAN_E2E_FAILURES
+E2E_CTX
+fi)
 
 ## Task
 1. **Analyze the specification** — identify which items are completed (look for status markers: checkboxes, emoji, "done"/"implemented"/"kész"/"ready" text, strikethrough, progress tables) and which are pending. Also consider the "Already Completed" section above if present.
@@ -1531,6 +1542,15 @@ $completed_file_context"
         export _REPLAN_MEMORY="${replan_memory:0:2000}"
     fi
 
+    # Inject phase-end E2E failure context if available (e2e_mode=phase_end)
+    local phase_e2e_ctx
+    phase_e2e_ctx=$(jq -r '.phase_e2e_failure_context // ""' "$STATE_FILENAME" 2>/dev/null)
+    if [[ -n "$phase_e2e_ctx" && "$phase_e2e_ctx" != '""' && "$phase_e2e_ctx" != "null" ]]; then
+        export _REPLAN_E2E_FAILURES="Phase-end E2E tests failed on the integrated codebase. These failures indicate integration issues that must be addressed in the next phase:
+
+$phase_e2e_ctx"
+    fi
+
     # Restore input path from plan so cmd_plan's find_input() can find it
     local plan_input_mode plan_input_path
     plan_input_mode=$(jq -r '.input_mode // empty' "$PLAN_FILENAME")
@@ -1546,10 +1566,10 @@ $completed_file_context"
     if ! cmd_plan &>>"$LOG_FILE"; then
         log_error "Auto-replan failed — cmd_plan returned error"
         rm -f "$old_plan"
-        unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY
+        unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY _REPLAN_E2E_FAILURES
         return 2  # Error (distinct from 1=no new work)
     fi
-    unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY
+    unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY _REPLAN_E2E_FAILURES
 
     # Check if new plan has actionable changes not already completed
     local new_changes
