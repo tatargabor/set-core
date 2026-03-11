@@ -1208,12 +1208,30 @@ PROMPT_EOF
     info "Calling Claude for decomposition..."
     log_info "Plan decomposition started (brief hash: $hash)"
 
+    # Heartbeat: emit periodic events so sentinel doesn't think we're stuck during long API call
+    local _hb_marker
+    _hb_marker=$(mktemp)
+    (
+        local _hb_count=0
+        while [[ -f "$_hb_marker" ]]; do
+            sleep 60
+            [[ -f "$_hb_marker" ]] || break
+            _hb_count=$((_hb_count + 1))
+            emit_event "PLAN_HEARTBEAT" "" "{\"minutes\":$_hb_count}" 2>/dev/null || true
+        done
+    ) &
+    local _heartbeat_pid=$!
+
     local claude_output
     claude_output=$(export RUN_CLAUDE_TIMEOUT=1800; echo "$prompt" | run_claude --model "$(model_id opus)") || {
+        rm -f "$_hb_marker"
+        kill "$_heartbeat_pid" 2>/dev/null; wait "$_heartbeat_pid" 2>/dev/null || true
         error "Claude decomposition failed. Check your Claude CLI setup."
         log_error "Claude decomposition failed"
         return 1
     }
+    rm -f "$_hb_marker"
+    kill "$_heartbeat_pid" 2>/dev/null; wait "$_heartbeat_pid" 2>/dev/null || true
 
     log_info "Claude decomposition response received (${#claude_output} chars)"
     # Save raw output for debugging

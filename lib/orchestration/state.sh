@@ -177,7 +177,9 @@ deps_satisfied() {
 }
 
 # Check if any depends_on for a change has failed (terminal state)
-# Returns 0 if a dependency is failed/merge-blocked, 1 otherwise
+# Returns 0 if a dependency is truly failed, 1 otherwise
+# Note: merge-blocked is NOT a failure — the work is done, only merge is stuck.
+# Cascading on merge-blocked would unnecessarily block all dependents.
 deps_failed() {
     local change_name="$1"
     local deps
@@ -189,7 +191,7 @@ deps_failed() {
     while IFS= read -r dep; do
         local dep_status
         dep_status=$(get_change_status "$dep")
-        if [[ "$dep_status" == "failed" || "$dep_status" == "merge-blocked" ]]; then
+        if [[ "$dep_status" == "failed" ]]; then
             return 0
         fi
     done <<< "$deps"
@@ -212,7 +214,7 @@ cascade_failed_deps() {
             failed_dep=$(jq -r --arg name "$change_name" \
                 '.changes[] | select(.name == $name) | .depends_on[]?' "$STATE_FILENAME" 2>/dev/null | while read d; do
                     local s; s=$(get_change_status "$d")
-                    [[ "$s" == "failed" || "$s" == "merge-blocked" ]] && echo "$d" && break
+                    [[ "$s" == "failed" ]] && echo "$d" && break
                 done)
             log_warn "Cascade: $change_name failed — dependency '$failed_dep' is terminal"
             emit_event "CASCADE_FAILED" "$change_name" "{\"reason\":\"dependency_failed\",\"failed_dep\":\"$failed_dep\"}"

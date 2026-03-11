@@ -79,12 +79,30 @@ USAGE
     info "Calling Claude for digest generation..."
     log_info "Digest generation started (files=$file_count, hash=$source_hash)"
 
+    # Heartbeat: emit periodic events so sentinel doesn't think we're stuck during long API call
+    local _hb_marker
+    _hb_marker=$(mktemp)
+    (
+        local _hb_count=0
+        while [[ -f "$_hb_marker" ]]; do
+            sleep 60
+            [[ -f "$_hb_marker" ]] || break
+            _hb_count=$((_hb_count + 1))
+            emit_event "DIGEST_HEARTBEAT" "" "{\"minutes\":$_hb_count}" 2>/dev/null || true
+        done
+    ) &
+    local _heartbeat_pid=$!
+
     local api_response
     api_response=$(call_digest_api "$digest_prompt") || {
+        rm -f "$_hb_marker"
+        kill "$_heartbeat_pid" 2>/dev/null; wait "$_heartbeat_pid" 2>/dev/null || true
         emit_event "DIGEST_FAILED" "" "{\"reason\":\"api_call_failed\"}"
         error "Digest generation failed"
         return 1
     }
+    rm -f "$_hb_marker"
+    kill "$_heartbeat_pid" 2>/dev/null; wait "$_heartbeat_pid" 2>/dev/null || true
 
     emit_event "DIGEST_RESPONSE_RECEIVED" "" "{\"file_count\":$file_count}"
 

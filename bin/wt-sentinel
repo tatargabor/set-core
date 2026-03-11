@@ -323,13 +323,14 @@ is_transient_failure() {
     local exit_code="$1"
     local final_status="$2"
 
+    # Non-zero exit = crash = always transient (restart regardless of state file,
+    # because the interrupt handler may have written "stopped" before the crash)
+    [[ "$exit_code" -ne 0 ]] && return 0
+
     # Clean exits with terminal states are permanent
     case "$final_status" in
         done|stopped|time_limit|plan_review) return 1 ;;
     esac
-
-    # Non-zero exit = crash = transient
-    [[ "$exit_code" -ne 0 ]] && return 0
 
     # Clean exit with non-terminal state = unexpected but transient
     return 0

@@ -523,10 +523,18 @@ main() {
         done <<< "$changes"
 
         if $non_generated; then
-            error "Worktree has uncommitted changes. Commit or stash them first."
-            echo ""
-            echo "$changes"
-            exit 1
+            # Auto-commit remaining changes (the verify gate already approved them)
+            info "Worktree has uncommitted changes — auto-committing before merge"
+            git -C "$wt_path" add -A 2>/dev/null || true
+            git -C "$wt_path" commit -m "chore: auto-commit remaining changes before merge" --no-verify 2>/dev/null || true
+            # Re-check if clean now
+            changes=$(git -C "$wt_path" status --porcelain 2>/dev/null | grep -v "^?? \.zed/" | grep -v "^?? " || true)
+            if [[ -n "$changes" ]]; then
+                error "Worktree still has uncommitted changes after auto-commit."
+                echo ""
+                echo "$changes"
+                exit 1
+            fi
         else
             # Auto-stash generated file changes
             git -C "$wt_path" stash --quiet 2>/dev/null || true
