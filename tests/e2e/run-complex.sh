@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# CraftBrew E2E Test Runner (scaffold-complex)
-# Sets up a test project for digest pipeline end-to-end testing.
-# The scaffold is a multi-file spec directory (docs/) with 17 files. The sentinel
-# auto-triggers digest before planning, then agents build from the structured digest.
+# CraftBrew E2E Test Runner
+# Clones the CraftBrew spec repo, initializes it as a wt-project, and prepares
+# it for orchestration. The spec is a multi-file business specification (docs/)
+# with 17+ files. The sentinel auto-triggers digest before planning, then agents
+# build from the structured digest.
 #
 # Usage:
-#   ./tests/e2e/run-complex.sh              # Use default dir ($TMPDIR/craftbrew-e2e or /tmp/craftbrew-e2e)
-#   ./tests/e2e/run-complex.sh /path/to/dir # Use specified dir
+#   ./tests/e2e/run-complex.sh              # Clone to default dir ($TMPDIR/craftbrew-e2e or /tmp/craftbrew-e2e)
+#   ./tests/e2e/run-complex.sh /path/to/dir # Clone to specified dir
+#
+# The spec source repo: https://github.com/tatargabor/craftbrew
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SPEC_DIR="$SCRIPT_DIR/scaffold-complex/docs"
+CRAFTBREW_REPO="https://github.com/tatargabor/craftbrew.git"
+CRAFTBREW_BRANCH="main"
 DEFAULT_DIR="${TMPDIR:-/tmp}/craftbrew-e2e"
 TEST_DIR="${1:-$DEFAULT_DIR}"
 PROJECT_NAME="craftbrew-e2e"
@@ -40,18 +43,13 @@ preflight() {
     command -v wt-project &>/dev/null || die "wt-project not found in PATH"
     command -v node &>/dev/null || die "node not found in PATH"
     command -v pnpm &>/dev/null || die "pnpm not found in PATH"
+    command -v git &>/dev/null || die "git not found in PATH"
 
     if ! wt-project list-types 2>/dev/null | grep -q "web"; then
         die "wt-project-web plugin not installed (wt-project list-types does not show 'web')"
     fi
 
-    [[ -d "$SPEC_DIR" ]] || die "Spec directory not found: $SPEC_DIR"
-
-    local file_count
-    file_count=$(find "$SPEC_DIR" -name '*.md' | wc -l)
-    [[ "$file_count" -ge 10 ]] || die "Expected 10+ spec files in $SPEC_DIR, found $file_count"
-
-    success "All prerequisites met ($file_count spec files)"
+    success "All prerequisites met"
 }
 
 # ── Name conflict handling ──
@@ -121,23 +119,17 @@ check_existing() {
 # ── Main initialization ──
 
 init_project() {
-    step "Copy spec directory"
-    mkdir -p "$TEST_DIR/docs"
-    # Copy entire multi-file spec tree preserving directory structure
-    cp -r "$SPEC_DIR"/* "$TEST_DIR/docs/"
+    step "Clone CraftBrew spec repo"
+    git clone --branch "$CRAFTBREW_BRANCH" "$CRAFTBREW_REPO" "$TEST_DIR"
+    cd "$TEST_DIR"
 
     local file_count
     file_count=$(find "$TEST_DIR/docs" -name '*.md' | wc -l)
-    success "Spec directory copied to $TEST_DIR/docs/ ($file_count files)"
+    success "Cloned CraftBrew repo ($file_count spec files in docs/)"
 
-    cd "$TEST_DIR"
-
-    step "Git init"
-    git init
-    git add -A
-    git commit -m "initial: craftbrew multi-file spec"
+    step "Tag spec baseline"
     git tag v0-spec
-    success "Git initialized, tagged v0-spec"
+    success "Tagged v0-spec"
 
     step "Clean stale memory"
     local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/wt-tools/memory}/${PROJECT_NAME}"
@@ -159,11 +151,11 @@ init_project() {
     step "Orchestration config"
     mkdir -p wt/orchestration
     cat > wt/orchestration/config.yaml <<YAML
-# Orchestration config for CraftBrew E2E test (digest pipeline)
+# Orchestration config for CraftBrew E2E
 test_command: pnpm test
 e2e_command: npx playwright test
 e2e_timeout: 180
-smoke_command: pnpm test
+smoke_command: pnpm build && pnpm test
 smoke_blocking: true
 max_parallel: 2
 merge_policy: checkpoint
@@ -184,6 +176,7 @@ show_completion() {
     step "Ready!"
     echo ""
     info "Test project: $TEST_DIR"
+    info "Source repo: $CRAFTBREW_REPO"
     info "Git tags: $(cd "$TEST_DIR" && git tag | tr '\n' ' ')"
     info "Spec files: $(find "$TEST_DIR/docs" -name '*.md' | wc -l)"
     echo ""
@@ -197,6 +190,18 @@ show_completion() {
     echo "  3. Plan changes from structured digest"
     echo "  4. Dispatch agents with spec-context per worktree"
     echo "  5. Track requirement coverage through execution"
+    echo ""
+    warn "IMPORTANT: Mid-run wt-tools fixes"
+    echo "  Symlinks are NOT enough — .claude/ files must be real copies."
+    echo "  After fixing a bug in wt-tools during a run:"
+    echo "    1. wt-project init --name $PROJECT_NAME   # re-deploy to main worktree"
+    echo "    2. Sync to active agent worktrees:"
+    echo "       for wt in \$(git worktree list --porcelain | grep '^worktree ' | awk '{print \$2}'); do"
+    echo "         cp -r .claude/commands/ \"\$wt/.claude/commands/\""
+    echo "         cp -r .claude/skills/ \"\$wt/.claude/skills/\""
+    echo "         cp .claude/CLAUDE.md \"\$wt/.claude/CLAUDE.md\" 2>/dev/null || true"
+    echo "       done"
+    echo "  Running agents pick up the new files on their next iteration."
     echo ""
     info "To check requirement coverage during/after run:"
     echo "  cd $TEST_DIR && wt-orchestrate coverage"

@@ -2,6 +2,7 @@
 # Integration tests for spec-digest-pipeline
 # Tests scan, prompt build, parse, validate, write, freshness, stabilize, coverage
 # using the scaffold-complex CraftBrew fixture (17 files).
+# This fixture is a local copy of the CraftBrew spec (github.com/tatargabor/craftbrew).
 # No Claude API calls — run_claude is stubbed.
 #
 # Run: ./tests/orchestrator/test-digest-integration.sh
