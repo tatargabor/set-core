@@ -1500,6 +1500,10 @@ auto_replan_cycle() {
     info "Completed so far: $completed_names"
     log_info "Auto-replan cycle $cycle — completed: $completed_names"
 
+    # Git history protection: tag the phase boundary for recovery
+    git tag -f "orch/phase-${cycle}-complete" HEAD 2>/dev/null || true
+    log_info "Tagged: orch/phase-${cycle}-complete"
+
     emit_event "REPLAN" "" "{\"cycle\":$cycle,\"completed\":\"$completed_names\"}"
 
     # Re-run plan (cmd_plan knows how to handle spec mode, phase hints, etc.)

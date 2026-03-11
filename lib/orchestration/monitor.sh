@@ -393,6 +393,9 @@ monitor_loop() {
                     _cov_summary=$(final_coverage_check 2>/dev/null || true)
                     send_summary_email "complete" "$(basename "$(pwd)")" "$STATE_FILENAME" "$_cov_summary" 2>/dev/null || true
                     generate_report 2>/dev/null || true
+                    # Git history protection: tag final state for recovery
+                    git tag -f "orch/complete" HEAD 2>/dev/null || true
+                    log_info "Tagged: orch/complete"
                     success "All work complete! No more phases to implement."
                     log_info "Auto-replan found no new work — orchestration complete"
                     break
@@ -412,6 +415,9 @@ monitor_loop() {
                         update_state_field "status" '"done"'
                         update_state_field "replan_exhausted" 'true'
                         update_state_field "replan_attempt" "0"
+                        # Git history protection: tag final state for recovery
+                        git tag -f "orch/complete" HEAD 2>/dev/null || true
+                        log_info "Tagged: orch/complete"
                         local _cov_summary
                         _cov_summary=$(final_coverage_check 2>/dev/null || true)
                         send_summary_email "replan-exhausted" "$(basename "$(pwd)")" "$STATE_FILENAME" "$_cov_summary" 2>/dev/null || true
@@ -427,6 +433,9 @@ monitor_loop() {
                 trigger_checkpoint "completion"
                 update_state_field "status" '"done"'
                 cleanup_all_worktrees
+                # Git history protection: tag final state for recovery
+                git tag -f "orch/complete" HEAD 2>/dev/null || true
+                log_info "Tagged: orch/complete"
                 success "All changes complete!"
                 orch_memory_stats
                 orch_gate_stats

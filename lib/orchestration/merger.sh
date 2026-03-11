@@ -92,6 +92,14 @@ merge_change() {
         log_info "Merged $change_name"
         success "Merged: $change_name"
 
+        # Git history protection: tag the merge point for recovery
+        git tag -f "orch/$change_name" HEAD 2>/dev/null || true
+        local merged_count
+        merged_count=$(jq '[.changes[] | select(.status == "merged" or .status == "done")] | length' "$STATE_FILENAME" 2>/dev/null || echo "0")
+        merged_count=$((merged_count + 1))  # include this merge (state not yet updated for some paths)
+        git tag -f "orch/merged-${merged_count}" HEAD 2>/dev/null || true
+        log_info "Tagged: orch/$change_name, orch/merged-${merged_count}"
+
         # Sync running worktrees with updated main to prevent stale-main gate failures
         _sync_running_worktrees "$change_name"
 

@@ -91,6 +91,19 @@ clean_old_worktrees() {
     local project_dir
     project_dir=$(pwd)
 
+    # History protection: if orch/* tags exist, preserve git history
+    local orch_tags
+    orch_tags=$(git tag -l 'orch/*' 2>/dev/null || true)
+    if [[ -n "$orch_tags" ]]; then
+        local tag_count
+        tag_count=$(echo "$orch_tags" | wc -l)
+        sentinel_log "History protection: $tag_count orch/* tags found — skipping worktree/branch cleanup"
+        sentinel_log "Tags: $(echo "$orch_tags" | tr '\n' ' ')"
+        sentinel_log "Only cleaning ephemeral state files"
+        # Only clean ephemeral state files, not worktrees or branches
+        return 0
+    fi
+
     # 1. Remove git-registered worktrees
     local wt_list
     wt_list=$(git worktree list --porcelain 2>/dev/null | grep "^worktree " | sed 's/^worktree //' || true)

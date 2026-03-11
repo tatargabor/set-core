@@ -67,6 +67,27 @@ handle_name_conflict() {
     fi
 }
 
+# ── History protection guard ──
+
+check_history_guard() {
+    local registered_path
+    registered_path=$(wt-project list 2>/dev/null | grep "$PROJECT_NAME" | sed 's/.*-> //' || true)
+
+    if [[ -n "$registered_path" && -d "$registered_path" && ! -d "$registered_path/.git" ]]; then
+        error "HISTORY PROTECTION: Project '$PROJECT_NAME' is registered at $registered_path"
+        error "but .git directory is MISSING. The git history was likely deleted externally."
+        error ""
+        error "This guard prevents accidental loss of orchestration work."
+        error "If the previous run had orch/* tags, they are now lost."
+        error ""
+        error "To force a fresh start, first unregister:"
+        error "  wt-project remove $PROJECT_NAME"
+        error "  rm -rf $registered_path"
+        error "  $0 $*"
+        exit 1
+    fi
+}
+
 # ── Existing dir detection ──
 
 check_existing() {
@@ -172,6 +193,7 @@ show_completion() {
 # ── Main ──
 
 preflight
+check_history_guard
 check_existing
 init_project
 show_completion

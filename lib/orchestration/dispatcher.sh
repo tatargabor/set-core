@@ -996,6 +996,21 @@ cmd_start() {
         fi
     fi
 
+    # History detection: warn if previous run tags exist but state is gone
+    if [[ ! -f "$STATE_FILENAME" ]]; then
+        local _orch_tags
+        _orch_tags=$(git tag -l 'orch/*' 2>/dev/null || true)
+        if [[ -n "$_orch_tags" ]]; then
+            local _tag_count
+            _tag_count=$(echo "$_orch_tags" | wc -l)
+            warn "Previous orchestration history detected ($_tag_count orch/* tags) but no state file"
+            info "Tags: $(echo "$_orch_tags" | tr '\n' ' ')"
+            info "To recover: git log --oneline \$(git tag -l 'orch/*' | tail -1)"
+            info "To clean tags: git tag -l 'orch/*' | xargs git tag -d"
+            log_info "History detection: $_tag_count orch/* tags found without state file"
+        fi
+    fi
+
     if [[ "$need_plan" == true ]]; then
         # Clean slate: remove all previous plan/state artifacts
         local stale_files=("$PLAN_FILENAME" "$STATE_FILENAME" "$SUMMARY_FILENAME"
