@@ -321,9 +321,11 @@ monitor_loop() {
         local total_changes
         total_changes=$(jq '.changes | length' "$STATE_FILENAME")
         local truly_complete
-        truly_complete=$(jq '[.changes[] | select(.status == "done" or .status == "merged")] | length' "$STATE_FILENAME")
+        truly_complete=$(jq '[.changes[] | select(.status == "done" or .status == "merged" or .status == "skipped")] | length' "$STATE_FILENAME")
         local failed_count
         failed_count=$(jq '[.changes[] | select(.status == "failed")] | length' "$STATE_FILENAME")
+        local skipped_count
+        skipped_count=$(jq '[.changes[] | select(.status == "skipped")] | length' "$STATE_FILENAME")
         local merge_blocked_count
         merge_blocked_count=$(jq '[.changes[] | select(.status == "merge-blocked")] | length' "$STATE_FILENAME")
         local active_count
@@ -334,8 +336,10 @@ monitor_loop() {
         if [[ "$active_count" -eq 0 && "$truly_complete" -lt "$total_changes" ]]; then
             local terminal_count=$((truly_complete + failed_count + merge_blocked_count))
             if [[ "$terminal_count" -ge "$total_changes" ]]; then
-                log_info "$truly_complete succeeded, $failed_count failed, $merge_blocked_count merge-blocked — all resolved"
-                send_notification "wt-orchestrate" "$truly_complete/$total_changes changes complete ($failed_count failed, $merge_blocked_count merge-blocked)" "warning"
+                local skip_msg=""
+                [[ "$skipped_count" -gt 0 ]] && skip_msg=", $skipped_count skipped"
+                log_info "$truly_complete succeeded$skip_msg, $failed_count failed, $merge_blocked_count merge-blocked — all resolved"
+                send_notification "wt-orchestrate" "$truly_complete/$total_changes changes complete ($failed_count failed$skip_msg, $merge_blocked_count merge-blocked)" "warning"
                 # Fall through to completion handling below
             fi
         fi

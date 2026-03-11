@@ -50,6 +50,7 @@ render_html_wrapper_open() {
   .status-running, .status-verifying { color: #ff9800; }
   .status-failed { color: #f44336; }
   .status-merge-blocked, .status-blocked { color: #e91e63; }
+  .status-skipped { color: #ffc107; }
   .status-pending, .status-planned { color: #9e9e9e; }
   .status-uncovered { color: #ff5722; font-weight: bold; }
   .gate-pass { color: #4caf50; }
@@ -271,9 +272,19 @@ render_execution_section() {
         fi
         total_tokens=$((total_tokens + tokens))
 
+        # Skip reason tooltip
+        local status_html="<span class=\"status-$status\">$status</span>"
+        if [[ "$status" == "skipped" ]]; then
+            local skip_reason
+            skip_reason=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .skip_reason // empty' "$STATE_FILENAME" 2>/dev/null)
+            if [[ -n "$skip_reason" ]]; then
+                status_html="<span class=\"status-$status\" title=\"$skip_reason\">$status</span> <small>($skip_reason)</small>"
+            fi
+        fi
+
         echo "<tr>"
         echo "<td>$name</td>"
-        echo "<td><span class=\"status-$status\">$status</span></td>"
+        echo "<td>$status_html</td>"
         echo "<td>$duration_display</td>"
         echo "<td>$token_display</td>"
         echo "<td><span class=\"$test_class\">$test_display</span></td>"

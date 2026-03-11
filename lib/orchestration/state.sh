@@ -168,7 +168,7 @@ deps_satisfied() {
     while IFS= read -r dep; do
         local dep_status
         dep_status=$(get_change_status "$dep")
-        if [[ "$dep_status" != "merged" ]]; then
+        if [[ "$dep_status" != "merged" && "$dep_status" != "skipped" ]]; then
             return 1
         fi
     done <<< "$deps"
@@ -406,7 +406,11 @@ cmd_status() {
     local verify_failed
     verify_failed=$(count_changes_by_status "verify-failed")
 
+    local skipped
+    skipped=$(count_changes_by_status "skipped")
+
     echo "  Progress: $merged merged, $done_count done, $running running, $pending pending"
+    [[ "$skipped" -gt 0 ]] && echo "  Skipped:  $skipped"
     [[ "$verifying" -gt 0 ]] && echo "  Verifying: $verifying"
     [[ "$verify_failed" -gt 0 ]] && echo "  Verify-failed: $verify_failed"
     [[ "$failed" -gt 0 ]] && echo "  Failed:   $failed"
