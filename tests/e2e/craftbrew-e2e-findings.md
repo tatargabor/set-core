@@ -229,6 +229,44 @@
 - **Megjegyzés**: Cycle 2 pont beleférte a 600s-be (~6 perc), de cycle 3 már nem. A timeout növelés nem hot-reload-ból jön, orchestrator restart kell.
 - **Státusz**: Fixelve (900s), de a futó orchestrator még a régi 600s-sel dolgozik
 
+### 21. Digest JSON parse failure during replan — blocks phase 5
+- **Tünet**: Replan cycle 5 digest re-generation 3x failed: `ERROR: Could not parse digest JSON`
+- **Ok**: Auto-re-digest triggerelődik (stale hash), de a Claude digest response nem valid JSON → parse fail → replan fail → retry → same fail
+- **Hatás**: Phase 5 nem indul el. Phase 4 viszont 7/8 merged, tehát a futás sikeres.
+- **Megjegyzés**: A digest hash ugyanaz (`b386afee...`) mint a sikeres run-ban, de a re-generálás mégis fail. Valószínűleg a digest prompt a replan contextben más (több completed change info), és a Claude response formátuma eltér.
+- **Lehetséges fix**: (1) Digest JSON parse robusztusabbá tétele (toleráns parser), (2) Ha a hash nem változott, ne re-digest-áljon, (3) Fallback: használja a régi digest-et ha re-generation fail
+- **Státusz**: Finding, nem fixelve
+
+### Phase 4 Final Report (Run #2 continuation)
+
+| Change | REQs | Status | Retries | Notes |
+|--------|------|--------|---------|-------|
+| email-infrastructure | S | **merged** | E2E 1x | Build-first verify OK |
+| user-profile-password | S | **merged** | E2E 1x (Ralph) | Ralph self-healed |
+| promotions-coupon-logic | S | **merged** | Build 1x → stall → **watchdog redispatch** | First successful redispatch! |
+| promotions-giftcard-promoday | S | **merged** | E2E 1x (Ralph) | Ralph self-healed |
+| welcome-password-reset-emails | S | **merged** | Build 1x (Ralph) | Ralph self-healed |
+| cart-coupon-giftcard-ui | S | **merged** | Build 1x (Ralph) | Ralph self-healed |
+| cart-shipping-display | S | **merged** | 0 | Clean pass, no retry |
+| promo-day-banner-and-seed | S | **FAILED** | Build+E2E 2x | E2E fail permanent |
+
+**Phase 4 metrics:**
+- Wall clock: ~1h40m (22:00→23:40)
+- Changes merged: 7/8 (87.5%)
+- Changes failed: 1/8 (promo-day E2E)
+- Merge-blocked: 0
+- Sentinel interventions: 0
+- Verify gate: 480s across 6 changes (7% of active time)
+- Total retries: 10 (+141k tokens)
+- Watchdog redispatch: 1 (successful — promotions-coupon-logic)
+
+**New features validated:**
+- Build-first verify gate order (build→test→E2E) — catches errors early
+- Watchdog redispatch — recovered stalled change successfully
+- max_parallel=4 via orchestration.yaml config — works with directive hierarchy
+- 1800s planner timeout — cycle 4 decomposition succeeded (~3 min)
+- Post-merge sync — running worktrees auto-synced after each merge
+
 ### Observations (Run #2)
 - Granularity rules működnek: 8 change, mind ≤6 REQ
 - Sub-domain dependency chaining működik: product-catalog chain (list→detail→filter→search), user chain (auth→profile→addresses)
@@ -236,6 +274,9 @@
 - content-stories merged 2 retry után — small change (4 REQ) végül átment
 - user-auth fail nem granularity probléma — runtime bug (Next.js logout crash)
 - **Dependency deadlock** a legfontosabb bug: failed dependency→stuck pending→no replan. Fixelni kell.
+- **Build-first verify** bevált: minden phase 4 change build-del kezd, ha fail → sync with main → retry, ha main OK de branch fail → agent code issue → Ralph retry
+- **Watchdog redispatch** élesben először működött: coupon-logic stall → 10 perc cooldown → fresh worktree → success
+- **Digest re-generation fragilis**: replan-nél 3/3 attempt fail digest JSON parse error-rel
 
 ## Observations
 - Sentinel auto-restart működik: digest crash → restart → digest fresh (skip) → planner újra
