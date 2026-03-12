@@ -653,9 +653,12 @@ dispatch_ready_changes() {
     running=$(count_changes_by_status "running")
     running=$((running + $(count_changes_by_status "dispatched")))
 
-    # Get pending changes in topological order
+    # Get pending changes in topological order.
+    # Use STATE_FILENAME (not PLAN_FILENAME) because after replan the state
+    # carries forward changes from previous cycles that may not be in the
+    # current plan file.  topological_sort only needs {name, depends_on}.
     local order
-    order=$(topological_sort "$PLAN_FILENAME" 2>/dev/null || true)
+    order=$(topological_sort "$STATE_FILENAME" 2>/dev/null || true)
 
     # Collect ready-to-dispatch changes, then sort by complexity (L first)
     local ready_names=()
