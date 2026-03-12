@@ -290,6 +290,17 @@ dispatch_change() {
 
     if [[ -d "$wt_path" ]]; then
         info "Worktree already exists: $wt_path"
+        # Clean up stale loop state from previous run so wt-loop start
+        # doesn't refuse with "Loop already running".
+        local old_loop_state="$wt_path/.claude/loop-state.json"
+        if [[ -f "$old_loop_state" ]]; then
+            local old_pid
+            old_pid=$(jq -r '.terminal_pid // 0' "$old_loop_state" 2>/dev/null)
+            if [[ "$old_pid" -gt 0 ]] && ! kill -0 "$old_pid" 2>/dev/null; then
+                log_info "Removing stale loop-state.json (PID $old_pid dead) for $change_name"
+                rm -f "$old_loop_state"
+            fi
+        fi
     else
         # Clean up stale branch from previous failed run (worktree gone but branch remains)
         if git rev-parse --verify "change/$change_name" &>/dev/null; then
