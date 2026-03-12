@@ -162,3 +162,12 @@ Use clear markdown with:
 - Code references in format: `file.ts:123`
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
+
+**Machine-Readable Result (MANDATORY)**
+
+After the full verification report, you MUST output exactly one of these sentinel lines as the very last line of your response:
+
+- `VERIFY_RESULT: PASS` — if zero CRITICAL issues were found
+- `VERIFY_RESULT: FAIL critical=N warning=M` — if any CRITICAL issues were found (N = CRITICAL count, M = WARNING count)
+
+This line is parsed by the orchestrator's verify gate. If it is missing, the gate treats the result as a failure.

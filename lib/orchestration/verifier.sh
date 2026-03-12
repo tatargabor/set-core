@@ -1364,7 +1364,7 @@ handle_change_done() {
         return
     fi
 
-    # ── Step 6: Run verify step (existing) ──
+    # ── Step 6: Run verify step with output parsing ──
     info "Running verify for $change_name..."
     local _v_start=$(($(date +%s%N) / 1000000))
     local verify_ok=true
@@ -1376,17 +1376,46 @@ handle_change_done() {
     update_change_field "$change_name" "gate_verify_ms" "$gate_verify_ms"
     log_info "Verify gate: verify took ${gate_verify_ms}ms for $change_name"
 
+    # Parse verify output for structured sentinel line (fail-closed)
+    if [[ "$verify_ok" == "true" ]]; then
+        if echo "$verify_output" | grep -q "VERIFY_RESULT: PASS"; then
+            gate_spec_coverage="pass"
+            update_change_field "$change_name" "spec_coverage_result" '"pass"'
+            log_info "Verify gate: spec coverage PASS for $change_name"
+        elif echo "$verify_output" | grep -q "VERIFY_RESULT: FAIL"; then
+            verify_ok=false
+            gate_spec_coverage="fail"
+            update_change_field "$change_name" "spec_coverage_result" '"fail"'
+            log_error "Verify gate: spec coverage FAIL for $change_name"
+        else
+            # No sentinel line — fail-closed
+            verify_ok=false
+            gate_spec_coverage="fail"
+            update_change_field "$change_name" "spec_coverage_result" '"fail"'
+            log_error "Verify gate: spec coverage unparseable for $change_name (no VERIFY_RESULT sentinel)"
+        fi
+    fi
+
     if [[ "$verify_ok" != "true" ]]; then
         if [[ "$verify_retry_count" -lt "$max_verify_retries" ]]; then
             verify_retry_count=$((verify_retry_count + 1))
             info "Verify failed, retrying $change_name ($verify_retry_count/$max_verify_retries)..."
             update_change_field "$change_name" "verify_retry_count" "$verify_retry_count"
             update_change_field "$change_name" "status" '"verify-failed"'
-            # Store verify output as retry context so agent knows what to fix
             local scope
             scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
-            local retry_prompt="Verify failed after implementation. Fix the issues found by verify.\n\nVerify output:\n${verify_output:0:2000}\n\nOriginal scope: $scope"
+            local retry_prompt
+            if [[ "$gate_spec_coverage" == "fail" ]] && echo "$verify_output" | grep -q "VERIFY_RESULT:"; then
+                retry_prompt="Spec coverage check failed. Fix the CRITICAL issues found by verify.\n\nVerify output:\n${verify_output:0:2000}\n\nOriginal scope: $scope"
+            elif [[ "$gate_spec_coverage" == "fail" ]]; then
+                retry_prompt="Verify output was unparseable — re-run /opsx:verify $change_name and ensure output ends with VERIFY_RESULT: PASS or VERIFY_RESULT: FAIL critical=N warning=M\n\nVerify output:\n${verify_output:0:2000}\n\nOriginal scope: $scope"
+            else
+                retry_prompt="Verify failed after implementation. Fix the issues found by verify.\n\nVerify output:\n${verify_output:0:2000}\n\nOriginal scope: $scope"
+            fi
             update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
+            local _snap_tokens
+            _snap_tokens=$(jq -r '.total_tokens // 0' "$wt_path/.claude/loop-state.json" 2>/dev/null || echo "0")
+            update_change_field "$change_name" "retry_tokens_start" "$_snap_tokens"
             resume_change "$change_name"
             return
         fi
@@ -1403,6 +1432,8 @@ handle_change_done() {
     local gate_retry_count
     gate_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .gate_retry_count // 0' "$STATE_FILENAME")
     log_info "Verify gate: $change_name total ${gate_total_ms}ms (build=${gate_build_ms}ms, test=${gate_test_ms}ms, review=${gate_review_ms}ms, verify=${gate_verify_ms}ms, retries=${gate_retry_count}, retry_tokens=${gate_retry_tokens})"
+    local gate_has_tests
+    gate_has_tests=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .has_tests // false' "$STATE_FILENAME")
     emit_event "VERIFY_GATE" "$change_name" "$(jq -cn \
         --arg test "$test_result" \
         --argjson test_ms "$gate_test_ms" \
@@ -1412,7 +1443,10 @@ handle_change_done() {
         --argjson total_ms "$gate_total_ms" \
         --argjson retries "$gate_retry_count" \
         --argjson retry_tokens "$gate_retry_tokens" \
-        '{test:$test, test_ms:$test_ms, build_ms:$build_ms, review_ms:$review_ms, verify_ms:$verify_ms, total_ms:$total_ms, retries:$retries, retry_tokens:$retry_tokens}')"
+        --arg scope_check "$gate_scope_check" \
+        --argjson has_tests "$gate_has_tests" \
+        --arg spec_coverage "$gate_spec_coverage" \
+        '{test:$test, test_ms:$test_ms, build_ms:$build_ms, review_ms:$review_ms, verify_ms:$verify_ms, total_ms:$total_ms, retries:$retries, retry_tokens:$retry_tokens, scope_check:$scope_check, has_tests:$has_tests, spec_coverage:$spec_coverage}')"
 
     # ── Post-verify hook ──
     if ! run_hook "post_verify" "$change_name" "done" "$wt_path"; then
