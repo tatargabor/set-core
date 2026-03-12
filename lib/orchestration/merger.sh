@@ -30,6 +30,27 @@ archive_change() {
     }
 }
 
+# ─── Smoke Screenshot Collection ─────────────────────────────────────
+
+# Collect Playwright test-results/ artifacts after a smoke run.
+# Uses attempt-N/ subdirectories to preserve screenshots from each attempt.
+# Args: change_name
+_collect_smoke_screenshots() {
+    local change_name="$1"
+    local attempt_num
+    attempt_num=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .smoke_fix_attempts // 0' "$STATE_FILENAME" 2>/dev/null || echo 0)
+    local sc_dir="wt/orchestration/smoke-screenshots/$change_name/attempt-$((attempt_num + 1))"
+    mkdir -p "$sc_dir"
+    if [[ -d "test-results" ]]; then
+        cp -r test-results/* "$sc_dir/" 2>/dev/null || true
+    fi
+    local sc_count
+    sc_count=$(find "wt/orchestration/smoke-screenshots/$change_name" -name "*.png" 2>/dev/null | wc -l)
+    update_change_field "$change_name" "smoke_screenshot_dir" "\"wt/orchestration/smoke-screenshots/$change_name\""
+    update_change_field "$change_name" "smoke_screenshot_count" "$sc_count"
+    log_info "Smoke screenshots: collected $sc_count images for $change_name (attempt $((attempt_num + 1)))"
+}
+
 # ─── Merge ───────────────────────────────────────────────────────────
 
 merge_change() {
@@ -60,6 +81,8 @@ merge_change() {
         info "Already handled: $change_name (branch $source_branch no longer exists)"
         log_info "Skipping merge for $change_name — branch deleted (assumed merged)"
         update_change_field "$change_name" "status" '"merged"'
+        update_change_field "$change_name" "smoke_result" '"skip_merged"'
+        update_change_field "$change_name" "smoke_status" '"skipped"'
         update_coverage_status "$change_name" "merged" 2>/dev/null || true
         cleanup_worktree "$change_name" "$wt_path"
         archive_change "$change_name"
@@ -76,6 +99,8 @@ merge_change() {
         info "Already merged: $change_name (branch $source_branch is ancestor of HEAD)"
         log_info "Skipping merge for $change_name — already merged"
         update_change_field "$change_name" "status" '"merged"'
+        update_change_field "$change_name" "smoke_result" '"skip_merged"'
+        update_change_field "$change_name" "smoke_status" '"skipped"'
         update_coverage_status "$change_name" "merged" 2>/dev/null || true
         cleanup_worktree "$change_name" "$wt_path"
         archive_change "$change_name"
@@ -223,10 +248,14 @@ merge_change() {
                 local pm_smoke_rc=0
                 pm_smoke_output=$(timeout "${smoke_timeout:-120}" bash -c "$smoke_command" 2>&1) || pm_smoke_rc=$?
 
+                # Collect screenshots regardless of pass/fail
+                _collect_smoke_screenshots "$change_name"
+
                 if [[ $pm_smoke_rc -eq 0 ]]; then
                     log_info "Post-merge: smoke tests passed for $change_name"
                     update_change_field "$change_name" "smoke_result" '"pass"'
                     update_change_field "$change_name" "smoke_status" '"done"'
+                    update_state_field "last_smoke_pass_commit" "\"$(git rev-parse HEAD)\""
                 else
                     log_error "Post-merge: smoke tests FAILED for $change_name (exit $pm_smoke_rc)"
                     update_change_field "$change_name" "smoke_result" '"fail"'
@@ -237,6 +266,7 @@ merge_change() {
                             "${smoke_fix_max_retries:-$DEFAULT_SMOKE_FIX_MAX_RETRIES}" "${smoke_fix_max_turns:-$DEFAULT_SMOKE_FIX_MAX_TURNS}" "$pm_smoke_output"; then
                         update_change_field "$change_name" "smoke_result" '"fixed"'
                         update_change_field "$change_name" "smoke_status" '"done"'
+                        update_state_field "last_smoke_pass_commit" "\"$(git rev-parse HEAD)\""
                         orch_remember "Scoped fix resolved post-merge smoke failure for $change_name" Learning "phase:post-merge,change:$change_name"
                     else
                         update_change_field "$change_name" "smoke_status" '"failed"'
@@ -253,10 +283,14 @@ merge_change() {
                 local pm_smoke_output=""
                 local pm_smoke_rc=0
                 pm_smoke_output=$(timeout "${smoke_timeout:-120}" bash -c "$smoke_command" 2>&1) || pm_smoke_rc=$?
+                # Collect screenshots regardless of pass/fail
+                _collect_smoke_screenshots "$change_name"
+
                 if [[ $pm_smoke_rc -eq 0 ]]; then
                     log_info "Post-merge: smoke tests passed for $change_name"
                     update_change_field "$change_name" "smoke_result" '"pass"'
                     update_change_field "$change_name" "smoke_status" '"done"'
+                    update_state_field "last_smoke_pass_commit" "\"$(git rev-parse HEAD)\""
                 else
                     log_error "Post-merge: smoke tests FAILED for $change_name (exit $pm_smoke_rc)"
                     log_error "Post-merge smoke output: ${pm_smoke_output: -500}"
@@ -264,11 +298,27 @@ merge_change() {
                     update_change_field "$change_name" "smoke_status" '"failed"'
                     # Attempt generic LLM fix (legacy — no change context)
                     log_info "Post-merge: attempting LLM smoke fix on main for $change_name"
+                    # Multi-change context for legacy path
+                    local _legacy_mc_ctx=""
+                    local _legacy_since
+                    _legacy_since=$(jq -r '.last_smoke_pass_commit // ""' "$STATE_FILENAME" 2>/dev/null || echo "")
+                    if [[ -n "$_legacy_since" ]]; then
+                        local _legacy_merged
+                        _legacy_merged=$(git log --oneline "$_legacy_since..HEAD" --merges 2>/dev/null || true)
+                        if [[ -n "$_legacy_merged" && $(echo "$_legacy_merged" | wc -l) -gt 1 ]]; then
+                            _legacy_mc_ctx="
+Multiple changes merged since last smoke pass:
+$_legacy_merged
+
+The failure may be caused by an interaction between changes, not just the last one.
+"
+                        fi
+                    fi
                     local smoke_fix_prompt
                     smoke_fix_prompt=$(cat <<SMOKE_FIX_EOF
 Post-merge smoke/e2e tests failed on main after merging $change_name.
 Fix the code or tests so smoke tests pass again.
-
+$_legacy_mc_ctx
 Smoke command: $smoke_command
 Smoke output (last 2000 chars):
 ${pm_smoke_output: -2000}
@@ -291,6 +341,7 @@ SMOKE_FIX_EOF
                             log_info "Post-merge: smoke fix SUCCEEDED for $change_name"
                             update_change_field "$change_name" "smoke_result" '"fixed"'
                             update_change_field "$change_name" "smoke_status" '"done"'
+                            update_state_field "last_smoke_pass_commit" "\"$(git rev-parse HEAD)\""
                             orch_remember "LLM fixed post-merge smoke failure for $change_name" Learning "phase:post-merge,change:$change_name"
                         else
                             log_error "Post-merge: smoke fix attempt did not resolve failures for $change_name"

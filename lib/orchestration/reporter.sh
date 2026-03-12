@@ -206,7 +206,7 @@ render_execution_section() {
 
     local total_tokens=0 total_duration_s=0 total_tests=0
 
-    while IFS=$'\t' read -r name status tokens test_res e2e_res smoke_res started_at completed_at test_stats; do
+    while IFS=$'\t' read -r name status tokens test_res e2e_res smoke_res started_at completed_at test_stats smoke_sc_count smoke_sc_dir e2e_sc_count e2e_sc_dir; do
         [[ -z "$name" ]] && continue
 
         local test_class="gate-na" smoke_class="gate-na" e2e_class="gate-na"
@@ -226,10 +226,23 @@ render_execution_section() {
             e2e_display="skip"
         fi
 
-        if [[ "$smoke_res" == "pass" ]]; then
+        if [[ "$smoke_res" == "pass" || "$smoke_res" == "fixed" ]]; then
             smoke_class="gate-pass"; smoke_display="&#10003;"
         elif [[ "$smoke_res" == "fail" ]]; then
             smoke_class="gate-fail"; smoke_display="&#10007;"
+        elif [[ "$smoke_res" == "skip_merged" ]]; then
+            smoke_display="<span title=\"Skipped — already merged from previous phase\">-</span>"
+        elif [[ "$smoke_res" == "skip" ]]; then
+            smoke_display="<span title=\"Skipped — no smoke command configured\">-</span>"
+        fi
+
+        # Append camera icon if screenshots exist
+        if [[ "${smoke_sc_count:-0}" -gt 0 && -n "${smoke_sc_dir:-}" && "$smoke_sc_dir" != "null" && "$smoke_sc_dir" != "0" ]]; then
+            smoke_display="${smoke_display} <a href=\"../../${smoke_sc_dir}\" title=\"${smoke_sc_count} screenshots\" style=\"text-decoration:none\">&#128247;</a>"
+        fi
+
+        if [[ "${e2e_sc_count:-0}" -gt 0 && -n "${e2e_sc_dir:-}" && "$e2e_sc_dir" != "null" && "$e2e_sc_dir" != "0" ]]; then
+            e2e_display="${e2e_display} <a href=\"../../${e2e_sc_dir}\" title=\"${e2e_sc_count} screenshots\" style=\"text-decoration:none\">&#128247;</a>"
         fi
 
         # Duration calculation
@@ -293,7 +306,7 @@ render_execution_section() {
         fi
         echo "<td><span class=\"$smoke_class\">$smoke_display</span></td>"
         echo "</tr>"
-    done < <(jq -r '.changes[] | "\(.name)\t\(.status)\t\(.tokens_used // 0)\t\(.test_result // "-")\t\(.e2e_result // "-")\t\(.smoke_result // "-")\t\(.started_at // "null")\t\(.completed_at // "null")\t\(.test_stats // {} | tostring)"' "$STATE_FILENAME" 2>/dev/null || true)
+    done < <(jq -r '.changes[] | "\(.name)\t\(.status)\t\(.tokens_used // 0)\t\(.test_result // "-")\t\(.e2e_result // "-")\t\(.smoke_result // "-")\t\(.started_at // "null")\t\(.completed_at // "null")\t\(.test_stats // {} | tostring)\t\(.smoke_screenshot_count // 0)\t\(.smoke_screenshot_dir // "null")\t\(.e2e_screenshot_count // 0)\t\(.e2e_screenshot_dir // "null")"' "$STATE_FILENAME" 2>/dev/null || true)
 
     # Summary row
     local total_token_display="$total_tokens"
@@ -316,6 +329,72 @@ render_execution_section() {
     fi
     echo "</tr>"
     echo "</table>"
+
+    # Smoke screenshot gallery (collapsible)
+    local any_smoke_sc
+    any_smoke_sc=$(jq '[.changes[] | select((.smoke_screenshot_count // 0) > 0)] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+    if [[ "$any_smoke_sc" -gt 0 ]]; then
+        echo "<details><summary>Smoke Screenshots</summary>"
+        echo '<div style="margin:12px 0">'
+        while IFS=$'\t' read -r sc_name sc_dir sc_count; do
+            [[ -z "$sc_name" || "$sc_count" -eq 0 ]] && continue
+            echo "<h4>$sc_name ($sc_count images)</h4>"
+            if [[ -d "$sc_dir" ]]; then
+                echo '<div style="display:flex;flex-wrap:wrap;gap:8px">'
+                local img_count=0
+                # Show attempt subdirs in reverse order (latest first)
+                while IFS= read -r attempt_dir; do
+                    [[ -z "$attempt_dir" || ! -d "$attempt_dir" ]] && continue
+                    local attempt_name
+                    attempt_name=$(basename "$attempt_dir")
+                    while IFS= read -r png; do
+                        [[ -z "$png" ]] && continue
+                        [[ $img_count -ge 8 ]] && break 2
+                        local rel_path="../../$png"
+                        local fname
+                        fname=$(basename "$png")
+                        echo "<div style=\"text-align:center\">"
+                        echo "<a href=\"$rel_path\" target=\"_blank\"><img src=\"$rel_path\" style=\"max-width:320px;max-height:200px;border:1px solid #444;border-radius:4px\" alt=\"$fname\"></a>"
+                        echo "<br><small style=\"color:#888\">$attempt_name/$fname</small>"
+                        echo "</div>"
+                        img_count=$((img_count + 1))
+                    done < <(find "$attempt_dir" -name "*.png" 2>/dev/null | sort)
+                done < <(find "$sc_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -r)
+                echo "</div>"
+            fi
+        done < <(jq -r '.changes[] | select((.smoke_screenshot_count // 0) > 0) | "\(.name)\t\(.smoke_screenshot_dir)\t\(.smoke_screenshot_count)"' "$STATE_FILENAME" 2>/dev/null || true)
+        echo "</div></details>"
+    fi
+
+    # E2E screenshot gallery (collapsible)
+    local any_e2e_sc
+    any_e2e_sc=$(jq '[.changes[] | select((.e2e_screenshot_count // 0) > 0)] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+    if [[ "$any_e2e_sc" -gt 0 ]]; then
+        echo "<details><summary>E2E Screenshots</summary>"
+        echo '<div style="margin:12px 0">'
+        while IFS=$'\t' read -r sc_name sc_dir sc_count; do
+            [[ -z "$sc_name" || "$sc_count" -eq 0 ]] && continue
+            echo "<h4>$sc_name ($sc_count images)</h4>"
+            if [[ -d "$sc_dir" ]]; then
+                echo '<div style="display:flex;flex-wrap:wrap;gap:8px">'
+                local img_count=0
+                while IFS= read -r png; do
+                    [[ -z "$png" ]] && continue
+                    [[ $img_count -ge 8 ]] && break
+                    local rel_path="../../$png"
+                    local fname
+                    fname=$(basename "$png")
+                    echo "<div style=\"text-align:center\">"
+                    echo "<a href=\"$rel_path\" target=\"_blank\"><img src=\"$rel_path\" style=\"max-width:320px;max-height:200px;border:1px solid #444;border-radius:4px\" alt=\"$fname\"></a>"
+                    echo "<br><small style=\"color:#888\">$fname</small>"
+                    echo "</div>"
+                    img_count=$((img_count + 1))
+                done < <(find "$sc_dir" -name "*.png" 2>/dev/null | sort | head -8)
+                echo "</div>"
+            fi
+        done < <(jq -r '.changes[] | select((.e2e_screenshot_count // 0) > 0) | "\(.name)\t\(.e2e_screenshot_dir)\t\(.e2e_screenshot_count)"' "$STATE_FILENAME" 2>/dev/null || true)
+        echo "</div></details>"
+    fi
 
     # Phase-end E2E results (when e2e_mode=phase_end)
     local phase_e2e_count

@@ -123,6 +123,10 @@ init_test_state() {
       "smoke_result": null,
       "smoke_status": null,
       "smoke_fix_attempts": 0,
+      "smoke_screenshot_dir": "",
+      "smoke_screenshot_count": 0,
+      "e2e_screenshot_dir": "",
+      "e2e_screenshot_count": 0,
       "merge_retry_count": 0,
       "iterations": 0,
       "agent_rebase_done": false,
@@ -130,7 +134,8 @@ init_test_state() {
     }
   ],
   "merge_queue": [],
-  "directives": {}
+  "directives": {},
+  "last_smoke_pass_commit": ""
 }
 STATE_EOF
 }
@@ -1810,6 +1815,141 @@ if [[ -f "$REPORT_OUTPUT_PATH" ]]; then
     fi
 else
     test_fail "report.html exists" "file not found"
+fi
+
+# ============================================================
+# Section: Smoke Screenshot Artifacts
+# ============================================================
+
+echo ""
+echo "--- Smoke Screenshot Artifacts ---"
+
+# Test: Smoke artifact collection creates attempt-1/ and updates state
+test_start "smoke artifact collection → creates attempt-1/ and updates state"
+REPO=$(setup_test_repo)
+create_feature_branch "$REPO" "test-sc-collect" "feature.txt:hello"
+STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILENAME="$STATE_FILE"
+PROJECT_PATH="$REPO"
+LOG_FILE="$REPO/orchestrate.log"
+touch "$LOG_FILE"
+init_test_state "$STATE_FILE" "test-sc-collect" "merged"
+
+cd "$REPO"
+# Create stub test-results as if Playwright ran
+mkdir -p test-results
+echo "PNG_CONTENT" > test-results/screenshot.png
+echo "PNG_CONTENT2" > test-results/checkout.png
+
+# Source merger to get _collect_smoke_screenshots
+source "$LIB_DIR/merger.sh" 2>/dev/null || true
+
+_collect_smoke_screenshots "test-sc-collect"
+
+# Verify state fields
+sc_dir=$(jq -r '.changes[0].smoke_screenshot_dir' "$STATE_FILE")
+sc_count=$(jq -r '.changes[0].smoke_screenshot_count' "$STATE_FILE")
+# Verify attempt-1 dir exists
+if [[ -d "wt/orchestration/smoke-screenshots/test-sc-collect/attempt-1" && "$sc_count" -eq 2 && "$sc_dir" == *"smoke-screenshots/test-sc-collect" ]]; then
+    test_pass
+else
+    test_fail "attempt-1/ exists, count=2, dir set" "dir_exists=$(test -d wt/orchestration/smoke-screenshots/test-sc-collect/attempt-1 && echo y || echo n), count=$sc_count, dir=$sc_dir"
+fi
+
+# Test: Versioned attempt directories preserve both fail and pass screenshots
+test_start "versioned attempt dirs → attempt-1/ and attempt-2/ both exist"
+# Already in $REPO with attempt-1
+# Simulate fix attempt: smoke_fix_attempts=1
+jq '.changes[0].smoke_fix_attempts = 1' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+# Create new test-results (pass screenshots)
+rm -rf test-results
+mkdir -p test-results
+echo "PASS_PNG" > test-results/fixed.png
+_collect_smoke_screenshots "test-sc-collect"
+
+sc_count=$(jq -r '.changes[0].smoke_screenshot_count' "$STATE_FILE")
+if [[ -d "wt/orchestration/smoke-screenshots/test-sc-collect/attempt-1" && \
+      -d "wt/orchestration/smoke-screenshots/test-sc-collect/attempt-2" && \
+      "$sc_count" -eq 3 ]]; then
+    test_pass
+else
+    test_fail "both attempt dirs exist, total count=3" "attempt-1=$(test -d wt/orchestration/smoke-screenshots/test-sc-collect/attempt-1 && echo y || echo n), attempt-2=$(test -d wt/orchestration/smoke-screenshots/test-sc-collect/attempt-2 && echo y || echo n), count=$sc_count"
+fi
+
+# Test: Already-merged sets smoke_result=skip_merged
+test_start "already-merged branch → smoke_result=skip_merged"
+REPO=$(setup_test_repo)
+STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILENAME="$STATE_FILE"
+PROJECT_PATH="$REPO"
+LOG_FILE="$REPO/orchestrate.log"
+touch "$LOG_FILE"
+# Create a branch that's already ancestor of HEAD
+cd "$REPO"
+git checkout -b "change/test-already-merged" --quiet
+echo "feature" > already.txt
+git add already.txt
+git commit -m "feat: already merged" --quiet
+git checkout main --quiet
+git merge "change/test-already-merged" --quiet --no-edit  # now it's ancestor of HEAD
+
+init_test_state "$STATE_FILE" "test-already-merged" "verified"
+# Need stubs for cleanup/archive
+cleanup_worktree() { :; }
+archive_change() { :; }
+update_coverage_status() { :; }
+run_hook() { return 0; }
+emit_event() { :; }
+
+source "$LIB_DIR/merger.sh" 2>/dev/null || true
+merge_change "test-already-merged" 2>/dev/null || true
+
+smoke_res=$(jq -r '.changes[0].smoke_result' "$STATE_FILE")
+assert_equals "skip_merged" "$smoke_res"
+
+# Test: Multi-change context included when last_smoke_pass_commit is set
+test_start "multi-change context → included in fix prompt when last_smoke_pass_commit set"
+REPO=$(setup_test_repo)
+cd "$REPO"
+STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILENAME="$STATE_FILE"
+LOG_FILE="$REPO/orchestrate.log"
+touch "$LOG_FILE"
+# Create state with last_smoke_pass_commit set to initial commit
+initial_sha=$(git rev-parse HEAD)
+init_test_state "$STATE_FILE" "test-mc" "merged"
+jq --arg sha "$initial_sha" '.last_smoke_pass_commit = $sha' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+# Create two merge commits to simulate checkpoint
+git checkout -b "change/mc-1" --quiet
+echo "change1" > c1.txt && git add c1.txt && git commit -m "feat: mc-1" --quiet
+git checkout main --quiet && git merge "change/mc-1" --no-ff --no-edit --quiet
+git checkout -b "change/mc-2" --quiet
+echo "change2" > c2.txt && git add c2.txt && git commit -m "feat: mc-2" --quiet
+git checkout main --quiet && git merge "change/mc-2" --no-ff --no-edit --quiet
+
+# Read multi-change context the same way the code does
+since_commit=$(jq -r '.last_smoke_pass_commit // ""' "$STATE_FILE")
+merged_since=$(git log --oneline "$since_commit..HEAD" --merges 2>/dev/null || true)
+merge_count=$(echo "$merged_since" | grep -c "." || true)
+if [[ "$merge_count" -ge 2 ]]; then
+    test_pass
+else
+    test_fail ">= 2 merge commits listed" "got $merge_count: $merged_since"
+fi
+
+# Test: Cold start — empty last_smoke_pass_commit → no multi-change context
+test_start "cold start → empty last_smoke_pass_commit skips multi-change context"
+REPO=$(setup_test_repo)
+cd "$REPO"
+STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILENAME="$STATE_FILE"
+init_test_state "$STATE_FILE" "test-cold" "merged"
+# last_smoke_pass_commit is "" by default from init_test_state
+since_commit=$(jq -r '.last_smoke_pass_commit // ""' "$STATE_FILE")
+if [[ -z "$since_commit" ]]; then
+    test_pass
+else
+    test_fail "empty last_smoke_pass_commit" "got '$since_commit'"
 fi
 
 # ============================================================

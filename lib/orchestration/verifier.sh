@@ -446,6 +446,22 @@ smoke_fix_scoped() {
     local change_scope
     change_scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME" 2>/dev/null || echo "")
 
+    # Multi-change context: if last_smoke_pass_commit exists, find all changes merged since
+    local multi_change_context=""
+    local since_commit
+    since_commit=$(jq -r '.last_smoke_pass_commit // ""' "$STATE_FILENAME" 2>/dev/null || echo "")
+    if [[ -n "$since_commit" ]]; then
+        local merged_since
+        merged_since=$(git log --oneline "$since_commit..HEAD" --merges 2>/dev/null || true)
+        if [[ -n "$merged_since" && $(echo "$merged_since" | wc -l) -gt 1 ]]; then
+            multi_change_context="
+## Multiple changes merged since last smoke pass
+$merged_since
+
+Multiple changes were merged since the last smoke pass. The failure may be caused by an interaction between changes, not just the last one."
+        fi
+    fi
+
     local attempt=0
     while [[ $attempt -lt $max_retries ]]; do
         attempt=$((attempt + 1))
@@ -462,6 +478,7 @@ $change_scope
 
 ## Files modified by this change
 $modified_files
+$multi_change_context
 
 ## Smoke command
 $smoke_cmd
@@ -506,6 +523,8 @@ SCOPED_FIX_EOF
         local recheck_rc=0
         local recheck_output
         recheck_output=$(timeout "$smoke_tout" bash -c "$smoke_cmd" 2>&1) || recheck_rc=$?
+        # Collect screenshots for this fix attempt
+        _collect_smoke_screenshots "$change_name"
         if [[ $recheck_rc -eq 0 ]]; then
             log_info "Smoke fix SUCCEEDED for $change_name (attempt $attempt)"
             return 0
@@ -1143,6 +1162,20 @@ handle_change_done() {
         fi
     fi
 
+    # Collect per-change E2E artifacts from worktree
+    if [[ "$e2e_result" != "skip" && "$e2e_result" != "skipped" ]]; then
+        local e2e_sc_dir="wt/orchestration/e2e-screenshots/$change_name"
+        mkdir -p "$e2e_sc_dir"
+        if [[ -d "$wt_path/test-results" ]]; then
+            cp -r "$wt_path/test-results/"* "$e2e_sc_dir/" 2>/dev/null || true
+        fi
+        local e2e_sc_count
+        e2e_sc_count=$(find "$e2e_sc_dir" -name "*.png" 2>/dev/null | wc -l)
+        update_change_field "$change_name" "e2e_screenshot_dir" "\"$e2e_sc_dir\""
+        update_change_field "$change_name" "e2e_screenshot_count" "$e2e_sc_count"
+        log_info "E2E screenshots: collected $e2e_sc_count images for $change_name"
+    fi
+
     # Store e2e results in state
     update_change_field "$change_name" "e2e_result" "\"$e2e_result\""
     local escaped_e2e_output
@@ -1180,8 +1213,13 @@ handle_change_done() {
         return
     fi
 
+    # Gate tracking variables for event enrichment
+    local gate_scope_check="skipped"
+    local gate_spec_coverage="skipped"
+
     # ── Step 4: Pre-merge implementation scope check (BLOCKING) ──
     if ! verify_implementation_scope "$change_name" "$wt_path"; then
+        gate_scope_check="fail"
         update_change_field "$change_name" "scope_check" '"fail"'
         log_error "Verify gate: scope check FAILED for $change_name — no implementation files"
 
@@ -1204,6 +1242,7 @@ handle_change_done() {
         send_notification "wt-orchestrate" "Change '$change_name' failed scope check — no implementation code after $max_verify_retries retries" "critical"
         return
     fi
+    gate_scope_check="pass"
     update_change_field "$change_name" "scope_check" '"pass"'
 
     # ── Step 4b: Check for test file existence (BLOCKING for feature types) ──

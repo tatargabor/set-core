@@ -47,6 +47,10 @@ init_state() {
         test_stats: null,
         smoke_result: null,
         smoke_stats: null,
+        smoke_screenshot_dir: "",
+        smoke_screenshot_count: 0,
+        e2e_screenshot_dir: "",
+        e2e_screenshot_count: 0,
 
         verify_retry_count: 0,
         redispatch_count: 0
@@ -73,7 +77,8 @@ init_state() {
             checkpoints: [],
             merge_queue: [],
             changes_since_checkpoint: 0,
-            cycle_started_at: null
+            cycle_started_at: null,
+            last_smoke_pass_commit: ""
         }' > "$STATE_FILENAME"
 
     local change_count
