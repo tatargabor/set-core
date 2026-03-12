@@ -825,6 +825,103 @@ fi
 rm -f "$PLAN_FOR_TIMER" "$STATE_FILENAME"
 
 # ============================================================
+# Test: recover_orphaned_changes
+# ============================================================
+
+RECOVERY_TMPDIR=$(mktemp -d)
+STATE_FILENAME="$RECOVERY_TMPDIR/orchestration-state.json"
+EVENTS_ENABLED=true
+EVENTS_LOG_FILE="$RECOVERY_TMPDIR/events.jsonl"
+
+# --- 3.1: Orphaned change (running, no worktree, dead PID) gets recovered ---
+test_start "recover_orphaned_changes: orphaned change recovered to pending"
+cat > "$STATE_FILENAME" <<'EOF'
+{
+  "status": "stopped",
+  "changes": [
+    {"name": "change-a", "status": "running", "worktree_path": "/tmp/nonexistent-wt-12345", "ralph_pid": 999999999, "verify_retry_count": 2, "failure_reason": "some error"}
+  ]
+}
+EOF
+recover_orphaned_changes
+result_status=$(jq -r '.changes[0].status' "$STATE_FILENAME")
+result_wt=$(jq -r '.changes[0].worktree_path' "$STATE_FILENAME")
+result_pid=$(jq -r '.changes[0].ralph_pid' "$STATE_FILENAME")
+result_retry=$(jq -r '.changes[0].verify_retry_count' "$STATE_FILENAME")
+result_reason=$(jq -r '.changes[0].failure_reason' "$STATE_FILENAME")
+if [[ "$result_status" == "pending" && "$result_wt" == "null" && "$result_pid" == "null" && "$result_retry" == "0" && "$result_reason" == "null" ]]; then
+    test_pass
+else
+    test_fail "pending/null/null/0/null" "$result_status/$result_wt/$result_pid/$result_retry/$result_reason"
+fi
+
+# Check CHANGE_RECOVERED event was emitted
+test_start "recover_orphaned_changes: CHANGE_RECOVERED event emitted"
+event_type=$(jq -r '.type' "$EVENTS_LOG_FILE" 2>/dev/null | tail -1)
+assert_equals "CHANGE_RECOVERED" "$event_type"
+
+# --- 3.2: Change with live PID is NOT recovered ---
+test_start "recover_orphaned_changes: live PID skips recovery"
+LIVE_PID=$$  # current shell PID — guaranteed alive
+cat > "$STATE_FILENAME" <<EOF
+{
+  "status": "stopped",
+  "changes": [
+    {"name": "change-b", "status": "running", "worktree_path": "/tmp/nonexistent-wt-12345", "ralph_pid": $LIVE_PID, "verify_retry_count": 0, "failure_reason": null}
+  ]
+}
+EOF
+> "$EVENTS_LOG_FILE"
+recover_orphaned_changes
+result_status=$(jq -r '.changes[0].status' "$STATE_FILENAME")
+assert_equals "running" "$result_status"
+
+# --- 3.3: Change with existing worktree is NOT recovered ---
+test_start "recover_orphaned_changes: existing worktree skips recovery"
+EXISTING_WT=$(mktemp -d)
+cat > "$STATE_FILENAME" <<EOF
+{
+  "status": "stopped",
+  "changes": [
+    {"name": "change-c", "status": "running", "worktree_path": "$EXISTING_WT", "ralph_pid": 999999999, "verify_retry_count": 0, "failure_reason": null}
+  ]
+}
+EOF
+> "$EVENTS_LOG_FILE"
+recover_orphaned_changes
+result_status=$(jq -r '.changes[0].status' "$STATE_FILENAME")
+assert_equals "running" "$result_status"
+rmdir "$EXISTING_WT"
+
+# --- 3.4: Multiple orphaned changes all recovered ---
+test_start "recover_orphaned_changes: multiple orphaned changes recovered"
+cat > "$STATE_FILENAME" <<'EOF'
+{
+  "status": "stopped",
+  "changes": [
+    {"name": "orphan-1", "status": "running", "worktree_path": "/tmp/gone-1", "ralph_pid": 999999998, "verify_retry_count": 1, "failure_reason": null},
+    {"name": "healthy", "status": "merged", "worktree_path": null, "ralph_pid": null, "verify_retry_count": 0, "failure_reason": null},
+    {"name": "orphan-2", "status": "verifying", "worktree_path": "/tmp/gone-2", "ralph_pid": 999999997, "verify_retry_count": 3, "failure_reason": "build failed"},
+    {"name": "orphan-3", "status": "stalled", "worktree_path": null, "ralph_pid": 0, "verify_retry_count": 0, "failure_reason": null}
+  ]
+}
+EOF
+> "$EVENTS_LOG_FILE"
+recover_orphaned_changes
+orphan1_status=$(jq -r '.changes[] | select(.name == "orphan-1") | .status' "$STATE_FILENAME")
+healthy_status=$(jq -r '.changes[] | select(.name == "healthy") | .status' "$STATE_FILENAME")
+orphan2_status=$(jq -r '.changes[] | select(.name == "orphan-2") | .status' "$STATE_FILENAME")
+orphan3_status=$(jq -r '.changes[] | select(.name == "orphan-3") | .status' "$STATE_FILENAME")
+event_count=$(grep -c "CHANGE_RECOVERED" "$EVENTS_LOG_FILE" 2>/dev/null || echo 0)
+if [[ "$orphan1_status" == "pending" && "$healthy_status" == "merged" && "$orphan2_status" == "pending" && "$orphan3_status" == "pending" && "$event_count" == "3" ]]; then
+    test_pass
+else
+    test_fail "pending/merged/pending/pending/3events" "$orphan1_status/$healthy_status/$orphan2_status/$orphan3_status/${event_count}events"
+fi
+
+rm -rf "$RECOVERY_TMPDIR"
+
+# ============================================================
 # Summary
 # ============================================================
 

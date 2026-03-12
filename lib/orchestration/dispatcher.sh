@@ -208,6 +208,52 @@ resolve_change_model() {
     echo "$default_model"
 }
 
+# ─── Recovery ────────────────────────────────────────────────────────
+
+recover_orphaned_changes() {
+    local recovered=0
+    local change_names
+    change_names=$(jq -r '.changes[] | select(.status == "running" or .status == "verifying" or .status == "stalled") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+
+        local wt_path ralph_pid
+        wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+        ralph_pid=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .ralph_pid // 0' "$STATE_FILENAME")
+
+        # Skip if worktree still exists — existing resume logic handles it
+        if [[ -n "$wt_path" && -d "$wt_path" ]]; then
+            continue
+        fi
+
+        # Skip if Ralph PID is still alive — process is running somewhere
+        if [[ -n "$ralph_pid" && "$ralph_pid" != "0" && "$ralph_pid" != "null" ]]; then
+            if kill -0 "$ralph_pid" 2>/dev/null; then
+                log_warn "Change $name has live process PID $ralph_pid, skipping recovery"
+                warn "Change $name has live process PID $ralph_pid, skipping recovery"
+                continue
+            fi
+        fi
+
+        # Orphaned: no worktree, no live PID — reset to pending
+        log_info "Recovering orphaned change: $name (was $(get_change_status "$name"))"
+        info "Recovering orphaned change: $name"
+        update_change_field "$name" "status" '"pending"'
+        update_change_field "$name" "worktree_path" 'null'
+        update_change_field "$name" "ralph_pid" 'null'
+        update_change_field "$name" "verify_retry_count" '0'
+        update_change_field "$name" "failure_reason" 'null'
+        emit_event "CHANGE_RECOVERED" "$name" "{\"reason\":\"orphaned_after_crash\"}"
+        recovered=$((recovered + 1))
+    done <<< "$change_names"
+
+    if [[ "$recovered" -gt 0 ]]; then
+        log_info "Recovered $recovered orphaned change(s)"
+        info "Recovered $recovered orphaned change(s)"
+    fi
+}
+
 # ─── Dispatch ────────────────────────────────────────────────────────
 
 dispatch_change() {
@@ -1046,8 +1092,26 @@ cmd_start() {
         local current_status
         current_status=$(jq -r '.status' "$STATE_FILENAME")
         if [[ "$current_status" == "running" ]]; then
-            warn "Orchestrator is already running. Use 'wt-orchestrate status' to check progress."
-            return 1
+            # Check if any running change has a live Ralph PID
+            local has_live_pid=false
+            local running_pids
+            running_pids=$(jq -r '.changes[] | select(.status == "running" or .status == "verifying") | .ralph_pid // 0' "$STATE_FILENAME" 2>/dev/null || true)
+            while IFS= read -r pid; do
+                [[ -z "$pid" || "$pid" == "0" || "$pid" == "null" ]] && continue
+                if kill -0 "$pid" 2>/dev/null; then
+                    has_live_pid=true
+                    break
+                fi
+            done <<< "$running_pids"
+            if [[ "$has_live_pid" == true ]]; then
+                warn "Orchestrator is already running. Use 'wt-orchestrate status' to check progress."
+                return 1
+            fi
+            # No live PIDs — crashed state, treat as stopped for resume
+            log_info "Status=running but no live PIDs found — treating as crashed, entering resume path"
+            info "Detected crashed state (no live processes) — resuming"
+            current_status="stopped"
+            update_state_field "status" '"stopped"'
         fi
         # Previous run completed — start fresh
         if [[ "$current_status" == "done" ]]; then
@@ -1119,6 +1183,8 @@ cmd_start() {
             trap 'cleanup_orchestrator' EXIT
             trap 'exit 0' SIGTERM SIGINT SIGHUP
 
+            # Recover orphaned changes (running/verifying with no worktree/PID)
+            recover_orphaned_changes
             # Retry merge queue immediately on resume (don't wait 30s)
             retry_merge_queue
             # Resume changes that were running when we were interrupted
