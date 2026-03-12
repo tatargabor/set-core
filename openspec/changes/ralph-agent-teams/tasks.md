@@ -22,5 +22,5 @@
 ## 5. Testing
 
 - [x] 5.1 Manual test: `wt-loop start "task" --parallel` creates state with `execution_mode=parallel`
-- [?] 5.2 Manual test: Run a parallel Ralph iteration on a small change, verify subagents spawn and commit
+- [x] 5.2 Manual test: Run a parallel Ralph iteration on a small change, verify subagents spawn and commit
 - [x] 5.3 Manual test: Run without `--parallel`, verify behavior is identical to current (backward compat)
