@@ -1,30 +1,36 @@
 ## MODIFIED Requirements
 
-### Requirement: Change dispatch with process verification
-The orchestration engine SHALL use `wt-orch-core process check-pid` instead of raw `kill -0` when verifying Ralph process liveness during dispatch, resume, and redispatch operations. The dispatch flow SHALL call `wt-orch-core process safe-kill` instead of manual `kill -TERM; sleep; kill -KILL` sequences.
+### Requirement: Change dispatch with dependency ordering
+The orchestrator SHALL dispatch changes respecting the dependency graph and parallelism limits.
 
-#### Scenario: Dispatch reads terminal PID and verifies identity
-- **WHEN** dispatcher.sh reads `terminal_pid` from `loop-state.json` and stores it as `ralph_pid`
-- **THEN** subsequent liveness checks use `wt-orch-core process check-pid --pid $ralph_pid --expect-cmd "wt-loop"` instead of `kill -0 $ralph_pid`
+#### Scenario: Dependency-ordered dispatch
+- **WHEN** pending changes exist
+- **THEN** the orchestrator SHALL first cascade failed dependencies (marking pending changes as failed if any dependency has status `failed` or `merge-blocked`)
+- **AND** then dispatch only changes whose `depends_on` entries all have status `merged` or `skipped`
+- **AND** respect the `max_parallel` limit (concurrent running + dispatched)
 
-#### Scenario: Redispatch kills with identity verification
-- **WHEN** `redispatch_change()` needs to terminate a stuck Ralph process
-- **THEN** it calls `wt-orch-core process safe-kill --pid $ralph_pid --expect-cmd "wt-loop"` which verifies identity before each signal
+#### Scenario: Failed dependency cascade before dispatch
+- **WHEN** a change has status `pending`
+- **AND** any of its `depends_on` entries has status `failed` or `merge-blocked`
+- **THEN** the orchestrator SHALL mark the pending change as `failed` with failure_reason indicating which dependency failed
+- **AND** this cascade SHALL happen BEFORE any dispatch attempt in each monitor loop iteration
 
-#### Scenario: Orphan recovery uses process scanning
-- **WHEN** `recover_orphaned_changes()` scans for orphaned processes
-- **THEN** it calls `wt-orch-core process find-orphans` instead of iterating PIDs with `kill -0`
+#### Scenario: Worktree creation and Ralph launch
+- **WHEN** a change is dispatched
+- **THEN** the orchestrator SHALL create a worktree via `wt-new`, bootstrap it (env files + dependencies), create the OpenSpec change, pre-create proposal.md, and start a Ralph loop via `wt-loop start --max 30 --done openspec --label {name} --model {effective_model} --change {name}`
+- **AND** the effective model SHALL be resolved via `resolve_change_model()` (see per-change-model spec)
+- **AND** no per-change token budget SHALL be passed — the iteration limit (`--max 30`) provides the safety net instead
 
-### Requirement: State initialization via Python
-The orchestration engine SHALL use `wt-orch-core state init` to create the initial `orchestration-state.json` from the plan file, replacing the 40-line jq filter in `state.sh:init_state()`.
+### MODIFIED Requirements
 
-#### Scenario: init_state delegates to Python
-- **WHEN** `init_state()` in state.sh is called with a plan file
-- **THEN** it calls `wt-orch-core state init --plan-file "$plan_file" --output "$STATE_FILENAME"` and verifies exit code 0
+### Requirement: Monitor loop polling
+The orchestrator monitor loop SHALL poll active changes every 15 seconds.
 
-### Requirement: Proposal generation via Python templates
-The orchestration engine SHALL use `wt-orch-core template proposal` to generate `proposal.md` instead of the 3 concatenated heredocs in dispatcher.sh (PROPOSAL_EOF, MEMORY_EOF, SPECREF_EOF).
+#### Scenario: Poll interval
+- **WHEN** the monitor loop is running
+- **THEN** it SHALL sleep for `POLL_INTERVAL` (15) seconds between poll cycles
 
-#### Scenario: Dispatch generates proposal via template
-- **WHEN** `dispatch_change()` creates the proposal for a new change
-- **THEN** it calls `wt-orch-core template proposal` with the change name, scope, roadmap item, memory context, and spec reference, writing stdout to the proposal file
+#### Scenario: Active time tracking
+- **WHEN** polling and at least one change is actively progressing (Ralph loop with recent loop-state.json mtime, OR change in `verifying` status)
+- **THEN** the orchestrator SHALL increment `active_seconds` by `POLL_INTERVAL`
+- **AND** NOT count time during token budget wait or when all changes are idle
