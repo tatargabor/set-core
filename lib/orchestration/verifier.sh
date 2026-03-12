@@ -305,23 +305,34 @@ verify_merge_scope() {
         return 0
     fi
 
-    # Check if ANY file is outside openspec/changes/ and .claude/
+    # Check if ANY file is outside artifact/config/bootstrap paths
     local has_impl=false
+    local impl_files=""
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        # Skip openspec artifacts and .claude config files
-        if [[ "$f" == openspec/changes/* ]] || [[ "$f" == .claude/* ]]; then
+        # Skip openspec artifacts, .claude config, orchestration config, .wt-tools
+        if [[ "$f" == openspec/changes/* ]] || [[ "$f" == openspec/specs/* ]] || \
+           [[ "$f" == .claude/* ]] || \
+           [[ "$f" == orchestration* ]] || [[ "$f" == .wt-tools/* ]]; then
+            continue
+        fi
+        # Skip worktree bootstrap / generated files that aren't real implementation
+        if [[ "$f" == prisma/dev.db ]] || [[ "$f" == *.lock ]] || \
+           [[ "$f" == jest.config.* ]] || [[ "$f" == jest.setup.* ]] || \
+           [[ "$f" == .gitignore ]] || [[ "$f" == .env* ]]; then
             continue
         fi
         has_impl=true
+        impl_files="$f"
         break
     done <<< "$diff_files"
 
     if $has_impl; then
-        log_info "Post-merge: scope verification passed for $change_name"
+        log_info "Post-merge: scope verification passed for $change_name (first: $impl_files)"
         return 0
     else
-        log_error "Post-merge: scope verification FAILED — only artifact files merged for $change_name, no implementation"
+        log_error "Post-merge: scope verification FAILED — only artifact/bootstrap files merged for $change_name, no implementation"
+        log_error "Post-merge: files in diff: $(echo "$diff_files" | tr '\n' ', ')"
         return 1
     fi
 }
@@ -344,24 +355,34 @@ verify_implementation_scope() {
         return 0
     fi
 
-    # Check if ANY file is outside artifact/config paths
+    # Check if ANY file is outside artifact/config/bootstrap paths
     local has_impl=false
+    local impl_files=""
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
         # Skip openspec artifacts, .claude config, orchestration config, .wt-tools
-        if [[ "$f" == openspec/changes/* ]] || [[ "$f" == .claude/* ]] || \
+        if [[ "$f" == openspec/changes/* ]] || [[ "$f" == openspec/specs/* ]] || \
+           [[ "$f" == .claude/* ]] || \
            [[ "$f" == orchestration* ]] || [[ "$f" == .wt-tools/* ]]; then
             continue
         fi
+        # Skip worktree bootstrap / generated files that aren't real implementation
+        if [[ "$f" == prisma/dev.db ]] || [[ "$f" == *.lock ]] || \
+           [[ "$f" == jest.config.* ]] || [[ "$f" == jest.setup.* ]] || \
+           [[ "$f" == .gitignore ]] || [[ "$f" == .env* ]]; then
+            continue
+        fi
         has_impl=true
+        impl_files="$f"
         break
     done <<< "$diff_files"
 
     if $has_impl; then
-        log_info "Scope check: implementation files found for $change_name"
+        log_info "Scope check: implementation files found for $change_name (first: $impl_files)"
         return 0
     else
-        log_error "Scope check: FAILED — only artifact files found for $change_name, no implementation code"
+        log_error "Scope check: FAILED — only artifact/bootstrap files found for $change_name, no implementation code"
+        log_error "Scope check: files in diff: $(echo "$diff_files" | tr '\n' ', ')"
         return 1
     fi
 }
