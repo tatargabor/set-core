@@ -241,8 +241,6 @@ export default function ProgressView({ project }: Props) {
 }
 
 function GroupsView({ data }: { data: RequirementsData }) {
-  const [expandedGroup, setExpandedGroup] = useState<string | null>(null)
-
   // Build change lookup
   const changeMap = useMemo(() => {
     const m = new Map<string, ReqChangeInfo>()
@@ -253,15 +251,10 @@ function GroupsView({ data }: { data: RequirementsData }) {
   return (
     <div className="divide-y divide-neutral-800/50">
       {data.groups.map(g => {
-        const isExpanded = expandedGroup === g.group
         const pct = g.total > 0 ? Math.round((g.done / g.total) * 100) : 0
         return (
           <div key={g.group}>
-            <button
-              onClick={() => setExpandedGroup(isExpanded ? null : g.group)}
-              className="w-full flex items-center gap-3 px-4 py-2 hover:bg-neutral-800/30 transition-colors"
-            >
-              <span className="text-neutral-500 w-3 text-[10px]">{isExpanded ? '▾' : '▸'}</span>
+            <div className="flex items-center gap-3 px-4 py-2">
               <span className="text-xs font-medium text-neutral-300 w-16">{g.group}</span>
               <div className="flex-1 max-w-[200px]">
                 <ProgressBar done={g.done} inProgress={g.in_progress} failed={g.failed} total={g.total} />
@@ -274,31 +267,29 @@ function GroupsView({ data }: { data: RequirementsData }) {
               {g.failed > 0 && (
                 <span className="text-[10px] text-red-400">{g.failed} failed</span>
               )}
-            </button>
-            {isExpanded && (
-              <div className="px-4 pb-2">
-                <table className="w-full text-[11px]">
-                  <tbody>
-                    {g.requirements.map(req => {
-                      const ch = changeMap.get(req.change)
-                      const statusColor = STATUS_TEXT[req.status] ?? 'text-neutral-600'
-                      return (
-                        <tr key={req.id} className="hover:bg-neutral-800/20">
-                          <td className="py-0.5 pl-6 font-mono text-neutral-400 w-32">{req.id}</td>
-                          <td className={`py-0.5 w-20 ${statusColor}`}>{req.status}</td>
-                          <td className="py-0.5 font-mono text-neutral-500 truncate">
-                            {req.change}
-                            {ch?.complexity && (
-                              <span className="ml-2 text-neutral-600">[{ch.complexity}]</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            </div>
+            <div className="px-4 pb-2">
+              <table className="w-full text-[11px]">
+                <tbody>
+                  {g.requirements.map(req => {
+                    const ch = changeMap.get(req.change)
+                    const statusColor = STATUS_TEXT[req.status] ?? 'text-neutral-600'
+                    return (
+                      <tr key={req.id} className="hover:bg-neutral-800/20">
+                        <td className="py-0.5 pl-6 font-mono text-neutral-400 w-32">{req.id}</td>
+                        <td className={`py-0.5 w-20 ${statusColor}`}>{req.status}</td>
+                        <td className="py-0.5 font-mono text-neutral-500 truncate">
+                          {req.change}
+                          {ch?.complexity && (
+                            <span className="ml-2 text-neutral-600">[{ch.complexity}]</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )
       })}
@@ -414,28 +405,22 @@ function DigestDomainGroup({ domain, reqs, coverage }: {
   reqs: DigestReq[]
   coverage: Record<string, { change: string; status: string }>
 }) {
-  const [expanded, setExpanded] = useState(false)
   const doneStatuses = new Set(['done', 'merged', 'completed', 'skip_merged'])
   const done = reqs.filter(r => coverage[r.id] && doneStatuses.has(coverage[r.id].status)).length
   const pct = reqs.length > 0 ? Math.round((done / reqs.length) * 100) : 0
 
   return (
     <div>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 px-4 py-2 hover:bg-neutral-800/30 transition-colors"
-      >
-        <span className="text-neutral-500 w-3 text-[10px]">{expanded ? '▾' : '▸'}</span>
+      <div className="flex items-center gap-3 px-4 py-2">
         <span className="text-xs font-medium text-neutral-300 w-24 truncate">{domain}</span>
         <div className="flex-1 max-w-[200px]">
           <ProgressBar done={done} inProgress={0} failed={0} total={reqs.length} />
         </div>
         <span className="text-[11px] text-neutral-400 w-16 text-right">{done}/{reqs.length}</span>
         <span className="text-[10px] text-neutral-500 w-10 text-right">{pct}%</span>
-      </button>
-      {expanded && (
-        <div className="px-4 pb-2">
-          <table className="w-full text-[11px]">
+      </div>
+      <div className="px-4 pb-2">
+        <table className="w-full text-[11px]">
             <tbody>
               {reqs.map(r => {
                 const cov = coverage[r.id]
@@ -452,7 +437,6 @@ function DigestDomainGroup({ domain, reqs, coverage }: {
             </tbody>
           </table>
         </div>
-      )}
     </div>
   )
 }

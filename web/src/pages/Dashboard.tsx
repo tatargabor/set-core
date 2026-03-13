@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useWebSocket, type WSEvent } from '../hooks/useWebSocket'
 import StatusHeader from '../components/StatusHeader'
 import ChangeTable from '../components/ChangeTable'
@@ -13,6 +13,7 @@ import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
 import useIsMobile from '../hooks/useIsMobile'
+import { getDigest } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
 type PanelTab = 'changes' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent'
@@ -29,6 +30,7 @@ export default function Dashboard({ project }: Props) {
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<PanelTab>('changes')
   const [logExpanded, setLogExpanded] = useState(false)
+  const [hasDigest, setHasDigest] = useState(false)
   const isMobile = useIsMobile()
   const tabBarRef = useRef<HTMLDivElement>(null)
 
@@ -51,6 +53,20 @@ export default function Dashboard({ project }: Props) {
 
   const { connected } = useWebSocket({ project, onEvent })
 
+  // Check if digest exists (poll until it does)
+  useEffect(() => {
+    if (!project) return
+    let cancelled = false
+    const check = () => {
+      getDigest(project)
+        .then(d => { if (!cancelled && d.exists) setHasDigest(true) })
+        .catch(() => {})
+    }
+    check()
+    const iv = setInterval(check, 15000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [project])
+
   if (!project) {
     return (
       <div className="flex items-center justify-center h-full text-neutral-500">
@@ -70,7 +86,7 @@ export default function Dashboard({ project }: Props) {
     { id: 'tokens', label: 'Tokens' },
     { id: 'requirements', label: 'Requirements' },
     { id: 'audit', label: 'Audit', hidden: !hasAudit },
-    { id: 'digest', label: 'Digest' },
+    { id: 'digest', label: 'Digest', hidden: !hasDigest },
     { id: 'sessions', label: 'Sessions' },
     { id: 'log', label: 'Log' },
     { id: 'agent', label: 'Agent' },
@@ -196,7 +212,7 @@ export default function Dashboard({ project }: Props) {
               <PlanViewer project={project} />
             )}
             {activeTab === 'tokens' && (
-              <TokenChart project={project} />
+              <TokenChart changes={changes} />
             )}
             {activeTab === 'requirements' && (
               <ProgressView project={project} />
