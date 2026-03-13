@@ -70,6 +70,9 @@ monitor_loop() {
     # Apply model routing directive to global
     MODEL_ROUTING=$(echo "$directives" | jq -r '.model_routing // "off"')
 
+    # Apply team mode directive to global
+    TEAM_MODE=$(echo "$directives" | jq -r '.team_mode // false')
+
     # Apply checkpoint auto-approve directive to global
     CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r '.checkpoint_auto_approve // false')
 

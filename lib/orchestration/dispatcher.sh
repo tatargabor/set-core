@@ -590,11 +590,17 @@ dispatch_via_wt_loop() {
     # Token budget disabled — iteration limit (--max) provides the safety net.
     local token_budget_flag=""
 
-    log_info "Dispatch $change_name with model=$impl_model (default=$DEFAULT_IMPL_MODEL) budget=unlimited (iter limit: --max 30)"
+    # Team mode flag (from config directive)
+    local team_flag=""
+    if [[ "${TEAM_MODE:-false}" == "true" ]]; then
+        team_flag="--team"
+    fi
+
+    log_info "Dispatch $change_name with model=$impl_model (default=$DEFAULT_IMPL_MODEL) budget=unlimited (iter limit: --max 30) team=${TEAM_MODE:-false}"
 
     (
         cd "$wt_path" || exit 1
-        wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model "$impl_model" --change "$change_name" $token_budget_flag
+        wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model "$impl_model" --change "$change_name" $token_budget_flag $team_flag
     ) &
     wait $! 2>/dev/null || true
 
@@ -794,10 +800,15 @@ resume_change() {
     fi
     local impl_model
     impl_model=$(resolve_change_model "$change_name" "$DEFAULT_IMPL_MODEL" "${MODEL_ROUTING:-off}")
-    log_info "Resume $change_name with model=$impl_model (done=$done_criteria, max=$max_iter)"
+    # Team mode flag (from config directive)
+    local team_flag=""
+    if [[ "${TEAM_MODE:-false}" == "true" ]]; then
+        team_flag="--team"
+    fi
+    log_info "Resume $change_name with model=$impl_model (done=$done_criteria, max=$max_iter) team=${TEAM_MODE:-false}"
     (
         cd "$wt_path" || exit 1
-        wt-loop start "$task_desc" --max "$max_iter" --done "$done_criteria" --label "$change_name" --model "$impl_model" --change "$change_name"
+        wt-loop start "$task_desc" --max "$max_iter" --done "$done_criteria" --label "$change_name" --model "$impl_model" --change "$change_name" $team_flag
     ) &
     wait $! 2>/dev/null || true
 

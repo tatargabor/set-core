@@ -294,6 +294,7 @@ parse_directives() {
     local checkpoint_auto_approve="$DEFAULT_CHECKPOINT_AUTO_APPROVE"
     local plan_method="$DEFAULT_PLAN_METHOD"
     local model_routing="off"
+    local team_mode="false"
     local hook_pre_dispatch=""
     local hook_post_verify=""
     local hook_pre_merge=""
@@ -540,6 +541,13 @@ parse_directives() {
                         warn "Invalid model_routing '$val', using default off"
                     fi
                     ;;
+                team_mode)
+                    if [[ "$val" =~ ^(true|false)$ ]]; then
+                        team_mode="$val"
+                    else
+                        warn "Invalid team_mode '$val', using default false"
+                    fi
+                    ;;
                 hook_pre_dispatch)  hook_pre_dispatch="$val" ;;
                 hook_post_verify)   hook_post_verify="$val" ;;
                 hook_pre_merge)     hook_pre_merge="$val" ;;
@@ -596,6 +604,7 @@ parse_directives() {
         --argjson checkpoint_auto_approve "$checkpoint_auto_approve" \
         --arg plan_method "$plan_method" \
         --arg model_routing "$model_routing" \
+        --argjson team_mode "$team_mode" \
         --arg hook_pre_dispatch "$hook_pre_dispatch" \
         --arg hook_post_verify "$hook_post_verify" \
         --arg hook_pre_merge "$hook_pre_merge" \
@@ -636,6 +645,7 @@ parse_directives() {
             checkpoint_auto_approve: $checkpoint_auto_approve,
             plan_method: $plan_method,
             model_routing: $model_routing,
+            team_mode: $team_mode,
             hook_pre_dispatch: (if $hook_pre_dispatch != "" then $hook_pre_dispatch else null end),
             hook_post_verify: (if $hook_post_verify != "" then $hook_post_verify else null end),
             hook_pre_merge: (if $hook_pre_merge != "" then $hook_pre_merge else null end),
