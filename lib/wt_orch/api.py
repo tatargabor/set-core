@@ -287,6 +287,43 @@ def list_projects():
     return result
 
 
+def _enrich_changes(data: dict, project_path: Path):
+    """Add session_count and log file lists to change dicts."""
+    for c in data.get("changes", []):
+        wt_path = c.get("worktree_path")
+        # Session count
+        sessions_dir = None
+        if wt_path:
+            mangled = wt_path.lstrip("/").replace("/", "-")
+            d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+            if d.is_dir():
+                sessions_dir = d
+        if not sessions_dir:
+            mangled = str(project_path).lstrip("/").replace("/", "-")
+            d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+            if d.is_dir():
+                sessions_dir = d
+        if sessions_dir:
+            try:
+                c["session_count"] = sum(
+                    1 for f in sessions_dir.iterdir()
+                    if f.is_file() and f.suffix == ".jsonl"
+                )
+            except OSError:
+                pass
+        # Log files
+        if wt_path:
+            logs_dir = Path(wt_path) / ".claude" / "logs"
+            if logs_dir.is_dir():
+                try:
+                    c["logs"] = sorted(
+                        f.name for f in logs_dir.iterdir()
+                        if f.is_file() and f.suffix == ".log"
+                    )
+                except OSError:
+                    pass
+
+
 @router.get("/api/{project}/state")
 def get_state(project: str):
     """Get full orchestration state for a project."""
@@ -296,7 +333,9 @@ def get_state(project: str):
         raise HTTPException(404, "No orchestration state found")
     try:
         state = load_state(str(sp))
-        return state.to_dict()
+        data = state.to_dict()
+        _enrich_changes(data, project_path)
+        return data
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
 

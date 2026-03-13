@@ -188,7 +188,7 @@ class ProjectWatcher:
         if new_state is None:
             return
 
-        # Enrich changes with worktree log file lists
+        # Enrich changes with worktree log file lists and session count
         for c in new_state.get("changes", []):
             wt_path = c.get("worktree_path")
             if wt_path:
@@ -201,6 +201,28 @@ class ProjectWatcher:
                         )
                     except OSError:
                         pass
+
+            # Count Claude JSONL sessions for this change
+            sessions_dir = None
+            if wt_path:
+                mangled = wt_path.lstrip("/").replace("/", "-")
+                d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+                if d.is_dir():
+                    sessions_dir = d
+            if not sessions_dir:
+                # Fallback: project path
+                mangled = str(self.project_path).lstrip("/").replace("/", "-")
+                d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+                if d.is_dir():
+                    sessions_dir = d
+            if sessions_dir:
+                try:
+                    c["session_count"] = sum(
+                        1 for f in sessions_dir.iterdir()
+                        if f.is_file() and f.suffix == ".jsonl"
+                    )
+                except OSError:
+                    pass
 
         old_status = self._last_state.get("status") if self._last_state else None
         new_status = new_state.get("status")

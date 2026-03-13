@@ -41,6 +41,7 @@ export interface ChangeInfo {
   review_result?: string
   build_result?: string
   gate_total_ms?: number
+  session_count?: number
   logs?: string[]
   extras?: Record<string, unknown>
 }

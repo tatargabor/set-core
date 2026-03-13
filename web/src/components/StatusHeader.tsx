@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { StateData } from '../lib/api'
+import { stopOrchestrator, approve } from '../lib/api'
 
 interface Props {
   state: StateData | null
@@ -22,7 +24,9 @@ function formatDuration(secs?: number): string {
 }
 
 export default function StatusHeader({ state, connected, project }: Props) {
+  const [loading, setLoading] = useState<string | null>(null)
   const statusBadge = state?.status ?? 'idle'
+  const isActive = ['running', 'planning', 'checkpoint'].includes(statusBadge)
   const badgeColor: Record<string, string> = {
     running: 'bg-green-900 text-green-300',
     planning: 'bg-cyan-900 text-cyan-300',
@@ -70,6 +74,27 @@ export default function StatusHeader({ state, connected, project }: Props) {
             <span title="Output tokens">Out: {formatTokens(totals.output)}</span>
             {totals.cacheRead > 0 && (
               <span title="Cache read">Cache: {formatTokens(totals.cacheRead)}</span>
+            )}
+          </div>
+
+          <div className="flex gap-2 ml-2">
+            {statusBadge === 'checkpoint' && (
+              <button
+                onClick={async () => { setLoading('approve'); try { await approve(project) } catch {} setLoading(null) }}
+                disabled={loading === 'approve'}
+                className="px-3 py-1 text-xs bg-green-900/60 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 font-medium"
+              >
+                Approve
+              </button>
+            )}
+            {isActive && (
+              <button
+                onClick={async () => { setLoading('stop'); try { await stopOrchestrator(project) } catch {} setLoading(null) }}
+                disabled={loading === 'stop'}
+                className="px-3 py-1 text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 font-medium"
+              >
+                Stop
+              </button>
             )}
           </div>
         </>

@@ -12,10 +12,15 @@ interface Props {
 
 const statusColor: Record<string, string> = {
   running: 'text-green-400',
+  implementing: 'text-green-400',
+  verifying: 'text-cyan-400',
   completed: 'text-blue-400',
+  done: 'text-blue-400',
+  merged: 'text-blue-400',
   failed: 'text-red-400',
   'verify-failed': 'text-red-400',
   skipped: 'text-neutral-500',
+  skip_merged: 'text-neutral-500',
   pending: 'text-neutral-500',
   stalled: 'text-yellow-400',
   checkpoint: 'text-yellow-400',
@@ -71,7 +76,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
         <tr className="text-xs text-neutral-500 border-b border-neutral-800">
           <th className="text-left px-4 py-2 font-medium">Name</th>
           <th className="text-left px-2 py-2 font-medium">Status</th>
-          <th className="text-center px-2 py-2 font-medium">Iter</th>
+          <th className="text-center px-2 py-2 font-medium">Sess</th>
           <th className="text-right px-2 py-2 font-medium">Duration</th>
           <th className="text-right px-2 py-2 font-medium">Tokens</th>
           <th className="text-center px-2 py-2 font-medium">Gates</th>
@@ -94,7 +99,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               <td className={`px-2 py-2 font-medium ${statusColor[c.status] ?? 'text-neutral-400'}`}>
                 {c.status}
               </td>
-              <td className="px-2 py-2 text-center text-neutral-400">{c.iteration ?? '—'}</td>
+              <td className="px-2 py-2 text-center text-neutral-400">{c.session_count ?? '—'}</td>
               <td className="px-2 py-2 text-right text-neutral-400">{formatDuration(changeDuration(c))}</td>
               <td className="px-2 py-2 text-right text-neutral-400 font-mono text-xs">
                 {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
@@ -111,7 +116,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               </td>
               <td className="px-4 py-2 text-right">
                 <div className="flex gap-1 justify-end">
-                  {c.status === 'running' && (
+                  {['running', 'verifying', 'implementing'].includes(c.status) && (
                     <button
                       onClick={(e) => handleAction(e, c.name, 'stop')}
                       disabled={actionLoading === `${c.name}:stop`}
