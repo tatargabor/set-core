@@ -126,6 +126,7 @@ def cmd_template(args):
             active_changes=input_data.get("active_changes", ""),
             coverage_info=input_data.get("coverage_info", ""),
             design_context=input_data.get("design_context", ""),
+            team_mode=input_data.get("team_mode", False),
         ))
 
     elif args.template_cmd == "audit":

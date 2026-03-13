@@ -382,6 +382,7 @@ def render_planning_prompt(
     active_changes: str = "",
     coverage_info: str = "",
     design_context: str = "",
+    team_mode: bool = False,
 ) -> str:
     """Render planning prompt for Claude decomposition.
 
@@ -403,6 +404,7 @@ def render_planning_prompt(
         active_changes: Active changes summary
         coverage_info: Coverage status text
         design_context: Design tool prompt section (from design bridge)
+        team_mode: If True, add guidance for Agent Teams parallelism
     """
     if replan_ctx is None:
         replan_ctx = {}
@@ -421,6 +423,16 @@ def render_planning_prompt(
 
     if design_context and design_context.strip():
         sections.append(f"\n{design_context}")
+
+    if team_mode:
+        sections.append("""
+## Agent Teams Mode (ENABLED)
+This orchestration uses Agent Teams for intra-change parallelism. Optimize your plan:
+- Prefer fewer, larger changes with 5+ independent tasks each over many small changes
+- Within each change scope, maximize independent work items (separate components, pages, test files)
+- The implementation agent will spawn parallel teammates for independent tasks
+- Sequential dependencies between tasks within a change reduce parallelism — minimize them
+- Example: 5 independent React components = 5 parallel tasks, not 5 sequential tasks""")
 
     optional_text = "\n".join(sections)
 

@@ -925,7 +925,8 @@ $req_entries"
             --arg active_changes "$active_changes" \
             --arg coverage_info "$coverage_info" \
             --arg design_context "${design_context:-}" \
-            '{input_content: $input_content, specs: $specs, memory: $memory, replan_ctx: $replan_ctx, mode: $mode, phase_instruction: $phase_instruction, input_mode: $input_mode, test_infra_context: $test_infra_context, pk_context: $pk_context, req_context: $req_context, active_changes: $active_changes, coverage_info: $coverage_info, design_context: $design_context}' \
+            --argjson team_mode "$([ "${TEAM_MODE:-false}" = "true" ] && echo true || echo false)" \
+            '{input_content: $input_content, specs: $specs, memory: $memory, replan_ctx: $replan_ctx, mode: $mode, phase_instruction: $phase_instruction, input_mode: $input_mode, test_infra_context: $test_infra_context, pk_context: $pk_context, req_context: $req_context, active_changes: $active_changes, coverage_info: $coverage_info, design_context: $design_context, team_mode: $team_mode}' \
             > "$_plan_input_file"
         prompt=$(wt-orch-core template planning --mode spec --input-file "$_plan_input_file")
         rm -f "$_plan_input_file"
@@ -943,7 +944,8 @@ $req_entries"
             --arg req_context "${req_context:-}" \
             --arg active_changes "$active_changes" \
             --arg design_context "${design_context:-}" \
-            '{input_content: $input_content, specs: $specs, memory: $memory, mode: $mode, test_infra_context: $test_infra_context, pk_context: $pk_context, req_context: $req_context, active_changes: $active_changes, design_context: $design_context}' \
+            --argjson team_mode "$([ "${TEAM_MODE:-false}" = "true" ] && echo true || echo false)" \
+            '{input_content: $input_content, specs: $specs, memory: $memory, mode: $mode, test_infra_context: $test_infra_context, pk_context: $pk_context, req_context: $req_context, active_changes: $active_changes, design_context: $design_context, team_mode: $team_mode}' \
             > "$_plan_input_file"
         prompt=$(wt-orch-core template planning --mode brief --input-file "$_plan_input_file")
         rm -f "$_plan_input_file"
