@@ -148,8 +148,35 @@ init_project() {
     fi
     success "wt-project initialized (configs, rules, CLAUDE.md deployed)"
 
+    step "Figma MCP registration"
+    # Register the official Figma MCP (HTTP transport, OAuth-based).
+    # Supports Design + Make + FigJam files.
+    # NOTE: User must authenticate once via /mcp → figma → Authenticate in Claude Code
+    # before orchestration can use it non-interactively.
+    local settings_file=".claude/settings.json"
+    if [[ -f "$settings_file" ]]; then
+        local tmp_settings
+        tmp_settings=$(mktemp)
+        if jq '.mcpServers.figma = {"type": "http", "url": "https://mcp.figma.com/mcp"}' \
+            "$settings_file" > "$tmp_settings" 2>/dev/null; then
+            mv "$tmp_settings" "$settings_file"
+            success "Registered official Figma MCP (https://mcp.figma.com/mcp)"
+        else
+            rm -f "$tmp_settings"
+            warn "Failed to register Figma MCP — continuing without it"
+        fi
+    fi
+
     step "Orchestration config"
     mkdir -p wt/orchestration
+    # Read design_file from docs/design/design-system.md if it exists
+    local design_file_url=""
+    local design_system="docs/design/design-system.md"
+    if [[ -f "$design_system" ]]; then
+        # Extract first figma.com URL (Design or Make)
+        design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' "$design_system" | head -1 || true)
+    fi
+
     cat > wt/orchestration/config.yaml <<YAML
 # Orchestration config for CraftBrew E2E
 test_command: pnpm test
@@ -162,6 +189,11 @@ merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
 YAML
+
+    if [[ -n "$design_file_url" ]]; then
+        echo "design_file: \"$design_file_url\"" >> wt/orchestration/config.yaml
+        success "Design file reference: $design_file_url"
+    fi
     success "Created wt/orchestration/config.yaml"
 
     git add -A
