@@ -73,6 +73,10 @@ monitor_loop() {
     # Apply team mode directive to global
     TEAM_MODE=$(echo "$directives" | jq -r '.team_mode // false')
 
+    # Apply post-phase audit directive to local
+    local post_phase_audit
+    post_phase_audit=$(echo "$directives" | jq -r ".post_phase_audit // $DEFAULT_POST_PHASE_AUDIT")
+
     # Apply checkpoint auto-approve directive to global
     CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r '.checkpoint_auto_approve // false')
 
@@ -356,6 +360,13 @@ monitor_loop() {
             # ── Phase-end E2E: run Playwright on main after all changes merged ──
             if [[ "$e2e_mode" == "phase_end" && -n "$e2e_command" && "$truly_complete" -gt 0 ]]; then
                 run_phase_end_e2e "$e2e_command" "$e2e_timeout"
+            fi
+
+            # ── Post-phase audit: LLM spec-vs-implementation gap detection ──
+            if [[ "$post_phase_audit" != "false" ]]; then
+                local _audit_cycle
+                _audit_cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME")
+                run_post_phase_audit "$(( _audit_cycle + 1 ))"
             fi
 
             # Auto-replan: generate next plan and continue if new work found

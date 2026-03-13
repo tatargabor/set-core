@@ -8,6 +8,8 @@ import CheckpointBanner from '../components/CheckpointBanner'
 import ResizableSplit from '../components/ResizableSplit'
 import PlanViewer from '../components/PlanViewer'
 import TokenChart from '../components/TokenChart'
+import AuditPanel from '../components/AuditPanel'
+import ProgressView from '../components/ProgressView'
 import type { StateData, ChangeInfo } from '../lib/api'
 
 interface Props {
@@ -21,6 +23,8 @@ export default function Dashboard({ project }: Props) {
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
   const [showPlan, setShowPlan] = useState(false)
   const [showTokens, setShowTokens] = useState(false)
+  const [showAudit, setShowAudit] = useState(false)
+  const [showProgress, setShowProgress] = useState(false)
   const { notify } = useNotifications()
 
   const onEvent = useCallback((event: WSEvent) => {
@@ -83,6 +87,22 @@ export default function Dashboard({ project }: Props) {
           <span>{showTokens ? '▾' : '▸'}</span>
           <span>Tokens</span>
         </button>
+        {(state?.phase_audit_results?.length ?? 0) > 0 && (
+          <button
+            onClick={() => setShowAudit(p => !p)}
+            className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300"
+          >
+            <span>{showAudit ? '▾' : '▸'}</span>
+            <span>Audit</span>
+          </button>
+        )}
+        <button
+          onClick={() => setShowProgress(p => !p)}
+          className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300"
+        >
+          <span>{showProgress ? '▾' : '▸'}</span>
+          <span>Requirements</span>
+        </button>
       </div>
       {showPlan && (
         <div className="border-b border-neutral-800 max-h-[250px] overflow-auto">
@@ -92,6 +112,16 @@ export default function Dashboard({ project }: Props) {
       {showTokens && (
         <div className="border-b border-neutral-800">
           <TokenChart project={project} />
+        </div>
+      )}
+      {showAudit && state?.phase_audit_results && (
+        <div className="border-b border-neutral-800 max-h-[300px] overflow-auto">
+          <AuditPanel results={state.phase_audit_results} />
+        </div>
+      )}
+      {showProgress && (
+        <div className="border-b border-neutral-800 max-h-[400px] overflow-hidden">
+          <ProgressView project={project} />
         </div>
       )}
 

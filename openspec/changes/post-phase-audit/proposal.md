@@ -14,20 +14,28 @@ In CraftBrew E2E Run #3, 8 of 14 changes merged with zero implementation code. E
 - **Gap-to-change generation**: For each gap found, auto-create follow-up change entries in the next replan cycle with specific scope and retry context.
 - **Audit integration into replan**: The replan prompt receives the gap report, so the LLM planner prioritizes unimplemented features over new decomposition.
 - **Audit integration into terminal state**: When auto_replan=false, the audit report is included in the completion report and email notification.
-- **Configurable via directive**: `post_phase_audit: true|false` (default: true when auto_replan is enabled)
+- **Audit logging**: Full audit prompt, raw LLM response, and parsed gap report written to orchestration log. AUDIT_START, AUDIT_GAPS/AUDIT_CLEAN events emitted to events.jsonl.
+- **HTML report integration**: New `render_audit_section()` in reporter.sh showing gap table per phase with severity badges, coverage summary, and spec reference links.
+- **Web dashboard integration**: New AuditPanel component in wt-web showing audit results per phase — gap table with severity color coding, coverage %, and drill-down to spec references. Reads from state.json `phase_audit_results[]` array.
+- **Default enabled**: `post_phase_audit: true` (always on). Directive `post_phase_audit: false` to explicitly disable.
 
 ## Capabilities
 
 ### New Capabilities
-- `post-phase-audit`: LLM-driven spec-vs-implementation audit at phase boundaries with gap detection and follow-up change generation
+- `post-phase-audit`: LLM-driven spec-vs-implementation audit at phase boundaries with gap detection, follow-up change generation, logging, HTML reporting, and web dashboard visualization
 
 ### Modified Capabilities
 - `orchestration-engine`: Integration point in monitor loop for audit trigger
+- `orchestration-report`: New audit section in HTML report
+- `web-dashboard`: New AuditPanel component for gap visualization
 
 ## Impact
 
 - New `lib/orchestration/auditor.sh` — audit logic, gap report generation, follow-up change creation
 - `lib/orchestration/monitor.sh` — trigger audit before replan or terminal state
 - `lib/orchestration/planner.sh` — receive gap report in replan prompt
+- `lib/orchestration/reporter.sh` — new `render_audit_section()` for HTML report
 - `lib/orchestration/utils.sh` — new directive `post_phase_audit`
-- `bin/wt-orchestrate` — new default constant
+- `bin/wt-orchestrate` — new default constant, source auditor.sh
+- `web/src/components/AuditPanel.tsx` — new React component for gap visualization
+- `web/src/pages/Dashboard.tsx` — integrate AuditPanel

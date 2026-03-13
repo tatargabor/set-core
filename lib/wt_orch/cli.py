@@ -128,6 +128,15 @@ def cmd_template(args):
             design_context=input_data.get("design_context", ""),
         ))
 
+    elif args.template_cmd == "audit":
+        print(templates.render_audit_prompt(
+            spec_text=input_data.get("spec_text", ""),
+            requirements=input_data.get("requirements", []),
+            changes=input_data.get("changes", []),
+            coverage=input_data.get("coverage", ""),
+            mode=input_data.get("mode", "spec"),
+        ))
+
 
 def cmd_serve(args):
     """Start the web dashboard server."""
@@ -221,6 +230,9 @@ def main():
     t_planning = tmpl_sub.add_parser("planning", help="Render planning prompt")
     t_planning.add_argument("--mode", default="spec", choices=["spec", "brief"])
     t_planning.add_argument("--input-file", default=None, help="JSON input (- for stdin)")
+
+    t_audit = tmpl_sub.add_parser("audit", help="Render post-phase audit prompt")
+    t_audit.add_argument("--input-file", default=None, help="JSON input (- for stdin)")
 
     # --- serve ---
     serve_parser = subparsers.add_parser("serve", help="Start the web dashboard server")

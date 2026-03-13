@@ -468,6 +468,15 @@ You MUST include fix changes for these failures in the next phase:
 
 {replan_ctx['e2e_failures']}"""
 
+    if replan_ctx.get("audit_gaps"):
+        replan_section += f"""
+
+## Post-Phase Audit Gaps
+Post-phase audit found these implementation gaps — prioritize them in the next plan.
+Create dedicated changes for each critical gap. Minor gaps may be folded into related changes.
+
+{replan_ctx['audit_gaps']}"""
+
     if mode == "brief":
         return f"""You are a software architect decomposing a project brief into OpenSpec changes.
 
@@ -524,3 +533,117 @@ Output ONLY valid JSON (no markdown, no explanation):
 {digest_section}
 Output ONLY valid JSON (no markdown, no explanation):
 {output_json}"""
+
+
+# ─── Audit Prompt Template ────────────────────────────────────────────
+
+_AUDIT_OUTPUT_JSON = """{
+  "audit_result": "gaps_found|clean",
+  "gaps": [
+    {
+      "id": "GAP-1",
+      "description": "Feature or requirement that is missing or incomplete",
+      "spec_reference": "Section or REQ-ID from the spec",
+      "severity": "critical|minor",
+      "suggested_scope": "Concrete description of what needs to be implemented"
+    }
+  ],
+  "summary": "N critical gaps, M minor gaps found out of K spec sections"
+}"""
+
+
+def render_audit_prompt(
+    spec_text: str = "",
+    requirements: list | None = None,
+    changes: list | None = None,
+    coverage: str = "",
+    mode: str = "spec",
+) -> str:
+    """Render post-phase audit prompt for spec-vs-implementation gap detection.
+
+    Args:
+        spec_text: Raw spec/brief text (used in spec mode)
+        requirements: List of requirement dicts with id, title, brief (used in digest mode)
+        changes: List of change dicts with name, scope, status, file_list
+        coverage: Coverage data string (which REQ-IDs are merged/uncovered/failed)
+        mode: "digest" for requirements.json mode, "spec" for raw spec mode
+    """
+    if requirements is None:
+        requirements = []
+    if changes is None:
+        changes = []
+
+    # Build changes section
+    changes_text = ""
+    if changes:
+        change_lines = []
+        for c in changes:
+            status = c.get("status", "unknown")
+            name = c.get("name", "unnamed")
+            scope = c.get("scope", "")
+            files = c.get("file_list", "")
+            entry = f"### {name} (status: {status})\n**Scope:** {scope}"
+            if files:
+                entry += f"\n**Files changed:**\n{files}"
+            change_lines.append(entry)
+        changes_text = "\n\n".join(change_lines)
+
+    # Coverage section (digest mode)
+    coverage_section = ""
+    if coverage and coverage.strip():
+        coverage_section = f"""
+
+## Coverage Status
+{coverage}"""
+
+    if mode == "digest" and requirements:
+        # Digest mode: structured requirements
+        req_lines = []
+        for r in requirements:
+            req_id = r.get("id", "")
+            title = r.get("title", "")
+            brief = r.get("brief", "")
+            req_lines.append(f"- **{req_id}**: {title} — {brief}")
+        req_text = "\n".join(req_lines)
+
+        return f"""You are a quality auditor. Compare the input specification requirements against the completed implementation changes. Identify any features, requirements, or acceptance criteria that appear to be MISSING or INCOMPLETE.
+
+## Requirements from Specification
+{req_text}
+{coverage_section}
+
+## Completed Changes
+{changes_text}
+
+## Task
+For each requirement, check whether the completed changes provide sufficient implementation evidence (matching scope descriptions and file lists). Flag requirements where:
+1. No change covers the requirement at all (critical gap)
+2. A change claims to cover it but the file list suggests incomplete implementation (minor gap)
+3. The requirement was decomposed across changes but some aspect was missed (critical or minor depending on scope)
+
+Do NOT flag requirements that are clearly covered by a change with matching scope and relevant files.
+
+Output ONLY valid JSON (no markdown, no explanation):
+{_AUDIT_OUTPUT_JSON}"""
+
+    # Spec/brief mode: raw text comparison
+    spec_text = _truncate(spec_text, 30000, "spec text")
+
+    return f"""You are a quality auditor. Compare the input specification against the completed implementation changes. Identify any features, requirements, or acceptance criteria that appear to be MISSING or INCOMPLETE.
+
+## Input Specification
+{spec_text}
+
+## Completed Changes
+{changes_text}
+
+## Task
+For each section/feature in the specification, check whether the completed changes provide sufficient implementation evidence (matching scope descriptions and file lists). Flag features where:
+1. No change covers the feature at all (critical gap)
+2. A change claims to cover it but the file list suggests incomplete implementation (minor gap)
+3. The feature was split across changes but some aspect was missed (critical or minor depending on scope)
+
+Do NOT flag features that are clearly covered by a change with matching scope and relevant files.
+
+Output ONLY valid JSON (no markdown, no explanation):
+{_AUDIT_OUTPUT_JSON}"""

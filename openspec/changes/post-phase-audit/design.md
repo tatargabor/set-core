@@ -83,3 +83,75 @@ The audit adds one LLM call per phase (~10-30K input tokens for spec + change li
 ## Risk: LLM hallucinating gaps
 
 The LLM might report features as "missing" when they're implemented under a different name or approach. Mitigation: include file lists per change so the LLM can see what was actually touched. Also, the gap report feeds into the replan prompt — the planner (another LLM call) acts as a second opinion before committing to new changes.
+
+## Decision: Default enabled (always on)
+
+Prototype testing on MiniShop Run #6 showed 92% spec coverage detection with sonnet in ~80s at ~66K tokens. Cost is negligible compared to the value — catching missing E2E tests and screenshots that the planner omitted. Default is `post_phase_audit: true` (always runs). Users can explicitly disable with `post_phase_audit: false` in orchestration.yaml.
+
+Previous design said "auto" (true only with auto_replan). Changed because the audit is equally valuable in terminal state — the completion report should show what was missed even without replan.
+
+## Decision: Audit results stored as array in state
+
+State stores `phase_audit_results` as an array (one entry per phase/cycle) rather than a single `phase_audit_result`. This supports multi-phase orchestrations where each cycle has its own audit.
+
+```json
+{
+  "phase_audit_results": [
+    {
+      "cycle": 1,
+      "timestamp": "2026-03-13T05:35:00+01:00",
+      "audit_result": "gaps_found",
+      "model": "sonnet",
+      "duration_ms": 82000,
+      "input_tokens": 21000,
+      "gaps": [...],
+      "summary": "4 critical gaps, 1 minor"
+    }
+  ]
+}
+```
+
+## Approach: Audit logging
+
+Three levels of audit logging:
+
+1. **Events (events.jsonl)**: `AUDIT_START` (with cycle, mode), `AUDIT_GAPS` or `AUDIT_CLEAN` (with gap count, severity breakdown, duration_ms)
+2. **Orchestration log**: One-line summary per audit — "Post-phase audit cycle 1: 4 gaps (3 critical, 1 minor) in 82s"
+3. **Debug log**: Full audit prompt and raw LLM response written to `wt/orchestration/audit-cycle-N.log` for post-mortem analysis
+
+## Approach: HTML report integration
+
+New `render_audit_section()` in `reporter.sh`, called from `generate_report()` between execution and coverage sections. Structure:
+
+```html
+<h2>Post-Phase Audit</h2>
+<!-- Per cycle -->
+<h3>Phase 1 Audit</h3>
+<p>Result: gaps_found | Model: sonnet | Duration: 82s</p>
+<table>
+  <tr><th>ID</th><th>Severity</th><th>Description</th><th>Spec Reference</th><th>Suggested Scope</th></tr>
+  <tr class="gap-critical"><td>GAP-1</td>...</tr>
+</table>
+```
+
+CSS classes: `.gap-critical { background: #4e2a2a; }`, `.gap-minor { background: #3a3a2a; }`, `.audit-clean { color: #4caf50; }`
+
+## Approach: Web dashboard AuditPanel
+
+New `web/src/components/AuditPanel.tsx` component. Reads `phase_audit_results[]` from state.json (already polled by Dashboard). Shows:
+
+1. **Summary bar**: "Phase 1: 4 gaps (3 critical)" with color-coded badge
+2. **Gap table**: Sortable by severity, with spec reference, suggested scope
+3. **Clean state**: Green "All spec sections covered" message
+4. **Multiple phases**: Accordion/tabs if >1 audit result
+
+Integrates into Dashboard.tsx after ChangeTable, before LogPanel. Only renders if `phase_audit_results` exists and is non-empty.
+
+## Approach: Prompt template via wt-orch-core
+
+The audit prompt is built via `wt-orch-core template audit --input-file -` (same pattern as review/plan/fix prompts). New `render_audit_prompt()` function in `lib/wt_orch/templates.py` + CLI registration in `lib/wt_orch/cli.py` (same pattern as `render_planning_prompt` → `cmd_template` dispatch). Template receives JSON with:
+- `spec_text` or `requirements` (depending on mode)
+- `changes[]` with name, scope, status, file_list
+- `coverage` (if digest mode)
+
+This keeps the prompt externalized and consistent with other orchestrator templates. No Jinja2 — pure Python f-strings like all existing templates.

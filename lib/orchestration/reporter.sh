@@ -14,6 +14,7 @@ generate_report() {
     html+="$(render_digest_section)"
     html+="$(render_plan_section)"
     html+="$(render_execution_section)"
+    html+="$(render_audit_section)"
     html+="$(render_coverage_section)"
     html+="$(render_html_wrapper_close)"
 
@@ -64,6 +65,13 @@ render_html_wrapper_open() {
   details { margin: 8px 0; }
   summary { cursor: pointer; padding: 4px; color: #ccc; }
   .not-available { color: #666; font-style: italic; }
+  .gap-critical { background: #4e2a2a; }
+  .gap-minor { background: #3a3a2a; }
+  .audit-clean { color: #4caf50; font-weight: bold; }
+  .audit-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  .audit-badge-gaps { background: #4e2a2a; color: #f44336; }
+  .audit-badge-clean { background: #1b3a1b; color: #4caf50; }
+  .audit-badge-error { background: #3a3a2a; color: #ffc107; }
   .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #333; color: #666; font-size: 12px; }
 </style>
 </head>
@@ -446,6 +454,82 @@ render_execution_section() {
             fi
         fi
     fi
+}
+
+# ─── Audit Section ─────────────────────────────────────────────────
+
+render_audit_section() {
+    local audit_count
+    audit_count=$(jq '[.phase_audit_results // [] | .[]] | length' "$STATE_FILENAME" 2>/dev/null || echo "0")
+
+    if [[ "$audit_count" -eq 0 ]]; then
+        return 0
+    fi
+
+    echo '<h2>Post-Phase Audit</h2>'
+
+    local i
+    for (( i=0; i<audit_count; i++ )); do
+        local entry
+        entry=$(jq -c ".phase_audit_results[$i]" "$STATE_FILENAME" 2>/dev/null || echo '{}')
+
+        local cycle result model duration_ms gap_count summary
+        cycle=$(echo "$entry" | jq -r '.cycle // "?"')
+        result=$(echo "$entry" | jq -r '.audit_result // "unknown"')
+        model=$(echo "$entry" | jq -r '.model // "?"')
+        duration_ms=$(echo "$entry" | jq -r '.duration_ms // 0')
+        gap_count=$(echo "$entry" | jq '[.gaps // [] | .[]] | length')
+        summary=$(echo "$entry" | jq -r '.summary // ""')
+
+        local duration_s=$(( duration_ms / 1000 ))
+
+        # Badge
+        local badge_class="audit-badge-clean"
+        local badge_text="Clean"
+        if [[ "$result" == "gaps_found" ]]; then
+            badge_class="audit-badge-gaps"
+            badge_text="$gap_count gaps"
+        elif [[ "$result" == "parse_error" ]]; then
+            badge_class="audit-badge-error"
+            badge_text="Parse Error"
+        fi
+
+        echo "<h3>Cycle $cycle <span class=\"audit-badge $badge_class\">$badge_text</span></h3>"
+        echo "<p>Model: $model | Duration: ${duration_s}s</p>"
+
+        if [[ -n "$summary" && "$summary" != "null" ]]; then
+            echo "<p><em>$summary</em></p>"
+        fi
+
+        if [[ "$result" == "gaps_found" && "$gap_count" -gt 0 ]]; then
+            echo '<table>'
+            echo '<tr><th>ID</th><th>Severity</th><th>Description</th><th>Spec Reference</th><th>Suggested Scope</th></tr>'
+
+            local j
+            for (( j=0; j<gap_count; j++ )); do
+                local gap
+                gap=$(echo "$entry" | jq -c ".gaps[$j]")
+
+                local gid severity desc spec_ref scope row_class
+                gid=$(echo "$gap" | jq -r '.id // ""')
+                severity=$(echo "$gap" | jq -r '.severity // "minor"')
+                desc=$(echo "$gap" | jq -r '.description // ""')
+                spec_ref=$(echo "$gap" | jq -r '.spec_reference // ""')
+                scope=$(echo "$gap" | jq -r '.suggested_scope // ""')
+
+                row_class="gap-minor"
+                [[ "$severity" == "critical" ]] && row_class="gap-critical"
+
+                echo "<tr class=\"$row_class\"><td>$gid</td><td>$severity</td><td>$desc</td><td>$spec_ref</td><td>$scope</td></tr>"
+            done
+
+            echo '</table>'
+        elif [[ "$result" == "clean" ]]; then
+            echo '<p class="audit-clean">All spec sections covered</p>'
+        elif [[ "$result" == "parse_error" ]]; then
+            echo '<p class="not-available">Audit output could not be parsed — see debug log for details</p>'
+        fi
+    done
 }
 
 # ─── Coverage Section ───────────────────────────────────────────────

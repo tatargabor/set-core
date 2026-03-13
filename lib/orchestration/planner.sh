@@ -898,13 +898,14 @@ $req_entries"
 
         # Build replan context object
         local replan_json='{}'
-        if [[ -n "${_REPLAN_COMPLETED:-}" || -n "${_REPLAN_MEMORY:-}" || -n "${_REPLAN_E2E_FAILURES:-}" ]]; then
+        if [[ -n "${_REPLAN_COMPLETED:-}" || -n "${_REPLAN_MEMORY:-}" || -n "${_REPLAN_E2E_FAILURES:-}" || -n "${_REPLAN_AUDIT_GAPS:-}" ]]; then
             replan_json=$(jq -n \
                 --arg completed "${_REPLAN_COMPLETED:-}" \
                 --argjson cycle "${_REPLAN_CYCLE:-1}" \
                 --arg memory "${_REPLAN_MEMORY:-}" \
                 --arg e2e_failures "${_REPLAN_E2E_FAILURES:-}" \
-                '{completed: $completed, cycle: $cycle, memory: $memory, e2e_failures: $e2e_failures}')
+                --arg audit_gaps "${_REPLAN_AUDIT_GAPS:-}" \
+                '{completed: $completed, cycle: $cycle, memory: $memory, e2e_failures: $e2e_failures, audit_gaps: $audit_gaps}')
         fi
 
         # Build input JSON and render via Python template
@@ -1340,7 +1341,7 @@ $phase_e2e_ctx"
     if ! cmd_plan &>>"$LOG_FILE"; then
         log_error "Auto-replan failed — cmd_plan returned error"
         rm -f "$old_plan"
-        unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY _REPLAN_E2E_FAILURES
+        unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY _REPLAN_E2E_FAILURES _REPLAN_AUDIT_GAPS
         return 2  # Error (distinct from 1=no new work)
     fi
     unset _REPLAN_COMPLETED _REPLAN_CYCLE _REPLAN_MEMORY _REPLAN_E2E_FAILURES

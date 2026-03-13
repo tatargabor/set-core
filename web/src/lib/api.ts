@@ -69,6 +69,25 @@ export interface GateResult {
   output?: string
 }
 
+export interface AuditGap {
+  id: string
+  description: string
+  spec_reference?: string
+  severity: 'critical' | 'minor'
+  suggested_scope?: string
+}
+
+export interface AuditResult {
+  cycle: number
+  audit_result: 'gaps_found' | 'clean' | 'parse_error'
+  model?: string
+  mode?: string
+  duration_ms?: number
+  gaps?: AuditGap[]
+  summary?: string
+  timestamp?: string
+}
+
 export interface StateData {
   plan_version?: string | number
   status?: string
@@ -78,6 +97,7 @@ export interface StateData {
   created_at?: string
   active_seconds?: number
   directives?: Record<string, unknown>
+  phase_audit_results?: AuditResult[]
 }
 
 export interface WorktreeInfo {
@@ -192,6 +212,51 @@ export function getPlans(project: string): Promise<{ plans: PlanFile[] }> {
 
 export function getPlan(project: string, filename: string): Promise<unknown> {
   return fetchJSON(`/${project}/plans/${filename}`)
+}
+
+// --- Requirements ---
+
+export interface ReqInfo {
+  id: string
+  change: string
+  primary: boolean
+  plan_version: string
+  status: string
+}
+
+export interface ReqGroup {
+  group: string
+  total: number
+  done: number
+  in_progress: number
+  failed: number
+  requirements: ReqInfo[]
+}
+
+export interface ReqChangeInfo {
+  name: string
+  complexity: string
+  change_type: string
+  depends_on: string[]
+  requirements: string[]
+  also_affects_reqs: string[]
+  scope_summary: string
+  plan_version: string
+  roadmap_item: string
+  status: string
+}
+
+export interface RequirementsData {
+  requirements: ReqInfo[]
+  changes: ReqChangeInfo[]
+  groups: ReqGroup[]
+  plan_versions: string[]
+  total_reqs: number
+  done_reqs: number
+}
+
+export function getRequirements(project: string): Promise<RequirementsData> {
+  return fetchJSON(`/${project}/requirements`)
 }
 
 // --- Events ---
