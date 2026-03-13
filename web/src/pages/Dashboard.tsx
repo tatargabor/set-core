@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react'
 import { useWebSocket, type WSEvent } from '../hooks/useWebSocket'
-import { useNotifications } from '../hooks/useNotifications'
 import StatusHeader from '../components/StatusHeader'
 import ChangeTable from '../components/ChangeTable'
 import LogPanel from '../components/LogPanel'
@@ -24,7 +23,6 @@ export default function Dashboard({ project }: Props) {
   const [checkpoint, setCheckpoint] = useState(false)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<PanelTab>('changes')
-  const { notify } = useNotifications()
 
   const onEvent = useCallback((event: WSEvent) => {
     switch (event.event) {
@@ -38,16 +36,9 @@ export default function Dashboard({ project }: Props) {
       }
       case 'checkpoint_pending':
         setCheckpoint(true)
-        notify('Checkpoint pending', `${project} requires approval`)
-        break
-      case 'change_complete':
-        notify('Change complete', `A change finished in ${project}`)
-        break
-      case 'error':
-        notify('Error', `Error in ${project}`)
         break
     }
-  }, [project, notify])
+  }, [])
 
   const { connected } = useWebSocket({ project, onEvent })
 
