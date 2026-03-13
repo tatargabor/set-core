@@ -165,6 +165,21 @@ init_project() {
     fi
     success "wt-project initialized (configs, rules, CLAUDE.md deployed)"
 
+    step "Figma MCP registration"
+    local settings_file=".claude/settings.json"
+    if [[ -f "$settings_file" ]]; then
+        local tmp_settings
+        tmp_settings=$(mktemp)
+        if jq '.mcpServers.figma = {"type": "http", "url": "https://mcp.figma.com/mcp"}' \
+            "$settings_file" > "$tmp_settings" 2>/dev/null; then
+            mv "$tmp_settings" "$settings_file"
+            success "Registered official Figma MCP (https://mcp.figma.com/mcp)"
+        else
+            rm -f "$tmp_settings"
+            warn "Failed to register Figma MCP — continuing without it"
+        fi
+    fi
+
     step "Orchestration config"
     mkdir -p wt/orchestration
 
