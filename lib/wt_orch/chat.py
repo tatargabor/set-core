@@ -39,6 +39,8 @@ class ChatSession:
         self._current_process: asyncio.subprocess.Process | None = None
         self._clients: set[WebSocket] = set()
         self._generation: int = 0  # Incremented on stop/new_session to invalidate stale tasks
+        self._state_watcher: asyncio.Task | None = None
+        self._last_state_mtime: float = 0.0
 
     async def send_message(self, text: str) -> None:
         """Send a user message — spawns a claude subprocess.
@@ -266,9 +268,64 @@ class ChatSession:
 
     def add_client(self, ws: WebSocket) -> None:
         self._clients.add(ws)
+        # Start state watcher if not running
+        if not self._state_watcher:
+            self._state_watcher = asyncio.create_task(self._watch_state())
 
     def remove_client(self, ws: WebSocket) -> None:
         self._clients.discard(ws)
+        # Stop state watcher if no clients
+        if not self._clients and self._state_watcher:
+            self._state_watcher.cancel()
+            self._state_watcher = None
+
+    async def _watch_state(self) -> None:
+        """Poll orchestration-state.json for changes, push updates to clients."""
+        state_paths = [
+            self.project_path / "wt" / "orchestration" / "orchestration-state.json",
+            self.project_path / "orchestration-state.json",
+        ]
+        try:
+            while True:
+                await asyncio.sleep(5)
+                if not self._clients:
+                    break
+                for sp in state_paths:
+                    try:
+                        mtime = sp.stat().st_mtime
+                    except OSError:
+                        continue
+                    if mtime > self._last_state_mtime:
+                        self._last_state_mtime = mtime
+                        try:
+                            data = json.loads(sp.read_text())
+                            summary = self._summarize_state(data)
+                            await self._broadcast({"type": "state_update", **summary})
+                        except Exception as e:
+                            logger.debug(f"State watch read error: {e}")
+                    break  # Use first found path
+        except asyncio.CancelledError:
+            pass
+
+    @staticmethod
+    def _summarize_state(data: dict[str, Any]) -> dict[str, Any]:
+        """Build a compact state summary for the frontend."""
+        changes = data.get("changes", [])
+        by_status: dict[str, int] = {}
+        for c in changes:
+            s = c.get("status", "unknown")
+            by_status[s] = by_status.get(s, 0) + 1
+        done = sum(by_status.get(s, 0) for s in ("done", "merged", "completed"))
+        return {
+            "status": data.get("status", "unknown"),
+            "total": len(changes),
+            "done": done,
+            "by_status": by_status,
+            "changes": [
+                {"name": c.get("name", "?"), "status": c.get("status", "?")}
+                for c in changes
+            ],
+        }
 
     async def _broadcast(self, message: dict[str, Any]) -> None:
         """Send a message to all connected WebSocket clients."""
@@ -342,6 +399,11 @@ async def websocket_chat(websocket: WebSocket, project: str):
         "status": session.status,
     })
 
+    # Auto-greeting: if fresh session (no messages), trigger agent greeting
+    if not session.messages and not session.session_id and session.status == "idle":
+        session.status = "running"
+        asyncio.create_task(session.send_message("Köszönj és add meg a rövid orchestration státusz összefoglalót."))
+
     try:
         while True:
             raw = await websocket.receive_text()
@@ -377,6 +439,9 @@ async def websocket_chat(websocket: WebSocket, project: str):
                 await session.stop()
                 session.new_session()
                 await session._broadcast({"type": "session_cleared"})
+                # Auto-greeting on new session
+                session.status = "running"
+                asyncio.create_task(session.send_message("Köszönj és add meg a rövid orchestration státusz összefoglalót."))
 
     except WebSocketDisconnect:
         pass

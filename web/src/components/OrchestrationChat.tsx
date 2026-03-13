@@ -22,6 +22,13 @@ interface ToolBlock {
 
 type AgentStatus = 'idle' | 'thinking' | 'responding' | 'stopped'
 
+interface OrchState {
+  status: string
+  total: number
+  done: number
+  by_status: Record<string, number>
+}
+
 interface Props {
   project: string
 }
@@ -29,6 +36,7 @@ interface Props {
 export default function OrchestrationChat({ project }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
+  const [orchState, setOrchState] = useState<OrchState | null>(null)
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
   const [autoScroll, setAutoScroll] = useState(true)
 
@@ -76,6 +84,15 @@ export default function OrchestrationChat({ project }: Props) {
         pendingTextRef.current = ''
         pendingToolsRef.current = []
         msgIdRef.current = 0
+        break
+
+      case 'state_update':
+        setOrchState({
+          status: event.status ?? 'unknown',
+          total: (event as any).total ?? 0,
+          done: (event as any).done ?? 0,
+          by_status: (event as any).by_status ?? {},
+        })
         break
 
       case 'status':
@@ -230,6 +247,12 @@ export default function OrchestrationChat({ project }: Props) {
   }
 
   const handleNewSession = () => {
+    if (!connected) return
+    setMessages([])
+    setAgentStatus('idle')
+    pendingTextRef.current = ''
+    pendingToolsRef.current = []
+    msgIdRef.current = 0
     newSession()
   }
 
@@ -262,6 +285,12 @@ export default function OrchestrationChat({ project }: Props) {
             className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
             title={connected ? 'Connected' : 'Disconnected'}
           />
+          {/* Live orchestration state */}
+          {orchState && orchState.total > 0 && (
+            <span className="text-[10px] text-neutral-500" title={Object.entries(orchState.by_status).map(([k, v]) => `${v} ${k}`).join(', ')}>
+              {orchState.done}/{orchState.total}
+            </span>
+          )}
           {/* Agent status */}
           {agentStatus === 'thinking' && (
             <span className="text-xs text-yellow-400 animate-pulse">Thinking...</span>

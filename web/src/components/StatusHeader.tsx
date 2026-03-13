@@ -49,7 +49,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
     }),
     { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
   )
-  const done = changes.filter((c) => ['done', 'merged'].includes(c.status)).length
+  const done = changes.filter((c) => ['done', 'merged', 'completed'].includes(c.status)).length
 
   return (
     <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50">
