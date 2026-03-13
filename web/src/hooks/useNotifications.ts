@@ -15,11 +15,12 @@ export function useNotifications() {
     if (document.hasFocus()) return
     if (permissionRef.current !== 'granted') return
 
-    new Notification(title, {
+    const n = new Notification(title, {
       body,
       icon: '/favicon.ico',
       tag: 'wt-web',
     })
+    setTimeout(() => n.close(), 5000)
   }, [])
 
   return { notify }

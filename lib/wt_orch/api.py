@@ -947,6 +947,79 @@ def get_events(project: str, type: Optional[str] = Query(None), limit: int = Que
     return {"events": events[-limit:]}
 
 
+@router.get("/api/{project}/settings")
+def get_project_settings(project: str):
+    """Get project configuration and paths for the settings panel."""
+    project_path = _resolve_project(project)
+    result: dict = {
+        "project_path": str(project_path),
+        "state_path": None,
+        "config": {},
+        "has_claude_md": False,
+        "has_project_knowledge": False,
+        "runs_dir": None,
+        "orchestrator_pid": None,
+        "plan_version": None,
+    }
+
+    # State file
+    sp = _state_path(project_path)
+    if sp.exists():
+        result["state_path"] = str(sp)
+        try:
+            state = load_state(str(sp))
+            result["orchestrator_pid"] = state.orchestrator_pid
+            result["plan_version"] = state.plan_version
+        except Exception:
+            pass
+
+    # Orchestration config (YAML)
+    for cfg_path in [
+        project_path / "wt" / "orchestration" / "config.yaml",
+        project_path / ".claude" / "orchestration.yaml",
+    ]:
+        if cfg_path.exists():
+            result["config_path"] = str(cfg_path)
+            try:
+                import yaml
+                with open(cfg_path) as f:
+                    result["config"] = yaml.safe_load(f) or {}
+            except Exception:
+                try:
+                    with open(cfg_path) as f:
+                        result["config_raw"] = f.read()
+                except OSError:
+                    pass
+            break
+
+    # CLAUDE.md
+    for md in [project_path / "CLAUDE.md", project_path / ".claude" / "CLAUDE.md"]:
+        if md.exists():
+            result["has_claude_md"] = True
+            break
+
+    # Project knowledge
+    for pk in [
+        project_path / "wt" / "knowledge" / "project-knowledge.yaml",
+        project_path / "project-knowledge.yaml",
+    ]:
+        if pk.exists():
+            result["has_project_knowledge"] = True
+            break
+
+    # Runs dir
+    for rd in [project_path / "wt" / "orchestration" / "runs", project_path / "docs" / "orchestration-runs"]:
+        if rd.is_dir():
+            result["runs_dir"] = str(rd)
+            try:
+                result["runs_count"] = sum(1 for f in rd.iterdir() if f.is_dir() or f.suffix == ".md")
+            except OSError:
+                pass
+            break
+
+    return result
+
+
 # ─── WRITE endpoints ─────────────────────────────────────────────────
 
 
