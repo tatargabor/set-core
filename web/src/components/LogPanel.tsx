@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import type { ChangeInfo, SessionInfo } from '../lib/api'
 import { getChangeSession } from '../lib/api'
 
@@ -33,184 +33,241 @@ function sessionLineColor(line: string): string {
   return 'text-neutral-400'
 }
 
-type ActiveView = { kind: 'orch' } | { kind: 'session'; sessionId: string }
+const SPLIT_RATIO_KEY = 'wt-log-split-ratio'
+
+function loadSplitRatio(): number {
+  try {
+    const v = localStorage.getItem(SPLIT_RATIO_KEY)
+    if (v) {
+      const n = parseFloat(v)
+      if (n >= 0.15 && n <= 0.85) return n
+    }
+  } catch {}
+  return 0.5
+}
+
+/** Scrollable log pane with auto-scroll and jump-to-bottom */
+function LogPane({ lines, colorFn, label, lineCount, live }: {
+  lines: string[]
+  colorFn: (line: string) => string
+  label: string
+  lineCount?: number
+  live?: boolean
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [autoScroll, setAutoScroll] = useState(true)
+
+  useEffect(() => {
+    if (autoScroll && ref.current) {
+      ref.current.scrollTop = ref.current.scrollHeight
+    }
+  }, [lines, autoScroll])
+
+  const handleScroll = () => {
+    if (!ref.current) return
+    const { scrollTop, scrollHeight, clientHeight } = ref.current
+    setAutoScroll(scrollHeight - scrollTop - clientHeight < 50)
+  }
+
+  return (
+    <div className="relative flex flex-col h-full min-w-0">
+      <div className="flex items-center px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50">
+        <span className="text-[10px] text-neutral-500 font-medium">{label}</span>
+        <span className="ml-auto text-[10px] text-neutral-600">
+          {lineCount ?? lines.length} lines
+          {live && <span className="ml-1.5 text-green-600 animate-pulse">LIVE</span>}
+        </span>
+      </div>
+      <div
+        ref={ref}
+        onScroll={handleScroll}
+        className="flex-1 overflow-auto p-2 font-mono text-xs leading-5"
+      >
+        {lines.map((line, i) => (
+          <div key={i} className={colorFn(line)}>{line}</div>
+        ))}
+        {lines.length === 0 && (
+          <p className="text-neutral-600">No data</p>
+        )}
+      </div>
+      {!autoScroll && (
+        <button
+          onClick={() => {
+            setAutoScroll(true)
+            if (ref.current) ref.current.scrollTop = ref.current.scrollHeight
+          }}
+          className="absolute bottom-2 right-2 px-1.5 py-0.5 text-[10px] bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700"
+        >
+          Bottom
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default function LogPanel({ orchLines, selectedChange, project }: Props) {
-  const [activeView, setActiveView] = useState<ActiveView>({ kind: 'orch' })
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [sessionLines, setSessionLines] = useState<string[]>([])
   const [sessionLoading, setSessionLoading] = useState(false)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [splitRatio, setSplitRatio] = useState(loadSplitRatio)
+  const [dragging, setDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [autoScroll, setAutoScroll] = useState(true)
 
-  // When change selection changes, load sessions and auto-select latest
+  // Persist split ratio
+  useEffect(() => {
+    try { localStorage.setItem(SPLIT_RATIO_KEY, String(splitRatio)) } catch {}
+  }, [splitRatio])
+
+  // When change selection changes, load sessions
   useEffect(() => {
     if (!selectedChange) {
-      setActiveView({ kind: 'orch' })
       setSessions([])
       setSessionLines([])
+      setActiveSessionId(null)
       return
     }
-    // Fetch with no session_id to get latest + session list
     setSessionLoading(true)
     getChangeSession(project, selectedChange.name, 500)
       .then((data) => {
         setSessions(data.sessions)
         setSessionLines(data.lines)
-        if (data.session_id) {
-          setActiveView({ kind: 'session', sessionId: data.session_id })
-        }
-        setTimeout(() => {
-          if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight
-        }, 50)
+        setActiveSessionId(data.session_id)
       })
       .catch(() => {
         setSessions([])
         setSessionLines(['(Failed to load session)'])
+        setActiveSessionId(null)
       })
       .finally(() => setSessionLoading(false))
   }, [project, selectedChange?.name])
 
-  // Load specific session when switching tabs
+  // Load specific session
   const loadSession = (sessionId: string) => {
     if (!selectedChange) return
-    setActiveView({ kind: 'session', sessionId })
+    setActiveSessionId(sessionId)
     setSessionLoading(true)
     getChangeSession(project, selectedChange.name, 500, sessionId)
-      .then((data) => {
-        setSessionLines(data.lines)
-        setTimeout(() => {
-          if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight
-        }, 50)
-      })
+      .then((data) => setSessionLines(data.lines))
       .catch(() => setSessionLines(['(Failed to load session)']))
       .finally(() => setSessionLoading(false))
   }
 
-  // Auto-refresh active session for running changes
+  // Auto-refresh for running changes
   useEffect(() => {
-    if (activeView.kind !== 'session' || !selectedChange || selectedChange.status !== 'running') return
-    const sid = activeView.sessionId
+    if (!activeSessionId || !selectedChange || selectedChange.status !== 'running') return
     const interval = setInterval(() => {
-      getChangeSession(project, selectedChange.name, 500, sid)
+      getChangeSession(project, selectedChange.name, 500, activeSessionId)
         .then((data) => {
           setSessionLines(data.lines)
-          // Update sessions list too (new session may have appeared)
-          if (data.sessions.length !== sessions.length) {
-            setSessions(data.sessions)
-          }
+          if (data.sessions.length !== sessions.length) setSessions(data.sessions)
         })
         .catch(() => {})
     }, 3000)
     return () => clearInterval(interval)
-  }, [activeView, project, selectedChange?.name, selectedChange?.status, sessions.length])
+  }, [activeSessionId, project, selectedChange?.name, selectedChange?.status, sessions.length])
 
-  // Determine what to display
-  const isOrch = activeView.kind === 'orch'
-  const lines = isOrch ? orchLines : sessionLines
-  const colorFn = isOrch ? orchLineColor : sessionLineColor
+  // Drag handler for split resizer
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setDragging(true)
+  }, [])
 
-  // Auto-scroll
   useEffect(() => {
-    if (autoScroll && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    if (!dragging) return
+    const onMove = (e: MouseEvent) => {
+      if (!containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const ratio = (e.clientX - rect.left) / rect.width
+      setSplitRatio(Math.min(0.85, Math.max(0.15, ratio)))
     }
-  }, [lines, autoScroll])
+    const onUp = () => setDragging(false)
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [dragging])
 
-  const handleScroll = () => {
-    if (!containerRef.current) return
-    const { scrollTop, scrollHeight, clientHeight } = containerRef.current
-    setAutoScroll(scrollHeight - scrollTop - clientHeight < 50)
-  }
-
-  // Session tab label: show index + short time
+  // Session tab label
   const sessionLabel = (s: SessionInfo, idx: number) => {
+    const label = (s as SessionInfo & { label?: string }).label
+    if (label) return label
     const d = new Date(s.mtime)
     const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     return `#${sessions.length - idx} ${time}`
   }
 
+  // No change selected: full-width orch log
+  if (!selectedChange) {
+    return (
+      <div className="h-full">
+        <LogPane lines={orchLines} colorFn={orchLineColor} label="Orchestration Log" />
+      </div>
+    )
+  }
+
+  // Split view: orch left, session right
   return (
-    <div className="relative h-full flex flex-col">
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900/50 overflow-x-auto">
-        <button
-          onClick={() => setActiveView({ kind: 'orch' })}
-          className={`px-2 py-0.5 text-xs rounded transition-colors shrink-0 ${
-            isOrch
-              ? 'bg-neutral-800 text-neutral-200'
-              : 'text-neutral-500 hover:text-neutral-300'
-          }`}
-        >
-          Orch Log
-        </button>
-        {selectedChange && sessions.length > 0 && (
-          <>
-            <span className="text-[10px] text-neutral-700 mx-0.5 shrink-0">|</span>
-            <span className="text-[10px] text-neutral-600 shrink-0 mr-1">
-              {selectedChange.name}
-            </span>
-            {sessions.map((s, i) => {
-              const isActive = activeView.kind === 'session' && activeView.sessionId === s.id
-              const isLatest = i === 0
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => loadSession(s.id)}
-                  className={`px-1.5 py-0.5 text-xs rounded font-mono transition-colors shrink-0 ${
-                    isActive
-                      ? 'bg-blue-900/60 text-blue-300'
-                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
-                  }`}
-                  title={`Session ${s.id.slice(0, 8)}… — ${new Date(s.mtime).toLocaleString()}`}
-                >
-                  {sessionLabel(s, i)}{isLatest ? ' ●' : ''}
-                </button>
-              )
-            })}
-          </>
-        )}
-        <span className="ml-auto text-xs text-neutral-600 shrink-0">
-          {lines.length} lines
-          {!isOrch && selectedChange?.status === 'running' && (
-            <span className="ml-2 text-green-600 animate-pulse">LIVE</span>
-          )}
-        </span>
+    <div ref={containerRef} className="h-full flex" style={{ userSelect: dragging ? 'none' : undefined }}>
+      {/* Left: Orch log */}
+      <div style={{ width: `${splitRatio * 100}%` }} className="h-full min-w-0">
+        <LogPane lines={orchLines} colorFn={orchLineColor} label="Orchestration Log" />
       </div>
 
-      {/* Content */}
+      {/* Resizer */}
       <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-auto p-2 font-mono text-xs leading-5"
-      >
-        {sessionLoading && !isOrch && (
-          <p className="text-neutral-600">Loading session...</p>
-        )}
-        {lines.map((line, i) => (
-          <div key={i} className={colorFn(line)}>
-            {line}
-          </div>
-        ))}
-        {!sessionLoading && !isOrch && lines.length === 0 && (
-          <p className="text-neutral-600">No session data yet</p>
-        )}
-      </div>
+        onMouseDown={onMouseDown}
+        className={`w-1 cursor-col-resize flex-shrink-0 transition-colors ${
+          dragging ? 'bg-blue-500' : 'bg-neutral-800 hover:bg-neutral-600'
+        }`}
+      />
 
-      {/* Jump to bottom */}
-      {!autoScroll && (
-        <button
-          onClick={() => {
-            setAutoScroll(true)
-            if (containerRef.current) {
-              containerRef.current.scrollTop = containerRef.current.scrollHeight
-            }
-          }}
-          className="absolute bottom-3 right-3 px-2 py-1 text-xs bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
-        >
-          Jump to bottom
-        </button>
-      )}
+      {/* Right: Session log */}
+      <div style={{ width: `${(1 - splitRatio) * 100}%` }} className="h-full min-w-0 flex flex-col">
+        {/* Session tabs */}
+        <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50 overflow-x-auto">
+          <span className="text-[10px] text-neutral-600 shrink-0 mr-1">
+            {selectedChange.name}
+          </span>
+          {sessions.map((s, i) => {
+            const isActive = activeSessionId === s.id
+            const isLatest = i === 0
+            return (
+              <button
+                key={s.id}
+                onClick={() => loadSession(s.id)}
+                className={`px-1.5 py-0.5 text-[10px] rounded font-mono transition-colors shrink-0 ${
+                  isActive
+                    ? 'bg-blue-900/60 text-blue-300'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+                }`}
+                title={s.full_label || `Session ${s.id.slice(0, 8)}… — ${new Date(s.mtime).toLocaleString()}`}
+              >
+                {sessionLabel(s, i)}{isLatest ? ' *' : ''}
+              </button>
+            )
+          })}
+          {sessions.length === 0 && (
+            <span className="text-[10px] text-neutral-600">No sessions</span>
+          )}
+        </div>
+
+        {/* Session content */}
+        <div className="flex-1 min-h-0">
+          {sessionLoading ? (
+            <div className="p-2 text-xs text-neutral-600">Loading session...</div>
+          ) : (
+            <LogPane
+              lines={sessionLines}
+              colorFn={sessionLineColor}
+              label="Session Log"
+              live={selectedChange.status === 'running'}
+            />
+          )}
+        </div>
+      </div>
     </div>
   )
 }

@@ -3,6 +3,8 @@ interface Props {
   smoke_result?: string
   review_result?: string
   build_result?: string
+  hasScreenshots?: boolean
+  onScreenshots?: (e: React.MouseEvent) => void
 }
 
 const gateLabels: Record<string, string> = {
@@ -19,7 +21,7 @@ const statusStyle: Record<string, string> = {
   pending: 'bg-neutral-800 text-neutral-600',
 }
 
-export default function GateBar({ test_result, smoke_result, review_result, build_result }: Props) {
+export default function GateBar({ test_result, smoke_result, review_result, build_result, hasScreenshots, onScreenshots }: Props) {
   const gates = [
     { name: 'test', status: test_result },
     { name: 'build', status: build_result },
@@ -32,7 +34,7 @@ export default function GateBar({ test_result, smoke_result, review_result, buil
   }
 
   return (
-    <div className="flex gap-0.5">
+    <div className="flex gap-0.5 items-center">
       {gates.map((g) => (
         <span
           key={g.name}
@@ -42,6 +44,15 @@ export default function GateBar({ test_result, smoke_result, review_result, buil
           {gateLabels[g.name] ?? g.name.charAt(0).toUpperCase()}
         </span>
       ))}
+      {hasScreenshots && (
+        <button
+          onClick={onScreenshots}
+          title="View screenshots"
+          className="ml-0.5 w-5 h-5 flex items-center justify-center rounded text-[10px] text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
+        >
+          cam
+        </button>
+      )}
     </div>
   )
 }

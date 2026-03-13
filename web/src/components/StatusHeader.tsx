@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { StateData } from '../lib/api'
 import { stopOrchestrator, approve } from '../lib/api'
+import { estimateCost, formatCost } from '../lib/pricing'
 
 interface Props {
   state: StateData | null
@@ -44,10 +45,17 @@ export default function StatusHeader({ state, connected, project }: Props) {
       input: acc.input + (c.input_tokens ?? 0),
       output: acc.output + (c.output_tokens ?? 0),
       cacheRead: acc.cacheRead + (c.cache_read_tokens ?? 0),
+      cacheCreate: acc.cacheCreate + (c.cache_create_tokens ?? 0),
     }),
-    { input: 0, output: 0, cacheRead: 0 },
+    { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
   )
   const done = changes.filter((c) => ['done', 'merged'].includes(c.status)).length
+  const totalCost = estimateCost({
+    input_tokens: totals.input,
+    output_tokens: totals.output,
+    cache_read_tokens: totals.cacheRead,
+    cache_create_tokens: totals.cacheCreate,
+  })
 
   return (
     <div className="flex items-center gap-4 px-4 py-3 border-b border-neutral-800 bg-neutral-900/50">
@@ -75,6 +83,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
             {totals.cacheRead > 0 && (
               <span title="Cache read">Cache: {formatTokens(totals.cacheRead)}</span>
             )}
+            <span className="text-neutral-300 font-medium" title="Estimated cost">{formatCost(totalCost)}</span>
           </div>
 
           <div className="flex gap-2 ml-2">

@@ -1,7 +1,11 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { ChangeInfo } from '../lib/api'
 import { stopChange, skipChange } from '../lib/api'
 import GateBar from './GateBar'
+import GateDetail from './GateDetail'
+import ScreenshotGallery from './ScreenshotGallery'
+import { estimateCost, formatCost } from '../lib/pricing'
+import ChangeTimeline from './ChangeTimeline'
 
 interface Props {
   changes: ChangeInfo[]
@@ -51,6 +55,18 @@ function changeDuration(c: ChangeInfo): number | undefined {
 
 export default function ChangeTable({ changes, project, selected, onSelect }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [expandedGate, setExpandedGate] = useState<string | null>(null)
+  const [screenshotChange, setScreenshotChange] = useState<string | null>(null)
+
+  const toggleGate = (e: React.MouseEvent, name: string) => {
+    e.stopPropagation()
+    setExpandedGate(prev => prev === name ? null : name)
+  }
+
+  const toggleScreenshots = (e: React.MouseEvent, name: string) => {
+    e.stopPropagation()
+    setScreenshotChange(prev => prev === name ? null : name)
+  }
 
   const handleAction = async (e: React.MouseEvent, name: string, action: 'stop' | 'skip') => {
     e.stopPropagation()
@@ -79,6 +95,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
           <th className="text-center px-2 py-2 font-medium">Sess</th>
           <th className="text-right px-2 py-2 font-medium">Duration</th>
           <th className="text-right px-2 py-2 font-medium">Tokens</th>
+          <th className="text-right px-2 py-2 font-medium">Cost</th>
           <th className="text-center px-2 py-2 font-medium">Gates</th>
           <th className="text-right px-4 py-2 font-medium">Actions</th>
         </tr>
@@ -87,11 +104,13 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
         {changes.map((c) => {
           const clickable = !!c.worktree_path
           const isSelected = selected === c.name
+          const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result)
+          const isGateExpanded = expandedGate === c.name
           return (
+            <Fragment key={c.name}>
             <tr
-              key={c.name}
               onClick={clickable && onSelect ? () => onSelect(isSelected ? null : c.name) : undefined}
-              className={`border-b border-neutral-800/50 transition-colors ${
+              className={`border-b ${isGateExpanded ? 'border-b-0' : 'border-b'} border-neutral-800/50 transition-colors ${
                 clickable ? 'cursor-pointer hover:bg-neutral-900/50' : ''
               } ${isSelected ? 'bg-neutral-900/70 border-l-2 border-l-blue-500' : ''}`}
             >
@@ -104,13 +123,22 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               <td className="px-2 py-2 text-right text-neutral-400 font-mono text-xs">
                 {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
               </td>
+              <td className="px-2 py-2 text-right text-neutral-400 text-xs">
+                {(c.input_tokens || c.output_tokens) ? formatCost(estimateCost(c, c.model)) : '—'}
+              </td>
               <td className="px-2 py-2">
-                <div className="flex justify-center">
+                <div
+                  className="flex justify-center cursor-pointer"
+                  onClick={(e) => toggleGate(e, c.name)}
+                  title="Click to expand gate details"
+                >
                   <GateBar
                     test_result={c.test_result}
                     smoke_result={c.smoke_result}
                     review_result={c.review_result}
                     build_result={c.build_result}
+                    hasScreenshots={!!c.smoke_screenshot_count || !!c.e2e_screenshot_count}
+                    onScreenshots={(e) => toggleScreenshots(e, c.name)}
                   />
                 </div>
               </td>
@@ -137,6 +165,26 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                 </div>
               </td>
             </tr>
+            {isGateExpanded && hasGates && (
+              <tr className="border-b border-neutral-800/50 bg-neutral-950/50">
+                <td colSpan={8}>
+                  <ChangeTimeline change={c} />
+                  <GateDetail change={c} />
+                </td>
+              </tr>
+            )}
+            {screenshotChange === c.name && (
+              <tr className="border-b border-neutral-800/50 bg-neutral-950/50">
+                <td colSpan={8}>
+                  <ScreenshotGallery
+                    project={project}
+                    changeName={c.name}
+                    onClose={() => setScreenshotChange(null)}
+                  />
+                </td>
+              </tr>
+            )}
+            </Fragment>
           )
         })}
       </tbody>

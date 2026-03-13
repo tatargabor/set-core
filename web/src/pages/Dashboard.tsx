@@ -6,6 +6,8 @@ import ChangeTable from '../components/ChangeTable'
 import LogPanel from '../components/LogPanel'
 import CheckpointBanner from '../components/CheckpointBanner'
 import ResizableSplit from '../components/ResizableSplit'
+import PlanViewer from '../components/PlanViewer'
+import TokenChart from '../components/TokenChart'
 import type { StateData, ChangeInfo } from '../lib/api'
 
 interface Props {
@@ -17,6 +19,8 @@ export default function Dashboard({ project }: Props) {
   const [logLines, setLogLines] = useState<string[]>([])
   const [checkpoint, setCheckpoint] = useState(false)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
+  const [showPlan, setShowPlan] = useState(false)
+  const [showTokens, setShowTokens] = useState(false)
   const { notify } = useNotifications()
 
   const onEvent = useCallback((event: WSEvent) => {
@@ -65,12 +69,41 @@ export default function Dashboard({ project }: Props) {
       <div className="flex-1 min-h-0">
         <ResizableSplit
           top={
-            <ChangeTable
-              changes={changes}
-              project={project}
-              selected={selectedChange}
-              onSelect={setSelectedChange}
-            />
+            <div className="h-full flex flex-col overflow-auto">
+              {/* Collapsible sections */}
+              <div className="flex items-center gap-3 px-4 py-1 border-b border-neutral-800/50">
+                <button
+                  onClick={() => setShowPlan(p => !p)}
+                  className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300"
+                >
+                  <span>{showPlan ? '▾' : '▸'}</span>
+                  <span>Plan</span>
+                </button>
+                <button
+                  onClick={() => setShowTokens(p => !p)}
+                  className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300"
+                >
+                  <span>{showTokens ? '▾' : '▸'}</span>
+                  <span>Tokens</span>
+                </button>
+              </div>
+              {showPlan && (
+                <div className="border-b border-neutral-800 max-h-[250px] overflow-auto">
+                  <PlanViewer project={project} />
+                </div>
+              )}
+              {showTokens && (
+                <div className="border-b border-neutral-800">
+                  <TokenChart project={project} />
+                </div>
+              )}
+              <ChangeTable
+                changes={changes}
+                project={project}
+                selected={selectedChange}
+                onSelect={setSelectedChange}
+              />
+            </div>
           }
           bottom={
             <LogPanel

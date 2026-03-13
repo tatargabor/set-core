@@ -40,7 +40,24 @@ export interface ChangeInfo {
   smoke_result?: string
   review_result?: string
   build_result?: string
+  // Gate outputs (full text)
+  build_output?: string
+  test_output?: string
+  smoke_output?: string
+  review_output?: string
+  // Gate timing
+  gate_build_ms?: number
+  gate_test_ms?: number
+  gate_review_ms?: number
+  gate_verify_ms?: number
   gate_total_ms?: number
+  // Screenshot info
+  smoke_screenshot_count?: number
+  smoke_screenshot_dir?: string
+  e2e_screenshot_count?: number
+  e2e_screenshot_dir?: string
+  // Misc
+  model?: string
   session_count?: number
   logs?: string[]
   extras?: Record<string, unknown>
@@ -130,6 +147,8 @@ export interface SessionInfo {
   id: string
   size: number
   mtime: string
+  label?: string
+  full_label?: string
 }
 
 export function getChangeSession(
@@ -146,6 +165,41 @@ export function getActivity(project: string): Promise<ActivityInfo[]> {
 
 export function getLog(project: string): Promise<{ lines: string[] }> {
   return fetchJSON(`/${project}/log`)
+}
+
+// --- Screenshots ---
+
+export interface ScreenshotFile {
+  path: string
+  name: string
+}
+
+export function getScreenshots(project: string, name: string): Promise<{ smoke: ScreenshotFile[]; e2e: ScreenshotFile[] }> {
+  return fetchJSON(`/${project}/changes/${name}/screenshots`)
+}
+
+// --- Plans ---
+
+export interface PlanFile {
+  filename: string
+  size: number
+  mtime: string
+}
+
+export function getPlans(project: string): Promise<{ plans: PlanFile[] }> {
+  return fetchJSON(`/${project}/plans`)
+}
+
+export function getPlan(project: string, filename: string): Promise<unknown> {
+  return fetchJSON(`/${project}/plans/${filename}`)
+}
+
+// --- Events ---
+
+export function getEvents(project: string, type?: string, limit = 500): Promise<{ events: Record<string, unknown>[] }> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (type) params.set('type', type)
+  return fetchJSON(`/${project}/events?${params}`)
 }
 
 // --- Write endpoints ---

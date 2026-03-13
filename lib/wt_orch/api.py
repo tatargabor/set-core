@@ -470,27 +470,36 @@ def get_change_logs(project: str, name: str):
 
     for c in state.changes:
         if c.name == name:
-            if not c.worktree_path:
-                return {"logs": []}
-            wt_path = Path(c.worktree_path)
-            logs_dir = wt_path / ".claude" / "logs"
             logs = []
-            if logs_dir.is_dir():
-                logs = sorted(
-                    f.name for f in logs_dir.iterdir()
-                    if f.is_file() and f.suffix == ".log"
-                )
+            # Try worktree first
+            if c.worktree_path:
+                wt_path = Path(c.worktree_path)
+                logs_dir = wt_path / ".claude" / "logs"
+                if logs_dir.is_dir():
+                    logs = sorted(
+                        f.name for f in logs_dir.iterdir()
+                        if f.is_file() and f.suffix == ".log"
+                    )
+            # Fallback: archived logs
+            if not logs:
+                archive_dir = project_path / "wt" / "orchestration" / "logs" / name
+                if archive_dir.is_dir():
+                    logs = sorted(
+                        f.name for f in archive_dir.iterdir()
+                        if f.is_file() and f.suffix == ".log"
+                    )
             result: dict = {"logs": logs}
             # Include iteration info
-            loop_state = wt_path / ".claude" / "loop-state.json"
-            if loop_state.exists():
-                try:
-                    with open(loop_state) as f:
-                        ls = json.load(f)
-                    result["iteration"] = ls.get("current_iteration", 0)
-                    result["max_iterations"] = ls.get("max_iterations", 0)
-                except (json.JSONDecodeError, OSError):
-                    pass
+            if c.worktree_path:
+                loop_state = Path(c.worktree_path) / ".claude" / "loop-state.json"
+                if loop_state.exists():
+                    try:
+                        with open(loop_state) as f:
+                            ls = json.load(f)
+                        result["iteration"] = ls.get("current_iteration", 0)
+                        result["max_iterations"] = ls.get("max_iterations", 0)
+                    except (json.JSONDecodeError, OSError):
+                        pass
             return result
     raise HTTPException(404, f"Change not found: {name}")
 
@@ -513,10 +522,18 @@ def get_change_log(project: str, name: str, filename: str):
 
     for c in state.changes:
         if c.name == name:
-            if not c.worktree_path:
-                raise HTTPException(404, "Change has no worktree")
-            log_file = Path(c.worktree_path) / ".claude" / "logs" / filename
-            if not log_file.exists():
+            log_file = None
+            # Try worktree first
+            if c.worktree_path:
+                candidate = Path(c.worktree_path) / ".claude" / "logs" / filename
+                if candidate.exists():
+                    log_file = candidate
+            # Fallback: archived logs
+            if not log_file:
+                candidate = project_path / "wt" / "orchestration" / "logs" / name / filename
+                if candidate.exists():
+                    log_file = candidate
+            if not log_file:
                 raise HTTPException(404, f"Log file not found: {filename}")
             try:
                 content = log_file.read_text(errors="replace")
@@ -550,6 +567,55 @@ def _sessions_dir_for_change(state, name: str, project_path: Path | None = None)
     return None, None
 
 
+def _derive_session_label(session_path: Path) -> tuple[str, str]:
+    """Derive a short label and full task text from a session JSONL's first enqueue entry.
+
+    Returns (short_label, full_text).
+    """
+    try:
+        with open(session_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("type") != "queue-operation":
+                    continue
+                content = entry.get("content", "")
+                # Extract task line
+                for text_line in content.split("\n"):
+                    text_line = text_line.strip().lstrip("#").strip()
+                    if not text_line:
+                        continue
+                    low = text_line.lower()
+                    if "build failed" in low or "fix build" in low or "fix the build" in low:
+                        return "Build fix", text_line
+                    if "test" in low and ("fail" in low or "fix" in low):
+                        return "Test fix", text_line
+                    if "verify" in low:
+                        return "Verify", text_line
+                    if "implement" in low or "task" in low:
+                        label = text_line[:25].rstrip()
+                        if len(text_line) > 25:
+                            label += "..."
+                        return label, text_line
+                # Fallback: first meaningful line
+                for text_line in content.split("\n"):
+                    text_line = text_line.strip().lstrip("#").strip()
+                    if text_line and len(text_line) > 3:
+                        label = text_line[:25].rstrip()
+                        if len(text_line) > 25:
+                            label += "..."
+                        return label, text_line
+                break
+    except OSError:
+        pass
+    return "", ""
+
+
 def _list_session_files(sessions_dir: Path) -> list[dict]:
     """List JSONL session files sorted by mtime desc."""
     files = []
@@ -557,10 +623,13 @@ def _list_session_files(sessions_dir: Path) -> list[dict]:
         if f.is_file() and f.suffix == ".jsonl":
             try:
                 st = f.stat()
+                label, full_label = _derive_session_label(f)
                 files.append({
                     "id": f.stem,
                     "size": st.st_size,
                     "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+                    "label": label,
+                    "full_label": full_label,
                 })
             except OSError:
                 pass
@@ -755,6 +824,127 @@ def get_log(project: str, lines: int = Query(500, ge=1, le=10000)):
         return {"lines": all_lines[-lines:]}
     except OSError:
         return {"lines": []}
+
+
+# ─── Screenshots, Plans, Events ──────────────────────────────────────
+
+
+@router.get("/api/{project}/changes/{name}/screenshots")
+def get_change_screenshots(project: str, name: str):
+    """List screenshot files for a change (smoke and E2E)."""
+    project_path = _resolve_project(project)
+    sp = _state_path(project_path)
+    if not sp.exists():
+        raise HTTPException(404, "No orchestration state found")
+    try:
+        state = load_state(str(sp))
+    except StateCorruptionError as e:
+        raise HTTPException(500, f"Corrupt state: {e.detail}")
+
+    for c in state.changes:
+        if c.name == name:
+            result: dict = {"smoke": [], "e2e": []}
+            smoke_dir = getattr(c, "smoke_screenshot_dir", None) or c.extras.get("smoke_screenshot_dir")
+            if smoke_dir:
+                sd = project_path / smoke_dir
+                if sd.is_dir():
+                    result["smoke"] = sorted(
+                        {"path": f"{smoke_dir}/{f.relative_to(sd)}", "name": f.name}
+                        for f in sd.rglob("*.png")
+                    )
+            e2e_dir = getattr(c, "e2e_screenshot_dir", None) or c.extras.get("e2e_screenshot_dir")
+            if e2e_dir:
+                ed = project_path / e2e_dir
+                if ed.is_dir():
+                    result["e2e"] = sorted(
+                        {"path": f"{e2e_dir}/{f.relative_to(ed)}", "name": f.name}
+                        for f in ed.rglob("*.png")
+                    )
+            return result
+    raise HTTPException(404, f"Change not found: {name}")
+
+
+@router.get("/api/{project}/screenshots/{file_path:path}")
+def serve_screenshot(project: str, file_path: str):
+    """Serve a screenshot image file."""
+    from fastapi.responses import FileResponse as FR
+
+    if ".." in file_path:
+        raise HTTPException(400, "Invalid path")
+    project_path = _resolve_project(project)
+    full_path = project_path / file_path
+    if not full_path.exists() or not full_path.suffix == ".png":
+        raise HTTPException(404, "Screenshot not found")
+    # Ensure path is within project's wt/orchestration/
+    orch_dir = project_path / "wt" / "orchestration"
+    try:
+        full_path.resolve().relative_to(orch_dir.resolve())
+    except ValueError:
+        raise HTTPException(403, "Access denied")
+    return FR(str(full_path), media_type="image/png")
+
+
+@router.get("/api/{project}/plans")
+def list_plans(project: str):
+    """List decompose plan files."""
+    project_path = _resolve_project(project)
+    plans_dir = project_path / "wt" / "orchestration" / "plans"
+    if not plans_dir.is_dir():
+        return {"plans": []}
+    plans = []
+    for f in sorted(plans_dir.iterdir()):
+        if f.is_file() and f.suffix == ".json":
+            plans.append({
+                "filename": f.name,
+                "size": f.stat().st_size,
+                "mtime": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat(),
+            })
+    return {"plans": plans}
+
+
+@router.get("/api/{project}/plans/{filename}")
+def get_plan(project: str, filename: str):
+    """Read a decompose plan JSON file."""
+    if ".." in filename or "/" in filename or not filename.endswith(".json"):
+        raise HTTPException(400, "Invalid filename")
+    project_path = _resolve_project(project)
+    plan_file = project_path / "wt" / "orchestration" / "plans" / filename
+    if not plan_file.exists():
+        raise HTTPException(404, f"Plan not found: {filename}")
+    try:
+        with open(plan_file) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(500, f"Failed to read plan: {e}")
+
+
+@router.get("/api/{project}/events")
+def get_events(project: str, type: Optional[str] = Query(None), limit: int = Query(500, ge=1, le=5000)):
+    """Read orchestration state events, optionally filtered by type."""
+    project_path = _resolve_project(project)
+    events_file = project_path / "orchestration-state-events.jsonl"
+    if not events_file.exists():
+        # Try new location
+        events_file = project_path / "wt" / "orchestration" / "orchestration-state-events.jsonl"
+    if not events_file.exists():
+        return {"events": []}
+    events = []
+    try:
+        with open(events_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                    if type and ev.get("type") != type:
+                        continue
+                    events.append(ev)
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return {"events": []}
+    return {"events": events[-limit:]}
 
 
 # ─── WRITE endpoints ─────────────────────────────────────────────────

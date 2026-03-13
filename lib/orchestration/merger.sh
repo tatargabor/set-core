@@ -444,10 +444,30 @@ _sync_running_worktrees() {
 
 # ─── Worktree Cleanup ────────────────────────────────────────────────
 
+# Archive worktree agent logs before cleanup
+_archive_worktree_logs() {
+    local change_name="$1"
+    local wt_path="$2"
+    local logs_src="$wt_path/.claude/logs"
+    [[ -d "$logs_src" ]] || return 0
+
+    local archive_dir="wt/orchestration/logs/$change_name"
+    mkdir -p "$archive_dir"
+    cp -n "$logs_src"/*.log "$archive_dir/" 2>/dev/null || true
+    local count
+    count=$(find "$archive_dir" -name "*.log" 2>/dev/null | wc -l)
+    log_info "Archived $count log files for $change_name to $archive_dir"
+}
+
 # Clean up worktree and branch after successful merge
 cleanup_worktree() {
     local change_name="$1"
     local wt_path="$2"
+
+    # Archive agent logs before removing the worktree
+    if [[ -n "$wt_path" && -d "$wt_path" ]]; then
+        _archive_worktree_logs "$change_name" "$wt_path"
+    fi
 
     # Try wt-close first (handles both worktree removal and branch deletion)
     if wt-close "$change_name" 2>/dev/null; then
