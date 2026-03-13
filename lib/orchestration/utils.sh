@@ -148,18 +148,17 @@ find_brief() {
 }
 
 # Find input document and determine mode.
-# Sets global: INPUT_MODE ("spec" or "brief"), INPUT_PATH
+# Sets global: INPUT_MODE ("digest" or "brief"), INPUT_PATH
 find_input() {
-    # --spec takes priority
+    # --spec takes priority — always routes to digest mode
     if [[ -n "$SPEC_OVERRIDE" ]]; then
-        # Directory input → digest mode
         if [[ -d "$SPEC_OVERRIDE" ]]; then
             INPUT_MODE="digest"
             INPUT_PATH="$(cd "$SPEC_OVERRIDE" && pwd)"
             return 0
         fi
         if [[ -f "$SPEC_OVERRIDE" ]]; then
-            INPUT_MODE="spec"
+            INPUT_MODE="digest"
             INPUT_PATH="$(cd "$(dirname "$SPEC_OVERRIDE")" && pwd)/$(basename "$SPEC_OVERRIDE")"
             return 0
         fi
@@ -167,11 +166,11 @@ find_input() {
         local wt_spec="wt/orchestration/specs/${SPEC_OVERRIDE}.md"
         local wt_spec_sub="wt/orchestration/specs/${SPEC_OVERRIDE}"
         if [[ -f "$wt_spec" ]]; then
-            INPUT_MODE="spec"
+            INPUT_MODE="digest"
             INPUT_PATH="$(cd "$(dirname "$wt_spec")" && pwd)/$(basename "$wt_spec")"
             return 0
         elif [[ -f "$wt_spec_sub" ]]; then
-            INPUT_MODE="spec"
+            INPUT_MODE="digest"
             INPUT_PATH="$(cd "$(dirname "$wt_spec_sub")" && pwd)/$(basename "$wt_spec_sub")"
             return 0
         fi

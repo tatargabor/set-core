@@ -398,7 +398,7 @@ dispatch_change() {
         if [[ ! -f "$proposal_path" ]]; then
             # Generate core proposal via Python template (replaces 3 heredocs)
             local _spec_ref=""
-            [[ "${INPUT_MODE:-}" == "spec" && -n "${INPUT_PATH:-}" ]] && _spec_ref="$INPUT_PATH"
+            [[ "${INPUT_MODE:-}" == "digest" && -n "${INPUT_PATH:-}" ]] && _spec_ref="$INPUT_PATH"
             jq -n \
                 --arg change_name "$change_name" \
                 --arg scope "$scope" \

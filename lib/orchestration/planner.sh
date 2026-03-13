@@ -842,36 +842,6 @@ $deferred_ambs
         fi
 
         input_content="$digest_content"
-    elif [[ "$INPUT_MODE" == "spec" ]]; then
-        hash=$(brief_hash "$INPUT_PATH")
-        # Spec mode: check if summarization is needed
-        local token_est
-        token_est=$(estimate_tokens "$INPUT_PATH")
-        if [[ "$token_est" -gt 8000 ]]; then
-            # Check spec summary cache
-            local cache_file=".claude/spec-summary-cache.json"
-            local cached_hash=""
-            if [[ -f "$cache_file" ]]; then
-                cached_hash=$(jq -r '.brief_hash // ""' "$cache_file" 2>/dev/null)
-            fi
-            if [[ "$cached_hash" == "$hash" && -n "$cached_hash" ]]; then
-                log_info "Using cached spec summary (hash=$hash)"
-                input_content=$(jq -r '.summary' "$cache_file")
-            else
-                info "Large spec detected (~${token_est} tokens). Summarizing..."
-                log_info "Spec summarization triggered (est. $token_est tokens)"
-                local sum_model
-                sum_model=$(echo "$directives" | jq -r '.summarize_model // "haiku"')
-                input_content=$(summarize_spec "$INPUT_PATH" "$PHASE_HINT" "$sum_model")
-                # Cache the summary
-                mkdir -p .claude
-                jq -n --arg bh "$hash" --arg sum "$input_content" --arg ca "$(date -Iseconds)" \
-                    '{brief_hash: $bh, summary: $sum, created_at: $ca}' > "$cache_file"
-                log_info "Spec summary cached (hash=$hash)"
-            fi
-        else
-            input_content=$(cat "$INPUT_PATH")
-        fi
     else
         hash=$(brief_hash "$INPUT_PATH")
         input_content=$(cat "$INPUT_PATH")
@@ -920,8 +890,8 @@ $req_entries"
     fi
 
     local prompt
-    if [[ "$INPUT_MODE" == "spec" || "$INPUT_MODE" == "digest" ]]; then
-        # Spec/digest-mode prompt: LLM determines what's next
+    if [[ "$INPUT_MODE" == "digest" ]]; then
+        # Digest-mode prompt: LLM determines what's next
         local phase_instruction=""
         if [[ -n "$PHASE_HINT" ]]; then
             phase_instruction="The user requested phase: $PHASE_HINT. Focus decomposition on items matching this phase."
@@ -1164,8 +1134,8 @@ PYEOF
     success "Plan created: $change_count changes (v$plan_version)"
     log_info "Plan created: $change_count changes (v$plan_version, mode=$INPUT_MODE)"
 
-    # Show phase detection for spec mode
-    if [[ "$INPUT_MODE" == "spec" ]]; then
+    # Show phase detection for digest mode
+    if [[ "$INPUT_MODE" == "digest" ]]; then
         local phase_detected
         phase_detected=$(jq -r '.phase_detected // empty' "$PLAN_FILENAME")
         if [[ -n "$phase_detected" ]]; then

@@ -4,12 +4,17 @@
 TBD - created by archiving change spec-driven-orchestration. Update Purpose after archive.
 ## Requirements
 ### Requirement: Spec file as orchestration input
-The system SHALL accept an arbitrary markdown specification document as the primary input for orchestration via the `--spec <path>` CLI flag.
+The system SHALL accept an arbitrary markdown specification document as the primary input for orchestration via the `--spec <path>` CLI flag. When `--spec` points to a file, the system SHALL route it through the digest pipeline (same as directory input), producing structured requirements, ambiguities, and domain summaries before decomposition.
 
-#### Scenario: Explicit spec path
-- **WHEN** the user runs `wt-orchestrate --spec docs/v3/v3.md`
-- **THEN** the system SHALL read the file at the given path
-- **AND** pass its content to the LLM for extraction and decomposition
+#### Scenario: Explicit spec file path
+- **WHEN** the user runs `wt-orchestrate --spec docs/v1-minishop.md`
+- **THEN** the system SHALL set `INPUT_MODE="digest"` and `INPUT_PATH` to the absolute file path
+- **AND** auto-trigger `cmd_digest` to produce `wt/orchestration/digest/` output before decomposition
+
+#### Scenario: Explicit spec directory path
+- **WHEN** the user runs `wt-orchestrate --spec docs/`
+- **THEN** the system SHALL set `INPUT_MODE="digest"` and `INPUT_PATH` to the absolute directory path
+- **AND** auto-trigger `cmd_digest` to produce `wt/orchestration/digest/` output before decomposition
 
 #### Scenario: Spec file not found
 - **WHEN** the user provides `--spec <path>` and the file does not exist
@@ -18,7 +23,7 @@ The system SHALL accept an arbitrary markdown specification document as the prim
 #### Scenario: Spec format agnostic
 - **WHEN** a spec document is provided
 - **THEN** the system SHALL NOT require any specific section headers (no mandatory `### Next`, `## Feature Roadmap`, etc.)
-- **AND** the LLM SHALL determine actionable items from the document's content, structure, and status markers
+- **AND** the digest SHALL extract requirements from the document's content regardless of structure
 
 ### Requirement: LLM-based extraction of actionable items
 The system SHALL use a Claude API call to determine which items from the spec should be implemented next, replacing bash regex parsing for spec input.
