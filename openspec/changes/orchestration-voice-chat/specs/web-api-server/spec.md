@@ -1,0 +1,57 @@
+## ADDED Requirements
+
+### Requirement: Soniox API key endpoint
+The server SHALL expose `GET /api/soniox-key` which returns the Soniox API key from the `SONIOX_API_KEY` environment variable. If the variable is not set, the endpoint SHALL return HTTP 404.
+
+#### Scenario: Key configured
+- **WHEN** `SONIOX_API_KEY` is set and a client requests `GET /api/soniox-key`
+- **THEN** the response is `{ "api_key": "<value>" }` with HTTP 200
+
+#### Scenario: Key not configured
+- **WHEN** `SONIOX_API_KEY` is not set and a client requests `GET /api/soniox-key`
+- **THEN** the response is HTTP 404 with `{ "error": "Soniox API key not configured" }`
+
+### Requirement: Chat WebSocket endpoint
+The server SHALL expose `WS /ws/{project}/chat` that manages an interactive agent subprocess. On first connection, it SHALL spawn a `claude --output-format stream-json` process in the project directory. Messages from the browser SHALL be written to the subprocess stdin. Subprocess stdout SHALL be parsed and forwarded to the browser as JSON events.
+
+#### Scenario: Client connects and sends message
+- **WHEN** a WebSocket client connects to `/ws/{project}/chat` and sends `{ "type": "message", "content": "list worktrees" }`
+- **THEN** the server spawns a claude subprocess (if not already running), writes the message to stdin, and streams response events back to the client
+
+#### Scenario: Subprocess already running
+- **WHEN** a client connects and a claude subprocess for this project is already running (from a previous connection)
+- **THEN** the existing subprocess is reused — no new process is spawned
+
+#### Scenario: Client sends stop
+- **WHEN** the client sends `{ "type": "stop" }`
+- **THEN** the server sends SIGTERM to the claude subprocess, waits for exit, and sends `{ "type": "status", "status": "idle" }` to the client
+
+#### Scenario: Subprocess exits on its own
+- **WHEN** the claude subprocess exits (context exhaustion, error)
+- **THEN** the server sends `{ "type": "error", "message": "Agent session ended" }` and closes the WebSocket connection with a descriptive close reason
+
+### Requirement: Agent subprocess lifecycle management
+The server SHALL maintain at most one agent subprocess per project. On server shutdown, all agent subprocesses SHALL be terminated via SIGTERM with a 5-second grace period before SIGKILL. Subprocess stderr SHALL be logged to the server log.
+
+#### Scenario: Server shutdown with active agent
+- **WHEN** the server receives SIGTERM while an agent subprocess is running
+- **THEN** the agent subprocess receives SIGTERM, the server waits up to 5 seconds, then sends SIGKILL if still alive
+
+#### Scenario: Orphan prevention
+- **WHEN** the server starts
+- **THEN** it does NOT attempt to adopt agent subprocesses from a previous server instance (clean start)
+
+### Requirement: Stream-JSON event parsing
+The server SHALL parse the claude subprocess stdout as newline-delimited JSON (stream-json format). Each parsed event SHALL be mapped to the chat WebSocket protocol and forwarded to the connected client. Unknown event types SHALL be forwarded as-is.
+
+#### Scenario: Text content event
+- **WHEN** the subprocess emits a text content event
+- **THEN** the server sends `{ "type": "assistant_text", "content": "..." }` to the client
+
+#### Scenario: Tool use event
+- **WHEN** the subprocess emits a tool use event (e.g., Bash)
+- **THEN** the server sends `{ "type": "tool_use", "tool": "Bash", "input": "..." }` to the client
+
+#### Scenario: Response complete
+- **WHEN** the subprocess emits a response complete event
+- **THEN** the server sends `{ "type": "assistant_done" }` to the client
