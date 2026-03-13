@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .api import _resolve_project
+from .chat_context import build_chat_context
 
 logger = logging.getLogger("wt-web.chat")
 
@@ -93,7 +94,12 @@ class ChatSession:
         env = {**os.environ}
         env.pop("CLAUDECODE", None)  # Prevent nested session protection
 
+        # Build dynamic supervisor context (fresh on every message)
+        context = build_chat_context(self.project_path)
+
         cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose"]
+        if context:
+            cmd.extend(["--append-system-prompt", context])
         if self.session_id:
             cmd.extend(["--resume", self.session_id])
         else:
