@@ -66,44 +66,44 @@ export default function Dashboard({ project }: Props) {
       {checkpoint && (
         <CheckpointBanner project={project} onDismiss={() => setCheckpoint(false)} />
       )}
+
+      {/* Collapsible panels — between header and main split */}
+      <div className="flex items-center gap-3 px-4 py-1 border-b border-neutral-800/50">
+        <button
+          onClick={() => setShowPlan(p => !p)}
+          className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300"
+        >
+          <span>{showPlan ? '▾' : '▸'}</span>
+          <span>Plan</span>
+        </button>
+        <button
+          onClick={() => setShowTokens(p => !p)}
+          className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300"
+        >
+          <span>{showTokens ? '▾' : '▸'}</span>
+          <span>Tokens</span>
+        </button>
+      </div>
+      {showPlan && (
+        <div className="border-b border-neutral-800 max-h-[250px] overflow-auto">
+          <PlanViewer project={project} />
+        </div>
+      )}
+      {showTokens && (
+        <div className="border-b border-neutral-800">
+          <TokenChart project={project} />
+        </div>
+      )}
+
       <div className="flex-1 min-h-0">
         <ResizableSplit
           top={
-            <div className="h-full flex flex-col overflow-auto">
-              {/* Collapsible sections */}
-              <div className="flex items-center gap-3 px-4 py-1 border-b border-neutral-800/50">
-                <button
-                  onClick={() => setShowPlan(p => !p)}
-                  className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300"
-                >
-                  <span>{showPlan ? '▾' : '▸'}</span>
-                  <span>Plan</span>
-                </button>
-                <button
-                  onClick={() => setShowTokens(p => !p)}
-                  className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300"
-                >
-                  <span>{showTokens ? '▾' : '▸'}</span>
-                  <span>Tokens</span>
-                </button>
-              </div>
-              {showPlan && (
-                <div className="border-b border-neutral-800 max-h-[250px] overflow-auto">
-                  <PlanViewer project={project} />
-                </div>
-              )}
-              {showTokens && (
-                <div className="border-b border-neutral-800">
-                  <TokenChart project={project} />
-                </div>
-              )}
-              <ChangeTable
-                changes={changes}
-                project={project}
-                selected={selectedChange}
-                onSelect={setSelectedChange}
-              />
-            </div>
+            <ChangeTable
+              changes={changes}
+              project={project}
+              selected={selectedChange}
+              onSelect={setSelectedChange}
+            />
           }
           bottom={
             <LogPanel
