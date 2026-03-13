@@ -11,7 +11,7 @@ interface Props {
   onClose: () => void
 }
 
-export default function ScreenshotGallery({ project, changeName, onClose }: Props) {
+export default function ScreenshotGallery({ project, changeName }: Props) {
   const [smoke, setSmoke] = useState<ScreenshotFile[]>([])
   const [e2e, setE2e] = useState<ScreenshotFile[]>([])
   const [loading, setLoading] = useState(true)

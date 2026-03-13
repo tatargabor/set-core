@@ -5,6 +5,7 @@ import GateBar from './GateBar'
 import GateDetail from './GateDetail'
 import ScreenshotGallery from './ScreenshotGallery'
 import ChangeTimeline from './ChangeTimeline'
+import useIsMobile from '../hooks/useIsMobile'
 
 interface Props {
   changes: ChangeInfo[]
@@ -56,6 +57,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [expandedGate, setExpandedGate] = useState<string | null>(null)
   const [screenshotChange, setScreenshotChange] = useState<string | null>(null)
+  const isMobile = useIsMobile()
 
   const toggleGate = (e: React.MouseEvent, name: string) => {
     e.stopPropagation()
@@ -85,6 +87,96 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
     )
   }
 
+  // Mobile: card layout
+  if (isMobile) {
+    return (
+      <div className="p-2 space-y-2">
+        {changes.map((c) => {
+          const clickable = !!c.worktree_path
+          const isSelected = selected === c.name
+          const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result)
+          const isGateExpanded = expandedGate === c.name
+          return (
+            <div key={c.name}>
+              <div
+                onClick={clickable && onSelect ? () => onSelect(isSelected ? null : c.name) : undefined}
+                className={`rounded-lg border border-neutral-800 p-3 transition-colors ${
+                  clickable ? 'active:bg-neutral-800/70' : ''
+                } ${isSelected ? 'bg-neutral-900/70 border-l-2 border-l-blue-500' : 'bg-neutral-900/30'}`}
+              >
+                {/* Row 1: name + status */}
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="font-mono text-sm text-neutral-200 truncate">{c.name}</span>
+                  <span className={`text-sm font-medium shrink-0 ${statusColor[c.status] ?? 'text-neutral-400'}`}>
+                    {c.status}
+                  </span>
+                </div>
+
+                {/* Row 2: duration + gates */}
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs text-neutral-400">{formatDuration(changeDuration(c))}</span>
+                  <div
+                    className="cursor-pointer"
+                    onClick={(e) => toggleGate(e, c.name)}
+                  >
+                    <GateBar
+                      test_result={c.test_result}
+                      smoke_result={c.smoke_result}
+                      review_result={c.review_result}
+                      build_result={c.build_result}
+                      hasScreenshots={!!c.smoke_screenshot_count || !!c.e2e_screenshot_count}
+                      onScreenshots={(e) => toggleScreenshots(e, c.name)}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 3: actions */}
+                <div className="flex gap-2">
+                  {['running', 'verifying', 'implementing'].includes(c.status) && (
+                    <button
+                      onClick={(e) => handleAction(e, c.name, 'stop')}
+                      disabled={actionLoading === `${c.name}:stop`}
+                      className="px-3 min-h-[44px] text-sm bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50"
+                    >
+                      Stop
+                    </button>
+                  )}
+                  {(c.status === 'pending' || c.status === 'failed' || c.status === 'verify-failed' || c.status === 'stalled') && (
+                    <button
+                      onClick={(e) => handleAction(e, c.name, 'skip')}
+                      disabled={actionLoading === `${c.name}:skip`}
+                      className="px-3 min-h-[44px] text-sm bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700 disabled:opacity-50"
+                    >
+                      Skip
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Expanded gate detail */}
+              {isGateExpanded && hasGates && (
+                <div className="mt-1 rounded-lg border border-neutral-800/50 bg-neutral-950/50 p-2">
+                  <ChangeTimeline change={c} />
+                  <GateDetail change={c} />
+                </div>
+              )}
+              {screenshotChange === c.name && (
+                <div className="mt-1 rounded-lg border border-neutral-800/50 bg-neutral-950/50 p-2">
+                  <ScreenshotGallery
+                    project={project}
+                    changeName={c.name}
+                    onClose={() => setScreenshotChange(null)}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Desktop: table layout
   return (
     <table className="w-full text-sm">
       <thead>

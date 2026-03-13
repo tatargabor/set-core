@@ -95,7 +95,7 @@ export default function TokenChart({ project }: Props) {
           <Tooltip
             contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 6, fontSize: 11 }}
             labelStyle={{ color: '#aaa' }}
-            formatter={(value: number, name: string) => [formatK(value), name]}
+            formatter={(value, name) => [formatK(value as number), name as string]}
           />
           <Area type="monotone" dataKey="input" stroke="#3b82f6" fill="url(#inputGrad)" strokeWidth={1.5} />
           <Area type="monotone" dataKey="output" stroke="#22c55e" fill="url(#outputGrad)" strokeWidth={1.5} />

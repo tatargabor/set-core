@@ -148,7 +148,7 @@ def cmd_serve(args):
     from .server import create_app
 
     port = args.port or int(os.environ.get("WT_WEB_PORT", "7400"))
-    host = args.host or "127.0.0.1"
+    host = args.host or "0.0.0.0"
 
     app = create_app()
     print(f"wt-web dashboard running at http://{host}:{port}")
@@ -238,7 +238,7 @@ def main():
     # --- serve ---
     serve_parser = subparsers.add_parser("serve", help="Start the web dashboard server")
     serve_parser.add_argument("--port", type=int, default=None, help="Port (default: 7400, env: WT_WEB_PORT)")
-    serve_parser.add_argument("--host", default=None, help="Host (default: 127.0.0.1)")
+    serve_parser.add_argument("--host", default=None, help="Host (default: 0.0.0.0, use 127.0.0.1 to restrict to localhost)")
 
     args = parser.parse_args()
 

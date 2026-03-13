@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useWebSocket, type WSEvent } from '../hooks/useWebSocket'
 import StatusHeader from '../components/StatusHeader'
 import ChangeTable from '../components/ChangeTable'
@@ -10,9 +10,11 @@ import TokenChart from '../components/TokenChart'
 import AuditPanel from '../components/AuditPanel'
 import ProgressView from '../components/ProgressView'
 import DigestView from '../components/DigestView'
+import SessionPanel from '../components/SessionPanel'
+import useIsMobile from '../hooks/useIsMobile'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest'
+type PanelTab = 'changes' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions'
 
 interface Props {
   project: string | null
@@ -25,6 +27,9 @@ export default function Dashboard({ project }: Props) {
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<PanelTab>('changes')
+  const [logExpanded, setLogExpanded] = useState(false)
+  const isMobile = useIsMobile()
+  const tabBarRef = useRef<HTMLDivElement>(null)
 
   const onEvent = useCallback((event: WSEvent) => {
     switch (event.event) {
@@ -65,6 +70,7 @@ export default function Dashboard({ project }: Props) {
     { id: 'requirements', label: 'Requirements' },
     { id: 'audit', label: 'Audit', hidden: !hasAudit },
     { id: 'digest', label: 'Digest' },
+    { id: 'sessions', label: 'Sessions' },
   ]
 
   return (
@@ -75,12 +81,23 @@ export default function Dashboard({ project }: Props) {
       )}
 
       {/* Tab bar */}
-      <div className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900/30">
+      <div
+        ref={tabBarRef}
+        className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900/30 overflow-x-auto scrollbar-hide"
+      >
         {tabs.filter(t => !t.hidden).map(t => (
           <button
             key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            className={`px-3 py-1 text-[11px] rounded transition-colors ${
+            onClick={() => {
+              setActiveTab(t.id)
+              // Auto-scroll active tab into view on mobile
+              if (tabBarRef.current) {
+                const btn = tabBarRef.current.querySelector(`[data-tab="${t.id}"]`)
+                btn?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+              }
+            }}
+            data-tab={t.id}
+            className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-[11px] whitespace-nowrap rounded transition-colors ${
               activeTab === t.id
                 ? 'bg-neutral-800 text-neutral-200 font-medium'
                 : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
@@ -92,10 +109,11 @@ export default function Dashboard({ project }: Props) {
       </div>
 
       {/* Tab content + log split */}
-      <div className="flex-1 min-h-0">
-        <ResizableSplit
-          top={
-            <div className="h-full overflow-auto">
+      <div className="flex-1 min-h-0 relative">
+        {isMobile ? (
+          <>
+            {/* Mobile: stacked — full-height tab content + collapsible log bottom sheet */}
+            <div className={`h-full overflow-auto ${logExpanded ? 'pb-[60vh]' : 'pb-11'}`}>
               {activeTab === 'changes' && (
                 <ChangeTable
                   changes={changes}
@@ -119,17 +137,76 @@ export default function Dashboard({ project }: Props) {
               {activeTab === 'digest' && (
                 <DigestView project={project} />
               )}
+              {activeTab === 'sessions' && (
+                <SessionPanel project={project} />
+              )}
             </div>
-          }
-          bottom={
-            <LogPanel
-              orchLines={logLines}
-              selectedChange={selectedChangeInfo}
-              project={project}
-            />
-          }
-          defaultRatio={0.55}
-        />
+
+            {/* Mobile log bottom sheet */}
+            <div className={`absolute bottom-0 left-0 right-0 bg-neutral-950 border-t border-neutral-800 transition-all duration-200 ${
+              logExpanded ? 'h-[60vh]' : 'h-11'
+            }`}>
+              <button
+                onClick={() => setLogExpanded(!logExpanded)}
+                className="w-full h-11 flex items-center justify-center gap-2 text-sm text-neutral-400 bg-neutral-900/80 border-b border-neutral-800"
+              >
+                <span>Logs</span>
+                <span className="text-xs">{logExpanded ? '▼' : '▲'}</span>
+              </button>
+              {logExpanded && (
+                <div className="h-[calc(100%-44px)] overflow-auto">
+                  <LogPanel
+                    orchLines={logLines}
+                    selectedChange={selectedChangeInfo}
+                    project={project}
+                  />
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          /* Desktop: resizable split */
+          <ResizableSplit
+            top={
+              <div className="h-full overflow-auto">
+                {activeTab === 'changes' && (
+                  <ChangeTable
+                    changes={changes}
+                    project={project}
+                    selected={selectedChange}
+                    onSelect={setSelectedChange}
+                  />
+                )}
+                {activeTab === 'plan' && (
+                  <PlanViewer project={project} />
+                )}
+                {activeTab === 'tokens' && (
+                  <TokenChart project={project} />
+                )}
+                {activeTab === 'requirements' && (
+                  <ProgressView project={project} />
+                )}
+                {activeTab === 'audit' && state?.phase_audit_results && (
+                  <AuditPanel results={state.phase_audit_results} />
+                )}
+                {activeTab === 'digest' && (
+                  <DigestView project={project} />
+                )}
+                {activeTab === 'sessions' && (
+                  <SessionPanel project={project} />
+                )}
+              </div>
+            }
+            bottom={
+              <LogPanel
+                orchLines={logLines}
+                selectedChange={selectedChangeInfo}
+                project={project}
+              />
+            }
+            defaultRatio={0.55}
+          />
+        )}
       </div>
     </div>
   )

@@ -52,18 +52,18 @@ export default function StatusHeader({ state, connected, project }: Props) {
   const done = changes.filter((c) => ['done', 'merged'].includes(c.status)).length
 
   return (
-    <div className="flex items-center gap-4 px-4 py-3 border-b border-neutral-800 bg-neutral-900/50">
+    <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50">
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold text-neutral-100">{project}</h2>
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${badgeColor[statusBadge] ?? 'bg-neutral-800 text-neutral-400'}`}>
           {statusBadge}
         </span>
-        <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} title={connected ? 'Connected' : 'Disconnected'} />
+        <span className={`w-2 h-2 rounded-full hidden md:inline-block ${connected ? 'bg-green-500' : 'bg-red-500'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </div>
 
       {state && (
         <>
-          <div className="text-xs text-neutral-500">
+          <div className="text-xs text-neutral-500 hidden md:block">
             {state.plan_version && <span>v{state.plan_version}</span>}
             {state.active_seconds ? (
               <span className="ml-2">{formatDuration(state.active_seconds)}</span>
@@ -72,10 +72,10 @@ export default function StatusHeader({ state, connected, project }: Props) {
 
           <div className="flex gap-3 ml-auto text-xs text-neutral-400">
             <span>{done}/{changes.length} changes</span>
-            <span title="Input tokens">In: {formatTokens(totals.input)}</span>
-            <span title="Output tokens">Out: {formatTokens(totals.output)}</span>
+            <span className="hidden md:inline" title="Input tokens">In: {formatTokens(totals.input)}</span>
+            <span className="hidden md:inline" title="Output tokens">Out: {formatTokens(totals.output)}</span>
             {totals.cacheRead > 0 && (
-              <span title="Cache read">Cache: {formatTokens(totals.cacheRead)}</span>
+              <span className="hidden md:inline" title="Cache read">Cache: {formatTokens(totals.cacheRead)}</span>
             )}
           </div>
 
@@ -84,7 +84,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
               <button
                 onClick={async () => { setLoading('approve'); try { await approve(project) } catch {} setLoading(null) }}
                 disabled={loading === 'approve'}
-                className="px-3 py-1 text-xs bg-green-900/60 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 font-medium"
+                className="px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-xs bg-green-900/60 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 font-medium"
               >
                 Approve
               </button>
@@ -93,7 +93,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
               <button
                 onClick={async () => { setLoading('stop'); try { await stopOrchestrator(project) } catch {} setLoading(null) }}
                 disabled={loading === 'stop'}
-                className="px-3 py-1 text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 font-medium"
+                className="px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 font-medium"
               >
                 Stop
               </button>

@@ -90,9 +90,15 @@ function ProjectLayout() {
   const location = useLocation()
   const [sidebarState, setSidebarState] = useState<StateData | null>(null)
   const [stateError, setStateError] = useState<string | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const pathAfterProject = location.pathname.split('/').slice(3).join('/')
   const activeTab = pathAfterProject || 'dashboard'
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
 
   // Fetch state for sidebar (lightweight poll)
   useEffect(() => {
@@ -120,13 +126,46 @@ function ProjectLayout() {
 
   // Navigate to change on dashboard when clicking sidebar changes
   const navigate = useCallback((name: string) => {
-    // Will be picked up by Dashboard via URL or state
     window.dispatchEvent(new CustomEvent('wt-select-change', { detail: name }))
+    setSidebarOpen(false)
   }, [])
+
+  // Connection status from sidebar state
+  const orchStatus = sidebarState?.status ?? 'idle'
+  const statusDotColor = statusDot[orchStatus] ?? 'bg-neutral-600'
 
   return (
     <div className="flex h-screen bg-neutral-950 text-neutral-200">
-      <aside className="w-56 shrink-0 border-r border-neutral-800 flex flex-col">
+      {/* Mobile top bar */}
+      <div className="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-2 bg-neutral-950 border-b border-neutral-800 md:hidden">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="p-2 -ml-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+          aria-label="Open menu"
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M3 5h14M3 10h14M3 15h14" />
+          </svg>
+        </button>
+        <span className="text-sm font-semibold text-neutral-100 truncate">{project}</span>
+        <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotColor}`} />
+      </div>
+
+      {/* Backdrop overlay (mobile) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — drawer on mobile, static on desktop */}
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-neutral-950 border-r border-neutral-800 flex flex-col
+        transform transition-transform duration-200 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:relative md:translate-x-0 md:w-56 md:transition-none
+      `}>
         <Link to="/wt" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
           <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">wt-tools</h1>
         </Link>
@@ -181,7 +220,8 @@ function ProjectLayout() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      {/* Main content — add top padding on mobile for the top bar */}
+      <main className="flex-1 overflow-auto pt-11 md:pt-0">
         <Routes>
           <Route index element={<Dashboard project={project} />} />
           <Route path="worktrees" element={<Worktrees project={project} />} />
