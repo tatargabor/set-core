@@ -1187,6 +1187,13 @@ cmd_start() {
             trap 'cleanup_orchestrator' EXIT
             trap 'exit 0' SIGTERM SIGINT SIGHUP
 
+            # Apply dispatch-critical globals from directives BEFORE first dispatch
+            DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
+            TEAM_MODE=$(echo "$directives" | jq -r '.team_mode // false')
+            CONTEXT_PRUNING=$(echo "$directives" | jq -r '.context_pruning // true')
+            MODEL_ROUTING=$(echo "$directives" | jq -r '.model_routing // "off"')
+            CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r '.checkpoint_auto_approve // false')
+
             # Recover orphaned changes (running/verifying with no worktree/PID)
             recover_orphaned_changes
             # Retry merge queue immediately on resume (don't wait 30s)
@@ -1288,6 +1295,14 @@ cmd_start() {
     }
     trap 'cleanup_orchestrator' EXIT
     trap 'exit 0' SIGTERM SIGINT SIGHUP
+
+    # Apply dispatch-critical globals from directives BEFORE first dispatch
+    # (monitor_loop sets these too, but dispatch_ready_changes runs first)
+    DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
+    TEAM_MODE=$(echo "$directives" | jq -r '.team_mode // false')
+    CONTEXT_PRUNING=$(echo "$directives" | jq -r '.context_pruning // true')
+    MODEL_ROUTING=$(echo "$directives" | jq -r '.model_routing // "off"')
+    CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r '.checkpoint_auto_approve // false')
 
     # Resume any stopped changes from a previous interrupted run
     resume_stopped_changes
