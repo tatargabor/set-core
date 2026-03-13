@@ -13,6 +13,7 @@ export interface ChatEvent {
   cost_usd?: number
   duration_ms?: number
   num_turns?: number
+  messages?: any[]
 }
 
 interface UseChatWebSocketOptions {
@@ -89,5 +90,9 @@ export function useChatWebSocket({ project, onEvent }: UseChatWebSocketOptions) 
     send({ type: 'stop' })
   }, [send])
 
-  return { connected, sendMessage, stopAgent }
+  const newSession = useCallback(() => {
+    send({ type: 'new_session' })
+  }, [send])
+
+  return { connected, sendMessage, stopAgent, newSession }
 }

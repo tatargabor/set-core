@@ -20,7 +20,7 @@ interface ToolBlock {
   collapsed: boolean
 }
 
-type AgentStatus = 'idle' | 'ready' | 'thinking' | 'responding' | 'stopped'
+type AgentStatus = 'idle' | 'thinking' | 'responding' | 'stopped'
 
 interface Props {
   project: string
@@ -42,13 +42,49 @@ export default function OrchestrationChat({ project }: Props) {
 
   const onEvent = useCallback((event: ChatEvent) => {
     switch (event.type) {
+      case 'history_replay': {
+        // Replay server-side history on connect/reconnect
+        const msgs = event.messages ?? []
+        setMessages(msgs.map((m: any, i: number) => ({
+          id: 'hist-' + i,
+          role: m.role === 'assistant' ? 'assistant' : m.role === 'user' ? 'user' : 'system',
+          content: m.content || '',
+          toolBlocks: (m.tool_blocks ?? []).map((t: any, j: number) => ({
+            id: `hist-tool-${i}-${j}`,
+            tool: t.tool || 'unknown',
+            input: t.input || '',
+            collapsed: true,
+          })),
+          timestamp: m.timestamp || Date.now(),
+          cost_usd: m.cost_usd,
+          duration_ms: m.duration_ms,
+        })))
+        msgIdRef.current = msgs.length
+        pendingTextRef.current = ''
+        pendingToolsRef.current = []
+        if (event.status === 'running') {
+          setAgentStatus('thinking')
+        } else {
+          setAgentStatus('idle')
+        }
+        break
+      }
+
+      case 'session_cleared':
+        setMessages([])
+        setAgentStatus('idle')
+        pendingTextRef.current = ''
+        pendingToolsRef.current = []
+        msgIdRef.current = 0
+        break
+
       case 'status':
         if (event.status === 'thinking') {
           setAgentStatus('thinking')
           pendingTextRef.current = ''
           pendingToolsRef.current = []
-        } else if (event.status === 'ready') {
-          setAgentStatus('ready')
+        } else if (event.status === 'idle') {
+          setAgentStatus('idle')
         } else if (event.status === 'stopped') {
           setAgentStatus('stopped')
         } else {
@@ -119,7 +155,7 @@ export default function OrchestrationChat({ project }: Props) {
         break
 
       case 'assistant_done':
-        setAgentStatus('ready')
+        setAgentStatus('idle')
         // Finalize the stream message ID
         setMessages(prev => {
           const last = prev[prev.length - 1]
@@ -155,7 +191,7 @@ export default function OrchestrationChat({ project }: Props) {
     }
   }, [])
 
-  const { connected, sendMessage, stopAgent } = useChatWebSocket({ project, onEvent })
+  const { connected, sendMessage, newSession } = useChatWebSocket({ project, onEvent })
 
   // Auto-scroll
   useEffect(() => {
@@ -194,11 +230,7 @@ export default function OrchestrationChat({ project }: Props) {
   }
 
   const handleNewSession = () => {
-    stopAgent()
-    setMessages([])
-    setAgentStatus('idle')
-    pendingTextRef.current = ''
-    pendingToolsRef.current = []
+    newSession()
   }
 
   const toggleToolBlock = (msgId: string, toolId: string) => {
@@ -220,9 +252,9 @@ export default function OrchestrationChat({ project }: Props) {
   const isInputEnabled = connected && !isProcessing
 
   return (
-    <div className="flex flex-col h-full bg-neutral-950">
+    <div className="flex flex-col h-full max-h-[100dvh] bg-neutral-950 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
+      <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-neutral-800">
         <div className="flex items-center gap-2">
           <span className="text-sm text-neutral-300 font-medium">Agent Chat</span>
           {/* Connection indicator */}
@@ -250,7 +282,7 @@ export default function OrchestrationChat({ project }: Props) {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto px-3 py-2 space-y-3"
+        className="flex-1 overflow-auto overflow-x-hidden px-3 py-2 space-y-3 min-h-0"
       >
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
@@ -273,7 +305,7 @@ export default function OrchestrationChat({ project }: Props) {
               }`}
             >
               {/* Message text */}
-              <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+              <div className="whitespace-pre-wrap break-words overflow-hidden">{msg.content}</div>
 
               {/* Tool blocks */}
               {msg.toolBlocks?.map(tool => (
@@ -296,7 +328,7 @@ export default function OrchestrationChat({ project }: Props) {
                   {!tool.collapsed && (
                     <div className="px-2 py-1 text-xs font-mono bg-neutral-900/50 max-h-40 overflow-auto">
                       <div className="text-neutral-400 mb-1">Input:</div>
-                      <pre className="text-neutral-300 whitespace-pre-wrap">{tool.input}</pre>
+                      <pre className="text-neutral-300 whitespace-pre-wrap break-all">{tool.input}</pre>
                       {tool.output !== undefined && (
                         <>
                           <div className="text-neutral-400 mt-2 mb-1">Output:</div>
@@ -325,7 +357,7 @@ export default function OrchestrationChat({ project }: Props) {
               setAutoScroll(true)
               scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
             }}
-            className="fixed bottom-24 right-6 px-3 py-1 bg-neutral-800 text-neutral-300 text-xs rounded-full shadow-lg hover:bg-neutral-700 transition-colors z-10"
+            className="sticky bottom-2 ml-auto mr-2 px-3 py-1 bg-neutral-800 text-neutral-300 text-xs rounded-full shadow-lg hover:bg-neutral-700 transition-colors z-10"
           >
             Jump to bottom
           </button>
@@ -333,7 +365,7 @@ export default function OrchestrationChat({ project }: Props) {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-neutral-800 p-2">
+      <div className="flex-shrink-0 border-t border-neutral-800 p-2">
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
@@ -349,7 +381,7 @@ export default function OrchestrationChat({ project }: Props) {
             }
             disabled={!isInputEnabled}
             rows={1}
-            className="flex-1 bg-neutral-900 text-neutral-200 text-sm rounded-lg px-3 py-2 min-h-[44px] max-h-32 resize-none border border-neutral-700 focus:border-blue-500 focus:outline-none disabled:opacity-50 placeholder-neutral-600"
+            className="flex-1 bg-neutral-900 text-neutral-200 text-base md:text-sm rounded-lg px-3 py-2 min-h-[44px] max-h-32 resize-none border border-neutral-700 focus:border-blue-500 focus:outline-none disabled:opacity-50 placeholder-neutral-600"
             onInput={e => {
               const target = e.target as HTMLTextAreaElement
               target.style.height = 'auto'

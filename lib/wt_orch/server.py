@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import router as api_router
-from .chat import router as chat_router, agent_manager
+from .chat import router as chat_router, session_manager
 from .watcher import WatcherManager
 from .websocket import router as ws_router, connection_manager
 
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     watcher = app.state.watcher_manager
     await watcher.start(connection_manager)
     yield
-    await agent_manager.shutdown_all()
+    await session_manager.stop_all()
     await watcher.stop()
 
 

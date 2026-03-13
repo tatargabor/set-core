@@ -1,7 +1,8 @@
 """WebSocket chat endpoint for interactive agent communication.
 
-Spawns a Claude Code subprocess per project, bridges stdin/stdout
-to WebSocket messages for real-time interactive chat from the web UI.
+Uses claude -p --resume {session_id} for multi-turn chat.
+Each message spawns a clean subprocess; Claude Code maintains
+context server-side via --resume.
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ import asyncio
 import json
 import logging
 import os
-import signal
 from pathlib import Path
 from typing import Any
 
@@ -22,57 +22,122 @@ logger = logging.getLogger("wt-web.chat")
 
 router = APIRouter()
 
-# ─── Agent subprocess manager ─────────────────────────────────────────
+# ─── Chat session (resume-based) ─────────────────────────────────────
 
 
-class AgentProcess:
-    """Manages a single Claude Code subprocess for a project."""
+class ChatSession:
+    """Manages a resume-based chat session for a project."""
 
     def __init__(self, project_name: str, project_path: Path):
         self.project_name = project_name
         self.project_path = project_path
-        self.process: asyncio.subprocess.Process | None = None
         self.session_id: str | None = None
-        self._read_task: asyncio.Task | None = None
+        self.messages: list[dict[str, Any]] = []
+        self.status: str = "idle"  # idle | running
+        self.model: str = "sonnet"
+        self._current_process: asyncio.subprocess.Process | None = None
         self._clients: set[WebSocket] = set()
+        self._generation: int = 0  # Incremented on stop/new_session to invalidate stale tasks
 
-    async def start(self) -> None:
-        """Spawn the claude subprocess."""
-        if self.process and self.process.returncode is None:
-            return  # Already running
+    async def send_message(self, text: str) -> None:
+        """Send a user message — spawns a claude subprocess.
 
-        cmd = [
-            "claude",
-            "-p",
-            "--output-format", "stream-json",
-            "--input-format", "stream-json",
-            "--verbose",
-            "--permission-mode", "auto",
-        ]
+        Caller must set self.status = "running" before calling to
+        prevent races between WS message arrival and task scheduling.
+        """
+        gen = self._generation
+        self.messages.append({"role": "user", "content": text, "timestamp": _now_ms()})
+        await self._broadcast({"type": "status", "status": "thinking"})
 
-        logger.info(f"Spawning agent for {self.project_name}: {' '.join(cmd)}")
+        try:
+            await self._run_claude(text)
+        except Exception as e:
+            logger.error(f"Claude run failed [{self.project_name}]: {e}")
+            if self._generation == gen:
+                await self._broadcast({"type": "error", "message": str(e)})
+        finally:
+            if self._generation == gen:
+                self.status = "idle"
+                self._current_process = None
 
-        self.process = await asyncio.create_subprocess_exec(
+    async def stop(self) -> None:
+        """Kill the current subprocess if running."""
+        self._generation += 1
+        proc = self._current_process
+        if not proc or proc.returncode is not None:
+            return
+
+        logger.info(f"Stopping claude process for {self.project_name} (PID {proc.pid})")
+        try:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except asyncio.TimeoutError:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+
+        self.status = "idle"
+        self._current_process = None
+        await self._broadcast({"type": "status", "status": "idle"})
+
+    def new_session(self) -> None:
+        """Clear session state for a fresh conversation."""
+        self._generation += 1
+        self.session_id = None
+        self.messages = []
+        self.status = "idle"
+
+    async def _run_claude(self, text: str, *, _retry: bool = False) -> None:
+        """Core subprocess logic — spawn claude, stream JSON, broadcast."""
+        gen = self._generation
+        env = {**os.environ}
+        env.pop("CLAUDECODE", None)  # Prevent nested session protection
+
+        cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose"]
+        if self.session_id:
+            cmd.extend(["--resume", self.session_id])
+        else:
+            cmd.extend(["--model", self.model, "--permission-mode", "auto"])
+        cmd.extend(["--", text])
+
+        logger.info(f"Spawning claude [{self.project_name}]: {' '.join(cmd[:8])}...")
+
+        proc = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(self.project_path),
-            # Process group for clean shutdown
-            preexec_fn=os.setsid,
+            env=env,
         )
+        self._current_process = proc
 
-        # Start reading stdout and stderr
-        self._read_task = asyncio.create_task(self._read_stdout())
-        asyncio.create_task(self._read_stderr())
+        # Collect stderr for post-exit analysis
+        stderr_lines: list[str] = []
 
-    async def _read_stdout(self) -> None:
-        """Read agent stdout and forward events to connected clients."""
-        if not self.process or not self.process.stdout:
-            return
+        async def _collect_stderr():
+            if not proc.stderr:
+                return
+            try:
+                async for line in proc.stderr:
+                    s = line.decode("utf-8", errors="replace").strip()
+                    if s:
+                        stderr_lines.append(s)
+                        logger.debug(f"Claude stderr [{self.project_name}]: {s}")
+            except Exception:
+                pass
+
+        stderr_task = asyncio.create_task(_collect_stderr())
+
+        # Collect assistant response for history
+        assistant_text = ""
+        tool_blocks: list[dict] = []
+        result_event: dict[str, Any] | None = None
 
         try:
-            async for line in self.process.stdout:
+            async for line in proc.stdout:
+                if self._generation != gen:
+                    break  # Session was reset, abandon this run
+
                 line_str = line.decode("utf-8", errors="replace").strip()
                 if not line_str:
                     continue
@@ -80,29 +145,76 @@ class AgentProcess:
                 try:
                     event = json.loads(line_str)
                 except json.JSONDecodeError:
-                    logger.warning(f"Non-JSON stdout: {line_str[:200]}")
+                    logger.debug(f"Non-JSON stdout: {line_str[:200]}")
                     continue
 
-                # Extract session ID from init event
-                if event.get("type") == "system" and event.get("subtype") == "init":
-                    self.session_id = event.get("session_id")
-                    # Send init event to clients
-                    await self._broadcast({"type": "status", "status": "ready"})
+                evt_type = event.get("type", "")
+
+                # Extract session_id from init event
+                if evt_type == "system" and event.get("subtype") == "init":
+                    sid = event.get("session_id")
+                    if sid:
+                        self.session_id = sid
+                        logger.info(f"Session ID [{self.project_name}]: {sid}")
                     continue
 
-                # Map Claude stream-json events to our chat protocol
                 mapped = self._map_event(event)
-                if mapped:
-                    await self._broadcast(mapped)
+                if not mapped:
+                    continue
+
+                # Track assistant content for history
+                if mapped["type"] == "assistant_text":
+                    assistant_text += mapped.get("content", "")
+                elif mapped["type"] == "tool_use":
+                    tool_blocks.append({
+                        "tool": mapped.get("tool", ""),
+                        "input": mapped.get("input", ""),
+                    })
+                elif mapped["type"] == "assistant_done":
+                    result_event = mapped
+
+                await self._broadcast(mapped)
 
         except Exception as e:
-            logger.error(f"Error reading agent stdout: {e}")
-        finally:
-            # Agent process exited
-            await self._broadcast({
-                "type": "error",
-                "message": "Agent session ended",
-            })
+            logger.error(f"Error reading claude stdout [{self.project_name}]: {e}")
+
+        # Wait for process and stderr to finish
+        await proc.wait()
+        await stderr_task
+
+        if self._generation != gen:
+            return  # Session was reset while we were running
+
+        exit_code = proc.returncode
+        logger.info(f"Claude exited [{self.project_name}]: code={exit_code}")
+
+        # Handle stale session_id — retry fresh (once only)
+        if exit_code != 0 and self.session_id and not _retry:
+            stderr_text = " ".join(stderr_lines).lower()
+            if "session" in stderr_text or not assistant_text:
+                logger.warning(f"Possible stale session, retrying fresh [{self.project_name}]")
+                self.session_id = None
+                await self._broadcast({"type": "error", "message": "Session expired, retrying..."})
+                await self._run_claude(text, _retry=True)
+                return
+
+        # Store assistant response in history
+        if assistant_text or tool_blocks:
+            msg: dict[str, Any] = {
+                "role": "assistant",
+                "content": assistant_text,
+                "timestamp": _now_ms(),
+            }
+            if tool_blocks:
+                msg["tool_blocks"] = tool_blocks
+            if result_event:
+                msg["cost_usd"] = result_event.get("cost_usd")
+                msg["duration_ms"] = result_event.get("duration_ms")
+            self.messages.append(msg)
+
+        # Send final done if we didn't already
+        if not result_event:
+            await self._broadcast({"type": "assistant_done"})
 
     def _map_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
         """Map a Claude stream-json event to our chat WebSocket protocol."""
@@ -124,7 +236,6 @@ class AgentProcess:
                         "tool_use_id": block.get("id", ""),
                         "input": _summarize_input(block.get("input", {})),
                     }
-            # If no content blocks we recognize, still notify about thinking
             if msg.get("stop_reason") is None:
                 return {"type": "status", "status": "thinking"}
             return None
@@ -145,64 +256,7 @@ class AgentProcess:
                 "output": _summarize_output(event.get("output", "")),
             }
 
-        # Unknown event — forward type for debugging
         return None
-
-    async def _read_stderr(self) -> None:
-        """Log agent stderr output."""
-        if not self.process or not self.process.stderr:
-            return
-        try:
-            async for line in self.process.stderr:
-                line_str = line.decode("utf-8", errors="replace").strip()
-                if line_str:
-                    logger.debug(f"Agent stderr [{self.project_name}]: {line_str}")
-        except Exception:
-            pass
-
-    async def send_message(self, content: str) -> None:
-        """Send a user message to the agent's stdin."""
-        if not self.process or not self.process.stdin:
-            raise RuntimeError("Agent process not running")
-        if self.process.returncode is not None:
-            raise RuntimeError("Agent process has exited")
-
-        # stream-json input format: send as JSON with type "user"
-        msg = json.dumps({"type": "user", "content": content}) + "\n"
-        self.process.stdin.write(msg.encode("utf-8"))
-        await self.process.stdin.drain()
-        await self._broadcast({"type": "status", "status": "thinking"})
-
-    async def stop(self) -> None:
-        """Stop the agent subprocess."""
-        if not self.process or self.process.returncode is not None:
-            return
-
-        pid = self.process.pid
-        logger.info(f"Stopping agent for {self.project_name} (PID {pid})")
-
-        try:
-            # Send SIGTERM to process group
-            os.killpg(os.getpgid(pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            return
-
-        # Wait up to 5 seconds
-        try:
-            await asyncio.wait_for(self.process.wait(), timeout=5.0)
-        except asyncio.TimeoutError:
-            logger.warning(f"Agent {self.project_name} didn't stop, sending SIGKILL")
-            try:
-                os.killpg(os.getpgid(pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
-
-        if self._read_task:
-            self._read_task.cancel()
-
-    @property
-    def is_running(self) -> bool:
-        return self.process is not None and self.process.returncode is None
 
     def add_client(self, ws: WebSocket) -> None:
         self._clients.add(ws)
@@ -210,12 +264,8 @@ class AgentProcess:
     def remove_client(self, ws: WebSocket) -> None:
         self._clients.discard(ws)
 
-    @property
-    def has_clients(self) -> bool:
-        return len(self._clients) > 0
-
     async def _broadcast(self, message: dict[str, Any]) -> None:
-        """Send a message to all connected chat clients."""
+        """Send a message to all connected WebSocket clients."""
         payload = json.dumps(message)
         dead: list[WebSocket] = []
         for ws in self._clients:
@@ -227,44 +277,34 @@ class AgentProcess:
             self._clients.discard(ws)
 
 
-# ─── Global agent manager ─────────────────────────────────────────────
+# ─── Session manager ─────────────────────────────────────────────────
 
 
-class AgentManager:
-    """Track one agent subprocess per project."""
+class SessionManager:
+    """Track one ChatSession per project."""
 
     def __init__(self):
-        self._agents: dict[str, AgentProcess] = {}
+        self._sessions: dict[str, ChatSession] = {}
 
-    def get(self, project_name: str) -> AgentProcess | None:
-        agent = self._agents.get(project_name)
-        if agent and not agent.is_running:
-            del self._agents[project_name]
-            return None
-        return agent
-
-    async def get_or_create(self, project_name: str, project_path: Path) -> AgentProcess:
-        agent = self.get(project_name)
-        if agent:
-            return agent
-
-        agent = AgentProcess(project_name, project_path)
-        self._agents[project_name] = agent
-        await agent.start()
-        return agent
+    def get_or_create(self, project_name: str, project_path: Path) -> ChatSession:
+        session = self._sessions.get(project_name)
+        if not session:
+            session = ChatSession(project_name, project_path)
+            self._sessions[project_name] = session
+        return session
 
     async def stop(self, project_name: str) -> None:
-        agent = self._agents.pop(project_name, None)
-        if agent:
-            await agent.stop()
+        session = self._sessions.get(project_name)
+        if session:
+            await session.stop()
 
-    async def shutdown_all(self) -> None:
-        """Stop all agents — called on server shutdown."""
-        for name in list(self._agents.keys()):
-            await self.stop(name)
+    async def stop_all(self) -> None:
+        """Stop all sessions — called on server shutdown."""
+        for session in self._sessions.values():
+            await session.stop()
 
 
-agent_manager = AgentManager()
+session_manager = SessionManager()
 
 
 # ─── WebSocket endpoint ───────────────────────────────────────────────
@@ -274,8 +314,8 @@ agent_manager = AgentManager()
 async def websocket_chat(websocket: WebSocket, project: str):
     """Interactive chat WebSocket endpoint.
 
-    Spawns or reuses a Claude Code subprocess for the project.
-    User messages → agent stdin, agent stdout → client.
+    Each message spawns a fresh claude -p --resume process.
+    Server maintains history for replay on reconnect.
     """
     await websocket.accept()
 
@@ -286,13 +326,14 @@ async def websocket_chat(websocket: WebSocket, project: str):
         await websocket.close()
         return
 
-    agent = await agent_manager.get_or_create(project, project_path)
-    agent.add_client(websocket)
+    session = session_manager.get_or_create(project, project_path)
+    session.add_client(websocket)
 
-    # Notify client about connection state
+    # Replay history + current status on connect
     await websocket.send_json({
-        "type": "status",
-        "status": "ready" if agent.is_running else "starting",
+        "type": "history_replay",
+        "messages": session.messages,
+        "status": session.status,
     })
 
     try:
@@ -301,50 +342,50 @@ async def websocket_chat(websocket: WebSocket, project: str):
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Invalid JSON",
-                })
+                await websocket.send_json({"type": "error", "message": "Invalid JSON"})
                 continue
 
             msg_type = msg.get("type", "")
+            logger.info(f"WS received [{project}]: type={msg_type}")
 
             if msg_type == "message":
                 content = msg.get("content", "").strip()
                 if not content:
                     continue
 
-                # Check if agent is still running
-                if not agent.is_running:
-                    # Try to restart
-                    agent = await agent_manager.get_or_create(project, project_path)
-                    agent.add_client(websocket)
-
-                try:
-                    await agent.send_message(content)
-                except RuntimeError as e:
+                if session.status == "running":
                     await websocket.send_json({
                         "type": "error",
-                        "message": str(e),
+                        "message": "Already processing a message, please wait",
                     })
+                    continue
+
+                # Set running synchronously to prevent race with rapid messages
+                session.status = "running"
+                asyncio.create_task(session.send_message(content))
 
             elif msg_type == "stop":
-                await agent_manager.stop(project)
-                await websocket.send_json({
-                    "type": "status",
-                    "status": "stopped",
-                })
+                await session.stop()
+
+            elif msg_type == "new_session":
+                await session.stop()
+                session.new_session()
+                await session._broadcast({"type": "session_cleared"})
 
     except WebSocketDisconnect:
         pass
     except Exception as e:
         logger.error(f"Chat WebSocket error: {e}")
     finally:
-        agent.remove_client(websocket)
-        # Don't stop the agent on disconnect — user may reconnect
+        session.remove_client(websocket)
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────
+
+
+def _now_ms() -> int:
+    import time
+    return int(time.time() * 1000)
 
 
 def _summarize_input(input_data: Any) -> str:
@@ -352,7 +393,6 @@ def _summarize_input(input_data: Any) -> str:
     if isinstance(input_data, str):
         return input_data[:500]
     if isinstance(input_data, dict):
-        # For common tools, extract key info
         if "command" in input_data:
             return input_data["command"][:500]
         if "file_path" in input_data:

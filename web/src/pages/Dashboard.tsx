@@ -76,7 +76,7 @@ export default function Dashboard({ project }: Props) {
   ]
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
       <StatusHeader state={state} connected={connected} project={project} />
       {checkpoint && (
         <CheckpointBanner project={project} checkpointType={checkpointType} onDismiss={() => setCheckpoint(false)} />
@@ -85,7 +85,7 @@ export default function Dashboard({ project }: Props) {
       {/* Tab bar */}
       <div
         ref={tabBarRef}
-        className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900/30 overflow-x-auto scrollbar-hide"
+        className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900/30 overflow-x-auto max-w-full scrollbar-hide"
       >
         {tabs.filter(t => !t.hidden).map(t => (
           <button
