@@ -68,6 +68,7 @@ DEFAULT_POST_PHASE_AUDIT="true"         # LLM spec-vs-implementation audit at ph
 
 # Runtime state
 MAX_REPLAN_RETRIES=3     # max consecutive replan failures before giving up
+MAX_REPLAN_CYCLES=3      # max replan cycles before stopping (prevents scope creep)
 DEFAULT_TIME_LIMIT="5h"  # safety net: stop after 5 hours if no --time-limit given
 CLI_TIME_LIMIT=""        # set via --time-limit <duration>, "none" to disable
 ORCHESTRATOR_START_EPOCH=""  # set at start time

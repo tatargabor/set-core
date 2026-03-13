@@ -16,6 +16,8 @@ monitor_loop() {
     token_budget=$(echo "$directives" | jq -r '.token_budget')
     local auto_replan
     auto_replan=$(echo "$directives" | jq -r '.auto_replan')
+    local max_replan_cycles
+    max_replan_cycles=$(echo "$directives" | jq -r ".max_replan_cycles // $MAX_REPLAN_CYCLES")
     local test_timeout
     test_timeout=$(echo "$directives" | jq -r '.test_timeout // 300')
     local max_verify_retries
@@ -371,13 +373,33 @@ monitor_loop() {
 
             # Auto-replan: generate next plan and continue if new work found
             if [[ "$auto_replan" == "true" ]]; then
-                info "All changes done. Auto-replanning..."
+                # Check cycle limit before replanning
+                local cycle
+                cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME")
+
+                if [[ "$cycle" -ge "$max_replan_cycles" ]]; then
+                    info "Replan cycle limit reached ($cycle/$max_replan_cycles) — stopping"
+                    log_info "Auto-replan stopped: cycle limit $max_replan_cycles reached"
+                    update_state_field "status" '"done"'
+                    update_state_field "replan_limit_reached" 'true'
+                    cleanup_all_worktrees
+                    orch_memory_stats
+                    orch_gate_stats
+                    local _cov_summary
+                    _cov_summary=$(final_coverage_check 2>/dev/null || true)
+                    send_summary_email "complete" "$(basename "$(pwd)")" "$STATE_FILENAME" "$_cov_summary" 2>/dev/null || true
+                    generate_report 2>/dev/null || true
+                    git tag -f "orch/complete" HEAD 2>/dev/null || true
+                    log_info "Tagged: orch/complete"
+                    success "All original work complete. Replan limit reached ($max_replan_cycles cycles)."
+                    break
+                fi
+
+                info "All changes done. Auto-replanning (cycle $((cycle+1))/$max_replan_cycles)..."
                 log_info "Auto-replan triggered"
 
                 # Track replan cycle in state — persist BEFORE attempting so retries
                 # read the same cycle number and don't re-increment
-                local cycle
-                cycle=$(jq '.replan_cycle // 0' "$STATE_FILENAME")
                 local replan_attempt
                 replan_attempt=$(jq '.replan_attempt // 0' "$STATE_FILENAME")
 
