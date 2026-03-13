@@ -264,16 +264,7 @@ cmd_run() {
         # Build effective prompt: short for resumed sessions
         local effective_prompt="$prompt"
         if $is_resumed; then
-            # Check if parallel mode needs to be re-applied on resume
-            local resume_exec_mode
-            resume_exec_mode=$(jq -r '.execution_mode // "single"' "$state_file" 2>/dev/null)
-            if [[ "$resume_exec_mode" == "parallel" ]]; then
-                local resume_workers
-                resume_workers=$(jq -r '.parallel_workers // 2' "$state_file" 2>/dev/null)
-                effective_prompt="Continue where you left off. Use parallel Agent tool calls ($resume_workers workers) to continue implementing tasks. Check the task status, partition remaining unchecked tasks, and spawn parallel agents to complete them."
-            else
-                effective_prompt="Continue where you left off. Check the task status and complete remaining work."
-            fi
+            effective_prompt="Continue where you left off. Check the task status and complete remaining work."
         fi
 
         while [[ $retry_count -lt $max_retries ]]; do

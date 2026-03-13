@@ -66,8 +66,6 @@ Start Options:
   --model <name>           Claude model: opus|sonnet|haiku or full ID (default: opus from config)
   --token-budget <N>       Max token budget in thousands (0=unlimited, default: 0)
   --label <text>           Label for this loop instance (shown in banner and terminal title)
-  --parallel               Enable parallel subagent execution within iterations
-  --workers <n>            Number of parallel workers (default: 2, requires --parallel)
   --force                  Force start even with incompatible permission mode (e.g. plan)
 
 Monitor Options:
@@ -122,9 +120,6 @@ cmd_start() {
     local label=""
     local change_name=""
     local token_budget_k=""
-    local parallel_mode=false
-    local parallel_workers=2
-
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -178,14 +173,6 @@ cmd_start() {
                 ;;
             --token-budget)
                 token_budget_k="$2"
-                shift 2
-                ;;
-            --parallel)
-                parallel_mode=true
-                shift
-                ;;
-            --workers)
-                parallel_workers="$2"
                 shift 2
                 ;;
             -h|--help)
@@ -276,11 +263,7 @@ cmd_start() {
 
     # Initialize state
     info "Initializing loop state..."
-    local execution_mode="single"
-    if [[ "$parallel_mode" == true ]]; then
-        execution_mode="parallel"
-    fi
-    init_loop_state "$wt_path" "$worktree_name" "$task" "$max_iter" "$done_criteria" "$capacity_limit" "$stall_threshold" "$iteration_timeout" "$label" "$change_name" "$execution_mode" "$parallel_workers"
+    init_loop_state "$wt_path" "$worktree_name" "$task" "$max_iter" "$done_criteria" "$capacity_limit" "$stall_threshold" "$iteration_timeout" "$label" "$change_name"
 
     # Save permission mode and idle threshold in state
     local state_file_init
@@ -387,9 +370,6 @@ APPLESCRIPT
     echo "  Stall threshold: $stall_threshold"
     echo "  Idle threshold: $max_idle_iterations"
     echo "  Iteration timeout: ${iteration_timeout}m"
-    if [[ "$parallel_mode" == true ]]; then
-        echo "  Execution mode: parallel ($parallel_workers workers)"
-    fi
     echo ""
     echo "Commands:"
     echo "  wt-loop status   - Check progress"

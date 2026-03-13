@@ -115,64 +115,6 @@ detect_next_change_action() {
     echo "done"
 }
 
-# Build parallel subagent prompt for apply phase
-# Args: $1=change_name, $2=wt_path, $3=parallel_workers
-build_parallel_apply_prompt() {
-    local change_name="$1"
-    local wt_path="$2"
-    local parallel_workers="${3:-2}"
-
-    local change_dir="$wt_path/openspec/changes/$change_name"
-    local tasks_file="$change_dir/tasks.md"
-
-    # Collect spec file paths for worker context
-    local spec_files=""
-    if [[ -d "$change_dir/specs" ]]; then
-        spec_files=$(find "$change_dir/specs" -name "spec.md" -type f 2>/dev/null | sort | tr '\n' ' ')
-    fi
-    # Fall back to main specs if no change-level specs
-    if [[ -z "$spec_files" ]] && [[ -d "$wt_path/openspec/specs" ]]; then
-        spec_files=$(find "$wt_path/openspec/specs" -name "spec.md" -type f 2>/dev/null | sort | head -10 | tr '\n' ' ')
-    fi
-
-    cat <<PARALLEL_EOF
-# YOUR TASK (MANDATORY — do this and ONLY this)
-Implement the '$change_name' change using PARALLEL subagents.
-
-## Step 1: Read context
-- Read CLAUDE.md for project workflow
-- Read the tasks file: $tasks_file
-- Count the unchecked tasks (lines matching \`- [ ]\`)
-
-## Step 2: Partition tasks into $parallel_workers groups
-Split the unchecked tasks into $parallel_workers contiguous groups.
-For example, if there are 9 tasks and $parallel_workers workers:
-  Worker 1: tasks 1-3, Worker 2: tasks 4-6, Worker 3: tasks 7-9
-If fewer tasks than workers, spawn only as many agents as tasks.
-
-## Step 3: Spawn parallel worker agents
-Use the Agent tool to spawn $parallel_workers agents IN A SINGLE RESPONSE (parallel).
-Each worker agent receives:
-- Its assigned task lines (exact checkbox text from tasks.md)
-- The spec files to reference: $spec_files
-- Instruction: "Read CLAUDE.md first. Implement ONLY the assigned tasks below. Mark each task as done in tasks.md (change \`- [ ]\` to \`- [x]\`). Commit your changes. Do NOT modify files outside your task scope."
-- Set mode to "bypassPermissions" for each agent
-
-## Step 4: Review
-After ALL worker agents complete, spawn ONE more Agent with:
-- subagent_type: "code-reviewer"
-- Prompt: "Review the implementation of change '$change_name'. Read the spec files ($spec_files) and compare against git diff HEAD~$parallel_workers. Report any gaps: requirements that were not implemented or deviate from the spec. List each gap as: [Requirement name] — [what is missing]."
-
-## Step 5: Fix and commit
-If the reviewer found gaps, fix them directly. Then make a final commit.
-
-## Important
-- Do NOT use /opsx:apply — implement tasks directly via parallel agents
-- Do NOT work on any other changes. Focus ONLY on '$change_name'
-- ALL workers must commit their changes before you proceed to review
-PARALLEL_EOF
-}
-
 # Build the prompt for Claude
 build_prompt() {
     local task="$1"
@@ -221,25 +163,13 @@ After /opsx:ff completes, commit the artifacts and stop.
             apply:*)
                 local change_name="${change_action#apply:}"
                 specific_task="Implement the '$change_name' change"
-
-                # Check if parallel mode is enabled
-                local exec_mode
-                exec_mode=$(jq -r '.execution_mode // "single"' "$state_file" 2>/dev/null)
-                if [[ "$exec_mode" == "parallel" ]]; then
-                    local p_workers
-                    p_workers=$(jq -r '.parallel_workers // 2' "$state_file" 2>/dev/null)
-                    openspec_instructions="
-$(build_parallel_apply_prompt "$change_name" "$wt_path" "$p_workers")
-"
-                else
-                    openspec_instructions="
+                openspec_instructions="
 # YOUR TASK (MANDATORY — do this and ONLY this)
 Run: /opsx:apply $change_name
 This will implement the tasks defined in tasks.md for the '$change_name' change.
 Do NOT work on any other changes. Focus ONLY on '$change_name'.
 After implementation, commit your changes and stop.
 "
-                fi
                 ;;
             done)
                 specific_task="All changes are complete"

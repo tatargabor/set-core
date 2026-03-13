@@ -590,22 +590,11 @@ dispatch_via_wt_loop() {
     # Token budget disabled — iteration limit (--max) provides the safety net.
     local token_budget_flag=""
 
-    # Parallel execution mode from orchestration state directives
-    local parallel_flag=""
-    local exec_mode
-    exec_mode=$(jq -r '.directives.execution_mode // "single"' "$STATE_FILENAME" 2>/dev/null)
-    if [[ "$exec_mode" == "parallel" ]]; then
-        local p_workers
-        p_workers=$(jq -r '.directives.parallel_workers // 2' "$STATE_FILENAME" 2>/dev/null)
-        parallel_flag="--parallel --workers $p_workers"
-        log_info "Dispatch $change_name with model=$impl_model parallel=$p_workers workers"
-    else
-        log_info "Dispatch $change_name with model=$impl_model (default=$DEFAULT_IMPL_MODEL) budget=unlimited (iter limit: --max 30)"
-    fi
+    log_info "Dispatch $change_name with model=$impl_model (default=$DEFAULT_IMPL_MODEL) budget=unlimited (iter limit: --max 30)"
 
     (
         cd "$wt_path" || exit 1
-        wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model "$impl_model" --change "$change_name" $token_budget_flag $parallel_flag
+        wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model "$impl_model" --change "$change_name" $token_budget_flag
     ) &
     wait $! 2>/dev/null || true
 
@@ -805,20 +794,10 @@ resume_change() {
     fi
     local impl_model
     impl_model=$(resolve_change_model "$change_name" "$DEFAULT_IMPL_MODEL" "${MODEL_ROUTING:-off}")
-    # Parallel execution mode for resume
-    local resume_parallel_flag=""
-    local resume_exec_mode
-    resume_exec_mode=$(jq -r '.directives.execution_mode // "single"' "$STATE_FILENAME" 2>/dev/null)
-    if [[ "$resume_exec_mode" == "parallel" ]]; then
-        local resume_p_workers
-        resume_p_workers=$(jq -r '.directives.parallel_workers // 2' "$STATE_FILENAME" 2>/dev/null)
-        resume_parallel_flag="--parallel --workers $resume_p_workers"
-    fi
-
     log_info "Resume $change_name with model=$impl_model (done=$done_criteria, max=$max_iter)"
     (
         cd "$wt_path" || exit 1
-        wt-loop start "$task_desc" --max "$max_iter" --done "$done_criteria" --label "$change_name" --model "$impl_model" --change "$change_name" $resume_parallel_flag
+        wt-loop start "$task_desc" --max "$max_iter" --done "$done_criteria" --label "$change_name" --model "$impl_model" --change "$change_name"
     ) &
     wait $! 2>/dev/null || true
 

@@ -56,8 +56,6 @@ init_loop_state() {
     local iteration_timeout="${8:-45}"
     local label="${9:-}"
     local change="${10:-}"
-    local execution_mode="${11:-single}"
-    local parallel_workers="${12:-2}"
 
     local state_file
     state_file=$(get_loop_state_file "$wt_path")
@@ -93,9 +91,7 @@ init_loop_state() {
   "session_id": null,
   "resume_failures": 0,
   "label": $(if [[ -n "$label" ]]; then printf '%s' "$label" | jq -Rs .; else echo "null"; fi),
-  "change": $(if [[ -n "$change" ]]; then printf '%s' "$change" | jq -Rs .; else echo "null"; fi),
-  "execution_mode": "$execution_mode",
-  "parallel_workers": $parallel_workers
+  "change": $(if [[ -n "$change" ]]; then printf '%s' "$change" | jq -Rs .; else echo "null"; fi)
 }
 EOF
 }
