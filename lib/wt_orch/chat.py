@@ -43,6 +43,7 @@ class AgentProcess:
 
         cmd = [
             "claude",
+            "-p",
             "--output-format", "stream-json",
             "--input-format", "stream-json",
             "--verbose",

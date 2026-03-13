@@ -409,7 +409,7 @@ DIGEST_PROMPT_EOF
 call_digest_api() {
     local prompt="$1"
     local output
-    output=$(export RUN_CLAUDE_TIMEOUT=900; echo "$prompt" | run_claude --model "$(model_id opus)") || {
+    output=$(export RUN_CLAUDE_TIMEOUT=1800; echo "$prompt" | run_claude --model "$(model_id opus)") || {
         log_error "Digest API call failed"
         return 1
     }

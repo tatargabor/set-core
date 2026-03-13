@@ -297,6 +297,16 @@ export function getRequirements(project: string): Promise<RequirementsData> {
   return fetchJSON(`/${project}/requirements`)
 }
 
+// --- Project Sessions ---
+
+export function getProjectSessions(project: string): Promise<{ sessions: SessionInfo[] }> {
+  return fetchJSON(`/${project}/sessions`)
+}
+
+export function getProjectSession(project: string, sessionId: string, tail = 200): Promise<{ lines: string[]; session_id: string }> {
+  return fetchJSON(`/${project}/sessions/${sessionId}?tail=${tail}`)
+}
+
 // --- Events ---
 
 export function getEvents(project: string, type?: string, limit = 500): Promise<{ events: Record<string, unknown>[] }> {
