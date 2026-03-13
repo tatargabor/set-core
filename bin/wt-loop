@@ -66,6 +66,7 @@ Start Options:
   --model <name>           Claude model: opus|sonnet|haiku or full ID (default: opus from config)
   --token-budget <N>       Max token budget in thousands (0=unlimited, default: 0)
   --label <text>           Label for this loop instance (shown in banner and terminal title)
+  --team                   Enable Agent Teams mode (Claude spawns parallel teammates within iterations)
   --force                  Force start even with incompatible permission mode (e.g. plan)
 
 Monitor Options:
@@ -120,6 +121,7 @@ cmd_start() {
     local label=""
     local change_name=""
     local token_budget_k=""
+    local team_mode=false
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -174,6 +176,10 @@ cmd_start() {
             --token-budget)
                 token_budget_k="$2"
                 shift 2
+                ;;
+            --team)
+                team_mode=true
+                shift
                 ;;
             -h|--help)
                 usage
@@ -270,8 +276,8 @@ cmd_start() {
     state_file_init=$(get_loop_state_file "$wt_path")
     local tmp_pm
     tmp_pm=$(mktemp)
-    jq --arg pm "$effective_permission_mode" --argjson mi "$max_idle_iterations" \
-        '.permission_mode = $pm | .max_idle_iterations = $mi' "$state_file_init" > "$tmp_pm" && mv "$tmp_pm" "$state_file_init"
+    jq --arg pm "$effective_permission_mode" --argjson mi "$max_idle_iterations" --argjson tm "$team_mode" \
+        '.permission_mode = $pm | .max_idle_iterations = $mi | .team_mode = $tm' "$state_file_init" > "$tmp_pm" && mv "$tmp_pm" "$state_file_init"
 
     # Resolve and save model in state (default: opus)
     local effective_model
@@ -370,6 +376,9 @@ APPLESCRIPT
     echo "  Stall threshold: $stall_threshold"
     echo "  Idle threshold: $max_idle_iterations"
     echo "  Iteration timeout: ${iteration_timeout}m"
+    if [[ "$team_mode" == true ]]; then
+    echo "  Team mode: enabled"
+    fi
     echo ""
     echo "Commands:"
     echo "  wt-loop status   - Check progress"

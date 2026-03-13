@@ -74,6 +74,8 @@ cmd_run() {
     claude_model=$(jq -r '.model // empty' "$state_file")
     local change_name
     change_name=$(jq -r '.change // empty' "$state_file")
+    local team_mode
+    team_mode=$(jq -r '.team_mode // false' "$state_file")
 
     # Signal trap variables for cleanup
     local current_iter_started=""
@@ -151,7 +153,9 @@ cmd_run() {
         budget_display="$((token_budget / 1000))K"
     fi
     echo "║  Mode: $permission_mode | Model: ${claude_model:-default} | Max: $max_iter | Stall: $stall_threshold | Idle: $max_idle_iters | Timeout: ${iteration_timeout_min}m"
-    echo "║  Memory: $memory_status | Budget: $budget_display"
+    local team_display="off"
+    if [[ "$team_mode" == "true" ]]; then team_display="enabled"; fi
+    echo "║  Memory: $memory_status | Budget: $budget_display | Team: $team_display"
     echo "║  Started: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
@@ -477,6 +481,23 @@ except:
             echo "📊 Iteration tokens: $tokens_used (in:$in_used out:$out_used cr:$cr_used cc:$cc_used)"
         fi
 
+        # Extract team metrics from iteration log
+        local iter_team_spawned=false
+        local iter_teammates_count=0
+        local iter_team_tasks_parallel=0
+        if [[ "$team_mode" == "true" ]] && [[ -s "$iter_log_file" ]]; then
+            local team_create_count
+            team_create_count=$(grep -c 'TeamCreate' "$iter_log_file" 2>/dev/null || echo 0)
+            if [[ "$team_create_count" -gt 0 ]]; then
+                iter_team_spawned=true
+                # Count Agent tool invocations with team_name (teammate spawns)
+                iter_teammates_count=$(grep -c 'team_name' "$iter_log_file" 2>/dev/null || echo 0)
+                # Count TaskCreate calls as proxy for parallel tasks
+                iter_team_tasks_parallel=$(grep -c 'TaskCreate' "$iter_log_file" 2>/dev/null || echo 0)
+                echo "👥 Team metrics: spawned=$iter_team_spawned teammates=$iter_teammates_count parallel_tasks=$iter_team_tasks_parallel"
+            fi
+        fi
+
         # Post-iteration log summary
         if [[ -s "$iter_log_file" ]]; then
             local log_reads log_writes log_skills log_errors
@@ -510,7 +531,7 @@ except:
                     # Record this iteration before exiting
                     local idle_iter_end
                     idle_iter_end=$(date -Iseconds)
-                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false" "$in_used" "$out_used" "$cr_used" "$cc_used"
+                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel"
                     exit 0
                 fi
             else
@@ -736,7 +757,7 @@ except:
         fi
 
         # Add iteration to state with token tracking
-        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed" "$iter_ff_recovered" "$in_used" "$out_used" "$cr_used" "$cc_used"
+        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed" "$iter_ff_recovered" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel"
 
         # Handle ff exhaustion (after recording iteration)
         if $iter_ff_exhausted; then

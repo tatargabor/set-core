@@ -90,6 +90,7 @@ init_loop_state() {
   "last_output_hash": null,
   "session_id": null,
   "resume_failures": 0,
+  "team_mode": false,
   "label": $(if [[ -n "$label" ]]; then printf '%s' "$label" | jq -Rs .; else echo "null"; fi),
   "change": $(if [[ -n "$change" ]]; then printf '%s' "$change" | jq -Rs .; else echo "null"; fi)
 }
@@ -127,6 +128,9 @@ add_iteration() {
     local output_tokens="${16:-0}"
     local cache_read_tokens="${17:-0}"
     local cache_create_tokens="${18:-0}"
+    local team_spawned="${19:-false}"
+    local teammates_count="${20:-0}"
+    local team_tasks_parallel="${21:-0}"
 
     local tmp
     tmp=$(mktemp)
@@ -147,6 +151,9 @@ add_iteration() {
        --argjson out_tok "$output_tokens" \
        --argjson cr_tok "$cache_read_tokens" \
        --argjson cc_tok "$cache_create_tokens" \
+       --argjson t_spawned "$team_spawned" \
+       --argjson t_count "$teammates_count" \
+       --argjson t_parallel "$team_tasks_parallel" \
        '.iterations += [{
          "n": $n,
          "started": $started,
@@ -164,7 +171,10 @@ add_iteration() {
          "ff_exhausted": $ff_exhausted,
          "log_file": $log_file,
          "resumed": $resumed,
-         "ff_recovered": $ff_recovered
+         "ff_recovered": $ff_recovered,
+         "team_spawned": $t_spawned,
+         "teammates_count": $t_count,
+         "team_tasks_parallel": $t_parallel
        }]' "$state_file" > "$tmp" && mv "$tmp" "$state_file"
 }
 

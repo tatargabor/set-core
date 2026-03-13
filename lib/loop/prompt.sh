@@ -115,6 +115,59 @@ detect_next_change_action() {
     echo "done"
 }
 
+# Build Agent Teams instructions block for the prompt.
+# Returns the instruction text when team mode is enabled, empty string otherwise.
+build_team_instructions() {
+    cat <<'TEAM_EOF'
+
+# Agent Teams — Parallel Task Execution
+
+You have Agent Teams available to parallelize independent tasks within this iteration.
+
+## When to Use Teams
+- You have **3 or more independent tasks** that don't share files
+- Tasks are implementation work (code changes), not planning or artifact creation
+- The tasks can run simultaneously without conflicts
+
+## When NOT to Use Teams
+- Fewer than 3 independent tasks — work sequentially instead
+- Tasks modify the same files (risk of conflicts)
+- Tasks have dependencies on each other (task B needs task A's output)
+- You're running /opsx:ff (artifact creation) — always sequential
+- Only 1-2 tasks remain
+
+## How to Use Teams
+
+1. **Check for orphan teams first**: If ~/.claude/teams/ has leftover team dirs from a previous iteration, clean them up with TeamDelete before proceeding.
+
+2. **Analyze tasks**: Read tasks.md and identify which unchecked tasks are independent (don't share files).
+
+3. **Create a team**: Use TeamCreate with a descriptive team_name.
+
+4. **Create tasks**: Use TaskCreate for each parallelizable task with clear descriptions.
+
+5. **Spawn teammates** (max 3): Use the Agent tool for each teammate:
+   - `subagent_type: "general-purpose"` (full tool access)
+   - `mode: "bypassPermissions"` (no permission prompts)
+   - `team_name: "<your-team>"` (joins the team)
+   - Give each a clear prompt describing exactly which task(s) to implement
+   - Run teammates in foreground (NOT background) — wait for results
+
+6. **Teammates work**: Each teammate reads the relevant files, makes changes, and marks their tasks complete via TaskUpdate. Teammates do NOT create git commits.
+
+7. **You commit**: After ALL teammates finish, review the combined changes, resolve any conflicts, and create a single coherent commit. Only YOU (the team lead) commit.
+
+8. **Cleanup**: Send shutdown_request to each teammate, wait for shutdown_response, then call TeamDelete.
+
+## Important Rules
+- Maximum 3 teammates per iteration
+- Only the team lead (you) creates git commits
+- If a teammate reports a conflict or error, handle it yourself after they finish
+- Always clean up teams before the iteration ends (TeamDelete)
+- Mark tasks in tasks.md as [x] after verifying the implementation
+TEAM_EOF
+}
+
 # Build the prompt for Claude
 build_prompt() {
     local task="$1"
@@ -214,6 +267,16 @@ Do NOT attempt to complete [?] tasks — skip them entirely and focus only on [ 
 If all [ ] tasks are done but [?] tasks remain, commit your work and stop."
     fi
 
+    # Agent Teams instructions (opt-in via --team flag)
+    local team_instructions=""
+    if [[ -f "$state_file" ]]; then
+        local is_team_mode
+        is_team_mode=$(jq -r '.team_mode // false' "$state_file" 2>/dev/null)
+        if [[ "$is_team_mode" == "true" ]] && [[ "$change_action" != "done" ]] && [[ "$change_action" != ff:* ]]; then
+            team_instructions=$(build_team_instructions)
+        fi
+    fi
+
     cat <<EOF
 # Task
 $effective_task
@@ -229,6 +292,7 @@ Previous work is visible in the git history and current file state.
 4. If stuck on the same issue, try a different approach
 $openspec_instructions
 $manual_task_instruction
+$team_instructions
 # Previous Work
 $prev_text
 
