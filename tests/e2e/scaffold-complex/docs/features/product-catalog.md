@@ -76,7 +76,7 @@ Individual page for every product.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  ┌──────────────┐  Name (large, Playfair Display)       │
+│  ┌──────────────┐  Name (large heading font)              │
 │  │              │  Origin: Ethiopia, 1800-2200m          │
 │  │  PRODUCT IMG │  Roast: ●○○ Light                     │
 │  │   (large)    │  Processing: Washed                    │

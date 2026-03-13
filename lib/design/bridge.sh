@@ -166,7 +166,8 @@ check_design_mcp_health() {
 
 # ─── Design Snapshot ─────────────────────────────────────────────────
 
-# Fetch full design content from MCP and save as structured markdown.
+# Fetch full design content via sequential focused MCP calls and save as markdown.
+# Uses scripts/fetch-figma-design.py for reliable extraction (no single-prompt confusion).
 # Args: $1 = optional "force" to re-fetch even if cached
 # Requires: DESIGN_MCP_CONFIG, DESIGN_FILE_REF, DESIGN_SNAPSHOT_DIR (or pwd)
 # Returns 0 if snapshot saved, 1 on failure/skip.
@@ -193,75 +194,31 @@ fetch_design_snapshot() {
 
     log_info "Fetching design snapshot from $server_name MCP..."
 
-    local snapshot_prompt
-    snapshot_prompt=$(cat <<PROMPT
-You have a $server_name design MCP available. Extract the COMPLETE design from this file:
-$design_ref
+    # Locate the fetcher script
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts"
+    local fetcher="$script_dir/fetch-figma-design.py"
 
-Call these MCP tools IN ORDER:
-
-1. get_metadata — get the full page/frame structure (all pages, frames, layer names, dimensions)
-2. get_variable_defs — get all design tokens (colors, typography, spacing, shadows)
-3. get_design_context — get component structure and hierarchy
-4. get_screenshot for 2-3 key frames (e.g., homepage, main product page) — describe what you see
-
-Then compile ALL results into this EXACT markdown format:
-
-# Design Snapshot
-
-## Pages & Frames
-| Page | Frame | Dimensions | Description |
-|------|-------|------------|-------------|
-(one row per frame)
-
-## Design Tokens
-### Colors
-(list all color variables with hex values)
-### Typography
-(font families, sizes, weights)
-### Spacing
-(spacing scale values)
-### Shadows
-(shadow definitions)
-
-## Component Hierarchy
-### [Frame Name]
-- Component tree with nesting, properties, variants
-(repeat for each major frame)
-
-## Layout Breakpoints
-- Desktop: dimensions
-- Mobile: dimensions
-(list all responsive variants found)
-
-## Visual Descriptions
-### [Frame Name]
-(textual description of visual layout from screenshots — positioning, visual weight, key elements)
-
-IMPORTANT:
-- Include ALL pages and frames, not just a sample
-- For Design Tokens, list actual values not just "defined"
-- If a tool returns no data, note "No data available" in that section
-- Keep component trees concise but complete (max depth 4 levels)
-- Output ONLY the markdown, no explanations before or after
-PROMPT
-)
-
-    local output rc=0
-    output=$(export RUN_CLAUDE_TIMEOUT=600; echo "$snapshot_prompt" | run_claude --output-format text --mcp-config "$config" 2>/dev/null) || rc=$?
-
-    if [[ $rc -ne 0 ]]; then
-        log_warn "Design snapshot fetch timed out or failed (rc=$rc)"
+    if [[ ! -f "$fetcher" ]]; then
+        log_warn "fetch-figma-design.py not found at $fetcher"
         return 1
     fi
 
-    if [[ -z "$output" ]]; then
+    local rc=0
+    python3 "$fetcher" --mcp-config "$config" "$design_ref" -o "$snapshot_file" 2>&1 | while IFS= read -r line; do
+        log_info "  $line"
+    done || rc=$?
+
+    if [[ $rc -ne 0 ]]; then
+        log_warn "Design snapshot fetch failed (rc=$rc)"
+        return 1
+    fi
+
+    if [[ ! -s "$snapshot_file" ]]; then
         log_warn "Design snapshot fetch returned empty output"
         return 1
     fi
 
-    # Save snapshot
-    printf '%s\n' "$output" > "$snapshot_file"
     log_info "Design snapshot saved ($(wc -c < "$snapshot_file") bytes)"
     return 0
 }

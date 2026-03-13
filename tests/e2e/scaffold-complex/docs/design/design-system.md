@@ -2,8 +2,12 @@
 
 ## Figma
 
-**Design file:** https://www.figma.com/design/QrtIGnpTs8jPbEXFuLu2xO/Untitled
 **Figma Make:** https://www.figma.com/make/DDCs2kpcLYw6E3Q1EcDjCK/Detailed-Webshop-Design
+
+> **All design tokens (colors, typography, spacing, shadows) come from the Figma MCP.**
+> The preflight snapshot is injected into the decompose prompt automatically.
+> Agents query the Figma MCP at runtime for specific frame details during implementation.
+> Do NOT hardcode design values — always reference the Figma source.
 
 ### Frame mapping
 
@@ -28,69 +32,9 @@
 | Special States | 404, 500, empty states, loading, toast, promo banner | — |
 | Email Templates | Welcome, order, shipping, gift card | email-notifications.md |
 
-> Agents read Figma frames via Figma MCP during implementation. The design-bridge rule (.claude/rules/design-bridge.md) instructs them to follow design tokens and component structure.
-
 ## Brand
 
 **CraftBrew** — warm, artisanal, premium but not elitist. The joy and community of coffee.
-
-## Colors
-
-```
-Primary:     #78350F  (amber-900)   — dark coffee brown (buttons, active nav)
-Secondary:   #D97706  (amber-600)   — gold (hover, accent, link)
-Background:  #FFFBEB  (amber-50)    — warm cream (page background)
-Surface:     #FFFFFF                 — card/panel background
-Text:        #1C1917  (stone-900)   — main text
-Muted:       #78716C  (stone-500)   — secondary text
-Border:      #E7E5E4  (stone-200)   — borders
-Success:     #16A34A  (green-600)   — in stock, success
-Warning:     #D97706  (amber-600)   — low stock, warning
-Error:       #DC2626  (red-600)     — error, out of stock
-```
-
-Tailwind custom colors in `tailwind.config.ts`:
-```typescript
-colors: {
-  brand: {
-    primary: '#78350F',
-    secondary: '#D97706',
-    cream: '#FFFBEB',
-  }
-}
-```
-
-## Typography
-
-- **Headings:** Playfair Display (serif) — h1-h3
-- **Body:** Inter (sans-serif) — p, span, label, button
-- **Mono:** JetBrains Mono — code, order numbers
-
-Font loading: `next/font/google`
-
-Sizing:
-- h1: 2.5rem (40px), font-bold
-- h2: 2rem (32px), font-semibold
-- h3: 1.5rem (24px), font-semibold
-- body: 1rem (16px), font-normal
-- small: 0.875rem (14px)
-- caption: 0.75rem (12px)
-
-## Spacing & Layout
-
-- Container max-width: 1280px, auto margin
-- Section padding: py-12 (48px) desktop, py-8 (32px) mobile
-- Card padding: p-6 (24px)
-- Grid gap: gap-6 (24px) desktop, gap-4 (16px) mobile
-- Border radius: rounded-lg (8px) cards, rounded-md (6px) buttons/inputs
-
-## Responsive Breakpoints
-
-| Breakpoint | Width | Characteristics |
-|---|---|---|
-| Mobile | < 640px | 1 column, hamburger nav, stack layout |
-| Tablet | 640px - 1023px | 2 column grid, compact nav |
-| Desktop | >= 1024px | 3-4 column grid, full nav |
 
 ## Mobile Rules (CRITICAL)
 
@@ -101,7 +45,7 @@ Sizing:
 5. **Images** — `object-fit: cover`, fixed aspect ratio, no distortion
 6. **Modal/Dialog** — on mobile use full-screen sheet (sliding up from bottom), not a small modal
 
-> For visual reference of all layouts (desktop + mobile), see the Figma frames listed above.
+> For visual reference of all layouts (desktop + mobile), query the Figma MCP with frame names from the table above.
 
 ## Components
 

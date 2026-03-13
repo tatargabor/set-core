@@ -37,7 +37,7 @@ docs/
 - **Anonymous shopping:** Cart works without login (session-based). Checkout requires login.
 - **Payment:** Card payment via Stripe. Invoicing via szamlazz.hu.
 - **Email:** Transactional emails (mock mode in development — no real emails sent)
-- **Images:** Placeholder images in seed data
+- **Images:** Realistic coffee-themed placeholder images in seed data. Use Unsplash Source URLs with coffee/cafe queries (e.g. `https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=600` for hero, `https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400` for product cards). Each product gets a unique image URL. The `ImageWithFallback` component must show a styled SVG placeholder (coffee cup icon, brand colors from Figma design tokens, subtle animation) while loading and on error — never a broken image icon.
 
 ## Seed Data
 
