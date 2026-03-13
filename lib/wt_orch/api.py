@@ -111,9 +111,14 @@ def _quick_status(project_path: Path) -> str:
         return "idle"
     try:
         with open(sp) as f:
-            data = json.load(f)
+            raw = f.read()
+        if "<<<<<<" in raw:
+            return "corrupt"
+        data = json.loads(raw)
         return data.get("status", "idle")
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError:
+        return "corrupt"
+    except OSError:
         return "error"
 
 

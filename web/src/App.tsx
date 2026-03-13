@@ -22,6 +22,9 @@ const statusDot: Record<string, string> = {
   stalled: 'bg-yellow-500',
   skip_merged: 'bg-neutral-600',
   skipped: 'bg-neutral-600',
+  'merge-blocked': 'bg-orange-500',
+  corrupt: 'bg-red-500',
+  error: 'bg-red-900',
 }
 
 function formatDuration(secs?: number): string {
@@ -104,6 +107,7 @@ function ProjectLayout() {
   const { project, setProject, projects } = useProject()
   const location = useLocation()
   const [sidebarState, setSidebarState] = useState<StateData | null>(null)
+  const [stateError, setStateError] = useState<string | null>(null)
 
   const pathAfterProject = location.pathname.split('/').slice(3).join('/')
   const activeTab = pathAfterProject || 'dashboard'
@@ -113,9 +117,19 @@ function ProjectLayout() {
     if (!project) return
     const load = () => {
       fetch(`/api/${project}/state`)
-        .then(r => r.ok ? r.json() : null)
+        .then(async r => {
+          if (r.ok) {
+            setStateError(null)
+            return r.json()
+          }
+          const text = await r.text()
+          if (text.includes('Corrupt')) setStateError('State file corrupt (merge conflict?)')
+          else if (r.status === 404) setStateError(null) // no orchestration — not an error
+          else setStateError(`Error: ${r.status}`)
+          return null
+        })
         .then(d => { if (d) setSidebarState(d) })
-        .catch(() => {})
+        .catch(() => setStateError('Server unreachable'))
     }
     load()
     const interval = setInterval(load, 5000)
@@ -164,7 +178,13 @@ function ProjectLayout() {
 
         {/* Quick status */}
         <div className="border-t border-neutral-800">
-          <SidebarQuickStatus state={sidebarState} />
+          {stateError ? (
+            <div className="px-3 py-2 text-[10px] text-red-400 bg-red-950/30">
+              {stateError}
+            </div>
+          ) : (
+            <SidebarQuickStatus state={sidebarState} />
+          )}
         </div>
 
         {/* Changes mini-list */}

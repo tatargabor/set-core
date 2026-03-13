@@ -35,6 +35,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
     completed: 'bg-blue-900 text-blue-300',
     stopped: 'bg-neutral-800 text-neutral-400',
     failed: 'bg-red-900 text-red-300',
+    corrupt: 'bg-red-900 text-red-300',
     idle: 'bg-neutral-800 text-neutral-500',
   }
 

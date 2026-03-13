@@ -12,6 +12,7 @@ const statusStyle: Record<string, { dot: string; label: string }> = {
   failed: { dot: 'bg-red-500', label: 'Failed' },
   idle: { dot: 'bg-neutral-700', label: 'Idle' },
   error: { dot: 'bg-red-900', label: 'Error' },
+  corrupt: { dot: 'bg-red-500 animate-pulse', label: 'Corrupt State' },
 }
 
 export default function Home() {
