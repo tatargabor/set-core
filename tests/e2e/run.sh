@@ -4,16 +4,35 @@
 # The scaffold is a single file (docs/v1-minishop.md). Agents build everything from the spec.
 #
 # Usage:
-#   ./tests/e2e/run.sh              # Use default dir ($TMPDIR/minishop-e2e or /tmp/minishop-e2e)
+#   ./tests/e2e/run.sh              # Auto-increment: /tmp/minishop-run9, run10, ...
 #   ./tests/e2e/run.sh /path/to/dir # Use specified dir
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPEC_FILE="$SCRIPT_DIR/scaffold/docs/v1-minishop.md"
-DEFAULT_DIR="${TMPDIR:-/tmp}/minishop-e2e"
-TEST_DIR="${1:-$DEFAULT_DIR}"
-PROJECT_NAME="minishop-e2e"
+BASE_DIR="${TMPDIR:-/tmp}"
+
+# Auto-increment run number: find highest existing minishop-runN, use N+1
+next_run_number() {
+    local max=0
+    for d in "$BASE_DIR"/minishop-run*; do
+        [[ -d "$d" ]] || continue
+        local n="${d##*minishop-run}"
+        n="${n%%-*}"  # strip worktree suffixes like -wt-cart-feature
+        [[ "$n" =~ ^[0-9]+$ ]] && (( n > max )) && max=$n
+    done
+    echo $(( max + 1 ))
+}
+
+if [[ -n "${1:-}" ]]; then
+    TEST_DIR="$1"
+    PROJECT_NAME="$(basename "$TEST_DIR")"
+else
+    RUN_NUM=$(next_run_number)
+    TEST_DIR="$BASE_DIR/minishop-run${RUN_NUM}"
+    PROJECT_NAME="minishop-run${RUN_NUM}"
+fi
 
 # ── Colors ──
 
