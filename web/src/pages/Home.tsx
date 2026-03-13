@@ -30,8 +30,8 @@ export default function Home() {
   const errored = sortByLastUpdated(projects.filter((p) => p.status === 'error'))
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-xl font-semibold text-neutral-100 mb-6">wt-tools Dashboard</h1>
+    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+      <h1 className="text-lg md:text-xl font-semibold text-neutral-100 mb-4 md:mb-6">Projects</h1>
 
       {active.length > 0 && (
         <section className="mb-8">
@@ -48,7 +48,7 @@ export default function Home() {
         <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-3">
           Projects ({idle.length})
         </h2>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {idle.map((p) => (
             <ProjectCard key={p.name} project={p} compact />
           ))}
@@ -60,7 +60,7 @@ export default function Home() {
           <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-3">
             Unavailable ({errored.length})
           </h2>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {errored.map((p) => (
               <ProjectCard key={p.name} project={p} compact />
             ))}

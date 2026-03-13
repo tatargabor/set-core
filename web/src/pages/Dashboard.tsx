@@ -15,7 +15,7 @@ import OrchestrationChat from '../components/OrchestrationChat'
 import useIsMobile from '../hooks/useIsMobile'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'orchestration'
+type PanelTab = 'changes' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent'
 
 interface Props {
   project: string | null
@@ -72,7 +72,8 @@ export default function Dashboard({ project }: Props) {
     { id: 'audit', label: 'Audit', hidden: !hasAudit },
     { id: 'digest', label: 'Digest' },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'orchestration', label: 'Orchestration' },
+    { id: 'log', label: 'Log' },
+    { id: 'agent', label: 'Agent' },
   ]
 
   return (
@@ -82,10 +83,10 @@ export default function Dashboard({ project }: Props) {
         <CheckpointBanner project={project} checkpointType={checkpointType} onDismiss={() => setCheckpoint(false)} />
       )}
 
-      {/* Tab bar */}
+      {/* Tab bar — shrink-0 keeps it fixed at top within flex column */}
       <div
         ref={tabBarRef}
-        className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900/30 overflow-x-auto max-w-full scrollbar-hide"
+        className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900 overflow-x-auto max-w-full scrollbar-hide shrink-0"
       >
         {tabs.filter(t => !t.hidden).map(t => (
           <button
@@ -112,105 +113,104 @@ export default function Dashboard({ project }: Props) {
 
       {/* Tab content + log split */}
       <div className="flex-1 min-h-0 relative">
-        {/* Orchestration tab takes full height — no log split needed */}
-        {activeTab === 'orchestration' ? (
+        {/* Agent tab — full height */}
+        {activeTab === 'agent' && (
           <OrchestrationChat project={project} />
-        ) : isMobile ? (
-          <>
-            {/* Mobile: stacked — full-height tab content + collapsible log bottom sheet */}
-            <div className={`h-full overflow-auto ${logExpanded ? 'pb-[60vh]' : 'pb-11'}`}>
-              {activeTab === 'changes' && (
+        )}
+
+        {/* Changes tab — with log panel */}
+        {activeTab === 'changes' && (
+          isMobile ? (
+            <>
+              <div className={`h-full overflow-auto ${selectedChange && logExpanded ? 'pb-[60vh]' : selectedChange ? 'pb-11' : ''}`}>
                 <ChangeTable
                   changes={changes}
                   project={project}
                   selected={selectedChange}
                   onSelect={setSelectedChange}
                 />
-              )}
-              {activeTab === 'plan' && (
-                <PlanViewer project={project} />
-              )}
-              {activeTab === 'tokens' && (
-                <TokenChart project={project} />
-              )}
-              {activeTab === 'requirements' && (
-                <ProgressView project={project} />
-              )}
-              {activeTab === 'audit' && state?.phase_audit_results && (
-                <AuditPanel results={state.phase_audit_results} />
-              )}
-              {activeTab === 'digest' && (
-                <DigestView project={project} />
-              )}
-              {activeTab === 'sessions' && (
-                <SessionPanel project={project} />
-              )}
-            </div>
-
-            {/* Mobile log bottom sheet */}
-            <div className={`absolute bottom-0 left-0 right-0 bg-neutral-950 border-t border-neutral-800 transition-all duration-200 ${
-              logExpanded ? 'h-[60vh]' : 'h-11'
-            }`}>
-              <button
-                onClick={() => setLogExpanded(!logExpanded)}
-                className="w-full h-11 flex items-center justify-center gap-2 text-sm text-neutral-400 bg-neutral-900/80 border-b border-neutral-800"
-              >
-                <span>Logs</span>
-                <span className="text-xs">{logExpanded ? '▼' : '▲'}</span>
-              </button>
-              {logExpanded && (
-                <div className="h-[calc(100%-44px)] overflow-auto">
-                  <LogPanel
-                    orchLines={logLines}
-                    selectedChange={selectedChangeInfo}
-                    project={project}
-                  />
+              </div>
+              {/* Mobile log bottom sheet — only when a change is selected */}
+              {selectedChange && (
+                <div className={`absolute bottom-0 left-0 right-0 bg-neutral-950 border-t border-neutral-800 transition-all duration-200 ${
+                  logExpanded ? 'h-[60vh]' : 'h-11'
+                }`}>
+                  <button
+                    onClick={() => setLogExpanded(!logExpanded)}
+                    className="w-full h-11 flex items-center justify-center gap-2 text-sm text-neutral-400 bg-neutral-900/80 border-b border-neutral-800"
+                  >
+                    <span>Logs</span>
+                    <span className="text-xs">{logExpanded ? '▼' : '▲'}</span>
+                  </button>
+                  {logExpanded && (
+                    <div className="h-[calc(100%-44px)] overflow-auto">
+                      <LogPanel
+                        orchLines={logLines}
+                        selectedChange={selectedChangeInfo}
+                        project={project}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          </>
-        ) : (
-          /* Desktop: resizable split */
-          <ResizableSplit
-            top={
-              <div className="h-full overflow-auto">
-                {activeTab === 'changes' && (
+            </>
+          ) : (
+            <ResizableSplit
+              top={
+                <div className="h-full overflow-auto">
                   <ChangeTable
                     changes={changes}
                     project={project}
                     selected={selectedChange}
                     onSelect={setSelectedChange}
                   />
-                )}
-                {activeTab === 'plan' && (
-                  <PlanViewer project={project} />
-                )}
-                {activeTab === 'tokens' && (
-                  <TokenChart project={project} />
-                )}
-                {activeTab === 'requirements' && (
-                  <ProgressView project={project} />
-                )}
-                {activeTab === 'audit' && state?.phase_audit_results && (
-                  <AuditPanel results={state.phase_audit_results} />
-                )}
-                {activeTab === 'digest' && (
-                  <DigestView project={project} />
-                )}
-                {activeTab === 'sessions' && (
-                  <SessionPanel project={project} />
-                )}
-              </div>
-            }
-            bottom={
-              <LogPanel
-                orchLines={logLines}
-                selectedChange={selectedChangeInfo}
-                project={project}
-              />
-            }
-            defaultRatio={0.55}
-          />
+                </div>
+              }
+              bottom={
+                <LogPanel
+                  orchLines={logLines}
+                  selectedChange={selectedChangeInfo}
+                  project={project}
+                />
+              }
+              defaultRatio={0.55}
+            />
+          )
+        )}
+
+        {/* Log tab — orchestration log full height */}
+        {activeTab === 'log' && (
+          <div className="h-full">
+            <LogPanel
+              orchLines={logLines}
+              selectedChange={null}
+              project={project}
+            />
+          </div>
+        )}
+
+        {/* All other tabs — full height, no log panel */}
+        {activeTab !== 'changes' && activeTab !== 'agent' && activeTab !== 'log' && (
+          <div className="h-full overflow-auto">
+            {activeTab === 'plan' && (
+              <PlanViewer project={project} />
+            )}
+            {activeTab === 'tokens' && (
+              <TokenChart project={project} />
+            )}
+            {activeTab === 'requirements' && (
+              <ProgressView project={project} />
+            )}
+            {activeTab === 'audit' && state?.phase_audit_results && (
+              <AuditPanel results={state.phase_audit_results} />
+            )}
+            {activeTab === 'digest' && (
+              <DigestView project={project} />
+            )}
+            {activeTab === 'sessions' && (
+              <SessionPanel project={project} />
+            )}
+          </div>
         )}
       </div>
     </div>

@@ -52,7 +52,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
   const done = changes.filter((c) => ['done', 'merged', 'completed'].includes(c.status)).length
 
   return (
-    <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50">
+    <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold text-neutral-100">{project}</h2>
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${badgeColor[statusBadge] ?? 'bg-neutral-800 text-neutral-400'}`}>

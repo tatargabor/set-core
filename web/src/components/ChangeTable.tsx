@@ -87,86 +87,100 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
     )
   }
 
-  // Mobile: card layout
+  // Mobile: compact expandable rows
   if (isMobile) {
     return (
-      <div className="p-2 space-y-2">
+      <div className="divide-y divide-neutral-800/50">
         {changes.map((c) => {
-          const clickable = !!c.worktree_path
-          const isSelected = selected === c.name
+          const isExpanded = selected === c.name
           const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result)
           const isGateExpanded = expandedGate === c.name
           return (
             <div key={c.name}>
-              <div
-                onClick={clickable && onSelect ? () => onSelect(isSelected ? null : c.name) : undefined}
-                className={`rounded-lg border border-neutral-800 p-3 transition-colors ${
-                  clickable ? 'active:bg-neutral-800/70' : ''
-                } ${isSelected ? 'bg-neutral-900/70 border-l-2 border-l-blue-500' : 'bg-neutral-900/30'}`}
+              {/* Compact row */}
+              <button
+                onClick={() => onSelect?.(isExpanded ? null : c.name)}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors active:bg-neutral-800/50 ${
+                  isExpanded ? 'bg-neutral-900/70' : ''
+                }`}
               >
-                {/* Row 1: name + status */}
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="font-mono text-sm text-neutral-200 truncate">{c.name}</span>
-                  <span className={`text-sm font-medium shrink-0 ${statusColor[c.status] ?? 'text-neutral-400'}`}>
-                    {c.status}
-                  </span>
-                </div>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                  statusColor[c.status]?.replace('text-', 'bg-') ?? 'bg-neutral-600'
+                }`} />
+                <span className="font-mono text-xs text-neutral-200 truncate flex-1">{c.name}</span>
+                <span className="text-[10px] text-neutral-500 shrink-0">{formatDuration(changeDuration(c))}</span>
+                <span className={`text-[10px] shrink-0 ${statusColor[c.status] ?? 'text-neutral-400'}`}>{c.status}</span>
+                <span className="text-neutral-600 text-xs">{isExpanded ? '▲' : '▼'}</span>
+              </button>
 
-                {/* Row 2: duration + gates */}
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs text-neutral-400">{formatDuration(changeDuration(c))}</span>
-                  <div
-                    className="cursor-pointer"
-                    onClick={(e) => toggleGate(e, c.name)}
-                  >
-                    <GateBar
-                      test_result={c.test_result}
-                      smoke_result={c.smoke_result}
-                      review_result={c.review_result}
-                      build_result={c.build_result}
-                      hasScreenshots={!!c.smoke_screenshot_count || !!c.e2e_screenshot_count}
-                      onScreenshots={(e) => toggleScreenshots(e, c.name)}
-                    />
+              {/* Expanded details */}
+              {isExpanded && (
+                <div className="px-3 pb-3 space-y-2 bg-neutral-900/30">
+                  {/* Tokens + model */}
+                  <div className="flex gap-4 text-[11px] text-neutral-400">
+                    <span>In: {formatTokens(c.input_tokens)}</span>
+                    <span>Out: {formatTokens(c.output_tokens)}</span>
+                    {c.session_count && <span>Sessions: {c.session_count}</span>}
+                    {c.model && <span className="text-neutral-500">{c.model}</span>}
                   </div>
-                </div>
 
-                {/* Row 3: actions */}
-                <div className="flex gap-2">
-                  {['running', 'verifying', 'implementing'].includes(c.status) && (
-                    <button
-                      onClick={(e) => handleAction(e, c.name, 'stop')}
-                      disabled={actionLoading === `${c.name}:stop`}
-                      className="px-3 min-h-[44px] text-sm bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50"
+                  {/* Gates */}
+                  {hasGates && (
+                    <div
+                      className="cursor-pointer"
+                      onClick={(e) => toggleGate(e, c.name)}
                     >
-                      Stop
-                    </button>
+                      <GateBar
+                        test_result={c.test_result}
+                        smoke_result={c.smoke_result}
+                        review_result={c.review_result}
+                        build_result={c.build_result}
+                        hasScreenshots={!!c.smoke_screenshot_count || !!c.e2e_screenshot_count}
+                        onScreenshots={(e) => toggleScreenshots(e, c.name)}
+                      />
+                    </div>
                   )}
-                  {(c.status === 'pending' || c.status === 'failed' || c.status === 'verify-failed' || c.status === 'stalled') && (
-                    <button
-                      onClick={(e) => handleAction(e, c.name, 'skip')}
-                      disabled={actionLoading === `${c.name}:skip`}
-                      className="px-3 min-h-[44px] text-sm bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700 disabled:opacity-50"
-                    >
-                      Skip
-                    </button>
-                  )}
-                </div>
-              </div>
 
-              {/* Expanded gate detail */}
-              {isGateExpanded && hasGates && (
-                <div className="mt-1 rounded-lg border border-neutral-800/50 bg-neutral-950/50 p-2">
-                  <ChangeTimeline change={c} />
-                  <GateDetail change={c} />
-                </div>
-              )}
-              {screenshotChange === c.name && (
-                <div className="mt-1 rounded-lg border border-neutral-800/50 bg-neutral-950/50 p-2">
-                  <ScreenshotGallery
-                    project={project}
-                    changeName={c.name}
-                    onClose={() => setScreenshotChange(null)}
-                  />
+                  {/* Gate detail */}
+                  {isGateExpanded && hasGates && (
+                    <div className="rounded border border-neutral-800/50 bg-neutral-950/50 p-2">
+                      <ChangeTimeline change={c} />
+                      <GateDetail change={c} />
+                    </div>
+                  )}
+
+                  {/* Screenshots */}
+                  {screenshotChange === c.name && (
+                    <div className="rounded border border-neutral-800/50 bg-neutral-950/50 p-2">
+                      <ScreenshotGallery
+                        project={project}
+                        changeName={c.name}
+                        onClose={() => setScreenshotChange(null)}
+                      />
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-2">
+                    {['running', 'verifying', 'implementing'].includes(c.status) && (
+                      <button
+                        onClick={(e) => handleAction(e, c.name, 'stop')}
+                        disabled={actionLoading === `${c.name}:stop`}
+                        className="px-3 py-1.5 text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50"
+                      >
+                        Stop
+                      </button>
+                    )}
+                    {(c.status === 'pending' || c.status === 'failed' || c.status === 'verify-failed' || c.status === 'stalled') && (
+                      <button
+                        onClick={(e) => handleAction(e, c.name, 'skip')}
+                        disabled={actionLoading === `${c.name}:skip`}
+                        className="px-3 py-1.5 text-xs bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700 disabled:opacity-50"
+                      >
+                        Skip
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

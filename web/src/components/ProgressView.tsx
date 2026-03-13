@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getRequirements, type RequirementsData, type ReqChangeInfo } from '../lib/api'
+import { getRequirements, getDigest, type RequirementsData, type ReqChangeInfo, type DigestReq, type DigestData } from '../lib/api'
 
 interface Props {
   project: string
@@ -175,8 +175,11 @@ export default function ProgressView({ project }: Props) {
     return <div className="p-4 text-xs text-neutral-500">No plan data found</div>
   }
 
-  // When no formal requirements, track by changes instead
+  // When no formal plan requirements, try digest requirements
   const hasReqs = data.total_reqs > 0
+  if (!hasReqs) {
+    return <DigestFallbackView project={project} changes={data.changes} />
+  }
   const doneStatuses = new Set(['done', 'merged', 'completed', 'skip_merged'])
   const ipStatuses = new Set(['running', 'implementing', 'verifying'])
   const failStatuses = new Set(['failed', 'verify-failed'])
@@ -299,6 +302,157 @@ function GroupsView({ data }: { data: RequirementsData }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function extractDigestReqs(data: DigestData): DigestReq[] {
+  const raw = data.requirements
+  if (!raw) return []
+  if (Array.isArray(raw) && raw.length === 1 && 'requirements' in (raw[0] as Record<string, unknown>)) {
+    return (raw[0] as { requirements: DigestReq[] }).requirements
+  }
+  return raw as DigestReq[]
+}
+
+function DigestFallbackView({ project, changes }: { project: string; changes: ReqChangeInfo[] }) {
+  const [digestReqs, setDigestReqs] = useState<DigestReq[]>([])
+  const [coverage, setCoverage] = useState<Record<string, { change: string; status: string }>>({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      getDigest(project)
+        .then(d => {
+          if (cancelled) return
+          if (d.exists) {
+            setDigestReqs(extractDigestReqs(d))
+            setCoverage(d.coverage?.coverage ?? {})
+          }
+          setLoading(false)
+        })
+        .catch(() => { if (!cancelled) setLoading(false) })
+    }
+    load()
+    const iv = setInterval(load, 10000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [project])
+
+  if (loading) {
+    return <div className="p-4 text-xs text-neutral-500">Loading requirements...</div>
+  }
+
+  // No digest reqs either — show change tree
+  if (digestReqs.length === 0) {
+    const doneS = new Set(['done', 'merged', 'completed', 'skip_merged'])
+    const ipS = new Set(['running', 'implementing', 'verifying'])
+    const failS = new Set(['failed', 'verify-failed'])
+    const tDone = changes.filter(c => doneS.has(c.status)).length
+    const tIp = changes.filter(c => ipS.has(c.status)).length
+    const tFail = changes.filter(c => failS.has(c.status)).length
+    const pct = changes.length > 0 ? Math.round((tDone / changes.length) * 100) : 0
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center gap-3 px-4 py-1.5 border-b border-neutral-800/50 shrink-0">
+          <span className="text-xs font-medium text-neutral-300">{tDone}/{changes.length}</span>
+          <span className="text-[10px] text-neutral-500">{pct}%</span>
+          <div className="flex-1 max-w-xs">
+            <ProgressBar done={tDone} inProgress={tIp} failed={tFail} total={changes.length} />
+          </div>
+          <span className="text-[10px] text-neutral-600 ml-auto">{changes.length} changes</span>
+        </div>
+        <div className="flex-1 overflow-y-auto min-h-0 p-2">
+          <DependencyTree changes={changes} />
+        </div>
+      </div>
+    )
+  }
+
+  // Show digest requirements with coverage
+  const doneStatuses = new Set(['done', 'merged', 'completed', 'skip_merged'])
+  const coveredCount = Object.keys(coverage).length
+  const doneCount = Object.values(coverage).filter(c => doneStatuses.has(c.status)).length
+  const totalReqs = digestReqs.length
+  const pctDone = totalReqs > 0 ? Math.round((doneCount / totalReqs) * 100) : 0
+
+  // Group by domain
+  const byDomain = useMemo(() => {
+    const groups: Record<string, DigestReq[]> = {}
+    for (const r of digestReqs) {
+      if (!groups[r.domain]) groups[r.domain] = []
+      groups[r.domain].push(r)
+    }
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [digestReqs])
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-3 px-4 py-1.5 border-b border-neutral-800/50 shrink-0">
+        <span className="text-xs font-medium text-neutral-300">{doneCount}/{totalReqs}</span>
+        <span className="text-[10px] text-neutral-500">{pctDone}%</span>
+        <div className="flex-1 max-w-xs">
+          <ProgressBar done={doneCount} inProgress={coveredCount - doneCount} failed={0} total={totalReqs} />
+        </div>
+        <span className="text-[10px] text-neutral-600 ml-auto">
+          {coveredCount} covered · {byDomain.length} domains
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="divide-y divide-neutral-800/50">
+          {byDomain.map(([domain, reqs]) => (
+            <DigestDomainGroup key={domain} domain={domain} reqs={reqs} coverage={coverage} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DigestDomainGroup({ domain, reqs, coverage }: {
+  domain: string
+  reqs: DigestReq[]
+  coverage: Record<string, { change: string; status: string }>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const doneStatuses = new Set(['done', 'merged', 'completed', 'skip_merged'])
+  const done = reqs.filter(r => coverage[r.id] && doneStatuses.has(coverage[r.id].status)).length
+  const pct = reqs.length > 0 ? Math.round((done / reqs.length) * 100) : 0
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-3 px-4 py-2 hover:bg-neutral-800/30 transition-colors"
+      >
+        <span className="text-neutral-500 w-3 text-[10px]">{expanded ? '▾' : '▸'}</span>
+        <span className="text-xs font-medium text-neutral-300 w-24 truncate">{domain}</span>
+        <div className="flex-1 max-w-[200px]">
+          <ProgressBar done={done} inProgress={0} failed={0} total={reqs.length} />
+        </div>
+        <span className="text-[11px] text-neutral-400 w-16 text-right">{done}/{reqs.length}</span>
+        <span className="text-[10px] text-neutral-500 w-10 text-right">{pct}%</span>
+      </button>
+      {expanded && (
+        <div className="px-4 pb-2">
+          <table className="w-full text-[11px]">
+            <tbody>
+              {reqs.map(r => {
+                const cov = coverage[r.id]
+                const statusColor = cov ? (STATUS_TEXT[cov.status] ?? 'text-neutral-600') : 'text-yellow-500'
+                return (
+                  <tr key={r.id} className="hover:bg-neutral-800/20">
+                    <td className="py-0.5 pl-6 font-mono text-neutral-400 w-28 truncate" title={r.brief}>{r.id}</td>
+                    <td className="py-0.5 text-neutral-400 truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
+                    <td className={`py-0.5 w-20 ${statusColor}`}>{cov?.status ?? 'uncovered'}</td>
+                    <td className="py-0.5 font-mono text-neutral-500 truncate">{cov?.change ?? '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

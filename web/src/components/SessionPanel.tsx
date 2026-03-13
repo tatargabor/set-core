@@ -21,7 +21,12 @@ export default function SessionPanel({ project }: Props) {
   const [lines, setLines] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [listOpen, setListOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Track selected in ref so the poll closure always sees current value
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
 
   // Load session list
   useEffect(() => {
@@ -31,8 +36,8 @@ export default function SessionPanel({ project }: Props) {
         .then(d => {
           if (cancelled) return
           setSessions(d.sessions)
-          // Auto-select most recent if none selected
-          if (!selected && d.sessions.length > 0) {
+          // Auto-select most recent only if nothing is selected yet
+          if (!selectedRef.current && d.sessions.length > 0) {
             setSelected(d.sessions[0].id)
           }
         })
@@ -41,7 +46,7 @@ export default function SessionPanel({ project }: Props) {
     load()
     const iv = setInterval(load, 15000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [project]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [project])
 
   // Load selected session content
   useEffect(() => {
@@ -76,13 +81,53 @@ export default function SessionPanel({ project }: Props) {
     }
   }, [lines, selected, sessions])
 
+  const selectedLabel = sessions.find(s => s.id === selected)?.label || selected?.slice(0, 8) || '—'
+
   if (error) return <div className="p-4 text-xs text-red-400">{error}</div>
   if (sessions.length === 0) return <div className="p-4 text-xs text-neutral-500">No sessions found</div>
 
   return (
-    <div className="flex h-full">
-      {/* Session list sidebar */}
-      <div className="w-48 shrink-0 border-r border-neutral-800 overflow-y-auto">
+    <div className="flex flex-col md:flex-row h-full">
+      {/* Mobile: dropdown session picker */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800 md:hidden shrink-0">
+        <button
+          onClick={() => setListOpen(!listOpen)}
+          className="flex items-center gap-2 px-2 py-1 bg-neutral-800 rounded text-[11px] text-neutral-300"
+        >
+          <span className="truncate max-w-[200px]">{selectedLabel}</span>
+          <span className="text-neutral-500">{listOpen ? '▲' : '▼'}</span>
+        </button>
+        <span className="text-[10px] text-neutral-600 ml-auto">{sessions.length} sessions</span>
+      </div>
+
+      {/* Mobile: collapsible session list */}
+      {listOpen && (
+        <div className="md:hidden max-h-48 overflow-y-auto border-b border-neutral-800 shrink-0">
+          {sessions.map(s => {
+            const isActive = s.id === selected
+            const age = timeSince(s.mtime)
+            return (
+              <button
+                key={s.id}
+                onClick={() => { setSelected(s.id); setListOpen(false) }}
+                className={`w-full text-left px-3 py-2 border-b border-neutral-800/30 transition-colors ${
+                  isActive ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50'
+                }`}
+              >
+                <div className="text-[11px] font-medium truncate">
+                  {s.label || s.id.slice(0, 8)}
+                </div>
+                <div className="text-[10px] text-neutral-600 truncate" title={s.full_label}>
+                  {age} · {(s.size / 1024).toFixed(0)}KB
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Desktop: session list sidebar */}
+      <div className="hidden md:block w-48 shrink-0 border-r border-neutral-800 overflow-y-auto">
         {sessions.map(s => {
           const isActive = s.id === selected
           const age = timeSince(s.mtime)
@@ -106,7 +151,7 @@ export default function SessionPanel({ project }: Props) {
       </div>
 
       {/* Session content */}
-      <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-5">
+      <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-5 min-h-0">
         {loading && lines.length === 0 ? (
           <div className="text-neutral-500">Loading session...</div>
         ) : (

@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import type { ChangeInfo, SessionInfo } from '../lib/api'
 import { getChangeSession } from '../lib/api'
+import useIsMobile from '../hooks/useIsMobile'
 
 interface Props {
   orchLines: string[]
@@ -113,6 +114,7 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
   const [splitRatio, setSplitRatio] = useState(loadSplitRatio)
   const [dragging, setDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const isMobile = useIsMobile()
 
   // Persist split ratio
   useEffect(() => {
@@ -208,65 +210,72 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
     )
   }
 
-  // Split view: orch left, session right
+  // Session log pane (shared between mobile and desktop)
+  const sessionPane = (
+    <div className="h-full min-w-0 flex flex-col">
+      {/* Session tabs */}
+      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50 overflow-x-auto">
+        <span className="text-[10px] text-neutral-600 shrink-0 mr-1">
+          {selectedChange.name}
+        </span>
+        {sessions.map((s, i) => {
+          const isActive = activeSessionId === s.id
+          const isLatest = i === 0
+          return (
+            <button
+              key={s.id}
+              onClick={() => loadSession(s.id)}
+              className={`px-1.5 py-0.5 text-[10px] rounded font-mono transition-colors shrink-0 ${
+                isActive
+                  ? 'bg-blue-900/60 text-blue-300'
+                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+              }`}
+              title={s.full_label || `Session ${s.id.slice(0, 8)}… — ${new Date(s.mtime).toLocaleString()}`}
+            >
+              {sessionLabel(s, i)}{isLatest ? ' *' : ''}
+            </button>
+          )
+        })}
+        {sessions.length === 0 && (
+          <span className="text-[10px] text-neutral-600">No sessions</span>
+        )}
+      </div>
+
+      {/* Session content */}
+      <div className="flex-1 min-h-0">
+        {sessionLoading ? (
+          <div className="p-2 text-xs text-neutral-600">Loading session...</div>
+        ) : (
+          <LogPane
+            lines={sessionLines}
+            colorFn={sessionLineColor}
+            label="Session Log"
+            live={selectedChange.status === 'running'}
+          />
+        )}
+      </div>
+    </div>
+  )
+
+  // Mobile: session log only (orch log has its own tab)
+  if (isMobile) {
+    return <div className="h-full">{sessionPane}</div>
+  }
+
+  // Desktop: split view — orch left, session right
   return (
     <div ref={containerRef} className="h-full flex" style={{ userSelect: dragging ? 'none' : undefined }}>
-      {/* Left: Orch log */}
       <div style={{ width: `${splitRatio * 100}%` }} className="h-full min-w-0">
         <LogPane lines={orchLines} colorFn={orchLineColor} label="Orchestration Log" />
       </div>
-
-      {/* Resizer */}
       <div
         onMouseDown={onMouseDown}
         className={`w-1 cursor-col-resize flex-shrink-0 transition-colors ${
           dragging ? 'bg-blue-500' : 'bg-neutral-800 hover:bg-neutral-600'
         }`}
       />
-
-      {/* Right: Session log */}
-      <div style={{ width: `${(1 - splitRatio) * 100}%` }} className="h-full min-w-0 flex flex-col">
-        {/* Session tabs */}
-        <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50 overflow-x-auto">
-          <span className="text-[10px] text-neutral-600 shrink-0 mr-1">
-            {selectedChange.name}
-          </span>
-          {sessions.map((s, i) => {
-            const isActive = activeSessionId === s.id
-            const isLatest = i === 0
-            return (
-              <button
-                key={s.id}
-                onClick={() => loadSession(s.id)}
-                className={`px-1.5 py-0.5 text-[10px] rounded font-mono transition-colors shrink-0 ${
-                  isActive
-                    ? 'bg-blue-900/60 text-blue-300'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
-                }`}
-                title={s.full_label || `Session ${s.id.slice(0, 8)}… — ${new Date(s.mtime).toLocaleString()}`}
-              >
-                {sessionLabel(s, i)}{isLatest ? ' *' : ''}
-              </button>
-            )
-          })}
-          {sessions.length === 0 && (
-            <span className="text-[10px] text-neutral-600">No sessions</span>
-          )}
-        </div>
-
-        {/* Session content */}
-        <div className="flex-1 min-h-0">
-          {sessionLoading ? (
-            <div className="p-2 text-xs text-neutral-600">Loading session...</div>
-          ) : (
-            <LogPane
-              lines={sessionLines}
-              colorFn={sessionLineColor}
-              label="Session Log"
-              live={selectedChange.status === 'running'}
-            />
-          )}
-        </div>
+      <div style={{ width: `${(1 - splitRatio) * 100}%` }}>
+        {sessionPane}
       </div>
     </div>
   )

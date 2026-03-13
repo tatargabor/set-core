@@ -41,7 +41,7 @@ export default function CheckpointBanner({ project, checkpointType, onDismiss }:
   const isMcpAuth = checkpointType === 'mcp_auth'
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 border-b ${
+    <div className={`flex items-center gap-3 px-4 py-3 border-b shrink-0 ${
       isMcpAuth
         ? 'bg-orange-900/30 border-orange-800/50'
         : 'bg-yellow-900/30 border-yellow-800/50'

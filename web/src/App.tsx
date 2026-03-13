@@ -221,7 +221,7 @@ function ProjectLayout() {
       </aside>
 
       {/* Main content — add top padding on mobile for the top bar */}
-      <main className="flex-1 overflow-auto pt-11 md:pt-0">
+      <main className="flex-1 overflow-hidden pt-11 md:pt-0">
         <Routes>
           <Route index element={<Dashboard project={project} />} />
           <Route path="worktrees" element={<Worktrees project={project} />} />
@@ -235,7 +235,7 @@ function ProjectLayout() {
 function HomeLayout() {
   return (
     <div className="flex h-screen bg-neutral-950 text-neutral-200">
-      <aside className="w-56 shrink-0 border-r border-neutral-800 flex flex-col">
+      <aside className="hidden md:flex w-56 shrink-0 border-r border-neutral-800 flex-col">
         <div className="p-4 border-b border-neutral-800">
           <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">wt-tools</h1>
         </div>

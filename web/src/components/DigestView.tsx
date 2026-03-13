@@ -77,7 +77,7 @@ export default function DigestView({ project }: Props) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        {tab === 'overview' && <OverviewPanel data={data} reqs={reqs} coverage={coverage} uncovered={uncovered} domains={domains} />}
+        {tab === 'overview' && <OverviewPanel reqs={reqs} coverage={coverage} uncovered={uncovered} domains={domains} />}
         {tab === 'requirements' && <RequirementsPanel reqs={reqs} coverage={coverage} />}
         {tab === 'domains' && <DomainsPanel domains={domains} />}
         {tab === 'triage' && data.triage && <MarkdownPanel content={data.triage} />}
@@ -86,13 +86,13 @@ export default function DigestView({ project }: Props) {
   )
 }
 
-function OverviewPanel({ data, reqs, coverage, uncovered, domains }: {
-  data: DigestData
+function OverviewPanel({ reqs, coverage, uncovered, domains }: {
   reqs: DigestReq[]
   coverage: Record<string, { change: string; status: string }>
   uncovered: string[]
   domains: Record<string, string>
 }) {
+  const [showAll, setShowAll] = useState(false)
   const coveredCount = Object.keys(coverage).length
   const totalReqs = reqs.length
   const doneStatuses = new Set(['done', 'merged', 'completed', 'skip_merged'])
@@ -107,74 +107,71 @@ function OverviewPanel({ data, reqs, coverage, uncovered, domains }: {
     return counts
   }, [reqs])
 
+  const MOBILE_LIMIT = 20
+  const visibleReqs = showAll ? reqs : reqs.slice(0, MOBILE_LIMIT)
+  const hasMore = reqs.length > MOBILE_LIMIT && !showAll
+
   return (
-    <div className="p-4 space-y-4 text-xs">
-      {/* Progress summary */}
-      <div className="flex gap-6">
-        <div>
-          <div className="text-neutral-500">Requirements</div>
-          <div className="text-lg font-medium text-neutral-200">{totalReqs}</div>
-        </div>
-        <div>
-          <div className="text-neutral-500">Covered</div>
-          <div className="text-lg font-medium text-blue-400">{coveredCount}</div>
-        </div>
-        <div>
-          <div className="text-neutral-500">Done</div>
-          <div className="text-lg font-medium text-green-400">{doneCount}</div>
-        </div>
-        <div>
-          <div className="text-neutral-500">Uncovered</div>
-          <div className="text-lg font-medium text-yellow-400">{uncovered.length}</div>
-        </div>
-        <div>
-          <div className="text-neutral-500">Domains</div>
-          <div className="text-lg font-medium text-neutral-300">{Object.keys(domains).length}</div>
-        </div>
+    <div className="p-3 space-y-3 text-xs">
+      {/* Compact progress row */}
+      <div className="flex items-center gap-3 text-[11px]">
+        <span className="text-neutral-200 font-medium">{doneCount}/{totalReqs}</span>
+        {totalReqs > 0 && (
+          <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-neutral-800 max-w-xs">
+            {doneCount > 0 && <div className="h-full bg-blue-500" style={{ width: `${(doneCount / totalReqs) * 100}%` }} />}
+          </div>
+        )}
+        <span className="text-blue-400">{coveredCount} covered</span>
+        {uncovered.length > 0 && <span className="text-yellow-400">{uncovered.length} uncovered</span>}
+        <span className="text-neutral-500">{Object.keys(domains).length} domains</span>
       </div>
 
-      {/* Progress bar */}
-      {totalReqs > 0 && (
-        <div className="flex h-2 rounded-full overflow-hidden bg-neutral-800 max-w-md">
-          {doneCount > 0 && <div className="bg-blue-500" style={{ width: `${(doneCount / totalReqs) * 100}%` }} />}
-          {(coveredCount - doneCount) > 0 && <div className="bg-neutral-600" style={{ width: `${((coveredCount - doneCount) / totalReqs) * 100}%` }} />}
-        </div>
+      {/* Requirements table — compact, capped on mobile */}
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-neutral-500 border-b border-neutral-800">
+            <th className="text-left px-2 py-1 font-medium">Req</th>
+            <th className="text-left px-2 py-1 font-medium hidden md:table-cell">Title</th>
+            <th className="text-left px-2 py-1 font-medium">Domain</th>
+            <th className="text-left px-2 py-1 font-medium">Change</th>
+            <th className="text-left px-2 py-1 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visibleReqs.map(r => {
+            const cov = coverage[r.id]
+            return (
+              <tr key={r.id} className="border-b border-neutral-800/30">
+                <td className="px-2 py-1 font-mono text-neutral-300 truncate max-w-[100px]" title={r.brief}>{r.id}</td>
+                <td className="px-2 py-1 text-neutral-400 truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
+                <td className="px-2 py-1 text-neutral-500 truncate max-w-[80px]">{r.domain}</td>
+                <td className="px-2 py-1 font-mono text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '—'}</td>
+                <td className={`px-2 py-1 ${cov ? statusColor(cov.status) : 'text-yellow-500'}`}>
+                  {cov?.status ?? '—'}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {hasMore && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="w-full py-1.5 text-[11px] text-neutral-400 hover:text-neutral-200 bg-neutral-800/50 rounded transition-colors"
+        >
+          Show all {reqs.length} requirements ({reqs.length - MOBILE_LIMIT} more)
+        </button>
       )}
 
-      {/* Domain breakdown */}
-      <div>
-        <div className="text-neutral-500 mb-2">Domains</div>
-        <div className="grid grid-cols-3 gap-1">
+      {/* Domain summary — compact inline */}
+      {Object.keys(domainCounts).length > 0 && (
+        <div className="flex flex-wrap gap-1">
           {Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).map(([domain, count]) => (
-            <div key={domain} className="flex items-center gap-2 px-2 py-1 rounded bg-neutral-900/50">
-              <span className="text-neutral-300 font-mono">{domain}</span>
-              <span className="text-neutral-500 ml-auto">{count}</span>
-            </div>
+            <span key={domain} className="px-1.5 py-0.5 bg-neutral-900/50 rounded text-[10px] text-neutral-400">
+              {domain} <span className="text-neutral-600">{count}</span>
+            </span>
           ))}
-        </div>
-      </div>
-
-      {/* Execution hints */}
-      {data.index?.execution_hints?.suggested_implementation_order && (
-        <div>
-          <div className="text-neutral-500 mb-2">Implementation Order</div>
-          <div className="space-y-0.5">
-            {data.index.execution_hints.suggested_implementation_order.map((step, i) => (
-              <div key={i} className="text-neutral-400 pl-2">{step}</div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Uncovered list */}
-      {uncovered.length > 0 && (
-        <div>
-          <div className="text-yellow-500 mb-1">Uncovered Requirements</div>
-          <div className="font-mono text-neutral-400 flex flex-wrap gap-1">
-            {uncovered.map(id => (
-              <span key={id} className="px-1.5 py-0.5 bg-yellow-900/20 rounded text-yellow-400">{id}</span>
-            ))}
-          </div>
         </div>
       )}
     </div>
@@ -266,12 +263,26 @@ function statusColor(status: string): string {
 
 function DomainsPanel({ domains }: { domains: Record<string, string> }) {
   const [selected, setSelected] = useState<string | null>(Object.keys(domains)[0] ?? null)
+  const sortedDomains = Object.keys(domains).sort()
 
   return (
-    <div className="flex h-full">
-      {/* Domain list */}
-      <div className="w-36 shrink-0 border-r border-neutral-800 overflow-y-auto">
-        {Object.keys(domains).sort().map(name => (
+    <div className="flex flex-col md:flex-row h-full">
+      {/* Mobile: dropdown domain picker */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800 md:hidden shrink-0">
+        <select
+          value={selected ?? ''}
+          onChange={e => setSelected(e.target.value || null)}
+          className="bg-neutral-800 text-neutral-300 text-[11px] rounded px-2 py-1 border border-neutral-700 flex-1"
+        >
+          {sortedDomains.map(name => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Desktop: domain list sidebar */}
+      <div className="hidden md:block w-36 shrink-0 border-r border-neutral-800 overflow-y-auto">
+        {sortedDomains.map(name => (
           <button
             key={name}
             onClick={() => setSelected(name)}
@@ -284,23 +295,87 @@ function DomainsPanel({ domains }: { domains: Record<string, string> }) {
         ))}
       </div>
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto p-3 min-h-0">
         {selected && domains[selected] && <MarkdownPanel content={domains[selected]} />}
       </div>
     </div>
   )
 }
 
+function parseTableRows(line: string): string[] {
+  return line.split('|').slice(1, -1).map(cell => cell.trim())
+}
+
+function isTableSep(line: string): boolean {
+  return /^\|[\s:?-]+\|/.test(line) && line.replace(/[\s|:-]/g, '').length === 0
+}
+
 function MarkdownPanel({ content }: { content: string }) {
+  const lines = content.split('\n')
+  const elements: React.ReactNode[] = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    // Detect markdown table: header row + separator row
+    if (line.trim().startsWith('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+      const headers = parseTableRows(line)
+      i += 2 // skip header + separator
+      const rows: string[][] = []
+      while (i < lines.length && lines[i].trim().startsWith('|') && !isTableSep(lines[i])) {
+        rows.push(parseTableRows(lines[i]))
+        i++
+      }
+      elements.push(
+        <table key={`tbl-${i}`} className="w-full text-[11px] my-2 border-collapse">
+          <thead>
+            <tr className="border-b border-neutral-700">
+              {headers.map((h, hi) => (
+                <th key={hi} className="text-left px-2 py-1 font-medium text-neutral-300">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri} className="border-b border-neutral-800/30 hover:bg-neutral-900/50">
+                {row.map((cell, ci) => (
+                  <td key={ci} className="px-2 py-1 text-neutral-400">{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )
+      continue
+    }
+
+    // Regular line rendering
+    if (line.startsWith('# ')) {
+      elements.push(<div key={i} className="text-neutral-100 font-bold mt-4 mb-1 text-base">{line.slice(2)}</div>)
+    } else if (line.startsWith('## ')) {
+      elements.push(<div key={i} className="text-neutral-200 font-semibold mt-3 mb-1 text-sm">{line.slice(3)}</div>)
+    } else if (line.startsWith('### ')) {
+      elements.push(<div key={i} className="text-neutral-300 font-medium mt-2 mb-0.5 text-xs">{line.slice(4)}</div>)
+    } else if (line.startsWith('**') && line.endsWith('**')) {
+      elements.push(<div key={i} className="text-neutral-300 font-medium mt-2">{line.slice(2, -2)}</div>)
+    } else if (line.startsWith('**')) {
+      elements.push(<div key={i} className="text-neutral-300">{line}</div>)
+    } else if (line.startsWith('- [x] ')) {
+      elements.push(<div key={i} className="pl-3 text-blue-400">{line}</div>)
+    } else if (line.startsWith('- [ ] ')) {
+      elements.push(<div key={i} className="pl-3 text-neutral-500">{line}</div>)
+    } else if (line.startsWith('- ')) {
+      elements.push(<div key={i} className="pl-3 text-neutral-400">{line}</div>)
+    } else {
+      elements.push(<div key={i}>{line || '\u00A0'}</div>)
+    }
+    i++
+  }
+
   return (
     <div className="p-3 text-xs text-neutral-400 font-mono whitespace-pre-wrap leading-5">
-      {content.split('\n').map((line, i) => {
-        if (line.startsWith('## ')) return <div key={i} className="text-neutral-200 font-semibold mt-3 mb-1 text-sm">{line.slice(3)}</div>
-        if (line.startsWith('**') && line.endsWith('**')) return <div key={i} className="text-neutral-300 font-medium mt-2">{line.slice(2, -2)}</div>
-        if (line.startsWith('**')) return <div key={i} className="text-neutral-300">{line}</div>
-        if (line.startsWith('- ')) return <div key={i} className="pl-3 text-neutral-400">{line}</div>
-        return <div key={i}>{line || '\u00A0'}</div>
-      })}
+      {elements}
     </div>
   )
 }
