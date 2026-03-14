@@ -746,7 +746,7 @@ def dispatch_change(
             try:
                 with open(old_loop) as f:
                     ls = json.load(f)
-                old_pid = int(ls.get("terminal_pid", 0))
+                old_pid = int(ls.get("terminal_pid") or 0)
                 if old_pid > 0:
                     result = check_pid(old_pid, "wt-loop")
                     if not result.alive:
@@ -950,7 +950,7 @@ def _kill_existing_wt_loop(wt_path: str, change_name: str) -> None:
     try:
         with open(loop_state_path) as f:
             ls = json.load(f)
-        old_pid = int(ls.get("terminal_pid", 0))
+        old_pid = int(ls.get("terminal_pid") or 0)
         if old_pid > 0:
             result = check_pid(old_pid, "wt-loop")
             if result.alive and result.match:
@@ -1026,8 +1026,8 @@ def dispatch_via_wt_loop(
     try:
         with open(loop_state_path) as f:
             ls = json.load(f)
-        terminal_pid = int(ls.get("terminal_pid", 0))
-    except (json.JSONDecodeError, OSError, ValueError):
+        terminal_pid = int(ls.get("terminal_pid") or 0)
+    except (json.JSONDecodeError, OSError, ValueError, TypeError):
         pass
 
     update_change_field(state_path, change_name, "ralph_pid", terminal_pid, event_bus=event_bus)
@@ -1255,7 +1255,7 @@ def resume_change(
     try:
         with open(loop_state_file) as f:
             ls = json.load(f)
-        terminal_pid = int(ls.get("terminal_pid", 0))
+        terminal_pid = int(ls.get("terminal_pid") or 0)
     except (json.JSONDecodeError, OSError, ValueError):
         pass
 
