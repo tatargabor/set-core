@@ -475,6 +475,17 @@ monitor_loop() {
                 run_post_phase_audit "$(( _audit_cycle + 1 ))"
             fi
 
+            # Total failure: all changes failed, none succeeded — don't replan
+            # (nothing was merged, so there's no foundation to build on)
+            if [[ "$truly_complete" -eq 0 && "$failed_count" -gt 0 ]]; then
+                log_info "Total failure: 0/$total_changes succeeded — skipping replan, marking done"
+                update_state_field "status" '"done"'
+                update_state_field "all_failed" 'true'
+                cleanup_all_worktrees
+                generate_report 2>/dev/null || true
+                break
+            fi
+
             # Auto-replan: generate next plan and continue if new work found
             if [[ "$auto_replan" == "true" ]]; then
                 # Check cycle limit before replanning
