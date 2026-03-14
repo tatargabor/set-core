@@ -1425,6 +1425,10 @@ print('true' if novel and novel <= failed else 'false')
     prev_started_epoch=$(jq '.started_epoch // 0' "$STATE_FILENAME")
     local prev_time_limit
     prev_time_limit=$(jq '.time_limit_secs // 0' "$STATE_FILENAME")
+    local prev_audit_results
+    prev_audit_results=$(jq -c '.phase_audit_results // []' "$STATE_FILENAME")
+    local prev_e2e_results
+    prev_e2e_results=$(jq -c '.phase_e2e_results // []' "$STATE_FILENAME")
 
     init_state "$PLAN_FILENAME"
 
@@ -1436,6 +1440,14 @@ print('true' if novel and novel <= failed else 'false')
     update_state_field "time_limit_secs" "$prev_time_limit"
     update_state_field "cycle_started_at" "\"$(date -Iseconds)\""
     update_state_field "directives" "$(echo "$directives" | jq -c .)"
+    if [[ "$prev_audit_results" != "[]" ]]; then
+        safe_jq_update "$STATE_FILENAME" --argjson ar "$prev_audit_results" \
+            '.phase_audit_results = $ar'
+    fi
+    if [[ "$prev_e2e_results" != "[]" ]]; then
+        safe_jq_update "$STATE_FILENAME" --argjson er "$prev_e2e_results" \
+            '.phase_e2e_results = $er'
+    fi
 
     # Dispatch newly ready changes
     dispatch_ready_changes "$max_parallel"
