@@ -766,10 +766,11 @@ def dispatch_change(
     )
 
     # Design context
+    bridge_path = os.path.join(WT_TOOLS_ROOT, "lib", "design", "bridge.sh")
     design_r = run_command(
-        ["bash", "-c", f'source {WT_TOOLS_ROOT}/lib/orchestration/design-bridge.sh 2>/dev/null && design_context_for_dispatch "{scope}" "{design_snapshot_dir}"'],
+        ["bash", "-c", f'source "{bridge_path}" 2>/dev/null && design_context_for_dispatch "{scope}" "{design_snapshot_dir}"'],
         timeout=5,
-    )
+    ) if os.path.isfile(bridge_path) else type("R", (), {"exit_code": 1, "stdout": ""})()
     if design_r.exit_code == 0 and design_r.stdout.strip():
         ctx.design_context = design_r.stdout.strip()
 
@@ -784,15 +785,17 @@ def dispatch_change(
     update_change_field(state_path, change_name, "worktree_path", wt_path, event_bus=event_bus)
     update_change_field(state_path, change_name, "started_at", datetime.now().isoformat(), event_bus=event_bus)
 
-    # Pre-dispatch hook (call bash hook)
-    hook_r = run_command(
-        ["bash", "-c", f'source {WT_TOOLS_ROOT}/lib/orchestration/hooks.sh 2>/dev/null && run_hook pre_dispatch "{change_name}" dispatched "{wt_path}"'],
-        timeout=10,
-    )
-    if hook_r.exit_code != 0:
-        logger.warning("pre_dispatch hook blocked %s", change_name)
-        update_change_field(state_path, change_name, "status", "pending", event_bus=event_bus)
-        return False
+    # Pre-dispatch hook (call bash hook if it exists)
+    hooks_path = os.path.join(WT_TOOLS_ROOT, "lib", "orchestration", "hooks.sh")
+    if os.path.isfile(hooks_path):
+        hook_r = run_command(
+            ["bash", "-c", f'source "{hooks_path}" && run_hook pre_dispatch "{change_name}" dispatched "{wt_path}"'],
+            timeout=10,
+        )
+        if hook_r.exit_code != 0:
+            logger.warning("pre_dispatch hook blocked %s", change_name)
+            update_change_field(state_path, change_name, "status", "pending", event_bus=event_bus)
+            return False
 
     # Dispatch via wt-loop
     impl_model = resolve_change_model(change, default_model, model_routing)
