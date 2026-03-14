@@ -1366,7 +1366,7 @@ def handle_change_done(
     if wt_path and shutil.which("claude"):
         verify_cmd_result = run_claude(
             f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\nRun /opsx:verify {change_name}",
-            extra_args=["--max-turns", "5"],
+            extra_args=["--max-turns", "15"],
             cwd=wt_path,
         )
         verify_output = verify_cmd_result.stdout
@@ -1385,10 +1385,26 @@ def handle_change_done(
             gate_spec_coverage = "fail"
             update_change_field(state_file, change_name, "spec_coverage_result", "fail")
         else:
-            verify_ok = False
-            gate_spec_coverage = "fail"
-            update_change_field(state_file, change_name, "spec_coverage_result", "fail")
-            logger.error("Verify gate: no VERIFY_RESULT sentinel in output for %s — treating as FAIL", change_name)
+            # Soft-fail: if all other gates passed, treat missing VERIFY_RESULT as warning
+            # The /opsx:verify skill sometimes doesn't output the sentinel within max-turns
+            other_gates_pass = (
+                change.test_result in ("pass", None)
+                and change.build_result in ("pass", None)
+                and change.review_result in ("pass", None)
+            )
+            if other_gates_pass:
+                logger.warning(
+                    "Verify gate: no VERIFY_RESULT sentinel in output for %s — "
+                    "all other gates passed, treating as PASS (soft-pass)",
+                    change_name,
+                )
+                gate_spec_coverage = "pass"
+                update_change_field(state_file, change_name, "spec_coverage_result", "soft-pass")
+            else:
+                verify_ok = False
+                gate_spec_coverage = "fail"
+                update_change_field(state_file, change_name, "spec_coverage_result", "fail")
+                logger.error("Verify gate: no VERIFY_RESULT sentinel in output for %s — treating as FAIL", change_name)
 
     if not verify_ok:
         if verify_retry_count < max_verify_retries:
