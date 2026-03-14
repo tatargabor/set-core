@@ -800,6 +800,9 @@ handle_change_done() {
 
     log_info "Change $change_name completed, running checks... (review_before_merge=$review_before_merge, test_command=$test_command, test_timeout=$test_timeout)"
 
+    # Update monitor self-watchdog: gate processing is meaningful progress
+    update_progress_ts 2>/dev/null || true
+
     # Get current verify retry count
     local verify_retry_count
     verify_retry_count=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .verify_retry_count // 0' "$STATE_FILENAME")
@@ -1351,18 +1354,13 @@ handle_change_done() {
             log_error "Verify gate: spec coverage FAIL for $change_name"
             orch_remember "Verify FAIL for $change_name — previous memories about this change may be inaccurate" Learning "phase:verify-failed,change:$change_name,volatile"
         else
-            # No sentinel line — use heuristic: if Claude exited 0 and no obvious
-            # failure indicators, treat as pass (the LLM often omits the sentinel)
-            if echo "$verify_output" | grep -qi "CRITICAL\|critical issue\|not implemented\|missing implementation"; then
-                verify_ok=false
-                gate_spec_coverage="fail"
-                update_change_field "$change_name" "spec_coverage_result" '"fail"'
-                log_error "Verify gate: no sentinel but critical issues detected for $change_name"
-            else
-                gate_spec_coverage="pass"
-                update_change_field "$change_name" "spec_coverage_result" '"pass"'
-                log_info "Verify gate: no sentinel but no critical issues — treating as PASS for $change_name"
-            fi
+            # No sentinel line — treat as FAIL (strict mode)
+            # The verify skill MUST output VERIFY_RESULT: PASS or VERIFY_RESULT: FAIL
+            # Missing sentinel means the verify output was incomplete or malformed
+            verify_ok=false
+            gate_spec_coverage="fail"
+            update_change_field "$change_name" "spec_coverage_result" '"fail"'
+            log_error "Verify gate: no VERIFY_RESULT sentinel line in output for $change_name — treating as FAIL"
         fi
     fi
 
@@ -1375,12 +1373,14 @@ handle_change_done() {
             local scope
             scope=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
             local retry_prompt
+            # Use last 2000 chars of verify output (sentinel is at the end)
+            local verify_output_tail="${verify_output: -2000}"
             if [[ "$gate_spec_coverage" == "fail" ]] && echo "$verify_output" | grep -q "VERIFY_RESULT:"; then
-                retry_prompt="Spec coverage check failed. Fix the CRITICAL issues found by verify.\n\nVerify output:\n${verify_output:0:2000}\n\nOriginal scope: $scope"
+                retry_prompt="Spec coverage check failed. Fix the CRITICAL issues found by verify.\n\nVerify output (last 2000 chars):\n${verify_output_tail}\n\nOriginal scope: $scope"
             elif [[ "$gate_spec_coverage" == "fail" ]]; then
-                retry_prompt="Verify output was unparseable — re-run /opsx:verify $change_name and ensure output ends with VERIFY_RESULT: PASS or VERIFY_RESULT: FAIL critical=N warning=M\n\nVerify output:\n${verify_output:0:2000}\n\nOriginal scope: $scope"
+                retry_prompt="Verify gate FAILED: no VERIFY_RESULT sentinel line found in output. You MUST re-run /opsx:verify $change_name and ensure the output ends with exactly: VERIFY_RESULT: PASS or VERIFY_RESULT: FAIL critical=N warning=M\n\nVerify output (last 2000 chars):\n${verify_output_tail}\n\nOriginal scope: $scope"
             else
-                retry_prompt="Verify failed after implementation. Fix the issues found by verify.\n\nVerify output:\n${verify_output:0:2000}\n\nOriginal scope: $scope"
+                retry_prompt="Verify failed after implementation. Fix the issues found by verify.\n\nVerify output (last 2000 chars):\n${verify_output_tail}\n\nOriginal scope: $scope"
             fi
             update_change_field "$change_name" "retry_context" "$(printf '%s' "$retry_prompt" | jq -Rs .)"
             local _snap_tokens

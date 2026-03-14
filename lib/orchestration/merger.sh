@@ -59,6 +59,20 @@ merge_change() {
     log_info "Merging $change_name..."
     info "Merging: $change_name"
 
+    # Merge timeout: track start time for checkpoint-based elapsed checks
+    local _merge_start_ts
+    _merge_start_ts=$(date +%s)
+    local _merge_timeout
+    _merge_timeout=$(jq -r ".directives.merge_timeout // $DEFAULT_MERGE_TIMEOUT" "$STATE_FILENAME" 2>/dev/null || echo "$DEFAULT_MERGE_TIMEOUT")
+
+    # Helper: check if merge has exceeded timeout
+    _merge_timed_out() {
+        local now
+        now=$(date +%s)
+        local elapsed=$((now - _merge_start_ts))
+        [[ "$elapsed" -ge "$_merge_timeout" ]]
+    }
+
     # Pre-merge hook
     local wt_path_for_hook
     wt_path_for_hook=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
@@ -199,6 +213,16 @@ merge_change() {
             fi
         fi
 
+        # Merge timeout checkpoint: abort before smoke if already over time
+        if _merge_timed_out; then
+            local _elapsed=$(( $(date +%s) - _merge_start_ts ))
+            log_error "Merge timeout: $change_name exceeded ${_merge_timeout}s (elapsed: ${_elapsed}s) — aborting before smoke"
+            update_change_field "$change_name" "status" '"merge_timeout"'
+            send_notification "wt-orchestrate" "Merge timeout for $change_name after ${_elapsed}s (limit: ${_merge_timeout}s)" "critical"
+            safe_jq_update "$STATE_FILENAME" --arg n "$change_name" '.merge_queue -= [$n]'
+            return 0
+        fi
+
         # Post-merge smoke/e2e tests: run on main after merge (not pre-merge — worktree code isn't on localhost)
         # Read smoke config from persisted state (not monitor_loop locals)
         local smoke_command smoke_blocking smoke_timeout smoke_health_check_url smoke_health_check_timeout smoke_fix_max_retries smoke_fix_max_turns
@@ -224,14 +248,37 @@ merge_change() {
                 fi
                 update_change_field "$change_name" "smoke_status" '"checking"'
                 if [[ -n "$hc_url" ]] && ! health_check "$hc_url" "${smoke_health_check_timeout:-$DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT}"; then
-                    log_error "Post-merge: health check FAILED for $change_name — no server at $hc_url"
-                    update_change_field "$change_name" "smoke_result" '"blocked"'
-                    update_change_field "$change_name" "smoke_status" '"blocked"'
-                    update_change_field "$change_name" "status" '"smoke_blocked"'
-                    send_notification "wt-orchestrate" "Smoke blocked for $change_name — no server at $hc_url" "critical"
-                    orch_remember "Smoke blocked for $change_name — dev server not responding at $hc_url" Decision "phase:post-merge,change:$change_name"
-                    # Don't proceed to cleanup/archive — leave for sentinel
-                    return 0
+                    # Health check failed — try auto-starting dev server if configured
+                    local smoke_dev_server_command
+                    smoke_dev_server_command=$(jq -r '.directives.smoke_dev_server_command // ""' "$STATE_FILENAME" 2>/dev/null || echo "")
+                    if [[ -n "$smoke_dev_server_command" ]]; then
+                        log_info "Post-merge: health check failed, auto-starting dev server for $change_name"
+                        bash -c "$smoke_dev_server_command" &
+                        _ORCH_DEV_SERVER_PID=$!
+                        export _ORCH_DEV_SERVER_PID
+                        # Wait for server with extended timeout (60s)
+                        if health_check "$hc_url" 60; then
+                            log_info "Post-merge: dev server auto-started (PID $_ORCH_DEV_SERVER_PID), health check passed"
+                        else
+                            log_error "Post-merge: dev server auto-start failed for $change_name — killing PID $_ORCH_DEV_SERVER_PID"
+                            kill "$_ORCH_DEV_SERVER_PID" 2>/dev/null || true
+                            _ORCH_DEV_SERVER_PID=""
+                            update_change_field "$change_name" "smoke_result" '"blocked"'
+                            update_change_field "$change_name" "smoke_status" '"blocked"'
+                            update_change_field "$change_name" "status" '"smoke_blocked"'
+                            send_notification "wt-orchestrate" "Smoke blocked for $change_name — dev server auto-start failed at $hc_url" "critical"
+                            orch_remember "Smoke blocked for $change_name — dev server auto-start failed at $hc_url" Decision "phase:post-merge,change:$change_name"
+                            return 0
+                        fi
+                    else
+                        log_error "Post-merge: health check FAILED for $change_name — no server at $hc_url"
+                        update_change_field "$change_name" "smoke_result" '"blocked"'
+                        update_change_field "$change_name" "smoke_status" '"blocked"'
+                        update_change_field "$change_name" "status" '"smoke_blocked"'
+                        send_notification "wt-orchestrate" "Smoke blocked for $change_name — no server at $hc_url" "critical"
+                        orch_remember "Smoke blocked for $change_name — dev server not responding at $hc_url" Decision "phase:post-merge,change:$change_name"
+                        return 0
+                    fi
                 fi
 
                 # Recompile buffer
@@ -256,6 +303,17 @@ merge_change() {
                     log_error "Post-merge: smoke tests FAILED for $change_name (exit $pm_smoke_rc)"
                     update_change_field "$change_name" "smoke_result" '"fail"'
                     update_change_field "$change_name" "smoke_fix_attempts" "0"
+
+                    # Merge timeout checkpoint: abort before fix cycle if over time
+                    if _merge_timed_out; then
+                        local _elapsed=$(( $(date +%s) - _merge_start_ts ))
+                        log_error "Merge timeout: $change_name exceeded ${_merge_timeout}s during smoke fix — aborting"
+                        update_change_field "$change_name" "status" '"merge_timeout"'
+                        update_change_field "$change_name" "smoke_status" '"timeout"'
+                        send_notification "wt-orchestrate" "Merge timeout for $change_name after ${_elapsed}s (limit: ${_merge_timeout}s) — smoke fix aborted" "critical"
+                        safe_jq_update "$STATE_FILENAME" --arg n "$change_name" '.merge_queue -= [$n]'
+                        return 0
+                    fi
 
                     # Scoped fix agent with retries
                     if smoke_fix_scoped "$change_name" "$smoke_command" "${smoke_timeout:-120}" \

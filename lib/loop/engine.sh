@@ -211,6 +211,12 @@ cmd_run() {
         cr_before=$(extract_token_field "$tokens_before_json" "cache_read_tokens")
         cc_before=$(extract_token_field "$tokens_before_json" "cache_create_tokens")
 
+        # Capture pre-iteration action for ff→apply chaining detection
+        local pre_action=""
+        if [[ "$done_criteria" == "openspec" && -n "$change_name" ]]; then
+            pre_action=$(detect_next_change_action "$wt_path" "$change_name")
+        fi
+
         # Build prompt
         local prompt
         prompt=$(build_prompt "$task" "$iteration" "$max_iter" "$wt_path" "$done_criteria" "$change_name")
@@ -664,9 +670,10 @@ except:
                     update_loop_state "$state_file" "ff_attempts" "0"
                 fi
 
-                # ff→apply chaining: if ff just created tasks.md, chain apply in same iteration
-                # This eliminates the iteration boundary where memory injection confuses the agent
-                if [[ "$post_action" == apply:* ]] && $has_artifact_progress; then
+                # ff→apply chaining: if this iteration transitioned from ff to apply, chain in same iteration
+                # This eliminates the wasted iteration where memory injection confuses the agent
+                # Uses action transition detection (pre_action→post_action) instead of dirty file check
+                if [[ "$pre_action" == ff:* && "$post_action" == apply:* ]]; then
                     local chain_change="${post_action#apply:}"
                     echo ""
                     echo "🔗 Chaining: ff created tasks.md → running apply in same iteration"

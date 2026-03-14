@@ -49,7 +49,7 @@ DEFAULT_REVIEW_BEFORE_MERGE="true"
 DEFAULT_TEST_TIMEOUT=300
 DEFAULT_MAX_VERIFY_RETRIES=2
 DEFAULT_SUMMARIZE_MODEL="haiku"
-DEFAULT_REVIEW_MODEL="sonnet"
+DEFAULT_REVIEW_MODEL="opus"
 DEFAULT_IMPL_MODEL="opus"  # set from directives.default_model in monitor_loop
 DEFAULT_SMOKE_COMMAND=""
 DEFAULT_SMOKE_TIMEOUT=120
@@ -65,6 +65,9 @@ DEFAULT_POST_MERGE_COMMAND=""       # project-specific command to run after merg
 DEFAULT_TOKEN_HARD_LIMIT=20000000  # 20M tokens — checkpoint to ask human before spending more
 DEFAULT_CHECKPOINT_AUTO_APPROVE="false"  # auto-approve checkpoints (for unattended/E2E runs)
 DEFAULT_POST_PHASE_AUDIT="true"         # LLM spec-vs-implementation audit at phase boundaries
+DEFAULT_MONITOR_IDLE_TIMEOUT=300        # seconds without progress before self-watchdog triggers recovery
+DEFAULT_MERGE_TIMEOUT=1800              # seconds max for a single merge_change() call
+DEFAULT_SMOKE_DEV_SERVER_COMMAND=""     # command to start dev server for smoke tests (e.g. "npx next dev --port 3002")
 
 # Runtime state
 MAX_REPLAN_RETRIES=3     # max consecutive replan failures before giving up

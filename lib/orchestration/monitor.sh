@@ -25,7 +25,7 @@ monitor_loop() {
     local review_before_merge
     review_before_merge=$(echo "$directives" | jq -r '.review_before_merge // false')
     local review_model
-    review_model=$(echo "$directives" | jq -r '.review_model // "sonnet"')
+    review_model=$(echo "$directives" | jq -r '.review_model // "opus"')
     DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
     local smoke_command
     smoke_command=$(echo "$directives" | jq -r '.smoke_command // ""')
@@ -125,6 +125,13 @@ monitor_loop() {
     post_merge_command=$(echo "$directives" | jq -r '.post_merge_command // ""')
     log_info "Directives: test_command=$test_command, review_before_merge=$review_before_merge, review_model=$review_model, test_timeout=$test_timeout, max_verify_retries=$max_verify_retries, smoke_command=$smoke_command, post_merge_command=$post_merge_command"
 
+    # Self-watchdog: track last meaningful progress to detect all-idle stalls
+    local last_progress_ts
+    last_progress_ts=$(date +%s)
+    local monitor_idle_timeout
+    monitor_idle_timeout=$(echo "$directives" | jq -r ".monitor_idle_timeout // $DEFAULT_MONITOR_IDLE_TIMEOUT")
+    local idle_escalation_count=0
+
     local _poll_count=0
     while true; do
         sleep "$POLL_INTERVAL"
@@ -191,15 +198,29 @@ monitor_loop() {
             watchdog_check "$name"
         done <<< "$active_changes"
 
-        # Safety net: check paused/waiting changes for completed loop-state.
-        # Covers race where watchdog paused a change that finished between poll and watchdog check.
+        # Safety net: check paused/waiting/done changes for completed loop-state.
+        # Covers race where watchdog paused a change that finished between poll and watchdog check,
+        # or a "done" change that wasn't queued for merge.
         local suspended_changes
-        suspended_changes=$(jq -r '.changes[]? | select(.status == "paused" or .status == "waiting:budget" or .status == "budget_exceeded") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+        suspended_changes=$(jq -r '.changes[]? | select(.status == "paused" or .status == "waiting:budget" or .status == "budget_exceeded" or .status == "done") | .name' "$STATE_FILENAME" 2>/dev/null || true)
         while IFS= read -r name; do
             [[ -z "$name" ]] && continue
             local _wt_path
             _wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
             local _loop_state="$_wt_path/.claude/loop-state.json"
+            # For "done" changes: check if they're in merge_queue; if not, add them
+            local _change_status
+            _change_status=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .status' "$STATE_FILENAME" 2>/dev/null)
+            if [[ "$_change_status" == "done" ]]; then
+                local _in_queue
+                _in_queue=$(jq -r --arg n "$name" '[.merge_queue[]? // empty] | map(select(. == $n)) | length' "$STATE_FILENAME" 2>/dev/null || echo "0")
+                if [[ "$_in_queue" -eq 0 ]]; then
+                    log_warn "Monitor: orphaned 'done' change $name not in merge_queue — adding"
+                    safe_jq_update "$STATE_FILENAME" --arg n "$name" '.merge_queue = ((.merge_queue // []) + [$n])'
+                    update_progress_ts
+                fi
+                continue  # "done" changes don't need loop-state check
+            fi
             if [[ -n "$_wt_path" && -f "$_loop_state" ]]; then
                 local _ls_status
                 _ls_status=$(jq -r '.status // "unknown"' "$_loop_state" 2>/dev/null)
@@ -279,10 +300,20 @@ monitor_loop() {
         cascade_failed_deps
 
         # Dispatch newly ready changes (skipped during token_wait)
+        local _pre_dispatch_count
+        _pre_dispatch_count=$(jq '[.changes[] | select(.status == "running")] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
         dispatch_ready_changes "$max_parallel"
+        local _post_dispatch_count
+        _post_dispatch_count=$(jq '[.changes[] | select(.status == "running")] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+        [[ "$_post_dispatch_count" -gt "$_pre_dispatch_count" ]] && update_progress_ts
 
         # Retry merge queue + any merge-blocked items not in queue
+        local _pre_merge_count
+        _pre_merge_count=$(jq '[.changes[] | select(.status == "merged")] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
         retry_merge_queue
+        local _post_merge_count
+        _post_merge_count=$(jq '[.changes[] | select(.status == "merged")] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+        [[ "$_post_merge_count" -gt "$_pre_merge_count" ]] && update_progress_ts
 
         # Resume stalled changes after cooldown (handles rate limit recovery)
         resume_stalled_changes
@@ -313,6 +344,39 @@ monitor_loop() {
                     log_info "Token hard limit raised to $token_hard_limit for next checkpoint"
                     continue
                 fi
+            fi
+        fi
+
+        # Self-watchdog: detect all-idle stall
+        local _now_ts
+        _now_ts=$(date +%s)
+        local _idle_duration=$((_now_ts - last_progress_ts))
+        if [[ "$_idle_duration" -gt "$monitor_idle_timeout" ]]; then
+            idle_escalation_count=$((idle_escalation_count + 1))
+            if [[ "$idle_escalation_count" -eq 1 ]]; then
+                # First idle timeout: attempt recovery
+                log_warn "Monitor self-watchdog: no progress for ${_idle_duration}s — attempting recovery"
+                # Force retry merge queue and check orphaned "done" changes
+                retry_merge_queue
+                local _orphan_done
+                _orphan_done=$(jq -r '.changes[]? | select(.status == "done") | .name' "$STATE_FILENAME" 2>/dev/null || true)
+                while IFS= read -r _od_name; do
+                    [[ -z "$_od_name" ]] && continue
+                    local _in_queue
+                    _in_queue=$(jq -r --arg n "$_od_name" '[.merge_queue[]? // empty] | map(select(. == $n)) | length' "$STATE_FILENAME" 2>/dev/null || echo "0")
+                    if [[ "$_in_queue" -eq 0 ]]; then
+                        log_warn "Monitor self-watchdog: orphaned 'done' change $n — adding to merge queue"
+                        safe_jq_update "$STATE_FILENAME" --arg n "$_od_name" '.merge_queue = ((.merge_queue // []) + [$n])'
+                        update_progress_ts
+                    fi
+                done <<< "$_orphan_done"
+            else
+                # Persistent idle: escalate
+                log_error "Monitor self-watchdog: persistent idle (${_idle_duration}s, escalation #$idle_escalation_count)"
+                emit_event "MONITOR_STALL" "" "$(jq -cn --argjson idle_secs "$_idle_duration" --argjson escalation "$idle_escalation_count" '{idle_secs: $idle_secs, escalation: $escalation}')"
+                send_notification "wt-orchestrate" "Monitor stall detected: no progress for ${_idle_duration}s (escalation #$idle_escalation_count)" "critical"
+                # Reset to prevent notification spam (will re-trigger after another timeout period)
+                last_progress_ts=$(date +%s)
             fi
         fi
 

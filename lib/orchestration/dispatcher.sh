@@ -1195,6 +1195,8 @@ cmd_start() {
             cleanup_orchestrator() {
                 [[ "${cleanup_done:-}" == true ]] && return
                 cleanup_done=true
+                # Kill dev server if auto-started by smoke pipeline
+                [[ -n "${_ORCH_DEV_SERVER_PID:-}" ]] && kill "$_ORCH_DEV_SERVER_PID" 2>/dev/null || true
                 # Don't overwrite "done" status — only set "stopped" if still running
                 local current_status=""
                 if [[ -f "$STATE_FILENAME" ]]; then
@@ -1298,6 +1300,9 @@ cmd_start() {
     cleanup_orchestrator() {
         [[ "${cleanup_done:-}" == true ]] && return
         cleanup_done=true
+
+        # Kill dev server if auto-started by smoke pipeline
+        [[ -n "${_ORCH_DEV_SERVER_PID:-}" ]] && kill "$_ORCH_DEV_SERVER_PID" 2>/dev/null || true
 
         # Don't overwrite "done" status — only set "stopped" if still running
         local current_status=""

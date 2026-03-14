@@ -76,7 +76,7 @@ This helps the LLM evaluate not just code quality, but **requirement compliance*
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `review_before_merge` | false | Enable review gate |
-| `review_model` | sonnet | Model used for review |
+| `review_model` | opus | Model used for review |
 | `skip_review` | false | Change-level skip (in plan) |
 
 ## Verify Gate
@@ -90,6 +90,10 @@ The `verify_merge_scope()` function:
 1. Compares the planned scope with actual modifications
 2. Checks that essential changes were made
 3. Identifies unwanted side effects (scope creep)
+
+### Strict Sentinel Mode
+
+The verify gate requires a `VERIFY_RESULT: PASS` or `VERIFY_RESULT: FAIL` sentinel line in the agent output. If the sentinel is missing, the gate fails (strict mode) — there is no heuristic fallback. This prevents silent false passes when the verify skill crashes or produces incomplete output.
 
 ### Retry Logic
 
@@ -142,6 +146,17 @@ If the smoke test fails and `smoke_blocking: true`:
 | `smoke_fix_token_budget` | 500K | Fix budget |
 | `smoke_fix_max_turns` | 15 | Max fix iterations |
 | `smoke_fix_max_retries` | 3 | Max retries |
+| `smoke_dev_server_command` | "" | Command to start dev server |
+
+### Dev Server Auto-Restart
+
+If the health check fails before smoke tests, the orchestrator can auto-start a dev server:
+
+```yaml
+smoke_dev_server_command: "npx next dev --port 3002"
+```
+
+When configured, the orchestrator runs the command in the background, waits up to 60 seconds for the health check to pass, and proceeds with smoke tests. If the server fails to start, the change is marked `smoke_blocked`. The dev server process is automatically killed on orchestrator exit.
 
 ### Health Check
 
@@ -152,7 +167,7 @@ smoke_health_check_url: "http://localhost:3000/api/health"
 smoke_health_check_timeout: 30
 ```
 
-After the smoke test, the system checks whether the application responds to HTTP.
+Before running smoke tests, the system checks whether the application responds to HTTP. If the health check fails and `smoke_dev_server_command` is configured, a dev server restart is attempted automatically.
 
 ## E2E Gate
 
@@ -188,6 +203,16 @@ Ralph done
 \begin{keypoint}
 Every gate is optional. If there is no test\_command, the Test Gate is skipped. If review\_before\_merge is false, the Review Gate is skipped. With minimal configuration (no gates at all), the change goes directly to the merge queue after Ralph is done — but this is not recommended for production projects.
 \end{keypoint}
+
+## Merge Timeout
+
+The entire merge pipeline (merge + post-merge build + smoke + fix cycles) is protected by a timeout. If elapsed time exceeds the limit, the merge is aborted at the next checkpoint and the change is marked `merge_timeout`.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `merge_timeout` | 1800s (30min) | Max time for the entire merge pipeline |
+
+Checkpoints are placed after the merge itself and before the smoke fix cycle. The timeout does not use a subprocess or `timeout` command — it uses checkpoint-based elapsed time checks to preserve flock and state file integrity.
 
 ## Hooks
 

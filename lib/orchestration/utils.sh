@@ -72,6 +72,14 @@ parse_duration() {
     echo "$total"
 }
 
+# Update monitor self-watchdog progress timestamp.
+# Call this after any meaningful progress: dispatch, merge, gate result, status change.
+# The variable last_progress_ts must be declared in the caller (monitor_loop).
+update_progress_ts() {
+    last_progress_ts=$(date +%s)
+    idle_escalation_count=0
+}
+
 # Check if any running Ralph loop has made recent progress.
 # A loop is "active" if its loop-state.json was modified within the last 5 minutes.
 # Returns 0 (true) if at least one loop is active, 1 (false) if all stalled.
@@ -281,6 +289,10 @@ parse_directives() {
     local smoke_health_check_url=""
     local smoke_health_check_timeout="$DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT"
 
+    local smoke_dev_server_command="$DEFAULT_SMOKE_DEV_SERVER_COMMAND"
+    local monitor_idle_timeout="$DEFAULT_MONITOR_IDLE_TIMEOUT"
+    local merge_timeout="$DEFAULT_MERGE_TIMEOUT"
+
     local post_merge_command="$DEFAULT_POST_MERGE_COMMAND"
     local token_hard_limit="$DEFAULT_TOKEN_HARD_LIMIT"
     local events_log="true"
@@ -472,6 +484,23 @@ parse_directives() {
                     fi
                     ;;
 
+                smoke_dev_server_command)
+                    smoke_dev_server_command="$val"
+                    ;;
+                monitor_idle_timeout)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        monitor_idle_timeout="$val"
+                    else
+                        warn "Invalid monitor_idle_timeout '$val', using default $DEFAULT_MONITOR_IDLE_TIMEOUT"
+                    fi
+                    ;;
+                merge_timeout)
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
+                        merge_timeout="$val"
+                    else
+                        warn "Invalid merge_timeout '$val', using default $DEFAULT_MERGE_TIMEOUT"
+                    fi
+                    ;;
                 post_merge_command)
                     post_merge_command="$val"
                     ;;
@@ -599,6 +628,9 @@ parse_directives() {
         --argjson smoke_fix_max_retries "$smoke_fix_max_retries" \
         --arg smoke_health_check_url "$smoke_health_check_url" \
         --argjson smoke_health_check_timeout "$smoke_health_check_timeout" \
+        --arg smoke_dev_server_command "$smoke_dev_server_command" \
+        --argjson monitor_idle_timeout "$monitor_idle_timeout" \
+        --argjson merge_timeout "$merge_timeout" \
         --arg post_merge_command "$post_merge_command" \
         --argjson token_hard_limit "$token_hard_limit" \
         --arg events_log "$events_log" \
@@ -641,6 +673,9 @@ parse_directives() {
             smoke_fix_max_retries: $smoke_fix_max_retries,
             smoke_health_check_url: $smoke_health_check_url,
             smoke_health_check_timeout: $smoke_health_check_timeout,
+            smoke_dev_server_command: (if $smoke_dev_server_command != "" then $smoke_dev_server_command else null end),
+            monitor_idle_timeout: $monitor_idle_timeout,
+            merge_timeout: $merge_timeout,
             post_merge_command: $post_merge_command,
             token_hard_limit: $token_hard_limit,
             events_log: $events_log,
