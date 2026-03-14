@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from .root import WT_TOOLS_ROOT
 from .state import (
     OrchestratorState,
     load_state,
@@ -526,7 +527,7 @@ def _handle_auto_replan(
 
     # Delegate to bash auto_replan_cycle (not yet migrated)
     replan_result = run_command(
-        ["bash", "-c", f'source lib/orchestration/planner.sh && auto_replan_cycle "{{}}" {cycle}'],
+        ["bash", "-c", f'source {WT_TOOLS_ROOT}/lib/orchestration/planner.sh && auto_replan_cycle "{{}}" {cycle}'],
         timeout=600,
     )
 

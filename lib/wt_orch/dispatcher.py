@@ -23,6 +23,7 @@ from typing import Any
 from .events import EventBus
 from .notifications import send_notification
 from .process import check_pid, safe_kill
+from .root import WT_TOOLS_ROOT
 from .state import (
     Change,
     OrchestratorState,
@@ -766,7 +767,7 @@ def dispatch_change(
 
     # Design context
     design_r = run_command(
-        ["bash", "-c", f'source lib/orchestration/design-bridge.sh 2>/dev/null && design_context_for_dispatch "{scope}" "{design_snapshot_dir}"'],
+        ["bash", "-c", f'source {WT_TOOLS_ROOT}/lib/orchestration/design-bridge.sh 2>/dev/null && design_context_for_dispatch "{scope}" "{design_snapshot_dir}"'],
         timeout=5,
     )
     if design_r.exit_code == 0 and design_r.stdout.strip():
@@ -785,7 +786,7 @@ def dispatch_change(
 
     # Pre-dispatch hook (call bash hook)
     hook_r = run_command(
-        ["bash", "-c", f'source lib/orchestration/hooks.sh 2>/dev/null && run_hook pre_dispatch "{change_name}" dispatched "{wt_path}"'],
+        ["bash", "-c", f'source {WT_TOOLS_ROOT}/lib/orchestration/hooks.sh 2>/dev/null && run_hook pre_dispatch "{change_name}" dispatched "{wt_path}"'],
         timeout=10,
     )
     if hook_r.exit_code != 0:
