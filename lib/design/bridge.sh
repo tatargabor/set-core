@@ -105,6 +105,7 @@ EOF
 When planning changes that involve UI:
 - Reference specific frames and components from the snapshot above
 - Use exact design token values (colors, spacing, typography)
+- IMPORTANT: Embed specific design token values (e.g., "bg-blue-600", "text-3xl", "rounded-lg") and frame names directly in each change scope description. The agent will NOT see this snapshot — only the scope text you write.
 - If a required frame/page is MISSING from the snapshot, flag it as an ambiguity with type "design_gap"
 - Include design frame references in change scope descriptions
 EOF
@@ -222,7 +223,140 @@ fetch_design_snapshot() {
     fi
 
     log_info "Design snapshot saved ($(wc -c < "$snapshot_file") bytes)"
+
+    # Copy to project root so worktree agents can find it via design-bridge rule
+    local project_root="${PROJECT_ROOT:-.}"
+    local root_snapshot="$project_root/design-snapshot.md"
+    if [[ "$snapshot_file" != "$root_snapshot" ]]; then
+        cp "$snapshot_file" "$root_snapshot"
+        log_info "Design snapshot copied to project root"
+    fi
+
     return 0
+}
+
+# ─── Dispatch Context ────────────────────────────────────────────────
+
+# Extract frame-filtered design context from design-snapshot.md for agent dispatch.
+# Returns Design Tokens + relevant Component Hierarchy sections (max 150 lines).
+# Args: $1 = scope text, $2 = snapshot dir (optional, defaults to DESIGN_SNAPSHOT_DIR or .)
+# Prints filtered markdown to stdout. Returns 1 if no snapshot available.
+design_context_for_dispatch() {
+    local scope_text="$1"
+    local snapshot_dir="${2:-${DESIGN_SNAPSHOT_DIR:-.}}"
+    local snapshot_file="$snapshot_dir/design-snapshot.md"
+    local max_lines=150
+
+    [[ -f "$snapshot_file" && -s "$snapshot_file" ]] || return 1
+
+    local output=""
+    local tokens_section=""
+    local matched_frames=""
+
+    # Extract Design Tokens section (always included)
+    tokens_section=$(awk '
+        /^## Design Tokens$/,/^## / {
+            if (/^## / && !/^## Design Tokens$/) exit
+            print
+        }
+    ' "$snapshot_file")
+
+    # Extract frame names from Component Hierarchy section
+    local frame_names
+    frame_names=$(awk '
+        /^### / { gsub(/^### /, ""); gsub(/ \(.*/, ""); print }
+    ' "$snapshot_file")
+
+    # Match frame names against scope text (case-insensitive substring)
+    local scope_lower
+    scope_lower=$(echo "$scope_text" | tr '[:upper:]' '[:lower:]')
+
+    while IFS= read -r frame_name; do
+        [[ -z "$frame_name" ]] && continue
+        local frame_lower
+        frame_lower=$(echo "$frame_name" | tr '[:upper:]' '[:lower:]')
+        if echo "$scope_lower" | grep -qi "$frame_lower"; then
+            # Extract this frame's hierarchy block
+            local block
+            block=$(awk -v fname="$frame_name" '
+                $0 ~ "^### " fname {found=1}
+                found {print}
+                found && /^### / && !($0 ~ "^### " fname) {exit}
+            ' "$snapshot_file")
+            if [[ -n "$block" ]]; then
+                matched_frames+="$block"$'\n'
+            fi
+        fi
+    done <<< "$frame_names"
+
+    # Build output
+    output="## Design Context"$'\n'$'\n'
+    output+="Use these exact design values when implementing UI. Do NOT use shadcn defaults if they differ."$'\n'$'\n'
+
+    if [[ -n "$tokens_section" ]]; then
+        output+="$tokens_section"$'\n'
+    fi
+
+    if [[ -n "$matched_frames" ]]; then
+        output+=$'\n'"## Relevant Component Hierarchies"$'\n'$'\n'
+        output+="$matched_frames"
+    else
+        output+=$'\n'"_No specific frame matches found in scope — refer to design-snapshot.md for full component hierarchy._"$'\n'
+    fi
+
+    # Enforce max lines limit
+    local line_count
+    line_count=$(echo "$output" | wc -l)
+    if [[ $line_count -gt $max_lines ]]; then
+        echo "$output" | head -n "$max_lines"
+        echo ""
+        echo "...truncated — read design-snapshot.md for full hierarchy"
+    else
+        echo "$output"
+    fi
+}
+
+# ─── Review Context ──────────────────────────────────────────────────
+
+# Extract concise design token summary for code review prompts.
+# Returns key UI tokens (colors, radius, typography) — max ~20 tokens.
+# Args: $1 = snapshot dir (optional)
+# Prints token summary to stdout. Returns 1 if no snapshot available.
+build_design_review_section() {
+    local snapshot_dir="${1:-${DESIGN_SNAPSHOT_DIR:-.}}"
+    local snapshot_file="$snapshot_dir/design-snapshot.md"
+
+    [[ -f "$snapshot_file" && -s "$snapshot_file" ]] || return 1
+
+    local tokens_section
+    tokens_section=$(awk '
+        /^## Design Tokens$/,/^## / {
+            if (/^## / && !/^## Design Tokens$/) exit
+            print
+        }
+    ' "$snapshot_file")
+
+    [[ -z "$tokens_section" ]] && return 1
+
+    # Filter to UI-critical tokens only (colors, typography, spacing, radius)
+    local filtered
+    filtered=$(echo "$tokens_section" | grep -E '^(Colors:|Typography:|Spacing:|Shadows:|- (background|foreground|primary|destructive|accent|border|muted|ring|radius|input|font|h[1-4]|label|button|base-font):)' || true)
+
+    cat <<EOF
+## Design Compliance Check
+
+Compare Tailwind classes in the diff against these design token values.
+Report mismatches as [WARNING] (not [CRITICAL]).
+
+$tokens_section
+
+Key checks:
+- Interactive elements (buttons, links): verify correct color class matches design primary/accent
+- Headings: verify text size classes match typography scale (h1=text-2xl, h2=text-xl, etc.)
+- Border radius: verify rounded classes match radius tokens
+- Shadows: verify shadow classes match design shadow definitions
+- Do NOT flag as issues: responsive variants, hover states, or tokens not in the list above
+EOF
 }
 
 # ─── Convenience ──────────────────────────────────────────────────────

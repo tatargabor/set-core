@@ -98,6 +98,7 @@ def cmd_template(args):
             scope=input_data.get("scope", ""),
             diff_output=input_data.get("diff_output", ""),
             req_section=input_data.get("req_section", ""),
+            design_compliance=input_data.get("design_compliance", ""),
         ))
 
     elif args.template_cmd == "fix":

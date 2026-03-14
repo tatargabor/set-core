@@ -157,12 +157,17 @@ review_change() {
     local req_section
     req_section=$(build_req_review_section "$change_name")
 
+    # Build design compliance section (empty if no design-snapshot.md)
+    local design_compliance=""
+    design_compliance=$(build_design_review_section "${DESIGN_SNAPSHOT_DIR:-.}" 2>/dev/null || true)
+
     local review_prompt
     review_prompt=$(jq -n \
         --arg scope "$scope" \
         --arg diff_output "$diff_output" \
         --arg req_section "$req_section" \
-        '{scope: $scope, diff_output: $diff_output, req_section: $req_section}' \
+        --arg design_compliance "$design_compliance" \
+        '{scope: $scope, diff_output: $diff_output, req_section: $req_section, design_compliance: $design_compliance}' \
     | wt-orch-core template review --input-file -)
 
     REVIEW_OUTPUT=$(echo "$review_prompt" | run_claude --model "$(model_id "$rev_model")") || {

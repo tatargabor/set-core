@@ -570,4 +570,275 @@ test_prompt_section_empty_snapshot() {
     teardown
 }
 
+# ─── design_context_for_dispatch ────────────────────────────────
+
+_create_test_snapshot() {
+    local dir="$1"
+    cat > "$dir/design-snapshot.md" <<'MD'
+# Design Snapshot
+
+## Design Tokens
+### Colors
+- primary: #2563eb (blue-600)
+- background: #ffffff
+- foreground: #030213
+- accent: #f59e0b
+
+### Typography
+- h1: text-3xl font-bold
+- h2: text-xl font-semibold
+- body: text-base
+
+### Spacing
+- base: 4px
+- section-gap: 2rem
+
+### Shadows
+- card: 0 2px 8px rgba(0,0,0,0.1)
+
+## Component Hierarchy
+
+### Homepage (Desktop)
+- Header (sticky)
+  - Logo
+  - NavBar
+    - NavLink × 4
+  - CartIcon (badge count)
+- HeroSection
+  - HeroTitle (h1)
+  - HeroSubtitle
+  - CTAButton (primary)
+
+### Product Grid (Desktop)
+- SectionHeading (h2)
+- Grid (3-col)
+  - ProductCard × n
+    - ProductImage
+    - ProductTitle
+    - ProductPrice
+    - AddToCartButton
+
+### Cart Sidebar
+- CartHeader
+- CartItemList
+  - CartItem × n
+    - ItemName
+    - QuantitySelector
+    - ItemTotal
+- CartTotal
+- CheckoutButton
+
+## Layout Breakpoints
+- Desktop: 1280px
+- Mobile: 375px
+MD
+}
+
+test_dispatch_context_with_matching_frame() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+    _create_test_snapshot "$_snap_dir"
+
+    local output
+    output=$(design_context_for_dispatch "Build the Homepage hero section with CTA" "$_snap_dir")
+
+    assert_contains "$output" "## Design Context" "should have design context header"
+    assert_contains "$output" "## Design Tokens" "should include tokens"
+    assert_contains "$output" "#2563eb" "should include primary color"
+    assert_contains "$output" "### Homepage" "should include matched Homepage frame"
+    assert_contains "$output" "HeroSection" "should include Homepage hierarchy"
+    assert_contains "$output" "CTAButton" "should include CTA button from hierarchy"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_dispatch_context_multiple_frame_match() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+    _create_test_snapshot "$_snap_dir"
+
+    local output
+    output=$(design_context_for_dispatch "Homepage layout and Cart sidebar" "$_snap_dir")
+
+    assert_contains "$output" "### Homepage" "should match Homepage frame"
+    assert_contains "$output" "### Cart Sidebar" "should match Cart frame"
+    assert_contains "$output" "## Relevant Component Hierarchies" "should have hierarchy header"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_dispatch_context_no_frame_match() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+    _create_test_snapshot "$_snap_dir"
+
+    local output
+    output=$(design_context_for_dispatch "Add unit tests for API" "$_snap_dir")
+
+    assert_contains "$output" "## Design Tokens" "should still include tokens"
+    assert_contains "$output" "#2563eb" "should still have primary color"
+    assert_contains "$output" "No specific frame matches" "should show no-match fallback"
+    assert_not_contains "$output" "### Homepage" "should not include any frame"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_dispatch_context_case_insensitive() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+    _create_test_snapshot "$_snap_dir"
+
+    local output
+    output=$(design_context_for_dispatch "PRODUCT GRID display" "$_snap_dir")
+
+    assert_contains "$output" "### Product Grid" "should match case-insensitively"
+    assert_contains "$output" "ProductCard" "should include product grid hierarchy"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_dispatch_context_empty_snapshot() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+    touch "$_snap_dir/design-snapshot.md"
+
+    local rc=0
+    design_context_for_dispatch "anything" "$_snap_dir" > /dev/null 2>&1 || rc=$?
+    assert_equals "1" "$rc" "should return 1 for empty snapshot"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_dispatch_context_missing_snapshot() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+    # No snapshot file
+
+    local rc=0
+    design_context_for_dispatch "anything" "$_snap_dir" > /dev/null 2>&1 || rc=$?
+    assert_equals "1" "$rc" "should return 1 for missing snapshot"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_dispatch_context_line_limit() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+
+    # Create a snapshot with huge component hierarchy (200+ lines)
+    {
+        echo "## Design Tokens"
+        echo "### Colors"
+        echo "- primary: #2563eb"
+        echo ""
+        echo "## Component Hierarchy"
+        echo "### BigPage"
+        for i in $(seq 1 200); do
+            echo "- Component$i"
+            echo "  - SubComponent${i}A"
+        done
+    } > "$_snap_dir/design-snapshot.md"
+
+    local output
+    output=$(design_context_for_dispatch "BigPage implementation" "$_snap_dir")
+    local line_count
+    line_count=$(echo "$output" | wc -l)
+
+    # Should be truncated — max 150 lines + truncation notice
+    if [[ $line_count -gt 155 ]]; then
+        echo "    FAIL: output exceeds line limit ($line_count lines)"
+        rm -rf "$_snap_dir"
+        teardown
+        return 1
+    fi
+    assert_contains "$output" "truncated" "should show truncation notice"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+# ─── build_design_review_section ────────────────────────────────
+
+test_review_section_extracts_tokens() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+    _create_test_snapshot "$_snap_dir"
+
+    local output
+    output=$(build_design_review_section "$_snap_dir")
+
+    assert_contains "$output" "Design Compliance Check" "should have compliance header"
+    assert_contains "$output" "#2563eb" "should include primary color"
+    assert_contains "$output" "text-3xl" "should include typography"
+    assert_contains "$output" "card:" "should include shadows"
+    assert_contains "$output" "WARNING" "should mention WARNING severity"
+    assert_not_contains "$output" "CRITICAL" "should not mention CRITICAL for design"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_review_section_empty_snapshot() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+    touch "$_snap_dir/design-snapshot.md"
+
+    local rc=0
+    build_design_review_section "$_snap_dir" > /dev/null 2>&1 || rc=$?
+    assert_equals "1" "$rc" "should return 1 for empty snapshot"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_review_section_missing_snapshot() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+
+    local rc=0
+    build_design_review_section "$_snap_dir" > /dev/null 2>&1 || rc=$?
+    assert_equals "1" "$rc" "should return 1 for missing snapshot"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
+test_review_section_no_tokens() {
+    setup
+    local _snap_dir
+    _snap_dir=$(mktemp -d)
+
+    # Snapshot with no Design Tokens section
+    cat > "$_snap_dir/design-snapshot.md" <<'MD'
+# Design Snapshot
+## Component Hierarchy
+### Homepage
+- Header
+- Footer
+MD
+
+    local rc=0
+    build_design_review_section "$_snap_dir" > /dev/null 2>&1 || rc=$?
+    assert_equals "1" "$rc" "should return 1 when no tokens section"
+
+    rm -rf "$_snap_dir"
+    teardown
+}
+
 run_tests

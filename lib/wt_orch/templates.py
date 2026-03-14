@@ -101,12 +101,15 @@ def render_review_prompt(
     scope: str,
     diff_output: str,
     req_section: str = "",
+    design_compliance: str = "",
 ) -> str:
     """Render code review prompt for Claude.
 
     Replaces verifier.sh REVIEW_EOF heredoc.
     """
     diff_output = _truncate(diff_output, MAX_DIFF_CHARS, "diff output")
+
+    design_section = f"\n{design_compliance}\n" if design_compliance and design_compliance.strip() else ""
 
     return f"""You are a senior code reviewer. Review this diff for critical issues.
 
@@ -118,7 +121,7 @@ def render_review_prompt(
 {diff_output}
 ```
 {req_section}
-
+{design_section}
 ## Review Criteria
 Check for:
 1. Security vulnerabilities: SQL injection, XSS, command injection, path traversal

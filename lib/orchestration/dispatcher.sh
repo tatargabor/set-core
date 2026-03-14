@@ -418,13 +418,21 @@ dispatch_change() {
                 echo "$sibling_context" >> "$proposal_path"
             fi
 
-            # Design reference: if planner provided a design_ref, append to proposal
-            local design_ref
-            design_ref=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .design_ref // empty' "$STATE_FILENAME" 2>/dev/null || true)
-            if [[ -n "$design_ref" ]]; then
+            # Design context: inject frame-filtered snapshot content into proposal
+            local design_dispatch_ctx=""
+            design_dispatch_ctx=$(design_context_for_dispatch "$scope" "${DESIGN_SNAPSHOT_DIR:-.}" 2>/dev/null || true)
+            if [[ -n "$design_dispatch_ctx" ]]; then
                 echo "" >> "$proposal_path"
-                echo "## Design Reference" >> "$proposal_path"
-                echo "Query the design tool for this frame/page: \`$design_ref\`" >> "$proposal_path"
+                echo "$design_dispatch_ctx" >> "$proposal_path"
+            else
+                # Fallback: if planner provided a design_ref, use single-line reference
+                local design_ref
+                design_ref=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .design_ref // empty' "$STATE_FILENAME" 2>/dev/null || true)
+                if [[ -n "$design_ref" ]]; then
+                    echo "" >> "$proposal_path"
+                    echo "## Design Reference" >> "$proposal_path"
+                    echo "Query the design tool for this frame/page: \`$design_ref\`" >> "$proposal_path"
+                fi
             fi
 
             # Digest mode: add spec context references and requirement IDs to proposal
