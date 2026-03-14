@@ -24,6 +24,7 @@ interface Props {
 
 export default function Dashboard({ project }: Props) {
   const [state, setState] = useState<StateData | null>(null)
+  const stateJsonRef = useRef<string>('')
   const [logLines, setLogLines] = useState<string[]>([])
   const [checkpoint, setCheckpoint] = useState(false)
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
@@ -60,7 +61,14 @@ export default function Dashboard({ project }: Props) {
     let cancelled = false
     const poll = () => {
       getState(project)
-        .then(d => { if (!cancelled) setState(d) })
+        .then(d => {
+          if (cancelled) return
+          const json = JSON.stringify(d)
+          if (json !== stateJsonRef.current) {
+            stateJsonRef.current = json
+            setState(d)
+          }
+        })
         .catch(() => {})
     }
     // Initial fetch after short delay (give WS a chance first)

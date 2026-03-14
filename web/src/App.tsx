@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Dashboard from './pages/Dashboard'
 import Worktrees from './pages/Worktrees'
 import Settings from './pages/Settings'
@@ -90,6 +90,7 @@ function ProjectLayout() {
   const { project, setProject, projects } = useProject()
   const location = useLocation()
   const [sidebarState, setSidebarState] = useState<StateData | null>(null)
+  const sidebarJsonRef = useRef<string>('')
   const [stateError, setStateError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -117,7 +118,14 @@ function ProjectLayout() {
           else setStateError(`Error: ${r.status}`)
           return null
         })
-        .then(d => { if (d) setSidebarState(d) })
+        .then(d => {
+          if (!d) return
+          const json = JSON.stringify(d)
+          if (json !== sidebarJsonRef.current) {
+            sidebarJsonRef.current = json
+            setSidebarState(d)
+          }
+        })
         .catch(() => setStateError('Server unreachable'))
     }
     load()
