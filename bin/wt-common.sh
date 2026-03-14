@@ -534,10 +534,19 @@ run_claude() {
         mcp_arg="--mcp-config $(printf '%q' "$DESIGN_MCP_CONFIG")"
     fi
 
+    # No-MCP mode: cd to /tmp so Claude won't read .claude/settings.json MCP registrations.
+    # Use RUN_CLAUDE_NO_MCP=1 when Claude must produce structured output (JSON) without
+    # wasting turns on MCP tool calls (e.g. Figma) registered in project settings.
+    local cd_prefix=""
+    if [[ -n "${RUN_CLAUDE_NO_MCP:-}" ]]; then
+        cd_prefix="cd /tmp && "
+        mcp_arg=""  # Also clear explicit MCP config
+    fi
+
     # Build wrapper script (avoids quoting hell with script -c)
     cat > "$tmpscript" <<WRAPPER
 #!/bin/bash
-exec env -u CLAUDECODE claude -p "\$(cat '$tmpprompt')" --dangerously-skip-permissions $mcp_arg $quoted_args
+${cd_prefix}exec env -u CLAUDECODE claude -p "\$(cat '$tmpprompt')" --dangerously-skip-permissions $mcp_arg $quoted_args
 WRAPPER
     chmod +x "$tmpscript"
 

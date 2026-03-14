@@ -422,7 +422,7 @@ DIGEST_PROMPT_EOF
 call_digest_api() {
     local prompt="$1"
     local output
-    output=$(unset DESIGN_MCP_CONFIG; export RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$(model_id opus)" --max-turns 1) || {
+    output=$(export RUN_CLAUDE_NO_MCP=1 RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$(model_id opus)" --max-turns 1) || {
         log_error "Digest API call failed"
         return 1
     }
