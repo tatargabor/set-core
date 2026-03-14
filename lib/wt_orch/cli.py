@@ -596,6 +596,145 @@ def cmd_dispatch(args):
         sys.exit(0)
 
 
+def cmd_verify(args):
+    """Dispatch verifier subcommands.
+
+    Migrated from: lib/orchestration/verifier.sh
+    """
+    from .verifier import (
+        build_req_review_section,
+        evaluate_verification_rules,
+        extract_health_check_url,
+        handle_change_done,
+        health_check,
+        poll_change,
+        review_change,
+        run_phase_end_e2e,
+        run_tests_in_worktree,
+        smoke_fix_scoped,
+        verify_implementation_scope,
+        verify_merge_scope,
+    )
+
+    event_bus = _make_event_bus(args.state) if hasattr(args, "state") and args.state else None
+
+    if args.verify_cmd == "run-tests":
+        result = run_tests_in_worktree(
+            args.wt_path, args.command,
+            test_timeout=args.timeout,
+            max_chars=args.max_chars,
+        )
+        json.dump({
+            "passed": result.passed,
+            "output": result.output,
+            "exit_code": result.exit_code,
+            "stats": result.stats,
+        }, sys.stdout)
+        print()
+        sys.exit(0 if result.passed else 1)
+
+    elif args.verify_cmd == "review":
+        result = review_change(
+            args.change, args.wt_path, args.scope,
+            review_model=args.model or "sonnet",
+            state_file=args.state or "",
+        )
+        json.dump({
+            "has_critical": result.has_critical,
+            "output": result.output[:2000],
+        }, sys.stdout)
+        print()
+        sys.exit(1 if result.has_critical else 0)
+
+    elif args.verify_cmd == "evaluate-rules":
+        result = evaluate_verification_rules(
+            args.change, args.wt_path,
+            pk_file=args.pk_file or "",
+            event_bus=event_bus,
+        )
+        json.dump({"errors": result.errors, "warnings": result.warnings}, sys.stdout)
+        print()
+        sys.exit(1 if result.errors > 0 else 0)
+
+    elif args.verify_cmd == "check-merge-scope":
+        result = verify_merge_scope(args.change)
+        json.dump({"has_implementation": result.has_implementation, "first_impl_file": result.first_impl_file}, sys.stdout)
+        print()
+        sys.exit(0 if result.has_implementation else 1)
+
+    elif args.verify_cmd == "check-impl-scope":
+        result = verify_implementation_scope(args.change, args.wt_path)
+        json.dump({"has_implementation": result.has_implementation, "first_impl_file": result.first_impl_file}, sys.stdout)
+        print()
+        sys.exit(0 if result.has_implementation else 1)
+
+    elif args.verify_cmd == "health-check":
+        ok = health_check(args.url, timeout_secs=args.timeout)
+        sys.exit(0 if ok else 1)
+
+    elif args.verify_cmd == "extract-health-url":
+        url = extract_health_check_url(args.smoke_cmd)
+        print(url)
+        sys.exit(0)
+
+    elif args.verify_cmd == "build-req-section":
+        section = build_req_review_section(args.change, args.state)
+        print(section)
+        sys.exit(0)
+
+    elif args.verify_cmd == "poll":
+        status = poll_change(
+            args.change, args.state,
+            test_command=args.test_command or "",
+            merge_policy=args.merge_policy or "eager",
+            test_timeout=args.test_timeout,
+            max_verify_retries=args.max_verify_retries,
+            review_before_merge=args.review_before_merge,
+            review_model=args.review_model or "sonnet",
+            smoke_command=args.smoke_command or "",
+            smoke_timeout=args.smoke_timeout,
+            e2e_command=args.e2e_command or "",
+            e2e_timeout=args.e2e_timeout,
+            event_bus=event_bus,
+        )
+        print(status or "skipped")
+        sys.exit(0)
+
+    elif args.verify_cmd == "handle-done":
+        handle_change_done(
+            args.change, args.state,
+            test_command=args.test_command or "",
+            merge_policy=args.merge_policy or "eager",
+            test_timeout=args.test_timeout,
+            max_verify_retries=args.max_verify_retries,
+            review_before_merge=args.review_before_merge,
+            review_model=args.review_model or "sonnet",
+            smoke_command=args.smoke_command or "",
+            smoke_timeout=args.smoke_timeout,
+            e2e_command=args.e2e_command or "",
+            e2e_timeout=args.e2e_timeout,
+            event_bus=event_bus,
+        )
+        sys.exit(0)
+
+    elif args.verify_cmd == "smoke-fix":
+        ok = smoke_fix_scoped(
+            args.change, args.smoke_cmd, args.smoke_timeout,
+            args.smoke_output, args.state,
+            max_retries=args.max_retries,
+            max_turns=args.max_turns,
+        )
+        sys.exit(0 if ok else 1)
+
+    elif args.verify_cmd == "phase-e2e":
+        ok = run_phase_end_e2e(
+            args.command, args.state,
+            e2e_timeout=args.timeout,
+            event_bus=event_bus,
+        )
+        sys.exit(0 if ok else 1)
+
+
 def cmd_serve(args):
     """Start the web dashboard server."""
     import os
@@ -895,6 +1034,89 @@ def main():
     d_retry.add_argument("--state", required=True, help="State file path")
     d_retry.add_argument("--max-retries", type=int, default=2, help="Max retry attempts")
 
+    # --- verify ---
+    ver_parser = subparsers.add_parser("verify", help="Verifier operations")
+    ver_sub = ver_parser.add_subparsers(dest="verify_cmd", required=True)
+
+    v_tests = ver_sub.add_parser("run-tests", help="Run tests in worktree")
+    v_tests.add_argument("--wt-path", required=True, help="Worktree path")
+    v_tests.add_argument("--command", required=True, help="Test command")
+    v_tests.add_argument("--timeout", type=int, default=120, help="Timeout in seconds")
+    v_tests.add_argument("--max-chars", type=int, default=2000, help="Max output chars")
+
+    v_review = ver_sub.add_parser("review", help="LLM code review")
+    v_review.add_argument("--change", required=True, help="Change name")
+    v_review.add_argument("--wt-path", required=True, help="Worktree path")
+    v_review.add_argument("--scope", required=True, help="Change scope")
+    v_review.add_argument("--model", default="sonnet", help="Review model")
+    v_review.add_argument("--state", default="", help="State file path")
+
+    v_rules = ver_sub.add_parser("evaluate-rules", help="Evaluate verification rules")
+    v_rules.add_argument("--change", required=True, help="Change name")
+    v_rules.add_argument("--wt-path", required=True, help="Worktree path")
+    v_rules.add_argument("--pk-file", default="", help="project-knowledge.yaml path")
+    v_rules.add_argument("--state", default="", help="State file for events")
+
+    v_mscope = ver_sub.add_parser("check-merge-scope", help="Post-merge scope check")
+    v_mscope.add_argument("--change", required=True, help="Change name")
+
+    v_iscope = ver_sub.add_parser("check-impl-scope", help="Pre-merge implementation scope check")
+    v_iscope.add_argument("--change", required=True, help="Change name")
+    v_iscope.add_argument("--wt-path", required=True, help="Worktree path")
+
+    v_health = ver_sub.add_parser("health-check", help="HTTP health check")
+    v_health.add_argument("--url", required=True, help="URL to check")
+    v_health.add_argument("--timeout", type=int, default=30, help="Timeout in seconds")
+
+    v_hurl = ver_sub.add_parser("extract-health-url", help="Extract health URL from smoke command")
+    v_hurl.add_argument("--smoke-cmd", required=True, help="Smoke command string")
+
+    v_reqsec = ver_sub.add_parser("build-req-section", help="Build requirement review section")
+    v_reqsec.add_argument("--change", required=True, help="Change name")
+    v_reqsec.add_argument("--state", required=True, help="State file path")
+
+    v_poll = ver_sub.add_parser("poll", help="Poll a change's loop-state")
+    v_poll.add_argument("--change", required=True, help="Change name")
+    v_poll.add_argument("--state", required=True, help="State file path")
+    v_poll.add_argument("--test-command", default="", help="Test command")
+    v_poll.add_argument("--merge-policy", default="eager", help="Merge policy")
+    v_poll.add_argument("--test-timeout", type=int, default=120, help="Test timeout")
+    v_poll.add_argument("--max-verify-retries", type=int, default=2, help="Max verify retries")
+    v_poll.add_argument("--review-before-merge", action="store_true", help="Enable code review")
+    v_poll.add_argument("--review-model", default="sonnet", help="Review model")
+    v_poll.add_argument("--smoke-command", default="", help="Smoke test command")
+    v_poll.add_argument("--smoke-timeout", type=int, default=180, help="Smoke timeout")
+    v_poll.add_argument("--e2e-command", default="", help="E2E test command")
+    v_poll.add_argument("--e2e-timeout", type=int, default=120, help="E2E timeout")
+
+    v_done = ver_sub.add_parser("handle-done", help="Handle change done (verify gate)")
+    v_done.add_argument("--change", required=True, help="Change name")
+    v_done.add_argument("--state", required=True, help="State file path")
+    v_done.add_argument("--test-command", default="", help="Test command")
+    v_done.add_argument("--merge-policy", default="eager", help="Merge policy")
+    v_done.add_argument("--test-timeout", type=int, default=120, help="Test timeout")
+    v_done.add_argument("--max-verify-retries", type=int, default=2, help="Max verify retries")
+    v_done.add_argument("--review-before-merge", action="store_true", help="Enable code review")
+    v_done.add_argument("--review-model", default="sonnet", help="Review model")
+    v_done.add_argument("--smoke-command", default="", help="Smoke test command")
+    v_done.add_argument("--smoke-timeout", type=int, default=180, help="Smoke timeout")
+    v_done.add_argument("--e2e-command", default="", help="E2E test command")
+    v_done.add_argument("--e2e-timeout", type=int, default=120, help="E2E timeout")
+
+    v_sfix = ver_sub.add_parser("smoke-fix", help="Scoped smoke fix agent")
+    v_sfix.add_argument("--change", required=True, help="Change name")
+    v_sfix.add_argument("--smoke-cmd", required=True, help="Smoke command")
+    v_sfix.add_argument("--smoke-timeout", type=int, required=True, help="Smoke timeout")
+    v_sfix.add_argument("--smoke-output", default="", help="Initial smoke output")
+    v_sfix.add_argument("--state", required=True, help="State file path")
+    v_sfix.add_argument("--max-retries", type=int, default=3, help="Max fix retries")
+    v_sfix.add_argument("--max-turns", type=int, default=15, help="Max Claude turns per fix")
+
+    v_pe2e = ver_sub.add_parser("phase-e2e", help="Phase-end E2E tests")
+    v_pe2e.add_argument("--command", required=True, help="E2E command")
+    v_pe2e.add_argument("--state", required=True, help="State file path")
+    v_pe2e.add_argument("--timeout", type=int, default=180, help="E2E timeout")
+
     # --- serve ---
     serve_parser = subparsers.add_parser("serve", help="Start the web dashboard server")
     serve_parser.add_argument("--port", type=int, default=None, help="Port (default: 7400, env: WT_WEB_PORT)")
@@ -918,6 +1140,8 @@ def main():
         cmd_events(args)
     elif args.command == "dispatch":
         cmd_dispatch(args)
+    elif args.command == "verify":
+        cmd_verify(args)
     elif args.command == "serve":
         cmd_serve(args)
 
