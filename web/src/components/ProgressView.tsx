@@ -80,7 +80,20 @@ function DependencyTree({ changes }: { changes: ReqChangeInfo[] }) {
     return map
   }, [blockedBy])
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(roots.map(r => r.name)))
+  // Only auto-expand roots that have active/failed children
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const activeStatuses = new Set(['running', 'implementing', 'verifying', 'failed', 'verify-failed'])
+    const cMap = new Map(changes.map(c => [c.name, c]))
+    const active = new Set<string>()
+    for (const r of roots) {
+      if (activeStatuses.has(r.status)) active.add(r.name)
+      const kids = children.get(r.name) ?? []
+      if (kids.some(k => { const c = cMap.get(k); return c && activeStatuses.has(c.status) })) {
+        active.add(r.name)
+      }
+    }
+    return active
+  })
 
   const toggle = (name: string) => {
     setExpanded(prev => {
@@ -248,13 +261,38 @@ function GroupsView({ data }: { data: RequirementsData }) {
     return m
   }, [data.changes])
 
+  // Only expand groups that have active/failed items by default
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const active = new Set<string>()
+    for (const g of data.groups) {
+      if (g.in_progress > 0 || g.failed > 0) active.add(g.group)
+    }
+    return active
+  })
+
+  const toggle = (group: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(group)) next.delete(group)
+      else next.add(group)
+      return next
+    })
+  }
+
   return (
     <div className="divide-y divide-neutral-800/50">
       {data.groups.map(g => {
         const pct = g.total > 0 ? Math.round((g.done / g.total) * 100) : 0
+        const isOpen = expanded.has(g.group)
         return (
           <div key={g.group}>
-            <div className="flex items-center gap-3 px-4 py-2">
+            <div
+              className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-neutral-800/30"
+              onClick={() => toggle(g.group)}
+            >
+              <span className="text-neutral-500 w-3 text-center text-[10px]">
+                {isOpen ? '▾' : '▸'}
+              </span>
               <span className="text-xs font-medium text-neutral-300 w-16">{g.group}</span>
               <div className="flex-1 max-w-[200px]">
                 <ProgressBar done={g.done} inProgress={g.in_progress} failed={g.failed} total={g.total} />
@@ -268,28 +306,30 @@ function GroupsView({ data }: { data: RequirementsData }) {
                 <span className="text-[10px] text-red-400">{g.failed} failed</span>
               )}
             </div>
-            <div className="px-4 pb-2">
-              <table className="w-full text-[11px]">
-                <tbody>
-                  {g.requirements.map(req => {
-                    const ch = changeMap.get(req.change)
-                    const statusColor = STATUS_TEXT[req.status] ?? 'text-neutral-600'
-                    return (
-                      <tr key={req.id} className="hover:bg-neutral-800/20">
-                        <td className="py-0.5 pl-6 font-mono text-neutral-400 w-32">{req.id}</td>
-                        <td className={`py-0.5 w-20 ${statusColor}`}>{req.status}</td>
-                        <td className="py-0.5 font-mono text-neutral-500 truncate">
-                          {req.change}
-                          {ch?.complexity && (
-                            <span className="ml-2 text-neutral-600">[{ch.complexity}]</span>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {isOpen && (
+              <div className="px-4 pb-2">
+                <table className="w-full text-[11px]">
+                  <tbody>
+                    {g.requirements.map(req => {
+                      const ch = changeMap.get(req.change)
+                      const statusColor = STATUS_TEXT[req.status] ?? 'text-neutral-600'
+                      return (
+                        <tr key={req.id} className="hover:bg-neutral-800/20">
+                          <td className="py-0.5 pl-6 font-mono text-neutral-400 w-32">{req.id}</td>
+                          <td className={`py-0.5 w-20 ${statusColor}`}>{req.status}</td>
+                          <td className="py-0.5 font-mono text-neutral-500 truncate">
+                            {req.change}
+                            {ch?.complexity && (
+                              <span className="ml-2 text-neutral-600">[{ch.complexity}]</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )
       })}
@@ -300,10 +340,14 @@ function GroupsView({ data }: { data: RequirementsData }) {
 function extractDigestReqs(data: DigestData): DigestReq[] {
   const raw = data.requirements
   if (!raw) return []
-  if (Array.isArray(raw) && raw.length === 1 && 'requirements' in (raw[0] as Record<string, unknown>)) {
-    return (raw[0] as { requirements: DigestReq[] }).requirements
+  if (!Array.isArray(raw) && typeof raw === 'object' && 'requirements' in raw) {
+    return (raw as { requirements: DigestReq[] }).requirements ?? []
   }
-  return raw as DigestReq[]
+  if (Array.isArray(raw) && raw.length === 1 && typeof raw[0] === 'object' && 'requirements' in (raw[0] as Record<string, unknown>)) {
+    return (raw[0] as { requirements: DigestReq[] }).requirements ?? []
+  }
+  if (Array.isArray(raw)) return raw as DigestReq[]
+  return []
 }
 
 function DigestFallbackView({ project, changes }: { project: string; changes: ReqChangeInfo[] }) {
@@ -329,6 +373,18 @@ function DigestFallbackView({ project, changes }: { project: string; changes: Re
     const iv = setInterval(load, 10000)
     return () => { cancelled = true; clearInterval(iv) }
   }, [project])
+
+  // Group by domain — must be before early returns (rules of hooks)
+  const byDomain = useMemo(() => {
+    if (!Array.isArray(digestReqs) || digestReqs.length === 0) return []
+    const groups: Record<string, DigestReq[]> = {}
+    for (const r of digestReqs) {
+      if (!r?.domain) continue
+      if (!groups[r.domain]) groups[r.domain] = []
+      groups[r.domain].push(r)
+    }
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [digestReqs])
 
   if (loading) {
     return <div className="p-4 text-xs text-neutral-500">Loading requirements...</div>
@@ -367,16 +423,6 @@ function DigestFallbackView({ project, changes }: { project: string; changes: Re
   const totalReqs = digestReqs.length
   const pctDone = totalReqs > 0 ? Math.round((doneCount / totalReqs) * 100) : 0
 
-  // Group by domain
-  const byDomain = useMemo(() => {
-    const groups: Record<string, DigestReq[]> = {}
-    for (const r of digestReqs) {
-      if (!groups[r.domain]) groups[r.domain] = []
-      groups[r.domain].push(r)
-    }
-    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
-  }, [digestReqs])
-
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 px-4 py-1.5 border-b border-neutral-800/50 shrink-0">
@@ -391,27 +437,39 @@ function DigestFallbackView({ project, changes }: { project: string; changes: Re
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="divide-y divide-neutral-800/50">
-          {byDomain.map(([domain, reqs]) => (
-            <DigestDomainGroup key={domain} domain={domain} reqs={reqs} coverage={coverage} />
-          ))}
+          {byDomain.map(([domain, reqs]) => {
+            const ipStatuses = new Set(['running', 'implementing', 'verifying', 'failed', 'verify-failed'])
+            const hasActive = reqs.some(r => coverage[r.id] && ipStatuses.has(coverage[r.id].status))
+            return (
+              <DigestDomainGroup key={domain} domain={domain} reqs={reqs} coverage={coverage} defaultOpen={hasActive} />
+            )
+          })}
         </div>
       </div>
     </div>
   )
 }
 
-function DigestDomainGroup({ domain, reqs, coverage }: {
+function DigestDomainGroup({ domain, reqs, coverage, defaultOpen }: {
   domain: string
   reqs: DigestReq[]
   coverage: Record<string, { change: string; status: string }>
+  defaultOpen?: boolean
 }) {
   const doneStatuses = new Set(['done', 'merged', 'completed', 'skip_merged'])
   const done = reqs.filter(r => coverage[r.id] && doneStatuses.has(coverage[r.id].status)).length
   const pct = reqs.length > 0 ? Math.round((done / reqs.length) * 100) : 0
+  const [open, setOpen] = useState(defaultOpen ?? false)
 
   return (
     <div>
-      <div className="flex items-center gap-3 px-4 py-2">
+      <div
+        className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-neutral-800/30"
+        onClick={() => setOpen(v => !v)}
+      >
+        <span className="text-neutral-500 w-3 text-center text-[10px]">
+          {open ? '▾' : '▸'}
+        </span>
         <span className="text-xs font-medium text-neutral-300 w-24 truncate">{domain}</span>
         <div className="flex-1 max-w-[200px]">
           <ProgressBar done={done} inProgress={0} failed={0} total={reqs.length} />
@@ -419,8 +477,9 @@ function DigestDomainGroup({ domain, reqs, coverage }: {
         <span className="text-[11px] text-neutral-400 w-16 text-right">{done}/{reqs.length}</span>
         <span className="text-[10px] text-neutral-500 w-10 text-right">{pct}%</span>
       </div>
-      <div className="px-4 pb-2">
-        <table className="w-full text-[11px]">
+      {open && (
+        <div className="px-4 pb-2">
+          <table className="w-full text-[11px]">
             <tbody>
               {reqs.map(r => {
                 const cov = coverage[r.id]
@@ -437,6 +496,7 @@ function DigestDomainGroup({ domain, reqs, coverage }: {
             </tbody>
           </table>
         </div>
+      )}
     </div>
   )
 }

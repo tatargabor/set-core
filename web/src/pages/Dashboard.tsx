@@ -13,7 +13,7 @@ import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
 import useIsMobile from '../hooks/useIsMobile'
-import { getDigest, getState } from '../lib/api'
+import { getDigest, getPlans, getState } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
 type PanelTab = 'changes' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent'
@@ -31,6 +31,7 @@ export default function Dashboard({ project }: Props) {
   const [activeTab, setActiveTab] = useState<PanelTab>('changes')
   const [logExpanded, setLogExpanded] = useState(false)
   const [hasDigest, setHasDigest] = useState(false)
+  const [hasPlans, setHasPlans] = useState(false)
   const isMobile = useIsMobile()
   const tabBarRef = useRef<HTMLDivElement>(null)
 
@@ -83,6 +84,20 @@ export default function Dashboard({ project }: Props) {
     return () => { cancelled = true; clearInterval(iv) }
   }, [project])
 
+  // Check if plans exist
+  useEffect(() => {
+    if (!project) return
+    let cancelled = false
+    const check = () => {
+      getPlans(project)
+        .then(d => { if (!cancelled) setHasPlans(d.plans.length > 0) })
+        .catch(() => {})
+    }
+    check()
+    const iv = setInterval(check, 15000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [project])
+
   if (!project) {
     return (
       <div className="flex items-center justify-center h-full text-neutral-500">
@@ -98,7 +113,7 @@ export default function Dashboard({ project }: Props) {
 
   const tabs: { id: PanelTab; label: string; hidden?: boolean }[] = [
     { id: 'changes', label: 'Changes' },
-    { id: 'plan', label: 'Plan' },
+    { id: 'plan', label: 'Plan', hidden: !hasPlans },
     { id: 'tokens', label: 'Tokens' },
     { id: 'requirements', label: 'Requirements' },
     { id: 'audit', label: 'Audit', hidden: !hasAudit },

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Dashboard from './pages/Dashboard'
 import Worktrees from './pages/Worktrees'
 import Settings from './pages/Settings'
+import Memory from './pages/Memory'
 import Home from './pages/Home'
 import ProjectSelector from './components/ProjectSelector'
 import { useProject } from './hooks/useProject'
@@ -190,6 +191,12 @@ function ProjectLayout() {
             Worktrees
           </Link>
           <Link
+            to={project ? `/wt/${project}/memory` : '/wt'}
+            className={`block px-3 py-2 rounded text-sm ${activeTab === 'memory' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
+          >
+            Memory
+          </Link>
+          <Link
             to={project ? `/wt/${project}/settings` : '/wt'}
             className={`block px-3 py-2 rounded text-sm ${activeTab === 'settings' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
           >
@@ -225,6 +232,7 @@ function ProjectLayout() {
         <Routes>
           <Route index element={<Dashboard project={project} />} />
           <Route path="worktrees" element={<Worktrees project={project} />} />
+          <Route path="memory" element={<Memory project={project} />} />
           <Route path="settings" element={<Settings project={project} />} />
         </Routes>
       </main>

@@ -4,6 +4,12 @@ interface Props {
   project: string | null
 }
 
+interface DataSource {
+  available: boolean
+  count?: number
+  changes?: number
+}
+
 interface SettingsData {
   project_path: string
   state_path?: string | null
@@ -16,6 +22,7 @@ interface SettingsData {
   runs_count?: number
   orchestrator_pid?: number | null
   plan_version?: string | number | null
+  data_sources?: Record<string, DataSource>
 }
 
 function ConfigValue({ label, value }: { label: string; value: React.ReactNode }) {
@@ -87,6 +94,32 @@ export default function Settings({ project }: Props) {
             {Object.entries(directives).map(([k, v]) => (
               <ConfigValue key={k} label={k} value={typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')} />
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Data Sources */}
+      {data.data_sources && (
+        <section>
+          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Data Sources</h2>
+          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
+            {Object.entries(data.data_sources).map(([key, src]) => {
+              const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              let detail = src.available ? 'Available' : 'Not found'
+              if (src.available && src.count != null) detail = `${src.count} file${src.count !== 1 ? 's' : ''}`
+              if (src.available && src.changes != null) detail = `${src.changes} change${src.changes !== 1 ? 's' : ''}`
+              return (
+                <ConfigValue
+                  key={key}
+                  label={label}
+                  value={
+                    <span className={src.available ? 'text-green-400' : 'text-neutral-600'}>
+                      {detail}
+                    </span>
+                  }
+                />
+              )
+            })}
           </div>
         </section>
       )}

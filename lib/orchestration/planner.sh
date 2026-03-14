@@ -1406,6 +1406,14 @@ print('true' if novel and novel <= failed else 'false')
 
     emit_event "REPLAN" "" "{\"cycle\":$cycle,\"novel_count\":$novel_count,\"status\":\"dispatching\"}"
 
+    # Archive completed changes before re-init (so web can show cumulative tokens)
+    local archive_file
+    archive_file="$(dirname "$STATE_FILENAME")/state-archive.jsonl"
+    jq -c --arg cycle "$cycle" --arg ts "$(date -Iseconds)" \
+        '{cycle: ($cycle|tonumber), archived_at: $ts, changes: [.changes[] | select(.status == "done" or .status == "merged" or .status == "merge-blocked" or .status == "failed" or .status == "verify-failed" or .status == "skip_merged")]}' \
+        "$STATE_FILENAME" >> "$archive_file" 2>/dev/null || true
+    log_info "Archived completed changes to state-archive.jsonl (cycle $cycle)"
+
     # Re-initialize state from new plan, preserving history
     local prev_total_tokens
     prev_total_tokens=$(jq '[.changes[].tokens_used] | add // 0' "$STATE_FILENAME")

@@ -98,7 +98,7 @@ export default function TokenChart({ changes }: Props) {
       {/* Chart */}
       <div className="flex-1 overflow-y-auto min-h-0 px-2 py-2">
         <div style={{ height: barHeight }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <BarChart
               data={data}
               layout="vertical"
@@ -123,7 +123,7 @@ export default function TokenChart({ changes }: Props) {
               <Tooltip
                 contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 6, fontSize: 11 }}
                 labelStyle={{ color: '#aaa', fontFamily: 'monospace' }}
-                formatter={(value: number, name: string) => [formatK(value), name]}
+                formatter={(value) => [formatK(Number(value ?? 0)), undefined]}
                 labelFormatter={(label) => {
                   const item = data.find(d => d.shortName === label)
                   return item ? `${item.name} (${item.status})` : label

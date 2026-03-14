@@ -86,6 +86,34 @@ def _state_path(project_path: Path) -> Path:
     return new  # default for non-existent (will 404 cleanly)
 
 
+def _load_archived_changes(project_path: Path) -> list[dict]:
+    """Load completed changes from state-archive.jsonl (written at replan boundaries).
+
+    Returns deduplicated list of archived change dicts. Later archive entries
+    for the same change name win (they have more complete token data).
+    """
+    archive = project_path / "wt" / "orchestration" / "state-archive.jsonl"
+    if not archive.exists():
+        return []
+    seen: dict[str, dict] = {}  # name -> change dict
+    try:
+        for line in archive.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            cycle = entry.get("cycle", 0)
+            for c in entry.get("changes", []):
+                c["_archive_cycle"] = cycle
+                seen[c.get("name", "")] = c
+    except OSError:
+        return []
+    return list(seen.values())
+
+
 def _log_path(project_path: Path) -> Path:
     """Find orchestration log — new location first, legacy fallback."""
     new = project_path / "wt" / "orchestration" / "orchestration.log"
@@ -353,6 +381,13 @@ def get_state(project: str):
         state = load_state(str(sp))
         data = state.to_dict()
         _enrich_changes(data, project_path)
+        # Merge archived changes from previous replan cycles
+        archived = _load_archived_changes(project_path)
+        if archived:
+            current_names = {c["name"] for c in data.get("changes", [])}
+            for ac in archived:
+                if ac["name"] not in current_names:
+                    data["changes"].append(ac)
         return data
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
@@ -1290,7 +1325,69 @@ def get_project_settings(project: str):
                 pass
             break
 
+    # Data sources: which tabs have data
+    plans_dir = project_path / "wt" / "orchestration" / "plans"
+    plan_count = 0
+    if plans_dir.is_dir():
+        plan_count = sum(1 for f in plans_dir.iterdir() if f.is_file() and f.suffix == ".json")
+
+    digest_path = project_path / "wt" / "orchestration" / "digest.json"
+    change_count = 0
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            change_count = len(state.changes)
+        except Exception:
+            pass
+
+    result["data_sources"] = {
+        "plans": {"available": plan_count > 0, "count": plan_count},
+        "digest": {"available": digest_path.exists()},
+        "state": {"available": sp.exists(), "changes": change_count},
+        "orchestration_config": {"available": "config_path" in result},
+    }
+
     return result
+
+
+# ─── Memory endpoints ────────────────────────────────────────────────
+
+
+def _run_wt_memory(project_path: Path, args: list[str], timeout: int = 10) -> dict | str:
+    """Run wt-memory CLI with project-scoped CWD, return parsed JSON or raw string."""
+    try:
+        result = subprocess.run(
+            ["wt-memory"] + args,
+            capture_output=True, text=True, timeout=timeout,
+            cwd=str(project_path),
+        )
+        out = result.stdout.strip()
+        if result.returncode != 0:
+            return {"error": result.stderr.strip() or "wt-memory failed"}
+        try:
+            return json.loads(out)
+        except (json.JSONDecodeError, TypeError):
+            return out
+    except FileNotFoundError:
+        return {"error": "wt-memory not found"}
+    except subprocess.TimeoutExpired:
+        return {"error": f"timeout after {timeout}s"}
+
+
+@router.get("/api/{project}/memory")
+def get_memory_overview(project: str):
+    """Aggregate memory stats, health, and sync status in a single call."""
+    project_path = _resolve_project(project)
+
+    health = _run_wt_memory(project_path, ["health"])
+    stats = _run_wt_memory(project_path, ["stats", "--json"])
+    sync = _run_wt_memory(project_path, ["sync", "status"])
+
+    return {
+        "health": health if isinstance(health, str) else health,
+        "stats": stats if isinstance(stats, dict) else {},
+        "sync": sync if isinstance(sync, str) else str(sync),
+    }
 
 
 # ─── WRITE endpoints ─────────────────────────────────────────────────

@@ -10,10 +10,16 @@ type DigestTab = 'overview' | 'requirements' | 'domains' | 'triage'
 function extractReqs(data: DigestData): DigestReq[] {
   const raw = data.requirements
   if (!raw) return []
-  if (Array.isArray(raw) && raw.length === 1 && 'requirements' in (raw[0] as Record<string, unknown>)) {
-    return (raw[0] as { requirements: DigestReq[] }).requirements
+  // raw is {requirements: [...]} dict
+  if (!Array.isArray(raw) && typeof raw === 'object' && 'requirements' in raw) {
+    return (raw as { requirements: DigestReq[] }).requirements ?? []
   }
-  return raw as DigestReq[]
+  // raw is [{requirements: [...]}] wrapped in array
+  if (Array.isArray(raw) && raw.length === 1 && typeof raw[0] === 'object' && 'requirements' in (raw[0] as Record<string, unknown>)) {
+    return (raw[0] as { requirements: DigestReq[] }).requirements ?? []
+  }
+  if (Array.isArray(raw)) return raw as DigestReq[]
+  return []
 }
 
 export default function DigestView({ project }: Props) {
