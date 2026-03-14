@@ -6,7 +6,7 @@
 # build from the structured digest.
 #
 # Usage:
-#   ./tests/e2e/run-complex.sh              # Clone to default dir ($TMPDIR/craftbrew-e2e or /tmp/craftbrew-e2e)
+#   ./tests/e2e/run-complex.sh              # Auto-increment: /tmp/craftbrew-run1, run2, ...
 #   ./tests/e2e/run-complex.sh /path/to/dir # Clone to specified dir
 #
 # The spec source repo: https://github.com/tatargabor/craftbrew
@@ -15,9 +15,28 @@ set -euo pipefail
 
 CRAFTBREW_REPO="https://github.com/tatargabor/craftbrew.git"
 CRAFTBREW_BRANCH="main"
-DEFAULT_DIR="${TMPDIR:-/tmp}/craftbrew-e2e"
-TEST_DIR="${1:-$DEFAULT_DIR}"
-PROJECT_NAME="craftbrew-e2e"
+BASE_DIR="${TMPDIR:-/tmp}"
+
+# Auto-increment run number: find highest existing craftbrew-runN, use N+1
+next_run_number() {
+    local max=0
+    for d in "$BASE_DIR"/craftbrew-run*; do
+        [[ -d "$d" ]] || continue
+        local n="${d##*craftbrew-run}"
+        n="${n%%-*}"  # strip worktree suffixes like -wt-catalog-list
+        [[ "$n" =~ ^[0-9]+$ ]] && (( n > max )) && max=$n
+    done
+    echo $(( max + 1 ))
+}
+
+if [[ -n "${1:-}" ]]; then
+    TEST_DIR="$1"
+    PROJECT_NAME="$(basename "$TEST_DIR")"
+else
+    RUN_NUM=$(next_run_number)
+    TEST_DIR="$BASE_DIR/craftbrew-run${RUN_NUM}"
+    PROJECT_NAME="craftbrew-run${RUN_NUM}"
+fi
 
 # ── Colors ──
 
@@ -188,6 +207,7 @@ max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
+max_replan_cycles: 3
 YAML
 
     if [[ -n "$design_file_url" ]]; then
