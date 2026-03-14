@@ -2,7 +2,7 @@
 
 ## Figma
 
-**Figma Make:** https://www.figma.com/make/DDCs2kpcLYw6E3Q1EcDjCK/Detailed-Webshop-Design
+**Figma Make:** https://www.figma.com/make/DDCs2kpcLYw6E3Q1EcDjCK/wt-CraftBrew
 
 > **All design tokens (colors, typography, spacing, shadows) come from the Figma MCP.**
 > The preflight snapshot is injected into the decompose prompt automatically.

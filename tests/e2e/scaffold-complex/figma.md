@@ -3,8 +3,7 @@
 Ezek a promptok a CraftBrew UI design elkészítéséhez készültek.
 Az elkészült Figma fájlt az agentek Figma MCP-vel olvassák implementáció közben.
 
-**Figma Design file:** https://www.figma.com/design/QrtIGnpTs8jPbEXFuLu2xO/Untitled
-**Figma Make projekt:** https://www.figma.com/make/DDCs2kpcLYw6E3Q1EcDjCK/Detailed-Webshop-Design
+**Figma Make projekt:** https://www.figma.com/make/DDCs2kpcLYw6E3Q1EcDjCK/wt-CraftBrew
 
 ---
 
