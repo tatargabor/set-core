@@ -767,6 +767,115 @@ def cmd_serve(args):
     server.run()
 
 
+def cmd_merge(args):
+    """Dispatch merge subcommands.
+
+    Migrated from: lib/orchestration/merger.sh
+    """
+    from .merger import (
+        archive_change,
+        cleanup_all_worktrees,
+        cleanup_worktree,
+        execute_merge_queue,
+        merge_change,
+        retry_merge_queue,
+    )
+
+    event_bus = _make_event_bus(args.state) if hasattr(args, "state") and args.state else None
+
+    if args.merge_cmd == "merge-change":
+        result = merge_change(args.change, args.state, event_bus=event_bus)
+        json.dump({
+            "success": result.success,
+            "status": result.status,
+            "smoke_result": result.smoke_result,
+        }, sys.stdout)
+        print()
+        sys.exit(0 if result.success else 1)
+
+    elif args.merge_cmd == "execute-queue":
+        merged = execute_merge_queue(args.state, event_bus=event_bus)
+        json.dump({"merged": merged}, sys.stdout)
+        print()
+        sys.exit(0)
+
+    elif args.merge_cmd == "retry-queue":
+        merged = retry_merge_queue(args.state, event_bus=event_bus)
+        json.dump({"merged": merged}, sys.stdout)
+        print()
+        sys.exit(0)
+
+    elif args.merge_cmd == "archive":
+        ok = archive_change(args.change)
+        sys.exit(0 if ok else 1)
+
+    elif args.merge_cmd == "cleanup-worktree":
+        cleanup_worktree(args.change, args.wt_path)
+        sys.exit(0)
+
+    elif args.merge_cmd == "cleanup-all":
+        cleaned = cleanup_all_worktrees(args.state)
+        json.dump({"cleaned": cleaned}, sys.stdout)
+        print()
+        sys.exit(0)
+
+
+def cmd_milestone(args):
+    """Dispatch milestone subcommands.
+
+    Migrated from: lib/orchestration/milestone.sh
+    """
+    from .milestone import (
+        cleanup_milestone_servers,
+        cleanup_milestone_worktrees,
+        run_milestone_checkpoint,
+    )
+
+    event_bus = _make_event_bus(args.state) if hasattr(args, "state") and args.state else None
+
+    if args.milestone_cmd == "checkpoint":
+        run_milestone_checkpoint(
+            args.phase,
+            base_port=args.base_port,
+            max_worktrees=args.max_worktrees,
+            state_file=args.state,
+            milestone_dev_server=args.dev_server or "",
+            event_bus=event_bus,
+        )
+        sys.exit(0)
+
+    elif args.milestone_cmd == "cleanup-servers":
+        killed = cleanup_milestone_servers(args.state)
+        json.dump({"killed": killed}, sys.stdout)
+        print()
+        sys.exit(0)
+
+    elif args.milestone_cmd == "cleanup-worktrees":
+        cleaned = cleanup_milestone_worktrees()
+        json.dump({"cleaned": cleaned}, sys.stdout)
+        print()
+        sys.exit(0)
+
+
+def cmd_engine(args):
+    """Dispatch engine subcommands.
+
+    Migrated from: lib/orchestration/monitor.sh
+    """
+    from .engine import monitor_loop
+
+    event_bus = _make_event_bus(args.state) if hasattr(args, "state") and args.state else None
+
+    if args.engine_cmd == "monitor":
+        monitor_loop(
+            args.directives,
+            args.state,
+            poll_interval=args.poll_interval,
+            event_bus=event_bus,
+        )
+        sys.exit(0)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="wt-orch-core",
@@ -1122,6 +1231,55 @@ def main():
     serve_parser.add_argument("--port", type=int, default=None, help="Port (default: 7400, env: WT_WEB_PORT)")
     serve_parser.add_argument("--host", default=None, help="Host (default: 0.0.0.0, use 127.0.0.1 to restrict to localhost)")
 
+    # --- merge ---
+    merge_parser = subparsers.add_parser("merge", help="Merger operations")
+    merge_sub = merge_parser.add_subparsers(dest="merge_cmd", required=True)
+
+    m_merge = merge_sub.add_parser("merge-change", help="Merge a completed change")
+    m_merge.add_argument("--change", required=True, help="Change name")
+    m_merge.add_argument("--state", required=True, help="State file path")
+
+    m_exec = merge_sub.add_parser("execute-queue", help="Drain merge queue")
+    m_exec.add_argument("--state", required=True, help="State file path")
+
+    m_retry = merge_sub.add_parser("retry-queue", help="Retry merge queue + merge-blocked")
+    m_retry.add_argument("--state", required=True, help="State file path")
+
+    m_archive = merge_sub.add_parser("archive", help="Archive a change to dated directory")
+    m_archive.add_argument("--change", required=True, help="Change name")
+
+    m_cwt = merge_sub.add_parser("cleanup-worktree", help="Clean up a single worktree")
+    m_cwt.add_argument("--change", required=True, help="Change name")
+    m_cwt.add_argument("--wt-path", required=True, help="Worktree path")
+
+    m_call = merge_sub.add_parser("cleanup-all", help="Clean up all merged/done worktrees")
+    m_call.add_argument("--state", required=True, help="State file path")
+
+    # --- milestone ---
+    ms_parser = subparsers.add_parser("milestone", help="Milestone operations")
+    ms_sub = ms_parser.add_subparsers(dest="milestone_cmd", required=True)
+
+    ms_ckpt = ms_sub.add_parser("checkpoint", help="Run milestone checkpoint for a phase")
+    ms_ckpt.add_argument("--phase", type=int, required=True, help="Phase number")
+    ms_ckpt.add_argument("--state", required=True, help="State file path")
+    ms_ckpt.add_argument("--base-port", type=int, default=3100, help="Base port for dev servers")
+    ms_ckpt.add_argument("--max-worktrees", type=int, default=3, help="Max milestone worktrees")
+    ms_ckpt.add_argument("--dev-server", default="", help="Dev server command override")
+
+    ms_cs = ms_sub.add_parser("cleanup-servers", help="Kill all milestone dev servers")
+    ms_cs.add_argument("--state", required=True, help="State file path")
+
+    ms_cw = ms_sub.add_parser("cleanup-worktrees", help="Remove all milestone worktrees")
+
+    # --- engine ---
+    eng_parser = subparsers.add_parser("engine", help="Orchestration engine")
+    eng_sub = eng_parser.add_subparsers(dest="engine_cmd", required=True)
+
+    e_mon = eng_sub.add_parser("monitor", help="Run main orchestration monitoring loop")
+    e_mon.add_argument("--directives", required=True, help="Directives JSON file or string")
+    e_mon.add_argument("--state", required=True, help="State file path")
+    e_mon.add_argument("--poll-interval", type=int, default=15, help="Poll interval in seconds")
+
     args = parser.parse_args()
 
     if args.command == "process":
@@ -1144,6 +1302,12 @@ def main():
         cmd_verify(args)
     elif args.command == "serve":
         cmd_serve(args)
+    elif args.command == "merge":
+        cmd_merge(args)
+    elif args.command == "milestone":
+        cmd_milestone(args)
+    elif args.command == "engine":
+        cmd_engine(args)
 
 
 if __name__ == "__main__":

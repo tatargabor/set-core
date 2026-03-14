@@ -1,31 +1,18 @@
 #!/usr/bin/env bash
 # lib/orchestration/merger.sh — Merge, cleanup, archive operations
 #
-# Sourced by bin/wt-orchestrate. All functions run in the orchestrator's global scope.
-# Depends on: state.sh (update_change_field, etc.), events.sh (emit_event),
-#             dispatcher.sh (resume_change, check_base_build, fix_base_build_with_llm),
-#             verifier.sh (verify_merge_scope, extract_health_check_url, health_check, smoke_fix_scoped)
+# Python implementation: lib/wt_orch/merger.py
+# This file contains thin wrappers that delegate to wt-orch-core merge *
+# Functions that interact heavily with bash globals (merge_change, _try_merge)
+# remain in bash due to deep coupling with hook system, notifications, and
+# the orchestrator's global state (orch_remember, send_notification, etc.).
 
-# ─── Archive ─────────────────────────────────────────────────────────
+# ─── Archive (delegated to Python) ──────────────────────────────────
 
 archive_change() {
+    # Migrated to: wt_orch/merger.py archive_change()
     local change_name="$1"
-    local change_dir="openspec/changes/$change_name"
-
-    # Skip if change directory doesn't exist
-    [[ -d "$change_dir" ]] || return 0
-
-    local archive_dir="openspec/changes/archive"
-    local dated_name="$(date +%Y-%m-%d)-$change_name"
-    local dest="$archive_dir/$dated_name"
-
-    (
-        mkdir -p "$archive_dir"
-        mv "$change_dir" "$dest"
-        git add "$dest" "$change_dir" 2>/dev/null || true
-        git commit -m "chore: archive $change_name change" --no-verify 2>/dev/null || true
-        log_info "Archived $change_name → $dest"
-    ) || {
+    wt-orch-core merge archive --change "$change_name" 2>/dev/null || {
         log_warn "Failed to archive $change_name (non-blocking)"
     }
 }
@@ -53,6 +40,14 @@ _collect_smoke_screenshots() {
 
 # ─── Merge ───────────────────────────────────────────────────────────
 
+# merge_change remains in bash due to deep coupling with:
+# - orch_remember / send_notification (bash-only functions)
+# - run_hook (bash hook dispatch system)
+# - update_coverage_status (bash-only)
+# - fix_base_build_with_llm / run_claude (bash-only)
+# - _ORCH_DEV_SERVER_PID (bash global for auto-started dev server)
+# - BASE_BUILD_STATUS / BASE_BUILD_OUTPUT (bash globals)
+# The Python merger.py provides a clean-room implementation for future use.
 merge_change() {
     local change_name="$1"
 
@@ -500,10 +495,11 @@ _sync_running_worktrees() {
     done <<< "$running_changes"
 }
 
-# ─── Worktree Cleanup ────────────────────────────────────────────────
+# ─── Worktree Cleanup (delegated to Python) ──────────────────────────
 
-# Archive worktree agent logs before cleanup
 _archive_worktree_logs() {
+    # Migrated to: wt_orch/merger.py _archive_worktree_logs()
+    # Still called from cleanup_worktree, but kept as passthrough
     local change_name="$1"
     local wt_path="$2"
     local logs_src="$wt_path/.claude/logs"
@@ -517,7 +513,6 @@ _archive_worktree_logs() {
     log_info "Archived $count log files for $change_name to $archive_dir"
 }
 
-# Clean up worktree and branch after successful merge
 cleanup_worktree() {
     local change_name="$1"
     local wt_path="$2"
@@ -547,24 +542,28 @@ cleanup_worktree() {
 }
 
 cleanup_all_worktrees() {
-    log_info "Cleaning up worktrees for merged/done changes..."
-    local cleaned=0
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        local name wt_path status
-        name=$(echo "$line" | jq -r '.name')
-        wt_path=$(echo "$line" | jq -r '.worktree_path // empty')
-        status=$(echo "$line" | jq -r '.status')
-        [[ "$status" != "merged" && "$status" != "done" ]] && continue
-        [[ -z "$wt_path" ]] && continue
-        [[ ! -d "$wt_path" ]] && continue
-        cleanup_worktree "$name" "$wt_path"
-        cleaned=$((cleaned + 1))
-    done < <(jq -c '.changes[]' "$STATE_FILENAME" 2>/dev/null)
-    if [[ $cleaned -gt 0 ]]; then
-        log_info "Cleaned up $cleaned worktree(s)"
-        info "Cleaned up $cleaned worktree(s)"
-    fi
+    # Migrated to: wt_orch/merger.py cleanup_all_worktrees()
+    wt-orch-core merge cleanup-all --state "$STATE_FILENAME" 2>/dev/null || {
+        # Fallback: inline cleanup for backward compat
+        log_info "Cleaning up worktrees for merged/done changes..."
+        local cleaned=0
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            local name wt_path status
+            name=$(echo "$line" | jq -r '.name')
+            wt_path=$(echo "$line" | jq -r '.worktree_path // empty')
+            status=$(echo "$line" | jq -r '.status')
+            [[ "$status" != "merged" && "$status" != "done" ]] && continue
+            [[ -z "$wt_path" ]] && continue
+            [[ ! -d "$wt_path" ]] && continue
+            cleanup_worktree "$name" "$wt_path"
+            cleaned=$((cleaned + 1))
+        done < <(jq -c '.changes[]' "$STATE_FILENAME" 2>/dev/null)
+        if [[ $cleaned -gt 0 ]]; then
+            log_info "Cleaned up $cleaned worktree(s)"
+            info "Cleaned up $cleaned worktree(s)"
+        fi
+    }
 
     # Clean up milestone servers and worktrees if milestones were used
     if type cleanup_milestone_servers &>/dev/null; then
@@ -576,6 +575,7 @@ cleanup_all_worktrees() {
 # ─── Merge Queue ─────────────────────────────────────────────────────
 
 execute_merge_queue() {
+    # Migrated to: wt_orch/merger.py execute_merge_queue()
     local queue
     queue=$(jq -r '.merge_queue[]?' "$STATE_FILENAME" 2>/dev/null)
 
@@ -605,7 +605,6 @@ _try_merge() {
     log_info "Merge attempt $retry_count/$MAX_MERGE_RETRIES for $name"
 
     # Update the change branch to include latest main before retrying merge.
-    # This handles the case where main moved (other merges landed) since the branch was created.
     local wt_path
     wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
     if [[ -n "$wt_path" && -d "$wt_path" ]]; then

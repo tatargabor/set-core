@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # lib/orchestration/monitor.sh — Main orchestration monitoring loop
 # Dependencies: state.sh, events.sh, dispatcher.sh, verifier.sh, merger.sh, watchdog.sh
+#
+# Python implementation: lib/wt_orch/engine.py
+# monitor_loop remains in bash due to deep coupling with bash globals (STATE_FILENAME,
+# LOG_FILE, ORCHESTRATOR_START_EPOCH, etc.), signal traps, and many bash-only functions
+# (orch_remember, send_notification, trigger_checkpoint, auto_replan_cycle, etc.).
+# The Python engine.py provides a clean-room implementation for future cutover.
 
 monitor_loop() {
     local directives="$1"
