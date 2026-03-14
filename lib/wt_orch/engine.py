@@ -483,6 +483,20 @@ def _check_completion(
 
     logger.info("All %d changes complete", total)
 
+    # Total failure: all changes failed, none succeeded — don't replan
+    # (nothing was merged, so there's no foundation to build on)
+    if truly_complete == 0 and failed_count > 0:
+        logger.info(
+            "Total failure: 0/%d succeeded — skipping replan, marking done",
+            total,
+        )
+        update_state_field(state_file, "status", "done")
+        update_state_field(state_file, "all_failed", True)
+        from .merger import cleanup_all_worktrees
+        cleanup_all_worktrees(state_file)
+        _generate_report_safe(state_file)
+        return True
+
     # Phase-end E2E
     if d.e2e_mode == "phase_end" and d.e2e_command and truly_complete > 0:
         from .verifier import run_phase_end_e2e
