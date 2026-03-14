@@ -166,8 +166,7 @@ elif [[ -f "$STATE_FILE" ]]; then
         if [[ "$_has_failed_with_wt" -gt 0 || "$_has_merged" -gt 0 ]]; then
             sentinel_log "Previous run finished (status=$_prev_status) with $_has_failed_with_wt failed (with worktrees) + $_has_merged merged — partial reset (preserving worktrees)"
             # Partial reset: failed → pending, clear retry counts, keep worktrees
-            local tmp
-            tmp=$(mktemp)
+            _tmp=$(mktemp)
             jq '
                 .status = "stopped" |
                 (.changes[] | select(.status == "failed")) |= (
@@ -181,7 +180,7 @@ elif [[ -f "$STATE_FILE" ]]; then
                     .smoke_result = null |
                     .spec_coverage_result = null
                 )
-            ' "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            ' "$STATE_FILE" > "$_tmp" && mv "$_tmp" "$STATE_FILE"
             rm -f "$EVENTS_FILE"
             sentinel_log "Partial reset complete — failed changes reset to pending, worktrees preserved"
         else
