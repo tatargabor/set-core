@@ -2,16 +2,16 @@
 
 ## Run #13 (2026-03-14)
 
-### Status: PARTIAL (2/6 merged)
+### Status: IN PROGRESS — attempt 6 (3/6 merged, 2 running)
 
 | Change | Status | Tokens | Retries | Build | Test | E2E | Review | Failure Reason |
 |--------|--------|--------|---------|-------|------|-----|--------|----------------|
 | test-infrastructure-setup | merged | 275k | 2 | pass | pass | n/a | pass | |
 | products-page | merged | 142k | 1 | pass | pass | pass | pass | |
-| cart-feature | FAILED | 408k | 2 | pass | pass | pass | critical | IDOR: no session ownership check on removeFromCart/updateCartQuantity |
-| admin-auth | FAILED | 369k | 2 | pass | pass | fail | n/a | E2E: /admin→/admin/login redirect timeout (no middleware.ts) |
-| orders-checkout | FAILED | 0 | 0 | — | — | — | — | CASCADE_FAILED (dep: cart-feature) |
-| admin-products | FAILED | 0 | 0 | — | — | — | — | CASCADE_FAILED (dep: admin-auth) |
+| cart-feature | merged | 408k→? | 2→5 | pass | pass | pass | pass | IDOR fixed on attempt 5 after web security rules deployed |
+| admin-auth | running | 369k→? | 1→? | ? | ? | ? | ? | Retrying (att 6) with web auth-middleware rules |
+| orders-checkout | running | 0→? | 0 | ? | ? | ? | ? | Newly dispatched (att 6, unblocked by cart-feature merge) |
+| admin-products | pending | 0 | 0 | — | — | — | — | Blocked on admin-auth |
 
 ### Key Metrics
 - **Wall clock**: ~63 min (22:08→23:11)
@@ -29,6 +29,14 @@
 - **Root cause**: (1) Retry prompt for missing tests said "Add tests..." — agent interpreted as "only write tests" without implementing. (2) `done_criteria: "build"` meant if agent skipped implementation, existing build still passed → Ralph declared "done".
 - **Fix**: [131d7d0ec] — Rewrote retry prompt to "IMPORTANT: First ensure ALL implementation is complete, then add tests". Changed `done_criteria` from `"build"` to `"test"` so agent's own tests must pass.
 - **Recurrence**: new (first seen in run #13)
+
+#### 21. Checkpoint status blocks poll loop — dead Ralph never detected
+- **Type**: framework
+- **Severity**: blocking
+- **Root cause**: `engine.py` L303 `if state.status in ("paused", "checkpoint"): continue` — when monitor enters checkpoint, it skips `_poll_active_changes()`, so dead Ralph processes are never detected and verify/merge never completes. Monitor loops forever in checkpoint.
+- **Fix**: [aa4296fc7] — Split checkpoint from paused. During checkpoint, still poll active changes and retry merge queue, only skip dispatch and advancement logic.
+- **Recurrence**: new (first seen in run #13 attempt 5)
+- **Impact**: admin-auth Ralph died but monitor was stuck in checkpoint for 16+ min without detecting it. Required sentinel restart to resume.
 
 ### Agent Quality Issues (Not Framework Bugs)
 
