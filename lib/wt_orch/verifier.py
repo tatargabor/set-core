@@ -202,13 +202,11 @@ def verify_merge_scope(change_name: str, cwd: str | None = None) -> ScopeCheckRe
 
 
 def _get_merge_base(wt_path: str) -> str:
-    """Get merge-base of worktree branch vs origin/HEAD or main."""
-    result = run_git("merge-base", "HEAD", "origin/HEAD", cwd=wt_path)
-    if result.exit_code == 0 and result.stdout.strip():
-        return result.stdout.strip()
-    result = run_git("merge-base", "HEAD", "main", cwd=wt_path)
-    if result.exit_code == 0 and result.stdout.strip():
-        return result.stdout.strip()
+    """Get merge-base of worktree branch vs origin/HEAD, main, or master."""
+    for ref in ("origin/HEAD", "main", "master"):
+        result = run_git("merge-base", "HEAD", ref, cwd=wt_path)
+        if result.exit_code == 0 and result.stdout.strip():
+            return result.stdout.strip()
     return "HEAD~5"
 
 
