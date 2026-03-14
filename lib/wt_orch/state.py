@@ -68,6 +68,7 @@ class Change:
     skip_review: bool = False
     skip_test: bool = False
     has_manual_tasks: bool = False
+    phase: int = 1
 
     # Runtime state
     status: str = "pending"
@@ -305,6 +306,7 @@ def init_state(plan_file: str, output_path: str) -> None:
             skip_review=c.get("skip_review", False),
             skip_test=c.get("skip_test", False),
             has_manual_tasks=c.get("has_manual_tasks", False),
+            phase=c.get("phase", 1),
         )
         if "requirements" in c:
             change.requirements = c["requirements"]

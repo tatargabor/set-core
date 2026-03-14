@@ -674,6 +674,10 @@ dispatch_ready_changes() {
     local order
     order=$(topological_sort "$STATE_FILENAME" 2>/dev/null || true)
 
+    # Read current phase for milestone gating (default 999 = no gating)
+    local current_phase
+    current_phase=$(jq -r '.current_phase // 999' "$STATE_FILENAME" 2>/dev/null)
+
     # Collect ready-to-dispatch changes, then sort by complexity (L first)
     local ready_names=()
     while IFS= read -r name; do
@@ -682,6 +686,13 @@ dispatch_ready_changes() {
         local status
         status=$(get_change_status "$name")
         [[ "$status" != "pending" ]] && continue
+
+        # Phase gate: skip changes in future phases
+        local change_phase
+        change_phase=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .phase // 1' "$STATE_FILENAME" 2>/dev/null)
+        if [[ "$change_phase" -gt "$current_phase" ]]; then
+            continue
+        fi
 
         if deps_satisfied "$name"; then
             ready_names+=("$name")

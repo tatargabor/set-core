@@ -138,6 +138,8 @@ source "$LIB_DIR/merger.sh"
 source "$LIB_DIR/digest.sh"        # multi-file spec digest, coverage tracking
 source "$LIB_DIR/reporter.sh"      # HTML report generator
 source "$LIB_DIR/auditor.sh"      # post-phase spec-vs-implementation audit
+source "$LIB_DIR/server-detect.sh" # dev server auto-detection
+source "$LIB_DIR/milestone.sh"     # milestone checkpoint: tag, worktree, dev server
 source "$LIB_DIR/monitor.sh"       # monitor loop (extracted from dispatcher.sh)
 source "$SCRIPT_DIR/../lib/notify-email.sh"  # email notifications via Resend
 source "$SCRIPT_DIR/../lib/design/bridge.sh" # design tool MCP abstraction

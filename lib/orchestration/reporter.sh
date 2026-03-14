@@ -13,6 +13,7 @@ generate_report() {
     html+="$(render_html_wrapper_open)"
     html+="$(render_digest_section)"
     html+="$(render_plan_section)"
+    html+="$(render_milestone_section)"
     html+="$(render_execution_section)"
     html+="$(render_audit_section)"
     html+="$(render_coverage_section)"
@@ -185,6 +186,71 @@ render_plan_section() {
     echo "</table>"
 }
 
+# ─── Milestone Section ──────────────────────────────────────────────
+
+render_milestone_section() {
+    if [[ ! -f "$STATE_FILENAME" ]]; then
+        return 0
+    fi
+
+    local has_phases
+    has_phases=$(jq 'has("phases")' "$STATE_FILENAME" 2>/dev/null)
+    [[ "$has_phases" != "true" ]] && return 0
+
+    local phase_count
+    phase_count=$(jq '.phases | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+    [[ "$phase_count" -eq 0 ]] && return 0
+
+    local current_phase
+    current_phase=$(jq -r '.current_phase // 1' "$STATE_FILENAME" 2>/dev/null)
+
+    echo "<h2>Milestones</h2>"
+    echo "<p><strong>Current Phase:</strong> $current_phase / $phase_count</p>"
+    echo "<table>"
+    echo "<tr><th>Phase</th><th>Status</th><th>Changes</th><th>Tokens</th><th>Server</th><th>Completed</th></tr>"
+
+    while IFS=$'\t' read -r pnum pstatus ptag pport ppid pcompleted; do
+        [[ -z "$pnum" ]] && continue
+
+        # Count changes in this phase
+        local total_in_phase merged_in_phase phase_tokens
+        total_in_phase=$(jq --argjson p "$pnum" '[.changes[] | select(.phase == $p)] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+        merged_in_phase=$(jq --argjson p "$pnum" '[.changes[] | select(.phase == $p and (.status == "merged" or .status == "done"))] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+        phase_tokens=$(jq --argjson p "$pnum" '[.changes[] | select(.phase == $p) | .tokens_used // 0] | add // 0' "$STATE_FILENAME" 2>/dev/null || echo 0)
+
+        # Token formatting
+        local token_display="$phase_tokens"
+        if [[ "$phase_tokens" -gt 999999 ]]; then
+            token_display="$(echo "scale=1; $phase_tokens / 1000000" | bc)M"
+        elif [[ "$phase_tokens" -gt 999 ]]; then
+            token_display="$(echo "scale=0; $phase_tokens / 1000" | bc)K"
+        fi
+
+        # Server link
+        local server_display="No server"
+        if [[ -n "$ppid" && "$ppid" != "null" ]] && kill -0 "$ppid" 2>/dev/null; then
+            server_display="<a href=\"http://localhost:$pport\" style=\"color:#64b5f6\">localhost:$pport</a>"
+        fi
+
+        # Completed time
+        local completed_display="-"
+        if [[ -n "$pcompleted" && "$pcompleted" != "null" ]]; then
+            completed_display=$(echo "$pcompleted" | sed 's/T/ /;s/+.*//')
+        fi
+
+        echo "<tr>"
+        echo "<td>Phase $pnum</td>"
+        echo "<td><span class=\"status-$pstatus\">$pstatus</span></td>"
+        echo "<td>$merged_in_phase / $total_in_phase</td>"
+        echo "<td>$token_display</td>"
+        echo "<td>$server_display</td>"
+        echo "<td>$completed_display</td>"
+        echo "</tr>"
+    done < <(jq -r '.phases | to_entries | sort_by(.key | tonumber) | .[] | "\(.key)\t\(.value.status // "pending")\t\(.value.tag // "null")\t\(.value.server_port // "null")\t\(.value.server_pid // "null")\t\(.value.completed_at // "null")"' "$STATE_FILENAME" 2>/dev/null || true)
+
+    echo "</table>"
+}
+
 # ─── Execution Section ──────────────────────────────────────────────
 
 render_execution_section() {
@@ -214,8 +280,33 @@ render_execution_section() {
 
     local total_tokens=0 total_duration_s=0 total_tests=0
 
-    while IFS=$'\t' read -r name status tokens test_res e2e_res smoke_res started_at completed_at test_stats smoke_sc_count smoke_sc_dir e2e_sc_count e2e_sc_dir; do
+    # Track phase headers when phases exist
+    local has_phases="false"
+    has_phases=$(jq 'has("phases")' "$STATE_FILENAME" 2>/dev/null || echo "false")
+    local last_phase=""
+
+    while IFS=$'\t' read -r name status tokens test_res e2e_res smoke_res started_at completed_at test_stats smoke_sc_count smoke_sc_dir e2e_sc_count e2e_sc_dir change_phase; do
         [[ -z "$name" ]] && continue
+
+        # Phase header row
+        if [[ "$has_phases" == "true" && "${change_phase:-}" != "$last_phase" && -n "${change_phase:-}" ]]; then
+            last_phase="${change_phase:-}"
+            local ph_tok
+            ph_tok=$(jq --argjson p "${change_phase:-1}" '[.changes[] | select(.phase == $p) | .tokens_used // 0] | add // 0' "$STATE_FILENAME" 2>/dev/null || echo 0)
+            local ph_tok_display="$ph_tok"
+            if [[ "$ph_tok" -gt 999999 ]]; then
+                ph_tok_display="$(echo "scale=1; $ph_tok / 1000000" | bc)M"
+            elif [[ "$ph_tok" -gt 999 ]]; then
+                ph_tok_display="$(echo "scale=0; $ph_tok / 1000" | bc)K"
+            fi
+            local ph_merged
+            ph_merged=$(jq --argjson p "${change_phase:-1}" '[.changes[] | select(.phase == $p and (.status == "merged" or .status == "done"))] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+            local ph_total
+            ph_total=$(jq --argjson p "${change_phase:-1}" '[.changes[] | select(.phase == $p)] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
+            local colspan=7
+            [[ "$e2e_mode" == "phase_end" ]] && colspan=6
+            echo "<tr style=\"background:#1a3a4a;border-top:2px solid #446\"><td colspan=\"$colspan\"><strong>Phase $change_phase</strong> — $ph_merged/$ph_total merged, $ph_tok_display tokens</td></tr>"
+        fi
 
         local test_class="gate-na" smoke_class="gate-na" e2e_class="gate-na"
         local test_display="-" smoke_display="-" e2e_display="-"
@@ -314,7 +405,7 @@ render_execution_section() {
         fi
         echo "<td><span class=\"$smoke_class\">$smoke_display</span></td>"
         echo "</tr>"
-    done < <(jq -r '.changes[] | "\(.name)\t\(.status)\t\(.tokens_used // 0)\t\(.test_result // "-")\t\(.e2e_result // "-")\t\(.smoke_result // "-")\t\(.started_at // "null")\t\(.completed_at // "null")\t\(.test_stats // {} | tostring)\t\(.smoke_screenshot_count // 0)\t\(.smoke_screenshot_dir // "null")\t\(.e2e_screenshot_count // 0)\t\(.e2e_screenshot_dir // "null")"' "$STATE_FILENAME" 2>/dev/null || true)
+    done < <(jq -r '.changes | sort_by(.phase // 1) | .[] | "\(.name)\t\(.status)\t\(.tokens_used // 0)\t\(.test_result // "-")\t\(.e2e_result // "-")\t\(.smoke_result // "-")\t\(.started_at // "null")\t\(.completed_at // "null")\t\(.test_stats // {} | tostring)\t\(.smoke_screenshot_count // 0)\t\(.smoke_screenshot_dir // "null")\t\(.e2e_screenshot_count // 0)\t\(.e2e_screenshot_dir // "null")\t\(.phase // 1)"' "$STATE_FILENAME" 2>/dev/null || true)
 
     # Summary row
     local total_token_display="$total_tokens"

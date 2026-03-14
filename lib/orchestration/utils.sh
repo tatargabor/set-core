@@ -312,6 +312,10 @@ parse_directives() {
     local hook_pre_merge=""
     local hook_post_merge=""
     local hook_on_fail=""
+    local milestones_enabled="false"
+    local milestones_dev_server=""
+    local milestones_base_port="3100"
+    local milestones_max_worktrees="3"
 
     while IFS= read -r line; do
         # Detect ## Orchestrator Directives header
@@ -589,6 +593,22 @@ parse_directives() {
                 hook_pre_merge)     hook_pre_merge="$val" ;;
                 hook_post_merge)    hook_post_merge="$val" ;;
                 hook_on_fail)       hook_on_fail="$val" ;;
+                milestones_enabled)
+                    if [[ "$val" =~ ^(true|false)$ ]]; then
+                        milestones_enabled="$val"
+                    fi
+                    ;;
+                milestones_dev_server)   milestones_dev_server="$val" ;;
+                milestones_base_port)
+                    if [[ "$val" =~ ^[0-9]+$ ]]; then
+                        milestones_base_port="$val"
+                    fi
+                    ;;
+                milestones_max_worktrees)
+                    if [[ "$val" =~ ^[0-9]+$ ]]; then
+                        milestones_max_worktrees="$val"
+                    fi
+                    ;;
                 *)
                     warn "Unknown directive '$key', ignoring"
                     ;;
@@ -650,6 +670,10 @@ parse_directives() {
         --arg hook_pre_merge "$hook_pre_merge" \
         --arg hook_post_merge "$hook_post_merge" \
         --arg hook_on_fail "$hook_on_fail" \
+        --argjson milestones_enabled "$milestones_enabled" \
+        --arg milestones_dev_server "$milestones_dev_server" \
+        --argjson milestones_base_port "$milestones_base_port" \
+        --argjson milestones_max_worktrees "$milestones_max_worktrees" \
         '{
             max_parallel: $max_parallel,
             merge_policy: $merge_policy,
@@ -694,7 +718,13 @@ parse_directives() {
             hook_post_verify: (if $hook_post_verify != "" then $hook_post_verify else null end),
             hook_pre_merge: (if $hook_pre_merge != "" then $hook_pre_merge else null end),
             hook_post_merge: (if $hook_post_merge != "" then $hook_post_merge else null end),
-            hook_on_fail: (if $hook_on_fail != "" then $hook_on_fail else null end)
+            hook_on_fail: (if $hook_on_fail != "" then $hook_on_fail else null end),
+            milestones: {
+                enabled: $milestones_enabled,
+                dev_server: (if $milestones_dev_server != "" then $milestones_dev_server else null end),
+                base_port: $milestones_base_port,
+                max_worktrees: $milestones_max_worktrees
+            }
         } | with_entries(select(.value != null))'
 }
 

@@ -84,6 +84,16 @@ monitor_loop() {
     local post_phase_audit
     post_phase_audit=$(echo "$directives" | jq -r ".post_phase_audit // $DEFAULT_POST_PHASE_AUDIT")
 
+    # Milestone config
+    local milestones_enabled
+    milestones_enabled=$(echo "$directives" | jq -r '.milestones.enabled // false')
+    local milestones_dev_server
+    milestones_dev_server=$(echo "$directives" | jq -r '.milestones.dev_server // ""')
+    local milestones_base_port
+    milestones_base_port=$(echo "$directives" | jq -r '.milestones.base_port // 3100')
+    local milestones_max_worktrees
+    milestones_max_worktrees=$(echo "$directives" | jq -r '.milestones.max_worktrees // 3')
+
     # Apply checkpoint auto-approve directive to global
     CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r '.checkpoint_auto_approve // false')
 
@@ -306,6 +316,25 @@ monitor_loop() {
         local _post_dispatch_count
         _post_dispatch_count=$(jq '[.changes[] | select(.status == "running")] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
         [[ "$_post_dispatch_count" -gt "$_pre_dispatch_count" ]] && update_progress_ts
+
+        # Phase completion check: when all changes in current phase are terminal,
+        # run milestone checkpoint and advance to next phase
+        if [[ "$milestones_enabled" == "true" ]]; then
+            local _cp
+            _cp=$(jq -r '.current_phase // 999' "$STATE_FILENAME" 2>/dev/null)
+            if [[ "$_cp" -lt 999 ]] && all_phase_changes_terminal "$_cp"; then
+                log_info "Phase $_cp complete — running milestone checkpoint"
+                run_milestone_checkpoint "$_cp" "$milestones_base_port" "$milestones_max_worktrees" "$milestones_dev_server"
+                if advance_phase; then
+                    local _new_cp
+                    _new_cp=$(jq -r '.current_phase // "?"' "$STATE_FILENAME" 2>/dev/null)
+                    info "Phase $_cp complete. Advanced to phase $_new_cp."
+                    update_progress_ts
+                else
+                    log_info "All phases complete"
+                fi
+            fi
+        fi
 
         # Retry merge queue + any merge-blocked items not in queue
         local _pre_merge_count

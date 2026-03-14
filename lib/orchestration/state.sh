@@ -12,6 +12,61 @@ init_state() {
     change_count=$(jq '.changes | length' "$STATE_FILENAME")
     plan_version=$(jq -r '.plan_version' "$STATE_FILENAME")
     log_info "State initialized with $change_count changes (plan v$plan_version)"
+
+    # Initialize phase tracking from change phase assignments
+    _init_phase_state
+}
+
+# Apply phase overrides from directives.
+# Called after init_state if milestones.phase_overrides is set.
+apply_phase_overrides() {
+    local overrides_json="$1"  # JSON object: {"change-name": phase_number, ...}
+
+    [[ -z "$overrides_json" || "$overrides_json" == "null" || "$overrides_json" == "{}" ]] && return 0
+
+    log_info "Applying phase overrides: $overrides_json"
+
+    # Update each change's phase field
+    with_state_lock safe_jq_update "$STATE_FILENAME" --argjson ov "$overrides_json" '
+        .changes = [.changes[] |
+            if $ov[.name] then .phase = $ov[.name] else . end
+        ]
+    '
+
+    # Recalculate phases object
+    _init_phase_state
+}
+
+# Initialize phase state from change phase fields.
+# Computes unique phases, creates the phases object, sets current_phase.
+_init_phase_state() {
+    local phases_json
+    phases_json=$(jq -c '
+        [.changes[].phase // 1] | unique | sort | . as $phases |
+        if ($phases | length) <= 1 then null
+        else
+            {
+                current_phase: $phases[0],
+                phases: (reduce $phases[] as $p ({};
+                    .[$p | tostring] = {
+                        status: (if $p == $phases[0] then "running" else "pending" end),
+                        tag: null,
+                        server_port: null,
+                        server_pid: null,
+                        completed_at: null
+                    }
+                ))
+            }
+        end
+    ' "$STATE_FILENAME")
+
+    if [[ "$phases_json" != "null" && -n "$phases_json" ]]; then
+        local phase_count
+        phase_count=$(echo "$phases_json" | jq '.phases | length')
+        with_state_lock safe_jq_update "$STATE_FILENAME" --argjson pd "$phases_json" \
+            '.current_phase = $pd.current_phase | .phases = $pd.phases'
+        log_info "Phase state initialized: $phase_count phases, starting at phase $(echo "$phases_json" | jq '.current_phase')"
+    fi
 }
 
 # Update a top-level field in state (locked + validated)
@@ -177,6 +232,51 @@ cascade_failed_deps() {
     done <<< "$pending_changes"
 
     [[ "$cascaded" -gt 0 ]] && log_info "Cascade: $cascaded changes marked failed due to dependency failures"
+    return 0
+}
+
+# ─── Phase Management ────────────────────────────────────────────────
+
+# Check if all changes in the current phase are terminal (merged/failed/skipped).
+all_phase_changes_terminal() {
+    local phase="$1"
+    local non_terminal
+    non_terminal=$(jq --argjson p "$phase" '
+        [.changes[] | select(.phase == $p) |
+            select(.status != "merged" and .status != "failed" and .status != "skipped" and .status != "done")]
+        | length
+    ' "$STATE_FILENAME" 2>/dev/null)
+    [[ "${non_terminal:-1}" -eq 0 ]]
+}
+
+# Advance to the next phase. Returns 0 if advanced, 1 if no more phases.
+advance_phase() {
+    local current_phase
+    current_phase=$(jq -r '.current_phase // 1' "$STATE_FILENAME" 2>/dev/null)
+
+    # Mark current phase as completed
+    with_state_lock safe_jq_update "$STATE_FILENAME" \
+        --arg p "$current_phase" --arg ts "$(date -Iseconds)" \
+        '.phases[$p].status = "completed" | .phases[$p].completed_at = $ts'
+
+    # Find next phase
+    local next_phase
+    next_phase=$(jq --argjson cp "$current_phase" '
+        [.phases | keys[] | tonumber | select(. > $cp)] | sort | .[0] // null
+    ' "$STATE_FILENAME" 2>/dev/null)
+
+    if [[ "$next_phase" == "null" || -z "$next_phase" ]]; then
+        log_info "Phase $current_phase completed — no more phases"
+        return 1
+    fi
+
+    # Advance
+    with_state_lock safe_jq_update "$STATE_FILENAME" \
+        --argjson np "$next_phase" \
+        '.current_phase = $np | .phases[($np | tostring)].status = "running"'
+
+    log_info "Phase advanced: $current_phase → $next_phase"
+    emit_event "PHASE_ADVANCED" "" "{\"from\":$current_phase,\"to\":$next_phase}"
     return 0
 }
 
@@ -370,6 +470,26 @@ cmd_status() {
     [[ "$failed" -gt 0 ]] && echo "  Failed:   $failed"
     [[ "$stalled" -gt 0 ]] && echo "  Stalled:  $stalled"
 
+    # Milestone phase display
+    local has_phases
+    has_phases=$(jq 'has("phases")' "$STATE_FILENAME" 2>/dev/null)
+    if [[ "$has_phases" == "true" ]]; then
+        local current_phase total_phases
+        current_phase=$(jq -r '.current_phase // 1' "$STATE_FILENAME")
+        total_phases=$(jq '.phases | length' "$STATE_FILENAME")
+        echo "  Milestones: Phase $current_phase/$total_phases"
+
+        # Compact per-phase summary
+        while IFS=$'\t' read -r pnum pstatus pport ppid; do
+            [[ -z "$pnum" ]] && continue
+            local phase_info="    Phase $pnum: $pstatus"
+            if [[ -n "$ppid" && "$ppid" != "null" ]] && kill -0 "$ppid" 2>/dev/null; then
+                phase_info+=" (http://localhost:$pport)"
+            fi
+            echo "$phase_info"
+        done < <(jq -r '.phases | to_entries | sort_by(.key | tonumber) | .[] | "\(.key)\t\(.value.status // "pending")\t\(.value.server_port // "null")\t\(.value.server_pid // "null")"' "$STATE_FILENAME" 2>/dev/null || true)
+    fi
+
     local waiting_budget
     waiting_budget=$(count_changes_by_status "waiting:budget")
     local budget_exceeded
@@ -506,7 +626,19 @@ cmd_status() {
     total_cr=$(jq '[.changes[].cache_read_tokens // 0] | add // 0' "$STATE_FILENAME")
     total_cc=$(jq '[.changes[].cache_create_tokens // 0] | add // 0' "$STATE_FILENAME")
     echo ""
-    echo "  Total tokens: $total_tokens (in:$total_in out:$total_out cr:$total_cr cc:$total_cc)"
+    # Per-phase token breakdown when milestones exist and >1 phase
+    local phase_token_breakdown=""
+    if [[ "$has_phases" == "true" ]]; then
+        local pt_parts=()
+        while IFS=$'\t' read -r pt_num pt_tok; do
+            [[ -z "$pt_num" ]] && continue
+            pt_parts+=("P${pt_num}: ${pt_tok}")
+        done < <(jq -r '[.changes | group_by(.phase // 1)[] | {phase: .[0].phase // 1, tokens: ([.[].tokens_used // 0] | add // 0)}] | sort_by(.phase) | .[] | "\(.phase)\t\(.tokens)"' "$STATE_FILENAME" 2>/dev/null || true)
+        if [[ ${#pt_parts[@]} -gt 1 ]]; then
+            phase_token_breakdown=" ($(IFS=', '; echo "${pt_parts[*]}"))"
+        fi
+    fi
+    echo "  Total tokens: ${total_tokens}${phase_token_breakdown} (in:$total_in out:$total_out cr:$total_cr cc:$total_cc)"
 
     # Aggregate gate costs
     local agg_gate_ms agg_retry_tok agg_retry_cnt agg_gated

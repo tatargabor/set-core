@@ -126,6 +126,27 @@ send_summary_email() {
         done < <(jq -r '.changes[] | "\(.name)\t\(.status)\t\(.test_result // "-")\t\(.tokens_used // 0)"' "$state_file")
 
         html+="</table>"
+
+        # Per-phase breakdown when milestones exist
+        local has_phases
+        has_phases=$(jq 'has("phases")' "$state_file" 2>/dev/null)
+        if [[ "$has_phases" == "true" ]]; then
+            html+="<h3>Phase Breakdown</h3>"
+            html+="<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse;'>"
+            html+="<tr style='background:#f0f0f0;'><th>Phase</th><th>Status</th><th>Changes</th><th>Tokens</th></tr>"
+            while IFS=$'\t' read -r pnum pstatus; do
+                [[ -z "$pnum" ]] && continue
+                local ph_merged ph_total ph_tokens
+                ph_total=$(jq --argjson p "$pnum" '[.changes[] | select(.phase == $p)] | length' "$state_file" 2>/dev/null || echo 0)
+                ph_merged=$(jq --argjson p "$pnum" '[.changes[] | select(.phase == $p and (.status == "merged" or .status == "done"))] | length' "$state_file" 2>/dev/null || echo 0)
+                ph_tokens=$(jq --argjson p "$pnum" '[.changes[] | select(.phase == $p) | .tokens_used // 0] | add // 0' "$state_file" 2>/dev/null || echo 0)
+                local color="#fff"
+                [[ "$pstatus" == "completed" ]] && color="#d4edda"
+                [[ "$pstatus" == "running" ]] && color="#fff3cd"
+                html+="<tr style='background:$color;'><td>Phase $pnum</td><td>$pstatus</td><td>$ph_merged/$ph_total</td><td>$ph_tokens</td></tr>"
+            done < <(jq -r '.phases | to_entries | sort_by(.key | tonumber) | .[] | "\(.key)\t\(.value.status // "pending")"' "$state_file" 2>/dev/null || true)
+            html+="</table>"
+        fi
     fi
 
     # Coverage summary (if provided by caller)

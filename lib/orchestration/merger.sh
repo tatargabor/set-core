@@ -565,6 +565,12 @@ cleanup_all_worktrees() {
         log_info "Cleaned up $cleaned worktree(s)"
         info "Cleaned up $cleaned worktree(s)"
     fi
+
+    # Clean up milestone servers and worktrees if milestones were used
+    if type cleanup_milestone_servers &>/dev/null; then
+        cleanup_milestone_servers
+        cleanup_milestone_worktrees
+    fi
 }
 
 # ─── Merge Queue ─────────────────────────────────────────────────────

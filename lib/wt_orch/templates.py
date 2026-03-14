@@ -300,6 +300,15 @@ Playwright E2E test planning (when e2e_command is configured):
 - Do NOT just list "Functional test scenarios:" as descriptions — create actual test files.
 - E2E tests run pre-merge in the worktree via e2e_command against an auto-started dev server with isolated port and DB.
 
+Phase assignment — group changes into execution phases for milestone checkpoints:
+- Assign a phase integer (1..N, max 5) to each change
+- Phase 1: infrastructure, schema, foundational changes
+- Phases 2..N-1: features grouped by domain coherence (related features in same phase)
+- Last phase: cleanup-after, polish
+- For specs with fewer than 4 changes, assign all to phase 1
+- Changes within a phase can run in parallel; phases execute sequentially
+- Dependencies across phases are respected regardless of phase assignment
+
 Model selection — suggest a model per change based on task nature:
 - "opus" for ALL changes that write functional code (features, bug fixes, refactors, cleanup, tests)
 - "sonnet" ONLY for doc-only changes (doc sync, doc audit, README updates) — zero code writing
@@ -336,6 +345,7 @@ _SPEC_OUTPUT_JSON = """{
       "model": "opus|sonnet",
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
+      "phase": 1,
       "roadmap_item": "The spec section/item this implements"
     }
   ]
@@ -353,6 +363,7 @@ _SPEC_OUTPUT_JSON_DIGEST = """{
       "model": "opus|sonnet",
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
+      "phase": 1,
       "roadmap_item": "The spec section/item this implements",
       "spec_files": ["path/relative/to/spec-base-dir.md"],
       "requirements": ["REQ-DOMAIN-001"],
@@ -372,6 +383,7 @@ _BRIEF_OUTPUT_JSON = """{
       "model": "opus|sonnet",
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
+      "phase": 1,
       "roadmap_item": "The exact Next bullet this implements"
     }
   ]
