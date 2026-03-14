@@ -148,7 +148,7 @@ cmd_status() {
 cmd_init() {
     # Check openspec CLI exists
     if ! command -v openspec >/dev/null 2>&1; then
-        echo "Error: openspec CLI not found. Install with: npm install -g @fission-ai/openspec" >&2
+        echo "Error: openspec CLI not found. Install with: npm install -g @fission-ai/openspec@1.1.1" >&2
         return 1
     fi
 
@@ -174,7 +174,7 @@ cmd_init() {
 cmd_update() {
     # Check openspec CLI exists
     if ! command -v openspec >/dev/null 2>&1; then
-        echo "Error: openspec CLI not found. Install with: npm install -g @fission-ai/openspec" >&2
+        echo "Error: openspec CLI not found. Install with: npm install -g @fission-ai/openspec@1.1.1" >&2
         return 1
     fi
 

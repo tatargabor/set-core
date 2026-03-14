@@ -125,6 +125,14 @@ Delta operations: `ADDED`, `MODIFIED`, `REMOVED`, `RENAMED`.
 
 The orchestrator uses OpenSpec internally — each dispatched change runs `/opsx:ff` to generate artifacts, then `/opsx:apply` via a Ralph loop to implement. The spec document drives the plan, and each change gets its own OpenSpec artifacts in its worktree.
 
+## Version
+
+wt-tools is pinned to **OpenSpec v1.1.1**. Do not upgrade — v1.2.0 introduced deselection pruning that can delete our custom skills/commands during `openspec update`.
+
+```bash
+npm install -g @fission-ai/openspec@1.1.1
+```
+
 ## CLI Commands
 
 | Command | Description |

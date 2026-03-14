@@ -7,7 +7,7 @@ Complete step-by-step guide for executing the shodh-memory benchmark v2.
 - **wt-tools** installed and on PATH (`wt-loop`, `wt-deploy-hooks`, `wt-memory` all available)
 - **Node.js 18+** (`node --version`)
 - **Claude Code CLI** installed (`claude --version`)
-- **openspec CLI** installed (`openspec --version`; install: `npm install -g @fission-ai/openspec`)
+- **openspec CLI** installed (`openspec --version`; install: `npm install -g @fission-ai/openspec@1.1.1`)
 - Enough disk/RAM for two parallel Next.js projects
 
 ## 1. Bootstrap

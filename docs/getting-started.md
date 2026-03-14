@@ -16,6 +16,7 @@ Platform-specific differences may exist in areas like window management (GUI), p
 | **Python 3.10+** | `python3 --version` | GUI and MCP server |
 | **jq** | `jq --version` | JSON processing in shell scripts |
 | **Node.js** | `node --version` | Claude Code CLI |
+| **OpenSpec v1.1.1** | `openspec --version` | Spec-driven workflow (`npm i -g @fission-ai/openspec@1.1.1`) |
 
 ## Install wt-tools
 

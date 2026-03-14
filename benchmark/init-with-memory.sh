@@ -14,7 +14,7 @@ TARGET="${1:-$HOME/benchmark/run-b/craftbazaar-memory}"
 missing=()
 command -v git >/dev/null || missing+=("git")
 command -v node >/dev/null || missing+=("node")
-command -v openspec >/dev/null || missing+=("openspec (npm i -g @fission-ai/openspec)")
+command -v openspec >/dev/null || missing+=("openspec (npm i -g @fission-ai/openspec@1.1.1)")
 command -v wt-deploy-hooks >/dev/null || missing+=("wt-deploy-hooks")
 command -v wt-memory >/dev/null || missing+=("wt-memory")
 if [ ${#missing[@]} -gt 0 ]; then
