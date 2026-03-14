@@ -269,7 +269,8 @@ class TestRecoverOrphanedChanges:
         assert st["changes"][0]["status"] == "pending"
         assert st["changes"][0]["worktree_path"] is None
 
-    def test_skip_if_worktree_exists(self, state_file, tmp_dir):
+    def test_worktree_exists_no_pid_reconciled_to_stopped(self, state_file, tmp_dir):
+        """Worktree exists but no PID → reconcile to 'stopped' for resume."""
         wt_dir = os.path.join(tmp_dir, "worktree")
         os.makedirs(wt_dir)
         _write_state(state_file, [
@@ -298,7 +299,90 @@ class TestRecoverOrphanedChanges:
             },
         ])
         count = recover_orphaned_changes(state_file)
+        assert count == 1
+        with open(state_file) as f:
+            st = json.load(f)
+        assert st["changes"][0]["status"] == "stopped"
+        assert st["changes"][0]["ralph_pid"] is None
+
+    def test_worktree_exists_dead_pid_reconciled_to_stopped(self, state_file, tmp_dir):
+        """Worktree exists but PID is dead → reconcile to 'stopped'."""
+        wt_dir = os.path.join(tmp_dir, "worktree")
+        os.makedirs(wt_dir)
+        _write_state(state_file, [
+            {
+                "name": "running-1",
+                "scope": "scope",
+                "complexity": "M",
+                "change_type": "feature",
+                "depends_on": [],
+                "status": "running",
+                "worktree_path": wt_dir,
+                "ralph_pid": 99999999,
+                "tokens_used": 0,
+                "tokens_used_prev": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_create_tokens": 0,
+                "input_tokens_prev": 0,
+                "output_tokens_prev": 0,
+                "cache_read_tokens_prev": 0,
+                "cache_create_tokens_prev": 0,
+                "verify_retry_count": 0,
+                "redispatch_count": 0,
+                "merge_retry_count": 0,
+            },
+        ])
+        count = recover_orphaned_changes(state_file)
+        assert count == 1
+        with open(state_file) as f:
+            st = json.load(f)
+        assert st["changes"][0]["status"] == "stopped"
+        assert st["changes"][0]["ralph_pid"] is None
+
+    def test_worktree_exists_live_pid_skipped(self, state_file, tmp_dir):
+        """Worktree exists and PID is alive → skip (agent still working)."""
+        wt_dir = os.path.join(tmp_dir, "worktree")
+        os.makedirs(wt_dir)
+        # Use PID 1 (init) — always alive but won't match "wt-loop"
+        # so it will be treated as dead. Use os.getpid() which is alive.
+        # But check_pid checks for "wt-loop" command — current process won't match.
+        # So we need to mock check_pid for a true live+match scenario.
+        _write_state(state_file, [
+            {
+                "name": "running-1",
+                "scope": "scope",
+                "complexity": "M",
+                "change_type": "feature",
+                "depends_on": [],
+                "status": "running",
+                "worktree_path": wt_dir,
+                "ralph_pid": os.getpid(),  # alive but won't match wt-loop
+                "tokens_used": 0,
+                "tokens_used_prev": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_create_tokens": 0,
+                "input_tokens_prev": 0,
+                "output_tokens_prev": 0,
+                "cache_read_tokens_prev": 0,
+                "cache_create_tokens_prev": 0,
+                "verify_retry_count": 0,
+                "redispatch_count": 0,
+                "merge_retry_count": 0,
+            },
+        ])
+        # Mock check_pid to return alive+match
+        from unittest.mock import patch
+        from wt_orch.process import CheckResult
+        with patch("wt_orch.dispatcher.check_pid", return_value=CheckResult(alive=True, match=True)):
+            count = recover_orphaned_changes(state_file)
         assert count == 0
+        with open(state_file) as f:
+            st = json.load(f)
+        assert st["changes"][0]["status"] == "running"
 
     def test_skip_pending_changes(self, state_file):
         _write_state(state_file, [

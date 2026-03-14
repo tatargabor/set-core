@@ -369,6 +369,11 @@ cmd_start() {
             log_info "Resuming orchestration (was: $current_status)"
             update_state_field "status" '"running"'
 
+            # Clear stale audit/E2E results from previous execution
+            safe_jq_update "$STATE_FILENAME" '.phase_audit_results = []'
+            safe_jq_update "$STATE_FILENAME" '.phase_e2e_results = []'
+            log_info "Cleared stale phase_audit_results and phase_e2e_results from previous run"
+
             # Restore input path from plan
             if [[ -z "${INPUT_PATH:-}" || ! -e "${INPUT_PATH:-}" ]]; then
                 INPUT_MODE=$(jq -r '.input_mode // empty' "$PLAN_FILENAME")

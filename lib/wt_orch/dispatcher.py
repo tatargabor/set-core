@@ -329,28 +329,45 @@ def recover_orphaned_changes(
 
     Migrated from: dispatcher.sh recover_orphaned_changes() L213-255
 
-    Orphaned = running/verifying/stalled with no worktree AND no live PID.
+    Two recovery modes:
+    1. No worktree, dead PID → reset to "pending" (CHANGE_RECOVERED)
+    2. Worktree exists, dead/missing PID → reset to "stopped" (CHANGE_RECONCILED)
     """
     state = load_state(state_path)
     recovered = 0
+    reconciled = 0
 
     for change in state.changes:
         if change.status not in ("running", "verifying", "stalled"):
             continue
 
-        # Skip if worktree exists
-        if change.worktree_path and os.path.isdir(change.worktree_path):
-            continue
-
-        # Skip if Ralph PID is alive
         pid = change.ralph_pid or 0
+        pid_alive = False
         if pid > 0:
             result = check_pid(pid, "wt-loop")
-            if result.alive and result.match:
-                logger.warning("change %s has live process PID %d, skipping recovery", change.name, pid)
-                continue
+            pid_alive = result.alive and result.match
 
-        # Orphaned — reset to pending
+        # Case 1: Worktree exists
+        if change.worktree_path and os.path.isdir(change.worktree_path):
+            if pid_alive:
+                continue  # Agent is still working
+            # Worktree present but agent is dead — set to "stopped" for resume
+            reason = "dead_pid_live_worktree" if pid > 0 else "no_pid_live_worktree"
+            logger.info("reconciling change %s: worktree exists but agent dead (was %s, reason=%s)",
+                        change.name, change.status, reason)
+            update_change_field(state_path, change.name, "status", "stopped", event_bus=event_bus)
+            update_change_field(state_path, change.name, "ralph_pid", None, event_bus=event_bus)
+            if event_bus:
+                event_bus.emit("CHANGE_RECONCILED", change=change.name, data={"reason": reason})
+            reconciled += 1
+            continue
+
+        # Case 2: No worktree — skip if PID is alive (running somewhere)
+        if pid_alive:
+            logger.warning("change %s has live process PID %d, skipping recovery", change.name, pid)
+            continue
+
+        # Orphaned (no worktree, dead PID) — reset to pending
         logger.info("recovering orphaned change: %s (was %s)", change.name, change.status)
         update_change_field(state_path, change.name, "status", "pending", event_bus=event_bus)
         update_change_field(state_path, change.name, "worktree_path", None, event_bus=event_bus)
@@ -362,8 +379,10 @@ def recover_orphaned_changes(
 
     if recovered > 0:
         logger.info("recovered %d orphaned change(s)", recovered)
+    if reconciled > 0:
+        logger.info("reconciled %d change(s) with live worktree but dead agent", reconciled)
 
-    return recovered
+    return recovered + reconciled
 
 
 def redispatch_change(
