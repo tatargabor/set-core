@@ -1078,7 +1078,7 @@ def run_planning_pipeline(
     except OSError:
         pass
 
-    result = run_claude(prompt, timeout=300, model=model, extra_args=["--max-turns", "1"])
+    result = run_claude(prompt, timeout=300, model=model, extra_args=["--max-turns", "3"])
     if result.exit_code != 0:
         raise RuntimeError(f"Claude planning call failed (exit {result.exit_code})")
 

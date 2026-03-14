@@ -222,7 +222,7 @@ def call_digest_api(prompt: str, model: str = "opus", max_retries: int = 3) -> s
             prompt,
             timeout=600,
             model=model,
-            extra_args=["--max-turns", "1"],
+            extra_args=["--max-turns", "3"],
         )
         if result.exit_code == 0 and result.stdout.strip():
             return result.stdout
