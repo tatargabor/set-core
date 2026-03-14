@@ -178,7 +178,13 @@ elif [[ -f "$STATE_FILE" ]]; then
                     .build_result = null |
                     .review_result = null |
                     .smoke_result = null |
-                    .spec_coverage_result = null
+                    .spec_coverage_result = null |
+                    .e2e_result = null |
+                    .e2e_output = null |
+                    .scope_check = null |
+                    .has_tests = null |
+                    .build_output = null |
+                    .test_output = null
                 )
             ' "$STATE_FILE" > "$_tmp" && mv "$_tmp" "$STATE_FILE"
             rm -f "$EVENTS_FILE"
