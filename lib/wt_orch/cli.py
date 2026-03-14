@@ -857,6 +857,74 @@ def cmd_milestone(args):
         sys.exit(0)
 
 
+def cmd_loop(args):
+    """Dispatch loop subcommands.
+
+    Ralph loop engine utilities (state, tasks, prompt, error classification).
+    """
+    if args.loop_cmd == "classify-error":
+        from .loop import classify_api_error
+        result = classify_api_error(args.log_file)
+        json.dump({"error_type": result.error_type, "message": result.message}, sys.stdout)
+        print()
+        sys.exit(0)
+
+    elif args.loop_cmd == "check-budget":
+        from .loop import check_token_budget
+        result = check_token_budget(args.used, args.budget)
+        json.dump({"action": result}, sys.stdout)
+        print()
+        sys.exit(0)
+
+    elif args.loop_cmd == "check-done":
+        from .loop_tasks import is_done
+        done = is_done(args.wt_path, args.done_criteria)
+        json.dump({"done": done}, sys.stdout)
+        print()
+        sys.exit(0 if done else 1)
+
+    elif args.loop_cmd == "detect-action":
+        from .loop_prompt import detect_next_change_action
+        action = detect_next_change_action(args.wt_path, targeted=args.change or None)
+        json.dump({"action": action.action, "change": action.change}, sys.stdout)
+        print()
+        sys.exit(0)
+
+    elif args.loop_cmd == "build-prompt":
+        from .loop_prompt import build_claude_prompt
+        prompt_args = build_claude_prompt(
+            args.wt_path,
+            args.task,
+            done_criteria=args.done_criteria,
+            change_name=args.change or "",
+            previous_commits=args.previous_commits or "",
+            manual_task_text=args.manual_tasks or "",
+            team_mode=args.team,
+        )
+        json.dump({"prompt_args": prompt_args}, sys.stdout)
+        print()
+        sys.exit(0)
+
+    elif args.loop_cmd == "task-status":
+        from .loop_tasks import find_tasks_file, check_completion
+        tasks_file = find_tasks_file(args.wt_path)
+        if not tasks_file:
+            json.dump({"found": False}, sys.stdout)
+            print()
+            sys.exit(1)
+        status = check_completion(tasks_file)
+        json.dump({
+            "found": True,
+            "file": tasks_file,
+            "total": status.total,
+            "done": status.done,
+            "pending": status.pending,
+            "percent": status.percent,
+        }, sys.stdout)
+        print()
+        sys.exit(0)
+
+
 def cmd_engine(args):
     """Dispatch engine subcommands.
 
@@ -1490,6 +1558,37 @@ def main():
     bld_pm = bld_sub.add_parser("detect-pm", help="Detect package manager")
     bld_pm.add_argument("--project", default=".", help="Project directory")
 
+    # --- loop ---
+    loop_parser = subparsers.add_parser("loop", help="Ralph loop engine utilities")
+    loop_sub = loop_parser.add_subparsers(dest="loop_cmd", required=True)
+
+    l_classify = loop_sub.add_parser("classify-error", help="Classify API error from log")
+    l_classify.add_argument("--log-file", required=True, help="Log file to scan")
+
+    l_budget = loop_sub.add_parser("check-budget", help="Check token budget status")
+    l_budget.add_argument("--used", type=int, required=True, help="Tokens used")
+    l_budget.add_argument("--budget", type=int, required=True, help="Token budget")
+
+    l_done = loop_sub.add_parser("check-done", help="Check if loop is done")
+    l_done.add_argument("--wt-path", required=True, help="Worktree path")
+    l_done.add_argument("--done-criteria", default="tasks", help="Done criteria")
+
+    l_action = loop_sub.add_parser("detect-action", help="Detect next OpenSpec change action")
+    l_action.add_argument("--wt-path", required=True, help="Worktree path")
+    l_action.add_argument("--change", default="", help="Targeted change name")
+
+    l_prompt = loop_sub.add_parser("build-prompt", help="Build Claude prompt arguments")
+    l_prompt.add_argument("--wt-path", required=True, help="Worktree path")
+    l_prompt.add_argument("--task", required=True, help="Task description")
+    l_prompt.add_argument("--done-criteria", default="tasks", help="Done criteria")
+    l_prompt.add_argument("--change", default="", help="Change name")
+    l_prompt.add_argument("--previous-commits", default="", help="Previous commits summary")
+    l_prompt.add_argument("--manual-tasks", default="", help="Manual task text")
+    l_prompt.add_argument("--team", action="store_true", help="Enable team mode")
+
+    l_tasks = loop_sub.add_parser("task-status", help="Check tasks.md completion status")
+    l_tasks.add_argument("--wt-path", required=True, help="Worktree path")
+
     # --- engine ---
     eng_parser = subparsers.add_parser("engine", help="Orchestration engine")
     eng_sub = eng_parser.add_subparsers(dest="engine_cmd", required=True)
@@ -1525,6 +1624,8 @@ def main():
         cmd_merge(args)
     elif args.command == "milestone":
         cmd_milestone(args)
+    elif args.command == "loop":
+        cmd_loop(args)
     elif args.command == "engine":
         cmd_engine(args)
     elif args.command == "digest":

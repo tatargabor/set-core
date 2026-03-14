@@ -23,33 +23,25 @@ done
 _bin_dir="$(cd "$(dirname "$_script")" && pwd)"
 WT_TOOLS_ROOT="$(cd "$_bin_dir/.." && pwd)"
 
+# --- Health check (quick bail-out if wt-memory unavailable) ---
+if ! command -v wt-memory &>/dev/null; then
+    exit 0
+fi
+if ! wt-memory health &>/dev/null; then
+    exit 0
+fi
+
+# --- Store input in temp file ---
+INPUT_FILE=$(mktemp)
+trap 'rm -f "$INPUT_FILE"' EXIT
+cat > "$INPUT_FILE"
+
+# --- Session ID for cache file ---
+SESSION_ID=$(python3 -c "import json; print(json.load(open('$INPUT_FILE')).get('session_id','unknown'))" 2>/dev/null || echo "unknown")
+CACHE_FILE="/tmp/wt-memory-session-${SESSION_ID}.json"
+
 # =============================================================================
-# Source modular components from lib/hooks/
+# Dispatch to Python handler
 # =============================================================================
-_hooks_lib="$WT_TOOLS_ROOT/lib/hooks"
-
-source "$_hooks_lib/util.sh"
-source "$_hooks_lib/session.sh"
-source "$_hooks_lib/memory-ops.sh"
-source "$_hooks_lib/stop.sh"
-source "$_hooks_lib/events.sh"
-
-# ============================================================
-# Dispatch
-# ============================================================
-
-_log "dispatch"
-_dbg "dispatching event=$EVENT"
-case "$EVENT" in
-    SessionStart)       handle_session_start ;;
-    UserPromptSubmit)   handle_user_prompt ;;
-    PreToolUse)         handle_pre_tool ;;
-    PostToolUse)        handle_post_tool ;;
-    PostToolUseFailure) handle_post_tool_failure ;;
-    SubagentStart)      handle_subagent_start ;;
-    SubagentStop)       handle_subagent_stop ;;
-    Stop)               handle_stop ;;
-    *)                  _log "unknown event, skipping"; exit 0 ;;
-esac
-_log "done"
-_dbg "=== END ==="
+export PYTHONPATH="$WT_TOOLS_ROOT/lib${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m wt_hooks "$EVENT" "$INPUT_FILE" "$CACHE_FILE" --wt-tools-root "$WT_TOOLS_ROOT"
