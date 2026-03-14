@@ -140,6 +140,114 @@ def cmd_template(args):
         ))
 
 
+def cmd_config(args):
+    """Dispatch config subcommands.
+
+    Migrated from: utils.sh (parse_directives, resolve_directives, load_config_file,
+    parse_duration, format_duration, brief_hash, parse_next_items, find_input)
+    """
+    from .config import (
+        brief_hash,
+        find_input,
+        format_duration,
+        load_config_file,
+        parse_directives,
+        parse_duration,
+        parse_next_items,
+        resolve_directives,
+    )
+
+    if args.config_cmd == "parse-directives":
+        result = parse_directives(args.file)
+        json.dump(result, sys.stdout, indent=2)
+        print()
+
+    elif args.config_cmd == "resolve-directives":
+        cli_overrides = {}
+        if args.override:
+            for item in args.override:
+                k, _, v = item.partition("=")
+                if v.isdigit():
+                    cli_overrides[k] = int(v)
+                elif v in ("true", "false"):
+                    cli_overrides[k] = v == "true"
+                else:
+                    cli_overrides[k] = v
+        result = resolve_directives(
+            args.file,
+            config_path=args.config,
+            cli_overrides=cli_overrides or None,
+        )
+        json.dump(result, sys.stdout, indent=2)
+        print()
+
+    elif args.config_cmd == "load-config":
+        result = load_config_file(args.file)
+        json.dump(result, sys.stdout, indent=2)
+        print()
+
+    elif args.config_cmd == "parse-duration":
+        print(parse_duration(args.value))
+
+    elif args.config_cmd == "format-duration":
+        print(format_duration(int(args.value)))
+
+    elif args.config_cmd == "brief-hash":
+        print(brief_hash(args.file))
+
+    elif args.config_cmd == "parse-next-items":
+        items = parse_next_items(args.file)
+        json.dump(items, sys.stdout)
+        print()
+
+    elif args.config_cmd == "find-input":
+        try:
+            mode, path = find_input(
+                spec_override=args.spec,
+                brief_override=args.brief,
+            )
+            json.dump({"mode": mode, "path": path}, sys.stdout)
+            print()
+        except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            sys.exit(1)
+
+
+def cmd_events(args):
+    """Dispatch events subcommand.
+
+    Migrated from: events.sh:cmd_events() L143-155, query_events() L92-139
+    """
+    from .events import EventBus
+
+    log_path = args.log
+    if not log_path:
+        import os
+        state_file = os.environ.get("STATE_FILENAME", "")
+        if state_file:
+            from pathlib import Path
+            stem = Path(state_file).stem.replace("-state", "")
+            log_path = str(Path(state_file).parent / f"{stem}-events.jsonl")
+
+    if not log_path:
+        print("No events log specified. Use --log or set STATE_FILENAME.", file=sys.stderr)
+        sys.exit(1)
+
+    bus = EventBus(log_path=log_path, enabled=False)  # read-only, no writing
+    events = bus.query(
+        event_type=args.type,
+        change=args.change,
+        since=args.since,
+        last_n=args.last,
+    )
+
+    if args.json:
+        json.dump(events, sys.stdout, indent=2)
+        print()
+    else:
+        print(bus.format_table(events))
+
+
 def cmd_serve(args):
     """Start the web dashboard server."""
     import os
@@ -236,6 +344,46 @@ def main():
     t_audit = tmpl_sub.add_parser("audit", help="Render post-phase audit prompt")
     t_audit.add_argument("--input-file", default=None, help="JSON input (- for stdin)")
 
+    # --- config ---
+    cfg_parser = subparsers.add_parser("config", help="Configuration and directive utilities")
+    cfg_sub = cfg_parser.add_subparsers(dest="config_cmd", required=True)
+
+    c_parse = cfg_sub.add_parser("parse-directives", help="Parse directives from document")
+    c_parse.add_argument("--file", required=True, help="Document path (brief or spec)")
+
+    c_resolve = cfg_sub.add_parser("resolve-directives", help="Resolve directives with full precedence")
+    c_resolve.add_argument("--file", required=True, help="Input document path")
+    c_resolve.add_argument("--config", default=None, help="Config file path (orchestration.yaml)")
+    c_resolve.add_argument("--override", action="append", help="CLI override key=value (repeatable)")
+
+    c_load = cfg_sub.add_parser("load-config", help="Load config file (YAML)")
+    c_load.add_argument("--file", required=True, help="Config file path")
+
+    c_pdur = cfg_sub.add_parser("parse-duration", help="Parse duration string to seconds")
+    c_pdur.add_argument("value", help="Duration string (e.g., '1h30m', '30')")
+
+    c_fdur = cfg_sub.add_parser("format-duration", help="Format seconds to duration string")
+    c_fdur.add_argument("value", help="Seconds")
+
+    c_hash = cfg_sub.add_parser("brief-hash", help="SHA-256 hash of a file")
+    c_hash.add_argument("--file", required=True, help="File to hash")
+
+    c_next = cfg_sub.add_parser("parse-next-items", help="Extract ### Next items from brief")
+    c_next.add_argument("--file", required=True, help="Brief file path")
+
+    c_find = cfg_sub.add_parser("find-input", help="Resolve orchestration input source")
+    c_find.add_argument("--spec", default=None, help="Spec override path")
+    c_find.add_argument("--brief", default=None, help="Brief override path")
+
+    # --- events ---
+    evt_parser = subparsers.add_parser("events", help="Query orchestration events log")
+    evt_parser.add_argument("--log", default=None, help="Events JSONL file path")
+    evt_parser.add_argument("--type", default=None, help="Filter by event type")
+    evt_parser.add_argument("--change", default=None, help="Filter by change name")
+    evt_parser.add_argument("--since", default=None, help="Filter by timestamp (ISO 8601)")
+    evt_parser.add_argument("--last", type=int, default=None, help="Only last N events")
+    evt_parser.add_argument("--json", action="store_true", help="Output as JSON array")
+
     # --- serve ---
     serve_parser = subparsers.add_parser("serve", help="Start the web dashboard server")
     serve_parser.add_argument("--port", type=int, default=None, help="Port (default: 7400, env: WT_WEB_PORT)")
@@ -249,6 +397,10 @@ def main():
         cmd_state(args)
     elif args.command == "template":
         cmd_template(args)
+    elif args.command == "config":
+        cmd_config(args)
+    elif args.command == "events":
+        cmd_events(args)
     elif args.command == "serve":
         cmd_serve(args)
 

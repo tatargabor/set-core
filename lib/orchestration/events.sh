@@ -140,16 +140,17 @@ query_events() {
 
 # ─── cmd_events subcommand ────────────────────────────────────────────
 
+# Delegated to Python: wt_orch.events (via wt-orch-core events CLI)
 cmd_events() {
     # Lazy init events log path
-    if [[ -z "$EVENTS_LOG_FILE" && -n "${STATE_FILENAME:-}" ]]; then
+    if [[ -z "${EVENTS_LOG_FILE:-}" && -n "${STATE_FILENAME:-}" ]]; then
         EVENTS_LOG_FILE="${STATE_FILENAME%.json}-events.jsonl"
     fi
 
-    if [[ ! -f "$EVENTS_LOG_FILE" ]]; then
+    if [[ ! -f "${EVENTS_LOG_FILE:-}" ]]; then
         info "No events log found."
         return 0
     fi
 
-    query_events "$@"
+    wt-orch-core events --log "$EVENTS_LOG_FILE" "$@"
 }

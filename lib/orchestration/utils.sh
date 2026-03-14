@@ -43,33 +43,9 @@ with_state_lock() {
     ) 200>"$lock_file"
 }
 
+# Delegated to Python: wt_orch.config.parse_duration()
 parse_duration() {
-    local input="$1"
-    local total=0
-
-    # Plain number → minutes
-    if [[ "$input" =~ ^[0-9]+$ ]]; then
-        total=$((input * 60))
-        echo "$total"
-        return 0
-    fi
-
-    # Extract hours
-    if [[ "$input" =~ ([0-9]+)h ]]; then
-        total=$((total + BASH_REMATCH[1] * 3600))
-    fi
-
-    # Extract minutes
-    if [[ "$input" =~ ([0-9]+)m ]]; then
-        total=$((total + BASH_REMATCH[1] * 60))
-    fi
-
-    if [[ "$total" -eq 0 ]]; then
-        echo "0"
-        return 1
-    fi
-
-    echo "$total"
+    wt-orch-core config parse-duration "$1"
 }
 
 # Update monitor self-watchdog progress timestamp.
@@ -115,707 +91,98 @@ any_loop_active() {
     return 1  # all loops stalled or no loop-state files
 }
 
-# Format seconds into human-readable duration
+# Delegated to Python: wt_orch.config.format_duration()
 format_duration() {
-    local secs="$1"
-    local h=$((secs / 3600))
-    local m=$(( (secs % 3600) / 60 ))
-    if [[ "$h" -gt 0 && "$m" -gt 0 ]]; then
-        echo "${h}h${m}m"
-    elif [[ "$h" -gt 0 ]]; then
-        echo "${h}h"
-    else
-        echo "${m}m"
-    fi
+    wt-orch-core config format-duration "$1"
 }
 
 # ─── Brief Parser ────────────────────────────────────────────────────
 
-# Find the project brief file (legacy, used by find_input fallback)
+# Delegated to Python: wt_orch.config (find_brief is internal to find_input)
 find_brief() {
-    # --brief override takes priority
-    if [[ -n "$BRIEF_OVERRIDE" ]]; then
-        if [[ -f "$BRIEF_OVERRIDE" ]]; then
-            echo "$BRIEF_OVERRIDE"
-        else
-            echo ""
-        fi
-        return
-    fi
-
+    # Legacy compat — callers should use find_input instead
     local openspec_dir
     openspec_dir=$(find_openspec_dir)
-
-    if [[ -f "$openspec_dir/$BRIEF_FILENAME" ]]; then
-        echo "$openspec_dir/$BRIEF_FILENAME"
-    elif [[ -f "$openspec_dir/$BRIEF_FALLBACK" ]]; then
-        echo "$openspec_dir/$BRIEF_FALLBACK"
+    if [[ -n "${BRIEF_OVERRIDE:-}" && -f "$BRIEF_OVERRIDE" ]]; then
+        echo "$BRIEF_OVERRIDE"
+    elif [[ -f "$openspec_dir/${BRIEF_FILENAME:-project-brief.md}" ]]; then
+        echo "$openspec_dir/${BRIEF_FILENAME:-project-brief.md}"
+    elif [[ -f "$openspec_dir/${BRIEF_FALLBACK:-project.md}" ]]; then
+        echo "$openspec_dir/${BRIEF_FALLBACK:-project.md}"
     else
         echo ""
     fi
 }
 
-# Find input document and determine mode.
+# Delegated to Python: wt_orch.config.find_input()
 # Sets global: INPUT_MODE ("digest" or "brief"), INPUT_PATH
 find_input() {
-    # --spec takes priority — always routes to digest mode
-    if [[ -n "$SPEC_OVERRIDE" ]]; then
-        if [[ -d "$SPEC_OVERRIDE" ]]; then
-            INPUT_MODE="digest"
-            INPUT_PATH="$(cd "$SPEC_OVERRIDE" && pwd)"
-            return 0
-        fi
-        if [[ -f "$SPEC_OVERRIDE" ]]; then
-            INPUT_MODE="digest"
-            INPUT_PATH="$(cd "$(dirname "$SPEC_OVERRIDE")" && pwd)/$(basename "$SPEC_OVERRIDE")"
-            return 0
-        fi
-        # Short-name resolution: try wt/orchestration/specs/
-        local wt_spec="wt/orchestration/specs/${SPEC_OVERRIDE}.md"
-        local wt_spec_sub="wt/orchestration/specs/${SPEC_OVERRIDE}"
-        if [[ -f "$wt_spec" ]]; then
-            INPUT_MODE="digest"
-            INPUT_PATH="$(cd "$(dirname "$wt_spec")" && pwd)/$(basename "$wt_spec")"
-            return 0
-        elif [[ -f "$wt_spec_sub" ]]; then
-            INPUT_MODE="digest"
-            INPUT_PATH="$(cd "$(dirname "$wt_spec_sub")" && pwd)/$(basename "$wt_spec_sub")"
-            return 0
-        fi
-        error "Spec file not found: $SPEC_OVERRIDE"
-        error "  Checked: $SPEC_OVERRIDE, $wt_spec"
+    local args=()
+    if [[ -n "${SPEC_OVERRIDE:-}" ]]; then
+        args+=(--spec "$SPEC_OVERRIDE")
+    elif [[ -n "${BRIEF_OVERRIDE:-}" ]]; then
+        args+=(--brief "$BRIEF_OVERRIDE")
+    fi
+    local result
+    result=$(wt-orch-core config find-input "${args[@]}" 2>&1)
+    if [[ $? -ne 0 ]]; then
+        error "$result"
         return 1
     fi
-
-    # --brief or auto-detect brief
-    local brief_file
-    brief_file=$(find_brief)
-    if [[ -n "$brief_file" && -f "$brief_file" ]]; then
-        # Check if brief has ### Next items
-        local items
-        items=$(parse_next_items "$brief_file")
-        local count
-        count=$(echo "$items" | jq 'length')
-        if [[ "$count" -gt 0 ]]; then
-            INPUT_MODE="brief"
-            INPUT_PATH="$brief_file"
-            return 0
-        fi
-        # Brief exists but ### Next is empty
-        error "Brief found ($brief_file) but ### Next section is empty."
-        error "Add items to ### Next, or use --spec <path> to provide a specification document."
-        return 1
-    fi
-
-    # Nothing found
-    error "No input found. Use --spec <path> or create openspec/$BRIEF_FILENAME"
-    return 1
+    INPUT_MODE=$(echo "$result" | jq -r '.mode')
+    INPUT_PATH=$(echo "$result" | jq -r '.path')
 }
 
-# Find openspec directory
+# Delegated to Python: wt_orch.config.find_openspec_dir()
 find_openspec_dir() {
     if [[ -d "openspec" ]]; then
         echo "openspec"
     elif [[ -d "../openspec" ]]; then
         echo "../openspec"
     else
-        echo "openspec"  # default, may not exist
+        echo "openspec"
     fi
 }
 
-# Extract items from ## Next section
+# Delegated to Python: wt_orch.config.parse_next_items()
 parse_next_items() {
-    local brief_file="$1"
-    local in_next=false
-    local items=()
-
-    while IFS= read -r line; do
-        # Detect ### Next header
-        if [[ "$line" =~ ^###[[:space:]]+Next ]]; then
-            in_next=true
-            continue
-        fi
-        # Detect any other ### header → stop
-        if [[ "$line" =~ ^### ]] && $in_next; then
-            break
-        fi
-        # Detect ## header → stop
-        if [[ "$line" =~ ^## ]] && $in_next; then
-            break
-        fi
-        # Collect bullet items
-        if $in_next && [[ "$line" =~ ^[[:space:]]*-[[:space:]](.+) ]]; then
-            local item="${BASH_REMATCH[1]}"
-            # Strip leading/trailing whitespace
-            item=$(echo "$item" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            [[ -n "$item" ]] && items+=("$item")
-        fi
-    done < "$brief_file"
-
-    # Output as JSON array
-    if [[ ${#items[@]} -eq 0 ]]; then
-        echo '[]'
-    else
-        printf '%s\n' "${items[@]}" | jq -R . | jq -s .
-    fi
+    wt-orch-core config parse-next-items --file "$1"
 }
 
 # ─── Directives ──────────────────────────────────────────────────────
 
-# Parse orchestrator directives from brief
+# Delegated to Python: wt_orch.config.parse_directives()
 parse_directives() {
-    local brief_file="$1"
-    local in_directives=false
-    local max_parallel="$DEFAULT_MAX_PARALLEL"
-    local merge_policy="$DEFAULT_MERGE_POLICY"
-    local checkpoint_every="$DEFAULT_CHECKPOINT_EVERY"
-    local test_command="$DEFAULT_TEST_COMMAND"
-    local notification="$DEFAULT_NOTIFICATION"
-    local token_budget="$DEFAULT_TOKEN_BUDGET"
-    local pause_on_exit="$DEFAULT_PAUSE_ON_EXIT"
-    local auto_replan="$DEFAULT_AUTO_REPLAN"
-    local review_before_merge="$DEFAULT_REVIEW_BEFORE_MERGE"
-    local test_timeout="$DEFAULT_TEST_TIMEOUT"
-    local max_verify_retries="$DEFAULT_MAX_VERIFY_RETRIES"
-    local summarize_model="$DEFAULT_SUMMARIZE_MODEL"
-    local review_model="$DEFAULT_REVIEW_MODEL"
-    local default_model="$DEFAULT_IMPL_MODEL"
-    local smoke_command="$DEFAULT_SMOKE_COMMAND"
-    local smoke_timeout="$DEFAULT_SMOKE_TIMEOUT"
-    local smoke_blocking="$DEFAULT_SMOKE_BLOCKING"
-    local smoke_fix_token_budget="$DEFAULT_SMOKE_FIX_TOKEN_BUDGET"
-    local smoke_fix_max_turns="$DEFAULT_SMOKE_FIX_MAX_TURNS"
-    local smoke_fix_max_retries="$DEFAULT_SMOKE_FIX_MAX_RETRIES"
-    local smoke_health_check_url=""
-    local smoke_health_check_timeout="$DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT"
-
-    local smoke_dev_server_command="$DEFAULT_SMOKE_DEV_SERVER_COMMAND"
-    local monitor_idle_timeout="$DEFAULT_MONITOR_IDLE_TIMEOUT"
-    local merge_timeout="$DEFAULT_MERGE_TIMEOUT"
-
-    local post_merge_command="$DEFAULT_POST_MERGE_COMMAND"
-    local token_hard_limit="$DEFAULT_TOKEN_HARD_LIMIT"
-    local events_log="true"
-    local events_max_size="$EVENTS_MAX_SIZE"
-    local watchdog_timeout=""
-    local watchdog_loop_threshold=""
-    local max_tokens_per_change=""
-    local context_pruning="true"
-    local plan_approval="false"
-    local checkpoint_auto_approve="$DEFAULT_CHECKPOINT_AUTO_APPROVE"
-    local plan_method="$DEFAULT_PLAN_METHOD"
-    local model_routing="off"
-    local team_mode="false"
-    local post_phase_audit="$DEFAULT_POST_PHASE_AUDIT"
-    local hook_pre_dispatch=""
-    local hook_post_verify=""
-    local hook_pre_merge=""
-    local hook_post_merge=""
-    local hook_on_fail=""
-    local milestones_enabled="false"
-    local milestones_dev_server=""
-    local milestones_base_port="3100"
-    local milestones_max_worktrees="3"
-
-    while IFS= read -r line; do
-        # Detect ## Orchestrator Directives header
-        if [[ "$line" =~ ^##[[:space:]]+Orchestrator[[:space:]]+Directives ]]; then
-            in_directives=true
-            continue
-        fi
-        # Detect any other ## header → stop
-        if [[ "$line" =~ ^## ]] && $in_directives; then
-            break
-        fi
-        # Parse key: value lines
-        if $in_directives; then
-            local key="" val=""
-            if [[ "$line" =~ ^[[:space:]]*-?[[:space:]]*([a-z_]+):[[:space:]]*(.+) ]]; then
-                key="${BASH_REMATCH[1]}"
-                val="${BASH_REMATCH[2]}"
-                val=$(echo "$val" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            fi
-            [[ -z "$key" ]] && continue
-
-            case "$key" in
-                max_parallel)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        max_parallel="$val"
-                    else
-                        warn "Invalid max_parallel '$val', using default $DEFAULT_MAX_PARALLEL"
-                    fi
-                    ;;
-                merge_policy)
-                    if [[ "$val" =~ ^(eager|checkpoint|manual)$ ]]; then
-                        merge_policy="$val"
-                    else
-                        warn "Invalid merge_policy '$val', using default $DEFAULT_MERGE_POLICY"
-                    fi
-                    ;;
-                checkpoint_every)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        checkpoint_every="$val"
-                    else
-                        warn "Invalid checkpoint_every '$val', using default $DEFAULT_CHECKPOINT_EVERY"
-                    fi
-                    ;;
-                test_command)
-                    test_command="$val"
-                    ;;
-                notification)
-                    if [[ "$val" =~ ^(desktop|email|desktop\+email|gui|none)$ ]]; then
-                        notification="$val"
-                    else
-                        warn "Invalid notification '$val' (valid: desktop, email, desktop+email, none), using default $DEFAULT_NOTIFICATION"
-                    fi
-                    ;;
-                token_budget)
-                    if [[ "$val" =~ ^[0-9]+$ ]]; then
-                        token_budget="$val"
-                    else
-                        warn "Invalid token_budget '$val', using default $DEFAULT_TOKEN_BUDGET"
-                    fi
-                    ;;
-                token_hard_limit)
-                    if [[ "$val" =~ ^[0-9]+$ ]]; then
-                        token_hard_limit="$val"
-                    else
-                        warn "Invalid token_hard_limit '$val', using default $DEFAULT_TOKEN_HARD_LIMIT"
-                    fi
-                    ;;
-                pause_on_exit)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        pause_on_exit="$val"
-                    else
-                        warn "Invalid pause_on_exit '$val', using default $DEFAULT_PAUSE_ON_EXIT"
-                    fi
-                    ;;
-                auto_replan)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        auto_replan="$val"
-                    else
-                        warn "Invalid auto_replan '$val', using default $DEFAULT_AUTO_REPLAN"
-                    fi
-                    ;;
-                review_before_merge)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        review_before_merge="$val"
-                    else
-                        warn "Invalid review_before_merge '$val', using default $DEFAULT_REVIEW_BEFORE_MERGE"
-                    fi
-                    ;;
-                test_timeout)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        test_timeout="$val"
-                    else
-                        warn "Invalid test_timeout '$val', using default $DEFAULT_TEST_TIMEOUT"
-                    fi
-                    ;;
-                max_verify_retries)
-                    if [[ "$val" =~ ^[0-9]+$ ]]; then
-                        max_verify_retries="$val"
-                    else
-                        warn "Invalid max_verify_retries '$val', using default $DEFAULT_MAX_VERIFY_RETRIES"
-                    fi
-                    ;;
-                summarize_model)
-                    if [[ "$val" =~ ^(haiku|sonnet|opus)$ ]]; then
-                        summarize_model="$val"
-                    else
-                        warn "Invalid summarize_model '$val', using default $DEFAULT_SUMMARIZE_MODEL"
-                    fi
-                    ;;
-                review_model)
-                    if [[ "$val" =~ ^(haiku|sonnet|opus)$ ]]; then
-                        review_model="$val"
-                    else
-                        warn "Invalid review_model '$val', using default $DEFAULT_REVIEW_MODEL"
-                    fi
-                    ;;
-                default_model)
-                    if [[ "$val" =~ ^(haiku|sonnet|opus)$ ]]; then
-                        default_model="$val"
-                    else
-                        warn "Invalid default_model '$val', using default $DEFAULT_IMPL_MODEL"
-                    fi
-                    ;;
-                smoke_command)
-                    smoke_command="$val"
-                    ;;
-                smoke_timeout)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        smoke_timeout="$val"
-                    else
-                        warn "Invalid smoke_timeout '$val', using default $DEFAULT_SMOKE_TIMEOUT"
-                    fi
-                    ;;
-                smoke_blocking)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        smoke_blocking="$val"
-                    else
-                        warn "Invalid smoke_blocking '$val', using default $DEFAULT_SMOKE_BLOCKING"
-                    fi
-                    ;;
-                smoke_fix_token_budget)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        smoke_fix_token_budget="$val"
-                    else
-                        warn "Invalid smoke_fix_token_budget '$val', using default $DEFAULT_SMOKE_FIX_TOKEN_BUDGET"
-                    fi
-                    ;;
-                smoke_fix_max_turns)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        smoke_fix_max_turns="$val"
-                    else
-                        warn "Invalid smoke_fix_max_turns '$val', using default $DEFAULT_SMOKE_FIX_MAX_TURNS"
-                    fi
-                    ;;
-                smoke_fix_max_retries)
-                    if [[ "$val" =~ ^[0-9]+$ ]]; then
-                        smoke_fix_max_retries="$val"
-                    else
-                        warn "Invalid smoke_fix_max_retries '$val', using default $DEFAULT_SMOKE_FIX_MAX_RETRIES"
-                    fi
-                    ;;
-                smoke_health_check_url)
-                    smoke_health_check_url="$val"
-                    ;;
-                smoke_health_check_timeout)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        smoke_health_check_timeout="$val"
-                    else
-                        warn "Invalid smoke_health_check_timeout '$val', using default $DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT"
-                    fi
-                    ;;
-
-                smoke_dev_server_command)
-                    smoke_dev_server_command="$val"
-                    ;;
-                monitor_idle_timeout)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        monitor_idle_timeout="$val"
-                    else
-                        warn "Invalid monitor_idle_timeout '$val', using default $DEFAULT_MONITOR_IDLE_TIMEOUT"
-                    fi
-                    ;;
-                merge_timeout)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        merge_timeout="$val"
-                    else
-                        warn "Invalid merge_timeout '$val', using default $DEFAULT_MERGE_TIMEOUT"
-                    fi
-                    ;;
-                post_merge_command)
-                    post_merge_command="$val"
-                    ;;
-                events_log)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        events_log="$val"
-                    fi
-                    ;;
-                events_max_size)
-                    if [[ "$val" =~ ^[0-9]+$ ]]; then
-                        events_max_size="$val"
-                    fi
-                    ;;
-                watchdog_timeout)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        watchdog_timeout="$val"
-                    else
-                        warn "Invalid watchdog_timeout '$val', ignoring"
-                    fi
-                    ;;
-                watchdog_loop_threshold)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        watchdog_loop_threshold="$val"
-                    else
-                        warn "Invalid watchdog_loop_threshold '$val', ignoring"
-                    fi
-                    ;;
-                max_tokens_per_change)
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ "$val" -gt 0 ]]; then
-                        max_tokens_per_change="$val"
-                    else
-                        warn "Invalid max_tokens_per_change '$val', ignoring"
-                    fi
-                    ;;
-                context_pruning)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        context_pruning="$val"
-                    else
-                        warn "Invalid context_pruning '$val', using default true"
-                    fi
-                    ;;
-                plan_approval)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        plan_approval="$val"
-                    else
-                        warn "Invalid plan_approval '$val', using default false"
-                    fi
-                    ;;
-                checkpoint_auto_approve)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        checkpoint_auto_approve="$val"
-                    else
-                        warn "Invalid checkpoint_auto_approve '$val', using default $DEFAULT_CHECKPOINT_AUTO_APPROVE"
-                    fi
-                    ;;
-                plan_method)
-                    if [[ "$val" =~ ^(api|agent)$ ]]; then
-                        plan_method="$val"
-                    else
-                        warn "Invalid plan_method '$val', using default $DEFAULT_PLAN_METHOD"
-                    fi
-                    ;;
-                model_routing)
-                    if [[ "$val" =~ ^(off|complexity)$ ]]; then
-                        model_routing="$val"
-                    else
-                        warn "Invalid model_routing '$val', using default off"
-                    fi
-                    ;;
-                team_mode)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        team_mode="$val"
-                    else
-                        warn "Invalid team_mode '$val', using default false"
-                    fi
-                    ;;
-                post_phase_audit)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        post_phase_audit="$val"
-                    else
-                        warn "Invalid post_phase_audit '$val', using default $DEFAULT_POST_PHASE_AUDIT"
-                    fi
-                    ;;
-                hook_pre_dispatch)  hook_pre_dispatch="$val" ;;
-                hook_post_verify)   hook_post_verify="$val" ;;
-                hook_pre_merge)     hook_pre_merge="$val" ;;
-                hook_post_merge)    hook_post_merge="$val" ;;
-                hook_on_fail)       hook_on_fail="$val" ;;
-                milestones_enabled)
-                    if [[ "$val" =~ ^(true|false)$ ]]; then
-                        milestones_enabled="$val"
-                    fi
-                    ;;
-                milestones_dev_server)   milestones_dev_server="$val" ;;
-                milestones_base_port)
-                    if [[ "$val" =~ ^[0-9]+$ ]]; then
-                        milestones_base_port="$val"
-                    fi
-                    ;;
-                milestones_max_worktrees)
-                    if [[ "$val" =~ ^[0-9]+$ ]]; then
-                        milestones_max_worktrees="$val"
-                    fi
-                    ;;
-                *)
-                    warn "Unknown directive '$key', ignoring"
-                    ;;
-            esac
-        fi
-    done < "$brief_file"
-
-    # Auto-detect test_command if not set explicitly
-    if [[ -z "$test_command" ]]; then
-        test_command=$(auto_detect_test_command "." 2>/dev/null || true)
-        if [[ -n "$test_command" ]]; then
-            log_info "Auto-detected test command: $test_command"
-        fi
-    fi
-
-    # Output as JSON
-    jq -n \
-        --argjson max_parallel "$max_parallel" \
-        --arg merge_policy "$merge_policy" \
-        --argjson checkpoint_every "$checkpoint_every" \
-        --arg test_command "$test_command" \
-        --arg notification "$notification" \
-        --argjson token_budget "$token_budget" \
-        --argjson pause_on_exit "$pause_on_exit" \
-        --argjson auto_replan "$auto_replan" \
-        --argjson review_before_merge "$review_before_merge" \
-        --argjson test_timeout "$test_timeout" \
-        --argjson max_verify_retries "$max_verify_retries" \
-        --arg summarize_model "$summarize_model" \
-        --arg review_model "$review_model" \
-        --arg default_model "$default_model" \
-        --arg smoke_command "$smoke_command" \
-        --argjson smoke_timeout "$smoke_timeout" \
-        --argjson smoke_blocking "$smoke_blocking" \
-        --argjson smoke_fix_token_budget "$smoke_fix_token_budget" \
-        --argjson smoke_fix_max_turns "$smoke_fix_max_turns" \
-        --argjson smoke_fix_max_retries "$smoke_fix_max_retries" \
-        --arg smoke_health_check_url "$smoke_health_check_url" \
-        --argjson smoke_health_check_timeout "$smoke_health_check_timeout" \
-        --arg smoke_dev_server_command "$smoke_dev_server_command" \
-        --argjson monitor_idle_timeout "$monitor_idle_timeout" \
-        --argjson merge_timeout "$merge_timeout" \
-        --arg post_merge_command "$post_merge_command" \
-        --argjson token_hard_limit "$token_hard_limit" \
-        --arg events_log "$events_log" \
-        --argjson events_max_size "$events_max_size" \
-        --arg watchdog_timeout "$watchdog_timeout" \
-        --arg watchdog_loop_threshold "$watchdog_loop_threshold" \
-        --arg max_tokens_per_change "$max_tokens_per_change" \
-        --argjson context_pruning "$context_pruning" \
-        --argjson plan_approval "$plan_approval" \
-        --argjson checkpoint_auto_approve "$checkpoint_auto_approve" \
-        --arg plan_method "$plan_method" \
-        --arg model_routing "$model_routing" \
-        --argjson team_mode "$team_mode" \
-        --argjson post_phase_audit "$post_phase_audit" \
-        --arg hook_pre_dispatch "$hook_pre_dispatch" \
-        --arg hook_post_verify "$hook_post_verify" \
-        --arg hook_pre_merge "$hook_pre_merge" \
-        --arg hook_post_merge "$hook_post_merge" \
-        --arg hook_on_fail "$hook_on_fail" \
-        --argjson milestones_enabled "$milestones_enabled" \
-        --arg milestones_dev_server "$milestones_dev_server" \
-        --argjson milestones_base_port "$milestones_base_port" \
-        --argjson milestones_max_worktrees "$milestones_max_worktrees" \
-        '{
-            max_parallel: $max_parallel,
-            merge_policy: $merge_policy,
-            checkpoint_every: $checkpoint_every,
-            test_command: $test_command,
-            notification: $notification,
-            token_budget: $token_budget,
-            pause_on_exit: $pause_on_exit,
-            auto_replan: $auto_replan,
-            review_before_merge: $review_before_merge,
-            test_timeout: $test_timeout,
-            max_verify_retries: $max_verify_retries,
-            summarize_model: $summarize_model,
-            review_model: $review_model,
-            default_model: $default_model,
-            smoke_command: $smoke_command,
-            smoke_timeout: $smoke_timeout,
-            smoke_blocking: $smoke_blocking,
-            smoke_fix_token_budget: $smoke_fix_token_budget,
-            smoke_fix_max_turns: $smoke_fix_max_turns,
-            smoke_fix_max_retries: $smoke_fix_max_retries,
-            smoke_health_check_url: $smoke_health_check_url,
-            smoke_health_check_timeout: $smoke_health_check_timeout,
-            smoke_dev_server_command: (if $smoke_dev_server_command != "" then $smoke_dev_server_command else null end),
-            monitor_idle_timeout: $monitor_idle_timeout,
-            merge_timeout: $merge_timeout,
-            post_merge_command: $post_merge_command,
-            token_hard_limit: $token_hard_limit,
-            events_log: $events_log,
-            events_max_size: $events_max_size,
-            watchdog_timeout: (if $watchdog_timeout != "" then ($watchdog_timeout | tonumber) else null end),
-            watchdog_loop_threshold: (if $watchdog_loop_threshold != "" then ($watchdog_loop_threshold | tonumber) else null end),
-            max_tokens_per_change: (if $max_tokens_per_change != "" then ($max_tokens_per_change | tonumber) else null end),
-            context_pruning: $context_pruning,
-            plan_approval: $plan_approval,
-            checkpoint_auto_approve: $checkpoint_auto_approve,
-            plan_method: $plan_method,
-            model_routing: $model_routing,
-            team_mode: $team_mode,
-            post_phase_audit: $post_phase_audit,
-            hook_pre_dispatch: (if $hook_pre_dispatch != "" then $hook_pre_dispatch else null end),
-            hook_post_verify: (if $hook_post_verify != "" then $hook_post_verify else null end),
-            hook_pre_merge: (if $hook_pre_merge != "" then $hook_pre_merge else null end),
-            hook_post_merge: (if $hook_post_merge != "" then $hook_post_merge else null end),
-            hook_on_fail: (if $hook_on_fail != "" then $hook_on_fail else null end),
-            milestones: {
-                enabled: $milestones_enabled,
-                dev_server: (if $milestones_dev_server != "" then $milestones_dev_server else null end),
-                base_port: $milestones_base_port,
-                max_worktrees: $milestones_max_worktrees
-            }
-        } | with_entries(select(.value != null))'
+    wt-orch-core config parse-directives --file "$1"
 }
 
-# Compute SHA-256 hash of input file
+# Delegated to Python: wt_orch.config.brief_hash()
 brief_hash() {
-    local brief_file="$1"
-    sha256sum "$brief_file" 2>/dev/null | cut -d' ' -f1 || \
-    shasum -a 256 "$brief_file" 2>/dev/null | cut -d' ' -f1 || \
-    echo "unknown"
+    wt-orch-core config brief-hash --file "$1"
 }
 
 # ─── Config & Directives ─────────────────────────────────────────────
 
-# Load directives from orchestration config (wt/orchestration/config.yaml or .claude/orchestration.yaml)
-# Outputs JSON with only the keys found in the file (partial)
+# Delegated to Python: wt_orch.config.load_config_file()
 load_config_file() {
-    if [[ -z "$CONFIG_FILE" || ! -f "$CONFIG_FILE" ]]; then
+    if [[ -z "${CONFIG_FILE:-}" || ! -f "${CONFIG_FILE:-}" ]]; then
         echo '{}'
         return 0
     fi
-
-    python3 -c "
-import sys, json
-try:
-    import yaml
-except ImportError:
-    # No PyYAML — fall back to simple key:value parsing
-    result = {}
-    for line in open('$CONFIG_FILE'):
-        line = line.strip()
-        if ':' in line and not line.startswith('#'):
-            key, _, val = line.partition(':')
-            key, val = key.strip(), val.strip()
-            if val.isdigit():
-                result[key] = int(val)
-            elif val in ('true', 'false'):
-                result[key] = val == 'true'
-            else:
-                result[key] = val
-    print(json.dumps(result))
-    sys.exit(0)
-
-try:
-    with open('$CONFIG_FILE') as f:
-        data = yaml.safe_load(f) or {}
-    if not isinstance(data, dict):
-        print('{}')
-        sys.exit(0)
-    print(json.dumps(data))
-except Exception as e:
-    print(json.dumps({'_error': str(e)}), file=sys.stderr)
-    print('{}')
-" 2>/dev/null || {
-        warn "Could not parse $CONFIG_FILE"
-        echo '{}'
-    }
+    wt-orch-core config load-config --file "$CONFIG_FILE"
 }
 
-# Resolve directives with 4-level precedence:
-# CLI flags > .claude/orchestration.yaml > in-document directives > defaults
+# Delegated to Python: wt_orch.config.resolve_directives()
 resolve_directives() {
     local input_file="$1"
-
-    # Level 4: defaults (built into parse_directives)
-    # Level 3: in-document directives (skip for directory specs — no embedded directives)
-    local doc_directives
-    if [[ -d "$input_file" ]]; then
-        doc_directives=$(parse_directives /dev/null)
-    else
-        doc_directives=$(parse_directives "$input_file")
+    local args=(--file "$input_file")
+    if [[ -n "${CONFIG_FILE:-}" && -f "${CONFIG_FILE:-}" ]]; then
+        args+=(--config "$CONFIG_FILE")
     fi
-
-    # Level 2: config file
-    local config_directives
-    config_directives=$(load_config_file)
-
-    # Merge: config overrides doc
-    local merged
-    merged=$(echo "$doc_directives" | jq --argjson cfg "$config_directives" '
-        . as $base |
-        reduce ($cfg | to_entries[]) as $e ($base;
-            if $e.value != null then .[$e.key] = $e.value else . end
-        )
-    ')
-
-    # Level 1: CLI flags override everything
-    if [[ -n "$CLI_MAX_PARALLEL" ]]; then
-        merged=$(echo "$merged" | jq --argjson v "$CLI_MAX_PARALLEL" '.max_parallel = $v')
+    if [[ -n "${CLI_MAX_PARALLEL:-}" ]]; then
+        args+=(--override "max_parallel=$CLI_MAX_PARALLEL")
     fi
-
-    echo "$merged"
+    wt-orch-core config resolve-directives "${args[@]}"
 }
 
 # ─── State Management ────────────────────────────────────────────────
