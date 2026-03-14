@@ -58,10 +58,10 @@
 - [x] 7.5 Update `lib/orchestration/monitor.sh` header comment — "monitor_loop runs in Python via wt-orch-core engine monitor"
 - [x] 7.6 Update `lib/orchestration/merger.sh` header comment — "merge_change runs in Python, this file has thin wrappers only"
 
-## 8. Validation
+## 8. Remove Bash Parallel Path — Python Only
 
-- [ ] 8.1 Test `ORCH_ENGINE=python wt-orchestrate start` on a small project — verify Python monitor starts, polls, dispatches, merges, and completes (manual E2E)
-- [ ] 8.2 Test signal handling — send SIGTERM/SIGINT to Python monitor, verify cleanup_orchestrator runs and state is "stopped" (manual E2E)
-- [ ] 8.3 Test `ORCH_ENGINE=bash wt-orchestrate start` still works — backward compatibility (manual E2E)
-- [ ] 8.4 Run full orchestration with Python engine — validate auto-replan, merge, coverage, notifications (manual E2E)
-- [ ] 8.5 Flip default `ORCH_ENGINE` to "python" after validation
+- [x] 8.1 Remove `ORCH_ENGINE` feature flag from `cmd_start()` in `dispatcher.sh` — always exec to Python monitor unconditionally, remove `monitor_loop "$directives"` fallback calls, remove `retry_merge_queue` pre-exec call (Python monitor handles it on first poll)
+- [x] 8.2 Delete `monitor_loop()` body from `monitor.sh` — replace ~600 lines with stub header pointing to Python
+- [x] 8.3 Delete dead bash functions from `merger.sh` — `merge_change()`, `_try_merge()`, `execute_merge_queue()`, `retry_merge_queue()`, `_collect_smoke_screenshots()`, `_sync_running_worktrees()`. Keep thin wrappers: `archive_change()`, `cleanup_worktree()`, `cleanup_all_worktrees()`
+- [x] 8.4 Delete `auto_replan_cycle()` from `planner.sh` — Python engine handles replanning directly
+- [x] 8.5 Update file headers to reflect Python-only architecture, remove ORCH_ENGINE references from deprecation comments

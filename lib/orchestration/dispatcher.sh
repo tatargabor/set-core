@@ -4,7 +4,8 @@
 #
 # Python implementation: lib/wt_orch/dispatcher.py
 # This file contains thin wrappers that delegate to wt-orch-core dispatch *
-# and cmd_start/cmd_pause/cmd_resume which remain in bash (signal traps, monitor_loop).
+# and cmd_start/cmd_pause/cmd_resume which remain in bash for init/signal setup,
+# then exec to Python monitor loop (wt-orch-core engine monitor).
 
 # ─── Worktree Preparation (delegated to Python) ─────────────────────
 
@@ -445,23 +446,19 @@ cmd_start() {
             # Dispatch any remaining pending changes
             dispatch_ready_changes "$max_parallel"
 
-            # Feature flag: Python or bash monitor loop
-            if [[ "${ORCH_ENGINE:-bash}" == "python" ]]; then
-                log_info "Exec'ing to Python monitor (ORCH_ENGINE=python, resume path)"
-                local _directives_file
-                _directives_file=$(mktemp /tmp/orch-directives-XXXXXX.json)
-                echo "$directives" > "$_directives_file"
-                exec wt-orch-core engine monitor \
-                    --directives "$_directives_file" \
-                    --state "$STATE_FILENAME" \
-                    --poll-interval "${POLL_INTERVAL:-15}" \
-                    --default-model "$(echo "$directives" | jq -r '.default_model // "opus"')" \
-                    ${TEAM_MODE:+--team-mode} \
-                    --model-routing "$(echo "$directives" | jq -r '.model_routing // "off"')" \
-                    ${CHECKPOINT_AUTO_APPROVE:+--checkpoint-auto-approve}
-            fi
-            monitor_loop "$directives"
-            return 0
+            # Exec to Python monitor loop
+            log_info "Exec'ing to Python monitor (resume path)"
+            local _directives_file
+            _directives_file=$(mktemp /tmp/orch-directives-XXXXXX.json)
+            echo "$directives" > "$_directives_file"
+            exec wt-orch-core engine monitor \
+                --directives "$_directives_file" \
+                --state "$STATE_FILENAME" \
+                --poll-interval "${POLL_INTERVAL:-15}" \
+                --default-model "$(echo "$directives" | jq -r '.default_model // "opus"')" \
+                ${TEAM_MODE:+--team-mode} \
+                --model-routing "$(echo "$directives" | jq -r '.model_routing // "off"')" \
+                ${CHECKPOINT_AUTO_APPROVE:+--checkpoint-auto-approve}
         fi
     fi
 
@@ -570,24 +567,19 @@ cmd_start() {
     # Dispatch initial changes
     dispatch_ready_changes "$max_parallel"
 
-    # Feature flag: Python or bash monitor loop
-    if [[ "${ORCH_ENGINE:-bash}" == "python" ]]; then
-        log_info "Exec'ing to Python monitor (ORCH_ENGINE=python, fresh start)"
-        local _directives_file
-        _directives_file=$(mktemp /tmp/orch-directives-XXXXXX.json)
-        echo "$directives" > "$_directives_file"
-        exec wt-orch-core engine monitor \
-            --directives "$_directives_file" \
-            --state "$STATE_FILENAME" \
-            --poll-interval "${POLL_INTERVAL:-15}" \
-            --default-model "$(echo "$directives" | jq -r '.default_model // "opus"')" \
-            ${TEAM_MODE:+--team-mode} \
-            --model-routing "$(echo "$directives" | jq -r '.model_routing // "off"')" \
-            ${CHECKPOINT_AUTO_APPROVE:+--checkpoint-auto-approve}
-    fi
-
-    # Monitor loop (bash fallback)
-    monitor_loop "$directives"
+    # Exec to Python monitor loop
+    log_info "Exec'ing to Python monitor (fresh start)"
+    local _directives_file
+    _directives_file=$(mktemp /tmp/orch-directives-XXXXXX.json)
+    echo "$directives" > "$_directives_file"
+    exec wt-orch-core engine monitor \
+        --directives "$_directives_file" \
+        --state "$STATE_FILENAME" \
+        --poll-interval "${POLL_INTERVAL:-15}" \
+        --default-model "$(echo "$directives" | jq -r '.default_model // "opus"')" \
+        ${TEAM_MODE:+--team-mode} \
+        --model-routing "$(echo "$directives" | jq -r '.model_routing // "off"')" \
+        ${CHECKPOINT_AUTO_APPROVE:+--checkpoint-auto-approve}
 }
 
 cmd_pause() {
