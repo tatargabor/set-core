@@ -55,6 +55,7 @@ GENERATED_FILE_PATTERNS=(
     "dist/**"
     "build/**"
     ".claude/reflection.md"
+    ".wt-tools/**"
 )
 
 # Check if a file matches any generated file pattern.
