@@ -338,6 +338,122 @@ def cmd_events(args):
         print(bus.format_table(events))
 
 
+def cmd_plan(args):
+    """Dispatch plan subcommands.
+
+    Migrated from: lib/orchestration/planner.sh (validate_plan, detect_test_infra,
+    check_triage_gate, check_scope_overlap, build_decomposition_context,
+    enrich_plan_metadata, summarize_spec, collect_replan_context)
+    """
+    from .planner import (
+        build_decomposition_context,
+        check_scope_overlap,
+        check_triage_gate,
+        collect_replan_context,
+        detect_test_infra,
+        enrich_plan_metadata,
+        summarize_spec,
+        validate_plan,
+    )
+
+    if args.plan_cmd == "validate":
+        result = validate_plan(args.plan_file, digest_dir=args.digest_dir)
+        json.dump(result.to_dict(), sys.stdout)
+        print()
+        sys.exit(0 if result.ok else 1)
+
+    elif args.plan_cmd == "detect-test-infra":
+        infra = detect_test_infra(args.project_dir or ".")
+        json.dump(infra.to_dict(), sys.stdout)
+        print()
+        sys.exit(0)
+
+    elif args.plan_cmd == "check-triage":
+        status = check_triage_gate(args.digest_dir, auto_defer=args.auto_defer)
+        print(status.status)
+        sys.exit(0)
+
+    elif args.plan_cmd == "check-scope-overlap":
+        overlaps = check_scope_overlap(
+            args.plan_file,
+            state_path=args.state_file,
+            pk_path=args.pk_file,
+        )
+        json.dump(
+            {"warnings": [o.to_dict() for o in overlaps]},
+            sys.stdout,
+        )
+        print()
+        sys.exit(0)
+
+    elif args.plan_cmd == "build-context":
+        input_data = {}
+        if args.input_file:
+            src = sys.stdin if args.input_file == "-" else open(args.input_file)
+            input_data = json.load(src)
+            if src is not sys.stdin:
+                src.close()
+
+        from . import templates
+
+        ctx = build_decomposition_context(
+            input_mode=input_data.get("input_mode", input_data.get("mode", "spec")),
+            input_path=input_data.get("input_path", ""),
+            phase_hint=input_data.get("phase_instruction", ""),
+            existing_specs=input_data.get("specs", ""),
+            active_changes=input_data.get("active_changes", ""),
+            memory_context=input_data.get("memory", ""),
+            design_context=input_data.get("design_context", ""),
+            pk_context=input_data.get("pk_context", ""),
+            req_context=input_data.get("req_context", ""),
+            test_infra_context=input_data.get("test_infra_context", ""),
+            coverage_info=input_data.get("coverage_info", ""),
+            replan_ctx=input_data.get("replan_ctx"),
+            team_mode=input_data.get("team_mode", False),
+        )
+        print(templates.render_planning_prompt(**ctx))
+        sys.exit(0)
+
+    elif args.plan_cmd == "enrich-metadata":
+        import os
+
+        with open(args.plan_file, "r") as f:
+            plan_data = json.load(f)
+
+        # Determine plan version
+        plan_version = args.plan_version or 1
+        if plan_version == 1 and os.path.exists(args.plan_file):
+            plan_version = plan_data.get("plan_version", 0) + 1
+
+        enriched = enrich_plan_metadata(
+            plan_data,
+            hash_val=args.hash,
+            input_mode=args.input_mode,
+            input_path=args.input_path,
+            plan_version=plan_version,
+            replan_cycle=args.replan_cycle,
+            state_path=args.state_file,
+        )
+        with open(args.plan_file, "w") as f:
+            json.dump(enriched, f, indent=2)
+        sys.exit(0)
+
+    elif args.plan_cmd == "summarize-spec":
+        summary = summarize_spec(
+            args.spec_file,
+            phase_hint=args.phase_hint or "",
+            model=args.model or "haiku",
+        )
+        print(summary)
+        sys.exit(0)
+
+    elif args.plan_cmd == "replan-context":
+        ctx = collect_replan_context(args.state_file)
+        json.dump(ctx, sys.stdout)
+        print()
+        sys.exit(0)
+
+
 def cmd_report(args):
     """Dispatch report subcommands.
 
@@ -523,6 +639,46 @@ def main():
     c_find.add_argument("--spec", default=None, help="Spec override path")
     c_find.add_argument("--brief", default=None, help="Brief override path")
 
+    # --- plan ---
+    plan_parser = subparsers.add_parser("plan", help="Planner operations")
+    plan_sub = plan_parser.add_subparsers(dest="plan_cmd", required=True)
+
+    pl_validate = plan_sub.add_parser("validate", help="Validate plan JSON")
+    pl_validate.add_argument("--plan-file", required=True, help="Plan file path")
+    pl_validate.add_argument("--digest-dir", default=None, help="Digest directory for coverage check")
+
+    pl_testinfra = plan_sub.add_parser("detect-test-infra", help="Detect test infrastructure")
+    pl_testinfra.add_argument("--project-dir", default=None, help="Project directory (default: cwd)")
+
+    pl_triage = plan_sub.add_parser("check-triage", help="Check triage gate status")
+    pl_triage.add_argument("--digest-dir", required=True, help="Digest directory")
+    pl_triage.add_argument("--auto-defer", action="store_true", help="Auto-defer all ambiguities")
+
+    pl_overlap = plan_sub.add_parser("check-scope-overlap", help="Check scope overlap")
+    pl_overlap.add_argument("--plan-file", required=True, help="Plan file path")
+    pl_overlap.add_argument("--state-file", default=None, help="State file for active change check")
+    pl_overlap.add_argument("--pk-file", default=None, help="project-knowledge.yaml path")
+
+    pl_context = plan_sub.add_parser("build-context", help="Build decomposition context and render prompt")
+    pl_context.add_argument("--input-file", default=None, help="JSON input (- for stdin)")
+
+    pl_enrich = plan_sub.add_parser("enrich-metadata", help="Enrich plan with metadata")
+    pl_enrich.add_argument("--plan-file", required=True, help="Plan file path (read+write)")
+    pl_enrich.add_argument("--hash", required=True, help="Input content hash")
+    pl_enrich.add_argument("--input-mode", required=True, help="Input mode (brief/spec/digest)")
+    pl_enrich.add_argument("--input-path", required=True, help="Input file path")
+    pl_enrich.add_argument("--replan-cycle", type=int, default=None, help="Replan cycle number")
+    pl_enrich.add_argument("--state-file", default=None, help="State file for replan stripping")
+    pl_enrich.add_argument("--plan-version", type=int, default=None, help="Override plan version")
+
+    pl_summarize = plan_sub.add_parser("summarize-spec", help="Summarize a large spec")
+    pl_summarize.add_argument("--spec-file", required=True, help="Spec file path")
+    pl_summarize.add_argument("--phase-hint", default=None, help="Phase to focus on")
+    pl_summarize.add_argument("--model", default=None, help="Model for summarization")
+
+    pl_replan = plan_sub.add_parser("replan-context", help="Collect replan context")
+    pl_replan.add_argument("--state-file", required=True, help="State file path")
+
     # --- report ---
     rpt_parser = subparsers.add_parser("report", help="HTML report generation")
     rpt_sub = rpt_parser.add_subparsers(dest="report_cmd", required=True)
@@ -557,6 +713,8 @@ def main():
         cmd_template(args)
     elif args.command == "config":
         cmd_config(args)
+    elif args.command == "plan":
+        cmd_plan(args)
     elif args.command == "report":
         cmd_report(args)
     elif args.command == "events":

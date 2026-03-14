@@ -1,0 +1,989 @@
+"""Orchestration planner: validation, decomposition context, scope overlap.
+
+Migrated from: lib/orchestration/planner.sh (estimate_tokens, summarize_spec,
+detect_test_infra, auto_detect_test_command, validate_plan, check_scope_overlap,
+find_project_knowledge_file, check_triage_gate, build_decomposition_context,
+enrich_plan_metadata, collect_replan_context)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import re
+import subprocess
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+# ─── Data Types ──────────────────────────────────────────────────────
+
+
+@dataclass
+class ValidationResult:
+    """Result of plan JSON validation."""
+
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return len(self.errors) == 0
+
+    def to_dict(self) -> dict:
+        return {"errors": self.errors, "warnings": self.warnings}
+
+
+@dataclass
+class ScopeOverlap:
+    """Detected scope overlap between two changes."""
+
+    name_a: str
+    name_b: str
+    similarity: int  # percentage 0-100
+
+    def to_dict(self) -> dict:
+        return {"name_a": self.name_a, "name_b": self.name_b, "similarity": self.similarity}
+
+
+@dataclass
+class TestInfra:
+    """Detected test infrastructure in a project."""
+
+    framework: str = ""
+    config_exists: bool = False
+    test_file_count: int = 0
+    has_helpers: bool = False
+    test_command: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class TriageStatus:
+    """Result of triage gate evaluation."""
+
+    status: str  # no_ambiguities | needs_triage | has_untriaged | has_fixes | passed
+    count: int = 0
+
+    def to_dict(self) -> dict:
+        return {"status": self.status, "count": self.count}
+
+
+# ─── Token Estimation ────────────────────────────────────────────────
+# Migrated from: planner.sh estimate_tokens() L9-14
+
+
+def estimate_tokens(file_path: str) -> int:
+    """Estimate token count from word count (rough: words * 1.3).
+
+    Migrated from: planner.sh estimate_tokens() L9-14
+    """
+    try:
+        text = Path(file_path).read_text(errors="replace")
+        words = len(text.split())
+        return (words * 13 + 5) // 10
+    except OSError:
+        return 0
+
+
+# ─── Spec Summarization ──────────────────────────────────────────────
+# Migrated from: planner.sh summarize_spec() L17-56
+
+
+def summarize_spec(
+    spec_path: str,
+    phase_hint: str = "",
+    model: str = "haiku",
+) -> str:
+    """Summarize a large spec document for decomposition.
+
+    Migrated from: planner.sh summarize_spec() L17-56
+
+    Args:
+        spec_path: Path to the spec file.
+        phase_hint: Optional phase to focus on.
+        model: Model to use for summarization.
+
+    Returns:
+        Summary text, or truncated content on failure.
+    """
+    from .subprocess_utils import run_claude
+
+    spec_content = Path(spec_path).read_text(errors="replace")
+
+    phase_instruction = ""
+    if phase_hint:
+        phase_instruction = (
+            f"The user wants to focus on phase: {phase_hint}. "
+            "Extract that phase in full detail."
+        )
+
+    summary_prompt = (
+        "You are a technical analyst. This specification document is too large "
+        "to process in full.\n"
+        "Create a structured summary for a software architect who needs to "
+        "decompose it into implementable changes.\n\n"
+        "## Specification Document\n"
+        f"{spec_content}\n\n"
+        "## Task\n"
+        "Create a condensed summary containing:\n"
+        "1. **Table of Contents** with completion status for each section/phase "
+        '(use markers from the document: checkboxes, emoji, "done"/"implemented"/"kész" etc.)\n'
+        "2. **Next Actionable Phase** — extract the FULL content of the first "
+        "incomplete phase/priority section\n"
+        f"{phase_instruction}\n\n"
+        "Output ONLY the summary in markdown. Keep it under 3000 words.\n"
+        "Do NOT add commentary — just the structured summary."
+    )
+
+    try:
+        result = run_claude(summary_prompt, model=model)
+        if result.returncode == 0 and result.output:
+            logger.info("Spec summarization complete (%d chars)", len(result.output))
+            return result.output
+    except Exception as e:
+        logger.error("Spec summarization failed: %s", e)
+
+    # Fallback: truncate
+    logger.warning("Spec summarization failed — falling back to truncation")
+    return spec_content[:32000]
+
+
+# ─── Test Infrastructure Detection ────────────────────────────────────
+# Migrated from: planner.sh detect_test_infra() L60-129, auto_detect_test_command() L131-160
+
+
+def _auto_detect_test_command(project_dir: str) -> str:
+    """Detect test command from package.json.
+
+    Migrated from: planner.sh auto_detect_test_command() L131-160
+    """
+    pkg_path = Path(project_dir) / "package.json"
+    if not pkg_path.exists():
+        return ""
+
+    try:
+        pkg = json.loads(pkg_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    # Detect package manager from lockfile
+    p = Path(project_dir)
+    if (p / "pnpm-lock.yaml").exists():
+        pkg_mgr = "pnpm"
+    elif (p / "yarn.lock").exists():
+        pkg_mgr = "yarn"
+    elif (p / "bun.lockb").exists() or (p / "bun.lock").exists():
+        pkg_mgr = "bun"
+    else:
+        pkg_mgr = "npm"
+
+    # Check scripts in priority order
+    scripts = pkg.get("scripts", {})
+    for candidate in ("test", "test:unit", "test:ci"):
+        if scripts.get(candidate):
+            return f"{pkg_mgr} run {candidate}"
+
+    return ""
+
+
+def detect_test_infra(project_dir: str = ".") -> TestInfra:
+    """Scan project directory for test infrastructure.
+
+    Migrated from: planner.sh detect_test_infra() L60-129
+    """
+    p = Path(project_dir)
+    framework = ""
+    config_exists = False
+
+    # Check for test framework configs
+    if list(p.glob("vitest.config.*")):
+        framework = "vitest"
+        config_exists = True
+    elif list(p.glob("jest.config.*")):
+        framework = "jest"
+        config_exists = True
+    else:
+        pyproject = p / "pyproject.toml"
+        if pyproject.exists():
+            try:
+                content = pyproject.read_text()
+                if "[tool.pytest" in content:
+                    framework = "pytest"
+                    config_exists = True
+            except OSError:
+                pass
+        if not framework and (p / "pytest.ini").exists():
+            framework = "pytest"
+            config_exists = True
+
+    # Check package.json for test framework in devDependencies
+    if not framework:
+        pkg_path = p / "package.json"
+        if pkg_path.exists():
+            try:
+                pkg = json.loads(pkg_path.read_text())
+                dev_deps = pkg.get("devDependencies", {})
+                for fw in ("vitest", "jest", "mocha"):
+                    if fw in dev_deps:
+                        framework = fw
+                        break
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Count test files (excluding node_modules, .git)
+    test_file_count = 0
+    exclude_dirs = {"node_modules", ".git", "__pycache__", ".venv", "venv"}
+    for root, dirs, files in os.walk(project_dir):
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        for f in files:
+            if (
+                ".test." in f
+                or ".spec." in f
+                or (f.startswith("test_") and f.endswith(".py"))
+            ):
+                test_file_count += 1
+
+    # Check for test helper directories
+    has_helpers = False
+    for d in ("src/test", "__tests__", "test", "tests", "src/__tests__"):
+        if (p / d).is_dir():
+            has_helpers = True
+            break
+
+    if not has_helpers:
+        # Check for helper files
+        for root, dirs, files in os.walk(project_dir):
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            for f in files:
+                if "test-helper" in f or "factory" in f or "fixtures" in f:
+                    has_helpers = True
+                    break
+            if has_helpers:
+                break
+
+    test_command = _auto_detect_test_command(project_dir)
+
+    return TestInfra(
+        framework=framework,
+        config_exists=config_exists,
+        test_file_count=test_file_count,
+        has_helpers=has_helpers,
+        test_command=test_command,
+    )
+
+
+# ─── Plan Validation ─────────────────────────────────────────────────
+# Migrated from: planner.sh validate_plan() L164-250
+
+
+_KEBAB_CASE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
+def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationResult:
+    """Validate plan JSON structure, fields, dependencies, and coverage.
+
+    Migrated from: planner.sh validate_plan() L164-250
+
+    Args:
+        plan_path: Path to the plan JSON file.
+        digest_dir: Optional digest directory for requirement coverage validation.
+
+    Returns:
+        ValidationResult with errors and warnings.
+    """
+    from .state import topological_sort
+
+    result = ValidationResult()
+
+    # Check JSON structure
+    try:
+        with open(plan_path, "r") as f:
+            plan = json.load(f)
+    except json.JSONDecodeError:
+        result.errors.append("Plan file is not valid JSON")
+        return result
+    except OSError as e:
+        result.errors.append(f"Cannot read plan file: {e}")
+        return result
+
+    # Check required fields
+    for fld in ("plan_version", "brief_hash", "changes"):
+        if not plan.get(fld):
+            result.errors.append(f"Plan missing required field: {fld}")
+
+    changes = plan.get("changes", [])
+    if not isinstance(changes, list):
+        result.errors.append("'changes' must be an array")
+        return result
+
+    # Check change names are kebab-case
+    all_names = set()
+    bad_names = []
+    for c in changes:
+        name = c.get("name", "")
+        all_names.add(name)
+        if not _KEBAB_CASE_RE.match(name):
+            bad_names.append(name)
+    if bad_names:
+        result.errors.append(
+            f"Invalid change names (must be kebab-case): {', '.join(bad_names)}"
+        )
+
+    # Check depends_on references exist
+    all_deps = set()
+    for c in changes:
+        for dep in c.get("depends_on", []):
+            all_deps.add(dep)
+
+    missing = all_deps - all_names
+    if missing:
+        result.errors.append(
+            f"depends_on references non-existent changes: {', '.join(sorted(missing))}"
+        )
+
+    # Check for circular dependencies
+    try:
+        topological_sort(changes)
+    except Exception:
+        result.errors.append("Circular dependency detected in change graph")
+
+    # Digest-mode validation: check requirement references
+    if digest_dir:
+        req_file = Path(digest_dir) / "requirements.json"
+        if req_file.exists():
+            try:
+                req_data = json.loads(req_file.read_text())
+                all_req_ids = {
+                    r["id"]
+                    for r in req_data.get("requirements", [])
+                    if r.get("status") != "removed"
+                }
+
+                # Check requirements reference valid IDs
+                for c in changes:
+                    for rid in c.get("requirements", []):
+                        if rid not in all_req_ids:
+                            result.warnings.append(
+                                f"Plan references non-existent requirement: {rid}"
+                            )
+                    for rid in c.get("also_affects_reqs", []):
+                        if rid not in all_req_ids:
+                            result.warnings.append(
+                                f"Plan references non-existent requirement: {rid}"
+                            )
+
+                # Check also_affects_reqs have a primary owner
+                primary_owned = set()
+                for c in changes:
+                    primary_owned.update(c.get("requirements", []))
+
+                for c in changes:
+                    for aaid in c.get("also_affects_reqs", []):
+                        if aaid not in primary_owned:
+                            result.warnings.append(
+                                f"also_affects_reqs '{aaid}' has no primary owner "
+                                "in any change's requirements[]"
+                            )
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Could not read requirements.json for coverage validation")
+
+    # Check scope overlap
+    overlaps = check_scope_overlap(plan_path)
+    for ov in overlaps:
+        result.warnings.append(
+            f"Scope overlap detected: '{ov.name_a}' ↔ '{ov.name_b}' "
+            f"({ov.similarity}% keyword similarity)"
+        )
+
+    return result
+
+
+# ─── Scope Overlap Detection ─────────────────────────────────────────
+# Migrated from: planner.sh check_scope_overlap() L253-373
+
+
+def _extract_scope_keywords(scope_text: str) -> set[str]:
+    """Extract lowercase keywords (3+ chars) from scope text.
+
+    Migrated from: planner.sh check_scope_overlap() L263-270
+    """
+    words = re.findall(r"[a-z]{3,}", scope_text.lower())
+    return set(words)
+
+
+def check_scope_overlap(
+    plan_path: str,
+    state_path: str | None = None,
+    pk_path: str | None = None,
+) -> list[ScopeOverlap]:
+    """Detect overlapping scopes between changes in a plan.
+
+    Migrated from: planner.sh check_scope_overlap() L253-373
+
+    Uses Jaccard similarity on scope keywords. Warns at >= 40%.
+
+    Args:
+        plan_path: Path to plan JSON file.
+        state_path: Optional state file for checking against active changes.
+        pk_path: Optional project-knowledge.yaml for cross-cutting file detection.
+
+    Returns:
+        List of ScopeOverlap instances.
+    """
+    try:
+        with open(plan_path, "r") as f:
+            plan = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    changes = plan.get("changes", [])
+    if len(changes) < 2 and not state_path:
+        return []
+
+    overlaps: list[ScopeOverlap] = []
+
+    # Build keyword sets for each change
+    scope_words: dict[str, set[str]] = {}
+    names = []
+    for c in changes:
+        name = c.get("name", "")
+        names.append(name)
+        scope_words[name] = _extract_scope_keywords(c.get("scope", ""))
+
+    # Pairwise Jaccard comparison
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            name_a, name_b = names[i], names[j]
+            words_a, words_b = scope_words[name_a], scope_words[name_b]
+
+            # Skip if either has very few words
+            if len(words_a) < 3 or len(words_b) < 3:
+                continue
+
+            intersection = len(words_a & words_b)
+            union = len(words_a | words_b)
+
+            if union > 0:
+                similarity = intersection * 100 // union
+                if similarity >= 40:
+                    overlaps.append(ScopeOverlap(name_a, name_b, similarity))
+                    logger.warning(
+                        "Scope overlap: %s ↔ %s = %d%% (intersection=%d, union=%d)",
+                        name_a, name_b, similarity, intersection, union,
+                    )
+
+    # Also check against active worktrees (if state file exists)
+    if state_path and os.path.exists(state_path):
+        try:
+            with open(state_path, "r") as f:
+                state = json.load(f)
+
+            active_statuses = {"running", "dispatched", "done"}
+            for sc in state.get("changes", []):
+                if sc.get("status") not in active_statuses:
+                    continue
+                active_name = sc.get("name", "")
+                active_words = _extract_scope_keywords(sc.get("scope", ""))
+                if len(active_words) < 3:
+                    continue
+
+                for name in names:
+                    if name == active_name:
+                        continue
+                    words = scope_words.get(name, set())
+                    if len(words) < 3:
+                        continue
+
+                    intersection = len(words & active_words)
+                    union = len(words | active_words)
+                    if union > 0:
+                        similarity = intersection * 100 // union
+                        if similarity >= 40:
+                            overlaps.append(ScopeOverlap(name, active_name, similarity))
+                            logger.warning(
+                                "Overlap with active: %s ↔ %s = %d%%",
+                                name, active_name, similarity,
+                            )
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Could not read state file for overlap check")
+
+    # Check cross-cutting file mentions if project-knowledge.yaml exists
+    if pk_path and os.path.exists(pk_path):
+        try:
+            import yaml
+        except ImportError:
+            logger.debug("PyYAML not available, skipping project-knowledge check")
+        else:
+            try:
+                with open(pk_path, "r") as f:
+                    pk = yaml.safe_load(f)
+
+                cc_files = pk.get("cross_cutting_files", [])
+                for cc in cc_files:
+                    cc_path = cc.get("path", "")
+                    if not cc_path:
+                        continue
+                    cc_basename = os.path.basename(cc_path).lower()
+
+                    touching_changes = []
+                    for name in names:
+                        scope_text = ""
+                        for c in changes:
+                            if c.get("name") == name:
+                                scope_text = c.get("scope", "")
+                                break
+                        if cc_basename in scope_text.lower():
+                            touching_changes.append(name)
+
+                    if len(touching_changes) >= 2:
+                        logger.warning(
+                            "Cross-cutting file '%s' may be touched by: %s",
+                            cc_path, ", ".join(touching_changes),
+                        )
+                        # Record as overlap warning (with 100% as special marker)
+                        for k in range(len(touching_changes)):
+                            for m in range(k + 1, len(touching_changes)):
+                                overlaps.append(
+                                    ScopeOverlap(
+                                        touching_changes[k],
+                                        touching_changes[m],
+                                        100,  # cross-cutting marker
+                                    )
+                                )
+            except (OSError, Exception) as e:
+                logger.warning("Could not read project-knowledge file: %s", e)
+
+    return overlaps
+
+
+# ─── Triage Gate ──────────────────────────────────────────────────────
+# Migrated from: planner.sh check_triage_gate() L388-446
+
+
+def check_triage_gate(
+    digest_dir: str,
+    auto_defer: bool = False,
+) -> TriageStatus:
+    """Check triage status for ambiguities.
+
+    Migrated from: planner.sh check_triage_gate() L388-446
+
+    Args:
+        digest_dir: Path to the digest directory.
+        auto_defer: If True, auto-defer all ambiguities (automated mode).
+
+    Returns:
+        TriageStatus with status string and ambiguity count.
+    """
+    amb_path = Path(digest_dir) / "ambiguities.json"
+    if not amb_path.exists():
+        return TriageStatus(status="no_ambiguities")
+
+    try:
+        amb_data = json.loads(amb_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return TriageStatus(status="no_ambiguities")
+
+    ambiguities = amb_data.get("ambiguities", [])
+    amb_count = len(ambiguities)
+    if amb_count == 0:
+        return TriageStatus(status="no_ambiguities")
+
+    # Auto-defer mode
+    if auto_defer:
+        logger.info("Auto-deferred %d ambiguities (automated mode)", amb_count)
+        return TriageStatus(status="passed", count=amb_count)
+
+    triage_path = Path(digest_dir) / "triage.md"
+    if not triage_path.exists():
+        return TriageStatus(status="needs_triage", count=amb_count)
+
+    # Parse triage decisions from triage.md
+    decisions = _parse_triage_decisions(triage_path)
+    amb_ids = [a.get("id", "") for a in ambiguities]
+
+    # Check for untriaged items
+    untriaged_count = sum(
+        1 for aid in amb_ids
+        if aid not in decisions or not decisions[aid].get("decision")
+    )
+    if untriaged_count > 0:
+        return TriageStatus(status="has_untriaged", count=untriaged_count)
+
+    # Check for "fix" items
+    fix_count = sum(
+        1 for d in decisions.values()
+        if d.get("decision") == "fix"
+    )
+    if fix_count > 0:
+        return TriageStatus(status="has_fixes", count=fix_count)
+
+    return TriageStatus(status="passed", count=amb_count)
+
+
+def _parse_triage_decisions(triage_path: Path) -> dict[str, dict]:
+    """Parse triage.md for decisions. Returns {id: {decision, note}}.
+
+    Simplified parser matching the markdown format from digest.sh generate_triage_md.
+    """
+    decisions: dict[str, dict] = {}
+    try:
+        content = triage_path.read_text()
+    except OSError:
+        return decisions
+
+    current_id = ""
+    for line in content.splitlines():
+        # Match "### AMB-xxx" headers
+        m = re.match(r"^###\s+(AMB-\S+)", line)
+        if m:
+            current_id = m.group(1)
+            decisions[current_id] = {"decision": "", "note": ""}
+            continue
+
+        if current_id:
+            # Match "Decision: xxx"
+            m = re.match(r"^Decision:\s*(.*)", line, re.IGNORECASE)
+            if m:
+                decisions[current_id]["decision"] = m.group(1).strip().lower()
+                continue
+            # Match "Note: xxx"
+            m = re.match(r"^Note:\s*(.*)", line, re.IGNORECASE)
+            if m:
+                decisions[current_id]["note"] = m.group(1).strip()
+
+    return decisions
+
+
+# ─── Decomposition Context Assembly ──────────────────────────────────
+# Migrated from: planner.sh cmd_plan() L638-963
+
+
+def build_decomposition_context(
+    input_mode: str,
+    input_path: str,
+    *,
+    phase_hint: str = "",
+    existing_specs: str = "",
+    active_changes: str = "",
+    memory_context: str = "",
+    design_context: str = "",
+    pk_context: str = "",
+    req_context: str = "",
+    test_infra_context: str = "",
+    coverage_info: str = "",
+    replan_ctx: dict | None = None,
+    team_mode: bool = False,
+) -> dict:
+    """Assemble all context needed for the planning prompt.
+
+    Migrated from: planner.sh cmd_plan() L638-963
+
+    Gathers input content, builds context sections, and returns a dict
+    suitable for passing to templates.render_planning_prompt().
+
+    Args:
+        input_mode: "brief", "spec", or "digest"
+        input_path: Path to input file or digest directory
+        Various context strings and flags.
+
+    Returns:
+        Dict with all context fields for template rendering.
+    """
+    input_content = ""
+
+    if input_mode == "digest":
+        input_content = _build_digest_content(input_path)
+    else:
+        try:
+            input_content = Path(input_path).read_text(errors="replace")
+        except OSError:
+            logger.error("Cannot read input file: %s", input_path)
+
+    mode = "brief" if input_mode == "brief" else "spec"
+
+    phase_instruction = ""
+    if phase_hint:
+        phase_instruction = (
+            f"The user requested phase: {phase_hint}. "
+            "Focus decomposition on items matching this phase."
+        )
+
+    return {
+        "input_content": input_content,
+        "specs": existing_specs,
+        "memory": memory_context,
+        "replan_ctx": replan_ctx or {},
+        "mode": mode,
+        "phase_instruction": phase_instruction,
+        "input_mode": input_mode,
+        "test_infra_context": test_infra_context,
+        "pk_context": pk_context,
+        "req_context": req_context,
+        "active_changes": active_changes,
+        "coverage_info": coverage_info,
+        "design_context": design_context,
+        "team_mode": team_mode,
+    }
+
+
+def _build_digest_content(digest_dir: str) -> str:
+    """Build decomposition input content from digest directory.
+
+    Migrated from: planner.sh cmd_plan() L754-848
+    """
+    d = Path(digest_dir)
+    sections: list[str] = []
+
+    # Conventions
+    conv_path = d / "conventions.json"
+    if conv_path.exists():
+        try:
+            sections.append(
+                f"## Project Conventions (apply to ALL changes)\n{conv_path.read_text()}\n"
+            )
+        except OSError:
+            pass
+
+    # Data model
+    data_path = d / "data-definitions.md"
+    if data_path.exists():
+        try:
+            sections.append(f"## Data Model Reference\n{data_path.read_text()}\n")
+        except OSError:
+            pass
+
+    # Execution hints
+    index_path = d / "index.json"
+    if index_path.exists():
+        try:
+            idx = json.loads(index_path.read_text())
+            hints = idx.get("execution_hints")
+            if hints and hints != {}:
+                sections.append(
+                    f"## Execution Hints (optional guidance from spec author)\n"
+                    f"{json.dumps(hints)}\n"
+                )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Domain summaries
+    domains_dir = d / "domains"
+    if domains_dir.is_dir():
+        domain_parts = ["## Domain Summaries\n"]
+        for domain_file in sorted(domains_dir.glob("*.md")):
+            dname = domain_file.stem
+            try:
+                domain_parts.append(f"### {dname}\n{domain_file.read_text()}\n")
+            except OSError:
+                pass
+        if len(domain_parts) > 1:
+            sections.append("".join(domain_parts))
+
+    # Requirements (compact)
+    req_path = d / "requirements.json"
+    if req_path.exists():
+        try:
+            req_data = json.loads(req_path.read_text())
+            compact = [
+                {"id": r["id"], "title": r.get("title", ""), "domain": r.get("domain", ""), "brief": r.get("brief", "")}
+                for r in req_data.get("requirements", [])
+            ]
+            req_count = len(compact)
+            sections.append(
+                f"## Requirements ({req_count} total)\n"
+                f"{json.dumps({'requirements': compact})}\n"
+            )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Dependencies
+    deps_path = d / "dependencies.json"
+    if deps_path.exists():
+        try:
+            sections.append(f"## Cross-references\n{deps_path.read_text()}\n")
+        except OSError:
+            pass
+
+    # Deferred ambiguities
+    amb_path = d / "ambiguities.json"
+    if amb_path.exists():
+        try:
+            amb_data = json.loads(amb_path.read_text())
+            deferred = [
+                a for a in amb_data.get("ambiguities", [])
+                if a.get("resolution") == "deferred" or "resolution" not in a
+            ]
+            if deferred:
+                deferred_json = json.dumps({"ambiguities": deferred})
+                sections.append(
+                    f"## Deferred Ambiguities ({len(deferred)} items — you MUST resolve each)\n"
+                    "For each deferred ambiguity below, include a \"resolved_ambiguities\" "
+                    "entry in the change that addresses the affected requirements. "
+                    "Specify your decision and rationale.\n\n"
+                    f"{deferred_json}\n"
+                )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return "\n".join(sections)
+
+
+# ─── Plan Metadata Enrichment ─────────────────────────────────────────
+# Migrated from: planner.sh cmd_plan() L1049-1092
+
+
+def enrich_plan_metadata(
+    plan_data: dict,
+    hash_val: str,
+    input_mode: str,
+    input_path: str,
+    plan_version: int = 1,
+    replan_cycle: int | None = None,
+    state_path: str | None = None,
+) -> dict:
+    """Add metadata fields to a raw plan JSON.
+
+    Migrated from: planner.sh cmd_plan() L1049-1092
+
+    Args:
+        plan_data: Raw plan dict from Claude decomposition.
+        hash_val: Input content hash.
+        input_mode: "brief", "spec", or "digest".
+        input_path: Path to the input file.
+        plan_version: Plan version number.
+        replan_cycle: If set, indicates a replan iteration.
+        state_path: State file for replan depends_on stripping.
+
+    Returns:
+        Enriched plan dict with metadata.
+    """
+    plan_phase = "iteration" if replan_cycle is not None else "initial"
+    plan_method = os.environ.get("_PLAN_METHOD", "api")
+
+    # Compute input hash
+    input_hash = ""
+    if input_path and os.path.isfile(input_path):
+        try:
+            input_hash = hashlib.sha256(
+                Path(input_path).read_bytes()
+            ).hexdigest()
+        except OSError:
+            pass
+
+    plan_data.update({
+        "plan_version": plan_version,
+        "brief_hash": hash_val,
+        "created_at": datetime.now().astimezone().isoformat(),
+        "input_mode": input_mode,
+        "input_path": input_path,
+        "input_hash": input_hash,
+        "plan_phase": plan_phase,
+        "plan_method": plan_method,
+    })
+
+    # During replan, strip depends_on references to completed changes
+    if replan_cycle is not None and state_path and os.path.exists(state_path):
+        try:
+            with open(state_path, "r") as f:
+                state = json.load(f)
+
+            completed_names = {
+                c["name"]
+                for c in state.get("changes", [])
+                if c.get("status") in ("done", "merged", "merge-blocked")
+            }
+            plan_names = {c["name"] for c in plan_data.get("changes", [])}
+
+            for c in plan_data.get("changes", []):
+                deps = c.get("depends_on", [])
+                # Keep only deps that are in the current plan
+                c["depends_on"] = [d for d in deps if d in plan_names]
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Could not read state for replan depends_on stripping")
+
+    return plan_data
+
+
+# ─── Replan Context Collection ────────────────────────────────────────
+# Migrated from: planner.sh auto_replan_cycle() L1280-1343
+
+
+def collect_replan_context(state_path: str) -> dict:
+    """Gather completed change info for the next replan cycle.
+
+    Migrated from: planner.sh auto_replan_cycle() L1280-1343
+
+    Args:
+        state_path: Path to the orchestration state file.
+
+    Returns:
+        Dict with completed names, roadmap items, file lists, and E2E failure context.
+    """
+    result: dict[str, Any] = {
+        "completed_names": "",
+        "completed_roadmap": "",
+        "file_context": "",
+        "memory": "",
+        "e2e_failures": "",
+    }
+
+    try:
+        with open(state_path, "r") as f:
+            state = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return result
+
+    completed_statuses = {"done", "merged", "merge-blocked"}
+    completed_changes = [
+        c for c in state.get("changes", [])
+        if c.get("status") in completed_statuses
+    ]
+
+    result["completed_names"] = ", ".join(c["name"] for c in completed_changes)
+    result["completed_roadmap"] = "; ".join(
+        c.get("roadmap_item", "") for c in completed_changes if c.get("roadmap_item")
+    )
+
+    # Gather file lists from merged changes via git log
+    merged_names = [
+        c["name"] for c in completed_changes if c.get("status") == "merged"
+    ]
+    file_parts: list[str] = []
+    for cname in merged_names:
+        try:
+            git_result = subprocess.run(
+                [
+                    "git", "log", "--all", "--oneline", "--diff-filter=ACMR",
+                    "--name-only", "--format=", f"--grep={cname}", "--",
+                ],
+                capture_output=True, text=True, timeout=10,
+            )
+            if git_result.returncode == 0 and git_result.stdout.strip():
+                files = sorted(set(git_result.stdout.strip().splitlines()))[:20]
+                file_parts.append(f"{cname}: {' '.join(files)}")
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+    if file_parts:
+        result["file_context"] = "\n".join(file_parts)
+
+    # E2E failure context
+    e2e_ctx = state.get("phase_e2e_failure_context", "")
+    if e2e_ctx and e2e_ctx != "null":
+        result["e2e_failures"] = (
+            "Phase-end E2E tests failed on the integrated codebase. "
+            "These failures indicate integration issues that must be "
+            "addressed in the next phase:\n\n" + str(e2e_ctx)
+        )
+
+    return result

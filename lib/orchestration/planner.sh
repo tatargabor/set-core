@@ -6,6 +6,7 @@
 # ─── Spec Summarization ──────────────────────────────────────────────
 
 # Estimate token count from word count (rough: words × 1.3)
+# Migrated to: planner.py estimate_tokens()
 estimate_tokens() {
     local file="$1"
     local words
@@ -14,361 +15,73 @@ estimate_tokens() {
 }
 
 # Summarize a large spec document for decomposition
+# Migrated to: planner.py summarize_spec()
 summarize_spec() {
     local spec_file="$1"
     local phase_hint="$2"
     local sum_model="${3:-$DEFAULT_SUMMARIZE_MODEL}"
-    local spec_content
-    spec_content=$(cat "$spec_file")
-
-    local phase_instruction=""
-    if [[ -n "$phase_hint" ]]; then
-        phase_instruction="The user wants to focus on phase: $phase_hint. Extract that phase in full detail."
-    fi
-
-    local summary_prompt
-    summary_prompt=$(cat <<SUMMARY_EOF
-You are a technical analyst. This specification document is too large to process in full.
-Create a structured summary for a software architect who needs to decompose it into implementable changes.
-
-## Specification Document
-$spec_content
-
-## Task
-Create a condensed summary containing:
-1. **Table of Contents** with completion status for each section/phase (use markers from the document: checkboxes, emoji, "done"/"implemented"/"kész" etc.)
-2. **Next Actionable Phase** — extract the FULL content of the first incomplete phase/priority section
-$phase_instruction
-
-Output ONLY the summary in markdown. Keep it under 3000 words.
-Do NOT add commentary — just the structured summary.
-SUMMARY_EOF
-)
-
-    local summary_output
-    summary_output=$(echo "$summary_prompt" | run_claude --model "$(model_id "$sum_model")") || {
-        log_error "Spec summarization failed — falling back to truncation"
-        head -c 32000 "$spec_file"
-        return
-    }
-    log_info "Spec summarization complete (${#summary_output} chars)"
-    echo "$summary_output"
+    wt-orch-core plan summarize-spec --spec-file "$spec_file" \
+        ${phase_hint:+--phase-hint "$phase_hint"} \
+        ${sum_model:+--model "$sum_model"}
 }
 
 # ─── Test Infrastructure Detection ────────────────────────────────────
 
+# Migrated to: planner.py detect_test_infra()
 detect_test_infra() {
     local project_dir="${1:-.}"
-    local framework=""
-    local config_exists=false
-    local test_file_count=0
-    local has_helpers=false
-    local test_command=""
-
-    # Check for test framework configs
-    if ls "$project_dir"/vitest.config.* 2>/dev/null | head -1 >/dev/null; then
-        framework="vitest"
-        config_exists=true
-    elif ls "$project_dir"/jest.config.* 2>/dev/null | head -1 >/dev/null; then
-        framework="jest"
-        config_exists=true
-    elif [[ -f "$project_dir/pytest.ini" || -f "$project_dir/pyproject.toml" ]] && grep -q '\[tool\.pytest' "$project_dir/pyproject.toml" 2>/dev/null; then
-        framework="pytest"
-        config_exists=true
-    fi
-
-    # Check package.json for test framework in devDependencies
-    if [[ -z "$framework" && -f "$project_dir/package.json" ]]; then
-        local pkg_framework
-        pkg_framework=$(jq -r '
-            (.devDependencies // {} | keys[]) as $k |
-            if ($k == "vitest") then "vitest"
-            elif ($k == "jest") then "jest"
-            elif ($k == "mocha") then "mocha"
-            else empty end
-        ' "$project_dir/package.json" 2>/dev/null | head -1)
-        if [[ -n "$pkg_framework" ]]; then
-            framework="$pkg_framework"
-        fi
-    fi
-
-    # Count test files
-    test_file_count=$(find "$project_dir" -type f \( -name "*.test.*" -o -name "*.spec.*" -o -name "test_*.py" \) \
-        -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | wc -l)
-
-    # Check for test helper directories and files
-    for dir in "src/test" "__tests__" "test" "tests" "src/__tests__"; do
-        if [[ -d "$project_dir/$dir" ]]; then
-            has_helpers=true
-            break
-        fi
-    done
-    if [[ "$has_helpers" != "true" ]]; then
-        local helper_count
-        helper_count=$(find "$project_dir" -type f \( -name "*test-helper*" -o -name "*factory*" -o -name "*fixtures*" \) \
-            -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | wc -l)
-        [[ "$helper_count" -gt 0 ]] && has_helpers=true
-    fi
-
-    # Detect test command from package.json
-    test_command=$(auto_detect_test_command "$project_dir")
-
-    jq -n \
-        --arg framework "$framework" \
-        --argjson config_exists "$config_exists" \
-        --argjson test_file_count "$test_file_count" \
-        --argjson has_helpers "$has_helpers" \
-        --arg test_command "$test_command" \
-        '{
-            framework: $framework,
-            config_exists: $config_exists,
-            test_file_count: $test_file_count,
-            has_helpers: $has_helpers,
-            test_command: $test_command
-        }'
+    wt-orch-core plan detect-test-infra --project-dir "$project_dir"
 }
 
+# Migrated to: planner.py _auto_detect_test_command()
 auto_detect_test_command() {
     local project_dir="${1:-.}"
-
-    [[ ! -f "$project_dir/package.json" ]] && return
-
-    # Detect package manager from lockfile
-    local pkg_mgr="npm"
-    if [[ -f "$project_dir/pnpm-lock.yaml" ]]; then
-        pkg_mgr="pnpm"
-    elif [[ -f "$project_dir/yarn.lock" ]]; then
-        pkg_mgr="yarn"
-    elif [[ -f "$project_dir/bun.lockb" || -f "$project_dir/bun.lock" ]]; then
-        pkg_mgr="bun"
-    fi
-
-    # Check scripts in priority order: test → test:unit → test:ci
-    local script_name=""
-    for candidate in "test" "test:unit" "test:ci"; do
-        local has_script
-        has_script=$(jq -r --arg s "$candidate" '.scripts[$s] // empty' "$project_dir/package.json" 2>/dev/null)
-        if [[ -n "$has_script" ]]; then
-            script_name="$candidate"
-            break
-        fi
-    done
-
-    [[ -z "$script_name" ]] && return
-
-    echo "$pkg_mgr run $script_name"
+    # Called only by detect_test_infra, now handled internally by Python
+    detect_test_infra "$project_dir" | jq -r '.test_command'
 }
 
 # ─── Plan Validation ─────────────────────────────────────────────────
 
+# Migrated to: planner.py validate_plan()
 validate_plan() {
     local plan_file="$1"
-    local errors=0
-
-    # Check JSON structure
-    if ! jq empty "$plan_file" 2>/dev/null; then
-        error "Plan file is not valid JSON"
-        return 1
+    local digest_arg=""
+    if [[ "${INPUT_MODE:-}" == "digest" && -n "${DIGEST_DIR:-}" ]]; then
+        digest_arg="--digest-dir $DIGEST_DIR"
     fi
+    local result
+    result=$(wt-orch-core plan validate --plan-file "$plan_file" $digest_arg 2>&1)
+    local rc=$?
 
-    # Check required fields
-    for field in plan_version brief_hash changes; do
-        if [[ "$(jq -r ".$field // empty" "$plan_file")" == "" ]]; then
-            error "Plan missing required field: $field"
-            errors=$((errors + 1))
-        fi
-    done
+    # Display errors and warnings from JSON output
+    local errors warnings
+    errors=$(echo "$result" | jq -r '.errors[]?' 2>/dev/null || true)
+    warnings=$(echo "$result" | jq -r '.warnings[]?' 2>/dev/null || true)
+    [[ -n "$errors" ]] && while IFS= read -r e; do error "$e"; done <<< "$errors"
+    [[ -n "$warnings" ]] && while IFS= read -r w; do warn "$w"; done <<< "$warnings"
 
-    # Check change names are kebab-case
-    local bad_names
-    bad_names=$(jq -r '.changes[].name' "$plan_file" | grep -vE '^[a-z][a-z0-9-]*$' || true)
-    if [[ -n "$bad_names" ]]; then
-        error "Invalid change names (must be kebab-case): $bad_names"
-        errors=$((errors + 1))
-    fi
-
-    # Check depends_on references exist
-    local all_names
-    all_names=$(jq -r '.changes[].name' "$plan_file" | sort)
-    local all_deps
-    all_deps=$(jq -r '.changes[].depends_on[]?' "$plan_file" 2>/dev/null | sort -u)
-
-    if [[ -n "$all_deps" ]]; then
-        local missing
-        missing=$(comm -23 <(echo "$all_deps") <(echo "$all_names"))
-        if [[ -n "$missing" ]]; then
-            error "depends_on references non-existent changes: $missing"
-            errors=$((errors + 1))
-        fi
-    fi
-
-    # Check for circular dependencies
-    local sort_result
-    sort_result=$(topological_sort "$plan_file" 2>&1)
-    if echo "$sort_result" | grep -q "ERROR:circular"; then
-        error "Circular dependency detected in change graph"
-        errors=$((errors + 1))
-    fi
-
-    # Digest-mode validation: check spec_files, requirements, also_affects_reqs
-    if [[ "${INPUT_MODE:-}" == "digest" && -f "$DIGEST_DIR/requirements.json" ]]; then
-        local all_req_ids
-        all_req_ids=$(jq -r '[.requirements[]? | select(.status != "removed") | .id] | .[]' "$DIGEST_DIR/requirements.json" 2>/dev/null || true)
-
-        # Check requirements reference valid IDs
-        local plan_req_ids
-        plan_req_ids=$(jq -r '.changes[]? | (.requirements[]?, .also_affects_reqs[]?)' "$plan_file" 2>/dev/null || true)
-        if [[ -n "$plan_req_ids" ]]; then
-            while IFS= read -r rid; do
-                [[ -z "$rid" ]] && continue
-                if ! echo "$all_req_ids" | grep -qxF "$rid"; then
-                    warn "Plan references non-existent requirement: $rid"
-                    # Non-fatal warning, don't increment errors
-                fi
-            done <<< "$plan_req_ids"
-        fi
-
-        # Check also_affects_reqs have a primary owner
-        local also_affects_ids
-        also_affects_ids=$(jq -r '.changes[]? | .also_affects_reqs[]?' "$plan_file" 2>/dev/null | sort -u || true)
-        if [[ -n "$also_affects_ids" ]]; then
-            local primary_owned_ids
-            primary_owned_ids=$(jq -r '.changes[]? | .requirements[]?' "$plan_file" 2>/dev/null | sort -u || true)
-            while IFS= read -r aaid; do
-                [[ -z "$aaid" ]] && continue
-                if ! echo "$primary_owned_ids" | grep -qxF "$aaid"; then
-                    warn "also_affects_reqs '$aaid' has no primary owner in any change's requirements[]"
-                fi
-            done <<< "$also_affects_ids"
-        fi
-    fi
-
-    # Check for scope overlap between planned changes
-    check_scope_overlap "$plan_file"
-
-    return $errors
+    return $rc
 }
 
-# Detect overlapping scopes between changes in a plan (and vs active/merged changes).
+# Migrated to: planner.py check_scope_overlap()
 check_scope_overlap() {
     local plan_file="$1"
-
-    local change_count
-    change_count=$(jq '.changes | length' "$plan_file")
-    [[ "$change_count" -lt 2 ]] && return 0
-
-    local warnings=0
-
-    # Build keyword sets for each change (name → lowercase words from scope)
-    local -A scope_words
-    local names=()
-    while IFS= read -r name; do
-        names+=("$name")
-        local scope_text
-        scope_text=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .scope // ""' "$plan_file")
-        # Extract lowercase words (3+ chars), deduplicate
-        scope_words["$name"]=$(echo "$scope_text" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{3,}' | sort -u | tr '\n' ' ' || true)  # expected: scope may have no 3+ char words
-    done < <(jq -r '.changes[].name' "$plan_file")
-
-    # Pairwise jaccard comparison
-    for ((i=0; i<${#names[@]}; i++)); do
-        for ((j=i+1; j<${#names[@]}; j++)); do
-            local name_a="${names[$i]}"
-            local name_b="${names[$j]}"
-            local words_a="${scope_words[$name_a]}"
-            local words_b="${scope_words[$name_b]}"
-
-            # Skip if either has very few words
-            local count_a count_b
-            count_a=$(echo "$words_a" | wc -w)
-            count_b=$(echo "$words_b" | wc -w)
-            [[ "$count_a" -lt 3 || "$count_b" -lt 3 ]] && continue
-
-            # Compute jaccard: |intersection| / |union|
-            local intersection union
-            intersection=$(comm -12 <(echo "$words_a" | tr ' ' '\n' | sort) <(echo "$words_b" | tr ' ' '\n' | sort) | wc -l)
-            union=$(cat <(echo "$words_a" | tr ' ' '\n') <(echo "$words_b" | tr ' ' '\n') | sort -u | grep -c . || true)
-
-            if [[ "$union" -gt 0 ]]; then
-                local similarity=$((intersection * 100 / union))
-                if [[ "$similarity" -ge 40 ]]; then
-                    warn "Scope overlap detected: '$name_a' ↔ '$name_b' (${similarity}% keyword similarity)"
-                    log_warn "Scope overlap: $name_a ↔ $name_b = ${similarity}% (intersection=$intersection, union=$union)"
-                    warnings=$((warnings + 1))
-                fi
-            fi
-        done
-    done
-
-    # Also check against active worktrees (if state file exists)
-    if [[ -f "$STATE_FILENAME" ]]; then
-        local active_changes
-        active_changes=$(jq -r '.changes[]? | select(.status == "running" or .status == "dispatched" or .status == "done") | .name' "$STATE_FILENAME" 2>/dev/null || true)
-
-        if [[ -n "$active_changes" ]]; then
-            while IFS= read -r active_name; do
-                local active_scope
-                active_scope=$(jq -r --arg n "$active_name" '.changes[] | select(.name == $n) | .scope // ""' "$STATE_FILENAME")
-                local active_words
-                active_words=$(echo "$active_scope" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{3,}' | sort -u | tr '\n' ' ' || true)  # expected: scope may have no 3+ char words
-                local active_count
-                active_count=$(echo "$active_words" | wc -w)
-                [[ "$active_count" -lt 3 ]] && continue
-
-                for name in "${names[@]}"; do
-                    [[ "$name" == "$active_name" ]] && continue
-                    local words="${scope_words[$name]}"
-                    local wcount
-                    wcount=$(echo "$words" | wc -w)
-                    [[ "$wcount" -lt 3 ]] && continue
-
-                    local intersection union
-                    intersection=$(comm -12 <(echo "$words" | tr ' ' '\n' | sort) <(echo "$active_words" | tr ' ' '\n' | sort) | wc -l)
-                    union=$(cat <(echo "$words" | tr ' ' '\n') <(echo "$active_words" | tr ' ' '\n') | sort -u | grep -c . || true)
-
-                    if [[ "$union" -gt 0 ]]; then
-                        local similarity=$((intersection * 100 / union))
-                        if [[ "$similarity" -ge 40 ]]; then
-                            warn "New change '$name' overlaps with ACTIVE change '$active_name' (${similarity}% similarity)"
-                            log_warn "Overlap with active: $name ↔ $active_name = ${similarity}%"
-                            warnings=$((warnings + 1))
-                        fi
-                    fi
-                done
-            done <<< "$active_changes"
-        fi
-    fi
-
-    # Check cross-cutting file mentions if project-knowledge.yaml exists
+    local state_arg="" pk_arg=""
+    [[ -f "${STATE_FILENAME:-}" ]] && state_arg="--state-file $STATE_FILENAME"
     local pk_file
     pk_file=$(find_project_knowledge_file)
-    if [[ -n "$pk_file" ]]; then
-        local cc_paths
-        cc_paths=$(yq -r '.cross_cutting_files[]?.path // empty' "$pk_file" 2>/dev/null || true)
-        if [[ -n "$cc_paths" ]]; then
-            while IFS= read -r cc_path; do
-                [[ -z "$cc_path" ]] && continue
-                local cc_basename
-                cc_basename=$(basename "$cc_path")
-                local touching_changes=()
-                for name in "${names[@]}"; do
-                    local scope_text
-                    scope_text=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .scope // ""' "$plan_file")
-                    if echo "$scope_text" | grep -qi "$cc_basename"; then
-                        touching_changes+=("$name")
-                    fi
-                done
-                if [[ ${#touching_changes[@]} -ge 2 ]]; then
-                    warn "Cross-cutting file '$cc_path' may be touched by: ${touching_changes[*]}"
-                    log_warn "Cross-cutting hazard: $cc_path touched by ${touching_changes[*]}"
-                    warnings=$((warnings + 1))
-                fi
-            done <<< "$cc_paths"
-        fi
-    fi
+    [[ -n "$pk_file" ]] && pk_arg="--pk-file $pk_file"
 
-    if [[ $warnings -gt 0 ]]; then
-        send_notification "wt-orchestrate" "Plan has $warnings scope overlap warning(s) — review for duplicates" "normal"
+    local result
+    result=$(wt-orch-core plan check-scope-overlap --plan-file "$plan_file" $state_arg $pk_arg 2>/dev/null)
+    local warning_count
+    warning_count=$(echo "$result" | jq '.warnings | length' 2>/dev/null || echo 0)
+
+    if [[ "$warning_count" -gt 0 ]]; then
+        echo "$result" | jq -r '.warnings[] | "Scope overlap: \(.name_a) ↔ \(.name_b) (\(.similarity)%)"' | while IFS= read -r w; do
+            warn "$w"
+        done
+        send_notification "wt-orchestrate" "Plan has $warning_count scope overlap warning(s) — review for duplicates" "normal"
     fi
 }
 
@@ -379,70 +92,31 @@ find_project_knowledge_file() {
 
 # ─── Triage Gate ─────────────────────────────────────────────────────
 
-# Check triage status for ambiguities. Returns one of:
-#   no_ambiguities — zero ambiguities, skip entirely
-#   needs_triage   — ambiguities exist but no triage.md
-#   has_untriaged  — triage.md exists but has blank decisions
-#   has_fixes      — all triaged but some marked "fix" (spec needs correction)
-#   passed         — all triaged, no fixes, ready to proceed
+# Migrated to: planner.py check_triage_gate()
+# NOTE: auto-defer mode in bash also calls generate_triage_md + merge_triage_to_ambiguities
+# from digest.sh. The Python version only does the gate check; the bash caller handles
+# triage generation/merging for auto-defer separately if needed.
 check_triage_gate() {
-    if [[ ! -f "$DIGEST_DIR/ambiguities.json" ]]; then
-        echo "no_ambiguities"
-        return 0
-    fi
+    local auto_defer_flag=""
+    [[ "${TRIAGE_AUTO_DEFER:-false}" == "true" ]] && auto_defer_flag="--auto-defer"
 
-    local amb_count
-    amb_count=$(jq '.ambiguities | length' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo 0)
-    if [[ "$amb_count" -eq 0 ]]; then
-        echo "no_ambiguities"
-        return 0
-    fi
+    local result
+    result=$(wt-orch-core plan check-triage --digest-dir "${DIGEST_DIR:-}" $auto_defer_flag 2>/dev/null)
 
-    # In automated mode (orchestrator), auto-defer everything
-    if [[ "${TRIAGE_AUTO_DEFER:-false}" == "true" ]]; then
-        # Auto-defer: generate triage if missing, mark all as defer
+    # For auto-defer mode, still need to run the bash-side triage file generation
+    if [[ "${TRIAGE_AUTO_DEFER:-false}" == "true" && "$result" == "passed" ]]; then
         if [[ ! -f "$DIGEST_DIR/triage.md" ]]; then
             generate_triage_md "$DIGEST_DIR/ambiguities.json" "$DIGEST_DIR/triage.md"
         fi
-        # Build auto-defer decisions for all ambiguities
         local auto_decisions
         auto_decisions=$(jq '[.ambiguities[].id] | map({key: ., value: {decision: "defer", note: ""}}) | from_entries' "$DIGEST_DIR/ambiguities.json")
         merge_triage_to_ambiguities "$DIGEST_DIR/ambiguities.json" "$auto_decisions" "auto"
+        local amb_count
+        amb_count=$(jq '.ambiguities | length' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo 0)
         info "Auto-deferred $amb_count ambiguities (automated mode)"
-        echo "passed"
-        return 0
     fi
 
-    if [[ ! -f "$DIGEST_DIR/triage.md" ]]; then
-        echo "needs_triage"
-        return 0
-    fi
-
-    # Parse triage decisions
-    local decisions
-    decisions=$(parse_triage_md "$DIGEST_DIR/triage.md")
-
-    # Check for untriaged items (blank decision)
-    local untriaged_count
-    untriaged_count=$(jq -r --argjson decisions "$decisions" \
-        '[.ambiguities[].id] | map(. as $id | if $decisions[$id].decision == "" or ($decisions[$id] | not) then 1 else 0 end) | add // 0' \
-        "$DIGEST_DIR/ambiguities.json")
-
-    if [[ "$untriaged_count" -gt 0 ]]; then
-        echo "has_untriaged"
-        return 0
-    fi
-
-    # Check for "fix" items
-    local fix_count
-    fix_count=$(echo "$decisions" | jq '[.[] | select(.decision == "fix")] | length')
-
-    if [[ "$fix_count" -gt 0 ]]; then
-        echo "has_fixes"
-        return 0
-    fi
-
-    echo "passed"
+    echo "$result"
 }
 
 # ─── Subcommands ─────────────────────────────────────────────────────
@@ -747,220 +421,65 @@ ${orch_mem}"
         fi
     fi
 
-    # Build decomposition prompt (tri-mode: digest vs spec vs brief)
-    local input_content
+    # Migrated to: planner.py build_decomposition_context() + _build_digest_content()
+    # Compute hash (still needed for metadata)
     local hash
-
     if [[ "$INPUT_MODE" == "digest" ]]; then
-        # Digest mode: read structured digest instead of raw spec
         hash=$(jq -r '.source_hash' "$DIGEST_DIR/index.json")
-
-        # Build digest content for planner prompt
-        local digest_content=""
-
-        # Conventions first (project-wide rules)
-        if [[ -f "$DIGEST_DIR/conventions.json" ]]; then
-            local conv_content
-            conv_content=$(cat "$DIGEST_DIR/conventions.json")
-            digest_content+="## Project Conventions (apply to ALL changes)
-$conv_content
-
-"
-        fi
-
-        # Data model reference
-        if [[ -f "$DIGEST_DIR/data-definitions.md" ]]; then
-            local data_content
-            data_content=$(cat "$DIGEST_DIR/data-definitions.md")
-            digest_content+="## Data Model Reference
-$data_content
-
-"
-        fi
-
-        # Execution hints (optional guidance)
-        local exec_hints
-        exec_hints=$(jq -r '.execution_hints // {} | if . == {} then empty else tostring end' "$DIGEST_DIR/index.json" 2>/dev/null || true)
-        if [[ -n "$exec_hints" ]]; then
-            digest_content+="## Execution Hints (optional guidance from spec author)
-$exec_hints
-
-"
-        fi
-
-        # Domain summaries
-        if [[ -d "$DIGEST_DIR/domains" ]]; then
-            digest_content+="## Domain Summaries
-"
-            for domain_file in "$DIGEST_DIR/domains"/*.md; do
-                [[ -f "$domain_file" ]] || continue
-                local dname
-                dname=$(basename "$domain_file" .md)
-                digest_content+="### $dname
-$(cat "$domain_file")
-
-"
-            done
-        fi
-
-        # Requirements — compact for decompose (strip source/source_section to reduce prompt size)
-        if [[ -f "$DIGEST_DIR/requirements.json" ]]; then
-            local reqs_content
-            reqs_content=$(jq '{requirements: [.requirements[] | {id, title, domain, brief}]}' "$DIGEST_DIR/requirements.json")
-            local req_count
-            req_count=$(echo "$reqs_content" | jq '.requirements | length')
-            digest_content+="## Requirements ($req_count total)
-$reqs_content
-
-"
-        fi
-
-        # Dependencies
-        if [[ -f "$DIGEST_DIR/dependencies.json" ]]; then
-            local deps_content
-            deps_content=$(cat "$DIGEST_DIR/dependencies.json")
-            digest_content+="## Cross-references
-$deps_content
-
-"
-        fi
-
-        # Ambiguities — only include deferred items that need planner resolution
-        if [[ -f "$DIGEST_DIR/ambiguities.json" ]]; then
-            local deferred_ambs
-            deferred_ambs=$(jq '{ambiguities: [.ambiguities[] | select(.resolution == "deferred" or (has("resolution") | not))]}' "$DIGEST_DIR/ambiguities.json" 2>/dev/null || echo '{"ambiguities":[]}')
-            local deferred_count
-            deferred_count=$(echo "$deferred_ambs" | jq '.ambiguities | length')
-            if [[ "$deferred_count" -gt 0 ]]; then
-                digest_content+="## Deferred Ambiguities ($deferred_count items — you MUST resolve each)
-For each deferred ambiguity below, include a \"resolved_ambiguities\" entry in the change that addresses the affected requirements. Specify your decision and rationale.
-
-$deferred_ambs
-
-"
-            fi
-        fi
-
-        input_content="$digest_content"
     else
         hash=$(brief_hash "$INPUT_PATH")
-        input_content=$(cat "$INPUT_PATH")
     fi
 
-    # Build project knowledge context if project-knowledge.yaml exists
-    local pk_context=""
-    local pk_file
-    pk_file=$(find_project_knowledge_file)
-    if [[ -n "$pk_file" ]]; then
-        local cc_files
-        cc_files=$(yq -r '.cross_cutting_files[]? | "- \(.path): \(.description // "")"' "$pk_file" 2>/dev/null || true)
-        if [[ -n "$cc_files" ]]; then
-            pk_context="## Cross-Cutting Files (merge hazards)
-These files are shared across features. Changes touching them should be serialized via depends_on:
-$cc_files"
-        fi
+    # Build replan context object
+    local replan_json='{}'
+    if [[ -n "${_REPLAN_COMPLETED:-}" || -n "${_REPLAN_MEMORY:-}" || -n "${_REPLAN_E2E_FAILURES:-}" || -n "${_REPLAN_AUDIT_GAPS:-}" ]]; then
+        replan_json=$(jq -n \
+            --arg completed "${_REPLAN_COMPLETED:-}" \
+            --argjson cycle "${_REPLAN_CYCLE:-1}" \
+            --arg memory "${_REPLAN_MEMORY:-}" \
+            --arg e2e_failures "${_REPLAN_E2E_FAILURES:-}" \
+            --arg audit_gaps "${_REPLAN_AUDIT_GAPS:-}" \
+            '{completed: $completed, cycle: $cycle, memory: $memory, e2e_failures: $e2e_failures, audit_gaps: $audit_gaps}')
     fi
 
-    # Scan wt/requirements/ for active requirements (status: captured or planned)
-    local req_context=""
-    local req_dir
-    req_dir=$(wt_find_requirements_dir)
-    if [[ -n "$req_dir" && -d "$req_dir" ]]; then
-        local req_entries=""
-        for req_file in "$req_dir"/*.yaml "$req_dir"/*.yml; do
-            [[ -f "$req_file" ]] || continue
-            local req_status
-            req_status=$(yq -r '.status // "unknown"' "$req_file" 2>/dev/null || true)
-            if [[ "$req_status" == "captured" || "$req_status" == "planned" ]]; then
-                local req_id req_title req_desc req_priority
-                req_id=$(yq -r '.id // "?"' "$req_file" 2>/dev/null || true)
-                req_title=$(yq -r '.title // "Untitled"' "$req_file" 2>/dev/null || true)
-                req_desc=$(yq -r '.description // ""' "$req_file" 2>/dev/null | head -5 || true)
-                req_priority=$(yq -r '.priority // "unknown"' "$req_file" 2>/dev/null || true)
-                req_entries+="- **$req_id: $req_title** (priority: $req_priority, status: $req_status)
-  $req_desc
-"
-            fi
-        done
-        if [[ -n "$req_entries" ]]; then
-            req_context="## Business Requirements (captured/planned)
-Consider these requirements when decomposing — they represent business needs that may map to changes:
-$req_entries"
-        fi
+    # Pre-compute coverage info for digest mode
+    local coverage_info=""
+    if [[ "$INPUT_MODE" == "digest" && -f "$DIGEST_DIR/coverage.json" ]]; then
+        local cov_merged cov_running
+        cov_merged=$(jq -r '[.coverage | to_entries[] | select(.value.status == "merged") | .key] | join(", ")' "$DIGEST_DIR/coverage.json" 2>/dev/null || true)
+        cov_running=$(jq -r '[.coverage | to_entries[] | select(.value.status == "running") | .key] | join(", ")' "$DIGEST_DIR/coverage.json" 2>/dev/null || true)
+        [[ -n "$cov_merged" ]] && coverage_info+="Already covered (merged): $cov_merged"$'\n'
+        [[ -n "$cov_running" ]] && coverage_info+="Already covered (running): $cov_running"
     fi
+
+    # Build input JSON and render via Python (handles digest content building + prompt rendering)
+    local _input_path_for_python
+    if [[ "$INPUT_MODE" == "digest" ]]; then
+        _input_path_for_python="$DIGEST_DIR"
+    else
+        _input_path_for_python="$INPUT_PATH"
+    fi
+
+    local _plan_input_file
+    _plan_input_file=$(mktemp)
+    jq -n \
+        --arg input_path "$_input_path_for_python" \
+        --arg input_mode "$INPUT_MODE" \
+        --arg specs "$existing_specs" \
+        --arg memory "${memory_context:-}" \
+        --argjson replan_ctx "$replan_json" \
+        --arg phase_instruction "${PHASE_HINT:+The user requested phase: $PHASE_HINT. Focus decomposition on items matching this phase.}" \
+        --arg test_infra_context "$test_infra_context" \
+        --arg active_changes "$active_changes" \
+        --arg coverage_info "$coverage_info" \
+        --arg design_context "${design_context:-}" \
+        --argjson team_mode "$([ "${TEAM_MODE:-false}" = "true" ] && echo true || echo false)" \
+        '{input_path: $input_path, input_mode: $input_mode, specs: $specs, memory: $memory, replan_ctx: $replan_ctx, phase_instruction: $phase_instruction, test_infra_context: $test_infra_context, active_changes: $active_changes, coverage_info: $coverage_info, design_context: $design_context, team_mode: $team_mode}' \
+        > "$_plan_input_file"
 
     local prompt
-    if [[ "$INPUT_MODE" == "digest" ]]; then
-        # Digest-mode prompt: LLM determines what's next
-        local phase_instruction=""
-        if [[ -n "$PHASE_HINT" ]]; then
-            phase_instruction="The user requested phase: $PHASE_HINT. Focus decomposition on items matching this phase."
-        fi
-
-        # Pre-compute coverage info for digest mode
-        local coverage_info=""
-        if [[ "${INPUT_MODE:-}" == "digest" && -f "$DIGEST_DIR/coverage.json" ]]; then
-            local cov_merged cov_running
-            cov_merged=$(jq -r '[.coverage | to_entries[] | select(.value.status == "merged") | .key] | join(", ")' "$DIGEST_DIR/coverage.json" 2>/dev/null || true)
-            cov_running=$(jq -r '[.coverage | to_entries[] | select(.value.status == "running") | .key] | join(", ")' "$DIGEST_DIR/coverage.json" 2>/dev/null || true)
-            [[ -n "$cov_merged" ]] && coverage_info+="Already covered (merged): $cov_merged"$'\n'
-            [[ -n "$cov_running" ]] && coverage_info+="Already covered (running): $cov_running"
-        fi
-
-        # Build replan context object
-        local replan_json='{}'
-        if [[ -n "${_REPLAN_COMPLETED:-}" || -n "${_REPLAN_MEMORY:-}" || -n "${_REPLAN_E2E_FAILURES:-}" || -n "${_REPLAN_AUDIT_GAPS:-}" ]]; then
-            replan_json=$(jq -n \
-                --arg completed "${_REPLAN_COMPLETED:-}" \
-                --argjson cycle "${_REPLAN_CYCLE:-1}" \
-                --arg memory "${_REPLAN_MEMORY:-}" \
-                --arg e2e_failures "${_REPLAN_E2E_FAILURES:-}" \
-                --arg audit_gaps "${_REPLAN_AUDIT_GAPS:-}" \
-                '{completed: $completed, cycle: $cycle, memory: $memory, e2e_failures: $e2e_failures, audit_gaps: $audit_gaps}')
-        fi
-
-        # Build input JSON and render via Python template
-        local _plan_input_file
-        _plan_input_file=$(mktemp)
-        jq -n \
-            --arg input_content "$input_content" \
-            --arg specs "$existing_specs" \
-            --arg memory "${memory_context:-}" \
-            --argjson replan_ctx "$replan_json" \
-            --arg mode "spec" \
-            --arg phase_instruction "$phase_instruction" \
-            --arg input_mode "$INPUT_MODE" \
-            --arg test_infra_context "$test_infra_context" \
-            --arg pk_context "${pk_context:-}" \
-            --arg req_context "${req_context:-}" \
-            --arg active_changes "$active_changes" \
-            --arg coverage_info "$coverage_info" \
-            --arg design_context "${design_context:-}" \
-            --argjson team_mode "$([ "${TEAM_MODE:-false}" = "true" ] && echo true || echo false)" \
-            '{input_content: $input_content, specs: $specs, memory: $memory, replan_ctx: $replan_ctx, mode: $mode, phase_instruction: $phase_instruction, input_mode: $input_mode, test_infra_context: $test_infra_context, pk_context: $pk_context, req_context: $req_context, active_changes: $active_changes, coverage_info: $coverage_info, design_context: $design_context, team_mode: $team_mode}' \
-            > "$_plan_input_file"
-        prompt=$(wt-orch-core template planning --mode spec --input-file "$_plan_input_file")
-        rm -f "$_plan_input_file"
-    else
-        # Brief-mode prompt
-        local _plan_input_file
-        _plan_input_file=$(mktemp)
-        jq -n \
-            --arg input_content "$input_content" \
-            --arg specs "$existing_specs" \
-            --arg memory "${memory_context:-}" \
-            --arg mode "brief" \
-            --arg test_infra_context "$test_infra_context" \
-            --arg pk_context "${pk_context:-}" \
-            --arg req_context "${req_context:-}" \
-            --arg active_changes "$active_changes" \
-            --arg design_context "${design_context:-}" \
-            --argjson team_mode "$([ "${TEAM_MODE:-false}" = "true" ] && echo true || echo false)" \
-            '{input_content: $input_content, specs: $specs, memory: $memory, mode: $mode, test_infra_context: $test_infra_context, pk_context: $pk_context, req_context: $req_context, active_changes: $active_changes, design_context: $design_context, team_mode: $team_mode}' \
-            > "$_plan_input_file"
-        prompt=$(wt-orch-core template planning --mode brief --input-file "$_plan_input_file")
-        rm -f "$_plan_input_file"
-    fi
+    prompt=$(wt-orch-core plan build-context --input-file "$_plan_input_file")
+    rm -f "$_plan_input_file"
 
     info "Calling Claude for decomposition..."
     log_info "Plan decomposition started (brief hash: $hash)"
@@ -1046,50 +565,20 @@ PYEOF
         return 1
     }
 
-    # Add metadata to plan
-    local plan_version=1
-    if [[ -f "$PLAN_FILENAME" ]]; then
-        plan_version=$(( $(jq -r '.plan_version // 0' "$PLAN_FILENAME") + 1 ))
-    fi
+    # Migrated to: planner.py enrich_plan_metadata()
+    # Write raw plan JSON, then enrich via Python CLI
+    echo "$plan_json" > "$PLAN_FILENAME"
 
-    local input_content_hash=""
-    if [[ -n "$INPUT_PATH" && -f "$INPUT_PATH" ]]; then
-        input_content_hash=$(sha256sum "$INPUT_PATH" 2>/dev/null | cut -d' ' -f1)
-    fi
-    # Determine plan_phase: "iteration" if inside a replan cycle, "initial" otherwise
-    local plan_phase="initial"
-    [[ -n "${_REPLAN_CYCLE:-}" ]] && plan_phase="iteration"
+    local enrich_args=(
+        --plan-file "$PLAN_FILENAME"
+        --hash "$hash"
+        --input-mode "$INPUT_MODE"
+        --input-path "$INPUT_PATH"
+    )
+    [[ -n "${_REPLAN_CYCLE:-}" ]] && enrich_args+=(--replan-cycle "$_REPLAN_CYCLE")
+    [[ -n "${_REPLAN_CYCLE:-}" && -f "$STATE_FILENAME" ]] && enrich_args+=(--state-file "$STATE_FILENAME")
 
-    # plan_method: "agent" if dispatched via agent planning, "api" otherwise
-    local plan_method="${_PLAN_METHOD:-api}"
-
-    echo "$plan_json" | jq \
-        --argjson pv "$plan_version" \
-        --arg hash "$hash" \
-        --arg created "$(date -Iseconds)" \
-        --arg imode "$INPUT_MODE" \
-        --arg ipath "$INPUT_PATH" \
-        --arg ihash "$input_content_hash" \
-        --arg pphase "$plan_phase" \
-        --arg pmethod "$plan_method" \
-        '. + {plan_version: $pv, brief_hash: $hash, created_at: $created, input_mode: $imode, input_path: $ipath, input_hash: $ihash, plan_phase: $pphase, plan_method: $pmethod}' \
-        > "$PLAN_FILENAME"
-
-    # During replan, strip depends_on references to completed changes from prior cycles
-    if [[ -n "${_REPLAN_CYCLE:-}" && -f "$STATE_FILENAME" ]]; then
-        local completed_names_json
-        completed_names_json=$(jq -c '[.changes[]? | select(.status == "done" or .status == "merged" or .status == "merge-blocked") | .name]' "$STATE_FILENAME" 2>/dev/null || echo "[]")
-        if [[ "$completed_names_json" != "[]" ]]; then
-            local plan_names_json
-            plan_names_json=$(jq -c '[.changes[].name]' "$PLAN_FILENAME")
-            local tmp_plan
-            tmp_plan=$(mktemp)
-            jq --argjson completed "$completed_names_json" --argjson plan_names "$plan_names_json" '
-                .changes = [.changes[] | .depends_on = [(.depends_on // [])[] | select(. as $d | $plan_names | index($d) != null)]]
-            ' "$PLAN_FILENAME" > "$tmp_plan" && mv "$tmp_plan" "$PLAN_FILENAME"
-            log_info "Replan: stripped resolved depends_on references from prior cycles"
-        fi
-    fi
+    wt-orch-core plan enrich-metadata "${enrich_args[@]}"
 
     # Validate
     if ! validate_plan "$PLAN_FILENAME"; then
@@ -1277,11 +766,13 @@ auto_replan_cycle() {
     local max_parallel
     max_parallel=$(echo "$directives" | jq -r '.max_parallel')
 
-    # Collect completed change names for context (include merge-blocked — work is done, just merge issues)
-    local completed_names
-    completed_names=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged" or .status == "merge-blocked") | .name] | join(", ")' "$STATE_FILENAME")
-    local completed_roadmap
-    completed_roadmap=$(jq -r '[.changes[] | select(.status == "done" or .status == "merged" or .status == "merge-blocked") | .roadmap_item] | join("; ")' "$STATE_FILENAME")
+    # Migrated to: planner.py collect_replan_context()
+    local replan_ctx
+    replan_ctx=$(wt-orch-core plan replan-context --state-file "$STATE_FILENAME")
+
+    local completed_names completed_roadmap
+    completed_names=$(echo "$replan_ctx" | jq -r '.completed_names')
+    completed_roadmap=$(echo "$replan_ctx" | jq -r '.completed_roadmap')
 
     log_info "========== REPLAN CYCLE $cycle =========="
     info "Completed so far: $completed_names"
@@ -1302,44 +793,29 @@ auto_replan_cycle() {
     export _REPLAN_COMPLETED="$completed_roadmap"
     export _REPLAN_CYCLE="$cycle"
 
-    # Inject git log of completed changes with their file lists to prevent duplication
-    local completed_file_context=""
-    local merged_names
-    merged_names=$(jq -r '.changes[] | select(.status == "merged") | .name' "$STATE_FILENAME" 2>/dev/null || true)
-    if [[ -n "$merged_names" ]]; then
-        while IFS= read -r cname; do
-            [[ -z "$cname" ]] && continue
-            # Get files from the merge commit (branch was squash-merged to main)
-            local branch_name="$cname"
-            local files_list
-            files_list=$(git log --all --oneline --diff-filter=ACMR --name-only --format="" --grep="$cname" -- 2>/dev/null | sort -u | head -20 || true)
-            if [[ -n "$files_list" ]]; then
-                completed_file_context+="$cname: $files_list"$'\n'
-            fi
-        done <<< "$merged_names"
-        if [[ -n "$completed_file_context" ]]; then
-            _REPLAN_COMPLETED="${_REPLAN_COMPLETED}
+    # Append file context from Python replan-context output
+    local completed_file_context
+    completed_file_context=$(echo "$replan_ctx" | jq -r '.file_context')
+    if [[ -n "$completed_file_context" ]]; then
+        _REPLAN_COMPLETED="${_REPLAN_COMPLETED}
 
 Files modified by completed changes (avoid re-implementing):
 $completed_file_context"
-            export _REPLAN_COMPLETED
-        fi
+        export _REPLAN_COMPLETED
     fi
 
-    # Recall orchestrator operational history for replan context
+    # Recall orchestrator operational history for replan context (bash-side — uses wt-memory)
     local replan_memory
     replan_memory=$(orch_recall "orchestration merge conflict test failure review" 5 "phase:orchestration" || true)
     if [[ -n "$replan_memory" ]]; then
         export _REPLAN_MEMORY="${replan_memory:0:2000}"
     fi
 
-    # Inject phase-end E2E failure context if available (e2e_mode=phase_end)
+    # E2E failure context from Python replan-context output
     local phase_e2e_ctx
-    phase_e2e_ctx=$(jq -r '.phase_e2e_failure_context // ""' "$STATE_FILENAME" 2>/dev/null)
-    if [[ -n "$phase_e2e_ctx" && "$phase_e2e_ctx" != '""' && "$phase_e2e_ctx" != "null" ]]; then
-        export _REPLAN_E2E_FAILURES="Phase-end E2E tests failed on the integrated codebase. These failures indicate integration issues that must be addressed in the next phase:
-
-$phase_e2e_ctx"
+    phase_e2e_ctx=$(echo "$replan_ctx" | jq -r '.e2e_failures')
+    if [[ -n "$phase_e2e_ctx" ]]; then
+        export _REPLAN_E2E_FAILURES="$phase_e2e_ctx"
     fi
 
     # Restore input path from plan so cmd_plan's find_input() can find it
