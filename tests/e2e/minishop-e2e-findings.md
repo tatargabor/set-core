@@ -38,6 +38,13 @@
 - **Recurrence**: new (first seen in run #13 attempt 5)
 - **Impact**: admin-auth Ralph died but monitor was stuck in checkpoint for 16+ min without detecting it. Required sentinel restart to resume.
 
+#### 22. checkpoint_auto_approve directive parsed but never used
+- **Type**: framework
+- **Severity**: blocking
+- **Root cause**: `checkpoint_auto_approve` was loaded into Directives and passed via `--checkpoint-auto-approve` CLI flag, but the engine loop never checked it. Checkpoints never auto-resolved, blocking dispatch indefinitely.
+- **Fix**: [bb53d3a07] — When `checkpoint_auto_approve` is true, auto-resume from checkpoint to running after polling active changes.
+- **Recurrence**: new (first seen in run #13 attempt 6)
+
 ### Agent Quality Issues (Not Framework Bugs)
 
 #### cart-feature: IDOR not fixed after 2 review retries
