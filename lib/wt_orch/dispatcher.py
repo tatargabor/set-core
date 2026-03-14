@@ -938,6 +938,36 @@ def _setup_digest_context(
             f.write(f"{ignore_line}\n")
 
 
+def _kill_existing_wt_loop(wt_path: str, change_name: str) -> None:
+    """Kill any existing wt-loop/Claude session in a worktree before starting a new one.
+
+    Prevents overlapping sessions that cause file conflicts and data corruption.
+    """
+    loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")
+    if not os.path.isfile(loop_state_path):
+        return
+
+    try:
+        with open(loop_state_path) as f:
+            ls = json.load(f)
+        old_pid = int(ls.get("terminal_pid", 0))
+        if old_pid > 0:
+            result = check_pid(old_pid, "wt-loop")
+            if result.alive and result.match:
+                logger.warning(
+                    "dispatch guard: killing existing wt-loop PID %d in %s before new dispatch",
+                    old_pid, change_name,
+                )
+                kill_result = safe_kill(old_pid, "wt-loop", timeout=10)
+                logger.info("dispatch guard: kill result for %s: %s", change_name, kill_result.outcome)
+                time.sleep(1)  # Let tmux session die
+        # Remove stale loop-state so new wt-loop can start clean
+        os.remove(loop_state_path)
+        logger.info("dispatch guard: removed stale loop-state.json for %s", change_name)
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        logger.warning("dispatch guard: error cleaning %s: %s", change_name, e)
+
+
 def dispatch_via_wt_loop(
     state_path: str,
     change_name: str,
@@ -953,6 +983,9 @@ def dispatch_via_wt_loop(
 
     Returns True if wt-loop started successfully.
     """
+    # Guard: kill any existing wt-loop before starting a new one
+    _kill_existing_wt_loop(wt_path, change_name)
+
     task_desc = f"Implement {change_name}: {scope[:200]}"
 
     cmd = [
@@ -1131,6 +1164,9 @@ def resume_change(
 
     wt_path = change.worktree_path
     logger.info("resuming %s in %s", change_name, wt_path)
+
+    # Guard: kill any existing wt-loop before starting a new one
+    _kill_existing_wt_loop(wt_path, change_name)
 
     # Store watchdog progress baseline
     loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")

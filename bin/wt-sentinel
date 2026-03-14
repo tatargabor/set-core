@@ -66,12 +66,22 @@ sentinel_emit_event() {
     echo "{\"ts\":\"$ts\",\"epoch\":$epoch,\"type\":\"$event_type\",\"change\":\"\",\"data\":$data}" >> "$EVENTS_FILE" 2>/dev/null || true
 }
 
+# Single-instance guard: flock on sentinel lock file
+LOCK_FILE="sentinel.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    existing_pid=$(cat "$PID_FILE" 2>/dev/null || echo "unknown")
+    echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Another sentinel is already running (PID: $existing_pid) — exiting"
+    exit 1
+fi
+
 # Signal handling — don't restart after user interrupt
 interrupted=false
 child_pid=0
 
 cleanup() {
     rm -f "$PID_FILE"
+    # flock released automatically when fd 9 closes
 }
 
 handle_signal() {
