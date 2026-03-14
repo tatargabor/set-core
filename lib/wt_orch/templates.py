@@ -306,7 +306,14 @@ Model selection — suggest a model per change based on task nature:
 Manual tasks — flag changes that require human intervention:
 - Set "has_manual_tasks": true when a change involves: external API keys/secrets (Stripe, AWS, Firebase), third-party account/project creation, OAuth app registration, DNS configuration, webhook setup, or any step that cannot be automated
 - Examples: "integrate Stripe payments" (needs API key), "set up Firebase auth" (needs project creation), "configure custom domain" (needs DNS records)
-- When false or omitted, all tasks are assumed automatable"""
+- When false or omitted, all tasks are assumed automatable
+
+CRITICAL — Output size constraint:
+- Your ENTIRE JSON response MUST fit in a SINGLE message. You will NOT get a second turn.
+- MAX 15 changes. If the spec requires more, merge related changes aggressively.
+- Keep scope text concise (800-1500 chars). Do NOT pad with implementation details.
+- Keep reasoning to 2-3 sentences. Keep phase_detected to 1 sentence.
+- Do NOT split your response across messages."""
 
 _DIGEST_FIELDS = """Digest-mode additional requirements:
 - Each change MUST include "spec_files": an array of raw spec file paths (relative to spec base dir) that this change needs for implementation. These files will be copied into the worktree.
