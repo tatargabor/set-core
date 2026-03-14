@@ -188,7 +188,7 @@ run_post_phase_audit() {
 
     # Call LLM with timeout
     local raw_output rc=0
-    raw_output=$(export RUN_CLAUDE_TIMEOUT=120; echo "$audit_prompt" | run_claude --model "$(model_id "$rev_model")") || rc=$?
+    raw_output=$(export RUN_CLAUDE_TIMEOUT=300; echo "$audit_prompt" | run_claude --model "$(model_id "$rev_model")") || rc=$?
 
     local end_ts
     end_ts=$(date +%s%3N 2>/dev/null || date +%s)

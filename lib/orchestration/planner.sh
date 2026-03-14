@@ -983,7 +983,7 @@ $req_entries"
     # NOTE: No MCP tools for decompose — design context is already in the prompt text.
     # RUN_CLAUDE_NO_MCP: prevents both DESIGN_MCP_CONFIG injection AND .claude/settings.json
     # MCP registrations (e.g. Figma) from consuming turns with tool calls.
-    claude_output=$(export RUN_CLAUDE_NO_MCP=1 RUN_CLAUDE_TIMEOUT=1200; echo "$prompt" | run_claude --model "$(model_id opus)" --max-turns 1) || {
+    claude_output=$(export RUN_CLAUDE_NO_MCP=1 RUN_CLAUDE_TIMEOUT=2400; echo "$prompt" | run_claude --model "$(model_id opus)" --max-turns 1) || {
         rm -f "$_hb_marker"
         kill "$_heartbeat_pid" 2>/dev/null; wait "$_heartbeat_pid" 2>/dev/null || true
         error "Claude decomposition failed. Check your Claude CLI setup."
