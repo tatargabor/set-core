@@ -364,8 +364,8 @@ cmd_start() {
             info "Approve with 'wt-orchestrate approve' to begin dispatch."
             return 0
         fi
-        # Resume from time_limit or stopped: continue where we left off
-        if [[ -f "$STATE_FILENAME" ]] && [[ "$current_status" == "time_limit" || "$current_status" == "stopped" ]]; then
+        # Resume from time_limit, stopped, or checkpoint: continue where we left off
+        if [[ -f "$STATE_FILENAME" ]] && [[ "$current_status" == "time_limit" || "$current_status" == "stopped" || "$current_status" == "checkpoint" ]]; then
             info "Resuming from previous run (status: $current_status)"
             log_info "Resuming orchestration (was: $current_status)"
             update_state_field "status" '"running"'
