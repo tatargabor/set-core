@@ -1,17 +1,28 @@
 """Typed JSON state management for orchestration engine.
 
 Replaces complex jq pipelines with Python dataclasses. Provides atomic file
-operations and validation on read/write.
+operations and validation on read/write. Phase 2 adds mutations, locking,
+dependency graph, phase management, and crash recovery.
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
+import logging
 import os
+import subprocess
 import tempfile
+from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Generator, Optional
+
+if TYPE_CHECKING:
+    from .events import EventBus
+
+logger = logging.getLogger(__name__)
 
 
 class StateCorruptionError(Exception):
@@ -254,11 +265,16 @@ def load_state(path: str) -> OrchestratorState:
     return OrchestratorState.from_dict(data)
 
 
-def save_state(state: OrchestratorState, path: str) -> None:
-    """Serialize state to JSON and write atomically.
+def _lock_path(state_path: str) -> str:
+    """Return the advisory lock file path for a state file."""
+    return os.path.abspath(state_path) + ".lock"
 
-    Uses tempfile + rename in the same directory to ensure atomic writes.
-    Validates output is non-empty before rename.
+
+def save_state(state: OrchestratorState, path: str) -> None:
+    """Serialize state to JSON and write atomically under flock.
+
+    Migrated from: state.sh save via with_state_lock + safe_jq_update.
+    Uses fcntl.flock advisory lock + tempfile/rename for atomic writes.
     """
     data = state.to_dict()
     content = json.dumps(data, indent=2) + "\n"
@@ -267,17 +283,64 @@ def save_state(state: OrchestratorState, path: str) -> None:
         raise ValueError("save_state: serialized state is empty")
 
     dir_path = os.path.dirname(os.path.abspath(path))
-    fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
+    lock_file = _lock_path(path)
+
+    lock_fd = open(lock_file, "w")
     try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-        os.rename(tmp_path, path)
-    except Exception:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
         try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
+            with os.fdopen(fd, "w") as f:
+                f.write(content)
+            os.rename(tmp_path, path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+
+
+@contextmanager
+def locked_state(path: str) -> Generator[OrchestratorState, None, None]:
+    """Context manager: load state under flock, yield for modification, save on exit.
+
+    Usage:
+        with locked_state("orchestration-state.json") as state:
+            state.status = "stopped"
+        # state saved atomically, lock released
+
+    Migrated from: state.sh with_state_lock pattern.
+    """
+    lock_file = _lock_path(path)
+    lock_fd = open(lock_file, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        state = load_state(path)
+        yield state
+        # Save without re-acquiring lock (we already hold it)
+        data = state.to_dict()
+        content = json.dumps(data, indent=2) + "\n"
+        if len(content.strip()) < 2:
+            raise ValueError("locked_state: serialized state is empty")
+        dir_path = os.path.dirname(os.path.abspath(path))
+        fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(content)
+            os.rename(tmp_path, path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
 
 
 def init_state(plan_file: str, output_path: str) -> None:
@@ -346,3 +409,526 @@ def aggregate_tokens(state: OrchestratorState) -> TokenStats:
         stats.cache_read_total += c.cache_read_tokens
         stats.cache_create_total += c.cache_create_tokens
     return stats
+
+
+# ─── State Mutation Functions (Phase 2) ──────────────────────────────
+# Migrated from: lib/orchestration/state.sh update_state_field(),
+# update_change_field(), get_change_status(), get_changes_by_status(),
+# count_changes_by_status()
+
+
+def update_state_field(
+    path: str, field_name: str, value: Any, event_bus: EventBus | None = None
+) -> None:
+    """Update a top-level field in state (locked + validated).
+
+    Migrated from: state.sh update_state_field() L73-77
+    """
+    with locked_state(path) as state:
+        if field_name in {f.name for f in fields(OrchestratorState) if f.name != "extras"}:
+            setattr(state, field_name, value)
+        else:
+            state.extras[field_name] = value
+
+
+def update_change_field(
+    path: str,
+    change_name: str,
+    field_name: str,
+    value: Any,
+    event_bus: EventBus | None = None,
+    hook_scripts: dict[str, str] | None = None,
+) -> None:
+    """Update a change's field in state (locked + validated).
+
+    Automatically emits STATE_CHANGE event when status transitions,
+    TOKENS event on significant deltas (>10K), and triggers on_fail hook.
+
+    Migrated from: state.sh update_change_field() L80-131
+    """
+    with locked_state(path) as state:
+        change = _find_change(state, change_name)
+        if change is None:
+            raise ValueError(f"Change not found: {change_name}")
+
+        old_status = change.status if field_name == "status" else None
+        old_tokens = change.tokens_used if field_name == "tokens_used" else None
+
+        # Set the field
+        known = {f.name for f in fields(Change) if f.name != "extras"}
+        if field_name in known:
+            setattr(change, field_name, value)
+        else:
+            change.extras[field_name] = value
+
+        # Emit STATE_CHANGE event on status transitions
+        if field_name == "status" and event_bus and old_status is not None:
+            new_status = value
+            if old_status != new_status:
+                event_bus.emit(
+                    "STATE_CHANGE",
+                    change=change_name,
+                    data={"from": old_status, "to": new_status},
+                )
+                # Trigger on_fail hook when transitioning to failed
+                if new_status == "failed" and hook_scripts:
+                    hook_script = hook_scripts.get("on_fail")
+                    if hook_script:
+                        run_hook(
+                            "on_fail",
+                            hook_script,
+                            change_name,
+                            new_status,
+                            change.worktree_path or "",
+                            event_bus=event_bus,
+                        )
+
+        # Emit TOKENS event on significant token updates
+        if field_name == "tokens_used" and event_bus and old_tokens is not None:
+            delta = value - old_tokens
+            if abs(delta) > 10000:
+                event_bus.emit(
+                    "TOKENS",
+                    change=change_name,
+                    data={"delta": delta, "total": value},
+                )
+
+
+def get_change_status(state: OrchestratorState, name: str) -> str:
+    """Get a change's status. Returns empty string if not found.
+
+    Migrated from: state.sh get_change_status() L134-142
+    """
+    change = _find_change(state, name)
+    return change.status if change else ""
+
+
+def get_changes_by_status(state: OrchestratorState, status: str) -> list[str]:
+    """Get all change names with a specific status.
+
+    Migrated from: state.sh get_changes_by_status() L145-153
+    """
+    return [c.name for c in state.changes if c.status == status]
+
+
+def count_changes_by_status(state: OrchestratorState, status: str) -> int:
+    """Count changes with a specific status.
+
+    Migrated from: state.sh count_changes_by_status() L156-164
+    """
+    return sum(1 for c in state.changes if c.status == status)
+
+
+def _find_change(state: OrchestratorState, name: str) -> Change | None:
+    """Find a change by name."""
+    for c in state.changes:
+        if c.name == name:
+            return c
+    return None
+
+
+# ─── Dependency Graph Operations (Phase 2) ───────────────────────────
+# Migrated from: lib/orchestration/state.sh deps_satisfied(), deps_failed(),
+# cascade_failed_deps(), topological_sort()
+
+
+def deps_satisfied(state: OrchestratorState, change_name: str) -> bool:
+    """Check if all depends_on for a change are merged or skipped.
+
+    Migrated from: state.sh deps_satisfied() L167-184
+    """
+    change = _find_change(state, change_name)
+    if not change or not change.depends_on:
+        return True
+
+    for dep_name in change.depends_on:
+        dep = _find_change(state, dep_name)
+        if dep is None or dep.status not in ("merged", "skipped"):
+            return False
+    return True
+
+
+def deps_failed(state: OrchestratorState, change_name: str) -> bool:
+    """Check if any depends_on for a change has failed (terminal state).
+
+    Note: merge-blocked is NOT a failure — the work is done, only merge is stuck.
+
+    Migrated from: state.sh deps_failed() L186-207
+    """
+    change = _find_change(state, change_name)
+    if not change or not change.depends_on:
+        return False
+
+    for dep_name in change.depends_on:
+        dep = _find_change(state, dep_name)
+        if dep and dep.status == "failed":
+            return True
+    return False
+
+
+def cascade_failed_deps(
+    state: OrchestratorState, event_bus: EventBus | None = None
+) -> int:
+    """Mark pending changes as failed if their dependencies have failed.
+
+    Prevents deadlock where failed deps leave children stuck in pending forever.
+
+    Migrated from: state.sh cascade_failed_deps() L210-236
+
+    Returns:
+        Number of changes cascaded to failed.
+    """
+    cascaded = 0
+    for change in state.changes:
+        if change.status != "pending":
+            continue
+        if not deps_failed(state, change.name):
+            continue
+
+        # Find the specific failed dependency
+        failed_dep = ""
+        for dep_name in change.depends_on:
+            dep = _find_change(state, dep_name)
+            if dep and dep.status == "failed":
+                failed_dep = dep_name
+                break
+
+        if event_bus:
+            event_bus.emit(
+                "CASCADE_FAILED",
+                change=change.name,
+                data={"reason": "dependency_failed", "failed_dep": failed_dep},
+            )
+
+        change.status = "failed"
+        change.extras["failure_reason"] = f"dependency {failed_dep} failed"
+        cascaded += 1
+
+    return cascaded
+
+
+class CircularDependencyError(Exception):
+    """Raised when topological sort detects a cycle."""
+
+
+def topological_sort(changes: list[Change] | list[dict]) -> list[str]:
+    """Return change names in dependency-respecting execution order.
+
+    Migrated from: state.sh topological_sort() L286-324
+
+    Args:
+        changes: List of Change dataclasses or dicts with 'name' and 'depends_on'.
+
+    Returns:
+        List of change names in topological order.
+
+    Raises:
+        CircularDependencyError: If a dependency cycle is detected.
+    """
+    # Normalize input
+    if changes and isinstance(changes[0], dict):
+        graph = {c["name"]: c.get("depends_on", []) for c in changes}
+    else:
+        graph = {c.name: list(c.depends_on) for c in changes}
+
+    # Build adjacency: if B depends on A, then A -> B
+    adj: dict[str, list[str]] = {name: [] for name in graph}
+    in_deg: dict[str, int] = {name: 0 for name in graph}
+    for name, deps in graph.items():
+        for d in deps:
+            if d in adj:
+                adj[d].append(name)
+                in_deg[name] += 1
+
+    queue = deque(sorted(n for n in graph if in_deg[n] == 0))
+    result: list[str] = []
+    while queue:
+        node = queue.popleft()
+        result.append(node)
+        for neighbor in sorted(adj[node]):
+            in_deg[neighbor] -= 1
+            if in_deg[neighbor] == 0:
+                queue.append(neighbor)
+
+    if len(result) != len(graph):
+        raise CircularDependencyError(
+            f"Circular dependency detected among: "
+            f"{sorted(set(graph) - set(result))}"
+        )
+
+    return result
+
+
+# ─── Phase Management (Phase 2) ─────────────────────────────────────
+# Migrated from: lib/orchestration/state.sh _init_phase_state(),
+# apply_phase_overrides(), all_phase_changes_terminal(), advance_phase()
+
+_TERMINAL_STATUSES = frozenset({"merged", "failed", "skipped", "done"})
+
+
+def init_phase_state(state: OrchestratorState) -> None:
+    """Compute unique phases from changes and create phase tracking state.
+
+    Migrated from: state.sh _init_phase_state() L42-70
+    """
+    phases = sorted({c.phase for c in state.changes})
+    if len(phases) <= 1:
+        # No phase management needed for single phase
+        return
+
+    phase_dict = {}
+    for p in phases:
+        phase_dict[str(p)] = {
+            "status": "running" if p == phases[0] else "pending",
+            "tag": None,
+            "server_port": None,
+            "server_pid": None,
+            "completed_at": None,
+        }
+
+    state.extras["current_phase"] = phases[0]
+    state.extras["phases"] = phase_dict
+
+
+def apply_phase_overrides(
+    state: OrchestratorState, overrides: dict[str, int]
+) -> None:
+    """Apply phase overrides from directives and recalculate phase state.
+
+    Migrated from: state.sh apply_phase_overrides() L22-38
+
+    Args:
+        overrides: Dict of {change_name: phase_number}.
+    """
+    if not overrides:
+        return
+
+    for change in state.changes:
+        if change.name in overrides:
+            change.phase = overrides[change.name]
+
+    # Recalculate phases
+    init_phase_state(state)
+
+
+def all_phase_changes_terminal(state: OrchestratorState, phase: int) -> bool:
+    """Check if all changes in the current phase are terminal.
+
+    Migrated from: state.sh all_phase_changes_terminal() L241-250
+    """
+    phase_changes = [c for c in state.changes if c.phase == phase]
+    if not phase_changes:
+        return True
+    return all(c.status in _TERMINAL_STATUSES for c in phase_changes)
+
+
+def advance_phase(
+    state: OrchestratorState, event_bus: EventBus | None = None
+) -> bool:
+    """Advance to the next phase. Returns True if advanced, False if no more phases.
+
+    Migrated from: state.sh advance_phase() L253-281
+    """
+    phases = state.extras.get("phases")
+    if not phases:
+        return False
+
+    current = state.extras.get("current_phase", 1)
+
+    # Mark current phase as completed
+    cp_key = str(current)
+    if cp_key in phases:
+        phases[cp_key]["status"] = "completed"
+        phases[cp_key]["completed_at"] = datetime.now().astimezone().isoformat()
+
+    # Find next phase
+    phase_nums = sorted(int(k) for k in phases.keys())
+    next_phases = [p for p in phase_nums if p > current]
+
+    if not next_phases:
+        return False
+
+    next_phase = next_phases[0]
+    state.extras["current_phase"] = next_phase
+    phases[str(next_phase)]["status"] = "running"
+
+    if event_bus:
+        event_bus.emit(
+            "PHASE_ADVANCED",
+            data={"from": current, "to": next_phase},
+        )
+
+    return True
+
+
+# ─── Crash Recovery (Phase 2) ───────────────────────────────────────
+# Migrated from: lib/orchestration/state.sh reconstruct_state_from_events()
+
+
+def reconstruct_state_from_events(
+    state_path: str,
+    events_path: str | None = None,
+    event_bus: EventBus | None = None,
+) -> bool:
+    """Rebuild state from events JSONL by replaying state transitions.
+
+    Preserves plan-origin fields (scope, complexity, depends_on) from the
+    existing state file and only updates runtime fields (status, tokens).
+
+    Migrated from: state.sh reconstruct_state_from_events() L867-996
+
+    Returns:
+        True if reconstruction succeeded, False if not possible.
+    """
+    # Derive events file from state file if not provided
+    if events_path is None:
+        base = state_path.replace("-state.json", "").replace(".json", "")
+        events_path = base + "-events.jsonl"
+
+    if not os.path.isfile(events_path):
+        logger.warning("Cannot reconstruct state: no events file at %s", events_path)
+        return False
+
+    if not os.path.isfile(state_path):
+        logger.warning("Cannot reconstruct state: no state file at %s", state_path)
+        return False
+
+    # Read events
+    try:
+        with open(events_path, "r") as f:
+            lines = f.readlines()
+    except OSError as e:
+        logger.warning("Cannot read events file: %s", e)
+        return False
+
+    events = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    if not events:
+        logger.warning("Cannot reconstruct state: events file is empty")
+        return False
+
+    event_count = len(events)
+    logger.info("Reconstructing state from %d events in %s", event_count, events_path)
+
+    # Load existing state (preserves plan structure)
+    state = load_state(state_path)
+
+    # 1. Replay STATE_CHANGE events to get final per-change status
+    final_statuses: dict[str, str] = {}
+    for e in events:
+        if e.get("type") == "STATE_CHANGE" and e.get("change"):
+            data = e.get("data", {})
+            if "to" in data:
+                final_statuses[e["change"]] = data["to"]
+
+    for change in state.changes:
+        if change.name in final_statuses:
+            change.status = final_statuses[change.name]
+
+    # 2. Replay TOKENS events to get latest token counts
+    final_tokens: dict[str, int] = {}
+    for e in events:
+        if e.get("type") == "TOKENS" and e.get("change"):
+            data = e.get("data", {})
+            if "total" in data:
+                final_tokens[e["change"]] = data["total"]
+
+    for change in state.changes:
+        if change.name in final_tokens:
+            change.tokens_used = final_tokens[change.name]
+
+    # 3. Running changes become stalled (no live process)
+    for change in state.changes:
+        if change.status in ("running", "stalled", "stuck"):
+            change.status = "stalled"
+
+    # 4. Derive overall orchestration status
+    all_done = all(
+        c.status in ("done", "merged", "completed", "archived", "skipped")
+        for c in state.changes
+    )
+    state.status = "done" if all_done else "stopped"
+
+    # 5. Save reconstructed state
+    save_state(state, state_path)
+
+    if event_bus:
+        event_bus.emit(
+            "STATE_RECONSTRUCTED",
+            data={"event_count": event_count, "status": state.status},
+        )
+
+    return True
+
+
+# ─── Hook Runner (Phase 2) ──────────────────────────────────────────
+# Migrated from: lib/orchestration/state.sh run_hook() L331-361
+
+
+def run_hook(
+    hook_name: str,
+    hook_script: str | None,
+    change_name: str,
+    status: str = "",
+    wt_path: str = "",
+    event_bus: EventBus | None = None,
+) -> bool:
+    """Execute a lifecycle hook script.
+
+    Returns True if hook passes (exit 0) or is not configured,
+    False if hook blocks (non-zero exit).
+
+    Migrated from: state.sh run_hook() L331-361
+    """
+    if not hook_script:
+        return True
+
+    if not os.path.isfile(hook_script):
+        logger.warning("Hook %s: script not found: %s", hook_name, hook_script)
+        return True
+
+    if not os.access(hook_script, os.X_OK):
+        logger.warning("Hook %s: script not executable: %s", hook_name, hook_script)
+        return True
+
+    logger.info("Running hook %s for %s: %s", hook_name, change_name, hook_script)
+    try:
+        result = subprocess.run(
+            [hook_script, change_name, status, wt_path],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            logger.info("Hook %s passed for %s", hook_name, change_name)
+            return True
+        else:
+            reason = result.stderr.strip() or "unknown"
+            logger.error("Hook %s blocked %s: %s", hook_name, change_name, reason)
+            if event_bus:
+                event_bus.emit(
+                    "HOOK_BLOCKED",
+                    change=change_name,
+                    data={"hook": hook_name, "reason": reason},
+                )
+            return False
+    except subprocess.TimeoutExpired:
+        logger.error("Hook %s timed out for %s", hook_name, change_name)
+        if event_bus:
+            event_bus.emit(
+                "HOOK_BLOCKED",
+                change=change_name,
+                data={"hook": hook_name, "reason": "timeout"},
+            )
+        return False
+    except OSError as e:
+        logger.error("Hook %s execution error for %s: %s", hook_name, change_name, e)
+        return True

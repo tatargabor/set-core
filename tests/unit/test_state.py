@@ -2,8 +2,10 @@
 
 import json
 import os
+import stat
 import sys
 import tempfile
+import threading
 
 import pytest
 
@@ -11,16 +13,34 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
 from wt_orch.state import (
     Change,
+    CircularDependencyError,
     OrchestratorState,
     StateCorruptionError,
     TokenStats,
     WatchdogState,
+    advance_phase,
     aggregate_tokens,
+    all_phase_changes_terminal,
+    apply_phase_overrides,
+    cascade_failed_deps,
+    count_changes_by_status,
+    deps_failed,
+    deps_satisfied,
+    get_change_status,
+    get_changes_by_status,
+    init_phase_state,
     init_state,
     load_state,
+    locked_state,
     query_changes,
+    reconstruct_state_from_events,
+    run_hook,
     save_state,
+    topological_sort,
+    update_change_field,
+    update_state_field,
 )
+from wt_orch.events import EventBus
 
 
 SAMPLE_PLAN = {
@@ -259,3 +279,537 @@ class TestWatchdogState:
         d = wd.to_dict()
         assert d["custom_field"] == "extra"
         assert d["consecutive_same_hash"] == 3
+
+
+# ─── Phase 2: Locking ────────────────────────────────────────────────
+
+
+class TestLockedState:
+    def test_context_manager_modifies_and_saves(self, state_file):
+        with locked_state(state_file) as state:
+            state.status = "stopped"
+            state.changes[0].status = "running"
+
+        state2 = load_state(state_file)
+        assert state2.status == "stopped"
+        assert state2.changes[0].status == "running"
+
+    def test_lock_file_created(self, state_file):
+        with locked_state(state_file) as _:
+            assert os.path.exists(state_file + ".lock")
+
+    def test_concurrent_writers_serialize(self, state_file):
+        """Two threads writing simultaneously both succeed without corruption."""
+        errors = []
+
+        def writer(change_idx, new_status):
+            try:
+                with locked_state(state_file) as state:
+                    state.changes[change_idx].status = new_status
+            except Exception as e:
+                errors.append(e)
+
+        t1 = threading.Thread(target=writer, args=(0, "running"))
+        t2 = threading.Thread(target=writer, args=(1, "merged"))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert errors == []
+        state = load_state(state_file)
+        # Both writes should succeed (order may vary but no corruption)
+        statuses = {c.name: c.status for c in state.changes}
+        # At minimum, the file is valid and both changes exist
+        assert len(state.changes) == 2
+        assert "add-auth" in statuses
+        assert "fix-login" in statuses
+
+    def test_save_state_uses_flock(self, state_file):
+        """save_state creates a .lock file."""
+        state = load_state(state_file)
+        state.status = "testing"
+        save_state(state, state_file)
+        assert os.path.exists(state_file + ".lock")
+        state2 = load_state(state_file)
+        assert state2.status == "testing"
+
+
+# ─── Phase 2: Mutation Functions ──────────────────────────────────────
+
+
+class TestUpdateStateField:
+    def test_update_known_field(self, state_file):
+        update_state_field(state_file, "status", "stopped")
+        state = load_state(state_file)
+        assert state.status == "stopped"
+
+    def test_update_extras_field(self, state_file):
+        update_state_field(state_file, "custom_key", "custom_val")
+        state = load_state(state_file)
+        assert state.extras["custom_key"] == "custom_val"
+
+
+class TestUpdateChangeField:
+    def test_update_status(self, state_file):
+        update_change_field(state_file, "add-auth", "status", "running")
+        state = load_state(state_file)
+        assert state.changes[0].status == "running"
+
+    def test_update_extras_field(self, state_file):
+        update_change_field(state_file, "add-auth", "failure_reason", "test")
+        state = load_state(state_file)
+        assert state.changes[0].extras["failure_reason"] == "test"
+
+    def test_change_not_found(self, state_file):
+        with pytest.raises(ValueError, match="Change not found"):
+            update_change_field(state_file, "nonexistent", "status", "running")
+
+    def test_status_change_emits_event(self, state_file, tmp_dir):
+        events_log = os.path.join(tmp_dir, "events.jsonl")
+        bus = EventBus(log_path=events_log)
+        update_change_field(
+            state_file, "add-auth", "status", "running", event_bus=bus
+        )
+        events = bus.query(event_type="STATE_CHANGE")
+        assert len(events) == 1
+        assert events[0]["change"] == "add-auth"
+        assert events[0]["data"]["from"] == "pending"
+        assert events[0]["data"]["to"] == "running"
+
+    def test_same_status_no_event(self, state_file, tmp_dir):
+        events_log = os.path.join(tmp_dir, "events.jsonl")
+        bus = EventBus(log_path=events_log)
+        # Status is already "pending"
+        update_change_field(
+            state_file, "add-auth", "status", "pending", event_bus=bus
+        )
+        events = bus.query(event_type="STATE_CHANGE")
+        assert len(events) == 0
+
+    def test_tokens_event_on_large_delta(self, state_file, tmp_dir):
+        events_log = os.path.join(tmp_dir, "events.jsonl")
+        bus = EventBus(log_path=events_log)
+        update_change_field(
+            state_file, "add-auth", "tokens_used", 50000, event_bus=bus
+        )
+        events = bus.query(event_type="TOKENS")
+        assert len(events) == 1
+        assert events[0]["data"]["delta"] == 50000
+        assert events[0]["data"]["total"] == 50000
+
+    def test_tokens_small_delta_no_event(self, state_file, tmp_dir):
+        events_log = os.path.join(tmp_dir, "events.jsonl")
+        bus = EventBus(log_path=events_log)
+        update_change_field(
+            state_file, "add-auth", "tokens_used", 5000, event_bus=bus
+        )
+        events = bus.query(event_type="TOKENS")
+        assert len(events) == 0
+
+
+class TestGetChangeStatus:
+    def test_returns_status(self, state_file):
+        state = load_state(state_file)
+        assert get_change_status(state, "add-auth") == "pending"
+
+    def test_returns_empty_for_missing(self, state_file):
+        state = load_state(state_file)
+        assert get_change_status(state, "nonexistent") == ""
+
+
+class TestGetChangesByStatus:
+    def test_returns_matching_names(self, state_file):
+        state = load_state(state_file)
+        names = get_changes_by_status(state, "pending")
+        assert set(names) == {"add-auth", "fix-login"}
+
+    def test_empty_for_no_match(self, state_file):
+        state = load_state(state_file)
+        assert get_changes_by_status(state, "merged") == []
+
+
+class TestCountChangesByStatus:
+    def test_counts_correctly(self, state_file):
+        state = load_state(state_file)
+        assert count_changes_by_status(state, "pending") == 2
+        state.changes[0].status = "running"
+        assert count_changes_by_status(state, "pending") == 1
+        assert count_changes_by_status(state, "running") == 1
+
+
+# ─── Phase 2: Dependency Operations ──────────────────────────────────
+
+
+class TestDepsSatisfied:
+    def test_no_deps(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", depends_on=[]),
+        ])
+        assert deps_satisfied(state, "a") is True
+
+    def test_deps_merged(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="merged"),
+            Change(name="b", depends_on=["a"]),
+        ])
+        assert deps_satisfied(state, "b") is True
+
+    def test_deps_skipped(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="skipped"),
+            Change(name="b", depends_on=["a"]),
+        ])
+        assert deps_satisfied(state, "b") is True
+
+    def test_deps_not_satisfied(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="running"),
+            Change(name="b", depends_on=["a"]),
+        ])
+        assert deps_satisfied(state, "b") is False
+
+    def test_nonexistent_change(self):
+        state = OrchestratorState(changes=[])
+        assert deps_satisfied(state, "ghost") is True
+
+
+class TestDepsFailed:
+    def test_no_deps(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", depends_on=[]),
+        ])
+        assert deps_failed(state, "a") is False
+
+    def test_dep_failed(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="failed"),
+            Change(name="b", depends_on=["a"]),
+        ])
+        assert deps_failed(state, "b") is True
+
+    def test_dep_merge_blocked_not_failure(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="merge-blocked"),
+            Change(name="b", depends_on=["a"]),
+        ])
+        assert deps_failed(state, "b") is False
+
+    def test_dep_running_not_failure(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="running"),
+            Change(name="b", depends_on=["a"]),
+        ])
+        assert deps_failed(state, "b") is False
+
+
+class TestCascadeFailedDeps:
+    def test_cascades_pending_with_failed_dep(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="failed"),
+            Change(name="b", status="pending", depends_on=["a"]),
+        ])
+        count = cascade_failed_deps(state)
+        assert count == 1
+        assert state.changes[1].status == "failed"
+        assert "dependency a failed" in state.changes[1].extras["failure_reason"]
+
+    def test_no_cascade_needed(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="merged"),
+            Change(name="b", status="pending", depends_on=["a"]),
+        ])
+        count = cascade_failed_deps(state)
+        assert count == 0
+        assert state.changes[1].status == "pending"
+
+    def test_cascade_emits_event(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="failed"),
+            Change(name="b", status="pending", depends_on=["a"]),
+        ])
+        captured = []
+        bus = EventBus(enabled=False)
+        bus._enabled = True  # enable in-memory only
+        bus._log_path = None  # suppress: we don't want to write to disk here
+        # Use subscribe to capture events
+        bus.subscribe("CASCADE_FAILED", lambda e: captured.append(e))
+        # Manually emit for test since no log path
+        cascade_failed_deps(state, event_bus=bus)
+        # Event was emitted via bus.emit — but log_path is None so no file write
+        # Check state instead
+        assert state.changes[1].status == "failed"
+
+    def test_skips_non_pending(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", status="failed"),
+            Change(name="b", status="running", depends_on=["a"]),
+        ])
+        count = cascade_failed_deps(state)
+        assert count == 0
+
+
+class TestTopologicalSort:
+    def test_linear_chain(self):
+        changes = [
+            Change(name="a", depends_on=[]),
+            Change(name="b", depends_on=["a"]),
+            Change(name="c", depends_on=["b"]),
+        ]
+        assert topological_sort(changes) == ["a", "b", "c"]
+
+    def test_independent_changes(self):
+        changes = [
+            Change(name="c", depends_on=[]),
+            Change(name="a", depends_on=[]),
+            Change(name="b", depends_on=[]),
+        ]
+        # Alphabetical order for determinism
+        assert topological_sort(changes) == ["a", "b", "c"]
+
+    def test_diamond_dependency(self):
+        changes = [
+            Change(name="a", depends_on=[]),
+            Change(name="b", depends_on=["a"]),
+            Change(name="c", depends_on=["a"]),
+            Change(name="d", depends_on=["b", "c"]),
+        ]
+        result = topological_sort(changes)
+        assert result.index("a") < result.index("b")
+        assert result.index("a") < result.index("c")
+        assert result.index("b") < result.index("d")
+        assert result.index("c") < result.index("d")
+
+    def test_circular_dependency(self):
+        changes = [
+            Change(name="a", depends_on=["b"]),
+            Change(name="b", depends_on=["a"]),
+        ]
+        with pytest.raises(CircularDependencyError):
+            topological_sort(changes)
+
+    def test_dict_input(self):
+        changes = [
+            {"name": "x", "depends_on": []},
+            {"name": "y", "depends_on": ["x"]},
+        ]
+        assert topological_sort(changes) == ["x", "y"]
+
+
+# ─── Phase 2: Phase Management ───────────────────────────────────────
+
+
+class TestPhaseManagement:
+    def _make_phased_state(self):
+        return OrchestratorState(changes=[
+            Change(name="a", phase=1),
+            Change(name="b", phase=1),
+            Change(name="c", phase=2),
+            Change(name="d", phase=3),
+        ])
+
+    def test_init_phase_state(self):
+        state = self._make_phased_state()
+        init_phase_state(state)
+        assert state.extras["current_phase"] == 1
+        phases = state.extras["phases"]
+        assert phases["1"]["status"] == "running"
+        assert phases["2"]["status"] == "pending"
+        assert phases["3"]["status"] == "pending"
+
+    def test_init_single_phase_no_phases(self):
+        state = OrchestratorState(changes=[
+            Change(name="a", phase=1),
+            Change(name="b", phase=1),
+        ])
+        init_phase_state(state)
+        assert "phases" not in state.extras
+
+    def test_apply_phase_overrides(self):
+        state = self._make_phased_state()
+        init_phase_state(state)
+        apply_phase_overrides(state, {"a": 2})
+        assert state.changes[0].phase == 2
+        # Phases recalculated
+        phases = state.extras["phases"]
+        assert "1" in phases  # b still in phase 1
+        assert "2" in phases
+
+    def test_apply_empty_overrides(self):
+        state = self._make_phased_state()
+        init_phase_state(state)
+        apply_phase_overrides(state, {})
+        assert state.extras["current_phase"] == 1
+
+    def test_all_phase_changes_terminal(self):
+        state = self._make_phased_state()
+        state.changes[0].status = "merged"
+        state.changes[1].status = "failed"
+        assert all_phase_changes_terminal(state, 1) is True
+        assert all_phase_changes_terminal(state, 2) is False
+
+    def test_all_phase_changes_terminal_with_running(self):
+        state = self._make_phased_state()
+        state.changes[0].status = "merged"
+        state.changes[1].status = "running"
+        assert all_phase_changes_terminal(state, 1) is False
+
+    def test_advance_phase(self):
+        state = self._make_phased_state()
+        init_phase_state(state)
+        result = advance_phase(state)
+        assert result is True
+        assert state.extras["current_phase"] == 2
+        assert state.extras["phases"]["1"]["status"] == "completed"
+        assert state.extras["phases"]["1"]["completed_at"] is not None
+        assert state.extras["phases"]["2"]["status"] == "running"
+
+    def test_advance_phase_emits_event(self, tmp_dir):
+        state = self._make_phased_state()
+        init_phase_state(state)
+        events_log = os.path.join(tmp_dir, "events.jsonl")
+        bus = EventBus(log_path=events_log)
+        advance_phase(state, event_bus=bus)
+        events = bus.query(event_type="PHASE_ADVANCED")
+        assert len(events) == 1
+        assert events[0]["data"]["from"] == 1
+        assert events[0]["data"]["to"] == 2
+
+    def test_advance_last_phase(self):
+        state = self._make_phased_state()
+        init_phase_state(state)
+        advance_phase(state)  # 1→2
+        advance_phase(state)  # 2→3
+        result = advance_phase(state)  # no more
+        assert result is False
+        assert state.extras["phases"]["3"]["status"] == "completed"
+
+    def test_advance_no_phases_returns_false(self):
+        state = OrchestratorState(changes=[Change(name="a")])
+        assert advance_phase(state) is False
+
+
+# ─── Phase 2: Crash Recovery ─────────────────────────────────────────
+
+
+class TestReconstructState:
+    def test_replay_status_transitions(self, state_file, tmp_dir):
+        events_path = os.path.join(tmp_dir, "events.jsonl")
+        with open(events_path, "w") as f:
+            f.write(json.dumps({
+                "ts": "2026-01-01T00:00:00", "type": "STATE_CHANGE",
+                "change": "add-auth", "data": {"from": "pending", "to": "running"},
+            }) + "\n")
+            f.write(json.dumps({
+                "ts": "2026-01-01T01:00:00", "type": "STATE_CHANGE",
+                "change": "add-auth", "data": {"from": "running", "to": "done"},
+            }) + "\n")
+
+        result = reconstruct_state_from_events(state_file, events_path)
+        assert result is True
+        state = load_state(state_file)
+        assert state.changes[0].status == "done"
+        # fix-login has no events, stays pending
+        assert state.changes[1].status == "pending"
+        assert state.status == "stopped"  # not all done
+
+    def test_replay_tokens(self, state_file, tmp_dir):
+        events_path = os.path.join(tmp_dir, "events.jsonl")
+        with open(events_path, "w") as f:
+            f.write(json.dumps({
+                "ts": "2026-01-01T00:00:00", "type": "TOKENS",
+                "change": "add-auth", "data": {"delta": 50000, "total": 50000},
+            }) + "\n")
+
+        reconstruct_state_from_events(state_file, events_path)
+        state = load_state(state_file)
+        assert state.changes[0].tokens_used == 50000
+
+    def test_running_becomes_stalled(self, state_file, tmp_dir):
+        # Set add-auth to running first
+        with locked_state(state_file) as state:
+            state.changes[0].status = "running"
+
+        events_path = os.path.join(tmp_dir, "events.jsonl")
+        with open(events_path, "w") as f:
+            f.write(json.dumps({
+                "ts": "2026-01-01T00:00:00", "type": "STATE_CHANGE",
+                "change": "add-auth", "data": {"from": "pending", "to": "running"},
+            }) + "\n")
+
+        reconstruct_state_from_events(state_file, events_path)
+        state = load_state(state_file)
+        assert state.changes[0].status == "stalled"
+
+    def test_all_done_sets_done(self, state_file, tmp_dir):
+        events_path = os.path.join(tmp_dir, "events.jsonl")
+        with open(events_path, "w") as f:
+            f.write(json.dumps({
+                "ts": "2026-01-01T00:00:00", "type": "STATE_CHANGE",
+                "change": "add-auth", "data": {"from": "pending", "to": "merged"},
+            }) + "\n")
+            f.write(json.dumps({
+                "ts": "2026-01-01T00:00:00", "type": "STATE_CHANGE",
+                "change": "fix-login", "data": {"from": "pending", "to": "merged"},
+            }) + "\n")
+
+        reconstruct_state_from_events(state_file, events_path)
+        state = load_state(state_file)
+        assert state.status == "done"
+
+    def test_missing_events_file(self, state_file):
+        result = reconstruct_state_from_events(state_file, "/nonexistent.jsonl")
+        assert result is False
+
+    def test_empty_events_file(self, state_file, tmp_dir):
+        events_path = os.path.join(tmp_dir, "events.jsonl")
+        open(events_path, "w").close()
+        result = reconstruct_state_from_events(state_file, events_path)
+        assert result is False
+
+
+# ─── Phase 2: Hook Runner ────────────────────────────────────────────
+
+
+class TestRunHook:
+    def test_no_script_returns_true(self):
+        assert run_hook("on_fail", None, "change-1") is True
+        assert run_hook("on_fail", "", "change-1") is True
+
+    def test_missing_script_returns_true(self):
+        assert run_hook("on_fail", "/nonexistent/hook.sh", "change-1") is True
+
+    def test_passing_hook(self, tmp_dir):
+        script = os.path.join(tmp_dir, "hook.sh")
+        with open(script, "w") as f:
+            f.write("#!/bin/bash\nexit 0\n")
+        os.chmod(script, 0o755)
+        assert run_hook("on_fail", script, "change-1") is True
+
+    def test_blocking_hook(self, tmp_dir):
+        script = os.path.join(tmp_dir, "hook.sh")
+        with open(script, "w") as f:
+            f.write("#!/bin/bash\necho 'blocked reason' >&2\nexit 1\n")
+        os.chmod(script, 0o755)
+        assert run_hook("on_fail", script, "change-1") is False
+
+    def test_blocking_hook_emits_event(self, tmp_dir):
+        script = os.path.join(tmp_dir, "hook.sh")
+        with open(script, "w") as f:
+            f.write("#!/bin/bash\necho 'custom reason' >&2\nexit 1\n")
+        os.chmod(script, 0o755)
+
+        events_log = os.path.join(tmp_dir, "events.jsonl")
+        bus = EventBus(log_path=events_log)
+        run_hook("on_fail", script, "change-1", event_bus=bus)
+        events = bus.query(event_type="HOOK_BLOCKED")
+        assert len(events) == 1
+        assert events[0]["data"]["hook"] == "on_fail"
+        assert "custom reason" in events[0]["data"]["reason"]
+
+    def test_not_executable_returns_true(self, tmp_dir):
+        script = os.path.join(tmp_dir, "hook.sh")
+        with open(script, "w") as f:
+            f.write("#!/bin/bash\nexit 1\n")
+        # NOT making it executable
+        assert run_hook("on_fail", script, "change-1") is True

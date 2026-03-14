@@ -19,6 +19,8 @@ init_state() {
 
 # Apply phase overrides from directives.
 # Called after init_state if milestones.phase_overrides is set.
+# Migrated to: wt_orch/state.py apply_phase_overrides()
+# Kept as jq — phase overrides use JSON arg from bash caller, simpler to keep inline
 apply_phase_overrides() {
     local overrides_json="$1"  # JSON object: {"change-name": phase_number, ...}
 
@@ -39,6 +41,8 @@ apply_phase_overrides() {
 
 # Initialize phase state from change phase fields.
 # Computes unique phases, creates the phases object, sets current_phase.
+# Migrated to: wt_orch/state.py init_phase_state()
+# Kept as jq — called during init_state which already uses Python for the main init
 _init_phase_state() {
     local phases_json
     phases_json=$(jq -c '
@@ -70,123 +74,56 @@ _init_phase_state() {
 }
 
 # Update a top-level field in state (locked + validated)
+# Migrated to: wt_orch/state.py update_state_field()
 update_state_field() {
     local field="$1"
     local value="$2"
-    with_state_lock safe_jq_update "$STATE_FILENAME" ".$field = $value"
+    wt-orch-core state update-field --file "$STATE_FILENAME" --field "$field" --value "$value"
 }
 
 # Update a change's field in state (locked + validated)
 # Automatically emits STATE_CHANGE event when status field changes
+# Migrated to: wt_orch/state.py update_change_field()
 update_change_field() {
     local change_name="$1"
     local field="$2"
     local value="$3"
-
-    with_state_lock _update_change_field_locked "$change_name" "$field" "$value"
-}
-
-# Internal: runs under state lock
-_update_change_field_locked() {
-    local change_name="$1"
-    local field="$2"
-    local value="$3"
-
-    # Capture old status before update for event emission
-    local old_status=""
-    if [[ "$field" == "status" ]]; then
-        old_status=$(jq -r --arg name "$change_name" '.changes[] | select(.name == $name) | .status // ""' "$STATE_FILENAME")
-    fi
-
-    safe_jq_update "$STATE_FILENAME" --arg name "$change_name" --argjson val "$value" \
-        '(.changes[] | select(.name == $name)).'"$field"' = $val'
-
-    # Emit STATE_CHANGE event on status transitions
-    if [[ "$field" == "status" && -n "$old_status" ]]; then
-        local new_status
-        new_status=$(echo "$value" | tr -d '"')
-        if [[ "$old_status" != "$new_status" ]]; then
-            emit_event "STATE_CHANGE" "$change_name" \
-                "{\"from\":\"$old_status\",\"to\":\"$new_status\"}"
-            # Trigger on_fail hook when a change transitions to failed
-            if [[ "$new_status" == "failed" ]]; then
-                local wt_path_for_hook
-                wt_path_for_hook=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME" 2>/dev/null || true)  # expected: worktree may not exist
-                run_hook "on_fail" "$change_name" "failed" "$wt_path_for_hook" || true  # expected: hook may not be defined
-            fi
-        fi
-    fi
-
-    # Emit TOKENS event on significant token updates
-    if [[ "$field" == "tokens_used" ]]; then
-        local prev_tokens
-        prev_tokens=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .tokens_used // 0' "$STATE_FILENAME")
-        local delta=$((value - prev_tokens))
-        # Only emit on significant deltas (>10K tokens)
-        if [[ "$delta" -gt 10000 || "$delta" -lt -10000 ]]; then
-            emit_event "TOKENS" "$change_name" \
-                "{\"delta\":$delta,\"total\":$value}"
-        fi
-    fi
+    wt-orch-core state update-change --file "$STATE_FILENAME" --name "$change_name" --field "$field" --value "$value"
 }
 
 # Get a change's status
+# Migrated to: wt_orch/state.py get_change_status()
 get_change_status() {
     local change_name="$1"
-    local result
-    if ! result=$(jq -r --arg name "$change_name" '.changes[] | select(.name == $name) | .status' "$STATE_FILENAME" 2>&1); then
-        log_error "get_change_status: invalid JSON in $STATE_FILENAME — $result"
-        return 1
-    fi
-    echo "$result"
+    wt-orch-core state get-status --file "$STATE_FILENAME" --name "$change_name"
 }
 
 # Get all changes with a specific status
+# Migrated to: wt_orch/state.py get_changes_by_status()
 get_changes_by_status() {
     local status="$1"
-    local result
-    if ! result=$(jq -r --arg s "$status" '[.changes[] | select(.status == $s) | .name] | .[]' "$STATE_FILENAME" 2>&1); then
-        log_error "get_changes_by_status: invalid JSON in $STATE_FILENAME — $result"
-        return 1
-    fi
-    echo "$result"
+    wt-orch-core state changes-by-status --file "$STATE_FILENAME" --status "$status"
 }
 
 # Count changes with a specific status
+# Migrated to: wt_orch/state.py count_changes_by_status()
 count_changes_by_status() {
     local status="$1"
-    local result
-    if ! result=$(jq --arg s "$status" '[.changes[] | select(.status == $s)] | length' "$STATE_FILENAME" 2>&1); then
-        log_error "count_changes_by_status: invalid JSON in $STATE_FILENAME — $result"
-        return 1
-    fi
-    echo "$result"
+    wt-orch-core state count-by-status --file "$STATE_FILENAME" --status "$status"
 }
 
 # Check if all depends_on for a change are merged
+# Migrated to: wt_orch/state.py deps_satisfied()
 deps_satisfied() {
     local change_name="$1"
-    local deps
-    deps=$(jq -r --arg name "$change_name" \
-        '.changes[] | select(.name == $name) | .depends_on[]?' "$STATE_FILENAME" 2>/dev/null)
-
-    [[ -z "$deps" ]] && return 0  # no dependencies
-
-    while IFS= read -r dep; do
-        local dep_status
-        dep_status=$(get_change_status "$dep")
-        if [[ "$dep_status" != "merged" && "$dep_status" != "skipped" ]]; then
-            return 1
-        fi
-    done <<< "$deps"
-
-    return 0
+    wt-orch-core state deps-satisfied --file "$STATE_FILENAME" --name "$change_name"
 }
 
 # Check if any depends_on for a change has failed (terminal state)
 # Returns 0 if a dependency is truly failed, 1 otherwise
 # Note: merge-blocked is NOT a failure — the work is done, only merge is stuck.
-# Cascading on merge-blocked would unnecessarily block all dependents.
+# Migrated to: wt_orch/state.py deps_failed()
+# Kept as jq — no CLI bridge needed (rarely called, only by cascade_failed_deps)
 deps_failed() {
     local change_name="$1"
     local deps
@@ -207,35 +144,17 @@ deps_failed() {
 }
 
 # Cascade failure: mark pending changes as failed if their dependencies have failed.
-# Prevents deadlock where failed deps leave children stuck in pending forever.
+# Migrated to: wt_orch/state.py cascade_failed_deps()
 cascade_failed_deps() {
-    local cascaded=0
-    local pending_changes
-    pending_changes=$(jq -r '.changes[] | select(.status == "pending") | .name' "$STATE_FILENAME" 2>/dev/null)
-
-    [[ -z "$pending_changes" ]] && return 0
-
-    while IFS= read -r change_name; do
-        if deps_failed "$change_name"; then
-            local failed_dep
-            failed_dep=$(jq -r --arg name "$change_name" \
-                '.changes[] | select(.name == $name) | .depends_on[]?' "$STATE_FILENAME" 2>/dev/null | while read d; do
-                    local s; s=$(get_change_status "$d")
-                    [[ "$s" == "failed" ]] && echo "$d" && break
-                done)
-            log_warn "Cascade: $change_name failed — dependency '$failed_dep' is terminal"
-            emit_event "CASCADE_FAILED" "$change_name" "{\"reason\":\"dependency_failed\",\"failed_dep\":\"$failed_dep\"}"
-            update_change_field "$change_name" "status" '"failed"'
-            update_change_field "$change_name" "failure_reason" "\"dependency $failed_dep failed\""
-            cascaded=$((cascaded + 1))
-        fi
-    done <<< "$pending_changes"
-
+    local cascaded
+    cascaded=$(wt-orch-core state cascade-failed --file "$STATE_FILENAME")
     [[ "$cascaded" -gt 0 ]] && log_info "Cascade: $cascaded changes marked failed due to dependency failures"
     return 0
 }
 
 # ─── Phase Management ────────────────────────────────────────────────
+# Migrated to: wt_orch/state.py init_phase_state(), apply_phase_overrides(),
+# all_phase_changes_terminal(), advance_phase()
 
 # Check if all changes in the current phase are terminal (merged/failed/skipped).
 all_phase_changes_terminal() {
@@ -250,77 +169,18 @@ all_phase_changes_terminal() {
 }
 
 # Advance to the next phase. Returns 0 if advanced, 1 if no more phases.
+# Migrated to: wt_orch/state.py advance_phase()
 advance_phase() {
-    local current_phase
-    current_phase=$(jq -r '.current_phase // 1' "$STATE_FILENAME" 2>/dev/null)
-
-    # Mark current phase as completed
-    with_state_lock safe_jq_update "$STATE_FILENAME" \
-        --arg p "$current_phase" --arg ts "$(date -Iseconds)" \
-        '.phases[$p].status = "completed" | .phases[$p].completed_at = $ts'
-
-    # Find next phase
-    local next_phase
-    next_phase=$(jq --argjson cp "$current_phase" '
-        [.phases | keys[] | tonumber | select(. > $cp)] | sort | .[0] // null
-    ' "$STATE_FILENAME" 2>/dev/null)
-
-    if [[ "$next_phase" == "null" || -z "$next_phase" ]]; then
-        log_info "Phase $current_phase completed — no more phases"
-        return 1
-    fi
-
-    # Advance
-    with_state_lock safe_jq_update "$STATE_FILENAME" \
-        --argjson np "$next_phase" \
-        '.current_phase = $np | .phases[($np | tostring)].status = "running"'
-
-    log_info "Phase advanced: $current_phase → $next_phase"
-    emit_event "PHASE_ADVANCED" "" "{\"from\":$current_phase,\"to\":$next_phase}"
-    return 0
+    wt-orch-core state advance-phase --file "$STATE_FILENAME"
 }
 
 # ─── Dependency Graph ────────────────────────────────────────────────
 
 # Topological sort of changes (returns names in execution order)
+# Migrated to: wt_orch/state.py topological_sort()
 topological_sort() {
     local plan_file="$1"
-
-    _TOPO_FILE="$plan_file" python3 -c "
-import json, sys, os
-
-with open(os.environ['_TOPO_FILE']) as f:
-    plan = json.load(f)
-
-changes = {c['name']: c.get('depends_on', []) for c in plan['changes']}
-
-# Build adjacency: if B depends on A, then A -> B
-adj = {name: [] for name in changes}
-in_deg = {name: 0 for name in changes}
-for name, deps in changes.items():
-    for d in deps:
-        if d in adj:
-            adj[d].append(name)
-            in_deg[name] += 1
-
-queue = [n for n in changes if in_deg[n] == 0]
-queue.sort()  # deterministic order
-result = []
-while queue:
-    node = queue.pop(0)
-    result.append(node)
-    for neighbor in sorted(adj[node]):
-        in_deg[neighbor] -= 1
-        if in_deg[neighbor] == 0:
-            queue.append(neighbor)
-
-if len(result) != len(changes):
-    print('ERROR:circular', file=sys.stderr)
-    sys.exit(1)
-
-for name in result:
-    print(name)
-"
+    wt-orch-core state topo-sort --plan-file "$plan_file"
 }
 
 # ─── Quality Gate Hooks ──────────────────────────────────────────────
@@ -860,6 +720,7 @@ generate_summary() {
 }
 
 # ─── Crash-Safe State Recovery ──────────────────────────────────────
+# Migrated to: wt_orch/state.py reconstruct_state_from_events()
 
 # Rebuild orchestration-state.json from orchestration-events.jsonl by replaying
 # state transitions. Called by sentinel on startup when state appears inconsistent.
@@ -868,129 +729,8 @@ reconstruct_state_from_events() {
     local events_file="${1:-}"
     local state_file="${2:-$STATE_FILENAME}"
 
-    # Derive events file from state file if not provided
-    if [[ -z "$events_file" ]]; then
-        events_file="${state_file%.json}-events.jsonl"
-    fi
+    local args=(--file "$state_file")
+    [[ -n "$events_file" ]] && args+=(--events "$events_file")
 
-    if [[ ! -f "$events_file" ]]; then
-        log_warn "Cannot reconstruct state: no events file at $events_file"
-        return 1
-    fi
-
-    if [[ ! -f "$state_file" ]]; then
-        log_warn "Cannot reconstruct state: no state file at $state_file (need base structure)"
-        return 1
-    fi
-
-    local event_count
-    event_count=$(wc -l < "$events_file" 2>/dev/null || echo 0)
-    if [[ "$event_count" -eq 0 ]]; then
-        log_warn "Cannot reconstruct state: events file is empty"
-        return 1
-    fi
-
-    log_info "Reconstructing state from $event_count events in $events_file"
-
-    # Strategy: start from existing state file (has plan structure, change metadata),
-    # then replay events to fix status, tokens, timestamps.
-    # This preserves fields that events don't track (scope, complexity, depends_on, etc.)
-
-    local tmp_state
-    tmp_state=$(mktemp)
-    cp "$state_file" "$tmp_state"
-
-    # 1. Replay STATE_CHANGE events to get final per-change status
-    #    Each STATE_CHANGE has: {"from":"X","to":"Y"} in data, and change name
-    local state_changes
-    state_changes=$(jq -c 'select(.type == "STATE_CHANGE" and .change != null and .change != "")' "$events_file" 2>/dev/null || true)
-
-    if [[ -n "$state_changes" ]]; then
-        # Get the last status for each change name
-        local final_statuses
-        final_statuses=$(echo "$state_changes" | jq -c '{change: .change, status: .data.to}' | \
-            jq -s 'group_by(.change) | map({key: .[0].change, value: .[-1].status}) | from_entries' 2>/dev/null || echo '{}')
-
-        # Apply final statuses to state
-        if [[ "$final_statuses" != "{}" ]]; then
-            local change_names
-            change_names=$(echo "$final_statuses" | jq -r 'keys[]' 2>/dev/null || true)
-            while IFS= read -r cname; do
-                [[ -z "$cname" ]] && continue
-                local final_status
-                final_status=$(echo "$final_statuses" | jq -r --arg n "$cname" '.[$n] // empty')
-                [[ -z "$final_status" ]] && continue
-                safe_jq_update "$tmp_state" --arg n "$cname" --arg s "$final_status" \
-                    '(.changes[] | select(.name == $n) | .status) = $s'
-            done <<< "$change_names"
-        fi
-    fi
-
-    # 2. Replay TOKENS events to get latest token counts
-    local token_events
-    token_events=$(jq -c 'select(.type == "TOKENS" and .change != null and .change != "")' "$events_file" 2>/dev/null || true)
-
-    if [[ -n "$token_events" ]]; then
-        local final_tokens
-        final_tokens=$(echo "$token_events" | jq -c '{change: .change, total: .data.total}' | \
-            jq -s 'group_by(.change) | map({key: .[0].change, value: .[-1].total}) | from_entries' 2>/dev/null || echo '{}')
-
-        if [[ "$final_tokens" != "{}" ]]; then
-            local tnames
-            tnames=$(echo "$final_tokens" | jq -r 'keys[]' 2>/dev/null || true)
-            while IFS= read -r tname; do
-                [[ -z "$tname" ]] && continue
-                local tokens
-                tokens=$(echo "$final_tokens" | jq -r --arg n "$tname" '.[$n] // 0')
-                safe_jq_update "$tmp_state" --arg n "$tname" --argjson t "$tokens" \
-                    '(.changes[] | select(.name == $n) | .tokens_used) = $t'
-            done <<< "$tnames"
-        fi
-    fi
-
-    # 3. Derive overall orchestration status from change statuses
-    #    If all changes are done/merged/completed/archived → done
-    #    If any are running → running (but we clear running since process is dead)
-    #    Otherwise → stopped
-    local all_done=true any_active=false
-    local change_statuses
-    change_statuses=$(jq -r '.changes[].status' "$tmp_state" 2>/dev/null || true)
-    while IFS= read -r cs; do
-        case "$cs" in
-            done|merged|completed|archived|skipped) ;;
-            running|stalled|stuck)
-                all_done=false
-                any_active=true
-                # Running changes with no live process should be stalled
-                safe_jq_update "$tmp_state" \
-                    '(.changes[] | select(.status == "running") | .status) = "stalled"'
-                ;;
-            *)
-                all_done=false
-                ;;
-        esac
-    done <<< "$change_statuses"
-
-    if $all_done; then
-        safe_jq_update "$tmp_state" '.status = "done"'
-    else
-        safe_jq_update "$tmp_state" '.status = "stopped"'
-    fi
-
-    # 4. Write reconstructed state (validate + lock)
-    if ! jq empty "$tmp_state" 2>/dev/null; then
-        log_error "reconstruct_state: reconstructed state is invalid JSON — aborting"
-        rm -f "$tmp_state"
-        return 1
-    fi
-
-    with_state_lock mv "$tmp_state" "$state_file"
-
-    local final_orch_status
-    final_orch_status=$(jq -r '.status' "$state_file" 2>/dev/null)
-
-    emit_event "STATE_RECONSTRUCTED" "" \
-        "{\"event_count\":$event_count,\"status\":\"$final_orch_status\"}"
-
-    return 0
+    wt-orch-core state reconstruct "${args[@]}"
 }

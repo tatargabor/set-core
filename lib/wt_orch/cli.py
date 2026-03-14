@@ -40,7 +40,21 @@ def cmd_process(args):
 
 def cmd_state(args):
     """Dispatch state subcommands."""
-    from .state import init_state, load_state, query_changes
+    from .state import (
+        advance_phase,
+        cascade_failed_deps,
+        count_changes_by_status,
+        deps_satisfied,
+        get_change_status,
+        get_changes_by_status,
+        init_state,
+        load_state,
+        query_changes,
+        reconstruct_state_from_events,
+        topological_sort,
+        update_change_field,
+        update_state_field,
+    )
 
     if args.state_cmd == "init":
         init_state(args.plan_file, args.output)
@@ -71,6 +85,82 @@ def cmd_state(args):
                 sys.exit(0)
         print(f"Change not found: {args.change}", file=sys.stderr)
         sys.exit(1)
+
+    elif args.state_cmd == "update-field":
+        value = json.loads(args.value)
+        update_state_field(args.file, args.field, value)
+        sys.exit(0)
+
+    elif args.state_cmd == "update-change":
+        value = json.loads(args.value)
+        event_bus = _make_event_bus(args.file)
+        update_change_field(
+            args.file, args.name, args.field, value, event_bus=event_bus
+        )
+        sys.exit(0)
+
+    elif args.state_cmd == "get-status":
+        state = load_state(args.file)
+        status = get_change_status(state, args.name)
+        print(status)
+        sys.exit(0)
+
+    elif args.state_cmd == "count-by-status":
+        state = load_state(args.file)
+        count = count_changes_by_status(state, args.status)
+        print(count)
+        sys.exit(0)
+
+    elif args.state_cmd == "changes-by-status":
+        state = load_state(args.file)
+        names = get_changes_by_status(state, args.status)
+        for n in names:
+            print(n)
+        sys.exit(0)
+
+    elif args.state_cmd == "deps-satisfied":
+        state = load_state(args.file)
+        satisfied = deps_satisfied(state, args.name)
+        sys.exit(0 if satisfied else 1)
+
+    elif args.state_cmd == "cascade-failed":
+        from .state import locked_state
+        event_bus = _make_event_bus(args.file)
+        with locked_state(args.file) as state:
+            count = cascade_failed_deps(state, event_bus=event_bus)
+        print(count)
+        sys.exit(0)
+
+    elif args.state_cmd == "topo-sort":
+        with open(args.plan_file, "r") as f:
+            plan = json.load(f)
+        names = topological_sort(plan.get("changes", []))
+        for n in names:
+            print(n)
+        sys.exit(0)
+
+    elif args.state_cmd == "advance-phase":
+        from .state import locked_state
+        event_bus = _make_event_bus(args.file)
+        with locked_state(args.file) as state:
+            advanced = advance_phase(state, event_bus=event_bus)
+        sys.exit(0 if advanced else 1)
+
+    elif args.state_cmd == "reconstruct":
+        success = reconstruct_state_from_events(
+            args.file, events_path=args.events
+        )
+        sys.exit(0 if success else 1)
+
+
+def _make_event_bus(state_file: str):
+    """Create an EventBus from a state file path."""
+    from pathlib import Path
+    from .events import EventBus
+
+    stem = Path(state_file).stem.replace("-state", "")
+    log_path = str(Path(state_file).parent / f"{stem}-events.jsonl")
+    return EventBus(log_path=log_path)
 
 
 def cmd_template(args):
@@ -320,6 +410,46 @@ def main():
     s_get.add_argument("--file", required=True, help="State file path")
     s_get.add_argument("--change", required=True, help="Change name")
     s_get.add_argument("--field", required=True, help="Field name to retrieve")
+
+    s_uf = state_sub.add_parser("update-field", help="Update a top-level state field")
+    s_uf.add_argument("--file", required=True, help="State file path")
+    s_uf.add_argument("--field", required=True, help="Field name")
+    s_uf.add_argument("--value", required=True, help="JSON value")
+
+    s_uc = state_sub.add_parser("update-change", help="Update a change field")
+    s_uc.add_argument("--file", required=True, help="State file path")
+    s_uc.add_argument("--name", required=True, help="Change name")
+    s_uc.add_argument("--field", required=True, help="Field name")
+    s_uc.add_argument("--value", required=True, help="JSON value")
+
+    s_gs = state_sub.add_parser("get-status", help="Get a change's status")
+    s_gs.add_argument("--file", required=True, help="State file path")
+    s_gs.add_argument("--name", required=True, help="Change name")
+
+    s_cbs = state_sub.add_parser("count-by-status", help="Count changes by status")
+    s_cbs.add_argument("--file", required=True, help="State file path")
+    s_cbs.add_argument("--status", required=True, help="Status to count")
+
+    s_chbs = state_sub.add_parser("changes-by-status", help="List change names by status")
+    s_chbs.add_argument("--file", required=True, help="State file path")
+    s_chbs.add_argument("--status", required=True, help="Status to filter")
+
+    s_ds = state_sub.add_parser("deps-satisfied", help="Check if change deps are satisfied")
+    s_ds.add_argument("--file", required=True, help="State file path")
+    s_ds.add_argument("--name", required=True, help="Change name")
+
+    s_cf = state_sub.add_parser("cascade-failed", help="Cascade failed dependencies")
+    s_cf.add_argument("--file", required=True, help="State file path")
+
+    s_ts = state_sub.add_parser("topo-sort", help="Topological sort of plan changes")
+    s_ts.add_argument("--plan-file", required=True, help="Plan file path")
+
+    s_ap = state_sub.add_parser("advance-phase", help="Advance to next phase")
+    s_ap.add_argument("--file", required=True, help="State file path")
+
+    s_rc = state_sub.add_parser("reconstruct", help="Reconstruct state from events")
+    s_rc.add_argument("--file", required=True, help="State file path")
+    s_rc.add_argument("--events", default=None, help="Events JSONL file path")
 
     # --- template ---
     tmpl_parser = subparsers.add_parser("template", help="Safe structured text generation")
