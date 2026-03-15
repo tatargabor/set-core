@@ -1202,9 +1202,23 @@ def handle_change_done(
 
         has_uncommitted, uncommitted_summary = git_has_uncommitted_work(wt_path)
         if has_uncommitted:
+            # Auto-commit leftover files instead of failing — the agent forgot to
+            # git add them but the work is done.  This prevents retry loops that
+            # re-check the same dirty worktree without re-running the agent.
+            import subprocess as _sp
+            logger.info("Verify gate: auto-committing leftover files in %s: %s", change_name, uncommitted_summary)
+            _sp.run(["git", "-C", wt_path, "add", "-A"], capture_output=True, timeout=10)
+            _sp.run(
+                ["git", "-C", wt_path, "commit", "-m", "chore: commit leftover files (auto-committed by verify gate)"],
+                capture_output=True, timeout=10,
+            )
+            # Re-check after auto-commit
+            has_uncommitted, uncommitted_summary = git_has_uncommitted_work(wt_path)
+
+        if has_uncommitted:
             uncommitted_check_result = f"dirty: {uncommitted_summary}"
             reason = f"Uncommitted work in worktree: {uncommitted_summary}"
-            logger.warning("Verify gate: %s for %s", reason, change_name)
+            logger.warning("Verify gate: %s for %s (even after auto-commit)", reason, change_name)
             update_change_field(state_file, change_name, "verify_result", reason)
             update_change_field(state_file, change_name, "uncommitted_check", uncommitted_check_result)
 
