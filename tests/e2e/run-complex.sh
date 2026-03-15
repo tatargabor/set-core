@@ -190,24 +190,10 @@ init_project() {
     fi
     success "wt-project initialized (configs, rules, CLAUDE.md deployed)"
 
-    step "Figma MCP registration"
-    # Register the official Figma MCP (HTTP transport, OAuth-based).
-    # Supports Design + Make + FigJam files.
-    # NOTE: User must authenticate once via /mcp → figma → Authenticate in Claude Code
-    # before orchestration can use it non-interactively.
-    local settings_file=".claude/settings.json"
-    if [[ -f "$settings_file" ]]; then
-        local tmp_settings
-        tmp_settings=$(mktemp)
-        if jq '.mcpServers.figma = {"type": "http", "url": "https://mcp.figma.com/mcp"}' \
-            "$settings_file" > "$tmp_settings" 2>/dev/null; then
-            mv "$tmp_settings" "$settings_file"
-            success "Registered official Figma MCP (https://mcp.figma.com/mcp)"
-        else
-            rm -f "$tmp_settings"
-            warn "Failed to register Figma MCP — continuing without it"
-        fi
-    fi
+    # NOTE: Figma MCP registration removed — OAuth requires interactive auth
+    # which blocks `claude -p` (pipe mode) used by the orchestrator.
+    # Design data is available via static design-snapshot.md + figma-raw/ files
+    # copied from scaffold-complex/. The planner reads these directly.
 
     step "Orchestration config"
     mkdir -p wt/orchestration
