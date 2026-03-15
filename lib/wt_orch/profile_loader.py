@@ -61,6 +61,9 @@ class NullProfile:
     def ignore_patterns(self) -> list:
         return []
 
+    def gate_overrides(self, change_type: str) -> dict:
+        return {}
+
     @property
     def info(self):
         from dataclasses import dataclass

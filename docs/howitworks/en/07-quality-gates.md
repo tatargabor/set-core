@@ -204,6 +204,55 @@ Ralph done
 Every gate is optional. If there is no test\_command, the Test Gate is skipped. If review\_before\_merge is false, the Review Gate is skipped. With minimal configuration (no gates at all), the change goes directly to the merge queue after Ralph is done — but this is not recommended for production projects.
 \end{keypoint}
 
+## Gate Profiles
+
+Not every change type needs the full gate pipeline. A schema migration doesn't need E2E tests. An infrastructure change (test framework setup) has nothing to build yet. Running all gates unconditionally wastes tokens and produces false failures.
+
+The gate profile system assigns each `change_type` a default gate configuration:
+
+| Gate | infrastructure | schema | foundational | feature | cleanup-before | cleanup-after |
+|------|---------------|--------|-------------|---------|---------------|--------------|
+| build | skip | run | run | run | run | run |
+| test | skip | warn | run | run | warn | warn |
+| test_files_required | no | no | yes | yes | no | no |
+| e2e | skip | skip | skip | run | skip | skip |
+| scope_check | run | run | run | run | run | run |
+| review | run | run | run | run | run | skip |
+| spec_verify | soft | run | run | run | soft | soft |
+| rules | run | run | run | run | run | skip |
+| smoke | skip | skip | skip | run | skip | skip |
+
+Gate modes:
+
+- **run**: Gate executes and failure blocks merge (default)
+- **warn**: Gate executes but failure only logs a warning (non-blocking)
+- **soft**: Gate executes, failure is logged but does not trigger retry
+- **skip**: Gate does not execute at all
+
+### Resolution Chain
+
+The final gate configuration for a change is resolved through a 4-layer chain (later layers override earlier):
+
+1. **Built-in defaults** — the table above, keyed by `change_type`
+2. **Profile plugin overrides** — project-type plugins (e.g., `wt-project-web`) can override specific gates via `gate_overrides(change_type)`. For example, web projects enable E2E for foundational changes (auth cold-visit tests) and set warn-only smoke for cleanup-after
+3. **Per-change overrides** — `skip_test`/`skip_review` flags from the plan, plus `gate_hints` (a dict of gate overrides the planner can emit per change)
+4. **Directive overrides** — `gate_overrides` nested dict in `orchestration.yaml` for project-level policy
+
+### Example: orchestration.yaml overrides
+
+```yaml
+gate_overrides:
+  schema:
+    test: run        # override warn → run for this project
+    e2e: run         # enable e2e for schema changes
+  cleanup-after:
+    review: run      # keep review for cleanup changes
+```
+
+### Planner Awareness
+
+The planner knows about gate profiles and can emit `gate_hints` per change to fine-tune gates. For example, a feature change with no UI might set `{"e2e": "skip"}`. The `gate_hints` field is optional in the plan output JSON.
+
 ## Merge Timeout
 
 The entire merge pipeline (merge + post-merge build + smoke + fix cycles) is protected by a timeout. If elapsed time exceeds the limit, the merge is aborted at the next checkpoint and the change is marked `merge_timeout`.

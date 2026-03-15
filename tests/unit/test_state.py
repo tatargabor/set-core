@@ -281,6 +281,33 @@ class TestWatchdogState:
         assert d["consecutive_same_hash"] == 3
 
 
+class TestGateHintsRoundTrip:
+    def test_gate_hints_to_dict_from_dict(self):
+        hints = {"e2e": "skip", "smoke": "warn"}
+        c = Change(name="with-hints", change_type="feature", gate_hints=hints)
+        d = c.to_dict()
+        assert d["gate_hints"] == hints
+
+        c2 = Change.from_dict(d)
+        assert c2.gate_hints == hints
+
+    def test_gate_hints_none_omitted_from_dict(self):
+        c = Change(name="no-hints", change_type="feature")
+        d = c.to_dict()
+        assert "gate_hints" not in d
+
+    def test_gate_hints_survives_save_load(self, tmp_path):
+        path = str(tmp_path / "state.json")
+        hints = {"build": "skip", "review_model": "sonnet"}
+        state = OrchestratorState(
+            status="running",
+            changes=[Change(name="hinted", gate_hints=hints)],
+        )
+        save_state(state, path)
+        state2 = load_state(path)
+        assert state2.changes[0].gate_hints == hints
+
+
 # ─── Phase 2: Locking ────────────────────────────────────────────────
 
 

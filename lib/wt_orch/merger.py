@@ -677,6 +677,22 @@ def _run_smoke_pipeline(
     # Source: merger.sh L226-403
     state = load_state(state_file)
     directives = state.extras.get("directives", {})
+
+    # Check gate profile — skip smoke if profile says so
+    change = None
+    for c in state.changes:
+        if c.name == change_name:
+            change = c
+            break
+    if change:
+        from .gate_profiles import resolve_gate_config
+        from .profile_loader import load_profile
+        profile = load_profile()
+        gc = resolve_gate_config(change, profile, directives)
+        if not gc.should_run("smoke"):
+            logger.info("Post-merge smoke SKIPPED for %s (gate_profile)", change_name)
+            return "skipped"
+
     smoke_command = directives.get("smoke_command", "")
     if not smoke_command:
         return ""

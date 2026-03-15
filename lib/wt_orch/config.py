@@ -70,6 +70,7 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "milestones_base_port": 3100,
     "milestones_max_worktrees": 3,
     "e2e_port_base": None,
+    "gate_overrides": {},
 }
 
 

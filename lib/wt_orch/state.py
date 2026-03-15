@@ -80,6 +80,7 @@ class Change:
     skip_test: bool = False
     has_manual_tasks: bool = False
     phase: int = 1
+    gate_hints: Optional[dict] = None
 
     # Runtime state
     status: str = "pending"
@@ -150,13 +151,15 @@ class Change:
                 "review_result", "build_result", "model",
             ):
                 d[f.name] = val
-            elif f.name not in ("requirements", "also_affects_reqs", "watchdog"):
+            elif f.name not in ("requirements", "also_affects_reqs", "watchdog", "gate_hints"):
                 d[f.name] = val
         # Omit None-valued optional fields that weren't in the original
         if self.requirements is not None:
             d["requirements"] = self.requirements
         if self.also_affects_reqs is not None:
             d["also_affects_reqs"] = self.also_affects_reqs
+        if self.gate_hints is not None:
+            d["gate_hints"] = self.gate_hints
         d.update(self.extras)
         return d
 

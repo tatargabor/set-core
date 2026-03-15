@@ -318,6 +318,15 @@ Model selection — suggest a model per change based on task nature:
 - Sonnet cannot follow OpenSpec workflows, make architecture decisions, or write quality code
 - When in doubt, always use "opus"
 
+Quality gate profiles — each change_type has a different set of active verification gates:
+- infrastructure: scope_check + review + rules only. Build/test/e2e/smoke are SKIPPED (no app code yet). spec_verify is soft (non-blocking).
+- schema: build + scope_check + review + spec_verify + rules. Test is warn-only (may lack test files). e2e and smoke SKIPPED. test_files NOT required.
+- foundational: build + test + scope_check + review + spec_verify + rules. e2e and smoke SKIPPED by default (project-type plugins may override, e.g., web projects enable e2e for auth cold-visit tests).
+- feature: ALL gates active (build, test, e2e, scope_check, review, spec_verify, rules, smoke). test_files required.
+- cleanup-before: build + scope_check + review + rules. Test is warn-only. e2e and smoke SKIPPED. spec_verify is soft. test_files NOT required.
+- cleanup-after: build + scope_check only. Test is warn-only, review/rules/e2e/smoke SKIPPED. spec_verify is soft. Lightest profile.
+The planner can emit optional "gate_hints" per change to override specific gates (e.g., {"e2e": "skip"} for a feature that has no UI).
+
 Manual tasks — flag changes that require human intervention:
 - Set "has_manual_tasks": true when a change involves: external API keys/secrets (Stripe, AWS, Firebase), third-party account/project creation, OAuth app registration, DNS configuration, webhook setup, or any step that cannot be automated
 - Examples: "integrate Stripe payments" (needs API key), "set up Firebase auth" (needs project creation), "configure custom domain" (needs DNS records)
@@ -362,7 +371,8 @@ _SPEC_OUTPUT_JSON = """{
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
       "phase": 1,
-      "roadmap_item": "The spec section/item this implements"
+      "roadmap_item": "The spec section/item this implements",
+      "gate_hints": {"gate_name": "skip|warn|run"}
     }
   ]
 }"""
@@ -381,6 +391,7 @@ _SPEC_OUTPUT_JSON_DIGEST = """{
       "depends_on": ["other-change-name"],
       "phase": 1,
       "roadmap_item": "The spec section/item this implements",
+      "gate_hints": {"gate_name": "skip|warn|run"},
       "spec_files": ["path/relative/to/spec-base-dir.md"],
       "requirements": ["REQ-DOMAIN-001"],
       "also_affects_reqs": ["REQ-CROSS-001"],
@@ -400,7 +411,8 @@ _BRIEF_OUTPUT_JSON = """{
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
       "phase": 1,
-      "roadmap_item": "The exact Next bullet this implements"
+      "roadmap_item": "The exact Next bullet this implements",
+      "gate_hints": {"gate_name": "skip|warn|run"}
     }
   ]
 }"""

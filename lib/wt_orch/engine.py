@@ -857,6 +857,7 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
                 roadmap_item=c.get("roadmap_item", ""),
                 model=c.get("model", None),
                 phase=c.get("phase", 1),
+                gate_hints=c.get("gate_hints") or None,
             )
             state.changes.append(change)
         logger.info("Appended %d new changes to state", len(new_changes))
