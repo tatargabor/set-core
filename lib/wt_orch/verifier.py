@@ -159,7 +159,7 @@ def _load_security_rules(wt_path: str) -> str:
             parts.append(content)
         return "\n\n".join(parts)
 
-    # Legacy fallback
+    # TODO(profile-cleanup): remove after profile adoption confirmed
     return _load_web_security_rules(wt_path)
 
 

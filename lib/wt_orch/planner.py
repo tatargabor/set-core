@@ -170,7 +170,10 @@ def _auto_detect_test_command(project_dir: str) -> str:
     if cmd:
         return cmd
 
-    # Legacy fallback
+    # TODO(profile-cleanup): remove after profile adoption confirmed
+    # Legacy fallback — delegates PM detection to canonical function
+    from .config import detect_package_manager
+
     pkg_path = Path(project_dir) / "package.json"
     if not pkg_path.exists():
         return ""
@@ -180,16 +183,7 @@ def _auto_detect_test_command(project_dir: str) -> str:
     except (json.JSONDecodeError, OSError):
         return ""
 
-    p = Path(project_dir)
-    if (p / "pnpm-lock.yaml").exists():
-        pkg_mgr = "pnpm"
-    elif (p / "yarn.lock").exists():
-        pkg_mgr = "yarn"
-    elif (p / "bun.lockb").exists() or (p / "bun.lock").exists():
-        pkg_mgr = "bun"
-    else:
-        pkg_mgr = "npm"
-
+    pkg_mgr = detect_package_manager(project_dir)
     scripts = pkg.get("scripts", {})
     for candidate in ("test", "test:unit", "test:ci"):
         if scripts.get(candidate):

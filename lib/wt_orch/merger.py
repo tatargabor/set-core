@@ -575,6 +575,7 @@ def _post_merge_deps_install() -> None:
         profile.post_merge_install(".")
         return
 
+    # TODO(profile-cleanup): remove after profile adoption confirmed
     # Legacy fallback
     install_cmd = None
     if os.path.exists("pnpm-lock.yaml"):
@@ -618,6 +619,7 @@ def _post_merge_build_check(change_name: str, state_file: str) -> bool:
     build_cmd = profile.detect_build_command(".")
 
     if not pm or pm == "npm":
+        # TODO(profile-cleanup): remove after profile adoption confirmed
         # Legacy fallback for PM
         if os.path.exists("pnpm-lock.yaml"):
             pm = "pnpm"

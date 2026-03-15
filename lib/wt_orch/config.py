@@ -571,21 +571,15 @@ def auto_detect_test_command(directory: str = ".") -> str:
     if cmd:
         return cmd
 
-    # Legacy fallback
+    # TODO(profile-cleanup): remove after profile adoption confirmed
+    # Legacy fallback — delegates PM detection to canonical function
     d = Path(directory)
     pkg_json = d / "package.json"
 
     if not pkg_json.is_file():
         return ""
 
-    # Detect package manager from lockfile
-    pkg_mgr = "npm"
-    if (d / "pnpm-lock.yaml").is_file():
-        pkg_mgr = "pnpm"
-    elif (d / "yarn.lock").is_file():
-        pkg_mgr = "yarn"
-    elif (d / "bun.lockb").is_file() or (d / "bun.lock").is_file():
-        pkg_mgr = "bun"
+    pkg_mgr = detect_package_manager(directory)
 
     # Check scripts in priority order
     try:
@@ -618,6 +612,7 @@ def detect_package_manager(project_dir: str = ".") -> str:
     if pm:
         return pm
 
+    # TODO(profile-cleanup): remove after profile adoption confirmed
     # Legacy fallback
     d = Path(project_dir)
     if (d / "bun.lockb").is_file() or (d / "bun.lock").is_file():
@@ -645,6 +640,7 @@ def install_dependencies(project_dir: str = ".") -> bool:
     if not isinstance(profile, NullProfile):
         return profile.post_merge_install(project_dir)
 
+    # TODO(profile-cleanup): remove after profile adoption confirmed
     # Legacy fallback
     d = Path(project_dir)
     if not (d / "package.json").is_file():

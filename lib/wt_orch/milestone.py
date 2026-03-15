@@ -358,16 +358,18 @@ def _detect_dev_server(wt_path: str, explicit_cmd: str, state_file: str) -> str:
     if cmd:
         return cmd
 
-    # Legacy fallback
+    # TODO(profile-cleanup): remove after profile adoption confirmed
+    # Legacy fallback — delegates PM detection to canonical function
     pkg_json = os.path.join(wt_path, "package.json")
     if os.path.exists(pkg_json):
         import json
+        from .config import detect_package_manager
         try:
             with open(pkg_json) as f:
                 pkg = json.load(f)
             scripts = pkg.get("scripts", {})
             if "dev" in scripts:
-                pm = "pnpm" if os.path.exists(os.path.join(wt_path, "pnpm-lock.yaml")) else "npm"
+                pm = detect_package_manager(wt_path)
                 return f"{pm} run dev"
         except Exception:
             pass
@@ -382,13 +384,13 @@ def _install_dependencies(wt_path: str) -> bool:
     if not isinstance(profile, NullProfile):
         return profile.post_merge_install(wt_path)
 
-    # Legacy fallback
-    if os.path.exists(os.path.join(wt_path, "pnpm-lock.yaml")):
-        cmd = ["pnpm", "install"]
-    elif os.path.exists(os.path.join(wt_path, "yarn.lock")):
-        cmd = ["yarn", "install"]
-    elif os.path.exists(os.path.join(wt_path, "package-lock.json")):
-        cmd = ["npm", "install"]
+    # TODO(profile-cleanup): remove after profile adoption confirmed
+    # Legacy fallback — delegates PM detection to canonical function
+    from .config import detect_package_manager
+
+    pm = detect_package_manager(wt_path)
+    if pm in ("pnpm", "yarn", "npm", "bun"):
+        cmd = [pm, "install"]
     else:
         return True
 

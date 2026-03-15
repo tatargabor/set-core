@@ -161,7 +161,7 @@ Each step follows the pattern: `profile.method() → if None/empty → legacy fa
 
 ### Phase E: Cleanup
 
-- [ ] E1: Remove legacy PM detection duplications
+- [x] E1: Remove legacy PM detection duplications
   - Remove `LOCKFILE_PM_MAP` from `dispatcher.py` (replaced by profile)
   - Remove `_detect_pm()` from `builder.py` (replaced by profile)
   - Remove inline PM detection from `planner.py:_auto_detect_test_command()` (replaced by profile)
@@ -170,15 +170,15 @@ Each step follows the pattern: `profile.method() → if None/empty → legacy fa
   - Total: 7 independent PM detection implementations consolidated into 1 profile method
   - Keep `config.py:detect_package_manager()` as the ONE canonical fallback (called by profile loader default impl)
 
-- [ ] E2: Remove legacy planning rules constant
+- [x] E2: Remove legacy planning rules constant
   - Remove `_PLANNING_RULES` full constant from `templates.py` (replaced by `_PLANNING_RULES_CORE` + profile)
   - Only do this after E2E validation confirms profile-based planning works correctly
 
-- [ ] E3: Remove legacy GENERATED_FILE_PATTERNS from dispatcher.py
+- [x] E3: Remove legacy GENERATED_FILE_PATTERNS from dispatcher.py
   - Remove `GENERATED_FILE_PATTERNS` set from `dispatcher.py`
   - This set is now profile-provided + core patterns in `bin/wt-merge`
 
-- [ ] E4: Add TODO markers for future legacy removal
+- [x] E4: Add TODO markers for future legacy removal
   - Mark remaining legacy fallback code blocks with `# TODO(profile-cleanup): remove after profile adoption confirmed`
   - These blocks are the "if profile returns None, do legacy" paths
   - They stay until we're confident all consumer projects have profile configured

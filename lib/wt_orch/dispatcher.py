@@ -42,22 +42,25 @@ from .subprocess_utils import CommandResult, run_command, run_git
 
 logger = logging.getLogger(__name__)
 
-# Generated files that can be auto-resolved during merge conflicts
-GENERATED_FILE_PATTERNS = {
+# Core generated files that can be auto-resolved during merge conflicts.
+# Profile-specific patterns are added dynamically via _get_generated_file_patterns().
+_CORE_GENERATED_FILE_PATTERNS = {
     ".tsbuildinfo", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
 }
 
+
+def _get_generated_file_patterns() -> set:
+    """Return generated file patterns: core + profile-provided."""
+    from .profile_loader import load_profile
+
+    profile = load_profile()
+    extra = profile.generated_file_patterns()
+    if extra:
+        return _CORE_GENERATED_FILE_PATTERNS | set(extra)
+    return _CORE_GENERATED_FILE_PATTERNS
+
 # Env files to copy from project root to worktree
 ENV_FILES = [".env", ".env.local", ".env.development", ".env.development.local"]
-
-# Lock file → package manager mapping
-LOCKFILE_PM_MAP = [
-    ("pnpm-lock.yaml", "pnpm"),
-    ("yarn.lock", "yarn"),
-    ("bun.lockb", "bun"),
-    ("bun.lock", "bun"),
-    ("package-lock.json", "npm"),
-]
 
 # Orchestrator command patterns to prune from worktrees
 PRUNE_PATTERNS = ["orchestrate", "sentinel", "manual"]
@@ -151,7 +154,7 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
         has_non_generated = False
         for f in conflicted_files:
             basename = os.path.basename(f)
-            if basename not in GENERATED_FILE_PATTERNS:
+            if basename not in _get_generated_file_patterns():
                 has_non_generated = True
                 break
 
@@ -199,6 +202,7 @@ def bootstrap_worktree(project_path: str, wt_path: str) -> int:
     if not isinstance(profile, NullProfile):
         profile.bootstrap_worktree(project_path, wt_path)
     else:
+        # TODO(profile-cleanup): remove after profile adoption confirmed
         # Legacy fallback
         pkg_json = os.path.join(wt_path, "package.json")
         node_modules = os.path.join(wt_path, "node_modules")
@@ -216,19 +220,10 @@ def bootstrap_worktree(project_path: str, wt_path: str) -> int:
 
 
 def _detect_package_manager(wt_path: str) -> str:
-    """Detect package manager — profile first, legacy fallback."""
-    from .profile_loader import load_profile
+    """Detect package manager — delegates to canonical config.detect_package_manager."""
+    from .config import detect_package_manager
 
-    profile = load_profile(wt_path)
-    pm = profile.detect_package_manager(wt_path)
-    if pm:
-        return pm
-
-    # Legacy fallback
-    for lockfile, pm in LOCKFILE_PM_MAP:
-        if os.path.isfile(os.path.join(wt_path, lockfile)):
-            return pm
-    return ""
+    return detect_package_manager(wt_path)
 
 
 def prune_worktree_context(wt_path: str) -> int:

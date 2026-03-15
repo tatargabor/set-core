@@ -188,23 +188,10 @@ Do NOT create a worktree — fix directly in the current directory."""
 
 
 def _detect_pm(project_path: str) -> str:
-    """Detect package manager — profile first, legacy fallback."""
-    from .profile_loader import load_profile
+    """Detect package manager — delegates to canonical config.detect_package_manager."""
+    from .config import detect_package_manager
 
-    profile = load_profile(project_path)
-    pm = profile.detect_package_manager(project_path)
-    if pm:
-        return pm
-
-    # Legacy fallback
-    p = Path(project_path)
-    if (p / "bun.lockb").is_file() or (p / "bun.lock").is_file():
-        return "bun"
-    elif (p / "pnpm-lock.yaml").is_file():
-        return "pnpm"
-    elif (p / "yarn.lock").is_file():
-        return "yarn"
-    return "npm"
+    return detect_package_manager(project_path)
 
 
 def _detect_build_cmd(project_path: str) -> str:
@@ -221,6 +208,7 @@ def _detect_build_cmd(project_path: str) -> str:
             return parts[2]
         return cmd
 
+    # TODO(profile-cleanup): remove after profile adoption confirmed
     # Legacy fallback
     pkg_json = Path(project_path) / "package.json"
     if not pkg_json.is_file():
