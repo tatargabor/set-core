@@ -594,8 +594,8 @@ def reprocess_dir(figma_raw_dir: str) -> str | None:
 
 # ─── Combined snapshot ────────────────────────────────────────────────
 
-def write_combined_snapshot(docs_dir: str, project_root: str):
-    """Concatenate all per-file snapshots into project-root design-snapshot.md."""
+def write_combined_snapshot(docs_dir: str):
+    """Concatenate all per-file snapshots into docs_dir/design-snapshot.md."""
     figma_raw = Path(docs_dir) / "figma-raw"
     if not figma_raw.is_dir():
         return
@@ -610,7 +610,7 @@ def write_combined_snapshot(docs_dir: str, project_root: str):
         return
 
     combined = "\n\n---\n\n".join(snapshots)
-    out_path = os.path.join(project_root, "design-snapshot.md")
+    out_path = os.path.join(docs_dir, "design-snapshot.md")
     with open(out_path, "w") as f:
         f.write(combined)
     print(f"Combined snapshot: {out_path} ({len(combined)} bytes)", file=sys.stderr)
@@ -693,9 +693,8 @@ async def fetch_from_docs(docs_dir: str, force: bool = False) -> int:
             print(f"  Snapshot: {snap_path} ({len(snapshot)} bytes)", file=sys.stderr)
             fetched += 1
 
-    # Write combined snapshot to project root
-    project_root = os.getcwd()
-    write_combined_snapshot(docs_dir, project_root)
+    # Write combined snapshot into docs_dir
+    write_combined_snapshot(docs_dir)
 
     return fetched
 
@@ -719,9 +718,8 @@ def reprocess_from_docs(docs_dir: str) -> int:
             print(f"  {snap_path} ({len(snapshot)} bytes)", file=sys.stderr)
             count += 1
 
-    # Re-combine
-    project_root = os.getcwd()
-    write_combined_snapshot(docs_dir, project_root)
+    # Re-combine into docs_dir
+    write_combined_snapshot(docs_dir)
 
     return count
 

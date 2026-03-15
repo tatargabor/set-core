@@ -2,7 +2,6 @@
 
 import json
 import os
-import shutil
 import sys
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -11,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.planner import _detect_design_mcp, _load_design_file_ref, _fetch_design_context
+from wt_orch.planner import _fetch_design_context
 
 
 @pytest.fixture
@@ -23,188 +22,51 @@ def tmp_project(tmp_path):
     os.chdir(orig)
 
 
-# ─── _detect_design_mcp ─────────────────────────────────────────
-
-
-class TestDetectDesignMcp:
-    def test_figma_detected(self, tmp_project):
-        settings_dir = tmp_project / ".claude"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text(json.dumps({
-            "mcpServers": {"figma": {"url": "https://mcp.figma.com"}}
-        }))
-        assert _detect_design_mcp() == "figma"
-
-    def test_penpot_detected(self, tmp_project):
-        settings_dir = tmp_project / ".claude"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text(json.dumps({
-            "mcpServers": {"penpot": {"url": "https://penpot.example.com"}}
-        }))
-        assert _detect_design_mcp() == "penpot"
-
-    def test_no_design_mcp(self, tmp_project):
-        settings_dir = tmp_project / ".claude"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text(json.dumps({
-            "mcpServers": {"github": {"url": "https://github.com"}}
-        }))
-        assert _detect_design_mcp() is None
-
-    def test_no_settings_file(self, tmp_project):
-        assert _detect_design_mcp() is None
-
-    def test_empty_mcp_servers(self, tmp_project):
-        settings_dir = tmp_project / ".claude"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text(json.dumps({
-            "mcpServers": {}
-        }))
-        assert _detect_design_mcp() is None
-
-    def test_malformed_json(self, tmp_project):
-        settings_dir = tmp_project / ".claude"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text("not json")
-        assert _detect_design_mcp() is None
-
-
-# ─── _load_design_file_ref ───────────────────────────────────────
-
-
-class TestLoadDesignFileRef:
-    def test_design_file_in_wt_config(self, tmp_project):
-        config_dir = tmp_project / "wt" / "orchestration"
-        config_dir.mkdir(parents=True)
-        (config_dir / "config.yaml").write_text("design_file: https://figma.com/design/ABC123\n")
-        assert _load_design_file_ref() == "https://figma.com/design/ABC123"
-
-    def test_design_file_in_claude_config(self, tmp_project):
-        config_dir = tmp_project / ".claude"
-        config_dir.mkdir()
-        (config_dir / "orchestration.yaml").write_text("design_file: https://figma.com/design/XYZ\n")
-        assert _load_design_file_ref() == "https://figma.com/design/XYZ"
-
-    def test_no_design_file_configured(self, tmp_project):
-        config_dir = tmp_project / "wt" / "orchestration"
-        config_dir.mkdir(parents=True)
-        (config_dir / "config.yaml").write_text("max_parallel: 3\n")
-        assert _load_design_file_ref() is None
-
-    def test_no_config_file(self, tmp_project):
-        assert _load_design_file_ref() is None
-
-    def test_quoted_design_file(self, tmp_project):
-        config_dir = tmp_project / "wt" / "orchestration"
-        config_dir.mkdir(parents=True)
-        (config_dir / "config.yaml").write_text('design_file: "https://figma.com/design/Q"\n')
-        assert _load_design_file_ref() == "https://figma.com/design/Q"
-
-    def test_wt_config_takes_precedence(self, tmp_project):
-        """wt/orchestration/config.yaml is checked first."""
-        wt_dir = tmp_project / "wt" / "orchestration"
-        wt_dir.mkdir(parents=True)
-        (wt_dir / "config.yaml").write_text("design_file: https://figma.com/wt\n")
-        claude_dir = tmp_project / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / "orchestration.yaml").write_text("design_file: https://figma.com/claude\n")
-        assert _load_design_file_ref() == "https://figma.com/wt"
-
-
 # ─── _fetch_design_context ──────────────────────────────────────
 
 
 class TestFetchDesignContext:
-    def _setup_mcp_and_config(self, tmp_project):
-        """Helper: create settings.json with figma + orchestration config with design_file."""
-        settings_dir = tmp_project / ".claude"
-        settings_dir.mkdir(exist_ok=True)
-        (settings_dir / "settings.json").write_text(json.dumps({
-            "mcpServers": {"figma": {"url": "https://mcp.figma.com"}}
-        }))
-        config_dir = tmp_project / "wt" / "orchestration"
-        config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "config.yaml").write_text("design_file: https://figma.com/design/ABC\n")
-
-    def test_cache_hit(self, tmp_project):
-        """Cached snapshot is returned without calling bash bridge."""
+    def test_snapshot_in_cwd(self, tmp_project):
+        """Snapshot in CWD is found."""
         (tmp_project / "design-snapshot.md").write_text(
             "## Design Tokens\n\nColors:\n- primary: #3b82f6\n"
         )
-        with patch("wt_orch.subprocess_utils.run_command") as mock_cmd:
-            result = _fetch_design_context()
-            mock_cmd.assert_not_called()
+        result = _fetch_design_context()
         assert "## Design Tokens" in result
         assert "primary: #3b82f6" in result
 
-    def test_cache_hit_skipped_when_force(self, tmp_project):
-        """force=True bypasses cache and calls bash bridge."""
-        self._setup_mcp_and_config(tmp_project)
-        (tmp_project / "design-snapshot.md").write_text(
-            "## Design Tokens\n\nColors:\n- primary: #3b82f6\n"
+    def test_snapshot_nested_in_docs(self, tmp_project):
+        """Snapshot nested in docs/figma-raw/ is found recursively."""
+        nested = tmp_project / "docs" / "figma-raw" / "ABC123"
+        nested.mkdir(parents=True)
+        (nested / "design-snapshot.md").write_text(
+            "## Design Tokens\n\nColors:\n- accent: #10b981\n"
         )
-        mock_result = MagicMock(exit_code=0, stdout="", stderr="")
-        with patch("wt_orch.subprocess_utils.run_command", return_value=mock_result) as mock_cmd:
-            result = _fetch_design_context(force=True)
-            mock_cmd.assert_called_once()
-        # Still returns cached content since bash bridge "succeeded" and file exists
-        assert "## Design Tokens" in result
-
-    def test_no_design_mcp_returns_empty(self, tmp_project):
-        """No design MCP → empty string, no error."""
-        settings_dir = tmp_project / ".claude"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text(json.dumps({
-            "mcpServers": {"github": {}}
-        }))
         result = _fetch_design_context()
-        assert result == ""
-
-    def test_no_design_file_returns_empty(self, tmp_project):
-        """Design MCP exists but no design_file → empty string."""
-        settings_dir = tmp_project / ".claude"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text(json.dumps({
-            "mcpServers": {"figma": {"url": "https://mcp.figma.com"}}
-        }))
-        config_dir = tmp_project / "wt" / "orchestration"
-        config_dir.mkdir(parents=True)
-        (config_dir / "config.yaml").write_text("max_parallel: 3\n")
-        result = _fetch_design_context()
-        assert result == ""
-
-    def test_happy_path(self, tmp_project):
-        """Bash bridge succeeds → snapshot content returned."""
-        self._setup_mcp_and_config(tmp_project)
-
-        def fake_run(cmd, **kwargs):
-            # Simulate bash bridge creating the snapshot
-            (tmp_project / "design-snapshot.md").write_text(
-                "## Design Tokens\n\nColors:\n- primary: #3b82f6\n- accent: #10b981\n"
-            )
-            return MagicMock(exit_code=0, stdout="", stderr="")
-
-        with patch("wt_orch.subprocess_utils.run_command", side_effect=fake_run):
-            result = _fetch_design_context()
-        assert "primary: #3b82f6" in result
         assert "accent: #10b981" in result
 
-    def test_fail_fast_raises_runtime_error(self, tmp_project):
-        """Fetch fails with design configured → RuntimeError."""
-        self._setup_mcp_and_config(tmp_project)
-        mock_result = MagicMock(exit_code=1, stdout="", stderr="MCP_AUTH_FAILED")
-        with patch("wt_orch.subprocess_utils.run_command", return_value=mock_result):
-            with pytest.raises(RuntimeError, match="Design snapshot fetch failed"):
-                _fetch_design_context()
-
-    def test_design_optional_suppresses_error(self, tmp_project):
-        """DESIGN_OPTIONAL=true → warning instead of error."""
-        self._setup_mcp_and_config(tmp_project)
-        mock_result = MagicMock(exit_code=1, stdout="", stderr="MCP_AUTH_FAILED")
-        with patch("wt_orch.subprocess_utils.run_command", return_value=mock_result):
-            with patch.dict(os.environ, {"DESIGN_OPTIONAL": "true"}):
-                result = _fetch_design_context()
+    def test_no_snapshot_returns_empty(self, tmp_project):
+        """No snapshot anywhere → empty string."""
+        result = _fetch_design_context()
         assert result == ""
+
+    def test_empty_snapshot_skipped(self, tmp_project):
+        """Empty snapshot file is skipped."""
+        (tmp_project / "design-snapshot.md").write_text("   \n\n  ")
+        result = _fetch_design_context()
+        assert result == ""
+
+    def test_truncated_at_5000_chars(self, tmp_project):
+        """Large snapshot is truncated to 5000 chars."""
+        (tmp_project / "design-snapshot.md").write_text("X" * 10000)
+        result = _fetch_design_context()
+        assert len(result) == 5000
+
+    def test_force_param_ignored(self, tmp_project):
+        """force param is accepted but ignored (signature compat)."""
+        (tmp_project / "design-snapshot.md").write_text("## Tokens\n")
+        result = _fetch_design_context(force=True)
+        assert "## Tokens" in result
 
 
 # ─── dispatch_ready_changes threading ────────────────────────────

@@ -1217,6 +1217,7 @@ def _fetch_design_context(force: bool = False) -> str:
 
     Design snapshots are committed artifacts created by `wt-figma-fetch`.
     This function only reads the existing file — it never fetches from MCP.
+    Searches recursively under CWD for design-snapshot.md.
 
     Args:
         force: Ignored (kept for signature compatibility).
@@ -1224,16 +1225,17 @@ def _fetch_design_context(force: bool = False) -> str:
     Returns:
         Snapshot content (first 5000 chars) or empty string.
     """
-    if os.path.isfile("design-snapshot.md"):
+    # Search recursively under CWD for design-snapshot.md
+    for snap in sorted(Path(".").rglob("design-snapshot.md")):
         try:
-            content = Path("design-snapshot.md").read_text(errors="replace")
+            content = snap.read_text(errors="replace")
             if content.strip():
-                logger.info("Design snapshot loaded (%d bytes)", len(content))
+                logger.info("Design snapshot loaded from %s (%d bytes)", snap, len(content))
                 return content[:5000]
         except OSError:
-            pass
+            continue
 
-    logger.info("No design-snapshot.md — run 'wt-figma-fetch <docs-dir>' to fetch")
+    logger.info("No design-snapshot.md found — run 'wt-figma-fetch <docs-dir>' to fetch")
     return ""
 
 

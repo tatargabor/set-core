@@ -256,6 +256,19 @@ fetch_design_snapshot() {
     return 0
 }
 
+# ─── Snapshot finder ─────────────────────────────────────────────────
+
+# Recursively find the first design-snapshot.md under a directory.
+# Args: $1 = search root (defaults to DESIGN_SNAPSHOT_DIR or .)
+# Prints the path to stdout. Returns 1 if not found.
+_find_design_snapshot() {
+    local search_root="${1:-${DESIGN_SNAPSHOT_DIR:-.}}"
+    local found
+    found=$(find "$search_root" -name "design-snapshot.md" -type f 2>/dev/null | head -1)
+    [[ -n "$found" && -s "$found" ]] || return 1
+    echo "$found"
+}
+
 # ─── Dispatch Context ────────────────────────────────────────────────
 
 # Extract frame-filtered design context from design-snapshot.md for agent dispatch.
@@ -265,10 +278,9 @@ fetch_design_snapshot() {
 design_context_for_dispatch() {
     local scope_text="$1"
     local snapshot_dir="${2:-${DESIGN_SNAPSHOT_DIR:-.}}"
-    local snapshot_file="$snapshot_dir/design-snapshot.md"
+    local snapshot_file
+    snapshot_file=$(_find_design_snapshot "$snapshot_dir") || return 1
     local max_lines=150
-
-    [[ -f "$snapshot_file" && -s "$snapshot_file" ]] || return 1
 
     local output=""
     local tokens_section=""
@@ -345,9 +357,8 @@ design_context_for_dispatch() {
 # Prints token summary to stdout. Returns 1 if no snapshot available.
 build_design_review_section() {
     local snapshot_dir="${1:-${DESIGN_SNAPSHOT_DIR:-.}}"
-    local snapshot_file="$snapshot_dir/design-snapshot.md"
-
-    [[ -f "$snapshot_file" && -s "$snapshot_file" ]] || return 1
+    local snapshot_file
+    snapshot_file=$(_find_design_snapshot "$snapshot_dir") || return 1
 
     local tokens_section
     tokens_section=$(awk '
