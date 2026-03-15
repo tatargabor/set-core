@@ -8,6 +8,7 @@ import ResizableSplit from '../components/ResizableSplit'
 import PlanViewer from '../components/PlanViewer'
 import TokenChart from '../components/TokenChart'
 import AuditPanel from '../components/AuditPanel'
+import PhaseView from '../components/PhaseView'
 import ProgressView from '../components/ProgressView'
 import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
@@ -16,7 +17,7 @@ import useIsMobile from '../hooks/useIsMobile'
 import { getDigest, getPlans, getState } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent'
+type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent'
 
 interface Props {
   project: string | null
@@ -121,6 +122,7 @@ export default function Dashboard({ project }: Props) {
 
   const tabs: { id: PanelTab; label: string; hidden?: boolean }[] = [
     { id: 'changes', label: 'Changes' },
+    { id: 'phases', label: 'Phases' },
     { id: 'plan', label: 'Plan', hidden: !hasPlans },
     { id: 'tokens', label: 'Tokens' },
     { id: 'requirements', label: 'Requirements' },
@@ -245,7 +247,13 @@ export default function Dashboard({ project }: Props) {
         )}
 
         {/* All other tabs — full height, no log panel */}
-        {activeTab !== 'changes' && activeTab !== 'agent' && activeTab !== 'log' && (
+        {activeTab === 'phases' && (
+          <div className="h-full overflow-auto">
+            <PhaseView changes={changes} state={state} />
+          </div>
+        )}
+
+        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'log' && (
           <div className="h-full overflow-auto">
             {activeTab === 'plan' && (
               <PlanViewer project={project} />

@@ -23,6 +23,10 @@ export interface ProjectInfo {
 export interface ChangeInfo {
   name: string
   status: string
+  phase?: number
+  depends_on?: string[]
+  complexity?: string
+  change_type?: string
   iteration?: number
   ralph_pid?: number
   worktree_path?: string
@@ -88,6 +92,14 @@ export interface AuditResult {
   timestamp?: string
 }
 
+export interface PhaseInfo {
+  status: string
+  completed_at?: string
+  tag?: string
+  server_port?: number
+  server_pid?: number
+}
+
 export interface StateData {
   plan_version?: string | number
   status?: string
@@ -98,6 +110,8 @@ export interface StateData {
   active_seconds?: number
   directives?: Record<string, unknown>
   phase_audit_results?: AuditResult[]
+  current_phase?: number
+  phases?: Record<string, PhaseInfo>
 }
 
 export interface WorktreeInfo {
