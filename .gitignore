@@ -52,3 +52,4 @@ benchmark/synthetic/.wt-tools/
 benchmark/synthetic/default/
 benchmark/synthetic/shodh_data/
 benchmark/synthetic/test_project/
+wt/.work/
