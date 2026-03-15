@@ -157,7 +157,7 @@ _write_generated_file_patterns() {
     local py
     py=$(_wt_python) 2>/dev/null || return 0
 
-    PYTHONPATH="$WT_TOOLS_ROOT/lib${PYTHONPATH:+:$PYTHONPATH}" "$py" -c "
+    wt_python "$py" -c "
 import sys
 project_path = sys.argv[1]
 output_file = sys.argv[2]
@@ -213,7 +213,6 @@ deploy_wt_tools() {
     _deploy_skills "$project_path"
     _deploy_memory "$project_path"
     scaffold_wt_directory "$project_path"
-    _write_generated_file_patterns "$project_path"
     _deploy_mcp "$project_path" "$@" || ((_warnings++)) || true
 
     return $(( _warnings > 0 ? 1 : 0 ))
@@ -642,7 +641,7 @@ _prompt_modules() {
     SELECTED_MODULES=""
 
     local available
-    available=$(_list_available_modules "$type_name" "$template_name")
+    available=$(_list_available_modules "$type_name" "$template_name" 2>/dev/null) || true
     [[ -z "$available" ]] && return 0
 
     echo ""
@@ -796,6 +795,11 @@ cmd_init() {
         }
         fi  # end _save_project_type success
     fi
+
+    # Write .generated-file-patterns AFTER project-type.yaml is saved
+    # (profile_loader needs the yaml to load the correct profile)
+    # Runs unconditionally — no-op if no project-type.yaml exists
+    _write_generated_file_patterns "$git_root"
 
     # If called from a worktree, also deploy to the worktree's own .claude/ dir
     # and register MCP for the worktree path scope

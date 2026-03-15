@@ -7,6 +7,51 @@
 
 set -euo pipefail
 
+# WT_TOOLS_ROOT — canonical path to wt-tools repo root.
+# Resolves symlinks so this works from install.sh symlinked bins too.
+# Scripts may override before sourcing wt-common.sh if needed.
+if [[ -z "${WT_TOOLS_ROOT:-}" ]]; then
+    WT_TOOLS_ROOT="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && cd .. && pwd)"
+fi
+
+# Find a Python interpreter that can import wt_orch (lib/ on PYTHONPATH)
+# and wt_project_base (pip-installed). Caches result in _WT_PYTHON.
+# Usage: py=$(wt_find_python) && "$py" -c "..."
+_WT_PYTHON=""
+wt_find_python() {
+    if [[ -n "$_WT_PYTHON" ]]; then
+        echo "$_WT_PYTHON"
+        return 0
+    fi
+    local candidates=(
+        "$HOME/miniconda3/bin/python"
+        "$HOME/.local/share/uv/python/cpython-*/bin/python3"
+        "$(command -v python3 2>/dev/null)"
+        "$(command -v python 2>/dev/null)"
+    )
+    for py in "${candidates[@]}"; do
+        [[ -z "$py" ]] && continue
+        for resolved in $py; do
+            [[ -x "$resolved" ]] || continue
+            if PYTHONPATH="$WT_TOOLS_ROOT/lib${PYTHONPATH:+:$PYTHONPATH}" \
+               "$resolved" -c "import wt_orch.profile_loader" 2>/dev/null; then
+                _WT_PYTHON="$resolved"
+                echo "$resolved"
+                return 0
+            fi
+        done
+    done
+    echo "python3"
+}
+
+# Run a Python command with wt_orch on the path.
+# Computes PYTHONPATH dynamically so it picks up any WT_TOOLS_ROOT overrides.
+# Usage: wt_python python3 -c "from wt_orch.profile_loader import ..."
+#        wt_python "$py" -c "..."
+wt_python() {
+    PYTHONPATH="$WT_TOOLS_ROOT/lib${PYTHONPATH:+:$PYTHONPATH}" "$@"
+}
+
 # Platform detection
 detect_platform() {
     case "$(uname -s)" in

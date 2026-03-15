@@ -58,8 +58,10 @@ bootstrap_dependencies() {
     project_root="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
 
     # Try profile-aware bootstrap via Python first
-    if command -v python3 &>/dev/null; then
-        if python3 -c "
+    local py
+    py=$(wt_find_python) 2>/dev/null
+    if [[ -n "$py" ]]; then
+        if wt_python "$py" -c "
 from wt_orch.profile_loader import load_profile, NullProfile
 profile = load_profile('$project_root')
 if not isinstance(profile, NullProfile):
