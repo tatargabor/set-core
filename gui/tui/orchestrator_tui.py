@@ -106,6 +106,11 @@ def format_change_duration(change):
     else:
         # Still running — use current time
         end = datetime.now().astimezone()
+    # Normalize: make both aware or both naive to avoid TypeError
+    if start.tzinfo is None and end.tzinfo is not None:
+        start = start.replace(tzinfo=end.tzinfo)
+    elif start.tzinfo is not None and end.tzinfo is None:
+        end = end.replace(tzinfo=start.tzinfo)
     delta = (end - start).total_seconds()
     return format_duration(delta)
 
@@ -529,7 +534,13 @@ class OrchestratorTUI(App):
                 ca = c.get("completed_at")
                 if sa and ca:
                     try:
-                        delta = (datetime.fromisoformat(ca) - datetime.fromisoformat(sa)).total_seconds()
+                        s = datetime.fromisoformat(sa)
+                        e = datetime.fromisoformat(ca)
+                        if s.tzinfo is None and e.tzinfo is not None:
+                            s = s.replace(tzinfo=e.tzinfo)
+                        elif s.tzinfo is not None and e.tzinfo is None:
+                            e = e.replace(tzinfo=s.tzinfo)
+                        delta = (e - s).total_seconds()
                         if delta > 0:
                             durations.append(delta)
                     except (ValueError, TypeError):
