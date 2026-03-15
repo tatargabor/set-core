@@ -321,6 +321,15 @@ def merge_change(
         update_change_field(state_file, change_name, "status", "merged")
         logger.info("Merged %s", change_name)
 
+        # Parse LOCKFILE_CONFLICTED markers from wt-merge stdout
+        lockfile_conflicted = False
+        merge_stdout = merge_result.stdout or ""
+        for line in merge_stdout.splitlines():
+            if line.startswith("LOCKFILE_CONFLICTED="):
+                lockfile_conflicted = True
+                conflicted_file = line.split("=", 1)[1]
+                logger.info("Lock file was conflicted during merge: %s", conflicted_file)
+
         # Git tags for recovery
         run_command(["git", "tag", "-f", f"orch/{change_name}", "HEAD"], timeout=10)
 
@@ -335,7 +344,7 @@ def merge_change(
             logger.debug("Coverage update failed for %s (non-critical)", change_name)
 
         # Post-merge dependency install
-        _post_merge_deps_install()
+        _post_merge_deps_install(lockfile_conflicted=lockfile_conflicted)
 
         # Post-merge custom command
         _post_merge_custom_command(state_file)
@@ -558,20 +567,23 @@ def _run_hook(hook_name: str, change_name: str, status: str, wt_path: str) -> bo
     return True
 
 
-def _post_merge_deps_install() -> None:
-    """Install dependencies if package.json changed in the last commit."""
-    diff_result = run_command(
-        ["git", "diff", "HEAD~1", "--name-only"], timeout=30,
-    )
-    if "package.json" not in diff_result.stdout:
-        return
+def _post_merge_deps_install(lockfile_conflicted: bool = False) -> None:
+    """Install dependencies if package.json changed or lock file was conflicted."""
+    if not lockfile_conflicted:
+        diff_result = run_command(
+            ["git", "diff", "HEAD~1", "--name-only"], timeout=30,
+        )
+        if "package.json" not in diff_result.stdout:
+            return
+
+    reason = "lock file was conflicted" if lockfile_conflicted else "package.json changed"
 
     # Profile first, legacy fallback
     from .profile_loader import NullProfile, load_profile
 
     profile = load_profile()
     if not isinstance(profile, NullProfile):
-        logger.info("Post-merge: package.json changed, running profile.post_merge_install()")
+        logger.info("Post-merge: %s, running profile.post_merge_install()", reason)
         profile.post_merge_install(".")
         return
 
@@ -586,7 +598,7 @@ def _post_merge_deps_install() -> None:
         install_cmd = ["npm", "install"]
 
     if install_cmd:
-        logger.info("Post-merge: package.json changed, running %s", " ".join(install_cmd))
+        logger.info("Post-merge: %s, running %s", reason, " ".join(install_cmd))
         result = run_command(install_cmd, timeout=300)
         if result.exit_code == 0:
             logger.info("Post-merge: %s succeeded", " ".join(install_cmd))

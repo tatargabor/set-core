@@ -66,6 +66,134 @@ if [[ -f "$_PROFILE_PATTERNS_FILE" ]]; then
     done < "$_PROFILE_PATTERNS_FILE"
 fi
 
+# Hardcoded JS lockfile-to-PM map (fallback when no profile is loaded).
+declare -A _FALLBACK_LOCKFILE_PM_MAP=(
+    ["pnpm-lock.yaml"]="pnpm"
+    ["yarn.lock"]="yarn"
+    ["package-lock.json"]="npm"
+)
+
+# Read profile lockfile-PM map if available (written by wt-project init).
+_LOCKFILE_PM_MAP_FILE="${PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}/wt/plugins/.lockfile-pm-map"
+declare -A _PROFILE_LOCKFILE_PM_MAP=()
+if [[ -f "$_LOCKFILE_PM_MAP_FILE" ]]; then
+    while IFS='=' read -r lockfile pm; do
+        [[ -n "$lockfile" && -n "$pm" ]] && _PROFILE_LOCKFILE_PM_MAP["$lockfile"]="$pm"
+    done < "$_LOCKFILE_PM_MAP_FILE"
+fi
+
+# Check if a file is a lock file (using profile map then hardcoded fallback).
+# Returns 0 if lock file, 1 otherwise. Sets LOCKFILE_PM to the package manager.
+is_lockfile() {
+    local file="$1"
+    local basename
+    basename=$(basename "$file")
+
+    # Profile map first
+    if [[ ${#_PROFILE_LOCKFILE_PM_MAP[@]} -gt 0 && -n "${_PROFILE_LOCKFILE_PM_MAP[$basename]+x}" ]]; then
+        LOCKFILE_PM="${_PROFILE_LOCKFILE_PM_MAP[$basename]}"
+        return 0
+    fi
+
+    # Hardcoded JS fallback
+    if [[ -n "${_FALLBACK_LOCKFILE_PM_MAP[$basename]+x}" ]]; then
+        LOCKFILE_PM="${_FALLBACK_LOCKFILE_PM_MAP[$basename]}"
+        return 0
+    fi
+
+    LOCKFILE_PM=""
+    return 1
+}
+
+# Regenerate a lock file by running the appropriate PM install command.
+# Stages the regenerated file. Returns 0 on success, 1 on failure.
+regenerate_lockfile() {
+    local lockfile="$1"
+    local pm="$2"
+
+    if [[ -z "$pm" ]]; then
+        warn "Cannot regenerate $lockfile — unknown package manager"
+        return 1
+    fi
+
+    local install_cmd="$pm install"
+    # pnpm needs --no-frozen-lockfile to allow lock file changes
+    if [[ "$pm" == "pnpm" ]]; then
+        install_cmd="pnpm install --no-frozen-lockfile"
+    fi
+
+    info "Regenerating $lockfile via: $install_cmd"
+    if eval "$install_cmd" 2>/dev/null; then
+        git add "$lockfile" 2>/dev/null
+        info "Lock file regenerated and staged: $lockfile"
+        return 0
+    else
+        warn "Lock file regeneration failed for $lockfile (continuing with 'ours' version)"
+        return 1
+    fi
+}
+
+# Runtime file patterns that should never be tracked in git.
+RUNTIME_FILE_PATTERNS=(
+    ".wt-tools/.last-memory-commit"
+    ".wt-tools/agents/"
+    ".wt-tools/orphan-detect/"
+)
+
+# Remove runtime files from git index and ensure they are in .gitignore.
+# Returns 0 if any files were cleaned, 1 if nothing to do.
+cleanup_runtime_files() {
+    local project_path="$1"
+    local cleaned=false
+
+    # Remove tracked runtime files from index
+    for pattern in "${RUNTIME_FILE_PATTERNS[@]}"; do
+        local full_path="$project_path/$pattern"
+        if [[ "$pattern" == */ ]]; then
+            # Directory pattern — check if any tracked files match
+            local tracked
+            tracked=$(git -C "$project_path" ls-files "$pattern" 2>/dev/null)
+            if [[ -n "$tracked" ]]; then
+                git -C "$project_path" rm -r --cached "${pattern%/}" 2>/dev/null || true
+                cleaned=true
+            fi
+        else
+            # File pattern
+            if git -C "$project_path" ls-files --error-unmatch "$pattern" &>/dev/null; then
+                git -C "$project_path" rm --cached "$pattern" 2>/dev/null || true
+                cleaned=true
+            fi
+        fi
+    done
+
+    # Ensure patterns are in .gitignore
+    local gitignore="$project_path/.gitignore"
+    local patterns_to_add=()
+    for pattern in "${RUNTIME_FILE_PATTERNS[@]}"; do
+        if [[ ! -f "$gitignore" ]] || ! grep -qF "$pattern" "$gitignore" 2>/dev/null; then
+            patterns_to_add+=("$pattern")
+        fi
+    done
+
+    if [[ ${#patterns_to_add[@]} -gt 0 ]]; then
+        # Add a section header if .gitignore doesn't have one for wt-tools
+        if [[ ! -f "$gitignore" ]] || ! grep -q "wt-tools runtime" "$gitignore" 2>/dev/null; then
+            echo "" >> "$gitignore"
+            echo "# wt-tools runtime files" >> "$gitignore"
+        fi
+        for pattern in "${patterns_to_add[@]}"; do
+            echo "$pattern" >> "$gitignore"
+        done
+        git -C "$project_path" add .gitignore 2>/dev/null || true
+        cleaned=true
+    fi
+
+    if $cleaned; then
+        return 0
+    fi
+    return 1
+}
+
 # Check if a file matches any generated file pattern.
 is_generated_file() {
     local file="$1"
@@ -127,9 +255,15 @@ auto_resolve_generated_files() {
         return 1
     fi
 
-    # Resolve generated files with "ours"
+    # Resolve generated files with "ours", then regenerate lock files
     for file in "${generated_files[@]}"; do
         git checkout --ours "$file" 2>/dev/null && git add "$file" 2>/dev/null
+
+        # If this is a lock file, regenerate it and emit machine-readable marker
+        if is_lockfile "$file"; then
+            echo "LOCKFILE_CONFLICTED=$file"
+            regenerate_lockfile "$file" "$LOCKFILE_PM" || true
+        fi
     done
 
     info "Auto-resolved generated file conflicts: ${generated_files[*]}"
@@ -559,6 +693,12 @@ main() {
     if [[ -n "$main_changes" ]]; then
         git -C "$project_path" stash --quiet 2>/dev/null || true
         info "Auto-stashed uncommitted changes in main repo"
+    fi
+
+    # Pre-merge: clean runtime files from the worktree branch
+    if cleanup_runtime_files "$wt_path"; then
+        info "Pre-merge: cleaned runtime files from worktree index"
+        git -C "$wt_path" commit -m "chore: remove runtime files from git tracking" --no-verify 2>/dev/null || true
     fi
 
     info "Merging '$source_branch' into '$target_branch'..."

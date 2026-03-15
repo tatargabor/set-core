@@ -80,6 +80,7 @@ class SyncResult:
     message: str
     behind_count: int = 0
     auto_resolved: bool = False
+    lockfile_regenerated: bool = False
 
 
 @dataclass
@@ -160,12 +161,65 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
 
         if not has_non_generated:
             # All conflicts in generated files — accept ours
+            lockfile_regenerated = False
             for f in conflicted_files:
                 run_git("checkout", "--ours", f, cwd=wt_path)
                 run_git("add", f, cwd=wt_path)
+
+            # Check if any conflicted files were lock files and regenerate
+            from .profile_loader import NullProfile, load_profile
+
+            profile = load_profile()
+
+            # Build lockfile-to-PM map: profile first, then fallback
+            lockfile_pm_map = {}
+            if not isinstance(profile, NullProfile):
+                pm_map_list = profile.lockfile_pm_map()
+                if pm_map_list:
+                    for entry in pm_map_list:
+                        if isinstance(entry, dict):
+                            lockfile_pm_map.update(entry)
+                        elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+                            lockfile_pm_map[entry[0]] = entry[1]
+
+            # Hardcoded JS fallback
+            _fallback = {
+                "pnpm-lock.yaml": "pnpm",
+                "yarn.lock": "yarn",
+                "package-lock.json": "npm",
+            }
+            for lf, pm in _fallback.items():
+                if lf not in lockfile_pm_map:
+                    lockfile_pm_map[lf] = pm
+
+            for f in conflicted_files:
+                basename = os.path.basename(f)
+                if basename in lockfile_pm_map:
+                    pm = lockfile_pm_map[basename]
+                    install_cmd = [pm, "install"]
+                    if pm == "pnpm":
+                        install_cmd = ["pnpm", "install", "--no-frozen-lockfile"]
+                    logger.info(
+                        "sync: regenerating %s via %s in %s",
+                        basename, " ".join(install_cmd), wt_path,
+                    )
+                    result = run_command(install_cmd, timeout=300, cwd=wt_path)
+                    if result.exit_code == 0:
+                        run_git("add", f, cwd=wt_path)
+                        lockfile_regenerated = True
+                        logger.info("sync: lock file %s regenerated for %s", basename, change_name)
+                    else:
+                        logger.warning(
+                            "sync: lock file regeneration failed for %s (continuing with 'ours')",
+                            basename,
+                        )
+
             run_git("commit", "--no-edit", cwd=wt_path)
             logger.info("sync: auto-resolved generated file conflicts for %s", change_name)
-            return SyncResult(ok=True, message="auto-resolved", behind_count=behind_count, auto_resolved=True)
+            return SyncResult(
+                ok=True, message="auto-resolved", behind_count=behind_count,
+                auto_resolved=True, lockfile_regenerated=lockfile_regenerated,
+            )
 
     # Real conflicts — abort
     run_git("merge", "--abort", cwd=wt_path)
