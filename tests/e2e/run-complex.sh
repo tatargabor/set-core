@@ -13,6 +13,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCAFFOLD_DIR="$SCRIPT_DIR/scaffold-complex"
 CRAFTBREW_REPO="https://github.com/tatargabor/craftbrew.git"
 CRAFTBREW_BRANCH="main"
 BASE_DIR="${TMPDIR:-/tmp}"
@@ -145,6 +147,27 @@ init_project() {
     local file_count
     file_count=$(find "$TEST_DIR/docs" -name '*.md' | wc -l)
     success "Cloned CraftBrew repo ($file_count spec files in docs/)"
+
+    step "Copy scaffold extras (design snapshot, figma-raw)"
+    # The scaffold-complex dir contains pre-fetched Figma assets that aren't in the
+    # GitHub repo. Copy them over so the design bridge works without live Figma fetch.
+    if [[ -d "$SCAFFOLD_DIR" ]]; then
+        # Copy design-snapshot.md if present
+        if [[ -f "$SCAFFOLD_DIR/docs/design-snapshot.md" ]]; then
+            cp "$SCAFFOLD_DIR/docs/design-snapshot.md" "$TEST_DIR/docs/"
+        fi
+        # Copy figma-raw directory if present
+        if [[ -d "$SCAFFOLD_DIR/docs/figma-raw" ]]; then
+            cp -r "$SCAFFOLD_DIR/docs/figma-raw" "$TEST_DIR/docs/"
+        fi
+        # Copy figma.md to project root if present
+        if [[ -f "$SCAFFOLD_DIR/figma.md" ]]; then
+            cp "$SCAFFOLD_DIR/figma.md" "$TEST_DIR/"
+        fi
+        success "Scaffold extras copied (design snapshot + figma-raw)"
+    else
+        warn "No scaffold-complex directory found at $SCAFFOLD_DIR — skipping design assets"
+    fi
 
     step "Tag spec baseline"
     git tag v0-spec
