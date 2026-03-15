@@ -1,9 +1,6 @@
 # MCP configuration with credentials
 .mcp.json
 
-# Environment variables (secrets)
-.env
-
 # Editor directories
 .zed/
 
@@ -21,46 +18,9 @@ loop-state.json
 # Team sync worktree (wt-control branch)
 .wt-control/
 
-# Runtime state (agent tracking, memory markers, extraction logs, orphan detection)
-.wt-tools/agents/
-.wt-tools/orphan-detect/
-.wt-tools/.last-memory-commit
-.wt-tools/.saved-designs
-.wt-tools/.saved-codemaps
-.wt-tools/.transcript-extraction.lock
-.wt-tools/transcript-extraction.log
-.wt-tools/.staged-extract-*
-
 # Project-specific JIRA/Confluence config (contains credentials/project keys)
 .wt-tools/jira.json
 .wt-tools/confluence.json
 
-# Claude Code session data
-.claude/
-
-# Python virtual environments
-.venv/
-mcp-server/.venv/
-
-# Shodh memory local data
-shodh_data/
-benchmark/synthetic/**/bm25_index/
-benchmark/synthetic/**/memories/
-benchmark/synthetic/**/memory_index/
-
-# Nested .wt-tools runtime state (any subdirectory)
-**/.wt-tools/
-
-# Orchestrator runtime state
-orchestration-state.json
-orchestration-plan.json
-orchestration-summary.md
-
-# Test results
-test-results/
-
-# Local docs (project-specific notes, not pushed to remote)
-local-docs/
-wt/.work/
-
-# Generated documentation output (PDFs committed intentionally)
+# Team sync worktree (wt-control branch)
+.wt-control/

@@ -294,7 +294,7 @@ Test-per-change requirement:
 
 Playwright E2E test planning (when e2e_command is configured):
 - The infrastructure/foundation change (first in dependency order) MUST set up Playwright alongside Jest:
-  * Create playwright.config.ts with PW_PORT env var support and webServer auto-start
+  * Create playwright.config.ts with PW_PORT env var support, webServer auto-start, and screenshot: 'on' in the use section (without this, Playwright writes error-context.md text files instead of PNG screenshots)
   * Add testPathIgnorePatterns: ["/node_modules/", "/tests/e2e/"] to jest.config (Jest crashes on Playwright .spec.ts imports in jsdom)
   * Add @playwright/test to devDependencies + run npx playwright install chromium
   * Create tests/e2e/global-setup.ts: prisma generate → prisma db push --force-reset → prisma db seed
