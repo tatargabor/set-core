@@ -22,5 +22,33 @@ loop-state.json
 .wt-tools/jira.json
 .wt-tools/confluence.json
 
+# Runtime state files (wt-tools engine)
+.wt-tools/
+.claude/.wt-version
+.claude/activity.json
+.claude/logs/
+.claude/orchestration.log
+.claude/scheduled_tasks.lock
+.claude/settings.json.bak
+orchestration-events.jsonl
+
+# Environment and credentials
+.env
+
+# Private/local docs (not for repo)
+local-docs/
+
+# Test output
+test-results/
+
+# Runtime worktree state
+/wt/
+
 # Team sync worktree (wt-control branch)
 .wt-control/
+
+# Benchmark temp data
+benchmark/synthetic/.wt-tools/
+benchmark/synthetic/default/
+benchmark/synthetic/shodh_data/
+benchmark/synthetic/test_project/
