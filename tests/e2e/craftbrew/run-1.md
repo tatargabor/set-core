@@ -48,6 +48,14 @@
 - **Deployed**: yes
 - **Recurrence**: new (existed latently, first triggered by stall + no other activity)
 
+### 6. Verify gate fails on untracked files without auto-commit
+- **Type**: framework (blocking)
+- **Severity**: blocking
+- **Root cause**: Agent created `.eslintignore` and `.prettierignore` but didn't `git add` them. Verify gate detects "2 untracked" and retries 3x — but retries just re-check the same dirty worktree without re-running the agent (which already exited). Guaranteed 3x failure.
+- **Fix**: `06e3cce60` — verify gate now auto-commits leftover files (`git add -A && git commit`) before checking. Only fails if worktree is STILL dirty after auto-commit.
+- **Deployed**: yes
+- **Recurrence**: new (previous runs had this issue masked by other failures)
+
 ## Timeline
 
 | Time | Event |
@@ -63,6 +71,9 @@
 | ~00:27 | Orchestration running, test-infrastructure-setup dispatched |
 | ~00:31 | Bug #5: sentinel kills monitor (heartbeat too slow) |
 | ~00:33 | Bug #5 fixed, deployed, restarted |
+| ~00:43 | test-infrastructure-setup reaches verify gate |
+| ~00:44 | Bug #6: verify fails 3x on untracked files |
+| ~01:05 | Bug #6 fixed, change reset to pending |
 
 ## Status (in progress)
 
