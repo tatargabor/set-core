@@ -4,7 +4,7 @@
 
 ## Design
 
-**Figma Design:** https://www.figma.com/design/9PH3uS4vWjSj6cUPhTGZSt/E-commerce-web-app-design
+**Figma Design:** https://www.figma.com/make/9PH3uS4vWjSj6cUPhTGZSt/wt-minishop?p=f&t=zvhTdumJeYUpKrJm-0
 
 Agents should use the Figma MCP to query design tokens, component specs, and layout details during implementation. The design file contains desktop and mobile layouts for all pages.
 
