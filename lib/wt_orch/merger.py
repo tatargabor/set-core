@@ -311,6 +311,7 @@ def merge_change(
             return MergeResult(success=True, status="merged", smoke_result="skip_merged")
 
     # Case 3: Normal merge
+    pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
     merge_result = run_command(
         ["wt-merge", change_name, "--no-push", "--llm-resolve"],
         timeout=600,
@@ -344,7 +345,7 @@ def merge_change(
             logger.debug("Coverage update failed for %s (non-critical)", change_name)
 
         # Post-merge dependency install
-        _post_merge_deps_install(lockfile_conflicted=lockfile_conflicted)
+        _post_merge_deps_install(lockfile_conflicted=lockfile_conflicted, pre_merge_sha=pre_merge_sha)
 
         # Post-merge custom command
         _post_merge_custom_command(state_file)
@@ -567,11 +568,12 @@ def _run_hook(hook_name: str, change_name: str, status: str, wt_path: str) -> bo
     return True
 
 
-def _post_merge_deps_install(lockfile_conflicted: bool = False) -> None:
+def _post_merge_deps_install(lockfile_conflicted: bool = False, pre_merge_sha: str = "") -> None:
     """Install dependencies if package.json changed or lock file was conflicted."""
     if not lockfile_conflicted:
+        diff_ref = f"{pre_merge_sha}..HEAD" if pre_merge_sha else "HEAD~1"
         diff_result = run_command(
-            ["git", "diff", "HEAD~1", "--name-only"], timeout=30,
+            ["git", "diff", diff_ref, "--name-only"], timeout=30,
         )
         if "package.json" not in diff_result.stdout:
             return

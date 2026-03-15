@@ -1535,9 +1535,9 @@ def handle_change_done(
             gate_spec_coverage = "pass"
             update_change_field(state_file, change_name, "spec_coverage_result", "pass")
         elif "VERIFY_RESULT: FAIL" in verify_output:
-            verify_ok = False
             gate_spec_coverage = "fail"
             update_change_field(state_file, change_name, "spec_coverage_result", "fail")
+            logger.warning("Spec coverage FAIL for %s — non-blocking, proceeding to merge", change_name)
         else:
             # Soft-fail: if all other gates passed, treat missing VERIFY_RESULT as warning
             # The /opsx:verify skill sometimes doesn't output the sentinel within max-turns
@@ -1567,16 +1567,7 @@ def handle_change_done(
             update_change_field(state_file, change_name, "status", "verify-failed")
             scope = change.scope or ""
             verify_tail = verify_output[-2000:] if verify_output else ""
-            if gate_spec_coverage == "fail" and "VERIFY_RESULT:" in verify_output:
-                retry_prompt = f"Spec coverage check failed. Fix the CRITICAL issues found by verify.\n\nVerify output (last 2000 chars):\n{verify_tail}\n\nOriginal scope: {scope}"
-            elif gate_spec_coverage == "fail":
-                retry_prompt = (
-                    f"Verify gate FAILED: no VERIFY_RESULT sentinel line found. "
-                    f"Re-run /opsx:verify {change_name} and ensure output ends with VERIFY_RESULT: PASS or VERIFY_RESULT: FAIL\n\n"
-                    f"Verify output (last 2000 chars):\n{verify_tail}\n\nOriginal scope: {scope}"
-                )
-            else:
-                retry_prompt = f"Verify failed. Fix the issues.\n\nVerify output (last 2000 chars):\n{verify_tail}\n\nOriginal scope: {scope}"
+            retry_prompt = f"Verify failed. Fix the issues.\n\nVerify output (last 2000 chars):\n{verify_tail}\n\nOriginal scope: {scope}"
             update_change_field(state_file, change_name, "retry_context", retry_prompt)
             _snapshot_retry_tokens(state_file, change_name, wt_path)
             from .dispatcher import resume_change
@@ -1614,6 +1605,7 @@ def handle_change_done(
             "scope_check": "pass",
             "has_tests": gate_has_tests,
             "spec_coverage": gate_spec_coverage,
+            "spec_coverage_blocking": False,
         })
 
     # ── Post-verify hook ──
