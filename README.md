@@ -208,25 +208,53 @@ The installer handles everything: CLI symlinks, shell completions, MCP server co
 
 > **Note:** Feature development is Linux-first. macOS is supported and used in production, but some platform-specific behavior (e.g. window management, process signals) may differ. We welcome macOS-focused contributions.
 
+### Web Dashboard
+
+The wt-web dashboard shows running projects, orchestration state, agent status, and logs in a browser.
+
+**Start locally:**
+
+```bash
+# 1. Copy and configure .env
+cp .env.example .env
+# Edit .env — set WT_WEB_PORT (default: 7400) and WT_TAILSCALE_HOSTNAME
+
+# 2. Start the server
+wt-orch-core serve                    # http://localhost:7400
+wt-orch-core serve --port 8080        # custom port
+WT_WEB_PORT=8080 wt-orch-core serve   # or via env
+```
+
+**As a systemd service (auto-start on boot):**
+
+```bash
+cp templates/systemd/wt-web.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now wt-web
+```
+
 ### Mobile Access
 
-The wt-web dashboard is responsive and works on mobile phones. To access it from your phone:
+The dashboard is responsive and works on mobile phones via Tailscale:
 
 1. **Tailscale** — install on both your machine and phone ([tailscale.com](https://tailscale.com))
-2. **Run the installer** — `install.sh` sets up Tailscale serve automatically (HTTP proxy on port 80)
-3. **Open in Chrome** — navigate to `http://<your-tailscale-hostname>/` on your phone
+2. **Set your hostname** in `.env`:
+   ```
+   WT_TAILSCALE_HOSTNAME=your-machine-name.tailnet-xxxx.ts.net
+   ```
+   Find it with `tailscale status --self`.
+3. **Set up Tailscale serve** (HTTP proxy on port 80 → wt-web):
+   ```bash
+   # Sudoers rule (one-time)
+   echo "$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/tailscale" | sudo tee /etc/sudoers.d/tailscale-wt
+   sudo chmod 440 /etc/sudoers.d/tailscale-wt
 
-The installer handles: sudoers rule for passwordless `tailscale serve`, HTTP reverse proxy (port 80 → localhost:8765). HTTP is used instead of HTTPS because Tailscale's auto-provisioned certs can trigger Certificate Transparency errors on Android Chrome — the WireGuard tunnel already encrypts all traffic.
+   # Start HTTP proxy
+   sudo tailscale serve --bg --http 80 http://localhost:7400
+   ```
+4. **Open in Chrome** — navigate to `http://$WT_TAILSCALE_HOSTNAME/` on your phone
 
-Manual setup (if not using the installer):
-```bash
-# Sudoers rule (one-time)
-echo "$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/tailscale" | sudo tee /etc/sudoers.d/tailscale-wt
-sudo chmod 440 /etc/sudoers.d/tailscale-wt
-
-# Start HTTP proxy
-sudo tailscale serve --bg --http 80 http://localhost:8765
-```
+HTTP is used instead of HTTPS because Tailscale's auto-provisioned certs can trigger Certificate Transparency errors on Android Chrome — the WireGuard tunnel already encrypts all traffic.
 
 ---
 
