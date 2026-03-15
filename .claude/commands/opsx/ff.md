@@ -34,7 +34,6 @@ Fast-forward through artifact creation - generate everything needed to start imp
    - `applyRequires`: array of artifact IDs needed before implementation (e.g., `["tasks"]`)
    - `artifacts`: list of all artifacts with their status and dependencies
 
-
 4. **Create artifacts in sequence until apply-ready**
 
    Use the **TodoWrite tool** to track progress through the artifacts.
@@ -86,13 +85,6 @@ After completing all artifacts, summarize:
 - The schema defines what each artifact should contain - follow it
 - Read dependency artifacts for context before creating new ones
 - Use the `template` as a starting point, filling in based on context
-
-**Manual Tasks in tasks.md**
-
-When creating the tasks artifact, if the change involves external services, API keys, third-party account setup, webhooks, or any step that cannot be automated by an AI agent:
-- Use `- [?]` checkbox syntax for tasks requiring human action (instead of `- [ ]`)
-- Add type annotations: `[input:KEY_NAME]` for tasks needing a secret/value, `[confirm]` for tasks needing manual action confirmation
-- Add a `### Manual: <task-id> — <title>` section after each `[?]` task with step-by-step instructions, URLs, expected format, and target file
 
 **Guardrails**
 - Create ALL artifacts needed for implementation (as defined by schema's `apply.requires`)

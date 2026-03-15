@@ -3,8 +3,6 @@ name: openspec-explore
 description: Enter explore mode - a thinking partner for exploring ideas, investigating problems, and clarifying requirements. Use when the user wants to think through something before or during a change.
 license: MIT
 compatibility: Requires openspec CLI.
-context: fork
-agent: Explore
 metadata:
   author: openspec
   version: "1.0"
@@ -80,10 +78,6 @@ Depending on what the user brings, you might:
 ## OpenSpec Awareness
 
 You have full context of the OpenSpec system. Use it naturally, don't force it.
-
-### Check memory first
-
-Before exploring independently, check injected memory context from `<system-reminder>` tags. Summarize what you already know from memory, then fill in gaps with codebase exploration.
 
 ### Check for context
 

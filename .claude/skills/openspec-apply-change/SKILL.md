@@ -87,13 +87,6 @@ Implement tasks from an OpenSpec change.
    - If all done: suggest archive
    - If paused: explain why and wait for guidance
 
-8. **Commit changes**
-
-   After implementation completes or pauses, commit all changes:
-   - Stage the relevant files (implementation files + updated tasks.md)
-   - Write a concise commit message summarizing what was implemented
-   - Follow the standard commit flow
-
 **Output During Implementation**
 
 ```

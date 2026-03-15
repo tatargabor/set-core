@@ -34,7 +34,6 @@ Continue working on a change by creating the next artifact.
    - `artifacts`: Array of artifacts with their status ("done", "ready", "blocked")
    - `isComplete`: Boolean indicating if all artifacts are complete
 
-
 3. **Act based on status**:
 
    ---
