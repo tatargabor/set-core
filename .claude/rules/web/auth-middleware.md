@@ -49,12 +49,43 @@ function authMiddleware(request):
 4. **Preserve redirect target** — save the original URL so user returns after login
 5. **Handle API vs page routes differently** — APIs return 401 JSON, pages redirect to login
 
+## Protected layout: hide navigation for unauthenticated users
+
+Admin/dashboard layouts often include sidebar navigation (links to sub-pages). These navigation elements MUST only be visible to authenticated users. Unauthenticated users should see only the login/register form — not the full admin chrome.
+
+### Pattern: separate layouts for public vs protected admin routes
+
+```
+# Option A: Route groups (Next.js App Router, Remix)
+app/admin/(auth)/login/page.tsx     ← uses minimal layout (no sidebar)
+app/admin/(auth)/register/page.tsx  ← uses minimal layout (no sidebar)
+app/admin/(dashboard)/page.tsx      ← uses admin layout WITH sidebar
+app/admin/(dashboard)/products/     ← uses admin layout WITH sidebar
+
+# Option B: Conditional layout
+function AdminLayout({ children }) {
+  const session = await getSession()
+  if (!session) {
+    return <div className="centered">{children}</div>  // minimal wrapper
+  }
+  return (
+    <div className="flex">
+      <AdminSidebar />  // only rendered when authenticated
+      <main>{children}</main>
+    </div>
+  )
+}
+```
+
+**The rule:** admin navigation links (Dashboard, Products, Users, etc.) must NOT be visible on login/register pages. Showing them to unauthenticated users is confusing — they can see the menu but can't access any page.
+
 ## Common mistakes:
 
 - Creating login/register pages but no middleware → direct URL access bypasses auth
 - Auth check only in layout/component → server-side rendering still processes the full page
 - Redirecting to `/login` without preserving the original URL → bad UX
 - Forgetting to handle `/api/*` routes under the same middleware → API endpoints unprotected
+- **Rendering admin sidebar/nav on login page** — layout wraps all `/admin/*` routes including login, showing nav items the user can't access
 
 ## E2E test requirement:
 
