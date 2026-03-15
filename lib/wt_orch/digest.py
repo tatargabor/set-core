@@ -797,6 +797,82 @@ def update_coverage_status(
     logger.info("Coverage status updated: %s → %s", change_name, new_status)
 
 
+def reconcile_coverage(state_file: str, digest_dir: str = DIGEST_DIR) -> int:
+    """Sync coverage.json with actual change statuses from state.
+
+    For each requirement in coverage.json, if its owning change is 'merged'
+    in the state file but the coverage status is anything other than 'merged',
+    update it. Writes to coverage-merged.json via read-merge-write.
+
+    Returns number of requirements fixed. Returns 0 if coverage.json
+    doesn't exist (no-digest mode).
+    """
+    cov_path = Path(digest_dir) / "coverage.json"
+    if not cov_path.is_file():
+        return 0
+
+    # Load coverage
+    try:
+        cov_data = json.loads(cov_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return 0
+
+    # Load state to get change statuses
+    state_path = Path(state_file)
+    if not state_path.is_file():
+        return 0
+    try:
+        state_data = json.loads(state_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return 0
+
+    # Build change_name → status lookup
+    change_statuses: dict[str, str] = {}
+    for change in state_data.get("changes", []):
+        name = change.get("name", "")
+        status = change.get("status", "")
+        if name:
+            change_statuses[name] = status
+
+    # Reconcile: find requirements whose change is merged but coverage isn't
+    coverage = cov_data.get("coverage", {})
+    fixed_count = 0
+    fixed_entries: dict[str, Any] = {}
+
+    for req_id, entry in coverage.items():
+        owning_change = entry.get("change", "")
+        if not owning_change:
+            continue
+        if change_statuses.get(owning_change) == "merged" and entry.get("status") != "merged":
+            entry["status"] = "merged"
+            fixed_count += 1
+            fixed_entries[req_id] = entry
+
+    if fixed_count == 0:
+        return 0
+
+    # Write updated coverage.json
+    cov_data["coverage"] = coverage
+    _write_json(cov_path, cov_data)
+
+    # Merge into coverage-merged.json (read-merge-write)
+    merged_history = Path(digest_dir) / "coverage-merged.json"
+    if merged_history.is_file():
+        try:
+            existing = json.loads(merged_history.read_text(encoding="utf-8"))
+            existing.update(fixed_entries)
+            _write_json(merged_history, existing)
+        except (json.JSONDecodeError, OSError):
+            _write_json(merged_history, fixed_entries)
+    else:
+        _write_json(merged_history, fixed_entries)
+
+    logger.warning(
+        "Coverage reconciliation: fixed %d requirements with stale status", fixed_count
+    )
+    return fixed_count
+
+
 # ─── Triage Pipeline ────────────────────────────────────────────
 # Migrated from: digest.sh:generate_triage_md(), parse_triage_md(),
 #                merge_triage_to_ambiguities(), merge_planner_resolutions()

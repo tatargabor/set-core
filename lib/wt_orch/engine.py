@@ -607,6 +607,17 @@ def _check_completion(
     if truly_complete < total and not (active_count == 0 and all_resolved >= total):
         return False
 
+    # Reconcile coverage before any terminal decision — fix stale entries
+    # from requirements whose changes merged but coverage wasn't updated
+    # (e.g. after sentinel partial reset)
+    try:
+        from .digest import reconcile_coverage, DIGEST_DIR
+        fixed = reconcile_coverage(state_file, DIGEST_DIR)
+        if fixed:
+            logger.warning("Reconciled %d coverage entries before completion check", fixed)
+    except Exception:
+        logger.warning("Coverage reconciliation failed", exc_info=True)
+
     logger.info("All %d changes resolved (%d complete, %d dep-blocked)", total, truly_complete, blocked_pending)
 
     # Dep-blocked: some changes couldn't run because dependencies failed.

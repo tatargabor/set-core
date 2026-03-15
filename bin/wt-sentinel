@@ -44,6 +44,7 @@ SUSTAINED_RUN_SECS=300  # 5 minutes
 POLL_INTERVAL=10        # Check child every 10s
 SENTINEL_STUCK_TIMEOUT=180  # 3 minutes no activity = stuck
 SENTINEL_STARTUP_TIMEOUT=1800  # 30 minutes for initial planning (digest + design fetch + Claude decompose)
+CHECKPOINT_MAX_WAIT=86400     # 24 hours max checkpoint wait before giving up
 
 # Exponential backoff: 30s → 60s → 120s → 240s (with 0-25% jitter)
 BACKOFF_BASE=30
@@ -201,6 +202,26 @@ fi
 check_orchestrator_liveness() {
     local now
     now=$(date +%s)
+
+    # Skip stuck detection during checkpoint — orchestrator is alive but waiting for approval
+    if [[ -f "$STATE_FILE" ]]; then
+        local current_status
+        current_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null) || return 0
+        # ↑ On jq parse failure (torn read), fail safe by skipping the kill
+        if [[ "$current_status" == "checkpoint" ]]; then
+            # Bound the wait — don't wait forever if user abandons
+            local cp_started
+            cp_started=$(jq -r '.checkpoint_started_at // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+            if [[ "$cp_started" -gt 0 ]]; then
+                local cp_age=$(( now - cp_started ))
+                if [[ "$cp_age" -ge "$CHECKPOINT_MAX_WAIT" ]]; then
+                    sentinel_log "Checkpoint wait exceeded ${CHECKPOINT_MAX_WAIT}s (${cp_age}s) — treating as stuck"
+                    return 1
+                fi
+            fi
+            return 0  # not stuck, waiting for approval
+        fi
+    fi
 
     # Use longer timeout during startup (no state file = still planning/digesting)
     local effective_timeout="$SENTINEL_STUCK_TIMEOUT"
