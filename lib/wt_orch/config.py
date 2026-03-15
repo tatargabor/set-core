@@ -560,13 +560,18 @@ def _find_brief(
 def auto_detect_test_command(directory: str = ".") -> str:
     """Auto-detect test command from project configuration.
 
-    Migrated from: planner.sh:auto_detect_test_command() L131-160
-
-    Checks: package.json scripts (test, test:unit, test:ci) with lockfile-based
-    package manager detection (pnpm, yarn, bun, npm).
+    Resolution: profile.detect_test_command() → legacy fallback.
 
     Returns empty string if no test command found.
     """
+    from .profile_loader import load_profile
+
+    profile = load_profile(directory)
+    cmd = profile.detect_test_command(directory)
+    if cmd:
+        return cmd
+
+    # Legacy fallback
     d = Path(directory)
     pkg_json = d / "package.json"
 
@@ -603,8 +608,17 @@ def auto_detect_test_command(directory: str = ".") -> str:
 def detect_package_manager(project_dir: str = ".") -> str:
     """Detect package manager from lockfile presence.
 
+    Resolution: profile.detect_package_manager() → legacy fallback.
     Returns: bun, pnpm, yarn, pip, poetry, or npm (default).
     """
+    from .profile_loader import load_profile
+
+    profile = load_profile(project_dir)
+    pm = profile.detect_package_manager(project_dir)
+    if pm:
+        return pm
+
+    # Legacy fallback
     d = Path(project_dir)
     if (d / "bun.lockb").is_file() or (d / "bun.lock").is_file():
         return "bun"
@@ -622,10 +636,16 @@ def detect_package_manager(project_dir: str = ".") -> str:
 def install_dependencies(project_dir: str = ".") -> bool:
     """Install dependencies using detected package manager.
 
-    Migrated from: lib/orchestration/server-detect.sh:install_dependencies()
-
+    Resolution: profile.post_merge_install() → legacy fallback.
     Returns: True on success, False on failure (non-blocking).
     """
+    from .profile_loader import NullProfile, load_profile
+
+    profile = load_profile(project_dir)
+    if not isinstance(profile, NullProfile):
+        return profile.post_merge_install(project_dir)
+
+    # Legacy fallback
     d = Path(project_dir)
     if not (d / "package.json").is_file():
         return True  # Nothing to install
@@ -683,7 +703,15 @@ def detect_dev_server(
     if smoke_dev_server_command:
         return smoke_dev_server_command
 
-    # 3. package.json scripts.dev
+    # 3. Profile-aware detection
+    from .profile_loader import load_profile
+
+    profile = load_profile(project_dir)
+    cmd = profile.detect_dev_server(project_dir)
+    if cmd:
+        return cmd
+
+    # 4. package.json scripts.dev (legacy fallback)
     pkg_json = d / "package.json"
     if pkg_json.is_file():
         try:
@@ -694,11 +722,11 @@ def detect_dev_server(
         except (json.JSONDecodeError, OSError):
             pass
 
-    # 4. docker-compose.yml or compose.yml
+    # 5. docker-compose.yml or compose.yml
     if (d / "docker-compose.yml").is_file() or (d / "compose.yml").is_file():
         return "docker compose up"
 
-    # 5. Makefile with dev or serve target
+    # 6. Makefile with dev or serve target
     makefile = d / "Makefile"
     if makefile.is_file():
         try:
@@ -710,7 +738,7 @@ def detect_dev_server(
         except (OSError, IOError):
             pass
 
-    # 6. manage.py (Django)
+    # 7. manage.py (Django)
     if (d / "manage.py").is_file():
         return "python manage.py runserver"
 

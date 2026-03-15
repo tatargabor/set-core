@@ -45,18 +45,31 @@ def _optional_section(header: str, content: str) -> str:
 # ─── Proposal Template ─────────────────────────────────────────────────
 
 
+_GENERIC_SECURITY_CHECKLIST = """- [ ] Data mutations by client-provided ID include ownership/authorization check
+- [ ] Protected resources enforce auth before the handler runs
+- [ ] Public-facing inputs are validated at the boundary (type, range, size)
+- [ ] Multi-user queries are scoped by the owning entity"""
+
+
 def render_proposal(
     change_name: str,
     scope: str,
     roadmap_item: str,
     memory_ctx: str = "",
     spec_ref: str = "",
+    project_path: str = ".",
 ) -> str:
     """Render proposal.md content for a new change.
 
-    Replaces the 3 concatenated heredocs in dispatcher.sh:
-    PROPOSAL_EOF + MEMORY_EOF + SPECREF_EOF
+    Security checklist: profile-specific first, generic fallback.
     """
+    from .profile_loader import load_profile
+
+    profile = load_profile(project_path)
+    checklist = profile.security_checklist()
+    if not checklist:
+        checklist = _GENERIC_SECURITY_CHECKLIST
+
     parts = [f"""## Why
 
 {roadmap_item}
@@ -68,10 +81,7 @@ def render_proposal(
 ## Security Checklist
 
 Before completing implementation, verify where applicable:
-- [ ] Data mutations by client-provided ID include ownership/authorization check
-- [ ] Protected resources enforce auth before the handler runs
-- [ ] Public-facing inputs are validated at the boundary (type, range, size)
-- [ ] Multi-user queries are scoped by the owning entity
+{checklist}
 
 ## Capabilities
 
@@ -240,8 +250,9 @@ Do NOT create a worktree — fix directly in the current directory."""
 
 # ─── Planning Prompt Templates ─────────────────────────────────────────
 
-# Shared rules block used by both spec-mode and brief-mode
-_PLANNING_RULES = """Rules:
+# Core planning rules (framework-agnostic) — web-specific Playwright block
+# moved to wt-project-web/planning_rules.txt, loaded via profile.planning_rules()
+_PLANNING_RULES_CORE = """Rules:
 - Each change should be completable in 1 Ralph loop session (not too large, not too granular)
 - Use kebab-case names (e.g., add-user-auth, refactor-payment-flow)
 - Define dependencies: if change B needs code from change A, list A in depends_on
@@ -292,30 +303,6 @@ Test-per-change requirement:
 - The quality gate BLOCKS changes without test files for feature/infrastructure types.
 - Explicitly list test files in scope (e.g., "Tests: Create orders.test.ts").
 
-Playwright E2E test planning (when e2e_command is configured):
-- The infrastructure/foundation change (first in dependency order) MUST set up Playwright alongside Jest:
-  * Create playwright.config.ts with PW_PORT env var support, webServer auto-start, and screenshot: 'on' in the use section (without this, Playwright writes error-context.md text files instead of PNG screenshots)
-  * Add testPathIgnorePatterns: ["/node_modules/", "/tests/e2e/"] to jest.config (Jest crashes on Playwright .spec.ts imports in jsdom)
-  * Add @playwright/test to devDependencies + run npx playwright install chromium
-  * Create tests/e2e/global-setup.ts: prisma generate → prisma db push --force-reset → prisma db seed
-- Each subsequent feature change creating a user-facing route MUST create tests/e2e/<feature>.spec.ts as an explicit file deliverable in scope (e.g., "Create tests/e2e/cart.spec.ts")
-- Include CONCRETE test scenarios per feature:
-  * Page URL to visit
-  * User interactions: what to click, what data to type, what to select
-  * Expected outcomes: visible text, redirects, error messages
-  * Auth scenarios: verify protected routes redirect unauthenticated users
-  * Error scenarios: invalid form input, missing required fields
-  * COLD-VISIT test: navigate directly to the page as the FIRST action (no prior login, no add-to-cart, no session cookie). This catches Server Component cookie/session bugs where cookies().set() crashes outside a Server Action.
-- Example scope:
-  Create tests/e2e/orders.spec.ts:
-  - Cold visit: go to /cart directly (no prior actions) → should show empty state, NOT crash
-  - Visit /products → click "Add to Cart" on first product → cart badge shows "1"
-  - Visit /cart → verify product name and price → click "Checkout" → fill form → verify redirect to /orders/[id]
-  - Visit /admin/orders without login → verify redirect to /admin/login
-- Do NOT defer all E2E tests to a consolidation change — this overloads a single agent. Each feature change owns its tests.
-- Do NOT just list "Functional test scenarios:" as descriptions — create actual test files.
-- E2E tests run pre-merge in the worktree via e2e_command against an auto-started dev server with isolated port and DB.
-
 Phase assignment — group changes into execution phases for milestone checkpoints:
 - Assign a phase integer (1..N, max 5) to each change
 - Phase 1: infrastructure, schema, foundational changes
@@ -342,6 +329,19 @@ CRITICAL — Output size constraint:
 - Keep scope text concise (800-1500 chars). Do NOT pad with implementation details.
 - Keep reasoning to 2-3 sentences. Keep phase_detected to 1 sentence.
 - Do NOT split your response across messages."""
+
+
+def _get_planning_rules(project_path: str = ".") -> str:
+    """Assemble planning rules from core + profile."""
+    from .profile_loader import load_profile
+
+    profile = load_profile(project_path)
+    profile_rules = profile.planning_rules()
+    if profile_rules:
+        return _PLANNING_RULES_CORE + "\n\n" + profile_rules
+    # No profile rules — return core only
+    return _PLANNING_RULES_CORE
+
 
 _DIGEST_FIELDS = """Digest-mode additional requirements:
 - Each change MUST include "spec_files": an array of raw spec file paths (relative to spec base dir) that this change needs for implementation. These files will be copied into the worktree.
@@ -446,6 +446,9 @@ def render_planning_prompt(
     """
     if replan_ctx is None:
         replan_ctx = {}
+
+    # Assemble planning rules from core + profile
+    _PLANNING_RULES = _get_planning_rules()
 
     # Build optional sections
     sections = []

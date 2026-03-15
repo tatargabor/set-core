@@ -162,10 +162,15 @@ def summarize_spec(
 
 
 def _auto_detect_test_command(project_dir: str) -> str:
-    """Detect test command from package.json.
+    """Detect test command — profile first, legacy fallback."""
+    from .profile_loader import load_profile
 
-    Migrated from: planner.sh auto_detect_test_command() L131-160
-    """
+    profile = load_profile(project_dir)
+    cmd = profile.detect_test_command(project_dir)
+    if cmd:
+        return cmd
+
+    # Legacy fallback
     pkg_path = Path(project_dir) / "package.json"
     if not pkg_path.exists():
         return ""
@@ -175,7 +180,6 @@ def _auto_detect_test_command(project_dir: str) -> str:
     except (json.JSONDecodeError, OSError):
         return ""
 
-    # Detect package manager from lockfile
     p = Path(project_dir)
     if (p / "pnpm-lock.yaml").exists():
         pkg_mgr = "pnpm"
@@ -186,7 +190,6 @@ def _auto_detect_test_command(project_dir: str) -> str:
     else:
         pkg_mgr = "npm"
 
-    # Check scripts in priority order
     scripts = pkg.get("scripts", {})
     for candidate in ("test", "test:unit", "test:ci"):
         if scripts.get(candidate):

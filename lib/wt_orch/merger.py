@@ -560,13 +560,22 @@ def _run_hook(hook_name: str, change_name: str, status: str, wt_path: str) -> bo
 
 def _post_merge_deps_install() -> None:
     """Install dependencies if package.json changed in the last commit."""
-    # Source: merger.sh L148-166
     diff_result = run_command(
         ["git", "diff", "HEAD~1", "--name-only"], timeout=30,
     )
     if "package.json" not in diff_result.stdout:
         return
 
+    # Profile first, legacy fallback
+    from .profile_loader import NullProfile, load_profile
+
+    profile = load_profile()
+    if not isinstance(profile, NullProfile):
+        logger.info("Post-merge: package.json changed, running profile.post_merge_install()")
+        profile.post_merge_install(".")
+        return
+
+    # Legacy fallback
     install_cmd = None
     if os.path.exists("pnpm-lock.yaml"):
         install_cmd = ["pnpm", "install"]
@@ -602,16 +611,27 @@ def _post_merge_custom_command(state_file: str) -> None:
 
 def _post_merge_build_check(change_name: str, state_file: str) -> bool:
     """Verify build on main after merge. Returns True if build passes."""
-    # Source: merger.sh L188-214
-    # Detect build command
-    pm = "pnpm"
-    if os.path.exists("yarn.lock"):
-        pm = "yarn"
-    elif os.path.exists("package-lock.json"):
-        pm = "npm"
+    from .profile_loader import load_profile
+
+    profile = load_profile()
+    pm = profile.detect_package_manager(".") or "npm"
+    build_cmd = profile.detect_build_command(".")
+
+    if not pm or pm == "npm":
+        # Legacy fallback for PM
+        if os.path.exists("pnpm-lock.yaml"):
+            pm = "pnpm"
+        elif os.path.exists("yarn.lock"):
+            pm = "yarn"
+
+    if build_cmd:
+        # Profile returns full command like "pnpm run build"
+        build_parts = build_cmd.split()
+    else:
+        build_parts = [pm, "run", "build"]
 
     logger.info("Post-merge: verifying build on main after merging %s", change_name)
-    result = run_command([pm, "run", "build"], timeout=300)
+    result = run_command(build_parts, timeout=300)
 
     if result.exit_code != 0:
         logger.error("Post-merge: build FAILED on main after merging %s", change_name)

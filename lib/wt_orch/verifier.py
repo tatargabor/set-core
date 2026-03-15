@@ -133,6 +133,36 @@ def _extract_review_fixes(review_output: str) -> str:
     return "\n".join(fixes)
 
 
+def _load_security_rules(wt_path: str) -> str:
+    """Load security rules — profile first, legacy fallback."""
+    from .profile_loader import load_profile
+
+    profile = load_profile()
+    rule_paths = profile.security_rules_paths(wt_path)
+    if rule_paths:
+        parts = []
+        total = 0
+        for rf in sorted(set(rule_paths)):
+            try:
+                content = rf.read_text()
+            except OSError:
+                continue
+            if content.startswith("---"):
+                end = content.find("---", 3)
+                if end > 0:
+                    content = content[end + 3:].strip()
+            if len(content) > 1500:
+                content = content[:1500] + "\n..."
+            total += len(content)
+            if total > 4000:
+                break
+            parts.append(content)
+        return "\n\n".join(parts)
+
+    # Legacy fallback
+    return _load_web_security_rules(wt_path)
+
+
 def _load_web_security_rules(wt_path: str) -> str:
     """Load web security rules from the worktree's .claude/rules/ if available.
 
@@ -1436,7 +1466,7 @@ def handle_change_done(
                     parts.append("=== END REQUIRED FIXES ===\n")
 
                 # Inject web security rules if available in the worktree
-                security_guide = _load_web_security_rules(wt_path)
+                security_guide = _load_security_rules(wt_path)
                 if security_guide:
                     parts.append("=== SECURITY REFERENCE (follow these patterns) ===")
                     parts.append(security_guide)

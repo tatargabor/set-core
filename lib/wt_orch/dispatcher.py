@@ -192,28 +192,39 @@ def bootstrap_worktree(project_path: str, wt_path: str) -> int:
     if copied > 0:
         logger.info("bootstrap: copied %d env file(s) to %s", copied, wt_path)
 
-    # Install dependencies
-    pkg_json = os.path.join(wt_path, "package.json")
-    node_modules = os.path.join(wt_path, "node_modules")
-    if os.path.isfile(pkg_json) and not os.path.isdir(node_modules):
-        pm = _detect_package_manager(wt_path)
-        if pm and shutil.which(pm):
-            logger.info("bootstrap: installing deps with %s in %s", pm, wt_path)
-            r = run_command([pm, "install", "--frozen-lockfile"], cwd=wt_path, timeout=120)
-            if r.exit_code != 0:
-                # Retry without --frozen-lockfile
-                r = run_command([pm, "install"], cwd=wt_path, timeout=120)
+    # Install dependencies — profile first, legacy fallback
+    from .profile_loader import NullProfile, load_profile
+
+    profile = load_profile(project_path)
+    if not isinstance(profile, NullProfile):
+        profile.bootstrap_worktree(project_path, wt_path)
+    else:
+        # Legacy fallback
+        pkg_json = os.path.join(wt_path, "package.json")
+        node_modules = os.path.join(wt_path, "node_modules")
+        if os.path.isfile(pkg_json) and not os.path.isdir(node_modules):
+            pm = _detect_package_manager(wt_path)
+            if pm and shutil.which(pm):
+                logger.info("bootstrap: installing deps with %s in %s", pm, wt_path)
+                r = run_command([pm, "install", "--frozen-lockfile"], cwd=wt_path, timeout=120)
                 if r.exit_code != 0:
-                    logger.warning("bootstrap: dep install failed in %s (non-fatal)", wt_path)
+                    r = run_command([pm, "install"], cwd=wt_path, timeout=120)
+                    if r.exit_code != 0:
+                        logger.warning("bootstrap: dep install failed in %s (non-fatal)", wt_path)
 
     return copied
 
 
 def _detect_package_manager(wt_path: str) -> str:
-    """Detect package manager from lockfiles.
+    """Detect package manager — profile first, legacy fallback."""
+    from .profile_loader import load_profile
 
-    Migrated from: dispatcher.sh bootstrap_worktree() L104-108
-    """
+    profile = load_profile(wt_path)
+    pm = profile.detect_package_manager(wt_path)
+    if pm:
+        return pm
+
+    # Legacy fallback
     for lockfile, pm in LOCKFILE_PM_MAP:
         if os.path.isfile(os.path.join(wt_path, lockfile)):
             return pm

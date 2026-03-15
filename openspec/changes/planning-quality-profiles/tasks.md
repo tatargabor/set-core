@@ -70,7 +70,7 @@
 
 Each step follows the pattern: `profile.method() → if None/empty → legacy fallback`.
 
-- [ ] C1: Wire config.py — PM, test, dev server, install
+- [x] C1: Wire config.py — PM, test, dev server, install
   - File: `lib/wt_orch/config.py`
   - `detect_package_manager()` → `profile.detect_package_manager()` first, legacy fallback
   - `auto_detect_test_command()` → `profile.detect_test_command()` first, legacy fallback
@@ -78,25 +78,25 @@ Each step follows the pattern: `profile.method() → if None/empty → legacy fa
   - `install_dependencies()` → `profile.post_merge_install()` for non-NullProfile, legacy fallback
   - Design ref: Component 4f, 4l
 
-- [ ] C2: Wire dispatcher.py — PM detection + bootstrap
+- [x] C2: Wire dispatcher.py — PM detection + bootstrap
   - File: `lib/wt_orch/dispatcher.py`
   - `_detect_package_manager()` → `profile.detect_package_manager()` first, `LOCKFILE_PM_MAP` fallback
   - `bootstrap_worktree()` → keep core env file copy, delegate dep install to `profile.bootstrap_worktree()`, legacy fallback
   - Design ref: Component 4c
 
-- [ ] C3: Wire builder.py — PM + build command
+- [x] C3: Wire builder.py — PM + build command
   - File: `lib/wt_orch/builder.py`
   - `_detect_pm()` → `profile.detect_package_manager()` first, legacy fallback
   - `_detect_build_cmd()` → `profile.detect_build_command()` first, legacy fallback
   - Design ref: Component 4e
 
-- [ ] C4: Wire merger.py — post-merge install + build check
+- [x] C4: Wire merger.py — post-merge install + build check
   - File: `lib/wt_orch/merger.py`
   - `_post_merge_deps_install()` → `profile.post_merge_install()` for non-NullProfile, legacy fallback
   - `_post_merge_build_check()` → `profile.detect_package_manager()` + `profile.detect_build_command()` first, legacy fallback
   - Design ref: Component 4d
 
-- [ ] C5: Wire templates.py — split _PLANNING_RULES + proposal checklist
+- [x] C5: Wire templates.py — split _PLANNING_RULES + proposal checklist
   - File: `lib/wt_orch/templates.py`
   - **BLOCKED on B2**: planning_rules.txt must exist with Playwright block before this step
   - Split `_PLANNING_RULES` into `_PLANNING_RULES_CORE` (everything except L295-317) + keep `_PLANNING_RULES` as legacy
@@ -106,25 +106,25 @@ Each step follows the pattern: `profile.method() → if None/empty → legacy fa
   - Note: `render_proposal()` needs `project_path` parameter added
   - Design ref: Component 4a, 4a-bis
 
-- [ ] C6: Wire planner.py — test command detection
+- [x] C6: Wire planner.py — test command detection
   - File: `lib/wt_orch/planner.py`
   - `_auto_detect_test_command()` → `profile.detect_test_command()` first, legacy fallback (inline PM detection stays as fallback)
   - Design ref: Component 4j
 
-- [ ] C7: Wire milestone.py — dev server + dependency install
+- [x] C7: Wire milestone.py — dev server + dependency install
   - File: `lib/wt_orch/milestone.py`
   - `_detect_dev_server()` → insert `profile.detect_dev_server()` after directive check, before package.json inline check
   - `_install_dependencies()` → `profile.post_merge_install()` for non-NullProfile, legacy fallback (see Constraint 3 in design — uses post_merge_install not bootstrap_worktree)
   - Design ref: Component 4k
 
-- [ ] C8: Wire verifier.py — security rules for retry
+- [x] C8: Wire verifier.py — security rules for retry
   - File: `lib/wt_orch/verifier.py`
   - New `_load_security_rules(wt_path)` → `profile.security_rules_paths(wt_path)` first, `_load_web_security_rules(wt_path)` legacy fallback
   - Replace call site of `_load_web_security_rules()` with new function
   - **MUST complete before D3** (deploy.sh web rule removal) — see Constraint 2 in design
   - Design ref: Component 4b
 
-- [ ] C9: Wire digest.py — ignore patterns
+- [x] C9: Wire digest.py — ignore patterns
   - File: `lib/wt_orch/digest.py`
   - Extract `_CORE_IGNORE_PATTERNS = {"archive", ".git", "__pycache__", ".venv"}`
   - New `_get_ignore_patterns()` → core | `set(profile.ignore_patterns())`

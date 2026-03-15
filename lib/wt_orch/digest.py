@@ -25,8 +25,16 @@ logger = logging.getLogger(__name__)
 
 DIGEST_DIR = "wt/orchestration/digest"
 
-# Ignore patterns for spec scanning
-_IGNORE_PATTERNS = {"archive", "node_modules", ".git", "__pycache__", ".venv"}
+# Core ignore patterns for spec scanning
+_CORE_IGNORE_PATTERNS = {"archive", ".git", "__pycache__", ".venv"}
+
+
+def _get_ignore_patterns() -> set:
+    """Get ignore patterns from core + profile."""
+    from .profile_loader import load_profile
+
+    profile = load_profile()
+    return _CORE_IGNORE_PATTERNS | set(profile.ignore_patterns())
 
 # Spec file extensions
 _SPEC_EXTENSIONS = {".md", ".yaml", ".yml", ".txt"}
@@ -152,7 +160,7 @@ def _find_spec_files(directory: Path) -> list[Path]:
             continue
         # Check ignore patterns against all parent parts
         parts = item.relative_to(directory).parts
-        if any(p in _IGNORE_PATTERNS for p in parts):
+        if any(p in _get_ignore_patterns() for p in parts):
             continue
         if item.suffix.lower() in _SPEC_EXTENSIONS:
             result.append(item)

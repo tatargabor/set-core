@@ -188,11 +188,15 @@ Do NOT create a worktree — fix directly in the current directory."""
 
 
 def _detect_pm(project_path: str) -> str:
-    """Detect package manager from lockfile presence.
+    """Detect package manager — profile first, legacy fallback."""
+    from .profile_loader import load_profile
 
-    Migrated from: builder.sh inline PM detection.
-    Shared logic also in config.py:detect_package_manager().
-    """
+    profile = load_profile(project_path)
+    pm = profile.detect_package_manager(project_path)
+    if pm:
+        return pm
+
+    # Legacy fallback
     p = Path(project_path)
     if (p / "bun.lockb").is_file() or (p / "bun.lock").is_file():
         return "bun"
@@ -204,10 +208,20 @@ def _detect_pm(project_path: str) -> str:
 
 
 def _detect_build_cmd(project_path: str) -> str:
-    """Detect build command from package.json scripts.
+    """Detect build command — profile first, legacy fallback."""
+    from .profile_loader import load_profile
 
-    Migrated from: builder.sh inline build command detection.
-    """
+    profile = load_profile(project_path)
+    cmd = profile.detect_build_command(project_path)
+    if cmd:
+        # Profile returns full command like "pnpm run build" — extract script name
+        # since caller does `pm run <script>`
+        parts = cmd.split()
+        if len(parts) >= 3 and parts[1] == "run":
+            return parts[2]
+        return cmd
+
+    # Legacy fallback
     pkg_json = Path(project_path) / "package.json"
     if not pkg_json.is_file():
         return ""

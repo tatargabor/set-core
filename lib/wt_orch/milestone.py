@@ -340,7 +340,7 @@ def cleanup_milestone_worktrees() -> int:
 # ─── Internal Helpers ──────────────────────────────────────────────
 
 def _detect_dev_server(wt_path: str, explicit_cmd: str, state_file: str) -> str:
-    """Detect dev server command for a worktree."""
+    """Detect dev server — explicit > directive > profile > legacy."""
     if explicit_cmd:
         return explicit_cmd
 
@@ -350,7 +350,15 @@ def _detect_dev_server(wt_path: str, explicit_cmd: str, state_file: str) -> str:
         if smoke_dev:
             return smoke_dev
 
-    # Auto-detect from package.json
+    # Profile-aware detection
+    from .profile_loader import load_profile
+
+    profile = load_profile(wt_path)
+    cmd = profile.detect_dev_server(wt_path)
+    if cmd:
+        return cmd
+
+    # Legacy fallback
     pkg_json = os.path.join(wt_path, "package.json")
     if os.path.exists(pkg_json):
         import json
@@ -367,7 +375,14 @@ def _detect_dev_server(wt_path: str, explicit_cmd: str, state_file: str) -> str:
 
 
 def _install_dependencies(wt_path: str) -> bool:
-    """Install dependencies in a worktree."""
+    """Install dependencies — profile first, legacy fallback."""
+    from .profile_loader import NullProfile, load_profile
+
+    profile = load_profile(wt_path)
+    if not isinstance(profile, NullProfile):
+        return profile.post_merge_install(wt_path)
+
+    # Legacy fallback
     if os.path.exists(os.path.join(wt_path, "pnpm-lock.yaml")):
         cmd = ["pnpm", "install"]
     elif os.path.exists(os.path.join(wt_path, "yarn.lock")):
