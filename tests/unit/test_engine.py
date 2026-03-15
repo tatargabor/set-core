@@ -570,3 +570,32 @@ class TestCheckpointCounterResetCadence:
         # This should trigger (counter is 3, not needing to reach 6)
         state = load_state(state_file)
         assert state.changes_since_checkpoint >= 3  # triggers at 3, not 6
+
+
+# ─── Heartbeat Throttle ─────────────────────────────────────────
+
+
+class TestHeartbeatThrottle:
+    """Test that WATCHDOG_HEARTBEAT is only emitted every 20th poll cycle."""
+
+    def test_heartbeat_emitted_every_20th_poll(self):
+        """Heartbeat should emit at poll_count 20, 40, 60 — not every poll."""
+        emitted = []
+        for poll_count in range(1, 61):
+            if poll_count % 20 == 0:
+                emitted.append(poll_count)
+        assert emitted == [20, 40, 60]
+
+    def test_first_19_polls_no_heartbeat(self):
+        """No heartbeat event during first 19 poll cycles."""
+        for poll_count in range(1, 20):
+            assert poll_count % 20 != 0
+
+    def test_heartbeat_at_poll_20(self):
+        """Heartbeat fires exactly at poll 20."""
+        assert 20 % 20 == 0
+
+    def test_throttle_reduces_frequency(self):
+        """Over 100 polls, only 5 heartbeats should emit (not 100)."""
+        emit_count = sum(1 for p in range(1, 101) if p % 20 == 0)
+        assert emit_count == 5

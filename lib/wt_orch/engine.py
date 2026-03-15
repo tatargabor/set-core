@@ -426,8 +426,8 @@ def monitor_loop(
         if poll_count % 10 == 0:
             _periodic_memory_ops_safe(state_file)
 
-        # Watchdog heartbeat
-        if event_bus:
+        # Watchdog heartbeat (throttled: emit every 20th poll ≈ 5 min)
+        if event_bus and poll_count % 20 == 0:
             event_bus.emit("WATCHDOG_HEARTBEAT")
 
         # Checkpoint check
