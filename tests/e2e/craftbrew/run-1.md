@@ -40,6 +40,14 @@
 - **Deployed**: yes
 - **Recurrence**: new
 
+### 5. Sentinel kills monitor during stall cooldown (heartbeat too slow)
+- **Type**: framework (blocking)
+- **Severity**: blocking
+- **Root cause**: Monitor emits WATCHDOG_HEARTBEAT every 20 polls (20*15s = 300s). Sentinel stuck timeout is 180s. During stall recovery, the monitor waits for the 300s cooldown without writing to the state file or events — sentinel sees no activity for 180s and kills it.
+- **Fix**: `b1b5d1a29` — reduce heartbeat interval to every 8 polls (8*15s = 120s), well within the 180s threshold.
+- **Deployed**: yes
+- **Recurrence**: new (existed latently, first triggered by stall + no other activity)
+
 ## Timeline
 
 | Time | Event |
@@ -53,6 +61,8 @@
 | ~23:30 | Bug #4 discovered: JSONDecodeError crash loop |
 | ~00:27 | Bug #4 fixed, restarted successfully |
 | ~00:27 | Orchestration running, test-infrastructure-setup dispatched |
+| ~00:31 | Bug #5: sentinel kills monitor (heartbeat too slow) |
+| ~00:33 | Bug #5 fixed, deployed, restarted |
 
 ## Status (in progress)
 
