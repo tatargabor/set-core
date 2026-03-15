@@ -699,7 +699,10 @@ def build_decomposition_context(
     input_content = ""
 
     if input_mode == "digest":
-        input_content = _build_digest_content(input_path)
+        # input_path is the original spec dir (e.g. "docs/"), but digest
+        # output lives in wt/orchestration/digest/. Use that instead.
+        digest_dir = os.path.join(os.getcwd(), "wt", "orchestration", "digest")
+        input_content = _build_digest_content(digest_dir)
     else:
         try:
             input_content = Path(input_path).read_text(errors="replace")
@@ -1029,7 +1032,7 @@ def run_planning_pipeline(
             logger.warning("Digest is stale — consider re-running wt-orchestrate digest")
 
     # 2. Triage gate
-    digest_dir = input_path if input_mode == "digest" else ""
+    digest_dir = os.path.join(os.getcwd(), "wt", "orchestration", "digest") if input_mode == "digest" else ""
     if digest_dir:
         triage_status = check_triage_gate(digest_dir)
         if triage_status.status in ("needs_triage", "has_untriaged", "has_fixes"):
