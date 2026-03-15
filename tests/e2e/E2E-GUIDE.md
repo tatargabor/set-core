@@ -161,15 +161,16 @@ Compare each run against these baselines. Track: wall clock, merged/failed ratio
 
 ### Where findings go
 
-Each E2E project gets its own findings file **in the wt-tools repo**:
+Each E2E project gets its own findings directory **in the wt-tools repo**:
 
 ```
-tests/e2e/{project}-e2e-findings.md    # version-controlled, permanent record
+tests/e2e/{project}/          # version-controlled, permanent record
+  README.md                   # summary table + bug index across runs
+  run-{N}.md                  # per-run findings (one file per run)
 ```
 
 Examples:
-- `tests/e2e/craftbrew-e2e-findings.md` — CraftBrew digest pipeline runs
-- `tests/e2e/minishop-e2e-findings.md` — MiniShop basic runs
+- `tests/e2e/minishop/` — MiniShop orchestration runs (run-13, run-14, run-15, ...)
 
 ### When to write
 
@@ -229,7 +230,7 @@ Spawn a subagent to collect context. The sentinel does NOT read findings/git log
 **Subagent instructions:**
 1. Read `tests/e2e/E2E-GUIDE.md` — especially "Last Run Results" and "Performance Baseline"
 2. If a previous results block exists for the target project, extract the `<!-- wt-tools-commit: {hash} -->` and run `git log {hash}..HEAD --oneline` to get the commit delta
-3. Read `tests/e2e/{project}-e2e-findings.md` — list bugs that lack a "Verified" annotation or are marked "regressed"
+3. Read `tests/e2e/{project}/README.md` and latest `run-{N}.md` — list bugs that lack a "Verified" annotation or are marked "regressed"
 4. List active changes in `openspec/changes/` (non-archived directories)
 5. Return a summary in this format:
 
@@ -284,11 +285,11 @@ After orchestration completes (status "done", "stopped", or "time_limit"):
    ```bash
    wt-e2e-report --update-guide /path/to/wt-tools/tests/e2e/E2E-GUIDE.md
    ```
-2. Update `tests/e2e/{project}-e2e-findings.md` with any new bugs from this run
+2. Create `tests/e2e/{project}/run-{N}.md` with findings from this run, update `tests/e2e/{project}/README.md` summary table
 3. Commit changes to the wt-tools repo:
    ```bash
    cd /path/to/wt-tools
-   git add tests/e2e/E2E-GUIDE.md tests/e2e/{project}-e2e-findings.md
+   git add tests/e2e/E2E-GUIDE.md tests/e2e/{project}/
    git commit -m "e2e: {project} run #{N} results"
    ```
 

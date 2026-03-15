@@ -260,7 +260,7 @@ Commits:             43
 
 Every change passes: **Test → Build → E2E → Code Review → Spec Coverage → Merge → Post-merge Smoke.**
 
-Full details: **[Run #4 Benchmark Report](docs/benchmark-minishop-run4.md)** | **[E2E Findings Log](tests/e2e/minishop-e2e-findings.md)**
+Full details: **[Run #4 Benchmark Report](docs/benchmark-minishop-run4.md)** | **[E2E Findings Log](tests/e2e/minishop/)**
 
 ---
 
@@ -452,7 +452,7 @@ The installer handles everything: CLI symlinks, shell completions, MCP server co
 | **Infrastructure** | [Memory](docs/developer-memory.md) · [MCP Server](docs/mcp-server.md) · [Team Sync](docs/team-sync.md) |
 | **UI** | [Web Dashboard / GUI](docs/gui.md) · [Architecture](docs/architecture.md) |
 | **Plugins** | [Project Setup](docs/project-setup.md) · [Plugins](docs/plugins.md) · [Plugin Architecture](https://github.com/tatargabor/wt-project-web/blob/master/docs/plugin-architecture.md) |
-| **Testing** | [E2E Test Guide](tests/e2e/E2E-GUIDE.md) · [Benchmark Report](docs/benchmark-minishop-run4.md) · [E2E Findings](tests/e2e/minishop-e2e-findings.md) |
+| **Testing** | [E2E Test Guide](tests/e2e/E2E-GUIDE.md) · [Benchmark Report](docs/benchmark-minishop-run4.md) · [E2E Findings](tests/e2e/minishop/) |
 
 ---
 

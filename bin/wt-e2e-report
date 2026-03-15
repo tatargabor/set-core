@@ -714,15 +714,24 @@ if [[ -n "$GUIDE_PATH" && -f "$GUIDE_PATH" ]]; then
             COMMIT_DELTA=$(git -C "$WT_TOOLS_DIR" log --oneline "${PREV_COMMIT}..HEAD" 2>/dev/null | head -10 || true)
         fi
 
-        # 2.5: Detect open regressions from findings file
-        FINDINGS_FILE="${WT_TOOLS_DIR}/tests/e2e/${PROJECT_NAME}-e2e-findings.md"
+        # 2.5: Detect open regressions from findings directory
+        # Scan all per-run findings files in tests/e2e/{project}/
+        FINDINGS_DIR="${WT_TOOLS_DIR}/tests/e2e/${PROJECT_NAME}"
         OPEN_REGRESSIONS="none"
-        if [[ -f "$FINDINGS_FILE" ]]; then
-            # Find bug entries (### N. title) that are NOT followed by "Verified" within their block
+        if [[ -d "$FINDINGS_DIR" ]]; then
+            # Concatenate all run files for bug scanning
             _bugs=$(python3 -c "
-import re, sys
-with open('$FINDINGS_FILE') as f:
-    content = f.read()
+import re, sys, glob, os
+findings_dir = '$FINDINGS_DIR'
+content = ''
+for f in sorted(glob.glob(os.path.join(findings_dir, 'run-*.md'))):
+    with open(f) as fh:
+        content += fh.read() + '\n'
+# Also check legacy single-file format
+legacy = findings_dir.rstrip('/') + '-e2e-findings.md'
+if os.path.isfile(legacy):
+    with open(legacy) as fh:
+        content += fh.read()
 # Find all bug headers and check for Verified/regressed status
 bugs = re.findall(r'### (\d+)\. (.+?)(?=\n###|\n## |\Z)', content, re.DOTALL)
 open_bugs = []
