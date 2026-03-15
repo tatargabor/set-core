@@ -92,7 +92,7 @@ For our simpler case — one Playwright run per worktree — a `PW_PORT` environ
 // playwright.config.ts
 const PORT = process.env.PW_PORT ? parseInt(process.env.PW_PORT) : 3100;
 export default defineConfig({
-  use: { baseURL: `http://localhost:${PORT}` },
+  use: { baseURL: `http://localhost:${PORT}`, headless: true, screenshot: 'on' },
   webServer: {
     command: `pnpm dev --port ${PORT}`,
     url: `http://localhost:${PORT}`,
