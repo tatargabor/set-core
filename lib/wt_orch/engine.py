@@ -438,8 +438,9 @@ def monitor_loop(
         if poll_count % 10 == 0:
             _periodic_memory_ops_safe(state_file)
 
-        # Watchdog heartbeat (throttled: emit every 20th poll ≈ 5 min)
-        if event_bus and poll_count % 20 == 0:
+        # Watchdog heartbeat — must be more frequent than sentinel stuck timeout (180s)
+        # Every 8th poll at 15s = 120s, well within the 180s threshold
+        if event_bus and poll_count % 8 == 0:
             event_bus.emit("WATCHDOG_HEARTBEAT")
 
         # Checkpoint check
