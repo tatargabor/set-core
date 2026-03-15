@@ -321,6 +321,88 @@ def prune_worktree_context(wt_path: str) -> int:
     return pruned
 
 
+# ─── Startup Guide ───────────────────────────────────────────────────
+
+
+def generate_startup_guide(wt_path: str) -> str:
+    """Detect project stack and generate an Application Startup guide section.
+
+    Detects: package manager, framework dev command, DB tool (Prisma/Drizzle),
+    Playwright config existence.  Returns markdown content (without the heading).
+    """
+    d = Path(wt_path)
+    pm = _detect_package_manager(wt_path) or "npm"
+    lines: list[str] = []
+
+    lines.append(f"```bash\n{pm} install\n```\n")
+
+    # Detect framework dev command from package.json scripts
+    pkg_json = d / "package.json"
+    pkg_data: dict = {}
+    if pkg_json.is_file():
+        try:
+            pkg_data = json.loads(pkg_json.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    scripts = pkg_data.get("scripts", {})
+    if scripts.get("dev"):
+        lines.append(f"**Dev server:** `{pm} run dev`\n")
+
+    # Detect DB tool
+    all_deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
+    if "prisma" in all_deps or "@prisma/client" in all_deps:
+        lines.append(f"**Database:** `npx prisma db push` (or `npx prisma migrate dev`) then `npx prisma db seed` if seed script exists\n")
+    elif "drizzle-orm" in all_deps:
+        lines.append(f"**Database:** `npx drizzle-kit push` (or check drizzle config for migration command)\n")
+
+    # Detect Playwright
+    pw_config = any((d / name).is_file() for name in ("playwright.config.ts", "playwright.config.js"))
+    if pw_config or "playwright" in all_deps or "@playwright/test" in all_deps:
+        lines.append(f"**E2E tests:** `npx playwright install --with-deps chromium` then `npx playwright test`\n")
+
+    # Test command
+    for candidate in ("test", "test:unit", "test:ci"):
+        if scripts.get(candidate):
+            lines.append(f"**Unit tests:** `{pm} run {candidate}`\n")
+            break
+
+    return "\n".join(lines)
+
+
+def append_startup_guide_to_claudemd(wt_path: str) -> bool:
+    """Append ``## Application Startup`` section to worktree CLAUDE.md.
+
+    Idempotent: if section already exists, does nothing.
+    Creates CLAUDE.md if missing.
+
+    Returns True if section was appended, False if skipped/already present.
+    """
+    claude_md = os.path.join(wt_path, "CLAUDE.md")
+
+    existing = ""
+    if os.path.isfile(claude_md):
+        try:
+            existing = Path(claude_md).read_text(encoding="utf-8")
+        except OSError:
+            pass
+
+    if "## Application Startup" in existing:
+        return False
+
+    guide_content = generate_startup_guide(wt_path)
+    section = f"\n\n## Application Startup\n\n{guide_content}\n"
+
+    try:
+        with open(claude_md, "a") as f:
+            f.write(section)
+        logger.info("Appended Application Startup guide to %s", claude_md)
+        return True
+    except OSError:
+        logger.warning("Failed to write startup guide to %s", claude_md)
+        return False
+
+
 # ─── Model Routing ───────────────────────────────────────────────────
 
 
@@ -858,6 +940,9 @@ def dispatch_change(
         wt_path, change_name, scope, roadmap_item, ctx,
         state_path, input_mode, input_path, digest_dir,
     )
+
+    # Append startup guide to worktree CLAUDE.md (idempotent)
+    append_startup_guide_to_claudemd(wt_path)
 
     # Update state
     update_change_field(state_path, change_name, "status", "dispatched", event_bus=event_bus)

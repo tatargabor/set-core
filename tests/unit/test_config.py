@@ -8,6 +8,7 @@ import pytest
 
 from wt_orch.config import (
     DIRECTIVE_DEFAULTS,
+    auto_detect_smoke_command,
     auto_detect_test_command,
     brief_hash,
     find_input,
@@ -389,3 +390,47 @@ class TestAutoDetectTestCommand:
         pkg = tmp_path / "package.json"
         pkg.write_text(json.dumps({"scripts": {"build": "tsc"}}))
         assert auto_detect_test_command(str(tmp_path)) == ""
+
+
+# ─── auto_detect_smoke_command ───────────────────────────────────
+
+
+class TestAutoDetectSmokeCommand:
+    def test_build_script_present(self, tmp_path):
+        """build + test combined when build script exists."""
+        pkg = tmp_path / "package.json"
+        pkg.write_text(json.dumps({"scripts": {"build": "tsc", "test": "jest"}}))
+        result = auto_detect_smoke_command(str(tmp_path))
+        assert "build" in result
+        assert "&&" in result
+        assert "test" in result
+
+    def test_build_ci_preferred(self, tmp_path):
+        """build:ci takes precedence over build."""
+        pkg = tmp_path / "package.json"
+        pkg.write_text(json.dumps({"scripts": {"build": "tsc", "build:ci": "tsc --noEmit", "test": "jest"}}))
+        result = auto_detect_smoke_command(str(tmp_path))
+        assert "build:ci" in result
+
+    def test_no_build_script(self, tmp_path):
+        """No build script → falls back to test_command alone."""
+        pkg = tmp_path / "package.json"
+        pkg.write_text(json.dumps({"scripts": {"test": "jest"}}))
+        result = auto_detect_smoke_command(str(tmp_path))
+        assert "build" not in result
+        assert "test" in result
+
+    def test_no_test_script(self, tmp_path):
+        """No test script → empty string."""
+        pkg = tmp_path / "package.json"
+        pkg.write_text(json.dumps({"scripts": {"build": "tsc"}}))
+        assert auto_detect_smoke_command(str(tmp_path)) == ""
+
+    def test_pnpm_lockfile(self, tmp_path):
+        """Detects pnpm from lockfile."""
+        (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: 9\n")
+        pkg = tmp_path / "package.json"
+        pkg.write_text(json.dumps({"scripts": {"build": "tsc", "test": "vitest"}}))
+        result = auto_detect_smoke_command(str(tmp_path))
+        assert result.startswith("pnpm")
+        assert "pnpm run build && pnpm run test" == result

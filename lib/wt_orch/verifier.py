@@ -1193,6 +1193,38 @@ def handle_change_done(
     gate_verify_ms = 0
     gate_build_ms = 0
     gate_e2e_ms = 0
+    uncommitted_check_result = "clean"
+
+    # ── Step 0: Uncommitted work check ──
+    # (merge-rebase fast path returns before this point, so rebase skips this)
+    if wt_path:
+        from .git_utils import git_has_uncommitted_work
+
+        has_uncommitted, uncommitted_summary = git_has_uncommitted_work(wt_path)
+        if has_uncommitted:
+            uncommitted_check_result = f"dirty: {uncommitted_summary}"
+            reason = f"Uncommitted work in worktree: {uncommitted_summary}"
+            logger.warning("Verify gate: %s for %s", reason, change_name)
+            update_change_field(state_file, change_name, "verify_result", reason)
+            update_change_field(state_file, change_name, "uncommitted_check", uncommitted_check_result)
+
+            if verify_retry_count < max_verify_retries:
+                update_change_field(state_file, change_name, "status", "pending")
+                update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count + 1)
+                update_change_field(state_file, change_name, "retry_context",
+                                    f"## Verify Gate Failure\n\n{reason}\n\nPlease commit or remove all uncommitted files before declaring done.")
+                logger.info("Retrying %s (attempt %d/%d) — uncommitted work", change_name, verify_retry_count + 1, max_verify_retries)
+            else:
+                update_change_field(state_file, change_name, "status", "failed")
+                logger.error("Change %s failed: %s (no retries left)", change_name, reason)
+
+            if event_bus:
+                event_bus.emit("VERIFY_GATE", change=change_name, data={
+                    "result": "fail",
+                    "reason": reason,
+                    "uncommitted_check": uncommitted_check_result,
+                })
+            return
 
     # ── Resolve gate config ──
     from .gate_profiles import resolve_gate_config
@@ -1654,6 +1686,7 @@ def handle_change_done(
             "total_ms": gate_total_ms,
             "retries": gate_retry_count,
             "retry_tokens": gate_retry_tokens,
+            "uncommitted_check": uncommitted_check_result,
             "scope_check": "pass",
             "has_tests": gate_has_tests,
             "spec_coverage": gate_spec_coverage,

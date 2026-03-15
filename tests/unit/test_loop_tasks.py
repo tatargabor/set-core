@@ -251,6 +251,18 @@ class TestTaskStatus:
 
 
 class TestCheckTestDone:
+    """Tests for _check_test_done via is_done('test').
+
+    All tests mock git_has_uncommitted_work to return clean so the
+    uncommitted pre-check doesn't interfere with test-command logic.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean_wt(self):
+        from unittest.mock import patch
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(False, "")):
+            yield
+
     def test_pass_returns_true(self, wt, monkeypatch):
         """Test command exits 0 → done."""
         state_file = os.path.join(wt, ".claude", "loop-state.json")
@@ -268,7 +280,7 @@ class TestCheckTestDone:
             mock_run.assert_called_once()
             call_kwargs = mock_run.call_args
             assert call_kwargs[1]["shell"] is True
-            assert call_kwargs[1]["timeout"] == 300
+            assert call_kwargs[1]["timeout"] == 600
 
     def test_fail_returns_false(self, wt):
         """Test command exits non-zero → not done."""
@@ -337,3 +349,64 @@ class TestCheckTestDone:
              patch("wt_orch.loop_tasks._check_build_done", return_value=False) as mock_build:
             assert is_done(wt, "test") is False
             mock_build.assert_called_once()
+
+
+# ─── Uncommitted work pre-check in is_done ──────────────────
+
+
+class TestIsDoneUncommittedPreCheck:
+    """Uncommitted work blocks all done_criteria except manual."""
+
+    def test_test_criteria_blocked_by_uncommitted(self, wt):
+        from unittest.mock import patch
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 modified")):
+            assert is_done(wt, "test") is False
+
+    def test_tasks_criteria_blocked_by_uncommitted(self, wt):
+        # Create completed tasks so it would pass without the guard
+        tf = os.path.join(wt, "tasks.md")
+        with open(tf, "w") as f:
+            f.write("- [x] A\n- [x] B\n")
+        from unittest.mock import patch
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "2 untracked")):
+            assert is_done(wt, "tasks") is False
+
+    def test_build_criteria_blocked_by_uncommitted(self, wt):
+        from unittest.mock import patch
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "3 modified")):
+            assert is_done(wt, "build") is False
+
+    def test_merge_criteria_blocked_by_uncommitted(self, wt):
+        from unittest.mock import patch
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 untracked")):
+            assert is_done(wt, "merge") is False
+
+    def test_openspec_criteria_blocked_by_uncommitted(self, wt):
+        from unittest.mock import patch
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 modified")):
+            assert is_done(wt, "openspec") is False
+
+    def test_manual_skips_uncommitted_check(self, wt):
+        """Manual done_criteria ignores uncommitted work."""
+        state_file = os.path.join(wt, ".claude", "loop-state.json")
+        with open(state_file, "w") as f:
+            json.dump({"manual_done": True}, f)
+        from unittest.mock import patch
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "7 untracked")):
+            assert is_done(wt, "manual") is True
+
+    def test_clean_worktree_proceeds_to_criteria(self, wt):
+        """Clean worktree lets criteria evaluation proceed normally."""
+        tf = os.path.join(wt, "tasks.md")
+        with open(tf, "w") as f:
+            f.write("- [x] A\n- [x] B\n")
+        from unittest.mock import patch
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(False, "")):
+            assert is_done(wt, "tasks") is True

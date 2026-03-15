@@ -444,3 +444,85 @@ class TestPollStatusRouting:
         from wt_orch.verifier import poll_change
         result = poll_change("no-loop", state_file)
         assert result is None
+
+
+# ─── Uncommitted work guard in handle_change_done ────────────
+
+
+class TestHandleChangeDoneUncommittedGuard:
+    """Uncommitted work blocks the verify gate before VG-BUILD."""
+
+    def _make_change(self, tmp_dir, state_file, wt_name="uc-test"):
+        wt_path = os.path.join(tmp_dir, wt_name)
+        os.makedirs(os.path.join(wt_path, ".claude"), exist_ok=True)
+        _write_state(state_file, [{
+            "name": wt_name,
+            "scope": "test uncommitted",
+            "complexity": "S",
+            "change_type": "feature",
+            "depends_on": [],
+            "status": "running",
+            "worktree_path": wt_path,
+            "ralph_pid": 0,
+            "tokens_used": 0, "tokens_used_prev": 0,
+            "input_tokens": 0, "output_tokens": 0,
+            "cache_read_tokens": 0, "cache_create_tokens": 0,
+            "input_tokens_prev": 0, "output_tokens_prev": 0,
+            "cache_read_tokens_prev": 0, "cache_create_tokens_prev": 0,
+            "verify_retry_count": 0, "redispatch_count": 0, "merge_retry_count": 0,
+        }])
+        return wt_path
+
+    def test_uncommitted_work_fails_gate(self, tmp_dir, state_file):
+        from unittest.mock import patch
+        from wt_orch.verifier import handle_change_done
+
+        wt_path = self._make_change(tmp_dir, state_file)
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "3 modified, 7 untracked")):
+            handle_change_done("uc-test", state_file, max_verify_retries=2)
+
+        # Should have set status to pending (retry)
+        with open(state_file) as f:
+            state = json.load(f)
+        change = state["changes"][0]
+        assert change["status"] == "pending"
+        assert change["verify_retry_count"] == 1
+        assert "uncommitted" in change.get("verify_result", "").lower()
+
+    def test_clean_worktree_proceeds_past_guard(self, tmp_dir, state_file):
+        """Clean worktree does NOT trigger the uncommitted guard."""
+        from unittest.mock import patch
+        from wt_orch.verifier import handle_change_done
+
+        wt_path = self._make_change(tmp_dir, state_file)
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(False, "")) as mock_check:
+            # The full pipeline will fail for other reasons (no test files, etc.)
+            # but that's fine — we only verify uncommitted guard didn't block
+            handle_change_done("uc-test", state_file, max_verify_retries=2)
+            mock_check.assert_called_once_with(wt_path)
+
+        with open(state_file) as f:
+            state = json.load(f)
+        change = state["changes"][0]
+        # verify_result should NOT contain "uncommitted"
+        verify_result = change.get("verify_result", "")
+        assert "uncommitted" not in verify_result.lower()
+
+    def test_uncommitted_exhausts_retries_fails(self, tmp_dir, state_file):
+        from unittest.mock import patch
+        from wt_orch.verifier import handle_change_done
+
+        wt_path = self._make_change(tmp_dir, state_file)
+        # Set retry count at max already
+        from wt_orch.state import update_change_field
+        update_change_field(state_file, "uc-test", "verify_retry_count", 2)
+
+        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 untracked")):
+            handle_change_done("uc-test", state_file, max_verify_retries=2)
+
+        with open(state_file) as f:
+            state = json.load(f)
+        change = state["changes"][0]
+        assert change["status"] == "failed"

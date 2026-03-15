@@ -158,6 +158,14 @@ def is_done(
     target_change: str = "",
 ) -> bool:
     """Comprehensive done check (tasks complete OR archived OR marker)."""
+    # Uncommitted work pre-check: all criteria except "manual"
+    if done_criteria != "manual":
+        from .git_utils import git_has_uncommitted_work
+
+        has_uncommitted, summary = git_has_uncommitted_work(wt_path)
+        if has_uncommitted:
+            return False
+
     if done_criteria == "tasks":
         status = check_completion(wt_path)
         return status.pending == 0 and status.total > 0

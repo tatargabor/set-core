@@ -633,3 +633,102 @@ class TestResumeChangeTestCommand:
 
         assert result is True
         assert "--test-command" not in captured_cmd
+
+
+# ─── Startup guide ───────────────────────────────────────────
+
+
+class TestGenerateStartupGuide:
+    def test_nextjs_prisma_playwright(self, tmp_dir):
+        """Full stack: Next.js + Prisma + Playwright detected."""
+        from wt_orch.dispatcher import generate_startup_guide
+
+        wt = os.path.join(tmp_dir, "fullstack")
+        os.makedirs(wt)
+
+        pkg = {
+            "scripts": {"dev": "next dev", "test": "jest"},
+            "dependencies": {"next": "14.0.0", "@prisma/client": "5.0.0"},
+            "devDependencies": {"@playwright/test": "1.40.0"},
+        }
+        with open(os.path.join(wt, "package.json"), "w") as f:
+            json.dump(pkg, f)
+
+        # pnpm lockfile
+        with open(os.path.join(wt, "pnpm-lock.yaml"), "w") as f:
+            f.write("lockfileVersion: 9\n")
+
+        # Playwright config
+        with open(os.path.join(wt, "playwright.config.ts"), "w") as f:
+            f.write("export default {}\n")
+
+        guide = generate_startup_guide(wt)
+        assert "pnpm install" in guide
+        assert "pnpm run dev" in guide
+        assert "prisma" in guide.lower()
+        assert "playwright" in guide.lower()
+        assert "pnpm run test" in guide
+
+    def test_minimal_project(self, tmp_dir):
+        """Minimal project with just package.json."""
+        from wt_orch.dispatcher import generate_startup_guide
+
+        wt = os.path.join(tmp_dir, "minimal")
+        os.makedirs(wt)
+
+        pkg = {"scripts": {}, "dependencies": {}}
+        with open(os.path.join(wt, "package.json"), "w") as f:
+            json.dump(pkg, f)
+
+        guide = generate_startup_guide(wt)
+        assert "install" in guide
+        # No dev/db/e2e sections
+        assert "prisma" not in guide.lower()
+        assert "playwright" not in guide.lower()
+
+
+class TestAppendStartupGuide:
+    def test_appends_to_existing_claudemd(self, tmp_dir):
+        from wt_orch.dispatcher import append_startup_guide_to_claudemd
+
+        wt = os.path.join(tmp_dir, "wt")
+        os.makedirs(wt)
+        with open(os.path.join(wt, "CLAUDE.md"), "w") as f:
+            f.write("# Project\n\nSome instructions.\n")
+        with open(os.path.join(wt, "package.json"), "w") as f:
+            json.dump({"scripts": {"dev": "next dev"}, "dependencies": {}}, f)
+
+        result = append_startup_guide_to_claudemd(wt)
+        assert result is True
+        content = open(os.path.join(wt, "CLAUDE.md")).read()
+        assert "## Application Startup" in content
+        assert "Some instructions" in content  # original preserved
+
+    def test_idempotent_skip(self, tmp_dir):
+        """If section already exists, don't modify."""
+        from wt_orch.dispatcher import append_startup_guide_to_claudemd
+
+        wt = os.path.join(tmp_dir, "wt2")
+        os.makedirs(wt)
+        original = "# Project\n\n## Application Startup\n\nManual guide here.\n"
+        with open(os.path.join(wt, "CLAUDE.md"), "w") as f:
+            f.write(original)
+
+        result = append_startup_guide_to_claudemd(wt)
+        assert result is False
+        content = open(os.path.join(wt, "CLAUDE.md")).read()
+        assert content == original  # unchanged
+
+    def test_creates_claudemd_if_missing(self, tmp_dir):
+        from wt_orch.dispatcher import append_startup_guide_to_claudemd
+
+        wt = os.path.join(tmp_dir, "wt3")
+        os.makedirs(wt)
+        with open(os.path.join(wt, "package.json"), "w") as f:
+            json.dump({"scripts": {}, "dependencies": {}}, f)
+
+        result = append_startup_guide_to_claudemd(wt)
+        assert result is True
+        assert os.path.isfile(os.path.join(wt, "CLAUDE.md"))
+        content = open(os.path.join(wt, "CLAUDE.md")).read()
+        assert "## Application Startup" in content

@@ -27,3 +27,21 @@ Ordered steps: build → test → e2e → scope check → test file check → re
 #### Scenario: Review model override from GateConfig
 - **WHEN** GateConfig has `review_model` set to a non-None value
 - **THEN** the review gate SHALL use that model instead of the global `review_model` parameter
+
+### Requirement: VG-PIPELINE uncommitted work check
+Ordered steps: **uncommitted-check →** build → test → e2e → scope check → test file check → review → rules → verify → merge queue. The uncommitted-check step runs before VG-BUILD and after the merge-rebase fast path early return.
+
+#### Scenario: Uncommitted work blocks verify gate
+- **WHEN** `handle_change_done()` is called for a change
+- **AND** `git_has_uncommitted_work(wt_path)` returns `(True, summary)`
+- **THEN** the verify gate SHALL fail with reason containing "uncommitted" and the summary
+- **AND** the change SHALL be retried (re-dispatched) if retry budget allows
+
+#### Scenario: Clean worktree proceeds to build gate
+- **WHEN** `handle_change_done()` is called for a change
+- **AND** `git_has_uncommitted_work(wt_path)` returns `(False, "")`
+- **THEN** the verify gate SHALL proceed to the VG-BUILD step
+
+#### Scenario: Merge-rebase fast path skips uncommitted check
+- **WHEN** a change returns from a rebase cycle
+- **THEN** the uncommitted-check step SHALL be skipped (rebase may leave expected state)

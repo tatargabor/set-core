@@ -341,6 +341,13 @@ def parse_directives(doc_path: str | Path | None) -> dict[str, Any]:
             logger.info("Auto-detected test command: %s", detected)
             result["test_command"] = detected
 
+    # Auto-detect smoke_command if not set (build+test when build script exists)
+    if not result.get("smoke_command"):
+        detected_smoke = auto_detect_smoke_command(".")
+        if detected_smoke:
+            logger.info("Auto-detected smoke command: %s", detected_smoke)
+            result["smoke_command"] = detected_smoke
+
     return _finalize_directives(result)
 
 
@@ -594,6 +601,45 @@ def auto_detect_test_command(directory: str = ".") -> str:
             return f"{pkg_mgr} run {candidate}"
 
     return ""
+
+
+# ─── Smoke Command Auto-Detection ────────────────────────────────────
+
+
+def auto_detect_smoke_command(directory: str = ".") -> str:
+    """Auto-detect smoke command: build+test when build script exists.
+
+    Resolution chain:
+    1. Explicit smoke_command from config (handled by caller, not here)
+    2. If build script exists: ``<pm> run build && <test_command>``
+    3. Fall back to test_command alone
+
+    Returns empty string if no test command found.
+    """
+    test_cmd = auto_detect_test_command(directory)
+    if not test_cmd:
+        return ""
+
+    d = Path(directory)
+    pkg_json = d / "package.json"
+    if not pkg_json.is_file():
+        return test_cmd
+
+    try:
+        data = json.loads(pkg_json.read_text(encoding="utf-8"))
+        scripts = data.get("scripts", {})
+    except (json.JSONDecodeError, OSError):
+        return test_cmd
+
+    pkg_mgr = detect_package_manager(directory)
+
+    # Prefer build:ci over build
+    if scripts.get("build:ci"):
+        return f"{pkg_mgr} run build:ci && {test_cmd}"
+    elif scripts.get("build"):
+        return f"{pkg_mgr} run build && {test_cmd}"
+
+    return test_cmd
 
 
 # ─── Package Manager Detection ───────────────────────────────────
