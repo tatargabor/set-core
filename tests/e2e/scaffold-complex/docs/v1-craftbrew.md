@@ -30,6 +30,12 @@ docs/
     └── design-system.md         ← Colors, fonts, layouts, ASCII mockups
 ```
 
+## Design Reference
+
+Visual design is defined in a [Figma Make project](https://www.figma.com/make/DDCs2kpcLYw6E3Q1EcDjCK/wt-CraftBrew). The orchestrator auto-injects the design snapshot into the planning prompt — see [design-system.md](design/design-system.md) for frame mapping and mobile rules, and `design-snapshot.md` (auto-generated) for inline tokens and component hierarchy.
+
+> The spec is authoritative for business logic. The Figma design is authoritative for visual appearance. Where they conflict on functional behavior, the spec wins.
+
 ## Business Conventions
 
 - **Currency:** HUF (Hungarian Forint). Integer, no decimals. Display format: `2 490 Ft`. All displayed prices are gross (VAT-inclusive, 27% Hungarian VAT).

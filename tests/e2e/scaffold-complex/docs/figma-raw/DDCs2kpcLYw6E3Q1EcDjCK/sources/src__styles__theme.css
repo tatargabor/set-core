@@ -1,0 +1,112 @@
+:root {
+  /* CraftBrew Color Palette */
+  --color-primary: #78350F;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #D97706;
+  --color-secondary-foreground: #FFFFFF;
+  --color-background: #FFFBEB;
+  --color-surface: #FFFFFF;
+  --color-text: #1C1917;
+  --color-muted: #78716C;
+  --color-border: #E7E5E4;
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-error: #DC2626;
+  
+  /* Typography */
+  --font-heading: 'Playfair Display', serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* Font Sizes */
+  --text-h1: 40px;
+  --text-h2: 32px;
+  --text-h3: 24px;
+  --text-base: 16px;
+  --text-small: 14px;
+  --text-caption: 12px;
+  
+  /* Spacing */
+  --spacing-base: 8px;
+  --spacing-card: 24px;
+  --spacing-grid: 24px;
+  --spacing-grid-mobile: 16px;
+  
+  /* Border Radius */
+  --radius-button: 6px;
+  --radius-card: 8px;
+  
+  /* Container */
+  --container-max: 1280px;
+}
+
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-primary-foreground: var(--color-primary-foreground);
+  --color-secondary: var(--color-secondary);
+  --color-secondary-foreground: var(--color-secondary-foreground);
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-text: var(--color-text);
+  --color-muted: var(--color-muted);
+  --color-border: var(--color-border);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-error);
+}
+
+@layer base {
+  * {
+    @apply border-[--color-border];
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-family: var(--font-body);
+  }
+
+  h1 {
+    font-family: var(--font-heading);
+    font-size: var(--text-h1);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  h2 {
+    font-family: var(--font-heading);
+    font-size: var(--text-h2);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  h3 {
+    font-family: var(--font-heading);
+    font-size: var(--text-h3);
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  p {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    line-height: 1.6;
+  }
+
+  label {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    font-weight: 500;
+  }
+
+  button {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    font-weight: 500;
+  }
+
+  input, textarea, select {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+  }
+}

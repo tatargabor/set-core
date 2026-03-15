@@ -20,13 +20,15 @@
 | Product Detail | Variant selector, reviews, recommended products | product-catalog.md, reviews-wishlist.md |
 | Cart | Cart items, coupon/gift card input, summary | cart-checkout.md |
 | Checkout 3-Step | Shipping, payment, confirmation | cart-checkout.md |
-| Subscription Wizard | 5-step wizard (coffee, form, frequency, delivery, summary) | subscription.md |
+| Subscription Wizard | 5-step wizard in Figma (spec defines 6 steps — spec is authoritative) | subscription.md |
 | User Subscriptions & Calendar | Subscription card, calendar view | subscription.md |
-| User Orders & Profile | Profile, addresses, orders, favorites | user-accounts.md, reviews-wishlist.md |
+| User Orders & Profile | Orders, favorites, dashboard | user-accounts.md, reviews-wishlist.md |
+| User Profile & Addresses | Profile settings, saved addresses with zone labels | user-accounts.md |
 | Admin Dashboard | KPI cards, revenue chart, top products, low stock | admin.md |
 | Admin Products | Product list, editor tabs, bundle editor | admin.md |
 | Admin Orders & Deliveries | Order list, daily deliveries view | admin.md |
 | Admin Coupons/Promo/Gift/Reviews | 4 admin management pages | admin.md, promotions.md, reviews-wishlist.md |
+| Admin Subscriptions | Subscription list, pause/modify/cancel | admin.md, subscription.md |
 | Stories | Story list + detail + admin editor | content-stories.md |
 | Auth Pages | Login, register, password reset | user-accounts.md |
 | Special States | 404, 500, empty states, loading, toast, promo banner | — |

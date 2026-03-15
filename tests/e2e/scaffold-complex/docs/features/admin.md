@@ -1,6 +1,6 @@
 # Admin Panel
 
-> **Figma frames:** Admin Dashboard, Admin Products, Admin Orders & Deliveries, Admin Coupons/Promo/Gift/Reviews — see [design-system.md](../design/design-system.md#frame-mapping)
+> **Figma frames:** Admin Dashboard, Admin Products, Admin Orders & Deliveries, Admin Coupons/Promo/Gift/Reviews, Admin Subscriptions — see [design-system.md](../design/design-system.md#frame-mapping)
 
 Admin panel — accessible only to logged-in users with the ADMIN role.
 
