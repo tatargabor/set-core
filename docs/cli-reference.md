@@ -115,6 +115,19 @@ Agent mode: `/wt:sentinel` (recommended) — AI agent with crash diagnosis, chec
 | `wt-openspec init` | Initialize OpenSpec in the project |
 | `wt-openspec update` | Update OpenSpec skills to latest version |
 
+## Design
+
+| Command | Description |
+|---------|-------------|
+| `wt-figma-fetch <docs-dir>` | Scan `docs-dir/**/*.md` for Figma URLs, fetch raw data + assemble `design-snapshot.md` |
+| `wt-figma-fetch <url> -o <dir>` | Fetch a single Figma file into a directory |
+| `wt-figma-fetch --force <docs-dir>` | Re-fetch even if snapshots already exist |
+| `wt-figma-fetch --reprocess <docs-dir>` | Re-assemble snapshots from existing raw data (no MCP calls) |
+
+Output per Figma file goes to `<docs-dir>/figma-raw/<file-key>/` with raw MCP responses and per-file `design-snapshot.md`. A combined snapshot is written to `./design-snapshot.md` (project root) for pipeline compatibility.
+
+Prerequisites: Figma MCP authenticated in Claude Code (`~/.claude/.credentials.json`), Python `mcp` SDK installed.
+
 ## Utilities
 
 | Command | Description |
