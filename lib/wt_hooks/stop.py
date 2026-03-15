@@ -109,7 +109,10 @@ def flush_metrics(
 
 
 def extract_insights(transcript_path: str, change_name: str = "unknown") -> int:
-    """Scan JSONL transcript, filter entries, save as memories.
+    """Scan JSONL transcript, extract HIGH-VALUE entries only as memories.
+
+    Only saves: errors/failures, decisions/summaries, and key outcomes.
+    Skips: routine tool calls, short user messages, incremental progress updates.
 
     Returns number of entries saved.
     """
@@ -120,28 +123,24 @@ def extract_insights(transcript_path: str, change_name: str = "unknown") -> int:
     if not entries:
         return 0
 
-    base_tags = "raw,phase:auto-extract,source:hook"
+    base_tags = "phase:auto-extract,source:hook"
     if change_name != "unknown":
         base_tags = f"{base_tags},change:{change_name}"
 
     saved = 0
     total = len(entries)
 
-    for i, entry in enumerate(entries, 1):
+    for entry in entries:
         role = entry["role"]
         content = entry["content"]
-        prefix = f"[session:{change_name}, turn {i}/{total}] "
-        full_content = prefix + content
 
         mem_type = "Context" if role == "user" else "Learning"
         tags = base_tags
-        if HEURISTIC_RE.search(content):
-            tags = f"{tags},volatile"
 
-        if _remember_via_daemon_or_cli(full_content, mem_type=mem_type, tags=tags):
+        if _remember_via_daemon_or_cli(content, mem_type=mem_type, tags=tags):
             saved += 1
 
-    _log("stop", f"raw-filter: saved {saved}/{total} entries")
+    _log("stop", f"extract: saved {saved}/{total} filtered (from transcript)")
     return saved
 
 
@@ -310,14 +309,33 @@ def save_checkpoint(
 
 
 
+# Patterns that indicate high-value assistant content worth saving
+_INSIGHT_PATTERNS = re.compile(
+    r"(?i)"
+    r"(?:summary|conclusion|decision|architecture|root cause|bug|fix|lesson|"
+    r"implementation complete|all.*(?:tasks?|tests?).*(?:pass|complet|done)|"
+    r"key (?:finding|takeaway|insight)|"
+    r"## )"
+)
+
+# Max entries to extract per transcript (hard cap)
+_MAX_EXTRACT_ENTRIES = 30
+
+
 def _filter_transcript(transcript_path: str) -> list:
-    """Parse JSONL transcript, return filtered entries."""
+    """Parse JSONL transcript, return only high-value entries.
+
+    High-value = errors, summaries, decisions, key outcomes.
+    Skips: routine tool calls, short messages, incremental progress.
+    Hard-capped at _MAX_EXTRACT_ENTRIES.
+    """
     entries = []
-    file_read_counts = {}
 
     try:
         with open(transcript_path, "r", errors="replace") as f:
             for line in f:
+                if len(entries) >= _MAX_EXTRACT_ENTRIES:
+                    break
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
@@ -325,58 +343,27 @@ def _filter_transcript(transcript_path: str) -> list:
 
                 t = obj.get("type", "")
 
+                # Skip user messages entirely — they're ephemeral prompts,
+                # not insights worth persisting
                 if t == "user":
-                    msg = obj.get("message", {})
-                    content = msg.get("content", "")
-                    if isinstance(content, str):
-                        # Strip system reminders
-                        content = re.sub(
-                            r"<system-reminder>.*?</system-reminder>",
-                            "",
-                            content,
-                            flags=re.DOTALL,
-                        ).strip()
-                        content = re.sub(
-                            r"<(?:local-command[\w-]*|command-name|command-message|command-args)>.*?</(?:local-command[\w-]*|command-name|command-message|command-args)>",
-                            "",
-                            content,
-                            flags=re.DOTALL,
-                        ).strip()
-                        if len(content) >= 15:
-                            entries.append(
-                                {"role": "user", "content": content[:2000]}
-                            )
+                    continue
 
                 elif t == "assistant":
                     msg = obj.get("message", {})
                     for block in msg.get("content", []) or []:
+                        if len(entries) >= _MAX_EXTRACT_ENTRIES:
+                            break
                         if not isinstance(block, dict):
                             continue
                         if block.get("type") == "text":
                             text = block.get("text", "").strip()
-                            if len(text) >= 50:
+                            # Only save substantial text that looks like
+                            # a summary, decision, or conclusion
+                            if len(text) >= 200 and _INSIGHT_PATTERNS.search(text):
                                 entries.append(
-                                    {"role": "assistant", "content": text[:2000]}
+                                    {"role": "assistant", "content": text[:1500]}
                                 )
-                        elif block.get("type") == "tool_use":
-                            name = block.get("name", "")
-                            inp = block.get("input", {})
-                            if name == "Read":
-                                fp = inp.get("file_path", "")
-                                file_read_counts[fp] = (
-                                    file_read_counts.get(fp, 0) + 1
-                                )
-                                if file_read_counts[fp] > 2:
-                                    continue
-                            if name == "Bash":
-                                cmd = inp.get("command", "")[:200]
-                                if cmd:
-                                    entries.append(
-                                        {
-                                            "role": "assistant",
-                                            "content": f"[Bash] {cmd}",
-                                        }
-                                    )
+                        # Skip tool_use — routine operations, not insights
 
                 elif t == "tool_result":
                     content = obj.get("content", "")
@@ -384,9 +371,8 @@ def _filter_transcript(transcript_path: str) -> list:
                         cl = content.lower()
                         if (
                             "error" in cl
-                            or "failed" in cl
                             or "traceback" in cl
-                        ) and len(content) >= 15:
+                        ) and len(content) >= 50:
                             entries.append(
                                 {
                                     "role": "assistant",

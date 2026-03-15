@@ -40,7 +40,8 @@ def transcript_file(tmp_dir):
 
 
 class TestFilterTranscript:
-    def test_user_entries(self, transcript_file):
+    def test_user_entries_skipped(self, transcript_file):
+        """User messages are no longer extracted — they're ephemeral."""
         entries = [
             {"type": "user", "message": {"content": "This is a user prompt with enough characters"}},
         ]
@@ -48,26 +49,17 @@ class TestFilterTranscript:
             for e in entries:
                 f.write(json.dumps(e) + "\n")
         result = _filter_transcript(transcript_file)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-
-    def test_short_user_filtered(self, transcript_file):
-        entries = [
-            {"type": "user", "message": {"content": "short"}},
-        ]
-        with open(transcript_file, "w") as f:
-            for e in entries:
-                f.write(json.dumps(e) + "\n")
-        result = _filter_transcript(transcript_file)
         assert len(result) == 0
 
-    def test_assistant_text_entries(self, transcript_file):
+    def test_assistant_summary_extracted(self, transcript_file):
+        """Long assistant text with insight keywords is extracted."""
+        summary_text = "## Summary\n\n" + "Implementation complete. " * 20
         entries = [
             {
                 "type": "assistant",
                 "message": {
                     "content": [
-                        {"type": "text", "text": "A" * 60},
+                        {"type": "text", "text": summary_text},
                     ]
                 },
             },
@@ -80,6 +72,7 @@ class TestFilterTranscript:
         assert result[0]["role"] == "assistant"
 
     def test_short_assistant_filtered(self, transcript_file):
+        """Short assistant text is filtered out."""
         entries = [
             {
                 "type": "assistant",
@@ -92,7 +85,27 @@ class TestFilterTranscript:
         result = _filter_transcript(transcript_file)
         assert len(result) == 0
 
-    def test_bash_tool_use(self, transcript_file):
+    def test_routine_assistant_filtered(self, transcript_file):
+        """Long assistant text WITHOUT insight keywords is filtered."""
+        routine_text = "Let me read the file and check the contents. " * 10
+        entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": routine_text},
+                    ]
+                },
+            },
+        ]
+        with open(transcript_file, "w") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+        result = _filter_transcript(transcript_file)
+        assert len(result) == 0
+
+    def test_tool_use_not_extracted(self, transcript_file):
+        """Tool use entries (Bash, Read) are no longer extracted."""
         entries = [
             {
                 "type": "assistant",
@@ -111,37 +124,14 @@ class TestFilterTranscript:
             for e in entries:
                 f.write(json.dumps(e) + "\n")
         result = _filter_transcript(transcript_file)
-        assert len(result) == 1
-        assert "[Bash] git status" in result[0]["content"]
-
-    def test_read_dedup(self, transcript_file):
-        # Same file read 3 times — third should be dropped
-        entries = []
-        for _ in range(3):
-            entries.append({
-                "type": "assistant",
-                "message": {
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "name": "Read",
-                            "input": {"file_path": "/foo/bar.py"},
-                        },
-                    ]
-                },
-            })
-        with open(transcript_file, "w") as f:
-            for e in entries:
-                f.write(json.dumps(e) + "\n")
-        result = _filter_transcript(transcript_file)
-        # Read tool_use entries don't add content lines themselves; dedup just skips
         assert len(result) == 0
 
     def test_error_in_tool_result(self, transcript_file):
+        """Errors are still extracted (they're valuable)."""
         entries = [
             {
                 "type": "tool_result",
-                "content": "Error: file not found /missing.py — traceback follows",
+                "content": "Error: file not found /missing.py — traceback follows with enough detail to be useful for debugging",
             },
         ]
         with open(transcript_file, "w") as f:
@@ -151,12 +141,35 @@ class TestFilterTranscript:
         assert len(result) == 1
         assert "[Error]" in result[0]["content"]
 
-    def test_system_reminder_stripped(self, transcript_file):
+    def test_nonexistent_file(self):
+        result = _filter_transcript("/tmp/nonexistent-transcript.jsonl")
+        assert result == []
+
+    def test_max_entries_cap(self, transcript_file):
+        """Hard cap at _MAX_EXTRACT_ENTRIES."""
+        from wt_hooks.stop import _MAX_EXTRACT_ENTRIES
+        entries = []
+        for i in range(_MAX_EXTRACT_ENTRIES + 20):
+            entries.append({
+                "type": "tool_result",
+                "content": f"Error #{i}: traceback some failure that should be captured in memory extraction",
+            })
+        with open(transcript_file, "w") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+        result = _filter_transcript(transcript_file)
+        assert len(result) == _MAX_EXTRACT_ENTRIES
+
+    def test_content_truncation(self, transcript_file):
+        """Long content is truncated to 1500 chars."""
+        summary_text = "## Summary\n\n" + "X" * 3000
         entries = [
             {
-                "type": "user",
+                "type": "assistant",
                 "message": {
-                    "content": "<system-reminder>internal</system-reminder>This is the actual user prompt with enough chars"
+                    "content": [
+                        {"type": "text", "text": summary_text},
+                    ]
                 },
             },
         ]
@@ -165,23 +178,7 @@ class TestFilterTranscript:
                 f.write(json.dumps(e) + "\n")
         result = _filter_transcript(transcript_file)
         assert len(result) == 1
-        assert "system-reminder" not in result[0]["content"]
-        assert "actual user prompt" in result[0]["content"]
-
-    def test_nonexistent_file(self):
-        result = _filter_transcript("/tmp/nonexistent-transcript.jsonl")
-        assert result == []
-
-    def test_content_truncation(self, transcript_file):
-        long_content = "X" * 3000
-        entries = [
-            {"type": "user", "message": {"content": long_content}},
-        ]
-        with open(transcript_file, "w") as f:
-            for e in entries:
-                f.write(json.dumps(e) + "\n")
-        result = _filter_transcript(transcript_file)
-        assert len(result[0]["content"]) <= 2000
+        assert len(result[0]["content"]) <= 1500
 
 
 # ─── save_checkpoint ──────────────────────────────────────────
@@ -237,7 +234,8 @@ class TestSaveDesignChoices:
 
 
 class TestHeuristicPatterns:
-    def test_false_positive_detected(self, transcript_file):
+    def test_false_positive_not_extracted(self, transcript_file):
+        """Short text without insight keywords is filtered out."""
         entries = [
             {
                 "type": "assistant",
@@ -252,4 +250,5 @@ class TestHeuristicPatterns:
             for e in entries:
                 f.write(json.dumps(e) + "\n")
         result = _filter_transcript(transcript_file)
-        assert len(result) == 1  # Still included, heuristic flag is on formatting side
+        # Too short (<200 chars) to be an insight, filtered out
+        assert len(result) == 0
