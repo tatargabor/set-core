@@ -990,18 +990,26 @@ def cmd_engine(args):
         directives = None
         try:
             import os
+            raw = None
             if os.path.isfile(args.directives):
                 with open(args.directives) as f:
                     raw = json.load(f)
             else:
-                raw = json.loads(args.directives)
-            directives = parse_directives(raw)
-            # Apply CLI flag overrides
-            if getattr(args, "checkpoint_auto_approve", False):
-                directives.checkpoint_auto_approve = True
-            cli_timeout = getattr(args, "checkpoint_timeout", 0)
-            if cli_timeout:
-                directives.checkpoint_timeout = cli_timeout
+                try:
+                    raw = json.loads(args.directives)
+                except (json.JSONDecodeError, ValueError):
+                    # Temp file deleted — try state file
+                    from .engine import load_state
+                    st = load_state(args.state)
+                    raw = st.extras.get("directives")
+            if raw is not None:
+                directives = parse_directives(raw)
+                # Apply CLI flag overrides
+                if getattr(args, "checkpoint_auto_approve", False):
+                    directives.checkpoint_auto_approve = True
+                cli_timeout = getattr(args, "checkpoint_timeout", 0)
+                if cli_timeout:
+                    directives.checkpoint_timeout = cli_timeout
         except Exception:
             pass
 

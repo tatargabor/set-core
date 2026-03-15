@@ -244,12 +244,24 @@ def monitor_loop(
         return
     logger.info("Acquired orchestrator lock: %s", lock_path)
 
-    # Parse directives
+    # Parse directives — try file path, then JSON string, then state fallback
+    raw = None
     if os.path.isfile(directives_json):
         with open(directives_json) as f:
             raw = json.load(f)
     else:
-        raw = json.loads(directives_json)
+        try:
+            raw = json.loads(directives_json)
+        except (json.JSONDecodeError, ValueError):
+            # Temp file was deleted between restarts — fall back to persisted directives
+            logger.warning(
+                "Directives not found at %s — loading from state file", directives_json
+            )
+            state_for_directives = load_state(state_file)
+            raw = state_for_directives.extras.get("directives")
+            if raw is None:
+                logger.error("No directives in state file either — cannot continue")
+                return
 
     d = parse_directives(raw)
 

@@ -451,8 +451,7 @@ cmd_start() {
             # trap would write status=stopped before Python starts
             trap - EXIT
             update_state_field "status" '"running"'
-            local _directives_file
-            _directives_file=$(mktemp /tmp/orch-directives-XXXXXX.json)
+            local _directives_file="wt/orchestration/directives.json"
             echo "$directives" > "$_directives_file"
             exec wt-orch-core engine monitor \
                 --directives "$_directives_file" \
@@ -576,8 +575,7 @@ cmd_start() {
     # trap would write status=stopped before Python starts
     trap - EXIT
     update_state_field "status" '"running"'
-    local _directives_file
-    _directives_file=$(mktemp /tmp/orch-directives-XXXXXX.json)
+    local _directives_file="wt/orchestration/directives.json"
     echo "$directives" > "$_directives_file"
     exec wt-orch-core engine monitor \
         --directives "$_directives_file" \
