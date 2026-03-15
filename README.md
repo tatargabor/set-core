@@ -264,6 +264,10 @@ wt-tools is extensible via plugins — separate repositories that add skills, ag
 
 [Getting Started](docs/getting-started.md) · [Sentinel](docs/sentinel.md) · [Orchestration](docs/orchestration.md) · [OpenSpec](docs/openspec.md) · [Worktrees](docs/worktrees.md) · [Ralph Loop](docs/ralph.md) · [Memory](docs/developer-memory.md) · [GUI](docs/gui.md) · [Team Sync](docs/team-sync.md) · [MCP Server](docs/mcp-server.md) · [CLI Reference](docs/cli-reference.md) · [Configuration](docs/configuration.md) · [Architecture](docs/architecture.md)
 
+## Testing
+
+E2E tests run the full orchestration pipeline against real projects (MiniShop webshop, CraftBrew multi-phase app). A Claude Code sentinel session drives each run end-to-end — see [E2E Test Guide](tests/e2e/E2E-GUIDE.md) for instructions and run history.
+
 ---
 
 <details>
