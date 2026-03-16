@@ -16,10 +16,27 @@ Structured project knowledge system enabling AI agents to understand feature rel
 - Used by the planner for merge avoidance: if two parallel changes both touch a listed file, they should be sequentialized
 
 ### R3: Features Section
-- Maps feature names to file path globs, cross-cutting file references, and related features
+- Maps feature names to file path globs, an optional `rules_file` path, cross-cutting file references, and related features
 - Optional `reference_impl: true` flag marks a feature as the canonical pattern to follow
 - `touches` array references cross-cutting file names from R2
+- Optional `rules_file` field specifies the path (relative to project root) of a Claude rules file to inject into the worktree at dispatch time when the feature matches the change scope
+- The dispatcher SHALL read `rules_file` and copy the referenced file into the worktree's `.claude/rules/` directory, making the rule active for the agent during implementation
 - Used by the dispatcher for targeted context injection
+
+#### Scenario: Feature rules_file is injected at dispatch
+- **WHEN** `dispatch_change()` runs for a change whose scope overlaps with a feature's `touches` globs
+- **AND** that feature has `rules_file: ".claude/rules/data-model.md"`
+- **THEN** `.claude/rules/data-model.md` is copied from the main project into the worktree's `.claude/rules/` before the agent starts
+
+#### Scenario: Feature without rules_file has no injection side effect
+- **WHEN** a feature in `project-knowledge.yaml` has no `rules_file` field
+- **THEN** no rule file injection occurs for that feature
+- **AND** dispatch proceeds normally
+
+#### Scenario: rules_file path is relative to project root
+- **WHEN** `rules_file: ".claude/rules/auth-conventions.md"` is specified
+- **THEN** the dispatcher resolves it as `<project_root>/.claude/rules/auth-conventions.md`
+- **AND** the file is copied to `<worktree>/.claude/rules/auth-conventions.md`
 
 ### R4: Verification Rules Section
 - Array of rules with `name`, `trigger`, `expect`, `severity`
