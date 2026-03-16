@@ -84,6 +84,7 @@ def run_command(
             cmd,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=timeout,
             cwd=cwd,
             env=full_env,
