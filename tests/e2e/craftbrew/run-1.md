@@ -56,6 +56,14 @@
 - **Deployed**: yes
 - **Recurrence**: new (previous runs had this issue masked by other failures)
 
+### 7. UnicodeDecodeError on binary subprocess output
+- **Type**: framework (blocking)
+- **Severity**: blocking
+- **Root cause**: `subprocess_utils.run_command()` uses `subprocess.run(text=True)` which defaults to strict UTF-8 decoding. When a subprocess emits binary data (e.g. PNG screenshot bytes, `0x89` header), the decode crashes with `UnicodeDecodeError`. This caused the monitor to stall after merging `subscription-management` — the post-merge smoke test captured screenshot binary in stdout, and the watchdog recovery loop couldn't escape.
+- **Fix**: `cf0753258` — add `errors="replace"` to `subprocess.run()` call so invalid bytes are substituted with `U+FFFD` instead of crashing.
+- **Deployed**: yes
+- **Recurrence**: new (first triggered when post-merge smoke test captured screenshots)
+
 ## Timeline
 
 | Time | Event |
@@ -74,10 +82,27 @@
 | ~00:43 | test-infrastructure-setup reaches verify gate |
 | ~00:44 | Bug #6: verify fails 3x on untracked files |
 | ~01:05 | Bug #6 fixed, change reset to pending |
+| ~01:13 | Orchestration resumed, Phase 1-3 progressing |
+| ~03:55 | subscription-management merged (7th merge), monitor stalls |
+| ~04:03 | Bug #7 discovered: UnicodeDecodeError in subprocess output |
+| ~04:03 | Bug #7 fixed, sentinel restarted (PID 4084367) |
 
 ## Status (in progress)
 
 | Change | Phase | Status | Notes |
 |--------|-------|--------|-------|
-| test-infrastructure-setup | 1 | running | dispatched |
-| ... (14 more) | 1-5 | pending | waiting |
+| test-infrastructure-setup | 1 | done | |
+| database-schema-seed | 1 | merged | |
+| user-auth-core | 2 | merged | 3 iterations needed |
+| catalog-browsing | 2 | merged | Bug #6 fix validated |
+| content-stories | 3 | merged | |
+| user-account-profile | 3 | merged | |
+| promo-engine | 3 | merged | |
+| subscription-management | 3 | merged | Bug #7 trigger |
+| catalog-search-filters | 3 | pending | deps met |
+| cart-core | 3 | pending | deps met |
+| checkout-flow | 4 | pending | |
+| checkout-returns | 4 | pending | |
+| reviews-wishlist | 5 | pending | |
+| admin-panel | 5 | pending | |
+| email-notifications | 5 | pending | |
