@@ -54,7 +54,7 @@ GENERATED_FILE_PATTERNS=(
     ".next/**"
     "dist/**"
     "build/**"
-    ".claude/reflection.md"
+    ".claude/**"
     ".wt-tools/**"
 )
 

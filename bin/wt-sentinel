@@ -71,9 +71,24 @@ sentinel_emit_event() {
 LOCK_FILE="sentinel.lock"
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
-    existing_pid=$(cat "$PID_FILE" 2>/dev/null || echo "unknown")
-    echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Another sentinel is already running (PID: $existing_pid) — exiting"
-    exit 1
+    existing_pid=$(cat "$PID_FILE" 2>/dev/null || echo "")
+    if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+        # Sentinel is genuinely running — refuse to start
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Another sentinel is already running (PID: $existing_pid) — exiting"
+        exit 1
+    elif [[ -n "$existing_pid" ]]; then
+        # PID file exists but process is dead — stale lock
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Recovered stale lock from dead PID $existing_pid"
+        rm -f "$LOCK_FILE"
+        exec 9>"$LOCK_FILE"
+        flock -n 9 || { echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Failed to acquire lock after stale recovery — exiting"; exit 1; }
+    else
+        # No PID file — stale lock with no owner
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Recovered stale lock (no PID file)"
+        rm -f "$LOCK_FILE"
+        exec 9>"$LOCK_FILE"
+        flock -n 9 || { echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Failed to acquire lock after stale recovery — exiting"; exit 1; }
+    fi
 fi
 
 # Signal handling — don't restart after user interrupt

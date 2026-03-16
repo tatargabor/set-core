@@ -1302,10 +1302,11 @@ def handle_change_done(
                     logger.error("Verify gate: build failed for %s (exit %d)", change_name, build_result.exit_code)
                     update_change_field(state_file, change_name, "build_result", "fail")
 
-                    # Retry logic
+                    # Build-fix retry: dispatch without consuming verify_retry_count.
+                    # Build self-healing is bounded by Ralph's iteration limit, not the
+                    # verify budget. Only real verify gate failures (test/review/scope)
+                    # should count against max_verify_retries.
                     if verify_retry_count < effective_max_retries:
-                        verify_retry_count += 1
-                        update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
                         update_change_field(state_file, change_name, "status", "verify-failed")
                         scope = change.scope or ""
                         retry_prompt = (

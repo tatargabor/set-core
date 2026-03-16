@@ -457,6 +457,31 @@ def monitor_loop(
 
 # ─── Poll Helpers ──────────────────────────────────────────────────
 
+def _verify_gates_already_passed(change: Any) -> bool:
+    """Return True if all blocking verify gates have already passed.
+
+    Used on monitor restart to detect changes in "verifying" status where the
+    gates completed successfully but the monitor died before queuing the merge
+    (Bug #5b). Any blocking gate result of "fail" or "critical" → False.
+    A gate with no result (None) → False (gates haven't run yet).
+    """
+    _PASS_VALUES = {"pass", "skipped", "warn-fail"}
+    _FAIL_VALUES = {"fail", "critical"}
+
+    test_r = change.test_result
+    build_r = change.build_result
+    review_r = change.review_result
+    scope_r = change.extras.get("scope_check") if change.extras else None
+
+    # All four gates must have a result (not None) and none can be a hard failure
+    for result in (test_r, build_r, review_r, scope_r):
+        if result is None:
+            return False
+        if result in _FAIL_VALUES:
+            return False
+    return True
+
+
 def _poll_active_changes(
     state_file: str, d: Directives, poll_e2e_cmd: str, event_bus: Any
 ) -> None:
@@ -467,6 +492,20 @@ def _poll_active_changes(
     for change in state.changes:
         if change.status not in ("running", "verifying"):
             continue
+
+        # Fast-merge path: if change is "verifying" and all gates already passed,
+        # the monitor likely died between verify completion and merge queuing (Bug #5b).
+        # Queue it for merge directly instead of re-running the full verify gate.
+        if change.status == "verifying" and _verify_gates_already_passed(change):
+            logger.info(
+                "Resume fast-merge: %s has all gates passed — adding to merge queue directly",
+                change.name,
+            )
+            with locked_state(state_file) as s:
+                if change.name not in s.merge_queue:
+                    s.merge_queue.append(change.name)
+            continue
+
         try:
             poll_change(
                 change.name, state_file,

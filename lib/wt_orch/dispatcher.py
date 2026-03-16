@@ -48,6 +48,12 @@ _CORE_GENERATED_FILE_PATTERNS = {
     ".tsbuildinfo", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
 }
 
+# Directory prefixes whose contents are always framework-generated and safe to
+# auto-resolve with --ours/--theirs during merge. This covers .claude/* runtime
+# files (activity.json, loop-state.json, logs/*, ralph-terminal.pid, reflection.md)
+# without requiring an exhaustive explicit list.
+_AUTO_RESOLVE_PREFIXES = {".claude/"}
+
 
 def _get_generated_file_patterns() -> set:
     """Return generated file patterns: core + profile-provided."""
@@ -58,6 +64,17 @@ def _get_generated_file_patterns() -> set:
     if extra:
         return _CORE_GENERATED_FILE_PATTERNS | set(extra)
     return _CORE_GENERATED_FILE_PATTERNS
+
+
+def _is_generated_file(path: str) -> bool:
+    """Return True if path is a generated file safe to auto-resolve during merge.
+
+    Checks both basename patterns (lockfiles, .tsbuildinfo) and directory
+    prefix patterns (.claude/* runtime files).
+    """
+    if os.path.basename(path) in _get_generated_file_patterns():
+        return True
+    return any(path.startswith(prefix) for prefix in _AUTO_RESOLVE_PREFIXES)
 
 # Env files to copy from project root to worktree
 ENV_FILES = [".env", ".env.local", ".env.development", ".env.development.local"]
@@ -151,11 +168,10 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
     conflicted_files = [f for f in conflict_r.stdout.strip().splitlines() if f.strip()]
 
     if conflicted_files:
-        # Check if all conflicts are in generated files
+        # Check if all conflicts are in generated files (basename or prefix match)
         has_non_generated = False
         for f in conflicted_files:
-            basename = os.path.basename(f)
-            if basename not in _get_generated_file_patterns():
+            if not _is_generated_file(f):
                 has_non_generated = True
                 break
 
