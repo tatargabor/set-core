@@ -120,6 +120,13 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                   <div className="flex gap-4 text-[11px] text-neutral-400">
                     <span>In: {formatTokens(c.input_tokens)}</span>
                     <span>Out: {formatTokens(c.output_tokens)}</span>
+                    {c.context_tokens_end != null && (
+                      <span className={c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-400'}>
+                        ctx: {c.context_tokens_start != null
+                          ? `${Math.round(c.context_tokens_start / 1000)}K→`
+                          : ''}{Math.round(c.context_tokens_end / 1000)}K ({Math.round(c.context_tokens_end / 200_000 * 100)}%)
+                      </span>
+                    )}
                     {c.session_count && <span>Sessions: {c.session_count}</span>}
                     {c.model && <span className="text-neutral-500">{c.model}</span>}
                   </div>
@@ -226,6 +233,11 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               <td className="px-2 py-2 text-right text-neutral-400">{formatDuration(changeDuration(c))}</td>
               <td className="px-2 py-2 text-right text-neutral-400 font-mono text-xs">
                 {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
+                {c.context_tokens_end != null && (
+                  <span className={`ml-1 ${c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-500'}`}>
+                    {' '}ctx:{Math.round(c.context_tokens_end / 1000)}K
+                  </span>
+                )}
               </td>
               <td className="px-2 py-2">
                 <div

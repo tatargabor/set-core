@@ -120,6 +120,10 @@ class Change:
     redispatch_count: int = 0
     merge_retry_count: int = 0
 
+    # Context window metrics (optional — absent on old state files)
+    context_tokens_start: Optional[int] = None  # cache_create_tokens after iteration 1
+    context_tokens_end: Optional[int] = None    # total_cache_create at loop completion
+
     # Gate timings (ms)
     gate_test_ms: int = 0
     gate_review_ms: int = 0

@@ -57,6 +57,9 @@ BOOTSTRAP_PATTERNS = ("*.lock", "*-lock.yaml", "*.lockb", "jest.config.*", "jest
 # Default timeouts
 DEFAULT_TEST_TIMEOUT = 120
 DEFAULT_SMOKE_TIMEOUT = 180
+
+# Context window size for Claude 4.x Sonnet/Opus (update when model changes)
+CONTEXT_WINDOW_SIZE = 200_000
 DEFAULT_SMOKE_FIX_MAX_RETRIES = 3
 DEFAULT_SMOKE_FIX_MAX_TURNS = 15
 DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT = 30
@@ -64,6 +67,7 @@ DEFAULT_MAX_VERIFY_RETRIES = 2
 DEFAULT_REVIEW_MODEL = "sonnet"
 DEFAULT_E2E_TIMEOUT = 120
 E2E_PORT_BASE = 3100
+E2E_HEALTH_TIMEOUT = 30  # seconds; override via config e2e_health_timeout
 
 
 # ─── Data Structures ────────────────────────────────────────────────
@@ -486,12 +490,16 @@ def review_change(
             elif design_r.exit_code != 0 and design_r.stderr.strip():
                 logger.warning("Design review section failed: %s", design_r.stderr[:200])
 
+    # Load security rules for first review attempt
+    security_rules = _load_security_rules(wt_path)
+
     # Build review prompt via template
     template_input = json.dumps({
         "scope": scope,
         "diff_output": diff_output,
         "req_section": req_section,
         "design_compliance": design_compliance,
+        "security_rules": security_rules,
     })
 
     template_result = run_command(
@@ -926,6 +934,51 @@ def _read_loop_state_mtime(wt_path: str) -> int:
         return 0
 
 
+def _capture_context_tokens_start(
+    state_file: str,
+    change_name: str,
+    change: "Change",
+    loop_state: dict,
+) -> None:
+    """Capture context_tokens_start after the first iteration completes.
+
+    Uses cache_create_tokens from iteration 1 as the proxy for initial context size.
+    Only written once (skipped if already set).
+    """
+    if change.context_tokens_start is not None:
+        return  # already captured
+    iterations = loop_state.get("iterations", [])
+    if not iterations:
+        return
+    iter1 = iterations[0]
+    if not iter1.get("ended"):
+        return  # iteration 1 not complete yet
+    cc = int(iter1.get("cache_create_tokens", 0))
+    if cc > 0:
+        update_change_field(state_file, change_name, "context_tokens_start", cc)
+        logger.debug("context_tokens_start for %s: %d (%.0f%%)", change_name, cc, cc / CONTEXT_WINDOW_SIZE * 100)
+
+
+def _capture_context_tokens_end(
+    state_file: str,
+    change_name: str,
+    loop_state: dict,
+) -> None:
+    """Capture context_tokens_end at loop completion.
+
+    Uses total_cache_create as the proxy for peak context size this session.
+    """
+    cc = int(loop_state.get("total_cache_create", 0))
+    if cc > 0:
+        update_change_field(state_file, change_name, "context_tokens_end", cc)
+        pct = cc / CONTEXT_WINDOW_SIZE * 100
+        level = "warning" if pct >= 80 else "info"
+        getattr(logger, level)(
+            "context_tokens_end for %s: %d (%.0f%% of %dK window)",
+            change_name, cc, pct, CONTEXT_WINDOW_SIZE // 1000,
+        )
+
+
 def _accumulate_tokens(
     state_file: str,
     change_name: str,
@@ -1074,6 +1127,9 @@ def poll_change(
         "cache_create": cc_tok,
     })
 
+    # Context window metrics — capture start after first iteration completes
+    _capture_context_tokens_start(state_file, change_name, change, loop_state)
+
     ralph_status = loop_state.get("status", "unknown")
 
     if ralph_status == "done":
@@ -1169,6 +1225,7 @@ def handle_change_done(
     smoke_health_check_timeout: int = DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT,
     e2e_command: str = "",
     e2e_timeout: int = DEFAULT_E2E_TIMEOUT,
+    e2e_health_timeout: int = E2E_HEALTH_TIMEOUT,
     event_bus: EventBus | None = None,
     design_snapshot_dir: str = "",
     **kwargs: Any,
@@ -1194,6 +1251,10 @@ def handle_change_done(
 
     wt_path = change.worktree_path or ""
     verify_retry_count = change.verify_retry_count
+
+    # ── Context window metrics — capture end tokens at loop completion ──
+    if wt_path:
+        _capture_context_tokens_end(state_file, change_name, _read_loop_state(wt_path))
 
     # ── Retry token tracking ──
     retry_tokens_start = change.extras.get("retry_tokens_start", 0)

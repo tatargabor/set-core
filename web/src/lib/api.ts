@@ -60,6 +60,9 @@ export interface ChangeInfo {
   smoke_screenshot_dir?: string
   e2e_screenshot_count?: number
   e2e_screenshot_dir?: string
+  // Context window metrics (optional — absent on old state files)
+  context_tokens_start?: number
+  context_tokens_end?: number
   // Misc
   model?: string
   session_count?: number
