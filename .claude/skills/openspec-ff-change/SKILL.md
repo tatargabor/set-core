@@ -103,6 +103,19 @@ After completing all artifacts, summarize:
   - Do NOT copy `<context>`, `<rules>`, `<project_context>` blocks into the artifact
   - These guide what you write, but should never appear in the output
 
+**Tasks artifact — requirement traceability and acceptance criteria**
+
+When creating tasks.md:
+- Each implementation task MUST end with `[REQ: <requirement-name>]` linking it to a spec requirement.
+  The requirement name is the kebab-case slug of the `### Requirement:` header.
+  Example: `- [ ] 1.1 Implement login form [REQ: user-authentication]`
+- If the delta specs contain `#### Scenario:` blocks with WHEN/THEN format, add an
+  `## Acceptance Criteria (from spec scenarios)` section at the bottom of tasks.md.
+  Each scenario becomes:
+  `- [ ] AC-N: WHEN <condition> THEN <outcome> [REQ: <req-name>, scenario: <scenario-slug>]`
+  where scenario-slug is the scenario heading in kebab-case. Group AC items by requirement.
+  Omit this section entirely if no WHEN/THEN scenarios exist in the delta specs.
+
 **Guardrails**
 - Create ALL artifacts needed for implementation (as defined by schema's `apply.requires`)
 - Always read dependency artifacts before creating a new one

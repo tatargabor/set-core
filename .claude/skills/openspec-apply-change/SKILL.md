@@ -66,6 +66,12 @@ Implement tasks from an OpenSpec change.
 
 6. **Implement tasks (loop until done or blocked)**
 
+   **Scope constraint**: Before starting, read the IN SCOPE / OUT OF SCOPE sections from each
+   delta spec in `openspec/changes/<change-name>/specs/`. Implement ONLY items listed in IN SCOPE.
+   Do NOT implement anything listed in OUT OF SCOPE, even if it seems related or useful.
+   If a task references an OUT OF SCOPE item, pause and flag it to the user.
+   Skip gracefully if specs lack IN SCOPE / OUT OF SCOPE sections.
+
    For each pending task:
    - Show which task is being worked on
    - Make the code changes required

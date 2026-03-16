@@ -424,7 +424,15 @@ def build_req_review_section(
 For each ASSIGNED requirement above, verify the diff contains implementation evidence.
 If a requirement has NO corresponding code in the diff, report:
   ISSUE: [CRITICAL] REQ-ID has no implementation in the diff
-Cross-cutting requirements are for awareness — do not flag them as missing."""
+Cross-cutting requirements are for awareness — do not flag them as missing.
+
+## Overshoot Check
+Review the diff for new routes, endpoints, components, database tables, or public exports
+that do NOT correspond to any assigned requirement above.
+If found, report:
+  ISSUE: [WARNING] Potential overshoot — new <route/component/export> not in assigned requirements: <item>
+Note: Internal helper functions and utilities that serve an assigned requirement are NOT overshoot.
+Only flag new user-facing features, routes, or exports that have no spec backing."""
 
     return section
 
@@ -1643,7 +1651,7 @@ def handle_change_done(
     elif wt_path and shutil.which("claude"):
         verify_cmd_result = run_claude(
             f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\nRun /opsx:verify {change_name}",
-            extra_args=["--max-turns", "15"],
+            extra_args=["--max-turns", "20"],
             cwd=wt_path,
         )
         verify_output = verify_cmd_result.stdout
@@ -1662,26 +1670,14 @@ def handle_change_done(
             update_change_field(state_file, change_name, "spec_coverage_result", "fail")
             logger.warning("Spec coverage FAIL for %s — non-blocking, proceeding to merge", change_name)
         else:
-            # Soft-fail: if all other gates passed, treat missing VERIFY_RESULT as warning
-            # The /opsx:verify skill sometimes doesn't output the sentinel within max-turns
-            other_gates_pass = (
-                change.test_result in ("pass", None)
-                and change.build_result in ("pass", None)
-                and change.review_result in ("pass", None)
+            # No VERIFY_RESULT sentinel — treat as timeout/fail regardless of other gates
+            verify_ok = False
+            gate_spec_coverage = "fail"
+            update_change_field(state_file, change_name, "spec_coverage_result", "timeout")
+            logger.warning(
+                "Spec verify timed out — no VERIFY_RESULT sentinel in output for %s",
+                change_name,
             )
-            if other_gates_pass:
-                logger.warning(
-                    "Verify gate: no VERIFY_RESULT sentinel in output for %s — "
-                    "all other gates passed, treating as PASS (soft-pass)",
-                    change_name,
-                )
-                gate_spec_coverage = "pass"
-                update_change_field(state_file, change_name, "spec_coverage_result", "soft-pass")
-            else:
-                verify_ok = False
-                gate_spec_coverage = "fail"
-                update_change_field(state_file, change_name, "spec_coverage_result", "fail")
-                logger.error("Verify gate: no VERIFY_RESULT sentinel in output for %s — treating as FAIL", change_name)
 
     if not verify_ok and gc.is_blocking("spec_verify"):
         if verify_retry_count < effective_max_retries:

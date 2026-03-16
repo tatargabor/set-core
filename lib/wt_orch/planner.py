@@ -390,6 +390,44 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
                                 f"also_affects_reqs '{aaid}' has no primary owner "
                                 "in any change's requirements[]"
                             )
+
+                # Parse deferred_requirements (task 6.2)
+                deferred_requirement_ids: set[str] = set()
+                deferred_entries = plan.get("deferred_requirements", [])
+                if isinstance(deferred_entries, list):
+                    for entry in deferred_entries:
+                        if not isinstance(entry, dict):
+                            continue
+                        did = entry.get("id", "")
+                        reason = entry.get("reason", "")
+                        if not did or not reason:
+                            result.warnings.append(
+                                f"deferred_requirements entry missing 'id' or 'reason': {entry}"
+                            )
+                            continue
+                        if did not in all_req_ids:
+                            result.warnings.append(
+                                f"Deferred requirement ID not found in digest: {did}"
+                            )
+                        else:
+                            deferred_requirement_ids.add(did)
+                            result.warnings.append(
+                                f"Deferred requirement: {did} — {reason}"
+                            )
+
+                # Reverse requirement coverage check (task 6.1)
+                all_assigned: set[str] = set()
+                for c in changes:
+                    all_assigned.update(c.get("requirements", []))
+                    all_assigned.update(c.get("also_affects_reqs", []))
+
+                unassigned = all_req_ids - all_assigned
+                unexplained = unassigned - deferred_requirement_ids
+                for rid in sorted(unexplained):
+                    result.errors.append(
+                        f"Requirement not covered by any change and not deferred: {rid}"
+                    )
+
             except (json.JSONDecodeError, OSError):
                 logger.warning("Could not read requirements.json for coverage validation")
 

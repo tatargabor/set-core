@@ -71,10 +71,22 @@ Decompose a specification document into an orchestration execution plan.
          "requirements": ["REQ-DOMAIN-001"],
          "also_affects_reqs": ["REQ-CROSS-001"]
        }
+     ],
+     "deferred_requirements": [
+       {
+         "id": "REQ-DOMAIN-002",
+         "reason": "Depends on auth system, planned for next phase"
+       }
      ]
    }
 
    **Note:** `spec_files`, `requirements`, and `also_affects_reqs` are only required when working with a multi-file spec that has been digested (`wt/orchestration/digest/` exists). For single-file specs, omit these fields.
+
+   **Requirement accounting (digest mode only):** When a digest exists, every requirement in `wt/orchestration/digest/requirements.json` MUST be accounted for. Either:
+   - Assign it to a change via `requirements[]` or `also_affects_reqs[]`, OR
+   - List it in `deferred_requirements[]` with a reason explaining why it is deferred (e.g., dependency on another phase, out of scope for this sprint, intentionally excluded)
+
+   Silent omission of requirements — assigning neither to a change nor to `deferred_requirements` — is a planning error. `validate_plan()` will report unaccounted requirements as errors and block dispatch.
    ```
 
 ## Decomposition Rules
@@ -124,3 +136,4 @@ After writing `orchestration-plan.json`, verify it:
 - Complexity values are S, M, or L
 - change_type is one of the valid values
 - Every change has a non-empty scope and roadmap_item
+- (Digest mode) Every digest requirement is assigned to a change or listed in `deferred_requirements` — none silently omitted
