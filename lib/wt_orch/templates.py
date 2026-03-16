@@ -115,11 +115,71 @@ To be determined during design phase."""]
 # ─── Review Prompt Template ────────────────────────────────────────────
 
 
+def classify_diff_content(diff_text: str) -> set[str]:
+    """Scan diff for file path and code patterns; return set of content categories.
+
+    Categories: "auth", "api", "database", "frontend"
+    """
+    categories: set[str] = set()
+    lines = diff_text.splitlines()
+
+    auth_file_patterns = re.compile(r"(auth|session|middleware|login|cookie)", re.IGNORECASE)
+    api_code_patterns = re.compile(r"(router\.|app\.get\(|app\.post\(|app\.put\(|app\.delete\(|export.*function.*handler)", re.IGNORECASE)
+    db_code_patterns = re.compile(r"(prisma\.|db\.|query\(|\.findMany|\.findFirst|\.create\(|\.update\(|\.delete\(|\bSELECT\b|\bINSERT\b)", re.IGNORECASE)
+    frontend_file_patterns = re.compile(r"\.(tsx|jsx|vue|svelte)$", re.IGNORECASE)
+
+    for line in lines:
+        # File path lines start with +++ or ---
+        if line.startswith(("+++", "---")):
+            if auth_file_patterns.search(line):
+                categories.add("auth")
+            if frontend_file_patterns.search(line):
+                categories.add("frontend")
+        # Code lines
+        if api_code_patterns.search(line):
+            categories.add("api")
+        if db_code_patterns.search(line):
+            categories.add("database")
+
+    return categories
+
+
+def _content_aware_instructions(categories: set[str]) -> str:
+    """Map categories to specific review instructions. Returns text capped at 2000 chars."""
+    instructions: list[str] = []
+
+    if "auth" in categories:
+        instructions.append(
+            "**Auth check**: Verify auth middleware exists and covers all protected routes. "
+            "Check for cold-visit protection (unauthenticated GET /admin → redirect to /login). "
+            "Ensure session/cookie handling is httpOnly and SameSite."
+        )
+    if "api" in categories:
+        instructions.append(
+            "**API/IDOR check**: Verify every mutation by client-provided ID includes an ownership "
+            "check (WHERE clause scoped to userId/sessionId). Check list endpoints have pagination "
+            "and are scoped by owning entity."
+        )
+    if "database" in categories:
+        instructions.append(
+            "**Data scoping check**: Verify queries are scoped by owning entity — never fetch "
+            "records by ID alone without a user/org filter. Check for missing WHERE conditions "
+            "on multi-tenant data."
+        )
+
+    if not instructions:
+        return ""
+
+    result = "\n## Content-Aware Checks\n" + "\n".join(f"- {i}" for i in instructions)
+    return result[:2000]
+
+
 def render_review_prompt(
     scope: str,
     diff_output: str,
     req_section: str = "",
     design_compliance: str = "",
+    security_rules: str = "",
 ) -> str:
     """Render code review prompt for Claude.
 
@@ -128,6 +188,9 @@ def render_review_prompt(
     diff_output = _truncate(diff_output, MAX_DIFF_CHARS, "diff output")
 
     design_section = f"\n{design_compliance}\n" if design_compliance and design_compliance.strip() else ""
+    security_section = f"\n## Security Patterns\n{security_rules}\n" if security_rules and security_rules.strip() else ""
+    content_aware = _content_aware_instructions(classify_diff_content(diff_output))
+    content_section = f"\n{content_aware}\n" if content_aware else ""
 
     return f"""You are a senior code reviewer. Review this diff for critical issues.
 
@@ -139,7 +202,7 @@ def render_review_prompt(
 {diff_output}
 ```
 {req_section}
-{design_section}
+{design_section}{security_section}{content_section}
 ## Review Criteria
 Check for:
 1. Security vulnerabilities: SQL injection, XSS, command injection, path traversal

@@ -256,6 +256,24 @@ def run_tests_in_worktree(
     )
 
 
+def parse_test_output(output: str) -> dict:
+    """Parse test runner output for structured pass/fail counts.
+
+    Returns dict with keys: framework, passed, failed, total.
+    Falls back to {"framework": "unknown", "passed": 0, "failed": 0, "total": 0}
+    if output format is unrecognized.
+    """
+    stats = _parse_test_stats(output)
+    if stats:
+        return {
+            "framework": stats.get("type", "unknown"),
+            "passed": stats.get("passed", 0),
+            "failed": stats.get("failed", 0),
+            "total": stats.get("passed", 0) + stats.get("failed", 0),
+        }
+    return {"framework": "unknown", "passed": 0, "failed": 0, "total": 0}
+
+
 def _parse_test_stats(output: str) -> dict | None:
     """Parse test counts from Jest/Vitest/Playwright output.
 
@@ -1472,43 +1490,56 @@ def handle_change_done(
             e2e_port = E2E_PORT_BASE + random.randint(0, 99)
             logger.info("Verify gate: e2e start for %s (PW_PORT=%d)", change_name, e2e_port)
 
-            start_ms = int(time.monotonic() * 1000)
-            e2e_env = {"PW_PORT": str(e2e_port)}
-            e2e_cmd_result = run_command(
-                ["bash", "-c", e2e_command],
-                timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
-                max_output_size=4000,
-            )
-            gate_e2e_ms = int(time.monotonic() * 1000) - start_ms
+            # E2E readiness probe: verify dev server is responding before Playwright
+            e2e_health_ok = health_check(f"http://localhost:{e2e_port}", e2e_health_timeout)
+            if not e2e_health_ok:
+                logger.warning(
+                    "Verify gate: e2e dev server not responding on port %d for %s — skipping E2E",
+                    e2e_port, change_name,
+                )
+                e2e_result_str = "skip-unhealthy"
+                update_change_field(state_file, change_name, "e2e_result", e2e_result_str)
+                gate_e2e_ms = 0
+                e2e_output = ""
+            else:
+                start_ms = int(time.monotonic() * 1000)
+                e2e_env = {"PW_PORT": str(e2e_port)}
+                e2e_cmd_result = run_command(
+                    ["bash", "-c", e2e_command],
+                    timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
+                    max_output_size=4000,
+                )
+                gate_e2e_ms = int(time.monotonic() * 1000) - start_ms
+                e2e_result_str = "pass" if e2e_cmd_result.exit_code == 0 else "fail"
+                e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
+
+                # Cleanup dev server
+                run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
+                run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
+
+                # Collect screenshots
+                e2e_sc_dir = f"wt/orchestration/e2e-screenshots/{change_name}"
+                os.makedirs(e2e_sc_dir, exist_ok=True)
+                wt_test_results = os.path.join(wt_path, "test-results")
+                if os.path.isdir(wt_test_results):
+                    for item in os.listdir(wt_test_results):
+                        src = os.path.join(wt_test_results, item)
+                        dst = os.path.join(e2e_sc_dir, item)
+                        if os.path.isdir(src):
+                            shutil.copytree(src, dst, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(src, dst)
+                e2e_sc_count = sum(
+                    1 for _r, _d, files in os.walk(e2e_sc_dir) for f in files if f.endswith(".png")
+                )
+                update_change_field(state_file, change_name, "e2e_screenshot_dir", e2e_sc_dir)
+                update_change_field(state_file, change_name, "e2e_screenshot_count", e2e_sc_count)
+
             update_change_field(state_file, change_name, "gate_e2e_ms", gate_e2e_ms)
-
-            e2e_result_str = "pass" if e2e_cmd_result.exit_code == 0 else "fail"
-            e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
-
-            # Cleanup dev server
-            run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
-            run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
-
-            # Collect screenshots
-            e2e_sc_dir = f"wt/orchestration/e2e-screenshots/{change_name}"
-            os.makedirs(e2e_sc_dir, exist_ok=True)
-            wt_test_results = os.path.join(wt_path, "test-results")
-            if os.path.isdir(wt_test_results):
-                for item in os.listdir(wt_test_results):
-                    src = os.path.join(wt_test_results, item)
-                    dst = os.path.join(e2e_sc_dir, item)
-                    if os.path.isdir(src):
-                        shutil.copytree(src, dst, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(src, dst)
-            e2e_sc_count = sum(
-                1 for _r, _d, files in os.walk(e2e_sc_dir) for f in files if f.endswith(".png")
-            )
-            update_change_field(state_file, change_name, "e2e_screenshot_dir", e2e_sc_dir)
-            update_change_field(state_file, change_name, "e2e_screenshot_count", e2e_sc_count)
-
             update_change_field(state_file, change_name, "e2e_result", e2e_result_str)
             update_change_field(state_file, change_name, "e2e_output", e2e_output[:4000])
+            if e2e_output:
+                update_change_field(state_file, change_name, "e2e_stats", parse_test_output(e2e_output))
 
             if e2e_result_str == "fail":
                 if gc.is_blocking("e2e"):

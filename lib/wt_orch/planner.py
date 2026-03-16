@@ -439,7 +439,83 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
             f"({ov.similarity}% keyword similarity)"
         )
 
+    # Spec coverage annotation report (after successful validation, digest mode only)
+    if digest_dir and not result.errors:
+        try:
+            generate_coverage_report(
+                plan=plan,
+                digest_dir=digest_dir,
+                output_path="wt/orchestration/spec-coverage-report.md",
+            )
+        except Exception as exc:
+            logger.warning("Could not generate spec coverage report: %s", exc)
+
     return result
+
+
+def generate_coverage_report(plan: dict, digest_dir: str, output_path: str) -> None:
+    """Generate a markdown coverage report mapping requirements to changes.
+
+    Reads requirements.json from digest_dir, maps each requirement to the
+    change that owns it (COVERED), deferred requirements (DEFERRED), or
+    marks it as UNCOVERED. Writes markdown table to output_path.
+    Overwrites existing file (regenerated on replan).
+    """
+    req_file = Path(digest_dir) / "requirements.json"
+    if not req_file.exists():
+        return
+
+    req_data = json.loads(req_file.read_text())
+    all_reqs = [r for r in req_data.get("requirements", []) if r.get("status") != "removed"]
+
+    changes = plan.get("changes", [])
+    deferred_entries = {
+        e["id"]: e.get("reason", "")
+        for e in plan.get("deferred_requirements", [])
+        if isinstance(e, dict) and e.get("id")
+    }
+
+    # Build req_id → change names mapping
+    req_to_changes: dict[str, list[str]] = {}
+    for c in changes:
+        for rid in c.get("requirements", []):
+            req_to_changes.setdefault(rid, []).append(c["name"])
+        for rid in c.get("also_affects_reqs", []):
+            req_to_changes.setdefault(rid, []).append(f"{c['name']} (cross)")
+
+    lines = [
+        "# Spec Coverage Report",
+        "",
+        "| Requirement ID | Title | Status | Change(s) |",
+        "|----------------|-------|--------|-----------|",
+    ]
+    covered = deferred = uncovered = 0
+    for req in all_reqs:
+        rid = req.get("id", "")
+        title = req.get("title", rid)
+        if rid in req_to_changes:
+            status = "COVERED"
+            change_list = ", ".join(req_to_changes[rid])
+            covered += 1
+        elif rid in deferred_entries:
+            status = f"DEFERRED: {deferred_entries[rid]}"
+            change_list = "—"
+            deferred += 1
+        else:
+            status = "UNCOVERED"
+            change_list = "—"
+            uncovered += 1
+        lines.append(f"| {rid} | {title} | {status} | {change_list} |")
+
+    lines += [
+        "",
+        f"**Summary**: {covered} covered, {deferred} deferred, {uncovered} uncovered "
+        f"(total: {len(all_reqs)})",
+    ]
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_text("\n".join(lines) + "\n")
+    logger.info("Spec coverage report written to %s", output_path)
 
 
 # ─── Scope Overlap Detection ─────────────────────────────────────────

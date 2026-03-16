@@ -64,6 +64,27 @@ class NullProfile:
     def gate_overrides(self, change_type: str) -> dict:
         return {}
 
+    def rule_keyword_mapping(self) -> dict:
+        """Return mapping of category names to keyword lists and rule glob patterns.
+
+        Used by dispatcher for proactive rule injection at dispatch time.
+        Override in project-type plugins to customize per-project.
+        """
+        return {
+            "auth": {
+                "keywords": ["auth", "login", "session", "middleware", "cookie", "password", "token"],
+                "globs": ["web/auth-middleware.md", "web/security-patterns.md"],
+            },
+            "api": {
+                "keywords": ["api", "route", "endpoint", "handler", "REST", "mutation"],
+                "globs": ["web/api-design.md", "web/security-patterns.md"],
+            },
+            "database": {
+                "keywords": ["database", "query", "migration", "schema", "model", "prisma", "drizzle"],
+                "globs": ["web/security-patterns.md"],
+            },
+        }
+
     @property
     def info(self):
         from dataclasses import dataclass
