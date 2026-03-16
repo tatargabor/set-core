@@ -1000,10 +1000,14 @@ def poll_change(
             try:
                 started = _dt.datetime.fromisoformat(str(change.started_at))
                 if started.tzinfo is None:
-                    started = started.replace(tzinfo=_dt.timezone.utc)
-                age_secs = (
-                    _dt.datetime.now(_dt.timezone.utc) - started
-                ).total_seconds()
+                    # started_at is typically local time without tz — compare with local now
+                    age_secs = (
+                        _dt.datetime.now() - started
+                    ).total_seconds()
+                else:
+                    age_secs = (
+                        _dt.datetime.now(_dt.timezone.utc) - started
+                    ).total_seconds()
                 if age_secs > 300:
                     logger.error(
                         "Change %s has ralph_pid=0, no loop-state, started %ds ago — treating as dead agent",
