@@ -420,7 +420,13 @@ def _try_merge(
     retry_count = change.merge_retry_count if change else 0
 
     if retry_count >= MAX_MERGE_RETRIES:
-        return False  # silently skip
+        logger.warning(
+            "Merge retries exhausted (%d/%d) for %s — removing from queue",
+            retry_count, MAX_MERGE_RETRIES, name,
+        )
+        _remove_from_merge_queue(state_file, name)
+        update_change_field(state_file, name, "status", "merge-blocked")
+        return False
 
     retry_count += 1
     update_change_field(state_file, name, "merge_retry_count", retry_count)
