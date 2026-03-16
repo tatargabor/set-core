@@ -77,15 +77,14 @@ if ! flock -n 9; then
         echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Another sentinel is already running (PID: $existing_pid) — exiting"
         exit 1
     elif [[ -n "$existing_pid" ]]; then
-        # PID file exists but process is dead — stale lock
+        # PID file exists but process is dead — stale lock.
+        # Re-open fd 9 (truncate in-place, no unlink) to avoid TOCTOU race.
         echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Recovered stale lock from dead PID $existing_pid"
-        rm -f "$LOCK_FILE"
         exec 9>"$LOCK_FILE"
         flock -n 9 || { echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Failed to acquire lock after stale recovery — exiting"; exit 1; }
     else
-        # No PID file — stale lock with no owner
+        # No PID file — stale lock with no owner. Truncate in-place, no unlink.
         echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Recovered stale lock (no PID file)"
-        rm -f "$LOCK_FILE"
         exec 9>"$LOCK_FILE"
         flock -n 9 || { echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Failed to acquire lock after stale recovery — exiting"; exit 1; }
     fi

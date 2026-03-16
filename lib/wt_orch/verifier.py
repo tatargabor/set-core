@@ -1302,11 +1302,14 @@ def handle_change_done(
                     logger.error("Verify gate: build failed for %s (exit %d)", change_name, build_result.exit_code)
                     update_change_field(state_file, change_name, "build_result", "fail")
 
-                    # Build-fix retry: dispatch without consuming verify_retry_count.
-                    # Build self-healing is bounded by Ralph's iteration limit, not the
-                    # verify budget. Only real verify gate failures (test/review/scope)
-                    # should count against max_verify_retries.
-                    if verify_retry_count < effective_max_retries:
+                    # Build-fix retry: tracked by a separate counter so build
+                    # self-healing doesn't consume the verify_retry_count budget.
+                    # Only real verify gate failures (test/review/scope) should
+                    # count against max_verify_retries. The build-fix counter is
+                    # stored in extras to persist across orchestrator restarts.
+                    build_fix_count = change.extras.get("build_fix_attempt_count", 0)
+                    if build_fix_count < effective_max_retries:
+                        update_change_field(state_file, change_name, "build_fix_attempt_count", build_fix_count + 1)
                         update_change_field(state_file, change_name, "status", "verify-failed")
                         scope = change.scope or ""
                         retry_prompt = (
@@ -1322,7 +1325,7 @@ def handle_change_done(
                         return
 
                     update_change_field(state_file, change_name, "status", "failed")
-                    send_notification("wt-orchestrate", f"Change '{change_name}' failed build after {effective_max_retries} retries", "critical")
+                    send_notification("wt-orchestrate", f"Change '{change_name}' failed build after {build_fix_count} build-fix attempts", "critical")
                     return
                 else:
                     logger.warning("Verify gate: build failed for %s — non-blocking (gate=%s)", change_name, gc.build)
