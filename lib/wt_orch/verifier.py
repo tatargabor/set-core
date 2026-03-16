@@ -993,6 +993,26 @@ def poll_change(
                 )
                 update_change_field(state_file, change_name, "status", "failed")
                 return "dead"
+        elif change.started_at:
+            # ralph_pid=0 means agent never registered or already exited.
+            # If started_at is old enough (>300s), treat as dead agent.
+            import datetime as _dt
+            try:
+                started = _dt.datetime.fromisoformat(str(change.started_at))
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=_dt.timezone.utc)
+                age_secs = (
+                    _dt.datetime.now(_dt.timezone.utc) - started
+                ).total_seconds()
+                if age_secs > 300:
+                    logger.error(
+                        "Change %s has ralph_pid=0, no loop-state, started %ds ago — treating as dead agent",
+                        change_name, int(age_secs),
+                    )
+                    update_change_field(state_file, change_name, "status", "failed")
+                    return "dead"
+            except (ValueError, TypeError):
+                pass
         return None
 
     # Extract tokens (safely handle malformed values)
