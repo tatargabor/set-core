@@ -60,28 +60,21 @@ class MergeResult:
 
 # Source: merger.sh archive_change() L11-31
 def archive_change(change_name: str) -> bool:
-    """Move openspec change directory to dated archive path and commit."""
+    """Archive openspec change via CLI (handles move, spec sync, and git commit)."""
     change_dir = f"openspec/changes/{change_name}"
     if not os.path.isdir(change_dir):
         return True  # nothing to archive
 
-    archive_dir = "openspec/changes/archive"
-    dated_name = f"{time.strftime('%Y-%m-%d')}-{change_name}"
-    dest = f"{archive_dir}/{dated_name}"
-
-    try:
-        os.makedirs(archive_dir, exist_ok=True)
-        shutil.move(change_dir, dest)
-        run_command(["git", "add", dest], timeout=30)
-        run_command(
-            ["git", "commit", "-m", f"chore: archive {change_name} change", "--no-verify"],
-            timeout=60,
-        )
-        logger.info("Archived %s → %s", change_name, dest)
+    result = run_command(
+        ["openspec", "archive", change_name, "--yes"],
+        timeout=60,
+    )
+    if result.exit_code == 0:
+        logger.info("Archived %s via openspec CLI", change_name)
         return True
-    except Exception:
-        logger.warning("Failed to archive %s (non-blocking)", change_name)
-        return False
+
+    logger.warning("Failed to archive %s (non-blocking): %s", change_name, result.stderr)
+    return False
 
 
 # ─── Smoke Screenshot Collection ────────────────────────────────────

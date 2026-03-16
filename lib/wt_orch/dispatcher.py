@@ -722,46 +722,46 @@ def _find_existing_worktree(project_path: str, change_name: str) -> str:
     return wt_path
 
 
-def _build_proposal_content(
+def _build_input_content(
     change_name: str,
     scope: str,
     roadmap_item: str,
     ctx: DispatchContext,
-    state_path: str,
     input_mode: str = "",
     input_path: str = "",
-    digest_dir: str = "",
+    retry_ctx: str = "",
 ) -> str:
-    """Build enriched proposal via wt-orch-core template.
+    """Build dispatcher-injected context for input.md.
 
-    Migrated from: dispatcher.sh dispatch_change() L396-492
+    This file is the orchestrator's brief to the agent — separate from
+    proposal.md which is the agent's own artifact.
     """
-    # Use wt-orch-core template to generate base proposal
-    template_input = json.dumps({
-        "change_name": change_name,
-        "scope": scope,
-        "roadmap_item": roadmap_item,
-        "memory_ctx": ctx.memory_ctx,
-        "spec_ref": input_path if input_mode == "digest" else "",
-    })
+    lines = []
 
-    r = run_command(
-        ["wt-orch-core", "template", "proposal", "--input-file", "-"],
-        stdin_data=template_input,
-        timeout=10,
-    )
+    lines.append("## Scope")
+    lines.append(scope)
+    if roadmap_item and roadmap_item != scope:
+        lines.append(f"\n**Roadmap item:** {roadmap_item}")
 
-    content = r.stdout if r.exit_code == 0 else f"# {change_name}\n\n{scope}\n"
+    if input_mode == "digest" and input_path:
+        lines.append(f"\n**Spec source:** `{input_path}`")
 
-    # Append enrichment sections
+    if ctx.memory_ctx:
+        lines.append(f"\n## Project Context\n{ctx.memory_ctx}")
+
     if ctx.pk_context:
-        content += f"\n{ctx.pk_context}\n"
-    if ctx.sibling_context:
-        content += f"\n{ctx.sibling_context}\n"
-    if ctx.design_context:
-        content += f"\n{ctx.design_context}\n"
+        lines.append(f"\n{ctx.pk_context}")
 
-    return content
+    if ctx.sibling_context:
+        lines.append(f"\n{ctx.sibling_context}")
+
+    if ctx.design_context:
+        lines.append(f"\n## Design Context\n{ctx.design_context}")
+
+    if retry_ctx:
+        lines.append(f"\n## Retry Context\n{retry_ctx}")
+
+    return "\n".join(lines) + "\n"
 
 
 def _build_pk_context(scope: str, project_path: str) -> str:
@@ -1008,9 +1008,10 @@ def _setup_change_in_worktree(
     input_path: str,
     digest_dir: str,
 ) -> None:
-    """Initialize OpenSpec change and proposal in worktree.
+    """Initialize OpenSpec change and input.md in worktree.
 
     Migrated from: dispatcher.sh dispatch_change() L382-561 (subshell)
+    proposal.md is left for the agent to write — only input.md is pre-created.
     """
     change_dir = os.path.join(wt_path, "openspec", "changes", change_name)
 
@@ -1022,28 +1023,25 @@ def _setup_change_in_worktree(
         if not os.path.isdir(change_dir):
             logger.error("openspec change directory not created for %s", change_name)
 
-    # Create proposal.md
-    proposal_path = os.path.join(change_dir, "proposal.md")
-    if not os.path.isfile(proposal_path):
-        content = _build_proposal_content(
-            change_name, scope, roadmap_item, ctx,
-            state_path, input_mode, input_path, digest_dir,
-        )
-        os.makedirs(os.path.dirname(proposal_path), exist_ok=True)
-        with open(proposal_path, "w") as f:
-            f.write(content)
-        logger.info("pre-created proposal.md for %s", change_name)
-
-    # Inject retry_context
+    # Read retry_context (if any) before writing input.md
     state = load_state(state_path)
     change = _find_change(state, change_name)
     retry_ctx = ""
     if change:
         retry_ctx = change.extras.get("retry_context", "") or ""
+
+    # Write input.md — dispatcher context for the agent (separate from proposal.md)
+    input_md_path = os.path.join(change_dir, "input.md")
+    content = _build_input_content(
+        change_name, scope, roadmap_item, ctx,
+        input_mode, input_path, retry_ctx,
+    )
+    os.makedirs(os.path.dirname(input_md_path), exist_ok=True)
+    with open(input_md_path, "w") as f:
+        f.write(content)
+    logger.info("wrote input.md for %s", change_name)
+
     if retry_ctx:
-        with open(proposal_path, "a") as f:
-            f.write(f"\n{retry_ctx}\n")
-        logger.info("injected retry_context into proposal for %s", change_name)
         update_change_field(state_path, change_name, "retry_context", None)
 
     # Digest mode: copy spec files

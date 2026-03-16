@@ -24,13 +24,23 @@ Fast-forward through artifact creation - generate everything needed to start imp
 
    **IMPORTANT**: Do NOT proceed without understanding what the user wants to build.
 
-2. **Create the change directory**
+2. **Read input.md if it exists (pre-read phase)**
+
+   Check for `openspec/changes/<name>/input.md`. If it exists:
+   - Read it — it contains the orchestrator's brief: scope, project context, sibling changes, design tokens, retry context
+   - Based on the scope, identify which existing codebase files are most relevant (e.g., if scope mentions "auth" → read `middleware.ts`, `lib/auth/`, etc.)
+   - Read those files before writing any artifact
+   - This grounding ensures artifacts reflect the actual codebase, not assumptions
+
+   If `input.md` does not exist: proceed normally using CLAUDE.md and your own codebase exploration.
+
+3. **Create the change directory**
    ```bash
    openspec new change "<name>"
    ```
    This creates a scaffolded change at `openspec/changes/<name>/`.
 
-3. **Get the artifact build order**
+4. **Get the artifact build order**
    ```bash
    openspec status --change "<name>" --json
    ```
@@ -38,7 +48,7 @@ Fast-forward through artifact creation - generate everything needed to start imp
    - `applyRequires`: array of artifact IDs needed before implementation (e.g., `["tasks"]`)
    - `artifacts`: list of all artifacts with their status and dependencies
 
-4. **Create artifacts in sequence until apply-ready**
+5. **Create artifacts in sequence until apply-ready**
 
    Use the **TodoWrite tool** to track progress through the artifacts.
 
@@ -70,7 +80,7 @@ Fast-forward through artifact creation - generate everything needed to start imp
       - Use **AskUserQuestion tool** to clarify
       - Then continue with creation
 
-5. **Show final status**
+6. **Show final status**
    ```bash
    openspec status --change "<name>"
    ```
