@@ -76,6 +76,60 @@ def _is_generated_file(path: str) -> bool:
         return True
     return any(path.startswith(prefix) for prefix in _AUTO_RESOLVE_PREFIXES)
 
+def _build_rule_injection(scope: str, wt_path: str) -> str:
+    """Scan scope keywords against rule_keyword_mapping() and return matching rule content.
+
+    Reads matching rule files from {wt_path}/.claude/rules/, deduplicates,
+    truncates to 4000 chars total. Returns formatted string with header, or "".
+    """
+    from .profile_loader import load_profile
+
+    rules_dir = os.path.join(wt_path, ".claude", "rules")
+    if not os.path.isdir(rules_dir):
+        return ""
+
+    profile = load_profile()
+    mapping = profile.rule_keyword_mapping()
+    scope_lower = scope.lower()
+
+    matched_globs: list[str] = []
+    for _category, cfg in mapping.items():
+        keywords = cfg.get("keywords", [])
+        if any(kw.lower() in scope_lower for kw in keywords):
+            matched_globs.extend(cfg.get("globs", []))
+
+    if not matched_globs:
+        return ""
+
+    seen: set[str] = set()
+    parts: list[str] = []
+    total = 0
+    for glob_pat in matched_globs:
+        # glob_pat is relative, e.g. "web/auth-middleware.md"
+        full_path = os.path.join(rules_dir, glob_pat)
+        if full_path in seen or not os.path.isfile(full_path):
+            continue
+        seen.add(full_path)
+        try:
+            content = open(full_path).read()
+        except OSError:
+            continue
+        # Strip YAML frontmatter if present
+        if content.startswith("---"):
+            end = content.find("---", 3)
+            if end > 0:
+                content = content[end + 3:].strip()
+        if total + len(content) > 4000:
+            break
+        total += len(content)
+        parts.append(content)
+
+    if not parts:
+        return ""
+
+    return "## Relevant Patterns\n\n" + "\n\n".join(parts)
+
+
 # Env files to copy from project root to worktree
 ENV_FILES = [".env", ".env.local", ".env.development", ".env.development.local"]
 
@@ -822,6 +876,78 @@ def _build_pk_context(scope: str, project_path: str) -> str:
     return pk_ctx
 
 
+def _inject_feature_rules(project_path: str, wt_path: str, scope: str, spec_files: list[str] | None = None) -> None:
+    """Inject feature-matched rule files from project-knowledge.yaml into worktree.
+
+    Reads rules_file from matching features and copies to <wt_path>/.claude/rules/.
+    Matching: spec_files paths (preferred) or feature name keyword in scope text.
+    No-op if project-knowledge.yaml absent or yq not available.
+    """
+    pk_candidates = [
+        os.path.join(project_path, ".claude", "project-knowledge.yaml"),
+        os.path.join(project_path, "project-knowledge.yaml"),
+    ]
+    pk_file = next((p for p in pk_candidates if os.path.isfile(p)), "")
+    if not pk_file or not shutil.which("yq"):
+        return
+
+    rules_dir = os.path.join(wt_path, ".claude", "rules")
+    os.makedirs(rules_dir, exist_ok=True)
+
+    names_r = run_command(["yq", "-r", ".features | keys[]? // empty", pk_file], timeout=5)
+    if names_r.exit_code != 0 or not names_r.stdout.strip():
+        return
+
+    for fname in names_r.stdout.strip().splitlines():
+        fname = fname.strip()
+        if not fname:
+            continue
+
+        # Determine if this feature matches the change
+        matched = False
+        if spec_files:
+            # Preferred: match feature touches globs against spec file paths
+            touches_r = run_command(
+                ["yq", "-r", f'.features."{fname}".touches[]? // empty', pk_file], timeout=5
+            )
+            if touches_r.exit_code == 0 and touches_r.stdout.strip():
+                import fnmatch
+                for touch_glob in touches_r.stdout.strip().splitlines():
+                    for sf in spec_files:
+                        if fnmatch.fnmatch(sf, touch_glob) or fnmatch.fnmatch(os.path.basename(sf), touch_glob):
+                            matched = True
+                            break
+                    if matched:
+                        break
+        if not matched:
+            # Fallback: feature name keyword in scope text
+            matched = fname.lower().replace("_", " ") in scope.lower() or fname.lower() in scope.lower()
+
+        if not matched:
+            continue
+
+        # Read rules_file path
+        rf_r = run_command(
+            ["yq", "-r", f'.features."{fname}".rules_file // empty', pk_file], timeout=5
+        )
+        if rf_r.exit_code != 0 or not rf_r.stdout.strip() or rf_r.stdout.strip() == "null":
+            continue
+
+        rules_file_rel = rf_r.stdout.strip()
+        src_path = os.path.join(project_path, rules_file_rel)
+        if not os.path.isfile(src_path):
+            logger.warning("rules_file not found: %s — skipping injection for feature '%s'", src_path, fname)
+            continue
+
+        dest_path = os.path.join(rules_dir, os.path.basename(src_path))
+        if os.path.isfile(dest_path):
+            logger.debug("rule already exists in worktree, skipping: %s", dest_path)
+            continue
+
+        shutil.copy2(src_path, dest_path)
+        logger.info("injected feature rule: %s → .claude/rules/%s", fname, os.path.basename(src_path))
+
+
 def _build_sibling_context(state: OrchestratorState) -> str:
     """Build sibling change status summary.
 
@@ -931,6 +1057,10 @@ def dispatch_change(
     # Bootstrap
     bootstrap_worktree(project_path, wt_path)
 
+    # Inject feature-matched rule files from project-knowledge.yaml (post-bootstrap)
+    spec_files = change.spec_files if hasattr(change, "spec_files") else None
+    _inject_feature_rules(project_path, wt_path, scope, spec_files=spec_files)
+
     # Prune orchestrator context
     if context_pruning:
         prune_worktree_context(wt_path)
@@ -962,6 +1092,14 @@ def dispatch_change(
                 ctx.design_context += "\n\n" + sources_r.stdout.strip()
             else:
                 ctx.design_context = sources_r.stdout.strip()
+
+    # Proactive rule injection (keyword-matched rules from .claude/rules/)
+    rule_injection = _build_rule_injection(scope, wt_path)
+    if rule_injection:
+        if ctx.design_context:
+            ctx.design_context += "\n\n" + rule_injection
+        else:
+            ctx.design_context = rule_injection
 
     # Setup change in worktree
     _setup_change_in_worktree(
