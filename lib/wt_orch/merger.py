@@ -327,9 +327,6 @@ def merge_change(
         # Git tags for recovery
         run_command(["git", "tag", "-f", f"orch/{change_name}", "HEAD"], timeout=10)
 
-        # Sync running worktrees
-        _sync_running_worktrees(change_name, state_file)
-
         # Update coverage status
         try:
             from .digest import update_coverage_status
@@ -374,6 +371,11 @@ def merge_change(
 
         cleanup_worktree(change_name, wt_path or "")
         archive_change(change_name)
+
+        # Sync running worktrees AFTER archive — so they receive the archive commit
+        # (openspec/changes/{name}/ deletion) and avoid merge conflicts (Bug #38)
+        _sync_running_worktrees(change_name, state_file)
+
         _remove_from_merge_queue(state_file, change_name)
 
         return MergeResult(
