@@ -1057,6 +1057,15 @@ def dispatch_change(
     # Bootstrap
     bootstrap_worktree(project_path, wt_path)
 
+    # Sync with main immediately after bootstrap — ensures archive commits (openspec/specs/,
+    # openspec/changes/ deletions) from recently merged changes are present before agent starts.
+    # Without this, worktrees created right after a merge miss archive commits (Bug #38).
+    sync_result = sync_worktree_with_main(wt_path, change_name)
+    if sync_result.ok:
+        logger.info("Post-bootstrap sync: %s synced with main", change_name)
+    else:
+        logger.warning("Post-bootstrap sync: %s sync failed (non-blocking): %s", change_name, sync_result.message)
+
     # Inject feature-matched rule files from project-knowledge.yaml (post-bootstrap)
     spec_files = change.spec_files if hasattr(change, "spec_files") else None
     _inject_feature_rules(project_path, wt_path, scope, spec_files=spec_files)
