@@ -308,6 +308,12 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- Auto-updated by wt-e2e-report --update-guide. Do not edit between start/end markers. -->
 
 <!-- e2e-results:minishop:start -->
+### minishop — Run #16 (2026-03-16)
+<!-- wt-tools-commit: 6334f5281 -->
+- **wt-tools range**: `6334f5281` (spec-implementation-fidelity + impl-quality-runtime artifacts)
+- **Result**: 11/11 merged | 3h13m | 4.6M tokens (418K/change) | 11 verify retries | 5 interventions
+- **Open regressions**: Bug #38 (generated file merge conflicts — recurring from #24), Bug #37 (verify retry exhaustion on build-fix), Bug #41 (stale flock)
+- **Fixed this run**: Bug #39 (dead agent detection — `654b77793`)
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->
