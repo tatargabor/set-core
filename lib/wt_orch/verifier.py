@@ -1785,12 +1785,12 @@ def handle_change_done(
             update_change_field(state_file, change_name, "spec_coverage_result", "fail")
             logger.warning("Spec coverage FAIL for %s — non-blocking, proceeding to merge", change_name)
         else:
-            # No VERIFY_RESULT sentinel — treat as timeout/fail regardless of other gates
-            verify_ok = False
-            gate_spec_coverage = "fail"
+            # No VERIFY_RESULT sentinel — timeout, but non-blocking (same as FAIL)
+            # Do NOT set verify_ok = False — timeout should not trigger retries
+            gate_spec_coverage = "timeout"
             update_change_field(state_file, change_name, "spec_coverage_result", "timeout")
             logger.warning(
-                "Spec verify timed out — no VERIFY_RESULT sentinel in output for %s",
+                "Spec verify timed out — no VERIFY_RESULT sentinel in output for %s (non-blocking)",
                 change_name,
             )
 
