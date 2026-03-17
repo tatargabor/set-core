@@ -818,6 +818,9 @@ def _build_input_content(
     input_mode: str = "",
     input_path: str = "",
     retry_ctx: str = "",
+    change_requirements: list[str] | None = None,
+    also_affects_reqs: list[str] | None = None,
+    digest_dir: str = "",
 ) -> str:
     """Build dispatcher-injected context for input.md.
 
@@ -846,10 +849,65 @@ def _build_input_content(
     if ctx.design_context:
         lines.append(f"\n## Design Context\n{ctx.design_context}")
 
+    # Assigned Requirements section (with AC items from digest when available)
+    req_lookup: dict[str, dict] = {}
+    if change_requirements or also_affects_reqs:
+        req_lookup = _load_requirements_lookup(digest_dir) if digest_dir else {}
+
+    if change_requirements:
+        req_lines = []
+        for rid in change_requirements:
+            req = req_lookup.get(rid, {})
+            title = req.get("title", rid)
+            ac_items = req.get("acceptance_criteria", []) or []
+            if ac_items:
+                req_lines.append(f"- {rid}: {title}")
+                for ac in ac_items:
+                    req_lines.append(f"  - {ac}")
+            else:
+                brief = req.get("brief", "")
+                if brief:
+                    req_lines.append(f"- {rid}: {title} — {brief}")
+                else:
+                    req_lines.append(f"- {rid}: {title}")
+        if req_lines:
+            lines.append("\n## Assigned Requirements")
+            lines.extend(req_lines)
+
+    # Cross-cutting requirements (title-only, no AC)
+    if also_affects_reqs:
+        cross_lines = []
+        for rid in also_affects_reqs:
+            req = req_lookup.get(rid, {})
+            title = req.get("title", rid)
+            cross_lines.append(f"- {rid}: {title}")
+        if cross_lines:
+            lines.append("\n## Cross-Cutting Requirements (awareness only)")
+            lines.extend(cross_lines)
+
     if retry_ctx:
         lines.append(f"\n## Retry Context\n{retry_ctx}")
 
     return "\n".join(lines) + "\n"
+
+
+def _load_requirements_lookup(digest_dir: str) -> dict[str, dict]:
+    """Load requirements.json from digest dir into a {req_id: req_dict} lookup."""
+    if not digest_dir:
+        return {}
+    req_path = os.path.join(digest_dir, "requirements.json")
+    if not os.path.isfile(req_path):
+        return {}
+    try:
+        with open(req_path) as f:
+            data = json.load(f)
+        return {
+            r["id"]: r
+            for r in data.get("requirements", [])
+            if r.get("id")
+        }
+    except (json.JSONDecodeError, OSError, KeyError):
+        return {}
 
 
 def _build_pk_context(scope: str, project_path: str) -> str:
@@ -1216,6 +1274,9 @@ def _setup_change_in_worktree(
     content = _build_input_content(
         change_name, scope, roadmap_item, ctx,
         input_mode, input_path, retry_ctx,
+        change_requirements=change.requirements if change else None,
+        also_affects_reqs=change.also_affects_reqs if change else None,
+        digest_dir=digest_dir,
     )
     os.makedirs(os.path.dirname(input_md_path), exist_ok=True)
     with open(input_md_path, "w") as f:

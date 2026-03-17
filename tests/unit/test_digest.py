@@ -108,7 +108,8 @@ class TestValidateDigest:
     def test_valid_digest(self):
         digest = DigestResult(
             requirements=[
-                {"id": "REQ-CART-001", "domain": "cart", "title": "Add to cart"},
+                {"id": "REQ-CART-001", "domain": "cart", "title": "Add to cart",
+                 "acceptance_criteria": ["POST /api/cart → 201"]},
             ],
             conventions={"categories": [{"name": "UI", "rules": ["rule1"]}]},
             domains=[{"name": "cart", "summary": "Cart domain"}],
@@ -167,6 +168,55 @@ class TestValidateDigest:
         )
         errors = validate_digest(digest)
         assert any("affects_domains" in e for e in errors)
+
+    def test_acceptance_criteria_populated(self):
+        """Requirements with acceptance_criteria pass validation."""
+        digest = DigestResult(
+            requirements=[
+                {
+                    "id": "REQ-CART-001",
+                    "domain": "cart",
+                    "title": "Add to cart",
+                    "acceptance_criteria": [
+                        "POST /api/cart/items → 201",
+                        "Stock decremented by quantity",
+                    ],
+                },
+            ],
+            conventions={"categories": [{"name": "UI", "rules": ["rule1"]}]},
+            domains=[{"name": "cart", "summary": "Cart domain"}],
+        )
+        errors = validate_digest(digest)
+        assert errors == []
+
+    def test_acceptance_criteria_empty_array(self):
+        """Requirements with empty acceptance_criteria pass validation."""
+        digest = DigestResult(
+            requirements=[
+                {
+                    "id": "REQ-CART-001",
+                    "domain": "cart",
+                    "title": "Add to cart",
+                    "acceptance_criteria": [],
+                },
+            ],
+            conventions={"categories": [{"name": "UI", "rules": ["rule1"]}]},
+            domains=[{"name": "cart", "summary": "Cart domain"}],
+        )
+        errors = validate_digest(digest)
+        assert errors == []
+
+    def test_acceptance_criteria_missing_warns(self):
+        """Requirements without acceptance_criteria field produce a warning."""
+        digest = DigestResult(
+            requirements=[
+                {"id": "REQ-CART-001", "domain": "cart", "title": "Add to cart"},
+            ],
+            conventions={"categories": [{"name": "UI", "rules": ["rule1"]}]},
+            domains=[{"name": "cart", "summary": "Cart domain"}],
+        )
+        errors = validate_digest(digest)
+        assert any("[WARN]" in e and "acceptance_criteria" in e for e in errors)
 
 
 # ─── stabilize_ids ────────────────────────────────────────────────

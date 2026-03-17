@@ -553,6 +553,17 @@ def validate_digest(digest: DigestResult | dict) -> list[str]:
                 f"Cross-cutting requirement missing affects_domains: {req.get('id')}"
             )
 
+    # Warn if acceptance_criteria field is absent (old digest or LLM omission)
+    reqs_without_ac = [
+        r.get("id", "?") for r in reqs
+        if "acceptance_criteria" not in r
+    ]
+    if reqs_without_ac and reqs:
+        errors.append(
+            f"[WARN] {len(reqs_without_ac)} requirements missing acceptance_criteria field "
+            f"(first: {reqs_without_ac[0]}). Old digest or LLM omission — non-blocking."
+        )
+
     return errors
 
 
@@ -1272,7 +1283,9 @@ From files classified as **feature**, extract discrete, independently testable r
 
 **ID format**: REQ-{DOMAIN_SHORT}-{NNN} (e.g., REQ-CART-001, REQ-SUB-003)
 
-Each requirement must have: id, title, source (file path), source_section (heading), domain, brief (1-2 sentence summary).
+Each requirement must have: id, title, source (file path), source_section (heading), domain, brief (1-2 sentence summary), acceptance_criteria (array of up to 5 concrete, verifiable condition strings).
+
+**Acceptance Criteria extraction**: For each requirement, extract up to 5 concrete, verifiable acceptance criteria from spec scenarios — HTTP contracts (e.g., "POST /api/cart/items → 201 with cartItemId"), state assertions (e.g., "Stock decremented by quantity"), error responses (e.g., "Returns 400 if quantity > stock"). Use `[]` if no explicit testable conditions are found in the spec. The 5-item cap is per-requirement, not counted toward the requirements total.
 
 **Cross-cutting requirements**: Requirements that span multiple features (i18n integration, responsive layout, auth checks) get `cross_cutting: true` and `affects_domains: ["domain1", "domain2"]`.
 
@@ -1341,7 +1354,8 @@ Respond with valid JSON only (no markdown fences, no commentary):
       "source": "path/to/file.md",
       "source_section": "Section heading",
       "domain": "domain-name",
-      "brief": "1-2 sentence description of the testable behavior"
+      "brief": "1-2 sentence description of the testable behavior",
+      "acceptance_criteria": ["Concrete verifiable condition 1", "Condition 2"]
     }
   ],
   "domains": [

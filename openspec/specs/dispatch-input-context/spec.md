@@ -6,7 +6,7 @@ When dispatching a change, the orchestrator SHALL write all dispatcher-generated
 #### Scenario: input.md created on dispatch
 - **WHEN** `dispatch_change("cart-actions")` runs
 - **THEN** `openspec/changes/cart-actions/input.md` SHALL be created in the worktree
-- **AND** it SHALL contain: Scope, Project Context, Sibling Changes, Design Context sections
+- **AND** it SHALL contain: Scope, Project Context, Sibling Changes, Design Context, and Assigned Requirements sections
 - **AND** `proposal.md` SHALL NOT contain injected orchestration context
 
 #### Scenario: Retry context appended to input.md
@@ -38,3 +38,16 @@ The `/opsx:ff` skill SHALL read `input.md` as the first step of artifact creatio
 - **AND** `input.md` does not exist
 - **THEN** the agent SHALL proceed with artifact creation using available context (CLAUDE.md, codebase exploration)
 - **AND** SHALL NOT fail or wait for input.md
+
+#### Scenario: AC items injected into input.md for assigned REQs
+- **WHEN** dispatching a change with assigned requirements that have `acceptance_criteria`
+- **THEN** `input.md` SHALL include an `## Assigned Requirements` section
+- **AND** each REQ SHALL list its AC items as a bullet list below its title
+
+#### Scenario: Fallback to brief when AC absent
+- **WHEN** dispatching a change with requirements that have no `acceptance_criteria` (old digest or empty array)
+- **THEN** `input.md` SHALL show `REQ-ID: title — brief` (existing behavior)
+
+#### Scenario: Cross-cutting REQs get title only
+- **WHEN** a change has `also_affects_reqs`
+- **THEN** those REQs appear in `input.md` with title only, no AC items

@@ -275,6 +275,78 @@ class TestBuildReqReviewSection:
         assert "Cross-Cutting Requirements" in result
         assert "REQ-X: Cross" in result
 
+    def test_ac_checkboxes_rendered(self, state_file, tmp_dir):
+        """When requirements have acceptance_criteria, renders as checkboxes."""
+        _write_state(state_file, [{
+            "name": "test-change",
+            "scope": "test",
+            "complexity": "M",
+            "change_type": "feature",
+            "depends_on": [],
+            "status": "running",
+            "requirements": ["REQ-1"],
+            "tokens_used": 0, "tokens_used_prev": 0,
+            "input_tokens": 0, "output_tokens": 0,
+            "cache_read_tokens": 0, "cache_create_tokens": 0,
+            "input_tokens_prev": 0, "output_tokens_prev": 0,
+            "cache_read_tokens_prev": 0, "cache_create_tokens_prev": 0,
+            "verify_retry_count": 0, "redispatch_count": 0, "merge_retry_count": 0,
+        }])
+
+        digest_dir = os.path.join(tmp_dir, "digest")
+        os.makedirs(digest_dir)
+        with open(os.path.join(digest_dir, "requirements.json"), "w") as f:
+            json.dump({"requirements": [
+                {
+                    "id": "REQ-1",
+                    "title": "Add to cart",
+                    "brief": "Users can add items",
+                    "acceptance_criteria": [
+                        "POST /api/cart/items → 201",
+                        "Stock decremented by quantity",
+                    ],
+                },
+            ]}, f)
+
+        result = build_req_review_section("test-change", state_file, digest_dir=digest_dir)
+        assert "REQ-1: Add to cart" in result
+        assert "- [ ] POST /api/cart/items → 201" in result
+        assert "- [ ] Stock decremented by quantity" in result
+        # Brief should NOT appear when AC is present
+        assert "Users can add items" not in result
+        # AC-aware coverage check instruction
+        assert "ac item text" in result.lower() or "AC item" in result
+
+    def test_ac_absent_falls_back_to_brief(self, state_file, tmp_dir):
+        """When acceptance_criteria is absent, falls back to title — brief."""
+        _write_state(state_file, [{
+            "name": "test-change",
+            "scope": "test",
+            "complexity": "M",
+            "change_type": "feature",
+            "depends_on": [],
+            "status": "running",
+            "requirements": ["REQ-1"],
+            "tokens_used": 0, "tokens_used_prev": 0,
+            "input_tokens": 0, "output_tokens": 0,
+            "cache_read_tokens": 0, "cache_create_tokens": 0,
+            "input_tokens_prev": 0, "output_tokens_prev": 0,
+            "cache_read_tokens_prev": 0, "cache_create_tokens_prev": 0,
+            "verify_retry_count": 0, "redispatch_count": 0, "merge_retry_count": 0,
+        }])
+
+        digest_dir = os.path.join(tmp_dir, "digest")
+        os.makedirs(digest_dir)
+        with open(os.path.join(digest_dir, "requirements.json"), "w") as f:
+            json.dump({"requirements": [
+                {"id": "REQ-1", "title": "Auth", "brief": "Login system"},
+            ]}, f)
+
+        result = build_req_review_section("test-change", state_file, digest_dir=digest_dir)
+        assert "REQ-1: Auth — Login system" in result
+        # Coarse-grained check (no AC items)
+        assert "REQ-ID has no implementation" in result
+
 
 # ─── evaluate_verification_rules ────────────────────────────────────
 

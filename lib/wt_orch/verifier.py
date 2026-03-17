@@ -416,7 +416,8 @@ def build_req_review_section(
     except (json.JSONDecodeError, KeyError, OSError):
         return ""
 
-    # Build assigned requirements section
+    # Build assigned requirements section (with AC checkboxes when available)
+    has_any_ac = False
     section = "\n## Assigned Requirements (this change owns these)"
     for req_id in change.requirements:
         req = digest_reqs.get(req_id)
@@ -425,8 +426,15 @@ def build_req_review_section(
             logger.warning("build_req_review_section: %s not found in digest requirements.json", req_id)
         else:
             title = req.get("title", "")
-            brief = req.get("brief", "")
-            section += f"\n- {req_id}: {title} — {brief}"
+            ac_items = req.get("acceptance_criteria", []) or []
+            if ac_items:
+                has_any_ac = True
+                section += f"\n- {req_id}: {title}"
+                for ac in ac_items:
+                    section += f"\n  - [ ] {ac}"
+            else:
+                brief = req.get("brief", "")
+                section += f"\n- {req_id}: {title} — {brief}"
 
     # Build cross-cutting requirements section
     also_affects = change.also_affects_reqs
@@ -439,14 +447,29 @@ def build_req_review_section(
             else:
                 section += f"\n- {also_id}: {req.get('title', '')}"
 
-    # Add coverage check instruction
-    section += """
+    # Add coverage check instruction (AC-aware when AC items are present)
+    if has_any_ac:
+        section += """
+
+## Requirement Coverage Check
+For each ASSIGNED requirement above:
+- If the requirement has `[ ]` acceptance criteria checkboxes, verify EACH checkbox item
+  has corresponding implementation evidence in the diff. For any AC item with no evidence, report:
+    ISSUE: [CRITICAL] REQ-ID: "<ac item text>" not implemented in diff
+- If the requirement has no acceptance criteria (just title — brief), verify the requirement
+  has ANY implementation evidence in the diff. If none, report:
+    ISSUE: [CRITICAL] REQ-ID has no implementation in the diff
+Cross-cutting requirements are for awareness — do not flag them as missing."""
+    else:
+        section += """
 
 ## Requirement Coverage Check
 For each ASSIGNED requirement above, verify the diff contains implementation evidence.
 If a requirement has NO corresponding code in the diff, report:
   ISSUE: [CRITICAL] REQ-ID has no implementation in the diff
-Cross-cutting requirements are for awareness — do not flag them as missing.
+Cross-cutting requirements are for awareness — do not flag them as missing."""
+
+    section += """
 
 ## Overshoot Check
 Review the diff for new routes, endpoints, components, database tables, or public exports

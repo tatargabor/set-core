@@ -23,3 +23,10 @@ LLM code review with model escalation and requirement-aware prompting.
 #### VR-DESIGN — Design compliance section
 - Build design compliance section from design-snapshot.md if available
 - Integrated into review prompt alongside requirement section
+
+#### VR-AC — Acceptance criteria in review prompt
+- When requirements have `acceptance_criteria`, render as `- [ ] <item>` checkboxes under each REQ
+- When AC absent, fall back to `- REQ-ID: title — brief` (existing behavior)
+- AC-aware coverage check: per-AC-item `ISSUE: [CRITICAL] REQ-ID: "<ac item>" not implemented`
+- Coarse-grained check retained as fallback when no AC items present
+- Cross-cutting requirements: title-only, no AC items (unchanged)

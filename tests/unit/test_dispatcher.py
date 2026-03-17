@@ -15,9 +15,11 @@ from wt_orch.dispatcher import (
     STALL_COOLDOWN_SECONDS,
     DispatchContext,
     SyncResult,
+    _build_input_content,
     _build_sibling_context,
     _detect_package_manager,
     _is_doc_change,
+    _load_requirements_lookup,
     bootstrap_worktree,
     recover_orphaned_changes,
     resolve_change_model,
@@ -732,3 +734,95 @@ class TestAppendStartupGuide:
         assert os.path.isfile(os.path.join(wt, "CLAUDE.md"))
         content = open(os.path.join(wt, "CLAUDE.md")).read()
         assert "## Application Startup" in content
+
+
+# ─── _build_input_content with acceptance criteria ──────────────────
+
+
+class TestBuildInputContentAC:
+    def test_ac_items_rendered_as_bullets(self, tmp_dir):
+        """When requirements.json has acceptance_criteria, input.md lists AC as bullets."""
+        digest_dir = os.path.join(tmp_dir, "digest")
+        os.makedirs(digest_dir)
+        with open(os.path.join(digest_dir, "requirements.json"), "w") as f:
+            json.dump({"requirements": [
+                {
+                    "id": "REQ-CART-001",
+                    "title": "Add to cart",
+                    "brief": "Users can add items to cart",
+                    "acceptance_criteria": [
+                        "POST /api/cart/items → 201",
+                        "Stock decremented by quantity",
+                    ],
+                },
+            ]}, f)
+
+        ctx = DispatchContext()
+        content = _build_input_content(
+            "test-change", "Implement cart", "Cart section", ctx,
+            change_requirements=["REQ-CART-001"],
+            digest_dir=digest_dir,
+        )
+        assert "## Assigned Requirements" in content
+        assert "REQ-CART-001: Add to cart" in content
+        assert "  - POST /api/cart/items → 201" in content
+        assert "  - Stock decremented by quantity" in content
+        # Should NOT have brief when AC is present
+        assert "Users can add items to cart" not in content
+
+    def test_fallback_to_brief_when_no_ac(self, tmp_dir):
+        """When acceptance_criteria is absent, falls back to title — brief."""
+        digest_dir = os.path.join(tmp_dir, "digest")
+        os.makedirs(digest_dir)
+        with open(os.path.join(digest_dir, "requirements.json"), "w") as f:
+            json.dump({"requirements": [
+                {
+                    "id": "REQ-CART-001",
+                    "title": "Add to cart",
+                    "brief": "Users can add items to cart",
+                },
+            ]}, f)
+
+        ctx = DispatchContext()
+        content = _build_input_content(
+            "test-change", "Implement cart", "Cart section", ctx,
+            change_requirements=["REQ-CART-001"],
+            digest_dir=digest_dir,
+        )
+        assert "REQ-CART-001: Add to cart — Users can add items to cart" in content
+
+    def test_no_digest_dir_renders_id_only(self):
+        """When digest_dir is empty, renders REQ-ID as title (no lookup)."""
+        ctx = DispatchContext()
+        content = _build_input_content(
+            "test-change", "Implement cart", "Cart section", ctx,
+            change_requirements=["REQ-CART-001"],
+            digest_dir="",
+        )
+        assert "## Assigned Requirements" in content
+        assert "REQ-CART-001" in content
+
+    def test_cross_cutting_reqs_title_only(self, tmp_dir):
+        """Cross-cutting requirements show title only, no AC items."""
+        digest_dir = os.path.join(tmp_dir, "digest")
+        os.makedirs(digest_dir)
+        with open(os.path.join(digest_dir, "requirements.json"), "w") as f:
+            json.dump({"requirements": [
+                {
+                    "id": "REQ-AUTH-001",
+                    "title": "Auth middleware",
+                    "brief": "All routes need auth",
+                    "acceptance_criteria": ["401 on unauthenticated"],
+                },
+            ]}, f)
+
+        ctx = DispatchContext()
+        content = _build_input_content(
+            "test-change", "Implement cart", "Cart section", ctx,
+            also_affects_reqs=["REQ-AUTH-001"],
+            digest_dir=digest_dir,
+        )
+        assert "## Cross-Cutting Requirements" in content
+        assert "REQ-AUTH-001: Auth middleware" in content
+        # AC items should NOT appear for cross-cutting
+        assert "401 on unauthenticated" not in content
