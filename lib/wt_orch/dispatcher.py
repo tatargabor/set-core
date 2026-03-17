@@ -45,14 +45,22 @@ logger = logging.getLogger(__name__)
 # Core generated files that can be auto-resolved during merge conflicts.
 # Profile-specific patterns are added dynamically via _get_generated_file_patterns().
 _CORE_GENERATED_FILE_PATTERNS = {
-    ".tsbuildinfo", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    ".tsbuildinfo", "next-env.d.ts",
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
 }
 
 # Directory prefixes whose contents are always framework-generated and safe to
 # auto-resolve with --ours/--theirs during merge. This covers .claude/* runtime
-# files (activity.json, loop-state.json, logs/*, ralph-terminal.pid, reflection.md)
-# without requiring an exhaustive explicit list.
-_AUTO_RESOLVE_PREFIXES = {".claude/"}
+# files, .wt-tools/ state, build outputs, and dependency directories.
+_AUTO_RESOLVE_PREFIXES = {
+    ".claude/",
+    ".wt-tools/",
+    ".next/",
+    "dist/",
+    "build/",
+    "coverage/",
+    "node_modules/",
+}
 
 
 def _get_generated_file_patterns() -> set:

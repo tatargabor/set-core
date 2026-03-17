@@ -344,7 +344,7 @@ def monitor_loop(
         # During checkpoint, skip dispatch and advancement but still
         # allow completion detection and merge queue retries.
         if state.status == "checkpoint":
-            _retry_merge_queue_safe(state_file, event_bus)
+            _drain_merge_then_dispatch(state_file, d, event_bus)
             if _check_completion(state_file, d, event_bus):
                 break
             if d.checkpoint_auto_approve:
@@ -379,7 +379,8 @@ def monitor_loop(
                 if not token_wait:
                     logger.warning("Token budget exceeded (%d > %d) — waiting", total_tokens, d.token_budget)
                     token_wait = True
-                _retry_merge_queue_safe(state_file, event_bus)
+                # Still drain merges while waiting for token budget
+                _drain_merge_then_dispatch(state_file, d, event_bus)
                 continue
             elif token_wait:
                 logger.info("Token budget available — resuming dispatch")
@@ -392,22 +393,27 @@ def monitor_loop(
         # simply stay pending (never dispatched because deps_met() returns False).
         # _check_all_done() and _check_phase_milestone() treat them as terminal.
 
-        # Dispatch ready changes
+        # Merge-before-dispatch serialization: if merge queue has items,
+        # drain it completely before dispatching new changes. This ensures
+        # archive commits are on main before new worktrees are created,
+        # eliminating the archive race (Bug #38).
+        state = load_state(state_file)
         pre_running = _count_by_status(state_file, "running")
-        _dispatch_ready_safe(state_file, d, event_bus)
+        pre_merged = _count_by_status(state_file, "merged")
+
+        if state.merge_queue:
+            merged = _drain_merge_then_dispatch(state_file, d, event_bus)
+        else:
+            _dispatch_ready_safe(state_file, d, event_bus)
+            merged = 0
+
         post_running = _count_by_status(state_file, "running")
-        if post_running > pre_running:
+        post_merged = _count_by_status(state_file, "merged")
+        if post_running > pre_running or post_merged > pre_merged:
             last_progress_ts = int(time.time())
 
         # Phase advancement (always) + optional milestone check
         _check_phase_completion(state_file, d, event_bus)
-
-        # Retry merge queue
-        pre_merged = _count_by_status(state_file, "merged")
-        _retry_merge_queue_safe(state_file, event_bus)
-        post_merged = _count_by_status(state_file, "merged")
-        if post_merged > pre_merged:
-            last_progress_ts = int(time.time())
 
         # Resume stalled changes
         _resume_stalled_safe(state_file, event_bus)
@@ -994,6 +1000,31 @@ def _retry_merge_queue_safe(state_file: str, event_bus: Any) -> None:
         logger.warning("Merge queue retry failed", exc_info=True)
 
 
+def _drain_merge_then_dispatch(
+    state_file: str, d: "Directives", event_bus: Any
+) -> int:
+    """Drain the merge queue completely, then dispatch ready changes.
+
+    Serializes merge and dispatch: archive commits land on main BEFORE
+    new worktrees are created, eliminating the archive race (Bug #38)
+    where new worktrees miss openspec/changes/ deletions.
+
+    Returns count of changes merged.
+    """
+    merged = 0
+    try:
+        from .merger import retry_merge_queue
+        merged = retry_merge_queue(state_file, event_bus=event_bus)
+        if merged > 0:
+            logger.info("Drain-then-dispatch: merged %d change(s) before dispatch", merged)
+    except Exception:
+        logger.warning("Drain-then-dispatch: merge failed", exc_info=True)
+
+    # Dispatch after merge — worktrees created with archive commits present
+    _dispatch_ready_safe(state_file, d, event_bus)
+    return merged
+
+
 def _resume_stalled_safe(state_file: str, event_bus: Any) -> None:
     """Resume stalled changes (exception-safe)."""
     try:
@@ -1049,9 +1080,9 @@ def _self_watchdog(
         return
 
     if escalation == 0:
-        # First: attempt recovery
+        # First: attempt recovery — drain merge queue then dispatch
         logger.warning("Monitor self-watchdog: no progress for %ds — attempting recovery", idle_duration)
-        _retry_merge_queue_safe(state_file, event_bus)
+        _drain_merge_then_dispatch(state_file, d, event_bus)
 
         # Check orphaned "done" changes
         state = load_state(state_file)
