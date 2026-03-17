@@ -175,6 +175,30 @@ class DispatchContext:
 
 # ─── Worktree Preparation ────────────────────────────────────────────
 
+_LOCKFILE_NAMES = {"package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json"}
+
+
+def _reinstall_deps_if_needed(wt_path: str, old_sha: str, new_sha: str) -> None:
+    """Run package manager install if lockfile or package.json changed between two commits."""
+    if not old_sha or not new_sha or old_sha == new_sha:
+        return
+    diff_r = run_git("diff", "--name-only", f"{old_sha}..{new_sha}", cwd=wt_path)
+    if diff_r.exit_code != 0:
+        return
+    changed = set(diff_r.stdout.strip().splitlines())
+    if not changed.intersection(_LOCKFILE_NAMES):
+        return
+    pm = _detect_package_manager(wt_path)
+    if not pm:
+        return
+    logger.info("sync: deps changed (%s) — running %s install in %s",
+                changed.intersection(_LOCKFILE_NAMES), pm, wt_path)
+    r = run_command([pm, "install"], cwd=wt_path, timeout=120)
+    if r.exit_code == 0:
+        logger.info("sync: %s install succeeded in %s", pm, wt_path)
+    else:
+        logger.warning("sync: %s install failed in %s (non-blocking)", pm, wt_path)
+
 
 def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
     """Merge main branch into worktree branch.
@@ -223,6 +247,7 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
 
     if merge_r.exit_code == 0:
         logger.info("sync: successfully merged %s into %s", main_branch, change_name)
+        _reinstall_deps_if_needed(wt_path, merge_base, main_head)
         return SyncResult(ok=True, message="merged", behind_count=behind_count)
 
     # Check for conflicts
@@ -294,6 +319,7 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
 
             run_git("commit", "--no-edit", cwd=wt_path)
             logger.info("sync: auto-resolved generated file conflicts for %s", change_name)
+            _reinstall_deps_if_needed(wt_path, merge_base, main_head)
             return SyncResult(
                 ok=True, message="auto-resolved", behind_count=behind_count,
                 auto_resolved=True, lockfile_regenerated=lockfile_regenerated,

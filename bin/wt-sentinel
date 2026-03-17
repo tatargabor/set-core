@@ -452,7 +452,7 @@ while true; do
     # Launch orchestrator
     start_epoch=$(date +%s)
     child_pid=0
-    "$SCRIPT_DIR/wt-orchestrate" start "$@" &
+    "$SCRIPT_DIR/wt-orchestrate" start "$@" 9>&- &
     child_pid=$!
     sentinel_log "Started orchestrator (PID: $child_pid)"
 

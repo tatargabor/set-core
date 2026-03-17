@@ -18,24 +18,24 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | 21 | Checkpoint status blocks poll loop | #13 | fixed |
 | 22 | checkpoint_auto_approve never used | #13 | fixed |
 | 23 | Checkpoint status not in bash resume list (data loss) | #13 | fixed |
-| 24 | Merge-blocked by dirty generated files + pnpm-lock conflicts | #13 | recurring |
+| 24 | Merge-blocked by dirty generated files + pnpm-lock conflicts | #13 | fixed (`eec894bcb`) |
 | 25 | bridge.sh log functions undefined | #14 | fixed |
 | 26 | Design MCP health check hangs from Python | #14 | fixed |
 | 27 | Figma URL format /design/ vs /make/ | #14 | fixed |
 | 28 | Subprocess timeouts too aggressive (300s) | #14 | fixed |
-| 29 | Post-merge deps install uses HEAD~1 diff | #14 | open |
+| 29 | Post-merge deps install uses HEAD~1 diff | #14 | fixed (e2e-reliability-fixes) |
 | 30 | spec_coverage=fail causes unnecessary retry | #14 | open |
 | 31 | Uncommitted work guard false positive on framework files | #15 | fixed |
 | 32 | Agent wastes iterations on nonexistent openspec CLI | #15 | open |
-| 33 | node_modules not installed in worktree (=Bug #29) | #15 | open |
+| 33 | node_modules not installed in worktree (=Bug #29) | #15 | fixed (e2e-reliability-fixes) |
 | 34 | Sentinel worktree removal crashes live Ralph | #15 | open |
 | 35 | Ralph terminal PID reuse / log contamination | #15 | open |
 | 36 | Uncommitted work guard retries with full redispatch | #15 | open |
-| 37 | Verify retry exhaustion on build-fix iterations | #16 | open |
-| 38 | Generated file conflicts block merge (.claude/* runtime files) | #16 | recurring (#24) |
+| 37 | Verify retry exhaustion on build-fix iterations | #16 | fixed (`606aec640`) |
+| 38 | Generated file conflicts block merge (.claude/* runtime files) | #16 | fixed (`eec894bcb`) |
 | 39 | Dead agent not detected (ralph_pid=0 + no loop-state) | #16 | fixed |
 | 40 | Monitor crash on state file race during manual edit | #16 | noise |
-| 41 | Stale flock blocks sentinel restart (zombie PIDs) | #16 | open |
+| 41 | Stale flock blocks sentinel restart (zombie PIDs) | #16 | fixed (e2e-reliability-fixes) |
 | 42 | node_modules/ dirty files exhaust verify retries (Bug #37 root cause) | #17 | fixed (`606aec640`) |
 | 43 | Dispatch races archive — new worktrees miss archive commits (Bug #38 partial fix) | #17 | partial (`d3604fef1`, `62c11ed71`) |
 | 44 | pyyaml not installed for python3.14 — sentinel restart fails | #17 | fixed (manual pip install) |
