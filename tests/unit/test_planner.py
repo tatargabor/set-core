@@ -191,6 +191,144 @@ class TestValidatePlan:
         d = r.to_dict()
         assert d == {"errors": ["e1"], "warnings": ["w1"]}
 
+    def test_source_items_valid_refs(self, tmp_dir):
+        """source_items with valid change refs pass validation."""
+        plan = {
+            **VALID_PLAN,
+            "source_items": [
+                {"id": "SI-1", "text": "Auth system", "change": "add-auth"},
+                {"id": "SI-2", "text": "Login fix", "change": "fix-login"},
+            ],
+        }
+        plan_path = os.path.join(tmp_dir, "plan.json")
+        with open(plan_path, "w") as f:
+            json.dump(plan, f)
+
+        result = validate_plan(plan_path)  # no digest_dir → single-file mode
+        assert result.ok
+
+    def test_source_items_invalid_ref_errors(self, tmp_dir):
+        """source_items referencing non-existent changes produce errors."""
+        plan = {
+            **VALID_PLAN,
+            "source_items": [
+                {"id": "SI-1", "text": "Auth system", "change": "nonexistent-change"},
+            ],
+        }
+        plan_path = os.path.join(tmp_dir, "plan.json")
+        with open(plan_path, "w") as f:
+            json.dump(plan, f)
+
+        result = validate_plan(plan_path)
+        assert not result.ok
+        assert any("non-existent change" in e for e in result.errors)
+
+    def test_source_items_null_change_warns(self, tmp_dir):
+        """source_items with change: null produce warnings."""
+        plan = {
+            **VALID_PLAN,
+            "source_items": [
+                {"id": "SI-1", "text": "Auth system", "change": "add-auth"},
+                {"id": "SI-2", "text": "Admin bulk export", "change": None},
+            ],
+        }
+        plan_path = os.path.join(tmp_dir, "plan.json")
+        with open(plan_path, "w") as f:
+            json.dump(plan, f)
+
+        result = validate_plan(plan_path)
+        assert result.ok  # warnings don't block
+        assert any("SI-2" in w and "excluded" in w.lower() for w in result.warnings)
+
+    def test_no_source_items_no_digest_warns(self, tmp_dir):
+        """Missing source_items in non-digest mode warns about no coverage tracking."""
+        plan_path = os.path.join(tmp_dir, "plan.json")
+        with open(plan_path, "w") as f:
+            json.dump(VALID_PLAN, f)
+
+        result = validate_plan(plan_path)  # no digest_dir, no source_items
+        assert any("coverage tracking unavailable" in w for w in result.warnings)
+
+
+# ─── generate_coverage_report ──────────────────────────────────────
+
+
+class TestGenerateCoverageReport:
+    def test_digest_mode_static(self, tmp_dir):
+        """Digest mode without state_file renders COVERED/UNCOVERED."""
+        from wt_orch.planner import generate_coverage_report
+
+        digest_dir = os.path.join(tmp_dir, "digest")
+        os.makedirs(digest_dir)
+        with open(os.path.join(digest_dir, "requirements.json"), "w") as f:
+            json.dump({"requirements": [
+                {"id": "REQ-1", "title": "Auth"},
+                {"id": "REQ-2", "title": "Cart"},
+            ]}, f)
+
+        plan = {"changes": [{"name": "auth-change", "requirements": ["REQ-1"]}]}
+        output = os.path.join(tmp_dir, "report.md")
+        generate_coverage_report(plan=plan, digest_dir=digest_dir, output_path=output)
+
+        content = open(output).read()
+        assert "REQ-1" in content
+        assert "COVERED" in content
+        assert "UNCOVERED" in content
+
+    def test_digest_mode_state_aware(self, tmp_dir):
+        """Digest mode with state_file renders MERGED/PENDING."""
+        from wt_orch.planner import generate_coverage_report
+
+        digest_dir = os.path.join(tmp_dir, "digest")
+        os.makedirs(digest_dir)
+        with open(os.path.join(digest_dir, "requirements.json"), "w") as f:
+            json.dump({"requirements": [
+                {"id": "REQ-1", "title": "Auth"},
+                {"id": "REQ-2", "title": "Cart"},
+            ]}, f)
+
+        state_file = os.path.join(tmp_dir, "state.json")
+        with open(state_file, "w") as f:
+            json.dump({"changes": [
+                {"name": "auth-change", "status": "merged"},
+                {"name": "cart-change", "status": "failed"},
+            ]}, f)
+
+        plan = {
+            "changes": [
+                {"name": "auth-change", "requirements": ["REQ-1"]},
+                {"name": "cart-change", "requirements": ["REQ-2"]},
+            ],
+        }
+        output = os.path.join(tmp_dir, "report.md")
+        generate_coverage_report(
+            plan=plan, digest_dir=digest_dir, output_path=output, state_file=state_file,
+        )
+
+        content = open(output).read()
+        assert "MERGED" in content
+        assert "FAILED" in content
+
+    def test_source_items_mode(self, tmp_dir):
+        """Single-file mode renders source_items with EXCLUDED for null-change."""
+        from wt_orch.planner import generate_coverage_report
+
+        plan = {
+            "changes": [{"name": "my-change"}],
+            "source_items": [
+                {"id": "SI-1", "text": "Feature A", "change": "my-change"},
+                {"id": "SI-2", "text": "Feature B", "change": None},
+            ],
+        }
+        output = os.path.join(tmp_dir, "report.md")
+        generate_coverage_report(plan=plan, output_path=output)
+
+        content = open(output).read()
+        assert "SI-1" in content
+        assert "SI-2" in content
+        assert "EXCLUDED" in content
+        assert "my-change" in content
+
 
 # ─── check_scope_overlap ────────────────────────────────────────────
 

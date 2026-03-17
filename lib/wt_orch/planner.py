@@ -431,6 +431,29 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
             except (json.JSONDecodeError, OSError):
                 logger.warning("Could not read requirements.json for coverage validation")
 
+    # Source items validation (single-file mode — no digest)
+    if not digest_dir:
+        source_items = plan.get("source_items", [])
+        if not source_items:
+            result.warnings.append(
+                "No source_items in plan and no digest_dir — "
+                "coverage tracking unavailable for this run"
+            )
+        elif isinstance(source_items, list):
+            for si in source_items:
+                if not isinstance(si, dict):
+                    continue
+                si_change = si.get("change")
+                si_id = si.get("id", "?")
+                if si_change is None:
+                    result.warnings.append(
+                        f"Source item {si_id} intentionally excluded (change: null)"
+                    )
+                elif si_change and si_change not in all_names:
+                    result.errors.append(
+                        f"Source item {si_id} references non-existent change: {si_change}"
+                    )
+
     # Check scope overlap
     overlaps = check_scope_overlap(plan_path)
     for ov in overlaps:
@@ -439,13 +462,14 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
             f"({ov.similarity}% keyword similarity)"
         )
 
-    # Spec coverage annotation report (after successful validation, digest mode only)
-    if digest_dir and not result.errors:
+    # Spec coverage annotation report (after successful validation)
+    if not result.errors:
         try:
             generate_coverage_report(
                 plan=plan,
-                digest_dir=digest_dir,
+                digest_dir=digest_dir or "",
                 output_path="wt/orchestration/spec-coverage-report.md",
+                plan_path=plan_path,
             )
         except Exception as exc:
             logger.warning("Could not generate spec coverage report: %s", exc)
@@ -453,20 +477,58 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
     return result
 
 
-def generate_coverage_report(plan: dict, digest_dir: str, output_path: str) -> None:
-    """Generate a markdown coverage report mapping requirements to changes.
+def generate_coverage_report(
+    plan: dict,
+    digest_dir: str = "",
+    output_path: str = "wt/orchestration/spec-coverage-report.md",
+    state_file: str = "",
+    plan_path: str = "",
+) -> None:
+    """Generate a markdown coverage report mapping requirements/source items to changes.
 
-    Reads requirements.json from digest_dir, maps each requirement to the
-    change that owns it (COVERED), deferred requirements (DEFERRED), or
-    marks it as UNCOVERED. Writes markdown table to output_path.
-    Overwrites existing file (regenerated on replan).
+    Supports two modes:
+    - Digest mode: reads requirements.json from digest_dir
+    - Single-file mode: reads source_items from plan JSON
+
+    When state_file is provided, renders live statuses (MERGED, DISPATCHED, etc.)
+    instead of static COVERED.
     """
-    req_file = Path(digest_dir) / "requirements.json"
-    if not req_file.exists():
-        return
+    # Load change statuses from state (if available)
+    change_statuses: dict[str, str] = {}
+    if state_file:
+        try:
+            state_data = json.loads(Path(state_file).read_text(encoding="utf-8"))
+            for c in state_data.get("changes", []):
+                name = c.get("name", "")
+                if name:
+                    change_statuses[name] = c.get("status", "pending")
+        except (json.JSONDecodeError, OSError):
+            pass
 
-    req_data = json.loads(req_file.read_text())
-    all_reqs = [r for r in req_data.get("requirements", []) if r.get("status") != "removed"]
+    # Try digest mode first
+    all_reqs: list[dict] = []
+    if digest_dir:
+        req_file = Path(digest_dir) / "requirements.json"
+        if req_file.exists():
+            try:
+                req_data = json.loads(req_file.read_text())
+                all_reqs = [r for r in req_data.get("requirements", []) if r.get("status") != "removed"]
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Fall back to source_items from plan (single-file mode)
+    source_items: list[dict] = []
+    if not all_reqs:
+        source_items = plan.get("source_items", [])
+        if not source_items and plan_path:
+            try:
+                plan_data = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+                source_items = plan_data.get("source_items", [])
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    if not all_reqs and not source_items:
+        return
 
     changes = plan.get("changes", [])
     deferred_entries = {
@@ -486,31 +548,69 @@ def generate_coverage_report(plan: dict, digest_dir: str, output_path: str) -> N
     lines = [
         "# Spec Coverage Report",
         "",
-        "| Requirement ID | Title | Status | Change(s) |",
-        "|----------------|-------|--------|-----------|",
+        "| ID | Title | Status | Change(s) |",
+        "|----|-------|--------|-----------|",
     ]
-    covered = deferred = uncovered = 0
-    for req in all_reqs:
-        rid = req.get("id", "")
-        title = req.get("title", rid)
-        if rid in req_to_changes:
-            status = "COVERED"
-            change_list = ", ".join(req_to_changes[rid])
-            covered += 1
-        elif rid in deferred_entries:
-            status = f"DEFERRED: {deferred_entries[rid]}"
-            change_list = "—"
-            deferred += 1
-        else:
-            status = "UNCOVERED"
-            change_list = "—"
-            uncovered += 1
-        lines.append(f"| {rid} | {title} | {status} | {change_list} |")
 
+    covered = deferred = uncovered = 0
+
+    def _status_for_changes(change_names: list[str]) -> str:
+        """Derive display status from change statuses (state-aware when available)."""
+        if not change_statuses:
+            return "COVERED"
+        # Use the most advanced status among owning changes
+        statuses = [change_statuses.get(n.replace(" (cross)", ""), "pending") for n in change_names]
+        if any(s == "merged" for s in statuses):
+            return "MERGED"
+        if any(s == "failed" for s in statuses):
+            return "FAILED"
+        if any(s in ("running", "verifying") for s in statuses):
+            return "DISPATCHED"
+        return "PENDING"
+
+    if all_reqs:
+        # Digest mode
+        for req in all_reqs:
+            rid = req.get("id", "")
+            title = req.get("title", rid)
+            if rid in req_to_changes:
+                status = _status_for_changes(req_to_changes[rid])
+                change_list = ", ".join(req_to_changes[rid])
+                covered += 1
+            elif rid in deferred_entries:
+                status = f"DEFERRED: {deferred_entries[rid]}"
+                change_list = "—"
+                deferred += 1
+            else:
+                status = "UNCOVERED"
+                change_list = "—"
+                uncovered += 1
+            lines.append(f"| {rid} | {title} | {status} | {change_list} |")
+    else:
+        # Single-file mode (source_items)
+        for si in source_items:
+            si_id = si.get("id", "?")
+            text = si.get("text", "")
+            si_change = si.get("change")
+            if si_change:
+                status = _status_for_changes([si_change])
+                change_list = si_change
+                covered += 1
+            elif si_change is None:
+                status = "EXCLUDED"
+                change_list = "—"
+                deferred += 1
+            else:
+                status = "UNCOVERED"
+                change_list = "—"
+                uncovered += 1
+            lines.append(f"| {si_id} | {text} | {status} | {change_list} |")
+
+    total = len(all_reqs) or len(source_items)
     lines += [
         "",
         f"**Summary**: {covered} covered, {deferred} deferred, {uncovered} uncovered "
-        f"(total: {len(all_reqs)})",
+        f"(total: {total})",
     ]
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

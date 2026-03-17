@@ -1167,6 +1167,27 @@ def _send_terminal_notifications(
         total = len(state.changes)
         merged = sum(1 for c in state.changes if c.status == "merged")
 
+        # Regenerate spec-coverage-report.md with live statuses
+        try:
+            from .planner import generate_coverage_report
+            import json as _json
+            plan_path = "orchestration-plan.json"
+            plan_data = {}
+            if os.path.isfile(plan_path):
+                plan_data = _json.loads(open(plan_path).read())
+            digest_dir = state.extras.get("digest_dir", "wt/orchestration/digest")
+            if not os.path.isdir(digest_dir):
+                digest_dir = ""
+            generate_coverage_report(
+                plan=plan_data,
+                digest_dir=digest_dir,
+                output_path="wt/orchestration/spec-coverage-report.md",
+                state_file=state_file,
+                plan_path=plan_path,
+            )
+        except Exception:
+            logger.debug("Terminal coverage report regeneration failed (non-critical)", exc_info=True)
+
         title = f"Orchestration {reason}"
         body = f"{merged}/{total} changes merged"
 

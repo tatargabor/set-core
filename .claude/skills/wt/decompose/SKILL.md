@@ -77,10 +77,19 @@ Decompose a specification document into an orchestration execution plan.
          "id": "REQ-DOMAIN-002",
          "reason": "Depends on auth system, planned for next phase"
        }
+     ],
+     "source_items": [
+       {
+         "id": "SI-1",
+         "text": "Description of the spec item",
+         "change": "assigned-change-name-or-null"
+       }
      ]
    }
 
    **Note:** `spec_files`, `requirements`, and `also_affects_reqs` are only required when working with a multi-file spec that has been digested (`wt/orchestration/digest/` exists). For single-file specs, omit these fields.
+
+   **Source items (single-file mode only):** When there is NO digest directory, generate a `source_items` array listing every identifiable spec item (feature, requirement, task, checkbox) with an assigned change name or `null` if intentionally excluded. Omit `source_items` entirely in digest mode (digest uses `requirements.json` instead).
 
    **Requirement accounting (digest mode only):** When a digest exists, every requirement in `wt/orchestration/digest/requirements.json` MUST be accounted for. Either:
    - Assign it to a change via `requirements[]` or `also_affects_reqs[]`, OR
