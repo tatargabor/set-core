@@ -10,7 +10,7 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | [#16](run-16.md) | 2026-03-16 | 11/11 merged | 11 | 4.6M | 3h13m | 5 | #37-#41 | Full 40-req spec, 100% completion |
 | [#17](run-17.md) | 2026-03-17 | 11/11 merged | 11 | ~4.5M | 5h17m | 11 | #42-#44 | Bug #37 root cause fixed (node_modules), Bug #38 partial fix |
 | #18 | 2026-03-17 | 1/10 interrupted | 10 | ~5M | ~3h | 6+ | #45-#48 | Bug #51 review template blocker |
-| [#19](run-19.md) | 2026-03-17 | 9/12 merged | 12 | 4.1M | ~4h | 2 | #49-#52 | Bug #51 fix unlocked pipeline, 75% |
+| [#19](run-19.md) | 2026-03-17 | 11/12 merged | 12 | ~5M | ~8h | 4 | #49-#53 | Bug #51+#53 fixes → 11/12 (92%) with retry |
 
 ## Bug Index
 
@@ -48,7 +48,8 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | 49 | decompose stderr swallowed by 2>/dev/null | #19 | fixed (`7551be1f5`) |
 | 50 | state reconstruction loses merged status (no STATE_CHANGE events) | #19 | **open** |
 | 51 | review template f-string crash (MAJOR — blocked all verify gates) | #19 | fixed (`957d125d9`) |
-| 52 | orchestrator stuck during merge/archive — git_failed spam | #19 | **open** |
+| 52 | orchestrator stuck during merge/archive — git_failed spam | #19 | fixed (`5c741058c`) |
+| 53 | review diff truncation hides src/ files (false CRITICAL reviews) | #19 | fixed (`ab018fa88`) |
 
 ## Token Efficiency Trend
 

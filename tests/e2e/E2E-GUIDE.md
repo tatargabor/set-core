@@ -309,12 +309,12 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 
 <!-- e2e-results:minishop:start -->
 ### minishop — Run #19 (2026-03-17)
-<!-- wt-tools-commit: 957d125d9 -->
-- **wt-tools range**: `957d125d9` (review template f-string fix, decompose stderr logging)
-- **Result**: 9/12 merged | ~4h | 4.1M tokens | 2 sentinel interventions (manual merge)
-- **Open regressions**: Bug #50 (state reconstruction loses merged status), git_failed spam during verify/merge
-- **Fixed this run**: Bug #49 `7551be1f5` (decompose stderr logging), Bug #51 `957d125d9` (review template f-string crash — major blocker)
-- **Watch for run #20**: Bug #50 (state reconstruction) needs code fix. git_failed spam needs investigation. Merge step hangs requiring manual wt-merge — possibly related to git_failed. cart-management and order-views failed on review:critical + retry exhaustion.
+<!-- wt-tools-commit: 5c741058c -->
+- **wt-tools range**: `5c741058c` (review diff prioritization, merge heartbeats, review template fix, decompose stderr)
+- **Result**: 11/12 merged + 1 skipped | ~8h (incl. retry run) | ~5M tokens | 4 framework bugs found
+- **Open regressions**: Bug #50 (state reconstruction loses merged status)
+- **Fixed this run**: Bug #49 `7551be1f5` (decompose stderr), Bug #51 `957d125d9` (review template f-string), Bug #52 `5c741058c` (merge heartbeats), Bug #53 `ab018fa88` (review diff prioritization — root cause of false review failures)
+- **Watch for run #20**: Bug #50 needs fix (Python monitor doesn't emit STATE_CHANGE events). Sentinel bash syntax error on line 536 needs investigation.
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->
