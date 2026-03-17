@@ -1395,6 +1395,13 @@ def handle_change_done(
             from .dispatcher import _detect_package_manager
             pm = _detect_package_manager(wt_path) or "npm"
 
+            # Clear stale .next cache to prevent ENOENT build failures
+            next_dir = os.path.join(wt_path, ".next")
+            if os.path.isdir(next_dir):
+                import shutil as _shutil
+                _shutil.rmtree(next_dir, ignore_errors=True)
+                logger.info("Verify gate: cleared stale .next cache for %s", change_name)
+
             logger.info("Verify gate: build start for %s (%s run %s)", change_name, pm, build_command)
             start_ms = int(time.monotonic() * 1000)
 
