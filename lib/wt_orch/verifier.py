@@ -1766,7 +1766,7 @@ def handle_change_done(
     elif wt_path and shutil.which("claude"):
         verify_cmd_result = run_claude(
             f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\nRun /opsx:verify {change_name}",
-            extra_args=["--max-turns", "20"],
+            extra_args=["--max-turns", "40"],
             cwd=wt_path,
         )
         verify_output = verify_cmd_result.stdout
