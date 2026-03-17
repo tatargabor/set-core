@@ -333,6 +333,15 @@ def merge_change(
         update_change_field(state_file, change_name, "status", "merged")
         logger.info("Merged %s", change_name)
 
+        # Heartbeat helper: emit events during post-merge pipeline so sentinel
+        # doesn't kill us for "no progress" (Bug #52). The post-merge steps
+        # (deps, build, smoke, archive, sync) can take 3-5 min total.
+        def _heartbeat(step: str) -> None:
+            if event_bus:
+                event_bus.emit("MERGE_PROGRESS", change=change_name, data={"step": step})
+
+        _heartbeat("merge_complete")
+
         # Parse LOCKFILE_CONFLICTED markers from wt-merge stdout
         lockfile_conflicted = False
         merge_stdout = merge_result.stdout or ""
@@ -353,12 +362,14 @@ def merge_change(
             logger.debug("Coverage update failed for %s (non-critical)", change_name)
 
         # Post-merge dependency install
+        _heartbeat("deps_install")
         _post_merge_deps_install(lockfile_conflicted=lockfile_conflicted, pre_merge_sha=pre_merge_sha)
 
         # Post-merge custom command
         _post_merge_custom_command(state_file)
 
         # Post-merge scope verification
+        _heartbeat("scope_verify")
         from .verifier import verify_merge_scope
         scope_result = verify_merge_scope(change_name)
         if not scope_result.has_implementation:
@@ -368,6 +379,7 @@ def merge_change(
             )
 
         # Post-merge build verification
+        _heartbeat("build_check")
         _post_merge_build_check(change_name, state_file)
 
         # Merge timeout check before smoke
@@ -382,16 +394,19 @@ def merge_change(
             return MergeResult(success=False, status="merge_timeout")
 
         # Smoke pipeline
+        _heartbeat("smoke")
         smoke_result = _run_smoke_pipeline(change_name, state_file, merge_start, merge_timeout)
 
         # Post-merge hook
         _run_hook("post_merge", change_name, "merged", "")
 
+        _heartbeat("archive")
         cleanup_worktree(change_name, wt_path or "")
         archive_change(change_name)
 
         # Sync running worktrees AFTER archive — so they receive the archive commit
         # (openspec/changes/{name}/ deletion) and avoid merge conflicts (Bug #38)
+        _heartbeat("worktree_sync")
         _sync_running_worktrees(change_name, state_file)
 
         _remove_from_merge_queue(state_file, change_name)
