@@ -185,10 +185,16 @@ cmd_plan() {
     info "Calling Claude for decomposition..."
 
     local result
-    result=$(wt-orch-core plan run "${plan_args[@]}" 2>/dev/null) || {
+    local stderr_file="/tmp/wt-decompose-stderr-$$.log"
+    result=$(wt-orch-core plan run "${plan_args[@]}" 2>"$stderr_file") || {
+        local stderr_content
+        stderr_content=$(tail -20 "$stderr_file" 2>/dev/null)
         error "Claude decomposition failed."
+        [[ -n "$stderr_content" ]] && error "Details: $stderr_content"
+        rm -f "$stderr_file"
         return 1
     }
+    rm -f "$stderr_file"
 
     local status
     status=$(echo "$result" | jq -r '.status // "error"')
