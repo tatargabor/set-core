@@ -1,7 +1,7 @@
 # Pi (pi-mono) vs wt-tools — Összehasonlító elemzés
 
-> **Dátum:** 2026-03-08
-> **Források:** [github.com/badlogic/pi-mono](https://github.com/badlogic/pi-mono) · [pi.dev](https://pi.dev/)
+> **Dátum:** 2026-03-08 (frissítve: 2026-03-17)
+> **Források:** [github.com/badlogic/pi-mono](https://github.com/badlogic/pi-mono) · [pi.dev](https://pi.dev/) · [oh-my-pi](https://github.com/can1357/oh-my-pi)
 > **Szerző:** Mario Zechner (badlogic) — a libGDX keretrendszer alkotója
 
 ---
@@ -497,7 +497,172 @@ Dokumentáció            ████████████████  9   
 
 ---
 
-## 8. Konklúzió
+## 8. oh-my-pi fork elemzés
+
+> **Frissítve: 2026-03-17**
+
+Az [oh-my-pi](https://github.com/can1357/oh-my-pi) (can1357) a pi-mono egy "batteries-included" forkja, ami a Pi minimális core-ját **jelentősen kibővíti**. Ez a wt-tools szempontjából érdekesebb mint a vanilla Pi, mert közelebb áll a mi feature set-ünkhöz.
+
+### oh-my-pi vs Pi vs wt-tools
+
+| Feature | Pi (vanilla) | oh-my-pi | wt-tools |
+|---------|-------------|----------|----------|
+| **Sub-agents** | ✗ (tmux) | ✓ Beépített `task` tool, 6 agent típus | ✓ Teams + Agent tool |
+| **MCP** | ✗ (filozófia) | ✓ Stdio + HTTP, OAuth, proxy | ✓ Natív |
+| **LSP** | ✗ | ✓ 11 op, 40+ nyelv, format-on-write | ✗ |
+| **Long-term memory** | ✗ | ✓ Per-project, background pipeline | ✓ shodh-memory 5-layer |
+| **Plan mode** | ✗ | ✓ Restricted tool set | ✓ Beépített |
+| **Hash-anchored edits** | ✗ | ✓ Hashline system | ✗ |
+| **Browser** | ✗ | ✓ Puppeteer | ✗ |
+| **Isolation backends** | ✗ | ✓ worktree / fuse-overlay / fuse-projfs | ✓ Git worktree |
+| **Agent dashboard** | ✗ | ✓ `/agents` TUI | ✓ PySide6 GUI |
+
+### oh-my-pi értékelés
+
+**Erősségek:**
+- LSP integráció (11 op, 40+ nyelv) — egyedülálló, sem Claude Code-nak, sem nekünk nincs
+- Hash-anchored edits — eliminálják a "string not found" edit hibákat
+- MCP proxy: child agent-ek öröklik a parent MCP kapcsolatait (nem kell újra csatlakozni)
+- Isolation: fuse-overlay a worktree-nél könnyebben kezelhető
+
+**Gyengeségek:**
+- Egyetlen maintainer (can1357) — kockázatos hosszú távra építeni rá
+- Memory rendszer alapszintű a shodh-memory-hez képest (nincs semantic search, nincs phase awareness)
+- Nincs orchestráció (sentinel, dependency graph, merge pipeline)
+- Kisebb közösség és kevesebb production usage
+
+**Következtetés:** Az oh-my-pi **nem alternatíva** a wt-tools-hoz, de az LSP és hashline feature-ök inspiratívak. A fuse-overlay isolation is érdekes — könnyebb teardown mint a git worktree.
+
+---
+
+## 9. Költségmodell: Multi-Model Routing
+
+> **Frissítve: 2026-03-17**
+
+### 9.1 Modell árazás összehasonlítás (2026 Q1)
+
+| Modell | Input/1M | Output/1M | Cache/1M | Thinking | Context |
+|--------|----------|-----------|----------|----------|---------|
+| Claude Opus 4.6 | $15.00 | $75.00 | $1.50 | ✓ native | 200K (1M) |
+| Claude Sonnet 4.6 | $3.00 | $15.00 | $0.30 | ✓ native | 200K (1M) |
+| Claude Haiku 4.5 | $0.80 | $4.00 | $0.08 | ✗ | 200K |
+| Gemini 3 Flash | $0.50 | $3.00 | $0.05 | ✓ cross-provider | 1M |
+| GPT-4o-mini | $0.15 | $0.60 | — | ✗ | 128K |
+
+### 9.2 Orchestráció tipikus költsége
+
+Egy 6-change orchestráció (minishop E2E jellegű):
+
+| Forgatókönyv | Modell mix | Becsült költség | Megtakarítás |
+|--------------|------------|-----------------|--------------|
+| **Jelenlegi** | Opus all | ~$45-60 | — |
+| **Complexity routing** | Opus (L/XL) + Sonnet (S/M) | ~$25-35 | 40-50% |
+| **Pi multi-model** | Opus (L/XL) + Gemini Flash (S/M) | ~$15-25 | 55-70% |
+| **Agresszív** | Sonnet (L) + Gemini Flash (S/M) | ~$8-15 | 75-85% |
+
+**Megjegyzés:** A "Pi multi-model" sor nem Pi-t jelenti mint terméket — hanem azt a koncepciót, hogy a wt-tools orchestrátorba Pi SDK/RPC-n keresztül nem-Claude modelleket is be tudnánk kötni.
+
+### 9.3 Minőség kockázat
+
+A költségmegtakarítás **nem ingyen van**:
+
+- Gemini Flash **gyengébb** multi-file reasoning-ban mint Claude Sonnet
+- Extended thinking minősége provider-függő — Anthropic-é a legerősebb
+- MCP tool-ok nem elérhetők Pi-n keresztül → az agent nem lát worktree state-et, team context-et
+- Az olcsóbb modell change-enként több iterációra szorulhat → nem biztos hogy olcsóbb
+
+**Ezért a benchmark lépés nem kihagyható.**
+
+---
+
+## 10. Konkrét integrációs terv: `dispatch_via_pi()`
+
+> **Frissítve: 2026-03-17**
+
+### 10.1 Jelenlegi dispatch architektúra
+
+```python
+# lib/wt_orch/dispatcher.py — jelenlegi flow
+dispatch_change()
+    → resolve_change_model()     # opus/sonnet a complexity alapján
+    → build enriched proposal    # memory, PK, sibling, design context
+    → write proposal.md          # a worktree-be
+    → dispatch_via_wt_loop()     # wt-loop start → tmux → Claude Code session
+        → wt-loop start <task> --model <model> --change <name>
+        → Claude Code agent fut a worktree-ben
+        → OpenSpec skills, MCP tools, hooks mind elérhetők
+```
+
+### 10.2 Javasolt Pi dispatch flow
+
+```python
+# Koncepció — NEM implementált
+dispatch_change()
+    → resolve_change_model()
+    → if model.startswith("pi:"):     # pl. "pi:gemini-3-flash"
+        → dispatch_via_pi()           # ÚJ
+    → else:
+        → dispatch_via_wt_loop()      # jelenlegi flow
+
+dispatch_via_pi():
+    → pi --rpc --model <provider:model> --cwd <wt_path>
+    → JSONL stdin: {"type":"prompt","text":"<enriched proposal>"}
+    → JSONL stdout: stream tool_call, message_update events
+    → Monitor: token usage, iteration count, completion
+    → Completion: check task completion criteria
+```
+
+### 10.3 Ami működik Pi-vel
+
+- Fájl olvasás/írás/szerkesztés (core 4 tool)
+- Bash futtatás (tesztek, build)
+- AGENTS.md / project context betöltés
+- Token + cost tracking
+- Auto-compaction
+
+### 10.4 Ami NEM működik Pi-vel (vanilla)
+
+| Hiányzó képesség | Hatás | Workaround |
+|------------------|-------|------------|
+| MCP tools | Nincs worktree status, memory, team sync | Fájl-alapú: tasks.md, proposal.md |
+| OpenSpec skills | Nincs `/opsx:apply`, verify, archive | Egyszerűsített prompt: "implement tasks from tasks.md" |
+| Claude Code hooks | Nincs activity tracking, memory injection | Pi extension-nel pótolható (de extra munka) |
+| Extended thinking (Anthropic minőségben) | Gyengébb reasoning olcsóbb modellekkel | Csak S/M complexity change-ekre |
+| shodh-memory recall | Nincs automatikus kontextus injection | Pre-bake: memory context belekerül a prompt-ba |
+
+### 10.5 Implementációs terv
+
+| Fázis | Leírás | Effort | Kockázat |
+|-------|--------|--------|----------|
+| **0. Benchmark** | Ugyanaz az S-complexity change, Claude Sonnet vs Pi+Gemini Flash. Mérni: iteráció szám, végeredmény minőség, cost. | 1 nap | Alacsony |
+| **1. Pi wrapper** | `pi-worker.sh`: Pi RPC mode indítás, JSONL monitoring, completion check | 2-3 nap | Közepes |
+| **2. Dispatcher integration** | `dispatch_via_pi()` a `dispatcher.py`-ban, `model_routing: "pi"` directive | 1-2 nap | Közepes |
+| **3. Monitor integration** | Pi JSONL event-ek → orchestrator state update (token, iteration, status) | 1-2 nap | Magas |
+| **4. E2E validation** | Teljes orchestráció mixed mode: Claude + Pi workerek | 2-3 nap | Magas |
+
+**Összesen: ~7-11 nap, ha a Phase 0 benchmark pozitív.**
+
+### 10.6 Döntési fa
+
+```
+Phase 0 benchmark eredmény?
+│
+├── Gemini Flash quality ≥ 80% of Sonnet on S-changes
+│   └── → Folytasd Phase 1-4
+│       → Várt megtakarítás: 50-70% S/M change költségen
+│
+├── Quality 60-80%
+│   └── → Csak doc-changes + boilerplate-ra használd
+│       → Limitált megtakarítás: 20-30%
+│
+└── Quality < 60%
+    └── → Ne folytasd
+        → Maradj a complexity routing-nál (Opus/Sonnet)
+```
+
+---
+
+## 11. Konklúzió
 
 Pi és wt-tools **fundamentálisan más problémát oldanak meg**:
 
@@ -505,10 +670,54 @@ Pi és wt-tools **fundamentálisan más problémát oldanak meg**:
 
 - **wt-tools** = egy Claude Code-ra épülő workflow toolkit ami multi-agent orchestrációt, cross-session memóriát, és spec-driven fejlesztést ad. **Vertikális**: egy LLM-en mély integráció, production workflow.
 
-**A két projekt nem versenyez** — inkább kiegészítik egymást. Pi extension rendszere és integrációs módjai inspirálhatják a wt-tools plugin fejlesztését, míg a wt-tools memória rendszere és orchestrációja olyan területek ahol Pi még nem járt.
+**A két projekt nem versenyez** — inkább kiegészítik egymást.
 
-### Top 3 actionable tanulság
+### Stratégiai pozíció (frissítve 2026-03-17)
 
-1. **Extension API erősítése** — A jelenlegi hook rendszer (5 event) túl szűk. Tool result modification, custom tool regisztráció, és plugin csomagolás a következő lépések.
-2. **Session tree gondolat alkalmazása** — Nem a Claude Code session-re, hanem az OpenSpec decision tree-re: design alternatívák, orchestration replan ágak.
-3. **RPC/API réteg** — A wt-tools funkciók (memory, worktree, orchestration) programozható API-n keresztüli elérése külső integrációkhoz.
+```
+Pi.dev = KIEGÉSZÍTŐ, nem csere
+
+CSINÁLD MEG (ha van kapacitás):
+  1. Phase 0 benchmark — pi + Gemini Flash vs Claude Sonnet, S-complexity changes
+  2. Ha pozitív → dispatch_via_pi() implementáció (Phase 1-4)
+  Várható megtakarítás: 50-70% az S/M change-eken
+
+FIGYELJ:
+  • oh-my-pi fejlődése — ha MCP + sub-agent + memory érik, újraértékelni
+  • pi-ai library — esetleg standalone használat a run_claude() helyett
+    (egységes API, cost tracking, abort support)
+  • LSP integráció — sem Claude Code-nak, sem nekünk nincs,
+    oh-my-pi megmutatta hogy értékes
+
+NE CSINÁLD:
+  × Teljes migráció pi-re — az OpenSpec + memory + hooks befektetés túl nagy
+  × OpenSpec workflow portálás pi skills-re — más API, más konvenciók
+  × oh-my-pi-ra való építkezés — egyetlen maintainer, instabil alap
+```
+
+### Actionable tanulságok (összevont)
+
+1. **Multi-model cost optimization** — A `resolve_change_model()` már támogat complexity routing-ot. A következő lépés: Pi RPC-n keresztül nem-Claude modellek bevonása S/M change-ekre. Előfeltétel: benchmark.
+2. **Extension API erősítése** — A jelenlegi hook rendszer (5 event) túl szűk. Pi 22+ event-je, tool interceptálása, hot-reload-ja inspiráció.
+3. **RPC monitoring** — Pi JSONL protocol gazdagabb visibility-t ad mint a jelenlegi `run_claude()` black-box. Akár Claude Code dispatch-hez is hasznos lenne hasonló structured output.
+4. **pi-ai mint library** — A `@mariozechner/pi-ai` csomag önmagában is értékes: egységes multi-provider API, cross-provider context handoff, token/cost tracking. Használható lenne a `run_claude()` helyett a planner/verifier/merge LLM hívásoknál.
+5. **LSP gap** — Sem Claude Code, sem wt-tools nem ad LSP-t az agent-eknek. oh-my-pi megmutatta hogy a 11-operációs LSP integráció (diagnostics, references, rename) javítja a kódminőséget. Érdemes követni.
+
+---
+
+## Források
+
+- [pi.dev](https://pi.dev/) / [shittycodingagent.ai](https://shittycodingagent.ai/)
+- [pi-mono GitHub](https://github.com/badlogic/pi-mono)
+- [pi-ai npm](https://www.npmjs.com/package/@mariozechner/pi-ai)
+- [Pi SDK docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/sdk.md)
+- [Pi RPC docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/rpc.md)
+- [Pi Extensions docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md)
+- [Pi vs Claude Code comparison](https://github.com/disler/pi-vs-claude-code/blob/main/COMPARISON.md)
+- [oh-my-pi fork](https://github.com/can1357/oh-my-pi)
+- [Mario Zechner blog](https://mariozechner.at/posts/2025-11-30-pi-coding-agent/)
+- [OpenClaw Pi integration](https://nader.substack.com/p/how-to-build-a-custom-agent-framework)
+- [Armin Ronacher: Pi in OpenClaw](https://lucumr.pocoo.org/2026/1/31/pi/)
+- [LLM API Pricing 2026](https://pricepertoken.com/)
+- [Claude Sonnet 4 vs Gemini 3 Flash Pricing](https://langcopilot.com/claude-sonnet-4-vs-gemini-3-flash-pricing)
+- [Multi-Agent Orchestration Patterns](https://www.ai-agentsplus.com/blog/multi-agent-orchestration-patterns-2026)
