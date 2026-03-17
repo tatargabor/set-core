@@ -308,13 +308,13 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- Auto-updated by wt-e2e-report --update-guide. Do not edit between start/end markers. -->
 
 <!-- e2e-results:minishop:start -->
-### minishop — Run #18 (2026-03-17)
-<!-- wt-tools-commit: 790fcbcd6 -->
-- **wt-tools range**: `790fcbcd6` (specs commit, spec_verify non-blocking, figma-raw exclude, .next cache clear)
-- **Result**: 1/10 merged (INTERRUPTED) | ~3h | ~5M tokens | 6+ interventions (mid-run fixes)
-- **Open regressions**: Bug #43 (dispatch races archive), Bug #41 (stale flock), Bug #44 (pyyaml env)
-- **Fixed this run**: Bug #45 `607d134ff` (archive specs commit), Bug #46 `021aa0818` (spec_verify non-blocking timeout), Bug #47 `ff3997f` (figma-raw tsconfig exclude, wt-project-web), Bug #48 `a68170397` (.next cache clear before build), Edge Runtime auth rule `ca67130` (wt-project-web)
-- **Watch for run #19**: All 5 fixes deployed from start. Expect 0-1 interventions. Build gate should pass cleanly (Bug #47+#48). Spec_verify timeout won't trigger retries (Bug #46). Specs propagate to worktrees (Bug #45).
+### minishop — Run #19 (2026-03-17)
+<!-- wt-tools-commit: 957d125d9 -->
+- **wt-tools range**: `957d125d9` (review template f-string fix, decompose stderr logging)
+- **Result**: 9/12 merged | ~4h | 4.1M tokens | 2 sentinel interventions (manual merge)
+- **Open regressions**: Bug #50 (state reconstruction loses merged status), git_failed spam during verify/merge
+- **Fixed this run**: Bug #49 `7551be1f5` (decompose stderr logging), Bug #51 `957d125d9` (review template f-string crash — major blocker)
+- **Watch for run #20**: Bug #50 (state reconstruction) needs code fix. git_failed spam needs investigation. Merge step hangs requiring manual wt-merge — possibly related to git_failed. cart-management and order-views failed on review:critical + retry exhaustion.
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->

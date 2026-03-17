@@ -9,6 +9,8 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | [#15](run-15.md) | 2026-03-15 | 8/8 merged | 8 | 5.28M | 2h45m | 5 | #31-#36 | First full expanded spec completion |
 | [#16](run-16.md) | 2026-03-16 | 11/11 merged | 11 | 4.6M | 3h13m | 5 | #37-#41 | Full 40-req spec, 100% completion |
 | [#17](run-17.md) | 2026-03-17 | 11/11 merged | 11 | ~4.5M | 5h17m | 11 | #42-#44 | Bug #37 root cause fixed (node_modules), Bug #38 partial fix |
+| #18 | 2026-03-17 | 1/10 interrupted | 10 | ~5M | ~3h | 6+ | #45-#48 | Bug #51 review template blocker |
+| [#19](run-19.md) | 2026-03-17 | 9/12 merged | 12 | 4.1M | ~4h | 2 | #49-#52 | Bug #51 fix unlocked pipeline, 75% |
 
 ## Bug Index
 
@@ -39,6 +41,14 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | 42 | node_modules/ dirty files exhaust verify retries (Bug #37 root cause) | #17 | fixed (`606aec640`) |
 | 43 | Dispatch races archive — new worktrees miss archive commits (Bug #38 partial fix) | #17 | partial (`d3604fef1`, `62c11ed71`) |
 | 44 | pyyaml not installed for python3.14 — sentinel restart fails | #17 | fixed (manual pip install) |
+| 45 | archive specs not committed to worktrees | #18 | fixed (`607d134ff`) |
+| 46 | spec_verify timeout triggers retries | #18 | fixed (`021aa0818`) |
+| 47 | figma-raw tsconfig exclude missing | #18 | fixed (`ff3997f`, wt-project-web) |
+| 48 | stale .next cache breaks build gate | #18 | fixed (`a68170397`) |
+| 49 | decompose stderr swallowed by 2>/dev/null | #19 | fixed (`7551be1f5`) |
+| 50 | state reconstruction loses merged status (no STATE_CHANGE events) | #19 | **open** |
+| 51 | review template f-string crash (MAJOR — blocked all verify gates) | #19 | fixed (`957d125d9`) |
+| 52 | orchestrator stuck during merge/archive — git_failed spam | #19 | **open** |
 
 ## Token Efficiency Trend
 
@@ -49,6 +59,7 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | #15 | 660k | Higher due to merge retries + Bug #34 waste |
 | #16 | 418k | Best efficiency — improved verify gate, fewer wasted iterations |
 | #17 | ~409k | 11 manual interventions all due to Bug #37 node_modules; fix deployed for #18 |
+| #19 | ~456k | 2 manual merges (Bug #52); scope check retry waste ~100K/change |
 
 ## Recurring Issues
 
