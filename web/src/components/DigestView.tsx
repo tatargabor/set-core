@@ -73,8 +73,9 @@ export default function DigestView({ project }: Props) {
   if (!data.exists) return <DigestPendingView project={project} />
 
   const reqs = extractReqs(data)
-  // Prefer coverage-merged over coverage when available
-  const coverageSource = data.coverage_merged ?? data.coverage
+  // Prefer coverage-merged over coverage when it has actual entries
+  const mergedCov = data.coverage_merged?.coverage ?? {}
+  const coverageSource = Object.keys(mergedCov).length > 0 ? data.coverage_merged : data.coverage
   const coverage = coverageSource?.coverage ?? {}
   const uncovered = coverageSource?.uncovered ?? []
   const domains = data.domains ?? {}
