@@ -219,7 +219,7 @@ Output format:
   ISSUE: [severity] description
   FILE: path/to/file
   LINE: approximate line number
-  FIX: concrete code fix (e.g., "add sessionId to where clause: `where: { id: cartItemId, sessionId: getSessionId() }`")
+  FIX: concrete code fix (e.g., "add sessionId to where clause: `where: {{ id: cartItemId, sessionId: getSessionId() }}`")
 
 For CRITICAL and HIGH issues, the FIX field is REQUIRED — provide the exact code change needed.
 Only flag real problems — not style preferences."""
