@@ -60,7 +60,12 @@ class MergeResult:
 
 # Source: merger.sh archive_change() L11-31
 def archive_change(change_name: str) -> bool:
-    """Archive openspec change via CLI (handles move, spec sync, and git commit)."""
+    """Archive openspec change via CLI, then git-commit the results.
+
+    The openspec CLI moves the change dir to archive/ and syncs delta specs
+    into openspec/specs/, but does NOT run git add/commit.  We must commit
+    so that subsequent worktrees (forked from master) see the updated specs.
+    """
     change_dir = f"openspec/changes/{change_name}"
     if not os.path.isdir(change_dir):
         return True  # nothing to archive
@@ -69,12 +74,25 @@ def archive_change(change_name: str) -> bool:
         ["openspec", "archive", change_name, "--yes"],
         timeout=60,
     )
-    if result.exit_code == 0:
-        logger.info("Archived %s via openspec CLI", change_name)
-        return True
+    if result.exit_code != 0:
+        logger.warning("Failed to archive %s (non-blocking): %s", change_name, result.stderr)
+        return False
 
-    logger.warning("Failed to archive %s (non-blocking): %s", change_name, result.stderr)
-    return False
+    logger.info("Archived %s via openspec CLI", change_name)
+
+    # Commit archive move + spec sync so new worktrees inherit specs/
+    run_command(["git", "add", "openspec/"], timeout=30)
+    commit_result = run_command(
+        ["git", "commit", "-m", f"chore: archive {change_name} and sync specs"],
+        timeout=30,
+    )
+    if commit_result.exit_code == 0:
+        logger.info("Committed archive + specs for %s", change_name)
+    else:
+        # Nothing to commit (e.g. no spec changes) — not an error
+        logger.info("No git changes to commit after archive of %s", change_name)
+
+    return True
 
 
 # ─── Smoke Screenshot Collection ────────────────────────────────────
