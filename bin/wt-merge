@@ -768,9 +768,11 @@ main() {
         local conflicted_files
         conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null)
 
-        # With --llm-resolve, resolve generated files even in mixed-conflict scenarios
-        local partial_mode="false"
-        $llm_resolve && partial_mode="true"
+        # Always resolve generated files in partial mode — lockfiles and .claude/* runtime
+        # files are auto-resolved regardless of whether app code conflicts also exist.
+        # Without this, a single app file conflict prevents lockfile auto-resolution,
+        # and the LLM gets a 10K-line pnpm-lock.yaml it can't resolve.
+        local partial_mode="true"
 
         if [[ -n "$conflicted_files" ]] && auto_resolve_generated_files "$conflicted_files" "$partial_mode"; then
             # All conflicts were in generated files and have been resolved
