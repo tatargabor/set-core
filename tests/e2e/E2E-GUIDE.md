@@ -308,13 +308,13 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- Auto-updated by wt-e2e-report --update-guide. Do not edit between start/end markers. -->
 
 <!-- e2e-results:minishop:start -->
-### minishop — Run #17 (2026-03-17)
-<!-- wt-tools-commit: b778f9498 -->
-- **wt-tools range**: `b778f9498` (impl-quality-runtime, feature-rules-injection, context-window-metrics)
-- **Result**: 11/11 merged | 5h17m | ~4.5M tokens (~409K/change) | 11 interventions (all Bug #37)
-- **Open regressions**: Bug #43 (dispatch races archive — partial fix), Bug #41 (stale flock), Bug #44 (pyyaml env)
-- **Fixed this run**: Bug #42 `606aec640` (node_modules dirty → verify exhaustion), Bug #43 partial `d3604fef1`+`62c11ed71` (sync timing), tailwind template `797fbdc` (wt-project-web)
-- **Watch for run #18**: Bug #37 should be gone (node_modules fix active). Expect 0-2 interventions. Watch Bug #43 (archive race) for remaining stale dir issues.
+### minishop — Run #18 (2026-03-17)
+<!-- wt-tools-commit: 790fcbcd6 -->
+- **wt-tools range**: `790fcbcd6` (specs commit, spec_verify non-blocking, figma-raw exclude, .next cache clear)
+- **Result**: 1/10 merged (INTERRUPTED) | ~3h | ~5M tokens | 6+ interventions (mid-run fixes)
+- **Open regressions**: Bug #43 (dispatch races archive), Bug #41 (stale flock), Bug #44 (pyyaml env)
+- **Fixed this run**: Bug #45 `607d134ff` (archive specs commit), Bug #46 `021aa0818` (spec_verify non-blocking timeout), Bug #47 `ff3997f` (figma-raw tsconfig exclude, wt-project-web), Bug #48 `a68170397` (.next cache clear before build), Edge Runtime auth rule `ca67130` (wt-project-web)
+- **Watch for run #19**: All 5 fixes deployed from start. Expect 0-1 interventions. Build gate should pass cleanly (Bug #47+#48). Spec_verify timeout won't trigger retries (Bug #46). Specs propagate to worktrees (Bug #45).
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->
