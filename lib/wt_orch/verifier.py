@@ -343,6 +343,75 @@ def verify_merge_scope(change_name: str, cwd: str | None = None) -> ScopeCheckRe
     return ScopeCheckResult(has_implementation=False, all_files=files)
 
 
+# Paths deprioritized in review diff — artifacts/tests go AFTER implementation
+_REVIEW_DEPRIORITY_PREFIXES = (
+    "openspec/",
+    ".claude/",
+    "__tests__/",
+    "tests/",
+    "test/",
+    "docs/",
+)
+
+_REVIEW_DIFF_LIMIT = 60_000
+
+
+def _prioritize_diff_for_review(raw_diff: str) -> str:
+    """Reorder diff hunks: implementation files first, artifacts/tests last.
+
+    Git diff outputs files in alphabetical order, which puts openspec/ and
+    __tests__/ before src/. When truncated, the reviewer never sees the
+    actual implementation — only artifacts and tests. This caused false
+    "missing implementation" reviews in Run #19 (Bug #53).
+
+    Strategy: split diff into per-file hunks, partition into impl vs low-priority,
+    reassemble with impl first, then truncate.
+    """
+    if len(raw_diff) <= _REVIEW_DIFF_LIMIT:
+        return raw_diff
+
+    # Split into per-file hunks
+    hunks: list[tuple[str, str]] = []  # (filepath, hunk_text)
+    current_path = ""
+    current_lines: list[str] = []
+
+    for line in raw_diff.split("\n"):
+        if line.startswith("diff --git"):
+            if current_lines:
+                hunks.append((current_path, "\n".join(current_lines)))
+            # Extract b/ path
+            parts = line.split(" b/")
+            current_path = parts[-1] if len(parts) > 1 else ""
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        hunks.append((current_path, "\n".join(current_lines)))
+
+    # Partition: implementation first, deprioritized last
+    impl_hunks = []
+    depri_hunks = []
+    for path, hunk in hunks:
+        if any(path.startswith(p) for p in _REVIEW_DEPRIORITY_PREFIXES):
+            depri_hunks.append(hunk)
+        else:
+            impl_hunks.append(hunk)
+
+    # Reassemble: impl first
+    reordered = "\n".join(impl_hunks + depri_hunks)
+
+    # Truncate with note
+    if len(reordered) > _REVIEW_DIFF_LIMIT:
+        reordered = (
+            reordered[:_REVIEW_DIFF_LIMIT]
+            + f"\n\n... diff truncated at {_REVIEW_DIFF_LIMIT} chars "
+            "(artifact/test files may be cut) ..."
+        )
+
+    return reordered
+
+
 def _get_merge_base(wt_path: str) -> str:
     """Get merge-base of worktree branch vs origin/HEAD, main, or master."""
     for ref in ("origin/HEAD", "main", "master"):
@@ -506,9 +575,7 @@ def review_change(
         logger.warning("Could not generate diff for %s review", change_name)
         return ReviewResult(has_critical=False, output="")
 
-    diff_output = diff_result.stdout
-    if len(diff_output) > 30000:
-        diff_output = diff_output[:30000] + "\n...diff truncated at 30000 chars..."
+    diff_output = _prioritize_diff_for_review(diff_result.stdout)
 
     # Build requirement section
     req_section = ""
