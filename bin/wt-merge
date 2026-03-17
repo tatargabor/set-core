@@ -54,6 +54,8 @@ GENERATED_FILE_PATTERNS=(
     ".next/**"
     "dist/**"
     "build/**"
+    "coverage/**"
+    "node_modules/**"
     ".claude/**"
     ".wt-tools/**"
 )
@@ -138,6 +140,12 @@ RUNTIME_FILE_PATTERNS=(
     ".wt-tools/.last-memory-commit"
     ".wt-tools/agents/"
     ".wt-tools/orphan-detect/"
+    "orchestration-state.json"
+    "orchestration-state.json.lock"
+    "orchestration-state-events.jsonl"
+    "orchestration-events.jsonl"
+    "orchestration-plan.json"
+    "orchestration.log"
 )
 
 # Remove runtime files from git index and ensure they are in .gitignore.
@@ -746,6 +754,12 @@ main() {
         if [[ -n "$blocking_files" ]]; then
             warn "Untracked files blocking merge — removing them:"
             while IFS= read -r f; do
+                # Never delete orchestration state files — they belong to the running orchestrator
+                if [[ "$f" == orchestration-state* || "$f" == orchestration-plan* || "$f" == orchestration-events* || "$f" == orchestration.log ]]; then
+                    info "  preserving orchestration file: $f"
+                    git add "$f" 2>/dev/null || true
+                    continue
+                fi
                 info "  removing untracked: $f"
                 rm -f "$f"
             done <<< "$blocking_files"
