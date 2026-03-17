@@ -1071,6 +1071,19 @@ def get_digest(project: str):
     return result
 
 
+@router.get("/api/{project}/coverage-report")
+def get_coverage_report(project: str):
+    """Return spec coverage report markdown if it exists."""
+    project_path = _resolve_project(project)
+    report = project_path / "wt" / "orchestration" / "spec-coverage-report.md"
+    if not report.exists():
+        return {"exists": False}
+    try:
+        return {"exists": True, "content": report.read_text()}
+    except OSError:
+        return {"exists": False}
+
+
 @router.get("/api/{project}/requirements")
 def get_requirements(project: str):
     """Aggregate requirements across all plan versions with live status from state.

@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { getDigest, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type SessionInfo } from '../lib/api'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type SessionInfo } from '../lib/api'
 
 interface Props {
   project: string
 }
 
-type DigestTab = 'overview' | 'requirements' | 'domains' | 'triage'
+type DigestTab = 'overview' | 'requirements' | 'domains' | 'triage' | 'ac' | 'coverage'
 
 function extractReqs(data: DigestData): DigestReq[] {
   const raw = data.requirements
@@ -20,6 +20,34 @@ function extractReqs(data: DigestData): DigestReq[] {
   }
   if (Array.isArray(raw)) return raw as DigestReq[]
   return []
+}
+
+const DONE_STATUSES = new Set(['done', 'merged', 'completed', 'skip_merged'])
+
+function isReqDone(reqId: string, coverage: Record<string, { change: string; status: string }>): boolean {
+  const cov = coverage[reqId]
+  return !!cov && DONE_STATUSES.has(cov.status)
+}
+
+/** Render AC items for a requirement as checkbox-style lines */
+function ACItems({ req, coverage }: {
+  req: DigestReq
+  coverage: Record<string, { change: string; status: string }>
+}) {
+  const ac = req.acceptance_criteria
+  if (!ac || ac.length === 0) return null
+  const done = isReqDone(req.id, coverage)
+
+  return (
+    <div className="pl-6 py-1 space-y-0.5">
+      {ac.map((item, i) => (
+        <div key={i} className={`text-[11px] flex items-start gap-1.5 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
+          <span className="shrink-0 mt-0.5">{done ? '\u2611' : '\u2610'}</span>
+          <span>{item}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function DigestView({ project }: Props) {
@@ -45,15 +73,22 @@ export default function DigestView({ project }: Props) {
   if (!data.exists) return <DigestPendingView project={project} />
 
   const reqs = extractReqs(data)
-  const coverage = data.coverage?.coverage ?? {}
-  const uncovered = data.coverage?.uncovered ?? []
+  // Prefer coverage-merged over coverage when available
+  const coverageSource = data.coverage_merged ?? data.coverage
+  const coverage = coverageSource?.coverage ?? {}
+  const uncovered = coverageSource?.uncovered ?? []
   const domains = data.domains ?? {}
   const hasTriage = !!data.triage
+
+  // Count total AC items
+  const totalAC = reqs.reduce((sum, r) => sum + (r.acceptance_criteria?.length ?? 0), 0)
 
   const tabs: { id: DigestTab; label: string; hidden?: boolean }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'requirements', label: `Reqs (${reqs.length})` },
+    { id: 'ac', label: `AC (${totalAC})`, hidden: totalAC === 0 },
     { id: 'domains', label: `Domains (${Object.keys(domains).length})`, hidden: Object.keys(domains).length === 0 },
+    { id: 'coverage', label: 'Coverage' },
     { id: 'triage', label: 'Triage', hidden: !hasTriage },
   ]
 
@@ -85,7 +120,9 @@ export default function DigestView({ project }: Props) {
       <div className="flex-1 overflow-y-auto min-h-0">
         {tab === 'overview' && <OverviewPanel reqs={reqs} coverage={coverage} uncovered={uncovered} domains={domains} />}
         {tab === 'requirements' && <RequirementsPanel reqs={reqs} coverage={coverage} />}
+        {tab === 'ac' && <ACPanel reqs={reqs} coverage={coverage} />}
         {tab === 'domains' && <DomainsPanel domains={domains} />}
+        {tab === 'coverage' && <CoverageReportPanel project={project} />}
         {tab === 'triage' && data.triage && <MarkdownPanel content={data.triage} />}
       </div>
     </div>
@@ -99,10 +136,10 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
   domains: Record<string, string>
 }) {
   const [showAll, setShowAll] = useState(false)
+  const [expandedReq, setExpandedReq] = useState<string | null>(null)
   const coveredCount = Object.keys(coverage).length
   const totalReqs = reqs.length
-  const doneStatuses = new Set(['done', 'merged', 'completed', 'skip_merged'])
-  const doneCount = Object.values(coverage).filter(c => doneStatuses.has(c.status)).length
+  const doneCount = Object.values(coverage).filter(c => DONE_STATUSES.has(c.status)).length
 
   // Group reqs by domain
   const domainCounts = useMemo(() => {
@@ -146,16 +183,33 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
         <tbody>
           {visibleReqs.map(r => {
             const cov = coverage[r.id]
+            const hasAC = (r.acceptance_criteria?.length ?? 0) > 0
+            const isExpanded = expandedReq === r.id
             return (
-              <tr key={r.id} className="border-b border-neutral-800/30">
-                <td className="px-2 py-1 font-mono text-neutral-300 truncate max-w-[100px]" title={r.brief}>{r.id}</td>
-                <td className="px-2 py-1 text-neutral-400 truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
-                <td className="px-2 py-1 text-neutral-500 truncate max-w-[80px]">{r.domain}</td>
-                <td className="px-2 py-1 font-mono text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '—'}</td>
-                <td className={`px-2 py-1 ${cov ? statusColor(cov.status) : 'text-yellow-500'}`}>
-                  {cov?.status ?? '—'}
-                </td>
-              </tr>
+              <Fragment key={r.id}>
+                <tr
+                  className={`border-b border-neutral-800/30 ${hasAC ? 'cursor-pointer hover:bg-neutral-900/50' : ''}`}
+                  onClick={hasAC ? () => setExpandedReq(isExpanded ? null : r.id) : undefined}
+                >
+                  <td className="px-2 py-1 font-mono text-neutral-300 truncate max-w-[100px]" title={r.brief}>
+                    {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
+                    {r.id}
+                  </td>
+                  <td className="px-2 py-1 text-neutral-400 truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
+                  <td className="px-2 py-1 text-neutral-500 truncate max-w-[80px]">{r.domain}</td>
+                  <td className="px-2 py-1 font-mono text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '\u2014'}</td>
+                  <td className={`px-2 py-1 ${cov ? statusColor(cov.status) : 'text-yellow-500'}`}>
+                    {cov?.status ?? '\u2014'}
+                  </td>
+                </tr>
+                {isExpanded && hasAC && (
+                  <tr className="border-b border-neutral-800/30 bg-neutral-950/30">
+                    <td colSpan={5}>
+                      <ACItems req={r} coverage={coverage} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             )
           })}
         </tbody>
@@ -190,6 +244,7 @@ function RequirementsPanel({ reqs, coverage }: {
 }) {
   const [filter, setFilter] = useState('')
   const [domainFilter, setDomainFilter] = useState<string | null>(null)
+  const [expandedReq, setExpandedReq] = useState<string | null>(null)
 
   const allDomains = useMemo(() => [...new Set(reqs.map(r => r.domain))].sort(), [reqs])
 
@@ -241,16 +296,33 @@ function RequirementsPanel({ reqs, coverage }: {
           <tbody>
             {filtered.map(r => {
               const cov = coverage[r.id]
+              const hasAC = (r.acceptance_criteria?.length ?? 0) > 0
+              const isExpanded = expandedReq === r.id
               return (
-                <tr key={r.id} className="border-b border-neutral-800/30 hover:bg-neutral-900/50">
-                  <td className="px-3 py-1 font-mono text-neutral-300">{r.id}</td>
-                  <td className="px-2 py-1 text-neutral-400" title={r.brief}>{r.title}</td>
-                  <td className="px-2 py-1 text-neutral-500">{r.domain}</td>
-                  <td className="px-2 py-1 font-mono text-neutral-500 truncate">{cov?.change ?? '—'}</td>
-                  <td className={`px-2 py-1 ${cov ? statusColor(cov.status) : 'text-yellow-500'}`}>
-                    {cov?.status ?? 'uncovered'}
-                  </td>
-                </tr>
+                <Fragment key={r.id}>
+                  <tr
+                    className={`border-b border-neutral-800/30 ${hasAC ? 'cursor-pointer' : ''} hover:bg-neutral-900/50`}
+                    onClick={hasAC ? () => setExpandedReq(isExpanded ? null : r.id) : undefined}
+                  >
+                    <td className="px-3 py-1 font-mono text-neutral-300">
+                      {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
+                      {r.id}
+                    </td>
+                    <td className="px-2 py-1 text-neutral-400" title={r.brief}>{r.title}</td>
+                    <td className="px-2 py-1 text-neutral-500">{r.domain}</td>
+                    <td className="px-2 py-1 font-mono text-neutral-500 truncate">{cov?.change ?? '\u2014'}</td>
+                    <td className={`px-2 py-1 ${cov ? statusColor(cov.status) : 'text-yellow-500'}`}>
+                      {cov?.status ?? 'uncovered'}
+                    </td>
+                  </tr>
+                  {isExpanded && hasAC && (
+                    <tr className="border-b border-neutral-800/30 bg-neutral-950/30">
+                      <td colSpan={5}>
+                        <ACItems req={r} coverage={coverage} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               )
             })}
           </tbody>
@@ -258,6 +330,120 @@ function RequirementsPanel({ reqs, coverage }: {
       </div>
     </div>
   )
+}
+
+function ACPanel({ reqs, coverage }: {
+  reqs: DigestReq[]
+  coverage: Record<string, { change: string; status: string }>
+}) {
+  const [domainFilter, setDomainFilter] = useState<string | null>(null)
+
+  // Filter to reqs with AC
+  const reqsWithAC = useMemo(() => reqs.filter(r => (r.acceptance_criteria?.length ?? 0) > 0), [reqs])
+
+  if (reqsWithAC.length === 0) {
+    return <div className="p-4 text-xs text-neutral-500">No acceptance criteria extracted</div>
+  }
+
+  const allDomains = [...new Set(reqsWithAC.map(r => r.domain))].sort()
+  const filtered = domainFilter ? reqsWithAC.filter(r => r.domain === domainFilter) : reqsWithAC
+
+  const totalAC = filtered.reduce((sum, r) => sum + (r.acceptance_criteria?.length ?? 0), 0)
+  const checkedAC = filtered.reduce((sum, r) => {
+    if (!isReqDone(r.id, coverage)) return sum
+    return sum + (r.acceptance_criteria?.length ?? 0)
+  }, 0)
+  const pct = totalAC > 0 ? Math.round((checkedAC / totalAC) * 100) : 0
+
+  // Group by domain
+  const byDomain = useMemo(() => {
+    const groups: Record<string, DigestReq[]> = {}
+    for (const r of filtered) {
+      if (!groups[r.domain]) groups[r.domain] = []
+      groups[r.domain].push(r)
+    }
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [filtered])
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header: progress + filter */}
+      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-800/50 shrink-0">
+        <span className="text-xs font-medium text-neutral-300">{checkedAC}/{totalAC} AC</span>
+        <span className="text-[10px] text-neutral-500">{pct}%</span>
+        <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-neutral-800 max-w-xs">
+          {checkedAC > 0 && <div className="h-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />}
+        </div>
+        <select
+          value={domainFilter ?? ''}
+          onChange={e => setDomainFilter(e.target.value || null)}
+          className="bg-neutral-800 text-neutral-300 text-[11px] rounded px-2 py-0.5 border border-neutral-700 ml-auto"
+        >
+          <option value="">All domains</option>
+          {allDomains.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+
+      {/* Domain groups */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {byDomain.map(([domain, domReqs]) => {
+          const domTotalAC = domReqs.reduce((s, r) => s + (r.acceptance_criteria?.length ?? 0), 0)
+          const domCheckedAC = domReqs.reduce((s, r) => {
+            if (!isReqDone(r.id, coverage)) return s
+            return s + (r.acceptance_criteria?.length ?? 0)
+          }, 0)
+          return (
+            <div key={domain} className="border-b border-neutral-800/50">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30">
+                <span className="text-[11px] font-medium text-neutral-300">{domain}</span>
+                <span className="text-[10px] text-neutral-500">{domCheckedAC}/{domTotalAC}</span>
+              </div>
+              {domReqs.map(r => (
+                <div key={r.id} className="px-3 py-1">
+                  <div className="text-[11px] text-neutral-400 mb-0.5">
+                    <span className="font-mono text-neutral-500">{r.id}</span>
+                    <span className="mx-1 text-neutral-700">/</span>
+                    <span>{r.title}</span>
+                  </div>
+                  {(r.acceptance_criteria ?? []).map((ac, i) => {
+                    const done = isReqDone(r.id, coverage)
+                    return (
+                      <div key={i} className={`text-[11px] flex items-start gap-1.5 pl-4 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
+                        <span className="shrink-0 mt-0.5">{done ? '\u2611' : '\u2610'}</span>
+                        <span>{ac}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function CoverageReportPanel({ project }: { project: string }) {
+  const [content, setContent] = useState<string | null>(null)
+  const [exists, setExists] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getCoverageReport(project)
+      .then(d => {
+        if (cancelled) return
+        setExists(d.exists)
+        if (d.exists && d.content) setContent(d.content)
+      })
+      .catch(() => { if (!cancelled) setExists(false) })
+    return () => { cancelled = true }
+  }, [project])
+
+  if (exists === null) return <div className="p-4 text-xs text-neutral-500">Loading coverage report...</div>
+  if (!exists || !content) return <div className="p-4 text-xs text-neutral-500">No coverage report generated yet</div>
+
+  return <MarkdownPanel content={content} />
 }
 
 function statusColor(status: string): string {

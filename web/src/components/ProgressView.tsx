@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { getRequirements, getDigest, type RequirementsData, type ReqChangeInfo, type DigestReq, type DigestData } from '../lib/api'
 
 interface Props {
@@ -460,6 +460,7 @@ function DigestDomainGroup({ domain, reqs, coverage, defaultOpen }: {
   const done = reqs.filter(r => coverage[r.id] && doneStatuses.has(coverage[r.id].status)).length
   const pct = reqs.length > 0 ? Math.round((done / reqs.length) * 100) : 0
   const [open, setOpen] = useState(defaultOpen ?? false)
+  const [expandedReq, setExpandedReq] = useState<string | null>(null)
 
   return (
     <div>
@@ -468,7 +469,7 @@ function DigestDomainGroup({ domain, reqs, coverage, defaultOpen }: {
         onClick={() => setOpen(v => !v)}
       >
         <span className="text-neutral-500 w-3 text-center text-[10px]">
-          {open ? '▾' : '▸'}
+          {open ? '\u25BE' : '\u25B8'}
         </span>
         <span className="text-xs font-medium text-neutral-300 w-24 truncate">{domain}</span>
         <div className="flex-1 max-w-[200px]">
@@ -484,13 +485,36 @@ function DigestDomainGroup({ domain, reqs, coverage, defaultOpen }: {
               {reqs.map(r => {
                 const cov = coverage[r.id]
                 const statusColor = cov ? (STATUS_TEXT[cov.status] ?? 'text-neutral-600') : 'text-yellow-500'
+                const hasAC = (r.acceptance_criteria?.length ?? 0) > 0
+                const isExpanded = expandedReq === r.id
+                const isDone = cov && doneStatuses.has(cov.status)
                 return (
-                  <tr key={r.id} className="hover:bg-neutral-800/20">
-                    <td className="py-0.5 pl-6 font-mono text-neutral-400 w-28 truncate" title={r.brief}>{r.id}</td>
-                    <td className="py-0.5 text-neutral-400 truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
-                    <td className={`py-0.5 w-20 ${statusColor}`}>{cov?.status ?? 'uncovered'}</td>
-                    <td className="py-0.5 font-mono text-neutral-500 truncate">{cov?.change ?? '—'}</td>
-                  </tr>
+                  <Fragment key={r.id}>
+                    <tr
+                      className={`${hasAC ? 'cursor-pointer' : ''} hover:bg-neutral-800/20`}
+                      onClick={hasAC ? () => setExpandedReq(isExpanded ? null : r.id) : undefined}
+                    >
+                      <td className="py-0.5 pl-6 font-mono text-neutral-400 w-28 truncate" title={r.brief}>
+                        {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
+                        {r.id}
+                      </td>
+                      <td className="py-0.5 text-neutral-400 truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
+                      <td className={`py-0.5 w-20 ${statusColor}`}>{cov?.status ?? 'uncovered'}</td>
+                      <td className="py-0.5 font-mono text-neutral-500 truncate">{cov?.change ?? '\u2014'}</td>
+                    </tr>
+                    {isExpanded && hasAC && (
+                      <tr className="bg-neutral-950/30">
+                        <td colSpan={4} className="pl-10 py-1">
+                          {(r.acceptance_criteria ?? []).map((ac, i) => (
+                            <div key={i} className={`text-[11px] flex items-start gap-1.5 ${isDone ? 'text-blue-400' : 'text-neutral-500'}`}>
+                              <span className="shrink-0 mt-0.5">{isDone ? '\u2611' : '\u2610'}</span>
+                              <span>{ac}</span>
+                            </div>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 )
               })}
             </tbody>

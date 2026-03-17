@@ -3,6 +3,7 @@ interface Props {
   smoke_result?: string
   review_result?: string
   build_result?: string
+  spec_coverage_result?: string
   hasScreenshots?: boolean
   onScreenshots?: (e: React.MouseEvent) => void
 }
@@ -12,6 +13,7 @@ const gateLabels: Record<string, string> = {
   build: 'B',
   review: 'R',
   smoke: 'S',
+  spec_coverage: 'SC',
 }
 
 const statusStyle: Record<string, string> = {
@@ -21,12 +23,13 @@ const statusStyle: Record<string, string> = {
   pending: 'bg-neutral-800 text-neutral-600',
 }
 
-export default function GateBar({ test_result, smoke_result, review_result, build_result, hasScreenshots, onScreenshots }: Props) {
+export default function GateBar({ test_result, smoke_result, review_result, build_result, spec_coverage_result, hasScreenshots, onScreenshots }: Props) {
   const gates = [
     { name: 'test', status: test_result },
     { name: 'build', status: build_result },
     { name: 'review', status: review_result },
     { name: 'smoke', status: smoke_result },
+    { name: 'spec_coverage', status: spec_coverage_result ? (spec_coverage_result === 'timeout' ? 'fail' : spec_coverage_result) : undefined },
   ].filter((g) => g.status)
 
   if (gates.length === 0) {

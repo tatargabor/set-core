@@ -93,7 +93,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
       <div className="divide-y divide-neutral-800/50">
         {changes.map((c) => {
           const isExpanded = selected === c.name
-          const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result)
+          const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result || c.spec_coverage_result)
           const isGateExpanded = expandedGate === c.name
           return (
             <div key={c.name}>
@@ -142,6 +142,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                         smoke_result={c.smoke_result}
                         review_result={c.review_result}
                         build_result={c.build_result}
+                        spec_coverage_result={c.spec_coverage_result}
                         hasScreenshots={!!c.smoke_screenshot_count || !!c.e2e_screenshot_count}
                         onScreenshots={(e) => toggleScreenshots(e, c.name)}
                       />
@@ -215,7 +216,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
         {changes.map((c) => {
           const clickable = !!c.worktree_path
           const isSelected = selected === c.name
-          const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result)
+          const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result || c.spec_coverage_result)
           const isGateExpanded = expandedGate === c.name
           return (
             <Fragment key={c.name}>
@@ -250,6 +251,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     smoke_result={c.smoke_result}
                     review_result={c.review_result}
                     build_result={c.build_result}
+                    spec_coverage_result={c.spec_coverage_result}
                     hasScreenshots={!!c.smoke_screenshot_count || !!c.e2e_screenshot_count}
                     onScreenshots={(e) => toggleScreenshots(e, c.name)}
                   />

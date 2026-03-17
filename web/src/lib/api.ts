@@ -60,6 +60,8 @@ export interface ChangeInfo {
   smoke_screenshot_dir?: string
   e2e_screenshot_count?: number
   e2e_screenshot_dir?: string
+  // Spec coverage gate
+  spec_coverage_result?: string
   // Context window metrics (optional — absent on old state files)
   context_tokens_start?: number
   context_tokens_end?: number
@@ -224,6 +226,7 @@ export interface DigestReq {
   source_section?: string
   domain: string
   brief: string
+  acceptance_criteria?: string[]
 }
 
 export interface DigestData {
@@ -242,6 +245,7 @@ export interface DigestData {
   }
   requirements?: DigestReq[] | [{ requirements: DigestReq[] }]
   coverage?: { coverage?: Record<string, { change: string; status: string }>; uncovered?: string[] }
+  coverage_merged?: { coverage?: Record<string, { change: string; status: string }>; uncovered?: string[] }
   dependencies?: { dependencies?: { from: string; to: string; type: string }[] }
   ambiguities?: { id: string; question: string; options?: string[] }[]
   domains?: Record<string, string>
@@ -251,6 +255,12 @@ export interface DigestData {
 
 export function getDigest(project: string): Promise<DigestData> {
   return fetchJSON(`/${project}/digest`)
+}
+
+// --- Coverage Report ---
+
+export function getCoverageReport(project: string): Promise<{ exists: boolean; content?: string }> {
+  return fetchJSON(`/${project}/coverage-report`)
 }
 
 // --- Plans ---
