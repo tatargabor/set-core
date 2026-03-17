@@ -10,6 +10,8 @@ _FRAMEWORK_NOISE_PREFIXES = (
     ".wt-tools/",
     "CLAUDE.md",
     "openspec/changes/",
+    "node_modules/",  # pnpm/npm install modifies symlinks — never application work
+    "coverage/",      # test coverage output — never application work
 )
 
 
