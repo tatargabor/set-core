@@ -170,8 +170,24 @@ init_project() {
     fi
 
     step "Tag spec baseline"
+
+    # .gitattributes — prevent lockfile and runtime file conflicts at git level.
+    # merge=ours: on conflict, silently keep current branch version.
+    # Lockfile regeneration happens via wt-merge's regenerate_lockfile() and
+    # merger.py's _post_merge_deps_install() — NOT via git hook.
+    cat > .gitattributes << 'ATTRS'
+# wt-tools: generated/runtime files — always prefer ours on conflict
+pnpm-lock.yaml    merge=ours
+yarn.lock         merge=ours
+package-lock.json merge=ours
+*.tsbuildinfo     merge=ours
+next-env.d.ts     merge=ours
+.claude/**        merge=ours
+ATTRS
+    git config merge.ours.driver true
+
     git tag v0-spec
-    success "Tagged v0-spec"
+    success "Tagged v0-spec (merge drivers configured)"
 
     step "Clean stale memory"
     local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/wt-tools/memory}/${PROJECT_NAME}"

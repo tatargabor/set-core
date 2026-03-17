@@ -144,10 +144,27 @@ init_project() {
 
     step "Git init"
     git init
+
+    # .gitattributes — prevent lockfile and runtime file conflicts at git level.
+    # merge=ours: on conflict, silently keep current branch version.
+    # Lockfile regeneration happens via wt-merge's regenerate_lockfile() and
+    # merger.py's _post_merge_deps_install() — NOT via git hook (hooks leave
+    # dirty working tree state that blocks subsequent merges).
+    cat > .gitattributes << 'ATTRS'
+# wt-tools: generated/runtime files — always prefer ours on conflict
+pnpm-lock.yaml    merge=ours
+yarn.lock         merge=ours
+package-lock.json merge=ours
+*.tsbuildinfo     merge=ours
+next-env.d.ts     merge=ours
+.claude/**        merge=ours
+ATTRS
+    git config merge.ours.driver true
+
     git add -A
     git commit -m "initial: minishop spec"
     git tag v0-spec
-    success "Git initialized, tagged v0-spec"
+    success "Git initialized, tagged v0-spec (merge drivers + post-merge hook configured)"
 
     step "Clean stale memory"
     local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/wt-tools/memory}/${PROJECT_NAME}"
