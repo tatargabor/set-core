@@ -308,12 +308,13 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- Auto-updated by wt-e2e-report --update-guide. Do not edit between start/end markers. -->
 
 <!-- e2e-results:minishop:start -->
-### minishop — Run #16 (2026-03-16)
-<!-- wt-tools-commit: 6334f5281 -->
-- **wt-tools range**: `6334f5281` (spec-implementation-fidelity + impl-quality-runtime artifacts)
-- **Result**: 11/11 merged | 3h13m | 4.6M tokens (418K/change) | 11 verify retries | 5 interventions
-- **Open regressions**: Bug #38 (generated file merge conflicts — recurring from #24), Bug #37 (verify retry exhaustion on build-fix), Bug #41 (stale flock)
-- **Fixed this run**: Bug #39 (dead agent detection — `654b77793`)
+### minishop — Run #17 (2026-03-17)
+<!-- wt-tools-commit: b778f9498 -->
+- **wt-tools range**: `b778f9498` (impl-quality-runtime, feature-rules-injection, context-window-metrics)
+- **Result**: 11/11 merged | 5h17m | ~4.5M tokens (~409K/change) | 11 interventions (all Bug #37)
+- **Open regressions**: Bug #43 (dispatch races archive — partial fix), Bug #41 (stale flock), Bug #44 (pyyaml env)
+- **Fixed this run**: Bug #42 `606aec640` (node_modules dirty → verify exhaustion), Bug #43 partial `d3604fef1`+`62c11ed71` (sync timing), tailwind template `797fbdc` (wt-project-web)
+- **Watch for run #18**: Bug #37 should be gone (node_modules fix active). Expect 0-2 interventions. Watch Bug #43 (archive race) for remaining stale dir issues.
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->

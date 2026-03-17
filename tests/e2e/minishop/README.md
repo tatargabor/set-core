@@ -8,6 +8,7 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | [#14](run-14.md) | 2026-03-15 | 2/7 stopped | 7 | 676k | 45m | 0 | #25-#30 | Stopped for analysis after phase 2 |
 | [#15](run-15.md) | 2026-03-15 | 8/8 merged | 8 | 5.28M | 2h45m | 5 | #31-#36 | First full expanded spec completion |
 | [#16](run-16.md) | 2026-03-16 | 11/11 merged | 11 | 4.6M | 3h13m | 5 | #37-#41 | Full 40-req spec, 100% completion |
+| [#17](run-17.md) | 2026-03-17 | 11/11 merged | 11 | ~4.5M | 5h17m | 11 | #42-#44 | Bug #37 root cause fixed (node_modules), Bug #38 partial fix |
 
 ## Bug Index
 
@@ -35,6 +36,9 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | 39 | Dead agent not detected (ralph_pid=0 + no loop-state) | #16 | fixed |
 | 40 | Monitor crash on state file race during manual edit | #16 | noise |
 | 41 | Stale flock blocks sentinel restart (zombie PIDs) | #16 | open |
+| 42 | node_modules/ dirty files exhaust verify retries (Bug #37 root cause) | #17 | fixed (`606aec640`) |
+| 43 | Dispatch races archive — new worktrees miss archive commits (Bug #38 partial fix) | #17 | partial (`d3604fef1`, `62c11ed71`) |
+| 44 | pyyaml not installed for python3.14 — sentinel restart fails | #17 | fixed (manual pip install) |
 
 ## Token Efficiency Trend
 
@@ -44,6 +48,7 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | #14 | 338k | Partial (2 changes only) |
 | #15 | 660k | Higher due to merge retries + Bug #34 waste |
 | #16 | 418k | Best efficiency — improved verify gate, fewer wasted iterations |
+| #17 | ~409k | 11 manual interventions all due to Bug #37 node_modules; fix deployed for #18 |
 
 ## Recurring Issues
 
