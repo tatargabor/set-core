@@ -164,10 +164,11 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
     <div className="p-3 space-y-3 text-xs">
       {/* Compact progress row */}
       <div className="flex items-center gap-3 text-[11px]">
-        <span className="text-neutral-200 font-medium">{doneCount}/{totalReqs}</span>
+        <span className="text-neutral-200 font-medium">{doneCount}/{totalReqs} merged</span>
         {totalReqs > 0 && (
           <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-neutral-800 max-w-xs">
-            {doneCount > 0 && <div className="h-full bg-blue-500" style={{ width: `${(doneCount / totalReqs) * 100}%` }} />}
+            {coveredCount > 0 && <div className="h-full bg-neutral-700" style={{ width: `${(coveredCount / totalReqs) * 100}%` }} />}
+            {doneCount > 0 && <div className="h-full bg-blue-500 -mt-1.5" style={{ width: `${(doneCount / totalReqs) * 100}%` }} />}
           </div>
         )}
         <span className="text-blue-400">{coveredCount} covered</span>
@@ -480,6 +481,7 @@ function statusColor(status: string): string {
   if (['done', 'merged', 'completed', 'skip_merged'].includes(status)) return 'text-blue-400'
   if (['running', 'implementing'].includes(status)) return 'text-green-400'
   if (['failed', 'verify-failed'].includes(status)) return 'text-red-400'
+  if (status === 'planned') return 'text-neutral-400'
   return 'text-neutral-500'
 }
 
