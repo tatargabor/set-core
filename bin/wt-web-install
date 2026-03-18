@@ -111,7 +111,7 @@ if [[ -n "$DO_UNINSTALL" ]]; then
     # Reset Tailscale serve if configured
     if command -v tailscale &>/dev/null; then
         if tailscale serve status 2>/dev/null | grep -q "localhost:"; then
-            sudo tailscale serve --https 443 off 2>/dev/null || true
+            tailscale serve --https 443 off 2>/dev/null || sudo tailscale serve --https 443 off 2>/dev/null || true
             success "Tailscale serve reset"
         fi
     fi
@@ -199,8 +199,44 @@ setup_tailscale() {
     local ts_hostname
     ts_hostname="$(tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // empty' | sed 's/\.$//')"
 
+    # Ensure operator mode so tailscale serve/cert works without sudo
+    info "Ensuring Tailscale operator mode..."
+    if ! tailscale serve status &>/dev/null 2>&1; then
+        info "Setting Tailscale operator to $USER (requires sudo once)..."
+        if sudo tailscale set --operator="$USER"; then
+            success "Tailscale operator set to $USER"
+        else
+            warn "Could not set operator mode — tailscale serve may require sudo"
+        fi
+    fi
+
+    # Pre-provision TLS cert (tailscale serve needs it)
+    if [[ -n "${ts_hostname:-}" ]]; then
+        info "Provisioning TLS certificate for $ts_hostname..."
+        if ! tailscale cert "$ts_hostname" 2>/dev/null; then
+            warn "Cert provisioning failed — restarting tailscaled and retrying..."
+            if sudo systemctl restart tailscaled 2>/dev/null; then
+                sleep 5
+                if tailscale cert "$ts_hostname" 2>/dev/null; then
+                    success "TLS certificate provisioned (after tailscaled restart)"
+                else
+                    warn "Cert provisioning still failing"
+                    info "Check: HTTPS Certificates enabled in Tailscale admin console (DNS section)"
+                    info "Try later: tailscale cert $ts_hostname"
+                fi
+            else
+                warn "Could not restart tailscaled (sudo required)"
+                info "Run manually: sudo systemctl restart tailscaled && tailscale cert $ts_hostname"
+            fi
+        else
+            success "TLS certificate provisioned"
+        fi
+        # Clean up cert files from cwd (tailscale cert writes to cwd)
+        rm -f "${ts_hostname}.crt" "${ts_hostname}.key" 2>/dev/null
+    fi
+
     info "Configuring Tailscale HTTPS :443 → localhost:$PORT"
-    if sudo tailscale serve --bg --https 443 "http://localhost:$PORT" 2>/dev/null; then
+    if tailscale serve --bg --https 443 "http://localhost:$PORT" 2>/dev/null; then
         success "Tailscale HTTPS configured"
         echo ""
         if [[ -n "${ts_hostname:-}" ]]; then
@@ -210,7 +246,7 @@ setup_tailscale() {
         fi
     else
         warn "tailscale serve failed"
-        info "Try manually: sudo tailscale serve --bg --https 443 http://localhost:$PORT"
+        info "Try manually: tailscale serve --bg --https 443 http://localhost:$PORT"
     fi
 }
 

@@ -182,9 +182,30 @@ Common causes:
 ### Tailscale HTTPS not working
 
 - Verify Tailscale is connected: `tailscale status`
-- Verify HTTPS is enabled in tailnet admin console
+- Verify HTTPS is enabled in tailnet admin console (DNS → HTTPS Certificates)
 - Check serve status: `tailscale serve status`
-- Try accessing via Tailscale IP directly: `curl https://100.x.x.x:443/` (may get cert warning)
+- Try accessing via Tailscale IP directly: `curl http://100.x.x.x:7400/`
+
+### Tailscale cert fails with 500 Internal Server Error
+
+The `tailscale cert` command may fail with `500 Internal Server Error: SetDNS ... failed to create DNS record`. This is a Tailscale coordination server issue that is resolved by restarting the tailscaled daemon:
+
+```bash
+sudo systemctl restart tailscaled
+sleep 5
+tailscale cert <your-hostname>.tailXXXXXX.ts.net
+```
+
+**Prerequisites for Tailscale HTTPS:**
+
+1. **Enable operator mode** (once, allows `tailscale serve/cert` without sudo):
+   ```bash
+   sudo tailscale set --operator=$USER
+   ```
+
+2. **Enable HTTPS certificates** in Admin Console → DNS → HTTPS Certificates
+
+The `wt-web-install --tailscale` command handles all of this automatically, including the tailscaled restart retry.
 
 ### Service keeps restarting
 
