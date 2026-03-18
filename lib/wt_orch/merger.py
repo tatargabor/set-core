@@ -301,6 +301,11 @@ def merge_change(
         cleanup_worktree(change_name, wt_path or "")
         archive_change(change_name)
         _remove_from_merge_queue(state_file, change_name)
+        try:
+            from .digest import update_coverage_status
+            update_coverage_status(change_name, "merged")
+        except Exception:
+            logger.debug("Coverage update failed for %s (non-critical)", change_name)
         return MergeResult(success=True, status="merged", smoke_result="skip_merged")
 
     # Case 2: Branch is ancestor of HEAD (already merged, branch not deleted)
@@ -321,6 +326,11 @@ def merge_change(
             cleanup_worktree(change_name, wt_path or "")
             archive_change(change_name)
             _remove_from_merge_queue(state_file, change_name)
+            try:
+                from .digest import update_coverage_status
+                update_coverage_status(change_name, "merged")
+            except Exception:
+                logger.debug("Coverage update failed for %s (non-critical)", change_name)
             return MergeResult(success=True, status="merged", smoke_result="skip_merged")
 
     # Case 3: Normal merge

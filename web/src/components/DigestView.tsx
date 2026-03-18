@@ -137,10 +137,10 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
   domains: Record<string, string>
 }) {
   const [showAll, setShowAll] = useState(false)
-  const [expandedReqs, setExpandedReqs] = useState<Set<string>>(new Set())
-  const toggleReq = (id: string) => setExpandedReqs(prev => {
+  const [expandedReqs, setExpandedReqs] = useState<Set<number>>(new Set())
+  const toggleReq = (idx: number) => setExpandedReqs(prev => {
     const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
+    if (next.has(idx)) next.delete(idx); else next.add(idx)
     return next
   })
   const coveredCount = Object.keys(coverage).length
@@ -182,13 +182,13 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
             <th className="text-left px-2 py-1 font-medium">
               <span>Req</span>
               <button
-                onClick={() => setExpandedReqs(new Set(reqs.filter(r => (r.acceptance_criteria?.length ?? 0) > 0).map(r => r.id)))}
-                className="ml-2 text-[10px] text-neutral-600 hover:text-neutral-400" title="Expand All"
-              >{'\u25BE'}</button>
+                onClick={() => setExpandedReqs(new Set(reqs.map((r, i) => (r.acceptance_criteria?.length ?? 0) > 0 ? i : -1).filter(i => i >= 0)))}
+                className="ml-2 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Expand All"
+              >Expand All</button>
               <button
                 onClick={() => setExpandedReqs(new Set())}
-                className="ml-1 text-[10px] text-neutral-600 hover:text-neutral-400" title="Collapse All"
-              >{'\u25B8'}</button>
+                className="ml-1 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Collapse All"
+              >Collapse</button>
             </th>
             <th className="text-left px-2 py-1 font-medium hidden md:table-cell">Title</th>
             <th className="text-left px-2 py-1 font-medium">Domain</th>
@@ -197,15 +197,15 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
           </tr>
         </thead>
         <tbody>
-          {visibleReqs.map(r => {
+          {visibleReqs.map((r, idx) => {
             const cov = coverage[r.id]
             const hasAC = (r.acceptance_criteria?.length ?? 0) > 0
-            const isExpanded = expandedReqs.has(r.id)
+            const isExpanded = expandedReqs.has(idx)
             return (
-              <Fragment key={r.id}>
+              <Fragment key={idx}>
                 <tr
                   className={`border-b border-neutral-800/30 ${hasAC ? 'cursor-pointer hover:bg-neutral-900/50' : ''}`}
-                  onClick={hasAC ? () => toggleReq(r.id) : undefined}
+                  onClick={hasAC ? () => toggleReq(idx) : undefined}
                 >
                   <td className="px-2 py-1 font-mono text-neutral-300 truncate max-w-[100px]" title={r.brief}>
                     {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
@@ -260,17 +260,18 @@ function RequirementsPanel({ reqs, coverage }: {
 }) {
   const [filter, setFilter] = useState('')
   const [domainFilter, setDomainFilter] = useState<string | null>(null)
-  const [expandedReqs, setExpandedReqs] = useState<Set<string>>(new Set())
-  const toggleReq = (id: string) => setExpandedReqs(prev => {
+  const [expandedReqs, setExpandedReqs] = useState<Set<number>>(new Set())
+  const toggleReq = (idx: number) => setExpandedReqs(prev => {
     const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
+    if (next.has(idx)) next.delete(idx); else next.add(idx)
     return next
   })
 
   const allDomains = useMemo(() => [...new Set(reqs.map(r => r.domain))].sort(), [reqs])
 
   const filtered = useMemo(() => {
-    let result = reqs
+    const indexed = reqs.map((r, i) => ({ ...r, _idx: i }))
+    let result = indexed
     if (domainFilter) result = result.filter(r => r.domain === domainFilter)
     if (filter) {
       const q = filter.toLowerCase()
@@ -302,13 +303,13 @@ function RequirementsPanel({ reqs, coverage }: {
           {allDomains.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
         <button
-          onClick={() => setExpandedReqs(new Set(filtered.filter(r => (r.acceptance_criteria?.length ?? 0) > 0).map(r => r.id)))}
-          className="text-[10px] text-neutral-600 hover:text-neutral-400" title="Expand All"
-        >{'\u25BE'} All</button>
+          onClick={() => setExpandedReqs(new Set(filtered.filter(r => (r.acceptance_criteria?.length ?? 0) > 0).map(r => r._idx)))}
+          className="px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Expand All"
+        >Expand All</button>
         <button
           onClick={() => setExpandedReqs(new Set())}
-          className="text-[10px] text-neutral-600 hover:text-neutral-400" title="Collapse All"
-        >{'\u25B8'} All</button>
+          className="px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Collapse All"
+        >Collapse</button>
         <span className="text-[10px] text-neutral-600 ml-auto">{filtered.length} reqs</span>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -326,12 +327,12 @@ function RequirementsPanel({ reqs, coverage }: {
             {filtered.map(r => {
               const cov = coverage[r.id]
               const hasAC = (r.acceptance_criteria?.length ?? 0) > 0
-              const isExpanded = expandedReqs.has(r.id)
+              const isExpanded = expandedReqs.has(r._idx)
               return (
-                <Fragment key={r.id}>
+                <Fragment key={r._idx}>
                   <tr
                     className={`border-b border-neutral-800/30 ${hasAC ? 'cursor-pointer' : ''} hover:bg-neutral-900/50`}
-                    onClick={hasAC ? () => toggleReq(r.id) : undefined}
+                    onClick={hasAC ? () => toggleReq(r._idx) : undefined}
                   >
                     <td className="px-3 py-1 font-mono text-neutral-300">
                       {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
