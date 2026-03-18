@@ -6,7 +6,7 @@
 # What it does:
 #   1. Installs Tailscale (if missing)
 #   2. Creates sudoers NOPASSWD rule for the calling user
-#   3. Configures tailscale serve HTTP :80 → localhost:8765
+#   3. Configures tailscale serve HTTPS :443 → localhost:7400
 #
 # Works for any user — detects via SUDO_USER or whoami.
 
@@ -82,14 +82,14 @@ else
 fi
 
 # --- 4. Configure tailscale serve ---
-# HTTP (not HTTPS) because Tailscale auto-certs trigger Certificate Transparency
-# errors on Android Chrome. WireGuard tunnel already encrypts all traffic.
-info "Configuring tailscale serve: HTTP :80 → localhost:8765"
-if tailscale serve --bg --http 80 http://localhost:7400 2>/dev/null; then
+# HTTPS via Tailscale auto-cert (Let's Encrypt). CT log exposure of the hostname
+# is not a security risk — the service is only reachable from within the tailnet.
+info "Configuring tailscale serve: HTTPS :443 → localhost:7400"
+if tailscale serve --bg --https 443 http://localhost:7400 2>/dev/null; then
     success "Tailscale serve configured"
 else
-    warn "tailscale serve failed — is wt-web running on port 8765?"
-    info "Start wt-web first, then run: sudo tailscale serve --bg --http 80 http://localhost:7400"
+    warn "tailscale serve failed — is wt-web running on port 7400?"
+    info "Start wt-web first, then run: sudo tailscale serve --bg --https 443 http://localhost:7400"
 fi
 
 echo ""
@@ -98,9 +98,9 @@ success "Tailscale mobile access ready!"
 echo "================================"
 echo ""
 if [[ -n "${TS_HOSTNAME:-}" ]]; then
-    echo "  Dashboard URL: http://${TS_HOSTNAME}/"
+    echo "  Dashboard URL: https://${TS_HOSTNAME}/"
     echo "  Open in Chrome on your phone (with Tailscale app connected)"
 else
-    echo "  Dashboard URL: http://<your-tailscale-hostname>/"
+    echo "  Dashboard URL: https://<your-tailscale-hostname>/"
 fi
 echo ""

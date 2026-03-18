@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# wt-web-install — Install/uninstall the wt-web systemd service
+# with optional Tailscale HTTPS remote access.
+#
+# Usage:
+#   wt-web-install                  Interactive install (prompts for Tailscale)
+#   wt-web-install --tailscale      Install with Tailscale HTTPS (non-interactive)
+#   wt-web-install --port 8000      Install on custom port
+#   wt-web-install --uninstall      Remove service and Tailscale config
+#   wt-web-install --help           Show this help
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+WT_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/wt-common.sh"
+
+SERVICE_NAME="wt-web"
+SERVICE_TEMPLATE="$WT_TOOLS_ROOT/templates/systemd/wt-web.service"
+SERVICE_DIR="$HOME/.config/systemd/user"
+SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
+DEFAULT_PORT=7400
+
+# --- Argument parsing ---
+PORT=""
+DO_TAILSCALE=""
+DO_UNINSTALL=""
+SHOW_HELP=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --port)
+            PORT="$2"
+            shift 2
+            ;;
+        --tailscale)
+            DO_TAILSCALE=1
+            shift
+            ;;
+        --uninstall)
+            DO_UNINSTALL=1
+            shift
+            ;;
+        --help|-h)
+            SHOW_HELP=1
+            shift
+            ;;
+        *)
+            error "Unknown option: $1"
+            echo "Run: wt-web-install --help"
+            exit 1
+            ;;
+    esac
+done
+
+PORT="${PORT:-$DEFAULT_PORT}"
+
+if [[ -n "$SHOW_HELP" ]]; then
+    cat <<'EOF'
+wt-web-install — Install the wt-web dashboard as a systemd user service.
+
+USAGE
+  wt-web-install [OPTIONS]
+
+OPTIONS
+  --port <N>       Port to listen on (default: 7400)
+  --tailscale      Enable Tailscale HTTPS remote access (non-interactive)
+  --uninstall      Remove service, disable Tailscale serve
+  --help, -h       Show this help
+
+EXAMPLES
+  wt-web-install                    # Interactive install
+  wt-web-install --port 8000        # Custom port
+  wt-web-install --tailscale        # Install + Tailscale HTTPS
+  wt-web-install --uninstall        # Remove everything
+
+WHAT IT DOES
+  1. Copies the systemd service template to ~/.config/systemd/user/
+  2. Applies custom port if specified
+  3. Enables and starts the service
+  4. Verifies wt-web is responding
+  5. Optionally configures Tailscale HTTPS (:443 → localhost:<port>)
+EOF
+    exit 0
+fi
+
+# --- Uninstall ---
+if [[ -n "$DO_UNINSTALL" ]]; then
+    echo ""
+    info "Uninstalling wt-web service..."
+    echo ""
+
+    if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
+        systemctl --user stop "$SERVICE_NAME"
+        success "Service stopped"
+    fi
+
+    if systemctl --user is-enabled "$SERVICE_NAME" &>/dev/null; then
+        systemctl --user disable "$SERVICE_NAME"
+        success "Service disabled"
+    fi
+
+    if [[ -f "$SERVICE_FILE" ]]; then
+        rm -f "$SERVICE_FILE"
+        systemctl --user daemon-reload
+        success "Service file removed"
+    else
+        info "No service file found at $SERVICE_FILE"
+    fi
+
+    # Reset Tailscale serve if configured
+    if command -v tailscale &>/dev/null; then
+        if tailscale serve status 2>/dev/null | grep -q "localhost:"; then
+            sudo tailscale serve --https 443 off 2>/dev/null || true
+            success "Tailscale serve reset"
+        fi
+    fi
+
+    echo ""
+    success "wt-web uninstalled."
+    exit 0
+fi
+
+# --- Install ---
+echo ""
+echo "  wt-web Service Installer"
+echo "  ========================"
+echo ""
+
+# Check template exists
+if [[ ! -f "$SERVICE_TEMPLATE" ]]; then
+    error "Service template not found: $SERVICE_TEMPLATE"
+    exit 1
+fi
+
+# Create service directory
+mkdir -p "$SERVICE_DIR"
+
+# Check if service already exists
+if [[ -f "$SERVICE_FILE" ]]; then
+    # Compare template with installed version (ignoring port differences)
+    TEMPLATE_MTIME=$(get_file_mtime "$SERVICE_TEMPLATE")
+    SERVICE_MTIME=$(get_file_mtime "$SERVICE_FILE")
+
+    if [[ "$TEMPLATE_MTIME" -gt "$SERVICE_MTIME" ]]; then
+        info "Service exists but template is newer — updating"
+    else
+        info "Service already installed — updating"
+    fi
+fi
+
+# Copy template and apply port
+cp "$SERVICE_TEMPLATE" "$SERVICE_FILE"
+
+if [[ "$PORT" != "$DEFAULT_PORT" ]]; then
+    sed -i "s/--port $DEFAULT_PORT/--port $PORT/" "$SERVICE_FILE"
+    info "Port set to $PORT"
+fi
+
+# Reload and start
+systemctl --user daemon-reload
+systemctl --user enable "$SERVICE_NAME" 2>/dev/null
+systemctl --user restart "$SERVICE_NAME"
+
+success "Service installed and started"
+
+# Health check with retry
+info "Checking wt-web health..."
+HEALTH_OK=""
+for i in 1 2 3 4 5; do
+    if curl -sf "http://localhost:$PORT/" -o /dev/null 2>/dev/null; then
+        HEALTH_OK=1
+        break
+    fi
+    sleep 1
+done
+
+if [[ -n "$HEALTH_OK" ]]; then
+    success "http://localhost:$PORT/ is responding"
+else
+    warn "wt-web not responding on port $PORT after 5s"
+    info "Check logs: journalctl --user -u $SERVICE_NAME -f"
+fi
+
+# --- Tailscale HTTPS ---
+setup_tailscale() {
+    if ! command -v tailscale &>/dev/null; then
+        warn "Tailscale is not installed — skipping remote access setup"
+        info "Install Tailscale: https://tailscale.com/download"
+        return
+    fi
+
+    if ! tailscale status &>/dev/null 2>&1; then
+        warn "Tailscale is not connected — skipping remote access setup"
+        info "Run: sudo tailscale up"
+        return
+    fi
+
+    local ts_hostname
+    ts_hostname="$(tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // empty' | sed 's/\.$//')"
+
+    info "Configuring Tailscale HTTPS :443 → localhost:$PORT"
+    if sudo tailscale serve --bg --https 443 "http://localhost:$PORT" 2>/dev/null; then
+        success "Tailscale HTTPS configured"
+        echo ""
+        if [[ -n "${ts_hostname:-}" ]]; then
+            success "Remote URL: https://$ts_hostname/"
+        else
+            success "Remote URL: https://<your-tailscale-hostname>/"
+        fi
+    else
+        warn "tailscale serve failed"
+        info "Try manually: sudo tailscale serve --bg --https 443 http://localhost:$PORT"
+    fi
+}
+
+if [[ -n "$DO_TAILSCALE" ]]; then
+    # Non-interactive: just do it
+    echo ""
+    setup_tailscale
+elif [[ -t 0 ]]; then
+    # Interactive: ask
+    echo ""
+    read -rp "  Enable Tailscale HTTPS remote access? [y/N] " answer
+    if [[ "$answer" =~ ^[Yy] ]]; then
+        setup_tailscale
+    else
+        info "Skipping Tailscale setup"
+    fi
+fi
+
+echo ""
+success "wt-web install complete!"
+echo ""
+echo "  Local:   http://localhost:$PORT/"
+echo "  Manage:  systemctl --user {start|stop|status|restart} $SERVICE_NAME"
+echo "  Logs:    journalctl --user -u $SERVICE_NAME -f"
+echo ""
