@@ -1,7 +1,5 @@
 # Spec: Graceful Shutdown
 
-## ADDED Requirements
-
 ## IN SCOPE
 - Sentinel `--shutdown` flag that triggers orderly stop of all orchestration processes
 - Agent (wt-loop) SIGTERM handling: complete current iteration, commit WIP, exit cleanly
@@ -15,6 +13,8 @@
 - Automatic scheduled shutdown (cron-based auto-stop)
 - State migration between machines (e.g., rsync state to another host)
 - Worktree relocation after shutdown (worktrees must remain at original paths)
+
+## ADDED Requirements
 
 ### Requirement: Sentinel graceful shutdown command
 The sentinel SHALL support a `--shutdown` flag that initiates an orderly shutdown sequence. The shutdown SHALL signal all running agents to stop, wait for them to exit cleanly, update the state file with shutdown metadata, and then exit.
