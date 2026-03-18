@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""CLI for sentinel event logging.
+
+Usage:
+    wt-sentinel-log poll --state running [--change NAME] [--iteration N]
+    wt-sentinel-log crash --pid PID --exit-code CODE [--stderr TEXT]
+    wt-sentinel-log restart --new-pid PID --attempt N
+    wt-sentinel-log decision --action ACTION --reason REASON
+    wt-sentinel-log escalation --reason REASON [--context TEXT]
+    wt-sentinel-log message-received --sender NAME --content TEXT
+    wt-sentinel-log message-sent --recipient NAME --content TEXT
+"""
+
+import argparse
+import json
+import os
+import sys
+
+# Add lib/ to path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+
+from wt_orch.sentinel.events import SentinelEventLogger
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Sentinel event logging")
+    parser.add_argument("--project", default=os.getcwd(), help="Project path")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # poll
+    p = sub.add_parser("poll", help="Log a state poll event")
+    p.add_argument("--state", required=True)
+    p.add_argument("--change", default="")
+    p.add_argument("--iteration", type=int, default=None)
+
+    # crash
+    p = sub.add_parser("crash", help="Log a crash event")
+    p.add_argument("--pid", type=int, required=True)
+    p.add_argument("--exit-code", type=int, required=True)
+    p.add_argument("--stderr", default="")
+
+    # restart
+    p = sub.add_parser("restart", help="Log a restart event")
+    p.add_argument("--new-pid", type=int, required=True)
+    p.add_argument("--attempt", type=int, required=True)
+
+    # decision
+    p = sub.add_parser("decision", help="Log an autonomous decision")
+    p.add_argument("--action", required=True)
+    p.add_argument("--reason", required=True)
+
+    # escalation
+    p = sub.add_parser("escalation", help="Log an escalation")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--context", default="")
+
+    # message-received
+    p = sub.add_parser("message-received", help="Log incoming message")
+    p.add_argument("--sender", required=True)
+    p.add_argument("--content", required=True)
+
+    # message-sent
+    p = sub.add_parser("message-sent", help="Log outgoing message")
+    p.add_argument("--recipient", required=True)
+    p.add_argument("--content", required=True)
+
+    args = parser.parse_args()
+    logger = SentinelEventLogger(args.project)
+
+    cmd = args.command
+    if cmd == "poll":
+        event = logger.poll(state=args.state, change=args.change, iteration=args.iteration)
+    elif cmd == "crash":
+        event = logger.crash(pid=args.pid, exit_code=args.exit_code, stderr_tail=args.stderr)
+    elif cmd == "restart":
+        event = logger.restart(new_pid=args.new_pid, attempt=args.attempt)
+    elif cmd == "decision":
+        event = logger.decision(action=args.action, reason=args.reason)
+    elif cmd == "escalation":
+        event = logger.escalation(reason=args.reason, context=args.context)
+    elif cmd == "message-received":
+        event = logger.message_received(sender=args.sender, content=args.content)
+    elif cmd == "message-sent":
+        event = logger.message_sent(recipient=args.recipient, content=args.content)
+    else:
+        parser.error(f"Unknown command: {cmd}")
+
+    print(json.dumps(event))
+
+
+if __name__ == "__main__":
+    main()

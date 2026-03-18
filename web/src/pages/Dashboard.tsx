@@ -13,11 +13,13 @@ import ProgressView from '../components/ProgressView'
 import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
+import SentinelPanel from '../components/SentinelPanel'
 import useIsMobile from '../hooks/useIsMobile'
+import { useSentinelData } from '../hooks/useSentinelData'
 import { getDigest, getPlans, getState } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent'
+type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel'
 
 interface Props {
   project: string | null
@@ -35,6 +37,7 @@ export default function Dashboard({ project }: Props) {
   const [hasDigest, setHasDigest] = useState(false)
   const [hasPlans, setHasPlans] = useState(false)
   const isMobile = useIsMobile()
+  const sentinelData = useSentinelData(project)
   const tabBarRef = useRef<HTMLDivElement>(null)
 
   const onEvent = useCallback((event: WSEvent) => {
@@ -131,6 +134,7 @@ export default function Dashboard({ project }: Props) {
     { id: 'sessions', label: 'Sessions' },
     { id: 'log', label: 'Log' },
     { id: 'agent', label: 'Agent' },
+    { id: 'sentinel', label: 'Sentinel', hidden: !sentinelData.hasSentinel },
   ]
 
   return (
@@ -173,6 +177,16 @@ export default function Dashboard({ project }: Props) {
         {/* Agent tab — full height */}
         {activeTab === 'agent' && (
           <OrchestrationChat project={project} />
+        )}
+
+        {/* Sentinel tab — full height */}
+        {activeTab === 'sentinel' && (
+          <SentinelPanel
+            project={project}
+            events={sentinelData.events}
+            findings={sentinelData.findings}
+            status={sentinelData.status}
+          />
         )}
 
         {/* Changes tab — with log panel */}
@@ -253,7 +267,7 @@ export default function Dashboard({ project }: Props) {
           </div>
         )}
 
-        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'log' && (
+        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'sentinel' && activeTab !== 'log' && (
           <div className="h-full overflow-auto">
             {activeTab === 'plan' && (
               <PlanViewer project={project} />

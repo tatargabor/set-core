@@ -44,6 +44,11 @@ Initialize your tracking counters:
 - `rapid_crashes = 0`
 - `last_start_time = $(date +%s)`
 
+**Register sentinel status** (so wt-web Sentinel tab can detect you):
+```bash
+wt-sentinel-status register --member "$(whoami)@$(hostname -s)" --orchestrator-pid $ORCH_PID
+```
+
 Then immediately go to Step 2.
 
 ### Step 2: Poll (background, non-blocking)
@@ -53,7 +58,8 @@ Run this single-shot poll command with `run_in_background: true`. Replace `$ORCH
 **IMPORTANT: Claude Code Bash tool escapes `!` as `\!` which breaks bash syntax. NEVER use `!` in the poll script. Use the workarounds below (kill -0 with || instead of if !, test -f instead of -f inline, etc.)**
 
 ```bash
-sleep 30
+# Split 30s sleep into 10x3s for inbox responsiveness (max 3s message latency)
+for _i in 1 2 3 4 5 6 7 8 9; do sleep 3; wt-sentinel-inbox check 2>/dev/null || true; done; sleep 3
 STATE_FILE="orchestration-state.json"
 ORCH_PID=<actual PID number>
 
@@ -106,6 +112,35 @@ echo "EVENT:running|status=$STATUS|progress=${CHANGES_DONE}/${CHANGES_TOTAL}|tok
 ```
 
 **IMPORTANT:** This command runs in the background. You remain available for user interaction while it sleeps and checks.
+
+**After each poll completes**, emit structured events and check inbox:
+```bash
+# Heartbeat (keeps wt-web Sentinel tab "active" indicator green)
+wt-sentinel-status heartbeat
+
+# Structured event log (visible in wt-web Sentinel tab)
+wt-sentinel-log poll --state "$STATUS" --change "$(jq -r '[.changes[] | select(.status == "running")][0].name // ""' orchestration-state.json 2>/dev/null)"
+
+# Check inbox for user messages (from wt-web Sentinel tab)
+wt-sentinel-inbox check
+```
+
+If `wt-sentinel-inbox check` returns messages, read and respond to them before the next poll. Common messages:
+- "stop" / "ne restartolj" → set a flag to skip auto-restart on next crash
+- "status" → respond with current state summary
+- Any other message → acknowledge and log
+
+**When discovering issues during monitoring**, log findings:
+```bash
+# Example: IDOR vulnerability found
+wt-sentinel-finding add --severity bug --change "add-cart" --summary "IDOR: cart delete not scoped by sessionId"
+
+# Example: agent stuck in a loop
+wt-sentinel-finding add --severity pattern --change "add-products" --summary "Agent type error loop (3 iterations)"
+
+# Example: phase assessment
+wt-sentinel-finding assess --scope "phase-2" --summary "2/4 merged, 1 critical IDOR" --recommendation "Fix IDOR before proceeding"
+```
 
 ### Step 3: Handle the poll result
 

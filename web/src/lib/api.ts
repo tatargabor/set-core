@@ -359,3 +359,67 @@ export function stopChange(project: string, name: string): Promise<{ ok: boolean
 export function skipChange(project: string, name: string): Promise<{ ok: boolean }> {
   return fetchJSON(`/${project}/changes/${name}/skip`, { method: 'POST' })
 }
+
+// --- Sentinel endpoints ---
+
+export interface SentinelEvent {
+  ts: string
+  epoch: number
+  type: string
+  [key: string]: unknown
+}
+
+export interface SentinelFinding {
+  id: string
+  severity: string
+  change: string
+  summary: string
+  detail?: string
+  discovered_at: string
+  status: string
+  iteration?: number | null
+  commit?: string
+}
+
+export interface SentinelAssessment {
+  scope: string
+  timestamp: string
+  summary: string
+  recommendation: string
+}
+
+export interface SentinelFindingsData {
+  findings: SentinelFinding[]
+  assessments: SentinelAssessment[]
+}
+
+export interface SentinelStatusData {
+  active: boolean
+  is_active: boolean
+  member?: string
+  started_at?: string
+  last_event_at?: string
+  orchestrator_pid?: number | null
+  poll_interval_s?: number
+}
+
+export function getSentinelEvents(project: string, since?: number): Promise<SentinelEvent[]> {
+  const params = since ? `?since=${since}` : ''
+  return fetchJSON(`/${project}/sentinel/events${params}`)
+}
+
+export function getSentinelFindings(project: string): Promise<SentinelFindingsData> {
+  return fetchJSON(`/${project}/sentinel/findings`)
+}
+
+export function getSentinelStatus(project: string): Promise<SentinelStatusData> {
+  return fetchJSON(`/${project}/sentinel/status`)
+}
+
+export function sendSentinelMessage(project: string, message: string): Promise<{ status: string }> {
+  return fetchJSON(`/${project}/sentinel/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
+}

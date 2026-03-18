@@ -1537,3 +1537,118 @@ def skip_change(project: str, name: str):
         raise HTTPException(404, f"Change not found: {name}")
 
     return _with_state_lock(sp, do_skip)
+
+
+# ─── Sentinel endpoints ──────────────────────────────────────────────
+
+
+def _sentinel_dir(project_path: Path) -> Path:
+    return project_path / ".wt" / "sentinel"
+
+
+@router.get("/api/{project}/sentinel/events")
+async def sentinel_events(project: str, since: Optional[float] = None):
+    """Read sentinel events from .wt/sentinel/events.jsonl.
+
+    Returns [] when file does not exist.
+    """
+    pp = _resolve_project(project)
+    events_file = _sentinel_dir(pp) / "events.jsonl"
+    if not events_file.exists():
+        return []
+
+    events = []
+    with open(events_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if since and event.get("epoch", 0) <= since:
+                continue
+            events.append(event)
+
+    # Return last 500 events max
+    if len(events) > 500:
+        events = events[-500:]
+    return events
+
+
+@router.get("/api/{project}/sentinel/findings")
+async def sentinel_findings(project: str):
+    """Read sentinel findings from .wt/sentinel/findings.json.
+
+    Returns {findings:[], assessments:[]} when file does not exist.
+    """
+    pp = _resolve_project(project)
+    findings_file = _sentinel_dir(pp) / "findings.json"
+    if not findings_file.exists():
+        return {"findings": [], "assessments": []}
+
+    try:
+        with open(findings_file) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {"findings": [], "assessments": []}
+
+
+@router.get("/api/{project}/sentinel/status")
+async def sentinel_status(project: str):
+    """Read sentinel status from .wt/sentinel/status.json.
+
+    Returns {active: false} when file does not exist.
+    Adds computed is_active field (true if active and last_event_at within 60s).
+    """
+    pp = _resolve_project(project)
+    status_file = _sentinel_dir(pp) / "status.json"
+    if not status_file.exists():
+        return {"active": False, "is_active": False}
+
+    try:
+        with open(status_file) as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {"active": False, "is_active": False}
+
+    # Compute is_active: active + recent heartbeat
+    is_active = False
+    if data.get("active"):
+        last = data.get("last_event_at", "")
+        if last:
+            try:
+                last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                age = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                is_active = age < 60
+            except (ValueError, TypeError):
+                pass
+    data["is_active"] = is_active
+    return data
+
+
+from pydantic import BaseModel
+
+
+class SentinelMessageBody(BaseModel):
+    message: str
+
+
+@router.post("/api/{project}/sentinel/message")
+async def send_sentinel_message(project: str, body: SentinelMessageBody):
+    """Send a message to the sentinel via its local inbox file."""
+    pp = _resolve_project(project)
+    sentinel_dir = _sentinel_dir(pp)
+    sentinel_dir.mkdir(parents=True, exist_ok=True)
+
+    inbox_file = sentinel_dir / "inbox.jsonl"
+    msg = {
+        "from": "wt-web",
+        "content": body.message,
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    with open(inbox_file, "a") as f:
+        f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+    return {"status": "sent"}
