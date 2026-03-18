@@ -419,11 +419,8 @@ export default function OrchestrationChat({ project }: Props) {
           />
 
           <VoiceInput
-            onTranscript={(text) => setInput(prev => prev + text)}
-            onPartial={(text) => {
-              // Show partial in input as preview
-              setInput(text)
-            }}
+            onTranscript={(text) => setInput(prev => prev ? prev + ' ' + text : text)}
+            onPartial={() => {}}
             disabled={!isInputEnabled}
           />
 

@@ -20,8 +20,8 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
   const [micAvailable, setMicAvailable] = useState(true)
 
   const clientRef = useRef<any>(null)
-  const recordingRef = useRef<any>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const finalTextRef = useRef('')
   const partialRef = useRef('')
 
   // Check if Soniox API key is available
@@ -53,46 +53,79 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
     localStorage.setItem('wt-voice-lang', language)
   }, [language])
 
+  const stopRecording = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+
+    if (clientRef.current) {
+      try {
+        clientRef.current.stop()
+      } catch {
+        // ignore stop errors
+      }
+    }
+
+    setRecording(false)
+    // onFinished callback handles transcript delivery
+  }, [onTranscript])
+
   const startRecording = useCallback(async () => {
     if (!apiKey || recording || disabled) return
 
     setError(null)
 
     try {
-      // Dynamically import Soniox SDK
       const { SonioxClient } = await import('@soniox/speech-to-text-web')
 
-      if (!clientRef.current) {
-        clientRef.current = new SonioxClient({ apiKey })
-      }
+      // Create a new client each time with callbacks
+      clientRef.current = new SonioxClient({
+        apiKey,
+        onFinished: () => {
+          // Deliver accumulated text when Soniox finishes
+          const full = (finalTextRef.current + partialRef.current).trim()
+          if (full) {
+            onTranscript(full)
+          }
+          finalTextRef.current = ''
+          partialRef.current = ''
+        },
+        onPartialResult: (result: any) => {
+          const tokens = result?.tokens ?? []
+          // Separate final (confirmed) tokens from non-final (partial) tokens
+          const finalText = tokens.filter((t: any) => t.is_final).map((t: any) => t.text ?? '').join('')
+          const nonFinalText = tokens.filter((t: any) => !t.is_final).map((t: any) => t.text ?? '').join('')
 
+          if (finalText) {
+            finalTextRef.current = finalText
+          }
+          partialRef.current = nonFinalText
+
+          // Show full preview
+          const preview = (finalTextRef.current + nonFinalText).trim()
+          if (preview) {
+            onPartial(preview)
+          }
+        },
+        onError: (status: any, message: string) => {
+          console.error('Soniox error:', status, message)
+          setError('Transcription error')
+          stopRecording()
+        },
+      })
+
+      finalTextRef.current = ''
       partialRef.current = ''
 
-      const rec = clientRef.current.realtime.record({
+      await clientRef.current.start({
         model: 'stt-rt-preview',
         languageHints: [language],
       })
 
-      rec.on('result', (result: any) => {
-        const tokens = result?.tokens ?? []
-        const text = tokens.map((t: any) => t.text ?? '').join('')
-        if (text) {
-          partialRef.current = text
-          onPartial(text)
-        }
-      })
-
-      rec.on('error', (err: any) => {
-        console.error('Soniox error:', err)
-        setError('Transcription error')
-        stopRecording()
-      })
-
-      recordingRef.current = rec
       setRecording(true)
       setDuration(0)
 
-      // Start duration timer
       timerRef.current = setInterval(() => {
         setDuration(d => d + 1)
       }, 1000)
@@ -107,31 +140,7 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
       }
       setRecording(false)
     }
-  }, [apiKey, recording, disabled, language, onPartial])
-
-  const stopRecording = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-
-    if (recordingRef.current) {
-      try {
-        recordingRef.current.stop()
-      } catch {
-        // ignore stop errors
-      }
-      recordingRef.current = null
-    }
-
-    setRecording(false)
-
-    // Deliver final transcript
-    if (partialRef.current) {
-      onTranscript(partialRef.current)
-      partialRef.current = ''
-    }
-  }, [onTranscript])
+  }, [apiKey, recording, disabled, language, onPartial, stopRecording])
 
   const toggleRecording = useCallback(() => {
     if (recording) {
@@ -145,8 +154,8 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
-      if (recordingRef.current) {
-        try { recordingRef.current.cancel() } catch (_) { /* ignore */ }
+      if (clientRef.current) {
+        try { clientRef.current.cancel() } catch (_) { /* ignore */ }
       }
     }
   }, [])
