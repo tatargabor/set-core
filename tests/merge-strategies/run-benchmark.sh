@@ -2,7 +2,7 @@
 # run-benchmark.sh — Merge strategy benchmark runner
 #
 # Usage: ./run-benchmark.sh [project_path]
-#   project_path: path to a git repo to test against (default: /tmp/minishop-run3)
+#   project_path: path to a git repo to test against (default: ~/.local/share/wt-tools/e2e-runs/minishop-run3)
 #
 # Creates synthetic merge conflicts matching real wt-tools orchestration patterns
 # and tests each strategy's effectiveness.
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT="${1:-/tmp/minishop-run3}"
+PROJECT="${1:-${HOME}/.local/share/wt-tools/e2e-runs/minishop-run3}"
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M)
 RESULTS_DIR="$SCRIPT_DIR/results"
 RESULT_FILE="$RESULTS_DIR/$TIMESTAMP.md"

@@ -55,8 +55,8 @@ This is the **Tier 3** workflow from the sentinel skill (`.claude/commands/wt/se
 3. **Deploy** — run `wt-project init` in the test project to sync `.claude/` files
 4. **Sync worktrees** — for each active worktree, copy updated files:
    ```bash
-   for wt in /tmp/minishop-runN-wt-*; do
-     cp -r /tmp/minishop-runN/.claude/ "$wt/.claude/" 2>/dev/null
+   for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | tail -n +2); do
+     cp -r .claude/ "$wt/.claude/" 2>/dev/null
    done
    ```
 5. **Restart** sentinel — it will start a new orchestrator automatically
@@ -236,12 +236,12 @@ The sentinel launches the E2E run — not the user manually.
 
 1. Run the scaffold script:
    ```bash
-   ./tests/e2e/run.sh              # for minishop (default: /tmp/)
-   ./tests/e2e/run-complex.sh      # for craftbrew (default: /tmp/)
+   ./tests/e2e/run.sh              # for minishop (default: ~/.local/share/wt-tools/e2e-runs/)
+   ./tests/e2e/run-complex.sh      # for craftbrew (default: ~/.local/share/wt-tools/e2e-runs/)
 
-   # For persistent project dirs (survive reboot):
-   ./tests/e2e/run.sh --project-dir ~/e2e-tests
-   ./tests/e2e/run-complex.sh --project-dir ~/e2e-tests
+   # To override base dir:
+   ./tests/e2e/run.sh --project-dir ~/other-dir
+   ./tests/e2e/run-complex.sh --project-dir ~/other-dir
    ```
 2. Parse output for the created project directory path
 3. `cd` to the project directory
@@ -286,7 +286,7 @@ After orchestration completes (status "done", "stopped", or "time_limit"):
 ### Parallel Runs
 
 Two E2E tests (minishop + craftbrew) can run simultaneously:
-- Each has its own project dir (`/tmp/minishop-runN`, `/tmp/craftbrew-runN`)
+- Each has its own project dir (`~/.local/share/wt-tools/e2e-runs/minishop-runN`, `.../craftbrew-runN`)
 - Each has its own findings file and results subsection in this guide
 - Launch two separate sentinel sessions — they won't conflict
 - Each sentinel's wrap-up updates only its own project block

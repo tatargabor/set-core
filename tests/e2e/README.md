@@ -21,11 +21,11 @@ pip install -e /path/to/wt-project-web
 
 ```bash
 # Step 1: Initialize test project (creates dir, copies spec, runs wt-project init)
-./tests/e2e/run.sh                    # default: /tmp/minishop-e2e
+./tests/e2e/run.sh                    # default: ~/.local/share/wt-tools/e2e-runs/minishop-runN
 ./tests/e2e/run.sh ~/e2e-test         # or custom dir
 
 # Step 2: Start orchestration
-cd /tmp/minishop-e2e                  # or your custom dir
+cd ~/.local/share/wt-tools/e2e-runs/minishop-runN  # or your custom dir
 wt-sentinel --spec docs/v1-minishop.md
 ```
 
@@ -44,20 +44,20 @@ pkill -f "wt-sentinel.*minishop" 2>/dev/null || true
 pkill -f "claude.*minishop" 2>/dev/null || true
 
 # 2. Remove old project + memory
-rm -rf /tmp/minishop-e2e
-rm -rf ~/.local/share/wt-tools/memory/minishop-e2e
-wt-project remove minishop-e2e 2>/dev/null || true
+rm -rf ~/.local/share/wt-tools/e2e-runs/minishop-runN
+rm -rf ~/.local/share/wt-tools/memory/minishop-runN
+wt-project remove minishop-runN 2>/dev/null || true
 
 # 3. Re-initialize and run
 ./tests/e2e/run.sh
-cd /tmp/minishop-e2e
+cd ~/.local/share/wt-tools/e2e-runs/minishop-runN
 wt-sentinel --spec docs/v1-minishop.md
 ```
 
 ## After Completion
 
 ```bash
-cd /tmp/minishop-e2e
+cd ~/.local/share/wt-tools/e2e-runs/minishop-runN
 
 # Step 3: Generate benchmark report
 wt-e2e-report --project-dir .
@@ -99,9 +99,9 @@ Check `e2e-report.md` and the verification checklist at the end of `docs/v1-mini
 ## Cleanup
 
 ```bash
-rm -rf /tmp/minishop-e2e
-rm -rf ~/.local/share/wt-tools/memory/minishop-e2e
-wt-project remove minishop-e2e
+rm -rf ~/.local/share/wt-tools/e2e-runs/minishop-runN
+rm -rf ~/.local/share/wt-tools/memory/minishop-runN
+wt-project remove minishop-runN
 ```
 
 ## Troubleshooting

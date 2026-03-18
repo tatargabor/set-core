@@ -6,9 +6,9 @@
 # build from the structured digest.
 #
 # Usage:
-#   ./tests/e2e/run-complex.sh                              # Auto-increment: /tmp/craftbrew-run1, run2, ...
+#   ./tests/e2e/run-complex.sh                              # Auto-increment: ~/.local/share/wt-tools/e2e-runs/craftbrew-run1, ...
 #   ./tests/e2e/run-complex.sh /path/to/dir                 # Clone to specified dir
-#   ./tests/e2e/run-complex.sh --project-dir ~/e2e-tests    # Persistent base dir (survives reboot)
+#   ./tests/e2e/run-complex.sh --project-dir ~/other-dir    # Override base dir
 #
 # The spec source repo: https://github.com/tatargabor/craftbrew
 
@@ -18,7 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCAFFOLD_DIR="$SCRIPT_DIR/scaffold-complex"
 CRAFTBREW_REPO="https://github.com/tatargabor/craftbrew.git"
 CRAFTBREW_BRANCH="main"
-BASE_DIR="${TMPDIR:-/tmp}"
+E2E_RUNS_DIR="${HOME}/.local/share/wt-tools/e2e-runs"
+BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
+mkdir -p "$BASE_DIR"
 
 # Auto-increment run number: find highest existing craftbrew-runN, use N+1
 next_run_number() {

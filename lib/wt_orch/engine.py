@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -38,6 +39,7 @@ DEFAULT_TOKEN_HARD_LIMIT = 50_000_000
 DEFAULT_MONITOR_IDLE_TIMEOUT = 600
 DEFAULT_MAX_REPLAN_RETRIES = 3
 MAX_REPLAN_CYCLES = 5
+VERIFY_TIMEOUT = 600  # 10 min max for verify gate
 
 
 # ─── Directives ────────────────────────────────────────────────────
@@ -488,6 +490,27 @@ def _verify_gates_already_passed(change: Any) -> bool:
     return True
 
 
+def _has_live_children(pid: int) -> bool:
+    """Check if a process has any child processes via pgrep -P."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-P", str(pid)],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Check if a PID exists."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
 def _poll_active_changes(
     state_file: str, d: Directives, poll_e2e_cmd: str, event_bus: Any
 ) -> None:
@@ -498,6 +521,56 @@ def _poll_active_changes(
     for change in state.changes:
         if change.status not in ("running", "verifying"):
             continue
+
+        # --- Worktree existence check (removed-worktree-resilience) ---
+        wt_path = change.worktree_path or ""
+        if wt_path and not os.path.isdir(wt_path):
+            logger.warning(
+                "Worktree missing for %s (status=%s, path=%s) — auto-transitioning to merged",
+                change.name, change.status, wt_path,
+            )
+            update_change_field(state_file, change.name, "status", "merged")
+            if event_bus:
+                event_bus.emit("CHANGE_AUTO_MERGED", change=change.name,
+                               reason="worktree_missing")
+            continue
+
+        # --- Dead verify agent detection ---
+        if change.status == "verifying":
+            ralph_pid = change.ralph_pid or 0
+
+            # Check 1: verify timeout
+            verifying_since = change.extras.get("verifying_since", 0) if change.extras else 0
+            if verifying_since:
+                elapsed = int(time.time()) - verifying_since
+                if elapsed > VERIFY_TIMEOUT:
+                    logger.warning(
+                        "Change %s verify timeout (%ds > %ds) — marking stalled",
+                        change.name, elapsed, VERIFY_TIMEOUT,
+                    )
+                    update_change_field(state_file, change.name, "status", "stalled")
+                    update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                    if event_bus:
+                        event_bus.emit("CHANGE_STALLED", change=change.name,
+                                       reason="verify_timeout")
+                    continue
+
+            # Check 2: dead agent (PID dead or alive with no children)
+            if ralph_pid > 0:
+                pid_alive = _is_pid_alive(ralph_pid)
+                if not pid_alive or (pid_alive and not _has_live_children(ralph_pid)):
+                    reason = "dead_verify_agent"
+                    logger.warning(
+                        "Change %s verifying but agent dead (pid=%d, alive=%s, children=%s) — marking stalled",
+                        change.name, ralph_pid, pid_alive,
+                        "no" if pid_alive else "n/a",
+                    )
+                    update_change_field(state_file, change.name, "status", "stalled")
+                    update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                    if event_bus:
+                        event_bus.emit("CHANGE_STALLED", change=change.name,
+                                       reason=reason)
+                    continue
 
         # Fast-merge path: if change is "verifying" and all gates already passed,
         # the monitor likely died between verify completion and merge queuing (Bug #5b).

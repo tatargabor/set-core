@@ -4,16 +4,18 @@
 # The scaffold is a single file (docs/v1-minishop.md). Agents build everything from the spec.
 #
 # Usage:
-#   ./tests/e2e/run.sh                              # Auto-increment: /tmp/minishop-run9, run10, ...
+#   ./tests/e2e/run.sh                              # Auto-increment: ~/.local/share/wt-tools/e2e-runs/minishop-run9, ...
 #   ./tests/e2e/run.sh /path/to/dir                 # Use specified dir
-#   ./tests/e2e/run.sh --project-dir ~/e2e-tests    # Persistent base dir (survives reboot)
+#   ./tests/e2e/run.sh --project-dir ~/other-dir    # Override base dir
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCAFFOLD_DIR="$SCRIPT_DIR/scaffold"
 SPEC_FILE="$SCAFFOLD_DIR/docs/v1-minishop.md"
-BASE_DIR="${TMPDIR:-/tmp}"
+E2E_RUNS_DIR="${HOME}/.local/share/wt-tools/e2e-runs"
+BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
+mkdir -p "$BASE_DIR"
 
 # Auto-increment run number: find highest existing minishop-runN, use N+1
 next_run_number() {

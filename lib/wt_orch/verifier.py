@@ -413,12 +413,19 @@ def _prioritize_diff_for_review(raw_diff: str) -> str:
 
 
 def _get_merge_base(wt_path: str) -> str:
-    """Get merge-base of worktree branch vs origin/HEAD, main, or master."""
-    for ref in ("origin/HEAD", "main", "master"):
+    """Get merge-base of worktree branch vs main branch.
+
+    Uses `git merge-base HEAD <ref>` to find the true fork point, ensuring
+    review diffs only contain files modified by the change branch. Falls back
+    to HEAD~10 if merge-base resolution fails (orphan branch, shallow clone).
+    """
+    for ref in ("main", "master", "origin/main", "origin/master"):
         result = run_git("merge-base", "HEAD", ref, cwd=wt_path)
         if result.exit_code == 0 and result.stdout.strip():
+            logger.debug("merge-base resolved via %s for %s", ref, wt_path)
             return result.stdout.strip()
-    return "HEAD~5"
+    logger.warning("merge-base failed for %s — falling back to HEAD~10", wt_path)
+    return "HEAD~10"
 
 
 def verify_implementation_scope(change_name: str, wt_path: str) -> ScopeCheckResult:
@@ -1529,6 +1536,7 @@ def handle_change_done(
         logger.info("Verify gate: tests SKIPPED for %s (gate_profile)", change_name)
     elif test_command and wt_path:
         update_change_field(state_file, change_name, "status", "verifying")
+        update_change_field(state_file, change_name, "verifying_since", int(time.time()))
         logger.info("Verify gate: test start for %s", change_name)
 
         start_ms = int(time.monotonic() * 1000)
@@ -1584,6 +1592,7 @@ def handle_change_done(
         )
         if has_pw_config and e2e_test_count > 0:
             update_change_field(state_file, change_name, "status", "verifying")
+            update_change_field(state_file, change_name, "verifying_since", int(time.time()))
             e2e_port = E2E_PORT_BASE + random.randint(0, 99)
             logger.info("Verify gate: e2e start for %s (PW_PORT=%d)", change_name, e2e_port)
 

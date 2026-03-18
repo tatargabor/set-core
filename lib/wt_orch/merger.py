@@ -227,6 +227,8 @@ def _sync_running_worktrees(merged_change: str, state_file: str) -> int:
             continue
         wt_path = change.worktree_path or ""
         if not wt_path or not os.path.isdir(wt_path):
+            if wt_path:
+                logger.debug("Post-merge sync: skipping %s — worktree missing (%s)", change.name, wt_path)
             continue
         try:
             result = sync_worktree_with_main(wt_path, change.name)
