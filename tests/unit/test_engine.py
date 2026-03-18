@@ -14,6 +14,7 @@ from wt_orch.engine import (
     Directives,
     _checkpoint_approved,
     _clear_checkpoint_state,
+    _signal_alive,
     parse_directives,
     trigger_checkpoint,
 )
@@ -599,3 +600,57 @@ class TestHeartbeatThrottle:
         """Over 100 polls, only 5 heartbeats should emit (not 100)."""
         emit_count = sum(1 for p in range(1, 101) if p % 20 == 0)
         assert emit_count == 5
+
+
+class TestSignalAlive:
+    """Tests for _signal_alive() heartbeat helper."""
+
+    def test_emits_heartbeat_event(self, tmp_path):
+        """_signal_alive emits WATCHDOG_HEARTBEAT when event_bus is provided."""
+        state_file = str(tmp_path / "state.json")
+        with open(state_file, "w") as f:
+            f.write("{}")
+
+        class FakeEventBus:
+            def __init__(self):
+                self.events = []
+            def emit(self, event_type, **kwargs):
+                self.events.append(event_type)
+
+        bus = FakeEventBus()
+        _signal_alive(state_file, bus)
+        assert "WATCHDOG_HEARTBEAT" in bus.events
+
+    def test_touches_state_file_mtime(self, tmp_path):
+        """_signal_alive updates the state file's modification time."""
+        state_file = str(tmp_path / "state.json")
+        with open(state_file, "w") as f:
+            f.write("{}")
+
+        # Set mtime to past
+        old_time = time.time() - 300
+        os.utime(state_file, (old_time, old_time))
+
+        before_mtime = os.path.getmtime(state_file)
+        _signal_alive(state_file, None)
+        after_mtime = os.path.getmtime(state_file)
+
+        assert after_mtime > before_mtime
+
+    def test_none_event_bus(self, tmp_path):
+        """_signal_alive handles None event_bus without error."""
+        state_file = str(tmp_path / "state.json")
+        with open(state_file, "w") as f:
+            f.write("{}")
+
+        # Should not raise
+        _signal_alive(state_file, None)
+        # Verify mtime was still touched
+        assert os.path.getmtime(state_file) > 0
+
+    def test_missing_state_file(self, tmp_path):
+        """_signal_alive handles missing state file without raising."""
+        missing_file = str(tmp_path / "nonexistent.json")
+
+        # Should not raise
+        _signal_alive(missing_file, None)

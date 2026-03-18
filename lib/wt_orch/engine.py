@@ -338,7 +338,9 @@ def monitor_loop(
         # during checkpoint so dead Ralph processes are detected and
         # verify/merge can complete.
         poll_e2e_cmd = d.e2e_command if d.e2e_mode != "phase_end" else ""
+        _signal_alive(state_file, event_bus)
         _poll_active_changes(state_file, d, poll_e2e_cmd, event_bus)
+        _signal_alive(state_file, event_bus)
 
         # Safety net: check suspended changes
         _poll_suspended_changes(state_file, d, poll_e2e_cmd, event_bus)
@@ -346,7 +348,9 @@ def monitor_loop(
         # During checkpoint, skip dispatch and advancement but still
         # allow completion detection and merge queue retries.
         if state.status == "checkpoint":
+            _signal_alive(state_file, event_bus)
             _drain_merge_then_dispatch(state_file, d, event_bus)
+            _signal_alive(state_file, event_bus)
             if _check_completion(state_file, d, event_bus):
                 break
             if d.checkpoint_auto_approve:
@@ -382,7 +386,9 @@ def monitor_loop(
                     logger.warning("Token budget exceeded (%d > %d) — waiting", total_tokens, d.token_budget)
                     token_wait = True
                 # Still drain merges while waiting for token budget
+                _signal_alive(state_file, event_bus)
                 _drain_merge_then_dispatch(state_file, d, event_bus)
+                _signal_alive(state_file, event_bus)
                 continue
             elif token_wait:
                 logger.info("Token budget available — resuming dispatch")
@@ -403,11 +409,13 @@ def monitor_loop(
         pre_running = _count_by_status(state_file, "running")
         pre_merged = _count_by_status(state_file, "merged")
 
+        _signal_alive(state_file, event_bus)
         if state.merge_queue:
             merged = _drain_merge_then_dispatch(state_file, d, event_bus)
         else:
             _dispatch_ready_safe(state_file, d, event_bus)
             merged = 0
+        _signal_alive(state_file, event_bus)
 
         post_running = _count_by_status(state_file, "running")
         post_merged = _count_by_status(state_file, "merged")
@@ -488,6 +496,23 @@ def _verify_gates_already_passed(change: Any) -> bool:
         if result in _FAIL_VALUES:
             return False
     return True
+
+
+def _signal_alive(state_file: str, event_bus: Any) -> None:
+    """Emit heartbeat + touch state file mtime to prevent false sentinel kills.
+
+    Called before and after long-running operations (dispatch, merge, poll)
+    to keep the sentinel's idle timer well under 180s.
+    """
+    if event_bus:
+        try:
+            event_bus.emit("WATCHDOG_HEARTBEAT")
+        except Exception:
+            pass
+    try:
+        os.utime(state_file, None)
+    except OSError:
+        logger.warning("_signal_alive: could not touch state file %s", state_file)
 
 
 def _has_live_children(pid: int) -> bool:
