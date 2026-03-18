@@ -48,7 +48,7 @@ Only fix **framework** (wt-tools) bugs. Let the orchestrator handle app-level is
 
 ### When You Fix a wt-tools Bug
 
-This is critical — fixes must reach the running processes:
+This is the **Tier 3** workflow from the sentinel skill (`.claude/commands/wt/sentinel.md` — "E2E Mode" section). Fixes must reach the running processes:
 
 1. **Fix and commit** in wt-tools repo
 2. **Kill** sentinel + orchestrator + any Ralph/agent processes
@@ -60,8 +60,11 @@ This is critical — fixes must reach the running processes:
    done
    ```
 5. **Restart** sentinel — it will start a new orchestrator automatically
+6. **Log** — `wt-sentinel-finding add --severity bug --summary "..." ` with commit hash
 
 If you skip step 4, worktree agents will run with old code.
+
+**Scope boundary (Tier 3):** Only wt-tools framework code may be fixed (bin/, lib/, .claude/, docs/). Consumer project source code (src/, app/, components/) MUST NOT be modified. No branch merging, no orchestration-state.json edits, no quality gate changes.
 
 **IMPORTANT: Rules must be re-deployed too.** Web security rules (`.claude/rules/web/`) and other
 path-scoped rules are deployed by `wt-project init`. When fixing security-related bugs (IDOR,
@@ -70,39 +73,20 @@ missing auth middleware, etc.), always re-deploy so that retry agents get the up
 
 ## State Reset
 
-### Partial Reset (preferred — preserves merged work)
-
-Only reset failed changes back to pending, keep merged ones:
-
-```python
-import json
-with open('orchestration-state.json') as f:
-    d = json.load(f)
-for c in d['changes']:
-    if c['status'] == 'failed':
-        c['status'] = 'pending'
-        c['worktree_path'] = ''
-        c['ralph_pid'] = None
-        c['verify_retry_count'] = 0
-d['status'] = 'running'
-with open('orchestration-state.json', 'w') as f:
-    json.dump(d, f, indent=2)
-```
-
-### Full Reset (destructive — ask user first)
-
-If many changes were already merged/done, **ask the user before resetting**.
-Resetting destroys progress. Only do this if the state is truly unrecoverable.
+Use the dedicated CLI tool:
 
 ```bash
-# Clean worktrees
-git worktree list | grep -v "bare\|master" | awk '{print $1}' | xargs -I{} git worktree remove {} --force
-# Clean stale build caches
-rm -rf .next node_modules/.cache
-# Reset events
-rm -f orchestration-state-events.jsonl
-# Then reset state JSON (all changes → pending) and restart sentinel
+# Partial reset (safe default) — only failed→pending, merged preserved
+wt-orchestrate reset --partial
+
+# Full reset (destructive) — shows dry-run first
+wt-orchestrate reset --full
+
+# Full reset (confirmed) — backs up state, removes worktrees, clears events
+wt-orchestrate reset --full --yes-i-know
 ```
+
+**Always prefer partial reset.** Full reset destroys progress — only use if state is truly unrecoverable, and always ask the user first.
 
 ## Figma Design Integration
 

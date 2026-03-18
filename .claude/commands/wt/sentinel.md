@@ -28,6 +28,16 @@ Before acting on any event, classify it into one of two tiers:
 
 The sentinel MUST NOT try to fix orchestration-level issues. It should only act on process-level problems.
 
+**Expected patterns (NOT bugs)** — these look like failures but auto-resolve. Do NOT escalate:
+
+| Pattern | Why it's OK | Duration |
+|---------|-------------|----------|
+| Post-merge build fail (prisma generate, codegen) | `post_merge_command` in config handles codegen regeneration | 1-2 min |
+| Watchdog "no progress" on fresh dispatch | New agents need startup time before first loop-state.json appears | 2 min grace |
+| Stale build cache (`.next/`, `dist/`) | Build retry clears stale caches automatically | 1 build cycle |
+| Long MCP fetch (design snapshot, memory) | Heartbeat events confirm liveness during 4-5 min fetches | 4-5 min |
+| `waiting:api` loop status | wt-loop exponential backoff handles 429/503 automatically | auto-resolve |
+
 ### Step 1: Start the orchestrator in background
 
 ```bash
@@ -108,7 +118,19 @@ fi
 CHANGES_DONE=$(jq '[.changes[] | select(.status == "done" or .status == "merged")] | length' "$STATE_FILE" 2>/dev/null || echo "?")
 CHANGES_TOTAL=$(jq '.changes | length' "$STATE_FILE" 2>/dev/null || echo "?")
 TOKENS=$(jq '.prev_total_tokens // 0' "$STATE_FILE" 2>/dev/null || echo "0")
-echo "EVENT:running|status=$STATUS|progress=${CHANGES_DONE}/${CHANGES_TOTAL}|tokens=$TOKENS"
+
+# Token stuck detection: running change >500K tokens with no commit in 30 min
+NOW_TS=$(date +%s)
+STUCK=$(jq --argjson now "$NOW_TS" '[.changes[] | select(.status == "running") | select((.tokens_used // 0) > 500000) | select(.last_commit_at == null or ((.last_commit_at | sub("\\.[0-9]+$";"") | strptime("%Y-%m-%dT%H:%M:%S") | mktime) < ($now - 1800)))] | length' "$STATE_FILE" 2>/dev/null || echo "0")
+
+# Dependency deadlock: pending changes whose deps are ALL failed
+DEADLOCKED=$(jq '[.changes[] | select(.status == "pending") | select(.depends_on != null and (.depends_on | length) > 0) | . as $c | select(all(.depends_on[]; . as $dep | [$.changes[] | select(.name == $dep) | .status][0] == "failed"))] | length' "$STATE_FILE" 2>/dev/null || echo "0")
+
+WARNINGS=""
+if [ "$STUCK" -gt 0 ]; then WARNINGS="${WARNINGS}|WARNING:token_stuck=$STUCK"; fi
+if [ "$DEADLOCKED" -gt 0 ]; then WARNINGS="${WARNINGS}|WARNING:deadlocked=$DEADLOCKED"; fi
+
+echo "EVENT:running|status=$STATUS|progress=${CHANGES_DONE}/${CHANGES_TOTAL}|tokens=$TOKENS${WARNINGS}"
 ```
 
 **IMPORTANT:** This command runs in the background. You remain available for user interaction while it sleeps and checks.
@@ -151,6 +173,10 @@ When the background poll completes, you'll be notified. Read the output and act 
 **This is the fast path — keep it minimal.** Do NOT analyze, think deeply, or produce lengthy output. Do NOT read logs, do NOT read state beyond the poll output, do NOT analyze individual change statuses.
 
 Just say something brief like: `Orchestration running (3/7 changes, 1.2M tokens). Polling...`
+
+**If WARNING:token_stuck is present**: escalate to user on first detection only. Say: "Warning: N change(s) have used >500K tokens with no commit in 30 min — may be stuck." Then read the state to list which changes are stuck. Track this so you don't repeat the warning every poll.
+
+**If WARNING:deadlocked is present**: escalate to user on first detection only. Read the state to identify the specific changes and their failed dependencies. Say: "Deadlock: N pending change(s) blocked by failed dependencies — manual intervention needed. Run `wt-orchestrate reset --partial` or clear deps manually."
 
 Then **immediately go back to Step 2** (start another background poll).
 
@@ -258,9 +284,16 @@ Then format:
 - **Replan cycles**: N
 - **Sentinel restarts**: N (with reasons if any)
 - **Issues**: Notable errors or warnings from the run
+
+### Per-Change Breakdown
+
+| Change | Status | Tokens | Stuck? |
+|--------|--------|--------|--------|
+| name   | merged | 320K   |        |
+| name   | failed | 680K   | ⚠ >500K, no commit 45min |
 ```
 
-Read `active_seconds`, `started_epoch`, `changes[]`, `prev_total_tokens`, `replan_cycle` from state.json to fill in the report.
+Read `active_seconds`, `started_epoch`, `changes[]`, `prev_total_tokens`, `replan_cycle` from state.json to fill in the report. For each change, include `tokens_used` and flag any that exceeded 500K tokens without recent commits.
 
 ## Examples
 
@@ -306,6 +339,37 @@ Specifically, the sentinel MUST NEVER remove, disable, or modify:
 - `merge_policy`, `review_before_merge`, `max_verify_retries`
 
 If tests fail persistently → **stop and report to the user**, do NOT weaken the gates.
+
+## E2E Mode (Tier 3)
+
+When running E2E tests (see `tests/e2e/E2E-GUIDE.md`), the sentinel gains **Tier 3 authority** — the ability to fix wt-tools framework bugs and deploy them to the running test.
+
+### Tier 3 Scope Boundary
+
+| ALLOWED | FORBIDDEN |
+|---------|-----------|
+| Edit files in wt-tools repo (bin/, lib/, .claude/, docs/) | Consumer project source code (src/, app/, components/) |
+| git commit in wt-tools repo | Branch merge/resolve in consumer project |
+| `wt-project init` (deploy .claude/ to consumer) | Edit orchestration-state.json directly |
+| `cp -r .claude/` to active worktrees | Weaken quality gates (smoke_command, test_command, etc.) |
+| Kill + restart sentinel/orchestrator/agents | Make architectural or design decisions |
+
+### Tier 3 Workflow
+
+1. **Detect** — framework bug identified during monitoring (dispatch error, path resolution, state machine bug)
+2. **Fix** — edit the relevant file in the wt-tools repo
+3. **Commit** — `git commit` with clear message referencing the bug
+4. **Deploy** — `wt-project init` in the consumer project to sync `.claude/` files
+5. **Sync worktrees** — `cp -r .claude/` to each active worktree
+6. **Kill** — stop sentinel + orchestrator + agent processes
+7. **Restart** — start fresh sentinel
+8. **Log** — `wt-sentinel-finding add --severity bug --summary "..."` with commit hash
+
+### When Tier 3 Does NOT Apply
+
+- Regular (non-E2E) orchestration runs — sentinel stays at Tier 1/2 only
+- App-level bugs (build failures, test failures in consumer project) — leave to orchestrator
+- Design or scope decisions — stop and report to user
 
 ## What happens
 

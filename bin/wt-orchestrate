@@ -470,6 +470,111 @@ cmd_specs() {
     esac
 }
 
+# ─── Reset ───────────────────────────────────────────────────────────
+
+cmd_reset() {
+    local mode="partial"
+    local confirmed=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --partial)  mode="partial"; shift ;;
+            --full)     mode="full"; shift ;;
+            --yes-i-know) confirmed=true; shift ;;
+            *)
+                error "Unknown reset option: $1"
+                echo "Usage: wt-orchestrate reset [--partial|--full] [--yes-i-know]"
+                return 1
+                ;;
+        esac
+    done
+
+    if [[ ! -f "$STATE_FILENAME" ]]; then
+        error "No orchestration-state.json found"
+        return 1
+    fi
+
+    if [[ "$mode" == "partial" ]]; then
+        # Safe: only reset failed→pending
+        local failed_count
+        failed_count=$(jq '[.changes[] | select(.status == "failed")] | length' "$STATE_FILENAME")
+
+        if [[ "$failed_count" -eq 0 ]]; then
+            echo "Nothing to reset — no failed changes found."
+            return 0
+        fi
+
+        local failed_names
+        failed_names=$(jq -r '[.changes[] | select(.status == "failed") | .name] | join(", ")' "$STATE_FILENAME")
+
+        jq '
+            .status = "running" |
+            .changes = [.changes[] |
+                if .status == "failed" then
+                    .status = "pending" |
+                    .worktree_path = "" |
+                    .ralph_pid = null |
+                    .verify_retry_count = 0
+                else . end
+            ]
+        ' "$STATE_FILENAME" > "${STATE_FILENAME}.tmp" && mv "${STATE_FILENAME}.tmp" "$STATE_FILENAME"
+
+        echo "Partial reset complete: $failed_count failed→pending ($failed_names)"
+        echo "Merged/done changes preserved."
+
+    elif [[ "$mode" == "full" ]]; then
+        local total_changes
+        total_changes=$(jq '.changes | length' "$STATE_FILENAME")
+        local worktree_count
+        worktree_count=$(git worktree list 2>/dev/null | grep -v -E "bare|master|main" | wc -l)
+
+        if [[ "$confirmed" != "true" ]]; then
+            echo "Full reset would:"
+            echo "  - Reset ALL $total_changes changes to pending"
+            echo "  - Remove $worktree_count non-main worktrees"
+            echo "  - Clear orchestration events log"
+            echo ""
+            echo "This is DESTRUCTIVE — merged work references will be lost."
+            echo "Run with --yes-i-know to proceed:"
+            echo "  wt-orchestrate reset --full --yes-i-know"
+            return 1
+        fi
+
+        # Backup
+        cp "$STATE_FILENAME" "${STATE_FILENAME%.json}.backup.json"
+        echo "Backup saved to ${STATE_FILENAME%.json}.backup.json"
+
+        # Remove worktrees
+        local removed_wt=0
+        while IFS= read -r wt_path; do
+            [[ -z "$wt_path" ]] && continue
+            git worktree remove "$wt_path" --force 2>/dev/null && ((removed_wt++)) || true
+        done < <(git worktree list 2>/dev/null | grep -v -E "bare|master|main" | awk '{print $1}')
+
+        # Reset all changes
+        jq '
+            .status = "running" |
+            .changes = [.changes[] |
+                .status = "pending" |
+                .worktree_path = "" |
+                .ralph_pid = null |
+                .verify_retry_count = 0
+            ]
+        ' "$STATE_FILENAME" > "${STATE_FILENAME}.tmp" && mv "${STATE_FILENAME}.tmp" "$STATE_FILENAME"
+
+        # Clear events
+        local events_file="${STATE_FILENAME%orchestration-state.json}orchestration-state-events.jsonl"
+        if [[ -f "$events_file" ]]; then
+            rm -f "$events_file"
+        fi
+
+        echo "Full reset complete:"
+        echo "  - $total_changes changes → pending"
+        echo "  - $removed_wt worktrees removed"
+        echo "  - Events log cleared"
+    fi
+}
+
 # ─── Usage ───────────────────────────────────────────────────────────
 
 usage() {
@@ -500,6 +605,7 @@ Commands:
   specs [list|show|archive] Manage spec documents in wt/orchestration/specs/
   events                 Query event log (--type, --change, --since, --last N, --json)
   tui                    Launch live terminal dashboard (requires textual)
+  reset [--partial|--full] Reset orchestration state (--partial: failed→pending, --full: all)
   self-test              Run internal unit tests
 
 Input Resolution (when no --spec or --brief given):
@@ -708,6 +814,7 @@ main() {
         coverage)   cmd_coverage "$@" ;;
         specs)      cmd_specs "$@" ;;
         skip)       cmd_skip "$@" ;;
+        reset)      cmd_reset "$@" ;;
         self-test)  cmd_self_test "$@" ;;
         -h|--help|help|"")
             usage

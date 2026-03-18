@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -1403,9 +1404,15 @@ def get_memory_overview(project: str):
     """Aggregate memory stats, health, and sync status in a single call."""
     project_path = _resolve_project(project)
 
-    health = _run_wt_memory(project_path, ["health"])
-    stats = _run_wt_memory(project_path, ["stats", "--json"])
-    sync = _run_wt_memory(project_path, ["sync", "status"])
+    # Run all three wt-memory commands in parallel (was sequential → 3-5s+ first load)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_health = pool.submit(_run_wt_memory, project_path, ["health"])
+        f_stats = pool.submit(_run_wt_memory, project_path, ["stats", "--json"])
+        f_sync = pool.submit(_run_wt_memory, project_path, ["sync", "status"])
+
+        health = f_health.result()
+        stats = f_stats.result()
+        sync = f_sync.result()
 
     return {
         "health": health if isinstance(health, str) else health,

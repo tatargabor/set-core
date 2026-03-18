@@ -14,6 +14,7 @@ An AI agent that starts the orchestrator, monitors it, and makes intelligent dec
 - **Checkpoint handling**: Auto-approves routine (`periodic`) checkpoints, escalates others to you
 - **Stale detection**: Investigates when the orchestrator appears hung
 - **Completion report**: Summarizes the run (changes, tokens, time, issues)
+- **Expected pattern awareness**: Distinguishes known transient states (post-merge codegen, watchdog grace, stale cache, long MCP fetch) from real failures
 
 **Usage** — from a Claude Code session in the project directory:
 
@@ -75,6 +76,10 @@ Both modes handle orchestration states the same way:
 - `orchestration-state.json` — orchestration state (read by sentinel)
 - `orchestration.log` — orchestration log (read for diagnosis, written to by bash sentinel)
 - `sentinel.pid` — bash sentinel PID file (cleaned up on exit)
+
+## E2E Mode (Tier 3)
+
+During E2E testing, the agent-mode sentinel gains **Tier 3 authority** — it can fix wt-tools framework bugs and deploy them to the running test. This is restricted to wt-tools code only (bin/, lib/, .claude/, docs/); consumer project code is never touched. See the full scope boundary and workflow in the sentinel skill (`.claude/commands/wt/sentinel.md` — "E2E Mode" section) and the E2E guide (`tests/e2e/E2E-GUIDE.md`).
 
 ## When to Use
 
