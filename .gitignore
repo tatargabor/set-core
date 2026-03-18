@@ -35,6 +35,10 @@ orchestration-events.jsonl
 # Environment and credentials
 .env
 
+# TLS certificates (Tailscale cert output)
+*.ts.net.crt
+*.ts.net.key
+
 # Private/local docs (not for repo)
 local-docs/
 
