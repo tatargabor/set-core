@@ -318,6 +318,14 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->
+### craftbrew — Run #3 (2026-03-18)
+<!-- wt-tools-commit: 8fb62c890 -->
+- **wt-tools range**: `8fb62c890` (sentinel `local` fix)
+- **Result**: 15/15 merged | ~5.5h wall clock | ~888K tokens | 8 framework bugs found
+- **Autonomous merges**: 1/15 (only i18n-routing-layout) — Bug #14 dominated
+- **Critical bug**: Bug #14 — verify agent dies, change stuck in "verifying" forever. Affected 12/15 changes, required manual merge each time.
+- **Other bugs**: Bug #12 (phantom review), Bug #15 (cc/ prefix), Bug #16 (monitor stuck), Bug #18 (stale state overwrite), Bug #19 (sentinel stops on removed worktree)
+- **Watch for run #4**: Bug #14 is the #1 priority fix. Bug #12 needs review diff scoping. Bug #19 needs monitor to skip merged changes with removed worktrees.
 <!-- e2e-results:craftbrew:end -->
 
 ## Architecture Quick Reference
