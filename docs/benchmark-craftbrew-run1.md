@@ -260,4 +260,74 @@ cross_cutting_verify:
 
 ---
 
+## Post-Deploy Diagnostics
+
+Full diagnostic scan run after deployment to verify merge integrity across all 15 changes.
+
+### #1 Prisma Schema Integrity
+
+**29 models in schema** — all `prisma.xyz` code references have matching models. No missing models detected (after Session fix).
+
+```
+Models in schema (29):
+Address, AuditLog, Bundle, BundleComponent, CartItem, CartSession, Coffee,
+Coupon, EmailLog, Equipment, GiftCard, GiftCardTransaction, Invoice, Merch,
+Order, OrderItem, ProductVariant, PromoDay, RestockSubscription, ReturnRequest,
+Review, Session, Story, StoryCategory, Subscription, SubscriptionDelivery,
+SubscriptionInvoice, User, WishlistItem
+```
+
+**Still missing:** `PasswordResetToken` — existed on worktree branch (`6a4d9b9`), lost during merge. The `forgot-password` and `reset-password` API routes are TODO stubs because of this.
+
+### #2 `any` Type Hacks (5 instances)
+
+All are Prisma client parameter hacks to bypass missing model compile errors:
+
+| File | Line | Reason |
+|---|---|---|
+| `src/lib/session.ts` | 18, 35, 54, 61 | Session model was missing at merge time (now exists — fixable) |
+| `src/lib/cart-merge.ts` | 7 | CartSession/CartItem models exist — fixable now |
+
+**These are all fixable** — the underlying models now exist in the schema.
+
+### #3 i18n Keys
+
+- **208 keys** in `src/i18n/messages/hu.json`
+- Code uses `useTranslations()` hook (not raw `t('key')` calls), so automated key-missing detection needs a different grep pattern
+- No obvious missing keys found via manual spot-check
+
+### #4 Middleware Route Protection
+
+`src/middleware.ts` protects:
+- `/{locale}/fiokom/*`, `/{locale}/my-account/*` — user account pages
+- `/{locale}/penztar/*`, `/{locale}/checkout/*` — checkout flow
+- Session cookie check → redirect to locale-aware login page with `returnTo`
+
+**Not middleware-protected:** `/admin/*` routes — these use API-level `requireAdmin()` checks instead. This is acceptable but means a direct browser visit to `/admin/...` pages renders the UI before the client-side auth check fires.
+
+### #5 Merge Risk Assessment
+
+12 merge commits total, 3 marked "verify agent died":
+
+| Merge | Risk | Notes |
+|---|---|---|
+| `a998e76` user-accounts | **HIGH — data lost** | Session + PasswordResetToken models lost |
+| `112147a` content-stories | MEDIUM | Verify agent died, manual merge |
+| `b7149e7` promotions-giftcards | MEDIUM | Verify agent died, manual merge |
+| Other 9 merges | LOW | Completed normally |
+
+The "verify agent died" merges had no automated verification gate — they were manually merged without the full pipeline check. These should be re-verified.
+
+### #6 Remaining Fix List
+
+| # | Issue | Severity | Fix | Status |
+|---|---|---|---|---|
+| 1 | `PasswordResetToken` model missing | HIGH | `git show 6a4d9b9 -- prisma/schema.prisma` | TODO |
+| 2 | `session.ts` 4x `prisma: any` | MEDIUM | Replace with `PrismaClient` import | TODO |
+| 3 | `cart-merge.ts` 1x `prisma: any` | MEDIUM | Replace with `PrismaClient` import | TODO |
+| 4 | forgot/reset password routes are stubs | HIGH | Restore from `git show 6a4d9b9` | TODO |
+| 5 | `/admin/*` client-side only auth guard | LOW | Acceptable for v1 | WONTFIX |
+
+---
+
 *Generated from CraftBrew Run #1 analysis. See `docs/run1-postmortem.md` in the craftbrew repo for the project-specific post-mortem.*
