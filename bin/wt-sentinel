@@ -533,7 +533,7 @@ while true; do
 
         # Heartbeat + structured poll event
         sentinel_heartbeat
-        local _poll_state=""
+        _poll_state=""
         if [[ -f "$STATE_FILE" ]]; then
             _poll_state=$(jq -r '.status // "unknown"' "$STATE_FILE" 2>/dev/null || echo "unknown")
         fi

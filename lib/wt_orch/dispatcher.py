@@ -97,7 +97,11 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
         return ""
 
     profile = load_profile()
-    mapping = profile.rule_keyword_mapping()
+    if hasattr(profile, 'rule_keyword_mapping'):
+        mapping = profile.rule_keyword_mapping()
+    else:
+        from .profile_loader import NullProfile
+        mapping = NullProfile().rule_keyword_mapping()
     scope_lower = scope.lower()
 
     matched_globs: list[str] = []
