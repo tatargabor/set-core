@@ -95,6 +95,23 @@ cmd_run() {
         # Kill child processes (claude, tee, etc.) but not ourselves
         pkill -TERM -P $$ 2>/dev/null || true
 
+        # Commit any uncommitted work (graceful shutdown WIP preservation)
+        if [[ -d "$wt_path" ]]; then
+            local has_changes
+            has_changes=$(git -C "$wt_path" status --porcelain 2>/dev/null | head -1)
+            if [[ -n "$has_changes" ]]; then
+                echo "📦 Committing work-in-progress before exit..."
+                git -C "$wt_path" add -A 2>/dev/null || true
+                git -C "$wt_path" commit -m "wip: graceful shutdown — incomplete task" --no-verify 2>/dev/null || true
+            fi
+            # Write last_commit to loop-state
+            local head_commit
+            head_commit=$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")
+            if [[ -n "$head_commit" && -n "${state_file:-}" && -f "$state_file" ]]; then
+                update_loop_state "$state_file" "last_commit" "\"$head_commit\""
+            fi
+        fi
+
         if [[ -n "$current_iter_started" && -f "$state_file" ]]; then
             local ended
             ended=$(date -Iseconds)

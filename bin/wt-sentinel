@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<EOF
-Usage: wt-sentinel [wt-orchestrate start options...]
+Usage: wt-sentinel [--shutdown | wt-orchestrate start options...]
 
 Runs 'wt-orchestrate start' in a supervised loop. If the orchestrator
 crashes (non-zero exit), it restarts after exponential backoff. Stops on:
@@ -17,6 +17,7 @@ crashes (non-zero exit), it restarts after exponential backoff. Stops on:
   - 5 rapid consecutive crashes (each <5 min runtime)
   - Stuck orchestrator (no events for sentinel_stuck_timeout seconds)
   - SIGINT/SIGTERM (forwarded to child, no restart)
+  - --shutdown (graceful shutdown: agents commit WIP, state preserved for resume)
 
 All arguments are passed through to 'wt-orchestrate start'.
 
@@ -29,6 +30,36 @@ EOF
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     usage
     exit 0
+fi
+
+# --shutdown: send SIGUSR1 to running sentinel for graceful shutdown
+if [[ "${1:-}" == "--shutdown" ]]; then
+    if [[ -f "sentinel.pid" ]]; then
+        existing_pid=$(cat "sentinel.pid" 2>/dev/null || echo "")
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Sending graceful shutdown to PID $existing_pid"
+            kill -USR1 "$existing_pid"
+            # Wait for sentinel to exit (up to 90s: 60s agent timeout + 30s buffer)
+            wait_count=0
+            while kill -0 "$existing_pid" 2>/dev/null && [[ $wait_count -lt 90 ]]; do
+                sleep 1
+                wait_count=$((wait_count + 1))
+            done
+            if kill -0 "$existing_pid" 2>/dev/null; then
+                echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Sentinel did not exit within 90s — forcing"
+                kill -9 "$existing_pid" 2>/dev/null || true
+            else
+                echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Graceful shutdown complete"
+            fi
+            exit 0
+        else
+            echo "No sentinel running"
+            exit 0
+        fi
+    else
+        echo "No sentinel running"
+        exit 0
+    fi
 fi
 
 STATE_FILE="orchestration-state.json"
@@ -130,6 +161,7 @@ fi
 
 # Signal handling — don't restart after user interrupt
 interrupted=false
+shutdown_requested=false
 child_pid=0
 
 cleanup() {
@@ -145,8 +177,19 @@ handle_signal() {
     fi
 }
 
+# SIGUSR1 = graceful shutdown request (from --shutdown flag)
+handle_graceful_shutdown() {
+    shutdown_requested=true
+    sentinel_log "Graceful shutdown requested (SIGUSR1)"
+    # Send SIGTERM to orchestrator — it will propagate to agents
+    if [[ $child_pid -gt 0 ]]; then
+        kill -TERM "$child_pid" 2>/dev/null || true
+    fi
+}
+
 trap cleanup EXIT
 trap handle_signal SIGINT SIGTERM SIGHUP
+trap handle_graceful_shutdown USR1
 
 # Write PID file
 echo $$ > "$PID_FILE"
@@ -422,6 +465,61 @@ reconstruct_state_from_events() {
     return 0
 }
 
+# Resume from graceful shutdown: validate worktrees, reset invalid changes
+resume_from_shutdown() {
+    [[ ! -f "$STATE_FILE" ]] && return
+
+    local changes_with_wt
+    changes_with_wt=$(jq -r '.changes[]? | select(.worktree_path != "" and .worktree_path != null and (.status == "running" or .status == "stalled" or .status == "shutdown")) | .name' "$STATE_FILE" 2>/dev/null || true)
+
+    while IFS= read -r cname; do
+        [[ -z "$cname" ]] && continue
+        local wt_path last_commit
+        wt_path=$(jq -r --arg n "$cname" '.changes[] | select(.name == $n) | .worktree_path' "$STATE_FILE" 2>/dev/null || true)
+        last_commit=$(jq -r --arg n "$cname" '.changes[] | select(.name == $n) | .last_commit // ""' "$STATE_FILE" 2>/dev/null || true)
+
+        if [[ ! -d "$wt_path" ]]; then
+            sentinel_log "Resume: worktree missing for $cname ($wt_path) — resetting to pending"
+            # Clean up branch if it still exists
+            local branch_name
+            branch_name=$(jq -r --arg n "$cname" '.changes[] | select(.name == $n) | .branch // ""' "$STATE_FILE" 2>/dev/null || true)
+            if [[ -n "$branch_name" ]]; then
+                git branch -D "$branch_name" 2>/dev/null || true
+            fi
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$cname" '(.changes[] | select(.name == $n)) |= (.status = "pending" | .worktree_path = "" | .ralph_pid = null | .last_commit = null)' \
+                "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            continue
+        fi
+
+        # Worktree exists — validate HEAD matches last_commit
+        local current_head
+        current_head=$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")
+        if [[ -n "$last_commit" && "$last_commit" != "null" && "$current_head" != "$last_commit" ]]; then
+            sentinel_log "Resume: HEAD mismatch for $cname (expected $last_commit, got $current_head) — resetting to pending"
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$cname" '(.changes[] | select(.name == $n)) |= (.status = "pending" | .worktree_path = "" | .ralph_pid = null | .last_commit = null)' \
+                "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            git worktree remove "$wt_path" --force 2>/dev/null || true
+            continue
+        fi
+
+        # Valid worktree — reset to pending for re-dispatch (orchestrator will handle resume)
+        sentinel_log "Resume: $cname worktree valid (HEAD=$current_head) — resetting to pending for re-dispatch"
+        local tmp
+        tmp=$(mktemp)
+        jq --arg n "$cname" '(.changes[] | select(.name == $n)) |= (.status = "pending" | .ralph_pid = null)' \
+            "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+    done <<< "$changes_with_wt"
+
+    # Set state back to stopped (orchestrator will resume from stopped)
+    jq 'del(.shutdown_at) | .status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    sentinel_log "Resume from shutdown complete — state reset to stopped"
+    sentinel_emit_event "RESUME_FROM_SHUTDOWN" "{}"
+}
+
 # Fix stale state: running changes with no live PID → stopped
 fix_stale_state() {
     [[ ! -f "$STATE_FILE" ]] && return
@@ -436,6 +534,9 @@ fix_stale_state() {
         jq '.status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
     elif [[ "$current_status" == "checkpoint" ]]; then
         sentinel_log "State is checkpoint — preserving (orchestrator will resume from checkpoint)"
+    elif [[ "$current_status" == "shutdown" ]]; then
+        sentinel_log "Resuming from graceful shutdown — validating worktrees"
+        resume_from_shutdown
     fi
 
     # Reset any running changes to stalled (watchdog will handle them)
@@ -505,8 +606,8 @@ while true; do
         # First half of poll interval
         sleep $((POLL_INTERVAL / 2))
 
-        # Check for user interrupt
-        if $interrupted; then
+        # Check for user interrupt or graceful shutdown
+        if $interrupted || $shutdown_requested; then
             break
         fi
 
@@ -516,8 +617,8 @@ while true; do
         # Second half of poll interval
         sleep $((POLL_INTERVAL - POLL_INTERVAL / 2))
 
-        # Check for user interrupt
-        if $interrupted; then
+        # Check for user interrupt or graceful shutdown
+        if $interrupted || $shutdown_requested; then
             break
         fi
 
@@ -548,6 +649,80 @@ while true; do
 
     end_epoch=$(date +%s)
     runtime=$((end_epoch - start_epoch))
+
+    # Graceful shutdown: collect last_commit from worktrees, set state to "shutdown"
+    if $shutdown_requested; then
+        sentinel_log "Graceful shutdown — collecting worktree state"
+        if [[ -f "$STATE_FILE" ]]; then
+            # Wait for agents to exit (up to 60s)
+            local shutdown_wait=0
+            local agent_pids
+            agent_pids=$(jq -r '.changes[]? | select(.status == "running") | .ralph_pid // 0' "$STATE_FILE" 2>/dev/null || true)
+            while [[ $shutdown_wait -lt 60 ]]; do
+                local any_alive=false
+                while IFS= read -r apid; do
+                    [[ -z "$apid" || "$apid" == "0" ]] && continue
+                    if kill -0 "$apid" 2>/dev/null; then
+                        any_alive=true
+                        break
+                    fi
+                done <<< "$agent_pids"
+                if ! $any_alive; then
+                    break
+                fi
+                sleep 1
+                shutdown_wait=$((shutdown_wait + 1))
+            done
+
+            # Force kill any remaining agents
+            if [[ $shutdown_wait -ge 60 ]]; then
+                sentinel_log "Shutdown timeout (60s) — force killing remaining agents"
+                while IFS= read -r apid; do
+                    [[ -z "$apid" || "$apid" == "0" ]] && continue
+                    if kill -0 "$apid" 2>/dev/null; then
+                        kill -9 "$apid" 2>/dev/null || true
+                        sentinel_log "Force killed agent PID $apid"
+                    fi
+                done <<< "$agent_pids"
+                # Mark timed-out changes as stalled
+                jq '(.changes[] | select(.status == "running")) |= (.status = "stalled")' \
+                    "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+            fi
+
+            # Collect last_commit from each active worktree
+            local project_dir
+            project_dir=$(pwd)
+            local change_names
+            change_names=$(jq -r '.changes[]? | select(.worktree_path != "" and .worktree_path != null) | .name' "$STATE_FILE" 2>/dev/null || true)
+            while IFS= read -r cname; do
+                [[ -z "$cname" ]] && continue
+                local wt_path
+                wt_path=$(jq -r --arg n "$cname" '.changes[] | select(.name == $n) | .worktree_path' "$STATE_FILE" 2>/dev/null || true)
+                if [[ -n "$wt_path" && -d "$wt_path" ]]; then
+                    local head_commit
+                    head_commit=$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")
+                    if [[ -n "$head_commit" ]]; then
+                        local tmp
+                        tmp=$(mktemp)
+                        jq --arg n "$cname" --arg c "$head_commit" \
+                            '(.changes[] | select(.name == $n) | .last_commit) = $c' \
+                            "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+                        sentinel_log "Change $cname: last_commit=$head_commit"
+                    fi
+                fi
+            done <<< "$change_names"
+
+            # Set state to "shutdown" with timestamp
+            local shutdown_ts
+            shutdown_ts=$(date -Iseconds)
+            jq --arg ts "$shutdown_ts" '.status = "shutdown" | .shutdown_at = $ts' \
+                "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+            sentinel_log "State set to shutdown (at $shutdown_ts)"
+            sentinel_emit_event "GRACEFUL_SHUTDOWN" "{\"shutdown_at\":\"$shutdown_ts\"}"
+        fi
+        sentinel_log "Graceful shutdown complete"
+        exit 0
+    fi
 
     # Don't restart if we received a signal
     if $interrupted; then

@@ -352,6 +352,10 @@ export function stopOrchestrator(project: string): Promise<{ ok: boolean }> {
   return fetchJSON(`/${project}/stop`, { method: 'POST' })
 }
 
+export function shutdownOrchestration(project: string): Promise<{ ok: boolean; message: string }> {
+  return fetchJSON(`/${project}/shutdown`, { method: 'POST' })
+}
+
 export function stopChange(project: string, name: string): Promise<{ ok: boolean }> {
   return fetchJSON(`/${project}/changes/${name}/stop`, { method: 'POST' })
 }

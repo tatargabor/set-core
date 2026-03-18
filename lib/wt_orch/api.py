@@ -1477,6 +1477,35 @@ def stop_orchestration(project: str):
     return {"ok": True, "kill_result": kill_result}
 
 
+@router.post("/api/{project}/shutdown")
+def shutdown_orchestration(project: str):
+    """Graceful shutdown: signals sentinel to stop agents cleanly and preserve state."""
+    project_path = _resolve_project(project)
+    pid_file = Path(project_path) / "sentinel.pid"
+    if not pid_file.exists():
+        raise HTTPException(409, "No sentinel running")
+
+    sentinel_pid = pid_file.read_text().strip()
+    if not sentinel_pid:
+        raise HTTPException(409, "No sentinel running")
+
+    try:
+        pid = int(sentinel_pid)
+        import os
+        os.kill(pid, 0)  # check if alive
+    except (ValueError, ProcessLookupError, PermissionError):
+        raise HTTPException(409, "No sentinel running (stale PID file)")
+
+    import signal
+    try:
+        import os
+        os.kill(pid, signal.SIGUSR1)
+    except ProcessLookupError:
+        raise HTTPException(409, "Sentinel died before shutdown signal")
+
+    return {"ok": True, "message": "Shutdown initiated", "sentinel_pid": pid}
+
+
 @router.post("/api/{project}/changes/{name}/stop")
 def stop_change(project: str, name: str):
     """Stop a specific change's Ralph process."""

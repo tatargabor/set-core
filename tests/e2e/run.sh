@@ -4,8 +4,9 @@
 # The scaffold is a single file (docs/v1-minishop.md). Agents build everything from the spec.
 #
 # Usage:
-#   ./tests/e2e/run.sh              # Auto-increment: /tmp/minishop-run9, run10, ...
-#   ./tests/e2e/run.sh /path/to/dir # Use specified dir
+#   ./tests/e2e/run.sh                              # Auto-increment: /tmp/minishop-run9, run10, ...
+#   ./tests/e2e/run.sh /path/to/dir                 # Use specified dir
+#   ./tests/e2e/run.sh --project-dir ~/e2e-tests    # Persistent base dir (survives reboot)
 
 set -euo pipefail
 
@@ -25,6 +26,17 @@ next_run_number() {
     done
     echo $(( max + 1 ))
 }
+
+# Parse --project-dir flag
+if [[ "${1:-}" == "--project-dir" ]]; then
+    if [[ -z "${2:-}" ]]; then
+        error "--project-dir requires a directory argument"
+        exit 1
+    fi
+    BASE_DIR="$2"
+    mkdir -p "$BASE_DIR"
+    shift 2
+fi
 
 if [[ -n "${1:-}" ]]; then
     TEST_DIR="$1"

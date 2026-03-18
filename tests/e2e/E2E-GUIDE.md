@@ -252,8 +252,12 @@ The sentinel launches the E2E run — not the user manually.
 
 1. Run the scaffold script:
    ```bash
-   ./tests/e2e/run.sh              # for minishop
-   ./tests/e2e/run-complex.sh      # for craftbrew
+   ./tests/e2e/run.sh              # for minishop (default: /tmp/)
+   ./tests/e2e/run-complex.sh      # for craftbrew (default: /tmp/)
+
+   # For persistent project dirs (survive reboot):
+   ./tests/e2e/run.sh --project-dir ~/e2e-tests
+   ./tests/e2e/run-complex.sh --project-dir ~/e2e-tests
    ```
 2. Parse output for the created project directory path
 3. `cd` to the project directory

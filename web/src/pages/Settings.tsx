@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { shutdownOrchestration, stopOrchestrator } from '../lib/api'
 
 interface Props {
   project: string | null
@@ -61,9 +62,112 @@ export default function Settings({ project }: Props) {
 
   const directives = data.config?.directives as Record<string, unknown> | undefined
 
+  // Orchestration status from state (poll via settings refresh)
+  const orchStatus = (data.config as Record<string, unknown>)?.status as string | undefined
+  const isShutdown = orchStatus === 'shutdown'
+  const isRunning = orchStatus === 'running' || orchStatus === 'checkpoint'
+
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
+
+  const handleShutdown = useCallback(async () => {
+    if (!project) return
+    setShowConfirm(false)
+    setActionLoading('shutdown')
+    try {
+      await shutdownOrchestration(project)
+    } catch {
+      // fallback: try regular stop
+      try { await stopOrchestrator(project) } catch {}
+    }
+    setActionLoading(null)
+    // Refresh settings
+    fetch(`/api/${project}/settings`).then(r => r.json()).then(setData).catch(() => {})
+  }, [project])
+
+  const handleResume = useCallback(async () => {
+    if (!project) return
+    setActionLoading('resume')
+    try {
+      await fetch(`/api/${project}/start`, { method: 'POST' })
+    } catch {}
+    setActionLoading(null)
+    fetch(`/api/${project}/settings`).then(r => r.json()).then(setData).catch(() => {})
+  }, [project])
+
   return (
     <div className="p-6 max-w-3xl space-y-6">
       <h1 className="text-lg font-semibold text-neutral-100">Settings</h1>
+
+      {/* Orchestration Control */}
+      <section>
+        <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Orchestration Control</h2>
+        <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-neutral-500">Status</span>
+              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
+                isRunning ? 'bg-green-900/50 text-green-300' :
+                isShutdown ? 'bg-amber-900/50 text-amber-300' :
+                orchStatus === 'done' ? 'bg-blue-900/50 text-blue-300' :
+                'bg-neutral-800 text-neutral-400'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  isRunning ? 'bg-green-400' :
+                  isShutdown ? 'bg-amber-400' :
+                  orchStatus === 'done' ? 'bg-blue-400' :
+                  'bg-neutral-500'
+                }`} />
+                {orchStatus ?? 'unknown'}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              {isShutdown ? (
+                <button
+                  onClick={handleResume}
+                  disabled={actionLoading === 'resume'}
+                  className="px-3 py-1 text-xs bg-green-900/50 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 font-medium"
+                >
+                  {actionLoading === 'resume' ? 'Resuming...' : 'Resume'}
+                </button>
+              ) : isRunning ? (
+                <>
+                  <button
+                    onClick={() => setShowConfirm(true)}
+                    disabled={actionLoading === 'shutdown'}
+                    className="px-3 py-1 text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 font-medium"
+                  >
+                    {actionLoading === 'shutdown' ? 'Shutting down...' : 'Shutdown'}
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Confirmation dialog */}
+          {showConfirm && (
+            <div className="mt-3 p-3 bg-red-950/30 border border-red-900/50 rounded-lg">
+              <p className="text-xs text-red-300 mb-2">
+                This will gracefully stop all agents and the orchestrator. Worktree state will be preserved for resume. Continue?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleShutdown}
+                  className="px-3 py-1 text-xs bg-red-800 text-red-100 rounded hover:bg-red-700 font-medium"
+                >
+                  Confirm Shutdown
+                </button>
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  className="px-3 py-1 text-xs bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Paths */}
       <section>

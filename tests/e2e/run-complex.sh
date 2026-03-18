@@ -6,8 +6,9 @@
 # build from the structured digest.
 #
 # Usage:
-#   ./tests/e2e/run-complex.sh              # Auto-increment: /tmp/craftbrew-run1, run2, ...
-#   ./tests/e2e/run-complex.sh /path/to/dir # Clone to specified dir
+#   ./tests/e2e/run-complex.sh                              # Auto-increment: /tmp/craftbrew-run1, run2, ...
+#   ./tests/e2e/run-complex.sh /path/to/dir                 # Clone to specified dir
+#   ./tests/e2e/run-complex.sh --project-dir ~/e2e-tests    # Persistent base dir (survives reboot)
 #
 # The spec source repo: https://github.com/tatargabor/craftbrew
 
@@ -30,6 +31,17 @@ next_run_number() {
     done
     echo $(( max + 1 ))
 }
+
+# Parse --project-dir flag
+if [[ "${1:-}" == "--project-dir" ]]; then
+    if [[ -z "${2:-}" ]]; then
+        echo "[error] --project-dir requires a directory argument" >&2
+        exit 1
+    fi
+    BASE_DIR="$2"
+    mkdir -p "$BASE_DIR"
+    shift 2
+fi
 
 if [[ -n "${1:-}" ]]; then
     TEST_DIR="$1"
