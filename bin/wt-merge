@@ -20,6 +20,7 @@ Options:
   --no-delete             Keep source branch after merge
   --no-push               Don't push after merge (default: push)
   --llm-resolve           Use LLM to resolve merge conflicts automatically
+  --no-conservation-check Skip post-LLM conservation check (emergency bypass)
   -h, --help              Show this help
 
 Examples:
@@ -452,6 +453,18 @@ Conflicted files:
     local total_lines=0
     while IFS= read -r file; do
         [[ -z "$file" ]] && continue
+
+        # Inject strategy hint if available (input prompt only)
+        local file_hint
+        file_hint=$(get_llm_hint "$file" 2>/dev/null || true)
+        if [[ -n "$file_hint" ]]; then
+            prompt+="
+[STRATEGY CONTEXT for $file]
+$file_hint
+[END STRATEGY CONTEXT]
+"
+        fi
+
         # Extract conflict hunks with 3 lines of context before/after
         local hunks
         hunks=$(awk '
@@ -552,6 +565,379 @@ $(cat "$file")
     fi
 
     info "LLM resolved $files_resolved conflicted file(s)"
+
+    # Record resolved files for conservation check
+    LLM_RESOLVED_FILES=()
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^---\ FILE:\ (.+)\ ---$ ]]; then
+            local fname="${BASH_REMATCH[1]}"
+            fname=$(echo "$fname" | sed 's/ *(.*//')
+            LLM_RESOLVED_FILES+=("$fname")
+        fi
+    done <<< "$llm_output"
+
+    return 0
+}
+
+# ─── Conservation Check ──────────────────────────────────────────
+# Verifies that additions from both sides of a merge are preserved
+# in the LLM-resolved output. Runs BEFORE git commit.
+
+# Global: populated by llm_resolve_conflicts()
+LLM_RESOLVED_FILES=()
+
+# Compute lines added by a branch relative to merge-base.
+# Returns trimmed, non-blank, unique lines present in branch but not in base.
+# Args: base_ref, branch_ref, file_path
+# Output: one line per addition on stdout
+compute_additions() {
+    local base_ref="$1"
+    local branch_ref="$2"
+    local file_path="$3"
+
+    local base_content branch_content
+    base_content=$(git show "${base_ref}:${file_path}" 2>/dev/null || echo "")
+    branch_content=$(git show "${branch_ref}:${file_path}" 2>/dev/null || echo "")
+
+    # Trimmed (leading, trailing, and internal multi-space → single space), non-blank, sorted unique lines
+    comm -13 \
+        <(echo "$base_content" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/[[:space:]]\+/ /g' | grep -v '^$' | sort -u) \
+        <(echo "$branch_content" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/[[:space:]]\+/ /g' | grep -v '^$' | sort -u)
+}
+
+# Check if a file is binary (git reports - for additions/deletions).
+is_binary_file() {
+    local file_path="$1"
+    local numstat
+    numstat=$(git diff --numstat HEAD -- "$file_path" 2>/dev/null | head -1)
+    [[ "$numstat" == -* ]]
+}
+
+# Run conservation check on a single file.
+# Returns 0 if all additions preserved, 1 if data lost.
+# Outputs missing lines to stdout.
+# Args: merge_base, ours_ref, theirs_ref, file_path
+conservation_check() {
+    local merge_base="$1"
+    local ours_ref="$2"
+    local theirs_ref="$3"
+    local file_path="$4"
+
+    # Skip binary files
+    if is_binary_file "$file_path"; then
+        info "Conservation: skipping binary file $file_path"
+        return 0
+    fi
+
+    # Skip if file doesn't exist in merge-base (delete/modify conflict detection)
+    local base_exists=true
+    git show "${merge_base}:${file_path}" &>/dev/null || base_exists=false
+
+    local ours_exists=true
+    git show "${ours_ref}:${file_path}" &>/dev/null || ours_exists=false
+
+    local theirs_exists=true
+    git show "${theirs_ref}:${file_path}" &>/dev/null || theirs_exists=false
+
+    # Delete/modify: one side deletes, other modifies — skip
+    if ! $ours_exists || ! $theirs_exists; then
+        info "Conservation: skipping $file_path (delete/modify conflict)"
+        return 0
+    fi
+
+    # File new on one side only — nothing to lose from the non-existent side
+    if ! $base_exists && ($ours_exists != $theirs_exists); then
+        return 0
+    fi
+
+    # Compute additions from each side relative to base
+    # (if base doesn't exist, treat as empty — file new on both sides)
+    local ours_added theirs_added
+    ours_added=$(compute_additions "$merge_base" "$ours_ref" "$file_path")
+    theirs_added=$(compute_additions "$merge_base" "$theirs_ref" "$file_path")
+
+    # Get merged file content (on disk, after LLM resolution)
+    local merged_lines
+    merged_lines=$(sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/[[:space:]]\+/ /g' "$file_path" | grep -v '^$' | sort -u)
+
+    # Check: are all additions from ours present in merged?
+    local missing="" missing_count=0 side=""
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if ! echo "$merged_lines" | grep -qxF "$line"; then
+            missing+="  [ours] $line"$'\n'
+            missing_count=$((missing_count + 1))
+        fi
+    done <<< "$ours_added"
+
+    # Check: are all additions from theirs present in merged?
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if ! echo "$merged_lines" | grep -qxF "$line"; then
+            missing+="  [theirs] $line"$'\n'
+            missing_count=$((missing_count + 1))
+        fi
+    done <<< "$theirs_added"
+
+    if [[ $missing_count -gt 0 ]]; then
+        local ours_count theirs_count
+        ours_count=$(echo "$ours_added" | grep -c . 2>/dev/null || echo 0)
+        theirs_count=$(echo "$theirs_added" | grep -c . 2>/dev/null || echo 0)
+        echo "CONSERVATION FAILED: $file_path"
+        echo "  Additions — ours: $ours_count lines, theirs: $theirs_count lines"
+        echo "  Missing: $missing_count lines"
+        echo "$missing" | head -20
+        return 1
+    fi
+
+    return 0
+}
+
+# Run conservation checks on all LLM-resolved files.
+# Args: merge_base, ours_ref, theirs_ref
+# Returns 0 if all pass, 1 if any fail.
+run_conservation_checks() {
+    local merge_base="$1"
+    local ours_ref="$2"
+    local theirs_ref="$3"
+
+    if [[ ${#LLM_RESOLVED_FILES[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    info "Running conservation checks on ${#LLM_RESOLVED_FILES[@]} LLM-resolved file(s)..."
+
+    local failed=false
+    local report=""
+    for file_path in "${LLM_RESOLVED_FILES[@]}"; do
+        local result
+        result=$(conservation_check "$merge_base" "$ours_ref" "$theirs_ref" "$file_path" 2>&1) || {
+            failed=true
+            report+="$result"$'\n'
+        }
+    done
+
+    if $failed; then
+        error "MERGE BLOCKED: conservation check failed — additions lost"
+        echo "$report"
+        return 1
+    fi
+
+    info "Conservation checks passed — all additions preserved"
+    return 0
+}
+
+# ─── Entity Counting (for additive strategy) ─────────────────────
+
+# Count lines matching a regex pattern in a file or git ref.
+# Args: source (file path or "git:ref:path"), pattern
+count_entities() {
+    local source="$1"
+    local pattern="$2"
+
+    if [[ "$source" == git:* ]]; then
+        local ref_and_path="${source#git:}"
+        local ref="${ref_and_path%%:*}"
+        local path="${ref_and_path#*:}"
+        git show "${ref}:${path}" 2>/dev/null | grep -cE "$pattern" || echo 0
+    else
+        grep -cE "$pattern" "$source" 2>/dev/null || echo 0
+    fi
+}
+
+# Run entity count check for a single file with additive strategy.
+# Args: merge_base, ours_ref, theirs_ref, file_path, entity_pattern
+# Returns 0 if entity count is preserved, 1 if dropped.
+entity_count_check() {
+    local merge_base="$1"
+    local ours_ref="$2"
+    local theirs_ref="$3"
+    local file_path="$4"
+    local entity_pattern="$5"
+
+    local base_count ours_count theirs_count merged_count
+    base_count=$(count_entities "git:${merge_base}:${file_path}" "$entity_pattern")
+    ours_count=$(count_entities "git:${ours_ref}:${file_path}" "$entity_pattern")
+    theirs_count=$(count_entities "git:${theirs_ref}:${file_path}" "$entity_pattern")
+    merged_count=$(count_entities "$file_path" "$entity_pattern")
+
+    local ours_added=$((ours_count - base_count))
+    local theirs_added=$((theirs_count - base_count))
+    # Clamp negatives (deletions) to 0 for expected calculation
+    [[ $ours_added -lt 0 ]] && ours_added=0
+    [[ $theirs_added -lt 0 ]] && theirs_added=0
+    local expected=$((base_count + ours_added + theirs_added))
+
+    info "Entity count: base=$base_count, ours_added=$ours_added, theirs_added=$theirs_added, merged=$merged_count, expected=$expected"
+
+    if [[ $merged_count -lt $expected ]]; then
+        error "MERGE BLOCKED: entity count dropped in $file_path (expected $expected, got $merged_count)"
+        return 1
+    fi
+
+    return 0
+}
+
+# ─── Merge Strategy Config ───────────────────────────────────────
+
+# Strategy arrays — populated by load_merge_strategies()
+declare -a STRATEGY_NAMES=()
+declare -a STRATEGY_PATTERNS=()
+declare -a STRATEGY_TYPES=()
+declare -a STRATEGY_ENTITY_PATTERNS=()
+declare -a STRATEGY_VALIDATE_CMDS=()
+declare -a STRATEGY_LLM_HINTS=()
+
+# Load merge strategies from project-knowledge.yaml or profile fallback.
+load_merge_strategies() {
+    local project_path="${1:-.}"
+    local pk_file="$project_path/project-knowledge.yaml"
+    local profile_file="$project_path/.wt-tools/.merge-strategies.json"
+
+    # Try project-knowledge.yaml first
+    if [[ -f "$pk_file" ]]; then
+        local strategies_json
+        strategies_json=$(python3 -c "
+import yaml, json, sys
+try:
+    with open('$pk_file') as f:
+        data = yaml.safe_load(f) or {}
+    strategies = data.get('merge_strategies', [])
+    if strategies:
+        json.dump(strategies, sys.stdout)
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null) && {
+            _parse_strategies_json "$strategies_json"
+            return 0
+        }
+    fi
+
+    # Fallback to profile defaults
+    if [[ -f "$profile_file" ]]; then
+        _parse_strategies_json "$(cat "$profile_file")"
+        return 0
+    fi
+
+    # No strategies configured — conservation-only mode
+    return 0
+}
+
+# Parse JSON array of strategies into bash arrays.
+_parse_strategies_json() {
+    local json="$1"
+    local count
+    count=$(echo "$json" | jq 'length' 2>/dev/null) || return 1
+
+    for ((i=0; i<count; i++)); do
+        STRATEGY_NAMES+=("$(echo "$json" | jq -r ".[$i].name // \"strategy-$i\"")")
+        STRATEGY_PATTERNS+=("$(echo "$json" | jq -r ".[$i].patterns | join(\"|\")")")
+        STRATEGY_TYPES+=("$(echo "$json" | jq -r ".[$i].strategy // \"llm_with_conservation\"")")
+        STRATEGY_ENTITY_PATTERNS+=("$(echo "$json" | jq -r ".[$i].entity_pattern // \"\"")")
+        STRATEGY_VALIDATE_CMDS+=("$(echo "$json" | jq -r ".[$i].validate_command // \"\"")")
+        STRATEGY_LLM_HINTS+=("$(echo "$json" | jq -r ".[$i].llm_hint // \"\"")")
+    done
+}
+
+# Find matching strategy for a file. Returns strategy index or empty.
+match_strategy() {
+    local file_path="$1"
+    local basename
+    basename=$(basename "$file_path")
+
+    for ((i=0; i<${#STRATEGY_NAMES[@]}; i++)); do
+        local patterns="${STRATEGY_PATTERNS[$i]}"
+        IFS='|' read -ra pats <<< "$patterns"
+        for pat in "${pats[@]}"; do
+            # Match full path or basename against glob
+            # shellcheck disable=SC2254
+            if [[ "$file_path" == ${pat} || "$basename" == ${pat} ]]; then
+                echo "$i"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# Get LLM hint for a file (from strategy config).
+get_llm_hint() {
+    local file_path="$1"
+    local idx
+    idx=$(match_strategy "$file_path" 2>/dev/null) || return 1
+
+    local hint="${STRATEGY_LLM_HINTS[$idx]}"
+    local strategy_type="${STRATEGY_TYPES[$idx]}"
+
+    if [[ -n "$hint" ]]; then
+        echo "Merge strategy: $strategy_type"
+        echo "$hint"
+        if [[ "$strategy_type" == "additive" ]]; then
+            echo "This file uses additive merge — NEVER remove entities from either side."
+        fi
+    fi
+}
+
+# Run post-merge validation commands for LLM-resolved files.
+# Args: (none — uses LLM_RESOLVED_FILES and strategy arrays)
+# Returns 0 if all pass, 1 if any fail.
+run_validation_commands() {
+    local failed=false
+
+    for file_path in "${LLM_RESOLVED_FILES[@]}"; do
+        local idx
+        idx=$(match_strategy "$file_path" 2>/dev/null) || continue
+
+        local validate_cmd="${STRATEGY_VALIDATE_CMDS[$idx]}"
+        [[ -z "$validate_cmd" ]] && continue
+
+        info "Running validation for $file_path: $validate_cmd"
+        local output rc=0
+        output=$(bash -c "$validate_cmd" 2>&1) || rc=$?
+
+        if [[ $rc -ne 0 ]]; then
+            error "MERGE BLOCKED: validation failed for $file_path"
+            echo "  Command: $validate_cmd"
+            echo "  Output: $(echo "$output" | tail -5)"
+            failed=true
+        fi
+    done
+
+    if $failed; then
+        return 1
+    fi
+    return 0
+}
+
+# Run entity count checks for files with additive strategy.
+# Args: merge_base, ours_ref, theirs_ref
+# Returns 0 if all pass, 1 if any fail.
+run_entity_checks() {
+    local merge_base="$1"
+    local ours_ref="$2"
+    local theirs_ref="$3"
+
+    local failed=false
+
+    for file_path in "${LLM_RESOLVED_FILES[@]}"; do
+        local idx
+        idx=$(match_strategy "$file_path" 2>/dev/null) || continue
+
+        local strategy_type="${STRATEGY_TYPES[$idx]}"
+        local entity_pattern="${STRATEGY_ENTITY_PATTERNS[$idx]}"
+
+        if [[ "$strategy_type" == "additive" && -n "$entity_pattern" ]]; then
+            if ! entity_count_check "$merge_base" "$ours_ref" "$theirs_ref" "$file_path" "$entity_pattern"; then
+                failed=true
+            fi
+        fi
+    done
+
+    if $failed; then
+        return 1
+    fi
     return 0
 }
 
@@ -563,6 +949,7 @@ main() {
     local delete_branch=true
     local push_after=true
     local llm_resolve=false
+    local conservation_check=true
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -588,6 +975,10 @@ main() {
                 ;;
             --llm-resolve)
                 llm_resolve=true
+                shift
+                ;;
+            --no-conservation-check)
+                conservation_check=false
                 shift
                 ;;
             -h|--help)
@@ -826,9 +1217,51 @@ main() {
         if [[ $merge_result -ne 0 ]] && $llm_resolve; then
             conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null)
             if [[ -n "$conflicted_files" ]]; then
+                # Load merge strategies for LLM hint enrichment
+                load_merge_strategies "$(pwd)"
+
                 if llm_resolve_conflicts "$source_branch" "$target_branch" "$conflicted_files"; then
-                    git commit --no-edit 2>/dev/null
-                    merge_result=$?
+                    # ── Post-LLM integrity checks (BEFORE commit) ──
+                    local integrity_ok=true
+
+                    if $conservation_check; then
+                        # Compute merge-base for conservation checks
+                        local check_merge_base
+                        check_merge_base=$(git merge-base "$target_branch" "$source_branch" 2>/dev/null || echo "")
+
+                        if [[ -n "$check_merge_base" ]]; then
+                            # Pre-merge HEAD ref (the target branch before merge started)
+                            local ours_ref="$target_branch"
+                            local theirs_ref="$source_branch"
+
+                            # Layer 1: Entity count checks (additive strategy files)
+                            if ! run_entity_checks "$check_merge_base" "$ours_ref" "$theirs_ref"; then
+                                integrity_ok=false
+                            fi
+
+                            # Layer 2: Generic conservation check (all LLM-resolved files)
+                            if $integrity_ok && ! run_conservation_checks "$check_merge_base" "$ours_ref" "$theirs_ref"; then
+                                integrity_ok=false
+                            fi
+
+                            # Layer 3: Validation commands (per-strategy)
+                            if $integrity_ok && ! run_validation_commands; then
+                                integrity_ok=false
+                            fi
+                        else
+                            warn "Could not compute merge-base — skipping conservation checks"
+                        fi
+                    fi
+
+                    if $integrity_ok; then
+                        git commit --no-edit 2>/dev/null
+                        merge_result=$?
+                    else
+                        # Abort the uncommitted merge
+                        error "Integrity checks failed — aborting merge"
+                        git reset --merge 2>/dev/null || git checkout -- . 2>/dev/null || true
+                        merge_result=1
+                    fi
                 fi
             fi
         fi

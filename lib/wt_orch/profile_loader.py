@@ -61,6 +61,14 @@ class NullProfile:
     def ignore_patterns(self) -> list:
         return []
 
+    def merge_strategies(self) -> list:
+        """Return list of merge strategy dicts for file-type-aware merge protection.
+
+        Each dict: {name, patterns, strategy, entity_pattern, validate_command, llm_hint}
+        Override in project-type plugins to provide defaults (e.g., Prisma for web projects).
+        """
+        return []
+
     def gate_overrides(self, change_type: str) -> dict:
         return {}
 

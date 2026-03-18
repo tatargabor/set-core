@@ -47,3 +47,22 @@ verification_rules:
   #   trigger: "src/components/Sidebar.tsx"
   #   check: "sidebar items are in alphabetical order"
   #   severity: warning
+
+# Merge strategies — file-type-aware merge protection.
+# Controls how wt-merge handles LLM-resolved conflicts for specific files.
+# Strategy types:
+#   additive — entity counting + conservation check + optional validation
+#   llm_with_conservation — generic conservation check only (default for all files)
+merge_strategies:
+  # Example for Prisma projects:
+  # - name: schema
+  #   patterns: ["prisma/schema.prisma", "*.prisma"]
+  #   strategy: additive
+  #   entity_pattern: "^model |^enum "
+  #   validate_command: "npx prisma validate"
+  #   llm_hint: "Database schema. NEVER remove models, enums, or fields. Keep ALL from both sides."
+  # - name: middleware
+  #   patterns: ["src/middleware.ts"]
+  #   strategy: additive
+  #   entity_pattern: "^export |matcher"
+  #   llm_hint: "Route middleware. Keep ALL route matchers and exports from both sides."
