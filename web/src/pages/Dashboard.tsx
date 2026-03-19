@@ -4,7 +4,7 @@ import StatusHeader from '../components/StatusHeader'
 import ChangeTable from '../components/ChangeTable'
 import LogPanel from '../components/LogPanel'
 import CheckpointBanner from '../components/CheckpointBanner'
-// ResizableSplit no longer needed — log panel moved to own tab
+import ResizableSplit from '../components/ResizableSplit'
 import PlanViewer from '../components/PlanViewer'
 import TokenChart from '../components/TokenChart'
 import AuditPanel from '../components/AuditPanel'
@@ -17,7 +17,7 @@ import SentinelPanel from '../components/SentinelPanel'
 // useIsMobile removed — no longer needed
 import { useSentinelData } from '../hooks/useSentinelData'
 import { getDigest, getPlans, getState } from '../lib/api'
-import type { StateData } from '../lib/api'
+import type { StateData, ChangeInfo } from '../lib/api'
 
 type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel'
 
@@ -119,7 +119,8 @@ export default function Dashboard({ project }: Props) {
   }
 
   const changes = state?.changes ?? []
-  // selectedChangeInfo removed — log panel no longer embedded in changes tab
+  const selectedChangeInfo: ChangeInfo | null =
+    selectedChange ? changes.find((c) => c.name === selectedChange) ?? null : null
   const hasAudit = (state?.phase_audit_results?.length ?? 0) > 0
 
   const tabs: { id: PanelTab; label: string; hidden?: boolean }[] = [
@@ -188,16 +189,39 @@ export default function Dashboard({ project }: Props) {
           />
         )}
 
-        {/* Changes tab — full height, no embedded log */}
+        {/* Changes tab — with change detail panel when selected */}
         {activeTab === 'changes' && (
-          <div className="h-full overflow-auto">
-            <ChangeTable
-              changes={changes}
-              project={project}
-              selected={selectedChange}
-              onSelect={setSelectedChange}
+          selectedChange ? (
+            <ResizableSplit
+              top={
+                <div className="h-full overflow-auto">
+                  <ChangeTable
+                    changes={changes}
+                    project={project}
+                    selected={selectedChange}
+                    onSelect={setSelectedChange}
+                  />
+                </div>
+              }
+              bottom={
+                <LogPanel
+                  orchLines={[]}
+                  selectedChange={selectedChangeInfo}
+                  project={project}
+                />
+              }
+              defaultRatio={0.55}
             />
-          </div>
+          ) : (
+            <div className="h-full overflow-auto">
+              <ChangeTable
+                changes={changes}
+                project={project}
+                selected={selectedChange}
+                onSelect={setSelectedChange}
+              />
+            </div>
+          )
         )}
 
         {/* Log tab — orchestration log full height */}
