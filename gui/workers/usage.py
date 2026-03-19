@@ -46,9 +46,16 @@ def load_accounts():
             return []
         with open(CLAUDE_SESSION_FILE) as f:
             data = json.load(f)
-        # New format
+        # New format — deduplicate by sessionKey (prefer manual over chrome-scan)
         if "accounts" in data and isinstance(data["accounts"], list):
-            return [a for a in data["accounts"] if a.get("sessionKey")]
+            seen_keys = {}
+            for a in data["accounts"]:
+                key = a.get("sessionKey")
+                if not key:
+                    continue
+                if key not in seen_keys or a.get("source") != "chrome-scan":
+                    seen_keys[key] = a
+            return list(seen_keys.values())
         # Old format — auto-wrap
         if data.get("sessionKey"):
             return [{"name": "Default", "sessionKey": data["sessionKey"]}]

@@ -8,6 +8,7 @@ ExecStart=%h/.local/bin/set-orch-core serve --port 7400
 Restart=always
 RestartSec=5
 Environment=PYTHONPATH=%h/code2/set-core/lib
+Environment=PATH=%h/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]
 WantedBy=default.target

@@ -276,8 +276,11 @@ def merge_scan_results(scan_results: list[dict], existing_accounts: list[dict]) 
     """
     # Keep all manual accounts
     merged = [a for a in existing_accounts if a.get("source") != "chrome-scan"]
-    # Add scan results
-    merged.extend(scan_results)
+    # Add scan results, but skip if sessionKey already exists in manual accounts
+    manual_keys = {a.get("sessionKey") for a in merged}
+    for sr in scan_results:
+        if sr.get("sessionKey") not in manual_keys:
+            merged.append(sr)
     return merged
 
 
