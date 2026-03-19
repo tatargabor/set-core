@@ -539,10 +539,12 @@ resolve_model_id() {
     prefix=$(get_model_prefix)
 
     case "$name" in
-        haiku)  echo "${prefix}claude-haiku-4-5-20251001" ;;
-        sonnet) echo "${prefix}claude-sonnet-4-6" ;;
-        opus)   echo "${prefix}claude-opus-4-6" ;;
-        *)      echo "$name" ;;  # pass through full IDs
+        haiku)    echo "${prefix}claude-haiku-4-5-20251001" ;;
+        sonnet)   echo "${prefix}claude-sonnet-4-6" ;;
+        opus)     echo "${prefix}claude-opus-4-6" ;;
+        opus-1m)  echo "${prefix}claude-opus-4-6[1m]" ;;
+        sonnet-1m) echo "${prefix}claude-sonnet-4-6[1m]" ;;
+        *)        echo "$name" ;;  # pass through full IDs
     esac
 }
 
