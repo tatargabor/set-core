@@ -39,6 +39,8 @@ function ConfigValue({ label, value }: { label: string; value: React.ReactNode }
 export default function Settings({ project }: Props) {
   const [data, setData] = useState<SettingsData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   useEffect(() => {
     if (!project) { setData(null); return }
@@ -48,6 +50,29 @@ export default function Settings({ project }: Props) {
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false))
+  }, [project])
+
+  const handleShutdown = useCallback(async () => {
+    if (!project) return
+    setShowConfirm(false)
+    setActionLoading('shutdown')
+    try {
+      await shutdownOrchestration(project)
+    } catch {
+      try { await stopOrchestrator(project) } catch {}
+    }
+    setActionLoading(null)
+    fetch(`/api/${project}/settings`).then(r => r.json()).then(setData).catch(() => {})
+  }, [project])
+
+  const handleResume = useCallback(async () => {
+    if (!project) return
+    setActionLoading('resume')
+    try {
+      await fetch(`/api/${project}/start`, { method: 'POST' })
+    } catch {}
+    setActionLoading(null)
+    fetch(`/api/${project}/settings`).then(r => r.json()).then(setData).catch(() => {})
   }, [project])
 
   if (!project) {
@@ -62,38 +87,9 @@ export default function Settings({ project }: Props) {
 
   const directives = data.config?.directives as Record<string, unknown> | undefined
 
-  // Orchestration status from state (poll via settings refresh)
   const orchStatus = (data.config as Record<string, unknown>)?.status as string | undefined
   const isShutdown = orchStatus === 'shutdown'
   const isRunning = orchStatus === 'running' || orchStatus === 'checkpoint'
-
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [showConfirm, setShowConfirm] = useState(false)
-
-  const handleShutdown = useCallback(async () => {
-    if (!project) return
-    setShowConfirm(false)
-    setActionLoading('shutdown')
-    try {
-      await shutdownOrchestration(project)
-    } catch {
-      // fallback: try regular stop
-      try { await stopOrchestrator(project) } catch {}
-    }
-    setActionLoading(null)
-    // Refresh settings
-    fetch(`/api/${project}/settings`).then(r => r.json()).then(setData).catch(() => {})
-  }, [project])
-
-  const handleResume = useCallback(async () => {
-    if (!project) return
-    setActionLoading('resume')
-    try {
-      await fetch(`/api/${project}/start`, { method: 'POST' })
-    } catch {}
-    setActionLoading(null)
-    fetch(`/api/${project}/settings`).then(r => r.json()).then(setData).catch(() => {})
-  }, [project])
 
   return (
     <div className="p-6 max-w-3xl space-y-6">

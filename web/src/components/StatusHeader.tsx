@@ -25,6 +25,7 @@ function formatDuration(secs?: number): string {
 
 export default function StatusHeader({ state, connected, project }: Props) {
   const [loading, setLoading] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<string | null>(null)
   const statusBadge = state?.status ?? 'idle'
   const isActive = ['running', 'planning', 'checkpoint'].includes(statusBadge)
   const badgeColor: Record<string, string> = {
@@ -50,6 +51,28 @@ export default function StatusHeader({ state, connected, project }: Props) {
     { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
   )
   const done = changes.filter((c) => ['done', 'merged', 'completed'].includes(c.status)).length
+
+  const handleApprove = async () => {
+    if (confirmAction !== 'approve') {
+      setConfirmAction('approve')
+      return
+    }
+    setConfirmAction(null)
+    setLoading('approve')
+    try { await approve(project) } catch {}
+    setLoading(null)
+  }
+
+  const handleStop = async () => {
+    if (confirmAction !== 'stop') {
+      setConfirmAction('stop')
+      return
+    }
+    setConfirmAction(null)
+    setLoading('stop')
+    try { await stopOrchestrator(project) } catch {}
+    setLoading(null)
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
@@ -82,20 +105,28 @@ export default function StatusHeader({ state, connected, project }: Props) {
           <div className="flex gap-2 ml-2">
             {statusBadge === 'checkpoint' && (
               <button
-                onClick={async () => { setLoading('approve'); try { await approve(project) } catch {} setLoading(null) }}
+                onClick={handleApprove}
                 disabled={loading === 'approve'}
-                className="px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-xs bg-green-900/60 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 font-medium"
+                className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-xs rounded font-medium disabled:opacity-50 ${
+                  confirmAction === 'approve'
+                    ? 'bg-green-600 text-white hover:bg-green-500'
+                    : 'bg-green-900/60 text-green-300 hover:bg-green-900'
+                }`}
               >
-                Approve
+                {confirmAction === 'approve' ? 'Are you sure?' : 'Approve'}
               </button>
             )}
             {isActive && (
               <button
-                onClick={async () => { setLoading('stop'); try { await stopOrchestrator(project) } catch {} setLoading(null) }}
+                onClick={handleStop}
                 disabled={loading === 'stop'}
-                className="px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 font-medium"
+                className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-xs rounded font-medium disabled:opacity-50 ${
+                  confirmAction === 'stop'
+                    ? 'bg-red-700 text-white hover:bg-red-600'
+                    : 'bg-red-900/50 text-red-300 hover:bg-red-900'
+                }`}
               >
-                Stop
+                {confirmAction === 'stop' ? 'Are you sure?' : 'Stop'}
               </button>
             )}
           </div>

@@ -89,7 +89,7 @@ function ProjectCard({ project, compact }: { project: ProjectInfo; compact?: boo
 
   return (
     <Link
-      to={`/wt/${project.name}`}
+      to={`/set/${project.name}`}
       className={`block rounded-lg border border-neutral-800 hover:border-neutral-700 transition-colors ${
         compact ? 'p-3' : 'p-4 bg-neutral-900/50'
       }`}

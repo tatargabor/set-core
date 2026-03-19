@@ -15,7 +15,7 @@ export function useProject() {
   }, [])
 
   const setProject = (name: string) => {
-    navigate(`/wt/${name}`)
+    navigate(`/set/${name}`)
   }
 
   return { project: urlProject ?? null, setProject, projects }

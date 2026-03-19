@@ -55,6 +55,7 @@ function changeDuration(c: ChangeInfo): number | undefined {
 
 export default function ChangeTable({ changes, project, selected, onSelect }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<string | null>(null)
   const [expandedGate, setExpandedGate] = useState<string | null>(null)
   const [screenshotChange, setScreenshotChange] = useState<string | null>(null)
   const isMobile = useIsMobile()
@@ -71,7 +72,13 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
 
   const handleAction = async (e: React.MouseEvent, name: string, action: 'stop' | 'skip') => {
     e.stopPropagation()
-    setActionLoading(`${name}:${action}`)
+    const key = `${name}:${action}`
+    if (confirmAction !== key) {
+      setConfirmAction(key)
+      return
+    }
+    setConfirmAction(null)
+    setActionLoading(key)
     try {
       if (action === 'stop') await stopChange(project, name)
       if (action === 'skip') await skipChange(project, name)
@@ -174,18 +181,26 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                       <button
                         onClick={(e) => handleAction(e, c.name, 'stop')}
                         disabled={actionLoading === `${c.name}:stop`}
-                        className="px-3 py-1.5 text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50"
+                        className={`px-3 py-1.5 text-xs rounded disabled:opacity-50 ${
+                          confirmAction === `${c.name}:stop`
+                            ? 'bg-red-700 text-white hover:bg-red-600'
+                            : 'bg-red-900/50 text-red-300 hover:bg-red-900'
+                        }`}
                       >
-                        Stop
+                        {confirmAction === `${c.name}:stop` ? 'Are you sure?' : 'Stop'}
                       </button>
                     )}
                     {(c.status === 'pending' || c.status === 'failed' || c.status === 'verify-failed' || c.status === 'stalled') && (
                       <button
                         onClick={(e) => handleAction(e, c.name, 'skip')}
                         disabled={actionLoading === `${c.name}:skip`}
-                        className="px-3 py-1.5 text-xs bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700 disabled:opacity-50"
+                        className={`px-3 py-1.5 text-xs rounded disabled:opacity-50 ${
+                          confirmAction === `${c.name}:skip`
+                            ? 'bg-amber-700 text-white hover:bg-amber-600'
+                            : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
+                        }`}
                       >
-                        Skip
+                        {confirmAction === `${c.name}:skip` ? 'Are you sure?' : 'Skip'}
                       </button>
                     )}
                   </div>
@@ -263,18 +278,26 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     <button
                       onClick={(e) => handleAction(e, c.name, 'stop')}
                       disabled={actionLoading === `${c.name}:stop`}
-                      className="px-2 py-0.5 text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50"
+                      className={`px-2 py-0.5 text-xs rounded disabled:opacity-50 ${
+                        confirmAction === `${c.name}:stop`
+                          ? 'bg-red-700 text-white hover:bg-red-600'
+                          : 'bg-red-900/50 text-red-300 hover:bg-red-900'
+                      }`}
                     >
-                      Stop
+                      {confirmAction === `${c.name}:stop` ? 'Sure?' : 'Stop'}
                     </button>
                   )}
                   {(c.status === 'pending' || c.status === 'failed' || c.status === 'verify-failed' || c.status === 'stalled') && (
                     <button
                       onClick={(e) => handleAction(e, c.name, 'skip')}
                       disabled={actionLoading === `${c.name}:skip`}
-                      className="px-2 py-0.5 text-xs bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700 disabled:opacity-50"
+                      className={`px-2 py-0.5 text-xs rounded disabled:opacity-50 ${
+                        confirmAction === `${c.name}:skip`
+                          ? 'bg-amber-700 text-white hover:bg-amber-600'
+                          : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
+                      }`}
                     >
-                      Skip
+                      {confirmAction === `${c.name}:skip` ? 'Sure?' : 'Skip'}
                     </button>
                   )}
                 </div>

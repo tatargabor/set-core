@@ -10,8 +10,13 @@ interface Props {
 export default function CheckpointBanner({ project, checkpointType, onDismiss }: Props) {
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmStop, setConfirmStop] = useState(false)
+  const [confirmApprove, setConfirmApprove] = useState(false)
 
   const handleApprove = async () => {
+    if (!confirmApprove) {
+      setConfirmApprove(true)
+      return
+    }
     setLoading('approve')
     try {
       await approve(project)
@@ -20,6 +25,7 @@ export default function CheckpointBanner({ project, checkpointType, onDismiss }:
       // error will show in state
     }
     setLoading(null)
+    setConfirmApprove(false)
   }
 
   const handleStop = async () => {
@@ -65,9 +71,13 @@ export default function CheckpointBanner({ project, checkpointType, onDismiss }:
       <button
         onClick={handleApprove}
         disabled={loading !== null}
-        className="px-3 py-1.5 text-sm bg-green-700 text-white rounded hover:bg-green-600 disabled:opacity-50 font-medium"
+        className={`px-3 py-1.5 text-sm rounded font-medium disabled:opacity-50 ${
+          confirmApprove
+            ? 'bg-green-600 text-white hover:bg-green-500'
+            : 'bg-green-700 text-white hover:bg-green-600'
+        }`}
       >
-        {loading === 'approve' ? 'Approving...' : 'Approve'}
+        {loading === 'approve' ? 'Approving...' : confirmApprove ? 'Are you sure?' : 'Approve'}
       </button>
       <button
         onClick={handleStop}

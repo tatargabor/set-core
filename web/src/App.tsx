@@ -94,6 +94,13 @@ function ProjectLayout() {
   const [stateError, setStateError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // Reset sidebar state on project change
+  useEffect(() => {
+    setSidebarState(null)
+    sidebarJsonRef.current = ''
+    setStateError(null)
+  }, [project])
+
   const pathAfterProject = location.pathname.split('/').slice(3).join('/')
   const activeTab = pathAfterProject || 'dashboard'
 
@@ -175,8 +182,9 @@ function ProjectLayout() {
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         md:relative md:translate-x-0 md:w-56 md:transition-none
       `}>
-        <Link to="/wt" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
+        <Link to="/set" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
           <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
+          <p className="text-[9px] text-neutral-500 tracking-wide">Ship Exactly This!</p>
         </Link>
         <div className="p-3">
           <ProjectSelector
@@ -187,25 +195,25 @@ function ProjectLayout() {
         </div>
         <nav className="p-3 space-y-1">
           <Link
-            to={project ? `/wt/${project}` : '/wt'}
+            to={project ? `/set/${project}` : '/set'}
             className={`block px-3 py-2 rounded text-sm ${activeTab === 'dashboard' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
           >
             Dashboard
           </Link>
           <Link
-            to={project ? `/wt/${project}/worktrees` : '/wt'}
+            to={project ? `/set/${project}/worktrees` : '/set'}
             className={`block px-3 py-2 rounded text-sm ${activeTab === 'worktrees' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
           >
             Worktrees
           </Link>
           <Link
-            to={project ? `/wt/${project}/memory` : '/wt'}
+            to={project ? `/set/${project}/memory` : '/set'}
             className={`block px-3 py-2 rounded text-sm ${activeTab === 'memory' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
           >
             Memory
           </Link>
           <Link
-            to={project ? `/wt/${project}/settings` : '/wt'}
+            to={project ? `/set/${project}/settings` : '/set'}
             className={`block px-3 py-2 rounded text-sm ${activeTab === 'settings' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
           >
             Settings
@@ -236,7 +244,7 @@ function ProjectLayout() {
       </aside>
 
       {/* Main content — add top padding on mobile for the top bar */}
-      <main className="flex-1 overflow-hidden pt-11 md:pt-0">
+      <main key={project} className="flex-1 overflow-hidden pt-11 md:pt-0">
         <Routes>
           <Route index element={<Dashboard project={project} />} />
           <Route path="worktrees" element={<Worktrees project={project} />} />
@@ -254,6 +262,7 @@ function HomeLayout() {
       <aside className="hidden md:flex w-56 shrink-0 border-r border-neutral-800 flex-col">
         <div className="p-4 border-b border-neutral-800">
           <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
+          <p className="text-[9px] text-neutral-500 tracking-wide">Ship Exactly This!</p>
         </div>
       </aside>
       <main className="flex-1 overflow-auto">
@@ -267,9 +276,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/wt" replace />} />
-        <Route path="/wt" element={<HomeLayout />} />
-        <Route path="/wt/:project/*" element={<ProjectLayout />} />
+        <Route path="/" element={<Navigate to="/set" replace />} />
+        <Route path="/set" element={<HomeLayout />} />
+        <Route path="/set/:project/*" element={<ProjectLayout />} />
       </Routes>
     </BrowserRouter>
   )

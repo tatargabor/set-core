@@ -6,14 +6,31 @@ interface Props {
 
 interface MemoryStats {
   total?: number
+  total_memories?: number
+  long_term_memory_count?: number
+  session_memory_count?: number
+  working_memory_count?: number
+  compressed_count?: number
+  promotions_to_longterm?: number
+  promotions_to_session?: number
+  total_retrievals?: number
   type_distribution?: Record<string, number>
   tag_distribution?: Record<string, number>
   importance_histogram?: Record<string, number>
   noise_ratio?: number
 }
 
+interface MemoryHealth {
+  status?: string
+  project?: string
+  uptime_s?: number
+  requests?: number
+  connections?: number
+  error?: string
+}
+
 interface MemoryData {
-  health: string | { error?: string }
+  health: string | MemoryHealth
   stats: MemoryStats
   sync: string
 }
@@ -47,13 +64,14 @@ export default function Memory({ project }: Props) {
   if (error) return <div className="p-6 text-red-400 text-sm">{error}</div>
   if (!data) return <div className="p-6 text-neutral-500 text-sm">No data</div>
 
-  const healthOk = data.health === 'ok'
-  const healthText = typeof data.health === 'string' ? data.health : data.health?.error ?? 'unknown'
+  const healthObj = typeof data.health === 'object' ? data.health : null
+  const healthOk = typeof data.health === 'string' ? data.health === 'ok' : healthObj?.status === 'ok'
+  const healthText = typeof data.health === 'string' ? data.health : healthObj?.status ?? healthObj?.error ?? 'unknown'
   const stats = data.stats ?? {}
   const types = stats.type_distribution ?? {}
   const tags = stats.tag_distribution ?? {}
   const importance = stats.importance_histogram ?? {}
-  const total = stats.total ?? 0
+  const total = stats.total ?? stats.total_memories ?? 0
   const maxType = Math.max(...Object.values(types), 1)
   const maxImportance = Math.max(...Object.values(importance), 1)
 
@@ -76,6 +94,42 @@ export default function Memory({ project }: Props) {
           )}
         </div>
       </section>
+
+      {/* Memory breakdown (from API stats) */}
+      {Object.keys(types).length === 0 && total > 0 && (
+        <section>
+          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Breakdown</h2>
+          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 space-y-2">
+            {stats.long_term_memory_count != null && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-neutral-400 w-24">Long-term</span>
+                <Bar value={stats.long_term_memory_count} max={total} color="bg-purple-500" />
+                <span className="text-xs text-neutral-300 font-mono w-12 text-right">{stats.long_term_memory_count}</span>
+              </div>
+            )}
+            {stats.session_memory_count != null && stats.session_memory_count > 0 && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-neutral-400 w-24">Session</span>
+                <Bar value={stats.session_memory_count} max={total} color="bg-blue-500" />
+                <span className="text-xs text-neutral-300 font-mono w-12 text-right">{stats.session_memory_count}</span>
+              </div>
+            )}
+            {stats.working_memory_count != null && stats.working_memory_count > 0 && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-neutral-400 w-24">Working</span>
+                <Bar value={stats.working_memory_count} max={total} color="bg-cyan-500" />
+                <span className="text-xs text-neutral-300 font-mono w-12 text-right">{stats.working_memory_count}</span>
+              </div>
+            )}
+            {stats.total_retrievals != null && stats.total_retrievals > 0 && (
+              <div className="flex items-center gap-3 pt-1 border-t border-neutral-800/50">
+                <span className="text-xs text-neutral-500 w-24">Retrievals</span>
+                <span className="text-xs text-neutral-400 font-mono">{stats.total_retrievals}</span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Type distribution */}
       {Object.keys(types).length > 0 && (
