@@ -14,12 +14,13 @@ import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
 import SentinelPanel from '../components/SentinelPanel'
+import BattleView from './BattleView'
 // useIsMobile removed — no longer needed
 import { useSentinelData } from '../hooks/useSentinelData'
 import { getDigest, getPlans, getState } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel'
+type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'battle'
 
 interface Props {
   project: string | null
@@ -135,6 +136,7 @@ export default function Dashboard({ project }: Props) {
     { id: 'agent', label: 'Agent' },
     { id: 'sentinel', label: 'Sentinel', hidden: !sentinelData.hasSentinel },
     { id: 'plan', label: 'Plan', hidden: !hasPlans },
+    { id: 'battle', label: '\u{1F3AE} Battle' },
   ]
 
   return (
@@ -177,6 +179,11 @@ export default function Dashboard({ project }: Props) {
         {/* Agent tab — full height */}
         {activeTab === 'agent' && (
           <OrchestrationChat project={project} />
+        )}
+
+        {/* Battle tab — full height */}
+        {activeTab === 'battle' && (
+          <BattleView project={project} changes={changes} />
         )}
 
         {/* Sentinel tab — full height */}
@@ -242,7 +249,7 @@ export default function Dashboard({ project }: Props) {
           </div>
         )}
 
-        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'sentinel' && activeTab !== 'log' && (
+        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'sentinel' && activeTab !== 'log' && activeTab !== 'battle' && (
           <div className="h-full overflow-auto">
             {activeTab === 'plan' && (
               <PlanViewer project={project} />
