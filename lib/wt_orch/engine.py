@@ -484,13 +484,23 @@ def _verify_gates_already_passed(change: Any) -> bool:
     _PASS_VALUES = {"pass", "skipped", "warn-fail"}
     _FAIL_VALUES = {"fail", "critical"}
 
-    test_r = change.test_result
-    build_r = change.build_result
-    review_r = change.review_result
-    scope_r = change.extras.get("scope_check") if change.extras else None
+    extras = change.extras or {}
 
-    # All four gates must have a result (not None) and none can be a hard failure
-    for result in (test_r, build_r, review_r, scope_r):
+    # Collect results from all gates — dataclass fields and extras.
+    # Must check ALL blocking gates, not just a subset. Rules gate result
+    # is not persisted (failure always sets status to verify-failed before
+    # crash window), but e2e and spec_coverage ARE persisted to extras.
+    gate_results = [
+        change.test_result,
+        change.build_result,
+        change.review_result,
+        extras.get("scope_check"),
+        extras.get("e2e_result"),
+        extras.get("spec_coverage_result"),
+    ]
+
+    # All checked gates must have a result (not None) and none can be a hard failure
+    for result in gate_results:
         if result is None:
             return False
         if result in _FAIL_VALUES:
@@ -700,9 +710,14 @@ def _recover_verify_failed(
             continue
 
         if change.verify_retry_count < d.max_verify_retries:
-            new_count = change.verify_retry_count + 1
-            logger.info("Recovering verify-failed %s (retry %d/%d)", change.name, new_count, d.max_verify_retries)
-            update_change_field(state_file, change.name, "verify_retry_count", new_count)
+            # NOTE: Do NOT increment verify_retry_count here — handle_change_done
+            # already incremented it before setting status to "verify-failed".
+            # This recovery path runs only after crash between status write and
+            # resume_change call. Double-incrementing would consume 2 retry slots.
+            logger.info(
+                "Recovering verify-failed %s (retry %d/%d)",
+                change.name, change.verify_retry_count, d.max_verify_retries,
+            )
 
             # Rebuild retry_context from stored build_output if missing
             retry_ctx = change.extras.get("retry_context", "")
@@ -741,6 +756,12 @@ def _check_completion(
     state = load_state(state_file)
     total = len(state.changes)
     if total == 0:
+        return False
+
+    # Guard: don't exit while merge queue has unmerged changes.
+    # A merge exception can leave changes in "done" status (gates passed but
+    # not yet merged) — exiting now would lose them.
+    if state.merge_queue:
         return False
 
     truly_complete = sum(

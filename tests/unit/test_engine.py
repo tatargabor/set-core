@@ -12,9 +12,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
 from wt_orch.engine import (
     Directives,
+    _check_completion,
     _checkpoint_approved,
     _clear_checkpoint_state,
+    _recover_verify_failed,
     _signal_alive,
+    _verify_gates_already_passed,
     parse_directives,
     trigger_checkpoint,
 )
@@ -654,3 +657,229 @@ class TestSignalAlive:
 
         # Should not raise
         _signal_alive(missing_file, None)
+
+
+# ─── _check_completion merge_queue guard ─────────────────────────
+
+
+class TestCheckCompletionMergeQueueGuard:
+    """_check_completion must return False when merge_queue is non-empty."""
+
+    def test_returns_false_when_merge_queue_non_empty(self, tmp_path):
+        """Even if all changes are 'done', non-empty merge_queue prevents exit."""
+        state_file = str(tmp_path / "state.json")
+        state = OrchestratorState(
+            status="running",
+            changes=[
+                Change(name="c1", status="done"),
+                Change(name="c2", status="done"),
+            ],
+            merge_queue=["c1", "c2"],
+        )
+        save_state(state, state_file)
+
+        d = Directives()
+        result = _check_completion(state_file, d, None)
+        assert result is False
+
+    def test_returns_true_when_merge_queue_empty_all_merged(self, tmp_path):
+        """When merge_queue is empty and all changes merged, completion is allowed."""
+        state_file = str(tmp_path / "state.json")
+        state = OrchestratorState(
+            status="running",
+            changes=[
+                Change(name="c1", status="merged"),
+                Change(name="c2", status="merged"),
+            ],
+            merge_queue=[],
+        )
+        save_state(state, state_file)
+
+        d = Directives()
+        result = _check_completion(state_file, d, None)
+        assert result is True
+
+    def test_merge_exception_leaves_done_in_queue(self, tmp_path):
+        """Simulates merge exception: change is 'done' AND in merge_queue."""
+        state_file = str(tmp_path / "state.json")
+        state = OrchestratorState(
+            status="running",
+            changes=[
+                Change(name="c1", status="merged"),
+                Change(name="c2", status="done"),  # merge threw exception
+            ],
+            merge_queue=["c2"],
+        )
+        save_state(state, state_file)
+
+        d = Directives()
+        result = _check_completion(state_file, d, None)
+        assert result is False
+
+
+# ─── _verify_gates_already_passed extended gate checks ───────────
+
+
+class TestVerifyGatesAlreadyPassed:
+    """_verify_gates_already_passed must check all blocking gates."""
+
+    def _make_change(self, **overrides):
+        """Create a Change with all gates passing by default."""
+        defaults = dict(
+            name="test-change",
+            status="verifying",
+            test_result="pass",
+            build_result="pass",
+            review_result="pass",
+            extras={
+                "scope_check": "pass",
+                "e2e_result": "pass",
+                "spec_coverage_result": "pass",
+            },
+        )
+        defaults.update(overrides)
+        return Change(**defaults)
+
+    def test_all_gates_pass(self):
+        """Returns True when all gates pass."""
+        change = self._make_change()
+        assert _verify_gates_already_passed(change) is True
+
+    def test_missing_review_result(self):
+        """Returns False when review_result is None (gate hasn't run)."""
+        change = self._make_change(review_result=None)
+        assert _verify_gates_already_passed(change) is False
+
+    def test_failed_e2e_result(self):
+        """Returns False when e2e_result is 'fail' in extras."""
+        change = self._make_change(
+            extras={
+                "scope_check": "pass",
+                "e2e_result": "fail",
+                "spec_coverage_result": "pass",
+            }
+        )
+        assert _verify_gates_already_passed(change) is False
+
+    def test_failed_spec_coverage_result(self):
+        """Returns False when spec_coverage_result is 'fail' in extras."""
+        change = self._make_change(
+            extras={
+                "scope_check": "pass",
+                "e2e_result": "pass",
+                "spec_coverage_result": "fail",
+            }
+        )
+        assert _verify_gates_already_passed(change) is False
+
+    def test_missing_e2e_result(self):
+        """Returns False when e2e_result is missing from extras (None)."""
+        change = self._make_change(
+            extras={
+                "scope_check": "pass",
+                # e2e_result missing
+                "spec_coverage_result": "pass",
+            }
+        )
+        assert _verify_gates_already_passed(change) is False
+
+    def test_warn_fail_is_accepted(self):
+        """warn-fail counts as passing (non-blocking gate failure)."""
+        change = self._make_change(
+            extras={
+                "scope_check": "pass",
+                "e2e_result": "warn-fail",
+                "spec_coverage_result": "pass",
+            }
+        )
+        assert _verify_gates_already_passed(change) is True
+
+    def test_skipped_is_accepted(self):
+        """Skipped gates count as passing."""
+        change = self._make_change(
+            test_result="skipped",
+            extras={
+                "scope_check": "pass",
+                "e2e_result": "skipped",
+                "spec_coverage_result": "skipped",
+            }
+        )
+        assert _verify_gates_already_passed(change) is True
+
+
+# ─── _recover_verify_failed no double increment ─────────────────
+
+
+class TestRecoverVerifyFailedNoDoubleIncrement:
+    """_recover_verify_failed must NOT increment verify_retry_count."""
+
+    def test_retry_count_not_incremented(self, tmp_path, monkeypatch):
+        """verify_retry_count stays at the value set by handle_change_done."""
+        state_file = str(tmp_path / "state.json")
+        state = OrchestratorState(
+            status="running",
+            changes=[
+                Change(
+                    name="c1",
+                    status="verify-failed",
+                    verify_retry_count=1,  # already incremented by handle_change_done
+                    extras={"retry_context": "Fix the tests"},
+                ),
+            ],
+        )
+        save_state(state, state_file)
+
+        # Mock resume_change at the dispatcher module level (imported locally)
+        resumed = []
+        import wt_orch.dispatcher as _disp_mod
+        monkeypatch.setattr(
+            _disp_mod, "resume_change",
+            lambda sf, cn, **kw: resumed.append(cn) or True,
+        )
+
+        d = Directives(max_verify_retries=3)
+        _recover_verify_failed(state_file, d, None)
+
+        # Verify resume was called
+        assert resumed == ["c1"]
+
+        # Verify retry count was NOT incremented (stays at 1, not bumped to 2)
+        state = load_state(state_file)
+        c1 = [c for c in state.changes if c.name == "c1"][0]
+        assert c1.verify_retry_count == 1
+
+    def test_exhausted_retries_marks_failed(self, tmp_path, monkeypatch):
+        """When retries exhausted, change is marked failed without incrementing."""
+        state_file = str(tmp_path / "state.json")
+        state = OrchestratorState(
+            status="running",
+            changes=[
+                Change(
+                    name="c1",
+                    status="verify-failed",
+                    verify_retry_count=3,
+                    extras={"build_output": "error: cannot find module"},
+                ),
+            ],
+        )
+        save_state(state, state_file)
+
+        # Mock resume_change at the dispatcher module level
+        resumed = []
+        import wt_orch.dispatcher as _disp_mod
+        monkeypatch.setattr(
+            _disp_mod, "resume_change",
+            lambda sf, cn, **kw: resumed.append(cn) or True,
+        )
+
+        d = Directives(max_verify_retries=3)
+        _recover_verify_failed(state_file, d, None)
+
+        # Should NOT have resumed
+        assert resumed == []
+
+        # Should be marked failed
+        state = load_state(state_file)
+        c1 = [c for c in state.changes if c.name == "c1"][0]
+        assert c1.status == "failed"
+        assert c1.verify_retry_count == 3  # not incremented

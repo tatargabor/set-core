@@ -1055,18 +1055,10 @@ def health_check(url: str, timeout_secs: int = DEFAULT_SMOKE_HEALTH_CHECK_TIMEOU
 
 def _collect_smoke_screenshots(change_name: str, cwd: str | None = None) -> int:
     """Collect Playwright test-results screenshots for a change."""
+    from .gate_runner import collect_screenshots
+
     src = os.path.join(cwd or ".", "test-results")
-    if not os.path.isdir(src):
-        return 0
-    dst = os.path.join("wt", "orchestration", "e2e-screenshots", change_name)
-    os.makedirs(dst, exist_ok=True)
-    count = 0
-    for root, _dirs, files in os.walk(src):
-        for fname in files:
-            if fname.endswith(".png"):
-                shutil.copy2(os.path.join(root, fname), dst)
-                count += 1
-    return count
+    return collect_screenshots(change_name, src, "smoke")
 
 
 def smoke_fix_scoped(
@@ -1581,6 +1573,308 @@ def poll_change(
     return ralph_status
 
 
+# ─── Gate Executors ──────────────────────────────────────────────────
+# Each executor returns a GateResult. The GatePipeline calls them in order.
+
+
+def _execute_build_gate(
+    change_name: str, change: Change, wt_path: str,
+) -> "GateResult":
+    """Build gate: detect build command, clear .next cache, run build."""
+    from .gate_runner import GateResult
+
+    if not wt_path or not os.path.isfile(os.path.join(wt_path, "package.json")):
+        return GateResult("build", "skipped")
+
+    build_command = _detect_build_command(wt_path)
+    if not build_command:
+        return GateResult("build", "skipped")
+
+    from .dispatcher import _detect_package_manager
+    pm = _detect_package_manager(wt_path) or "npm"
+
+    # Clear stale .next cache to prevent ENOENT build failures
+    next_dir = os.path.join(wt_path, ".next")
+    if os.path.isdir(next_dir):
+        shutil.rmtree(next_dir, ignore_errors=True)
+
+    build_result = run_command([pm, "run", build_command], timeout=600, cwd=wt_path)
+
+    if build_result.exit_code != 0:
+        build_output = build_result.stdout + build_result.stderr
+        scope = change.scope or ""
+        build_fix_count = change.extras.get("build_fix_attempt_count", 0)
+        retry_prompt = (
+            f"Build failed after implementation. Fix the build errors.\n\n"
+            f"Build command: {pm} run {build_command}\n\n"
+            + _build_unified_retry_context(
+                build_output=build_output,
+                attempt=build_fix_count + 1,
+                max_attempts=3,
+            )
+            + f"\n\nOriginal scope: {scope}"
+        )
+        return GateResult("build", "fail", output=build_output[-2000:], retry_context=retry_prompt)
+
+    return GateResult("build", "pass")
+
+
+def _execute_test_gate(
+    change_name: str, change: Change, wt_path: str,
+    test_command: str, test_timeout: int,
+) -> "GateResult":
+    """Test gate: run tests in worktree."""
+    from .gate_runner import GateResult
+
+    if not test_command or not wt_path:
+        return GateResult("test", "skipped")
+
+    tr = run_tests_in_worktree(wt_path, test_command, test_timeout)
+
+    result = GateResult(
+        "test",
+        "pass" if tr.passed else "fail",
+        output=tr.output,
+        stats=tr.stats if tr.stats and (tr.stats.get("passed", 0) + tr.stats.get("failed", 0)) > 0 else None,
+    )
+
+    if not tr.passed:
+        scope = change.scope or ""
+        result.retry_context = (
+            f"Tests failed after implementation. Fix the failing tests.\n\n"
+            f"Test command: {test_command}\n\n"
+            + _build_unified_retry_context(test_output=tr.output)
+            + f"\n\nOriginal scope: {scope}"
+        )
+
+    return result
+
+
+def _execute_e2e_gate(
+    change_name: str, change: Change, wt_path: str,
+    e2e_command: str, e2e_timeout: int, e2e_health_timeout: int,
+) -> "GateResult":
+    """E2E gate: run Playwright tests with port allocation and health check."""
+    import random
+    from .gate_runner import GateResult
+
+    if not e2e_command or not wt_path:
+        return GateResult("e2e", "skipped")
+
+    e2e_test_count = _count_e2e_tests(wt_path)
+    has_pw_config = (
+        os.path.isfile(os.path.join(wt_path, "playwright.config.ts"))
+        or os.path.isfile(os.path.join(wt_path, "playwright.config.js"))
+    )
+    if not has_pw_config or e2e_test_count == 0:
+        return GateResult("e2e", "skipped")
+
+    e2e_port = E2E_PORT_BASE + random.randint(0, 99)
+
+    # E2E readiness probe
+    if not health_check(f"http://localhost:{e2e_port}", e2e_health_timeout):
+        return GateResult("e2e", "skipped", output=f"dev server not responding on port {e2e_port}")
+
+    e2e_env = {"PW_PORT": str(e2e_port)}
+    e2e_cmd_result = run_command(
+        ["bash", "-c", e2e_command],
+        timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
+        max_output_size=4000,
+    )
+    e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
+
+    # Cleanup dev server
+    run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
+    run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
+
+    # Collect screenshots
+    try:
+        from .paths import WtRuntime
+        e2e_sc_dir = os.path.join(WtRuntime().screenshots_dir, "e2e", change_name)
+    except Exception:
+        e2e_sc_dir = f"wt/orchestration/e2e-screenshots/{change_name}"
+    os.makedirs(e2e_sc_dir, exist_ok=True)
+    wt_test_results = os.path.join(wt_path, "test-results")
+    if os.path.isdir(wt_test_results):
+        for item in os.listdir(wt_test_results):
+            src = os.path.join(wt_test_results, item)
+            dst = os.path.join(e2e_sc_dir, item)
+            if os.path.isdir(src):
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+            else:
+                shutil.copy2(src, dst)
+
+    status = "pass" if e2e_cmd_result.exit_code == 0 else "fail"
+    result = GateResult(
+        "e2e", status, output=e2e_output[:4000],
+        stats=parse_test_output(e2e_output) if e2e_output else None,
+    )
+
+    if status == "fail":
+        scope = change.scope or ""
+        result.retry_context = (
+            f"E2E tests (Playwright) failed. Fix the failing E2E tests or the code they test.\n\n"
+            f"E2E command: {e2e_command}\nE2E output:\n{e2e_output[:2000]}\n\n"
+            f"Original scope: {scope}"
+        )
+
+    return result
+
+
+def _execute_scope_gate(
+    change_name: str, change: Change, wt_path: str,
+) -> "GateResult":
+    """Scope gate: verify change branch has implementation files."""
+    from .gate_runner import GateResult
+
+    if not wt_path:
+        return GateResult("scope", "pass")
+
+    scope_result = verify_implementation_scope(change_name, wt_path)
+    if not scope_result.has_implementation:
+        scope = change.scope or ""
+        return GateResult(
+            "scope", "fail",
+            retry_context=(
+                "The change has NO implementation code — only OpenSpec artifacts and config files. "
+                "Run /opsx:apply to implement the tasks, then mark the change as done.\n\n"
+                f"Original scope: {scope}"
+            ),
+        )
+    return GateResult("scope", "pass")
+
+
+def _execute_test_files_gate(
+    change_name: str, change: Change, wt_path: str, gc: Any,
+) -> "GateResult":
+    """Test files gate: verify test files exist in diff."""
+    from .gate_runner import GateResult
+
+    if not wt_path:
+        return GateResult("test_files", "pass")
+
+    merge_base = _get_merge_base(wt_path)
+    diff_result = run_git("diff", "--name-only", f"{merge_base}..HEAD", cwd=wt_path)
+    test_files_count = 0
+    if diff_result.exit_code == 0:
+        for f in diff_result.stdout.strip().split("\n"):
+            if re.search(r"\.(test|spec)\.", f):
+                test_files_count += 1
+
+    if gc.test_files_required and test_files_count == 0:
+        scope = change.scope or ""
+        return GateResult(
+            "test_files", "fail",
+            retry_context=(
+                f"Verify failed: no test files found (*.test.* or *.spec.* patterns).\n\n"
+                f"IMPORTANT: First ensure ALL implementation from the scope below is complete "
+                f"and committed. Then add tests for the implemented functionality.\n\n"
+                f"Scope (implement this fully, then add tests):\n{scope}"
+            ),
+        )
+
+    return GateResult("test_files", "pass", stats={"test_files_count": test_files_count})
+
+
+def _execute_review_gate(
+    change_name: str, change: Change, wt_path: str,
+    review_model: str, state_file: str, design_snapshot_dir: str,
+    gc: Any, verify_retry_count: int,
+) -> "GateResult":
+    """Review gate: LLM code review with cumulative feedback."""
+    from .gate_runner import GateResult
+
+    if not wt_path:
+        return GateResult("review", "skipped")
+
+    scope = change.scope or ""
+    effective_review_model = gc.review_model if gc.review_model else review_model
+
+    rr = review_change(
+        change_name, wt_path, scope, effective_review_model,
+        state_file=state_file, design_snapshot_dir=design_snapshot_dir,
+    )
+
+    if not rr.has_critical:
+        return GateResult("review", "pass", output=rr.output[:5000])
+
+    # Critical review — build retry context with cumulative history
+    diff_summary = None
+    if verify_retry_count > 0:
+        diff_summary = _capture_retry_diff(wt_path)
+
+    _append_review_history(state_file, change_name, {
+        "attempt": verify_retry_count + 1,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "review_output": rr.output[:1500],
+        "extracted_fixes": _extract_review_fixes(rr.output),
+        "diff_summary": diff_summary,
+    })
+
+    review_extra = getattr(gc, "review_extra_retries", 1)
+    security_guide = _load_security_rules(wt_path)
+    review_retry_limit = (gc.max_retries if gc.max_retries is not None else 2) + review_extra
+    retry_prompt = _build_review_retry_prompt(
+        state_file, change_name, rr.output,
+        security_guide, verify_retry_count, review_retry_limit,
+    )
+
+    return GateResult("review", "fail", output=rr.output[:5000], retry_context=retry_prompt)
+
+
+def _execute_rules_gate(
+    change_name: str, change: Change, wt_path: str,
+    event_bus: Any,
+) -> "GateResult":
+    """Rules gate: evaluate verification rules from project-knowledge.yaml."""
+    from .gate_runner import GateResult
+
+    if not wt_path:
+        return GateResult("rules", "pass")
+
+    rule_result = evaluate_verification_rules(change_name, wt_path, event_bus=event_bus)
+    if rule_result.errors > 0:
+        return GateResult("rules", "fail")
+    return GateResult("rules", "pass")
+
+
+def _execute_spec_verify_gate(
+    change_name: str, change: Change, wt_path: str,
+) -> "GateResult":
+    """Spec verify gate: run /opsx:verify via Claude."""
+    from .gate_runner import GateResult
+
+    if not wt_path or not shutil.which("claude"):
+        return GateResult("spec_verify", "skipped")
+
+    verify_cmd_result = run_claude(
+        f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\nRun /opsx:verify {change_name}",
+        extra_args=["--max-turns", "40"],
+        cwd=wt_path,
+    )
+    verify_output = verify_cmd_result.stdout
+
+    if verify_cmd_result.exit_code != 0:
+        scope = change.scope or ""
+        verify_tail = verify_output[-2000:] if verify_output else ""
+        return GateResult(
+            "spec_verify", "fail",
+            output=verify_output[:2000],
+            retry_context=f"Verify failed. Fix the issues.\n\nVerify output (last 2000 chars):\n{verify_tail}\n\nOriginal scope: {scope}",
+        )
+
+    if "VERIFY_RESULT: PASS" in verify_output:
+        return GateResult("spec_verify", "pass", output=verify_output[:2000])
+    elif "VERIFY_RESULT: FAIL" in verify_output:
+        # Non-blocking fail — return as pass with warning logged
+        logger.warning("Spec coverage FAIL for %s — non-blocking", change_name)
+        return GateResult("spec_verify", "pass", output=verify_output[:2000])
+    else:
+        # No sentinel — timeout, non-blocking
+        logger.warning("Spec verify timed out for %s — non-blocking", change_name)
+        return GateResult("spec_verify", "pass", output="timeout — no VERIFY_RESULT sentinel")
+
+
 # ─── Handle Change Done / Verify Gate Pipeline ──────────────────────
 # Source: verifier.sh handle_change_done (lines 782-1453)
 
@@ -1659,23 +1953,14 @@ def handle_change_done(
         # This is a simplified path — the bash wrapper handles the full logic
         return
 
-    gate_test_ms = 0
-    gate_review_ms = 0
-    gate_verify_ms = 0
-    gate_build_ms = 0
-    gate_e2e_ms = 0
     uncommitted_check_result = "clean"
 
     # ── Step 0: Uncommitted work check ──
-    # (merge-rebase fast path returns before this point, so rebase skips this)
     if wt_path:
         from .git_utils import git_has_uncommitted_work
 
         has_uncommitted, uncommitted_summary = git_has_uncommitted_work(wt_path)
         if has_uncommitted:
-            # Auto-commit leftover files instead of failing — the agent forgot to
-            # git add them but the work is done.  This prevents retry loops that
-            # re-check the same dirty worktree without re-running the agent.
             import subprocess as _sp
             logger.info("Verify gate: auto-committing leftover files in %s: %s", change_name, uncommitted_summary)
             _sp.run(["git", "-C", wt_path, "add", "-A"], capture_output=True, timeout=10)
@@ -1683,7 +1968,6 @@ def handle_change_done(
                 ["git", "-C", wt_path, "commit", "-m", "chore: commit leftover files (auto-committed by verify gate)"],
                 capture_output=True, timeout=10,
             )
-            # Re-check after auto-commit
             has_uncommitted, uncommitted_summary = git_has_uncommitted_work(wt_path)
 
         if has_uncommitted:
@@ -1698,15 +1982,12 @@ def handle_change_done(
                 update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count + 1)
                 update_change_field(state_file, change_name, "retry_context",
                                     f"## Verify Gate Failure\n\n{reason}\n\nPlease commit or remove all uncommitted files before declaring done.")
-                logger.info("Retrying %s (attempt %d/%d) — uncommitted work", change_name, verify_retry_count + 1, max_verify_retries)
             else:
                 update_change_field(state_file, change_name, "status", "failed")
-                logger.error("Change %s failed: %s (no retries left)", change_name, reason)
 
             if event_bus:
                 event_bus.emit("VERIFY_GATE", change=change_name, data={
-                    "result": "fail",
-                    "reason": reason,
+                    "result": "fail", "reason": reason,
                     "uncommitted_check": uncommitted_check_result,
                 })
             return
@@ -1718,499 +1999,122 @@ def handle_change_done(
     profile = load_profile()
     directives = state.extras.get("directives", {})
     gc = resolve_gate_config(change, profile, directives)
-
     effective_max_retries = gc.max_retries if gc.max_retries is not None else max_verify_retries
 
-    # Legacy skip flags mapped through GateConfig
-    skip_test = not gc.should_run("test")
-    skip_review = not gc.should_run("review")
+    # ── Run gate pipeline ──
+    from .gate_runner import GatePipeline
 
-    # ── Step 1: Build verification (VG-BUILD) ──
-    if gc.should_run("build") and wt_path and os.path.isfile(os.path.join(wt_path, "package.json")):
-        build_command = _detect_build_command(wt_path)
-        if build_command:
-            from .dispatcher import _detect_package_manager
-            pm = _detect_package_manager(wt_path) or "npm"
+    pipeline = GatePipeline(
+        gc, state_file, change_name, change,
+        max_retries=effective_max_retries,
+        event_bus=event_bus,
+    )
 
-            # Clear stale .next cache to prevent ENOENT build failures
-            next_dir = os.path.join(wt_path, ".next")
-            if os.path.isdir(next_dir):
-                import shutil as _shutil
-                _shutil.rmtree(next_dir, ignore_errors=True)
-                logger.info("Verify gate: cleared stale .next cache for %s", change_name)
-
-            logger.info("Verify gate: build start for %s (%s run %s)", change_name, pm, build_command)
-            start_ms = int(time.monotonic() * 1000)
-
-            build_result = run_command(
-                [pm, "run", build_command], timeout=600, cwd=wt_path,
-            )
-            gate_build_ms = int(time.monotonic() * 1000) - start_ms
-            update_change_field(state_file, change_name, "gate_build_ms", gate_build_ms)
-
-            if build_result.exit_code != 0:
-                build_output = build_result.stdout + build_result.stderr
-                update_change_field(state_file, change_name, "build_output", build_output[-2000:])
-
-                if gc.is_blocking("build"):
-                    logger.error("Verify gate: build failed for %s (exit %d)", change_name, build_result.exit_code)
-                    update_change_field(state_file, change_name, "build_result", "fail")
-
-                    # Build-fix retry: tracked by a separate counter so build
-                    # self-healing doesn't consume the verify_retry_count budget.
-                    # Only real verify gate failures (test/review/scope) should
-                    # count against max_verify_retries. The build-fix counter is
-                    # stored in extras to persist across orchestrator restarts.
-                    build_fix_count = change.extras.get("build_fix_attempt_count", 0)
-                    if build_fix_count < effective_max_retries:
-                        update_change_field(state_file, change_name, "build_fix_attempt_count", build_fix_count + 1)
-                        update_change_field(state_file, change_name, "status", "verify-failed")
-                        scope = change.scope or ""
-                        retry_prompt = (
-                            f"Build failed after implementation. Fix the build errors.\n\n"
-                            f"Build command: {pm} run {build_command}\n\n"
-                            + _build_unified_retry_context(
-                                build_output=build_output,
-                                attempt=build_fix_count + 1,
-                                max_attempts=effective_max_retries,
-                            )
-                            + f"\n\nOriginal scope: {scope}"
-                        )
-                        update_change_field(state_file, change_name, "retry_context", retry_prompt)
-                        _snapshot_retry_tokens(state_file, change_name, wt_path)
-                        from .dispatcher import resume_change
-                        resume_change(state_file, change_name)
-                        return
-
-                    update_change_field(state_file, change_name, "status", "failed")
-                    send_notification("wt-orchestrate", f"Change '{change_name}' failed build after {build_fix_count} build-fix attempts", "critical")
-                    return
-                else:
-                    logger.warning("Verify gate: build failed for %s — non-blocking (gate=%s)", change_name, gc.build)
-                    update_change_field(state_file, change_name, "build_result", "warn-fail")
-
-            else:
-                logger.info("Verify gate: build passed for %s (%dms)", change_name, gate_build_ms)
-                update_change_field(state_file, change_name, "build_result", "pass")
-    elif not gc.should_run("build"):
-        logger.info("Verify gate: build SKIPPED for %s (gate_profile)", change_name)
-
-    # ── Step 2: Run tests (VG-1) ──
-    test_result_str = "skip"
-    test_output = ""
-    if skip_test:
-        test_result_str = "skipped"
-        logger.info("Verify gate: tests SKIPPED for %s (gate_profile)", change_name)
-    elif test_command and wt_path:
-        update_change_field(state_file, change_name, "status", "verifying")
-        update_change_field(state_file, change_name, "verifying_since", int(time.time()))
-        logger.info("Verify gate: test start for %s", change_name)
-
-        start_ms = int(time.monotonic() * 1000)
-        tr = run_tests_in_worktree(wt_path, test_command, test_timeout)
-        gate_test_ms = int(time.monotonic() * 1000) - start_ms
-        update_change_field(state_file, change_name, "gate_test_ms", gate_test_ms)
-
-        test_result_str = "pass" if tr.passed else "fail"
-        test_output = tr.output
-
-        if tr.stats and (tr.stats.get("passed", 0) + tr.stats.get("failed", 0)) > 0:
-            update_change_field(state_file, change_name, "test_stats", tr.stats)
-
-    update_change_field(state_file, change_name, "test_result", test_result_str)
-    update_change_field(state_file, change_name, "test_output", test_output[:2000])
-
-    if test_result_str == "fail":
-        if gc.is_blocking("test"):
-            if verify_retry_count < effective_max_retries:
-                verify_retry_count += 1
-                update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
-                update_change_field(state_file, change_name, "status", "verify-failed")
-                scope = change.scope or ""
-                retry_prompt = (
-                    f"Tests failed after implementation. Fix the failing tests.\n\n"
-                    f"Test command: {test_command}\n\n"
-                    + _build_unified_retry_context(
-                        test_output=test_output,
-                        attempt=verify_retry_count,
-                        max_attempts=effective_max_retries,
-                    )
-                    + f"\n\nOriginal scope: {scope}"
-                )
-                update_change_field(state_file, change_name, "retry_context", retry_prompt)
-                _snapshot_retry_tokens(state_file, change_name, wt_path)
-                from .dispatcher import resume_change
-                resume_change(state_file, change_name)
-                return
-
-            update_change_field(state_file, change_name, "status", "failed")
-            send_notification("wt-orchestrate", f"Change '{change_name}' failed tests after {effective_max_retries} retries", "critical")
-            return
-        else:
-            logger.warning("Verify gate: tests failed for %s — non-blocking (gate=%s)", change_name, gc.test)
-            update_change_field(state_file, change_name, "test_result", "warn-fail")
-
-    # ── Step 3: E2E tests (VG-E2E) ──
-    e2e_result_str = "skip"
-    if not gc.should_run("e2e"):
-        e2e_result_str = "skipped"
-        logger.info("Verify gate: e2e SKIPPED for %s (gate_profile)", change_name)
-    elif e2e_command and wt_path:
-        import random
-        e2e_test_count = _count_e2e_tests(wt_path)
-        has_pw_config = (
-            os.path.isfile(os.path.join(wt_path, "playwright.config.ts"))
-            or os.path.isfile(os.path.join(wt_path, "playwright.config.js"))
+    # Register gates in execution order
+    pipeline.register(
+        "build",
+        lambda: _execute_build_gate(change_name, change, wt_path),
+        own_retry_counter="build_fix_attempt_count",
+    )
+    pipeline.register(
+        "test",
+        lambda: _execute_test_gate(change_name, change, wt_path, test_command, test_timeout),
+    )
+    pipeline.register(
+        "e2e",
+        lambda: _execute_e2e_gate(change_name, change, wt_path, e2e_command, e2e_timeout, e2e_health_timeout),
+    )
+    pipeline.register(
+        "scope_check",
+        lambda: _execute_scope_gate(change_name, change, wt_path),
+    )
+    pipeline.register(
+        "test_files",
+        lambda: _execute_test_files_gate(change_name, change, wt_path, gc),
+    )
+    if review_before_merge:
+        pipeline.register(
+            "review",
+            lambda: _execute_review_gate(
+                change_name, change, wt_path, review_model,
+                state_file, design_snapshot_dir, gc, change.verify_retry_count,
+            ),
+            extra_retries=getattr(gc, "review_extra_retries", 1),
         )
-        if has_pw_config and e2e_test_count > 0:
-            update_change_field(state_file, change_name, "status", "verifying")
-            update_change_field(state_file, change_name, "verifying_since", int(time.time()))
-            e2e_port = E2E_PORT_BASE + random.randint(0, 99)
-            logger.info("Verify gate: e2e start for %s (PW_PORT=%d)", change_name, e2e_port)
+    pipeline.register(
+        "rules",
+        lambda: _execute_rules_gate(change_name, change, wt_path, event_bus),
+    )
+    pipeline.register(
+        "spec_verify",
+        lambda: _execute_spec_verify_gate(change_name, change, wt_path),
+    )
 
-            # E2E readiness probe: verify dev server is responding before Playwright
-            e2e_health_ok = health_check(f"http://localhost:{e2e_port}", e2e_health_timeout)
-            if not e2e_health_ok:
-                logger.warning(
-                    "Verify gate: e2e dev server not responding on port %d for %s — skipping E2E",
-                    e2e_port, change_name,
-                )
-                e2e_result_str = "skip-unhealthy"
-                update_change_field(state_file, change_name, "e2e_result", e2e_result_str)
-                gate_e2e_ms = 0
-                e2e_output = ""
-            else:
-                start_ms = int(time.monotonic() * 1000)
-                e2e_env = {"PW_PORT": str(e2e_port)}
-                e2e_cmd_result = run_command(
-                    ["bash", "-c", e2e_command],
-                    timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
-                    max_output_size=4000,
-                )
-                gate_e2e_ms = int(time.monotonic() * 1000) - start_ms
-                e2e_result_str = "pass" if e2e_cmd_result.exit_code == 0 else "fail"
-                e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
+    # Execute pipeline
+    action = pipeline.run()
 
-                # Cleanup dev server
-                run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
-                run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
-
-                # Collect screenshots
-                try:
-                    from .paths import WtRuntime
-                    e2e_sc_dir = os.path.join(WtRuntime().screenshots_dir, "e2e", change_name)
-                except Exception:
-                    e2e_sc_dir = f"wt/orchestration/e2e-screenshots/{change_name}"
-                os.makedirs(e2e_sc_dir, exist_ok=True)
-                wt_test_results = os.path.join(wt_path, "test-results")
-                if os.path.isdir(wt_test_results):
-                    for item in os.listdir(wt_test_results):
-                        src = os.path.join(wt_test_results, item)
-                        dst = os.path.join(e2e_sc_dir, item)
-                        if os.path.isdir(src):
-                            shutil.copytree(src, dst, dirs_exist_ok=True)
-                        else:
-                            shutil.copy2(src, dst)
-                e2e_sc_count = sum(
-                    1 for _r, _d, files in os.walk(e2e_sc_dir) for f in files if f.endswith(".png")
-                )
-                update_change_field(state_file, change_name, "e2e_screenshot_dir", e2e_sc_dir)
-                update_change_field(state_file, change_name, "e2e_screenshot_count", e2e_sc_count)
-
-            update_change_field(state_file, change_name, "gate_e2e_ms", gate_e2e_ms)
-            update_change_field(state_file, change_name, "e2e_result", e2e_result_str)
-            update_change_field(state_file, change_name, "e2e_output", e2e_output[:4000])
-            if e2e_output:
-                update_change_field(state_file, change_name, "e2e_stats", parse_test_output(e2e_output))
-
-            if e2e_result_str == "fail":
-                if gc.is_blocking("e2e"):
-                    if verify_retry_count < effective_max_retries:
-                        verify_retry_count += 1
-                        update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
-                        update_change_field(state_file, change_name, "status", "verify-failed")
-                        scope = change.scope or ""
-                        retry_prompt = (
-                            f"E2E tests (Playwright) failed. Fix the failing E2E tests or the code they test.\n\n"
-                            f"E2E command: {e2e_command}\nE2E output:\n{e2e_output}\n\n"
-                            f"Original scope: {scope}"
-                        )
-                        update_change_field(state_file, change_name, "retry_context", retry_prompt)
-                        _snapshot_retry_tokens(state_file, change_name, wt_path)
-                        from .dispatcher import resume_change
-                        resume_change(state_file, change_name)
-                        return
-
-                    update_change_field(state_file, change_name, "status", "failed")
-                    send_notification("wt-orchestrate", f"Change '{change_name}' failed E2E after {effective_max_retries} retries", "critical")
-                    return
-                else:
-                    logger.warning("Verify gate: e2e failed for %s — non-blocking (gate=%s)", change_name, gc.e2e)
-                    update_change_field(state_file, change_name, "e2e_result", "warn-fail")
-        else:
-            e2e_result_str = "skipped"
-
-    # ── Step 4: Pre-merge scope check (BLOCKING) ──
-    if not gc.should_run("scope_check"):
-        logger.info("Verify gate: scope check SKIPPED for %s (gate_profile)", change_name)
-        update_change_field(state_file, change_name, "scope_check", "skipped")
-        scope_result = ScopeCheckResult(has_implementation=True)
-    else:
-        scope_result = verify_implementation_scope(change_name, wt_path) if wt_path else ScopeCheckResult(has_implementation=True)
-    if not scope_result.has_implementation:
-        update_change_field(state_file, change_name, "scope_check", "fail")
-        if verify_retry_count < effective_max_retries:
-            verify_retry_count += 1
-            update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
-            update_change_field(state_file, change_name, "status", "verify-failed")
-            scope = change.scope or ""
-            retry_prompt = (
-                "The change has NO implementation code — only OpenSpec artifacts and config files. "
-                "Run /opsx:apply to implement the tasks, then mark the change as done.\n\n"
-                f"Original scope: {scope}"
-            )
-            update_change_field(state_file, change_name, "retry_context", retry_prompt)
-            _snapshot_retry_tokens(state_file, change_name, wt_path)
-            from .dispatcher import resume_change
-            resume_change(state_file, change_name)
-            return
-
-        update_change_field(state_file, change_name, "status", "failed")
-        send_notification("wt-orchestrate", f"Change '{change_name}' failed scope check after {effective_max_retries} retries", "critical")
-        return
-
-    update_change_field(state_file, change_name, "scope_check", "pass")
-
-    # ── Step 4b: Test file existence check ──
-    if gc.test_files_required and wt_path:
-        merge_base = _get_merge_base(wt_path)
-        diff_result = run_git("diff", "--name-only", f"{merge_base}..HEAD", cwd=wt_path)
-        test_files_count = 0
-        if diff_result.exit_code == 0:
-            for f in diff_result.stdout.strip().split("\n"):
-                if re.search(r"\.(test|spec)\.", f):
-                    test_files_count += 1
-
-        if test_files_count == 0:
-            update_change_field(state_file, change_name, "has_tests", False)
-            change_type = change.change_type or "feature"
-            logger.error("Verify gate: %s (type=%s) has NO test files — blocking", change_name, change_type)
-            if verify_retry_count < effective_max_retries:
-                verify_retry_count += 1
-                update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
-                update_change_field(state_file, change_name, "status", "verify-failed")
-                scope = change.scope or ""
-                retry_prompt = (
-                    f"Verify failed: no test files found (*.test.* or *.spec.* patterns).\n\n"
-                    f"IMPORTANT: First ensure ALL implementation from the scope below is complete "
-                    f"and committed. Then add tests for the implemented functionality.\n\n"
-                    f"Scope (implement this fully, then add tests):\n{scope}"
-                )
-                update_change_field(state_file, change_name, "retry_context", retry_prompt)
-                _snapshot_retry_tokens(state_file, change_name, wt_path)
-                from .dispatcher import resume_change
-                resume_change(state_file, change_name)
-                return
-
-            update_change_field(state_file, change_name, "status", "failed")
-            send_notification("wt-orchestrate", f"Change '{change_name}' failed test file check", "critical")
-            return
-        else:
-            update_change_field(state_file, change_name, "has_tests", True)
-    elif wt_path and not gc.test_files_required:
-        # Still count tests for reporting, but don't block
-        merge_base = _get_merge_base(wt_path)
-        diff_result = run_git("diff", "--name-only", f"{merge_base}..HEAD", cwd=wt_path)
-        test_files_count = 0
-        if diff_result.exit_code == 0:
-            for f in diff_result.stdout.strip().split("\n"):
-                if re.search(r"\.(test|spec)\.", f):
-                    test_files_count += 1
-        update_change_field(state_file, change_name, "has_tests", test_files_count > 0)
-        if test_files_count == 0:
-            logger.info("Verify gate: %s has no test files — non-blocking (test_files_required=false)", change_name)
-
-    # ── Step 5: LLM Code Review (VG-4) ──
-    if skip_review:
-        update_change_field(state_file, change_name, "review_result", "skipped")
-        logger.info("Verify gate: review SKIPPED for %s (gate_profile)", change_name)
-    elif review_before_merge and wt_path:
-        logger.info("Verify gate: review start for %s", change_name)
-        scope = change.scope or ""
-
-        effective_review_model = gc.review_model if gc.review_model else review_model
-        start_ms = int(time.monotonic() * 1000)
-        rr = review_change(change_name, wt_path, scope, effective_review_model, state_file=state_file, design_snapshot_dir=design_snapshot_dir)
-        gate_review_ms = int(time.monotonic() * 1000) - start_ms
-        update_change_field(state_file, change_name, "gate_review_ms", gate_review_ms)
-
-        if rr.has_critical:
-            update_change_field(state_file, change_name, "review_result", "critical")
-            update_change_field(state_file, change_name, "review_output", rr.output[:5000])
-            # Review gets +1 extra retry beyond the shared limit because it runs
-            # last — build/test retries may have consumed the budget already
-            review_retry_limit = effective_max_retries + 1
-
-            # Capture what the agent changed since last attempt (cumulative feedback)
-            diff_summary = None
-            if verify_retry_count > 0:
-                diff_summary = _capture_retry_diff(wt_path)
-
-            # Append to cumulative review history
-            _append_review_history(state_file, change_name, {
-                "attempt": verify_retry_count + 1,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "review_output": rr.output[:1500],
-                "extracted_fixes": _extract_review_fixes(rr.output),
-                "diff_summary": diff_summary,
+    # Handle retry/fail — resume agent if needed
+    if action == "retry":
+        _snapshot_retry_tokens(state_file, change_name, wt_path)
+        from .dispatcher import resume_change
+        resume_change(state_file, change_name)
+        pipeline.commit_results()
+        if event_bus:
+            event_bus.emit("VERIFY_GATE", change=change_name, data={
+                "result": "retry", "stop_gate": pipeline.stop_gate,
+                "uncommitted_check": uncommitted_check_result,
             })
-
-            if verify_retry_count < review_retry_limit:
-                verify_retry_count += 1
-                update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
-                update_change_field(state_file, change_name, "status", "verify-failed")
-
-                security_guide = _load_security_rules(wt_path)
-                retry_prompt = _build_review_retry_prompt(
-                    state_file, change_name, rr.output,
-                    security_guide, verify_retry_count, review_retry_limit,
-                )
-                update_change_field(state_file, change_name, "retry_context", retry_prompt)
-                _snapshot_retry_tokens(state_file, change_name, wt_path)
-                from .dispatcher import resume_change
-                resume_change(state_file, change_name)
-                return
-
-            update_change_field(state_file, change_name, "status", "failed")
-            send_notification("wt-orchestrate", f"Change '{change_name}' has critical review issues after retries", "critical")
-            return
-
-        update_change_field(state_file, change_name, "review_result", "pass")
-        update_change_field(state_file, change_name, "review_output", rr.output[:5000])
-
-    # ── Step 5b: Verification rules ──
-    if gc.should_run("rules") and wt_path:
-        rule_result = evaluate_verification_rules(change_name, wt_path, event_bus=event_bus)
-        if rule_result.errors > 0:
-            update_change_field(state_file, change_name, "status", "verify-failed")
-            if verify_retry_count < effective_max_retries:
-                verify_retry_count += 1
-                update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
-                from .dispatcher import resume_change
-                resume_change(state_file, change_name)
-                return
-            update_change_field(state_file, change_name, "status", "failed")
-            send_notification("wt-orchestrate", f"Change '{change_name}' failed verification rules", "critical")
-            return
-    elif not gc.should_run("rules"):
-        logger.info("Verify gate: rules SKIPPED for %s (gate_profile)", change_name)
-
-    # ── Step 6: Spec verify ──
-    gate_spec_coverage = "skipped"
-    start_ms = int(time.monotonic() * 1000)
-    verify_ok = True
-    verify_output = ""
-
-    if not gc.should_run("spec_verify"):
-        logger.info("Verify gate: spec verify SKIPPED for %s (gate_profile)", change_name)
-    elif wt_path and shutil.which("claude"):
-        verify_cmd_result = run_claude(
-            f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\nRun /opsx:verify {change_name}",
-            extra_args=["--max-turns", "40"],
-            cwd=wt_path,
+        send_notification(
+            "wt-orchestrate",
+            f"Change '{change_name}' failed {pipeline.stop_gate} gate — retrying",
+            "warning",
         )
-        verify_output = verify_cmd_result.stdout
-        if verify_cmd_result.exit_code != 0:
-            verify_ok = False
-
-    gate_verify_ms = int(time.monotonic() * 1000) - start_ms
-    update_change_field(state_file, change_name, "gate_verify_ms", gate_verify_ms)
-
-    if verify_ok and verify_output:
-        if "VERIFY_RESULT: PASS" in verify_output:
-            gate_spec_coverage = "pass"
-            update_change_field(state_file, change_name, "spec_coverage_result", "pass")
-        elif "VERIFY_RESULT: FAIL" in verify_output:
-            gate_spec_coverage = "fail"
-            update_change_field(state_file, change_name, "spec_coverage_result", "fail")
-            logger.warning("Spec coverage FAIL for %s — non-blocking, proceeding to merge", change_name)
-        else:
-            # No VERIFY_RESULT sentinel — timeout, but non-blocking (same as FAIL)
-            # Do NOT set verify_ok = False — timeout should not trigger retries
-            gate_spec_coverage = "timeout"
-            update_change_field(state_file, change_name, "spec_coverage_result", "timeout")
-            logger.warning(
-                "Spec verify timed out — no VERIFY_RESULT sentinel in output for %s (non-blocking)",
-                change_name,
-            )
-
-    if not verify_ok and gc.is_blocking("spec_verify"):
-        if verify_retry_count < effective_max_retries:
-            verify_retry_count += 1
-            update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
-            update_change_field(state_file, change_name, "status", "verify-failed")
-            scope = change.scope or ""
-            verify_tail = verify_output[-2000:] if verify_output else ""
-            retry_prompt = f"Verify failed. Fix the issues.\n\nVerify output (last 2000 chars):\n{verify_tail}\n\nOriginal scope: {scope}"
-            update_change_field(state_file, change_name, "retry_context", retry_prompt)
-            _snapshot_retry_tokens(state_file, change_name, wt_path)
-            from .dispatcher import resume_change
-            resume_change(state_file, change_name)
-            return
-
-        update_change_field(state_file, change_name, "status", "failed")
-        send_notification("wt-orchestrate", f"Change '{change_name}' failed verify after retries", "critical")
         return
-    elif not verify_ok:
-        logger.warning("Verify gate: spec verify failed for %s — non-blocking (gate=%s)", change_name, gc.spec_verify)
 
-    # ── Store gate totals ──
-    gate_total_ms = gate_test_ms + gate_e2e_ms + gate_review_ms + gate_verify_ms + gate_build_ms
-    update_change_field(state_file, change_name, "gate_total_ms", gate_total_ms)
+    if action == "failed":
+        pipeline.commit_results()
+        if event_bus:
+            event_bus.emit("VERIFY_GATE", change=change_name, data={
+                "result": "failed", "stop_gate": pipeline.stop_gate,
+                "uncommitted_check": uncommitted_check_result,
+            })
+        send_notification(
+            "wt-orchestrate",
+            f"Change '{change_name}' failed {pipeline.stop_gate} gate — retries exhausted",
+            "critical",
+        )
+        return
+
+    # ── All gates passed — commit results and queue merge ──
+    summary = pipeline.commit_results()
 
     gate_retry_tokens = change.extras.get("gate_retry_tokens", 0)
     gate_retry_count = change.extras.get("gate_retry_count", 0)
-    gate_has_tests = change.extras.get("has_tests", False)
 
     logger.info(
-        "Verify gate: %s total %dms (build=%d, test=%d, review=%d, verify=%d, retries=%d, retry_tokens=%d)",
-        change_name, gate_total_ms, gate_build_ms, gate_test_ms, gate_review_ms,
-        gate_verify_ms, gate_retry_count, gate_retry_tokens,
+        "Verify gate: %s total %dms (retries=%d, retry_tokens=%d)",
+        change_name, summary.get("total_ms", 0), gate_retry_count, gate_retry_tokens,
     )
 
     if event_bus:
         _gate_names = ["build", "test", "e2e", "review", "smoke", "rules", "spec_verify"]
         event_bus.emit("VERIFY_GATE", change=change_name, data={
-            "test": test_result_str,
-            "test_ms": gate_test_ms,
-            "build_ms": gate_build_ms,
-            "review_ms": gate_review_ms,
-            "verify_ms": gate_verify_ms,
-            "total_ms": gate_total_ms,
+            **summary,
             "retries": gate_retry_count,
             "retry_tokens": gate_retry_tokens,
             "uncommitted_check": uncommitted_check_result,
-            "scope_check": "pass",
-            "has_tests": gate_has_tests,
-            "spec_coverage": gate_spec_coverage,
-            "spec_coverage_blocking": gc.is_blocking("spec_verify"),
             "gate_profile": change.change_type or "feature",
             "gates_skipped": [g for g in _gate_names if not gc.should_run(g)],
             "gates_warn_only": [g for g in _gate_names if gc.is_warn_only(g)],
         })
 
-    # ── Post-verify hook ──
-    # run_hook is bash-side — Python emits event, bash handles hook execution
-
-    # ── Step 7: Mark done and queue merge ──
+    # Mark done and queue merge
     update_change_field(state_file, change_name, "status", "done")
     update_change_field(state_file, change_name, "completed_at", datetime.now(timezone.utc).isoformat())
 
-    # Increment changes since checkpoint
     with locked_state(state_file) as state:
         state.changes_since_checkpoint += 1
 
-    # Queue merge based on policy
     if merge_policy in ("eager", "checkpoint"):
         with locked_state(state_file) as state:
             if change_name not in state.merge_queue:

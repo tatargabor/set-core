@@ -104,35 +104,18 @@ def _collect_smoke_screenshots(
     change_name: str, state_file: str
 ) -> int:
     """Collect Playwright test-results/ after a smoke run. Returns screenshot count."""
+    from .gate_runner import collect_screenshots
+
     state = load_state(state_file)
     change = _find_change(state, change_name)
     attempt_num = 0
     if change:
         attempt_num = change.extras.get("smoke_fix_attempts", 0)
 
-    try:
-        from .paths import WtRuntime
-        _rt = WtRuntime()
-        base_dir = _rt.smoke_screenshots_dir(change_name)
-    except Exception:
-        base_dir = f"wt/orchestration/smoke-screenshots/{change_name}"
-    sc_dir = os.path.join(base_dir, f"attempt-{attempt_num + 1}")
-    os.makedirs(sc_dir, exist_ok=True)
-
-    if os.path.isdir("test-results"):
-        try:
-            shutil.copytree("test-results", sc_dir, dirs_exist_ok=True)
-        except Exception:
-            logger.warning("Failed to copy test-results for %s", change_name)
-    sc_count = len(glob.glob(f"{base_dir}/**/*.png", recursive=True))
-
-    update_change_field(state_file, change_name, "smoke_screenshot_dir", base_dir)
-    update_change_field(state_file, change_name, "smoke_screenshot_count", sc_count)
-    logger.info(
-        "Smoke screenshots: collected %d images for %s (attempt %d)",
-        sc_count, change_name, attempt_num + 1,
+    return collect_screenshots(
+        change_name, "test-results", "smoke",
+        attempt=attempt_num + 1, state_file=state_file,
     )
-    return sc_count
 
 
 # ─── Worktree Lifecycle ─────────────────────────────────────────────
