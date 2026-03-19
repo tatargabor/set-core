@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Python merge pipeline replaces bash
-The Python `merger.py:merge_change()` SHALL be the live merge implementation, called directly by the Python monitor loop (not via wt-orch-core CLI subprocess).
+The Python `merger.py:merge_change()` SHALL be the live merge implementation, called directly by the Python monitor loop (not via set-orch-core CLI subprocess).
 
 #### Scenario: Merge triggered from Python monitor
 - **WHEN** the Python monitor loop detects a change ready for merge

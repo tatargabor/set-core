@@ -1,6 +1,6 @@
 ## Context
 
-PM barátnak készülő ~60-75 oldalas magyar nyelvű könyv-jellegű dokumentáció az agentic szoftverfejlesztésről. A célközönség ChatGPT szinten van, nem fejlesztő. A wt-tools projekt kontextusán belül készül, de a tartalom univerzálisabb — a wt-tools mint esettanulmány jelenik meg benne.
+PM barátnak készülő ~60-75 oldalas magyar nyelvű könyv-jellegű dokumentáció az agentic szoftverfejlesztésről. A célközönség ChatGPT szinten van, nem fejlesztő. A set-core projekt kontextusán belül készül, de a tartalom univerzálisabb — a set-core mint esettanulmány jelenik meg benne.
 
 Jelenleg nincs hasonló magyar nyelvű összefoglaló ami a spec-driven agentic fejlesztést PM szemszögből mutatná be.
 

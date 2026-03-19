@@ -2,7 +2,7 @@
 
 ## Group 1: Fix bash sentinel bugs
 
-- [x] 1.1 Add `time_limit` to clean exit conditions in `bin/wt-sentinel` (alongside `done` and `stopped`)
+- [x] 1.1 Add `time_limit` to clean exit conditions in `bin/set-sentinel` (alongside `done` and `stopped`)
 - [x] 1.2 Change default for `exit 0 + unknown state` to stop (not restart) — log the unexpected state
 - [x] 1.3 Add `sentinel_log()` helper that writes to both stdout and orchestration.log with `[sentinel]` prefix
 - [x] 1.4 Skip stale state modification when status is `checkpoint` (only reset `running` → `stopped`)

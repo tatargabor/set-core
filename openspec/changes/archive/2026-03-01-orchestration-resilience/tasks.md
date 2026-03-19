@@ -11,7 +11,7 @@
 - [x] 2.2 Store `token_budget` in `loop-state.json` via `init_loop_state` — default 0 (unlimited)
 - [x] 2.3 Display budget in banner line if non-zero: "Budget: {N}K tokens"
 - [x] 2.4 After updating `total_tokens` in the iteration loop, check if `token_budget > 0 && total_tokens > token_budget` — if so, stop with status `"budget_exceeded"`
-- [x] 2.5 In `wt-orchestrate dispatch_change()`, pass `--token-budget` based on change size annotation (S:100, M:300, L:500, XL:1000)
+- [x] 2.5 In `set-orchestrate dispatch_change()`, pass `--token-budget` based on change size annotation (S:100, M:300, L:500, XL:1000)
 
 ## 3. Worktree .env Bootstrap
 
@@ -33,5 +33,5 @@
 
 ## 6. Loop-State Status Value Update
 
-- [x] 6.1 Update `"budget_exceeded"` as a recognized status in any status-checking code (wt-orchestrate `poll_change`, `get_changes_by_status`, sentinel)
-- [x] 6.2 In `wt-orchestrate`, treat `budget_exceeded` like a checkpoint — log it, notify, allow manual resume with extended budget
+- [x] 6.1 Update `"budget_exceeded"` as a recognized status in any status-checking code (set-orchestrate `poll_change`, `get_changes_by_status`, sentinel)
+- [x] 6.2 In `set-orchestrate`, treat `budget_exceeded` like a checkpoint — log it, notify, allow manual resume with extended budget

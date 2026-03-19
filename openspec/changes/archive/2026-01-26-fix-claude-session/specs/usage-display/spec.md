@@ -47,19 +47,19 @@ Usage data SHALL be fetched periodically in a background thread to avoid blockin
 The usage calculator SHALL work on Linux, macOS, and Windows.
 
 #### Scenario: Find Claude data directory on Linux
-- **GIVEN** the user runs wt-tools on Linux
+- **GIVEN** the user runs set-core on Linux
 - **WHEN** the usage calculator initializes
 - **THEN** it locates `~/.claude/projects/`
 - **AND** uses forward slashes for paths
 
 #### Scenario: Find Claude data directory on macOS
-- **GIVEN** the user runs wt-tools on macOS
+- **GIVEN** the user runs set-core on macOS
 - **WHEN** the usage calculator initializes
 - **THEN** it locates `~/.claude/projects/`
 - **AND** uses forward slashes for paths
 
 #### Scenario: Find Claude data directory on Windows
-- **GIVEN** the user runs wt-tools on Windows
+- **GIVEN** the user runs set-core on Windows
 - **WHEN** the usage calculator initializes
 - **THEN** it locates `%USERPROFILE%\.claude\projects\`
 - **AND** handles both forward and back slashes

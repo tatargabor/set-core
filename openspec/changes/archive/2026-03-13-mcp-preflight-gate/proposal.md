@@ -26,4 +26,4 @@ The orchestrator needs a preflight gate that validates MCP connectivity before d
 - `lib/orchestration/state.sh` — `mcp_auth` checkpoint type excluded from auto-approve
 - `lib/design/bridge.sh` — new `check_design_mcp_health()` function
 - `web/src/components/CheckpointBanner.tsx` — MCP-specific checkpoint message
-- `lib/wt_orch/api.py` — no changes needed (existing approve endpoint works)
+- `lib/set_orch/api.py` — no changes needed (existing approve endpoint works)

@@ -19,7 +19,7 @@ The system SHALL provide end-to-end encrypted messaging using NaCl cryptography.
 - **GIVEN** the user opens Settings > Team tab
 - **WHEN** the user clicks "Generate Chat Key"
 - **THEN** a new NaCl keypair is generated
-- **AND** the private key is stored in `~/.wt-tools/chat-keys/{project}.key` with 0600 permissions
+- **AND** the private key is stored in `~/.set-core/chat-keys/{project}.key` with 0600 permissions
 - **AND** the public key is included in the next `wt-control-sync`
 
 #### Scenario: Regenerate key with confirmation

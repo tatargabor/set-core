@@ -4,7 +4,7 @@
 
 ```
 Production:                          Test:
-~/.config/wt-tools/                  /tmp/pytest-XXXX/config/
+~/.config/set-core/                  /tmp/pytest-XXXX/config/
 ├── projects.json                    ├── projects.json (generated)
 ├── gui-config.json                  ├── gui-config.json (defaults)
 └── gui-position.json                └── gui-position.json (empty)
@@ -37,14 +37,14 @@ Function scope (per test):
 
 Current (`gui/constants.py:25`):
 ```python
-CONFIG_DIR = Path.home() / ".config" / "wt-tools"
+CONFIG_DIR = Path.home() / ".config" / "set-core"
 ```
 
 New:
 ```python
 import os
 _config_override = os.environ.get("WT_CONFIG_DIR")
-CONFIG_DIR = Path(_config_override) if _config_override else Path.home() / ".config" / "wt-tools"
+CONFIG_DIR = Path(_config_override) if _config_override else Path.home() / ".config" / "set-core"
 ```
 
 Same pattern for `main_window.py:50` POSITION_FILE - derive from CONFIG_DIR instead of hardcoding.

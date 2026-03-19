@@ -1,4 +1,4 @@
-"""Tests for wt_orch.watchdog — timeout, hash loop, escalation, progress reset."""
+"""Tests for set_orch.watchdog — timeout, hash loop, escalation, progress reset."""
 
 import json
 import os
@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.watchdog import (
+from set_orch.watchdog import (
     WatchdogResult,
     watchdog_check,
     watchdog_init_state,

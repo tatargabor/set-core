@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# set-hook-stop - Claude Code Stop hook that refreshes skill timestamp
+#
+# Called by Claude Code after every response (Stop event).
+# Refreshes timestamps in per-PID skill files.
+# Exits silently if not in a wt-managed directory or no skill is set.
+#
+# Designed to be referenced by name in .claude/settings.json:
+#   "command": "set-hook-stop"
+# The script is on PATH via install.sh symlink.
+
+# Read hook input from stdin (required by Claude Code hooks)
+cat > /dev/null
+
+# Find which claude PID (from pgrep) is our ancestor
+find_claude_pid() {
+    local claude_pids
+    claude_pids=$(ps -e -o pid=,comm= | awk '$2 == "claude" {print $1}') || true
+    local pid=$$
+    while [[ "$pid" -gt 1 ]]; do
+        if echo "$claude_pids" | grep -qx "$pid"; then
+            echo "$pid"
+            return
+        fi
+        pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ') || break
+    done
+    # No claude ancestor found — return empty (caller will skip)
+}
+
+# Find project root (walk up to find .set/)
+dir="$PWD"
+while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.wt" ]]; then
+        # Early bailout: skip PID lookup if no .skill files exist
+        shopt -s nullglob
+        skill_files=("$dir"/.set/agents/*.skill)
+        shopt -u nullglob
+        [[ ${#skill_files[@]} -eq 0 ]] && exit 0
+
+        now=$(date +%s)
+        # Refresh per-PID skill file if we can find our claude ancestor
+        claude_pid=$(find_claude_pid)
+        if [[ -n "$claude_pid" ]]; then
+            pid_skill="$dir/.set/agents/${claude_pid}.skill"
+            if [[ -f "$pid_skill" ]]; then
+                content=$(cat "$pid_skill" 2>/dev/null) || exit 0
+                skill_name="${content%%|*}"
+                # Preserve freshness flag (3rd field: fresh/last)
+                rest="${content#*|}"
+                freshness="${rest#*|}"
+                [[ "$freshness" == "${rest%%|*}" ]] && freshness="last"
+                if [[ -n "$skill_name" ]]; then
+                    echo "${skill_name}|${now}|${freshness}" > "$pid_skill"
+                fi
+            fi
+
+            # Memory reminder: if this skill has memory hooks, remind the agent
+            pid_memory="$dir/.set/agents/${claude_pid}.memory"
+            if [[ -f "$pid_memory" ]]; then
+                echo "[MEMORY REMINDER] Active skill has set-memory hooks. Run your recall/remember steps before finishing."
+            fi
+        fi
+        exit 0
+    fi
+    dir="$(dirname "$dir")"
+done
+
+exit 0

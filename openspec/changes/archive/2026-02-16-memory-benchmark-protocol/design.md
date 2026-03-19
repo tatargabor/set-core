@@ -1,8 +1,8 @@
 ## Context
 
-The shodh-memory system is fully integrated into wt-tools — skills save and recall memories, CLAUDE.md has proactive memory hooks, and the CLI supports remember/recall/forget operations. However, there's no empirical evidence that this memory layer actually helps AI agents perform better across independent sessions. We need a controlled benchmark to prove (or disprove) this value.
+The shodh-memory system is fully integrated into set-core — skills save and recall memories, CLAUDE.md has proactive memory hooks, and the CLI supports remember/recall/forget operations. However, there's no empirical evidence that this memory layer actually helps AI agents perform better across independent sessions. We need a controlled benchmark to prove (or disprove) this value.
 
-The benchmark uses a separate "test project" (CraftBazaar — a multi-vendor marketplace built with Next.js + Prisma + SQLite) that is complex enough to create natural traps where cross-session memory matters. The benchmark protocol, scoring rubric, and project specification live in wt-tools as documentation. The actual project lives in a separate repository.
+The benchmark uses a separate "test project" (CraftBazaar — a multi-vendor marketplace built with Next.js + Prisma + SQLite) that is complex enough to create natural traps where cross-session memory matters. The benchmark protocol, scoring rubric, and project specification live in set-core as documentation. The actual project lives in a separate repository.
 
 ## Goals / Non-Goals
 
@@ -24,11 +24,11 @@ The benchmark uses a separate "test project" (CraftBazaar — a multi-vendor mar
 
 ## Decisions
 
-### D1: Separate repo for test project, protocol in wt-tools
+### D1: Separate repo for test project, protocol in set-core
 
-**Decision**: The benchmark protocol lives in `benchmark/` within wt-tools. The CraftBazaar project is a separate git repository created fresh for each benchmark run.
+**Decision**: The benchmark protocol lives in `benchmark/` within set-core. The CraftBazaar project is a separate git repository created fresh for each benchmark run.
 
-**Why**: The protocol tests wt-tools features and should be versioned alongside them. The test project needs its own git history, openspec config, and CLAUDE.md — which would conflict if nested in wt-tools.
+**Why**: The protocol tests set-core features and should be versioned alongside them. The test project needs its own git history, openspec config, and CLAUDE.md — which would conflict if nested in set-core.
 
 **Alternative considered**: Monorepo with `benchmark/craftbazaar/` subdirectory. Rejected because the test project needs its own root-level CLAUDE.md and openspec config.
 
@@ -56,7 +56,7 @@ The benchmark uses a separate "test project" (CraftBazaar — a multi-vendor mar
 
 ### D4: Two CLAUDE.md variants as the only experimental variable
 
-**Decision**: Run A uses `baseline.md` (no memory hooks, no `wt-memory-hooks install`), Run B uses `with-memory.md` (proactive memory enabled + `wt-memory-hooks install`). Everything else is identical — same project spec, same change descriptions, same openspec config, same toolchain.
+**Decision**: Run A uses `baseline.md` (no memory hooks, no `set-memory-hooks install`), Run B uses `with-memory.md` (proactive memory enabled + `set-memory-hooks install`). Everything else is identical — same project spec, same change descriptions, same openspec config, same toolchain.
 
 **Why**: Isolating the single variable (memory) makes the comparison valid. The difference operates at two layers: (1) CLAUDE.md proactive memory section (ambient save/recall), and (2) skill-level memory hooks in SKILL.md and command files (recall at skill start, save at skill end). Run A has neither; Run B has both.
 
@@ -102,7 +102,7 @@ The benchmark uses a separate "test project" (CraftBazaar — a multi-vendor mar
 
 ### D7: Full toolchain bootstrap documented in run guide
 
-**Decision**: The run guide includes exact commands for: `git init`, `openspec init --tools claude`, `wt-deploy-hooks .` (Claude Code hooks), CLAUDE.md placement, and copying agent-only change definitions into `docs/benchmark/`. For Run B additionally: `wt-memory-hooks install`. Prerequisites: wt-tools installed and on PATH, Node.js, Claude Code CLI.
+**Decision**: The run guide includes exact commands for: `git init`, `openspec init --tools claude`, `wt-deploy-hooks .` (Claude Code hooks), CLAUDE.md placement, and copying agent-only change definitions into `docs/benchmark/`. For Run B additionally: `set-memory-hooks install`. Prerequisites: set-core installed and on PATH, Node.js, Claude Code CLI.
 
 **Why**: Reproducibility requires that any evaluator can set up an identical environment. The bootstrap sequence matters — hooks must be deployed before the first change starts. The run guide must be copy-pasteable end-to-end.
 
@@ -120,7 +120,7 @@ The benchmark uses a separate "test project" (CraftBazaar — a multi-vendor mar
 
 **[Risk: Port collision in parallel runs]** → Both agents running `npm run dev` on the same port. **Mitigation**: CLAUDE.md for each run specifies a different port (PORT=3000 for Run A, PORT=3001 for Run B).
 
-**[Risk: Agent reads evaluator notes]** → If change definition files include trap documentation, agent gains unfair knowledge. **Mitigation**: Bootstrap extracts only "Agent Input" sections into the project repo. Full files with evaluator notes stay in wt-tools only.
+**[Risk: Agent reads evaluator notes]** → If change definition files include trap documentation, agent gains unfair knowledge. **Mitigation**: Bootstrap extracts only "Agent Input" sections into the project repo. Full files with evaluator notes stay in set-core only.
 
 **[Risk: wt-loop stall or infinite loop]** → Agent gets stuck on a change and loops without progress. **Mitigation**: wt-loop has built-in stall detection (configurable `--stall-threshold`). After N iterations with no commits, the loop stops. The evaluator can review and restart if needed — but the stall itself is data (the agent couldn't solve the problem).
 

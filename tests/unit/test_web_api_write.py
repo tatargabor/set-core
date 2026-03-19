@@ -1,4 +1,4 @@
-"""Tests for wt_orch web API write endpoints (approve, stop, skip)."""
+"""Tests for set_orch web API write endpoints (approve, stop, skip)."""
 
 import json
 import os
@@ -10,8 +10,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
 from fastapi.testclient import TestClient
-from wt_orch.server import create_app
-from wt_orch import api as api_module
+from set_orch.server import create_app
+from set_orch import api as api_module
 
 
 @pytest.fixture

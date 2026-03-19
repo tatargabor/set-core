@@ -6,13 +6,13 @@
 
 - [x] 2.1 Add `wt-openspec` to user-facing commands list in CLI Documentation Rules
 - [x] 2.2 Add `wt-hook-memory-recall`, `wt-hook-memory-save` to internal/hook scripts list
-- [x] 2.3 Add `wt-memory sync`, `wt-memory proactive`, `wt-memory stats`, `wt-memory cleanup`, `wt-memory-hooks remove` to Developer Memory CLI must-include list
+- [x] 2.3 Add `set-memory sync`, `set-memory proactive`, `set-memory stats`, `set-memory cleanup`, `set-memory-hooks remove` to Developer Memory CLI must-include list
 
 ## 3. README.md full refresh
 
 - [x] 3.1 Update "Latest update" date to 2026-02-17
 - [x] 3.2 Add missing Developer Memory CLI commands to CLI Reference table: sync (push/pull/status), proactive, stats, cleanup
-- [x] 3.3 Add `wt-memory-hooks remove` to CLI Reference table
+- [x] 3.3 Add `set-memory-hooks remove` to CLI Reference table
 - [x] 3.4 Add `wt-openspec init`, `wt-openspec status`, `wt-openspec update` to CLI Reference (new OpenSpec category or under Project Management)
 - [x] 3.5 Add `wt-hook-memory-recall` and `wt-hook-memory-save` to internal hooks note
 - [x] 3.6 Expand Developer Memory Features section: GUI memory ([M] button, Browse dialog summary/list modes, semantic search, Remember Note, Export/Import)

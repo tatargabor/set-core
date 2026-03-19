@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# wt-hook-memory-warmstart - Backward-compatible wrapper
-# Delegates to unified handler: wt-hook-memory SessionStart
-exec wt-hook-memory SessionStart

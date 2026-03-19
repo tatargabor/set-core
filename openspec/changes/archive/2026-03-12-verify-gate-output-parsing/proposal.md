@@ -23,7 +23,7 @@ _None_
 ## Impact
 
 - `lib/orchestration/verifier.sh` — verify output parsing logic, review default, event fields
-- `bin/wt-orchestrate` — DEFAULT_REVIEW_BEFORE_MERGE constant
+- `bin/set-orchestrate` — DEFAULT_REVIEW_BEFORE_MERGE constant
 - `.claude/skills/openspec-verify-change/SKILL.md` — structured output format addition
 - `openspec/specs/verify-gate/spec.md` — updated requirements
 - Existing orchestration configs with `review_before_merge` unset will now get reviews (breaking change — may increase token usage)

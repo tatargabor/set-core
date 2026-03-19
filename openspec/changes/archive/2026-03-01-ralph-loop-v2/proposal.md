@@ -24,6 +24,6 @@ The v6 orchestration runs revealed that the Ralph loop burns 10-30x more tokens 
 ## Impact
 
 - `bin/wt-loop` — major refactor of `cmd_run()`: claude invocation method, log file management, budget enforcement, done check, real-time output parsing
-- `bin/wt-orchestrate` — must recognize `waiting:budget` status (no auto-restart, treat like `waiting:human`)
+- `bin/set-orchestrate` — must recognize `waiting:budget` status (no auto-restart, treat like `waiting:human`)
 - `openspec/specs/ralph-loop/spec.md` — new requirements for session continuation, logging, real-time output
 - `openspec/specs/loop-token-budget/spec.md` — budget exceeded behavior change

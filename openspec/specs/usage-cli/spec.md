@@ -47,7 +47,7 @@ The `wt-usage` command SHALL provide a `--login` flag for session key acquisitio
 
 #### Scenario: Session key saved after login
 - **WHEN** user pastes a valid session key
-- **THEN** the key is saved to `~/.config/wt-tools/claude-session.json`
+- **THEN** the key is saved to `~/.config/set-core/claude-session.json`
 - **AND** a test API call is made to verify the key works
 - **AND** success or failure is reported
 

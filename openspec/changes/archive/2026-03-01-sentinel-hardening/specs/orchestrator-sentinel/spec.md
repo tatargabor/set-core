@@ -1,21 +1,21 @@
 ## MODIFIED Requirements
 
 ### Requirement: Sentinel exit logic (MODIFIED)
-The bash `wt-sentinel` SHALL stop on all clean exit states, not just `done` and `stopped`.
+The bash `set-sentinel` SHALL stop on all clean exit states, not just `done` and `stopped`.
 
 #### Scenario: Time limit state
-- **WHEN** `wt-orchestrate start` exits with code 0
+- **WHEN** `set-orchestrate start` exits with code 0
 - **AND** `orchestration-state.json` has status `time_limit`
 - **THEN** the sentinel SHALL stop and exit with code 0
 
 #### Scenario: Any clean exit defaults to stop
-- **WHEN** `wt-orchestrate start` exits with code 0
+- **WHEN** `set-orchestrate start` exits with code 0
 - **AND** the state is not `done`, `stopped`, or `time_limit`
 - **THEN** the sentinel SHALL stop and exit with code 0 (safe default)
 - **AND** log the unexpected state for debugging
 
 #### Scenario: Only non-zero exit triggers restart
-- **WHEN** `wt-orchestrate start` exits with non-zero code
+- **WHEN** `set-orchestrate start` exits with non-zero code
 - **THEN** the sentinel SHALL restart with backoff (existing behavior)
 
 ### Requirement: Sentinel file logging (ADDED)

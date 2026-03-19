@@ -1,6 +1,6 @@
 ## Context
 
-The sentinel is a Claude Code skill (`.claude/commands/wt/sentinel.md`) — a prompt-only component with no executable code. It instructs the Claude agent how to supervise `wt-orchestrate` runs. Currently, the sentinel's crash recovery logic treats all orchestrator exits as potential problems requiring diagnosis and restart. In practice, many situations the sentinel encounters are orchestration-level issues (merge-blocked, verify failures, replan cycles) that the orchestrator already handles on its next run. The sentinel wastes tokens diagnosing these and sometimes interferes by modifying state.
+The sentinel is a Claude Code skill (`.claude/commands/wt/sentinel.md`) — a prompt-only component with no executable code. It instructs the Claude agent how to supervise `set-orchestrate` runs. Currently, the sentinel's crash recovery logic treats all orchestrator exits as potential problems requiring diagnosis and restart. In practice, many situations the sentinel encounters are orchestration-level issues (merge-blocked, verify failures, replan cycles) that the orchestrator already handles on its next run. The sentinel wastes tokens diagnosing these and sometimes interferes by modifying state.
 
 Real-world problems observed across multiple E2E orchestration runs:
 1. Sentinel tried to manually resolve merge-blocked changes — orchestrator now has jq deep-merge in `wt-merge`

@@ -1,6 +1,6 @@
 ## Context
 
-Memory hooks in OpenSpec skills currently only fire at workflow endpoints (apply step 7, archive step 7). The `/opsx:explore` skill has no memory integration at all. Users share valuable knowledge conversationally throughout sessions — corrections, past experiences, technical gotchas — and this knowledge is lost. The shodh-memory service is running and the `wt-memory` CLI works, but nothing triggers saves mid-conversation.
+Memory hooks in OpenSpec skills currently only fire at workflow endpoints (apply step 7, archive step 7). The `/opsx:explore` skill has no memory integration at all. Users share valuable knowledge conversationally throughout sessions — corrections, past experiences, technical gotchas — and this knowledge is lost. The shodh-memory service is running and the `set-memory` CLI works, but nothing triggers saves mid-conversation.
 
 ## Goals / Non-Goals
 
@@ -28,18 +28,18 @@ Memory recognition must happen inside the LLM context where the agent has full c
 
 ### 3. "Save immediately, confirm briefly" pattern
 When the agent recognizes something worth saving, it:
-1. Runs `wt-memory health` (skip if fails)
-2. Runs `echo "..." | wt-memory remember --type X --tags ...`
+1. Runs `set-memory health` (skip if fails)
+2. Runs `echo "..." | set-memory remember --type X --tags ...`
 3. Shows one-line confirmation: `[Memory saved: Type — summary]`
 4. Continues with current work
 
 This is fast (~50ms health + ~100ms remember) and doesn't break flow.
 
 ### 4. Deduplication via skill awareness
-The CLAUDE.md ambient instruction includes: "If you are currently executing an OpenSpec skill that has its own memory hooks (check for wt-memory steps in the active skill), defer to those hooks — do not save duplicates." This prevents double-saves when both CLAUDE.md and SKILL.md try to remember.
+The CLAUDE.md ambient instruction includes: "If you are currently executing an OpenSpec skill that has its own memory hooks (check for set-memory steps in the active skill), defer to those hooks — do not save duplicates." This prevents double-saves when both CLAUDE.md and SKILL.md try to remember.
 
-### 5. Hook content in wt-memory-hooks script
-The new explore hooks and mid-flow hooks are added to `wt-memory-hooks install`, so `openspec update` + `wt-memory-hooks install` restores everything. The CLAUDE.md section is NOT managed by `wt-memory-hooks` — it's a stable project-level instruction.
+### 5. Hook content in set-memory-hooks script
+The new explore hooks and mid-flow hooks are added to `set-memory-hooks install`, so `openspec update` + `set-memory-hooks install` restores everything. The CLAUDE.md section is NOT managed by `set-memory-hooks` — it's a stable project-level instruction.
 
 ### 6. Save threshold: "would a future agent benefit?"
 The heuristic for deciding whether to save: "Would this information be valuable to a different agent working on this project in a future session?" This filters out session-specific noise ("fix this typo", "run tests") while capturing durable knowledge ("this API breaks on empty arrays", "always use --force").

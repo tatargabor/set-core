@@ -12,27 +12,27 @@ The system SHALL extract all editor-related functions from `bin/wt-common.sh` in
 - **THEN** all editor detection and configuration functions work identically to before extraction
 
 ### Requirement: Memory module extraction
-The system SHALL split `bin/wt-memory` into a thin dispatcher (~300 lines) and 7 sourced modules under `lib/memory/`: core.sh, maintenance.sh, rules.sh, todos.sh, sync.sh, migrate.sh, ui.sh. All CLI commands SHALL work identically after extraction.
+The system SHALL split `bin/set-memory` into a thin dispatcher (~300 lines) and 7 sourced modules under `lib/memory/`: core.sh, maintenance.sh, rules.sh, todos.sh, sync.sh, migrate.sh, ui.sh. All CLI commands SHALL work identically after extraction.
 
-#### Scenario: wt-memory dispatcher sources modules
-- **WHEN** `wt-memory` starts
+#### Scenario: set-memory dispatcher sources modules
+- **WHEN** `set-memory` starts
 - **THEN** it sources infrastructure functions, then sources all `lib/memory/*.sh` modules before dispatching to the requested subcommand
 
 #### Scenario: All subcommands work after split
-- **WHEN** any `wt-memory` subcommand is executed (remember, recall, forget, rules, todo, sync, etc.)
+- **WHEN** any `set-memory` subcommand is executed (remember, recall, forget, rules, todo, sync, etc.)
 - **THEN** it produces identical output and side effects as the monolithic version
 
 ### Requirement: Hook-memory module extraction
-The system SHALL split `bin/wt-hook-memory` into a thin bash dispatcher and Python modules under `lib/wt_hooks/`: util.py, session.py, memory_ops.py, events.py, stop.py. All hook event handlers SHALL work identically after extraction.
+The system SHALL split `bin/wt-hook-memory` into a thin bash dispatcher and Python modules under `lib/set_hooks/`: util.py, session.py, memory_ops.py, events.py, stop.py. All hook event handlers SHALL work identically after extraction.
 
 #### Scenario: Shared daemon helpers in util.py
 - **WHEN** any hook module (memory_ops.py, stop.py) needs a daemon client or daemon status check
-- **THEN** it SHALL import `get_daemon_client` and `daemon_is_running` from `wt_hooks.util`
+- **THEN** it SHALL import `get_daemon_client` and `daemon_is_running` from `set_hooks.util`
 - **AND** SHALL NOT define local copies of these functions
 
 #### Scenario: Shared heuristic patterns in util.py
 - **WHEN** any hook module needs to detect heuristic memory patterns
-- **THEN** it SHALL import `HEURISTIC_RE` from `wt_hooks.util`
+- **THEN** it SHALL import `HEURISTIC_RE` from `set_hooks.util`
 - **AND** SHALL NOT define a local copy of the pattern list or compiled regex
 
 #### Scenario: All hook events handled after split
@@ -54,7 +54,7 @@ The system SHALL split `bin/wt-loop` into a thin dispatcher (~500 lines) and 4 s
 The system SHALL split `lib/orchestration/state.sh` into 4 focused modules: config.sh, state.sh (core), orch-memory.sh, utils.sh. The system SHALL extract `builder.sh` and `monitor.sh` from `lib/orchestration/dispatcher.sh`. All sourcing scripts SHALL work identically.
 
 #### Scenario: Orchestrator runs after state split
-- **WHEN** `wt-orchestrate` sources orchestration libraries
+- **WHEN** `set-orchestrate` sources orchestration libraries
 - **THEN** all state queries, config lookups, memory helpers, and utility functions work identically
 
 #### Scenario: BASE_BUILD cache deduplicated
@@ -62,10 +62,10 @@ The system SHALL split `lib/orchestration/state.sh` into 4 focused modules: conf
 - **THEN** both use `builder.sh` as the single source of truth for BASE_BUILD_* state
 
 ### Requirement: Project deploy refactor
-The system SHALL split `deploy_wt_tools()` in `bin/wt-project` into focused functions: deploy_hooks(), deploy_commands(), deploy_skills(), deploy_mcp(), deploy_memory(). The `wt-project init` command SHALL work identically.
+The system SHALL split `deploy_set_tools()` in `bin/set-project` into focused functions: deploy_hooks(), deploy_commands(), deploy_skills(), deploy_mcp(), deploy_memory(). The `set-project init` command SHALL work identically.
 
 #### Scenario: Project init works after refactor
-- **WHEN** `wt-project init` is executed
+- **WHEN** `set-project init` is executed
 - **THEN** hooks, commands, skills, MCP server, and memory are deployed identically to before
 
 ### Requirement: Unit test coverage for extracted modules

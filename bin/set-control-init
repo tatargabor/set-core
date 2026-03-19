@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# set-control-init - Initialize set-control branch for team synchronization
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+usage() {
+    cat <<EOF
+Usage: set-control-init [options]
+
+Initialize the set-control orphan branch and hidden worktree for team sync.
+This creates a separate branch that stores team member status without
+exposing sensitive code information.
+
+Options:
+  -p, --project <name>    Use specific project (default: auto-detect)
+  -f, --force             Force re-initialization (removes existing setup)
+  -h, --help              Show this help
+
+What gets created:
+  - Orphan branch: set-control (no commit history from main)
+  - Hidden worktree: .set-control/ (inside main repo)
+  - Structure: members/, queue/, chat/
+  - .gitignore entry for .set-control/
+
+Examples:
+  set-control-init                    # Initialize for current project
+  set-control-init -p myproject       # Initialize for specific project
+  set-control-init --force            # Re-initialize (destructive)
+EOF
+}
+
+main() {
+    local project_name=""
+    local force=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project_name="$2"
+                shift 2
+                ;;
+            -f|--force)
+                force=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                error "Unexpected argument: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
+    # Resolve project
+    local resolved_project
+    resolved_project=$(resolve_project "$project_name") || exit 1
+
+    local project_path
+    project_path=$(get_project_path "$resolved_project")
+
+    if [[ -z "$project_path" || ! -d "$project_path" ]]; then
+        error "Project path not found: $project_path"
+        exit 1
+    fi
+
+    local control_worktree="$project_path/.set-control"
+    local control_branch="set-control"
+
+    info "Initializing set-control for project: $resolved_project"
+    echo "  Project path: $project_path"
+
+    # Check if already initialized
+    if [[ -d "$control_worktree" ]]; then
+        if $force; then
+            warn "Removing existing set-control setup..."
+            git -C "$project_path" worktree remove "$control_worktree" --force 2>/dev/null || true
+            rm -rf "$control_worktree" 2>/dev/null || true
+        else
+            error "set-control already initialized at $control_worktree"
+            echo "  Use --force to re-initialize"
+            exit 1
+        fi
+    fi
+
+    # Check if branch exists locally
+    local branch_exists=false
+    if git -C "$project_path" show-ref --verify --quiet "refs/heads/$control_branch" 2>/dev/null; then
+        branch_exists=true
+    fi
+
+    # Check if branch exists on remote
+    local remote_branch_exists=false
+    if git -C "$project_path" ls-remote --heads origin "$control_branch" 2>/dev/null | grep -q "$control_branch"; then
+        remote_branch_exists=true
+    fi
+
+    if $branch_exists && $force; then
+        warn "Deleting existing local branch..."
+        git -C "$project_path" branch -D "$control_branch" 2>/dev/null || true
+        branch_exists=false
+    fi
+
+    # Create or checkout the branch
+    if $remote_branch_exists && ! $branch_exists; then
+        info "Fetching set-control branch from remote..."
+        git -C "$project_path" fetch origin "$control_branch" 2>/dev/null || true
+
+        info "Creating worktree from remote branch..."
+        git -C "$project_path" worktree add "$control_worktree" -B "$control_branch" "origin/$control_branch"
+    elif $branch_exists; then
+        info "Creating worktree from existing local branch..."
+        git -C "$project_path" worktree add "$control_worktree" "$control_branch"
+    else
+        info "Creating new orphan branch..."
+
+        # Create orphan branch by first creating the worktree with a detached HEAD
+        # then creating the orphan branch inside it
+        local temp_worktree
+        temp_worktree=$(mktemp -d)
+
+        # Create a temporary worktree
+        git -C "$project_path" worktree add --detach "$temp_worktree" HEAD 2>/dev/null
+
+        # Inside temp worktree, create orphan branch
+        (
+            cd "$temp_worktree"
+            git checkout --orphan "$control_branch"
+            git rm -rf . 2>/dev/null || true
+            git clean -fd 2>/dev/null || true
+
+            # Create initial structure
+            mkdir -p members queue chat
+
+            # Create README
+            cat > README.md << 'INNEREOF'
+# set-control
+
+Team synchronization branch for set-core.
+
+## Structure
+
+- `members/` - Team member status files (one JSON per member)
+- `queue/` - Shared task queue (future)
+- `chat/` - Team chat messages (future)
+
+## Security
+
+This branch only contains:
+- Member names (can be aliases)
+- Worktree change-ids (not branch names)
+- Agent status (running/waiting/idle)
+- Timestamps
+
+It does NOT contain:
+- File paths or code content
+- API keys or credentials
+- Detailed JIRA information
+INNEREOF
+
+            # Create .gitkeep files
+            touch members/.gitkeep queue/.gitkeep chat/.gitkeep
+
+            # Initial commit
+            git add -A
+            git commit -m "Initialize set-control branch"
+        )
+
+        # Remove temp worktree and add real one
+        git -C "$project_path" worktree remove "$temp_worktree" --force 2>/dev/null || rm -rf "$temp_worktree"
+
+        # Now add the real worktree
+        git -C "$project_path" worktree add "$control_worktree" "$control_branch"
+    fi
+
+    # Ensure .gitignore includes .set-control/
+    local gitignore="$project_path/.gitignore"
+    if [[ -f "$gitignore" ]]; then
+        if ! grep -q "^\.set-control/?$" "$gitignore" 2>/dev/null; then
+            info "Adding .set-control/ to .gitignore..."
+            echo "" >> "$gitignore"
+            echo "# Team sync worktree (set-control branch)" >> "$gitignore"
+            echo ".set-control/" >> "$gitignore"
+        fi
+    else
+        info "Creating .gitignore with .set-control/..."
+        cat > "$gitignore" << 'EOF'
+# Team sync worktree (set-control branch)
+.set-control/
+EOF
+    fi
+
+    # Ensure directory structure exists
+    mkdir -p "$control_worktree/members"
+    mkdir -p "$control_worktree/queue"
+    mkdir -p "$control_worktree/chat"
+
+    # Try to push to remote if it doesn't exist there yet
+    if ! $remote_branch_exists; then
+        info "Pushing set-control branch to remote..."
+        if git -C "$control_worktree" push -u origin "$control_branch" 2>/dev/null; then
+            success "Branch pushed to remote"
+        else
+            warn "Could not push to remote (may need manual push later)"
+        fi
+    fi
+
+    success "set-control initialized successfully!"
+    echo ""
+    echo "  Worktree: $control_worktree"
+    echo "  Branch: $control_branch"
+    echo ""
+    echo "Next steps:"
+    echo "  - Run 'set-control-sync' to sync your status"
+    echo "  - Enable team sync in Control Center settings"
+}
+
+main "$@"

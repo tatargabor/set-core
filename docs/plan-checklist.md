@@ -1,6 +1,6 @@
 # Plan Review Checklist
 
-Quick pre-flight check before running `wt-orchestrate start`. Review the plan (`wt-orchestrate plan --show`) against this list.
+Quick pre-flight check before running `set-orchestrate start`. Review the plan (`set-orchestrate plan --show`) against this list.
 
 > Full explanations: [Planning Guide](planning-guide.md)
 
@@ -54,7 +54,7 @@ Quick pre-flight check before running `wt-orchestrate start`. Review the plan (`
 - [ ] **Runtime dependencies explicit** — If a feature needs a new npm package, mention it in scope (build passes in worktree but main may lack it after merge)
 - [ ] **Error handling for missing data** — Features that query DB records should handle "not found" cases (agents often skip existence checks before `.update()`)
 - [ ] **Feature completeness verifiable** — Each scope item has clear acceptance criteria so you can verify nothing was silently dropped by the agent
-- [ ] **Generated file conflicts expected** — `.claude/reflection.md` and similar AI-generated files will conflict on every merge; ensure they're in `wt-merge`'s `GENERATED_FILE_PATTERNS`
+- [ ] **Generated file conflicts expected** — `.claude/reflection.md` and similar AI-generated files will conflict on every merge; ensure they're in `set-merge`'s `GENERATED_FILE_PATTERNS`
 - [ ] **Shared type accumulation considered** — If 3+ changes add to the same union type, later merges get progressively harder; extract a shared-types change or chain all of them
 
 ## Web Project Specifics

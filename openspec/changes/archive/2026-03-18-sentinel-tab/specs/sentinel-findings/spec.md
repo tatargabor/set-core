@@ -29,7 +29,7 @@ The system SHALL store sentinel findings in `.wt/sentinel/findings.json` as a JS
 - **THEN** it SHALL be appended to the `assessments` array with `scope` (e.g., "phase-2"), `timestamp`, `summary`, and `recommendation`
 
 ### Requirement: Findings Python API
-The system SHALL provide `lib/wt_orch/sentinel/findings.py` with a `SentinelFindings` class for managing findings.
+The system SHALL provide `lib/set_orch/sentinel/findings.py` with a `SentinelFindings` class for managing findings.
 
 #### Scenario: Add finding
 - **WHEN** `findings.add(severity="bug", change="add-cart", summary="IDOR vulnerability", detail="...")` is called
@@ -43,15 +43,15 @@ The system SHALL provide `lib/wt_orch/sentinel/findings.py` with a `SentinelFind
 The system SHALL provide CLI commands for findings management.
 
 #### Scenario: Add finding via CLI
-- **WHEN** `wt-sentinel-finding add --severity bug --change add-cart --summary "IDOR issue"` is executed
+- **WHEN** `set-sentinel-finding add --severity bug --change add-cart --summary "IDOR issue"` is executed
 - **THEN** a new finding is added to findings.json
 
 #### Scenario: Update finding via CLI
-- **WHEN** `wt-sentinel-finding update F001 --status fixed --commit abc123` is executed
+- **WHEN** `set-sentinel-finding update F001 --status fixed --commit abc123` is executed
 - **THEN** finding F001 is updated with the new status and commit reference
 
 #### Scenario: List findings via CLI
-- **WHEN** `wt-sentinel-finding list --open-only` is executed
+- **WHEN** `set-sentinel-finding list --open-only` is executed
 - **THEN** only open findings are printed to stdout
 
 ### Requirement: Findings rotation on new run

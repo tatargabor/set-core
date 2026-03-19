@@ -1,4 +1,4 @@
-"""Tests for wt_orch.builder — PM detection, build command detection, caching."""
+"""Tests for set_orch.builder — PM detection, build command detection, caching."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.builder import (
+from set_orch.builder import (
     BuildResult,
     check_base_build,
     reset_build_cache,
@@ -149,25 +149,25 @@ class TestConfigDetectPackageManager:
     """Tests for config.py:detect_package_manager (migrated from server-detect.sh)."""
 
     def test_detect_bun(self, tmp_dir):
-        from wt_orch.config import detect_package_manager
+        from set_orch.config import detect_package_manager
 
         open(os.path.join(tmp_dir, "bun.lockb"), "w").close()
         assert detect_package_manager(tmp_dir) == "bun"
 
     def test_detect_pip(self, tmp_dir):
-        from wt_orch.config import detect_package_manager
+        from set_orch.config import detect_package_manager
 
         open(os.path.join(tmp_dir, "Pipfile.lock"), "w").close()
         assert detect_package_manager(tmp_dir) == "pip"
 
     def test_detect_poetry(self, tmp_dir):
-        from wt_orch.config import detect_package_manager
+        from set_orch.config import detect_package_manager
 
         open(os.path.join(tmp_dir, "poetry.lock"), "w").close()
         assert detect_package_manager(tmp_dir) == "poetry"
 
     def test_detect_npm_default(self, tmp_dir):
-        from wt_orch.config import detect_package_manager
+        from set_orch.config import detect_package_manager
 
         assert detect_package_manager(tmp_dir) == "npm"
 
@@ -176,7 +176,7 @@ class TestConfigDetectDevServer:
     """Tests for config.py:detect_dev_server cascade."""
 
     def test_milestone_override(self, tmp_dir):
-        from wt_orch.config import detect_dev_server
+        from set_orch.config import detect_dev_server
 
         result = detect_dev_server(
             tmp_dir,
@@ -185,7 +185,7 @@ class TestConfigDetectDevServer:
         assert result == "http://localhost:4000"
 
     def test_smoke_command(self, tmp_dir):
-        from wt_orch.config import detect_dev_server
+        from set_orch.config import detect_dev_server
 
         result = detect_dev_server(
             tmp_dir,
@@ -194,7 +194,7 @@ class TestConfigDetectDevServer:
         assert result == "npm run dev"
 
     def test_package_json_dev_script(self, tmp_dir):
-        from wt_orch.config import detect_dev_server
+        from set_orch.config import detect_dev_server
 
         pkg = {"scripts": {"dev": "next dev -p 3000"}}
         with open(os.path.join(tmp_dir, "package.json"), "w") as f:
@@ -204,7 +204,7 @@ class TestConfigDetectDevServer:
         assert result == "npm run dev"
 
     def test_no_detection(self, tmp_dir):
-        from wt_orch.config import detect_dev_server
+        from set_orch.config import detect_dev_server
 
         result = detect_dev_server(tmp_dir)
         assert result is None

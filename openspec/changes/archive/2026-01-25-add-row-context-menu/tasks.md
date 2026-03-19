@@ -42,7 +42,7 @@
 
 ## 7. Worktree Config Dialog
 - [x] 7.1 Create WorktreeConfigDialog class
-- [x] 7.2 Load .wt-tools/*.json config files
+- [x] 7.2 Load .set-core/*.json config files
 - [x] 7.3 Display configs in tabs (Jira, Confluence, etc.)
 - [x] 7.4 Make config values editable (QLineEdit)
 - [x] 7.5 Add Save button to persist changes

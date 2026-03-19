@@ -1,6 +1,6 @@
 ## Context
 
-wt-tools grew up alongside OpenSpec, and several CLI tools have hardcoded OpenSpec dependencies:
+set-core grew up alongside OpenSpec, and several CLI tools have hardcoded OpenSpec dependencies:
 - `wt-new` and `wt-add` run `openspec init` on new worktrees — redundant because git worktrees inherit all files from the branch, including `openspec/` if already initialized
 - `wt-loop` uses `change-id` as its primary identifier, mapped to OpenSpec change names, and searches `openspec/changes/$id/tasks.md` for done detection
 - The GUI passes `change_id` to ralph loop functions even though it already knows the `wt_path`
@@ -10,13 +10,13 @@ The loop always runs inside a worktree (CWD), so no external identifier is neede
 ## Goals / Non-Goals
 
 **Goals:**
-- Make wt-tools workflow-agnostic: users choose whether to use OpenSpec, plain tasks.md, or nothing
+- Make set-core workflow-agnostic: users choose whether to use OpenSpec, plain tasks.md, or nothing
 - Simplify wt-loop to be CWD-based (no identifier parameter needed)
 - Remove all `openspec` CLI calls from shell scripts
 - Simplify tasks.md lookup to worktree root
 
 **Non-Goals:**
-- Changing the `change/` branch naming convention in `wt-new` (this is a wt-tools convention, not OpenSpec-specific)
+- Changing the `change/` branch naming convention in `wt-new` (this is a set-core convention, not OpenSpec-specific)
 - Removing the `openspec/` directory or its contents from the repo
 - Removing `.claude/skills/openspec-*` or `.claude/commands/opsx/` (these are user-facing workflow tools)
 - Changing how the GUI table displays worktrees

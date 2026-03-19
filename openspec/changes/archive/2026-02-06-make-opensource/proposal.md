@@ -1,11 +1,11 @@
-# Change: Convert wt-tools to Open Source
+# Change: Convert set-core to Open Source
 
 JIRA Key: TBD
 Story: TBD
 
 ## Why
 
-Convert the internal wt-tools project to a public open-source project on GitHub. This enables:
+Convert the internal set-core project to a public open-source project on GitHub. This enables:
 - Community contributions
 - Wider adoption
 - Portfolio/showcase value
@@ -14,9 +14,9 @@ Convert the internal wt-tools project to a public open-source project on GitHub.
 ## What Changes
 
 ### Phase 1: Proprietary Content Removal
-- Updated `.gitignore` to exclude `.wt-tools/*.json` config files
-- Created example config templates (`.wt-tools/jira.json.example`, `confluence.json.example`)
-- Replaced all Zengo URLs with `github.com/anthropic-tools/wt-tools`
+- Updated `.gitignore` to exclude `.set-core/*.json` config files
+- Created example config templates (`.set-core/jira.json.example`, `confluence.json.example`)
+- Replaced all Zengo URLs with `github.com/anthropic-tools/set-core`
 - Replaced all EXAMPLE references with MYPROJECT
 - Removed personal paths from CLAUDE.md and bin/wt-jira
 
@@ -28,7 +28,7 @@ Convert the internal wt-tools project to a public open-source project on GitHub.
 - Updated example names (Personal names → Generic examples)
 
 ### Phase 3: Plugin Architecture
-- Created `wt_tools/plugins/` package with:
+- Created `set_tools/plugins/` package with:
   - `base.py`: Plugin, PluginInfo, MenuItem, ColumnInfo, PluginRegistry
   - Entry point discovery via `pyproject.toml`
 - Updated `JiraMixin` to gracefully handle missing JIRA configuration
@@ -52,14 +52,14 @@ Convert the internal wt-tools project to a public open-source project on GitHub.
 - Created pull request template
 
 ### Phase 6: GitHub Release Preparation
-- Repository: https://github.com/anthropic-tools/wt-tools
+- Repository: https://github.com/anthropic-tools/set-core
 - Strategy: Private first for internal testing, then public
 - Clean history before public release (squash to single commit)
 
 ## Impact
 
 - Affected files: 50+ files modified/created
-- New directories: `wt_tools/`, `gui/platform/`, `tests/`, `.github/`
+- New directories: `set_tools/`, `gui/platform/`, `tests/`, `.github/`
 - Removed: `docs/confluence.md`, `docs/confluence-upload.md`
 - No breaking changes to existing functionality
 

@@ -1,6 +1,6 @@
 ## Why
 
-The orchestration engine is 54% bash (18,000 LOC) with complex logic — state machines, retry loops, JSON manipulation via jq, directive parsing — all in shell scripts that are hard to debug, test, and extend. Python already exists as a thin bridge layer (`lib/wt_orch/` — 7,700 LOC) but handles only templates, state init, and process management. Phase 1 establishes the foundational Python infrastructure (logging, subprocess wrappers, config parsing, event bus) that all subsequent migration phases will build on.
+The orchestration engine is 54% bash (18,000 LOC) with complex logic — state machines, retry loops, JSON manipulation via jq, directive parsing — all in shell scripts that are hard to debug, test, and extend. Python already exists as a thin bridge layer (`lib/set_orch/` — 7,700 LOC) but handles only templates, state init, and process management. Phase 1 establishes the foundational Python infrastructure (logging, subprocess wrappers, config parsing, event bus) that all subsequent migration phases will build on.
 
 ## What Changes
 
@@ -9,7 +9,7 @@ The orchestration engine is 54% bash (18,000 LOC) with complex logic — state m
 - **New `config.py`**: Migrates directive/config parsing from `utils.sh` — `parse_directives()`, `resolve_directives()`, `load_config_file()`, `parse_duration()`, `format_duration()`, `brief_hash()`, `find_input()`, `auto_detect_test_command()`, `parse_next_items()`
 - **New `events.py`**: Event bus with `emit()` / `subscribe()` + JSONL file writer — compatible with existing `events.jsonl` format, replaces `emit_event()` from `events.sh`
 - **Pytest test suite**: Unit tests for every migrated function, ensuring 1:1 behavioral parity with bash originals
-- **Delete migrated bash functions**: Remove `parse_directives()`, `resolve_directives()`, `load_config_file()`, `parse_duration()`, `format_duration()`, `brief_hash()`, `find_input()`, `parse_next_items()` from `utils.sh`; remove `emit_event()`, `rotate_events_log()`, `query_events()` from `events.sh`; update callers to use `wt-orch-core` CLI
+- **Delete migrated bash functions**: Remove `parse_directives()`, `resolve_directives()`, `load_config_file()`, `parse_duration()`, `format_duration()`, `brief_hash()`, `find_input()`, `parse_next_items()` from `utils.sh`; remove `emit_event()`, `rotate_events_log()`, `query_events()` from `events.sh`; update callers to use `set-orch-core` CLI
 
 ## Capabilities
 
@@ -24,9 +24,9 @@ _(none — these are new Python modules replacing bash functions, no existing sp
 
 ## Impact
 
-- **Files added**: `lib/wt_orch/logging_config.py`, `lib/wt_orch/subprocess_utils.py`, `lib/wt_orch/config.py`, `lib/wt_orch/events.py`
-- **Files modified**: `lib/wt_orch/cli.py` (new subcommands: `config`, `events`), `lib/orchestration/utils.sh` (remove migrated functions, add Python delegation), `lib/orchestration/events.sh` (remove migrated functions, add Python delegation)
+- **Files added**: `lib/set_orch/logging_config.py`, `lib/set_orch/subprocess_utils.py`, `lib/set_orch/config.py`, `lib/set_orch/events.py`
+- **Files modified**: `lib/set_orch/cli.py` (new subcommands: `config`, `events`), `lib/orchestration/utils.sh` (remove migrated functions, add Python delegation), `lib/orchestration/events.sh` (remove migrated functions, add Python delegation)
 - **Tests added**: `tests/unit/test_config.py`, `tests/unit/test_events.py`, `tests/unit/test_subprocess_utils.py`, `tests/unit/test_logging_config.py`
 - **Dependencies**: No new external packages — uses stdlib only (`logging`, `json`, `subprocess`, `hashlib`, `pathlib`, `fcntl`, `re`, `dataclasses`)
 - **JSON format**: events.jsonl format unchanged — full backward compatibility
-- **Bash callers**: Updated to call `wt-orch-core config parse-directives` etc. instead of sourcing bash functions directly
+- **Bash callers**: Updated to call `set-orch-core config parse-directives` etc. instead of sourcing bash functions directly

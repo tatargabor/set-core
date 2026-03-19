@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/hooks/events.sh` (727 LOC) to `lib/wt_hooks/events.py`. The main event dispatcher for Claude Code hooks: SessionStart, UserPromptSubmit, PostToolUse, PreToolUse. Each event triggers memory recall, context injection, and metrics collection.
+Migrate `lib/hooks/events.sh` (727 LOC) to `lib/set_hooks/events.py`. The main event dispatcher for Claude Code hooks: SessionStart, UserPromptSubmit, PostToolUse, PreToolUse. Each event triggers memory recall, context injection, and metrics collection.
 
 ## Requirements
 

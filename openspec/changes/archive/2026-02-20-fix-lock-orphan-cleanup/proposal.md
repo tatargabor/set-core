@@ -1,6 +1,6 @@
 ## Why
 
-The `run_with_lock()` function in `wt-memory` uses `mkdir`-based locking but has a bug: when the lock acquisition times out, the function returns without cleaning up any previously orphaned lock directory. Since the `trap` is only set AFTER successful acquisition, a crash or kill during the locked section leaves an orphaned `/tmp/wt-memory-<project>.lock` directory that blocks ALL subsequent write operations (forget, cleanup, dedup, export) permanently until manual removal.
+The `run_with_lock()` function in `set-memory` uses `mkdir`-based locking but has a bug: when the lock acquisition times out, the function returns without cleaning up any previously orphaned lock directory. Since the `trap` is only set AFTER successful acquisition, a crash or kill during the locked section leaves an orphaned `/tmp/set-memory-<project>.lock` directory that blocks ALL subsequent write operations (forget, cleanup, dedup, export) permanently until manual removal.
 
 ## What Changes
 
@@ -18,6 +18,6 @@ The `run_with_lock()` function in `wt-memory` uses `mkdir`-based locking but has
 
 ## Impact
 
-- `bin/wt-memory`: `run_with_lock()` function (lines 211-234)
+- `bin/set-memory`: `run_with_lock()` function (lines 211-234)
 - All MCP memory tools that use `run_with_lock` (forget, cleanup, dedup, export, etc.)
 - No API changes, no breaking changes — purely defensive improvement

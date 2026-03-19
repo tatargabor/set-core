@@ -23,7 +23,7 @@
 
 - [x] 3.1 Fix `dispatcher.sh:680`: pass `"$INPUT_PATH"` to `parse_directives`
 - [x] 3.2 Fix `dispatcher.sh:687`: remove extra `"$directives_for_gate"` arg from `init_state` call
-- [x] 3.3 Define `PROJECT_PATH` global in `bin/wt-orchestrate` main() — `PROJECT_PATH=$(pwd)`
+- [x] 3.3 Define `PROJECT_PATH` global in `bin/set-orchestrate` main() — `PROJECT_PATH=$(pwd)`
 - [x] 3.4 Fix `verifier.sh` `smoke_fix_scoped`: read `test_command` from `$STATE_FILENAME` instead of `$directives` local
 - [x] 3.5 Fix `merger.sh` smoke variables: read `smoke_command`, `smoke_blocking`, `smoke_timeout` etc. from `$STATE_FILENAME` instead of relying on `monitor_loop` locals
 - [x] 3.6 Remove dangling "Duration Parsing" comment block from `config.sh` (lines 48-53)
@@ -41,7 +41,7 @@
 
 ## 5. Project — deploy.sh coupling and lookup fixes
 
-- [x] 5.1 Move `_register_mcp_server` and `_cleanup_deprecated_memory_refs` from `wt-project` into `deploy.sh`
+- [x] 5.1 Move `_register_mcp_server` and `_cleanup_deprecated_memory_refs` from `set-project` into `deploy.sh`
 - [x] 5.2 Add runtime guard for `SCRIPT_DIR` and `WT_TOOLS_ROOT` at top of `deploy.sh`
 - [x] 5.3 Fix `_save_project_type` project lookup: use path-based lookup instead of `basename`
 - [x] 5.4 Add comment explaining `gui` subdirectory skip in rules deployment

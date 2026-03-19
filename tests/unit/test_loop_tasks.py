@@ -1,4 +1,4 @@
-"""Tests for wt_orch.loop_tasks — discovery, completion, manual tasks, done criteria."""
+"""Tests for set_orch.loop_tasks — discovery, completion, manual tasks, done criteria."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.loop_tasks import (
+from set_orch.loop_tasks import (
     TaskStatus,
     ManualTask,
     find_tasks_file,
@@ -260,7 +260,7 @@ class TestCheckTestDone:
     @pytest.fixture(autouse=True)
     def _clean_wt(self):
         from unittest.mock import patch
-        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(False, "")):
+        with patch("set_orch.git_utils.git_has_uncommitted_work", return_value=(False, "")):
             yield
 
     def test_pass_returns_true(self, wt, monkeypatch):
@@ -272,7 +272,7 @@ class TestCheckTestDone:
         import subprocess
         from unittest.mock import patch
 
-        with patch("wt_orch.loop_tasks.subprocess.run") as mock_run:
+        with patch("set_orch.loop_tasks.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args="true", returncode=0, stdout="", stderr=""
             )
@@ -291,7 +291,7 @@ class TestCheckTestDone:
         import subprocess
         from unittest.mock import patch
 
-        with patch("wt_orch.loop_tasks.subprocess.run") as mock_run:
+        with patch("set_orch.loop_tasks.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args="false", returncode=1, stdout="FAIL", stderr=""
             )
@@ -306,7 +306,7 @@ class TestCheckTestDone:
         import subprocess
         from unittest.mock import patch
 
-        with patch("wt_orch.loop_tasks.subprocess.run") as mock_run:
+        with patch("set_orch.loop_tasks.subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="sleep 999", timeout=300)
             assert is_done(wt, "test") is False
 
@@ -319,9 +319,9 @@ class TestCheckTestDone:
         import subprocess
         from unittest.mock import patch
 
-        with patch("wt_orch.loop_tasks.subprocess.run") as mock_run, \
-             patch("wt_orch.loop_tasks._check_test_done.__wrapped__", None, create=True), \
-             patch("wt_orch.config.auto_detect_test_command", return_value="npm test") as mock_detect:
+        with patch("set_orch.loop_tasks.subprocess.run") as mock_run, \
+             patch("set_orch.loop_tasks._check_test_done.__wrapped__", None, create=True), \
+             patch("set_orch.config.auto_detect_test_command", return_value="npm test") as mock_detect:
             mock_run.return_value = subprocess.CompletedProcess(
                 args="npm test", returncode=0, stdout="", stderr=""
             )
@@ -336,8 +336,8 @@ class TestCheckTestDone:
 
         from unittest.mock import patch
 
-        with patch("wt_orch.config.auto_detect_test_command", return_value=""), \
-             patch("wt_orch.loop_tasks._check_build_done", return_value=True) as mock_build:
+        with patch("set_orch.config.auto_detect_test_command", return_value=""), \
+             patch("set_orch.loop_tasks._check_build_done", return_value=True) as mock_build:
             assert is_done(wt, "test") is True
             mock_build.assert_called_once_with(wt)
 
@@ -345,8 +345,8 @@ class TestCheckTestDone:
         """No loop-state.json → falls through to auto-detect/build."""
         from unittest.mock import patch
 
-        with patch("wt_orch.config.auto_detect_test_command", return_value=""), \
-             patch("wt_orch.loop_tasks._check_build_done", return_value=False) as mock_build:
+        with patch("set_orch.config.auto_detect_test_command", return_value=""), \
+             patch("set_orch.loop_tasks._check_build_done", return_value=False) as mock_build:
             assert is_done(wt, "test") is False
             mock_build.assert_called_once()
 
@@ -360,7 +360,7 @@ class TestIsDoneUncommittedPreCheck:
     def test_test_criteria_blocked_by_uncommitted(self, wt):
         from unittest.mock import patch
 
-        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 modified")):
+        with patch("set_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 modified")):
             assert is_done(wt, "test") is False
 
     def test_tasks_criteria_blocked_by_uncommitted(self, wt):
@@ -370,25 +370,25 @@ class TestIsDoneUncommittedPreCheck:
             f.write("- [x] A\n- [x] B\n")
         from unittest.mock import patch
 
-        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "2 untracked")):
+        with patch("set_orch.git_utils.git_has_uncommitted_work", return_value=(True, "2 untracked")):
             assert is_done(wt, "tasks") is False
 
     def test_build_criteria_blocked_by_uncommitted(self, wt):
         from unittest.mock import patch
 
-        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "3 modified")):
+        with patch("set_orch.git_utils.git_has_uncommitted_work", return_value=(True, "3 modified")):
             assert is_done(wt, "build") is False
 
     def test_merge_criteria_blocked_by_uncommitted(self, wt):
         from unittest.mock import patch
 
-        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 untracked")):
+        with patch("set_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 untracked")):
             assert is_done(wt, "merge") is False
 
     def test_openspec_criteria_blocked_by_uncommitted(self, wt):
         from unittest.mock import patch
 
-        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 modified")):
+        with patch("set_orch.git_utils.git_has_uncommitted_work", return_value=(True, "1 modified")):
             assert is_done(wt, "openspec") is False
 
     def test_manual_skips_uncommitted_check(self, wt):
@@ -398,7 +398,7 @@ class TestIsDoneUncommittedPreCheck:
             json.dump({"manual_done": True}, f)
         from unittest.mock import patch
 
-        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(True, "7 untracked")):
+        with patch("set_orch.git_utils.git_has_uncommitted_work", return_value=(True, "7 untracked")):
             assert is_done(wt, "manual") is True
 
     def test_clean_worktree_proceeds_to_criteria(self, wt):
@@ -408,5 +408,5 @@ class TestIsDoneUncommittedPreCheck:
             f.write("- [x] A\n- [x] B\n")
         from unittest.mock import patch
 
-        with patch("wt_orch.git_utils.git_has_uncommitted_work", return_value=(False, "")):
+        with patch("set_orch.git_utils.git_has_uncommitted_work", return_value=(False, "")):
             assert is_done(wt, "tasks") is True

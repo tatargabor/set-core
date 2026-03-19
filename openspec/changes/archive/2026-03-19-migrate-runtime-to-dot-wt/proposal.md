@@ -2,23 +2,23 @@
 
 ## Why
 
-Runtime files (orchestration state, agent loop state, logs, caches, sentinel data) are scattered across `.claude/`, project root, `wt/orchestration/`, and `.wt-tools/`. This creates: (1) complex `.gitignore` rules with frequent merge conflicts in worktrees, (2) config mixed with ephemeral data in the same directories, (3) no clear convention for where new runtime features should write, (4) worktree deletion after merge destroys valuable debug/audit data.
+Runtime files (orchestration state, agent loop state, logs, caches, sentinel data) are scattered across `.claude/`, project root, `wt/orchestration/`, and `.set-core/`. This creates: (1) complex `.gitignore` rules with frequent merge conflicts in worktrees, (2) config mixed with ephemeral data in the same directories, (3) no clear convention for where new runtime features should write, (4) worktree deletion after merge destroys valuable debug/audit data.
 
-The memory system and metrics already use `~/.local/share/wt-tools/<project>/` — this change migrates all shared runtime data there, keeping only minimal per-agent ephemeral files in the worktree.
+The memory system and metrics already use `~/.local/share/set-core/<project>/` — this change migrates all shared runtime data there, keeping only minimal per-agent ephemeral files in the worktree.
 
 ## What Changes
 
-### Shared runtime → `~/.local/share/wt-tools/<project>/`
+### Shared runtime → `~/.local/share/set-core/<project>/`
 - **Move orchestration runtime** — state.json, events.jsonl, plans/, runs/, digest/, report.html, audit logs
 - **Move sentinel runtime** — events.jsonl, findings.json, status.json, inbox.jsonl, archive/ (currently in `.wt/sentinel/`)
 - **Move logs** — orchestration.log, archived ralph-iter-*.log, change-specific log archives
 - **Move caches** — codemaps, designs, skill invocations, memory commit tracker, credentials
 - **Move screenshots** — smoke and e2e test evidence
 - **Move design-snapshot.md** — fetched design tokens
-- **Remove `.wt-tools/` directory** convention (fully replaced)
+- **Remove `.set-core/` directory** convention (fully replaced)
 - **Simplify `.gitignore`** — remove many scattered runtime patterns
 
-### Per-worktree agent ephemeral → `<worktree>/.wt/`
+### Per-worktree agent ephemeral → `<worktree>/.set/`
 - **loop-state.json, activity.json, ralph-terminal.pid** — agent writes these during execution, ephemeral
 - **logs/ralph-iter-*.log** — current run iteration logs (archived to shared location on merge)
 
@@ -30,7 +30,7 @@ The memory system and metrics already use `~/.local/share/wt-tools/<project>/` �
 ## Capabilities
 
 ### New Capabilities
-- `runtime-directory-convention` — standardized `~/.local/share/wt-tools/<project>/` layout for shared runtime data
+- `runtime-directory-convention` — standardized `~/.local/share/set-core/<project>/` layout for shared runtime data
 - `worktree-retention` — configurable worktree lifecycle after merge
 
 ### Modified Capabilities
@@ -42,9 +42,9 @@ This change depends on `sentinel-tab` being deployed first (sentinel already wri
 
 ## Impact
 
-- **Python modules**: All `lib/wt_orch/` modules referencing state files, events, logs, sentinel paths — engine.py, dispatcher.py, verifier.py, merger.py, planner.py, api.py, websocket.py, chat.py, events.py, state.py, logging_config.py, watchdog.py, loop_state.py, auditor.py, reporter.py, digest.py, milestone.py
-- **Sentinel modules**: `lib/wt_orch/sentinel/wt_dir.py`, events.py, findings.py, status.py, inbox.py, rotation.py — migrate from `.wt/sentinel/` to `~/.local/share/`
-- **Bash scripts**: `bin/wt-sentinel`, `bin/wt-loop`, `bin/wt-new`, `bin/wt-merge`, `bin/wt-close`, `lib/orchestration/*.sh`, `lib/loop/state.sh`, `lib/design/bridge.sh`, `mcp-server/statusline.sh`
+- **Python modules**: All `lib/set_orch/` modules referencing state files, events, logs, sentinel paths — engine.py, dispatcher.py, verifier.py, merger.py, planner.py, api.py, websocket.py, chat.py, events.py, state.py, logging_config.py, watchdog.py, loop_state.py, auditor.py, reporter.py, digest.py, milestone.py
+- **Sentinel modules**: `lib/set_orch/sentinel/wt_dir.py`, events.py, findings.py, status.py, inbox.py, rotation.py — migrate from `.wt/sentinel/` to `~/.local/share/`
+- **Bash scripts**: `bin/set-sentinel`, `bin/wt-loop`, `bin/wt-new`, `bin/wt-merge`, `bin/wt-close`, `lib/orchestration/*.sh`, `lib/loop/state.sh`, `lib/design/bridge.sh`, `mcp-server/statusline.sh`
 - **Hooks**: `.claude/hooks/activity-track.sh`
 - **GUI**: `gui/control_center/mixins/handlers.py`, `gui/control_center/mixins/table.py`
 - **MCP server**: `mcp-server/wt_mcp_server.py`

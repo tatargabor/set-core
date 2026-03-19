@@ -4,16 +4,16 @@
 The system SHALL export all memories for the current project to a single JSON file containing a version header and all record data.
 
 #### Scenario: Export to stdout
-- **WHEN** user runs `wt-memory export`
+- **WHEN** user runs `set-memory export`
 - **THEN** system outputs valid JSON to stdout with `version`, `format`, `project`, `exported_at`, `count`, and `records` fields
 
 #### Scenario: Export to file
-- **WHEN** user runs `wt-memory export --output <path>`
+- **WHEN** user runs `set-memory export --output <path>`
 - **THEN** system writes the JSON to the specified file path
 - **AND** outputs nothing to stdout
 
 #### Scenario: Export empty project
-- **WHEN** user runs `wt-memory export` on a project with no memories
+- **WHEN** user runs `set-memory export` on a project with no memories
 - **THEN** system outputs valid JSON with `count: 0` and empty `records` array
 
 #### Scenario: Export preserves all record fields
@@ -24,7 +24,7 @@ The system SHALL export all memories for the current project to a single JSON fi
 The system SHALL import memories from a JSON export file, skipping any record that already exists in the target project.
 
 #### Scenario: Import into empty project
-- **WHEN** user runs `wt-memory import <file>` on a project with no memories
+- **WHEN** user runs `set-memory import <file>` on a project with no memories
 - **THEN** all records from the file are imported
 - **AND** each imported record has `metadata.original_id` set to the source record's `id`
 - **AND** system outputs JSON with `imported` count equal to file record count and `skipped: 0`
@@ -57,7 +57,7 @@ The system SHALL import memories from a JSON export file, skipping any record th
 The system SHALL support a `--dry-run` flag on import that reports what would happen without writing any data.
 
 #### Scenario: Dry-run shows counts
-- **WHEN** user runs `wt-memory import <file> --dry-run`
+- **WHEN** user runs `set-memory import <file> --dry-run`
 - **THEN** system outputs JSON with `would_import`, `would_skip`, and `dry_run: true`
 - **AND** no records are written to the target project
 
@@ -65,7 +65,7 @@ The system SHALL support a `--dry-run` flag on import that reports what would ha
 The system SHALL validate the import file before processing records.
 
 #### Scenario: Invalid JSON
-- **WHEN** user runs `wt-memory import <file>` with a non-JSON file
+- **WHEN** user runs `set-memory import <file>` with a non-JSON file
 - **THEN** system outputs an error message and exits with non-zero status
 
 #### Scenario: Unknown version
@@ -73,16 +73,16 @@ The system SHALL validate the import file before processing records.
 - **THEN** system outputs an error message about unsupported version and exits with non-zero status
 
 #### Scenario: Missing format field
-- **WHEN** the import file lacks the `format: "wt-memory-export"` field
+- **WHEN** the import file lacks the `format: "set-memory-export"` field
 - **THEN** system outputs an error message and exits with non-zero status
 
 ### Requirement: Graceful degradation on export/import
-The system SHALL follow the existing wt-memory pattern of graceful degradation when shodh-memory is not installed.
+The system SHALL follow the existing set-memory pattern of graceful degradation when shodh-memory is not installed.
 
 #### Scenario: Export without shodh-memory
-- **WHEN** shodh-memory is not installed and user runs `wt-memory export`
+- **WHEN** shodh-memory is not installed and user runs `set-memory export`
 - **THEN** system exits silently with exit code 0
 
 #### Scenario: Import without shodh-memory
-- **WHEN** shodh-memory is not installed and user runs `wt-memory import <file>`
+- **WHEN** shodh-memory is not installed and user runs `set-memory import <file>`
 - **THEN** system exits silently with exit code 0

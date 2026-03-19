@@ -14,7 +14,7 @@
 - Modifying the smoke pipeline (post-merge, stays in merger.py)
 
 ### Requirement: GatePipeline orchestrates gate execution
-The system SHALL provide a `GatePipeline` class in `lib/wt_orch/gate_runner.py` that accepts a `GateConfig`, state file path, change name, and execution parameters. The pipeline SHALL execute gates in sequence, collecting `GateResult` objects. Each gate SHALL be invoked via a callable (`GateExecutor`) that returns a `GateResult`.
+The system SHALL provide a `GatePipeline` class in `lib/set_orch/gate_runner.py` that accepts a `GateConfig`, state file path, change name, and execution parameters. The pipeline SHALL execute gates in sequence, collecting `GateResult` objects. Each gate SHALL be invoked via a callable (`GateExecutor`) that returns a `GateResult`.
 
 #### Scenario: Pipeline executes gates in order
 - **WHEN** `GatePipeline.run()` is called with registered gate executors

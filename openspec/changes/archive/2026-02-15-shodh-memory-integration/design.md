@@ -26,19 +26,19 @@ The OpenSpec workflow manages changes through structured artifact creation (prop
 **Alternative considered**: Bash hooks in `.claude/settings.json` — rejected because they lack LLM context and would produce mechanical, low-quality memories.
 
 ### Decision 2: Standalone bash helper over inline curl in SKILL.md
-**Choice**: Create `wt-memory` as a standalone bash script in `bin/` rather than embedding curl commands in SKILL.md instructions.
+**Choice**: Create `set-memory` as a standalone bash script in `bin/` rather than embedding curl commands in SKILL.md instructions.
 
-**Rationale**: Centralizes API logic, configuration, and graceful degradation. SKILL.md stays clean with simple `wt-memory recall/remember` calls. The helper handles health checks, JSON construction, auth headers, and error suppression in one place.
+**Rationale**: Centralizes API logic, configuration, and graceful degradation. SKILL.md stays clean with simple `set-memory recall/remember` calls. The helper handles health checks, JSON construction, auth headers, and error suppression in one place.
 
 ### Decision 3: Health check gating over try-and-fail
-**Choice**: Every memory operation starts with a `wt-memory health` check. If it fails, the operation is a silent no-op.
+**Choice**: Every memory operation starts with a `set-memory health` check. If it fails, the operation is a silent no-op.
 
 **Rationale**: Avoids curl timeout delays on every remember/recall call when shodh-memory is not running. A single 1-second health check is cheaper than multiple 2-second timeouts. Also produces cleaner behavior — no partial failures or error messages.
 
 ### Decision 4: Stdin-based content passing for remember
-**Choice**: `wt-memory remember` reads content from stdin (pipe) rather than command-line arguments.
+**Choice**: `set-memory remember` reads content from stdin (pipe) rather than command-line arguments.
 
-**Rationale**: Memory content can be multi-line and contain special characters (quotes, backticks). Stdin avoids shell escaping issues entirely. The LLM naturally generates `echo "..." | wt-memory remember` which is clean and readable.
+**Rationale**: Memory content can be multi-line and contain special characters (quotes, backticks). Stdin avoids shell escaping issues entirely. The LLM naturally generates `echo "..." | set-memory remember` which is clean and readable.
 
 ## Risks / Trade-offs
 

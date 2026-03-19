@@ -5,7 +5,7 @@
 
 ## 2. Detail Dialog
 
-- [ ] 2.1 Create `MemoryDetailDialog` class — fetches full content via `wt-memory get <id>`, displays type badge, date, full content (selectable, word-wrapped), tags, and ID
+- [ ] 2.1 Create `MemoryDetailDialog` class — fetches full content via `set-memory get <id>`, displays type badge, date, full content (selectable, word-wrapped), tags, and ID
 - [ ] 2.2 Handle fallback: if no `id` in memory dict, show available content without `get` call
 - [ ] 2.3 Set `WindowStaysOnTopHint`, add Close button
 

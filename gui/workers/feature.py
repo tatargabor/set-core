@@ -14,7 +14,7 @@ from ..constants import SCRIPT_DIR
 
 __all__ = ["FeatureWorker"]
 
-logger = logging.getLogger("wt-control.workers.feature")
+logger = logging.getLogger("set-control.workers.feature")
 
 POLL_INTERVAL_MS = 15000  # 15 seconds
 
@@ -84,17 +84,17 @@ class FeatureWorker(QThread):
         return {"memory": memory, "openspec": openspec}
 
     def _poll_memory(self, project: str) -> dict:
-        """Run wt-memory status --json --project X"""
+        """Run set-memory status --json --project X"""
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-memory"), "--project", project, "status", "--json"],
+                [str(SCRIPT_DIR / "set-memory"), "--project", project, "status", "--json"],
                 capture_output=True, text=True, timeout=5
             )
             if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout.strip())
                 return {"available": data.get("available", False), "count": data.get("count", 0)}
         except Exception as e:
-            logger.error("wt-memory poll failed for %s: %s", project, e)
+            logger.error("set-memory poll failed for %s: %s", project, e)
         return {"available": False, "count": 0}
 
     def _poll_openspec(self, main_repo_path: str) -> dict:

@@ -71,7 +71,7 @@ If `now - last_progress_ts > MONITOR_IDLE_TIMEOUT` (default 300s = 5 min), emit 
 
 **Problem:** Sonnet reviews fail 50% on large projects (v11 data: 4/8 needed escalation). Each escalation wastes up to 360s.
 
-**Decision:** Change `DEFAULT_REVIEW_MODEL` from `"sonnet"` to `"opus"` in `bin/wt-orchestrate:52`. Users can still override via directive. Keep escalation logic as-is for non-default models.
+**Decision:** Change `DEFAULT_REVIEW_MODEL` from `"sonnet"` to `"opus"` in `bin/set-orchestrate:52`. Users can still override via directive. Keep escalation logic as-is for non-default models.
 
 **Trade-off:** Higher token cost per review (~3-4x). Justified by: review is one call per change, the overhead of escalation (double invocation) often costs more than just using opus directly.
 

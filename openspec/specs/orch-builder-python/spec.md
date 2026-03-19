@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Python base build check
-The system SHALL provide `check_base_build()` in `lib/wt_orch/builder.py` that detects the project's package manager (npm/pnpm/yarn/bun), runs the build script, and caches the result for the session.
+The system SHALL provide `check_base_build()` in `lib/set_orch/builder.py` that detects the project's package manager (npm/pnpm/yarn/bun), runs the build script, and caches the result for the session.
 
 #### Scenario: Build succeeds
 - **WHEN** the project has a build script and it exits 0
@@ -35,8 +35,8 @@ The system SHALL provide `fix_base_build_with_llm()` in `builder.py` that attemp
 - **THEN** the function logs the failure and returns 0 (non-blocking)
 
 ### Requirement: Bash builder.sh becomes thin wrapper
-After migration, `builder.sh` SHALL contain only delegation to `wt-orch-core build check`.
+After migration, `builder.sh` SHALL contain only delegation to `set-orch-core build check`.
 
 #### Scenario: Thin wrapper delegation
 - **WHEN** `check_base_build()` is called in bash
-- **THEN** it delegates to `wt-orch-core build check` with equivalent arguments
+- **THEN** it delegates to `set-orch-core build check` with equivalent arguments

@@ -31,7 +31,7 @@ The team feature isn't just about productivity, it's also about **motivation**:
 - **Success stories**: "Today I shipped 3 features with Claude"
 - **Documentation integration**: Documenting best practices
 
-**Goal:** To make the team **enjoy** working with the wt-tools + Claude combination, and for usage to spread organically.
+**Goal:** To make the team **enjoy** working with the set-core + Claude combination, and for usage to spread organically.
 
 ## Proposed Features
 
@@ -77,7 +77,7 @@ GitLab/GitHub PRs waiting for review:
 
 ### Option A: Git-based Sync (Recommended for start)
 ```
-~/.wt-tools/team/
+~/.set-core/team/
 ├── members/
 │   ├── john.json      # Status, worktrees
 │   ├── peter.json

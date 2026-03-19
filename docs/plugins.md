@@ -4,7 +4,7 @@
 
 > **Status: Experimental.** Plugin infrastructure is available but the ecosystem is just starting. The `wt-plugin install` CLI is not yet implemented.
 
-wt-tools is designed to be extensible. Plugins add new capabilities — custom skills, agents, hooks, or CLI commands — without modifying the core. Plugins live in separate repositories and are installed into projects independently.
+set-core is designed to be extensible. Plugins add new capabilities — custom skills, agents, hooks, or CLI commands — without modifying the core. Plugins live in separate repositories and are installed into projects independently.
 
 ## Concept
 
@@ -15,7 +15,7 @@ A plugin is a git repository containing any combination of:
 - **Hooks** — Claude Code hook scripts
 - **CLI tools** (`bin/`) — shell commands
 
-When installed, a plugin's files are deployed to the target project's `.claude/` directory, just like wt-tools core files.
+When installed, a plugin's files are deployed to the target project's `.claude/` directory, just like set-core core files.
 
 ## Installation
 
@@ -52,7 +52,7 @@ my-plugin/
 └── bin/                    # CLI tools (optional)
 ```
 
-Follow the same conventions as wt-tools core:
+Follow the same conventions as set-core core:
 - Skills have a `SKILL.md` with trigger conditions and instructions
 - Commands have a matching `.md` file per command
 - CLI tools are executable scripts with `--help` support

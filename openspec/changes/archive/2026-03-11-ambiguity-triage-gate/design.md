@@ -40,7 +40,7 @@ Gate behavior:
 3. If all items triaged → proceed, merge decisions into ambiguities.json
 4. If zero ambiguities → skip entirely (no triage.md generated)
 
-"Pause" means: in interactive mode (`wt-orchestrate plan`), print message and exit 0 with a clear message. In automated mode (`wt-orchestrate start`), treat missing triage as "continue" (all items implicitly `defer`). This ensures the orchestrator never blocks waiting for human input.
+"Pause" means: in interactive mode (`set-orchestrate plan`), print message and exit 0 with a clear message. In automated mode (`set-orchestrate start`), treat missing triage as "continue" (all items implicitly `defer`). This ensures the orchestrator never blocks waiting for human input.
 
 ### D3: Resolution fields in ambiguities.json
 
@@ -101,7 +101,7 @@ When re-digest runs and regenerates `ambiguities.json`, existing triage decision
 
 **[Risk] triage.md parsing fragility** → Use strict regex for `**Decision:**` lines. Validate parsed values against allowed set. If parsing fails, treat as untriaged (safe default).
 
-**[Risk] Automated pipeline blocks on missing triage** → D2 explicitly handles this: automated mode (`wt-orchestrate start`) auto-defers. Only interactive `plan` command pauses.
+**[Risk] Automated pipeline blocks on missing triage** → D2 explicitly handles this: automated mode (`set-orchestrate start`) auto-defers. Only interactive `plan` command pauses.
 
 **[Risk] Planner ignores resolution instruction** → Validate plan output: if deferred ambiguities exist but no `resolved_ambiguities` in any change, log warning. Don't block — the pipeline is best-effort on AI compliance.
 

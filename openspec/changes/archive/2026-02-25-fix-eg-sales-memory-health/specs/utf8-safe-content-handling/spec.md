@@ -17,16 +17,16 @@ All truncation of user prompt content in `wt-hook-memory` SHALL use character-le
 - **WHEN** a prompt contains only ASCII characters
 - **THEN** `cut -c1-N` SHALL produce identical output to the previous `head -c N`
 
-### Requirement: Defense-in-depth surrogate sanitization in wt-memory remember
-The `cmd_remember` function in `wt-memory` SHALL sanitize content before passing it to the Rust/PyO3 `m.remember()` call. Surrogate codepoints SHALL be replaced with U+FFFD (REPLACEMENT CHARACTER) using `content.encode('utf-8', errors='replace').decode('utf-8')`.
+### Requirement: Defense-in-depth surrogate sanitization in set-memory remember
+The `cmd_remember` function in `set-memory` SHALL sanitize content before passing it to the Rust/PyO3 `m.remember()` call. Surrogate codepoints SHALL be replaced with U+FFFD (REPLACEMENT CHARACTER) using `content.encode('utf-8', errors='replace').decode('utf-8')`.
 
 #### Scenario: Surrogate content from external caller
-- **WHEN** any caller pipes content containing surrogate codepoint `\udcc3` to `wt-memory remember`
+- **WHEN** any caller pipes content containing surrogate codepoint `\udcc3` to `set-memory remember`
 - **THEN** the memory SHALL be saved successfully with `\udcc3` replaced by `�` (U+FFFD)
 - **AND** no `UnicodeEncodeError` SHALL be raised
 
 #### Scenario: Valid UTF-8 content passes through unchanged
-- **WHEN** content containing valid Hungarian text "működik az ékezet" is piped to `wt-memory remember`
+- **WHEN** content containing valid Hungarian text "működik az ékezet" is piped to `set-memory remember`
 - **THEN** the content SHALL be stored exactly as provided, with no replacement characters
 
 ### Requirement: Transcript JSON surrogate sanitization

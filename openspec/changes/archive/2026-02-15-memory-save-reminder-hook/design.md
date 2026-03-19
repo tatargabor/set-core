@@ -1,9 +1,9 @@
 ## Context
 
-OpenSpec skills contain "soft hooks" — prompt instructions telling the agent to run `wt-memory recall` at the start and `wt-memory remember` at the end of a skill session. These are unreliable because the agent can skip them when the task seems simple or when it jumps straight to action.
+OpenSpec skills contain "soft hooks" — prompt instructions telling the agent to run `set-memory recall` at the start and `set-memory remember` at the end of a skill session. These are unreliable because the agent can skip them when the task seems simple or when it jumps straight to action.
 
 The existing hard hook infrastructure:
-- `UserPromptSubmit` → `wt-hook-skill`: registers active skill in `.wt-tools/agents/<pid>.skill`
+- `UserPromptSubmit` → `wt-hook-skill`: registers active skill in `.set-core/agents/<pid>.skill`
 - `Stop` → `wt-hook-stop`: refreshes skill timestamp after each response
 
 The Stop hook already fires after every agent response — it's the natural place to inject a reminder.
@@ -14,7 +14,7 @@ Claude Code hooks can output text to stdout, which gets injected back into the c
 
 **Goals:**
 - Agent gets a system-level reminder to run memory recall/save when an active skill has memory hooks
-- Zero configuration — works automatically for any skill with `wt-memory` in its SKILL.md
+- Zero configuration — works automatically for any skill with `set-memory` in its SKILL.md
 - No performance impact — marker file check is a single `[ -f ]` test
 
 **Non-Goals:**
@@ -26,13 +26,13 @@ Claude Code hooks can output text to stdout, which gets injected back into the c
 
 ### Decision 1: Marker file (`.memory`) instead of re-parsing SKILL.md on every Stop
 
-**Choice**: `wt-skill-start` checks the skill's SKILL.md for `wt-memory` at registration time and writes a `.memory` marker. The Stop hook just checks `[ -f <pid>.memory ]`.
+**Choice**: `wt-skill-start` checks the skill's SKILL.md for `set-memory` at registration time and writes a `.memory` marker. The Stop hook just checks `[ -f <pid>.memory ]`.
 
 **Alternatives**:
 - *Parse SKILL.md on every Stop*: Requires finding the skill dir, reading the file — too slow for a hook that fires on every response (should be <50ms)
 - *Hardcode skill names that have memory*: Brittle, breaks when new skills are added
 
-**Rationale**: One-time check at skill start, O(1) check on every Stop. The `.memory` file lives alongside `.skill` in `.wt-tools/agents/`.
+**Rationale**: One-time check at skill start, O(1) check on every Stop. The `.memory` file lives alongside `.skill` in `.set-core/agents/`.
 
 ### Decision 2: Reminder via stdout, not a separate mechanism
 
@@ -59,10 +59,10 @@ Claude Code hooks can output text to stdout, which gets injected back into the c
 **Choice**: The existing `wt-skill-start` script (called by `wt-hook-skill` on UserPromptSubmit) also handles `.memory` marker creation/cleanup.
 
 **Alternatives**:
-- *Separate `wt-memory-marker` script*: Adds complexity, another thing to install
+- *Separate `set-memory-marker` script*: Adds complexity, another thing to install
 - *Handle in `wt-hook-skill` directly*: Would need to know SKILL.md paths
 
-**Rationale**: `wt-skill-start` already knows the skill name and can locate `.claude/skills/<skill-name>/SKILL.md`. Adding a grep for `wt-memory` is trivial.
+**Rationale**: `wt-skill-start` already knows the skill name and can locate `.claude/skills/<skill-name>/SKILL.md`. Adding a grep for `set-memory` is trivial.
 
 ## Risks / Trade-offs
 

@@ -44,9 +44,9 @@ def test_editor_closed_no_agents_dimmed(control_center, git_env, qtbot):
 
 def test_orphan_agents_excluded_from_display(control_center, git_env, qtbot):
     """Status data with waiting agents and editor_open=false: agents should be
-    pre-cleaned by wt-status. When they appear with no agents, row is dimmed."""
-    # Simulate what happens AFTER wt-status cleans orphans:
-    # editor_open=false, agents=[] (orphans already killed by wt-status)
+    pre-cleaned by set-status. When they appear with no agents, row is dimmed."""
+    # Simulate what happens AFTER set-status cleans orphans:
+    # editor_open=false, agents=[] (orphans already killed by set-status)
     status_data = {
         "worktrees": [{
             "project": "test-project",

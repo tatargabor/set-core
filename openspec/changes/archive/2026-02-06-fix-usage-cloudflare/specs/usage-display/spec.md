@@ -4,7 +4,7 @@
 Usage data SHALL be fetched from multiple sources with automatic fallback.
 
 #### Scenario: Primary - Claude.ai API via curl-cffi
-Given a saved session key exists in `~/.config/wt-tools/claude-session.json`
+Given a saved session key exists in `~/.config/set-core/claude-session.json`
 And `curl-cffi` Python package is installed
 When fetching usage data
 Then the worker calls the claude.ai organizations API using `curl-cffi` with `impersonate='chrome'`

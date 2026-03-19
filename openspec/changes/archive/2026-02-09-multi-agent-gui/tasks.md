@@ -8,8 +8,8 @@
 
 ## 2. Per-PID Skill Tracking
 
-- [x] 2.1 Update `bin/wt-skill-start` to write `.wt-tools/agents/<PPID>.skill` instead of (or in addition to) `.wt-tools/current_skill`. Create `.wt-tools/agents/` directory if needed.
-- [x] 2.2 Update `get_current_skill()` in `bin/wt-status` to read from `.wt-tools/agents/<pid>.skill` for each detected PID, with `kill -0` stale check and cleanup.
+- [x] 2.1 Update `bin/wt-skill-start` to write `.set-core/agents/<PPID>.skill` instead of (or in addition to) `.set-core/current_skill`. Create `.set-core/agents/` directory if needed.
+- [x] 2.2 Update `get_current_skill()` in `bin/wt-status` to read from `.set-core/agents/<pid>.skill` for each detected PID, with `kill -0` stale check and cleanup.
 
 ## 3. GUI Status Worker Update
 

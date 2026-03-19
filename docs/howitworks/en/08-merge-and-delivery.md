@@ -35,7 +35,7 @@ Process:
 1. The 3rd change completes → checkpoint activates
 2. The orchestrator stops (status: `checkpoint`)
 3. The human reviews the merge queue
-4. `wt-orchestrate approve --merge` → merge + continue
+4. `set-orchestrate approve --merge` → merge + continue
 
 ### manual
 
@@ -66,10 +66,10 @@ If the branch exists but is already an ancestor of HEAD:
 
 ### Case 3: Normal Merge (the common case)
 
-The `wt-merge` command performs the actual merge:
+The `set-merge` command performs the actual merge:
 
 ```bash
-wt-merge <change-name> --no-push --llm-resolve
+set-merge <change-name> --no-push --llm-resolve
 ```
 
 ## 3-Layer Conflict Resolution
@@ -88,7 +88,7 @@ These are resolved with `--ours` strategy (the worktree version wins).
 
 ### Layer 2: LLM Merge (`--llm-resolve`)
 
-If there is a real code conflict, `wt-merge --llm-resolve` calls a Claude agent:
+If there is a real code conflict, `set-merge --llm-resolve` calls a Claude agent:
 
 1. The conflicted files are passed to the LLM
 2. The LLM understands the intent of both sides
@@ -166,13 +166,13 @@ Checkpoints activate in the following cases:
 |---------|-------------|
 | `checkpoint_every: N` | After N merges |
 | `token_hard_limit` | Token hard limit reached |
-| Manual | `wt-orchestrate pause --all` |
+| Manual | `set-orchestrate pause --all` |
 
 ### Approval Process
 
 ```bash
-wt-orchestrate approve            # approve, continue
-wt-orchestrate approve --merge    # approve + immediate merge flush
+set-orchestrate approve            # approve, continue
+set-orchestrate approve --merge    # approve + immediate merge flush
 ```
 
 The `--merge` flag immediately merges changes waiting in the merge queue.

@@ -5,7 +5,7 @@ Multiple Claude agents can run simultaneously on the same worktree (e.g., one ex
 ## What Changes
 
 - **`wt-status`**: Detect ALL Claude PIDs per worktree (not just the first). Return `agents: [...]` array instead of single `agent: {}` object. **BREAKING** JSON format change.
-- **Skill tracking**: Switch from single `.wt-tools/current_skill` to per-PID files `.wt-tools/agents/<pid>.skill`. Clean up stale PIDs on read.
+- **Skill tracking**: Switch from single `.set-core/current_skill` to per-PID files `.set-core/agents/<pid>.skill`. Clean up stale PIDs on read.
 - **GUI table columns**: Merge Project + Branch into single "Name" column. Rename "J" column to "Extra" (shows Ralph indicator and similar per-worktree info).
 - **GUI multi-agent rows**: Each agent gets its own row beneath its worktree row. Agent-only rows have empty Name column, but show their own Status, Skill, and Ctx%.
 - **GUI compact filter**: Filter on agent-level (show all non-idle agents) instead of worktree-level.

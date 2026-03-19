@@ -1,7 +1,7 @@
 # Tasks: permanent-e2e-directory
 
 ## run.sh — default BASE_DIR
-- [x] Change `BASE_DIR="${TMPDIR:-/tmp}"` to use `~/.local/share/wt-tools/e2e-runs/` with `WT_E2E_DIR` override
+- [x] Change `BASE_DIR="${TMPDIR:-/tmp}"` to use `~/.local/share/set-core/e2e-runs/` with `WT_E2E_DIR` override
 - [x] Update usage comment (line 7) with new default path
 - [x] Update `--project-dir` comment to say "Override base dir" instead of "Persistent"
 

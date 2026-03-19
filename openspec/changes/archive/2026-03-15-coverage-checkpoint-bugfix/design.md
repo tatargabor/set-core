@@ -29,7 +29,7 @@ Three independent bugs combine to cause this:
 
 **Alternative considered:** Have the orchestrator emit periodic heartbeat events during checkpoint. Rejected — adds complexity to the engine for something that's simpler to fix in the sentinel.
 
-**Implementation:** In `bin/wt-sentinel`, modify `check_orchestrator_liveness()`:
+**Implementation:** In `bin/set-sentinel`, modify `check_orchestrator_liveness()`:
 ```bash
 # Skip stuck detection during checkpoint — orchestrator is alive but waiting
 if [[ -f "$STATE_FILE" ]]; then

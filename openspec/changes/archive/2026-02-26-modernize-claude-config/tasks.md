@@ -35,10 +35,10 @@
 - [x] 5.3 Add `disable-model-invocation: true` to `.claude/skills/openspec-bulk-archive-change/SKILL.md` frontmatter
 - [x] 5.4 Add `disable-model-invocation: true` to `.claude/skills/openspec-sync-specs/SKILL.md` frontmatter
 
-## 6. Update wt-project init deployment
+## 6. Update set-project init deployment
 
-- [x] 6.1 Add rules deployment to `deploy_wt_tools()` in `bin/wt-project` — copy `.claude/rules/` from wt-tools repo to target project, with `wt-` prefix for non-self targets, preserving subdirectory structure
-- [x] 6.2 Add agents deployment to `deploy_wt_tools()` in `bin/wt-project` — copy `.claude/agents/` from wt-tools repo to target project
+- [x] 6.1 Add rules deployment to `deploy_set_tools()` in `bin/set-project` — copy `.claude/rules/` from set-core repo to target project, with `wt-` prefix for non-self targets, preserving subdirectory structure
+- [x] 6.2 Add agents deployment to `deploy_set_tools()` in `bin/set-project` — copy `.claude/agents/` from set-core repo to target project
 - [x] 6.3 Update `wt-deploy-hooks` to include SubagentStart and SessionStart[compact] hook entries in the deployed settings.json
 
 ## 7. Verification

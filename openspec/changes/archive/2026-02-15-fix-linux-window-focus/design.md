@@ -8,7 +8,7 @@ The macOS implementation already uses `app_name` properly via AppleScript app ta
 
 **Goals:**
 - Use `app_name` to filter by WM_CLASS on Linux (only search editor windows, not Chrome)
-- Implement precise title matching to distinguish `wt-tools` from `wt-tools-wt-o_test`
+- Implement precise title matching to distinguish `set-core` from `set-core-wt-o_test`
 - Keep backwards compatibility — no caller changes needed
 
 **Non-Goals:**
@@ -46,10 +46,10 @@ This is editor-specific knowledge that belongs in the platform layer. The mappin
 ### Decision 3: Title matching logic
 
 For the title match step, check each candidate window:
-- **Exact match**: `window_title == search_title` (e.g. "wt-tools" == "wt-tools")
-- **Zed folder+file pattern**: `window_title.startswith(search_title + " — ")` (e.g. "wt-tools — CLAUDE.md")
+- **Exact match**: `window_title == search_title` (e.g. "set-core" == "set-core")
+- **Zed folder+file pattern**: `window_title.startswith(search_title + " — ")` (e.g. "set-core — CLAUDE.md")
 
-This rejects false matches like "wt-tools-wt-o_test" (which starts with the search term but is a different worktree) and "tatargabor/wt-tools - Google Chrome" (which contains the term as a substring).
+This rejects false matches like "set-core-wt-o_test" (which starts with the search term but is a different worktree) and "tatargabor/set-core - Google Chrome" (which contains the term as a substring).
 
 When `app_name` is not provided or unknown, fall back to current behavior (full `xdotool search --name`).
 

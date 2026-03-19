@@ -28,5 +28,5 @@ The docs need to be restructured: short README as landing page, dedicated sub-pa
 - **Files changed**: `README.md`, `docs/readme-guide.md`, multiple new files in `docs/`
 - **Files removed**: None (existing docs are consolidated, not deleted — old files can be removed after content is migrated)
 - **No code changes**: This is purely documentation restructuring
-- **Consumer projects**: No impact — `wt-project init` deploys `.claude/` files, not docs
+- **Consumer projects**: No impact — `set-project init` deploys `.claude/` files, not docs
 - **External links**: Any external links pointing to README sections will break (acceptable — the README was not stable anyway)

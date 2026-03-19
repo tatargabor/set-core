@@ -6,20 +6,20 @@
 
 ## 2. L2 — Rewrite UserPromptSubmit Recall Hook
 
-- [x] 2.1 Rewrite `bin/wt-hook-memory-recall`: remove ALL change-boundary detection, debounce, benchmark-specific case statements; extract topic from prompt text; detect opsx/openspec skill names and change names; always recall using `wt-memory proactive` or `wt-memory recall`
+- [x] 2.1 Rewrite `bin/wt-hook-memory-recall`: remove ALL change-boundary detection, debounce, benchmark-specific case statements; extract topic from prompt text; detect opsx/openspec skill names and change names; always recall using `set-memory proactive` or `set-memory recall`
 - [x] 2.2 Switch output from plain text stdout to JSON `hookSpecificOutput.additionalContext` format
 - [x] 2.3 Keep `=== PROJECT MEMORY ===` prefix in the additionalContext text for readability in context
 
 ## 3. L3 — PreToolUse Hot-Topic Hook
 
 - [x] 3.1 Create `bin/wt-hook-memory-pretool` script: parse `tool_input.command` from stdin JSON; load `.claude/hot-topics.json` + generic base patterns; single regex check; exit 0 immediately on no match
-- [x] 3.2 On hot-topic match: use matched command as recall query → `wt-memory recall` → output JSON `hookSpecificOutput.additionalContext` with max 2 memories
+- [x] 3.2 On hot-topic match: use matched command as recall query → `set-memory recall` → output JSON `hookSpecificOutput.additionalContext` with max 2 memories
 - [x] 3.3 Add `wt-hook-memory-pretool` to symlink list in `install.sh`
 
 ## 4. L4 — PostToolUseFailure Error Recovery Hook
 
 - [x] 4.1 Create `bin/wt-hook-memory-posttool` script: parse `error` and `is_interrupt` from stdin JSON; skip if `is_interrupt` is true; skip if error text < 10 chars
-- [x] 4.2 Use first 300 chars of error text as recall query → `wt-memory recall` with limit 3 → output JSON `hookSpecificOutput.additionalContext` prefixed with `=== MEMORY: Past fix for this error ===`
+- [x] 4.2 Use first 300 chars of error text as recall query → `set-memory recall` with limit 3 → output JSON `hookSpecificOutput.additionalContext` prefixed with `=== MEMORY: Past fix for this error ===`
 - [x] 4.3 Auto-promote failed command to hot topic: extract command prefix from `tool_input.command`; skip trivial commands (ls, cat, echo, cd, etc.); append pattern to `.claude/hot-topics.json` `promoted` array so L3 catches it on next Bash call in same session
 - [x] 4.4 Add `wt-hook-memory-posttool` to symlink list in `install.sh`
 
@@ -36,25 +36,25 @@
 
 ## 7. Remove Inline Memory Hooks from Skills
 
-- [x] 7.1 Remove all `<!-- wt-memory hooks -->` blocks from `openspec-apply-change/SKILL.md` (hooks, hooks-midflow, hooks-remember)
-- [x] 7.2 Remove all `<!-- wt-memory hooks -->` blocks from `openspec-continue-change/SKILL.md` (hooks, hooks-midflow, hooks-reflection)
-- [x] 7.3 Remove all `<!-- wt-memory hooks -->` blocks from `openspec-ff-change/SKILL.md` (hooks, hooks-midflow, hooks-reflection)
-- [x] 7.4 Remove all `<!-- wt-memory hooks -->` blocks from `openspec-explore/SKILL.md` (hooks, hooks-remember, hooks-reflection)
-- [x] 7.5 Remove all `<!-- wt-memory hooks -->` blocks from `openspec-archive-change/SKILL.md` (hooks)
-- [x] 7.6 Remove all `<!-- wt-memory hooks -->` blocks from `openspec-verify-change/SKILL.md` (hooks, hooks-save)
-- [x] 7.7 Remove all `<!-- wt-memory hooks -->` blocks from `openspec-sync-specs/SKILL.md` (hooks)
-- [x] 7.8 Remove all `<!-- wt-memory hooks -->` blocks from `openspec-new-change/SKILL.md` (hooks)
+- [x] 7.1 Remove all `<!-- set-memory hooks -->` blocks from `openspec-apply-change/SKILL.md` (hooks, hooks-midflow, hooks-remember)
+- [x] 7.2 Remove all `<!-- set-memory hooks -->` blocks from `openspec-continue-change/SKILL.md` (hooks, hooks-midflow, hooks-reflection)
+- [x] 7.3 Remove all `<!-- set-memory hooks -->` blocks from `openspec-ff-change/SKILL.md` (hooks, hooks-midflow, hooks-reflection)
+- [x] 7.4 Remove all `<!-- set-memory hooks -->` blocks from `openspec-explore/SKILL.md` (hooks, hooks-remember, hooks-reflection)
+- [x] 7.5 Remove all `<!-- set-memory hooks -->` blocks from `openspec-archive-change/SKILL.md` (hooks)
+- [x] 7.6 Remove all `<!-- set-memory hooks -->` blocks from `openspec-verify-change/SKILL.md` (hooks, hooks-save)
+- [x] 7.7 Remove all `<!-- set-memory hooks -->` blocks from `openspec-sync-specs/SKILL.md` (hooks)
+- [x] 7.8 Remove all `<!-- set-memory hooks -->` blocks from `openspec-new-change/SKILL.md` (hooks)
 
 ## 8. Remove Inline Memory Hooks from Commands
 
-- [x] 8.1 Remove all `<!-- wt-memory hooks -->` blocks from `.claude/commands/opsx/apply.md`
-- [x] 8.2 Remove all `<!-- wt-memory hooks -->` blocks from `.claude/commands/opsx/continue.md`
-- [x] 8.3 Remove all `<!-- wt-memory hooks -->` blocks from `.claude/commands/opsx/ff.md`
-- [x] 8.4 Remove all `<!-- wt-memory hooks -->` blocks from `.claude/commands/opsx/explore.md`
-- [x] 8.5 Remove all `<!-- wt-memory hooks -->` blocks from `.claude/commands/opsx/archive.md`
-- [x] 8.6 Remove all `<!-- wt-memory hooks -->` blocks from `.claude/commands/opsx/verify.md`
-- [x] 8.7 Remove all `<!-- wt-memory hooks -->` blocks from `.claude/commands/opsx/sync.md`
-- [x] 8.8 Remove all `<!-- wt-memory hooks -->` blocks from `.claude/commands/opsx/new.md`
+- [x] 8.1 Remove all `<!-- set-memory hooks -->` blocks from `.claude/commands/opsx/apply.md`
+- [x] 8.2 Remove all `<!-- set-memory hooks -->` blocks from `.claude/commands/opsx/continue.md`
+- [x] 8.3 Remove all `<!-- set-memory hooks -->` blocks from `.claude/commands/opsx/ff.md`
+- [x] 8.4 Remove all `<!-- set-memory hooks -->` blocks from `.claude/commands/opsx/explore.md`
+- [x] 8.5 Remove all `<!-- set-memory hooks -->` blocks from `.claude/commands/opsx/archive.md`
+- [x] 8.6 Remove all `<!-- set-memory hooks -->` blocks from `.claude/commands/opsx/verify.md`
+- [x] 8.7 Remove all `<!-- set-memory hooks -->` blocks from `.claude/commands/opsx/sync.md`
+- [x] 8.8 Remove all `<!-- set-memory hooks -->` blocks from `.claude/commands/opsx/new.md`
 
 ## 9. CLAUDE.md & Documentation Updates
 
@@ -71,13 +71,13 @@
 - [x] 10.4 Test L4: verify PostToolUseFailure recall on error text; verify is_interrupt skip; verify additionalContext format
 - [x] 10.5 Test L5: verify CheatSheet type extraction and cheat-sheet tag promotion
 - [x] 10.6 Test deploy: verify fresh deploy creates all 5 hook entries; verify upgrade from old 2-hook config; verify --no-memory skips all
-- [x] 10.7 Test skill files: verify no remaining `wt-memory` references in skill/command memory hook blocks; verify skills still work without inline memory hooks
+- [x] 10.7 Test skill files: verify no remaining `set-memory` references in skill/command memory hook blocks; verify skills still work without inline memory hooks
 
-## 11. Deprecate `wt-memory-hooks install` & Auto-Remove in Deploy
+## 11. Deprecate `set-memory-hooks install` & Auto-Remove in Deploy
 
-- [x] 11.1 Update `bin/wt-memory-hooks`: `cmd_install()` → print deprecation warning and exit (no-op); keep `check` and `remove` working
-- [x] 11.2 Update `bin/wt-project`: add `wt-memory-hooks remove --quiet` call in `deploy_wt_tools()` after hooks deploy
-- [x] 11.3 Add `--quiet` flag to `wt-memory-hooks remove` (suppress per-file output, only show summary or nothing)
+- [x] 11.1 Update `bin/set-memory-hooks`: `cmd_install()` → print deprecation warning and exit (no-op); keep `check` and `remove` working
+- [x] 11.2 Update `bin/set-project`: add `set-memory-hooks remove --quiet` call in `deploy_set_tools()` after hooks deploy
+- [x] 11.3 Add `--quiet` flag to `set-memory-hooks remove` (suppress per-file output, only show summary or nothing)
 
 ## 12. GUI Cleanup — Remove Inline Hook Install UI
 
@@ -96,7 +96,7 @@
 
 ## 14. Documentation & Spec Updates
 
-- [x] 14.1 Update `docs/developer-memory.md`: remove `wt-memory-hooks install` from CLI reference and setup flows; document that deploy handles inline removal automatically
+- [x] 14.1 Update `docs/developer-memory.md`: remove `set-memory-hooks install` from CLI reference and setup flows; document that deploy handles inline removal automatically
 - [x] 14.2 Update `README.md`: update CLI table — remove install row, update check/remove descriptions
 - [x] 14.3 Update `docs/readme-guide.md`: update CLI list reference
 - [x] 14.4 Update main specs: mark `openspec/specs/memory-hooks-cli/spec.md` and `openspec/specs/memory-hooks-gui/spec.md` as deprecated (install command superseded by 5-layer hooks)

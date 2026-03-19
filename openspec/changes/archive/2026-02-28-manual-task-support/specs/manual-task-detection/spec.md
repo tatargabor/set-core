@@ -30,7 +30,7 @@ When entering `waiting:human`, wt-loop writes structured info about pending manu
 - **AND** includes `waiting_since` timestamp
 
 ### Requirement: Orchestrator handles waiting:human
-wt-orchestrate's poll_change() treats `waiting:human` as a distinct state — not a stall, not a failure.
+set-orchestrate's poll_change() treats `waiting:human` as a distinct state — not a stall, not a failure.
 
 #### Scenario: poll_change sees waiting:human
 - **WHEN** a change's Ralph loop-state has status `waiting:human`

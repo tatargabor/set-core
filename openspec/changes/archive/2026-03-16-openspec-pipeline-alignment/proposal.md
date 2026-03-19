@@ -18,7 +18,7 @@ Az orchestráció jelenleg három ponton tér el a szabványos OpenSpec lifecycl
 
 ## Impact
 
-- `lib/wt_orch/dispatcher.py`: `_setup_change_in_worktree()`, `_build_proposal_content()` — input.md írás
-- `lib/wt_orch/merger.py`: `archive_change()` — git fix + spec sync hívás
+- `lib/set_orch/dispatcher.py`: `_setup_change_in_worktree()`, `_build_proposal_content()` — input.md írás
+- `lib/set_orch/merger.py`: `archive_change()` — git fix + spec sync hívás
 - `.claude/skills/openspec-ff-change/SKILL.md` — pre-read fázis hozzáadása
 - Worktree-k: `openspec/changes/<name>/input.md` új fájl (gitignore-ba NEM kerül — archívával együtt utazik)

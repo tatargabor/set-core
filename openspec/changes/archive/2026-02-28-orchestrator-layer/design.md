@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools pipeline has a mature implementation layer: Ralph (wt-loop) autonomously runs Claude sessions, tracks progress via tasks.md, detects stalls, and manages token budgets. OpenSpec skills (ff, apply, verify, archive) handle artifact creation and implementation. Memory persists across sessions. Agent messaging enables cross-worktree coordination.
+The set-core pipeline has a mature implementation layer: Ralph (wt-loop) autonomously runs Claude sessions, tracks progress via tasks.md, detects stalls, and manages token budgets. OpenSpec skills (ff, apply, verify, archive) handle artifact creation and implementation. Memory persists across sessions. Agent messaging enables cross-worktree coordination.
 
 The gap is between developer intent and execution. Today the developer manually runs `/opsx:ff`, reviews output, runs `/opsx:apply`, monitors Ralph, runs `wt-merge`, and repeats. For projects with a clear functional direction, this human-in-the-loop pattern is the bottleneck.
 
@@ -27,12 +27,12 @@ The existing `detect_next_change_action()` in wt-loop already sequences multiple
 
 ### D1: Bash orchestrator with Claude decomposition calls
 
-The orchestrator (`wt-orchestrate`) is a bash script. It uses Claude only for the decomposition step (brief → change plan) via a single `claude -p` call. All orchestration logic — state tracking, dispatch, monitoring, merge — is deterministic bash.
+The orchestrator (`set-orchestrate`) is a bash script. It uses Claude only for the decomposition step (brief → change plan) via a single `claude -p` call. All orchestration logic — state tracking, dispatch, monitoring, merge — is deterministic bash.
 
 **Why not a persistent Claude session as orchestrator?** A Claude session would cost tokens continuously while monitoring, could hallucinate actions, and is harder to interrupt/resume. The decomposition step benefits from LLM reasoning; the orchestration loop does not.
 
 **Alternatives considered:**
-- Python script: more readable but adds a dependency. Bash aligns with all existing wt-tools.
+- Python script: more readable but adds a dependency. Bash aligns with all existing set-core.
 - Claude Agent SDK: overkill for sequential dispatch + polling. The orchestrator's job is mostly `while true; sleep; check_status`.
 
 ### D2: Orchestration state machine
@@ -52,8 +52,8 @@ State transitions:
 - `dispatched → running`: Ralph picks up and begins work
 - `running → done`: Ralph reports tasks complete
 - `running → stalled`: Ralph detects stall (no commits N iterations)
-- `running → paused`: developer or orchestrator pauses via `wt-orchestrate pause`
-- `paused → running`: developer resumes via `wt-orchestrate resume`
+- `running → paused`: developer or orchestrator pauses via `set-orchestrate pause`
+- `paused → running`: developer resumes via `set-orchestrate resume`
 - `done → merged`: tests pass + merge policy satisfied → `wt-merge` runs
 - `stalled/failed`: orchestrator notifies developer, waits for intervention
 
@@ -93,7 +93,7 @@ A single `claude -p` call receives:
 1. The project brief (full document)
 2. List of existing specs (names + one-line descriptions)
 3. List of existing changes (active + recently archived)
-4. Memory context (top 5 relevant memories via `wt-memory recall`)
+4. Memory context (top 5 relevant memories via `set-memory recall`)
 
 The prompt asks Claude to:
 - Parse the "Next" section of the brief
@@ -128,7 +128,7 @@ Output format: JSON written to `orchestration-plan.json`:
 }
 ```
 
-The developer reviews this plan (`wt-orchestrate plan --show`) and approves (`wt-orchestrate start`). No auto-start.
+The developer reviews this plan (`set-orchestrate plan --show`) and approves (`set-orchestrate start`). No auto-start.
 
 ### D5: Change dispatch and execution
 
@@ -170,17 +170,17 @@ done
 
 Three mutation operations:
 
-**Pause:** `wt-orchestrate pause <change>` or `wt-orchestrate pause --all`
+**Pause:** `set-orchestrate pause <change>` or `set-orchestrate pause --all`
 - Sends SIGTERM to the Ralph terminal PID (read from `.claude/ralph-terminal.pid`)
 - Ralph's existing trap handler records state and sets status to "stopped"
 - Orchestrator marks change as "paused" in its own state
 - No new mechanism needed — Ralph already handles graceful SIGTERM
 
-**Resume:** `wt-orchestrate resume <change>`
+**Resume:** `set-orchestrate resume <change>`
 - Restarts Ralph in the existing worktree: `cd <worktree> && wt-loop start --max 30 --done openspec`
 - Ralph picks up from where it left off (tasks.md tracks progress)
 
-**Replan:** `wt-orchestrate replan`
+**Replan:** `set-orchestrate replan`
 - Reads current state (which changes are done/active/pending)
 - Reads updated project-brief.md
 - Calls Claude with both: "Given this state, what changes are needed now?"
@@ -232,7 +232,7 @@ Summary contents:
 - Merge queue (what's waiting for approval)
 - Total token consumption
 
-Approval: `wt-orchestrate approve` or `wt-orchestrate approve --merge` (approve + flush merge queue). The orchestrator blocks (polling state file) until approval arrives.
+Approval: `set-orchestrate approve` or `set-orchestrate approve --merge` (approve + flush merge queue). The orchestrator blocks (polling state file) until approval arrives.
 
 ### D9: GUI orchestrator view
 
@@ -283,7 +283,7 @@ Ralph loops continue running independently if not paused — they have their own
 
 ### D13: Orchestrator logging
 
-All orchestrator output is logged to `.claude/orchestration.log` (same directory as other wt-tools state files). Log entries include:
+All orchestrator output is logged to `.claude/orchestration.log` (same directory as other set-core state files). Log entries include:
 
 - Timestamps for all state transitions
 - Dispatch events (which change, which worktree)
@@ -327,7 +327,7 @@ Default: no limit (0 = unlimited). This is a soft limit — it pauses for approv
 → Mitigation: Existing artifact-creation detection already helps (creates in wt-loop count as progress). No additional changes needed — this is a known limitation.
 
 **[Complexity]** The orchestrator adds a new layer of abstraction on top of already complex tooling.
-→ Mitigation: The orchestrator is optional — all existing manual workflows continue to work. Incremental adoption: start with `wt-orchestrate plan` only (review decomposition), then graduate to `wt-orchestrate start`.
+→ Mitigation: The orchestrator is optional — all existing manual workflows continue to work. Incremental adoption: start with `set-orchestrate plan` only (review decomposition), then graduate to `set-orchestrate start`.
 
 ## Testing Strategy
 
@@ -347,17 +347,17 @@ Multiple worktrees run simultaneously, each on its own branch. Key invariants:
 - `parse_directives`: verify defaults for missing keys, warning on invalid values
 - `topological_sort`: verify dependency ordering, circular dependency detection
 - `update_state` / `get_change_status`: verify JSON read/write roundtrip
-- Method: `wt-orchestrate self-test` subcommand that runs assertions internally
+- Method: `set-orchestrate self-test` subcommand that runs assertions internally
 
 **Level 2 — Integration test (plan generation, requires Claude):**
 - Create a dummy `project-brief.md` with 3 features in Next section
-- Run `wt-orchestrate plan` → verify `orchestration-plan.json` structure
+- Run `set-orchestrate plan` → verify `orchestration-plan.json` structure
 - Verify: change names are kebab-case, dependencies are valid, no circular deps
 - Cost: one Claude decomposition call (~5-10k tokens)
 
 **Level 3 — End-to-end (single change through full pipeline):**
 - Dummy project with one trivial feature in brief (e.g., "add a hello.txt file")
-- `wt-orchestrate start` → Ralph creates worktree, runs ff+apply, completes
+- `set-orchestrate start` → Ralph creates worktree, runs ff+apply, completes
 - Verify: change goes through pending→dispatched→running→done→merged
 - Verify: worktree created, proposal pre-created, tasks checked, merge to main
 - Cost: one Ralph session (~20-50k tokens)

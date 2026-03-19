@@ -76,10 +76,10 @@ Not a flag — it's a separate section in the sentinel skill doc that the E2E li
 │           Tier 3: Fix + Deploy              │
 │                                             │
 │  ALLOWED:                                   │
-│  ├── Edit files in wt-tools repo            │
+│  ├── Edit files in set-core repo            │
 │  │   (bin/, lib/, .claude/, docs/)          │
-│  ├── git commit in wt-tools repo            │
-│  ├── wt-project init (deploy .claude/)      │
+│  ├── git commit in set-core repo            │
+│  ├── set-project init (deploy .claude/)      │
 │  ├── cp -r .claude/ to worktrees            │
 │  ├── Kill sentinel/orchestrator/agents      │
 │  ├── Restart sentinel                       │
@@ -98,24 +98,24 @@ Not a flag — it's a separate section in the sentinel skill doc that the E2E li
 ### Workflow
 
 1. Sentinel detects framework bug (e.g., dispatch error, path resolution, state machine bug)
-2. Sentinel identifies the fix location (always in wt-tools, never consumer project)
-3. Fix → commit → `wt-project init` → sync worktrees → kill → restart
-4. Log the fix as a finding (`wt-sentinel-finding add`)
+2. Sentinel identifies the fix location (always in set-core, never consumer project)
+3. Fix → commit → `set-project init` → sync worktrees → kill → restart
+4. Log the fix as a finding (`set-sentinel-finding add`)
 5. Resume polling
 
 ### Where
 
-- `tests/e2e/E2E-GUIDE.md` — add Tier 3 reference in "When You Fix a wt-tools Bug" section
+- `tests/e2e/E2E-GUIDE.md` — add Tier 3 reference in "When You Fix a set-core Bug" section
 - `.claude/commands/wt/sentinel.md` — add E2E Mode section (after guardrails, clearly separated) with Tier 3 scope and workflow
 
-## E: wt-orchestrate reset CLI
+## E: set-orchestrate reset CLI
 
 ### Subcommand
 
 ```bash
-wt-orchestrate reset --partial              # safe: failed→pending
-wt-orchestrate reset --full --yes-i-know    # destructive: everything→pending + clean worktrees
-wt-orchestrate reset                        # defaults to --partial
+set-orchestrate reset --partial              # safe: failed→pending
+set-orchestrate reset --full --yes-i-know    # destructive: everything→pending + clean worktrees
+set-orchestrate reset                        # defaults to --partial
 ```
 
 ### Partial Reset (safe default)
@@ -153,15 +153,15 @@ git worktree list | grep -v "bare\|master\|main" | awk '{print $1}' |
 
 ### Where
 
-- `bin/wt-orchestrate` — add `reset` subcommand
+- `bin/set-orchestrate` — add `reset` subcommand
 - Remove state reset snippets from sentinel scope (`.claude/commands/wt/sentinel.md`)
-- Update `tests/e2e/E2E-GUIDE.md` "State Reset" section to reference `wt-orchestrate reset`
+- Update `tests/e2e/E2E-GUIDE.md` "State Reset" section to reference `set-orchestrate reset`
 
 ## File Impact Summary
 
 | File | Changes |
 |------|---------|
 | `.claude/commands/wt/sentinel.md` | A: Tier 1 expansion, B: token stuck, C: deadlock, D: E2E mode section, E: remove reset guidance |
-| `bin/wt-orchestrate` | E: add `reset` subcommand |
+| `bin/set-orchestrate` | E: add `reset` subcommand |
 | `tests/e2e/E2E-GUIDE.md` | D: Tier 3 reference, E: update reset section to use CLI |
 | `docs/sentinel.md` | Sync changes from skill (Tier 1 expansion, E2E mode mention) |

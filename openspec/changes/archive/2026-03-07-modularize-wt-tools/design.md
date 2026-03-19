@@ -1,6 +1,6 @@
 ## Context
 
-wt-tools is a bash-heavy CLI toolkit with 7 monolithic scripts (1000-3700 lines each). These grew organically as features were added. The codebase works but is hard to maintain — a single change to wt-memory requires understanding 3713 lines of interleaved concerns (CRUD, rules, todos, sync, migration, metrics/UI).
+set-core is a bash-heavy CLI toolkit with 7 monolithic scripts (1000-3700 lines each). These grew organically as features were added. The codebase works but is hard to maintain — a single change to set-memory requires understanding 3713 lines of interleaved concerns (CRUD, rules, todos, sync, migration, metrics/UI).
 
 Current structure: main scripts in `bin/`, some shared code in `lib/orchestration/` and `lib/audit/`, shared utilities in `bin/wt-common.sh`.
 
@@ -16,7 +16,7 @@ Current structure: main scripts in `bin/`, some shared code in `lib/orchestratio
 **Non-Goals:**
 - Rewriting bash to Python or another language
 - Changing CLI interfaces or command names
-- Refactoring well-structured components (gui/, wt-sentinel, events.sh)
+- Refactoring well-structured components (gui/, set-sentinel, events.sh)
 - Splitting MCP server (keep as single file for simpler deployment)
 - Adding new features or changing behavior
 
@@ -28,13 +28,13 @@ Current structure: main scripts in `bin/`, some shared code in `lib/orchestratio
 
 **Why not separate binaries:** Bash function calls within a sourced script are ~1000x faster than spawning subprocesses. Many functions share state (variables, file handles). Source-based splitting preserves this while improving organization.
 
-**Alternative considered:** Git-style subcommand binaries (wt-memory-sync, wt-memory-rules). Rejected because of subprocess overhead and shared state complexity.
+**Alternative considered:** Git-style subcommand binaries (set-memory-sync, set-memory-rules). Rejected because of subprocess overhead and shared state complexity.
 
 ### 2. Directory layout convention
 
 **Decision:** `lib/<domain>/` subdirectories matching the main script name:
 ```
-lib/memory/     ← sourced by bin/wt-memory
+lib/memory/     ← sourced by bin/set-memory
 lib/hooks/      ← sourced by bin/wt-hook-memory
 lib/loop/       ← sourced by bin/wt-loop
 lib/editor.sh   ← sourced by bin/wt-common.sh (flat, single file)
@@ -54,11 +54,11 @@ Orchestration already has `lib/orchestration/` — we refactor within that exist
 
 **Decision:** Phases ordered by risk/impact ratio:
 1. wt-common.sh editor extract — lowest risk (self-contained, 4 scripts)
-2. wt-memory — highest impact (largest monolith)
+2. set-memory — highest impact (largest monolith)
 3. wt-hook-memory — second largest, hooks are critical path
 4. orchestration — medium risk, coupling fixes needed
 5. wt-loop — well-understood structure
-6. wt-project — smallest change
+6. set-project — smallest change
 
 Each phase is independently committable and deployable.
 
@@ -87,5 +87,5 @@ Each phase is independently committable and deployable.
 1. Each phase is a separate commit (or commit series)
 2. No rollback needed — if a phase has issues, revert the commit
 3. No deployment changes — install.sh copies bin/ and lib/ as before
-4. Consumer projects (sales-raketa) get changes via `wt-project init` redeploy
+4. Consumer projects (sales-raketa) get changes via `set-project init` redeploy
 5. No migration scripts needed — purely source-level restructuring

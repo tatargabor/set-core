@@ -2,12 +2,12 @@
 
 ## CLI Reference
 
-### wt-orchestrate
+### set-orchestrate
 
 The main orchestration command.
 
 ```
-wt-orchestrate [global options] <command> [command options]
+set-orchestrate [global options] <command> [command options]
 ```
 
 #### Global Options
@@ -38,14 +38,14 @@ wt-orchestrate [global options] <command> [command options]
 | `tui` | Start terminal dashboard |
 | `self-test` | Run internal tests |
 
-### wt-new / wt-merge / wt-loop
+### set-new / set-merge / set-loop
 
 | Command | Description |
 |---------|-------------|
-| `wt-new <name>` | Create new worktree and branch |
-| `wt-merge <name> [--llm-resolve]` | Merge worktree to main |
-| `wt-loop start [opts]` | Start Ralph loop |
-| `wt-loop status` | Query loop status |
+| `set-new <name>` | Create new worktree and branch |
+| `set-merge <name> [--llm-resolve]` | Merge worktree to main |
+| `set-loop start [opts]` | Start Ralph loop |
+| `set-loop status` | Query loop status |
 
 ## Change State Machine
 
@@ -248,8 +248,8 @@ orchestration-summary.md        ← summary (gitignore)
 | `REPLAN` | Replan start |
 | `DIGEST_STARTED` / `DIGEST_FAILED` | Digest events |
 
-Events are written to the `.claude/orchestration.log` JSONL file and can be queried with the `wt-orchestrate events` command:
+Events are written to the `.claude/orchestration.log` JSONL file and can be queried with the `set-orchestrate events` command:
 
 ```bash
-wt-orchestrate events --type MERGE_SUCCESS --last 10 --json
+set-orchestrate events --type MERGE_SUCCESS --last 10 --json
 ```

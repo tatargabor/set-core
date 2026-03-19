@@ -21,7 +21,7 @@
 
 ## 3. Strict Mode Rollout
 
-- [x] 3.1 Add `set -euo pipefail` to `bin/wt-orchestrate` (already inherited from wt-common.sh)
+- [x] 3.1 Add `set -euo pipefail` to `bin/set-orchestrate` (already inherited from wt-common.sh)
 - [x] 3.2 Add `set -euo pipefail` to `bin/wt-merge` (already inherited from wt-common.sh)
 - [x] 3.3 Add `set -euo pipefail` to `bin/wt-loop` (already inherited from wt-common.sh)
 - [x] 3.4 All bin/wt-* entry points source wt-common.sh which has set -euo pipefail — no changes needed

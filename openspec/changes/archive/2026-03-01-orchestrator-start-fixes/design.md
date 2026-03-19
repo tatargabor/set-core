@@ -12,11 +12,11 @@ Add `default_model` case to the directive parser (~line 432) and add it to the J
 
 The sentinel.md Step 3 crash recovery section has:
 ```bash
-wt-orchestrate start &
+set-orchestrate start &
 ```
 Should be:
 ```bash
-wt-orchestrate start $ARGUMENTS &
+set-orchestrate start $ARGUMENTS &
 ```
 
 ### 3. No new state management needed

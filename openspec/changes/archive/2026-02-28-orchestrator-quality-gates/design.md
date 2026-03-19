@@ -1,6 +1,6 @@
 ## Context
 
-The orchestrator (`wt-orchestrate`) can plan, dispatch, and merge changes at scale, but the v3 sales-raketa run revealed that speed came at the cost of quality: no tests, no build checks, duplicate changes, and broken worktree environments. The verify gate had test execution and code review but lacked build verification and test existence awareness. Worktree creation had no dependency or environment bootstrapping.
+The orchestrator (`set-orchestrate`) can plan, dispatch, and merge changes at scale, but the v3 sales-raketa run revealed that speed came at the cost of quality: no tests, no build checks, duplicate changes, and broken worktree environments. The verify gate had test execution and code review but lacked build verification and test existence awareness. Worktree creation had no dependency or environment bootstrapping.
 
 ## Goals / Non-Goals
 
@@ -18,7 +18,7 @@ The orchestrator (`wt-orchestrate`) can plan, dispatch, and merge changes at sca
 
 ## Decisions
 
-1. **Worktree bootstrap in wt-new, not wt-orchestrate** — Bootstrap logic lives in `wt-new` so both manual and orchestrated worktrees benefit. The orchestrator calls `wt-new` so it inherits the behavior automatically.
+1. **Worktree bootstrap in wt-new, not set-orchestrate** — Bootstrap logic lives in `wt-new` so both manual and orchestrated worktrees benefit. The orchestrator calls `wt-new` so it inherits the behavior automatically.
 
 2. **Test file check is WARNING, not blocking** — Some changes genuinely don't need tests (doc updates, config changes). Hard-blocking would create false failures. The warning is logged, stored in state (`has_tests` field), and sent as a notification.
 

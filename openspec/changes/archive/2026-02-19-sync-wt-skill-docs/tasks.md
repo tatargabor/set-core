@@ -24,4 +24,4 @@
 
 ## 6. Deploy updated skills
 
-- [x] 6.1 Run `wt-project init` in wt-tools repo to deploy updated command files
+- [x] 6.1 Run `set-project init` in set-core repo to deploy updated command files

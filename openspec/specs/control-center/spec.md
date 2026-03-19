@@ -27,11 +27,11 @@ Then output is a single line summary suitable for status bars
 
 #### Scenario: Per-agent skill display
 - **WHEN** wt-status checks a worktree with agents
-- **THEN** each agent's skill is read exclusively from `.wt-tools/agents/<pid>.skill`
-- **AND** no fallback to `.wt-tools/current_skill` is used
+- **THEN** each agent's skill is read exclusively from `.set-core/agents/<pid>.skill`
+- **AND** no fallback to `.set-core/current_skill` is used
 
 #### Scenario: Agent with no skill file
-- **WHEN** an agent PID has no corresponding `.wt-tools/agents/<pid>.skill` file
+- **WHEN** an agent PID has no corresponding `.set-core/agents/<pid>.skill` file
 - **THEN** the skill field for that agent is null
 - **AND** no legacy fallback file is consulted
 
@@ -219,11 +219,11 @@ The GUI SHALL support persistent user configuration through a settings dialog.
 #### Scenario: Save configuration
 - **GIVEN** the settings dialog has modified values
 - **WHEN** the user clicks "OK" or "Apply"
-- **THEN** settings are saved to `~/.config/wt-tools/gui-config.json`
+- **THEN** settings are saved to `~/.config/set-core/gui-config.json`
 - **AND** changes take effect immediately where applicable
 
 #### Scenario: Load configuration on startup
-- **GIVEN** a config file exists at `~/.config/wt-tools/gui-config.json`
+- **GIVEN** a config file exists at `~/.config/set-core/gui-config.json`
 - **WHEN** the Control Center starts
 - **THEN** all settings are loaded from the config file
 
@@ -412,7 +412,7 @@ The GUI SHALL provide a dialog for viewing and editing worktree-specific configu
 #### Scenario: Open worktree config
 - **GIVEN** the context menu is open
 - **WHEN** the user clicks "Worktree Config..."
-- **THEN** a dialog opens showing the worktree's .wt-tools/ config files
+- **THEN** a dialog opens showing the worktree's .set-core/ config files
 
 #### Scenario: View config tabs
 - **GIVEN** the worktree config dialog is open
@@ -422,7 +422,7 @@ The GUI SHALL provide a dialog for viewing and editing worktree-specific configu
 #### Scenario: Edit config values
 - **GIVEN** the worktree config dialog is open
 - **WHEN** the user modifies a config value
-- **THEN** the change is saved to the corresponding .wt-tools/*.json file
+- **THEN** the change is saved to the corresponding .set-core/*.json file
 
 ### Requirement: State Persistence
 The GUI SHALL persist attention state across restarts.
@@ -535,12 +535,12 @@ The system SHALL start the Control Center GUI reliably regardless of how it is i
 - **AND** all relative imports within the gui package resolve correctly
 
 #### Scenario: Launch directly
-- **GIVEN** the user is in the wt-tools source directory
+- **GIVEN** the user is in the set-core source directory
 - **WHEN** the user runs `python gui/main.py`
 - **THEN** the GUI starts without import errors
 
 #### Scenario: Launch as module
-- **GIVEN** the user is in the wt-tools source directory
+- **GIVEN** the user is in the set-core source directory
 - **WHEN** the user runs `python -m gui.main`
 - **THEN** the GUI starts without import errors
 

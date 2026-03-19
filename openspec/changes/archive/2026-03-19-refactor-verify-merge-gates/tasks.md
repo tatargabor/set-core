@@ -9,7 +9,7 @@
 
 ## 2. GateResult and GatePipeline Core
 
-- [x] 2.1 Create `lib/wt_orch/gate_runner.py` with `GateResult` dataclass (gate_name, status, output, duration_ms, stats) [REQ: gateresult-captures-gate-outcome]
+- [x] 2.1 Create `lib/set_orch/gate_runner.py` with `GateResult` dataclass (gate_name, status, output, duration_ms, stats) [REQ: gateresult-captures-gate-outcome]
 - [x] 2.2 Implement `GatePipeline` class with `register_gate(name, executor_fn)` and `run()` method that executes gates in order [REQ: gatepipeline-orchestrates-gate-execution]
 - [x] 2.3 Implement skip logic: if `gc.should_run(name)` is False, append skipped GateResult without calling executor [REQ: gatepipeline-orchestrates-gate-execution]
 - [x] 2.4 Implement blocking failure handling: check retry budget, set verify-failed status, store retry context, call resume_change, stop pipeline [REQ: gatepipeline-orchestrates-gate-execution]

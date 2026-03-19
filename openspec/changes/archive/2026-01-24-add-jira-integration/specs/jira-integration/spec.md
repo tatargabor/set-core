@@ -6,7 +6,7 @@ The system SHALL provide a global credentials configuration mechanism that allow
 #### Scenario: First-time credentials setup
 - **WHEN** user runs `wt-jira init`
 - **THEN** the system prompts for JIRA server URL, username, and password
-- **AND** stores credentials in `~/.config/wt-tools/jira.json` with file permission 600
+- **AND** stores credentials in `~/.config/set-core/jira.json` with file permission 600
 - **AND** displays confirmation with masked password
 
 #### Scenario: Environment variables override config file
@@ -16,15 +16,15 @@ The system SHALL provide a global credentials configuration mechanism that allow
 
 #### Scenario: Config file location
 - **WHEN** system looks for JIRA credentials
-- **THEN** it reads from `~/.config/wt-tools/jira.json` on Linux/macOS
-- **AND** it reads from `%APPDATA%\wt-tools\jira.json` on Windows
+- **THEN** it reads from `~/.config/set-core/jira.json` on Linux/macOS
+- **AND** it reads from `%APPDATA%\set-core\jira.json` on Windows
 
 ### Requirement: Project-Level JIRA Configuration
 The system SHALL support project-level JIRA configuration stored in the repository root.
 
 #### Scenario: Read project config
 - **WHEN** system creates a JIRA issue from a repository
-- **THEN** it reads `.wt-tools/jira.json` from the repository root
+- **THEN** it reads `.set-core/jira.json` from the repository root
 - **AND** merges project config with global config (project takes precedence for overlapping keys)
 
 #### Scenario: Title prefix applied to issues
@@ -33,7 +33,7 @@ The system SHALL support project-level JIRA configuration stored in the reposito
 - **THEN** the JIRA issue summary becomes "[OpenSpec] Add JIRA Integration"
 
 #### Scenario: No project config exists
-- **WHEN** `.wt-tools/jira.json` does not exist in repository
+- **WHEN** `.set-core/jira.json` does not exist in repository
 - **THEN** system uses global config only
 - **AND** no prefix is added to issue titles
 

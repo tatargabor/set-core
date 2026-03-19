@@ -28,7 +28,7 @@ from ...platform import get_platform
 
 __all__ = ["HandlersMixin"]
 
-logger = logging.getLogger("wt-control.handlers")
+logger = logging.getLogger("set-control.handlers")
 
 
 class HandlersMixin:
@@ -109,7 +109,7 @@ class HandlersMixin:
                 stash_dialog = CommandOutputDialog(self, "Stashing changes", stash_cmd)
                 stash_dialog.exec()
 
-            cmd = [str(SCRIPT_DIR / "wt-merge"), "-p", project, change_id, "--to", target]
+            cmd = [str(SCRIPT_DIR / "set-merge"), "-p", project, change_id, "--to", target]
             if dialog.should_keep_branch():
                 cmd.append("--no-delete")
             if not dialog.should_push():
@@ -214,7 +214,7 @@ class HandlersMixin:
             show_warning(self, "Error", "Change ID is required")
             return
 
-        # Get project path to run wt-new from correct directory
+        # Get project path to run set-new from correct directory
         cwd = None
         project_path = local_path  # Use local path if provided
 
@@ -233,16 +233,16 @@ class HandlersMixin:
             cwd = str(Path(project_path).parent)
 
         if local_path:
-            cmd = [str(SCRIPT_DIR / "wt-new"), change_id]
+            cmd = [str(SCRIPT_DIR / "set-new"), change_id]
             cwd = local_path  # Run from the local repo
         else:
-            cmd = [str(SCRIPT_DIR / "wt-new"), "-p", project, change_id]
+            cmd = [str(SCRIPT_DIR / "set-new"), "-p", project, change_id]
 
         self.run_command_dialog(f"New Worktree: {change_id}", cmd, cwd=cwd)
 
     def focus_ralph_terminal(self, wt_path: str):
         """Focus the Ralph terminal window, or open log if terminal is closed"""
-        loop_state_file = Path(wt_path) / ".wt" / "loop-state.json"
+        loop_state_file = Path(wt_path) / ".set" / "loop-state.json"
         if not loop_state_file.exists():
             return
 
@@ -304,7 +304,7 @@ class HandlersMixin:
 
     def stop_ralph_loop(self, wt_path: str):
         """Stop Ralph loop for a worktree"""
-        loop_state_file = Path(wt_path) / ".wt" / "loop-state.json"
+        loop_state_file = Path(wt_path) / ".set" / "loop-state.json"
         if loop_state_file.exists():
             try:
                 with open(loop_state_file) as f:
@@ -511,7 +511,7 @@ class HandlersMixin:
 
     @log_exceptions
     def on_double_click(self, _index=None):
-        """Handle double-click on row - focus IDE window if open, otherwise open via wt-work"""
+        """Handle double-click on row - focus IDE window if open, otherwise open via set-work"""
         wt = self.get_selected_worktree()
         if not wt:
             logger.debug("on_double_click: no worktree selected")
@@ -557,14 +557,14 @@ class HandlersMixin:
         if wt_path:
             cmd = self._get_editor_open_command(wt_path)
         else:
-            cmd = [str(SCRIPT_DIR / "wt-work"), "-p", wt["project"], wt["change_id"]]
+            cmd = [str(SCRIPT_DIR / "set-work"), "-p", wt["project"], wt["change_id"]]
         logger.info("on_double_click: opening editor cmd=%s", cmd)
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def _get_editor_open_command(self, wt_path: str) -> list:
         """Get the editor CLI command to open a worktree directory.
 
-        Reads from wt-tools config. Returns a command list for subprocess.
+        Reads from set-core config. Returns a command list for subprocess.
         Falls back to opening with the default editor (zed or code).
         """
         # Editor commands for opening a directory
@@ -627,7 +627,7 @@ class HandlersMixin:
     def _get_editor_app_name(self) -> str:
         """Get the editor application name for window matching.
 
-        Reads from wt-tools config, defaults to 'Zed'.
+        Reads from set-core config, defaults to 'Zed'.
         """
         # Map config names to macOS/System Events process names
         editor_process_names = {
@@ -755,8 +755,8 @@ class HandlersMixin:
         if result == QDialog.Accepted:
             selection = dialog.get_selection()
             if selection:
-                # Run wt-work in background without dialog
-                cmd = [str(SCRIPT_DIR / "wt-work"), "-p", selection["project"], selection["change_id"]]
+                # Run set-work in background without dialog
+                cmd = [str(SCRIPT_DIR / "set-work"), "-p", selection["project"], selection["change_id"]]
                 subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.show_window()
 
@@ -796,7 +796,7 @@ class HandlersMixin:
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            cmd = [str(SCRIPT_DIR / "wt-close"), "-p", wt["project"], wt["change_id"], "--force"]
+            cmd = [str(SCRIPT_DIR / "set-close"), "-p", wt["project"], wt["change_id"], "--force"]
             self.run_command_dialog(f"Closing {wt['change_id']}", cmd)
             self.refresh_status()
 

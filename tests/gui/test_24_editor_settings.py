@@ -149,8 +149,8 @@ class TestFocusHandlers:
             with patch("gui.control_center.mixins.handlers.get_platform", return_value=mock_platform), \
                  patch("subprocess.Popen") as mock_popen:
                 control_center.on_focus()
-                # Should have called Popen with editor command (not wt-work)
+                # Should have called Popen with editor command (not set-work)
                 mock_popen.assert_called_once()
                 cmd = mock_popen.call_args[0][0]
-                # Should be an editor open command, not wt-work
+                # Should be an editor open command, not set-work
                 assert isinstance(cmd, list)

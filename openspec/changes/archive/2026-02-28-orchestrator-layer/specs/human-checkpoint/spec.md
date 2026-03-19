@@ -44,13 +44,13 @@ The system SHALL send desktop notifications when checkpoints are triggered.
 #### Scenario: Checkpoint notification
 - **WHEN** a checkpoint is triggered
 - **AND** the `notification` directive is "desktop"
-- **THEN** the system SHALL invoke `notify-send "wt-orchestrate" "<summary>"` with a one-line summary
+- **THEN** the system SHALL invoke `notify-send "set-orchestrate" "<summary>"` with a one-line summary
 - **AND** the notification SHALL include: number of changes done, number active, action needed
 
 #### Scenario: Failure notification
 - **WHEN** a change fails or stalls
 - **AND** the `notification` directive is "desktop"
-- **THEN** the system SHALL send an urgent notification: `notify-send -u critical "wt-orchestrate" "Change <name> <stalled|failed>"`
+- **THEN** the system SHALL send an urgent notification: `notify-send -u critical "set-orchestrate" "Change <name> <stalled|failed>"`
 
 #### Scenario: Notification disabled
 - **WHEN** the `notification` directive is "none"
@@ -63,15 +63,15 @@ The system SHALL block at checkpoints until the developer provides approval.
 #### Scenario: Wait for approval
 - **WHEN** the orchestrator enters "checkpoint" status
 - **THEN** it SHALL poll `orchestration-state.json` every 5 seconds for an approval signal
-- **AND** display "Waiting for approval. Run 'wt-orchestrate approve' to continue."
+- **AND** display "Waiting for approval. Run 'set-orchestrate approve' to continue."
 
 #### Scenario: Approve command
-- **WHEN** the developer runs `wt-orchestrate approve`
+- **WHEN** the developer runs `set-orchestrate approve`
 - **THEN** the system SHALL write `"approved": true` to the latest checkpoint entry
 - **AND** the orchestration loop SHALL resume
 
 #### Scenario: Approve with merge
-- **WHEN** the developer runs `wt-orchestrate approve --merge`
+- **WHEN** the developer runs `set-orchestrate approve --merge`
 - **THEN** the system SHALL approve the checkpoint
 - **AND** execute all queued merges before resuming
 

@@ -31,7 +31,7 @@ The decomposition prompt SHALL explicitly instruct Claude to preserve dependency
 - **THEN** Claude infers dependencies from the ordering heuristics above
 
 ### Requirement: Ordering heuristic rules added to prompt text
-The prompt text in `wt-orchestrate` SHALL include ordering heuristic rules.
+The prompt text in `set-orchestrate` SHALL include ordering heuristic rules.
 
 #### Scenario: Prompt text includes ordering rules
 - **WHEN** the decomposition prompt is built (both spec-mode and brief-mode)

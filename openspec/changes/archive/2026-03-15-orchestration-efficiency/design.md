@@ -5,7 +5,7 @@ E2E run #13 showed two recurring waste patterns:
 - Playwright browsers not installed → E2E tests fail until agent runs install manually
 - WATCHDOG_HEARTBEAT is 71% of events.jsonl (75/106 events in run #13) — noise drowns real events
 
-The web profile system (`wt-project-web`) already handles `bootstrap_worktree()` with `pnpm install`, but has no post-install hooks. The heartbeat emit happens in `engine.py` monitor loop on every poll cycle.
+The web profile system (`set-project-web`) already handles `bootstrap_worktree()` with `pnpm install`, but has no post-install hooks. The heartbeat emit happens in `engine.py` monitor loop on every poll cycle.
 
 ## Goals / Non-Goals
 

@@ -56,7 +56,7 @@ Alternative considered: Copying the full `bin/wt-control` logic into the `.app` 
 
 Generate `Info.plist` inline in `install.sh` using a heredoc. Fields:
 - `CFBundleName`: "WT Control"
-- `CFBundleIdentifier`: "com.wt-tools.control"
+- `CFBundleIdentifier`: "com.set-core.control"
 - `CFBundleExecutable`: "wt-control"
 - `CFBundleIconFile`: "app" (references `app.icns` if present)
 - `LSUIElement`: true (hides from Dock by default — the app lives in the system tray)
@@ -76,7 +76,7 @@ Add a new function `install_macos_app_bundle()` called from `main()` with a plat
 ## Risks / Trade-offs
 
 - **Spotlight indexing delay** → After first install, Spotlight may take a few seconds to index `~/Applications/`. The install script can trigger `mdimport ~/Applications/WT\ Control.app` to speed it up.
-- **Stale wrapper after uninstall** → If user removes wt-tools but leaves the `.app`, launching it will fail. Mitigation: the wrapper script will show a clear error if `wt-control` is not found.
+- **Stale wrapper after uninstall** → If user removes set-core but leaves the `.app`, launching it will fail. Mitigation: the wrapper script will show a clear error if `wt-control` is not found.
 - **LSUIElement hides Dock icon** → Users expecting a Dock icon won't see one by default. This is intentional for a tray app, but worth documenting.
 
 ## Open Questions

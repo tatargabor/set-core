@@ -1,6 +1,6 @@
 ## Context
 
-Two bash hook scripts (`bin/wt-hook-memory-save` and `bin/wt-hook-memory-recall`) auto-save and auto-recall memories via `wt-memory` during autonomous agent sessions. They run as Claude Code settings.json hooks (Stop and UserPromptSubmit events). Currently they produce verbose, redundant memories that don't effectively help the agent.
+Two bash hook scripts (`bin/wt-hook-memory-save` and `bin/wt-hook-memory-recall`) auto-save and auto-recall memories via `set-memory` during autonomous agent sessions. They run as Claude Code settings.json hooks (Stop and UserPromptSubmit events). Currently they produce verbose, redundant memories that don't effectively help the agent.
 
 ## Goals / Non-Goals
 
@@ -10,7 +10,7 @@ Two bash hook scripts (`bin/wt-hook-memory-save` and `bin/wt-hook-memory-recall`
 - Actionable recall output format that tells the agent what to maintain consistency with
 
 **Non-Goals:**
-- Changing the wt-memory CLI itself
+- Changing the set-memory CLI itself
 - Changing the hook registration in settings.json (same commands, same timeouts)
 - Agent-initiated memory saves (that's a separate concern)
 

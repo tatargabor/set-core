@@ -7,14 +7,14 @@ The GUI SHALL provide menu actions to manage multiple Claude account session key
 - **WHEN** user selects "Add Account..." from the menu
 - **THEN** the main window hides to prevent always-on-top conflicts
 - **AND** a dialog prompts for account name and session key
-- **AND** the entered account is appended to `~/.config/wt-tools/claude-session.json`
+- **AND** the entered account is appended to `~/.config/set-core/claude-session.json`
 - **AND** the main window reappears after the dialog closes
 
 #### Scenario: Remove account via menu
 - **WHEN** user selects "Remove Account..." from the menu
 - **AND** more than one account exists
 - **THEN** a selection dialog lists all account names
-- **AND** the selected account is removed from `~/.config/wt-tools/claude-session.json`
+- **AND** the selected account is removed from `~/.config/set-core/claude-session.json`
 
 #### Scenario: Backward compatible with old single-key format
 - **WHEN** `claude-session.json` contains old format `{"sessionKey": "..."}`

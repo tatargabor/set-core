@@ -24,8 +24,8 @@ Multi-layer conflict prevention:
 ## Scope
 
 - `bin/wt-merge`: generated file pattern coverage expansion
-- `lib/wt_orch/engine.py`: merge-before-dispatch serialization
-- `lib/wt_orch/dispatcher.py`: gitattributes setup in bootstrap_worktree()
+- `lib/set_orch/engine.py`: merge-before-dispatch serialization
+- `lib/set_orch/dispatcher.py`: gitattributes setup in bootstrap_worktree()
 - `tests/e2e/run.sh`, `tests/e2e/run-complex.sh`: scaffold gitattributes (already committed)
 
 ## Already Committed (pre-change)

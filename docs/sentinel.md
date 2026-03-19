@@ -1,12 +1,12 @@
 [< Back to README](../README.md)
 
-# wt-sentinel — Orchestration Supervisor
+# set-sentinel — Orchestration Supervisor
 
-`wt-sentinel` supervises a `wt-orchestrate` run, handling crashes, checkpoints, and completion reporting.
+`set-sentinel` supervises a `set-orchestrate` run, handling crashes, checkpoints, and completion reporting.
 
 ## Two Modes
 
-### Agent mode (recommended): `/wt:sentinel`
+### Agent mode (recommended): `/set:sentinel`
 
 An AI agent that starts the orchestrator, monitors it, and makes intelligent decisions:
 
@@ -19,28 +19,28 @@ An AI agent that starts the orchestrator, monitors it, and makes intelligent dec
 **Usage** — from a Claude Code session in the project directory:
 
 ```
-/wt:sentinel
-/wt:sentinel --spec docs/v5.md --max-parallel 3
-/wt:sentinel --time-limit 4h
+/set:sentinel
+/set:sentinel --spec docs/v5.md --max-parallel 3
+/set:sentinel --time-limit 4h
 ```
 
-All arguments are passed through to `wt-orchestrate start`.
+All arguments are passed through to `set-orchestrate start`.
 
 **How it works:**
-1. Starts `wt-orchestrate start` in background
+1. Starts `set-orchestrate start` in background
 2. Polls `orchestration-state.json` every 15 seconds (in bash — no LLM cost)
 3. When an event occurs (crash, checkpoint, completion), the agent makes a decision
 4. Produces a summary report when done
 
 **Cost**: Minimal — the LLM is only invoked for decisions (typically 5-10 calls per run using Haiku).
 
-### Bash mode (fallback): `wt-sentinel`
+### Bash mode (fallback): `set-sentinel`
 
 A robust bash supervisor for environments without Claude agent access:
 
 ```bash
-wt-sentinel
-wt-sentinel --spec docs/v5.md --max-parallel 3
+set-sentinel
+set-sentinel --spec docs/v5.md --max-parallel 3
 ```
 
 **What it does:**
@@ -79,7 +79,7 @@ Both modes handle orchestration states the same way:
 
 ## E2E Mode (Tier 3)
 
-During E2E testing, the agent-mode sentinel gains **Tier 3 authority** — it can fix wt-tools framework bugs and deploy them to the running test. This is restricted to wt-tools code only (bin/, lib/, .claude/, docs/); consumer project code is never touched. See the full scope boundary and workflow in the sentinel skill (`.claude/commands/wt/sentinel.md` — "E2E Mode" section) and the E2E guide (`tests/e2e/E2E-GUIDE.md`).
+During E2E testing, the agent-mode sentinel gains **Tier 3 authority** — it can fix set-core framework bugs and deploy them to the running test. This is restricted to set-core code only (bin/, lib/, .claude/, docs/); consumer project code is never touched. See the full scope boundary and workflow in the sentinel skill (`.claude/commands/set/sentinel.md` — "E2E Mode" section) and the E2E guide (`tests/e2e/E2E-GUIDE.md`).
 
 ## When to Use
 

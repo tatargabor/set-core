@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: MIGRATION.md file exists
-The project SHALL have a `MIGRATION.md` file at the repository root documenting the upgrade path from legacy `wt-memory-hooks install` to hook-driven memory via `wt-deploy-hooks`.
+The project SHALL have a `MIGRATION.md` file at the repository root documenting the upgrade path from legacy `set-memory-hooks install` to hook-driven memory via `wt-deploy-hooks`.
 
 #### Scenario: File exists and is discoverable
 - **WHEN** a user looks for migration instructions
@@ -12,7 +12,7 @@ The migration guide SHALL include numbered steps covering: detecting legacy hook
 
 #### Scenario: User follows migration steps
 - **WHEN** a user with legacy inline hooks follows the migration guide
-- **THEN** they run `wt-memory-hooks check` to detect, `wt-memory-hooks remove` to clean up, `wt-deploy-hooks .` to ensure new hooks, and `wt-memory health` to verify — all completing without errors
+- **THEN** they run `set-memory-hooks check` to detect, `set-memory-hooks remove` to clean up, `wt-deploy-hooks .` to ensure new hooks, and `set-memory health` to verify — all completing without errors
 
 ### Requirement: Before/after comparison
 The migration guide SHALL include a before/after section showing what changed: old workflow (manual recall in SKILL.md) vs new workflow (automatic hook injection via settings.json).

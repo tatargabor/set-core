@@ -1,6 +1,6 @@
 ## Context
 
-The orchestration system (`bin/wt-orchestrate`, 4233 lines) was built across 7 changes. Each change created delta specs describing new/modified capabilities, but:
+The orchestration system (`bin/set-orchestrate`, 4233 lines) was built across 7 changes. Each change created delta specs describing new/modified capabilities, but:
 1. Delta specs were never synced to `openspec/specs/` (no main orchestration specs exist)
 2. Later changes modified behavior documented in earlier specs without updating them
 3. Several production features were added via hotfixes without any spec

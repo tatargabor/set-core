@@ -8,7 +8,7 @@ All background worker threads (FeatureWorker, ChatWorker, UsageWorker) SHALL use
 - **THEN** it logs at DEBUG level the number of projects polled and per-project results
 
 #### Scenario: FeatureWorker subprocess failure
-- **WHEN** a `wt-memory` or `wt-openspec` subprocess fails or times out
+- **WHEN** a `set-memory` or `wt-openspec` subprocess fails or times out
 - **THEN** it logs at ERROR level with the command, project name, and exception message
 
 ### Requirement: Signal handler exception logging

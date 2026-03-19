@@ -24,5 +24,5 @@ Four improvements to the orchestrator pipeline:
 ## Impact
 
 - `bin/wt-new` — two new functions: `bootstrap_env_files`, `bootstrap_dependencies`
-- `bin/wt-orchestrate` — `check_scope_overlap` in `validate_plan`, test file check + build step in `handle_change_done`
+- `bin/set-orchestrate` — `check_scope_overlap` in `validate_plan`, test file check + build step in `handle_change_done`
 - Affects all future orchestration runs; running orchestrations pick up changes on next worktree creation / verify gate pass

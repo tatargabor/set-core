@@ -1,16 +1,16 @@
 ## ADDED Requirements
 
 ### Requirement: Hybrid recall fallback when proactive returns insufficient results
-The `wt-memory proactive` command SHALL fall back to `recall --mode hybrid` when `proactive_context()` returns fewer than `min(limit, 2)` results with relevance_score >= 0.4. Hybrid results SHALL be appended after proactive results, deduplicated by content prefix (first 50 chars), and assigned a synthetic relevance_score of 0.35.
+The `set-memory proactive` command SHALL fall back to `recall --mode hybrid` when `proactive_context()` returns fewer than `min(limit, 2)` results with relevance_score >= 0.4. Hybrid results SHALL be appended after proactive results, deduplicated by content prefix (first 50 chars), and assigned a synthetic relevance_score of 0.35.
 
 #### Scenario: Proactive returns zero results for short query
-- **WHEN** `wt-memory proactive "levelibéka"` is called
+- **WHEN** `set-memory proactive "levelibéka"` is called
 - **AND** `proactive_context()` returns 0 results with score >= 0.4
 - **THEN** the command SHALL execute `recall("levelibéka", mode="hybrid")`
 - **AND** SHALL return hybrid results with synthetic score 0.35
 
 #### Scenario: Proactive returns sufficient results
-- **WHEN** `wt-memory proactive "cross-platform compatibility"` is called
+- **WHEN** `set-memory proactive "cross-platform compatibility"` is called
 - **AND** `proactive_context()` returns 3 results with score >= 0.4
 - **THEN** the command SHALL NOT execute hybrid fallback
 - **AND** SHALL return only proactive results with original scores
@@ -35,7 +35,7 @@ Hybrid fallback results SHALL have the same JSON structure as proactive results,
 - **AND** SHALL include all standard memory fields (`content`, `tags`, `memory_type`)
 
 ### Requirement: Fallback latency budget
-The hybrid fallback SHALL only execute when the fallback trigger condition is met. The total `wt-memory proactive` command (including fallback) SHALL complete within the hook's timeout.
+The hybrid fallback SHALL only execute when the fallback trigger condition is met. The total `set-memory proactive` command (including fallback) SHALL complete within the hook's timeout.
 
 #### Scenario: Happy path latency unchanged
 - **WHEN** proactive returns sufficient results

@@ -4,11 +4,11 @@ The orchestration HTML report generator (`lib/orchestration/reporter.sh`, 748 LO
 
 ## What Changes
 
-- **New**: `lib/wt_orch/reporter.py` — Python module extracting report data from state/digest/plan JSON files into typed dataclasses, then rendering via Jinja2
-- **New**: `lib/wt_orch/templates/report.html.j2` — Jinja2 template replacing 400+ lines of inline HTML/CSS string concatenation
-- **New**: CLI subcommand `wt-orch-core report generate` bridging bash→Python
+- **New**: `lib/set_orch/reporter.py` — Python module extracting report data from state/digest/plan JSON files into typed dataclasses, then rendering via Jinja2
+- **New**: `lib/set_orch/templates/report.html.j2` — Jinja2 template replacing 400+ lines of inline HTML/CSS string concatenation
+- **New**: CLI subcommand `set-orch-core report generate` bridging bash→Python
 - **Modified**: `lib/orchestration/reporter.sh` — replace `generate_report()` with thin CLI wrapper calling Python, keep as launcher
-- **Modified**: `lib/wt_orch/cli.py` — add report subcommand group
+- **Modified**: `lib/set_orch/cli.py` — add report subcommand group
 
 ## Capabilities
 
@@ -22,7 +22,7 @@ The orchestration HTML report generator (`lib/orchestration/reporter.sh`, 748 LO
 ## Impact
 
 - `lib/orchestration/reporter.sh` — 9 functions replaced with 1 CLI wrapper
-- `lib/wt_orch/cli.py` — new `report` subcommand group
+- `lib/set_orch/cli.py` — new `report` subcommand group
 - New dependency: Jinja2 (already commonly available, no heavy deps)
 - `pyproject.toml` or setup — add jinja2 dependency
 - Report output format (`wt/orchestration/report.html`) unchanged — consumers see identical HTML

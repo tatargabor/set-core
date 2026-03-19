@@ -23,7 +23,7 @@ The branch-clone approach uses `git clone --branch` to create fully independent 
 
 ### D1: Single Python module for all backends
 
-**Decision:** Create `lib/wt_orch/isolation.py` containing the ABC and both implementations.
+**Decision:** Create `lib/set_orch/isolation.py` containing the ABC and both implementations.
 
 **Why over separate files:** The interface is small (4 methods). Both backends are ~50-80 lines each. A single module keeps imports simple and avoids over-fragmentation.
 
@@ -42,7 +42,7 @@ orchestration.yaml → config.get_isolation_backend() → IsolationBackend insta
 
 ### D3: Bash CLI scripts call Python backend
 
-**Decision:** `wt-new` and `wt-close` call a thin Python entry point (`wt-orch-core isolation create/remove`) instead of `git worktree` directly.
+**Decision:** `wt-new` and `wt-close` call a thin Python entry point (`set-orch-core isolation create/remove`) instead of `git worktree` directly.
 
 **Why:** The Python backend is the single source of truth. Duplicating logic in bash defeats the abstraction.
 

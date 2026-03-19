@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools project is preparing for open source release. Three cleanup areas have been identified:
+The set-core project is preparing for open source release. Three cleanup areas have been identified:
 1. The GUI table "Change" column is misleading — it shows the branch/worktree identifier, not a "change" concept
 2. All Atlassian integration (JIRA + Confluence) must be removed — the project will be a plain GitHub project with no Atlassian connection
 3. Personal/internal references must be cleaned from documentation and config before publishing
@@ -34,7 +34,7 @@ New columns: `[Project, Branch, Status, Skill, Ctx%]`
 The "J" column was JIRA-only, so it goes away entirely.
 
 ### 4. GitHub URLs: Use placeholder until repo is created
-Replace `tatargabor/wt-tools` with a TBD org/repo pattern. The user will finalize the actual URL.
+Replace `tatargabor/set-core` with a TBD org/repo pattern. The user will finalize the actual URL.
 
 ### 5. Archived changes: Remove internal references
 Clean archived change files that contain `jira.zengo.eu`, `ARVRMTEAM`, personal names. These are historical but shouldn't be in a public repo.
@@ -43,7 +43,7 @@ Clean archived change files that contain `jira.zengo.eu`, `ARVRMTEAM`, personal 
 The `docs-gen` command generated Confluence-compatible markdown from OpenSpec specs. Since there's no Confluence, the entire docs generation pipeline is deleted. If documentation generation is needed later, it will be built differently (e.g., GitHub Pages, plain README sections).
 
 ### 7. Remove OpenSpec from install.sh
-OpenSpec CLI is a per-project developer tool, not a wt-tools runtime dependency. `openspec init` is run once per project and the resulting `.openspec/` directory lives in git — worktrees get it automatically. Remove the `install_openspec()` function and its call from the main install flow.
+OpenSpec CLI is a per-project developer tool, not a set-core runtime dependency. `openspec init` is run once per project and the resulting `.openspec/` directory lives in git — worktrees get it automatically. Remove the `install_openspec()` function and its call from the main install flow.
 
 ### 8. Default theme: gray
 The "gray" color profile is the best default for developer use — neither too bright (light) nor too dark (dark). Change `DEFAULT_CONFIG["control_center"]["color_profile"]` from `"light"` to `"gray"`.

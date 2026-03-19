@@ -11,7 +11,7 @@ The fix is two-layered:
 ## What Changes
 
 - The `/wt:plan-review` skill gains dependency analysis: it suggests concrete `depends_on` annotations when it detects ordering issues (cleanup→feature, schema→data, auth→everything)
-- The decomposition prompt in `wt-orchestrate` gains ordering heuristics so Claude classifies changes by type and applies foundational-first ordering
+- The decomposition prompt in `set-orchestrate` gains ordering heuristics so Claude classifies changes by type and applies foundational-first ordering
 - The plan checklist gains a "Dependency Graph" section for the new patterns
 
 ## Capabilities
@@ -24,7 +24,7 @@ The fix is two-layered:
 
 ## Impact
 
-- `bin/wt-orchestrate` — decomposition prompt text (lines ~1598-1608)
+- `bin/set-orchestrate` — decomposition prompt text (lines ~1598-1608)
 - `.claude/commands/wt/plan-review.md` — review skill gains dependency analysis section
 - `docs/planning-guide.md` — dependency section updated with ordering heuristics
 - `docs/plan-checklist.md` — new checklist items for ordering

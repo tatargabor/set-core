@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# set-work - Open editor for a worktree
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+usage() {
+    cat <<EOF
+Usage: set-work <change-id> [options]
+
+Open editor for a worktree. Creates the worktree if it doesn't exist.
+
+Arguments:
+  change-id               The change identifier
+
+Options:
+  -p, --project <name>    Use specific project (default: auto-detect)
+  --no-create             Don't create worktree if it doesn't exist
+  -e, --editor <name>     Use specific editor (zed, vscode, cursor, windsurf, kitty, alacritty, etc.)
+  -h, --help              Show this help
+
+Examples:
+  set-work add-user-auth
+  set-work add-user-auth -p myproject
+  set-work add-user-auth -e vscode
+EOF
+}
+
+main() {
+    local change_id=""
+    local project_name=""
+    local no_create=false
+    local is_new_worktree=false
+    local override_editor=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project_name="$2"
+                shift 2
+                ;;
+            --no-create)
+                no_create=true
+                shift
+                ;;
+            --new-worktree)
+                is_new_worktree=true
+                shift
+                ;;
+            -e|--editor)
+                override_editor="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                if [[ -z "$change_id" ]]; then
+                    change_id="$1"
+                else
+                    error "Unexpected argument: $1"
+                    usage
+                    exit 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$change_id" ]]; then
+        error "Change ID required"
+        usage
+        exit 1
+    fi
+
+    # Determine which editor to use
+    local editor_name
+    local editor_cmd
+
+    if [[ -n "$override_editor" ]]; then
+        # Validate override editor
+        if ! is_editor_installed "$override_editor"; then
+            error "Editor '$override_editor' not found"
+            print_editor_install_instructions "$override_editor"
+            exit 1
+        fi
+        editor_name="$override_editor"
+        editor_cmd=$(find_editor_command "$override_editor")
+    else
+        # Use configured/auto-detected editor
+        editor_name=$(get_active_editor)
+        if [[ -z "$editor_name" ]]; then
+            error "No editor found"
+            echo ""
+            echo "Supported editors: $(get_supported_editor_names | tr '\n' ' ')"
+            echo ""
+            echo "Install one of the supported editors, or run:"
+            echo "  set-config editor list"
+            exit 1
+        fi
+        editor_cmd=$(find_editor_command "$editor_name")
+    fi
+
+    if [[ -z "$editor_cmd" ]]; then
+        error "Could not find command for editor: $editor_name"
+        exit 1
+    fi
+
+    # Resolve project
+    local resolved_project
+    resolved_project=$(resolve_project "$project_name") || exit 1
+
+    local project_path
+    project_path=$(get_project_path "$resolved_project")
+
+    # Check if change_id is the main branch (use main repo directly)
+    local main_branch
+    main_branch=$(get_main_branch "$project_path")
+
+    local wt_path
+    if [[ "$change_id" == "$main_branch" ]]; then
+        wt_path="$project_path"
+    else
+        # Find existing worktree or create new one
+        wt_path=$(find_existing_worktree "$project_path" "$change_id")
+
+        if [[ -z "$wt_path" ]]; then
+            if $no_create; then
+                error "Worktree does not exist for: $change_id"
+                echo "Run 'set-new $change_id' to create it, or remove --no-create flag."
+                exit 1
+            fi
+
+            info "Creating worktree first..."
+            wt_path=$("$SCRIPT_DIR/set-new" "$change_id" -p "$resolved_project" --skip-open | tail -1) || exit 1
+            is_new_worktree=true
+        fi
+    fi
+
+    info "Opening $editor_name for: $wt_path"
+
+    # Get editor type (ide or terminal)
+    local editor_type
+    editor_type=$(get_editor_property "$editor_name" "type")
+
+    # Open editor/terminal
+    if [[ "$editor_type" == "terminal" ]]; then
+        # Terminal: use directory-specific flags
+        local open_cmd
+        open_cmd=$(get_editor_open_command "$editor_name" "$wt_path")
+        eval $open_cmd
+    else
+        # IDE: open project directory (fix: no -n flag for Zed on Linux)
+        "$editor_cmd" "$wt_path"
+    fi
+
+    # Show Claude start tip
+    echo ""
+    local tip
+    tip=$(get_editor_claude_tip "$editor_name")
+    local perm_flags
+    perm_flags=$(get_claude_permission_flags)
+    if [[ "$editor_type" == "terminal" ]]; then
+        if [[ -n "$perm_flags" ]]; then
+            info "Start Claude Code: claude $perm_flags"
+        else
+            info "Start Claude Code: claude"
+        fi
+    else
+        info "Start Claude Code: $tip"
+    fi
+}
+
+main "$@"

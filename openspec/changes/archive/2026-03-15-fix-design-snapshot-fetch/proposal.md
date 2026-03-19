@@ -24,8 +24,8 @@ The bash→Python orchestrator migration left the design snapshot pipeline broke
 
 ## Impact
 
-- **lib/wt_orch/planner.py** — `_fetch_design_context()` rewritten to detect MCP, health-check, fetch snapshot, and fail if configured but unfetchable
-- **lib/wt_orch/dispatcher.py** — `dispatch_ready_changes()` passes `design_snapshot_dir` to `dispatch_change()`
-- **lib/wt_orch/verifier.py** — design compliance section wired up via bash bridge call
-- **lib/wt_orch/engine.py** — passes `design_snapshot_dir` to dispatch calls
+- **lib/set_orch/planner.py** — `_fetch_design_context()` rewritten to detect MCP, health-check, fetch snapshot, and fail if configured but unfetchable
+- **lib/set_orch/dispatcher.py** — `dispatch_ready_changes()` passes `design_snapshot_dir` to `dispatch_change()`
+- **lib/set_orch/verifier.py** — design compliance section wired up via bash bridge call
+- **lib/set_orch/engine.py** — passes `design_snapshot_dir` to dispatch calls
 - **tests/unit/** — new test file for Python design bridge functions

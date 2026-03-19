@@ -14,7 +14,7 @@ LLM code review with model escalation and requirement-aware prompting.
 #### VR-REVIEW — LLM code review
 - Generate diff of change branch vs merge-base (origin/HEAD or main)
 - Truncate diff to 30000 chars
-- Build review prompt via wt-orch-core template review
+- Build review prompt via set-orch-core template review
 - Run via run_claude with configurable model
 - On failure: escalate from configured model to opus, then skip
 - Return `ReviewResult` with has_critical flag

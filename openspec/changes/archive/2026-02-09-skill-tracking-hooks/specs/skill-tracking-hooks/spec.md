@@ -1,21 +1,21 @@
 ## ADDED Requirements
 
 ### Requirement: Stop hook refreshes skill timestamp
-The system SHALL provide a Claude Code `Stop` hook script (`bin/wt-hook-stop`) that refreshes the `.wt-tools/current_skill` timestamp after every agent response.
+The system SHALL provide a Claude Code `Stop` hook script (`bin/wt-hook-stop`) that refreshes the `.set-core/current_skill` timestamp after every agent response.
 
 #### Scenario: Skill file exists and agent responds
 - **WHEN** Claude finishes a response (Stop event fires)
-- **AND** `.wt-tools/current_skill` exists in the current working directory
+- **AND** `.set-core/current_skill` exists in the current working directory
 - **THEN** the timestamp portion of the file SHALL be updated to the current unix timestamp
 - **AND** the skill name portion SHALL remain unchanged
 
 #### Scenario: No skill file exists
 - **WHEN** Claude finishes a response (Stop event fires)
-- **AND** `.wt-tools/current_skill` does not exist
+- **AND** `.set-core/current_skill` does not exist
 - **THEN** the hook SHALL exit 0 without creating the file
 
 #### Scenario: Not in a wt-managed directory
-- **WHEN** the Stop hook fires in a directory without `.wt-tools/`
+- **WHEN** the Stop hook fires in a directory without `.set-core/`
 - **THEN** the hook SHALL exit 0 silently
 
 #### Scenario: wt-hook-stop not on PATH
@@ -28,7 +28,7 @@ Every Claude Code skill SKILL.md in `.claude/skills/` SHALL call `wt-skill-start
 #### Scenario: opsx skill registers itself
 - **WHEN** an opsx skill (e.g., `opsx:apply`, `opsx:explore`) starts
 - **THEN** it SHALL run `wt-skill-start <skill-name>` before any other action
-- **AND** `.wt-tools/current_skill` SHALL contain the skill name and current timestamp
+- **AND** `.set-core/current_skill` SHALL contain the skill name and current timestamp
 
 #### Scenario: wt skill registers itself
 - **WHEN** the `wt` skill starts

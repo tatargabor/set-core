@@ -103,7 +103,7 @@ Alternative considered: create a separate database per worktree (`sales_raketa_$
 
 ## Not In Scope
 
-- Playwright setup/scaffolding — project-specific, not wt-tools responsibility
+- Playwright setup/scaffolding — project-specific, not set-core responsibility
 - CI/CD webhook integration — too platform-specific
 - Auto-detection of smoke test framework — explicit directive only
 - Per-worktree database isolation — flock serialization is simpler and sufficient

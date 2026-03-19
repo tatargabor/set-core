@@ -25,7 +25,7 @@ The verify gate runs unit tests and build checks, but has no end-to-end smoke te
 
 ## Impact
 
-- `bin/wt-orchestrate`: directive parsing, verify gate pipeline, merge_change(), decomposition prompts
+- `bin/set-orchestrate`: directive parsing, verify gate pipeline, merge_change(), decomposition prompts
 - `docs/planning-guide.md`: smoke test coverage guidance
 - `openspec/specs/orchestration-config/spec.md`: new directive definitions
 - `openspec/specs/verify-gate/spec.md`: new gate step

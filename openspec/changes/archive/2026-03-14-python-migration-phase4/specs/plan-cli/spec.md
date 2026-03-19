@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Plan validate CLI subcommand
-`wt-orch-core plan validate --plan-file <path> [--digest-dir <path>]` SHALL validate the plan and output errors/warnings to stdout as JSON.
+`set-orch-core plan validate --plan-file <path> [--digest-dir <path>]` SHALL validate the plan and output errors/warnings to stdout as JSON.
 
 #### Scenario: Valid plan
 - **WHEN** the plan passes all validation checks
@@ -16,7 +16,7 @@
 - **THEN** requirement coverage validation is also performed
 
 ### Requirement: Plan detect-test-infra CLI subcommand
-`wt-orch-core plan detect-test-infra [--project-dir <path>]` SHALL scan the project and output test infrastructure info as JSON.
+`set-orch-core plan detect-test-infra [--project-dir <path>]` SHALL scan the project and output test infrastructure info as JSON.
 
 #### Scenario: Detect test framework
 - **WHEN** the command is run in a project with vitest
@@ -27,7 +27,7 @@
 - **THEN** the current directory is scanned
 
 ### Requirement: Plan check-triage CLI subcommand
-`wt-orch-core plan check-triage --digest-dir <path> [--auto-defer]` SHALL check triage gate status and output the result as a plain string.
+`set-orch-core plan check-triage --digest-dir <path> [--auto-defer]` SHALL check triage gate status and output the result as a plain string.
 
 #### Scenario: Triage passed
 - **WHEN** all ambiguities are triaged
@@ -38,7 +38,7 @@
 - **THEN** output is "needs_triage" and exit code is 0
 
 ### Requirement: Plan check-scope-overlap CLI subcommand
-`wt-orch-core plan check-scope-overlap --plan-file <path> [--state-file <path>] [--pk-file <path>]` SHALL check scope overlap and output warnings as JSON.
+`set-orch-core plan check-scope-overlap --plan-file <path> [--state-file <path>] [--pk-file <path>]` SHALL check scope overlap and output warnings as JSON.
 
 #### Scenario: No overlaps
 - **WHEN** no scope overlaps are detected
@@ -49,7 +49,7 @@
 - **THEN** output contains warnings with change names and similarity percentages
 
 ### Requirement: Plan build-context CLI subcommand
-`wt-orch-core plan build-context --input-file <json>` SHALL assemble decomposition context from the input JSON and output the rendered planning prompt to stdout.
+`set-orch-core plan build-context --input-file <json>` SHALL assemble decomposition context from the input JSON and output the rendered planning prompt to stdout.
 
 #### Scenario: Spec mode prompt
 - **WHEN** input JSON has mode "spec"
@@ -60,7 +60,7 @@
 - **THEN** the rendered planning prompt for brief mode is output
 
 ### Requirement: Plan enrich-metadata CLI subcommand
-`wt-orch-core plan enrich-metadata --plan-file <path> --hash <str> --input-mode <str> --input-path <path> [--replan-cycle <int>] [--state-file <path>]` SHALL add metadata to the plan and write the enriched version back.
+`set-orch-core plan enrich-metadata --plan-file <path> --hash <str> --input-mode <str> --input-path <path> [--replan-cycle <int>] [--state-file <path>]` SHALL add metadata to the plan and write the enriched version back.
 
 #### Scenario: Initial plan enrichment
 - **WHEN** --replan-cycle is not provided
@@ -71,14 +71,14 @@
 - **THEN** the plan is enriched with plan_phase "iteration" and completed depends_on references are stripped
 
 ### Requirement: Plan summarize-spec CLI subcommand
-`wt-orch-core plan summarize-spec --spec-file <path> [--phase-hint <str>] [--model <str>]` SHALL summarize a large spec and output the summary to stdout.
+`set-orch-core plan summarize-spec --spec-file <path> [--phase-hint <str>] [--model <str>]` SHALL summarize a large spec and output the summary to stdout.
 
 #### Scenario: Spec summarization
 - **WHEN** the spec file is large
 - **THEN** a structured summary is output
 
 ### Requirement: Plan replan-context CLI subcommand
-`wt-orch-core plan replan-context --state-file <path>` SHALL collect replan context and output it as JSON.
+`set-orch-core plan replan-context --state-file <path>` SHALL collect replan context and output it as JSON.
 
 #### Scenario: Replan context with completed changes
 - **WHEN** the state has merged changes

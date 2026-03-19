@@ -14,8 +14,8 @@ The core principle: **FAIL LOUD > SILENT CORRUPTION**. If a merge cannot verify 
 - **New**: `merge_strategies` configuration in `project-knowledge.yaml` — projects declare file patterns, strategy types, entity patterns, validation commands, and LLM context hints
 - **New**: Entity conservation counting — count named entities (models, exports, classes, routes) before/after LLM merge, block if count drops
 - **Modified**: `llm_resolve_conflicts()` in `wt-merge` — receives file-type context and LLM hints from merge strategy config, sends enriched prompts
-- **Modified**: Profile system — profiles can supply default merge strategies (e.g., `wt-project-web` ships Prisma/middleware/i18n strategies)
-- **New**: Agent rule prohibiting `any` type on database client parameters — deployed to consumer projects via `wt-project init`
+- **Modified**: Profile system — profiles can supply default merge strategies (e.g., `set-project-web` ships Prisma/middleware/i18n strategies)
+- **New**: Agent rule prohibiting `any` type on database client parameters — deployed to consumer projects via `set-project init`
 
 ## Capabilities
 
@@ -29,8 +29,8 @@ The core principle: **FAIL LOUD > SILENT CORRUPTION**. If a merge cannot verify 
 ## Impact
 
 - **wt-merge**: `bin/wt-merge` — new conservation check after LLM resolve, file-type strategy lookup, enriched LLM prompts
-- **Profile system**: `lib/wt_orch/profile_loader.py` — profiles supply default `merge_strategies`
+- **Profile system**: `lib/set_orch/profile_loader.py` — profiles supply default `merge_strategies`
 - **Config**: `project-knowledge.yaml` gains `merge_strategies` section
 - **Agent rules**: new `.claude/rules/web/db-type-safety.md` — prohibits `any` on DB parameters
 - **Templates**: `templates/project-knowledge.yaml` updated with merge strategy examples
-- **wt-project-web**: ships Prisma, middleware, i18n default strategies (separate package update)
+- **set-project-web**: ships Prisma, middleware, i18n default strategies (separate package update)

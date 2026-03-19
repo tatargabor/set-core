@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: SessionStart hook loads operational cheat sheet
-A new hook script `wt-hook-memory-warmstart` SHALL run on the `SessionStart` event and load memories tagged `cheat-sheet` from wt-memory into Claude's context via `additionalContext`.
+A new hook script `wt-hook-memory-warmstart` SHALL run on the `SessionStart` event and load memories tagged `cheat-sheet` from set-memory into Claude's context via `additionalContext`.
 
 #### Scenario: Session starts with cheat-sheet memories available
 - **WHEN** a Claude Code session starts
-- **AND** wt-memory is healthy
+- **AND** set-memory is healthy
 - **AND** memories tagged `cheat-sheet` exist for the current project
 - **THEN** the hook SHALL recall memories with tag filter `cheat-sheet`
 - **AND** SHALL output JSON with `hookSpecificOutput.additionalContext` containing the formatted memories
@@ -13,13 +13,13 @@ A new hook script `wt-hook-memory-warmstart` SHALL run on the `SessionStart` eve
 
 #### Scenario: Session starts with no cheat-sheet memories
 - **WHEN** a Claude Code session starts
-- **AND** wt-memory is healthy
+- **AND** set-memory is healthy
 - **AND** no memories tagged `cheat-sheet` exist
 - **THEN** the hook SHALL exit 0 silently with no output
 
-#### Scenario: wt-memory not available
+#### Scenario: set-memory not available
 - **WHEN** a Claude Code session starts
-- **AND** `wt-memory health` fails or wt-memory is not installed
+- **AND** `set-memory health` fails or set-memory is not installed
 - **THEN** the hook SHALL exit 0 silently with no output
 
 ### Requirement: Hot-topic discovery at session start
@@ -34,11 +34,11 @@ The SessionStart hook SHALL discover project-specific hot topics by scanning pro
 - **THEN** the hook SHALL regenerate the cache (discovery is fast, always refresh)
 
 ### Requirement: Cheat sheet includes project context
-The SessionStart hook SHALL also run `wt-memory proactive` with the project name and recent git activity as context, appending relevant non-cheat-sheet memories separately.
+The SessionStart hook SHALL also run `set-memory proactive` with the project name and recent git activity as context, appending relevant non-cheat-sheet memories separately.
 
 #### Scenario: Project has recent git activity
 - **WHEN** a session starts in a git repository
-- **AND** wt-memory proactive returns relevant memories
+- **AND** set-memory proactive returns relevant memories
 - **THEN** the hook SHALL include proactive memories in a `=== PROJECT CONTEXT ===` section after the cheat sheet
 - **AND** SHALL limit to 5 proactive memories
 
@@ -49,8 +49,8 @@ The SessionStart hook SHALL also run `wt-memory proactive` with the project name
 ### Requirement: SessionStart hook timeout
 The SessionStart hook SHALL complete within 10 seconds.
 
-#### Scenario: wt-memory recall is slow
-- **WHEN** wt-memory recall takes longer than 8 seconds
+#### Scenario: set-memory recall is slow
+- **WHEN** set-memory recall takes longer than 8 seconds
 - **THEN** the hook SHALL return whatever results it has so far
 - **AND** SHALL NOT exceed the 10-second timeout
 

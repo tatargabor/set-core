@@ -23,7 +23,7 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 
 # Working directory for the hook (simulates project root)
 WORK_DIR="$TEST_DIR/project"
-mkdir -p "$WORK_DIR/.wt-tools"
+mkdir -p "$WORK_DIR/.set-core"
 mkdir -p "$WORK_DIR/openspec/changes"
 
 # Mock bin directory (prepended to PATH)
@@ -127,7 +127,7 @@ run_hook() {
     local input="{\"transcript_path\":\"$transcript_path\",\"stop_hook_active\":$stop_active}"
 
     # Set up the last-memory-commit marker so PATH 2 is a no-op
-    echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" > "$WORK_DIR/.wt-tools/.last-memory-commit"
+    echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" > "$WORK_DIR/.set-core/.last-memory-commit"
 
     cd "$WORK_DIR"
     export PATH="$MOCK_BIN:$PATH"
@@ -223,7 +223,7 @@ echo "## Test 4.2: First extraction creates staged file, no wt-memory remember c
 
 # Clean state
 rm -f "$MEMORY_LOG" "$CLAUDE_CALL_LOG"
-rm -f "$WORK_DIR/.wt-tools/.staged-extract-"* 2>/dev/null
+rm -f "$WORK_DIR/.set-core/.staged-extract-"* 2>/dev/null
 
 TRANSCRIPT_1="$TEST_DIR/session-1.jsonl"
 create_transcript "$TRANSCRIPT_1"
@@ -233,13 +233,13 @@ Decision|preference|User prefers tabs over spaces"
 
 run_hook "$TRANSCRIPT_1"
 
-assert_file_exists "$WORK_DIR/.wt-tools/.staged-extract-session-1" \
+assert_file_exists "$WORK_DIR/.set-core/.staged-extract-session-1" \
     "Staged file created for session-1"
-assert_file_exists "$WORK_DIR/.wt-tools/.staged-extract-session-1.ts" \
+assert_file_exists "$WORK_DIR/.set-core/.staged-extract-session-1.ts" \
     "Timestamp file created for session-1"
-assert_file_contains "$WORK_DIR/.wt-tools/.staged-extract-session-1" "Learning|error,test|Found a bug" \
+assert_file_contains "$WORK_DIR/.set-core/.staged-extract-session-1" "Learning|error,test|Found a bug" \
     "Staged file contains Haiku output"
-assert_file_contains "$WORK_DIR/.wt-tools/.staged-extract-session-1" "#CHANGE:" \
+assert_file_contains "$WORK_DIR/.set-core/.staged-extract-session-1" "#CHANGE:" \
     "Staged file has change name header"
 
 # Check NO wt-memory remember calls were made
@@ -257,16 +257,16 @@ echo "## Test 4.3: Second extraction overwrites staged file content"
 
 rm -f "$CLAUDE_CALL_LOG"
 # Remove the timestamp file to bypass debounce
-rm -f "$WORK_DIR/.wt-tools/.staged-extract-session-1.ts"
+rm -f "$WORK_DIR/.set-core/.staged-extract-session-1.ts"
 
 set_claude_output "Learning|perf,cache|Cache invalidation was the real issue
 Context|arch|System uses event sourcing pattern"
 
 run_hook "$TRANSCRIPT_1"
 
-assert_file_contains "$WORK_DIR/.wt-tools/.staged-extract-session-1" "Cache invalidation" \
+assert_file_contains "$WORK_DIR/.set-core/.staged-extract-session-1" "Cache invalidation" \
     "Staged file updated with new content"
-assert_file_not_contains "$WORK_DIR/.wt-tools/.staged-extract-session-1" "Found a bug" \
+assert_file_not_contains "$WORK_DIR/.set-core/.staged-extract-session-1" "Found a bug" \
     "Old content replaced (not appended)"
 
 echo ""
@@ -287,13 +287,13 @@ set_claude_output "Learning|test|Session 2 insight"
 run_hook "$TRANSCRIPT_2"
 
 # session-1's staged file should be committed (deleted)
-assert_file_not_exists "$WORK_DIR/.wt-tools/.staged-extract-session-1" \
+assert_file_not_exists "$WORK_DIR/.set-core/.staged-extract-session-1" \
     "Old staged file deleted after commit"
-assert_file_not_exists "$WORK_DIR/.wt-tools/.staged-extract-session-1.ts" \
+assert_file_not_exists "$WORK_DIR/.set-core/.staged-extract-session-1.ts" \
     "Old timestamp file deleted after commit"
 
 # session-2's staged file should exist (new extraction)
-assert_file_exists "$WORK_DIR/.wt-tools/.staged-extract-session-2" \
+assert_file_exists "$WORK_DIR/.set-core/.staged-extract-session-2" \
     "New staged file created for session-2"
 
 # Check wt-memory remember was called for session-1's content
@@ -329,7 +329,7 @@ else
 fi
 
 # Check debounce was logged
-assert_file_contains "$WORK_DIR/.wt-tools/transcript-extraction.log" "DEBOUNCE" \
+assert_file_contains "$WORK_DIR/.set-core/transcript-extraction.log" "DEBOUNCE" \
     "Debounce skip logged"
 
 echo ""
@@ -339,15 +339,15 @@ echo "## Test 4.6: Stale file (>1 hour, same session) auto-committed"
 # ----------------------------------------------------------
 
 rm -f "$MEMORY_LOG" "$CLAUDE_CALL_LOG"
-rm -f "$WORK_DIR/.wt-tools/.staged-extract-"* 2>/dev/null
+rm -f "$WORK_DIR/.set-core/.staged-extract-"* 2>/dev/null
 
 TRANSCRIPT_3="$TEST_DIR/session-3.jsonl"
 create_transcript "$TRANSCRIPT_3"
 
 # Create a staged file for session-3 with an old timestamp (2 hours ago)
-echo "#CHANGE:test-change" > "$WORK_DIR/.wt-tools/.staged-extract-session-3"
-echo "Learning|stale,test|This is a stale insight" >> "$WORK_DIR/.wt-tools/.staged-extract-session-3"
-echo $(( $(date +%s) - 7200 )) > "$WORK_DIR/.wt-tools/.staged-extract-session-3.ts"
+echo "#CHANGE:test-change" > "$WORK_DIR/.set-core/.staged-extract-session-3"
+echo "Learning|stale,test|This is a stale insight" >> "$WORK_DIR/.set-core/.staged-extract-session-3"
+echo $(( $(date +%s) - 7200 )) > "$WORK_DIR/.set-core/.staged-extract-session-3.ts"
 
 set_claude_output "Learning|fresh|Fresh extraction after stale commit"
 
@@ -361,13 +361,13 @@ else
 fi
 
 # Check STALE was logged
-assert_file_contains "$WORK_DIR/.wt-tools/transcript-extraction.log" "STALE" \
+assert_file_contains "$WORK_DIR/.set-core/transcript-extraction.log" "STALE" \
     "Stale commit logged"
 
 # Fresh extraction should have created new staged file
-assert_file_exists "$WORK_DIR/.wt-tools/.staged-extract-session-3" \
+assert_file_exists "$WORK_DIR/.set-core/.staged-extract-session-3" \
     "Fresh staged file created after stale commit"
-assert_file_contains "$WORK_DIR/.wt-tools/.staged-extract-session-3" "Fresh extraction" \
+assert_file_contains "$WORK_DIR/.set-core/.staged-extract-session-3" "Fresh extraction" \
     "Fresh staged file has new content"
 
 echo ""
@@ -377,7 +377,7 @@ echo "## Test 4.7: No-opsx-skill transcript skips extraction entirely"
 # ----------------------------------------------------------
 
 rm -f "$CLAUDE_CALL_LOG"
-rm -f "$WORK_DIR/.wt-tools/.staged-extract-"* 2>/dev/null
+rm -f "$WORK_DIR/.set-core/.staged-extract-"* 2>/dev/null
 
 TRANSCRIPT_4="$TEST_DIR/session-4.jsonl"
 create_plain_transcript "$TRANSCRIPT_4"
@@ -385,7 +385,7 @@ create_plain_transcript "$TRANSCRIPT_4"
 run_hook "$TRANSCRIPT_4"
 
 # No staged file should be created
-assert_file_not_exists "$WORK_DIR/.wt-tools/.staged-extract-session-4" \
+assert_file_not_exists "$WORK_DIR/.set-core/.staged-extract-session-4" \
     "No staged file for plain transcript (no opsx skills)"
 
 # Claude should not have been called
@@ -405,7 +405,7 @@ echo "## Test 4.8: PATH 2 commit-based extraction still works independently"
 # and .last-memory-commit is set to the same hash, so PATH 2 is a no-op.
 # This test just verifies the hook doesn't crash with PATH 2 active.
 
-rm -f "$WORK_DIR/.wt-tools/.last-memory-commit"
+rm -f "$WORK_DIR/.set-core/.last-memory-commit"
 # Let PATH 2 detect a "new commit" (hash mismatch)
 run_hook "$TRANSCRIPT_4"
 

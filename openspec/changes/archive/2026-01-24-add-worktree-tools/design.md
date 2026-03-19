@@ -31,7 +31,7 @@ Target platforms:
 **Rationale:** Shell scripts have minimal dependencies, are easily auditable, and simple to modify.
 
 ### Project Registry
-**Decision:** JSON config file at `~/.config/wt-tools/projects.json`
+**Decision:** JSON config file at `~/.config/set-core/projects.json`
 
 **Structure:**
 ```json
@@ -61,9 +61,9 @@ Target platforms:
 4. Error if none is available
 
 ### Project Registration
-**Decision:** `wt-project init` while standing in the repo root (not with path argument)
+**Decision:** `set-project init` while standing in the repo root (not with path argument)
 
-**Rationale:** More intuitive workflow - the user stands in the project and "initializes" it for wt-tools use. Similar to the `git init` or `npm init` pattern.
+**Rationale:** More intuitive workflow - the user stands in the project and "initializes" it for set-core use. Similar to the `git init` or `npm init` pattern.
 
 ### Worktree Naming Convention
 **Decision:** `../<repo-name>-wt-<change-id>` pattern

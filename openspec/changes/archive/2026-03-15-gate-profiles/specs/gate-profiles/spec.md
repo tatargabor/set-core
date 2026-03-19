@@ -78,7 +78,7 @@ The `resolve_gate_config()` function SHALL resolve a GateConfig for a change by 
 - **THEN** it SHALL log a debug message with the change name, type, and key gate field values
 
 ### Requirement: Profile plugin gate_overrides extension point
-The NullProfile class SHALL include a `gate_overrides(change_type: str) -> dict` method returning an empty dict. The ProjectType ABC in wt-project-base SHALL include the same method with a default empty-dict implementation.
+The NullProfile class SHALL include a `gate_overrides(change_type: str) -> dict` method returning an empty dict. The ProjectType ABC in set-project-base SHALL include the same method with a default empty-dict implementation.
 
 #### Scenario: NullProfile returns empty overrides
 - **WHEN** NullProfile.gate_overrides is called with any change_type

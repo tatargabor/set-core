@@ -50,18 +50,18 @@ Coverage status for each requirement SHALL track the implementation lifecycle: `
 - **THEN** all its requirements in coverage.json update to `status: merged`
 
 ### Requirement: Coverage report command
-`wt-orchestrate coverage` SHALL display a human-readable coverage report showing requirement status grouped by domain.
+`set-orchestrate coverage` SHALL display a human-readable coverage report showing requirement status grouped by domain.
 
 #### Scenario: Coverage report output
-- **WHEN** user runs `wt-orchestrate coverage`
+- **WHEN** user runs `set-orchestrate coverage`
 - **THEN** output shows per-domain breakdown: total requirements, planned/dispatched/running/merged counts, and lists any uncovered requirements
 
 #### Scenario: Coverage report with no digest
-- **WHEN** user runs `wt-orchestrate coverage` but no digest exists
-- **THEN** the system prints "No digest found. Run `wt-orchestrate digest --spec <path>` first."
+- **WHEN** user runs `set-orchestrate coverage` but no digest exists
+- **THEN** the system prints "No digest found. Run `set-orchestrate digest --spec <path>` first."
 
 #### Scenario: Coverage report with digest but no plan
-- **WHEN** user runs `wt-orchestrate coverage` and `requirements.json` exists but `coverage.json` is empty
+- **WHEN** user runs `set-orchestrate coverage` and `requirements.json` exists but `coverage.json` is empty
 - **THEN** the system prints the total requirement count per domain and "No plan generated yet. All requirements uncovered."
 
 #### Scenario: Orphaned coverage entries

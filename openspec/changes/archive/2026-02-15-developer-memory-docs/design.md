@@ -1,6 +1,6 @@
 ## Context
 
-The shodh-memory integration is feature-complete across four layers: CLI (`wt-memory`), GUI (browse/remember dialogs, [M] button), OpenSpec hooks (automatic recall/remember in 6 skill phases), and ambient CLAUDE.md instructions. Current documentation is a 9-line blurb in the README Features section plus a CLI command table. Users cannot discover how, when, or why to use developer memory without reading source code.
+The shodh-memory integration is feature-complete across four layers: CLI (`set-memory`), GUI (browse/remember dialogs, [M] button), OpenSpec hooks (automatic recall/remember in 6 skill phases), and ambient CLAUDE.md instructions. Current documentation is a 9-line blurb in the README Features section plus a CLI command table. Users cannot discover how, when, or why to use developer memory without reading source code.
 
 The README is generated/maintained using `docs/readme-guide.md` as the authoritative blueprint. If the guide doesn't contain detailed instructions for memory documentation, any README regeneration will revert to minimal content.
 
@@ -15,7 +15,7 @@ The README is generated/maintained using `docs/readme-guide.md` as the authorita
 
 **Non-Goals:**
 - Documenting shodh-memory internals (that's the upstream library's job)
-- Documenting wt-memory-hooks implementation details for contributors (except a brief architecture appendix)
+- Documenting set-memory-hooks implementation details for contributors (except a brief architecture appendix)
 - Changing any code or behavior
 - Creating tutorial/video content
 
@@ -52,6 +52,6 @@ Add a new use case alongside existing ones (GUI, Ralph Loop, Team Sync) showing 
 
 ## Risks / Trade-offs
 
-- **Documentation drift** → Memory is still marked experimental. Documentation may drift from implementation as the feature evolves. Mitigation: the guide instructs README generators to check actual CLI commands against `bin/wt-memory --help`.
+- **Documentation drift** → Memory is still marked experimental. Documentation may drift from implementation as the feature evolves. Mitigation: the guide instructs README generators to check actual CLI commands against `bin/set-memory --help`.
 - **Over-documenting** → Risk of making the docs longer than the feature warrants. Mitigation: keep the README section concise (link to deep-dive), keep the deep-dive focused on user-facing behavior with only a brief architecture appendix.
-- **OpenSpec hooks change** → If hooks are modified, the phase diagram becomes stale. Mitigation: note in the doc that hooks are installed by `wt-memory-hooks install` and may evolve.
+- **OpenSpec hooks change** → If hooks are modified, the phase diagram becomes stale. Mitigation: note in the doc that hooks are installed by `set-memory-hooks install` and may evolve.

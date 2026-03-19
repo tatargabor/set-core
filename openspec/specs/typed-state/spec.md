@@ -21,20 +21,20 @@ Extended typed state with mutation methods, file locking, dependency graph, and 
 - **THEN** `save_state` blocks until the lock is available (no timeout — flock semantics)
 
 ### Requirement: CLI bridge for state operations
-The `wt-orch-core state` CLI SHALL expose subcommands for each migrated state function, accepting arguments via flags and outputting results to stdout (JSON or plain text as appropriate).
+The `set-orch-core state` CLI SHALL expose subcommands for each migrated state function, accepting arguments via flags and outputting results to stdout (JSON or plain text as appropriate).
 
 #### Scenario: Update change field via CLI
-- **WHEN** `wt-orch-core state update-change --file state.json --name add-auth --field status --value '"running"'` is called
+- **WHEN** `set-orch-core state update-change --file state.json --name add-auth --field status --value '"running"'` is called
 - **THEN** the change field is updated atomically and the process exits with code 0
 
 #### Scenario: Query change status via CLI
-- **WHEN** `wt-orch-core state get-status --file state.json --name add-auth` is called
+- **WHEN** `set-orch-core state get-status --file state.json --name add-auth` is called
 - **THEN** the status string is printed to stdout
 
 #### Scenario: Topological sort via CLI
-- **WHEN** `wt-orch-core state topo-sort --plan-file plan.json` is called
+- **WHEN** `set-orch-core state topo-sort --plan-file plan.json` is called
 - **THEN** change names are printed one per line in dependency order
 
 #### Scenario: Cascade failed via CLI
-- **WHEN** `wt-orch-core state cascade-failed --file state.json` is called
+- **WHEN** `set-orch-core state cascade-failed --file state.json` is called
 - **THEN** pending changes with failed deps are marked failed and the count is printed

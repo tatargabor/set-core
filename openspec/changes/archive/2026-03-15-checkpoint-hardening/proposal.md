@@ -21,11 +21,11 @@ E2E run #13 exposed that the checkpoint system was never properly integrated end
 
 ### Current code locations
 
-- `lib/wt_orch/engine.py:300-330` — checkpoint handling in monitor loop (post-fix)
-- `lib/wt_orch/engine.py:405-407` — checkpoint trigger logic
+- `lib/set_orch/engine.py:300-330` — checkpoint handling in monitor loop (post-fix)
+- `lib/set_orch/engine.py:405-407` — checkpoint trigger logic
 - `lib/orchestration/dispatcher.sh:367-368` — bash resume logic (post-fix)
-- `lib/wt_orch/cli.py` — CLI flag parsing and forwarding
-- `lib/wt_orch/state.py` — OrchestratorState dataclass with checkpoint fields
+- `lib/set_orch/cli.py` — CLI flag parsing and forwarding
+- `lib/set_orch/state.py` — OrchestratorState dataclass with checkpoint fields
 
 ## What Changes
 
@@ -69,8 +69,8 @@ E2E run #13 exposed that the checkpoint system was never properly integrated end
 
 ## Impact
 
-- **Modified**: `lib/wt_orch/engine.py` — approval check, timeout logic, counter reset
-- **Modified**: `lib/wt_orch/state.py` — checkpoint timeout field, restart cleanup
+- **Modified**: `lib/set_orch/engine.py` — approval check, timeout logic, counter reset
+- **Modified**: `lib/set_orch/state.py` — checkpoint timeout field, restart cleanup
 - **Modified**: `lib/orchestration/dispatcher.sh` — restart state cleanup
 - **New**: Integration tests for checkpoint flow
 - **Documentation**: Checkpoint state machine documented with all transitions

@@ -1,8 +1,8 @@
 ## Context
 
-The `wt-orchestrate` CLI is a ~1200-line bash script that manages multi-change orchestration. It writes state to `orchestration-state.json` (plan, per-change status, gate results, tokens, checkpoints) and logs to `.claude/orchestration.log`. The current `wt-orchestrate status` command is a one-shot CLI output using printf formatting.
+The `set-orchestrate` CLI is a ~1200-line bash script that manages multi-change orchestration. It writes state to `orchestration-state.json` (plan, per-change status, gate results, tokens, checkpoints) and logs to `.claude/orchestration.log`. The current `set-orchestrate status` command is a one-shot CLI output using printf formatting.
 
-Textual 6.11.0 and Rich 14.2.0 are already installed system-wide. The wt-tools project uses Python for the GUI (PySide6) and bash for CLI tools. This TUI bridges the two: a Python Textual app launched from the bash CLI.
+Textual 6.11.0 and Rich 14.2.0 are already installed system-wide. The set-core project uses Python for the GUI (PySide6) and bash for CLI tools. This TUI bridges the two: a Python Textual app launched from the bash CLI.
 
 The orchestration-state.json structure (top-level):
 - `status`: running/checkpoint/paused/stopped/done/failed/time_limit
@@ -32,10 +32,10 @@ Per-change statuses: pending, dispatched, running, paused, verifying, verify-fai
 
 ### D1: Single Python file, launched as subcommand
 
-The TUI lives in `gui/tui/orchestrator_tui.py` and is launched via `wt-orchestrate tui` which calls `python3 gui/tui/orchestrator_tui.py "$STATE_FILENAME" "$LOG_FILE"`. Arguments are the state file and log file paths.
+The TUI lives in `gui/tui/orchestrator_tui.py` and is launched via `set-orchestrate tui` which calls `python3 gui/tui/orchestrator_tui.py "$STATE_FILENAME" "$LOG_FILE"`. Arguments are the state file and log file paths.
 
 **Why not inline in bash?** Textual requires Python.
-**Why not a separate `wt-orchestrate-tui` binary?** Keeping it as a subcommand is discoverable and consistent.
+**Why not a separate `set-orchestrate-tui` binary?** Keeping it as a subcommand is discoverable and consistent.
 **Why gui/tui/ directory?** Separates terminal UI from PySide6 GUI, establishes a pattern for future TUI tools.
 
 ### D2: File-polling with Textual set_interval
@@ -95,7 +95,7 @@ Test → Build → Review → Verify. Display as `T✓ B✗ R- V-` etc.
 
 ### D5: Atomic checkpoint approval
 
-Same mechanism as `wt-orchestrate approve`:
+Same mechanism as `set-orchestrate approve`:
 1. Read orchestration-state.json
 2. Set `checkpoints[-1]["approved"] = True` and `approved_at`
 3. Write to temp file in same directory

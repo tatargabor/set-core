@@ -15,7 +15,7 @@ The installer SHALL generate a valid macOS `.app` bundle at `~/Applications/WT C
 - **WHEN** the `.app` bundle is generated
 - **THEN** `Info.plist` SHALL contain:
   - `CFBundleName` = "WT Control"
-  - `CFBundleIdentifier` = "com.wt-tools.control"
+  - `CFBundleIdentifier` = "com.set-core.control"
   - `CFBundleExecutable` = "wt-control"
   - `CFBundleIconFile` = "app"
   - `LSUIElement` = true

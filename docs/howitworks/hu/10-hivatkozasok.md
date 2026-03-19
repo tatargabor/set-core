@@ -2,12 +2,12 @@
 
 ## CLI Referencia
 
-### wt-orchestrate
+### set-orchestrate
 
 A fő orchestrációs parancs.
 
 ```
-wt-orchestrate [globális opciók] <parancs> [parancs opciók]
+set-orchestrate [globális opciók] <parancs> [parancs opciók]
 ```
 
 #### Globális opciók
@@ -38,14 +38,14 @@ wt-orchestrate [globális opciók] <parancs> [parancs opciók]
 | `tui` | Terminál dashboard indítás |
 | `self-test` | Belső tesztek futtatása |
 
-### wt-new / wt-merge / wt-loop
+### set-new / set-merge / set-loop
 
 | Parancs | Leírás |
 |---------|--------|
-| `wt-new <name>` | Új worktree és branch létrehozás |
-| `wt-merge <name> [--llm-resolve]` | Worktree merge main-be |
-| `wt-loop start [opts]` | Ralph loop indítás |
-| `wt-loop status` | Loop állapot lekérdezés |
+| `set-new <name>` | Új worktree és branch létrehozás |
+| `set-merge <name> [--llm-resolve]` | Worktree merge main-be |
+| `set-loop start [opts]` | Ralph loop indítás |
+| `set-loop status` | Loop állapot lekérdezés |
 
 ## Change állapotgép
 
@@ -248,8 +248,8 @@ orchestration-summary.md        ← összefoglaló (gitignore)
 | `REPLAN` | Replan indítás |
 | `DIGEST_STARTED` / `DIGEST_FAILED` | Digest események |
 
-Az események a `.claude/orchestration.log` JSONL fájlba kerülnek, és a `wt-orchestrate events` paranccsal lekérdezhetők:
+Az események a `.claude/orchestration.log` JSONL fájlba kerülnek, és a `set-orchestrate events` paranccsal lekérdezhetők:
 
 ```bash
-wt-orchestrate events --type MERGE_SUCCESS --last 10 --json
+set-orchestrate events --type MERGE_SUCCESS --last 10 --json
 ```

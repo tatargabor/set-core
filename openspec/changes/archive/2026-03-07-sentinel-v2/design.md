@@ -1,12 +1,12 @@
 ## Context
 
-The orchestration system (`bin/wt-orchestrate`, 5,220 lines) has been production-tested across multiple consumer project runs. Each run produced detailed diagnostics revealing patterns of failure: orchestrator stalls, merge conflicts from parallel changes touching shared files, no audit trail for post-mortem, excessive context in worktrees, and agents missing cross-cutting concerns. The system works but is a monolith — hard to test, hard to debug, hard to extend.
+The orchestration system (`bin/set-orchestrate`, 5,220 lines) has been production-tested across multiple consumer project runs. Each run produced detailed diagnostics revealing patterns of failure: orchestrator stalls, merge conflicts from parallel changes touching shared files, no audit trail for post-mortem, excessive context in worktrees, and agents missing cross-cutting concerns. The system works but is a monolith — hard to test, hard to debug, hard to extend.
 
 The current architecture:
 
 ```
-bin/wt-orchestrate    5,220 lines    ALL orchestration logic
-bin/wt-sentinel         146 lines    Crash-restart wrapper
+bin/set-orchestrate    5,220 lines    ALL orchestration logic
+bin/set-sentinel         146 lines    Crash-restart wrapper
 bin/wt-loop           2,248 lines    Ralph agent loop
 bin/wt-merge            538 lines    LLM merge resolution
 bin/wt-new              459 lines    Worktree creation
@@ -41,7 +41,7 @@ bin/wt-common.sh        990 lines    Shared utilities
 Rationale:
 - Shared state (`STATE_FILENAME`, `PLAN_FILENAME`, `LOG_FILE`, directive variables) stays in global shell scope — no IPC, no serialization, no environment variable passing
 - Single process = single PID for sentinel to monitor, single signal handler, no orphan child processes
-- Backwards compatible: `bin/wt-orchestrate` remains the entry point, CLI unchanged
+- Backwards compatible: `bin/set-orchestrate` remains the entry point, CLI unchanged
 - Each module is a self-contained file that can be read and reasoned about independently
 - `cmd_self_test()` can test each module's functions after sourcing
 
@@ -170,7 +170,7 @@ Merge, conflict resolution, cleanup:
 | `_try_merge()` | 4771-4825 |
 | `archive_change()` | 4213-4233 |
 
-### `bin/wt-orchestrate` (thin wrapper, ~300 lines)
+### `bin/set-orchestrate` (thin wrapper, ~300 lines)
 
 Retains only: constants (lines 10-60), logging functions (64-80), `model_id()`, `rotate_log()`, `cmd_self_test()`, `usage()`, `main()`.
 
@@ -329,7 +329,7 @@ A simple checklist rule with `paths:` frontmatter targeting dashboard feature fi
 - **Verifier**: evaluates `verification_rules` against git diff → warnings/errors before merge
 - **Agent (per-turn)**: sees only the checklist rule (path-scoped, ~20 lines)
 
-### `wt-project init-knowledge`:
+### `set-project init-knowledge`:
 
 New subcommand that scans project for common patterns (dashboard pages, i18n files, sidebar) and generates a draft `project-knowledge.yaml`. One-time scaffolding, not ongoing sync.
 
@@ -404,7 +404,7 @@ Conservative: `off` by default. When `complexity`, only S-complexity non-feature
 
 1. Create `lib/orchestration/` directory
 2. Extract functions to modules per mapping table
-3. Add `source` statements to `bin/wt-orchestrate`
+3. Add `source` statements to `bin/set-orchestrate`
 4. Run `cmd_self_test` + existing integration tests
 5. Commit: "refactor: extract orchestration modules"
 
@@ -424,7 +424,7 @@ Conservative: `off` by default. When `complexity`, only S-complexity non-feature
 ### Phase 4: Planner + Project Knowledge
 
 1. Define `project-knowledge.yaml` schema and template
-2. Implement `wt-project init-knowledge` scaffolding
+2. Implement `set-project init-knowledge` scaffolding
 3. Enhance `check_scope_overlap()` with file-path detection
 4. Enhance `auto_replan_cycle()` with completed change injection
 5. Create cross-cutting checklist rule template
@@ -441,7 +441,7 @@ Conservative: `off` by default. When `complexity`, only S-complexity non-feature
 
 1. Run `cmd_self_test` with all modules
 2. Run existing integration tests
-3. Deploy to consumer project via `wt-project init`
+3. Deploy to consumer project via `set-project init`
 4. Run a real orchestration to validate
 
 ## Risk Analysis

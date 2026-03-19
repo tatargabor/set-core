@@ -14,7 +14,7 @@ from ..config import Config
 
 __all__ = ["ChatWorker"]
 
-logger = logging.getLogger("wt-control.workers.chat")
+logger = logging.getLogger("set-control.workers.chat")
 
 
 class ChatWorker(QThread):
@@ -61,14 +61,14 @@ class ChatWorker(QThread):
                     self.msleep(5000)
                     continue
 
-                control_worktree = Path(project_path) / ".wt-control"
+                control_worktree = Path(project_path) / ".set-control"
                 if not control_worktree.exists():
                     self.msleep(5000)
                     continue
 
                 # Pull latest
                 subprocess.run(
-                    ["git", "-C", str(control_worktree), "pull", "--rebase", "origin", "wt-control"],
+                    ["git", "-C", str(control_worktree), "pull", "--rebase", "origin", "set-control"],
                     capture_output=True, text=True, timeout=15
                 )
 
@@ -76,7 +76,7 @@ class ChatWorker(QThread):
                 messages_file = control_worktree / "chat" / "messages.jsonl"
                 if messages_file.exists():
                     result = subprocess.run(
-                        [str(SCRIPT_DIR / "wt-control-chat"), "-p", self.current_project, "--json", "read"],
+                        [str(SCRIPT_DIR / "set-control-chat"), "-p", self.current_project, "--json", "read"],
                         capture_output=True, text=True, timeout=10
                     )
                     if result.returncode == 0:

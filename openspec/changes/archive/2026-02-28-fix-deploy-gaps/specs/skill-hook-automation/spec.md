@@ -4,7 +4,7 @@ Add auto-commit instruction to CLAUDE.md template and apply skill.
 
 ### Changes
 
-- `deploy_wt_tools()` in `bin/wt-project` MUST add an "Auto-Commit After Apply" section to CLAUDE.md with:
+- `deploy_set_tools()` in `bin/set-project` MUST add an "Auto-Commit After Apply" section to CLAUDE.md with:
   - Marker: `## Auto-Commit After Apply`
   - Instruction: after skill-driven apply finishes or pauses, commit all changes
   - Idempotent: skip if marker already present (same pattern as memory marker)

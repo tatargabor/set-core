@@ -1,4 +1,4 @@
-"""Tests for wt_hooks.memory_ops — recall, proactive, rules, formatting."""
+"""Tests for set_hooks.memory_ops — recall, proactive, rules, formatting."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_hooks.memory_ops import (
+from set_hooks.memory_ops import (
     recall_memories,
     proactive_context,
     load_matching_rules,
@@ -23,7 +23,7 @@ from wt_hooks.memory_ops import (
     MIN_RELEVANCE,
     MIN_CONTENT_LEN,
 )
-from wt_hooks.util import read_cache, write_cache
+from set_hooks.util import read_cache, write_cache
 
 
 @pytest.fixture

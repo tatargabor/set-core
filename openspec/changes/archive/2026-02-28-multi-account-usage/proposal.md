@@ -21,6 +21,6 @@ The Control Center currently supports a single Claude session key, showing one p
 ## Impact
 
 - **Modified files**: `gui/workers/usage.py` (parallel multi-account fetch), `gui/control_center/main_window.py` (dynamic usage rows), `gui/control_center/mixins/handlers.py` (add/remove account dialogs), `gui/constants.py` (session file format)
-- **Data format**: `~/.config/wt-tools/claude-session.json` evolves with backward compatibility
+- **Data format**: `~/.config/set-core/claude-session.json` evolves with backward compatibility
 - **No new dependencies**: Reuses existing `DualStripeBar`, `curl-cffi`/curl/urllib fallback chain
 - **No breaking changes**: Old single-key config auto-migrates on read

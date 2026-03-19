@@ -59,7 +59,7 @@ class TestPlatformInterface:
         config_dir = plat.get_config_dir()
 
         assert isinstance(config_dir, Path)
-        assert "wt-tools" in str(config_dir)
+        assert "set-core" in str(config_dir)
 
     def test_get_cache_dir(self):
         from gui.platform import get_platform
@@ -68,7 +68,7 @@ class TestPlatformInterface:
         cache_dir = plat.get_cache_dir()
 
         assert isinstance(cache_dir, Path)
-        assert "wt-tools" in str(cache_dir) or "cache" in str(cache_dir).lower()
+        assert "set-core" in str(cache_dir) or "cache" in str(cache_dir).lower()
 
 
 class TestLinuxPlatform:

@@ -14,7 +14,7 @@ The Control Center GUI currently uses hardcoded values (opacity, colors, timings
   - **Notifications**: enable, sounds
 
 ### Config File
-- Location: `~/.config/wt-tools/gui-config.json`
+- Location: `~/.config/set-core/gui-config.json`
 - Read at startup, saved on change
 - Defaults if no config exists
 
@@ -34,7 +34,7 @@ The Control Center GUI currently uses hardcoded values (opacity, colors, timings
 |---------|---------|---------|
 | `jira.base_url` | - | null |
 | `jira.default_project` | - | null |
-| `jira.credentials_path` | hardcoded | ~/.config/wt-tools/jira.json |
+| `jira.credentials_path` | hardcoded | ~/.config/set-core/jira.json |
 
 #### Git group
 | Setting | Current | Default |

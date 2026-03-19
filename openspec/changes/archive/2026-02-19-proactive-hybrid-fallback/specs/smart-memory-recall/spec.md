@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Topic-based recall from prompt text
-The recall hook SHALL extract topic keywords from the user's prompt text and use them as the recall query. If an OpenSpec change name is detected (opsx:ff, opsx:apply, opsx:explore, opsx:new, opsx:continue, or openspec- prefixed skills), it SHALL be included in the query. The hook SHALL NOT use change-boundary detection or debounce — it SHALL recall on every prompt. The underlying `wt-memory proactive` command now includes hybrid fallback, so short and non-English queries SHALL return relevant results when they exist in memory.
+The recall hook SHALL extract topic keywords from the user's prompt text and use them as the recall query. If an OpenSpec change name is detected (opsx:ff, opsx:apply, opsx:explore, opsx:new, opsx:continue, or openspec- prefixed skills), it SHALL be included in the query. The hook SHALL NOT use change-boundary detection or debounce — it SHALL recall on every prompt. The underlying `set-memory proactive` command now includes hybrid fallback, so short and non-English queries SHALL return relevant results when they exist in memory.
 
 #### Scenario: Prompt contains opsx:ff with change name
 - **WHEN** user submits a prompt containing `opsx:ff add-dark-mode`

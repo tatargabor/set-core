@@ -22,7 +22,7 @@
 
 ## 3. File-Type Strategy Config
 
-- [x] 3.1 Add `load_merge_strategies()` function: parse `merge_strategies` from `project-knowledge.yaml` via `python3 -c "import yaml; ..."`, falling back to `.wt-tools/.merge-strategies.json` (profile defaults, JSON format) [REQ: merge-strategy-configuration]
+- [x] 3.1 Add `load_merge_strategies()` function: parse `merge_strategies` from `project-knowledge.yaml` via `python3 -c "import yaml; ..."`, falling back to `.set-core/.merge-strategies.json` (profile defaults, JSON format) [REQ: merge-strategy-configuration]
 - [x] 3.2 Add `match_strategy()` function: given a file path, find the first matching strategy by glob pattern [REQ: merge-strategy-configuration]
 - [x] 3.3 Define strategy config variables: arrays for patterns, strategy types, entity_patterns, validate_commands, llm_hints indexed by strategy number [REQ: merge-strategy-configuration]
 
@@ -46,14 +46,14 @@
 ## 7. Profile Integration
 
 - [x] 7.1 Add `merge_strategies()` method to profile interface (returns list of strategy dicts) [REQ: profile-system-supplies-default-merge-strategies]
-- [ ] 7.2 Implement default web profile strategies: Prisma schema (additive + prisma validate), middleware (additive), i18n JSON (already handled by existing pipeline) [REQ: profile-system-supplies-default-merge-strategies] — DEFERRED: lives in wt-project-web package
-- [ ] 7.3 Write profile strategies to `.wt-tools/.merge-strategies.json` (JSON format) during `wt-project init` [REQ: profile-system-supplies-default-merge-strategies] — DEFERRED: lives in wt-project-web package
+- [ ] 7.2 Implement default web profile strategies: Prisma schema (additive + prisma validate), middleware (additive), i18n JSON (already handled by existing pipeline) [REQ: profile-system-supplies-default-merge-strategies] — DEFERRED: lives in set-project-web package
+- [ ] 7.3 Write profile strategies to `.set-core/.merge-strategies.json` (JSON format) during `set-project init` [REQ: profile-system-supplies-default-merge-strategies] — DEFERRED: lives in set-project-web package
 - [x] 7.4 `load_merge_strategies()` reads profile JSON file as fallback when project-knowledge.yaml has no merge_strategies [REQ: merge-strategy-configuration]
 
 ## 8. Agent Rule — DB Type Safety
 
 - [x] 8.1 Create `.claude/rules/web/db-type-safety.md` rule file prohibiting `any` type on DB client parameters [REQ: agent-rule-prohibiting-db-type-hacks]
-- [x] 8.2 Add to `templates/` for deployment via `wt-project init` [REQ: agent-rule-prohibiting-db-type-hacks]
+- [x] 8.2 Add to `templates/` for deployment via `set-project init` [REQ: agent-rule-prohibiting-db-type-hacks]
 - [x] 8.3 Update `project-knowledge.yaml` template with example `merge_strategies` section [REQ: merge-strategy-configuration]
 
 ## 9. Test Validation
@@ -62,7 +62,7 @@
 - [x] 9.2 Test additive strategy: create a fixture with entity_pattern, verify entity count drop blocks merge [REQ: additive-merge-strategy-with-entity-counting]
 - [ ] 9.3 Test validate_command: create a fixture with a failing validation command, verify merge is blocked [REQ: post-merge-validation-command] — covered by unit test function, needs E2E with real wt-merge
 - [x] 9.4 Test LLM hint: verify enriched prompt contains strategy hints (inspect prompt output) [REQ: llm-prompt-enrichment-from-strategy-config]
-- [ ] 9.5 Test profile fallback: verify merge strategies from profile JSON file are used when project-knowledge.yaml has none [REQ: profile-system-supplies-default-merge-strategies] — DEFERRED: needs wt-project-web
+- [ ] 9.5 Test profile fallback: verify merge strategies from profile JSON file are used when project-knowledge.yaml has none [REQ: profile-system-supplies-default-merge-strategies] — DEFERRED: needs set-project-web
 - [x] 9.6 Test conservation check with clean merge (both sides preserved) — verify merge proceeds [REQ: diff-based-conservation-check-after-llm-merge]
 - [ ] 9.7 Test edge case: binary file in conflict — verify conservation check skips it [REQ: conservation-check-computes-additions-from-merge-base] — needs binary file fixture
 - [ ] 9.8 Test edge case: file new on both sides — verify conservation check treats base as empty [REQ: conservation-check-computes-additions-from-merge-base] — needs new-on-both fixture
@@ -76,9 +76,9 @@
 - [x] AC-4: WHEN file matches additive strategy and entity count drops THEN merge is blocked [REQ: additive-merge-strategy-with-entity-counting, scenario: entity-count-drops-after-merge]
 - [ ] AC-5: WHEN file matches strategy with validate_command and command fails THEN merge is blocked [REQ: post-merge-validation-command, scenario: validation-command-fails] — function tested, E2E deferred
 - [x] AC-6: WHEN file matches strategy with llm_hint THEN LLM prompt includes the hint [REQ: llm-prompt-enrichment-from-strategy-config, scenario: llm-receives-file-type-hint]
-- [ ] AC-7: WHEN project has no merge_strategies but profile provides defaults THEN profile defaults are used [REQ: profile-system-supplies-default-merge-strategies, scenario: profile-provides-defaults] — DEFERRED: needs wt-project-web
-- [x] AC-8: WHEN wt-project init runs THEN db-type-safety.md rule is deployed [REQ: agent-rule-prohibiting-db-type-hacks, scenario: rule-file-exists-and-is-deployed]
+- [ ] AC-7: WHEN project has no merge_strategies but profile provides defaults THEN profile defaults are used [REQ: profile-system-supplies-default-merge-strategies, scenario: profile-provides-defaults] — DEFERRED: needs set-project-web
+- [x] AC-8: WHEN set-project init runs THEN db-type-safety.md rule is deployed [REQ: agent-rule-prohibiting-db-type-hacks, scenario: rule-file-exists-and-is-deployed]
 - [ ] AC-9: WHEN --no-conservation-check flag is used THEN all checks are skipped [REQ: diff-based-conservation-check-after-llm-merge, scenario: bypass-via-flag] — flag implemented, E2E deferred
 - [ ] AC-10: WHEN file is binary THEN conservation check skips it [REQ: conservation-check-computes-additions-from-merge-base, scenario: binary-files-are-skipped] — logic implemented, fixture deferred
 - [ ] AC-11: WHEN file is new on both sides THEN base is treated as empty and both sides' content is verified [REQ: conservation-check-computes-additions-from-merge-base, scenario: file-is-new-on-both-sides] — logic implemented, fixture deferred
-- [ ] AC-12: WHEN project config and profile both define strategies for same pattern THEN project config wins [REQ: profile-system-supplies-default-merge-strategies, scenario: project-config-overrides-profile-defaults] — DEFERRED: needs wt-project-web
+- [ ] AC-12: WHEN project config and profile both define strategies for same pattern THEN project config wins [REQ: profile-system-supplies-default-merge-strategies, scenario: project-config-overrides-profile-defaults] — DEFERRED: needs set-project-web

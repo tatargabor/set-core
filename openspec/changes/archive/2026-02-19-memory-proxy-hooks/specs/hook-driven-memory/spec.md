@@ -1,18 +1,18 @@
 ## MODIFIED Requirements
 
 ### Requirement: Hooks replace inline memory instructions in skills and commands
-All `<!-- wt-memory hooks -->` blocks (including `hooks-midflow`, `hooks-remember`, `hooks-reflection`, `hooks-save` variants) SHALL be removed from OpenSpec skill SKILL.md files and opsx command .md files. The hook system now covers 7 events (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, SubagentStop, Stop) via a single unified handler — skills SHALL NOT contain manual `wt-memory recall` or `wt-memory remember` instructions.
+All `<!-- set-memory hooks -->` blocks (including `hooks-midflow`, `hooks-remember`, `hooks-reflection`, `hooks-save` variants) SHALL be removed from OpenSpec skill SKILL.md files and opsx command .md files. The hook system now covers 7 events (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, SubagentStop, Stop) via a single unified handler — skills SHALL NOT contain manual `set-memory recall` or `set-memory remember` instructions.
 
 #### Scenario: Skill file without memory hooks
 - **WHEN** any OpenSpec skill SKILL.md is loaded
-- **THEN** it SHALL NOT contain `wt-memory recall` or `wt-memory remember` instructions
+- **THEN** it SHALL NOT contain `set-memory recall` or `set-memory remember` instructions
 - **AND** memory injection is handled by the hook system across all tool events
 
 ### Requirement: CLAUDE.md uses explicit memory-use instructions
 The CLAUDE.md "Persistent Memory" section SHALL explicitly instruct the agent to read and use injected memory context from system-reminder tags. It SHALL NOT use the phrase "invisible to you".
 
 #### Scenario: CLAUDE.md memory section content
-- **WHEN** a project CLAUDE.md is deployed by `wt-project init`
+- **WHEN** a project CLAUDE.md is deployed by `set-project init`
 - **THEN** it SHALL contain "you MUST read and use this context"
 - **AND** SHALL contain "On EVERY prompt, check for injected memory context"
 - **AND** SHALL reference system-reminder labels: "PROJECT MEMORY", "PROJECT CONTEXT", "MEMORY: Context for this command", "MEMORY: Context for this file"

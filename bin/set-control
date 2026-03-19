@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# set-control - Launch the Worktree Control Center GUI
+
+# Source user profile for desktop entry launches (Alt+F2)
+# This ensures PATH includes conda, pyenv, etc.
+if [[ -z "${WT_CONTROL_PROFILE_SOURCED:-}" ]]; then
+    export WT_CONTROL_PROFILE_SOURCED=1
+    for profile in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc"; do
+        if [[ -f "$profile" ]]; then
+            source "$profile" 2>/dev/null || true
+            break
+        fi
+    done
+fi
+
+# Deactivate any active virtualenv (e.g. PlatformIO) to avoid
+# site-packages conflicts with pycookiecheat/keyring/jaraco
+unset VIRTUAL_ENV
+
+# Follow symlinks to find the real script location
+get_real_dir() {
+    local script="${BASH_SOURCE[0]}"
+    while [[ -L "$script" ]]; do
+        local link=$(readlink "$script")
+        if [[ "$link" == /* ]]; then
+            script="$link"
+        else
+            script="$(dirname "$script")/$link"
+        fi
+    done
+    cd "$(dirname "$script")" && pwd
+}
+
+SCRIPT_DIR="$(get_real_dir)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+GUI_DIR="$PROJECT_ROOT/gui"
+LOG_FILE="$HOME/.cache/set-control.log"
+
+# Source set-common.sh for shared find_python()
+# shellcheck source=set-common.sh
+source "$SCRIPT_DIR/set-common.sh"
+
+# Find a python3 that can import PySide6.
+# find_python() may return a venv python (e.g. PlatformIO) that lacks PySide6,
+# so we probe well-known paths as fallback.
+_find_gui_python() {
+    local candidate
+    candidate=$(find_python 2>/dev/null)
+    if [[ -n "$candidate" ]] && "$candidate" -c "import PySide6" 2>/dev/null; then
+        echo "$candidate"
+        return 0
+    fi
+    for p in "${_PYTHON_PROBE_PATHS[@]}"; do
+        if [[ -x "$p" ]] && "$p" -c "import PySide6" 2>/dev/null; then
+            echo "$p"
+            return 0
+        fi
+    done
+    # No python with PySide6 found — return best candidate for install attempt
+    if [[ -n "$candidate" ]]; then
+        echo "$candidate"
+    fi
+    return 1
+}
+
+PYTHON=$(_find_gui_python)
+if [[ -z "$PYTHON" ]]; then
+    echo "Error: python3 not found" | tee -a "$LOG_FILE" >&2
+    exit 1
+fi
+
+# Check if PySide6 is installed (may still need install if no probe had it)
+if ! "$PYTHON" -c "import PySide6" 2>/dev/null; then
+    echo "PySide6 not found. Installing dependencies..." | tee -a "$LOG_FILE"
+    "$PYTHON" -m pip install -r "$GUI_DIR/requirements.txt" 2>&1 | tee -a "$LOG_FILE"
+fi
+
+# Set PYTHONPATH to ensure gui package can be imported
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+
+# Set QT_PLUGIN_PATH to avoid conda/system Qt conflicts
+if [[ -z "${QT_PLUGIN_PATH:-}" ]]; then
+    pyside_qt_plugins=$("$PYTHON" -c "import PySide6; print(PySide6.__path__[0] + '/Qt/plugins')" 2>/dev/null)
+    if [[ -d "$pyside_qt_plugins" ]]; then
+        export QT_PLUGIN_PATH="$pyside_qt_plugins"
+    fi
+fi
+
+# Create cache dir for log
+mkdir -p "$(dirname "$LOG_FILE")"
+
+# Launch GUI (log errors for debugging desktop entry issues)
+exec "$PYTHON" "$GUI_DIR/main.py" "$@" 2>> "$LOG_FILE"

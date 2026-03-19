@@ -1,9 +1,9 @@
 ## 1. Rules File & CLI
 
-- [x] 1.1 Add `rules` subcommand dispatcher to `bin/wt-memory` (routes `add`, `list`, `remove`)
-- [x] 1.2 Implement `wt-memory rules add --topics "t1,t2" "content"` — auto-generates kebab-case id, appends to `.claude/rules.yaml`
-- [x] 1.3 Implement `wt-memory rules list` — prints id, topics, content preview for all rules
-- [x] 1.4 Implement `wt-memory rules remove <id>` — removes matching entry, errors if not found
+- [x] 1.1 Add `rules` subcommand dispatcher to `bin/set-memory` (routes `add`, `list`, `remove`)
+- [x] 1.2 Implement `set-memory rules add --topics "t1,t2" "content"` — auto-generates kebab-case id, appends to `.claude/rules.yaml`
+- [x] 1.3 Implement `set-memory rules list` — prints id, topics, content preview for all rules
+- [x] 1.4 Implement `set-memory rules remove <id>` — removes matching entry, errors if not found
 - [x] 1.5 Resolve project root for rules file via `git rev-parse --show-toplevel`, fallback to `$CLAUDE_PROJECT_DIR`
 
 ## 2. Hook Injection
@@ -19,7 +19,7 @@
 
 ## 4. Tests
 
-- [x] 4.1 Add CLI tests for `wt-memory rules add` / `list` / `remove` (in `tests/` or `tests/cli/`)
+- [x] 4.1 Add CLI tests for `set-memory rules add` / `list` / `remove` (in `tests/` or `tests/cli/`)
 - [x] 4.2 Add hook injection test: mock `.claude/rules.yaml` with a topic, fire UserPromptSubmit hook, assert `MANDATORY RULES` section appears in output
 - [x] 4.3 Add hook graceful-degrade test: missing rules file → no rules section, hook exits 0
 - [x] 4.4 Add hook graceful-degrade test: malformed YAML → no rules section, hook exits 0

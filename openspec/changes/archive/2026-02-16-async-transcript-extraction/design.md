@@ -22,7 +22,7 @@
 **Rationale**: Simplest approach. The extraction function is self-contained — it reads the transcript, calls haiku, saves memories. No shared state with Path 2.
 
 ### Lockfile to prevent concurrent runs
-**Choice**: Use `.wt-tools/.transcript-extraction.lock` with PID check. If lock exists and PID is alive, skip. Otherwise, take lock.
+**Choice**: Use `.set-core/.transcript-extraction.lock` with PID check. If lock exists and PID is alive, skip. Otherwise, take lock.
 
 **Rationale**: wt-loop iterations can be fast — if extraction from iter N is still running when iter N+1's Stop hook fires, we don't want two haiku calls competing. A lockfile with PID validation handles stale locks from crashed processes.
 
@@ -35,4 +35,4 @@
 
 - **Memory writes may lag by a few seconds**: The next iteration starts before memories are saved. For recall hooks that fire on the NEXT user prompt, this is fine — the extraction should complete well before the next Stop event.
 - **Lockfile stale detection**: If bash crashes without cleanup, the lockfile persists. PID check mitigates this — if the PID is dead, the lock is stale and gets overwritten.
-- **Log visibility**: Background process errors are harder to debug. We'll redirect stderr to `.wt-tools/transcript-extraction.log`.
+- **Log visibility**: Background process errors are harder to debug. We'll redirect stderr to `.set-core/transcript-extraction.log`.

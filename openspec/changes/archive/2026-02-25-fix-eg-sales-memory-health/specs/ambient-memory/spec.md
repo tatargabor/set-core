@@ -12,7 +12,7 @@ The section SHALL also instruct the agent that memory context applies to EVERY t
 
 #### Scenario: Agent recognizes learning during ad-hoc work
 - **WHEN** user says "egyébként a wt-status timeout-ol ha nincs git repo" during a regular coding session (no skill active)
-- **THEN** the agent runs `wt-memory health`, and if healthy, saves an Observation memory about the wt-status timeout behavior
+- **THEN** the agent runs `set-memory health`, and if healthy, saves an Observation memory about the wt-status timeout behavior
 
 #### Scenario: Agent recognizes decision during debugging
 - **WHEN** user says "from now on always run tests before committing" during debugging

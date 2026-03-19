@@ -1,4 +1,4 @@
-"""Tests for wt_orch.planner — Planning, validation, scope overlap, test infra detection."""
+"""Tests for set_orch.planner — Planning, validation, scope overlap, test infra detection."""
 
 import json
 import os
@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.planner import (
+from set_orch.planner import (
     ScopeOverlap,
     TestInfra,
     TriageStatus,
@@ -257,7 +257,7 @@ class TestValidatePlan:
 class TestGenerateCoverageReport:
     def test_digest_mode_static(self, tmp_dir):
         """Digest mode without state_file renders COVERED/UNCOVERED."""
-        from wt_orch.planner import generate_coverage_report
+        from set_orch.planner import generate_coverage_report
 
         digest_dir = os.path.join(tmp_dir, "digest")
         os.makedirs(digest_dir)
@@ -278,7 +278,7 @@ class TestGenerateCoverageReport:
 
     def test_digest_mode_state_aware(self, tmp_dir):
         """Digest mode with state_file renders MERGED/PENDING."""
-        from wt_orch.planner import generate_coverage_report
+        from set_orch.planner import generate_coverage_report
 
         digest_dir = os.path.join(tmp_dir, "digest")
         os.makedirs(digest_dir)
@@ -312,7 +312,7 @@ class TestGenerateCoverageReport:
 
     def test_source_items_mode(self, tmp_dir):
         """Single-file mode renders source_items with EXCLUDED for null-change."""
-        from wt_orch.planner import generate_coverage_report
+        from set_orch.planner import generate_coverage_report
 
         plan = {
             "changes": [{"name": "my-change"}],

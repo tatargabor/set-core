@@ -4,7 +4,7 @@ JIRA Key: TBD
 Story: TBD
 
 ## Why
-Document wt-tools and OpenSpec usage for the team. The documentation should be published to Confluence, and importantly, it must be **automatically updatable** as tools change. Generating documentation from spec files ensures documentation stays in sync with actual functionality.
+Document set-core and OpenSpec usage for the team. The documentation should be published to Confluence, and importantly, it must be **automatically updatable** as tools change. Generating documentation from spec files ensures documentation stays in sync with actual functionality.
 
 ## What Changes
 - New `docs/` directory for generated Markdown documentation

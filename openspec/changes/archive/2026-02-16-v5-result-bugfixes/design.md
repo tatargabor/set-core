@@ -31,18 +31,18 @@ Benchmark v5 showed memory noise regressed from 15% (v4) to 37% (v5). Root cause
 
 ### D1: Disable auto-ingest globally
 
-**Choice**: Pass `auto_ingest=False` in `wt-memory proactive` command.
+**Choice**: Pass `auto_ingest=False` in `set-memory proactive` command.
 
 **Alternatives considered:**
 - Tag the auto-ingested entries and filter them at recall → adds complexity, noise still in store
-- Post-cleanup with `wt-memory cleanup` → reactive not preventive, adds latency
+- Post-cleanup with `set-memory cleanup` → reactive not preventive, adds latency
 - Make auto-ingest configurable with `--no-ingest` flag → over-engineering, we always want it off
 
 **Rationale**: Simplest fix. The auto-ingest feature is designed for chatbot-style apps where conversation context is valuable. In our hook-driven pipeline, we control what gets saved explicitly — auto-ingest just creates noise.
 
 ### D2: Inject change: tag at the bash level in save hook
 
-**Choice**: In `wt-hook-memory-save` transcript extraction, prepend `change:$change_name` to the tags string before passing to `wt-memory remember`.
+**Choice**: In `wt-hook-memory-save` transcript extraction, prepend `change:$change_name` to the tags string before passing to `set-memory remember`.
 
 **Rationale**: The LLM sometimes includes the change name in its extracted tags, sometimes not. Adding it at the bash level guarantees it. Duplicate tags (if LLM also includes it) are harmless.
 

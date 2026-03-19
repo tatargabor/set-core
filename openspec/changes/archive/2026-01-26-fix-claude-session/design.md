@@ -71,7 +71,7 @@
 **How it works:**
 1. User enables telemetry: `CLAUDE_CODE_ENABLE_TELEMETRY=1`
 2. Claude Code exports metrics via OTEL protocol
-3. wt-tools runs local OTEL collector or reads Prometheus endpoint
+3. set-core runs local OTEL collector or reads Prometheus endpoint
 
 **Metrics available:**
 - `claude_code.token.usage` - token counts by type
@@ -136,7 +136,7 @@ For token estimation, use configurable defaults with option to customize.
 
 | Path | Linux | macOS | Windows |
 |------|-------|-------|---------|
-| Config | `~/.config/wt-tools/` | `~/Library/Application Support/wt-tools/` | `%APPDATA%\wt-tools\` |
+| Config | `~/.config/set-core/` | `~/Library/Application Support/set-core/` | `%APPDATA%\set-core\` |
 | Claude data | `~/.claude/` | `~/.claude/` | `%USERPROFILE%\.claude\` |
 
 Claude Code uses `~/.claude/` on all platforms (including Windows with forward slashes).

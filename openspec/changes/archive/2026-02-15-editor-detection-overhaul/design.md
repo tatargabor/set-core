@@ -1,6 +1,6 @@
 ## Context
 
-The current system detects editor windows by searching X11 window classes (xdotool --class) and matching window titles against worktree basenames. This works for known IDE classes but breaks when: (a) Zed title contains a filename ("main.py — wt-tools" vs "^wt-tools$"), (b) terminals are used instead of IDEs, (c) the editor isn't in the SUPPORTED_EDITORS list. The `wt-work` command has ~160 lines of keystroke injection logic that's fragile and often fails. The `--dangerously-skip-permissions` flag is hardcoded everywhere.
+The current system detects editor windows by searching X11 window classes (xdotool --class) and matching window titles against worktree basenames. This works for known IDE classes but breaks when: (a) Zed title contains a filename ("main.py — set-core" vs "^set-core$"), (b) terminals are used instead of IDEs, (c) the editor isn't in the SUPPORTED_EDITORS list. The `wt-work` command has ~160 lines of keystroke injection logic that's fragile and often fails. The `--dangerously-skip-permissions` flag is hardcoded everywhere.
 
 ## Goals / Non-Goals
 

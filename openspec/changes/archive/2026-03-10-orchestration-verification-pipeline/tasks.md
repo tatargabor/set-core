@@ -61,7 +61,7 @@
 
 ## 8. Report Generation Hooks
 
-- [x] 8.1 Source `reporter.sh` in `bin/wt-orchestrate` alongside other lib modules (after sourcing digest.sh since reporter reads digest data)
+- [x] 8.1 Source `reporter.sh` in `bin/set-orchestrate` alongside other lib modules (after sourcing digest.sh since reporter reads digest data)
 - [x] 8.2 Add `generate_report 2>/dev/null || true` call at the end of `cmd_digest` in `lib/orchestration/digest.sh` (after write_digest_output succeeds)
 - [x] 8.3 Add `generate_report 2>/dev/null || true` call after `populate_coverage()` in `cmd_plan` in `lib/orchestration/planner.sh`
 - [x] 8.4 Add `generate_report 2>/dev/null || true` call in `monitor_loop()` after `dispatch_ready_changes` and before checkpoint check, wrapped in error guard

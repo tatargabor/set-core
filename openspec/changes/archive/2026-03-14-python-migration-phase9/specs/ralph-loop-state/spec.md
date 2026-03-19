@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/loop/state.sh` (255 LOC) to `lib/wt_orch/loop_state.py`. Loop state file management, token tracking, and date parsing utilities.
+Migrate `lib/loop/state.sh` (255 LOC) to `lib/set_orch/loop_state.py`. Loop state file management, token tracking, and date parsing utilities.
 
 ## Requirements
 

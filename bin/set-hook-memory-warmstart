@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# set-hook-memory-warmstart - Backward-compatible wrapper
+# Delegates to unified handler: set-hook-memory SessionStart
+exec set-hook-memory SessionStart

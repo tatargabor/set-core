@@ -97,7 +97,7 @@ Both layers run. A file can pass entity counting but fail conservation (e.g., a 
 
 `wt-merge` reads `project-knowledge.yaml` directly (it's in the project root). No need to pass config through the orchestrator — the merge script is already running in the project directory.
 
-**Profile defaults:** The profile writes a `.wt-tools/.merge-strategies.json` file during `wt-project init` (JSON format — parseable by both bash/jq and Python). `wt-merge` reads profile defaults first, project-knowledge.yaml overrides.
+**Profile defaults:** The profile writes a `.set-core/.merge-strategies.json` file during `set-project init` (JSON format — parseable by both bash/jq and Python). `wt-merge` reads profile defaults first, project-knowledge.yaml overrides.
 
 ### D7: Agent rule is a static file, not a runtime check
 

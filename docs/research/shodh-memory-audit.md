@@ -1,7 +1,7 @@
 # Shodh-Memory Integration Audit
 
 **Date**: 2026-02-16
-**Scope**: wt-tools ↔ shodh-memory v0.1.75 integration audit
+**Scope**: set-core ↔ shodh-memory v0.1.75 integration audit
 **Method**: GitHub docs + local Python API + CLI introspection + memory data analysis
 
 ---
@@ -77,7 +77,7 @@ A `--mode causal` és `--mode associative` paramétereink az explore és apply s
 
 ### Lehetséges ok
 
-A `wt-memory remember` CLI plaintext-ként küldi a tartalmat a Python API-nak, ami talán nem futtatja az NER-t automatikusan. A REST API-n és az MCP szerveren keresztül a `remember` endpoint más útvonalat járhat.
+A `set-memory remember` CLI plaintext-ként küldi a tartalmat a Python API-nak, ami talán nem futtatja az NER-t automatikusan. A REST API-n és az MCP szerveren keresztül a `remember` endpoint más útvonalat járhat.
 
 ### Ajánlott vizsgálat
 
@@ -167,7 +167,7 @@ A `proactive_context` megoldja az "agent elfelejti mit keressen" problémát, me
 |------|----------|----------|
 | Skill indítás | `recall "<change-name>"` | `proactive_context "<change-name> + proposal tartalom>"` |
 | CLAUDE.md ambient | `recall "<topic>"` | `proactive_context "<current task context>"` |
-| wt-hook-memory-recall | shell recall | proactive_context Python API |
+| set-hook-memory-recall | shell recall | proactive_context Python API |
 | Session bootstrap | `context_summary` | `proactive_context` + `context_summary` kombinálva |
 
 ---
@@ -267,11 +267,11 @@ nincs source:   3 (5%)
 
 ### Type eloszlás problémája
 
-A `wt-memory list` API-n a `memory_type` mező `"unknown"` értéket ad vissza, míg a `list_memories()` Python API helyesen `experience_type`-ot mutat. Ez egy bug a CLI wrapper és a Python API közötti mismatch-ben.
+A `set-memory list` API-n a `memory_type` mező `"unknown"` értéket ad vissza, míg a `list_memories()` Python API helyesen `experience_type`-ot mutat. Ez egy bug a CLI wrapper és a Python API közötti mismatch-ben.
 
 ### Ajánlások
 
-1. **Rendszeres cleanup**: `wt-memory forget --pattern "^(memory-|bulk-archive|wire-memory)" --dry-run` tesztelése
+1. **Rendszeres cleanup**: `set-memory forget --pattern "^(memory-|bulk-archive|wire-memory)" --dry-run` tesztelése
 2. **forget_by_importance**: Havi `forget_by_importance(threshold=0.2)` futtatása
 3. **Deduplikáció**: 2 pár közel-duplikát van (bulk-archive-memory-hooks)
 
@@ -370,7 +370,7 @@ A shodh-memory MCP szerverként 37 tool-t kínál, beleértve egy komplett GTD (
 
 ### Relevanciánk
 
-Az MCP szerver mód és a GTD rendszer **nem releváns** a jelenlegi CLI-alapú integrációnkhoz. A `wt-memory` CLI wrapper a Python library-t használja közvetlenül, nem MCP-n keresztül. Ez helyes megközelítés — az MCP szerver mód overhead-et adna a lokális használathoz.
+Az MCP szerver mód és a GTD rendszer **nem releváns** a jelenlegi CLI-alapú integrációnkhoz. A `set-memory` CLI wrapper a Python library-t használja közvetlenül, nem MCP-n keresztül. Ez helyes megközelítés — az MCP szerver mód overhead-et adna a lokális használathoz.
 
 A GTD rendszer duplikálná az OpenSpec task management-et (`tasks.md`), tehát nem ajánlott bevezetni.
 
@@ -389,19 +389,19 @@ A GTD rendszer duplikálná az OpenSpec task management-et (`tasks.md`), tehát 
 
 | # | Lehetőség | Hatás | Művelet |
 |---|-----------|-------|---------|
-| 3 | proactive_context | Jobb recall, kevesebb félretett memória | wt-memory CLI-be + skill hooks-ba integrálni |
-| 4 | record_decision | Strukturált döntés-keresés | wt-memory CLI `decide` parancs + design skill hook |
-| 5 | reinforce API | Hebbian tanulás beindítása | wt-memory CLI `reinforce` parancs + apply skill hook |
-| 6 | recall_by_tags | 50x gyorsabb strukturált keresés | wt-memory CLI `recall --tags-only` flag |
+| 3 | proactive_context | Jobb recall, kevesebb félretett memória | set-memory CLI-be + skill hooks-ba integrálni |
+| 4 | record_decision | Strukturált döntés-keresés | set-memory CLI `decide` parancs + design skill hook |
+| 5 | reinforce API | Hebbian tanulás beindítása | set-memory CLI `reinforce` parancs + apply skill hook |
+| 6 | recall_by_tags | 50x gyorsabb strukturált keresés | set-memory CLI `recall --tags-only` flag |
 
 ### P2 — Minőségjavítás
 
 | # | Lehetőség | Hatás | Művelet |
 |---|-----------|-------|---------|
-| 7 | forget_by_importance | Zaj csökkentése | Periodikus cleanup script vagy wt-memory subcommand |
-| 8 | metadata gazdagítás | Traceability, szűrés | wt-memory remember --metadata flag |
-| 9 | is_failure flag | Hiba-minta felismerés | wt-memory remember --failure flag |
-| 10 | recall_by_date | Temporális keresés | wt-memory recall --date-range flag |
+| 7 | forget_by_importance | Zaj csökkentése | Periodikus cleanup script vagy set-memory subcommand |
+| 8 | metadata gazdagítás | Traceability, szűrés | set-memory remember --metadata flag |
+| 9 | is_failure flag | Hiba-minta felismerés | set-memory remember --failure flag |
+| 10 | recall_by_date | Temporális keresés | set-memory recall --date-range flag |
 
 ### P3 — Karbantartás
 
@@ -415,24 +415,24 @@ A GTD rendszer duplikálná az OpenSpec task management-et (`tasks.md`), tehát 
 
 ## Függelék: Teljes API felszín
 
-### Használt API metódusok (wt-memory CLI-n keresztül)
+### Használt API metódusok (set-memory CLI-n keresztül)
 
 | API | CLI parancs | Hol használjuk |
 |-----|------------|----------------|
-| `remember()` | `wt-memory remember` | CLAUDE.md, SKILL.md hooks, Stop hook, transcript extraction |
-| `recall()` | `wt-memory recall` | CLAUDE.md, SKILL.md hooks, explore, apply, ff skills |
-| `context_summary()` | `wt-memory context` | Session bootstrap |
-| `brain_state()` | `wt-memory brain` | GUI, debug |
-| `list_memories()` | `wt-memory list` | GUI browse dialog, analysis |
-| `get_memory()` | `wt-memory get` | GUI card detail |
-| `forget()` | `wt-memory forget` | GUI, manual cleanup |
-| `forget_by_age()` | `wt-memory forget --older-than` | Manual cleanup |
-| `forget_by_tags()` | `wt-memory forget --tags` | Manual cleanup |
-| `forget_by_pattern()` | `wt-memory forget --pattern` | Manual cleanup |
-| `forget_all()` | `wt-memory forget --all` | Reset |
-| `index_health()` | `wt-memory health --index` | Monitoring |
-| `verify_index()` | `wt-memory health --index` | Monitoring |
-| `repair_index()` | `wt-memory repair` | Maintenance |
+| `remember()` | `set-memory remember` | CLAUDE.md, SKILL.md hooks, Stop hook, transcript extraction |
+| `recall()` | `set-memory recall` | CLAUDE.md, SKILL.md hooks, explore, apply, ff skills |
+| `context_summary()` | `set-memory context` | Session bootstrap |
+| `brain_state()` | `set-memory brain` | GUI, debug |
+| `list_memories()` | `set-memory list` | GUI browse dialog, analysis |
+| `get_memory()` | `set-memory get` | GUI card detail |
+| `forget()` | `set-memory forget` | GUI, manual cleanup |
+| `forget_by_age()` | `set-memory forget --older-than` | Manual cleanup |
+| `forget_by_tags()` | `set-memory forget --tags` | Manual cleanup |
+| `forget_by_pattern()` | `set-memory forget --pattern` | Manual cleanup |
+| `forget_all()` | `set-memory forget --all` | Reset |
+| `index_health()` | `set-memory health --index` | Monitoring |
+| `verify_index()` | `set-memory health --index` | Monitoring |
+| `repair_index()` | `set-memory repair` | Maintenance |
 
 ### Nem használt API metódusok
 
@@ -494,7 +494,7 @@ A GTD rendszer duplikálná az OpenSpec task management-et (`tasks.md`), tehát 
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 
-Current wt-tools usage path:
+Current set-core usage path:
   CLI → remember() → Long-Term (bypasses Working/Session)
   CLI → recall()   → Semantic only (no graph = no associative/causal)
 

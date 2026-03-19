@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# set-focus - Focus editor window for a worktree
+# Simplified: uses editor CLI which handles focus-or-open natively.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+usage() {
+    cat <<EOF
+Usage: set-focus [options] <change-id>
+
+Focus the editor window for a specific worktree.
+Uses the configured editor CLI to focus or open the worktree.
+
+Options:
+  -p, --project <name>    Specify project (default: current/default)
+  -e, --editor <name>     Use specific editor
+  -h, --help              Show this help
+
+Examples:
+  set-focus my-feature     # Focus editor window for my-feature worktree
+  set-focus -e vscode my-feature  # Focus VS Code window specifically
+EOF
+}
+
+main() {
+    local project=""
+    local change_id=""
+    local override_editor=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project="$2"
+                shift 2
+                ;;
+            -e|--editor)
+                override_editor="$2"
+                shift 2
+                ;;
+            -l|--list)
+                # Legacy flag - just show help
+                warn "--list is deprecated, use set-status instead"
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                change_id="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$change_id" ]]; then
+        error "change-id is required"
+        usage
+        exit 1
+    fi
+
+    # Resolve project and find worktree
+    local resolved_project
+    resolved_project=$(resolve_project "$project") || exit 1
+
+    local project_path
+    project_path=$(get_project_path "$resolved_project")
+
+    # Check if change_id is the main branch
+    local main_branch
+    main_branch=$(get_main_branch "$project_path")
+
+    local wt_path
+    if [[ "$change_id" == "$main_branch" ]]; then
+        wt_path="$project_path"
+    else
+        wt_path=$(find_existing_worktree "$project_path" "$change_id")
+    fi
+
+    if [[ -z "$wt_path" ]]; then
+        error "Worktree not found for '$change_id'"
+        exit 1
+    fi
+
+    # Determine editor
+    local editor_name
+    if [[ -n "$override_editor" ]]; then
+        editor_name="$override_editor"
+    else
+        editor_name=$(get_active_editor) || {
+            error "No editor found"
+            exit 1
+        }
+    fi
+
+    # Use editor CLI to focus-or-open
+    local open_cmd
+    open_cmd=$(get_editor_open_command "$editor_name" "$wt_path")
+    eval $open_cmd
+
+    success "Focused $editor_name for: $(basename "$wt_path")"
+}
+
+main "$@"

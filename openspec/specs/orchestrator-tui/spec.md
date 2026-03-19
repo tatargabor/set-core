@@ -1,14 +1,14 @@
 ### Requirement: TUI launch
-The orchestrator SHALL provide a terminal dashboard via `wt-orchestrate tui`.
+The orchestrator SHALL provide a terminal dashboard via `set-orchestrate tui`.
 
 #### Scenario: Launch with state file
-- **WHEN** `wt-orchestrate tui` is invoked
+- **WHEN** `set-orchestrate tui` is invoked
 - **AND** `orchestration-state.json` exists
 - **THEN** the orchestrator SHALL launch a Textual-based Python TUI app
 - **AND** pass the state file path and log file path as arguments
 
 #### Scenario: Launch without state file
-- **WHEN** `wt-orchestrate tui` is invoked
+- **WHEN** `set-orchestrate tui` is invoked
 - **AND** no `orchestration-state.json` exists
 - **THEN** the orchestrator SHALL exit with: "No orchestration state found."
 
@@ -98,15 +98,15 @@ The TUI SHALL support keyboard shortcuts for common actions.
 - **AND** a footer bar SHALL display the available keybindings
 ## Requirements
 ### Requirement: TUI launch
-The system SHALL provide a `wt-orchestrate tui` subcommand that launches a Textual terminal application. The TUI SHALL require an `orchestration-state.json` file in the current directory (or project root). If no state file exists, the TUI SHALL exit with an informative message suggesting `wt-orchestrate plan` or `wt-orchestrate start`.
+The system SHALL provide a `set-orchestrate tui` subcommand that launches a Textual terminal application. The TUI SHALL require an `orchestration-state.json` file in the current directory (or project root). If no state file exists, the TUI SHALL exit with an informative message suggesting `set-orchestrate plan` or `set-orchestrate start`.
 
 #### Scenario: Launch with active orchestration
-- **WHEN** `wt-orchestrate tui` is run in a directory with `orchestration-state.json`
+- **WHEN** `set-orchestrate tui` is run in a directory with `orchestration-state.json`
 - **THEN** a full-screen Textual app launches showing orchestration status
 
 #### Scenario: Launch without state file
-- **WHEN** `wt-orchestrate tui` is run without `orchestration-state.json`
-- **THEN** the command exits with message "No orchestration state found. Run 'wt-orchestrate plan' first."
+- **WHEN** `set-orchestrate tui` is run without `orchestration-state.json`
+- **THEN** the command exits with message "No orchestration state found. Run 'set-orchestrate plan' first."
 
 ---
 
@@ -127,7 +127,7 @@ The TUI SHALL display a header bar showing: orchestrator status (running/checkpo
 
 #### Scenario: Time limit exceeded header
 - **WHEN** orchestration status is "time_limit"
-- **THEN** header shows "⏱ TIME LIMIT" in yellow with note "Run 'wt-orchestrate start' to continue"
+- **THEN** header shows "⏱ TIME LIMIT" in yellow with note "Run 'set-orchestrate start' to continue"
 
 ---
 

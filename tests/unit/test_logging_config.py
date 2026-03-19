@@ -1,4 +1,4 @@
-"""Tests for wt_orch.logging_config."""
+"""Tests for set_orch.logging_config."""
 
 import logging
 import os
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from wt_orch.logging_config import ExtraFormatter, _resolve_log_path, setup_logging
+from set_orch.logging_config import ExtraFormatter, _resolve_log_path, setup_logging
 
 
 class TestExtraFormatter:
@@ -66,7 +66,7 @@ class TestSetupLogging:
     def test_creates_logger_with_handlers(self, tmp_path):
         log_file = tmp_path / "test.log"
         logger = setup_logging(log_path=log_file)
-        assert logger.name == "wt_orch"
+        assert logger.name == "set_orch"
         assert len(logger.handlers) == 2  # file + stderr
         # Cleanup
         for h in logger.handlers[:]:
@@ -96,7 +96,7 @@ class TestSetupLogging:
     def test_file_handler_writes(self, tmp_path):
         log_file = tmp_path / "test.log"
         logger = setup_logging(log_path=log_file, stderr_level=logging.CRITICAL)
-        child = logging.getLogger("wt_orch.test_module")
+        child = logging.getLogger("set_orch.test_module")
         child.info("test message", extra={"key": "value"})
         # Flush
         for h in logger.handlers:
@@ -112,13 +112,13 @@ class TestSetupLogging:
     def test_module_logger_naming(self, tmp_path):
         log_file = tmp_path / "test.log"
         logger = setup_logging(log_path=log_file, stderr_level=logging.CRITICAL)
-        child = logging.getLogger("wt_orch.config")
-        assert child.name == "wt_orch.config"
+        child = logging.getLogger("set_orch.config")
+        assert child.name == "set_orch.config"
         child.warning("config warning")
         for h in logger.handlers:
             h.flush()
         content = log_file.read_text()
-        assert "wt_orch.config" in content
+        assert "set_orch.config" in content
         # Cleanup
         for h in logger.handlers[:]:
             logger.removeHandler(h)

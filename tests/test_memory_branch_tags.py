@@ -1,4 +1,4 @@
-"""Tests for wt-memory branch tagging and migration.
+"""Tests for set-memory branch tagging and migration.
 
 Uses isolated git repos and SHODH_STORAGE per test to avoid
 polluting real memory. Requires shodh-memory (skips otherwise).
@@ -11,7 +11,7 @@ import tempfile
 
 import pytest
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "wt-memory")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "set-memory")
 
 try:
     import importlib
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(not HAS_SHODH, reason="shodh-memory not installe
 
 
 def run_wt(storage_path, cwd, *args, stdin=None, extra_env=None):
-    """Run wt-memory with isolated storage in a specific working directory."""
+    """Run set-memory with isolated storage in a specific working directory."""
     env = os.environ.copy()
     env["SHODH_STORAGE"] = storage_path
     if extra_env:
@@ -295,7 +295,7 @@ class TestMigration:
         assert not any(t.startswith("branch:") for t in memories[0].get("tags", []))
 
     def test_migrate_status(self, git_env):
-        """5.10: wt-memory migrate --status output"""
+        """5.10: set-memory migrate --status output"""
         repo, storage = git_env
 
         # Before any migration

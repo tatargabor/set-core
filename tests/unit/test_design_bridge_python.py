@@ -1,4 +1,4 @@
-"""Tests for Python design bridge functions in wt_orch.planner."""
+"""Tests for Python design bridge functions in set_orch.planner."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.planner import _fetch_design_context
+from set_orch.planner import _fetch_design_context
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ class TestFetchDesignContext:
 class TestDispatchDesignSnapshotDir:
     def test_design_snapshot_dir_passed_to_dispatch_change(self, tmp_path):
         """dispatch_ready_changes passes design_snapshot_dir to dispatch_change."""
-        from wt_orch.state import OrchestratorState, Change
+        from set_orch.state import OrchestratorState, Change
 
         state_file = str(tmp_path / "state.json")
         state = OrchestratorState(
@@ -85,8 +85,8 @@ class TestDispatchDesignSnapshotDir:
         with open(state_file, "w") as f:
             json.dump(state.to_dict(), f)
 
-        with patch("wt_orch.dispatcher.dispatch_change") as mock_dispatch:
-            from wt_orch.dispatcher import dispatch_ready_changes
+        with patch("set_orch.dispatcher.dispatch_change") as mock_dispatch:
+            from set_orch.dispatcher import dispatch_ready_changes
             dispatch_ready_changes(
                 state_file, max_parallel=5,
                 design_snapshot_dir="/my/project",
@@ -102,7 +102,7 @@ class TestDispatchDesignSnapshotDir:
 class TestVerifierDesignCompliance:
     def test_review_change_calls_bridge(self, tmp_path):
         """review_change calls build_design_review_section when design_snapshot_dir set."""
-        from wt_orch.verifier import review_change
+        from set_orch.verifier import review_change
 
         # Create a minimal worktree with a git repo
         wt_path = str(tmp_path / "wt")
@@ -110,9 +110,9 @@ class TestVerifierDesignCompliance:
 
         design_output = "## Design Compliance Check\n\nColors:\n- primary: #3b82f6\n"
 
-        with patch("wt_orch.verifier.run_git") as mock_git, \
-             patch("wt_orch.verifier.run_command") as mock_cmd, \
-             patch("wt_orch.verifier.run_claude") as mock_claude:
+        with patch("set_orch.verifier.run_git") as mock_git, \
+             patch("set_orch.verifier.run_command") as mock_cmd, \
+             patch("set_orch.verifier.run_claude") as mock_claude:
 
             # Mock merge-base
             mock_git.return_value = MagicMock(exit_code=0, stdout="abc123\n")

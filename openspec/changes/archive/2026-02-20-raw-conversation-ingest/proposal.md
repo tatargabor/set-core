@@ -4,7 +4,7 @@ The Stop handler's Haiku LLM extraction loses information (only last 80 entries,
 
 ## What Changes
 
-- **Stop handler**: Replace Haiku LLM transcript extraction with rule-based raw conversation filter that saves all meaningful user+assistant pairs directly via `wt-memory remember` with `raw` tag
+- **Stop handler**: Replace Haiku LLM transcript extraction with rule-based raw conversation filter that saves all meaningful user+assistant pairs directly via `set-memory remember` with `raw` tag
 - **PreToolUse**: Remove memory recall hooks entirely (keep activity-track.sh for Skill matcher)
 - **PostToolUse**: Remove "Modified FILE" memory saves, remove proactive recall, keep only for Read + Bash tools
 - **PostToolUse**: Keep error tracking in PostToolUseFailure (unchanged)

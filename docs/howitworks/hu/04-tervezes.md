@@ -15,7 +15,7 @@ Két tervezési módszer létezik, a `plan_method` direktíva vezérli:
 Egyetlen Claude API hívás végzi a dekompozíciót:
 
 ```bash
-wt-orchestrate --spec docs/v3.md plan   # plan_method: api (default)
+set-orchestrate --spec docs/v3.md plan   # plan_method: api (default)
 ```
 
 Előnyök:
@@ -112,7 +112,7 @@ T3: D (B és C merged után)
 
 ```bash
 # A self-test tartalmaz tesztet:
-wt-orchestrate self-test
+set-orchestrate self-test
 # → PASS: circular dependency detected
 ```
 
@@ -138,7 +138,7 @@ Ha a spec túl nagy (sok ezer token), a `summarize_spec()` egy haiku modellel ö
 3. A planner csak a releváns fázist kapja meg
 
 \begin{fontos}
-A plan mindig megtekinthető a generálás után: `wt-orchestrate plan --show`. A `start` parancs kiadása előtt érdemes ellenőrizni, hogy a dekompozíció ésszerű-e.
+A plan mindig megtekinthető a generálás után: `set-orchestrate plan --show`. A `start` parancs kiadása előtt érdemes ellenőrizni, hogy a dekompozíció ésszerű-e.
 \end{fontos}
 
 ## Plan validálás

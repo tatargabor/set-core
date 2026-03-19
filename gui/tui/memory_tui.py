@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Memory TUI — full-screen Textual dashboard for wt-memory."""
+"""Memory TUI — full-screen Textual dashboard for set-memory."""
 
 import json
 import subprocess
@@ -22,8 +22,8 @@ from textual.widgets import Footer, Header, Static
 class MemoryDataReader:
     """Reads metrics and memory stats for the dashboard."""
 
-    def __init__(self, wt_tools_root, project=None):
-        self.wt_tools_root = wt_tools_root
+    def __init__(self, set_tools_root, project=None):
+        self.set_tools_root = set_tools_root
         self.project = project
 
     def read_metrics(self, since_days=7):
@@ -35,11 +35,11 @@ class MemoryDataReader:
             return None
 
     def read_stats(self):
-        """Call wt-memory stats --json via subprocess."""
+        """Call set-memory stats --json via subprocess."""
         try:
-            cmd = ["wt-memory", "stats", "--json"]
+            cmd = ["set-memory", "stats", "--json"]
             if self.project:
-                cmd = ["wt-memory", "--project", self.project, "stats", "--json"]
+                cmd = ["set-memory", "--project", self.project, "stats", "--json"]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 return json.loads(result.stdout)
@@ -127,7 +127,7 @@ def render_content(report, mem_stats, project, since_days, metrics_enabled=True)
     if not report:
         if not metrics_enabled:
             left.append("[yellow]No metrics[/]")
-            left.append("[yellow]Enable: wt-memory metrics --enable[/]")
+            left.append("[yellow]Enable: set-memory metrics --enable[/]")
         else:
             left.append("[dim]No metrics data yet.[/]")
         # Return early — single-column fallback
@@ -267,9 +267,9 @@ CSS = """
 
 
 class MemoryTUI(App):
-    """Full-screen Textual dashboard for wt-memory."""
+    """Full-screen Textual dashboard for set-memory."""
 
-    TITLE = "wt-memory"
+    TITLE = "set-memory"
     CSS = CSS
 
     BINDINGS = [
@@ -312,18 +312,18 @@ class MemoryTUI(App):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: memory_tui.py <wt_tools_root> [project] [since_days]", file=sys.stderr)
+        print("Usage: memory_tui.py <set_tools_root> [project] [since_days]", file=sys.stderr)
         sys.exit(1)
 
-    wt_tools_root = sys.argv[1]
+    set_tools_root = sys.argv[1]
     project = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
     since_days = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] else 7
 
-    # Insert wt-tools root into sys.path for lib.metrics import
-    if wt_tools_root not in sys.path:
-        sys.path.insert(0, wt_tools_root)
+    # Insert set-core root into sys.path for lib.metrics import
+    if set_tools_root not in sys.path:
+        sys.path.insert(0, set_tools_root)
 
-    reader = MemoryDataReader(wt_tools_root, project)
+    reader = MemoryDataReader(set_tools_root, project)
     app = MemoryTUI(reader, since_days)
     app.run()
 

@@ -4,20 +4,20 @@
 The `run_with_lock()` function SHALL detect orphaned lock directories and automatically remove them before retrying acquisition.
 
 #### Scenario: Lock orphaned by killed process
-- **WHEN** a lock directory exists at `/tmp/wt-memory-<project>.lock`
+- **WHEN** a lock directory exists at `/tmp/set-memory-<project>.lock`
 - **AND** the lock directory is older than 60 seconds
 - **AND** no process holds a file descriptor on it
 - **THEN** the function SHALL remove the stale lock directory
 - **AND** proceed with normal lock acquisition
 
 #### Scenario: Lock held by active process
-- **WHEN** a lock directory exists at `/tmp/wt-memory-<project>.lock`
+- **WHEN** a lock directory exists at `/tmp/set-memory-<project>.lock`
 - **AND** the lock directory is younger than 60 seconds
 - **THEN** the function SHALL wait and retry as before (no forced removal)
 
 #### Scenario: Stale lock removal logged
 - **WHEN** a stale lock is detected and removed
-- **THEN** a warning message SHALL be written to stderr: `wt-memory: removed stale lock (age: Ns)`
+- **THEN** a warning message SHALL be written to stderr: `set-memory: removed stale lock (age: Ns)`
 
 ### Requirement: Lock owner tracking
 The lock directory SHALL contain a PID file to enable owner identification.

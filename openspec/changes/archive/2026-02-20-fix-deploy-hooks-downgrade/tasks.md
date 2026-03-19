@@ -17,5 +17,5 @@
 ## 4. Verification
 
 - [x] 4.1 Run `wt-deploy-hooks` on a project with old 6-matcher config (e.g. reddit) and verify it downgrades correctly
-- [x] 4.2 Run `wt-deploy-hooks` on wt-tools (already canonical) and verify it skips
+- [x] 4.2 Run `wt-deploy-hooks` on set-core (already canonical) and verify it skips
 - [x] 4.3 Run full `install.sh` dry check — verify `install_projects()` would invoke deploy on all registered projects

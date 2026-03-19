@@ -107,7 +107,7 @@ Need to update: wt-status, gui/main.py (STATUS_ICONS, TRAY_COLORS)
 
 ### Known Issues (FIXED)
 - [x] Ctx% disappears intermittently - fixed: now searches last 50KB for usage info
-- [x] JIRA button in "J" column - opens project/story in browser if .wt-tools/jira.json exists
+- [x] JIRA button in "J" column - opens project/story in browser if .set-core/jira.json exists
 
 ## Dependencies
 

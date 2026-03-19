@@ -3,7 +3,7 @@
 # Scoped to paths listed in project-knowledge.yaml cross_cutting_files.
 # Claude will see this rule when editing files matching these globs.
 globs:
-  # Populated by wt-project init-knowledge from project-knowledge.yaml
+  # Populated by set-project init-knowledge from project-knowledge.yaml
   # Example:
   # - src/i18n/*.json
   # - src/components/Sidebar.tsx

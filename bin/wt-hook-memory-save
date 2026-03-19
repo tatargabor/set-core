@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# wt-hook-memory-save - Backward-compatible wrapper
-# Delegates to unified handler: wt-hook-memory Stop
-exec wt-hook-memory Stop

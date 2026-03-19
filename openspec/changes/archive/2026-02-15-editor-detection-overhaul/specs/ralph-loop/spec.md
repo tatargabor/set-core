@@ -5,7 +5,7 @@ The Ralph loop SHALL use the configured permission mode for Claude Code invocati
 
 #### Scenario: wt-loop uses config permission mode
 - **WHEN** `wt-loop` starts without `--permission-mode`
-- **THEN** it SHALL read `claude.permission_mode` from `~/.config/wt-tools/config.json`
+- **THEN** it SHALL read `claude.permission_mode` from `~/.config/set-core/config.json`
 - **AND** invoke Claude with the corresponding flags:
   - `auto-accept` → `--dangerously-skip-permissions`
   - `allowedTools` → `--allowedTools "Edit,Write,Bash,Read,Glob,Grep,Task"`

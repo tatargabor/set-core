@@ -249,7 +249,7 @@ For text-only mode (accessibility), icons are hidden and labels are shown.
 - **Modified files:**
   - `gui/control_center/mixins/menus.py` - Complete rewrite
   - `gui/control_center/main_window.py` - Toolbar updates
-  - `wt_tools/plugins/base.py` - Add MenuItem class
+  - `set_tools/plugins/base.py` - Add MenuItem class
 
 - **New files:**
   - `gui/control_center/mixins/menu_builder.py` - Centralized menu construction

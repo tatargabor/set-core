@@ -1,6 +1,6 @@
 ## Context
 
-Project memory (shodh-memory) stores per-project knowledge in local RocksDB via a Rust/PyO3 library. The `wt-memory` bash CLI wraps the Python API. The GUI's Memory Browse Dialog (`gui/dialogs/memory_dialog.py`) provides search, browse, and manual note-saving. There is no way to transfer memories between machines.
+Project memory (shodh-memory) stores per-project knowledge in local RocksDB via a Rust/PyO3 library. The `set-memory` bash CLI wraps the Python API. The GUI's Memory Browse Dialog (`gui/dialogs/memory_dialog.py`) provides search, browse, and manual note-saving. There is no way to transfer memories between machines.
 
 Key constraint: `Memory.remember()` auto-generates UUIDs — there is no API to insert a record with a specific ID. The `metadata` dict field on each record can store arbitrary key-value pairs.
 
@@ -10,7 +10,7 @@ Key constraint: `Memory.remember()` auto-generates UUIDs — there is no API to 
 - Full project export to a single JSON file
 - Import with UUID-based dedup (skip duplicates, never create dupes)
 - Dry-run import preview
-- CLI commands (`wt-memory export`, `wt-memory import`)
+- CLI commands (`set-memory export`, `set-memory import`)
 - GUI buttons in Memory Browse Dialog
 - Roundtrip safety: A→export→B→import→B→export→A→import produces no duplicates
 
@@ -28,8 +28,8 @@ Key constraint: `Memory.remember()` auto-generates UUIDs — there is no API to 
 ```json
 {
   "version": 1,
-  "format": "wt-memory-export",
-  "project": "wt-tools",
+  "format": "set-memory-export",
+  "project": "set-core",
   "exported_at": "2026-02-15T19:30:00Z",
   "count": 20,
   "records": [
@@ -99,5 +99,5 @@ Both export and import output structured JSON for scriptability:
 
 - **[Risk] Importance loss on import** → Acceptable: importance recalibrates based on local recall patterns. Original importance is in the export file if manual recovery is needed.
 - **[Risk] Large export files** → Low risk: even 500 records is ~1MB JSON. Not a concern for v1.
-- **[Risk] Concurrent import/export** → Mitigated: uses existing `run_with_lock` mechanism in wt-memory CLI.
+- **[Risk] Concurrent import/export** → Mitigated: uses existing `run_with_lock` mechanism in set-memory CLI.
 - **[Risk] Forward compatibility** → `"version": 1` field allows future format changes. Import rejects unknown versions with clear error.

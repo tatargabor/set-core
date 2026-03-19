@@ -2,7 +2,7 @@
 
 ## 1. Backend Interface & Implementations
 
-- [ ] 1.1 Create `lib/wt_orch/isolation.py` with `IsolationBackend` ABC defining `create()`, `remove()`, `list_active()`, `sync_with_main()` methods [REQ: backend-interface-abstraction]
+- [ ] 1.1 Create `lib/set_orch/isolation.py` with `IsolationBackend` ABC defining `create()`, `remove()`, `list_active()`, `sync_with_main()` methods [REQ: backend-interface-abstraction]
 - [ ] 1.2 Implement `WorktreeBackend` wrapping existing `git worktree add/remove/list` logic [REQ: worktree-backend]
 - [ ] 1.3 Implement `BranchCloneBackend` using `git clone --branch --single-branch` for create, `shutil.rmtree` for remove, path scanning for list [REQ: branch-clone-backend]
 - [ ] 1.4 Add `get_isolation_backend(config)` factory function that reads `execution.isolation` and returns the correct backend instance [REQ: backend-interface-abstraction]
@@ -31,9 +31,9 @@
 
 ## 6. CLI Script Migration
 
-- [ ] 6.1 Add `wt-orch-core isolation create` and `wt-orch-core isolation remove` thin CLI entry points that call the Python backend [REQ: cli-backend-delegation]
-- [ ] 6.2 Modify `bin/wt-new` to call `wt-orch-core isolation create` instead of `git worktree add` (keep bootstrap steps in bash) [REQ: cli-backend-delegation]
-- [ ] 6.3 Modify `bin/wt-close` to call `wt-orch-core isolation remove` instead of `git worktree remove` (keep branch cleanup in bash) [REQ: cli-backend-delegation]
+- [ ] 6.1 Add `set-orch-core isolation create` and `set-orch-core isolation remove` thin CLI entry points that call the Python backend [REQ: cli-backend-delegation]
+- [ ] 6.2 Modify `bin/wt-new` to call `set-orch-core isolation create` instead of `git worktree add` (keep bootstrap steps in bash) [REQ: cli-backend-delegation]
+- [ ] 6.3 Modify `bin/wt-close` to call `set-orch-core isolation remove` instead of `git worktree remove` (keep branch cleanup in bash) [REQ: cli-backend-delegation]
 
 ## 7. Tests
 

@@ -16,7 +16,7 @@ Existing Python infrastructure: pyproject.toml (Python >=3.10), pytest, 7 inline
 - Eliminate PID recycling risk with `/proc/cmdline` verification and psutil-based process tree queries
 - Replace the most fragile jq patterns (multi-stage pipelines, complex filters, init_state) with typed Python dataclasses
 - Replace unquoted heredocs with Python template rendering that handles escaping
-- Provide a `wt-orch-core` CLI bridge so bash scripts call Python without restructuring the overall orchestration flow
+- Provide a `set-orch-core` CLI bridge so bash scripts call Python without restructuring the overall orchestration flow
 - Maintain full backward compatibility — no CLI or behavioral changes
 
 **Non-Goals:**
@@ -28,30 +28,30 @@ Existing Python infrastructure: pyproject.toml (Python >=3.10), pytest, 7 inline
 
 ## Decisions
 
-### D1: Package location — `lib/wt_orch/` (not `wt_tools/`)
+### D1: Package location — `lib/set_orch/` (not `set_tools/`)
 
-The `wt_tools/` package is a minimal plugin stub. The `gui/` package is the PySide6 app. Orchestration Python code goes into `lib/wt_orch/` to live alongside the shell scripts it serves (`lib/orchestration/*.sh`). This keeps the dependency clear: orchestration shell calls orchestration Python.
+The `set_tools/` package is a minimal plugin stub. The `gui/` package is the PySide6 app. Orchestration Python code goes into `lib/set_orch/` to live alongside the shell scripts it serves (`lib/orchestration/*.sh`). This keeps the dependency clear: orchestration shell calls orchestration Python.
 
-**Alternative considered:** Adding to `wt_tools/` package. Rejected because `wt_tools` is the plugin system — mixing orchestration internals there creates coupling.
+**Alternative considered:** Adding to `set_tools/` package. Rejected because `set_tools` is the plugin system — mixing orchestration internals there creates coupling.
 
-### D2: CLI bridge — single `bin/wt-orch-core` entry point
+### D2: CLI bridge — single `bin/set-orch-core` entry point
 
-One Python CLI (`bin/wt-orch-core`) with subcommands: `process`, `state`, `template`. Bash calls it like:
+One Python CLI (`bin/set-orch-core`) with subcommands: `process`, `state`, `template`. Bash calls it like:
 
 ```bash
 # Instead of: kill -0 "$ralph_pid" 2>/dev/null
-wt-orch-core process check-pid --pid "$ralph_pid" --expect-cmd "wt-loop"
+set-orch-core process check-pid --pid "$ralph_pid" --expect-cmd "wt-loop"
 
 # Instead of: 40-line jq init_state filter
-wt-orch-core state init --plan-file "$plan_file" --output "$STATE_FILENAME"
+set-orch-core state init --plan-file "$plan_file" --output "$STATE_FILENAME"
 
 # Instead of: cat <<PROPOSAL_EOF with unescaped variables
-wt-orch-core template proposal --change "$change_name" --scope "$scope" --roadmap "$roadmap_item"
+set-orch-core template proposal --change "$change_name" --scope "$scope" --roadmap "$roadmap_item"
 ```
 
 Each call is a short-lived Python process. No daemon, no socket, no persistent state.
 
-**Alternative considered:** Python module invocation (`python3 -m wt_orch.process ...`). Rejected because a named CLI entry point is cleaner in shell scripts and can be installed via pyproject.toml `[project.scripts]`.
+**Alternative considered:** Python module invocation (`python3 -m set_orch.process ...`). Rejected because a named CLI entry point is cleaner in shell scripts and can be installed via pyproject.toml `[project.scripts]`.
 
 ### D3: Process module — psutil + /proc fallback
 
@@ -113,7 +113,7 @@ Templates use Python f-strings (not Jinja2). The templates are structured text, 
 
 ### D6: psutil dependency — already available, make it explicit
 
-psutil is installed by install.sh for the GUI but is not currently in pyproject.toml `dependencies`. Adding it to the main dependencies list means `pip install wt-tools` will pull psutil (requires C compilation on some platforms). This is a real dependency change affecting pip-only installs and CI environments.
+psutil is installed by install.sh for the GUI but is not currently in pyproject.toml `dependencies`. Adding it to the main dependencies list means `pip install set-core` will pull psutil (requires C compilation on some platforms). This is a real dependency change affecting pip-only installs and CI environments.
 
 ### D7: Migration order — process first, then state, then templates
 
@@ -123,7 +123,7 @@ psutil is installed by install.sh for the GUI but is not currently in pyproject.
 
 ## Risks / Trade-offs
 
-**[Startup latency]** Each `wt-orch-core` call spawns a Python interpreter (~50-100ms). The monitor loop polls every 15 seconds with 1-5 active changes, so worst case adds ~500ms per cycle. → Mitigation: Only use Python for complex operations. Keep simple jq reads in bash.
+**[Startup latency]** Each `set-orch-core` call spawns a Python interpreter (~50-100ms). The monitor loop polls every 15 seconds with 1-5 active changes, so worst case adds ~500ms per cycle. → Mitigation: Only use Python for complex operations. Keep simple jq reads in bash.
 
 **[Two sources of truth]** Python dataclasses and jq both read/write state.json. Schema drift is possible. → Mitigation: Python `load_state()` validates against the dataclass schema. Any field added in bash must be added to the dataclass. Tests verify round-trip consistency.
 

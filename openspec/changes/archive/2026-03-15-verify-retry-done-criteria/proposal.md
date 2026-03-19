@@ -27,15 +27,15 @@ A prior fix changed `done_criteria` from `"build"` to `"test"` to prevent empty 
 
 - **Test command detection**: `profile.detect_test_command()` is now the primary source (via `config.auto_detect_test_command()` which tries profile first, then legacy). Use `config.auto_detect_test_command()` for test command resolution, not inline PM detection.
 - **Security rules for retry context**: `verifier._load_security_rules()` now uses `profile.security_rules_paths()` with legacy fallback. No changes needed here.
-- All implementation stays in **wt-tools** — no wt-project-web/base changes needed.
+- All implementation stays in **set-core** — no set-project-web/base changes needed.
 
 ### Current code locations
 
-- `lib/wt_orch/loop_tasks.py:155-186` — `is_done()` missing "test" case
-- `lib/wt_orch/dispatcher.py:1207-1221` — sets `done_criteria = "test"` for retries
-- `lib/wt_orch/verifier.py:1405-1449` — review retry trigger with `_extract_review_fixes()`
-- `lib/wt_orch/verifier.py:87-133` — `_extract_review_fixes()` parsing
-- `lib/wt_orch/verifier.py:136-174` — `_load_security_rules()` (profile-aware, with legacy fallback)
+- `lib/set_orch/loop_tasks.py:155-186` — `is_done()` missing "test" case
+- `lib/set_orch/dispatcher.py:1207-1221` — sets `done_criteria = "test"` for retries
+- `lib/set_orch/verifier.py:1405-1449` — review retry trigger with `_extract_review_fixes()`
+- `lib/set_orch/verifier.py:87-133` — `_extract_review_fixes()` parsing
+- `lib/set_orch/verifier.py:136-174` — `_load_security_rules()` (profile-aware, with legacy fallback)
 
 ## What Changes
 
@@ -66,9 +66,9 @@ A prior fix changed `done_criteria` from `"build"` to `"test"` to prevent empty 
 
 ## Impact
 
-- **Modified**: `lib/wt_orch/loop_tasks.py` — add "test" case to `is_done()`
-- **Modified**: `lib/wt_orch/dispatcher.py` — pass test command to loop on resume
-- **Modified**: `lib/wt_orch/loop_state.py` — store test_command in loop state
+- **Modified**: `lib/set_orch/loop_tasks.py` — add "test" case to `is_done()`
+- **Modified**: `lib/set_orch/dispatcher.py` — pass test command to loop on resume
+- **Modified**: `lib/set_orch/loop_state.py` — store test_command in loop state
 - **Critical fix**: Review retry loops can now complete successfully, making the review gate actually usable
 - **No breaking changes**: New done criteria is only used when explicitly set by retry logic
 - **Expected impact**: Review-failed changes should self-heal without sentinel intervention

@@ -3,7 +3,7 @@
 ### Current State
 
 ```
-wt-project-base          wt-project-web           wt-tools engine
+set-project-base          set-project-web           set-core engine
 (Python pip pkg)          (Python pip pkg)          (Python + bash)
 
 ProjectType ABC ────────► WebProjectType            templates.py ──► hardcoded web
@@ -17,14 +17,14 @@ ProjectTypeResolver                                  config.py ───► hard
   resolve_directives()     │  between these  │       bin/wt-merge ► hardcoded patterns
                            └─────────────────┘       bin/wt-new ──► hardcoded install
 
-deploy.py ──────────────── wt-project init ─────►  deploys templates to consumer
+deploy.py ──────────────── set-project init ─────►  deploys templates to consumer
   copies rule files           works correctly         .claude/rules/, project-knowledge
 ```
 
 ### Target State
 
 ```
-wt-project-base          wt-project-web           wt-tools engine
+set-project-base          set-project-web           set-core engine
 (Python pip pkg)          (Python pip pkg)          (Python + bash)
 
 ProjectType ABC           WebProjectType            profile_loader.py
@@ -50,7 +50,7 @@ ProjectType ABC           WebProjectType            profile_loader.py
 
 ## Component 1: Extended ProjectType ABC
 
-**File: `wt-project-base/wt_project_base/base.py`**
+**File: `set-project-base/wt_project_base/base.py`**
 
 New methods on the ABC with default (no-op) implementations so existing subclasses don't break:
 
@@ -203,7 +203,7 @@ class ProjectType(ABC):
 
 ## Component 2: WebProjectType New Methods
 
-**File: `wt-project-web/wt_project_web/project_type.py`**
+**File: `set-project-web/wt_project_web/project_type.py`**
 
 ```python
 class WebProjectType(BaseProjectType):
@@ -342,7 +342,7 @@ class WebProjectType(BaseProjectType):
 
 ## Component 3: Profile Loader (Bridge)
 
-**File: `wt-tools/lib/wt_orch/profile_loader.py`** (NEW)
+**File: `set-core/lib/set_orch/profile_loader.py`** (NEW)
 
 This is the central bridge — engine code calls this to get the active profile.
 
@@ -350,7 +350,7 @@ This is the central bridge — engine code calls this to get the active profile.
 """Load project-type profile for orchestration engine integration.
 
 Reads wt/plugins/project-type.yaml to find the active project type,
-then loads it via Python entry_points (same mechanism as wt-project init).
+then loads it via Python entry_points (same mechanism as set-project init).
 
 Provides a singleton-like cache so profile is loaded once per engine session.
 Falls back to a NullProfile when no project type is configured or the
@@ -403,7 +403,7 @@ def load_profile(project_path: str = ".") -> "ProjectType":
 
     Resolution:
     1. Read wt/plugins/project-type.yaml → get type name
-    2. Load via importlib.metadata entry_points(group='wt_tools.project_types')
+    2. Load via importlib.metadata entry_points(group='set_tools.project_types')
     3. Instantiate and return
     4. On any failure → return NullProfile (engine falls back to legacy)
 
@@ -439,13 +439,13 @@ def load_profile(project_path: str = ".") -> "ProjectType":
         _cached_profile = NullProfile()
         return _cached_profile
 
-    # Load via entry_points (same mechanism as wt-project init)
+    # Load via entry_points (same mechanism as set-project init)
     try:
         from importlib.metadata import entry_points
-        eps = entry_points(group='wt_tools.project_types')
+        eps = entry_points(group='set_tools.project_types')
     except TypeError:
         from importlib.metadata import entry_points
-        eps = entry_points().get('wt_tools.project_types', [])
+        eps = entry_points().get('set_tools.project_types', [])
 
     for ep in eps:
         if ep.name == type_name:
@@ -474,7 +474,7 @@ def reset_cache():
 
 ---
 
-## Component 4: Engine Integration Points (wt-tools)
+## Component 4: Engine Integration Points (set-core)
 
 ### 4a. `templates.py` — Planning Rules
 
@@ -517,7 +517,7 @@ Manual tasks: ...
 CRITICAL — Output size constraint: ...
 """
 # NOTE: L295-317 (Playwright E2E test planning) removed from core.
-# It moves to WebProjectType.planning_rules() in wt-project-web.
+# It moves to WebProjectType.planning_rules() in set-project-web.
 
 def _get_planning_rules(project_path: str) -> str:
     """Assemble planning rules from core + profile."""
@@ -689,7 +689,7 @@ def auto_detect_test_command(directory: str = ".") -> str:
 **After**: Merge core + profile patterns.
 
 ```python
-_CORE_IGNORE_PATTERNS = {".git", ".claude", ".wt-tools", "__pycache__"}
+_CORE_IGNORE_PATTERNS = {".git", ".claude", ".set-core", "__pycache__"}
 
 def _get_ignore_patterns(project_path: str) -> set:
     from .profile_loader import load_profile
@@ -713,7 +713,7 @@ if [[ -f "$_PROFILE_PATTERNS_FILE" ]]; then
 fi
 ```
 
-The `.generated-file-patterns` file is written by `profile_loader.py` at engine startup or by `wt-project init`.
+The `.generated-file-patterns` file is written by `profile_loader.py` at engine startup or by `set-project init`.
 
 ### 4i. `bin/wt-new` — Worktree Bootstrap
 
@@ -725,7 +725,7 @@ The `.generated-file-patterns` file is written by `profile_loader.py` at engine 
 # Profile-aware bootstrap (replaces hardcoded PM detection)
 if command -v python3 &>/dev/null; then
     python3 -c "
-from wt_orch.profile_loader import load_profile
+from set_orch.profile_loader import load_profile
 profile = load_profile('$PROJECT_ROOT')
 profile.bootstrap_worktree('$PROJECT_ROOT', '$WT_PATH')
 " 2>/dev/null || {
@@ -841,7 +841,7 @@ def install_dependencies(project_dir: str = ".") -> bool:
 
 **Current** (L175-196): Deploys ALL `.claude/rules/` to ALL projects.
 
-**After**: Only deploy core (non-web) rules. Web rules come from wt-project-web templates.
+**After**: Only deploy core (non-web) rules. Web rules come from set-project-web templates.
 
 ```bash
 _deploy_skills() {
@@ -852,7 +852,7 @@ _deploy_skills() {
         local basename
         basename=$(basename "$rule_file")
 
-        # Skip web-specific rules — these come from wt-project-web templates
+        # Skip web-specific rules — these come from set-project-web templates
         local dir_part
         dir_part=$(basename "$(dirname "$rule_file")")
         [[ "$dir_part" == "web" ]] && continue
@@ -862,7 +862,7 @@ _deploy_skills() {
         cp "$rule_file" "$target_dir/.claude/rules/wt-$basename"
     done
 
-    # Web rules are deployed by wt-project-web templates via deploy.py
+    # Web rules are deployed by set-project-web templates via deploy.py
     # They end up in .claude/rules/ (without wt- prefix)
 }
 ```
@@ -872,13 +872,13 @@ _deploy_skills() {
 ## Migration Strategy
 
 ### Phase A: Non-Breaking Foundation
-1. Add new methods to `ProjectType` ABC with defaults (including `detect_dev_server()`, `security_checklist()`) → `wt-project-base` v0.2.0
-2. Create `profile_loader.py` in wt-tools with `NullProfile` fallback
+1. Add new methods to `ProjectType` ABC with defaults (including `detect_dev_server()`, `security_checklist()`) → `set-project-base` v0.2.0
+2. Create `profile_loader.py` in set-core with `NullProfile` fallback
 3. **Result**: Nothing changes, everything still works via legacy paths
 
 ### Phase B: Implement Web Profile Methods
-4. Implement new methods in `WebProjectType` (including `detect_dev_server()`, `security_checklist()`) → `wt-project-web` v0.2.0
-5. Create `planning_rules.txt` in wt-project-web — **MUST include the Playwright E2E block** (L295-317 from current `_PLANNING_RULES`)
+4. Implement new methods in `WebProjectType` (including `detect_dev_server()`, `security_checklist()`) → `set-project-web` v0.2.0
+5. Create `planning_rules.txt` in set-project-web — **MUST include the Playwright E2E block** (L295-317 from current `_PLANNING_RULES`)
 6. **Result**: Profile returns real values, but engine doesn't use them yet
 
 ### Phase C: Wire Engine to Profile (one module at a time)
@@ -916,7 +916,7 @@ _deploy_skills() {
 ## Data Flow: Planning
 
 ```
-User: wt-sentinel --spec docs/v1-minishop.md
+User: set-sentinel --spec docs/v1-minishop.md
 
 sentinel → orchestrator → planner.py:run_planning_pipeline()
                               │
@@ -1020,18 +1020,18 @@ calls `load_profile()` without arguments and gets the right profile.
 ("web/*.md", "wt-web-*.md", "*web-security*.md", "*auth-middleware*.md")
 ```
 
-**Current matching (with both wt-tools and template rules deployed):**
+**Current matching (with both set-core and template rules deployed):**
 
 | Deployed file | Source | Matched? |
 |---------------|--------|----------|
-| `.claude/rules/web/wt-auth-middleware.md` | wt-tools deploy.sh | YES (`web/*.md`) |
-| `.claude/rules/web/wt-security-patterns.md` | wt-tools deploy.sh | YES (`web/*.md`) |
-| `.claude/rules/web/wt-api-design.md` | wt-tools deploy.sh | YES (`web/*.md`) |
-| `.claude/rules/security.md` | wt-project-web template | NO |
-| `.claude/rules/auth-conventions.md` | wt-project-web template | NO |
-| `.claude/rules/testing-conventions.md` | wt-project-web template | NO |
+| `.claude/rules/web/wt-auth-middleware.md` | set-core deploy.sh | YES (`web/*.md`) |
+| `.claude/rules/web/wt-security-patterns.md` | set-core deploy.sh | YES (`web/*.md`) |
+| `.claude/rules/web/wt-api-design.md` | set-core deploy.sh | YES (`web/*.md`) |
+| `.claude/rules/security.md` | set-project-web template | NO |
+| `.claude/rules/auth-conventions.md` | set-project-web template | NO |
+| `.claude/rules/testing-conventions.md` | set-project-web template | NO |
 
-**Impact**: If we remove wt-tools web rule deployment (Component 5) before updating the
+**Impact**: If we remove set-core web rule deployment (Component 5) before updating the
 verifier to use `profile.security_rules_paths()` (Component 4b), the verifier loses
 access to ALL security rules for review retry context.
 
@@ -1066,7 +1066,7 @@ in a worktree context). The frozen vs unfrozen distinction is the key differenti
 
 ## Testing Strategy
 
-### Unit Tests (wt-tools)
+### Unit Tests (set-core)
 - `test_profile_loader.py`:
   - Loads NullProfile when no project-type.yaml
   - Loads WebProjectType when project-type.yaml says "web"
@@ -1074,7 +1074,7 @@ in a worktree context). The frozen vs unfrozen distinction is the key differenti
   - reset_cache() works
   - NullProfile returns empty/None for all 12 methods
 
-### Integration Tests (wt-tools)
+### Integration Tests (set-core)
 - Each engine module with profile fallback:
   - Profile returns value → engine uses it
   - Profile returns None → engine falls back to legacy

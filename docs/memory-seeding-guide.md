@@ -1,11 +1,11 @@
 # Memory Seeding Guide
 
-Build project memory from existing OpenSpec artifacts. This guide is for AI agents working on brownfield projects that have OpenSpec documentation but empty `wt-memory`.
+Build project memory from existing OpenSpec artifacts. This guide is for AI agents working on brownfield projects that have OpenSpec documentation but empty `set-memory`.
 
 ## When to Use
 
 - First time working on a project with existing OpenSpec artifacts
-- After `wt-memory status` shows 0 memories but `openspec/` has content
+- After `set-memory status` shows 0 memories but `openspec/` has content
 - When linked from a project's CLAUDE.md
 
 ## Prerequisites
@@ -13,7 +13,7 @@ Build project memory from existing OpenSpec artifacts. This guide is for AI agen
 Run this check first. If it fails, stop — memory is not available.
 
 ```bash
-wt-memory health
+set-memory health
 ```
 
 ## Process
@@ -99,7 +99,7 @@ Only extract if tasks contain notes, gotchas, or lessons learned. Plain checkbox
 For each extracted insight, save it as a separate memory:
 
 ```bash
-echo "<concise insight text>" | wt-memory remember --type <Decision|Learning|Context> --tags <comma-separated-tags>
+echo "<concise insight text>" | set-memory remember --type <Decision|Learning|Context> --tags <comma-separated-tags>
 ```
 
 ### Step 4: Summarize
@@ -151,7 +151,7 @@ From a proposal's "Why" section:
 
 Extract as:
 ```bash
-echo "Touching objects on the table get merged into a single contour by edge detection, causing false classification as a different object with high confidence" | wt-memory remember --type Learning --tags source:openspec,artifact:proposal,change:add-cluster-rejection
+echo "Touching objects on the table get merged into a single contour by edge detection, causing false classification as a different object with high confidence" | set-memory remember --type Learning --tags source:openspec,artifact:proposal,change:add-cluster-rejection
 ```
 
 From a design's architecture decision:
@@ -159,7 +159,7 @@ From a design's architecture decision:
 
 Extract as:
 ```bash
-echo "Shape complexity metrics (convex hull ratio, perimeter-to-area) chosen over ML rejection class for cluster detection — rejection class requires realistic negative samples that are hard to generate" | wt-memory remember --type Decision --tags source:openspec,artifact:design,change:add-cluster-rejection
+echo "Shape complexity metrics (convex hull ratio, perimeter-to-area) chosen over ML rejection class for cluster detection — rejection class requires realistic negative samples that are hard to generate" | set-memory remember --type Decision --tags source:openspec,artifact:design,change:add-cluster-rejection
 ```
 
 ## CLAUDE.md Integration
@@ -169,7 +169,7 @@ Add this to a project's CLAUDE.md to trigger seeding when memory is empty:
 ```markdown
 ## Memory Seeding
 
-If `wt-memory status` shows 0 memories and the `openspec/` directory contains
-artifacts, follow the [memory seeding guide](https://raw.githubusercontent.com/tatargabor/wt-tools/master/docs/memory-seeding-guide.md)
+If `set-memory status` shows 0 memories and the `openspec/` directory contains
+artifacts, follow the [memory seeding guide](https://raw.githubusercontent.com/tatargabor/set-core/master/docs/memory-seeding-guide.md)
 to build initial project memory from existing documentation.
 ```

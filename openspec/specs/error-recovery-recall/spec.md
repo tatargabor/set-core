@@ -5,14 +5,14 @@ A new hook script `wt-hook-memory-posttool` SHALL run on `PostToolUseFailure` ev
 
 #### Scenario: Bash command fails with authentication error
 - **WHEN** a Bash command fails with stderr containing "authentication failed", "permission denied", or "access denied"
-- **AND** wt-memory has memories tagged with error patterns
+- **AND** set-memory has memories tagged with error patterns
 - **THEN** the hook SHALL recall memories using the error text as query
 - **AND** SHALL output JSON with `hookSpecificOutput.additionalContext` containing past fixes
 - **AND** the context SHALL be prefixed with `=== MEMORY: Past fix for this error ===`
 
 #### Scenario: Bash command fails with connection error
 - **WHEN** a Bash command fails with stderr containing "connection refused", "could not connect", or "timeout"
-- **AND** wt-memory has relevant memories
+- **AND** set-memory has relevant memories
 - **THEN** the hook SHALL recall memories related to the connection error
 - **AND** SHALL inject them via `additionalContext`
 
@@ -29,12 +29,12 @@ A new hook script `wt-hook-memory-posttool` SHALL run on `PostToolUseFailure` ev
 
 #### Scenario: No relevant memories exist
 - **WHEN** a Bash command fails
-- **AND** wt-memory recall returns no results
+- **AND** set-memory recall returns no results
 - **THEN** the hook SHALL exit 0 silently with no output
 
-#### Scenario: wt-memory not available
+#### Scenario: set-memory not available
 - **WHEN** a Bash command fails
-- **AND** wt-memory is not installed or unhealthy
+- **AND** set-memory is not installed or unhealthy
 - **THEN** the hook SHALL exit 0 silently with no output
 
 ### Requirement: Error recall does not debounce

@@ -1,4 +1,4 @@
-# Pi (pi-mono) vs wt-tools — Összehasonlító elemzés
+# Pi (pi-mono) vs set-core — Összehasonlító elemzés
 
 > **Dátum:** 2026-03-08 (frissítve: 2026-03-17)
 > **Források:** [github.com/badlogic/pi-mono](https://github.com/badlogic/pi-mono) · [pi.dev](https://pi.dev/) · [oh-my-pi](https://github.com/can1357/oh-my-pi)
@@ -10,7 +10,7 @@
 
 Pi egy **minimális, maximálisan bővíthető terminál-alapú AI coding agent**, TypeScript monorepo-ként implementálva. A filozófiája: "There are many coding agents, but this one is mine." MIT licensz, teljesen nyílt forráskódú. **21.1k GitHub star, 140 contributor, 3,157 commit** (2026. március).
 
-Zechner a Claude Code-ot kritizálva építette: "turned into a spaceship with 80% of functionality I have no use for." A projekt tudatosan **nem** építi be a legtöbb funkciót a magba — ehelyett egy erős extension rendszert ad, amivel bármi felépíthető. Ez az alapvető szemléleti különbség a wt-tools-hoz képest.
+Zechner a Claude Code-ot kritizálva építette: "turned into a spaceship with 80% of functionality I have no use for." A projekt tudatosan **nem** építi be a legtöbb funkciót a magba — ehelyett egy erős extension rendszert ad, amivel bármi felépíthető. Ez az alapvető szemléleti különbség a set-core-hoz képest.
 
 **Radikális döntések:**
 - **~900 tokenes system prompt** (vs Claude Code ezres nagyságrendje) — a logika: frontier modellek RL-tréninggel már tudják mi a dolguk
@@ -34,10 +34,10 @@ pi-mono/
 └── packages/pods/         — GPU pod menedzsment (vLLM deployment)
 ```
 
-### wt-tools struktúra
+### set-core struktúra
 
 ```
-wt-tools/
+set-core/
 ├── bin/                   — CLI eszközök (bash)
 ├── lib/                   — Megosztott könyvtárak (bash)
 ├── .claude/skills/        — OpenSpec és wt skillek
@@ -50,7 +50,7 @@ wt-tools/
 
 ### Összehasonlítás
 
-| Szempont | Pi | wt-tools |
+| Szempont | Pi | set-core |
 |----------|-----|----------|
 | **Nyelv** | TypeScript (teljes) | Bash + Python (GUI, memory) |
 | **Típus** | Önálló coding agent | Claude Code kiegészítő toolkit |
@@ -65,7 +65,7 @@ wt-tools/
 
 ### 3.1 LLM Provider támogatás
 
-| | Pi | wt-tools |
+| | Pi | set-core |
 |---|---|---|
 | **Anthropic** | API + Pro/Max subscription OAuth | Claude Code-on keresztül |
 | **OpenAI** | API + ChatGPT Plus/Pro OAuth | — |
@@ -77,7 +77,7 @@ wt-tools/
 | **Modellváltás** | Mid-session, hot-swap | Claude Code feature |
 | **Saját provider** | Extension-nel regisztrálható | — |
 
-**Értékelés:** Pi itt **messze előrébb jár** — 20+ provider natívan. De ez azért van, mert Pi egy teljes agent, míg wt-tools a Claude Code ökoszisztémára épít. Nekünk ez nem probléma, amíg Claude Code-ot használunk, de ha más LLM-ekre is szükség lenne, Pi megközelítése értékes.
+**Értékelés:** Pi itt **messze előrébb jár** — 20+ provider natívan. De ez azért van, mert Pi egy teljes agent, míg set-core a Claude Code ökoszisztémára épít. Nekünk ez nem probléma, amíg Claude Code-ot használunk, de ha más LLM-ekre is szükség lenne, Pi megközelítése értékes.
 
 ### 3.2 Extension / Plugin rendszer
 
@@ -120,7 +120,7 @@ export default function myExtension(pi: ExtensionAPI) {
 - Hot-reload (`/reload`)
 - npm/git csomagolás és megosztás
 
-#### wt-tools Plugins
+#### set-core Plugins
 
 ```bash
 # Bash/Markdown alapú plugin rendszer
@@ -130,7 +130,7 @@ export default function myExtension(pi: ExtensionAPI) {
 └── hooks/           — settings.json hook definíciók
 ```
 
-**wt-tools plugin képességek:**
+**set-core plugin képességek:**
 - Skills: Markdown prompt template-ek
 - Commands: Slash parancsok (markdown)
 - Hooks: 5 lifecycle event (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop)
@@ -139,7 +139,7 @@ export default function myExtension(pi: ExtensionAPI) {
 - Nincs UI widget rendszer
 - Nincs hot-reload (restart szükséges)
 
-**Értékelés:** Pi extension rendszere **lényegesen erősebb**. TypeScript API, typed events, UI widgetek, tool interceptálás, hot-reload. A wt-tools hook rendszere funkcionálisan behatároltabb, de az 5-layer memory hook minta innovatív — Pi-nek nincs hasonló automatizált memória pipeline-ja.
+**Értékelés:** Pi extension rendszere **lényegesen erősebb**. TypeScript API, typed events, UI widgetek, tool interceptálás, hot-reload. A set-core hook rendszere funkcionálisan behatároltabb, de az 5-layer memory hook minta innovatív — Pi-nek nincs hasonló automatizált memória pipeline-ja.
 
 ### 3.3 Memória / Kontextus kezelés
 
@@ -172,11 +172,11 @@ export default function myExtension(pi: ExtensionAPI) {
 - **Nincs cross-session memória** (sem embedding, sem RAG, sem automatikus tudásmentés)
 - Mom (Slack bot) használ `MEMORY.md` fájlokat — de a coding agent nem
 
-#### wt-tools memória rendszer
+#### set-core memória rendszer
 
 ```
 ┌─────────────────────────────────────────┐
-│         wt-tools Memory System          │
+│         set-core Memory System          │
 ├─────────────────────────────────────────┤
 │ 5-Layer Hook Pipeline:                  │
 │ L1: Session warmstart (cheat-sheet)     │
@@ -201,7 +201,7 @@ export default function myExtension(pi: ExtensionAPI) {
 └─────────────────────────────────────────┘
 ```
 
-**Értékelés:** wt-tools memória rendszere **egyértelműen fejlettebb**. Pi-nek nincs cross-session memóriája — minden session nulláról indul. A wt-tools 5-layer automatizált pipeline-ja, a szemantikus keresés, branch awareness, phase tags, és a benchmark-kal igazolt +34% javulás kategóriákkal előrébb van. Ez a wt-tools egyedi erőssége.
+**Értékelés:** set-core memória rendszere **egyértelműen fejlettebb**. Pi-nek nincs cross-session memóriája — minden session nulláról indul. A set-core 5-layer automatizált pipeline-ja, a szemantikus keresés, branch awareness, phase tags, és a benchmark-kal igazolt +34% javulás kategóriákkal előrébb van. Ez a set-core egyedi erőssége.
 
 ### 3.4 Multi-Agent / Orchestráció
 
@@ -239,10 +239,10 @@ Beépített workflow-k:
 - Tool végrehajtás szekvenciális, abort támogatással
 - Hibák tool result-ként jelennek meg (nem exception)
 
-#### wt-tools orchestráció
+#### set-core orchestráció
 
 ```
-wt-tools orchestráció:
+set-core orchestráció:
 ┌──────────────┐
 │   Sentinel   │ — supervisor, crash recovery, auto-approve
 └──────┬───────┘
@@ -262,7 +262,7 @@ wt-tools orchestráció:
             Merge + Verify gates
 ```
 
-**wt-tools jellemzők:**
+**set-core jellemzők:**
 - Sentinel: felügyeli az orchestrátort, crash recovery
 - Spec decomposition: LLM-alapú feladatfelbontás dependency graph-fal
 - Git worktree izoláció: minden change saját worktree
@@ -273,11 +273,11 @@ wt-tools orchestráció:
 - OpenSpec artifact tracking: proposal → design → specs → tasks
 - Cross-machine team sync + agent messaging
 
-**Értékelés:** wt-tools orchestrációja **production-grade**, Pi-é **demo/example szintű**. A sentinel, dependency-aware dispatch, verification gates, és phase-aware memory kombinációja egy teljes CI/CD-jellegű pipeline — Pi subagent extension-je inkább ad-hoc task delegation.
+**Értékelés:** set-core orchestrációja **production-grade**, Pi-é **demo/example szintű**. A sentinel, dependency-aware dispatch, verification gates, és phase-aware memory kombinációja egy teljes CI/CD-jellegű pipeline — Pi subagent extension-je inkább ad-hoc task delegation.
 
 ### 3.5 Session kezelés
 
-| Szempont | Pi | wt-tools |
+| Szempont | Pi | set-core |
 |----------|-----|----------|
 | **Perzisztálás** | JSONL fájlok | Claude Code natív |
 | **Session tree** | Elágazó beszélgetések, `/tree` navigáció | — (Claude Code nem támogatja) |
@@ -287,11 +287,11 @@ wt-tools orchestráció:
 | **Export** | HTML, gist, szűrhető | — |
 | **Bookmarks** | Label entry-k | — |
 
-**Értékelés:** Pi session kezelése **innovatív** — a tree-based branching és a branch summarization egyedülálló. Ezek a funkciók valódi értéket adnának bármely coding agent-nek. wt-tools a Claude Code-ra bízza a session kezelést, ami korlátozottabb.
+**Értékelés:** Pi session kezelése **innovatív** — a tree-based branching és a branch summarization egyedülálló. Ezek a funkciók valódi értéket adnának bármely coding agent-nek. set-core a Claude Code-ra bízza a session kezelést, ami korlátozottabb.
 
 ### 3.6 Beépített eszközök (Tools)
 
-| Tool | Pi | wt-tools (via Claude Code) |
+| Tool | Pi | set-core (via Claude Code) |
 |------|-----|----------------------------|
 | Read | beépített | beépített |
 | Write | beépített | beépített |
@@ -304,13 +304,13 @@ wt-tools orchestráció:
 | WebFetch | — | beépített |
 | WebSearch | — | beépített |
 | Notebook | — | beépített |
-| MCP tools | extension-nel | natív + wt-tools MCP server |
+| MCP tools | extension-nel | natív + set-core MCP server |
 
 **Értékelés:** Nagyjából azonos alapkészlet. Pi szándékosan minimális (4 core tool), Claude Code gazdagabb beépített készlettel rendelkezik.
 
 ### 3.7 Mód-ok és integráció
 
-| Mód | Pi | wt-tools |
+| Mód | Pi | set-core |
 |-----|-----|----------|
 | **Interactive TUI** | Saját TUI (pi-tui csomag) | Claude Code TUI |
 | **Print/JSON** | Nem-interaktív kimenet | Claude Code `--print` |
@@ -321,7 +321,7 @@ wt-tools orchestráció:
 | **GPU pod mgmt** | pi-pods (vLLM) | — |
 | **GUI** | — | PySide6 Control Center |
 
-**Értékelés:** Pi **több integrációs módot** kínál (RPC, SDK, Web UI, Slack bot). wt-tools-nak van GUI-ja, ami Pi-nek nincs. A pi-pods (GPU menedzsment) teljesen egyedi képesség.
+**Értékelés:** Pi **több integrációs módot** kínál (RPC, SDK, Web UI, Slack bot). set-core-nak van GUI-ja, ami Pi-nek nincs. A pi-pods (GPU menedzsment) teljesen egyedi képesség.
 
 ---
 
@@ -343,7 +343,7 @@ Szándékosan KIZÁRT beépített funkciók:
 **Előny:** Kis, áttekinthető core. Felhasználó alakítja a saját élményét.
 **Hátrány:** Sok fontos funkció "extension-nel megoldható" de nincs megcsinálva. A memory például csak session-en belül létezik.
 
-### wt-tools filozófia: "Batteries-included workflow toolkit"
+### set-core filozófia: "Batteries-included workflow toolkit"
 
 ```
 Beépített és integrált:
@@ -367,10 +367,10 @@ Beépített és integrált:
 
 ### 5.1 Extension/Plugin API — MAGAS PRIORITÁS
 
-Pi extension rendszere a **legfontosabb tanulság**. Jelenleg a wt-tools plugin rendszere: SKILL.md (prompt), command markdown, és bash hook-ok. Pi-ben:
+Pi extension rendszere a **legfontosabb tanulság**. Jelenleg a set-core plugin rendszere: SKILL.md (prompt), command markdown, és bash hook-ok. Pi-ben:
 
 - Typed TypeScript API teljes hozzáféréssel
-- 30+ hook event (vs wt-tools 5)
+- 30+ hook event (vs set-core 5)
 - Tool interceptálás és eredmény módosítás
 - Custom UI widgetek
 - Hot-reload
@@ -399,7 +399,7 @@ Pi RPC módja JSONL stdin/stdout protokollal lehetővé teszi:
 - IDE beágyazás
 - Custom frontend-ek
 
-**Javaslat:** Az MCP server már ad egy API felületet, de egy egyszerűbb RPC interfész a wt-tools funkciókhoz (worktree management, memory, orchestration state) hasznos lenne külső integrációkhoz.
+**Javaslat:** Az MCP server már ad egy API felületet, de egy egyszerűbb RPC interfész a set-core funkciókhoz (worktree management, memory, orchestration state) hasznos lenne külső integrációkhoz.
 
 ### 5.4 Multi-Provider AI API — ALACSONY PRIORITÁS (jelenleg)
 
@@ -412,19 +412,19 @@ Pi compaction-ja néhány elemet jobban csinál:
 - **Turn-aware cutting:** Ha a vágáspont egy tool hívás közepére esik, két összefoglalót generál
 - **Branch summary injection:** Ág váltáskor az előző ág kontextusa bekerül az újba
 
-Ezek apró de hasznos finomítások. A Claude Code saját compaction-ja korlátozottabb, de a wt-tools memory rendszere (L1-L5) részben kompenzálja ezt.
+Ezek apró de hasznos finomítások. A Claude Code saját compaction-ja korlátozottabb, de a set-core memory rendszere (L1-L5) részben kompenzálja ezt.
 
 ### 5.6 Prompt Templates — ALACSONY PRIORITÁS
 
-Pi prompt template-jei markdown fájlok argumentum-substitúcióval (`$1`, `$@`, `${@:N:L}`). Ez lényegében megegyezik a wt-tools SKILL.md rendszerével, szóval nincs nagy tanulság.
+Pi prompt template-jei markdown fájlok argumentum-substitúcióval (`$1`, `$@`, `${@:N:L}`). Ez lényegében megegyezik a set-core SKILL.md rendszerével, szóval nincs nagy tanulság.
 
 ### 5.7 Web UI komponensek — PERSPEKTIVIKUS
 
-Pi `pi-web-ui` csomagja böngészőben futó chat komponenseket ad. Ha a wt-tools GUI-t webre migrálnánk (PySide6 → web), ez hasznos referencia.
+Pi `pi-web-ui` csomagja böngészőben futó chat komponenseket ad. Ha a set-core GUI-t webre migrálnánk (PySide6 → web), ez hasznos referencia.
 
 ### 5.8 Slack bot (pi-mom) — PERSPEKTIVIKUS
 
-Pi-mom egy LLM-powered Slack bot ami bash-t futtat, fájlokat kezel, és memóriát tart. Ha a wt-tools-hoz Slack integrációt adnánk (orchestration notifications, remote triggering), pi-mom jó kiindulás.
+Pi-mom egy LLM-powered Slack bot ami bash-t futtat, fájlokat kezel, és memóriát tart. Ha a set-core-hoz Slack integrációt adnánk (orchestration notifications, remote triggering), pi-mom jó kiindulás.
 
 ---
 
@@ -448,11 +448,11 @@ Pi-mom egy LLM-powered Slack bot ami bash-t futtat, fájlokat kezel, és memóri
 ## 7. Összefoglaló mátrix
 
 ```
-                        Pi                    wt-tools
+                        Pi                    set-core
                         ─────────────────     ─────────────────
 Önálló agent            ████████████████ 10   ░░░░░░░░░░░░░░░░  0
   (Pi standalone,       (Claude Code
-   wt-tools plugin)      kiegészítő)
+   set-core plugin)      kiegészítő)
 
 Extension rendszer      ████████████████  9   ████░░░░░░░░░░░░  3
   (typed API, 30+       (bash hooks,
@@ -501,11 +501,11 @@ Dokumentáció            ████████████████  9   
 
 > **Frissítve: 2026-03-17**
 
-Az [oh-my-pi](https://github.com/can1357/oh-my-pi) (can1357) a pi-mono egy "batteries-included" forkja, ami a Pi minimális core-ját **jelentősen kibővíti**. Ez a wt-tools szempontjából érdekesebb mint a vanilla Pi, mert közelebb áll a mi feature set-ünkhöz.
+Az [oh-my-pi](https://github.com/can1357/oh-my-pi) (can1357) a pi-mono egy "batteries-included" forkja, ami a Pi minimális core-ját **jelentősen kibővíti**. Ez a set-core szempontjából érdekesebb mint a vanilla Pi, mert közelebb áll a mi feature set-ünkhöz.
 
-### oh-my-pi vs Pi vs wt-tools
+### oh-my-pi vs Pi vs set-core
 
-| Feature | Pi (vanilla) | oh-my-pi | wt-tools |
+| Feature | Pi (vanilla) | oh-my-pi | set-core |
 |---------|-------------|----------|----------|
 | **Sub-agents** | ✗ (tmux) | ✓ Beépített `task` tool, 6 agent típus | ✓ Teams + Agent tool |
 | **MCP** | ✗ (filozófia) | ✓ Stdio + HTTP, OAuth, proxy | ✓ Natív |
@@ -531,7 +531,7 @@ Az [oh-my-pi](https://github.com/can1357/oh-my-pi) (can1357) a pi-mono egy "batt
 - Nincs orchestráció (sentinel, dependency graph, merge pipeline)
 - Kisebb közösség és kevesebb production usage
 
-**Következtetés:** Az oh-my-pi **nem alternatíva** a wt-tools-hoz, de az LSP és hashline feature-ök inspiratívak. A fuse-overlay isolation is érdekes — könnyebb teardown mint a git worktree.
+**Következtetés:** Az oh-my-pi **nem alternatíva** a set-core-hoz, de az LSP és hashline feature-ök inspiratívak. A fuse-overlay isolation is érdekes — könnyebb teardown mint a git worktree.
 
 ---
 
@@ -560,7 +560,7 @@ Egy 6-change orchestráció (minishop E2E jellegű):
 | **Pi multi-model** | Opus (L/XL) + Gemini Flash (S/M) | ~$15-25 | 55-70% |
 | **Agresszív** | Sonnet (L) + Gemini Flash (S/M) | ~$8-15 | 75-85% |
 
-**Megjegyzés:** A "Pi multi-model" sor nem Pi-t jelenti mint terméket — hanem azt a koncepciót, hogy a wt-tools orchestrátorba Pi SDK/RPC-n keresztül nem-Claude modelleket is be tudnánk kötni.
+**Megjegyzés:** A "Pi multi-model" sor nem Pi-t jelenti mint terméket — hanem azt a koncepciót, hogy a set-core orchestrátorba Pi SDK/RPC-n keresztül nem-Claude modelleket is be tudnánk kötni.
 
 ### 9.3 Minőség kockázat
 
@@ -582,13 +582,13 @@ A költségmegtakarítás **nem ingyen van**:
 ### 10.1 Jelenlegi dispatch architektúra
 
 ```python
-# lib/wt_orch/dispatcher.py — jelenlegi flow
+# lib/set_orch/dispatcher.py — jelenlegi flow
 dispatch_change()
     → resolve_change_model()     # opus/sonnet a complexity alapján
     → build enriched proposal    # memory, PK, sibling, design context
     → write proposal.md          # a worktree-be
-    → dispatch_via_wt_loop()     # wt-loop start → tmux → Claude Code session
-        → wt-loop start <task> --model <model> --change <name>
+    → dispatch_via_wt_loop()     # set-loop start → tmux → Claude Code session
+        → set-loop start <task> --model <model> --change <name>
         → Claude Code agent fut a worktree-ben
         → OpenSpec skills, MCP tools, hooks mind elérhetők
 ```
@@ -664,11 +664,11 @@ Phase 0 benchmark eredmény?
 
 ## 11. Konklúzió
 
-Pi és wt-tools **fundamentálisan más problémát oldanak meg**:
+Pi és set-core **fundamentálisan más problémát oldanak meg**:
 
 - **Pi** = egy coding agent ami bármilyen LLM-mel működik, maximálisan testreszabható extension rendszerrel. **Horizontális**: széles provider támogatás, sok integráció, minimális core.
 
-- **wt-tools** = egy Claude Code-ra épülő workflow toolkit ami multi-agent orchestrációt, cross-session memóriát, és spec-driven fejlesztést ad. **Vertikális**: egy LLM-en mély integráció, production workflow.
+- **set-core** = egy Claude Code-ra épülő workflow toolkit ami multi-agent orchestrációt, cross-session memóriát, és spec-driven fejlesztést ad. **Vertikális**: egy LLM-en mély integráció, production workflow.
 
 **A két projekt nem versenyez** — inkább kiegészítik egymást.
 
@@ -701,7 +701,7 @@ NE CSINÁLD:
 2. **Extension API erősítése** — A jelenlegi hook rendszer (5 event) túl szűk. Pi 22+ event-je, tool interceptálása, hot-reload-ja inspiráció.
 3. **RPC monitoring** — Pi JSONL protocol gazdagabb visibility-t ad mint a jelenlegi `run_claude()` black-box. Akár Claude Code dispatch-hez is hasznos lenne hasonló structured output.
 4. **pi-ai mint library** — A `@mariozechner/pi-ai` csomag önmagában is értékes: egységes multi-provider API, cross-provider context handoff, token/cost tracking. Használható lenne a `run_claude()` helyett a planner/verifier/merge LLM hívásoknál.
-5. **LSP gap** — Sem Claude Code, sem wt-tools nem ad LSP-t az agent-eknek. oh-my-pi megmutatta hogy a 11-operációs LSP integráció (diagnostics, references, rename) javítja a kódminőséget. Érdemes követni.
+5. **LSP gap** — Sem Claude Code, sem set-core nem ad LSP-t az agent-eknek. oh-my-pi megmutatta hogy a 11-operációs LSP integráció (diagnostics, references, rename) javítja a kódminőséget. Érdemes követni.
 
 ---
 

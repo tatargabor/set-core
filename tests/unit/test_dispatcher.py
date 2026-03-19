@@ -1,4 +1,4 @@
-"""Tests for wt_orch.dispatcher — Dispatch, lifecycle, model routing, recovery."""
+"""Tests for set_orch.dispatcher — Dispatch, lifecycle, model routing, recovery."""
 
 import json
 import os
@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.dispatcher import (
+from set_orch.dispatcher import (
     STALL_COOLDOWN_SECONDS,
     DispatchContext,
     SyncResult,
@@ -29,7 +29,7 @@ from wt_orch.dispatcher import (
     resume_stopped_changes,
     retry_failed_builds,
 )
-from wt_orch.state import Change, OrchestratorState, WatchdogState
+from set_orch.state import Change, OrchestratorState, WatchdogState
 
 
 @pytest.fixture
@@ -275,8 +275,8 @@ class TestRecoverOrphanedChanges:
 
     def test_worktree_exists_no_pid_reconciled_to_stopped(self, state_file, tmp_dir):
         """Worktree exists but no PID → reconcile to 'stopped' for resume."""
-        wt_dir = os.path.join(tmp_dir, "worktree")
-        os.makedirs(wt_dir)
+        set_dir = os.path.join(tmp_dir, "worktree")
+        os.makedirs(set_dir)
         _write_state(state_file, [
             {
                 "name": "running-1",
@@ -285,7 +285,7 @@ class TestRecoverOrphanedChanges:
                 "change_type": "feature",
                 "depends_on": [],
                 "status": "running",
-                "worktree_path": wt_dir,
+                "worktree_path": set_dir,
                 "ralph_pid": 0,
                 "tokens_used": 0,
                 "tokens_used_prev": 0,
@@ -311,8 +311,8 @@ class TestRecoverOrphanedChanges:
 
     def test_worktree_exists_dead_pid_reconciled_to_stopped(self, state_file, tmp_dir):
         """Worktree exists but PID is dead → reconcile to 'stopped'."""
-        wt_dir = os.path.join(tmp_dir, "worktree")
-        os.makedirs(wt_dir)
+        set_dir = os.path.join(tmp_dir, "worktree")
+        os.makedirs(set_dir)
         _write_state(state_file, [
             {
                 "name": "running-1",
@@ -321,7 +321,7 @@ class TestRecoverOrphanedChanges:
                 "change_type": "feature",
                 "depends_on": [],
                 "status": "running",
-                "worktree_path": wt_dir,
+                "worktree_path": set_dir,
                 "ralph_pid": 99999999,
                 "tokens_used": 0,
                 "tokens_used_prev": 0,
@@ -347,11 +347,11 @@ class TestRecoverOrphanedChanges:
 
     def test_worktree_exists_live_pid_skipped(self, state_file, tmp_dir):
         """Worktree exists and PID is alive → skip (agent still working)."""
-        wt_dir = os.path.join(tmp_dir, "worktree")
-        os.makedirs(wt_dir)
-        # Use PID 1 (init) — always alive but won't match "wt-loop"
+        set_dir = os.path.join(tmp_dir, "worktree")
+        os.makedirs(set_dir)
+        # Use PID 1 (init) — always alive but won't match "set-loop"
         # so it will be treated as dead. Use os.getpid() which is alive.
-        # But check_pid checks for "wt-loop" command — current process won't match.
+        # But check_pid checks for "set-loop" command — current process won't match.
         # So we need to mock check_pid for a true live+match scenario.
         _write_state(state_file, [
             {
@@ -361,8 +361,8 @@ class TestRecoverOrphanedChanges:
                 "change_type": "feature",
                 "depends_on": [],
                 "status": "running",
-                "worktree_path": wt_dir,
-                "ralph_pid": os.getpid(),  # alive but won't match wt-loop
+                "worktree_path": set_dir,
+                "ralph_pid": os.getpid(),  # alive but won't match set-loop
                 "tokens_used": 0,
                 "tokens_used_prev": 0,
                 "input_tokens": 0,
@@ -380,8 +380,8 @@ class TestRecoverOrphanedChanges:
         ])
         # Mock check_pid to return alive+match
         from unittest.mock import patch
-        from wt_orch.process import CheckResult
-        with patch("wt_orch.dispatcher.check_pid", return_value=CheckResult(alive=True, match=True)):
+        from set_orch.process import CheckResult
+        with patch("set_orch.dispatcher.check_pid", return_value=CheckResult(alive=True, match=True)):
             count = recover_orphaned_changes(state_file)
         assert count == 0
         with open(state_file) as f:
@@ -523,8 +523,8 @@ class TestResumeChangeTestCommand:
         """resume_change passes --test-command from directives when done=test."""
         from unittest.mock import patch, MagicMock
 
-        wt_dir = os.path.join(tmp_dir, "worktree")
-        os.makedirs(os.path.join(wt_dir, ".claude"))
+        set_dir = os.path.join(tmp_dir, "worktree")
+        os.makedirs(os.path.join(set_dir, ".claude"))
 
         _write_state(state_file, [
             {
@@ -534,7 +534,7 @@ class TestResumeChangeTestCommand:
                 "change_type": "bugfix",
                 "depends_on": [],
                 "status": "stopped",
-                "worktree_path": wt_dir,
+                "worktree_path": set_dir,
                 "ralph_pid": 0,
                 "tokens_used": 100,
                 "tokens_used_prev": 0,
@@ -560,11 +560,11 @@ class TestResumeChangeTestCommand:
             json.dump(st, f)
 
         # Write loop-state to signal running
-        loop_state_file = os.path.join(wt_dir, ".claude", "loop-state.json")
+        loop_state_file = os.path.join(set_dir, ".claude", "loop-state.json")
         with open(loop_state_file, "w") as f:
             json.dump({"status": "starting", "terminal_pid": 12345}, f)
 
-        from wt_orch.dispatcher import resume_change
+        from set_orch.dispatcher import resume_change
 
         captured_cmd = []
 
@@ -572,8 +572,8 @@ class TestResumeChangeTestCommand:
             captured_cmd.extend(cmd)
             return MagicMock(returncode=0)
 
-        with patch("wt_orch.dispatcher.run_command", side_effect=mock_run_command), \
-             patch("wt_orch.dispatcher._kill_existing_wt_loop"):
+        with patch("set_orch.dispatcher.run_command", side_effect=mock_run_command), \
+             patch("set_orch.dispatcher._kill_existing_wt_loop"):
             result = resume_change(state_file, "fix-idor")
 
         assert result is True
@@ -588,8 +588,8 @@ class TestResumeChangeTestCommand:
         """When no test command available, --test-command flag is omitted."""
         from unittest.mock import patch, MagicMock
 
-        wt_dir = os.path.join(tmp_dir, "worktree")
-        os.makedirs(os.path.join(wt_dir, ".claude"))
+        set_dir = os.path.join(tmp_dir, "worktree")
+        os.makedirs(os.path.join(set_dir, ".claude"))
 
         _write_state(state_file, [
             {
@@ -599,7 +599,7 @@ class TestResumeChangeTestCommand:
                 "change_type": "bugfix",
                 "depends_on": [],
                 "status": "stopped",
-                "worktree_path": wt_dir,
+                "worktree_path": set_dir,
                 "ralph_pid": 0,
                 "tokens_used": 0,
                 "tokens_used_prev": 0,
@@ -618,11 +618,11 @@ class TestResumeChangeTestCommand:
             },
         ])
 
-        loop_state_file = os.path.join(wt_dir, ".claude", "loop-state.json")
+        loop_state_file = os.path.join(set_dir, ".claude", "loop-state.json")
         with open(loop_state_file, "w") as f:
             json.dump({"status": "starting", "terminal_pid": 12345}, f)
 
-        from wt_orch.dispatcher import resume_change
+        from set_orch.dispatcher import resume_change
 
         captured_cmd = []
 
@@ -630,9 +630,9 @@ class TestResumeChangeTestCommand:
             captured_cmd.extend(cmd)
             return MagicMock(returncode=0)
 
-        with patch("wt_orch.dispatcher.run_command", side_effect=mock_run_command), \
-             patch("wt_orch.dispatcher._kill_existing_wt_loop"), \
-             patch("wt_orch.config.auto_detect_test_command", return_value=""):
+        with patch("set_orch.dispatcher.run_command", side_effect=mock_run_command), \
+             patch("set_orch.dispatcher._kill_existing_wt_loop"), \
+             patch("set_orch.config.auto_detect_test_command", return_value=""):
             result = resume_change(state_file, "fix-auth")
 
         assert result is True
@@ -645,7 +645,7 @@ class TestResumeChangeTestCommand:
 class TestGenerateStartupGuide:
     def test_nextjs_prisma_playwright(self, tmp_dir):
         """Full stack: Next.js + Prisma + Playwright detected."""
-        from wt_orch.dispatcher import generate_startup_guide
+        from set_orch.dispatcher import generate_startup_guide
 
         wt = os.path.join(tmp_dir, "fullstack")
         os.makedirs(wt)
@@ -675,7 +675,7 @@ class TestGenerateStartupGuide:
 
     def test_minimal_project(self, tmp_dir):
         """Minimal project with just package.json."""
-        from wt_orch.dispatcher import generate_startup_guide
+        from set_orch.dispatcher import generate_startup_guide
 
         wt = os.path.join(tmp_dir, "minimal")
         os.makedirs(wt)
@@ -693,7 +693,7 @@ class TestGenerateStartupGuide:
 
 class TestAppendStartupGuide:
     def test_appends_to_existing_claudemd(self, tmp_dir):
-        from wt_orch.dispatcher import append_startup_guide_to_claudemd
+        from set_orch.dispatcher import append_startup_guide_to_claudemd
 
         wt = os.path.join(tmp_dir, "wt")
         os.makedirs(wt)
@@ -710,7 +710,7 @@ class TestAppendStartupGuide:
 
     def test_idempotent_skip(self, tmp_dir):
         """If section already exists, don't modify."""
-        from wt_orch.dispatcher import append_startup_guide_to_claudemd
+        from set_orch.dispatcher import append_startup_guide_to_claudemd
 
         wt = os.path.join(tmp_dir, "wt2")
         os.makedirs(wt)
@@ -724,7 +724,7 @@ class TestAppendStartupGuide:
         assert content == original  # unchanged
 
     def test_creates_claudemd_if_missing(self, tmp_dir):
-        from wt_orch.dispatcher import append_startup_guide_to_claudemd
+        from set_orch.dispatcher import append_startup_guide_to_claudemd
 
         wt = os.path.join(tmp_dir, "wt3")
         os.makedirs(wt)

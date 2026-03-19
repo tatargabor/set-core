@@ -1,20 +1,54 @@
 #!/usr/bin/env bash
-# wt-tools installer for Linux and macOS
+# set-core installer for Linux and macOS
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.local/bin"
 
-# Source wt-common.sh for shared functions (find_python, save_shodh_python, etc.)
-source "$SCRIPT_DIR/bin/wt-common.sh"
+# Source set-common.sh for shared functions (find_python, save_shodh_python, etc.)
+source "$SCRIPT_DIR/bin/set-common.sh"
 
-# Override color helpers with installer-style prefixes (wt-common.sh defines simpler versions)
+# Override color helpers with installer-style prefixes (set-common.sh defines simpler versions)
 info() { echo -e "${BLUE}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[OK]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
-# PLATFORM is already set by wt-common.sh (detect_platform)
+# PLATFORM is already set by set-common.sh (detect_platform)
+
+# ─── Migration Check: detect old wt-tools installation ───
+check_wt_migration() {
+    local needs_migration=false
+
+    # Check for old config dir
+    if [[ -d "${XDG_CONFIG_HOME:-$HOME/.config}/wt-tools" ]]; then
+        needs_migration=true
+    fi
+    # Check for old data dir
+    if [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/wt-tools" ]]; then
+        needs_migration=true
+    fi
+    # Check for old symlinks
+    if [[ -L "$HOME/.local/bin/wt-new" ]]; then
+        needs_migration=true
+    fi
+
+    if $needs_migration; then
+        echo ""
+        warn "Detected old wt-tools installation!"
+        echo "  set-core (formerly wt-tools) has been renamed."
+        echo "  Running migration to move config, data, and symlinks..."
+        echo ""
+
+        if [[ -x "$SCRIPT_DIR/scripts/migrate-to-set.sh" ]]; then
+            "$SCRIPT_DIR/scripts/migrate-to-set.sh" --global
+            echo ""
+        else
+            warn "Migration script not found at $SCRIPT_DIR/scripts/migrate-to-set.sh"
+            echo "  Please run it manually after install."
+        fi
+    fi
+}
 
 # Ensure ~/.local/bin is in PATH by adding to shell rc file
 ensure_path() {
@@ -34,7 +68,7 @@ ensure_path() {
     esac
 
     # Check idempotency marker
-    if [[ -f "$rc_file" ]] && grep -q '# WT-TOOLS:PATH' "$rc_file"; then
+    if [[ -f "$rc_file" ]] && grep -q '# SET-CORE:PATH' "$rc_file"; then
         info "PATH entry already in $rc_file (marker found)"
         return 0
     fi
@@ -42,7 +76,7 @@ ensure_path() {
     # Append PATH export with marker
     {
         echo ""
-        echo '# WT-TOOLS:PATH'
+        echo '# SET-CORE:PATH'
         echo "export PATH=\"\$HOME/.local/bin:\$PATH\""
     } >> "$rc_file"
 
@@ -170,13 +204,13 @@ check_prerequisites() {
     success "Prerequisites OK"
 }
 
-# Install wt-tools scripts
+# Install set-core scripts
 install_scripts() {
-    info "Installing wt-tools scripts to $INSTALL_DIR..."
+    info "Installing set-core scripts to $INSTALL_DIR..."
 
     mkdir -p "$INSTALL_DIR"
 
-    local scripts=(wt-common.sh wt-project wt-new wt-work wt-add wt-list wt-merge wt-close wt-version wt-status wt-focus wt-config wt-control wt-control-gui wt-control-init wt-control-sync wt-control-chat wt-loop wt-usage wt-skill-start wt-hook-stop wt-hook-skill wt-hook-activity wt-hook-memory wt-hook-memory-save wt-hook-memory-recall wt-hook-memory-warmstart wt-hook-memory-pretool wt-hook-memory-posttool wt-deploy-hooks wt-memory wt-memoryd wt-openspec wt-audit wt-orchestrate wt-sentinel wt-manual wt-e2e-report wt-orch-core wt-web-install)
+    local scripts=(set-common.sh set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-memory set-hook-memory-save set-hook-memory-recall set-hook-memory-warmstart set-hook-memory-pretool set-hook-memory-posttool set-deploy-hooks set-memory set-memoryd set-openspec set-audit set-orchestrate set-sentinel set-manual set-e2e-report set-orch-core set-web-install)
 
     for script in "${scripts[@]}"; do
         local src="$SCRIPT_DIR/bin/$script"
@@ -189,6 +223,17 @@ install_scripts() {
             warn "  Not found: $src"
         fi
     done
+
+    # Install backward-compat wrappers (wt-* → set-*)
+    if [[ -d "$SCRIPT_DIR/bin/compat" ]]; then
+        for compat_script in "$SCRIPT_DIR/bin/compat"/wt-*; do
+            [[ -f "$compat_script" ]] || continue
+            local compat_name
+            compat_name=$(basename "$compat_script")
+            ln -sf "$compat_script" "$INSTALL_DIR/$compat_name"
+        done
+        success "  Installed backward-compat wrappers (wt-* → set-*)"
+    fi
 
     # Ensure INSTALL_DIR is in PATH
     ensure_path "$INSTALL_DIR"
@@ -277,7 +322,7 @@ install_zed() {
 install_shodh_memory() {
     info "Checking Shodh-Memory..."
 
-    # Use find_python() to locate the target Python (shared from wt-common.sh)
+    # Use find_python() to locate the target Python (shared from set-common.sh)
     local PYTHON=""
     if ! PYTHON=$(find_python); then
         warn "No python3 found. Skipping Shodh-Memory."
@@ -313,7 +358,7 @@ install_shodh_memory() {
     read -p "Install Shodh-Memory? [y/N] " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        info "Skipping Shodh-Memory (wt-memory will work in no-op mode)"
+        info "Skipping Shodh-Memory (set-memory will work in no-op mode)"
         return 0
     fi
 
@@ -335,7 +380,7 @@ install_shodh_memory() {
         save_shodh_python "$PYTHON"
         success "Shodh-Memory installed"
         echo "  Python: $PYTHON"
-        echo "  Check status with: wt-memory status"
+        echo "  Check status with: set-memory status"
     else
         warn "Shodh-Memory installed but import verification failed"
     fi
@@ -349,18 +394,18 @@ install_completions() {
     local bash_completion_dir="${HOME}/.local/share/bash-completion/completions"
     mkdir -p "$bash_completion_dir"
 
-    if [[ -f "$SCRIPT_DIR/bin/wt-completions.bash" ]]; then
-        ln -sf "$SCRIPT_DIR/bin/wt-completions.bash" "$bash_completion_dir/wt-completions"
+    if [[ -f "$SCRIPT_DIR/bin/set-completions.bash" ]]; then
+        ln -sf "$SCRIPT_DIR/bin/set-completions.bash" "$bash_completion_dir/set-completions"
         success "  Bash completions installed"
-        echo "    Add to ~/.bashrc: source ~/.local/share/bash-completion/completions/wt-completions"
+        echo "    Add to ~/.bashrc: source ~/.local/share/bash-completion/completions/set-completions"
     fi
 
     # Zsh completions
     local zsh_completion_dir="${HOME}/.local/share/zsh/site-functions"
     mkdir -p "$zsh_completion_dir"
 
-    if [[ -f "$SCRIPT_DIR/bin/wt-completions.zsh" ]]; then
-        ln -sf "$SCRIPT_DIR/bin/wt-completions.zsh" "$zsh_completion_dir/_wt"
+    if [[ -f "$SCRIPT_DIR/bin/set-completions.zsh" ]]; then
+        ln -sf "$SCRIPT_DIR/bin/set-completions.zsh" "$zsh_completion_dir/_wt"
         success "  Zsh completions installed"
         echo "    Add to ~/.zshrc: fpath=(~/.local/share/zsh/site-functions \$fpath)"
     fi
@@ -377,7 +422,7 @@ install_gui_dependencies() {
         return 1
     fi
 
-    # Use find_python() to locate the target Python (shared from wt-common.sh)
+    # Use find_python() to locate the target Python (shared from set-common.sh)
     local PYTHON=""
     if ! PYTHON=$(find_python); then
         warn "No python3 found. Skipping GUI dependencies."
@@ -406,8 +451,8 @@ install_desktop_entry() {
     local apps_dir="$HOME/.local/share/applications"
     mkdir -p "$apps_dir"
 
-    # Use wt-control wrapper script (handles PYTHONPATH)
-    local wt_control_path="$INSTALL_DIR/wt-control"
+    # Use set-control wrapper script (handles PYTHONPATH)
+    local wt_control_path="$INSTALL_DIR/set-control"
 
     # Install custom icon
     local icon_dir="$HOME/.local/share/icons"
@@ -415,13 +460,13 @@ install_desktop_entry() {
     local icon_src="$SCRIPT_DIR/assets/icon.png"
     if [[ -f "$icon_src" ]]; then
         mkdir -p "$icon_dir"
-        cp "$icon_src" "$icon_dir/wt-control.png"
-        icon_path="$icon_dir/wt-control.png"
+        cp "$icon_src" "$icon_dir/set-control.png"
+        icon_path="$icon_dir/set-control.png"
     fi
 
-    cat > "$apps_dir/wt-control.desktop" << EOF
+    cat > "$apps_dir/set-control.desktop" << EOF
 [Desktop Entry]
-Name=Worktree Control Center
+Name=SET Control Center
 Comment=Manage git worktrees and Claude agents
 Exec=$wt_control_path
 Icon=$icon_path
@@ -431,7 +476,7 @@ Categories=Development;
 Keywords=worktree;git;claude;
 EOF
 
-    chmod +x "$apps_dir/wt-control.desktop"
+    chmod +x "$apps_dir/set-control.desktop"
 
     # Update desktop database
     if command -v update-desktop-database &>/dev/null; then
@@ -442,14 +487,14 @@ EOF
     ln -sf "$wt_control_path" "$INSTALL_DIR/Worktree"
     ln -sf "$wt_control_path" "$INSTALL_DIR/worktree"
 
-    success "Desktop entry installed (Activities: 'Worktree', Alt+F2: 'wt-control' or 'Worktree')"
+    success "Desktop entry installed (Activities: 'Worktree', Alt+F2: 'set-control' or 'Worktree')"
 }
 
 # Install macOS .app bundle for Spotlight/Alfred/Raycast/Dock discovery
 install_macos_app_bundle() {
     info "Installing macOS app bundle..."
 
-    local app_dir="$HOME/Applications/WT Control.app"
+    local app_dir="$HOME/Applications/SET Control.app"
     local contents_dir="$app_dir/Contents"
     local macos_dir="$contents_dir/MacOS"
     local resources_dir="$contents_dir/Resources"
@@ -464,11 +509,11 @@ install_macos_app_bundle() {
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>WT Control</string>
+    <string>SET Control</string>
     <key>CFBundleIdentifier</key>
-    <string>com.wt-tools.control</string>
+    <string>com.set-core.control</string>
     <key>CFBundleExecutable</key>
-    <string>wt-control</string>
+    <string>set-control</string>
     <key>CFBundleIconFile</key>
     <string>app</string>
     <key>CFBundlePackageType</key>
@@ -482,16 +527,16 @@ install_macos_app_bundle() {
 EOF
 
     # Generate executable wrapper
-    cat > "$macos_dir/wt-control" << 'WRAPPER'
+    cat > "$macos_dir/set-control" << 'WRAPPER'
 #!/bin/bash
-WT_CONTROL="$HOME/.local/bin/wt-control"
+WT_CONTROL="$HOME/.local/bin/set-control"
 if [[ ! -x "$WT_CONTROL" ]]; then
-    osascript -e 'display dialog "wt-tools is not installed.\n\nRun install.sh from the wt-tools directory first." buttons {"OK"} default button "OK" with title "WT Control" with icon stop'
+    osascript -e 'display dialog "set-core is not installed.\n\nRun install.sh from the set-core directory first." buttons {"OK"} default button "OK" with title "SET Control" with icon stop'
     exit 1
 fi
 exec "$WT_CONTROL" "$@"
 WRAPPER
-    chmod +x "$macos_dir/wt-control"
+    chmod +x "$macos_dir/set-control"
 
     # Copy app icon if available
     local icon_src="$SCRIPT_DIR/assets/icon.icns"
@@ -502,7 +547,7 @@ WRAPPER
     # Trigger Spotlight indexing
     mdimport "$app_dir" 2>/dev/null || true
 
-    success "macOS app bundle installed — search 'WT Control' in Spotlight (Cmd+Space)"
+    success "macOS app bundle installed — search 'SET Control' in Spotlight (Cmd+Space)"
 }
 
 # Verify GUI can start
@@ -534,11 +579,11 @@ verify_gui_startup() {
 }
 
 # Install Claude Code skills and commands
-# Note: wt commands/skills are deployed per-project by wt-project init.
+# Note: wt commands/skills are deployed per-project by set-project init.
 # No global symlinks needed — per-project deployment enables version pinning.
 install_skills() {
     info "Claude Code skills and commands..."
-    info "  wt commands/skills deployed per-project via wt-project init"
+    info "  wt commands/skills deployed per-project via set-project init"
 
     # Clean up legacy global symlinks if present
     local legacy_wt_commands="$HOME/.claude/commands/wt"
@@ -553,12 +598,12 @@ install_skills() {
     fi
 }
 
-# Deploy wt-tools (hooks, commands, skills) to all registered projects
-# Uses wt-project init which handles both registration and deployment
+# Deploy set-core (hooks, commands, skills) to all registered projects
+# Uses set-project init which handles both registration and deployment
 install_projects() {
-    info "Deploying wt-tools to registered projects..."
+    info "Deploying set-core to registered projects..."
 
-    local projects_file="$HOME/.config/wt-tools/projects.json"
+    local projects_file="$HOME/.config/set-core/projects.json"
     if [[ ! -f "$projects_file" ]]; then
         info "  No projects.json found, skipping"
         return 0
@@ -575,7 +620,7 @@ install_projects() {
     while IFS= read -r project_path; do
         if [[ -d "$project_path" ]]; then
             info "  Updating: $project_path"
-            (cd "$project_path" && "$SCRIPT_DIR/bin/wt-project" init) || warn "  Failed: $project_path"
+            (cd "$project_path" && "$SCRIPT_DIR/bin/set-project" init) || warn "  Failed: $project_path"
 
             # Also deploy to each worktree of this project
             local worktree_paths
@@ -585,7 +630,7 @@ install_projects() {
                 [[ -z "$wt_path" ]] && continue
                 if [[ -d "$wt_path" ]]; then
                     info "  Updating worktree: $wt_path"
-                    (cd "$wt_path" && "$SCRIPT_DIR/bin/wt-project" init) || warn "  Failed worktree: $wt_path"
+                    (cd "$wt_path" && "$SCRIPT_DIR/bin/set-project" init) || warn "  Failed worktree: $wt_path"
                 fi
             done <<< "$worktree_paths"
         else
@@ -613,8 +658,8 @@ install_mcp_statusline() {
         # Create statusline.sh if not in repo
         cat > "$dst" << 'STATUSLINE_EOF'
 #!/bin/bash
-# Claude Code Status Line Script - wt-tools
-# Shows: folder, branch, model, context usage, wt-loop status
+# Claude Code Status Line Script - set-core
+# Shows: folder, branch, model, context usage, set-loop status
 
 input=$(cat)
 
@@ -633,7 +678,7 @@ total_input=$(echo "$input" | jq -r '.context_window.total_input_tokens // 0')
 total_output=$(echo "$input" | jq -r '.context_window.total_output_tokens // 0')
 agents=$(echo "$input" | jq -r '.agents // [] | length')
 
-# wt-loop status
+# set-loop status
 ralph_status=""
 state_file="$dir/.claude/loop-state.json"
 if [ -f "$state_file" ]; then
@@ -705,10 +750,10 @@ EOF
                 info "  Setting up MCP server dependencies..."
                 (cd "$mcp_server_dir" && uv sync 2>/dev/null) || true
 
-                # Clean up legacy global MCP registrations (now per-project via wt-project init)
-                claude mcp remove --scope user wt-tools 2>/dev/null || true
-                claude mcp remove --scope user wt-memory 2>/dev/null || true
-                info "  MCP server is registered per-project via wt-project init"
+                # Clean up legacy global MCP registrations (now per-project via set-project init)
+                claude mcp remove --scope user set-core 2>/dev/null || true
+                claude mcp remove --scope user set-memory 2>/dev/null || true
+                info "  MCP server is registered per-project via set-project init"
             else
                 warn "  uv installation failed. MCP server requires uv."
                 echo "    Try manually: curl -LsSf https://astral.sh/uv/install.sh | sh"
@@ -883,9 +928,9 @@ EOF
     success "Created Zed keymap.json (Ctrl+Shift+L for Claude)"
 }
 
-# Install wt-web systemd user service
+# Install set-web systemd user service
 install_web_service() {
-    info "Setting up wt-web dashboard service..."
+    info "Setting up set-web dashboard service..."
 
     # Skip on non-systemd systems (macOS, containers, WSL1)
     if ! command -v systemctl &>/dev/null; then
@@ -899,9 +944,9 @@ install_web_service() {
         return 0
     fi
 
-    local service_src="$SCRIPT_DIR/templates/systemd/wt-web.service"
+    local service_src="$SCRIPT_DIR/templates/systemd/set-web.service"
     local service_dir="$HOME/.config/systemd/user"
-    local service_dst="$service_dir/wt-web.service"
+    local service_dst="$service_dir/set-web.service"
 
     if [[ ! -f "$service_src" ]]; then
         warn "  Service template not found: $service_src"
@@ -914,13 +959,13 @@ install_web_service() {
 
     # Reload systemd, enable and start
     systemctl --user daemon-reload
-    systemctl --user enable wt-web.service 2>/dev/null || true
-    systemctl --user start wt-web.service 2>/dev/null || true
+    systemctl --user enable set-web.service 2>/dev/null || true
+    systemctl --user start set-web.service 2>/dev/null || true
 
-    if systemctl --user is-active --quiet wt-web.service 2>/dev/null; then
-        success "  wt-web service running at http://127.0.0.1:7400"
+    if systemctl --user is-active --quiet set-web.service 2>/dev/null; then
+        success "  set-web service running at http://127.0.0.1:7400"
     else
-        warn "  wt-web service installed but not running (start manually: systemctl --user start wt-web)"
+        warn "  set-web service installed but not running (start manually: systemctl --user start set-web)"
     fi
 }
 
@@ -928,9 +973,11 @@ install_web_service() {
 main() {
     echo ""
     echo "================================"
-    echo "  wt-tools Installer"
+    echo "  SET (ShipExactlyThis) Installer"
     echo "================================"
     echo ""
+
+    check_wt_migration
 
     check_prerequisites
     echo ""
@@ -947,9 +994,9 @@ main() {
     install_zed
     echo ""
 
-    # Source wt-common.sh for editor/permission config functions
+    # Source set-common.sh for editor/permission config functions
     # (SUPPORTED_EDITORS, set_configured_editor, set_claude_permission_mode, etc.)
-    source "$SCRIPT_DIR/bin/wt-common.sh"
+    source "$SCRIPT_DIR/bin/set-common.sh"
 
     configure_editor_choice
     echo ""
@@ -1000,16 +1047,16 @@ main() {
     echo ""
     echo "Quick start:"
     echo "  cd /path/to/your/project"
-    echo "  wt-project init"
-    echo "  wt-new my-change"
-    echo "  wt-work my-change"
+    echo "  set-project init"
+    echo "  set-new my-change"
+    echo "  set-work my-change"
     echo ""
     echo "GUI Control Center:"
-    echo "  wt-control            # Launch from terminal"
+    echo "  set-control            # Launch from terminal"
     if [[ "$PLATFORM" == "linux" ]]; then
         echo "  Alt+F2 → 'Worktree'   # Launch from anywhere"
     elif [[ "$PLATFORM" == "macos" ]]; then
-        echo "  Cmd+Space → 'WT Control'  # Launch from Spotlight"
+        echo "  Cmd+Space → 'SET Control'  # Launch from Spotlight"
     fi
     echo ""
 }

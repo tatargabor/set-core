@@ -8,4 +8,4 @@
 
 ## 2. Fix sentinel restart args
 
-- [x] 2.1 In `.claude/commands/wt/sentinel.md` Step 3 crash recovery restart command, change `wt-orchestrate start &` to `wt-orchestrate start $ARGUMENTS &`
+- [x] 2.1 In `.claude/commands/wt/sentinel.md` Step 3 crash recovery restart command, change `set-orchestrate start &` to `set-orchestrate start $ARGUMENTS &`

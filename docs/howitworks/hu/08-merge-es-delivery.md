@@ -35,7 +35,7 @@ Folyamat:
 1. A 3. change befejeződik → checkpoint aktiválódik
 2. Az orchestrátor megáll (status: `checkpoint`)
 3. Az ember áttekinti a merge queue-t
-4. `wt-orchestrate approve --merge` → merge + folytatás
+4. `set-orchestrate approve --merge` → merge + folytatás
 
 ### manual
 
@@ -66,10 +66,10 @@ Ha a branch létezik, de már a HEAD őse:
 
 ### Eset 3: Normál merge (a gyakori)
 
-A `wt-merge` parancs végzi a tényleges merge-t:
+A `set-merge` parancs végzi a tényleges merge-t:
 
 ```bash
-wt-merge <change-name> --no-push --llm-resolve
+set-merge <change-name> --no-push --llm-resolve
 ```
 
 ## 3-rétegű Conflict Resolution
@@ -88,7 +88,7 @@ Ezeket `--ours` stratégiával oldja fel (a worktree verziója nyer).
 
 ### 2. réteg: LLM merge (`--llm-resolve`)
 
-Ha valódi kód konfliktus van, a `wt-merge --llm-resolve` egy Claude ágenst hív:
+Ha valódi kód konfliktus van, a `set-merge --llm-resolve` egy Claude ágenst hív:
 
 1. A conflicted fájlok átadása az LLM-nek
 2. Az LLM megérti mindkét oldal szándékát
@@ -166,13 +166,13 @@ Checkpoint az alábbi esetekben aktiválódik:
 |---------|--------|
 | `checkpoint_every: N` | N merge után |
 | `token_hard_limit` | Token hard limit elérése |
-| Manuális | `wt-orchestrate pause --all` |
+| Manuális | `set-orchestrate pause --all` |
 
 ### Approval folyamat
 
 ```bash
-wt-orchestrate approve            # jóváhagyás, folytatás
-wt-orchestrate approve --merge    # jóváhagyás + azonnali merge flush
+set-orchestrate approve            # jóváhagyás, folytatás
+set-orchestrate approve --merge    # jóváhagyás + azonnali merge flush
 ```
 
 A `--merge` flag a merge queue-ban várakozó change-eket azonnal merge-li.

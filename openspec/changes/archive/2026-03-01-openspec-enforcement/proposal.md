@@ -18,5 +18,5 @@ OpenSpec artifacts save ~25-30% tokens per change by providing structured contex
 
 ## Impact
 
-- `bin/wt-orchestrate`: `dispatch_change()` gains artifact check (~15 lines), `merge_change()` gains auto-archive call (~10 lines), `cmd_start()` gains stale change warning (~15 lines)
+- `bin/set-orchestrate`: `dispatch_change()` gains artifact check (~15 lines), `merge_change()` gains auto-archive call (~10 lines), `cmd_start()` gains stale change warning (~15 lines)
 - No new dependencies — uses existing `openspec` CLI and filesystem operations

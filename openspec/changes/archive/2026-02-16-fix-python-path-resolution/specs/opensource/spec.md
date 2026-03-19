@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Cross-Platform Support
-The system SHALL run on Linux, macOS, and Windows. The `install.sh` installer SHALL use `find_python()` from `wt-common.sh` to locate the target Python interpreter and install Python dependencies using `$PYTHON -m pip install` instead of bare `pip3`. After successful shodh-memory installation, the installer SHALL persist the Python path to `~/.config/wt-tools/shodh-python`.
+The system SHALL run on Linux, macOS, and Windows. The `install.sh` installer SHALL use `find_python()` from `wt-common.sh` to locate the target Python interpreter and install Python dependencies using `$PYTHON -m pip install` instead of bare `pip3`. After successful shodh-memory installation, the installer SHALL persist the Python path to `~/.config/set-core/shodh-python`.
 
 #### Scenario: Platform detection
 - **GIVEN** the application starts
@@ -14,7 +14,7 @@ The system SHALL run on Linux, macOS, and Windows. The `install.sh` installer SH
 - **THEN** it calls `find_python()` to locate a Python interpreter
 - **AND** it installs shodh-memory with `$PYTHON -m pip install shodh-memory`
 - **AND** it verifies the install with `$PYTHON -c "from shodh_memory import Memory"`
-- **AND** it saves the Python path to `~/.config/wt-tools/shodh-python`
+- **AND** it saves the Python path to `~/.config/set-core/shodh-python`
 
 #### Scenario: Install GUI dependencies into correct Python
 - **WHEN** `install.sh` runs `install_gui_dependencies()`

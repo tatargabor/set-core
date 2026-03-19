@@ -2,7 +2,7 @@
 
 The current memory hook system uses 2 Claude Code hook events: `UserPromptSubmit` (recall) and `Stop` (save). Recall only fires on OpenSpec "change boundaries" — when a new change name is detected in the prompt. This means explore mode, non-OpenSpec usage, and intermediate steps (like DB queries triggered mid-task) get zero automatic memory injection.
 
-Additionally, 8 OpenSpec skills and 8 opsx commands contain inline `<!-- wt-memory hooks -->` blocks that instruct the agent to manually call `wt-memory recall` and `wt-memory remember`. This is a workaround for the hooks not covering enough lifecycle events. The CLAUDE.md "Proactive Memory" section has similar manual instructions.
+Additionally, 8 OpenSpec skills and 8 opsx commands contain inline `<!-- set-memory hooks -->` blocks that instruct the agent to manually call `set-memory recall` and `set-memory remember`. This is a workaround for the hooks not covering enough lifecycle events. The CLAUDE.md "Proactive Memory" section has similar manual instructions.
 
 Comparing with the shodh-memory reference implementation (v0.1.80), they use a single `memory-hook.ts` that handles 6 hook lifecycle events with `additionalContext` injection. Their CLAUDE.md simply says "hooks handle everything, use `remember` only for emphasis." The inline skill instructions are unnecessary when hooks work properly.
 
@@ -26,7 +26,7 @@ Key capabilities we'll leverage:
 - Existing haiku transcript extraction (L5) enhanced with cheat-sheet curation
 - Minimal latency: 0ms for non-hot-topic Bash, ~150ms for hot-topic Bash, ~200ms for prompt recall
 - **Remove ALL inline memory instructions from skills, commands, and CLAUDE.md** — hooks handle everything
-- Agent uses `wt-memory remember` only for emphasis, not routine recall/save
+- Agent uses `set-memory remember` only for emphasis, not routine recall/save
 
 **Non-Goals:**
 - MCP server for memory (out of scope — keep CLI-based for now)
@@ -110,7 +110,7 @@ CONTAINERS:  docker\s|kubectl\s|podman\s
 The `promoted` array tracks mid-session additions (from L4) separately from L1 discovery for debugging. L1 overwrites the entire file at session start (promoted entries only persist if L5 saved them as error memories).
 
 **Alternatives considered**:
-- Hardcoded static list (psql, mysql, curl, etc.): doesn't adapt to project; useless for wt-tools which uses wt-*, openspec, git worktree
+- Hardcoded static list (psql, mysql, curl, etc.): doesn't adapt to project; useless for set-core which uses wt-*, openspec, git worktree
 - Fully dynamic only: doesn't work on fresh install with zero memories
 - User-only manual promotion: users won't do it; the goal is zero-config automation
 - Frequency-based promotion (count Bash calls): requires per-call I/O overhead; bad trade-off
@@ -125,14 +125,14 @@ The `promoted` array tracks mid-session additions (from L4) separately from L1 d
 **Algorithm**:
 1. Extract prompt text from hook input JSON
 2. If prompt contains `opsx:` or `openspec-` skill invocation → extract change name, use as primary query
-3. Otherwise → use first 200 chars of prompt as recall query (wt-memory handles semantic matching)
-4. Always recall, no debounce/boundary check (wt-memory proactive API handles relevance filtering)
+3. Otherwise → use first 200 chars of prompt as recall query (set-memory handles semantic matching)
+4. Always recall, no debounce/boundary check (set-memory proactive API handles relevance filtering)
 
 **Alternatives considered**:
 - Keep change-boundary detection + add topic fallback: complex, still misses explore
 - LLM-based keyword extraction: too slow for a hook (adds 1-2s)
 
-**Rationale**: The current change-boundary detection is the root cause of the problem. Removing it and always recalling is simpler and more reliable. `wt-memory proactive` already handles relevance scoring — low-relevance results are filtered.
+**Rationale**: The current change-boundary detection is the root cause of the problem. Removing it and always recalling is simpler and more reliable. `set-memory proactive` already handles relevance scoring — low-relevance results are filtered.
 
 ### Decision 6: Cheat sheet as tagged memories (not a separate file)
 
@@ -142,7 +142,7 @@ The `promoted` array tracks mid-session additions (from L4) separately from L1 d
 - Separate `.claude/cheat-sheet.md` file: another thing to maintain, sync issues
 - Part of CLAUDE.md: can't be project-specific per machine, gets bloated
 
-**Rationale**: Using tagged memories means: (1) cheat sheet entries are searchable by L2/L3/L4, (2) they sync via `wt-memory sync`, (3) they leverage existing importance/decay mechanics, (4) L5 can promote entries to cheat-sheet by adding the tag.
+**Rationale**: Using tagged memories means: (1) cheat sheet entries are searchable by L2/L3/L4, (2) they sync via `set-memory sync`, (3) they leverage existing importance/decay mechanics, (4) L5 can promote entries to cheat-sheet by adding the tag.
 
 ### Decision 7: L5 cheat-sheet promotion (non-interactive)
 
@@ -171,7 +171,7 @@ The `promoted` array tracks mid-session additions (from L4) separately from L1 d
 
 ### Decision 9: Remove ALL inline memory instructions from skills and commands
 
-**Choice**: Delete all `<!-- wt-memory hooks -->` blocks from 8 skills and 8 commands. Hooks handle recall (L2 on every prompt) and save (L5 on every stop) — skills don't need to duplicate this.
+**Choice**: Delete all `<!-- set-memory hooks -->` blocks from 8 skills and 8 commands. Hooks handle recall (L2 on every prompt) and save (L5 on every stop) — skills don't need to duplicate this.
 
 **What gets removed**:
 - `hooks start/end` blocks (recall at skill start)
@@ -193,9 +193,9 @@ The `promoted` array tracks mid-session additions (from L4) separately from L1 d
 
 **Choice**: Replace the current "Proactive Memory" section (~36 lines of manual recall/save instructions) with a ~15-line "Persistent Memory" section that:
 1. Explains hooks handle recall and save automatically
-2. Agent uses `wt-memory remember` only for HIGH IMPORTANCE emphasis (critical decisions, user-stated preferences)
-3. Agent uses `wt-memory forget` to suppress/correct wrong memories
-4. No manual `wt-memory recall` instructions — context appears automatically via hooks
+2. Agent uses `set-memory remember` only for HIGH IMPORTANCE emphasis (critical decisions, user-stated preferences)
+3. Agent uses `set-memory forget` to suppress/correct wrong memories
+4. No manual `set-memory recall` instructions — context appears automatically via hooks
 5. No "When to save" / "When NOT to save" rules — L5 handles extraction
 
 **Template** (adapted from shodh):
@@ -211,8 +211,8 @@ This project uses persistent memory (shodh-memory) across sessions. Hooks handle
 - Session end → insights extracted and saved
 
 **Emphasis (use sparingly):**
-- `wt-memory remember --type <Decision|Learning|Context> --tags <tags>` — mark something as HIGH IMPORTANCE
-- `wt-memory forget <id>` — suppress or correct a wrong memory
+- `set-memory remember --type <Decision|Learning|Context> --tags <tags>` — mark something as HIGH IMPORTANCE
+- `set-memory forget <id>` — suppress or correct a wrong memory
 - Most things are remembered automatically. Only use these for emphasis.
 ```
 
@@ -228,7 +228,7 @@ This project uses persistent memory (shodh-memory) across sessions. Hooks handle
 
 **[Risk] Too many memories injected (context bloat)** → Mitigation: Each layer limits results (L1: 5, L2: 3, L3: 2, L4: 3). Use `additionalContext` (discrete) not plain stdout (visible). Total worst case: ~15 short memory lines.
 
-**[Risk] wt-memory server not running** → Mitigation: Every script starts with `command -v wt-memory &>/dev/null || exit 0; wt-memory health &>/dev/null || exit 0`. Silent exit, zero impact.
+**[Risk] set-memory server not running** → Mitigation: Every script starts with `command -v set-memory &>/dev/null || exit 0; set-memory health &>/dev/null || exit 0`. Silent exit, zero impact.
 
 **[Risk] PostToolUseFailure fires on non-error failures (user interrupt)** → Mitigation: Check `is_interrupt` field, skip if true.
 
@@ -236,7 +236,7 @@ This project uses persistent memory (shodh-memory) across sessions. Hooks handle
 
 **[Risk] wt-deploy-hooks backwards compatibility** → Mitigation: Upgrade path already exists in deploy-hooks. Add new hook types incrementally. Existing projects get new hooks on next `wt-deploy-hooks` run.
 
-**[Risk] Removing skill hooks breaks memory for projects that haven't upgraded hooks** → Mitigation: The deploy script runs on `wt-add` (project registration). Any project managed by wt-tools gets hooks deployed. Projects not managed by wt-tools were never using the skills anyway.
+**[Risk] Removing skill hooks breaks memory for projects that haven't upgraded hooks** → Mitigation: The deploy script runs on `wt-add` (project registration). Any project managed by set-core gets hooks deployed. Projects not managed by set-core were never using the skills anyway.
 
 **[Risk] Hot-topic discovery finds too many patterns** → Mitigation: L1 caps discovered patterns at 20. Generic base patterns kept minimal (4 categories). Cache file is human-readable for debugging.
 

@@ -31,20 +31,20 @@ After digest completes and `ambiguities.json` contains one or more entries, the 
 - **THEN** AMB-008 is appended as a new section with blank decision and note
 
 ### Requirement: Triage soft gate before planning
-When `wt-orchestrate plan` runs in digest mode and ambiguities exist, the system SHALL check triage status before proceeding to planner prompt construction.
+When `set-orchestrate plan` runs in digest mode and ambiguities exist, the system SHALL check triage status before proceeding to planner prompt construction.
 
 #### Scenario: Gate generates triage and pauses on first run
-- **WHEN** `wt-orchestrate plan` runs in digest mode
+- **WHEN** `set-orchestrate plan` runs in digest mode
 - **AND** `ambiguities.json` has entries but `triage.md` does not exist
 - **THEN** the system generates `triage.md`, prints a summary of ambiguities, and exits with code 0 and message: "Triage required. Review wt/orchestration/digest/triage.md, then re-run plan."
 
 #### Scenario: Gate pauses on untriaged items
-- **WHEN** `wt-orchestrate plan` runs
+- **WHEN** `set-orchestrate plan` runs
 - **AND** `triage.md` exists but 3 of 16 ambiguities have blank `**Decision:**` fields
 - **THEN** the system prints "3 untriaged ambiguities remain. Review triage.md." and exits with code 0
 
 #### Scenario: Gate passes when all items triaged
-- **WHEN** `wt-orchestrate plan` runs
+- **WHEN** `set-orchestrate plan` runs
 - **AND** all ambiguities in `triage.md` have valid decisions (`fix`, `defer`, or `ignore`)
 - **THEN** the system merges decisions into `ambiguities.json` and proceeds with planning
 
@@ -54,7 +54,7 @@ When `wt-orchestrate plan` runs in digest mode and ambiguities exist, the system
 - **AND** does NOT proceed with planning
 
 #### Scenario: Gate auto-defers in automated mode
-- **WHEN** `wt-orchestrate start` triggers planning (automated orchestration)
+- **WHEN** `set-orchestrate start` triggers planning (automated orchestration)
 - **AND** `triage.md` does not exist or has untriaged items
 - **THEN** the system treats all untriaged items as `defer` and proceeds without pausing
 - **AND** sets `resolved_by: "auto"` on auto-deferred items

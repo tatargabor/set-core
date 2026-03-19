@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# set-memoryd - Per-project memory daemon for shodh-memory
+#
+# Usage: set-memoryd start|stop|status|run [--project NAME] [--storage PATH]
+#
+# Eliminates ~1580ms CLI overhead by keeping MemorySystem persistent.
+# Auto-starts on first hook/CLI/MCP call, auto-stops after 30min idle.
+
+set -euo pipefail
+
+# --- Resolve set-core root (follow symlinks) ---
+_script="${BASH_SOURCE[0]}"
+while [[ -L "$_script" ]]; do
+    _link=$(readlink "$_script")
+    if [[ "$_link" == /* ]]; then _script="$_link"; else _script="$(dirname "$_script")/$_link"; fi
+done
+_bin_dir="$(cd "$(dirname "$_script")" && pwd)"
+SET_TOOLS_ROOT="$(cd "$_bin_dir/.." && pwd)"
+
+export PYTHONPATH="$SET_TOOLS_ROOT/lib${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m set_memoryd "$@"

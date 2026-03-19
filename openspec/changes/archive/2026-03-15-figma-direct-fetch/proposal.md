@@ -33,4 +33,4 @@ Additionally, the design fetch happens during orchestration preflight (every run
 - **Raw + assembled output**: Raw MCP responses saved alongside the assembled snapshot so future processing changes don't require re-fetching.
 - **Make file strategy**: `get_metadata` → type detection → `get_design_context` + `read_resource` for source files → parse Tailwind classes into tokens. Based on session log analysis showing this produces 13 frames with full token coverage.
 - **Committed artifact**: Design snapshot is a git-tracked file, not a runtime cache. Only re-fetched when the design actually changes.
-- **wt default Python**: Uses wt-tools' standard Python (miniconda/linuxbrew — whatever is the wt default), with `mcp` SDK as dependency.
+- **wt default Python**: Uses set-core' standard Python (miniconda/linuxbrew — whatever is the wt default), with `mcp` SDK as dependency.

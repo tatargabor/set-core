@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: CLI serve subcommand
-`wt-orch-core serve` SHALL start the FastAPI server with uvicorn. It SHALL accept `--port` (default 7400) and `--host` (default 127.0.0.1) flags. It SHALL serve both the API endpoints and the built SPA static files.
+`set-orch-core serve` SHALL start the FastAPI server with uvicorn. It SHALL accept `--port` (default 7400) and `--host` (default 127.0.0.1) flags. It SHALL serve both the API endpoints and the built SPA static files.
 
 #### Scenario: Default start
-- **WHEN** user runs `wt-orch-core serve`
+- **WHEN** user runs `set-orch-core serve`
 - **THEN** the server starts on `127.0.0.1:7400` and logs "wt-web dashboard running at http://localhost:7400"
 
 #### Scenario: Custom port
-- **WHEN** user runs `wt-orch-core serve --port 8080`
+- **WHEN** user runs `set-orch-core serve --port 8080`
 - **THEN** the server starts on port 8080
 
 #### Scenario: Port in use
@@ -23,7 +23,7 @@ The server SHALL read `WT_WEB_PORT` environment variable as an alternative to `-
 - **THEN** the server starts on port 9000
 
 ### Requirement: systemd user service
-A systemd user service file SHALL be provided that runs `wt-orch-core serve` as an always-on background service with auto-restart on failure.
+A systemd user service file SHALL be provided that runs `set-orch-core serve` as an always-on background service with auto-restart on failure.
 
 #### Scenario: Service auto-start
 - **WHEN** user logs in to their desktop session
@@ -67,5 +67,5 @@ The web SPA SHALL be buildable via `npm run build` in the `web/` directory. The 
 - **THEN** `web/dist/` contains `index.html` and asset bundles that FastAPI can serve
 
 #### Scenario: No Node.js installed
-- **WHEN** a user installs wt-tools without Node.js
+- **WHEN** a user installs set-core without Node.js
 - **THEN** the server serves the pre-built `web/dist/` from the git repository

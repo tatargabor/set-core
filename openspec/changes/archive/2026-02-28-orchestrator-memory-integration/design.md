@@ -1,6 +1,6 @@
 ## Context
 
-The orchestrator (`wt-orchestrate`) manages multi-change workflows: planning decomposition from a spec/brief, dispatching changes to worktrees with Ralph loops, monitoring progress, running tests, reviewing code, and merging. While agents inside worktrees have full memory integration via hooks (SessionStart recall, PostToolUse recall, Stop extraction), the orchestrator layer itself has minimal memory usage — one generic recall during planning and nothing else.
+The orchestrator (`set-orchestrate`) manages multi-change workflows: planning decomposition from a spec/brief, dispatching changes to worktrees with Ralph loops, monitoring progress, running tests, reviewing code, and merging. While agents inside worktrees have full memory integration via hooks (SessionStart recall, PostToolUse recall, Stop extraction), the orchestrator layer itself has minimal memory usage — one generic recall during planning and nothing else.
 
 Key functions and their current memory status:
 - `cmd_plan()` — single generic recall: `"project architecture and features"`
@@ -10,7 +10,7 @@ Key functions and their current memory status:
 - `handle_change_done()` — runs tests, review; results stored in state JSON only, no memory save
 - `poll_change()` — detects stall/stuck, no memory save
 
-The shared shodh-memory database means all worktrees and the orchestrator can read/write the same memories. The `wt-memory` CLI is already on PATH for any project with memory enabled.
+The shared shodh-memory database means all worktrees and the orchestrator can read/write the same memories. The `set-memory` CLI is already on PATH for any project with memory enabled.
 
 ## Goals / Non-Goals
 
@@ -30,15 +30,15 @@ The shared shodh-memory database means all worktrees and the orchestrator can re
 
 ### **Choice**: Helper function `orch_remember` for all saves
 
-All memory saves go through a single helper that checks `wt-memory` availability, formats tags consistently, and handles failures gracefully:
+All memory saves go through a single helper that checks `set-memory` availability, formats tags consistently, and handles failures gracefully:
 
 ```bash
 orch_remember() {
     local content="$1"
     local type="${2:-Learning}"
     local tags="$3"
-    command -v wt-memory &>/dev/null || return 0
-    echo "$content" | wt-memory remember --type "$type" --tags "source:orchestrator,$tags" 2>/dev/null || true
+    command -v set-memory &>/dev/null || return 0
+    echo "$content" | set-memory remember --type "$type" --tags "source:orchestrator,$tags" 2>/dev/null || true
 }
 ```
 
@@ -51,8 +51,8 @@ orch_recall() {
     local query="$1"
     local limit="${2:-3}"
     local tags="${3:-source:orchestrator}"
-    command -v wt-memory &>/dev/null || return 0
-    wt-memory recall "$query" --limit "$limit" --tags "$tags" --mode hybrid 2>/dev/null | \
+    command -v set-memory &>/dev/null || return 0
+    set-memory recall "$query" --limit "$limit" --tags "$tags" --mode hybrid 2>/dev/null | \
         jq -r '.[].content' 2>/dev/null | head -c 2000 || true
 }
 ```
@@ -113,7 +113,7 @@ Gate cost in the status table is shown as `23.7s` (total gate time) with retry i
 
 ## Risks / Trade-offs
 
-**[Latency]** Each recall adds ~100-200ms per `wt-memory` CLI invocation. Planning has 1 recall per roadmap item (typically 3-8 items), dispatch has 1, replan has 1. Total added latency: ~0.5-2s per cycle.
+**[Latency]** Each recall adds ~100-200ms per `set-memory` CLI invocation. Planning has 1 recall per roadmap item (typically 3-8 items), dispatch has 1, replan has 1. Total added latency: ~0.5-2s per cycle.
 → Acceptable given cycles run for minutes/hours. All recalls are `|| true` so timeouts don't block.
 
 **[Memory volume]** Active orchestration generates ~5-15 memories per cycle (one per merge/test/review event). Over many cycles, this accumulates.

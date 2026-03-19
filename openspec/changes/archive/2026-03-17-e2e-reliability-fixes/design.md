@@ -4,22 +4,22 @@ No new modules or abstractions. All changes are minimal edits to existing files.
 
 ## Fix 1: Flock fd inheritance (Bug #41)
 
-**File**: `bin/wt-sentinel`
+**File**: `bin/set-sentinel`
 **Line**: ~455 (child spawn)
 
 ```bash
 # Before:
-"$SCRIPT_DIR/wt-orchestrate" start "$@" &
+"$SCRIPT_DIR/set-orchestrate" start "$@" &
 
 # After:
-"$SCRIPT_DIR/wt-orchestrate" start "$@" 9>&- &
+"$SCRIPT_DIR/set-orchestrate" start "$@" 9>&- &
 ```
 
 The `9>&-` closes fd 9 in the child process before exec. The sentinel retains fd 9 (and the flock). When sentinel exits, flock is released regardless of child state.
 
 ## Fix 2: Deps reinstall after worktree sync (Bug #29/#33)
 
-**File**: `lib/wt_orch/dispatcher.py`
+**File**: `lib/set_orch/dispatcher.py`
 **Function**: `sync_worktree_with_main()`
 
 After the successful merge branch (L216-218), add:

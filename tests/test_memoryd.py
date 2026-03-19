@@ -1,4 +1,4 @@
-"""Unit tests for wt-memoryd daemon components: protocol, client, lifecycle, server."""
+"""Unit tests for set-memoryd daemon components: protocol, client, lifecycle, server."""
 
 import asyncio
 import json
@@ -15,8 +15,8 @@ from unittest.mock import patch, MagicMock
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
-from wt_memoryd.protocol import Request, Response, make_error, make_result, SUPPORTED_METHODS
-from wt_memoryd.lifecycle import (
+from set_memoryd.protocol import Request, Response, make_error, make_result, SUPPORTED_METHODS
+from set_memoryd.lifecycle import (
     socket_path_for,
     pid_path_for,
     storage_path_for,
@@ -106,11 +106,11 @@ class TestLifecycle(unittest.TestCase):
 
     def test_socket_path(self):
         path = socket_path_for("myproject")
-        self.assertEqual(path, "/tmp/wt-memoryd-myproject.sock")
+        self.assertEqual(path, "/tmp/set-memoryd-myproject.sock")
 
     def test_pid_path(self):
         path = pid_path_for("myproject")
-        self.assertEqual(path, "/tmp/wt-memoryd-myproject.pid")
+        self.assertEqual(path, "/tmp/set-memoryd-myproject.pid")
 
     def test_storage_path(self):
         path = storage_path_for("myproject")
@@ -157,7 +157,7 @@ class TestServerProtocolHandling(unittest.TestCase):
 
     def test_echo_server_roundtrip(self):
         """Start a minimal echo server, send request, verify response."""
-        sock_path = f"/tmp/wt-memoryd-test-{os.getpid()}.sock"
+        sock_path = f"/tmp/set-memoryd-test-{os.getpid()}.sock"
 
         async def echo_handler(reader, writer):
             line = await reader.readline()
@@ -197,18 +197,18 @@ class TestClientConnection(unittest.TestCase):
     """Test client connection behavior."""
 
     def test_client_unavailable_raises(self):
-        from wt_memoryd.client import MemoryClient, DaemonUnavailable
+        from set_memoryd.client import MemoryClient, DaemonUnavailable
 
         client = MemoryClient(project="nonexistent-test-project-xyz")
         # Point to a socket that definitely doesn't exist
-        client.socket_path = "/tmp/wt-memoryd-definitely-nonexistent.sock"
+        client.socket_path = "/tmp/set-memoryd-definitely-nonexistent.sock"
         with self.assertRaises((DaemonUnavailable, Exception)):
             client.request("health")
 
     def test_client_request_to_echo_server(self):
         """Spin up a minimal server, test client request."""
-        sock_path = f"/tmp/wt-memoryd-clienttest-{os.getpid()}.sock"
-        pid_path = f"/tmp/wt-memoryd-clienttest-{os.getpid()}.pid"
+        sock_path = f"/tmp/set-memoryd-clienttest-{os.getpid()}.sock"
+        pid_path = f"/tmp/set-memoryd-clienttest-{os.getpid()}.pid"
 
         server_ready = threading.Event()
         server_done = threading.Event()
@@ -243,7 +243,7 @@ class TestClientConnection(unittest.TestCase):
         server_ready.wait(timeout=3)
 
         try:
-            from wt_memoryd.client import MemoryClient
+            from set_memoryd.client import MemoryClient
             # Patch is_running to return True (our test server has a valid socket)
             project = f"clienttest-{os.getpid()}"
             client = MemoryClient(project=project)

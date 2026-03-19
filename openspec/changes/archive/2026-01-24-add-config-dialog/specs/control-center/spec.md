@@ -43,11 +43,11 @@ The GUI SHALL support persistent user configuration through a settings dialog.
 #### Scenario: Save configuration
 - **GIVEN** the settings dialog has modified values
 - **WHEN** the user clicks "OK" or "Apply"
-- **THEN** settings are saved to `~/.config/wt-tools/gui-config.json`
+- **THEN** settings are saved to `~/.config/set-core/gui-config.json`
 - **AND** changes take effect immediately where applicable
 
 #### Scenario: Load configuration on startup
-- **GIVEN** a config file exists at `~/.config/wt-tools/gui-config.json`
+- **GIVEN** a config file exists at `~/.config/set-core/gui-config.json`
 - **WHEN** the Control Center starts
 - **THEN** all settings are loaded from the config file
 

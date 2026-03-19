@@ -229,13 +229,13 @@ The system SHALL provide an `auto_detect_test_command()` function. Migrated from
 - **THEN** an empty string is returned
 
 ### Requirement: CLI integration
-The config module SHALL be callable via `wt-orch-core config` subcommand.
+The config module SHALL be callable via `set-orch-core config` subcommand.
 
 #### Scenario: Parse directives via CLI
-- **WHEN** `wt-orch-core config parse-directives --input-file brief.md` is called
+- **WHEN** `set-orch-core config parse-directives --input-file brief.md` is called
 - **THEN** it outputs the parsed directives JSON to stdout
 
 #### Scenario: Resolve directives via CLI
-- **WHEN** `wt-orch-core config resolve-directives --input-file brief.md` is called
+- **WHEN** `set-orch-core config resolve-directives --input-file brief.md` is called
 - **THEN** it outputs the resolved directives JSON (with all precedence levels merged) to stdout
 

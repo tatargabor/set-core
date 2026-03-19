@@ -20,7 +20,7 @@
 The sentinel SHALL support a `--shutdown` flag that initiates an orderly shutdown sequence. The shutdown SHALL signal all running agents to stop, wait for them to exit cleanly, update the state file with shutdown metadata, and then exit.
 
 #### Scenario: User triggers graceful shutdown
-- **WHEN** the user runs `wt-sentinel --shutdown` while a sentinel is running
+- **WHEN** the user runs `set-sentinel --shutdown` while a sentinel is running
 - **THEN** the sentinel sends SIGTERM to the orchestrator process
 - **THEN** the orchestrator sends SIGTERM to all running agent processes (wt-loop)
 - **THEN** the sentinel waits up to 60 seconds for all agents to exit
@@ -28,7 +28,7 @@ The sentinel SHALL support a `--shutdown` flag that initiates an orderly shutdow
 - **THEN** the sentinel exits with code 0
 
 #### Scenario: Shutdown with no running sentinel
-- **WHEN** the user runs `wt-sentinel --shutdown` but no sentinel is running
+- **WHEN** the user runs `set-sentinel --shutdown` but no sentinel is running
 - **THEN** the command prints "No sentinel running" and exits with code 0
 
 #### Scenario: Shutdown timeout exceeded

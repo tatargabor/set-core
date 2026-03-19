@@ -8,12 +8,12 @@
 
 ## 2. Scaffold = Spec Only
 
-Design pivot: the scaffold is a single file (`docs/v1-minishop.md`). Agents build everything from the spec. Platform configs/rules come from `wt-project init --project-type web --template nextjs`.
+Design pivot: the scaffold is a single file (`docs/v1-minishop.md`). Agents build everything from the spec. Platform configs/rules come from `set-project init --project-type web --template nextjs`.
 
 - [x] 2.1 Delete all scaffold files except `docs/v1-minishop.md`: remove `package.json`, `prisma/`, `.env.example`, `.gitignore`, and any remaining config/source files.
-- [x] 2.2 Update `v1-minishop.md` to be fully self-contained: add Prisma schema description (models with field names, types, relations), seed data specification, dependency list, and remove redundant convention sections that duplicate `wt-project-web` rules.
+- [x] 2.2 Update `v1-minishop.md` to be fully self-contained: add Prisma schema description (models with field names, types, relations), seed data specification, dependency list, and remove redundant convention sections that duplicate `set-project-web` rules.
 - [x] 2.3 In `v1-minishop.md`: specify no `.env` file needed — SQLite uses hardcoded `file:./dev.db` in Prisma schema, NextAuth secret uses dev default in code (`process.env.NEXTAUTH_SECRET ?? "dev-secret"`).
-- [x] 2.4 Verify `wt-project-web` nextjs template is installed and `wt-project init --project-type web --template nextjs` works on an empty dir.
+- [x] 2.4 Verify `set-project-web` nextjs template is installed and `set-project init --project-type web --template nextjs` works on an empty dir.
 
 ## 3. Feature Roadmap Spec
 
@@ -21,18 +21,18 @@ Design pivot: the scaffold is a single file (`docs/v1-minishop.md`). Agents buil
 
 ## 4. E2E Runner Update
 
-- [x] 4.1 Rewrite `tests/e2e/run.sh` for new flow: (a) create empty temp dir, (b) copy spec to `docs/`, (c) `git init`, (d) `wt-project init --project-type web`, (e) orchestration config, (f) show instructions for `wt-sentinel`. Preflight: pnpm, wt-project, web plugin, spec file exists.
+- [x] 4.1 Rewrite `tests/e2e/run.sh` for new flow: (a) create empty temp dir, (b) copy spec to `docs/`, (c) `git init`, (d) `set-project init --project-type web`, (e) orchestration config, (f) show instructions for `set-sentinel`. Preflight: pnpm, set-project, web plugin, spec file exists.
 - [x] 4.2 Report generation handled by `wt-e2e-report` (invoked manually after sentinel completes).
 
 ## 5. E2E Report Generator
 
 - [x] 5.1 Create `bin/wt-e2e-report` (bash script, `chmod +x`): reads `orchestration-state.json`, generates `e2e-report.md` with run summary (duration, total tokens, changes count), per-change table (name, status, tokens, duration, tests), timeline, and directives used. Before writing, rename existing `e2e-report.md` to `e2e-report-prev.md`. If prev report exists, include a comparison section (token totals diff).
 - [x] 5.2 Add screenshot capture to `wt-e2e-report`: run `pnpm build`, start app (`pnpm start &`), wait for server ready (poll `localhost:3000/api/health`), run the Playwright screenshot script at `tests/e2e/capture-screenshots.ts` (committed in scaffold, invoked via `pnpm exec playwright test capture-screenshots.ts`), kill server. Embed screenshot links in report.
-- [x] 5.3 Create `tests/e2e/capture-screenshots.ts` — Playwright script that visits storefront, cart, orders, admin login, admin products pages and saves PNG screenshots to `e2e-screenshots/`. Lives in wt-tools source (not scaffold); `wt-e2e-report` copies it into the project at runtime.
+- [x] 5.3 Create `tests/e2e/capture-screenshots.ts` — Playwright script that visits storefront, cart, orders, admin login, admin products pages and saves PNG screenshots to `e2e-screenshots/`. Lives in set-core source (not scaffold); `wt-e2e-report` copies it into the project at runtime.
 - [x] 5.4 Add `wt-e2e-report` to `install.sh` scripts list.
 
 ## 6. Validation
 
-- [x] 6.1 Verify `wt-project init --project-type web --template nextjs` on empty dir: configs deployed, rules in `.claude/rules/`, CLAUDE.md created.
+- [x] 6.1 Verify `set-project init --project-type web --template nextjs` on empty dir: configs deployed, rules in `.claude/rules/`, CLAUDE.md created.
 - [x] 6.2 Run `tests/e2e/run.sh` on a fresh dir. Confirm: project init works, orchestration starts, agents can read spec and create project files.
 - [x] 6.3 Run full E2E with sentinel. Confirm: 6 changes orchestrated, per-change tokens are realistic (no cross-project inflation), screenshots captured, report generated.

@@ -1,6 +1,6 @@
 ## Context
 
-The multi-agent-gui change introduced per-PID skill tracking: each Claude agent writes its skill to `.wt-tools/agents/<pid>.skill`. However, the legacy `current_skill` file remains as a fallback — when per-PID files don't exist, `get_agent_skill()` falls back to the shared file. In multi-agent scenarios this means all agents show the same (last-written) skill.
+The multi-agent-gui change introduced per-PID skill tracking: each Claude agent writes its skill to `.set-core/agents/<pid>.skill`. However, the legacy `current_skill` file remains as a fallback — when per-PID files don't exist, `get_agent_skill()` falls back to the shared file. In multi-agent scenarios this means all agents show the same (last-written) skill.
 
 Additionally, `wt-skill-start` is called via an LLM instruction in each SKILL.md prompt ("First, register this skill..."). The LLM may skip this, leaving no per-PID file at all. The `wt-hook-stop` Stop hook refreshes timestamps but doesn't register skills.
 
@@ -30,7 +30,7 @@ Additionally, `wt-skill-start` is called via an LLM instruction in each SKILL.md
 
 ### Decision 2: Remove legacy current_skill entirely
 
-**Choice**: Remove all reads/writes of `.wt-tools/current_skill`. The `get_agent_skill()` function only checks `.wt-tools/agents/<pid>.skill`.
+**Choice**: Remove all reads/writes of `.set-core/current_skill`. The `get_agent_skill()` function only checks `.set-core/agents/<pid>.skill`.
 
 **Why**: The legacy file is inherently single-agent. Keeping it as fallback causes incorrect display in multi-agent scenarios — exactly the bug we're fixing.
 
@@ -63,7 +63,7 @@ Non-skill prompts (no leading `/`) are silently ignored — the hook exits immed
 
 ## Risks / Trade-offs
 
-- **Hook availability** → Only works in projects with `.claude/settings.json` configured. Not a risk for wt-tools (already has hooks), but limits portability. Mitigated by: `install.sh` deploys hooks to all managed projects.
+- **Hook availability** → Only works in projects with `.claude/settings.json` configured. Not a risk for set-core (already has hooks), but limits portability. Mitigated by: `install.sh` deploys hooks to all managed projects.
 - **Skill name extraction** → Requires parsing JSON in bash. Mitigated by: simple `jq` or `python3 -c` one-liner, both available on macOS.
 - **Stale current_skill files** → Existing files in worktrees won't be auto-deleted. Mitigated by: harmless — nobody reads them after this change.
 - **Indirect skill invocations** → If the user doesn't use `/` syntax but Claude auto-invokes a skill, the hook won't register it. Accepted trade-off — no hook mechanism exists for Skill tool invocations.

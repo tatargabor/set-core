@@ -14,7 +14,7 @@
 
 ## 3. Scope verification
 
-- [x] 3.1 Add `verify_merge_scope()` function in `bin/wt-orchestrate` — takes change_name, checks `git diff --name-only HEAD~1` for non-openspec files
+- [x] 3.1 Add `verify_merge_scope()` function in `bin/set-orchestrate` — takes change_name, checks `git diff --name-only HEAD~1` for non-openspec files
 - [x] 3.2 Call `verify_merge_scope()` in the post-merge pipeline after custom command, before build verify
 - [x] 3.3 On failure (only openspec files in diff): log error + send critical notification, but do NOT block pipeline
 - [x] 3.4 On success: log "Post-merge: scope verification passed for {change_name}"
@@ -23,9 +23,9 @@
 
 - [x] 4.1 Rewrite guardrails section in `.claude/commands/wt/sentinel.md` — role boundary: observe/diagnose/restart/stop/report
 - [x] 4.2 Add explicit forbidden actions list (no file modification, no config changes, no build commands)
-- [x] 4.3 Deploy updated sentinel.md to all registered projects via `wt-project init`
+- [x] 4.3 Deploy updated sentinel.md to all registered projects via `set-project init`
 
 ## 5. Documentation
 
-- [x] 5.1 Add `post_merge_command` to the orchestrator help text (usage section in `wt-orchestrate`)
-- [x] 5.2 Add `post_merge_command` example in the Config section of `wt-orchestrate` help
+- [x] 5.1 Add `post_merge_command` to the orchestrator help text (usage section in `set-orchestrate`)
+- [x] 5.2 Add `post_merge_command` example in the Config section of `set-orchestrate` help

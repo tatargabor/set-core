@@ -56,7 +56,7 @@
 
 ### Decision 3: JSONL Activity Log
 
-**What:** Every event is a JSON line in the `~/.config/wt-tools/claude-activity.jsonl` file.
+**What:** Every event is a JSON line in the `~/.config/set-core/claude-activity.jsonl` file.
 
 **Format:**
 ```json

@@ -9,14 +9,14 @@ The system SHALL support multiple code editors for opening worktrees with Claude
 - **AND** each entry shows: name, CLI command, detected (yes/no)
 
 #### Scenario: Detect available editors
-- **WHEN** wt-tools starts or `wt-config editor list` is run
+- **WHEN** set-core starts or `wt-config editor list` is run
 - **THEN** the system detects which editors are installed
 - **AND** detection checks standard installation paths per platform
 
 #### Scenario: Set preferred editor
 - **WHEN** user runs `wt-config editor set vscode`
 - **THEN** VS Code becomes the default editor
-- **AND** preference is stored in `~/.config/wt-tools/config.json`
+- **AND** preference is stored in `~/.config/set-core/config.json`
 
 #### Scenario: Invalid editor name
 - **WHEN** user runs `wt-config editor set unknown`

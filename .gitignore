@@ -13,17 +13,23 @@ node_modules/
 *.pyc
 __pycache__/
 
-# Team sync worktree (wt-control branch)
+# Team sync worktree (set-control branch)
+.set-control/
+# Legacy
 .wt-control/
 
 # Per-worktree agent ephemeral directory
+/.set/
+# Legacy
 /.wt/
 
-# Runtime state files (legacy — shared runtime now in ~/.local/share/wt-tools/)
+# Runtime state files (legacy — shared runtime now in ~/.local/share/set-core/)
+.set-core/
 .wt-tools/
 *.pid
 loop-state.json
 activity.json
+.claude/.set-version
 .claude/.wt-version
 .claude/logs/
 .claude/orchestration.log
@@ -45,11 +51,14 @@ local-docs/
 test-results/
 
 # Runtime worktree state
+/set/
 /wt/
 
 # Benchmark temp data
+benchmark/synthetic/.set-core/
 benchmark/synthetic/.wt-tools/
 benchmark/synthetic/default/
 benchmark/synthetic/shodh_data/
 benchmark/synthetic/test_project/
+set/.work/
 wt/.work/

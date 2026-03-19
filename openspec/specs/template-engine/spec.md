@@ -60,10 +60,10 @@ The system SHALL provide `escape_for_prompt(text)` that neutralizes characters w
 - **THEN** the replan sections are omitted entirely (no empty blocks)
 
 ### Requirement: CLI bridge for template operations
-The `wt-orch-core template` subcommand SHALL expose template rendering to bash scripts via stdout.
+The `set-orch-core template` subcommand SHALL expose template rendering to bash scripts via stdout.
 
 #### Scenario: Render proposal to stdout
-- **WHEN** bash calls `wt-orch-core template proposal --change "my-change" --scope "Add auth" --roadmap "Authentication system"`
+- **WHEN** bash calls `set-orch-core template proposal --change "my-change" --scope "Add auth" --roadmap "Authentication system"`
 - **THEN** stdout contains the rendered proposal markdown
 
 #### Scenario: Long arguments via stdin

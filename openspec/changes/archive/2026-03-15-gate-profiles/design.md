@@ -6,7 +6,7 @@ Post-merge smoke runs in merger.py unconditionally if `smoke_command` is configu
 
 This means infrastructure changes (test framework setup, CI config) run build/test/e2e/smoke gates against a non-existent app, causing false failures that consume the shared `max_verify_retries=2` budget. E2E runs #4, #13, #14 confirm 200-400k wasted tokens per run from these false positives.
 
-The project-type plugin system (profile_loader.py → ProjectType ABC in wt-project-base) already provides extension points for project-specific behavior (planning_rules, security_rules_paths, detect_test_command, etc.) but has no gate configuration hook.
+The project-type plugin system (profile_loader.py → ProjectType ABC in set-project-base) already provides extension points for project-specific behavior (planning_rules, security_rules_paths, detect_test_command, etc.) but has no gate configuration hook.
 
 ## Goals / Non-Goals
 
@@ -14,7 +14,7 @@ The project-type plugin system (profile_loader.py → ProjectType ABC in wt-proj
 - Map each `change_type` to a gate configuration that determines which gates run, skip, or warn
 - Provide a 4-level override chain: built-in defaults → profile plugin → per-change hints → directive overrides
 - Zero breaking changes — feature type behaves identically to current all-gates-run behavior
-- Project-type plugins (wt-project-web) can customize gate behavior per change_type
+- Project-type plugins (set-project-web) can customize gate behavior per change_type
 - Planner LLM understands gate profiles are automatic from change_type (no extra burden)
 
 **Non-Goals:**
@@ -91,5 +91,5 @@ The project-type plugin system (profile_loader.py → ProjectType ABC in wt-proj
 **[Trade-off] Added complexity in verifier.py**
 → The verifier gets a GateConfig check before each gate section. This adds ~20 lines of `if gc.should_run()` / `if gc.is_blocking()` checks but replaces ad-hoc conditionals (skip_test, skip_review, hardcoded change_type checks) with a uniform pattern.
 
-**[Trade-off] Three-repo change (wt-tools + wt-project-base + wt-project-web)**
-→ Phase 1 (wt-tools only) provides full value with built-in profiles. Plugin overrides (Phase 2) enhance but are not required. Each phase is independently deployable.
+**[Trade-off] Three-repo change (set-core + set-project-base + set-project-web)**
+→ Phase 1 (set-core only) provides full value with built-in profiles. Plugin overrides (Phase 2) enhance but are not required. Each phase is independently deployable.

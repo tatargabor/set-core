@@ -4,13 +4,13 @@
 
 The 29 items are organized into three tiers that can be implemented sequentially:
 
-**Tier 1 — Critical bugs (items 1–10)**: Code fixes in `bin/wt-orchestrate`. These prevent data loss, infinite loops, and wasted tokens. Must be done before the orchestrator runs again.
+**Tier 1 — Critical bugs (items 1–10)**: Code fixes in `bin/set-orchestrate`. These prevent data loss, infinite loops, and wasted tokens. Must be done before the orchestrator runs again.
 
 **Tier 2 — Token efficiency (items 11–12)**: Spec summary caching and build-fix retry path. These reduce per-cycle cost from ~100k to ~5k tokens on retries.
 
 **Tier 3 — Spec sync (items 13–29)**: Update existing specs to match code reality. No code changes, only `.md` file updates. This prevents future drift and makes the orchestrator self-documenting.
 
-### D2: All changes in a single file — `bin/wt-orchestrate`
+### D2: All changes in a single file — `bin/set-orchestrate`
 
 The orchestrator is a single 3946-line bash script. All bug fixes are in this one file. The spec sync changes are in `openspec/specs/` and `openspec/changes/` markdown files. No new files needed for Tier 1–2.
 

@@ -19,7 +19,7 @@ Ez teszi lehetővé, hogy az orchestrátor:
 A rendszer feltérképezi a bemenetként kapott fájlt vagy könyvtárat:
 
 ```bash
-wt-orchestrate --spec docs/specs/ digest
+set-orchestrate --spec docs/specs/ digest
 ```
 
 A szkennelés eredménye:
@@ -123,7 +123,7 @@ A triage gate az egyetlen pont, ahol az orchestrátor megáll és emberi beavatk
 A digest lehetővé teszi a követelmény-lefedettség nyomon követését az egész pipeline-on keresztül:
 
 ```bash
-wt-orchestrate coverage
+set-orchestrate coverage
 ```
 
 Kimenet:

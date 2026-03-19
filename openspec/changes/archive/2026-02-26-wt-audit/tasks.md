@@ -1,7 +1,7 @@
 ## 1. Foundation — lib/audit/ and bin/wt-audit scaffolding
 
 - [x] 1.1 Create `lib/audit/` directory with shared helpers: output formatting functions (status icons ✅/⚠️/❌, json builder, section headers), color support detection, and the common `add_check()` / `add_guidance()` pattern that all check functions use
-- [x] 1.2 Create `bin/wt-audit` entry point — source `bin/wt-common.sh`, parse subcommands (`scan`, `help`), `--json` flag, detect project root (require wt-project registration), source all `lib/audit/check-*.sh` files, run them in sequence, output summary
+- [x] 1.2 Create `bin/wt-audit` entry point — source `bin/wt-common.sh`, parse subcommands (`scan`, `help`), `--json` flag, detect project root (require set-project registration), source all `lib/audit/check-*.sh` files, run them in sequence, output summary
 - [x] 1.3 Create `lib/audit/reference.md` — target state description for all 6 dimensions: what a well-configured project looks like (categories to document, recommended agents/rules, config structure). Generic, no framework-specific content. This is what the LLM reads when creating missing files.
 
 ## 2. Check functions — one per dimension
@@ -26,9 +26,9 @@
 - [x] 5.1 Create `.claude/commands/wt/audit.md` — command file that runs `wt-audit scan --json`, parses results, presents findings grouped by dimension, offers interactive remediation
 - [x] 5.2 Update `.claude/skills/wt/SKILL.md` — add audit section describing the `/wt:audit` command and its capabilities
 
-## 6. Integration — wt-project init
+## 6. Integration — set-project init
 
-- [x] 6.1 Add post-deploy audit call to `bin/wt-project` init function — after existing deploy steps, check if `wt-audit` is in PATH, run `wt-audit scan` with condensed output (summary line only), suggest `/wt:audit` for details if gaps found
+- [x] 6.1 Add post-deploy audit call to `bin/set-project` init function — after existing deploy steps, check if `wt-audit` is in PATH, run `wt-audit scan` with condensed output (summary line only), suggest `/wt:audit` for details if gaps found
 
 ## 7. Install and test
 

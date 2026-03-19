@@ -23,7 +23,7 @@ The GUI was refactored from a monolithic `main_old.py` (4880 lines) into a modul
 
 **3. Delete `gui/widgets/` entirely** — The only widget (`ClickableLabel`) is unused by active code. If the directory had other widgets we'd keep it, but it's empty otherwise. The `__init__.py` only exports ClickableLabel.
 
-**4. Delete `gui/control_center/mixins/menu_builder.py`** — Defines `MenuBuilder`, `MENU_ICONS`, and imports `wt_tools.plugins.base.MenuItem`. None of this is used — menus are built manually. Remove the import from `__init__.py` if present (it's not currently imported there, confirmed).
+**4. Delete `gui/control_center/mixins/menu_builder.py`** — Defines `MenuBuilder`, `MENU_ICONS`, and imports `set_tools.plugins.base.MenuItem`. None of this is used — menus are built manually. Remove the import from `__init__.py` if present (it's not currently imported there, confirmed).
 
 **5. Add `text_secondary` to all 4 color profiles** — Used in `table.py:398` for "my machine" team rows. Values: light blue tones matching each theme. Also add `text_primary` to `high_contrast` (missing, causes `#000000` fallback on `#222222` background).
 

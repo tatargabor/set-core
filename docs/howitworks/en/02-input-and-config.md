@@ -11,9 +11,9 @@ The orchestrator accepts three types of input. These are mutually exclusive.
 Most projects work with specification documents:
 
 ```bash
-wt-orchestrate --spec docs/v3.md plan
-wt-orchestrate --spec v12 plan          # shortname: wt/orchestration/specs/v12.md
-wt-orchestrate --spec docs/ plan         # entire directory
+set-orchestrate --spec docs/v3.md plan
+set-orchestrate --spec v12 plan          # shortname: wt/orchestration/specs/v12.md
+set-orchestrate --spec docs/ plan         # entire directory
 ```
 
 `--spec` can point to a file or directory. For directories, the system processes all `.md` files, and the `scan_spec_directory()` function builds the complete picture.
@@ -21,8 +21,8 @@ wt-orchestrate --spec docs/ plan         # entire directory
 **Phase filtering**: The `--phase` option narrows to a specific phase:
 
 ```bash
-wt-orchestrate --spec docs/v3.md --phase 2 plan    # phase 2 only
-wt-orchestrate --spec docs/v3.md --phase "Security" plan  # text filter
+set-orchestrate --spec docs/v3.md --phase 2 plan    # phase 2 only
+set-orchestrate --spec docs/v3.md --phase "Security" plan  # text filter
 ```
 
 ### 2. Brief Mode (`--brief`)

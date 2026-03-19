@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools orchestration pipeline has 5 stages where design context would be valuable:
+The set-core orchestration pipeline has 5 stages where design context would be valuable:
 
 1. **Decompose** (skill, runs in Claude Code session → has MCP access)
 2. **Planner** (bash, `run_claude` = `claude -p` → needs `--mcp-config` for MCP)
@@ -15,7 +15,7 @@ Current `run_claude()` in `wt-common.sh`:
 exec env -u CLAUDECODE claude -p "$(cat '$tmpprompt')" --dangerously-skip-permissions $quoted_args
 ```
 
-The `wt-orch-core` Python bridge (`bin/wt-orch-core`) handles state init and template rendering. The design-bridge could be Python too, but detection/config-export is simple enough for bash. Template rendering for design prompt sections could use `wt-orch-core template` later.
+The `set-orch-core` Python bridge (`bin/set-orch-core`) handles state init and template rendering. The design-bridge could be Python too, but detection/config-export is simple enough for bash. Template rendering for design prompt sections could use `set-orch-core template` later.
 
 ## Goals / Non-Goals
 
@@ -28,7 +28,7 @@ The `wt-orch-core` Python bridge (`bin/wt-orch-core`) handles state init and tem
 - Surface missing design elements as ambiguities
 
 **Non-Goals:**
-- Implementing a specific Figma adapter (that's `wt-project-web`)
+- Implementing a specific Figma adapter (that's `set-project-web`)
 - Writing to design tools (read-only in v1)
 - Design token extraction pipeline (future)
 - Design compliance scoring in verifier (future)
@@ -173,7 +173,7 @@ This project has a design tool connected via MCP. When implementing UI:
 
 ### D7: Design file reference in orchestration config
 
-**Decision:** The design file reference (e.g., Figma file URL/ID) is stored in `.claude/orchestration.yaml` under a `design_file` key. This is set by the project template init (e.g., `wt-project-web` asks "Van Figma fájlod?").
+**Decision:** The design file reference (e.g., Figma file URL/ID) is stored in `.claude/orchestration.yaml` under a `design_file` key. This is set by the project template init (e.g., `set-project-web` asks "Van Figma fájlod?").
 
 ```yaml
 # .claude/orchestration.yaml
@@ -205,6 +205,6 @@ The bridge reads this and passes it as `DESIGN_FILE_REF` to prompt sections.
 3. Wire into planner.sh and dispatcher.sh
 4. Add decompose skill instructions
 5. Add agent rule template
-6. Deploy to projects via `wt-project init`
+6. Deploy to projects via `set-project init`
 
 No migration needed for existing projects — design-bridge is purely additive. Projects without design MCP see zero change.

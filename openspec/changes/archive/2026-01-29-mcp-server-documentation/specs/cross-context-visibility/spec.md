@@ -31,7 +31,7 @@ The system SHALL expose a `get_worktree_tasks()` MCP tool that returns tasks.md 
 #### Scenario: Tasks file exists
 - **WHEN** agent calls `get_worktree_tasks(worktree_path)`
 - **THEN** returns content of tasks.md from that worktree
-- **AND** searches in `openspec/changes/*/tasks.md` or `.wt-tools/tasks.md`
+- **AND** searches in `openspec/changes/*/tasks.md` or `.set-core/tasks.md`
 
 #### Scenario: No tasks file
 - **WHEN** no tasks.md exists in worktree

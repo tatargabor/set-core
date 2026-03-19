@@ -1,13 +1,13 @@
 ## Context
 
-The orchestration engine (`lib/orchestration/*.sh`) manages parallel AI agent workflows. Runtime data flows through JSON files: `orchestration-state.json` (global state), per-worktree `loop-state.json` (iteration progress), and `orchestration.log` (event stream). The recently completed `orchestration-python-core` change created `lib/wt_orch/` with typed dataclasses (`OrchestratorState`, `Change`, `WatchdogState`), atomic file I/O (`load_state`/`save_state`), process management (`check_pid`, `safe_kill`, `find_orphans`), and a CLI bridge (`bin/wt-orch-core`).
+The orchestration engine (`lib/orchestration/*.sh`) manages parallel AI agent workflows. Runtime data flows through JSON files: `orchestration-state.json` (global state), per-worktree `loop-state.json` (iteration progress), and `orchestration.log` (event stream). The recently completed `orchestration-python-core` change created `lib/set_orch/` with typed dataclasses (`OrchestratorState`, `Change`, `WatchdogState`), atomic file I/O (`load_state`/`save_state`), process management (`check_pid`, `safe_kill`, `find_orphans`), and a CLI bridge (`bin/set-orch-core`).
 
 Current UI interfaces:
 - **PySide6 GUI** (`gui/`, 42K lines) — desktop systemtray app for worktree management, chat, memory
 - **Textual TUI** (`gui/tui/orchestrator_tui.py`, 665 lines) — live terminal dashboard, read-only except checkpoint approve
 - **Bash HTML report** (`lib/orchestration/reporter.sh`, 740 lines) — static HTML with 15s auto-refresh, no interactivity
 
-Multi-project support exists via `~/.config/wt-tools/projects.json` registry (used by `wt-project` CLI).
+Multi-project support exists via `~/.config/set-core/projects.json` registry (used by `set-project` CLI).
 
 The bash orchestration checkpoint flow uses file-based polling: `state.sh` loops every 10 seconds checking `orchestration-state.json` for `.checkpoints[-1].approved == true`. Any process that writes this field (TUI, CLI, or the new web API) unblocks the orchestration.
 
@@ -37,7 +37,7 @@ The bash orchestration checkpoint flow uses file-based polling: `state.sh` loops
 FastAPI provides async HTTP + WebSocket in a single framework. uvicorn is the standard ASGI server. Both are well-supported, lightweight, and already familiar in the Python ecosystem.
 
 ```
-lib/wt_orch/
+lib/set_orch/
 ├── cli.py        ← existing, add cmd_serve()
 ├── state.py      ← existing, reused by API
 ├── process.py    ← existing, reused by API
@@ -173,7 +173,7 @@ export default defineConfig({
 
 ### D7: Multi-project — projects.json as source of truth
 
-The server reads `~/.config/wt-tools/projects.json` at startup and watches it for changes. Each project entry has a `path` — the server validates the path exists and checks for `wt/orchestration/orchestration-state.json` to determine if orchestration is active.
+The server reads `~/.config/set-core/projects.json` at startup and watches it for changes. Each project entry has a `path` — the server validates the path exists and checks for `wt/orchestration/orchestration-state.json` to determine if orchestration is active.
 
 ```python
 @app.get("/api/projects")
@@ -192,14 +192,14 @@ async def list_projects():
 ```ini
 # ~/.config/systemd/user/wt-web.service
 [Unit]
-Description=wt-tools Web Dashboard
+Description=set-core Web Dashboard
 After=default.target
 
 [Service]
-ExecStart=%h/.local/bin/wt-orch-core serve --port 7400
+ExecStart=%h/.local/bin/set-orch-core serve --port 7400
 Restart=always
 RestartSec=5
-Environment=PYTHONPATH=%h/code2/wt-tools/lib
+Environment=PYTHONPATH=%h/code2/set-core/lib
 
 [Install]
 WantedBy=default.target
@@ -242,6 +242,6 @@ This ensures the web API and bash `with_state_lock` never corrupt state.json wit
 
 **[Risk: Multiple writers]** Web API + TUI + bash all write state.json. → Mitigation: All use the same flock mechanism. Atomic write (tempfile + rename) prevents partial reads.
 
-**[Risk: Service not running]** User expects dashboard but service crashed. → Mitigation: systemd `Restart=always` auto-recovers. `wt-orch-core serve` also works as manual foreground command for debugging.
+**[Risk: Service not running]** User expects dashboard but service crashed. → Mitigation: systemd `Restart=always` auto-recovers. `set-orch-core serve` also works as manual foreground command for debugging.
 
-**[Risk: npm in wt-tools]** Adding a `web/` directory with package.json introduces Node.js as a build dependency. → Mitigation: The built SPA (`web/dist/`) is committed to git. Users who don't develop the frontend never need Node.js. Only `pip install` deps (fastapi, uvicorn, watchfiles) are runtime requirements.
+**[Risk: npm in set-core]** Adding a `web/` directory with package.json introduces Node.js as a build dependency. → Mitigation: The built SPA (`web/dist/`) is committed to git. Users who don't develop the frontend never need Node.js. Only `pip install` deps (fastapi, uvicorn, watchfiles) are runtime requirements.

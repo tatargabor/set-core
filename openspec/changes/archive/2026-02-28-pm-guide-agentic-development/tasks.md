@@ -18,7 +18,7 @@
 
 ## 5. IV. fejezet — OpenSpec
 
-- [x] 5.1 Megírni a `docs/pm-guide/04-openspec.md` fejezetet: Proposal→Specs→Design→Tasks→Implementation pipeline ASCII diagrammal, minden artifact típus rövid (5-10 soros) példával, PM munkafolyamat konkrét példával (PM ír proposal → AI generál spec → PM review → AI implementál), a wt-tools projektből vett illusztrációk
+- [x] 5.1 Megírni a `docs/pm-guide/04-openspec.md` fejezetet: Proposal→Specs→Design→Tasks→Implementation pipeline ASCII diagrammal, minden artifact típus rövid (5-10 soros) példával, PM munkafolyamat konkrét példával (PM ír proposal → AI generál spec → PM review → AI implementál), a set-core projektből vett illusztrációk
 
 ## 6. V. fejezet — Orchestráció
 

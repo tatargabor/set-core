@@ -1,4 +1,4 @@
-"""Tests for wt-memory rules CLI and hook injection.
+"""Tests for set-memory rules CLI and hook injection.
 
 4.1 CLI: add / list / remove
 4.2 Hook injection: MANDATORY RULES appears when topic matches
@@ -14,12 +14,12 @@ import tempfile
 import pytest
 
 # Paths
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "wt-memory")
-HOOK = os.path.join(os.path.dirname(__file__), "..", "bin", "wt-hook-memory")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "set-memory")
+HOOK = os.path.join(os.path.dirname(__file__), "..", "bin", "set-hook-memory")
 
 
 def run_wt(rules_dir, *args, stdin=None):
-    """Run wt-memory rules with a tmp project dir. Returns (stdout, stderr, returncode)."""
+    """Run set-memory rules with a tmp project dir. Returns (stdout, stderr, returncode)."""
     env = os.environ.copy()
     env["SHODH_STORAGE"] = rules_dir + "/shodh"  # isolated, unused for rules
     result = subprocess.run(
@@ -34,7 +34,7 @@ def run_wt(rules_dir, *args, stdin=None):
 
 
 def run_hook(project_dir, prompt, session_id="test-hook-123"):
-    """Invoke wt-hook-memory UserPromptSubmit with a prompt. Returns (stdout, returncode)."""
+    """Invoke set-hook-memory UserPromptSubmit with a prompt. Returns (stdout, returncode)."""
     payload = json.dumps({"session_id": session_id, "prompt": prompt})
     env = os.environ.copy()
     env["CLAUDE_PROJECT_DIR"] = project_dir
@@ -70,7 +70,7 @@ def setup_git_repo(tmp_path):
 
 class TestRulesCLI:
     def test_add_creates_yaml(self, tmp_path):
-        """wt-memory rules add creates .claude/rules.yaml"""
+        """set-memory rules add creates .claude/rules.yaml"""
         project_dir = setup_git_repo(tmp_path)
         stdout, stderr, rc = run_wt(
             project_dir, "rules", "add",
@@ -83,7 +83,7 @@ class TestRulesCLI:
         assert os.path.exists(rules_file), "rules.yaml not created"
 
     def test_add_generates_id(self, tmp_path):
-        """wt-memory rules add auto-generates a kebab-case id"""
+        """set-memory rules add auto-generates a kebab-case id"""
         project_dir = setup_git_repo(tmp_path)
         stdout, _, rc = run_wt(
             project_dir, "rules", "add",
@@ -95,7 +95,7 @@ class TestRulesCLI:
         assert "require-qa-sign-off" in stdout or "require" in stdout
 
     def test_list_shows_rules(self, tmp_path):
-        """wt-memory rules list shows added rules"""
+        """set-memory rules list shows added rules"""
         project_dir = setup_git_repo(tmp_path)
         run_wt(project_dir, "rules", "add", "--topics", "customer", "Use customer_ro")
         stdout, _, rc = run_wt(project_dir, "rules", "list")
@@ -104,13 +104,13 @@ class TestRulesCLI:
         assert "Use customer_ro" in stdout
 
     def test_list_empty_no_crash(self, tmp_path):
-        """wt-memory rules list when no file exists exits 0"""
+        """set-memory rules list when no file exists exits 0"""
         project_dir = setup_git_repo(tmp_path)
         stdout, _, rc = run_wt(project_dir, "rules", "list")
         assert rc == 0
 
     def test_remove_existing_rule(self, tmp_path):
-        """wt-memory rules remove deletes the rule"""
+        """set-memory rules remove deletes the rule"""
         project_dir = setup_git_repo(tmp_path)
         add_stdout, _, _ = run_wt(
             project_dir, "rules", "add", "--topics", "sql", "Use sql_ro / pass123"
@@ -132,19 +132,19 @@ class TestRulesCLI:
         assert rule_id not in list_out
 
     def test_remove_nonexistent_exits_1(self, tmp_path):
-        """wt-memory rules remove nonexistent id exits 1"""
+        """set-memory rules remove nonexistent id exits 1"""
         project_dir = setup_git_repo(tmp_path)
         _, _, rc = run_wt(project_dir, "rules", "remove", "nonexistent-id")
         assert rc == 1
 
     def test_add_requires_topics(self, tmp_path):
-        """wt-memory rules add without --topics exits 1"""
+        """set-memory rules add without --topics exits 1"""
         project_dir = setup_git_repo(tmp_path)
         _, _, rc = run_wt(project_dir, "rules", "add", "some content without topics")
         assert rc == 1
 
     def test_add_requires_content(self, tmp_path):
-        """wt-memory rules add without content exits 1"""
+        """set-memory rules add without content exits 1"""
         project_dir = setup_git_repo(tmp_path)
         _, _, rc = run_wt(project_dir, "rules", "add", "--topics", "sql")
         assert rc == 1

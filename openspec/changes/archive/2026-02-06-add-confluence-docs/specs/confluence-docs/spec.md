@@ -48,7 +48,7 @@ The system SHALL generate a complete command reference section.
 
 #### Scenario: Order commands logically
 - **WHEN** reference section is generated
-- **THEN** commands are ordered: wt-project, wt-open, wt-edit, wt-list, wt-close
+- **THEN** commands are ordered: set-project, wt-open, wt-edit, wt-list, wt-close
 - **AND** installation is documented separately
 
 ### Requirement: Confluence Compatibility

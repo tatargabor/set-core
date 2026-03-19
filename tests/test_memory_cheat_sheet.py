@@ -5,13 +5,13 @@ Coverage:
   - L1 SessionStart hook skips section when no cheat-sheet memories exist
   - Short content (<20 chars) is filtered from cheat-sheet output
   - Duplicate content is deduplicated in output
-  - wt-memory remember with cheat-sheet tag stores memory correctly
+  - set-memory remember with cheat-sheet tag stores memory correctly
   - Cheat-sheet entries can be listed and removed via forget
 
 Requires shodh-memory to be installed (skips otherwise).
 
 NOTE: Both CLI and hook must run from the same git project dir so that
-      wt-memory auto-detects the same project name for both writes and reads.
+      set-memory auto-detects the same project name for both writes and reads.
 """
 
 import json
@@ -20,8 +20,8 @@ import subprocess
 
 import pytest
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "wt-memory")
-HOOK = os.path.join(os.path.dirname(__file__), "..", "bin", "wt-hook-memory")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "set-memory")
+HOOK = os.path.join(os.path.dirname(__file__), "..", "bin", "set-hook-memory")
 
 try:
     import importlib
@@ -47,7 +47,7 @@ def setup_git_repo(tmp_path):
 
 
 def run_wt(project_dir, storage_path, *args, stdin=None):
-    """Run wt-memory from project_dir with isolated storage. Returns (stdout, returncode)."""
+    """Run set-memory from project_dir with isolated storage. Returns (stdout, returncode)."""
     env = os.environ.copy()
     env["SHODH_STORAGE"] = storage_path
     result = subprocess.run(
@@ -63,7 +63,7 @@ def run_wt(project_dir, storage_path, *args, stdin=None):
 
 
 def run_session_start(project_dir, storage_path):
-    """Invoke wt-hook-memory SessionStart from project_dir. Returns (stdout, returncode)."""
+    """Invoke set-hook-memory SessionStart from project_dir. Returns (stdout, returncode)."""
     payload = json.dumps({"session_id": "test-session-cs-123"})
     env = os.environ.copy()
     env["SHODH_STORAGE"] = storage_path
@@ -86,7 +86,7 @@ def run_session_start(project_dir, storage_path):
 
 class TestCheatSheetStorage:
     def test_remember_with_cheat_sheet_tag(self, tmp_path):
-        """wt-memory remember with cheat-sheet tag stores the memory."""
+        """set-memory remember with cheat-sheet tag stores the memory."""
         project_dir = setup_git_repo(tmp_path)
         storage = str(tmp_path / "shodh")
         content = "Run GUI tests: PYTHONPATH=. pytest tests/gui/ -v --tb=short"
@@ -134,7 +134,7 @@ class TestSessionStartInjection:
         project_dir = setup_git_repo(tmp_path)
         storage = str(tmp_path / "shodh")
 
-        content = "Always run wt-memory recall before starting a new change"
+        content = "Always run set-memory recall before starting a new change"
         run_wt(project_dir, storage,
                "remember", "--type", "Learning", "--tags", "cheat-sheet,workflow", stdin=content)
 

@@ -8,7 +8,7 @@
 ## 2. Orphan Agent Cleanup in wt-status
 
 - [x] 2.1 Add `is_ralph_loop_active()` helper function that checks `.claude/loop-state.json` for status "running".
-- [x] 2.2 Add `cleanup_orphan_agents()` function: for each worktree with agents but no editor window and no active Ralph loop, send SIGTERM to "waiting" agents and remove their `.wt-tools/agents/<pid>.skill` files.
+- [x] 2.2 Add `cleanup_orphan_agents()` function: for each worktree with agents but no editor window and no active Ralph loop, send SIGTERM to "waiting" agents and remove their `.set-core/agents/<pid>.skill` files.
 - [x] 2.3 Integrate `cleanup_orphan_agents()` into `collect_worktree_status()` — call it after `detect_agents()` but before building the agents JSON array, so orphans are excluded from output.
 - [x] 2.4 Add stderr logging when orphan agents are killed (PID, worktree path).
 

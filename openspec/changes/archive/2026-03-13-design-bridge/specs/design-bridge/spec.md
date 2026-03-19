@@ -56,9 +56,9 @@ All design-bridge functions SHALL be non-fatal. If detection fails, config expor
 The system SHALL provide a deployable rule template (`templates/rules/design-bridge-rule.md`) that instructs agents to query the design MCP tool when implementing UI elements.
 
 #### Scenario: Rule deployed to project with design MCP
-- **WHEN** `wt-project init` runs on a project with a registered design MCP
+- **WHEN** `set-project init` runs on a project with a registered design MCP
 - **THEN** the design-bridge rule is deployed to `.claude/rules/wt-design-bridge.md`
 
 #### Scenario: Rule not deployed without design MCP
-- **WHEN** `wt-project init` runs on a project without a design MCP
+- **WHEN** `set-project init` runs on a project without a design MCP
 - **THEN** no design-bridge rule is deployed

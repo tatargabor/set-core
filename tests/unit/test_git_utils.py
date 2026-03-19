@@ -1,4 +1,4 @@
-"""Tests for wt_orch.git_utils — uncommitted work detection."""
+"""Tests for set_orch.git_utils — uncommitted work detection."""
 
 import os
 import subprocess
@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.git_utils import git_has_uncommitted_work
+from set_orch.git_utils import git_has_uncommitted_work
 
 
 @pytest.fixture

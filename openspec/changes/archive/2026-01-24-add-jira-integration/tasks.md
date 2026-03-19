@@ -4,8 +4,8 @@
 - [x] 1.3 Document mcp-atlassian installation (`uvx mcp-atlassian` or `pip install mcp-atlassian`)
 
 ## 2. Configuration Management
-- [x] 2.1 Define JSON schema for global config `~/.config/wt-tools/jira.json`
-- [x] 2.2 Define JSON schema for project config `.wt-tools/jira.json`
+- [x] 2.1 Define JSON schema for global config `~/.config/set-core/jira.json`
+- [x] 2.2 Define JSON schema for project config `.set-core/jira.json`
 - [x] 2.3 Implement config file reader with platform-specific paths
 - [x] 2.4 Implement config merging (global + project, project takes precedence)
 - [x] 2.5 Implement environment variable override logic

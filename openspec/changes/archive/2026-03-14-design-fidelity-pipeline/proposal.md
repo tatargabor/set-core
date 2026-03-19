@@ -26,4 +26,4 @@ A gyökérok: a design-snapshot.md tartalma csak a **planner** prompt-ba jut el 
 - `lib/design/bridge.sh` — új `design_context_for_agent()` függvény (frame-szűrt snapshot rész)
 - `lib/orchestration/verifier.sh` — `review_change()` design compliance section
 - `.claude/rules/design-bridge.md` — erősebb, imperatív szabály
-- `lib/wt_orch/templates.py` — review template design section
+- `lib/set_orch/templates.py` — review template design section

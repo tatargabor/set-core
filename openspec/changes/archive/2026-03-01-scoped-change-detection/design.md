@@ -45,7 +45,7 @@ orchestrator → wt-loop start "Implement X" --done openspec
 
 ### 3. Orchestrator passes `--change` explicitly
 
-**Decision:** `dispatch_change()` in `wt-orchestrate` adds `--change "$change_name"` to the `wt-loop start` invocation.
+**Decision:** `dispatch_change()` in `set-orchestrate` adds `--change "$change_name"` to the `wt-loop start` invocation.
 
 **Rationale:** One-line change. The orchestrator already knows the change name — it created the proposal.md for it.
 

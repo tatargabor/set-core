@@ -41,7 +41,7 @@ Files: `lib/orchestration/monitor.sh`, `lib/orchestration/verifier.sh` (poll_cha
 
 Files: `lib/orchestration/planner.sh`
 
-## Phase 3: Template rules — coexistence and isolation docs (wt-project-web)
+## Phase 3: Template rules — coexistence and isolation docs (set-project-web)
 
 ### T4 — Update testing-conventions.md with coexistence, isolation, and strategy docs
 
@@ -72,7 +72,7 @@ Files: `lib/orchestration/planner.sh`
   - PostgreSQL/MySQL: per-worktree database names (future `e2e_db_setup`/`e2e_db_teardown` hooks)
   - Always run `prisma generate` before `prisma db push` to handle new models per-change
 
-Files: `wt-project-web/wt_project_web/templates/nextjs/rules/testing-conventions.md`
+Files: `set-project-web/wt_project_web/templates/nextjs/rules/testing-conventions.md`
 
 ### T5 — Update smoke-test.yaml directive with e2e_command
 
@@ -80,4 +80,4 @@ Files: `wt-project-web/wt_project_web/templates/nextjs/rules/testing-conventions
 - [x] Add comment documenting that `smoke_command` is optional when `e2e_command` covers per-change E2E
 - [x] Document the two-step relationship: e2e = pre-merge per-change, smoke = post-merge cross-feature
 
-Files: `wt-project-web/wt_project_web/directives/smoke-test.yaml`
+Files: `set-project-web/wt_project_web/directives/smoke-test.yaml`

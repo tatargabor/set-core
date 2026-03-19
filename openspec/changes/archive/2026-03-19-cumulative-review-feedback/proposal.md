@@ -20,7 +20,7 @@ Add `review_history` to the change's state — an accumulating array of review a
 - Capture agent's diff between retry attempts as "what was tried"
 
 ### Out of Scope
-- Cross-run persistence (future: extract to wt-project-web rules at wrap-up)
+- Cross-run persistence (future: extract to set-project-web rules at wrap-up)
 - Memory system integration (future: auto-remember patterns)
 - Changing review severity thresholds
 - Increasing retry limits

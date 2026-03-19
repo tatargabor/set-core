@@ -11,10 +11,10 @@ The Stop hook's background transcript extraction silently dies every time due to
 ## Scope
 
 - File: `bin/wt-hook-memory` (lines 1118, 1123, 1130)
-- Side effect: reddit project's `.wt-tools/.staged-extract-*` stuck file cleanup
+- Side effect: reddit project's `.set-core/.staged-extract-*` stuck file cleanup
 
 ## Out of Scope
 
-- Other `bin/` scripts (`wt-project`, `wt-status`, etc.) — they don't use `set -e`
+- Other `bin/` scripts (`set-project`, `wt-status`, etc.) — they don't use `set -e`
 - The `$((expr))` assignment form is safe (never returns exit code)
-- The "content required" errors in the log are from `wt-memory rules add`, unrelated
+- The "content required" errors in the log are from `set-memory rules add`, unrelated

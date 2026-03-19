@@ -49,15 +49,15 @@ When an OpenSpec change name is detected, the recall hook SHALL also check for c
 - **AND** SHALL be formatted as "Design decisions for product-catalog: ..."
 
 ### Requirement: Timeout safety
-The recall hook SHALL complete within its 15-second timeout even if wt-memory recall is slow.
+The recall hook SHALL complete within its 15-second timeout even if set-memory recall is slow.
 
-#### Scenario: wt-memory recall hangs
-- **WHEN** wt-memory recall takes >10 seconds
+#### Scenario: set-memory recall hangs
+- **WHEN** set-memory recall takes >10 seconds
 - **THEN** the hook exits silently (killed by Claude Code timeout)
 
 ### Requirement: Memory count guard
 The recall hook SHALL skip execution if the project has zero memories.
 
 #### Scenario: No memories exist
-- **WHEN** `wt-memory status --json` reports count 0
+- **WHEN** `set-memory status --json` reports count 0
 - **THEN** the hook SHALL exit 0 immediately with no output

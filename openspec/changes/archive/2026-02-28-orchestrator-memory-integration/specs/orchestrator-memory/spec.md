@@ -1,15 +1,15 @@
 ## ADDED Requirements
 
 ### Requirement: Helper functions for orchestrator memory access
-The orchestrator SHALL provide `orch_remember` and `orch_recall` helper functions that encapsulate wt-memory CLI access with consistent tagging, availability checks, and failure handling.
+The orchestrator SHALL provide `orch_remember` and `orch_recall` helper functions that encapsulate set-memory CLI access with consistent tagging, availability checks, and failure handling.
 
 #### Scenario: orch_remember saves with orchestrator tags
 - **WHEN** `orch_remember "merge conflict between X and Y" Learning "phase:merge,change:my-change"` is called
-- **THEN** the content SHALL be saved via `wt-memory remember` with type `Learning` and tags `source:orchestrator,phase:merge,change:my-change`
-- **AND** the function SHALL return 0 regardless of wt-memory success or failure
+- **THEN** the content SHALL be saved via `set-memory remember` with type `Learning` and tags `source:orchestrator,phase:merge,change:my-change`
+- **AND** the function SHALL return 0 regardless of set-memory success or failure
 
-#### Scenario: orch_remember when wt-memory is not installed
-- **WHEN** `orch_remember` is called and `wt-memory` is not on PATH
+#### Scenario: orch_remember when set-memory is not installed
+- **WHEN** `orch_remember` is called and `set-memory` is not on PATH
 - **THEN** the function SHALL return 0 immediately without error
 
 #### Scenario: orch_recall retrieves filtered memories
@@ -17,8 +17,8 @@ The orchestrator SHALL provide `orch_remember` and `orch_recall` helper function
 - **THEN** the function SHALL return memory content as plain text, limited to 2000 characters
 - **AND** the function SHALL use hybrid recall mode
 
-#### Scenario: orch_recall when wt-memory is not installed
-- **WHEN** `orch_recall` is called and `wt-memory` is not on PATH
+#### Scenario: orch_recall when set-memory is not installed
+- **WHEN** `orch_recall` is called and `set-memory` is not on PATH
 - **THEN** the function SHALL return empty string and exit 0
 
 ### Requirement: Orchestrator saves merge outcomes as memories
@@ -125,14 +125,14 @@ When `dispatch_change()` creates a proposal.md in a worktree, it SHALL recall me
 - **AND** the recall SHALL NOT filter by `source:orchestrator` tags (to capture both agent and orchestrator memories)
 
 ### Requirement: Memory audit periodic health check
-The orchestrator SHALL run `orch_memory_audit()` periodically during the monitor loop (approximately every 10 poll cycles). The audit SHALL check wt-memory health, count orchestrator memories, and spot-check the latest memory content.
+The orchestrator SHALL run `orch_memory_audit()` periodically during the monitor loop (approximately every 10 poll cycles). The audit SHALL check set-memory health, count orchestrator memories, and spot-check the latest memory content.
 
 #### Scenario: Memory system healthy
-- **WHEN** orch_memory_audit runs and wt-memory health returns OK
+- **WHEN** orch_memory_audit runs and set-memory health returns OK
 - **THEN** the audit SHALL log memory count and pass silently
 
 #### Scenario: Memory system unhealthy
-- **WHEN** wt-memory health fails or memory count is 0
+- **WHEN** set-memory health fails or memory count is 0
 - **THEN** the audit SHALL log a warning but NOT block orchestration
 
 ### Requirement: Quality gate steps are timed

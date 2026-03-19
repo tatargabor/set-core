@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/loop/prompt.sh` (305 LOC) to `lib/wt_orch/loop_prompt.py`. Detects the next change action needed and assembles Claude prompts with context injection.
+Migrate `lib/loop/prompt.sh` (305 LOC) to `lib/set_orch/loop_prompt.py`. Detects the next change action needed and assembles Claude prompts with context injection.
 
 ## Requirements
 

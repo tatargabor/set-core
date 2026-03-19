@@ -84,12 +84,12 @@ class TestWMClassFiltering:
     def test_filters_out_chrome_windows(self, linux_platform):
         """Chrome tabs containing the worktree name should NOT be matched."""
         window_map = {
-            "dev.zed.Zed": {"73400398": "wt-tools"},
-            "Google-chrome": {"52428823": "tatargabor/wt-tools - Google Chrome"},
+            "dev.zed.Zed": {"73400398": "set-core"},
+            "Google-chrome": {"52428823": "tatargabor/set-core - Google Chrome"},
         }
         with patch("shutil.which", return_value="/usr/bin/xdotool"), \
              patch("subprocess.run", side_effect=_mock_run_for_windows(window_map)):
-            result = linux_platform.find_window_by_title("wt-tools", app_name="Zed")
+            result = linux_platform.find_window_by_title("set-core", app_name="Zed")
 
         assert result == "73400398"
 
@@ -97,13 +97,13 @@ class TestWMClassFiltering:
         """Worktree windows with prefix-similar names should NOT be matched."""
         window_map = {
             "dev.zed.Zed": {
-                "73400431": "wt-tools-wt-o_test",
-                "73400398": "wt-tools",
+                "73400431": "set-core-wt-o_test",
+                "73400398": "set-core",
             },
         }
         with patch("shutil.which", return_value="/usr/bin/xdotool"), \
              patch("subprocess.run", side_effect=_mock_run_for_windows(window_map)):
-            result = linux_platform.find_window_by_title("wt-tools", app_name="Zed")
+            result = linux_platform.find_window_by_title("set-core", app_name="Zed")
 
         assert result == "73400398"
 
@@ -111,12 +111,12 @@ class TestWMClassFiltering:
         """Zed's 'folder — filename' title pattern should match."""
         window_map = {
             "dev.zed.Zed": {
-                "73400398": "wt-tools \u2014 CLAUDE.md",
+                "73400398": "set-core \u2014 CLAUDE.md",
             },
         }
         with patch("shutil.which", return_value="/usr/bin/xdotool"), \
              patch("subprocess.run", side_effect=_mock_run_for_windows(window_map)):
-            result = linux_platform.find_window_by_title("wt-tools", app_name="Zed")
+            result = linux_platform.find_window_by_title("set-core", app_name="Zed")
 
         assert result == "73400398"
 
@@ -127,11 +127,11 @@ class TestWMClassFiltering:
                 "73400425": "mediapipe-python-mirror \u2014 CLAUDE.md",
                 "73400422": "tgholsters-dryfire",
             },
-            "Google-chrome": {"52428823": "tatargabor/wt-tools - Google Chrome"},
+            "Google-chrome": {"52428823": "tatargabor/set-core - Google Chrome"},
         }
         with patch("shutil.which", return_value="/usr/bin/xdotool"), \
              patch("subprocess.run", side_effect=_mock_run_for_windows(window_map)):
-            result = linux_platform.find_window_by_title("wt-tools", app_name="Zed")
+            result = linux_platform.find_window_by_title("set-core", app_name="Zed")
 
         assert result is None
 
@@ -142,16 +142,16 @@ class TestWMClassFiltering:
                 "73400425": "mediapipe-python-mirror \u2014 CLAUDE.md",
                 "73400428": "mediapipe-python-mirror-wt-limb-rendering \u2014 IK_proposal.txt",
                 "73400422": "tgholsters-dryfire",
-                "73400431": "wt-tools-wt-o_test",
-                "73400398": "wt-tools",
+                "73400431": "set-core-wt-o_test",
+                "73400398": "set-core",
             },
             "Google-chrome": {
-                "52428823": "tatargabor/wt-tools - Google Chrome",
+                "52428823": "tatargabor/set-core - Google Chrome",
             },
         }
         with patch("shutil.which", return_value="/usr/bin/xdotool"), \
              patch("subprocess.run", side_effect=_mock_run_for_windows(window_map)):
-            result = linux_platform.find_window_by_title("wt-tools", app_name="Zed")
+            result = linux_platform.find_window_by_title("set-core", app_name="Zed")
 
         assert result == "73400398"
 
@@ -162,12 +162,12 @@ class TestFallbackBehavior:
     def test_no_app_name_uses_substring_search(self, linux_platform):
         """Without app_name, falls back to xdotool --name substring search."""
         window_map = {
-            "dev.zed.Zed": {"73400398": "wt-tools"},
-            "Google-chrome": {"52428823": "tatargabor/wt-tools - Google Chrome"},
+            "dev.zed.Zed": {"73400398": "set-core"},
+            "Google-chrome": {"52428823": "tatargabor/set-core - Google Chrome"},
         }
         with patch("shutil.which", return_value="/usr/bin/xdotool"), \
              patch("subprocess.run", side_effect=_mock_run_for_windows(window_map)):
-            result = linux_platform.find_window_by_title("wt-tools", app_name="")
+            result = linux_platform.find_window_by_title("set-core", app_name="")
 
         # Fallback returns first match (may be Chrome — old behavior preserved)
         assert result is not None
@@ -175,11 +175,11 @@ class TestFallbackBehavior:
     def test_unknown_app_name_uses_substring_search(self, linux_platform):
         """Unknown app_name (not in WM_CLASS_MAP) falls back to substring search."""
         window_map = {
-            "dev.zed.Zed": {"73400398": "wt-tools"},
+            "dev.zed.Zed": {"73400398": "set-core"},
         }
         with patch("shutil.which", return_value="/usr/bin/xdotool"), \
              patch("subprocess.run", side_effect=_mock_run_for_windows(window_map)):
-            result = linux_platform.find_window_by_title("wt-tools", app_name="UnknownEditor")
+            result = linux_platform.find_window_by_title("set-core", app_name="UnknownEditor")
 
         # Unknown editor: no WM_CLASS match, should fall back to substring
         # and since "UnknownEditor" is not in _WM_CLASS_MAP, it goes to fallback
@@ -188,7 +188,7 @@ class TestFallbackBehavior:
     def test_no_xdotool_returns_none(self, linux_platform):
         """When xdotool is not installed, return None."""
         with patch("shutil.which", return_value=None):
-            result = linux_platform.find_window_by_title("wt-tools", app_name="Zed")
+            result = linux_platform.find_window_by_title("set-core", app_name="Zed")
         assert result is None
 
 

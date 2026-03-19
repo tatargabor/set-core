@@ -1,13 +1,13 @@
 ## Why
 
-`wt-orchestrate` is a 5,220-line monolithic bash script handling planning, dispatch, polling, verification, merging, smoke testing, replanning, and state management in a single file. Four production orchestration runs (v8-v11) on sales-raketa exposed systemic problems: orchestrator stalls requiring SIGKILL (v11 2x), merge conflicts from parallel changes touching shared files (v8, v11), no event audit trail for post-mortem analysis, 370K of unnecessary context files in worktrees, and agents missing cross-cutting concerns (sidebar, i18n, activity-log) when implementing features.
+`set-orchestrate` is a 5,220-line monolithic bash script handling planning, dispatch, polling, verification, merging, smoke testing, replanning, and state management in a single file. Four production orchestration runs (v8-v11) on sales-raketa exposed systemic problems: orchestrator stalls requiring SIGKILL (v11 2x), merge conflicts from parallel changes touching shared files (v8, v11), no event audit trail for post-mortem analysis, 370K of unnecessary context files in worktrees, and agents missing cross-cutting concerns (sidebar, i18n, activity-log) when implementing features.
 
 The monolith must be decomposed into testable modules, enhanced with self-healing capabilities, and integrated with a structured project-knowledge system so that both the orchestrator and the agents it supervises produce reliable, complete work.
 
 ## What Changes
 
 ### Orchestration Modularization
-- Extract `bin/wt-orchestrate` (5,220 lines) into 7 sourced library modules under `lib/orchestration/`, reducing the main file to ~300 lines of CLI dispatch
+- Extract `bin/set-orchestrate` (5,220 lines) into 7 sourced library modules under `lib/orchestration/`, reducing the main file to ~300 lines of CLI dispatch
 - Modules: `state.sh`, `planner.sh`, `dispatcher.sh`, `verifier.sh`, `merger.sh`, `watchdog.sh` (NEW), `events.sh` (NEW)
 - All existing CLI commands unchanged (`plan`, `start`, `status`, `pause`, `resume`, `replan`, `approve`)
 - All existing state file formats unchanged
@@ -32,7 +32,7 @@ The monolith must be decomposed into testable modules, enhanced with self-healin
 ### Project Knowledge System (NEW)
 - `.claude/project-knowledge.yaml`: structured feature-to-dependency map, cross-cutting file registry, verification rules — read by planner (merge avoidance), dispatcher (context assembly), verifier (post-implementation checks)
 - `.claude/rules/cross-cutting-checklist.md`: path-scoped rule for agent per-turn guidance — lightweight checklist of cross-cutting concerns (sidebar, i18n, activity-log, tenant-scoping)
-- `wt-project init-knowledge`: scaffolding command to bootstrap project-knowledge.yaml from code scanning
+- `set-project init-knowledge`: scaffolding command to bootstrap project-knowledge.yaml from code scanning
 
 ### Enhanced Sentinel
 - Liveness checking: monitor events.jsonl mtime, detect alive-but-stuck orchestrator (3-minute no-activity threshold)
@@ -40,7 +40,7 @@ The monolith must be decomposed into testable modules, enhanced with self-healin
 - Enhanced from 146 lines to ~300 lines
 
 ### Worktree Context Pruning
-- `bootstrap_worktree()` removes orchestrator-specific files from worktrees (commands/wt-orchestrate, sentinel commands)
+- `bootstrap_worktree()` removes orchestrator-specific files from worktrees (commands/set-orchestrate, sentinel commands)
 - Reduces worktree context from ~370K to ~180K (v11 fix)
 
 ### Dispatcher Enhancements
@@ -65,9 +65,9 @@ The monolith must be decomposed into testable modules, enhanced with self-healin
 ## Impact
 
 ### Code Changes
-- `bin/wt-orchestrate`: Reduced from 5,220 to ~300 lines (functions extracted to `lib/orchestration/*.sh`)
-- `bin/wt-sentinel`: Enhanced from 146 to ~300 lines
-- `bin/wt-project`: New `init-knowledge` subcommand
+- `bin/set-orchestrate`: Reduced from 5,220 to ~300 lines (functions extracted to `lib/orchestration/*.sh`)
+- `bin/set-sentinel`: Enhanced from 146 to ~300 lines
+- `bin/set-project`: New `init-knowledge` subcommand
 - NEW: `lib/orchestration/` directory with 7 module files
 - NEW: Template files for `project-knowledge.yaml` and `cross-cutting-checklist.md`
 
@@ -77,5 +77,5 @@ The monolith must be decomposed into testable modules, enhanced with self-healin
 
 ### Breaking Changes
 - None for CLI interface, state file format, or orchestration.yaml
-- **Low risk**: Tools that `source bin/wt-orchestrate` directly would need to also source `lib/orchestration/*.sh` modules (unlikely external usage)
+- **Low risk**: Tools that `source bin/set-orchestrate` directly would need to also source `lib/orchestration/*.sh` modules (unlikely external usage)
 - **Low risk**: Worktree context pruning removes orchestrator commands from worktrees — agents relying on these would need adjustment

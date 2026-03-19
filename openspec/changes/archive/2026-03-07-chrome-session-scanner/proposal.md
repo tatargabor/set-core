@@ -26,5 +26,5 @@ Chrome stores all the data needed — session cookies and profile names — in w
 - **New dependency**: `pycookiecheat` Python package (handles Chrome cookie decryption on Linux/macOS/Windows)
 - **GUI changes**: New toolbar button in button bar, new menu item in hamburger menu
 - **Files affected**: `gui/control_center/main_window.py` (toolbar button, autorun timer), `gui/control_center/mixins/menus.py` (menu item), `gui/control_center/mixins/handlers.py` (scan handler), new `gui/workers/chrome_cookies.py` (scanner logic)
-- **Config**: `~/.config/wt-tools/claude-session.json` accounts list will be overwritten on each scan
+- **Config**: `~/.config/set-core/claude-session.json` accounts list will be overwritten on each scan
 - **Platform**: Linux primary (Chrome at `~/.config/google-chrome/`), macOS support via `pycookiecheat` (Chrome at `~/Library/Application Support/Google/Chrome/`)

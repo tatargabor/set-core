@@ -1,10 +1,10 @@
 ## MODIFIED Requirements
 
 ### Requirement: Proactive Context Noise Prevention
-The `wt-memory proactive` command SHALL pass `auto_ingest=False` to the shodh-memory `proactive_context()` API. Working-state context strings MUST NOT be saved as permanent memories.
+The `set-memory proactive` command SHALL pass `auto_ingest=False` to the shodh-memory `proactive_context()` API. Working-state context strings MUST NOT be saved as permanent memories.
 
 #### Scenario: Proactive recall without auto-ingest
-- **WHEN** `wt-memory proactive "Working on change: X"` is called
+- **WHEN** `set-memory proactive "Working on change: X"` is called
 - **THEN** no `Conversation` type memory SHALL be created from the context string
 - **THEN** the proactive recall results SHALL still be returned normally
 

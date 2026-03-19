@@ -1,6 +1,6 @@
 ## Context
 
-The merge pipeline resolves lock file conflicts by accepting the target branch version (`git checkout --ours`), which silently discards dependencies added by the feature branch. This causes runtime failures when merged code references packages that exist in its `package.json` but are missing from the lock file. Additionally, runtime state files (`.wt-tools/` directory) sometimes get committed by worktree agents and create unnecessary merge conflicts.
+The merge pipeline resolves lock file conflicts by accepting the target branch version (`git checkout --ours`), which silently discards dependencies added by the feature branch. This causes runtime failures when merged code references packages that exist in its `package.json` but are missing from the lock file. Additionally, runtime state files (`.set-core/` directory) sometimes get committed by worktree agents and create unnecessary merge conflicts.
 
 **Current flow:**
 1. `auto_resolve_generated_files()` in `bin/wt-merge` accepts "ours" for lock files
@@ -51,7 +51,7 @@ The merge pipeline resolves lock file conflicts by accepting the target branch v
 **Decision:** `bin/wt-merge` already prints info messages about auto-resolved files. Enhance this output to include a machine-readable marker (e.g., `LOCKFILE_CONFLICTED=<filename>`) that `merger.py` can parse from stdout to determine whether a lock file was in the conflict set.
 
 **Alternatives considered:**
-- **Temp file signaling**: Write a file like `.wt-tools/.merge-lockfile-conflict`. Adds filesystem state that needs cleanup.
+- **Temp file signaling**: Write a file like `.set-core/.merge-lockfile-conflict`. Adds filesystem state that needs cleanup.
 - **Always run install unconditionally after every merge**: Wasteful when no lock file was involved. Adds 10-30s to every merge.
 - **Separate wt-merge exit codes**: Exit codes are already used for success/failure. Adding more codes is fragile.
 
@@ -69,7 +69,7 @@ The merge pipeline resolves lock file conflicts by accepting the target branch v
 
 ### D5: Pre-merge cleanup removes runtime files from index, adds to .gitignore
 
-**Decision:** Before merge, run `git rm --cached` on `.wt-tools/` runtime files (`.last-memory-commit`, `agents/`, `orphan-detect/`) and ensure they're in `.gitignore`. This is done as a pre-merge step in `bin/wt-merge`.
+**Decision:** Before merge, run `git rm --cached` on `.set-core/` runtime files (`.last-memory-commit`, `agents/`, `orphan-detect/`) and ensure they're in `.gitignore`. This is done as a pre-merge step in `bin/wt-merge`.
 
 **Alternatives considered:**
 - **Post-merge cleanup**: Too late; the files already caused conflicts.
@@ -96,7 +96,7 @@ The merge pipeline resolves lock file conflicts by accepting the target branch v
 
 - **[Risk] Regenerated lock file differs from what either branch had** -> This is the correct behavior. The regenerated lock file reflects the merged `package.json`, which is the union of both branches' dependencies. This is analogous to rebuilding after a code merge.
 
-- **[Risk] Pre-merge cleanup removes files a user intentionally tracked** -> Mitigation: Only clean files matching specific `.wt-tools/` runtime patterns, not the entire directory. Configuration files in `.wt-tools/` (if any) are not affected.
+- **[Risk] Pre-merge cleanup removes files a user intentionally tracked** -> Mitigation: Only clean files matching specific `.set-core/` runtime patterns, not the entire directory. Configuration files in `.set-core/` (if any) are not affected.
 
 - **[Trade-off] 10-30s added to merge time when lock files conflict** -> Acceptable. Lock file conflicts currently block merges entirely, requiring manual intervention. Automated 30s fix is far better than a blocked pipeline.
 

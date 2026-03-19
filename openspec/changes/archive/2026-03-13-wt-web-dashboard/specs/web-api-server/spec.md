@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Project listing endpoint
-The server SHALL expose `GET /api/projects` returning all registered projects from `~/.config/wt-tools/projects.json`. Each entry SHALL include the project name, path, whether orchestration state exists, and a quick status (`running`, `done`, `checkpoint`, `idle`).
+The server SHALL expose `GET /api/projects` returning all registered projects from `~/.config/set-core/projects.json`. Each entry SHALL include the project name, path, whether orchestration state exists, and a quick status (`running`, `done`, `checkpoint`, `idle`).
 
 #### Scenario: Multiple registered projects
 - **WHEN** projects.json contains 3 projects, 1 with active orchestration and 2 without
@@ -74,7 +74,7 @@ The server SHALL expose `POST /api/{project}/stop` which terminates the orchestr
 
 #### Scenario: Stop running orchestration
 - **WHEN** orchestration is running and stop is called
-- **THEN** the main orchestrator PID is terminated via `safe_kill()` with `wt-orchestrate` cmdline verification, and state status is updated to `stopped`
+- **THEN** the main orchestrator PID is terminated via `safe_kill()` with `set-orchestrate` cmdline verification, and state status is updated to `stopped`
 
 #### Scenario: Stop already stopped
 - **WHEN** stop is called but no orchestration process is running

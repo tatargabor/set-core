@@ -2,7 +2,7 @@
 Chat Crypto Module - End-to-end encryption for team chat
 
 Uses NaCl (libsodium) for asymmetric encryption:
-- Each user has a keypair (private in ~/.wt-tools/chat-keys/, public in member.json)
+- Each user has a keypair (private in ~/.set-core/chat-keys/, public in member.json)
 - Messages are encrypted with nacl.public.Box for sender-recipient pairs
 - The Box automatically derives a shared key from the keypairs
 """
@@ -24,7 +24,7 @@ except ImportError:
 
 
 # Key storage directory
-KEYS_DIR = Path.home() / ".wt-tools" / "chat-keys"
+KEYS_DIR = Path.home() / ".set-core" / "chat-keys"
 
 
 def is_available() -> bool:
@@ -286,7 +286,7 @@ class ChatMessage:
 class ChatReadState:
     """Tracks read state for chat messages"""
 
-    STATE_FILE = Path.home() / ".wt-tools" / "chat-read-state.json"
+    STATE_FILE = Path.home() / ".set-core" / "chat-read-state.json"
 
     def __init__(self):
         self.last_read_id: dict[str, str] = {}  # {project: last_read_message_id}

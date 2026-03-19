@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+# set-config - Configure set-core settings
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+usage() {
+    cat <<EOF
+Usage: set-config <command> [options]
+
+Commands:
+  editor list           List supported editors and availability
+  editor set <name>     Set preferred editor (zed, vscode, cursor, windsurf, auto)
+  editor show           Show current editor configuration
+  editor test           Test editor launch
+
+  model show            Show current model prefix and resolved IDs
+  model prefix <value>  Set model prefix (e.g. "cc/", "", "openrouter/")
+
+Options:
+  -h, --help            Show this help
+
+Examples:
+  set-config editor list
+  set-config editor set vscode
+  set-config model show
+  set-config model prefix cc/
+EOF
+}
+
+cmd_editor_list() {
+    echo "Supported editors:"
+    echo ""
+    printf "  %-12s %-10s %-15s %s\n" "NAME" "STATUS" "COMMAND" "CLAUDE LAUNCH"
+    printf "  %-12s %-10s %-15s %s\n" "----" "------" "-------" "-------------"
+
+    for entry in "${SUPPORTED_EDITORS[@]}"; do
+        IFS=':' read -r name cmd wclass claude_method <<< "$entry"
+        local status="not found"
+        local found_cmd=""
+        if is_editor_installed "$name"; then
+            status="${GREEN}available${NC}"
+            found_cmd=$(find_editor_command "$name")
+        else
+            status="${RED}not found${NC}"
+        fi
+        printf "  %-12s %-10b %-15s %s\n" "$name" "$status" "${found_cmd:-$cmd}" "$claude_method"
+    done
+
+    echo ""
+    local configured
+    configured=$(get_configured_editor)
+    echo "Configured: $configured"
+
+    local active
+    active=$(get_active_editor)
+    if [[ -n "$active" ]]; then
+        echo "Active: $active"
+    else
+        warn "No editor available!"
+    fi
+}
+
+cmd_editor_set() {
+    local editor_name="$1"
+
+    # If no argument, show interactive selection
+    if [[ -z "$editor_name" ]]; then
+        cmd_editor_select
+        return $?
+    fi
+
+    if ! set_configured_editor "$editor_name"; then
+        return 1
+    fi
+
+    success "Editor set to: $editor_name"
+
+    # Warn if not installed
+    if [[ "$editor_name" != "auto" ]] && ! is_editor_installed "$editor_name"; then
+        warn "Note: $editor_name is not currently installed"
+        print_editor_install_instructions "$editor_name"
+    fi
+}
+
+cmd_editor_select() {
+    echo "Select editor:"
+    echo ""
+
+    local options=("auto (recommended - uses first available)")
+    local values=("auto")
+    local idx=1
+
+    for entry in "${SUPPORTED_EDITORS[@]}"; do
+        local name="${entry%%:*}"
+        local status=""
+        if is_editor_installed "$name"; then
+            status=" ${GREEN}[installed]${NC}"
+        else
+            status=" ${RED}[not found]${NC}"
+        fi
+        options+=("$name$status")
+        values+=("$name")
+        idx=$((idx + 1))
+    done
+
+    # Print options
+    for i in "${!options[@]}"; do
+        printf "  %d) %b\n" "$((i + 1))" "${options[$i]}"
+    done
+    echo ""
+
+    # Read selection
+    local selection
+    read -p "Enter number (1-${#options[@]}): " selection
+
+    if [[ ! "$selection" =~ ^[0-9]+$ ]] || [[ "$selection" -lt 1 ]] || [[ "$selection" -gt ${#options[@]} ]]; then
+        error "Invalid selection"
+        return 1
+    fi
+
+    local chosen="${values[$((selection - 1))]}"
+    cmd_editor_set "$chosen"
+}
+
+cmd_editor_show() {
+    local configured
+    configured=$(get_configured_editor)
+    echo "Configured editor: $configured"
+
+    local active
+    active=$(get_active_editor)
+    if [[ -n "$active" ]]; then
+        echo "Active editor: $active"
+        local cmd
+        cmd=$(find_editor_command "$active")
+        echo "Command: $cmd"
+        local wclass
+        wclass=$(get_editor_property "$active" "window_class")
+        echo "Window class: $wclass"
+        local claude
+        claude=$(get_editor_property "$active" "claude_launch")
+        echo "Claude launch: $claude"
+    else
+        warn "No editor available"
+        echo ""
+        echo "Install one of the supported editors:"
+        for name in $(get_supported_editor_names); do
+            print_editor_install_instructions "$name"
+        done
+    fi
+}
+
+cmd_editor_test() {
+    local active
+    active=$(get_active_editor)
+
+    if [[ -z "$active" ]]; then
+        error "No editor available"
+        return 1
+    fi
+
+    local cmd
+    cmd=$(find_editor_command "$active")
+
+    info "Testing $active editor..."
+    echo "Command: $cmd"
+
+    # Create a temp directory to open
+    local test_dir
+    test_dir=$(mktemp -d)
+    echo "Test file for set-config editor test" > "$test_dir/README.txt"
+
+    info "Opening test directory: $test_dir"
+
+    case "$active" in
+        zed)
+            "$cmd" -n "$test_dir"
+            ;;
+        vscode|cursor|windsurf)
+            "$cmd" "$test_dir"
+            ;;
+    esac
+
+    success "Editor launched. Close it when done testing."
+    echo "Test directory: $test_dir (you can delete it)"
+}
+
+cmd_model_show() {
+    local prefix
+    prefix=$(get_model_prefix)
+    echo "Model prefix: \"${prefix:-<none>}\""
+    echo ""
+    echo "Resolved model IDs:"
+    echo "  haiku  → $(resolve_model_id haiku)"
+    echo "  sonnet → $(resolve_model_id sonnet)"
+    echo "  opus   → $(resolve_model_id opus)"
+}
+
+cmd_model_prefix() {
+    local prefix="$1"
+    set_model_prefix "$prefix"
+    success "Model prefix set to: \"${prefix:-<none>}\""
+    echo ""
+    cmd_model_show
+}
+
+main() {
+    if [[ $# -eq 0 ]]; then
+        usage
+        exit 0
+    fi
+
+    local command="$1"
+    shift
+
+    case "$command" in
+        editor)
+            if [[ $# -eq 0 ]]; then
+                cmd_editor_show
+                exit 0
+            fi
+            local subcmd="$1"
+            shift
+            case "$subcmd" in
+                list) cmd_editor_list ;;
+                set) cmd_editor_set "$@" ;;
+                show) cmd_editor_show ;;
+                test) cmd_editor_test ;;
+                *)
+                    error "Unknown editor command: $subcmd"
+                    usage
+                    exit 1
+                    ;;
+            esac
+            ;;
+        model)
+            if [[ $# -eq 0 ]]; then
+                cmd_model_show
+                exit 0
+            fi
+            local subcmd="$1"
+            shift
+            case "$subcmd" in
+                show) cmd_model_show ;;
+                prefix)
+                    if [[ $# -eq 0 ]]; then
+                        error "Usage: set-config model prefix <value>"
+                        echo "  Use '' for no prefix, 'cc/' for router, etc."
+                        exit 1
+                    fi
+                    cmd_model_prefix "$1"
+                    ;;
+                *)
+                    error "Unknown model command: $subcmd"
+                    usage
+                    exit 1
+                    ;;
+            esac
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            error "Unknown command: $command"
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

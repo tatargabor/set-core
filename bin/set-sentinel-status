@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""CLI for sentinel status management.
+
+Usage:
+    set-sentinel-status register --member NAME [--orchestrator-pid PID] [--poll-interval N]
+    set-sentinel-status heartbeat
+    set-sentinel-status deactivate
+    set-sentinel-status get
+"""
+
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+
+from set_orch.sentinel.status import SentinelStatus
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Sentinel status management")
+    parser.add_argument("--project", default=os.getcwd(), help="Project path")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # register
+    p = sub.add_parser("register", help="Register sentinel identity")
+    p.add_argument("--member", required=True, help="Team member name (e.g., tg@linux)")
+    p.add_argument("--orchestrator-pid", type=int, default=None)
+    p.add_argument("--poll-interval", type=int, default=15)
+    p.add_argument("--session-id", default="")
+
+    # heartbeat
+    sub.add_parser("heartbeat", help="Update last_event_at")
+
+    # deactivate
+    sub.add_parser("deactivate", help="Mark sentinel as inactive")
+
+    # get
+    sub.add_parser("get", help="Get current status")
+
+    args = parser.parse_args()
+    status = SentinelStatus(args.project)
+
+    if args.command == "register":
+        result = status.register(
+            member=args.member,
+            orchestrator_pid=args.orchestrator_pid,
+            poll_interval_s=args.poll_interval,
+            session_id=args.session_id,
+        )
+        print(json.dumps(result, indent=2))
+
+    elif args.command == "heartbeat":
+        status.heartbeat()
+
+    elif args.command == "deactivate":
+        status.deactivate()
+
+    elif args.command == "get":
+        data = status.get()
+        data["is_active"] = status.is_active()
+        print(json.dumps(data, indent=2))
+
+
+if __name__ == "__main__":
+    main()

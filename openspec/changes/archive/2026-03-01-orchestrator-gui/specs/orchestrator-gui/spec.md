@@ -24,7 +24,7 @@ The GUI SHALL provide a modeless dialog showing the full orchestration plan stat
 
 #### Scenario: Dialog with no orchestration state
 - **WHEN** the user opens the dialog for a project with no orchestration-state.json
-- **THEN** the dialog SHALL display "No active orchestration" with a hint to run `wt-orchestrate plan`
+- **THEN** the dialog SHALL display "No active orchestration" with a hint to run `set-orchestrate plan`
 
 #### Scenario: Refresh button
 - **WHEN** the user clicks "Refresh" in the dialog

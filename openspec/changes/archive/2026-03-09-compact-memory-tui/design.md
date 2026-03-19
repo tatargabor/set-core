@@ -1,6 +1,6 @@
 ## Context
 
-The current `wt-memory tui` is a single-column 66-character ANSI dashboard that shows globally aggregated metrics across all projects. With 81 projects and 514 sessions in the DB, the global view is noisy and unhelpful. Users work in one project at a time and need project-scoped metrics.
+The current `set-memory tui` is a single-column 66-character ANSI dashboard that shows globally aggregated metrics across all projects. With 81 projects and 514 sessions in the DB, the global view is noisy and unhelpful. Users work in one project at a time and need project-scoped metrics.
 
 The terminal width is typically 160+ columns but the current layout only uses 66. The vertical space is ~30 lines, well within 80 rows.
 
@@ -23,7 +23,7 @@ No project filtering exists in `query_report()`. The `sessions` table has a `pro
 - Textual/rich TUI framework migration — stays pure ANSI
 - Interactive session selection or drill-down navigation
 - Cross-project comparison view
-- Memory content browsing (that's `wt-memory list/recall`)
+- Memory content browsing (that's `set-memory list/recall`)
 
 ## Decisions
 
@@ -42,7 +42,7 @@ No project filtering exists in `query_report()`. The `sessions` table has a `pro
 **Rationale**: In project-scoped view, the common prefix is redundant. The worktree change name is the differentiator.
 
 ### D4: Auto-detect project in tui, explicit in metrics
-**Decision**: `wt-memory tui` auto-detects project from CWD (git root basename). `wt-memory metrics` keeps current global behavior unless `--project` is passed.
+**Decision**: `set-memory tui` auto-detects project from CWD (git root basename). `set-memory metrics` keeps current global behavior unless `--project` is passed.
 **Rationale**: TUI is always used interactively from a project dir. Metrics may be used for cross-project analysis.
 
 ### D5: Terminal width detection

@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/orchestration/builder.sh` (151 LOC) to `lib/wt_orch/builder.py` and absorb `server-detect.sh` (113 LOC) and `orch-memory.sh` (145 LOC). Builder checks base project build health; server-detect identifies dev servers and package managers; orch-memory provides orchestrator-scoped memory helpers.
+Migrate `lib/orchestration/builder.sh` (151 LOC) to `lib/set_orch/builder.py` and absorb `server-detect.sh` (113 LOC) and `orch-memory.sh` (145 LOC). Builder checks base project build health; server-detect identifies dev servers and package managers; orch-memory provides orchestrator-scoped memory helpers.
 
 ## Requirements
 
@@ -37,13 +37,13 @@ Migrate `lib/orchestration/builder.sh` (151 LOC) to `lib/wt_orch/builder.py` and
 - `orch_remember(content, type, tags)` — save to memory with `source:orchestrator` tag
 - `orch_recall(query, limit, tags)` — recall from memory
 - `orch_gate_stats()` — memory operation statistics for metrics
-- All call `wt-memory` CLI under the hood, with timing and operation counting
+- All call `set-memory` CLI under the hood, with timing and operation counting
 
 ### BUILD-06: CLI Subcommands
-- `wt-orch-core build check [--project <path>]` — run build check
-- `wt-orch-core build fix [--project <path>]` — attempt build fix
-- `wt-orch-core build detect-server [--project <path>]` — detect dev server
-- `wt-orch-core build detect-pm [--project <path>]` — detect package manager
+- `set-orch-core build check [--project <path>]` — run build check
+- `set-orch-core build fix [--project <path>]` — attempt build fix
+- `set-orch-core build detect-server [--project <path>]` — detect dev server
+- `set-orch-core build detect-pm [--project <path>]` — detect package manager
 - Registered in `cli.py` under `build` group
 
 ### BUILD-07: Unit Tests

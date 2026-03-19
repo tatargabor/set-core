@@ -1,7 +1,7 @@
 ## 1. Fix registration
 
-- [x] 1.1 In `bin/wt-project` `_register_mcp_server()`: remove `python` from `claude mcp add` command — run script directly via shebang
-- [x] 1.2 In `bin/wt-project` `_register_mcp_server()`: remove the `_is_mcp_registered` early-return so re-registration always happens (fixes stale configs)
+- [x] 1.1 In `bin/set-project` `_register_mcp_server()`: remove `python` from `claude mcp add` command — run script directly via shebang
+- [x] 1.2 In `bin/set-project` `_register_mcp_server()`: remove the `_is_mcp_registered` early-return so re-registration always happens (fixes stale configs)
 
 ## 2. Update spec
 
@@ -9,8 +9,8 @@
 
 ## 3. Worktree-aware MCP registration
 
-- [x] 3.1 In `bin/wt-project` `_register_mcp_server()`: when called from a worktree (`$in_worktree == true`), also run `claude mcp add` scoped to the worktree's current path (in addition to the main repo)
-- [x] 3.2 In `install.sh` `install_projects()`: after deploying to each main repo, enumerate its git worktrees via `git worktree list --porcelain` and run `wt-project init` in each existing worktree directory
+- [x] 3.1 In `bin/set-project` `_register_mcp_server()`: when called from a worktree (`$in_worktree == true`), also run `claude mcp add` scoped to the worktree's current path (in addition to the main repo)
+- [x] 3.2 In `install.sh` `install_projects()`: after deploying to each main repo, enumerate its git worktrees via `git worktree list --porcelain` and run `set-project init` in each existing worktree directory
 
 ## 4. Always-on hook logging
 
@@ -23,4 +23,4 @@
 
 ## 6. Fix MEMORY_SNIPPET citation instruction
 
-- [x] 6.1 In `bin/wt-project` MEMORY_SNIPPET: update the IMPORTANT instruction to include the "From memory:" citation rule (matching wt-tools' own CLAUDE.md) — the deployed snippet was missing `cite it explicitly (e.g., "From memory: ...")` and instead had the weaker `summarize what you know` wording
+- [x] 6.1 In `bin/set-project` MEMORY_SNIPPET: update the IMPORTANT instruction to include the "From memory:" citation rule (matching set-core' own CLAUDE.md) — the deployed snippet was missing `cite it explicitly (e.g., "From memory: ...")` and instead had the weaker `summarize what you know` wording

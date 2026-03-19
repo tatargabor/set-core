@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/hooks/session.sh` (134 LOC) and `lib/hooks/util.sh` (148 LOC) to `lib/wt_hooks/session.py` and `lib/wt_hooks/util.py`. Session-level dedup cache, context ID generation, debug logging, timing helpers, and cache I/O.
+Migrate `lib/hooks/session.sh` (134 LOC) and `lib/hooks/util.sh` (148 LOC) to `lib/set_hooks/session.py` and `lib/set_hooks/util.py`. Session-level dedup cache, context ID generation, debug logging, timing helpers, and cache I/O.
 
 ## Requirements
 

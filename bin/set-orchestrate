@@ -1,0 +1,831 @@
+#!/usr/bin/env bash
+# set-orchestrate - Orchestration layer for autonomous multi-change execution
+#
+# Reads a project brief, decomposes into OpenSpec changes via Claude,
+# dispatches to worktrees with Ralph loops, and monitors progress.
+#
+# Implementation is split across sourced library modules under lib/orchestration/:
+#   events.sh    — Append-only JSONL event log
+#   state.sh     — State management, queries, utilities, memory helpers
+#   watchdog.sh  — Self-healing watchdog (placeholder)
+#   planner.sh   — Planning, validation, replanning
+#   dispatcher.sh — Change dispatch, lifecycle, monitor loop
+#   verifier.sh  — Verification, testing, review, smoke tests
+#   merger.sh    — Merge, cleanup, archive operations
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+# ─── Constants ───────────────────────────────────────────────────────
+
+BRIEF_FILENAME="project-brief.md"
+BRIEF_FALLBACK="project.md"
+BRIEF_OVERRIDE=""  # set via --brief <path>
+SPEC_OVERRIDE=""   # set via --spec <path>
+PHASE_HINT=""      # set via --phase <hint>
+CLI_MAX_PARALLEL="" # set via --max-parallel <N>
+INPUT_MODE=""      # "brief" or "spec", set by find_input()
+INPUT_PATH=""      # resolved input file path
+CONFIG_FILE=""  # resolved at startup via wt_find_config
+PLAN_FILENAME="orchestration-plan.json"
+STATE_FILENAME="orchestration-state.json"
+SUMMARY_FILENAME="orchestration-summary.md"
+LOG_FILE=".claude/orchestration.log"
+LOG_MAX_SIZE=102400   # 100KB
+LOG_KEEP_SIZE=51200   # 50KB
+POLL_INTERVAL=15      # seconds
+APPROVAL_POLL=5       # seconds
+
+# Directive defaults
+DEFAULT_MAX_PARALLEL=3
+DEFAULT_MERGE_POLICY="checkpoint"
+DEFAULT_CHECKPOINT_EVERY=3
+DEFAULT_TEST_COMMAND=""
+DEFAULT_NOTIFICATION="desktop"
+DEFAULT_TOKEN_BUDGET=0
+DEFAULT_PAUSE_ON_EXIT="false"
+DEFAULT_AUTO_REPLAN="false"
+DEFAULT_REVIEW_BEFORE_MERGE="true"
+DEFAULT_TEST_TIMEOUT=300
+DEFAULT_MAX_VERIFY_RETRIES=2
+DEFAULT_SUMMARIZE_MODEL="haiku"
+DEFAULT_REVIEW_MODEL="opus"
+DEFAULT_IMPL_MODEL="opus"  # set from directives.default_model in monitor_loop
+DEFAULT_SMOKE_COMMAND=""
+DEFAULT_SMOKE_TIMEOUT=120
+DEFAULT_SMOKE_BLOCKING=true
+DEFAULT_SMOKE_FIX_TOKEN_BUDGET=500000
+DEFAULT_SMOKE_FIX_MAX_TURNS=15
+DEFAULT_SMOKE_FIX_MAX_RETRIES=3
+DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT=30
+
+DEFAULT_PLAN_METHOD="api"           # "api" (single LLM call) or "agent" (planning worktree with Ralph loop)
+DEFAULT_PLAN_TOKEN_BUDGET=500000    # 500K tokens max for agent-based planning
+DEFAULT_POST_MERGE_COMMAND=""       # project-specific command to run after merge (e.g. "pnpm db:generate")
+DEFAULT_TOKEN_HARD_LIMIT=20000000  # 20M tokens — checkpoint to ask human before spending more
+DEFAULT_CHECKPOINT_AUTO_APPROVE="false"  # auto-approve checkpoints (for unattended/E2E runs)
+DEFAULT_POST_PHASE_AUDIT="true"         # LLM spec-vs-implementation audit at phase boundaries
+DEFAULT_MONITOR_IDLE_TIMEOUT=300        # seconds without progress before self-watchdog triggers recovery
+DEFAULT_MERGE_TIMEOUT=1800              # seconds max for a single merge_change() call
+DEFAULT_SMOKE_DEV_SERVER_COMMAND=""     # command to start dev server for smoke tests (e.g. "npx next dev --port 3002")
+
+# Runtime state
+MAX_REPLAN_RETRIES=3     # max consecutive replan failures before giving up
+MAX_REPLAN_CYCLES=3      # max replan cycles before stopping (prevents scope creep)
+DEFAULT_TIME_LIMIT="5h"  # safety net: stop after 5 hours if no --time-limit given
+CLI_TIME_LIMIT=""        # set via --time-limit <duration>, "none" to disable
+ORCHESTRATOR_START_EPOCH=""  # set at start time
+
+# ─── Logging ─────────────────────────────────────────────────────────
+
+log() {
+    local level="$1"
+    shift
+    local timestamp
+    timestamp=$(date -Iseconds)
+    local msg="[$timestamp] [$level] $*"
+
+    # Ensure log directory exists
+    mkdir -p "$(dirname "$LOG_FILE")"
+
+    echo "$msg" >> "$LOG_FILE"
+}
+
+log_info()  { log "INFO" "$@"; }
+log_warn()  { log "WARN" "$@"; }
+log_error() { log "ERROR" "$@"; }
+log_debug() { [[ "${ORCH_DEBUG:-}" == "1" ]] && log "DEBUG" "$@" || true; }
+
+# run_claude() is provided by set-common.sh (sourced above)
+
+# Map short model name to full model ID for --model flag
+# Delegates to resolve_model_id() from set-common.sh (reads prefix from config)
+model_id() {
+    resolve_model_id "$1"
+}
+
+rotate_log() {
+    [[ -f "$LOG_FILE" ]] || return 0
+    local size
+    size=$(stat -c %s "$LOG_FILE" 2>/dev/null || stat -f %z "$LOG_FILE" 2>/dev/null || echo 0)
+    if [[ "$size" -gt "$LOG_MAX_SIZE" ]]; then
+        local tmp
+        tmp=$(mktemp)
+        tail -c "$LOG_KEEP_SIZE" "$LOG_FILE" > "$tmp"
+        mv "$tmp" "$LOG_FILE"
+        log_info "Log rotated (was ${size} bytes)"
+    fi
+}
+
+# ─── Source Library Modules ──────────────────────────────────────────
+# Order matters: events.sh first (other modules emit events), then state.sh,
+# watchdog.sh, planner.sh, dispatcher.sh, verifier.sh, merger.sh
+
+LIB_DIR="$SCRIPT_DIR/../lib/orchestration"
+
+# Source order matters — modules depend on earlier ones
+source "$LIB_DIR/events.sh"        # foundational: emit_event, query_events
+source "$LIB_DIR/config.sh"        # config/path lookup (extracted from state.sh)
+source "$LIB_DIR/utils.sh"         # parsing, duration, hashing (extracted from state.sh)
+source "$LIB_DIR/state.sh"         # state init, queries, notifications
+source "$LIB_DIR/orch-memory.sh"   # memory helpers (extracted from state.sh)
+source "$LIB_DIR/watchdog.sh"
+source "$LIB_DIR/planner.sh"
+source "$LIB_DIR/builder.sh"       # base build health (extracted from dispatcher.sh)
+source "$LIB_DIR/dispatcher.sh"    # change lifecycle: dispatch, resume, pause
+source "$LIB_DIR/verifier.sh"
+source "$LIB_DIR/merger.sh"
+source "$LIB_DIR/digest.sh"        # multi-file spec digest, coverage tracking
+source "$LIB_DIR/reporter.sh"      # HTML report generator
+source "$LIB_DIR/auditor.sh"      # post-phase spec-vs-implementation audit
+source "$LIB_DIR/server-detect.sh" # dev server auto-detection
+source "$LIB_DIR/milestone.sh"     # milestone checkpoint: tag, worktree, dev server
+source "$LIB_DIR/monitor.sh"       # monitor loop (extracted from dispatcher.sh)
+source "$SCRIPT_DIR/../lib/notify-email.sh"  # email notifications via Resend
+source "$SCRIPT_DIR/../lib/design/bridge.sh" # design tool MCP abstraction
+
+# ─── Skip ────────────────────────────────────────────────────────────
+
+cmd_skip() {
+    local target="${1:-}"
+    if [[ -z "$target" ]]; then
+        error "Usage: set-orchestrate skip <change-name> [--reason \"text\"]"
+        return 1
+    fi
+    shift
+
+    # Parse --reason flag
+    local reason=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --reason) reason="${2:-}"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    if [[ ! -f "$STATE_FILENAME" ]]; then
+        error "No orchestration state found."
+        return 1
+    fi
+
+    # Check change exists
+    local current_status
+    current_status=$(jq -r --arg n "$target" '.changes[] | select(.name == $n) | .status // empty' "$STATE_FILENAME" 2>/dev/null)
+    if [[ -z "$current_status" ]]; then
+        error "Change '$target' not found in state file."
+        return 1
+    fi
+
+    # Already skipped — idempotent
+    if [[ "$current_status" == "skipped" ]]; then
+        info "Change '$target' is already skipped."
+        return 0
+    fi
+
+    # Reject merged/done
+    if [[ "$current_status" == "merged" || "$current_status" == "done" ]]; then
+        error "Change '$target' is already $current_status — cannot skip."
+        return 1
+    fi
+
+    # Reject running/verifying/dispatched — must pause first
+    if [[ "$current_status" == "running" || "$current_status" == "verifying" || "$current_status" == "dispatched" ]]; then
+        error "Change '$target' is $current_status — pause it first before skipping."
+        return 1
+    fi
+
+    # Skippable: failed, pending, stalled, merge-blocked, build-blocked, verify-failed, paused
+    update_change_field "$target" "status" '"skipped"'
+    update_change_field "$target" "skipped_at" "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+    if [[ -n "$reason" ]]; then
+        update_change_field "$target" "skip_reason" "\"$reason\""
+    fi
+
+    emit_event "CHANGE_SKIPPED" "$target" "{\"previous_status\":\"$current_status\",\"reason\":\"${reason:-none}\"}"
+    log_info "Change '$target' skipped (was: $current_status)"
+    success "Change '$target' skipped"
+}
+
+# ─── Self-Test ───────────────────────────────────────────────────────
+
+cmd_self_test() {
+    info "Running self-tests..."
+    local pass=0
+    local fail=0
+
+    # Test 1: parse_directives with defaults
+    local test_brief
+    test_brief=$(mktemp)
+    cat > "$test_brief" <<'TESTEOF'
+## Purpose
+Test project
+
+## Feature Roadmap
+### Next
+- Feature alpha: first feature
+- Feature beta: depends on alpha
+
+## Orchestrator Directives
+- max_parallel: 4
+- merge_policy: eager
+- token_budget: 100000
+TESTEOF
+
+    local result
+    result=$(parse_directives "$test_brief")
+    if [[ $(echo "$result" | jq -r '.max_parallel') == "4" ]] && \
+       [[ $(echo "$result" | jq -r '.merge_policy') == "eager" ]] && \
+       [[ $(echo "$result" | jq -r '.token_budget') == "100000" ]] && \
+       [[ $(echo "$result" | jq -r '.checkpoint_every') == "$DEFAULT_CHECKPOINT_EVERY" ]]; then
+        success "  PASS: parse_directives"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: parse_directives — got: $(echo "$result" | jq -c .)"
+        fail=$((fail + 1))
+    fi
+
+    # Test 2: parse_next_items
+    local items
+    items=$(parse_next_items "$test_brief")
+    local count
+    count=$(echo "$items" | jq 'length')
+    if [[ "$count" == "2" ]]; then
+        success "  PASS: parse_next_items (found $count items)"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: parse_next_items — expected 2, got $count"
+        fail=$((fail + 1))
+    fi
+
+    # Test 3: brief_hash deterministic
+    local h1 h2
+    h1=$(brief_hash "$test_brief")
+    h2=$(brief_hash "$test_brief")
+    if [[ "$h1" == "$h2" ]] && [[ -n "$h1" ]] && [[ "$h1" != "unknown" ]]; then
+        success "  PASS: brief_hash deterministic"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: brief_hash — '$h1' vs '$h2'"
+        fail=$((fail + 1))
+    fi
+
+    # Test 4: parse_directives with invalid values → defaults
+    local test_brief2
+    test_brief2=$(mktemp)
+    cat > "$test_brief2" <<'TESTEOF'
+## Orchestrator Directives
+- max_parallel: -1
+- merge_policy: yolo
+- notification: smoke_signal
+TESTEOF
+    result=$(parse_directives "$test_brief2" 2>/dev/null)
+    if [[ $(echo "$result" | jq -r '.max_parallel') == "$DEFAULT_MAX_PARALLEL" ]] && \
+       [[ $(echo "$result" | jq -r '.merge_policy') == "$DEFAULT_MERGE_POLICY" ]] && \
+       [[ $(echo "$result" | jq -r '.notification') == "$DEFAULT_NOTIFICATION" ]]; then
+        success "  PASS: parse_directives invalid → defaults"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: parse_directives invalid — got: $(echo "$result" | jq -c .)"
+        fail=$((fail + 1))
+    fi
+
+    # Test 5: topological_sort
+    local test_plan
+    test_plan=$(mktemp)
+    cat > "$test_plan" <<'TESTEOF'
+{
+  "plan_version": 1,
+  "brief_hash": "test",
+  "changes": [
+    {"name": "c", "depends_on": ["a"]},
+    {"name": "a", "depends_on": []},
+    {"name": "b", "depends_on": ["a"]},
+    {"name": "d", "depends_on": ["b", "c"]}
+  ]
+}
+TESTEOF
+    local order
+    order=$(topological_sort "$test_plan" | tr '\n' ',')
+    # a must come before b,c. d must come last.
+    if [[ "$order" == a,b,c,d, ]] || [[ "$order" == a,c,b,d, ]]; then
+        success "  PASS: topological_sort ($order)"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: topological_sort — got: $order"
+        fail=$((fail + 1))
+    fi
+
+    # Test 6: circular dependency detection
+    local test_plan_circular
+    test_plan_circular=$(mktemp)
+    cat > "$test_plan_circular" <<'TESTEOF'
+{
+  "plan_version": 1,
+  "brief_hash": "test",
+  "changes": [
+    {"name": "a", "depends_on": ["b"]},
+    {"name": "b", "depends_on": ["a"]}
+  ]
+}
+TESTEOF
+    if ! topological_sort "$test_plan_circular" &>/dev/null; then
+        success "  PASS: circular dependency detected"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: circular dependency not detected"
+        fail=$((fail + 1))
+    fi
+
+    # Test 7: parse_duration
+    local dur_ok=true
+    [[ $(parse_duration "4h") == "14400" ]] || dur_ok=false
+    [[ $(parse_duration "30m") == "1800" ]] || dur_ok=false
+    [[ $(parse_duration "2h30m") == "9000" ]] || dur_ok=false
+    [[ $(parse_duration "90") == "5400" ]] || dur_ok=false
+    [[ $(parse_duration "1h15m") == "4500" ]] || dur_ok=false
+    if $dur_ok; then
+        success "  PASS: parse_duration"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: parse_duration"
+        fail=$((fail + 1))
+    fi
+
+    # Test 8: format_duration
+    local fmt_ok=true
+    [[ $(format_duration 14400) == "4h" ]] || fmt_ok=false
+    [[ $(format_duration 1800) == "30m" ]] || fmt_ok=false
+    [[ $(format_duration 9000) == "2h30m" ]] || fmt_ok=false
+    if $fmt_ok; then
+        success "  PASS: format_duration"
+        pass=$((pass + 1))
+    else
+        error "  FAIL: format_duration"
+        fail=$((fail + 1))
+    fi
+
+    # Cleanup
+    rm -f "$test_brief" "$test_brief2" "$test_plan" "$test_plan_circular"
+
+    echo ""
+    if [[ "$fail" -eq 0 ]]; then
+        success "All $pass tests passed"
+    else
+        error "$fail/$((pass + fail)) tests failed"
+        return 1
+    fi
+}
+
+# ─── Spec Management ─────────────────────────────────────────────────
+
+cmd_specs() {
+    local specs_dir="wt/orchestration/specs"
+    local subcmd="${1:-list}"
+    shift 2>/dev/null || true
+
+    case "$subcmd" in
+        list)
+            if [[ ! -d "$specs_dir" ]]; then
+                info "No specs directory found at $specs_dir"
+                return 0
+            fi
+            # Active specs
+            local found=false
+            for f in "$specs_dir"/*.md; do
+                [[ -f "$f" ]] || continue
+                found=true
+                local name
+                name=$(basename "$f" .md)
+                local size
+                size=$(wc -c < "$f" | tr -d ' ')
+                local modified
+                modified=$(date -r "$f" '+%Y-%m-%d' 2>/dev/null || stat -c '%y' "$f" 2>/dev/null | cut -d' ' -f1)
+                echo "  $name  (${size}B, $modified)"
+            done
+            if ! $found; then
+                info "  (no active specs)"
+            fi
+            # Archived specs
+            if [[ -d "$specs_dir/archive" ]]; then
+                local arch_found=false
+                for f in "$specs_dir/archive"/*.md; do
+                    [[ -f "$f" ]] || continue
+                    if ! $arch_found; then
+                        echo ""
+                        echo "  Archived:"
+                        arch_found=true
+                    fi
+                    local name
+                    name=$(basename "$f" .md)
+                    echo "    $name"
+                done
+            fi
+            ;;
+        show)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                error "Usage: set-orchestrate specs show <name>"
+                return 1
+            fi
+            # Resolve short name
+            local spec_path=""
+            if [[ -f "$specs_dir/${name}.md" ]]; then
+                spec_path="$specs_dir/${name}.md"
+            elif [[ -f "$specs_dir/${name}" ]]; then
+                spec_path="$specs_dir/${name}"
+            elif [[ -f "$specs_dir/archive/${name}.md" ]]; then
+                spec_path="$specs_dir/archive/${name}.md"
+            else
+                error "Spec not found: $name"
+                error "  Checked: $specs_dir/${name}.md, $specs_dir/archive/${name}.md"
+                return 1
+            fi
+            cat "$spec_path"
+            ;;
+        archive)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                error "Usage: set-orchestrate specs archive <name>"
+                return 1
+            fi
+            local src="$specs_dir/${name}.md"
+            if [[ ! -f "$src" ]]; then
+                error "Spec not found: $src"
+                return 1
+            fi
+            mkdir -p "$specs_dir/archive"
+            local dst="$specs_dir/archive/${name}.md"
+            if git rev-parse --is-inside-work-tree &>/dev/null; then
+                git mv "$src" "$dst" 2>/dev/null || mv "$src" "$dst"
+            else
+                mv "$src" "$dst"
+            fi
+            success "Archived: $name → archive/${name}.md"
+            ;;
+        *)
+            error "Unknown specs subcommand: $subcmd"
+            echo "Usage: set-orchestrate specs [list|show|archive] [name]"
+            return 1
+            ;;
+    esac
+}
+
+# ─── Reset ───────────────────────────────────────────────────────────
+
+cmd_reset() {
+    local mode="partial"
+    local confirmed=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --partial)  mode="partial"; shift ;;
+            --full)     mode="full"; shift ;;
+            --yes-i-know) confirmed=true; shift ;;
+            *)
+                error "Unknown reset option: $1"
+                echo "Usage: set-orchestrate reset [--partial|--full] [--yes-i-know]"
+                return 1
+                ;;
+        esac
+    done
+
+    if [[ ! -f "$STATE_FILENAME" ]]; then
+        error "No orchestration-state.json found"
+        return 1
+    fi
+
+    if [[ "$mode" == "partial" ]]; then
+        # Safe: only reset failed→pending
+        local failed_count
+        failed_count=$(jq '[.changes[] | select(.status == "failed")] | length' "$STATE_FILENAME")
+
+        if [[ "$failed_count" -eq 0 ]]; then
+            echo "Nothing to reset — no failed changes found."
+            return 0
+        fi
+
+        local failed_names
+        failed_names=$(jq -r '[.changes[] | select(.status == "failed") | .name] | join(", ")' "$STATE_FILENAME")
+
+        jq '
+            .status = "running" |
+            .changes = [.changes[] |
+                if .status == "failed" then
+                    .status = "pending" |
+                    .worktree_path = "" |
+                    .ralph_pid = null |
+                    .verify_retry_count = 0
+                else . end
+            ]
+        ' "$STATE_FILENAME" > "${STATE_FILENAME}.tmp" && mv "${STATE_FILENAME}.tmp" "$STATE_FILENAME"
+
+        echo "Partial reset complete: $failed_count failed→pending ($failed_names)"
+        echo "Merged/done changes preserved."
+
+    elif [[ "$mode" == "full" ]]; then
+        local total_changes
+        total_changes=$(jq '.changes | length' "$STATE_FILENAME")
+        local worktree_count
+        worktree_count=$(git worktree list 2>/dev/null | grep -v -E "bare|master|main" | wc -l)
+
+        if [[ "$confirmed" != "true" ]]; then
+            echo "Full reset would:"
+            echo "  - Reset ALL $total_changes changes to pending"
+            echo "  - Remove $worktree_count non-main worktrees"
+            echo "  - Clear orchestration events log"
+            echo ""
+            echo "This is DESTRUCTIVE — merged work references will be lost."
+            echo "Run with --yes-i-know to proceed:"
+            echo "  set-orchestrate reset --full --yes-i-know"
+            return 1
+        fi
+
+        # Backup
+        cp "$STATE_FILENAME" "${STATE_FILENAME%.json}.backup.json"
+        echo "Backup saved to ${STATE_FILENAME%.json}.backup.json"
+
+        # Remove worktrees
+        local removed_wt=0
+        while IFS= read -r wt_path; do
+            [[ -z "$wt_path" ]] && continue
+            git worktree remove "$wt_path" --force 2>/dev/null && ((removed_wt++)) || true
+        done < <(git worktree list 2>/dev/null | grep -v -E "bare|master|main" | awk '{print $1}')
+
+        # Reset all changes
+        jq '
+            .status = "running" |
+            .changes = [.changes[] |
+                .status = "pending" |
+                .worktree_path = "" |
+                .ralph_pid = null |
+                .verify_retry_count = 0
+            ]
+        ' "$STATE_FILENAME" > "${STATE_FILENAME}.tmp" && mv "${STATE_FILENAME}.tmp" "$STATE_FILENAME"
+
+        # Clear events
+        local events_file="${STATE_FILENAME%orchestration-state.json}orchestration-state-events.jsonl"
+        if [[ -f "$events_file" ]]; then
+            rm -f "$events_file"
+        fi
+
+        echo "Full reset complete:"
+        echo "  - $total_changes changes → pending"
+        echo "  - $removed_wt worktrees removed"
+        echo "  - Events log cleared"
+    fi
+}
+
+# ─── Usage ───────────────────────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+Usage: set-orchestrate [options] <command> [command-options]
+
+Orchestrate multi-change execution from a project spec or brief.
+
+Input Options (mutually exclusive):
+  --spec <path>          Use a specification document (any format, LLM-extracted)
+  --brief <path>         Use a structured brief file (legacy format with ### Next)
+
+Spec Options:
+  --phase <hint>         Phase hint for --spec (number or text, e.g., "1" or "Security fixes")
+  --max-parallel <N>     Override max parallel changes (overrides config and directives)
+  --time-limit <dur>     Stop after duration (default: 5h, "none" to disable). Resume with 'start'.
+
+Commands:
+  plan [--show]          Generate change plan from spec/brief (or show existing)
+  start                  Execute the plan (dispatch changes, monitor progress)
+  status                 Show current orchestration state
+  pause <name|--all>     Pause a change or all changes
+  resume                 Resume orchestration from existing state (skip planning)
+  resume <name|--all>    Resume a paused change or all
+  replan                 Re-plan from updated spec/brief, preserving completed work
+  approve [--merge]      Approve a checkpoint (--merge: also flush merge queue)
+  digest --spec <path>   Generate structured digest from multi-file spec directory
+  coverage               Show requirement coverage report
+  specs [list|show|archive] Manage spec documents in wt/orchestration/specs/
+  events                 Query event log (--type, --change, --since, --last N, --json)
+  tui                    Launch live terminal dashboard (requires textual)
+  reset [--partial|--full] Reset orchestration state (--partial: failed→pending, --full: all)
+  self-test              Run internal unit tests
+
+Input Resolution (when no --spec or --brief given):
+  1. openspec/project-brief.md (if ### Next has items)
+  2. openspec/project.md (fallback)
+  3. Error with usage hint
+
+Spec Resolution (--spec <name>):
+  1. Literal path (e.g., docs/v3.md)
+  2. wt/orchestration/specs/<name>.md (short-name, e.g., --spec v12)
+
+Config: .claude/orchestration.yaml (optional, overrides in-document directives)
+
+Examples:
+  set-orchestrate --spec v12 plan                       # Plan from wt/orchestration/specs/v12.md
+  set-orchestrate --spec docs/v3.md plan                # Plan from spec
+  set-orchestrate --spec docs/v3.md --phase 1 plan      # Plan phase 1 only
+  set-orchestrate plan                                   # Plan from project-brief.md
+  set-orchestrate plan --show                            # Show current plan
+  set-orchestrate start                                  # Start executing
+  set-orchestrate --max-parallel 3 start                 # Start with 3 parallel
+  set-orchestrate --time-limit 4h start                  # Stop after 4 hours
+  set-orchestrate status                                 # Check progress
+  set-orchestrate approve --merge                        # Approve + merge
+
+Config (.claude/orchestration.yaml):
+  auto_replan: true              # Auto-plan next phase when all changes complete
+  merge_policy: eager            # Merge immediately (vs checkpoint, manual)
+  post_merge_command: pnpm db:generate  # Run after each merge (before build verify)
+EOF
+}
+
+# ─── Main ────────────────────────────────────────────────────────────
+
+main() {
+    # Parse global options before subcommand
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --brief)
+                BRIEF_OVERRIDE="$2"
+                shift 2
+                ;;
+            --brief=*)
+                BRIEF_OVERRIDE="${1#--brief=}"
+                shift
+                ;;
+            --spec)
+                SPEC_OVERRIDE="$2"
+                shift 2
+                ;;
+            --spec=*)
+                SPEC_OVERRIDE="${1#--spec=}"
+                shift
+                ;;
+            --phase)
+                PHASE_HINT="$2"
+                shift 2
+                ;;
+            --phase=*)
+                PHASE_HINT="${1#--phase=}"
+                shift
+                ;;
+            --max-parallel)
+                CLI_MAX_PARALLEL="$2"
+                shift 2
+                ;;
+            --max-parallel=*)
+                CLI_MAX_PARALLEL="${1#--max-parallel=}"
+                shift
+                ;;
+            --time-limit)
+                CLI_TIME_LIMIT="$2"
+                shift 2
+                ;;
+            --time-limit=*)
+                CLI_TIME_LIMIT="${1#--time-limit=}"
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # Project root for cross-module use (merger.sh, builder.sh)
+    PROJECT_PATH=$(pwd)
+
+    local command="${1:-}"
+    shift 2>/dev/null || true
+
+    # Parse flags that appear AFTER the command word
+    # (e.g., "set-orchestrate start --spec docs/v6_3.md")
+    local cmd_args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --brief)
+                BRIEF_OVERRIDE="$2"
+                shift 2
+                ;;
+            --brief=*)
+                BRIEF_OVERRIDE="${1#--brief=}"
+                shift
+                ;;
+            --spec)
+                SPEC_OVERRIDE="$2"
+                shift 2
+                ;;
+            --spec=*)
+                SPEC_OVERRIDE="${1#--spec=}"
+                shift
+                ;;
+            --phase)
+                PHASE_HINT="$2"
+                shift 2
+                ;;
+            --phase=*)
+                PHASE_HINT="${1#--phase=}"
+                shift
+                ;;
+            --max-parallel)
+                CLI_MAX_PARALLEL="$2"
+                shift 2
+                ;;
+            --max-parallel=*)
+                CLI_MAX_PARALLEL="${1#--max-parallel=}"
+                shift
+                ;;
+            --time-limit)
+                CLI_TIME_LIMIT="$2"
+                shift 2
+                ;;
+            --time-limit=*)
+                CLI_TIME_LIMIT="${1#--time-limit=}"
+                shift
+                ;;
+            *)
+                cmd_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    set -- "${cmd_args[@]}"
+
+    # Validate: --phase requires --spec
+    if [[ -n "$PHASE_HINT" && -z "$SPEC_OVERRIDE" ]]; then
+        error "--phase requires --spec"
+        return 1
+    fi
+
+    # Validate: --spec and --brief are mutually exclusive
+    if [[ -n "$SPEC_OVERRIDE" && -n "$BRIEF_OVERRIDE" ]]; then
+        error "--spec and --brief are mutually exclusive"
+        return 1
+    fi
+
+    # Resolve state file paths to absolute (prevents breakage when subshells cd)
+    local _root
+    _root=$(pwd)
+    PLAN_FILENAME="$_root/$PLAN_FILENAME"
+    STATE_FILENAME="$_root/$STATE_FILENAME"
+    SUMMARY_FILENAME="$_root/$SUMMARY_FILENAME"
+    LOG_FILE="$_root/$LOG_FILE"
+
+    # Resolve config file via wt/ fallback chain
+    CONFIG_FILE=$(wt_find_config orchestration)
+    if [[ -n "$CONFIG_FILE" ]]; then
+        CONFIG_FILE="$_root/$CONFIG_FILE"
+    fi
+
+    # Auto-register project in projects.json for web dashboard
+    ensure_project_registered "$(basename "$_root")" "$_root"
+
+    # Rotate log on startup
+    rotate_log
+
+    case "$command" in
+        plan)       cmd_plan "$@" ;;
+        start)      cmd_start "$@" ;;
+        status)     cmd_status "$@" ;;
+        pause)      cmd_pause "$@" ;;
+        resume)     cmd_resume "$@" ;;
+        replan)     cmd_replan "$@" ;;
+        approve)    cmd_approve "$@" ;;
+        events)     cmd_events "$@" ;;
+        tui)
+            local tui_script="$SCRIPT_DIR/../gui/tui/orchestrator_tui.py"
+            local py
+            py=$(command -v python3 2>/dev/null)
+            # Verify textual is available in this python
+            if ! "$py" -c "import textual" 2>/dev/null; then
+                # Try conda python as fallback
+                for candidate in "$HOME/miniconda3/bin/python" "$HOME/.conda/bin/python"; do
+                    if [[ -x "$candidate" ]] && "$candidate" -c "import textual" 2>/dev/null; then
+                        py="$candidate"
+                        break
+                    fi
+                done
+            fi
+            if ! "$py" -c "import textual" 2>/dev/null; then
+                error "textual package not found. Install it: pip install textual"
+                return 1
+            fi
+            exec "$py" "$tui_script" "$STATE_FILENAME" "$LOG_FILE"
+            ;;
+        digest)     cmd_digest "$@" ;;
+        coverage)   cmd_coverage "$@" ;;
+        specs)      cmd_specs "$@" ;;
+        skip)       cmd_skip "$@" ;;
+        reset)      cmd_reset "$@" ;;
+        self-test)  cmd_self_test "$@" ;;
+        -h|--help|help|"")
+            usage
+            ;;
+        *)
+            error "Unknown command: $command"
+            usage
+            return 1
+            ;;
+    esac
+}
+
+main "$@"

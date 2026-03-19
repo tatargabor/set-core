@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# set-hook-memory-pretool - Backward-compatible wrapper
+# Delegates to unified handler: set-hook-memory PreToolUse
+exec set-hook-memory PreToolUse

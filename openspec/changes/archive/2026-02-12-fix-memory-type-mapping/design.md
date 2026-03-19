@@ -18,7 +18,7 @@ shodh-memory (Rust-based) accepts `memory_type` as a string but only maps 3 valu
 
 ## Decisions
 
-### Decision 1: Map in wt-memory CLI (defense in depth)
+### Decision 1: Map in set-memory CLI (defense in depth)
 
 Add a mapping step in `cmd_remember` before passing to Python:
 - `Observation` → `Learning` (observations are learnings about the system)
@@ -40,7 +40,7 @@ RememberNoteDialog combobox: `[Learning, Decision, Context]`. Remove Observation
 
 Developer Memory gets its own `### Developer Memory (Experimental)` subsection under Features, following the same pattern as Team Sync. Mark as experimental since shodh-memory is a third-party dependency and the feature is new.
 
-CLI Reference gets `wt-memory` and `wt-memory-hooks` entries in a new "Developer Memory" category.
+CLI Reference gets `set-memory` and `set-memory-hooks` entries in a new "Developer Memory" category.
 
 ### Decision 5: readme-guide update — add memory to Features list
 
@@ -49,5 +49,5 @@ Add `**Developer Memory** — per-project remember/recall, OpenSpec hooks, GUI b
 ## Risks / Trade-offs
 
 - **[Risk] Users have muscle memory for "Observation" type** → CLI mapping handles this gracefully with a warning
-- **[Risk] Existing hooks in .claude/skills/ still have old types** → Must re-run `wt-memory-hooks install` after update
+- **[Risk] Existing hooks in .claude/skills/ still have old types** → Must re-run `set-memory-hooks install` after update
 - **[Risk] shodh-memory is third-party, could change types** → README marks feature as Experimental, CLI mapping provides buffer

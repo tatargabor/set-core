@@ -5,15 +5,15 @@ The `wt-hook-stop` script SHALL check for a `.memory` marker file alongside the 
 
 #### Scenario: Skill with memory hooks active
 - **WHEN** the Stop event fires
-- **AND** `.wt-tools/agents/<pid>.skill` exists
-- **AND** `.wt-tools/agents/<pid>.memory` exists
-- **THEN** the hook SHALL output a reminder to stdout: `[MEMORY REMINDER] Active skill has wt-memory hooks. Run your recall/remember steps before finishing.`
+- **AND** `.set-core/agents/<pid>.skill` exists
+- **AND** `.set-core/agents/<pid>.memory` exists
+- **THEN** the hook SHALL output a reminder to stdout: `[MEMORY REMINDER] Active skill has set-memory hooks. Run your recall/remember steps before finishing.`
 - **AND** the hook SHALL still perform its normal timestamp refresh
 
 #### Scenario: Skill without memory hooks
 - **WHEN** the Stop event fires
-- **AND** `.wt-tools/agents/<pid>.skill` exists
-- **AND** `.wt-tools/agents/<pid>.memory` does NOT exist
+- **AND** `.set-core/agents/<pid>.skill` exists
+- **AND** `.set-core/agents/<pid>.memory` does NOT exist
 - **THEN** the hook SHALL NOT output any reminder
 - **AND** shall perform normal timestamp refresh only
 
@@ -33,10 +33,10 @@ When a skill session ends (`.skill` file is removed by `wt-skill-start` for a ne
 
 #### Scenario: New skill replaces old skill
 - **WHEN** `wt-skill-start <new-skill>` is called
-- **AND** `.wt-tools/agents/<pid>.memory` exists from the previous skill
+- **AND** `.set-core/agents/<pid>.memory` exists from the previous skill
 - **THEN** the old `.memory` file SHALL be removed
 - **AND** a new `.memory` file SHALL only be created if the new skill also has memory hooks
 
 #### Scenario: Agent session ends
 - **WHEN** the agent process exits and cleanup runs
-- **THEN** both `.wt-tools/agents/<pid>.skill` and `.wt-tools/agents/<pid>.memory` SHALL be cleaned up
+- **THEN** both `.set-core/agents/<pid>.skill` and `.set-core/agents/<pid>.memory` SHALL be cleaned up

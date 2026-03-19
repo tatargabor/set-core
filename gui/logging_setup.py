@@ -2,7 +2,7 @@
 Logging setup for the Control Center GUI.
 
 Configures a rotating file logger at the platform temp directory.
-All GUI modules use child loggers under the 'wt-control' root.
+All GUI modules use child loggers under the 'set-control' root.
 """
 
 import logging
@@ -16,15 +16,15 @@ from pathlib import Path
 def setup_logging():
     """Initialize GUI logging with rotating file handler.
 
-    Log file: /tmp/wt-control.log (macOS/Linux) or %TEMP%/wt-control.log (Windows)
+    Log file: /tmp/set-control.log (macOS/Linux) or %TEMP%/set-control.log (Windows)
     Rotation: 5 MB max, 3 backup files.
     """
     if sys.platform == "win32":
-        log_path = Path(tempfile.gettempdir()) / "wt-control.log"
+        log_path = Path(tempfile.gettempdir()) / "set-control.log"
     else:
-        log_path = Path("/tmp") / "wt-control.log"
+        log_path = Path("/tmp") / "set-control.log"
 
-    root_logger = logging.getLogger("wt-control")
+    root_logger = logging.getLogger("set-control")
     root_logger.setLevel(logging.DEBUG)
 
     # Avoid duplicate handlers on restart
@@ -59,7 +59,7 @@ def log_exceptions(func):
     Qt swallows exceptions in signal-connected slots. This decorator
     catches, logs, and re-raises them so they appear in the log file.
     """
-    logger = logging.getLogger("wt-control.handlers")
+    logger = logging.getLogger("set-control.handlers")
 
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -79,7 +79,7 @@ def safe_slot(func):
     This prevents a single bad worker result from crashing the UI — the slot
     logs the error and the UI continues with stale data.
     """
-    logger = logging.getLogger("wt-control.slots")
+    logger = logging.getLogger("set-control.slots")
 
     @wraps(func)
     def wrapper(*args, **kwargs):

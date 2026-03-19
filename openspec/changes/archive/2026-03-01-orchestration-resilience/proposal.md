@@ -26,5 +26,5 @@ The v5/v6 orchestration runs on sales-raketa revealed several failure modes that
 
 - `bin/wt-loop` — main changes: idle detection, post-ff validation, fallback done, token budget
 - `bin/wt-new` — .env copy in bootstrap_dependencies
-- `bin/wt-orchestrate` — token budget tracking per change in state
+- `bin/set-orchestrate` — token budget tracking per change in state
 - Session-end hooks — conditional save based on loop iteration productivity

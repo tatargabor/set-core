@@ -14,4 +14,4 @@
 
 ## Deploy
 
-- [x] 3.1 Run `wt-project init` to deploy updated sentinel skill to all registered projects.
+- [x] 3.1 Run `set-project init` to deploy updated sentinel skill to all registered projects.

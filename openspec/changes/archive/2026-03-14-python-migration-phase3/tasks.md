@@ -5,7 +5,7 @@
 
 ## 2. Report Data Model
 
-- [x] 2.1 Create `lib/wt_orch/reporter.py` with dataclasses: `ReportData`, `DigestData`, `PlanData`, `MilestoneData`, `ExecutionData`, `AuditData`, `CoverageData` and their nested types
+- [x] 2.1 Create `lib/set_orch/reporter.py` with dataclasses: `ReportData`, `DigestData`, `PlanData`, `MilestoneData`, `ExecutionData`, `AuditData`, `CoverageData` and their nested types
 - [x] 2.2 Add helper functions: `_format_tokens(n)` → "1.2M"/"45K"/"123", `_format_duration(seconds)` → "5m23s", `_status_class(status)` → CSS class
 
 ## 3. Data Extraction Functions
@@ -20,7 +20,7 @@
 
 ## 4. Jinja2 Template
 
-- [x] 4.1 Create `lib/wt_orch/templates/` directory and `report.html.j2` with HTML head (meta charset, viewport, refresh 15s, dark theme CSS — identical to bash version)
+- [x] 4.1 Create `lib/set_orch/templates/` directory and `report.html.j2` with HTML head (meta charset, viewport, refresh 15s, dark theme CSS — identical to bash version)
 - [x] 4.2 Add Jinja2 macros: `status_badge(status)`, `token_display(tokens)`, `duration_display(seconds)`, `gate_icon(result)`, `coverage_bar(merged_pct, inprog_pct)`
 - [x] 4.3 Add digest section template block (spec source info, requirements count, domain table, ambiguities table)
 - [x] 4.4 Add plan section template block (changes table with status from state)
@@ -38,7 +38,7 @@
 
 ## 6. CLI Bridge
 
-- [x] 6.1 Add `wt-orch-core report generate` subcommand to `cli.py` with `--state`, `--plan`, `--digest-dir`, `--output` flags
-- [x] 6.2 Replace `generate_report()` in `reporter.sh` with thin CLI wrapper calling `wt-orch-core report generate`
+- [x] 6.1 Add `set-orch-core report generate` subcommand to `cli.py` with `--state`, `--plan`, `--digest-dir`, `--output` flags
+- [x] 6.2 Replace `generate_report()` in `reporter.sh` with thin CLI wrapper calling `set-orch-core report generate`
 - [x] 6.3 Add "Migrated to: reporter.py" comments to all 8 render_* functions in reporter.sh
 - [x] 6.4 Verify end-to-end: bash caller → CLI → Python → HTML output matches expected structure

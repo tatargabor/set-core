@@ -1,6 +1,6 @@
 ## Context
 
-The memory system has transitioned from `wt-memory-hooks install` (inline SKILL.md patching) to `wt-deploy-hooks` (settings.json 5-layer hooks). SYN-06 benchmark confirms this works: +34% quality, -20% tokens. All core documentation (README, CLAUDE.md, docs/developer-memory.md, install.sh) has already been updated. However:
+The memory system has transitioned from `set-memory-hooks install` (inline SKILL.md patching) to `wt-deploy-hooks` (settings.json 5-layer hooks). SYN-06 benchmark confirms this works: +34% quality, -20% tokens. All core documentation (README, CLAUDE.md, docs/developer-memory.md, install.sh) has already been updated. However:
 
 1. No migration guide exists for users upgrading from the old system
 2. No CHANGELOG tracks breaking changes
@@ -19,7 +19,7 @@ The memory system has transitioned from `wt-memory-hooks install` (inline SKILL.
 - Update README date and verify sections
 
 **Non-Goals:**
-- Removing `wt-memory-hooks` binary (keep `check`/`remove` for cleanup)
+- Removing `set-memory-hooks` binary (keep `check`/`remove` for cleanup)
 - Changing any runtime behavior of hooks or memory system
 - Adding new features — this is purely docs/consistency work
 - Versioning/tagging the release itself (separate task)
@@ -31,7 +31,7 @@ The memory system has transitioned from `wt-memory-hooks install` (inline SKILL.
 **Alternative**: Section in developer-memory.md — rejected because it mixes reference docs with transition docs.
 
 ### D2: install.sh detects legacy hooks and warns (not auto-removes)
-**Why**: Auto-removal is destructive. Users might have custom modifications in their SKILL.md files. A warning with `wt-memory-hooks remove` command is safer.
+**Why**: Auto-removal is destructive. Users might have custom modifications in their SKILL.md files. A warning with `set-memory-hooks remove` command is safer.
 **Alternative**: Auto-remove during install — rejected, too aggressive.
 
 ### D3: Sunset timeline = next release after this one
@@ -46,7 +46,7 @@ The memory system has transitioned from `wt-memory-hooks install` (inline SKILL.
 ## Migration Plan
 
 1. User runs `bash install.sh` → sees warning if legacy hooks detected
-2. Warning points to `MIGRATION.md` and `wt-memory-hooks remove`
-3. User runs `wt-memory-hooks remove` to clean inline hooks
+2. Warning points to `MIGRATION.md` and `set-memory-hooks remove`
+3. User runs `set-memory-hooks remove` to clean inline hooks
 4. User runs `wt-deploy-hooks .` (or it's already deployed) to ensure new hooks are active
-5. Verify with `wt-memory health` and `wt-deploy-hooks --check .`
+5. Verify with `set-memory health` and `wt-deploy-hooks --check .`

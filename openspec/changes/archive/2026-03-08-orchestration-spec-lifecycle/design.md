@@ -6,7 +6,7 @@ The `wt/orchestration/specs/` directory was scaffolded by `wt-directory-conventi
 
 **Goals:**
 - Short-name spec resolution: `--spec v12` finds `wt/orchestration/specs/v12.md`
-- `wt-orchestrate specs` subcommand for listing and managing specs
+- `set-orchestrate specs` subcommand for listing and managing specs
 - Migrate legacy `docs/v*.md` to `wt/orchestration/specs/archive/`
 - Plan metadata records source spec for traceability
 
@@ -46,9 +46,9 @@ fi
 ### Decision 2: specs Subcommand
 
 ```bash
-wt-orchestrate specs              # List all specs (active + archived)
-wt-orchestrate specs show <name>  # Cat the spec content
-wt-orchestrate specs archive <name>  # Move to archive/ subdir
+set-orchestrate specs              # List all specs (active + archived)
+set-orchestrate specs show <name>  # Cat the spec content
+set-orchestrate specs archive <name>  # Move to archive/ subdir
 ```
 
 Listing shows:
@@ -64,7 +64,7 @@ Status detection: a spec is "active" if it's not in `archive/`. No parsing neede
 
 ### Decision 3: Legacy Spec Migration
 
-`wt-project migrate` gains an additional step: detect `docs/v*.md` files and move them to `wt/orchestration/specs/archive/` (they're completed specs from past runs).
+`set-project migrate` gains an additional step: detect `docs/v*.md` files and move them to `wt/orchestration/specs/archive/` (they're completed specs from past runs).
 
 Pattern: `docs/v[0-9]*.md` — matches v6.md, v8.md, v11-billing.md etc.
 

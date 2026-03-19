@@ -33,7 +33,7 @@ The documentation must automatically update as spec files change, to prevent dri
 **Decision:** Single `docs/confluence.md` file, with logical sections
 
 ```markdown
-# wt-tools Documentation
+# set-core Documentation
 
 ## Introduction
 [What is this, why was it created]
@@ -45,7 +45,7 @@ The documentation must automatically update as spec files change, to prevent dri
 ### 4. Editing and saving
 
 ## Command Reference
-### wt-project
+### set-project
 [Detailed description, every scenario]
 
 ### wt-open

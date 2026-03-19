@@ -22,7 +22,7 @@ Target platforms:
 ## Decisions
 
 ### Credential Storage Location
-**Decision:** `~/.config/wt-tools/jira.json` (global, in user home directory)
+**Decision:** `~/.config/set-core/jira.json` (global, in user home directory)
 
 **Structure:**
 ```json
@@ -40,14 +40,14 @@ Target platforms:
 ```
 
 **Alternatives:**
-- Project-level config (`.wt-tools/jira.json`): would need to be configured per-worktree - REJECTED
+- Project-level config (`.set-core/jira.json`): would need to be configured per-worktree - REJECTED
 - Environment variables: not persistent, shell-dependent - SUPPORTED as fallback
 - System keychain (libsecret/keyring): platform-specific complexity - FUTURE VERSION
 
-**Rationale:** Global config configured once works everywhere. The `~/.config/wt-tools/` directory is already used for the project registry.
+**Rationale:** Global config configured once works everywhere. The `~/.config/set-core/` directory is already used for the project registry.
 
 ### Project-level JIRA Configuration
-**Decision:** `.wt-tools/jira.json` in repo root for project-specific settings
+**Decision:** `.set-core/jira.json` in repo root for project-specific settings
 
 **Structure:**
 ```json
@@ -69,8 +69,8 @@ Target platforms:
 
 **Config priority (merged):**
 1. Environment variables (JIRA_URL, JIRA_USERNAME, JIRA_PASSWORD)
-2. Project config (`.wt-tools/jira.json`) - titlePrefix, defaultProject
-3. Global config (`~/.config/wt-tools/jira.json`) - credentials, defaultProject
+2. Project config (`.set-core/jira.json`) - titlePrefix, defaultProject
+3. Global config (`~/.config/set-core/jira.json`) - credentials, defaultProject
 
 **Rationale:** Project-level config enables using different prefixes in different repos, making tickets from different sources distinguishable in JIRA.
 
@@ -85,7 +85,7 @@ Target platforms:
 
 **Priority order:**
 1. Environment variables (if all 3 basic ones are provided)
-2. Config file (`~/.config/wt-tools/jira.json`)
+2. Config file (`~/.config/set-core/jira.json`)
 3. Error if neither is available
 
 **Rationale:** CI/CD environments and Docker containers commonly use env vars. This adds flexibility without complicating the normal workflow.

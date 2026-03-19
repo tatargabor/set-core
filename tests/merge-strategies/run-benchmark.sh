@@ -2,9 +2,9 @@
 # run-benchmark.sh — Merge strategy benchmark runner
 #
 # Usage: ./run-benchmark.sh [project_path]
-#   project_path: path to a git repo to test against (default: ~/.local/share/wt-tools/e2e-runs/minishop-run3)
+#   project_path: path to a git repo to test against (default: ~/.local/share/set-core/e2e-runs/minishop-run3)
 #
-# Creates synthetic merge conflicts matching real wt-tools orchestration patterns
+# Creates synthetic merge conflicts matching real set-core orchestration patterns
 # and tests each strategy's effectiveness.
 #
 # Output: tests/merge-strategies/results/YYYY-MM-DD-HH-MM.md
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT="${1:-${HOME}/.local/share/wt-tools/e2e-runs/minishop-run3}"
+PROJECT="${1:-${HOME}/.local/share/set-core/e2e-runs/minishop-run3}"
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M)
 RESULTS_DIR="$SCRIPT_DIR/results"
 RESULT_FILE="$RESULTS_DIR/$TIMESTAMP.md"
@@ -130,7 +130,7 @@ test_s1_partial_mode() {
                 git -C "$PROJECT" add "$f" 2>/dev/null
                 resolved=$((resolved+1))
                 ;;
-            .claude/*|.wt-tools/*)
+            .claude/*|.set-core/*)
                 git -C "$PROJECT" checkout --ours "$f" 2>/dev/null
                 git -C "$PROJECT" add "$f" 2>/dev/null
                 resolved=$((resolved+1))
@@ -236,7 +236,7 @@ main() {
 # Merge Strategy Benchmark Results
 **Date:** $TIMESTAMP
 **Project:** $PROJECT
-**wt-tools commit:** $(git -C "$SCRIPT_DIR/../.." rev-parse --short HEAD 2>/dev/null)
+**set-core commit:** $(git -C "$SCRIPT_DIR/../.." rev-parse --short HEAD 2>/dev/null)
 
 ## Test Environment
 - pnpm-lock.yaml lines: $(wc -l < pnpm-lock.yaml 2>/dev/null)

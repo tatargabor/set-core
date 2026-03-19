@@ -60,7 +60,7 @@ class ControlCenter(QMainWindow, TeamMixin, TableMixin, MenusMixin, HandlersMixi
         # Load configuration
         self.config = Config()
 
-        self.setWindowTitle(f"Worktree Control Center [{VERSION}]")
+        self.setWindowTitle(f"SET Control Center [{VERSION}]")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setFixedWidth(self.config.control_center["window_width"])
 
@@ -380,7 +380,7 @@ class ControlCenter(QMainWindow, TeamMixin, TableMixin, MenusMixin, HandlersMixi
         """Setup system tray icon"""
         self.tray = QSystemTrayIcon(self)
         self.tray.setIcon(self.create_tray_icon(self.get_tray_color("idle")))
-        self.tray.setToolTip("Worktree Control Center")
+        self.tray.setToolTip("SET Control Center")
 
         tray_menu = QMenu()
 
@@ -772,7 +772,7 @@ class ControlCenter(QMainWindow, TeamMixin, TableMixin, MenusMixin, HandlersMixi
         """Force a status refresh"""
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-status"), "--json"],
+                [str(SCRIPT_DIR / "set-status"), "--json"],
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -973,7 +973,7 @@ class ControlCenter(QMainWindow, TeamMixin, TableMixin, MenusMixin, HandlersMixi
         event.ignore()
         self.hide()
         self.tray.showMessage(
-            "Worktree Control Center",
+            "SET Control Center",
             "Minimized to tray. Right-click to quit.",
             QSystemTrayIcon.Information,
             2000

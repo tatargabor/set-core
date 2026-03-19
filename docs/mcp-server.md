@@ -2,18 +2,18 @@
 
 # MCP Server
 
-The MCP (Model Context Protocol) server exposes wt-tools functionality to Claude Code agents. Agents can check worktree status, read task lists, see team activity, and interact with the memory system — all without leaving the conversation.
+The MCP (Model Context Protocol) server exposes set-core functionality to Claude Code agents. Agents can check worktree status, read task lists, see team activity, and interact with the memory system — all without leaving the conversation.
 
 ## Setup
 
 ### Auto-configured
 
-The installer (`install.sh`) and `wt-project init` automatically register the MCP server with Claude Code.
+The installer (`install.sh`) and `set-project init` automatically register the MCP server with Claude Code.
 
 ### Manual setup
 
 ```bash
-claude mcp add wt-tools --scope user -- python /path/to/wt-tools/mcp-server/wt_mcp_server.py
+claude mcp add set-core --scope user -- python /path/to/set-core/mcp-server/wt_mcp_server.py
 ```
 
 ## Tools

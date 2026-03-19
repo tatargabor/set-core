@@ -22,6 +22,6 @@ The orchestrator currently hardcodes `--model opus` for all dispatch and resume 
 
 ## Impact
 
-- `bin/wt-orchestrate`: plan JSON schema, init_state, dispatch_change, resume_change, planner prompt, verify gate logic
+- `bin/set-orchestrate`: plan JSON schema, init_state, dispatch_change, resume_change, planner prompt, verify gate logic
 - `docs/plan-checklist.md`: new checklist items for model and gate skip
 - `docs/planning-guide.md`: new section on model selection strategy

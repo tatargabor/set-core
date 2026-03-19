@@ -1,4 +1,4 @@
-"""Tests for wt_orch.process — PID lifecycle management."""
+"""Tests for set_orch.process — PID lifecycle management."""
 
 import os
 import signal
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.process import (
+from set_orch.process import (
     CheckResult,
     KillResult,
     OrphanInfo,
@@ -53,7 +53,7 @@ class TestCheckPid:
 
     def test_init_pid(self):
         """PID 1 should be alive (init/systemd) but not match a random pattern."""
-        result = check_pid(1, "wt-loop-nonexistent")
+        result = check_pid(1, "set-loop-nonexistent")
         assert result.alive is True
         assert result.match is False
 
@@ -147,13 +147,13 @@ class TestFindOrphans:
 
 class TestExtractChangeName:
     def test_extracts_change_flag(self):
-        assert _extract_change_name("wt-loop start --change my-feature --max 30") == "my-feature"
+        assert _extract_change_name("set-loop start --change my-feature --max 30") == "my-feature"
 
     def test_extracts_label_flag(self):
-        assert _extract_change_name("wt-loop start --label add-auth --done openspec") == "add-auth"
+        assert _extract_change_name("set-loop start --label add-auth --done openspec") == "add-auth"
 
     def test_no_flag(self):
-        assert _extract_change_name("wt-loop start --max 30") == ""
+        assert _extract_change_name("set-loop start --max 30") == ""
 
     def test_change_takes_priority(self):
-        assert _extract_change_name("wt-loop --change foo --label bar") == "foo"
+        assert _extract_change_name("set-loop --change foo --label bar") == "foo"

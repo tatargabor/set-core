@@ -1,6 +1,6 @@
 ## Context
 
-The orchestration pipeline (sentinel → monitor → dispatch → verify → merge) has 4 framework bugs found in E2E Run #16 that caused 5 manual interventions. All are in the core orchestration modules (`verifier.py`, `dispatcher.py`, `engine.py`, `wt-sentinel`).
+The orchestration pipeline (sentinel → monitor → dispatch → verify → merge) has 4 framework bugs found in E2E Run #16 that caused 5 manual interventions. All are in the core orchestration modules (`verifier.py`, `dispatcher.py`, `engine.py`, `set-sentinel`).
 
 Current state:
 - **Verify retries**: single `verify_retry_count` counter shared by build-fix, test-fix, review-fix, and scope-fix — a build self-heal consumes the same budget as a real verify failure
@@ -38,9 +38,9 @@ Extend the conflict matching in `dispatcher.py:155-160` to check both:
 
 Any file under `.claude/` is framework-generated and safe to auto-resolve with `--theirs`. This covers current files and any future `.claude/` additions without maintaining an explicit list.
 
-### D3: PID validation before flock rejection in wt-sentinel
+### D3: PID validation before flock rejection in set-sentinel
 
-In `bin/wt-sentinel`, before the flock fails:
+In `bin/set-sentinel`, before the flock fails:
 1. Read PID from `sentinel.pid`
 2. `kill -0 $pid` to check liveness
 3. If dead → `rm sentinel.lock`, retry flock

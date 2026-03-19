@@ -10,13 +10,13 @@ The system SHALL register the active skill for agent status display automaticall
 - **AND** calls `wt-skill-start <skill-name>` to write the per-PID skill file
 
 #### Scenario: Hook runs in wt-managed directory
-- **WHEN** the hook fires in a directory with `.wt-tools/`
-- **THEN** `wt-skill-start` writes `.wt-tools/agents/<claude-pid>.skill`
+- **WHEN** the hook fires in a directory with `.set-core/`
+- **THEN** `wt-skill-start` writes `.set-core/agents/<claude-pid>.skill`
 - **AND** no legacy `current_skill` file is written
 
 #### Scenario: Hook runs outside wt-managed directory
-- **WHEN** the hook fires in a directory without `.wt-tools/`
-- **THEN** `wt-skill-start` exits silently (no `.wt-tools` to write to)
+- **WHEN** the hook fires in a directory without `.set-core/`
+- **THEN** `wt-skill-start` exits silently (no `.set-core` to write to)
 
 #### Scenario: Multiple agents invoke skills simultaneously
 - **WHEN** two Claude agents on the same worktree invoke different skills

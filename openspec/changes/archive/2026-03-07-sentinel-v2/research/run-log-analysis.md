@@ -88,7 +88,7 @@ post_merge_command: pnpm db:generate
 
 **Sentinel-v2 does NOT address:** Smoke fix waste (biggest recurring token drain), ff→apply chaining.
 
-## 6. "Conclusions for wt-tools Development" — Full Extraction
+## 6. "Conclusions for set-core Development" — Full Extraction
 
 ### From v8:
 1. opsx:ff → apply not chaining — **MISSING from sentinel-v2**

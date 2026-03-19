@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Python planning orchestration
-The planning pipeline orchestration (input detection, freshness check, triage gate, Claude invocation, response parsing, plan enrichment) SHALL be available as a Python function callable from `auto_replan_cycle()` and eventually from a `wt-orch-core plan run` CLI command.
+The planning pipeline orchestration (input detection, freshness check, triage gate, Claude invocation, response parsing, plan enrichment) SHALL be available as a Python function callable from `auto_replan_cycle()` and eventually from a `set-orch-core plan run` CLI command.
 
 #### Scenario: Planning from Python replan
 - **WHEN** `auto_replan_cycle()` needs to generate a new plan

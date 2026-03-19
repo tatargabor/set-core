@@ -23,40 +23,40 @@ The `wt-deploy-hooks` script SHALL deploy the complete hook configuration coveri
 - **WHEN** the configuration is deployed
 - **THEN** PostToolUse SHALL have matcher entries for: Read, Edit, Write, Bash, Task, Grep
 
-### Requirement: wt-project init deploys CLAUDE.md with hook + MCP instructions
-The `wt-project init` command SHALL ensure CLAUDE.md contains the Persistent Memory section documenting both automatic hooks and active MCP tools.
+### Requirement: set-project init deploys CLAUDE.md with hook + MCP instructions
+The `set-project init` command SHALL ensure CLAUDE.md contains the Persistent Memory section documenting both automatic hooks and active MCP tools.
 
 #### Scenario: CLAUDE.md deployed
-- **WHEN** `wt-project init` runs
+- **WHEN** `set-project init` runs
 - **THEN** CLAUDE.md SHALL contain "On EVERY turn, check for injected memory context"
 - **AND** SHALL reference system-reminder labels
 - **AND** SHALL document MCP tools (remember, recall, proactive_context)
 
-### Requirement: wt-project init registers wt-memory MCP server
-The `wt-project init` command SHALL register the own wt-memory MCP server if not already registered.
+### Requirement: set-project init registers set-memory MCP server
+The `set-project init` command SHALL register the own set-memory MCP server if not already registered.
 
 #### Scenario: MCP not yet registered
-- **WHEN** `wt-project init` runs and `claude mcp list` does not include wt-memory
-- **THEN** it SHALL run `claude mcp add wt-memory -- python <wt-tools-path>/bin/wt-memory-mcp-server.py`
+- **WHEN** `set-project init` runs and `claude mcp list` does not include set-memory
+- **THEN** it SHALL run `claude mcp add set-memory -- python <set-core-path>/bin/set-memory-mcp-server.py`
 
 #### Scenario: MCP already registered
-- **WHEN** `wt-project init` runs and wt-memory MCP is already registered
+- **WHEN** `set-project init` runs and set-memory MCP is already registered
 - **THEN** it SHALL skip MCP registration
 
-### Requirement: wt-project init cleans up deprecated memory references
-The `wt-project init` command SHALL remove deprecated inline memory instructions from all deployed skill and command files.
+### Requirement: set-project init cleans up deprecated memory references
+The `set-project init` command SHALL remove deprecated inline memory instructions from all deployed skill and command files.
 
-#### Scenario: Old SKILL.md with wt-memory hooks
-- **WHEN** a SKILL.md in `.claude/skills/` contains `<!-- wt-memory hooks -->` blocks
-- **THEN** `wt-project init` SHALL remove those blocks
+#### Scenario: Old SKILL.md with set-memory hooks
+- **WHEN** a SKILL.md in `.claude/skills/` contains `<!-- set-memory hooks -->` blocks
+- **THEN** `set-project init` SHALL remove those blocks
 
 #### Scenario: Old command .md with manual recall
-- **WHEN** a command .md in `.claude/commands/` contains `wt-memory recall` or `wt-memory remember` instructions
-- **THEN** `wt-project init` SHALL remove those instructions
+- **WHEN** a command .md in `.claude/commands/` contains `set-memory recall` or `set-memory remember` instructions
+- **THEN** `set-project init` SHALL remove those instructions
 
 #### Scenario: Old hot-topics.json
 - **WHEN** `.claude/hot-topics.json` exists
-- **THEN** `wt-project init` SHALL delete it
+- **THEN** `set-project init` SHALL delete it
 
 ### Requirement: Explore SKILL.md includes memory-first step
 The explore skill SHALL instruct the agent to check memory before exploring.

@@ -6,7 +6,7 @@
 - [x] 1.4 Extract `lib/orchestration/dispatcher.sh` — move `dispatch_change`, `dispatch_ready_changes`, `resume_stopped_changes`, `resume_change`, `pause_change`, `resume_stalled_changes`, `retry_failed_builds`, `resolve_change_model`, `bootstrap_worktree`, `sync_worktree_with_main`, `check_base_build`, `fix_base_build_with_llm`, `cmd_start`, `cmd_pause`, `cmd_resume`, `monitor_loop`
 - [x] 1.5 Extract `lib/orchestration/verifier.sh` — move `poll_change`, `handle_change_done`, `run_tests_in_worktree`, `review_change`, `verify_merge_scope`, `extract_health_check_url`, `health_check`, `smoke_fix_scoped`. Convert `smoke_command`, `smoke_timeout`, `smoke_blocking` from `monitor_loop()` local closures to explicit function arguments — these variables are accessed by verifier functions but declared local in dispatcher's `monitor_loop()`
 - [x] 1.6 Extract `lib/orchestration/merger.sh` — move `merge_change`, `cleanup_worktree`, `cleanup_all_worktrees`, `execute_merge_queue`, `retry_merge_queue`, `_try_merge`, `archive_change`
-- [x] 1.7 Reduce `bin/wt-orchestrate` to thin wrapper — keep constants, logging, `model_id`, `rotate_log`, `cmd_self_test`, `usage`, `main`; add `source` statements for all modules. Source order must match design D1: `events.sh` first (other modules emit events), then `state.sh`, `watchdog.sh`, `planner.sh`, `dispatcher.sh`, `verifier.sh`, `merger.sh`
+- [x] 1.7 Reduce `bin/set-orchestrate` to thin wrapper — keep constants, logging, `model_id`, `rotate_log`, `cmd_self_test`, `usage`, `main`; add `source` statements for all modules. Source order must match design D1: `events.sh` first (other modules emit events), then `state.sh`, `watchdog.sh`, `planner.sh`, `dispatcher.sh`, `verifier.sh`, `merger.sh`
 - [x] 1.8 Verify `cmd_self_test` passes after extraction — all functions callable, no missing variables
 - [x] 1.9 Migrate existing `stall_count` detection in `poll_change()` to watchdog infrastructure — remove legacy stall logic, prevent dual-detection conflicts with new watchdog
 
@@ -23,7 +23,7 @@
 - [x] 2.9 Add `CHECKPOINT` event emission in `trigger_checkpoint()`
 - [x] 2.10 Add `ERROR` event emission for error conditions
 - [x] 2.11 Add `events_log`, `events_max_size` directives to `parse_directives()`. Only emit `TOKENS` events on significant deltas (>10K tokens change) to reduce I/O overhead
-- [x] 2.12 Implement `cmd_events()` subcommand — `wt-orchestrate events` with `--type`, `--change`, `--since`, `--last N`, `--json` filters
+- [x] 2.12 Implement `cmd_events()` subcommand — `set-orchestrate events` with `--type`, `--change`, `--since`, `--last N`, `--json` filters
 - [x] 2.13 Implement event-based auto run report in `generate_summary()` — markdown summary from events at orchestration completion
 
 ## 3. Watchdog
@@ -53,7 +53,7 @@
 
 - [x] 5.1 Create template `templates/project-knowledge.yaml` with version header, cross_cutting_files, features, verification_rules sections
 - [x] 5.2 Create template `templates/cross-cutting-checklist.md` with path-scoped frontmatter and placeholder checklist items
-- [x] 5.3 Implement `wt-project init-knowledge` subcommand — scan project for dashboard pages, i18n files, sidebar, activity logger patterns
+- [x] 5.3 Implement `set-project init-knowledge` subcommand — scan project for dashboard pages, i18n files, sidebar, activity logger patterns
 - [x] 5.4 Generate draft `project-knowledge.yaml` from scan results — user reviews and commits
 
 ## 6. Planner Enhancements
@@ -61,7 +61,7 @@
 - [x] 6.1 Enhance `check_scope_overlap()` — read `cross_cutting_files` from project-knowledge.yaml, detect file-path overlap between parallel changes
 - [x] 6.2 Inject merge hazard analysis into `cmd_plan()` decompose prompt when project-knowledge.yaml exists
 - [x] 6.3 Enhance `auto_replan_cycle()` — inject git log of completed changes and their file lists into replanner prompt to prevent duplication
-- [x] 6.4 Add `plan_approval` directive (default: false). When true, orchestrator enters `plan_review` status after plan generation — user must `wt-orchestrate approve` before dispatch begins
+- [x] 6.4 Add `plan_approval` directive (default: false). When true, orchestrator enters `plan_review` status after plan generation — user must `set-orchestrate approve` before dispatch begins
 
 ## 7. Per-Change Model Routing
 
@@ -76,14 +76,14 @@
 - [x] 8.2 Hook verification rules into `handle_change_done()` — run after tests/build pass, before merge
 - [x] 8.3 Report verification results — errors block merge, warnings logged and included in verify gate result
 - [x] 8.4 Graceful degradation — all verification no-ops when project-knowledge.yaml absent
-- [x] 8.5 Add `merge-blocked` change state — when merge fails (LLM resolver output empty), mark as `merge-blocked` instead of crashing. Orchestrator continues with other changes, operator can manually resolve and `wt-orchestrate approve <name>`
+- [x] 8.5 Add `merge-blocked` change state — when merge fails (LLM resolver output empty), mark as `merge-blocked` instead of crashing. Orchestrator continues with other changes, operator can manually resolve and `set-orchestrate approve <name>`
 
 ## 9. Enhanced Sentinel
 
-- [x] 9.1 Replace `wait $child_pid` with polling loop in `bin/wt-sentinel` — `kill -0` check with sleep interval
+- [x] 9.1 Replace `wait $child_pid` with polling loop in `bin/set-sentinel` — `kill -0` check with sleep interval
 - [x] 9.2 Implement `check_orchestrator_liveness()` — monitor `orchestration-events.jsonl` mtime, detect no-activity for `sentinel_stuck_timeout` (180s default)
 - [x] 9.3 Implement controlled restart with exponential backoff — SIGTERM, wait 30s, SIGKILL if still alive, fix stale state (set status=stopped). Backoff: 30s→60s→120s→240s with 0-25% jitter between restart attempts
-- [x] 9.4 Emit `SENTINEL_RESTART` event — implement inline JSONL append in wt-sentinel (no dependency on events.sh sourcing, just direct echo >> events.jsonl)
+- [x] 9.4 Emit `SENTINEL_RESTART` event — implement inline JSONL append in set-sentinel (no dependency on events.sh sourcing, just direct echo >> events.jsonl)
 - [x] 9.5 Add `sentinel_stuck_timeout` to sentinel configuration
 - [x] 9.6 Classify failures as transient (PID died, API timeout) vs permanent (test failures, scope violation) — only auto-retry transient failures. Add `max_retries_per_change` directive (default: 3)
 
@@ -107,21 +107,21 @@
 
 ## 13. Consumer Project Migration
 
-- [x] 13.1 Store wt-tools version in consumer project — `wt-project init` writes `.claude/.wt-version` (git short hash or semver tag). On subsequent runs, compare stored vs current version to detect drift
-- [x] 13.2 Enhance `wt-project init` with migration logic — when stored version is older than current:
+- [x] 13.1 Store set-core version in consumer project — `set-project init` writes `.claude/.wt-version` (git short hash or semver tag). On subsequent runs, compare stored vs current version to detect drift
+- [x] 13.2 Enhance `set-project init` with migration logic — when stored version is older than current:
   - Merge new directives into `orchestration.yaml` (additive only, never overwrite existing values)
   - Scaffold `project-knowledge.yaml` via `init-knowledge` if missing
   - Deploy `cross-cutting-checklist.md` rule template if missing
   - Report summary: "Updated from <old> to <new>: added N directives, created M new files"
-- [x] 13.3 Add `wt-project init --dry-run` flag — show what would change without modifying files
+- [x] 13.3 Add `set-project init --dry-run` flag — show what would change without modifying files
 - [x] 13.4 Directive schema validation — warn if consumer's `orchestration.yaml` has unknown or deprecated directives after migration
 
 ## 14. Documentation
 
-- [x] 14.1 Create `docs/project-management.md` — consumer project lifecycle guide covering: initial setup (`wt-project init`), version tracking (`.wt-version`), migration on update, `--dry-run` preview, directive schema reference
+- [x] 14.1 Create `docs/project-management.md` — consumer project lifecycle guide covering: initial setup (`set-project init`), version tracking (`.wt-version`), migration on update, `--dry-run` preview, directive schema reference
 - [x] 14.2 Document `project-knowledge.yaml` format — schema reference with all fields, example entries, how planner/dispatcher/verifier use it, `init-knowledge` scaffolding workflow
 - [x] 14.3 Document `orchestration.yaml` directive reference — all directives (existing + new sentinel-v2 ones) with types, defaults, and examples. Include watchdog, events, hooks, model routing, token budgets sections
-- [x] 14.4 Document orchestration event types — `orchestration-events.jsonl` format, all event types with example payloads, `wt-orchestrate events` query usage
+- [x] 14.4 Document orchestration event types — `orchestration-events.jsonl` format, all event types with example payloads, `set-orchestrate events` query usage
 - [x] 14.5 Add troubleshooting section — common scenarios: stuck orchestrator (watchdog handles), merge-blocked (manual resolve + approve), token budget exceeded, state reconstruction from events
 
 ## 15. Integration Testing
@@ -135,4 +135,4 @@
 - [x] 15.7 Test merge-blocked state — simulate LLM resolver failure, verify orchestrator continues with other changes
 - [x] 15.8 Test state reconstruction — corrupt state.json, verify reconstruction from events.jsonl
 - [x] 15.9 Test quality gate hooks — verify hook execution, blocking, and error reporting
-- [x] 15.10 Test consumer migration — deploy to consumer project via `wt-project init`, verify version tracking, directive merge, and no regressions
+- [x] 15.10 Test consumer migration — deploy to consumer project via `set-project init`, verify version tracking, directive merge, and no regressions

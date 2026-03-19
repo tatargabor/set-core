@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# wt-hook-memory-recall - Backward-compatible wrapper
-# Delegates to unified handler: wt-hook-memory UserPromptSubmit
-exec wt-hook-memory UserPromptSubmit

@@ -54,16 +54,16 @@ The system SHALL detect orphaned orchestration processes (wt-loop instances with
 - **THEN** the function falls back to scanning `/proc/*/cmdline` on Linux, or returns an empty list with a warning on other platforms
 
 ### Requirement: CLI bridge for process operations
-The `wt-orch-core process` subcommand SHALL expose process operations to bash scripts via exit codes and stdout JSON.
+The `set-orch-core process` subcommand SHALL expose process operations to bash scripts via exit codes and stdout JSON.
 
 #### Scenario: check-pid returns JSON result
-- **WHEN** bash calls `wt-orch-core process check-pid --pid 1234 --expect-cmd "wt-loop"`
+- **WHEN** bash calls `set-orch-core process check-pid --pid 1234 --expect-cmd "wt-loop"`
 - **THEN** stdout contains `{"alive": true, "match": true}` or `{"alive": false, "match": false}` and exit code is 0 for alive+match, 1 otherwise
 
 #### Scenario: safe-kill returns JSON result
-- **WHEN** bash calls `wt-orch-core process safe-kill --pid 1234 --expect-cmd "wt-loop" --timeout 10`
+- **WHEN** bash calls `set-orch-core process safe-kill --pid 1234 --expect-cmd "wt-loop" --timeout 10`
 - **THEN** stdout contains `{"result": "terminated", "signal": "SIGTERM"}` and exit code is 0
 
 #### Scenario: find-orphans returns JSON list
-- **WHEN** bash calls `wt-orch-core process find-orphans --expect-cmd "wt-loop" --known-pids "1234,5678"`
+- **WHEN** bash calls `set-orch-core process find-orphans --expect-cmd "wt-loop" --known-pids "1234,5678"`
 - **THEN** stdout contains a JSON array of orphan objects

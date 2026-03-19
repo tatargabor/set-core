@@ -1,6 +1,6 @@
 ## 1. Project Management
-- [x] 1.1 Create `bin/wt-project` - project registry management (add/list/remove/default)
-- [x] 1.2 Config file management (`~/.config/wt-tools/projects.json`)
+- [x] 1.1 Create `bin/set-project` - project registry management (add/list/remove/default)
+- [x] 1.2 Config file management (`~/.config/set-core/projects.json`)
 
 ## 2. Core Scripts
 - [x] 2.1 Create `bin/wt-open` - create worktree based on change-id

@@ -26,7 +26,7 @@ Discover → Save → Tell user
 - Changing the recall system (recall works fine)
 - Adding new memory types or tags
 - Changing the session-end self-reflection (keep it as a safety net)
-- Modifying wt-memory CLI or hooks infrastructure
+- Modifying set-memory CLI or hooks infrastructure
 
 ## Decisions
 
@@ -69,4 +69,4 @@ What doesn't: routine observations, things already in docs/specs.
 
 **[Risk: Over-saving]** → Agents might save trivial findings to comply with the rule. **Mitigation**: The "what counts" criteria is explicit: non-obvious findings only. "Routine observations" are excluded.
 
-**[Risk: Interrupts flow]** → Saving before telling might feel disruptive. **Mitigation**: The save is a single `wt-memory remember` call + one-line confirmation. Takes <2 seconds. The tell comes right after.
+**[Risk: Interrupts flow]** → Saving before telling might feel disruptive. **Mitigation**: The save is a single `set-memory remember` call + one-line confirmation. Takes <2 seconds. The tell comes right after.

@@ -1,0 +1,13 @@
+[Unit]
+Description=SET Web Dashboard
+Documentation=https://github.com/tatargabor/set-core
+After=default.target
+
+[Service]
+ExecStart=%h/.local/bin/set-orch-core serve --port 7400
+Restart=always
+RestartSec=5
+Environment=PYTHONPATH=%h/code2/set-core/lib
+
+[Install]
+WantedBy=default.target

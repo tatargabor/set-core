@@ -4,18 +4,18 @@ Phase 9 of the Python migration. After Phase 8 completes the orchestration engin
 
 ## What Changes
 
-- **New `lib/wt_orch/loop.py`** (~500 LOC): 1:1 migration of `lib/loop/engine.sh` (903 LOC) — main iteration loop, API error classification/backoff, iteration lifecycle, completion detection, token budget enforcement
-- **New `lib/wt_orch/loop_prompt.py`** (~200 LOC): 1:1 migration of `lib/loop/prompt.sh` (305 LOC) — change action detection, Claude prompt assembly, context injection
-- **New `lib/wt_orch/loop_state.py`** (~150 LOC): 1:1 migration of `lib/loop/state.sh` (255 LOC) — loop state file management, token tracking, date parsing
-- **New `lib/wt_orch/loop_tasks.py`** (~150 LOC): 1:1 migration of `lib/loop/tasks.sh` (235 LOC) — task file detection, completion checking, manual task handling
-- **New `lib/wt_hooks/events.py`** (~400 LOC): 1:1 migration of `lib/hooks/events.sh` (727 LOC) — SessionStart, UserPrompt, PostTool event handlers, cheat sheet recall, project context injection
-- **New `lib/wt_hooks/stop.py`** (~250 LOC): 1:1 migration of `lib/hooks/stop.sh` (420 LOC) — metrics flush, transcript extraction, commit-based memory save
-- **New `lib/wt_hooks/memory_ops.py`** (~230 LOC): 1:1 migration of `lib/hooks/memory-ops.sh` (393 LOC) — recall, proactive context, rules matching, output formatting
-- **New `lib/wt_hooks/session.py`** (~100 LOC): 1:1 migration of `lib/hooks/session.sh` (134 LOC) — dedup cache, context ID generation
-- **New `lib/wt_hooks/util.py`** (~80 LOC): 1:1 migration of `lib/hooks/util.sh` (148 LOC) — debug logging, timing, cache I/O
+- **New `lib/set_orch/loop.py`** (~500 LOC): 1:1 migration of `lib/loop/engine.sh` (903 LOC) — main iteration loop, API error classification/backoff, iteration lifecycle, completion detection, token budget enforcement
+- **New `lib/set_orch/loop_prompt.py`** (~200 LOC): 1:1 migration of `lib/loop/prompt.sh` (305 LOC) — change action detection, Claude prompt assembly, context injection
+- **New `lib/set_orch/loop_state.py`** (~150 LOC): 1:1 migration of `lib/loop/state.sh` (255 LOC) — loop state file management, token tracking, date parsing
+- **New `lib/set_orch/loop_tasks.py`** (~150 LOC): 1:1 migration of `lib/loop/tasks.sh` (235 LOC) — task file detection, completion checking, manual task handling
+- **New `lib/set_hooks/events.py`** (~400 LOC): 1:1 migration of `lib/hooks/events.sh` (727 LOC) — SessionStart, UserPrompt, PostTool event handlers, cheat sheet recall, project context injection
+- **New `lib/set_hooks/stop.py`** (~250 LOC): 1:1 migration of `lib/hooks/stop.sh` (420 LOC) — metrics flush, transcript extraction, commit-based memory save
+- **New `lib/set_hooks/memory_ops.py`** (~230 LOC): 1:1 migration of `lib/hooks/memory-ops.sh` (393 LOC) — recall, proactive context, rules matching, output formatting
+- **New `lib/set_hooks/session.py`** (~100 LOC): 1:1 migration of `lib/hooks/session.sh` (134 LOC) — dedup cache, context ID generation
+- **New `lib/set_hooks/util.py`** (~80 LOC): 1:1 migration of `lib/hooks/util.sh` (148 LOC) — debug logging, timing, cache I/O
 - **Delete all `lib/loop/*.sh` and `lib/hooks/*.sh`** after migration
 - **Update `bin/wt-loop`** to call Python loop engine
-- **Update `bin/wt-memory-hooks`** (or replace) to call Python hook handlers
+- **Update `bin/set-memory-hooks`** (or replace) to call Python hook handlers
 - Unit tests for all new modules
 
 ## Capabilities
@@ -35,10 +35,10 @@ Phase 9 of the Python migration. After Phase 8 completes the orchestration engin
 ## Impact
 
 - **Deleted**: All files in `lib/loop/*.sh` (4 files, 2,398 LOC) and `lib/hooks/*.sh` (5 files, 1,822 LOC)
-- **New package**: `lib/wt_hooks/` (5 modules) — new Python package for hook handlers
-- **New modules**: `lib/wt_orch/loop.py`, `loop_prompt.py`, `loop_state.py`, `loop_tasks.py`
+- **New package**: `lib/set_hooks/` (5 modules) — new Python package for hook handlers
+- **New modules**: `lib/set_orch/loop.py`, `loop_prompt.py`, `loop_state.py`, `loop_tasks.py`
 - **Modified**: `bin/wt-loop` — rewritten to call Python
-- **Modified**: `bin/wt-memory-hooks` — rewritten to call Python
+- **Modified**: `bin/set-memory-hooks` — rewritten to call Python
 - **Tests**: `test_loop.py`, `test_loop_prompt.py`, `test_hook_events.py`, `test_hook_stop.py`
 - **Performance concern**: Hook handlers run on every tool use. Python startup latency (~50ms) must be managed — either persistent process, or pre-import optimization. May need to keep a thin bash dispatcher that calls Python only for heavy operations.
 - **Dependencies**: No new external deps

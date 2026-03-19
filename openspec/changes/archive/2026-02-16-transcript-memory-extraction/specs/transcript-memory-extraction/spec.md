@@ -27,7 +27,7 @@ When opsx/openspec skills are detected, the hook SHALL extract the last ~100 lin
 
 #### Scenario: Successful extraction with insights
 - **WHEN** haiku analyzes the transcript and finds extractable insights
-- **THEN** the hook SHALL receive structured output lines in format `Type|tags|content` and save each via `wt-memory remember --type <Type> --tags <tags>`
+- **THEN** the hook SHALL receive structured output lines in format `Type|tags|content` and save each via `set-memory remember --type <Type> --tags <tags>`
 
 #### Scenario: Extraction finds no insights
 - **WHEN** haiku analyzes the transcript and finds nothing worth saving
@@ -38,7 +38,7 @@ When opsx/openspec skills are detected, the hook SHALL extract the last ~100 lin
 - **THEN** the hook SHALL skip extraction silently (exit 0) without blocking
 
 ### Requirement: Agent deduplication
-The hook SHALL check if the agent already performed memory saves during the session by scanning the transcript for evidence of `wt-memory remember` calls or `[Memory saved:` / `[Agent insights saved:` confirmation strings.
+The hook SHALL check if the agent already performed memory saves during the session by scanning the transcript for evidence of `set-memory remember` calls or `[Memory saved:` / `[Agent insights saved:` confirmation strings.
 
 #### Scenario: Agent already saved memories
 - **WHEN** the transcript contains evidence of successful agent memory saves

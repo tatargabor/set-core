@@ -1,0 +1,823 @@
+#!/usr/bin/env bash
+# set-sentinel — Supervised wrapper for set-orchestrate start.
+# Restarts the orchestrator on crash with backoff. Stops on clean exit or user interrupt.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+    cat <<EOF
+Usage: set-sentinel [--shutdown | set-orchestrate start options...]
+
+Runs 'set-orchestrate start' in a supervised loop. If the orchestrator
+crashes (non-zero exit), it restarts after exponential backoff. Stops on:
+  - Clean exit with state "done" (orchestration complete)
+  - Clean exit with state "stopped" (user Ctrl+C)
+  - 5 rapid consecutive crashes (each <5 min runtime)
+  - Stuck orchestrator (no events for sentinel_stuck_timeout seconds)
+  - SIGINT/SIGTERM (forwarded to child, no restart)
+  - --shutdown (graceful shutdown: agents commit WIP, state preserved for resume)
+
+All arguments are passed through to 'set-orchestrate start'.
+
+Examples:
+  set-sentinel
+  set-sentinel --spec docs/v5.md --max-parallel 3
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+# --shutdown: send SIGUSR1 to running sentinel for graceful shutdown
+if [[ "${1:-}" == "--shutdown" ]]; then
+    # Resolve PID file path — source set-paths if not already sourced
+    _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "$_SCRIPT_DIR/set-paths" 2>/dev/null || true
+    _PID_FILE="${WT_SENTINEL_DIR:-}/sentinel.pid"
+    [[ -z "$_PID_FILE" || "$_PID_FILE" == "/sentinel.pid" ]] && _PID_FILE="sentinel.pid"
+    if [[ -f "$_PID_FILE" ]]; then
+        existing_pid=$(cat "$_PID_FILE" 2>/dev/null || echo "")
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Sending graceful shutdown to PID $existing_pid"
+            kill -USR1 "$existing_pid"
+            # Wait for sentinel to exit (up to 90s: 60s agent timeout + 30s buffer)
+            wait_count=0
+            while kill -0 "$existing_pid" 2>/dev/null && [[ $wait_count -lt 90 ]]; do
+                sleep 1
+                wait_count=$((wait_count + 1))
+            done
+            if kill -0 "$existing_pid" 2>/dev/null; then
+                echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Sentinel did not exit within 90s — forcing"
+                kill -9 "$existing_pid" 2>/dev/null || true
+            else
+                echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Graceful shutdown complete"
+            fi
+            exit 0
+        else
+            echo "No sentinel running"
+            exit 0
+        fi
+    else
+        echo "No sentinel running"
+        exit 0
+    fi
+fi
+
+# Source centralized path resolution
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-paths"
+
+STATE_FILE="$WT_STATE_FILE"
+EVENTS_FILE="$WT_EVENTS_FILE"
+LOG_FILE="$WT_ORCHESTRATION_LOG"
+PID_FILE="$WT_SENTINEL_DIR/sentinel.pid"
+
+# Ensure shared runtime dirs exist
+wt_ensure_runtime_dirs
+MAX_RAPID_CRASHES=5
+SUSTAINED_RUN_SECS=300  # 5 minutes
+POLL_INTERVAL=10        # Check child every 10s
+SENTINEL_STUCK_TIMEOUT=600  # 10 minutes no activity = stuck (verify/merge can take 5-10 min)
+SENTINEL_STARTUP_TIMEOUT=1800  # 30 minutes for initial planning (digest + design fetch + Claude decompose)
+CHECKPOINT_MAX_WAIT=86400     # 24 hours max checkpoint wait before giving up
+
+# Exponential backoff: 30s → 60s → 120s → 240s (with 0-25% jitter)
+BACKOFF_BASE=30
+BACKOFF_MAX=240
+
+# Sentinel member identity (for status registration)
+SENTINEL_MEMBER="${USER:-$(whoami)}@$(hostname -s)"
+
+sentinel_log() {
+    local msg="[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+# Emit event directly to events.jsonl (no dependency on events.sh)
+sentinel_emit_event() {
+    local event_type="$1"
+    local data="${2:-{}}"
+    local ts
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    local epoch
+    epoch=$(date +%s)
+    echo "{\"ts\":\"$ts\",\"epoch\":$epoch,\"type\":\"$event_type\",\"change\":\"\",\"data\":$data}" >> "$EVENTS_FILE" 2>/dev/null || true
+}
+
+# Structured event logging via Python CLI (preferred over sentinel_emit_event)
+sentinel_structured_log() {
+    "$SCRIPT_DIR/set-sentinel-log" "$@" >/dev/null 2>&1 || true
+}
+
+# Check sentinel inbox for messages (lightweight, <5ms)
+sentinel_check_inbox() {
+    local output
+    output=$("$SCRIPT_DIR/set-sentinel-inbox" check 2>/dev/null) || true
+    if [[ -n "$output" ]]; then
+        sentinel_log "Inbox: $output"
+        # Log received messages as structured events
+        sentinel_structured_log message-received --sender "user" --content "$output"
+    fi
+}
+
+# Register sentinel status
+sentinel_register_status() {
+    local orch_pid="${1:-0}"
+    "$SCRIPT_DIR/set-sentinel-status" register \
+        --member "$SENTINEL_MEMBER" \
+        --orchestrator-pid "$orch_pid" \
+        --poll-interval "$POLL_INTERVAL" >/dev/null 2>&1 || true
+}
+
+# Heartbeat update
+sentinel_heartbeat() {
+    "$SCRIPT_DIR/set-sentinel-status" heartbeat >/dev/null 2>&1 || true
+}
+
+# Deactivate sentinel status
+sentinel_deactivate() {
+    "$SCRIPT_DIR/set-sentinel-status" deactivate >/dev/null 2>&1 || true
+}
+
+# Single-instance guard: flock on sentinel lock file
+LOCK_FILE="sentinel.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    existing_pid=$(cat "$PID_FILE" 2>/dev/null || echo "")
+    if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+        # Sentinel is genuinely running — refuse to start
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Another sentinel is already running (PID: $existing_pid) — exiting"
+        exit 1
+    elif [[ -n "$existing_pid" ]]; then
+        # PID file exists but process is dead — stale lock.
+        # Re-open fd 9 (truncate in-place, no unlink) to avoid TOCTOU race.
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Recovered stale lock from dead PID $existing_pid"
+        exec 9>"$LOCK_FILE"
+        flock -n 9 || { echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Failed to acquire lock after stale recovery — exiting"; exit 1; }
+    else
+        # No PID file — stale lock with no owner. Truncate in-place, no unlink.
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Recovered stale lock (no PID file)"
+        exec 9>"$LOCK_FILE"
+        flock -n 9 || { echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Failed to acquire lock after stale recovery — exiting"; exit 1; }
+    fi
+fi
+
+# Signal handling — don't restart after user interrupt
+interrupted=false
+shutdown_requested=false
+child_pid=0
+
+cleanup() {
+    rm -f "$PID_FILE"
+    sentinel_deactivate
+    # flock released automatically when fd 9 closes
+}
+
+handle_signal() {
+    interrupted=true
+    if [[ $child_pid -gt 0 ]]; then
+        kill -TERM "$child_pid" 2>/dev/null || true
+    fi
+}
+
+# SIGUSR1 = graceful shutdown request (from --shutdown flag)
+handle_graceful_shutdown() {
+    shutdown_requested=true
+    sentinel_log "Graceful shutdown requested (SIGUSR1)"
+    # Send SIGTERM to orchestrator — it will propagate to agents
+    if [[ $child_pid -gt 0 ]]; then
+        kill -TERM "$child_pid" 2>/dev/null || true
+    fi
+}
+
+trap cleanup EXIT
+trap handle_signal SIGINT SIGTERM SIGHUP
+trap handle_graceful_shutdown USR1
+
+# Write PID file
+echo $$ > "$PID_FILE"
+
+rapid_crashes=0
+backoff_secs=$BACKOFF_BASE
+
+# Clean slate: if no state file or state is terminal (done/stopped), reset ephemeral files
+# This prevents stale logs/events from confusing the new run.
+clean_old_worktrees() {
+    local project_dir
+    project_dir=$(pwd)
+
+    # History protection: if orch/* tags exist, preserve git history
+    local orch_tags
+    orch_tags=$(git tag -l 'orch/*' 2>/dev/null || true)
+    if [[ -n "$orch_tags" ]]; then
+        local tag_count
+        tag_count=$(echo "$orch_tags" | wc -l)
+        sentinel_log "History protection: $tag_count orch/* tags found — skipping worktree/branch cleanup"
+        sentinel_log "Tags: $(echo "$orch_tags" | tr '\n' ' ')"
+        sentinel_log "Only cleaning ephemeral state files"
+        # Only clean ephemeral state files, not worktrees or branches
+        return 0
+    fi
+
+    # 1. Remove git-registered worktrees
+    local wt_list
+    wt_list=$(git worktree list --porcelain 2>/dev/null | grep "^worktree " | sed 's/^worktree //' || true)
+    while IFS= read -r wt_path; do
+        [[ -z "$wt_path" ]] && continue
+        [[ "$wt_path" == "$project_dir" ]] && continue  # skip main worktree
+        sentinel_log "Removing old worktree: $wt_path"
+        git worktree remove "$wt_path" --force 2>/dev/null || true
+        # Force-remove directory if git worktree remove didn't clean it
+        [[ -d "$wt_path" ]] && rm -rf "$wt_path"
+    done <<< "$wt_list"
+    git worktree prune 2>/dev/null || true
+
+    # 2. Remove orphaned worktree directories (not in git worktree list but on disk)
+    local project_base
+    project_base=$(basename "$project_dir")
+    for orphan_dir in "${project_dir}-wt-"* "${project_dir}-"*; do
+        [[ -d "$orphan_dir" ]] || continue
+        [[ "$orphan_dir" == "$project_dir" ]] && continue
+        sentinel_log "Removing orphaned worktree dir: $orphan_dir"
+        rm -rf "$orphan_dir"
+    done
+
+    # 3. Remove change/* branches
+    local branches
+    branches=$(git branch --list 'change/*' 2>/dev/null | sed 's/^[* ]*//' || true)
+    while IFS= read -r branch; do
+        [[ -z "$branch" ]] && continue
+        sentinel_log "Removing old branch: $branch"
+        git branch -D "$branch" 2>/dev/null || true
+    done <<< "$branches"
+}
+
+if [[ ! -f "$STATE_FILE" ]]; then
+    sentinel_log "No state file — starting fresh (cleaning old logs/events/worktrees)"
+    rm -f "$EVENTS_FILE"
+    clean_old_worktrees
+    : > "$LOG_FILE"  # truncate but keep the file (our log lines above are already there)
+elif [[ -f "$STATE_FILE" ]]; then
+    _prev_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
+    if [[ "$_prev_status" == "done" || "$_prev_status" == "stopped" ]]; then
+        # Check if there are failed changes with worktrees — partial reset instead of nuke
+        _has_failed_with_wt=$(jq -r '[.changes[]? | select(.status == "failed" and .worktree_path != null and .worktree_path != "")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
+        _has_merged=$(jq -r '[.changes[]? | select(.status == "merged")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
+        if [[ "$_has_failed_with_wt" -gt 0 || "$_has_merged" -gt 0 ]]; then
+            sentinel_log "Previous run finished (status=$_prev_status) with $_has_failed_with_wt failed (with worktrees) + $_has_merged merged — partial reset (preserving worktrees)"
+            # Partial reset: failed → pending, clear retry counts, keep worktrees
+            _tmp=$(mktemp)
+            jq '
+                .status = "stopped" |
+                (.changes[] | select(.status == "failed")) |= (
+                    .status = "pending" |
+                    .verify_retry_count = 0 |
+                    .redispatch_count = 0 |
+                    .ralph_pid = null |
+                    .test_result = null |
+                    .build_result = null |
+                    .review_result = null |
+                    .smoke_result = null |
+                    .spec_coverage_result = null |
+                    .e2e_result = null |
+                    .e2e_output = null |
+                    .scope_check = null |
+                    .has_tests = null |
+                    .build_output = null |
+                    .test_output = null
+                )
+            ' "$STATE_FILE" > "$_tmp" && mv "$_tmp" "$STATE_FILE"
+            rm -f "$EVENTS_FILE"
+            sentinel_log "Partial reset complete — failed changes reset to pending, worktrees preserved"
+        else
+            sentinel_log "Previous run finished (status=$_prev_status) — cleaning old state for fresh start"
+            "$SCRIPT_DIR/set-sentinel-rotate" >/dev/null 2>&1 || true
+            # Backup state before cleaning — enables manual recovery and resume
+            if [[ -f "$STATE_FILE" ]]; then
+                cp "$STATE_FILE" "${STATE_FILE}.bak"
+                sentinel_log "Backed up state to ${STATE_FILE}.bak"
+            fi
+            if [[ -f "$EVENTS_FILE" ]]; then
+                cp "$EVENTS_FILE" "${EVENTS_FILE}.bak"
+            fi
+            rm -f "$STATE_FILE" "$EVENTS_FILE"
+            clean_old_worktrees
+        fi
+    fi
+fi
+
+# Check orchestrator liveness via events.jsonl mtime (or start_epoch fallback)
+check_orchestrator_liveness() {
+    local now
+    now=$(date +%s)
+
+    # Skip stuck detection during checkpoint — orchestrator is alive but waiting for approval
+    if [[ -f "$STATE_FILE" ]]; then
+        local current_status
+        current_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null) || return 0
+        # ↑ On jq parse failure (torn read), fail safe by skipping the kill
+        if [[ "$current_status" == "checkpoint" ]]; then
+            # Bound the wait — don't wait forever if user abandons
+            local cp_started
+            cp_started=$(jq -r '.checkpoint_started_at // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+            if [[ "$cp_started" -gt 0 ]]; then
+                local cp_age=$(( now - cp_started ))
+                if [[ "$cp_age" -ge "$CHECKPOINT_MAX_WAIT" ]]; then
+                    sentinel_log "Checkpoint wait exceeded ${CHECKPOINT_MAX_WAIT}s (${cp_age}s) — treating as stuck"
+                    return 1
+                fi
+            fi
+            return 0  # not stuck, waiting for approval
+        fi
+    fi
+
+    # Use longer timeout during startup (no state file = still planning/digesting)
+    local effective_timeout="$SENTINEL_STUCK_TIMEOUT"
+    if [[ ! -f "$STATE_FILE" ]]; then
+        effective_timeout="$SENTINEL_STARTUP_TIMEOUT"
+    fi
+
+    if [[ ! -f "$EVENTS_FILE" ]]; then
+        # No events file yet — use start_epoch to detect stuck startup
+        local since_start=$((now - start_epoch))
+        if [[ "$since_start" -ge "$effective_timeout" ]]; then
+            sentinel_log "Orchestrator stuck: no events after ${since_start}s since launch (threshold: ${effective_timeout}s)"
+            return 1
+        fi
+        return 0
+    fi
+
+    # Use the most recent mtime of events OR state file as last activity
+    local events_mtime state_mtime last_activity
+    events_mtime=$(stat -c %Y "$EVENTS_FILE" 2>/dev/null || echo 0)
+    state_mtime=$(stat -c %Y "$STATE_FILE" 2>/dev/null || echo 0)
+    last_activity=$((events_mtime > state_mtime ? events_mtime : state_mtime))
+    local idle=$((now - last_activity))
+
+    if [[ "$idle" -ge "$effective_timeout" ]]; then
+        # Before declaring stuck, check if orchestrator has active children (claude, python)
+        # A running Claude process means the orchestrator is doing work (verify, decompose)
+        local child_count
+        child_count=$(pgrep -P "$child_pid" 2>/dev/null | wc -l)
+        if [[ "$child_count" -gt 0 ]]; then
+            sentinel_log "Orchestrator idle ${idle}s but has $child_count active children — not stuck"
+            return 0
+        fi
+        sentinel_log "Orchestrator stuck: no events for ${idle}s (threshold: ${effective_timeout}s)"
+        return 1
+    fi
+    return 0
+}
+
+# Kill orchestrator with SIGTERM, wait, then SIGKILL if needed
+kill_orchestrator() {
+    local pid="$1"
+    [[ "$pid" -le 0 ]] && return
+
+    sentinel_log "Sending SIGTERM to orchestrator PID $pid"
+    kill -TERM "$pid" 2>/dev/null || return 0
+
+    # Wait up to 30s for graceful shutdown
+    local waited=0
+    while [[ $waited -lt 30 ]] && kill -0 "$pid" 2>/dev/null; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        sentinel_log "Orchestrator still alive after 30s — sending SIGKILL"
+        kill -KILL "$pid" 2>/dev/null || true
+        sleep 1
+    fi
+}
+
+# Reconstruct state from events when state appears inconsistent.
+# Detects: running change with dead PID and state mtime older than events mtime.
+# Replays STATE_CHANGE and TOKENS events to rebuild per-change status and tokens.
+reconstruct_state_from_events() {
+    [[ ! -f "$STATE_FILE" || ! -f "$EVENTS_FILE" ]] && return 1
+
+    local state_mtime events_mtime
+    state_mtime=$(stat -c %Y "$STATE_FILE" 2>/dev/null || echo 0)
+    events_mtime=$(stat -c %Y "$EVENTS_FILE" 2>/dev/null || echo 0)
+
+    # Only reconstruct if events are newer than state (state is stale)
+    if [[ "$state_mtime" -ge "$events_mtime" ]]; then
+        return 1
+    fi
+
+    # Check for inconsistency: running changes with dead PIDs
+    local has_inconsistency=false
+    local running_pids
+    running_pids=$(jq -r '.changes[]? | select(.status == "running") | "\(.name)\t\(.ralph_pid // 0)"' "$STATE_FILE" 2>/dev/null || true)
+    if [[ -n "$running_pids" ]]; then
+        while IFS=$'\t' read -r cname cpid; do
+            [[ -z "$cname" ]] && continue
+            if [[ "$cpid" -gt 0 ]] && ! kill -0 "$cpid" 2>/dev/null; then
+                has_inconsistency=true
+                break
+            fi
+        done <<< "$running_pids"
+    fi
+
+    if ! $has_inconsistency; then
+        return 1
+    fi
+
+    local event_count
+    event_count=$(wc -l < "$EVENTS_FILE" 2>/dev/null || echo 0)
+    sentinel_log "State inconsistent (state_mtime=$state_mtime < events_mtime=$events_mtime) — reconstructing from $event_count events"
+
+    # Replay STATE_CHANGE events: get last status per change
+    local final_statuses
+    final_statuses=$(jq -c 'select(.type == "STATE_CHANGE" and .change != null and .change != "")' "$EVENTS_FILE" 2>/dev/null | \
+        jq -c '{change: .change, status: .data.to}' | \
+        jq -s 'group_by(.change) | map({key: .[0].change, value: .[-1].status}) | from_entries' 2>/dev/null || echo '{}')
+
+    if [[ "$final_statuses" != "{}" ]]; then
+        local names
+        names=$(echo "$final_statuses" | jq -r 'keys[]' 2>/dev/null || true)
+        while IFS= read -r cname; do
+            [[ -z "$cname" ]] && continue
+            local fstatus
+            fstatus=$(echo "$final_statuses" | jq -r --arg n "$cname" '.[$n] // empty')
+            [[ -z "$fstatus" ]] && continue
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$cname" --arg s "$fstatus" \
+                '(.changes[] | select(.name == $n) | .status) = $s' \
+                "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            sentinel_log "  Restored change $cname → $fstatus"
+        done <<< "$names"
+    fi
+
+    # Replay TOKENS events: get last total per change
+    local final_tokens
+    final_tokens=$(jq -c 'select(.type == "TOKENS" and .change != null and .change != "") | {change: .change, total: .data.total}' "$EVENTS_FILE" 2>/dev/null | \
+        jq -s 'group_by(.change) | map({key: .[0].change, value: .[-1].total}) | from_entries' 2>/dev/null || echo '{}')
+
+    if [[ "$final_tokens" != "{}" ]]; then
+        local tnames
+        tnames=$(echo "$final_tokens" | jq -r 'keys[]' 2>/dev/null || true)
+        while IFS= read -r tname; do
+            [[ -z "$tname" ]] && continue
+            local tokens
+            tokens=$(echo "$final_tokens" | jq -r --arg n "$tname" '.[$n] // 0')
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$tname" --argjson t "$tokens" \
+                '(.changes[] | select(.name == $n) | .tokens_used) = $t' \
+                "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+        done <<< "$tnames"
+    fi
+
+    # Mark running changes with dead PIDs as stalled
+    jq '(.changes[] | select(.status == "running") | .status) = "stalled"' \
+        "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+
+    # Set orchestration status
+    jq '.status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+
+    sentinel_emit_event "STATE_RECONSTRUCTED" "{\"event_count\":$event_count}"
+    sentinel_structured_log decision --action "state_reconstructed" --reason "Rebuilt from $event_count events"
+    sentinel_log "State reconstruction complete"
+    return 0
+}
+
+# Resume from graceful shutdown: validate worktrees, reset invalid changes
+resume_from_shutdown() {
+    [[ ! -f "$STATE_FILE" ]] && return
+
+    local changes_with_wt
+    changes_with_wt=$(jq -r '.changes[]? | select(.worktree_path != "" and .worktree_path != null and (.status == "running" or .status == "stalled" or .status == "shutdown")) | .name' "$STATE_FILE" 2>/dev/null || true)
+
+    while IFS= read -r cname; do
+        [[ -z "$cname" ]] && continue
+        local wt_path last_commit
+        wt_path=$(jq -r --arg n "$cname" '.changes[] | select(.name == $n) | .worktree_path' "$STATE_FILE" 2>/dev/null || true)
+        last_commit=$(jq -r --arg n "$cname" '.changes[] | select(.name == $n) | .last_commit // ""' "$STATE_FILE" 2>/dev/null || true)
+
+        if [[ ! -d "$wt_path" ]]; then
+            sentinel_log "Resume: worktree missing for $cname ($wt_path) — resetting to pending"
+            # Clean up branch if it still exists
+            local branch_name
+            branch_name=$(jq -r --arg n "$cname" '.changes[] | select(.name == $n) | .branch // ""' "$STATE_FILE" 2>/dev/null || true)
+            if [[ -n "$branch_name" ]]; then
+                git branch -D "$branch_name" 2>/dev/null || true
+            fi
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$cname" '(.changes[] | select(.name == $n)) |= (.status = "pending" | .worktree_path = "" | .ralph_pid = null | .last_commit = null)' \
+                "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            continue
+        fi
+
+        # Worktree exists — validate HEAD matches last_commit
+        local current_head
+        current_head=$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")
+        if [[ -n "$last_commit" && "$last_commit" != "null" && "$current_head" != "$last_commit" ]]; then
+            sentinel_log "Resume: HEAD mismatch for $cname (expected $last_commit, got $current_head) — resetting to pending"
+            local tmp
+            tmp=$(mktemp)
+            jq --arg n "$cname" '(.changes[] | select(.name == $n)) |= (.status = "pending" | .worktree_path = "" | .ralph_pid = null | .last_commit = null)' \
+                "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            git worktree remove "$wt_path" --force 2>/dev/null || true
+            continue
+        fi
+
+        # Valid worktree — reset to pending for re-dispatch (orchestrator will handle resume)
+        sentinel_log "Resume: $cname worktree valid (HEAD=$current_head) — resetting to pending for re-dispatch"
+        local tmp
+        tmp=$(mktemp)
+        jq --arg n "$cname" '(.changes[] | select(.name == $n)) |= (.status = "pending" | .ralph_pid = null)' \
+            "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+    done <<< "$changes_with_wt"
+
+    # Set state back to stopped (orchestrator will resume from stopped)
+    jq 'del(.shutdown_at) | .status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    sentinel_log "Resume from shutdown complete — state reset to stopped"
+    sentinel_emit_event "RESUME_FROM_SHUTDOWN" "{}"
+}
+
+# Fix stale state: running changes with no live PID → stopped
+fix_stale_state() {
+    [[ ! -f "$STATE_FILE" ]] && return
+
+    # Try event-based reconstruction first if state appears inconsistent
+    reconstruct_state_from_events 2>/dev/null || true
+
+    local current_status
+    current_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
+    if [[ "$current_status" == "running" ]]; then
+        sentinel_log "Stale state detected (status=running but no process) — resetting to stopped"
+        jq '.status = "stopped"' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    elif [[ "$current_status" == "checkpoint" ]]; then
+        sentinel_log "State is checkpoint — preserving (orchestrator will resume from checkpoint)"
+    elif [[ "$current_status" == "shutdown" ]]; then
+        sentinel_log "Resuming from graceful shutdown — validating worktrees"
+        resume_from_shutdown
+    fi
+
+    # Reset any running changes to stalled (watchdog will handle them)
+    local running_changes
+    running_changes=$(jq -r '.changes[]? | select(.status == "running") | .name' "$STATE_FILE" 2>/dev/null || true)
+    if [[ -n "$running_changes" ]]; then
+        while IFS= read -r name; do
+            [[ -z "$name" ]] && continue
+            local pid
+            pid=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .ralph_pid // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+            if [[ "$pid" -gt 0 ]] && ! kill -0 "$pid" 2>/dev/null; then
+                sentinel_log "Change $name: PID $pid dead — marking stalled"
+                local tmp
+                tmp=$(mktemp)
+                jq --arg n "$name" '(.changes[] | select(.name == $n) | .status) = "stalled"' "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+            fi
+        done <<< "$running_changes"
+    fi
+}
+
+# Classify exit as transient or permanent
+# Transient: PID died, API timeout, crash → auto-retry
+# Permanent: state says done/stopped/time_limit → don't retry
+is_transient_failure() {
+    local exit_code="$1"
+    local final_status="$2"
+
+    # Non-zero exit = crash = always transient (restart regardless of state file,
+    # because the interrupt handler may have written "stopped" before the crash)
+    [[ "$exit_code" -ne 0 ]] && return 0
+
+    # Clean exits with terminal states are permanent
+    case "$final_status" in
+        done|stopped|time_limit|plan_review) return 1 ;;
+    esac
+
+    # Clean exit with non-terminal state = unexpected but transient
+    return 0
+}
+
+# Calculate backoff with jitter (0-25%)
+calculate_backoff() {
+    local base="$1"
+    local jitter_max=$((base / 4))
+    local jitter=0
+    if [[ "$jitter_max" -gt 0 ]]; then
+        jitter=$((RANDOM % jitter_max))
+    fi
+    echo $((base + jitter))
+}
+
+while true; do
+    fix_stale_state
+
+    # Launch orchestrator
+    start_epoch=$(date +%s)
+    child_pid=0
+    "$SCRIPT_DIR/set-orchestrate" start "$@" 9>&- &
+    child_pid=$!
+    sentinel_log "Started orchestrator (PID: $child_pid)"
+    sentinel_register_status "$child_pid"
+
+    # Poll loop instead of wait — allows liveness checking
+    # Sleep is split into 2x5s intervals for inbox responsiveness
+    exit_code=0
+    while kill -0 "$child_pid" 2>/dev/null; do
+        # First half of poll interval
+        sleep $((POLL_INTERVAL / 2))
+
+        # Check for user interrupt or graceful shutdown
+        if $interrupted || $shutdown_requested; then
+            break
+        fi
+
+        # Mid-interval inbox check (max 5s message latency)
+        sentinel_check_inbox
+
+        # Second half of poll interval
+        sleep $((POLL_INTERVAL - POLL_INTERVAL / 2))
+
+        # Check for user interrupt or graceful shutdown
+        if $interrupted || $shutdown_requested; then
+            break
+        fi
+
+        # Check liveness
+        if ! check_orchestrator_liveness; then
+            sentinel_log "Orchestrator appears stuck — killing and restarting"
+            sentinel_structured_log restart --new-pid 0 --attempt 0
+            kill_orchestrator "$child_pid"
+            exit_code=1
+            child_pid=0
+            break
+        fi
+
+        # Heartbeat + structured poll event
+        sentinel_heartbeat
+        _poll_state=""
+        if [[ -f "$STATE_FILE" ]]; then
+            _poll_state=$(jq -r '.status // "unknown"' "$STATE_FILE" 2>/dev/null || echo "unknown")
+        fi
+        sentinel_structured_log poll --state "${_poll_state:-starting}"
+    done
+
+    # Reap child if still set (normal exit path)
+    if [[ "$child_pid" -gt 0 ]]; then
+        wait "$child_pid" || exit_code=$?
+        child_pid=0
+    fi
+
+    end_epoch=$(date +%s)
+    runtime=$((end_epoch - start_epoch))
+
+    # Graceful shutdown: collect last_commit from worktrees, set state to "shutdown"
+    if $shutdown_requested; then
+        sentinel_log "Graceful shutdown — collecting worktree state"
+        if [[ -f "$STATE_FILE" ]]; then
+            # Wait for agents to exit (up to 60s)
+            local shutdown_wait=0
+            local agent_pids
+            agent_pids=$(jq -r '.changes[]? | select(.status == "running") | .ralph_pid // 0' "$STATE_FILE" 2>/dev/null || true)
+            while [[ $shutdown_wait -lt 60 ]]; do
+                local any_alive=false
+                while IFS= read -r apid; do
+                    [[ -z "$apid" || "$apid" == "0" ]] && continue
+                    if kill -0 "$apid" 2>/dev/null; then
+                        any_alive=true
+                        break
+                    fi
+                done <<< "$agent_pids"
+                if ! $any_alive; then
+                    break
+                fi
+                sleep 1
+                shutdown_wait=$((shutdown_wait + 1))
+            done
+
+            # Force kill any remaining agents
+            if [[ $shutdown_wait -ge 60 ]]; then
+                sentinel_log "Shutdown timeout (60s) — force killing remaining agents"
+                while IFS= read -r apid; do
+                    [[ -z "$apid" || "$apid" == "0" ]] && continue
+                    if kill -0 "$apid" 2>/dev/null; then
+                        kill -9 "$apid" 2>/dev/null || true
+                        sentinel_log "Force killed agent PID $apid"
+                    fi
+                done <<< "$agent_pids"
+                # Mark timed-out changes as stalled
+                jq '(.changes[] | select(.status == "running")) |= (.status = "stalled")' \
+                    "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+            fi
+
+            # Collect last_commit from each active worktree
+            local project_dir
+            project_dir=$(pwd)
+            local change_names
+            change_names=$(jq -r '.changes[]? | select(.worktree_path != "" and .worktree_path != null) | .name' "$STATE_FILE" 2>/dev/null || true)
+            while IFS= read -r cname; do
+                [[ -z "$cname" ]] && continue
+                local wt_path
+                wt_path=$(jq -r --arg n "$cname" '.changes[] | select(.name == $n) | .worktree_path' "$STATE_FILE" 2>/dev/null || true)
+                if [[ -n "$wt_path" && -d "$wt_path" ]]; then
+                    local head_commit
+                    head_commit=$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")
+                    if [[ -n "$head_commit" ]]; then
+                        local tmp
+                        tmp=$(mktemp)
+                        jq --arg n "$cname" --arg c "$head_commit" \
+                            '(.changes[] | select(.name == $n) | .last_commit) = $c' \
+                            "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+                        sentinel_log "Change $cname: last_commit=$head_commit"
+                    fi
+                fi
+            done <<< "$change_names"
+
+            # Set state to "shutdown" with timestamp
+            local shutdown_ts
+            shutdown_ts=$(date -Iseconds)
+            jq --arg ts "$shutdown_ts" '.status = "shutdown" | .shutdown_at = $ts' \
+                "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+            sentinel_log "State set to shutdown (at $shutdown_ts)"
+            sentinel_emit_event "GRACEFUL_SHUTDOWN" "{\"shutdown_at\":\"$shutdown_ts\"}"
+        fi
+        sentinel_log "Graceful shutdown complete"
+        exit 0
+    fi
+
+    # Don't restart if we received a signal
+    if $interrupted; then
+        sentinel_log "Interrupted — exiting"
+        exit 0
+    fi
+
+    # Check state to decide whether to restart
+    final_status=""
+    if [[ -f "$STATE_FILE" ]]; then
+        final_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
+    fi
+
+    # Clean exit + done = orchestration complete
+    if [[ $exit_code -eq 0 && "$final_status" == "done" ]]; then
+        sentinel_log "Orchestration complete (status=done)"
+        exit 0
+    fi
+
+    # Clean exit + stopped = user stopped it
+    if [[ $exit_code -eq 0 && "$final_status" == "stopped" ]]; then
+        sentinel_log "Orchestrator stopped cleanly"
+        exit 0
+    fi
+
+    # Clean exit + time_limit
+    if [[ $exit_code -eq 0 && "$final_status" == "time_limit" ]]; then
+        sentinel_log "Time limit reached — stopping (run 'set-orchestrate start' to resume)"
+        exit 0
+    fi
+
+    # Plan review — waiting for user approval
+    if [[ "$final_status" == "plan_review" ]]; then
+        sentinel_log "Plan awaiting approval — stopping (run 'set-orchestrate approve' then restart)"
+        exit 0
+    fi
+
+    # Classify failure
+    if ! is_transient_failure "$exit_code" "$final_status"; then
+        sentinel_log "Permanent exit (code=$exit_code, status=$final_status) — not restarting"
+        exit "$exit_code"
+    fi
+
+    # Track rapid crashes
+    if [[ $runtime -ge $SUSTAINED_RUN_SECS ]]; then
+        rapid_crashes=0
+        backoff_secs=$BACKOFF_BASE  # Reset backoff after sustained run
+    else
+        rapid_crashes=$((rapid_crashes + 1))
+    fi
+
+    if [[ $rapid_crashes -ge $MAX_RAPID_CRASHES ]]; then
+        sentinel_log "ERROR: $MAX_RAPID_CRASHES rapid crashes — giving up"
+        sentinel_emit_event "SENTINEL_FAILED" "{\"rapid_crashes\":$rapid_crashes}"
+        sentinel_structured_log escalation --reason "$MAX_RAPID_CRASHES rapid crashes — giving up" --context "rapid_crashes=$rapid_crashes"
+        exit 1
+    fi
+
+    # Emit restart event (both legacy and structured)
+    sentinel_emit_event "SENTINEL_RESTART" "{\"exit_code\":$exit_code,\"runtime\":$runtime,\"rapid_crashes\":$rapid_crashes,\"backoff\":$backoff_secs}"
+    sentinel_structured_log crash --pid "${child_pid:-0}" --exit-code "$exit_code" --stderr "runtime=${runtime}s, rapid_crashes=$rapid_crashes"
+
+    actual_backoff=$(calculate_backoff "$backoff_secs")
+    sentinel_log "Orchestrator exited (code=$exit_code, runtime=${runtime}s, rapid_crashes=$rapid_crashes/$MAX_RAPID_CRASHES)"
+    sentinel_log "Restarting in ${actual_backoff}s..."
+    sleep "$actual_backoff"
+
+    # Exponential backoff for next crash (capped)
+    backoff_secs=$((backoff_secs * 2))
+    [[ $backoff_secs -gt $BACKOFF_MAX ]] && backoff_secs=$BACKOFF_MAX
+
+    # Check inbox during backoff wait
+    sentinel_check_inbox
+done

@@ -1,6 +1,6 @@
 ## Why
 
-The current editor detection and window focus system is IDE-centric (Zed/VSCode/Cursor/Windsurf only) and uses fragile window-title matching that breaks when editors change their title (e.g., "main.py — wt-tools" doesn't match `^wt-tools$`). Additionally, the `wt-work` auto-launch uses ~160 lines of brittle keystroke injection (xdotool key, sleep/retry loops) that often fails. Users who run Claude Code in standalone terminals (kitty, alacritty, gnome-terminal, iTerm2) have no support at all. The `--dangerously-skip-permissions` flag is hardcoded everywhere with no user choice.
+The current editor detection and window focus system is IDE-centric (Zed/VSCode/Cursor/Windsurf only) and uses fragile window-title matching that breaks when editors change their title (e.g., "main.py — set-core" doesn't match `^set-core$`). Additionally, the `wt-work` auto-launch uses ~160 lines of brittle keystroke injection (xdotool key, sleep/retry loops) that often fails. Users who run Claude Code in standalone terminals (kitty, alacritty, gnome-terminal, iTerm2) have no support at all. The `--dangerously-skip-permissions` flag is hardcoded everywhere with no user choice.
 
 ## What Changes
 

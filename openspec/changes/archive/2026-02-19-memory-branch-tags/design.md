@@ -1,6 +1,6 @@
 ## Context
 
-Memories are stored per-project in a flat shodh-memory pool at `~/.local/share/wt-tools/memory/<project>/`. The `resolve_project()` function already normalizes worktree paths to the main repo name, so all worktrees share one pool. Tags are stored as string arrays on each memory record and flow through export/import/sync unchanged.
+Memories are stored per-project in a flat shodh-memory pool at `~/.local/share/set-core/memory/<project>/`. The `resolve_project()` function already normalizes worktree paths to the main repo name, so all worktrees share one pool. Tags are stored as string arrays on each memory record and flow through export/import/sync unchanged.
 
 The `cmd_remember` function reads `--tags` as comma-separated values and converts them to a JSON array via `jq`. The `cmd_recall` function passes tags to shodh-memory's `m.recall()` which supports tag-based filtering.
 
@@ -57,12 +57,12 @@ There is no migration system — the only versioning is `version: 1` in the expo
 
 ### Decision 5: File-based migration framework
 
-**Choice**: Store migrations as numbered functions (`migrate_001_branch_tags`) in `wt-memory` itself. Track applied migrations in a `.migrations` JSON file in the storage directory. Run pending migrations automatically on first command that accesses storage.
+**Choice**: Store migrations as numbered functions (`migrate_001_branch_tags`) in `set-memory` itself. Track applied migrations in a `.migrations` JSON file in the storage directory. Run pending migrations automatically on first command that accesses storage.
 
 **Alternative A**: External migration scripts in `bin/`.
-**Alternative B**: Migration as a separate tool (`wt-memory-migrate`).
+**Alternative B**: Migration as a separate tool (`set-memory-migrate`).
 
-**Rationale**: Keeping migrations inside `wt-memory` ensures they run automatically — no manual step needed after upgrade. The `.migrations` file is simple and local. Functions are easy to add for future migrations.
+**Rationale**: Keeping migrations inside `set-memory` ensures they run automatically — no manual step needed after upgrade. The `.migrations` file is simple and local. Functions are easy to add for future migrations.
 
 ### Decision 6: First migration tags existing memories with `branch:unknown`
 
@@ -98,8 +98,8 @@ There is no migration system — the only versioning is `version: 1` in the expo
 
 ## Migration Plan
 
-1. Add migration framework and migration 001 to `wt-memory`
-2. On first `wt-memory` command after upgrade, migrations run automatically
-3. `wt-memory migrate` subcommand also available for manual/forced runs
-4. `wt-memory migrate --status` shows applied migrations
-5. Rollback: migrations are additive (adding tags), no destructive changes. "Rollback" = remove `branch:unknown` tags via `wt-memory forget --tags branch:unknown` if needed.
+1. Add migration framework and migration 001 to `set-memory`
+2. On first `set-memory` command after upgrade, migrations run automatically
+3. `set-memory migrate` subcommand also available for manual/forced runs
+4. `set-memory migrate --status` shows applied migrations
+5. Rollback: migrations are additive (adding tags), no destructive changes. "Rollback" = remove `branch:unknown` tags via `set-memory forget --tags branch:unknown` if needed.

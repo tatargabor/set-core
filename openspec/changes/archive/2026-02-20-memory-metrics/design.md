@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools memory system injects context into Claude Code sessions via 5 hook layers in `wt-hook-memory`. Each injection consumes tokens but we have zero visibility into whether this context is useful. The system already computes relevance scores, filters results, and maintains a dedup cache — but none of this is recorded.
+The set-core memory system injects context into Claude Code sessions via 5 hook layers in `wt-hook-memory`. Each injection consumes tokens but we have zero visibility into whether this context is useful. The system already computes relevance scores, filters results, and maintains a dedup cache — but none of this is recorded.
 
 Shodh-memory tracks per-memory `access_count` and `total_retrievals` (currently 4338), but has no query-level analytics, session-level metrics, or injection quality tracking. We need to build the operational telemetry layer ourselves.
 
@@ -24,7 +24,7 @@ Shodh-memory tracks per-memory `access_count` and `total_retrievals` (currently 
 
 ### 1. Collection: Session cache extension (not new file)
 
-**Choice**: Extend the existing `/tmp/wt-memory-session-{ID}.json` with a `_metrics` section.
+**Choice**: Extend the existing `/tmp/set-memory-session-{ID}.json` with a `_metrics` section.
 
 **Alternatives considered:**
 - Dedicated JSONL log file — rejected: no indexing, hard to query, grows unbounded
@@ -35,7 +35,7 @@ Shodh-memory tracks per-memory `access_count` and `total_retrievals` (currently 
 
 ### 2. Persistence: SQLite in Stop hook (async)
 
-**Choice**: Flush session metrics to SQLite (`~/.local/share/wt-tools/metrics/metrics.db`) during the Stop hook.
+**Choice**: Flush session metrics to SQLite (`~/.local/share/set-core/metrics/metrics.db`) during the Stop hook.
 
 **Rationale**: Stop hook already does async transcript extraction. SQLite write happens once per session (not per injection), so Python startup cost is amortized. SQLite gives us `GROUP BY`, `WHERE date >`, aggregation — exactly what the TUI and dashboard need.
 
@@ -93,19 +93,19 @@ CREATE INDEX idx_sessions_project ON sessions(project);
 
 ### 4. Enable/disable: Flag file
 
-**Choice**: `~/.local/share/wt-tools/metrics/.enabled` file presence toggles collection.
+**Choice**: `~/.local/share/set-core/metrics/.enabled` file presence toggles collection.
 
-**Rationale**: File existence check is ~0.1ms. When disabled, hooks skip all metrics code (zero overhead). Toggled via `wt-memory metrics --enable|--disable`.
+**Rationale**: File existence check is ~0.1ms. When disabled, hooks skip all metrics code (zero overhead). Toggled via `set-memory metrics --enable|--disable`.
 
 ### 5. TUI report: Rich-text CLI output
 
-**Choice**: `wt-memory metrics [--since 7d] [--json]` reads SQLite and prints formatted report.
+**Choice**: `set-memory metrics [--since 7d] [--json]` reads SQLite and prints formatted report.
 
 **Sections**: Session count, injection count, token total, per-layer breakdown, relevance distribution histogram, citation rate, dedup hit rate, top cited memories, empty injection rate.
 
 ### 6. HTML dashboard: Self-contained single file
 
-**Choice**: `wt-memory dashboard [--port 0] [--since 30d]` generates a single HTML file with embedded Chart.js and opens it in browser.
+**Choice**: `set-memory dashboard [--port 0] [--since 30d]` generates a single HTML file with embedded Chart.js and opens it in browser.
 
 **Rationale**: No web server dependency, no npm, no build step. Single file with inline JS/CSS. Charts: relevance trend over time, token burn per day, layer breakdown pie, citation rate sparkline, session drill-down table.
 
@@ -117,7 +117,7 @@ CREATE INDEX idx_sessions_project ON sessions(project);
 - **[Risk] SQLite write fails in Stop hook** → Mitigation: Silent failure (log to stderr), metrics are best-effort not critical
 - **[Risk] Citation patterns miss non-English citations** → Mitigation: Start with EN+HU patterns, extensible list
 - **[Risk] Token estimation is inaccurate** → Mitigation: Use `len(text) / 4` heuristic (industry standard for English), good enough for relative comparison
-- **[Risk] Dashboard HTML file becomes stale** → Mitigation: Regenerated on each `wt-memory dashboard` invocation, not cached
+- **[Risk] Dashboard HTML file becomes stale** → Mitigation: Regenerated on each `set-memory dashboard` invocation, not cached
 
 ## Open Questions
 

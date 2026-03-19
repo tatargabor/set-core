@@ -127,7 +127,7 @@ Ha az összes token (beleértve a korábbi replan ciklusokat is) eléri a hard l
 - Jóváhagyás után a limit feljebb tolódik
 
 ```bash
-wt-orchestrate approve   # jóváhagyás, folytatás
+set-orchestrate approve   # jóváhagyás, folytatás
 ```
 
 ## Időlimit
@@ -135,8 +135,8 @@ wt-orchestrate approve   # jóváhagyás, folytatás
 A `time_limit` direktíva (alapértelmezés: 5 óra) az **aktív** futási időt korlátozza:
 
 ```bash
-wt-orchestrate --time-limit 4h start     # 4 óra limit
-wt-orchestrate --time-limit none start   # nincs limit
+set-orchestrate --time-limit 4h start     # 4 óra limit
+set-orchestrate --time-limit none start   # nincs limit
 ```
 
 Amikor a limit lejár:
@@ -147,7 +147,7 @@ Amikor a limit lejár:
 4. HTML riport generálás
 5. A futás megáll, de a worktree-k megmaradnak
 
-A futás folytatható: `wt-orchestrate start` — a timer ott folytatódik, ahol abbahagyta.
+A futás folytatható: `set-orchestrate start` — a timer ott folytatódik, ahol abbahagyta.
 
 ## Memória és auditálás
 

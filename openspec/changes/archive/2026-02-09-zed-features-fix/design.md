@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools Control Center manages multiple git worktrees with Claude Code agents. The `wt-status` script polls every ~2 seconds, detecting claude processes via `ps -e` and matching their CWD to worktree paths. Status is determined from session file mtime (< 10s = running, else waiting). The GUI renders this data in a table with PID, status, and skill columns.
+The set-core Control Center manages multiple git worktrees with Claude Code agents. The `wt-status` script polls every ~2 seconds, detecting claude processes via `ps -e` and matching their CWD to worktree paths. Status is determined from session file mtime (< 10s = running, else waiting). The GUI renders this data in a table with PID, status, and skill columns.
 
 The core problem: when Zed editor is closed, the Claude terminal processes spawned inside it survive as detached processes. `wt-status` sees them as alive (`kill -0` succeeds) and reports "waiting" status. The GUI shows these as permanent yellow rows. There is no link between "editor is open" and "agents should exist."
 

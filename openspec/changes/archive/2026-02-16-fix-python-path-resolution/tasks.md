@@ -4,9 +4,9 @@
 - [x] 1.2 Add `find_shodh_python()` function to `bin/wt-common.sh` — reads `$CONFIG_DIR/shodh-python` first (validates import), then probes PATH and well-known paths, saves result to config on success
 - [x] 1.3 Add `save_shodh_python()` helper that writes the resolved path to `$CONFIG_DIR/shodh-python`
 
-## 2. Update wt-memory to use resolved Python
+## 2. Update set-memory to use resolved Python
 
-- [x] 2.1 Source `wt-common.sh` at the top of `bin/wt-memory` (resolve script dir via readlink, source relative `wt-common.sh`)
+- [x] 2.1 Source `wt-common.sh` at the top of `bin/set-memory` (resolve script dir via readlink, source relative `wt-common.sh`)
 - [x] 2.2 Replace all bare `python3` calls in `run_shodh_python()` with the resolved `$SHODH_PYTHON` variable
 - [x] 2.3 Update `cmd_health()` to use `find_shodh_python()` — return 1 if no suitable python found
 - [x] 2.4 Initialize `SHODH_PYTHON` once at script startup using `find_shodh_python()`, cache in global variable
@@ -24,6 +24,6 @@
 
 ## 5. Verification
 
-- [x] 5.1 Test: `wt-memory health` succeeds when shodh-memory is in miniconda but PlatformIO python3 is first in PATH
-- [x] 5.2 Test: config file `~/.config/wt-tools/shodh-python` is created after first successful probe
+- [x] 5.1 Test: `set-memory health` succeeds when shodh-memory is in miniconda but PlatformIO python3 is first in PATH
+- [x] 5.2 Test: config file `~/.config/set-core/shodh-python` is created after first successful probe
 - [x] 5.3 Test: stale config (pointing to removed python) falls through to re-probe

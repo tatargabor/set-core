@@ -1,4 +1,4 @@
-"""Tests for wt-memory sync (git-based memory sharing).
+"""Tests for set-memory sync (git-based memory sharing).
 
 Uses isolated git repos with local bare remotes and isolated SHODH_STORAGE
 per test to avoid polluting real memory or real git repos.
@@ -12,8 +12,8 @@ import tempfile
 
 import pytest
 
-# Path to the wt-memory script (relative to project root)
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "wt-memory")
+# Path to the set-memory script (relative to project root)
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "set-memory")
 
 # Check if shodh-memory is available
 try:
@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(not HAS_SHODH, reason="shodh-memory not installe
 
 
 def run_wt(storage_path, cwd, *args, stdin=None):
-    """Run wt-memory with isolated storage in a specific working directory."""
+    """Run set-memory with isolated storage in a specific working directory."""
     env = os.environ.copy()
     env["SHODH_STORAGE"] = storage_path
     result = subprocess.run(
@@ -161,7 +161,7 @@ class TestSyncIdentity:
 
 class TestSyncPush:
     def test_first_push_creates_orphan_branch(self, git_env):
-        """First push creates the wt-memory orphan branch on remote."""
+        """First push creates the set-memory orphan branch on remote."""
         remember(git_env["storage_a"], git_env["repo_a"], "test memory", "Decision")
 
         out, _, rc = run_wt(git_env["storage_a"], git_env["repo_a"], "sync", "push")
@@ -170,7 +170,7 @@ class TestSyncPush:
 
         # Verify branch exists on remote
         branches, _ = git(git_env["remote"], "branch")
-        assert "wt-memory" in branches
+        assert "set-memory" in branches
 
     def test_push_creates_user_machine_path(self, git_env):
         """Push stores file under <user>/<machine>/memories.json."""
@@ -178,8 +178,8 @@ class TestSyncPush:
 
         run_wt(git_env["storage_a"], git_env["repo_a"], "sync", "push")
 
-        # List files on the wt-memory branch
-        files, _ = git(git_env["remote"], "ls-tree", "-r", "--name-only", "wt-memory")
+        # List files on the set-memory branch
+        files, _ = git(git_env["remote"], "ls-tree", "-r", "--name-only", "set-memory")
         assert "memories.json" in files
         assert "alice/" in files
 

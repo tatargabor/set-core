@@ -3,10 +3,10 @@
 The memory system has a single hard save point: the Stop hook at session end. All mid-session hooks (UserPromptSubmit, PostToolUse) only perform recall. If a session crashes, times out, or the user closes the terminal, all knowledge from that session is lost. Diagnosis shows active projects have suspiciously low memory counts (eg-sales: 11, itline-web: 13) despite heavy commit activity, confirming the Stop hook frequently doesn't run.
 
 The existing infrastructure already supports what we need:
-- Session dedup cache (`/tmp/wt-memory-session-*.json`) persists across hook events within a session and already stores frustration_history and _metrics
+- Session dedup cache (`/tmp/set-memory-session-*.json`) persists across hook events within a session and already stores frustration_history and _metrics
 - `handle_user_prompt()` (line 521) fires on every user prompt — natural place for turn counting
 - `handle_post_tool()` (line 683) fires after tool use but currently only handles Read/Bash for recall
-- `wt-memory remember` CLI is the standard save interface
+- `set-memory remember` CLI is the standard save interface
 - The Stop hook's `_stop_raw_filter()` provides a template for transcript-based extraction
 
 ## Goals / Non-Goals
@@ -47,7 +47,7 @@ The existing infrastructure already supports what we need:
 
 ## Risks / Trade-offs
 
-- **[Risk: Checkpoint timeout]** UserPromptSubmit has 15s timeout. Checkpoint save adds ~200ms (cache read + wt-memory remember). Safe within budget. → If future checkpoints become heavier, add timeout guard.
+- **[Risk: Checkpoint timeout]** UserPromptSubmit has 15s timeout. Checkpoint save adds ~200ms (cache read + set-memory remember). Safe within budget. → If future checkpoints become heavier, add timeout guard.
 - **[Risk: Write-save noise]** Frequent file edits (e.g., iterating on a single file) could create many similar memories. → Dedup by file path: only save first modification per file per session (use existing dedup mechanism with key `"WriteSave:$TOOL:$FILE_PATH"`).
 - **[Risk: Cache file growth]** Adding checkpoint entries increases cache file size. → Keep checkpoint_entries as a simple array of strings, pruned on each checkpoint (only keep entries since last checkpoint, not all history).
-- **[Risk: PostToolUse timeout]** PostToolUse hooks have no explicit timeout issue — write-save is a simple wt-memory remember call (<100ms). Low risk.
+- **[Risk: PostToolUse timeout]** PostToolUse hooks have no explicit timeout issue — write-save is a simple set-memory remember call (<100ms). Low risk.

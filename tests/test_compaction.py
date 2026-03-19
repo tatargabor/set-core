@@ -15,7 +15,7 @@ import pytest
 
 @pytest.fixture
 def git_control_env(tmp_path):
-    """Create a git repo simulating wt-control branch"""
+    """Create a git repo simulating set-control branch"""
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": "Test",
@@ -32,9 +32,9 @@ def git_control_env(tmp_path):
     local = tmp_path / "local"
     subprocess.run(["git", "clone", str(remote), str(local)], capture_output=True, check=True)
 
-    # Create wt-control branch with orphan commit
+    # Create set-control branch with orphan commit
     subprocess.run(
-        ["git", "-C", str(local), "checkout", "--orphan", "wt-control"],
+        ["git", "-C", str(local), "checkout", "--orphan", "set-control"],
         capture_output=True, check=True,
     )
 
@@ -48,7 +48,7 @@ def git_control_env(tmp_path):
         capture_output=True, check=True, env=env,
     )
     subprocess.run(
-        ["git", "-C", str(local), "push", "-u", "origin", "wt-control"],
+        ["git", "-C", str(local), "push", "-u", "origin", "set-control"],
         capture_output=True, check=True,
     )
 
@@ -97,7 +97,7 @@ class TestCompaction:
 
         # Push before compact
         subprocess.run(
-            ["git", "-C", str(local), "push", "origin", "wt-control"],
+            ["git", "-C", str(local), "push", "origin", "set-control"],
             capture_output=True, check=True,
         )
 
@@ -142,7 +142,7 @@ class TestCompaction:
                 capture_output=True, check=True, env=env,
             )
         subprocess.run(
-            ["git", "-C", str(local), "push", "origin", "wt-control"],
+            ["git", "-C", str(local), "push", "origin", "set-control"],
             capture_output=True, check=True,
         )
 
@@ -160,7 +160,7 @@ class TestCompaction:
 
         # Force push
         result = subprocess.run(
-            ["git", "-C", str(local), "push", "--force-with-lease", "origin", "wt-control"],
+            ["git", "-C", str(local), "push", "--force-with-lease", "origin", "set-control"],
             capture_output=True, text=True,
         )
         assert result.returncode == 0
@@ -227,7 +227,7 @@ class TestConcurrentCompaction:
         local2 = tmp_path / "local2"
         subprocess.run(["git", "clone", str(remote), str(local2)], capture_output=True, check=True)
         subprocess.run(
-            ["git", "-C", str(local2), "checkout", "wt-control"],
+            ["git", "-C", str(local2), "checkout", "set-control"],
             capture_output=True, check=True,
         )
 
@@ -239,10 +239,10 @@ class TestConcurrentCompaction:
                 ["git", "-C", str(local1), "commit", "-m", f"A update {i}"],
                 capture_output=True, check=True, env=env,
             )
-        subprocess.run(["git", "-C", str(local1), "push", "origin", "wt-control"], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(local1), "push", "origin", "set-control"], capture_output=True, check=True)
 
         # Pull on machine B
-        subprocess.run(["git", "-C", str(local2), "pull", "origin", "wt-control"], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(local2), "pull", "origin", "set-control"], capture_output=True, check=True)
 
         # Machine A compacts and force pushes
         root_a = subprocess.run(
@@ -255,7 +255,7 @@ class TestConcurrentCompaction:
             capture_output=True, check=True, env=env,
         )
         result_a = subprocess.run(
-            ["git", "-C", str(local1), "push", "--force-with-lease", "origin", "wt-control"],
+            ["git", "-C", str(local1), "push", "--force-with-lease", "origin", "set-control"],
             capture_output=True, text=True,
         )
         assert result_a.returncode == 0
@@ -271,7 +271,7 @@ class TestConcurrentCompaction:
             capture_output=True, check=True, env=env,
         )
         result_b = subprocess.run(
-            ["git", "-C", str(local2), "push", "--force-with-lease", "origin", "wt-control"],
+            ["git", "-C", str(local2), "push", "--force-with-lease", "origin", "set-control"],
             capture_output=True, text=True,
         )
         # Should fail because remote was force-pushed by A
@@ -279,11 +279,11 @@ class TestConcurrentCompaction:
 
         # Machine B recovers: fetch + reset --hard
         subprocess.run(
-            ["git", "-C", str(local2), "fetch", "origin", "wt-control"],
+            ["git", "-C", str(local2), "fetch", "origin", "set-control"],
             capture_output=True, check=True,
         )
         subprocess.run(
-            ["git", "-C", str(local2), "reset", "--hard", "origin/wt-control"],
+            ["git", "-C", str(local2), "reset", "--hard", "origin/set-control"],
             capture_output=True, check=True,
         )
 

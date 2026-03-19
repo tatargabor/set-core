@@ -1,7 +1,7 @@
 ## 1. State Management
 
-- [x] 1.1 Add `cmd_skip` function in `bin/wt-orchestrate` — parse `<name>` and optional `--reason` flag, validate change exists, validate status is skippable, update status to "skipped" with `skipped_at` timestamp and optional `skip_reason`
-- [x] 1.2 Register `skip` subcommand in the case dispatch block in `bin/wt-orchestrate` (around line 605)
+- [x] 1.1 Add `cmd_skip` function in `bin/set-orchestrate` — parse `<name>` and optional `--reason` flag, validate change exists, validate status is skippable, update status to "skipped" with `skipped_at` timestamp and optional `skip_reason`
+- [x] 1.2 Register `skip` subcommand in the case dispatch block in `bin/set-orchestrate` (around line 605)
 - [x] 1.3 Modify `deps_satisfied()` in `lib/orchestration/state.sh` — accept "skipped" alongside "merged" (change `!= "merged"` to `!= "merged" && != "skipped"`)
 - [x] 1.4 Verify `deps_failed()` in `lib/orchestration/state.sh` does NOT treat "skipped" as failed (no change needed, just verify)
 

@@ -1,18 +1,18 @@
 ## 1. Directive and State Infrastructure
 
-- [x] 1.1 Add `checkpoint_timeout: int = 0` field to `Directives` dataclass in `lib/wt_orch/engine.py`
+- [x] 1.1 Add `checkpoint_timeout: int = 0` field to `Directives` dataclass in `lib/set_orch/engine.py`
 - [x] 1.2 Add `checkpoint_timeout` parsing in `parse_directives()` using `_int(raw, "checkpoint_timeout", d.checkpoint_timeout)`
-- [x] 1.3 Add `--checkpoint-timeout` CLI argument to the monitor subparser in `lib/wt_orch/cli.py` and forward it to `Directives`
+- [x] 1.3 Add `--checkpoint-timeout` CLI argument to the monitor subparser in `lib/set_orch/cli.py` and forward it to `Directives`
 
 ## 2. Checkpoint Trigger Hardening
 
-- [x] 2.1 Modify `trigger_checkpoint()` in `lib/wt_orch/engine.py` to reset `changes_since_checkpoint` to `0` after setting checkpoint status
+- [x] 2.1 Modify `trigger_checkpoint()` in `lib/set_orch/engine.py` to reset `changes_since_checkpoint` to `0` after setting checkpoint status
 - [x] 2.2 Modify `trigger_checkpoint()` to store `checkpoint_started_at` (epoch seconds) in state extras for timeout tracking
 - [x] 2.3 Modify `trigger_checkpoint()` to append a checkpoint record to `state.checkpoints` with `reason`, `triggered_at`, `changes_completed`, and `approved: false`
 
 ## 3. Monitor Loop Approval Integration
 
-- [x] 3.1 Add `_checkpoint_approved(state)` helper function in `lib/wt_orch/engine.py` that checks `state.checkpoints[-1].get("approved", False)` (handling both dataclass field and extras fallback)
+- [x] 3.1 Add `_checkpoint_approved(state)` helper function in `lib/set_orch/engine.py` that checks `state.checkpoints[-1].get("approved", False)` (handling both dataclass field and extras fallback)
 - [x] 3.2 Update the checkpoint block in `monitor_loop()` to check `_checkpoint_approved(state)` when `checkpoint_auto_approve` is `false`, resuming to "running" if approved
 
 ## 4. Checkpoint Timeout

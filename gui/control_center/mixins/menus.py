@@ -25,7 +25,7 @@ from ...utils import get_main_repo_path
 
 __all__ = ["MenusMixin"]
 
-logger = logging.getLogger("wt-control.menus")
+logger = logging.getLogger("set-control.menus")
 
 
 class MenusMixin:
@@ -235,15 +235,15 @@ class MenusMixin:
         team_settings_action = project_menu.addAction("Team Settings...")
         team_settings_action.triggered.connect(lambda: self.open_team_settings(project))
 
-        # Check if wt-control is already initialized
+        # Check if set-control is already initialized
         main_repo = get_main_repo_path(wt_path)
-        wt_control_initialized = main_repo and Path(main_repo, ".wt-control").exists()
+        wt_control_initialized = main_repo and Path(main_repo, ".set-control").exists()
 
         if wt_control_initialized:
-            init_control_action = project_menu.addAction("wt-control (initialized)")
+            init_control_action = project_menu.addAction("set-control (initialized)")
             init_control_action.setEnabled(False)
         else:
-            init_control_action = project_menu.addAction("Initialize wt-control...")
+            init_control_action = project_menu.addAction("Initialize set-control...")
             init_control_action.triggered.connect(lambda: self.init_wt_control_for_project(project))
 
         # Ralph Loop submenu
@@ -360,17 +360,17 @@ class MenusMixin:
             team_settings_action = menu.addAction("Team Settings...")
             team_settings_action.triggered.connect(lambda: self.open_team_settings(project))
 
-        # wt-control init
+        # set-control init
         first_wt = self._get_first_worktree_for_project(project)
         if first_wt:
             wt_path = first_wt.get("path", "")
             main_repo = get_main_repo_path(wt_path)
-            wt_control_initialized = main_repo and Path(main_repo, ".wt-control").exists()
+            wt_control_initialized = main_repo and Path(main_repo, ".set-control").exists()
             if wt_control_initialized:
-                init_action = menu.addAction("wt-control (initialized)")
+                init_action = menu.addAction("set-control (initialized)")
                 init_action.setEnabled(False)
             else:
-                init_action = menu.addAction("Initialize wt-control...")
+                init_action = menu.addAction("Initialize set-control...")
                 init_action.triggered.connect(lambda: self.init_wt_control_for_project(project))
 
         if use_global_pos:
@@ -495,7 +495,7 @@ class MenusMixin:
 
     def show_worktree_config(self, wt_path: str):
         """Show worktree config dialog"""
-        config_dir = Path(wt_path) / ".wt-tools"
+        config_dir = Path(wt_path) / ".set-core"
 
         self.hide()
         dialog = WorktreeConfigDialog(self, wt_path, config_dir)
@@ -602,7 +602,7 @@ class MenusMixin:
 
             # Build command
             cmd = [
-                str(SCRIPT_DIR / "wt-loop"),
+                str(SCRIPT_DIR / "set-loop"),
                 "start",
                 task,
                 "--max", str(max_iter_spin.value()),

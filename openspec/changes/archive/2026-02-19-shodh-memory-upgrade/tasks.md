@@ -6,19 +6,19 @@
 
 ## 2. API Parity — New CLI Subcommands
 
-- [x] 2.1 Add `cmd_verify` to `bin/wt-memory` — calls `verify_index()`, prints JSON result
+- [x] 2.1 Add `cmd_verify` to `bin/set-memory` — calls `verify_index()`, prints JSON result
 - [x] 2.2 Add `--since`/`--until` flags to `cmd_recall` — calls `recall_by_date(start, end)` when date flags present
 - [x] 2.3 Add `--since`/`--until` flags to `cmd_forget` — calls `forget_by_date(start, end)` with `--confirm` required
-- [x] 2.4 Add `cmd_consolidation` to `bin/wt-memory` — calls `consolidation_report()` or `consolidation_events()` with `--events` flag
-- [x] 2.5 Add `cmd_graph_stats` to `bin/wt-memory` — calls `graph_stats()`
-- [x] 2.6 Add `cmd_flush` to `bin/wt-memory` — calls `flush()`
+- [x] 2.4 Add `cmd_consolidation` to `bin/set-memory` — calls `consolidation_report()` or `consolidation_events()` with `--events` flag
+- [x] 2.5 Add `cmd_graph_stats` to `bin/set-memory` — calls `graph_stats()`
+- [x] 2.6 Add `cmd_flush` to `bin/set-memory` — calls `flush()`
 - [x] 2.7 Update main dispatch case statement to route `verify`, `consolidation`, `graph-stats`, `flush`
 - [x] 2.8 Update `usage()` text with new commands in appropriate sections
 - [x] 2.9 Enhance `cmd_health --index` to include `verify_index()` result when available (hasattr guard)
 
 ## 3. Todo System — CLI
 
-- [x] 3.1 Add `cmd_todo` to `bin/wt-memory` with subcommand routing (add/list/done/clear)
+- [x] 3.1 Add `cmd_todo` to `bin/set-memory` with subcommand routing (add/list/done/clear)
 - [x] 3.2 Implement `todo add` — read stdin, remember with tags `todo,backlog` + metadata `{todo_status: "open"}`, auto-detect active change
 - [x] 3.3 Implement `todo list` — recall_by_tags `todo`, filter by metadata `todo_status=open`, format as readable list with ID prefix
 - [x] 3.4 Implement `todo list --json` — full JSON output
@@ -34,13 +34,13 @@
 
 ## 5. MCP Server — New Tools
 
-- [x] 5.1 Add `add_todo(content, tags)` tool to `wt-memory-mcp-server.py`
-- [x] 5.2 Add `list_todos()` tool to `wt-memory-mcp-server.py`
-- [x] 5.3 Add `complete_todo(id)` tool to `wt-memory-mcp-server.py`
-- [x] 5.4 Add `verify_index()` tool to `wt-memory-mcp-server.py`
-- [x] 5.5 Add `consolidation_report(since)` tool to `wt-memory-mcp-server.py`
-- [x] 5.6 Add `graph_stats()` tool to `wt-memory-mcp-server.py`
-- [x] 5.7 Add `recall_by_date(since, until)` tool to `wt-memory-mcp-server.py`
+- [x] 5.1 Add `add_todo(content, tags)` tool to `set-memory-mcp-server.py`
+- [x] 5.2 Add `list_todos()` tool to `set-memory-mcp-server.py`
+- [x] 5.3 Add `complete_todo(id)` tool to `set-memory-mcp-server.py`
+- [x] 5.4 Add `verify_index()` tool to `set-memory-mcp-server.py`
+- [x] 5.5 Add `consolidation_report(since)` tool to `set-memory-mcp-server.py`
+- [x] 5.6 Add `graph_stats()` tool to `set-memory-mcp-server.py`
+- [x] 5.7 Add `recall_by_date(since, until)` tool to `set-memory-mcp-server.py`
 
 ## 6. Verification
 

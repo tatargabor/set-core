@@ -64,16 +64,16 @@ The module SHALL provide query functions that replace complex jq filters: `query
 - **THEN** it returns a TokenStats with total=3500
 
 ### Requirement: CLI bridge for state operations
-The `wt-orch-core state` subcommand SHALL expose state operations to bash scripts.
+The `set-orch-core state` subcommand SHALL expose state operations to bash scripts.
 
 #### Scenario: init subcommand
-- **WHEN** bash calls `wt-orch-core state init --plan-file plan.json --output state.json`
+- **WHEN** bash calls `set-orch-core state init --plan-file plan.json --output state.json`
 - **THEN** the state file is created with the transformed schema and exit code is 0
 
 #### Scenario: query subcommand
-- **WHEN** bash calls `wt-orch-core state query --file state.json --status running`
+- **WHEN** bash calls `set-orch-core state query --file state.json --status running`
 - **THEN** stdout contains a JSON array of matching change objects
 
 #### Scenario: get subcommand for single change
-- **WHEN** bash calls `wt-orch-core state get --file state.json --change "my-change" --field status`
+- **WHEN** bash calls `set-orch-core state get --file state.json --change "my-change" --field status`
 - **THEN** stdout contains the field value as a raw string

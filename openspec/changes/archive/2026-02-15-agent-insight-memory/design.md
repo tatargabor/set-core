@@ -1,6 +1,6 @@
 ## Context
 
-A `wt-memory` CLI wrapper jelenleg a shodh-memory alapvető API-ját használja: `remember()`, `recall()`, `list_memories()`, `get_stats()`. A shodh-memory v0.1.75 ennél sokkal többet tud — proactive context retrieval, recall modes, tag-based filtering, forget operations — de ezek nincsenek exponálva a CLI-ben.
+A `set-memory` CLI wrapper jelenleg a shodh-memory alapvető API-ját használja: `remember()`, `recall()`, `list_memories()`, `get_stats()`. A shodh-memory v0.1.75 ennél sokkal többet tud — proactive context retrieval, recall modes, tag-based filtering, forget operations — de ezek nincsenek exponálva a CLI-ben.
 
 Az OpenSpec SKILL.md fájlok memory hookjai:
 - **Recall**: egyszerű keyword-alapú `recall "change-name keywords"` — nem használja a tag filterezést vagy recall mode-okat
@@ -10,7 +10,7 @@ Az OpenSpec SKILL.md fájlok memory hookjai:
 ## Goals / Non-Goals
 
 **Goals:**
-- `wt-memory` CLI bővítése az összes hasznos shodh-memory v0.1.75 képességgel
+- `set-memory` CLI bővítése az összes hasznos shodh-memory v0.1.75 képességgel
 - Agent self-reflection step minden releváns OpenSpec skill végéhez
 - Enhanced recall (tag filter, mode) használata a SKILL.md hookokban
 - Egységes tagging strategy (`source:agent`/`source:user`, `change:<name>`, `phase:<skill>`)
@@ -21,7 +21,7 @@ Az OpenSpec SKILL.md fájlok memory hookjai:
 - GUI integráció az új CLI képességekhez (külön change)
 - shodh-memory HTTP/Client API használata (maradunk a native Rust/PyO3-nál)
 - Meglévő memóriák migrációja vagy retag-elése
-- A `wt-memory-hooks` automatikus install tool módosítása (a hook template-ek változnak, az install mechanizmus nem)
+- A `set-memory-hooks` automatikus install tool módosítása (a hook template-ek változnak, az install mechanizmus nem)
 
 ## Decisions
 
@@ -30,18 +30,18 @@ Az OpenSpec SKILL.md fájlok memory hookjai:
 A `shodh-upgrade-briefing.md` pontos CLI interfészt definiál. Ezt követjük:
 
 ```
-wt-memory forget <id>                     # single delete
-wt-memory forget --all --confirm          # delete all (confirmation required)
-wt-memory forget --older-than <days>      # age-based
-wt-memory forget --tags <t1,t2>           # tag-based
-wt-memory forget --pattern <regex>        # pattern-based
-wt-memory recall "query" --tags t1,t2 --mode hybrid  # enhanced recall
-wt-memory list --type Decision --limit 20             # filtered list
-wt-memory context [topic]                 # context_summary
-wt-memory brain                           # brain_state
-wt-memory get <id>                        # single memory by ID
-wt-memory health --index                  # index health
-wt-memory repair                          # repair index
+set-memory forget <id>                     # single delete
+set-memory forget --all --confirm          # delete all (confirmation required)
+set-memory forget --older-than <days>      # age-based
+set-memory forget --tags <t1,t2>           # tag-based
+set-memory forget --pattern <regex>        # pattern-based
+set-memory recall "query" --tags t1,t2 --mode hybrid  # enhanced recall
+set-memory list --type Decision --limit 20             # filtered list
+set-memory context [topic]                 # context_summary
+set-memory brain                           # brain_state
+set-memory get <id>                        # single memory by ID
+set-memory health --index                  # index health
+set-memory repair                          # repair index
 ```
 
 **Rationale**: A briefing alapos kutatás eredménye, a flat command struktúra konzisztens a meglévő CLI felülettel. Az `inspect` alias-t kihagyjuk — felesleges indirection.
@@ -58,7 +58,7 @@ Skill vége előtt (continue/ff/explore):
    - Felfedezett patternek (ami a codebase-ből derült ki)
    - Meglepetések / gotcha-k
 3. Minden releváns meglátást egyenként lement:
-   echo "<insight>" | wt-memory remember --type <Learning|Decision> \
+   echo "<insight>" | set-memory remember --type <Learning|Decision> \
      --tags change:<name>,phase:<skill>,source:agent
 4. Rövid összegzés: "[Agent insights saved: N items]"
 ```
@@ -94,12 +94,12 @@ Tag struktúra:
 
 A jelenlegi recall pattern:
 ```bash
-wt-memory recall "<change-name> <keywords>" --limit 5
+set-memory recall "<change-name> <keywords>" --limit 5
 ```
 
 Lecserélni erre ahol releváns:
 ```bash
-wt-memory recall "<change-name> <context>" --limit 5 --mode hybrid --tags change:<name>
+set-memory recall "<change-name> <context>" --limit 5 --mode hybrid --tags change:<name>
 ```
 
 - `--mode hybrid` — kombinált semantic + temporal keresés, a legrelevánsabb találatokat adja
@@ -123,18 +123,18 @@ A verify skill jelenleg teljesen memory-mentes. Kiegészítjük:
 
 **Recall (step elején):**
 ```bash
-wt-memory recall "<change-name> verification issues bugs" --limit 5 --mode hybrid --tags change:<name>
+set-memory recall "<change-name> verification issues bugs" --limit 5 --mode hybrid --tags change:<name>
 ```
 
 **Remember (step végén):**
 - Ha a verifikáció problémákat talált → save each as Learning:
   ```bash
-  echo "<issue description and root cause>" | wt-memory remember \
+  echo "<issue description and root cause>" | set-memory remember \
     --type Learning --tags change:<name>,phase:verify,source:agent,issue
   ```
 - Ha a verifikáció sikeres és van tanulság → save as Learning:
   ```bash
-  echo "<what was verified and why it passed>" | wt-memory remember \
+  echo "<what was verified and why it passed>" | set-memory remember \
     --type Learning --tags change:<name>,phase:verify,source:agent,pattern
   ```
 
@@ -145,7 +145,7 @@ A sync-specs skill jelenleg nem ment memóriát. Kiegészítjük:
 **Remember (merge döntéseknél):**
 - Ha a spec merge során döntés születik (conflict resolution, spec refinement):
   ```bash
-  echo "<spec merge decision and rationale>" | wt-memory remember \
+  echo "<spec merge decision and rationale>" | set-memory remember \
     --type Decision --tags change:<name>,phase:sync-specs,source:agent,spec-merge
   ```
 

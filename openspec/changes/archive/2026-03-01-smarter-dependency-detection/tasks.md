@@ -2,7 +2,7 @@
 
 ## Planner Ordering Heuristics
 
-- [x] Add ordering heuristic rules to spec-mode decomposition prompt in `bin/wt-orchestrate` (~line 1598). Add after existing dependency rule: change-type classification (infrastructure, schema, foundational, feature, cleanup-before, cleanup-after), cleanup-before→feature ordering, schema→data ordering, foundational→consumer ordering.
+- [x] Add ordering heuristic rules to spec-mode decomposition prompt in `bin/set-orchestrate` (~line 1598). Add after existing dependency rule: change-type classification (infrastructure, schema, foundational, feature, cleanup-before, cleanup-after), cleanup-before→feature ordering, schema→data ordering, foundational→consumer ordering.
 - [x] Add the same ordering heuristic rules to brief-mode decomposition prompt (~line 1655).
 - [x] Add "respect spec-level dependency hints" instruction to both prompts: if spec contains `depends_on:` or "requires X" or "after X", preserve in output JSON.
 
@@ -21,4 +21,4 @@
 
 ## Deploy
 
-- [x] Run `wt-project init` on all registered projects to deploy updated plan-review skill.
+- [x] Run `set-project init` on all registered projects to deploy updated plan-review skill.

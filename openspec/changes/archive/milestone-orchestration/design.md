@@ -127,13 +127,13 @@ When orchestration finishes (all phases done, or stopped):
 
 ### D8: Email content for milestone
 
-Subject: `[wt-tools] <project> — Phase N complete (M/T changes)`
+Subject: `[set-core] <project> — Phase N complete (M/T changes)`
 
 Body:
 - Phase summary: which changes merged, token cost
 - Dev server URL: `http://localhost:<port>`
 - Dashboard URL if wt-web is running
-- Note: "Orchestrator continues automatically. Stop with: wt-orchestrate stop"
+- Note: "Orchestrator continues automatically. Stop with: set-orchestrate stop"
 
 ## Risks / Trade-offs
 

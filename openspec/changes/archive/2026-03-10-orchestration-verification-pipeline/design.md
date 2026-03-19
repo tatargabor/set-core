@@ -6,7 +6,7 @@ Current state of verification:
 - `review_change()` receives only `$scope` (free text) — no structured requirement list
 - `validate_plan()` warns on uncovered requirements but does not block
 - `monitor_loop()` exits without checking final coverage state
-- No visual reporting exists beyond the TUI (`wt-orchestrate status`)
+- No visual reporting exists beyond the TUI (`set-orchestrate status`)
 - `init_state()` does not copy `requirements[]` or `also_affects_reqs[]` from the plan to state — these fields are unavailable to downstream verification
 - `populate_coverage()` always returns 0 — its call site in `cmd_plan` discards the return value
 

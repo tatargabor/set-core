@@ -1,4 +1,4 @@
-"""Tests for lib/wt_orch/reporter.py — HTML report generator.
+"""Tests for lib/set_orch/reporter.py — HTML report generator.
 
 Tests data extraction functions and Jinja2 template rendering.
 """
@@ -9,7 +9,7 @@ import tempfile
 
 import pytest
 
-from lib.wt_orch.reporter import (
+from lib.set_orch.reporter import (
     AuditData,
     AuditEntry,
     ChangeEntry,

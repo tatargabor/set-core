@@ -1,6 +1,6 @@
 ## Context
 
-wt-tools manages git worktrees with integrated AI coding via Claude Code. Currently hardcoded to Zed editor. Users need flexibility to use their preferred editor while maintaining core functionality: opening worktrees and launching Claude Code terminal.
+set-core manages git worktrees with integrated AI coding via Claude Code. Currently hardcoded to Zed editor. Users need flexibility to use their preferred editor while maintaining core functionality: opening worktrees and launching Claude Code terminal.
 
 ### Editor Comparison Research
 
@@ -37,7 +37,7 @@ Based on research, these editors support Claude Code integration:
 ## Decisions
 
 ### Decision 1: Configuration location
-Store editor preference in existing `~/.config/wt-tools/config.json`:
+Store editor preference in existing `~/.config/set-core/config.json`:
 ```json
 {
   "editor": {
@@ -152,15 +152,15 @@ def test_open_worktree_vscode():
 
 ## Parallel Development Strategy
 
-Development and testing can run alongside active wt-tools usage:
+Development and testing can run alongside active set-core usage:
 
 ### Isolated Test Environment
 ```bash
 # Use separate config directory for tests
-export WT_CONFIG_DIR="/tmp/wt-tools-test"
+export WT_CONFIG_DIR="/tmp/set-core-test"
 mkdir -p "$WT_CONFIG_DIR"
 
-# Tests won't affect ~/.config/wt-tools/
+# Tests won't affect ~/.config/set-core/
 ```
 
 ### Backward Compatibility Approach

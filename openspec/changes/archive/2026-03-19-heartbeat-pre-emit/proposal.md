@@ -20,6 +20,6 @@ _(none — no existing specs affected)_
 
 ## Impact
 
-- **Files**: `lib/wt_orch/engine.py` (monitor loop heartbeat placement)
+- **Files**: `lib/set_orch/engine.py` (monitor loop heartbeat placement)
 - **Risk**: Very low — additive timing signals only, no behavioral changes
 - **Testing**: Unit test for heartbeat helper + E2E validation that sentinel no longer false-kills during dispatch/merge

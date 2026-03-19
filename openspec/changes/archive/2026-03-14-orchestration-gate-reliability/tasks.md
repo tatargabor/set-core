@@ -13,12 +13,12 @@
 
 ## 3. Review Model Default
 
-- [x] 3.1 In `bin/wt-orchestrate`, change `DEFAULT_REVIEW_MODEL="sonnet"` to `DEFAULT_REVIEW_MODEL="opus"`
+- [x] 3.1 In `bin/set-orchestrate`, change `DEFAULT_REVIEW_MODEL="sonnet"` to `DEFAULT_REVIEW_MODEL="opus"`
 - [x] 3.2 In `lib/orchestration/monitor.sh`, update the jq fallback for review_model (`.review_model // "sonnet"`) to use `// "opus"` for consistency with the new default
 
 ## 4. Monitor Self-Watchdog
 
-- [x] 4.1 Add `DEFAULT_MONITOR_IDLE_TIMEOUT=300` to `bin/wt-orchestrate` defaults. Add `monitor_idle_timeout` to directive parsing in `lib/orchestration/utils.sh`
+- [x] 4.1 Add `DEFAULT_MONITOR_IDLE_TIMEOUT=300` to `bin/set-orchestrate` defaults. Add `monitor_idle_timeout` to directive parsing in `lib/orchestration/utils.sh`
 - [x] 4.2 In `lib/orchestration/monitor.sh`, add `last_progress_ts` variable initialized to `$(date +%s)` before the main loop
 - [x] 4.3 Add `update_progress_ts()` helper function that sets `last_progress_ts=$(date +%s)` — this must be callable from both monitor.sh and verifier.sh (export or define in a shared location like utils.sh)
 - [x] 4.4 Call `update_progress_ts` after: dispatch_ready_changes returns with dispatched count > 0, retry_merge_queue completes a merge, resume_stalled_changes resumes a change. For gate results inside poll_change/verifier.sh, call update_progress_ts at the end of poll_change when status changed
@@ -37,15 +37,15 @@
 - [x] 6.3 In `lib/orchestration/merger.sh` blocking smoke section (line ~226), after health_check failure: if `smoke_dev_server_command` is non-empty, run `bash -c "$smoke_dev_server_command" &` and save PID to `_dev_server_pid`, then wait for health_check with 60s timeout
 - [x] 6.4 If extended health_check succeeds, proceed with smoke tests normally
 - [x] 6.5 If extended health_check fails, kill `$_dev_server_pid` and fall back to existing `smoke_blocked` behavior
-- [x] 6.6 Add dev server PID cleanup: use global `_ORCH_DEV_SERVER_PID` variable, append to existing trap handler in `bin/wt-orchestrate` cleanup function. On exit: `[[ -n "$_ORCH_DEV_SERVER_PID" ]] && kill "$_ORCH_DEV_SERVER_PID" 2>/dev/null || true`
-- [x] 6.7 Add `DEFAULT_SMOKE_DEV_SERVER_COMMAND=""` to `bin/wt-orchestrate` defaults and initialize in `parse_directives()` local variable
+- [x] 6.6 Add dev server PID cleanup: use global `_ORCH_DEV_SERVER_PID` variable, append to existing trap handler in `bin/set-orchestrate` cleanup function. On exit: `[[ -n "$_ORCH_DEV_SERVER_PID" ]] && kill "$_ORCH_DEV_SERVER_PID" 2>/dev/null || true`
+- [x] 6.7 Add `DEFAULT_SMOKE_DEV_SERVER_COMMAND=""` to `bin/set-orchestrate` defaults and initialize in `parse_directives()` local variable
 
 ## 7. Merge Timeout
 
 - [x] 7.1 In `lib/orchestration/utils.sh`, add `merge_timeout` directive parsing (integer, default 1800)
 - [x] 7.2 In `lib/orchestration/merger.sh`, add a timeout check INSIDE `merge_change()` — track start time at function entry, check elapsed time at key checkpoints (after merge, after smoke, after fix). If elapsed > merge_timeout, abort remaining work. Do NOT use `timeout` command with subshell (flock and state writes would break in subshell context).
 - [x] 7.3 On timeout: set status to `merge_timeout`, send sentinel notification, return from function (flock released naturally by function return)
-- [x] 7.4 Add `DEFAULT_MERGE_TIMEOUT=1800` to `bin/wt-orchestrate` defaults
+- [x] 7.4 Add `DEFAULT_MERGE_TIMEOUT=1800` to `bin/set-orchestrate` defaults
 
 ## 8. Documentation
 

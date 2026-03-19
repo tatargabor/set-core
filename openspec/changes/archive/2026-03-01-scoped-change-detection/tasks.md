@@ -20,7 +20,7 @@
 - [x] 4.1 In `check_done_criteria()` (around line 379), when `--change` is set, pass the change name to `detect_next_change_action()` so done-check only evaluates the assigned change
 - [x] 4.2 When `--change` is NOT set, keep existing behavior (scan all changes for done-check)
 
-## 5. wt-orchestrate: dispatch integration
+## 5. set-orchestrate: dispatch integration
 
 - [x] 5.1 In `dispatch_change()`, add `--change "$change_name"` to the `wt-loop start` invocation (around line 2819)
 

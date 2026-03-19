@@ -10,15 +10,15 @@ Any GUI dialog that displays dynamic, growable data (memories, messages, logs, s
 This applies to all current and future dialogs. The rationale: widget rendering is O(n) — 2000 QFrame cards can freeze the UI for seconds. Data fetch size alone is not the bottleneck; widget creation is.
 
 ### Requirement: CLI list command supports --limit flag
-`wt-memory list` SHALL accept an optional `--limit N` flag that passes `limit=N` to `list_memories()`. When omitted, all memories are returned (current behavior).
+`set-memory list` SHALL accept an optional `--limit N` flag that passes `limit=N` to `list_memories()`. When omitted, all memories are returned (current behavior).
 
 #### Scenario: List with limit
-- **WHEN** user runs `wt-memory list --limit 50`
+- **WHEN** user runs `set-memory list --limit 50`
 - **THEN** output is a JSON array of at most 50 memories
 - **AND** memories are sorted by creation time (most recent first)
 
 #### Scenario: List without limit (backward compatible)
-- **WHEN** user runs `wt-memory list`
+- **WHEN** user runs `set-memory list`
 - **THEN** output is a JSON array of all memories (existing behavior unchanged)
 
 ### Requirement: Browse dialog renders memories in pages of 50
@@ -43,5 +43,5 @@ The dialog SHALL fetch memory data once and cache it in the dialog instance. "Lo
 
 #### Scenario: No redundant subprocess calls
 - **WHEN** user clicks "Load More" three times
-- **THEN** `wt-memory list` is called exactly once (at initial list load)
+- **THEN** `set-memory list` is called exactly once (at initial list load)
 - **AND** subsequent batches render from the cached data

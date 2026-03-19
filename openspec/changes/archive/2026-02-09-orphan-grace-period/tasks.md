@@ -1,6 +1,6 @@
 ## 1. Grace Period Tracking in wt-status
 
-- [x] 1.1 Add helper function `orphan_marker_dir()` that returns `$wt_path/.wt-tools/orphan-detect` and ensures the directory exists
+- [x] 1.1 Add helper function `orphan_marker_dir()` that returns `$wt_path/.set-core/orphan-detect` and ensures the directory exists
 - [x] 1.2 Add helper function `cleanup_stale_markers()` that removes marker files for PIDs that no longer exist (`kill -0`)
 - [x] 1.3 Add helper function `record_orphan_detection()` that creates/updates marker file with `<timestamp>:<count>` — creates new with count=1 or increments existing count
 - [x] 1.4 Add helper function `should_kill_orphan()` that reads marker file and returns 0 (true) only if count >= 3 AND (now - first_seen) >= 15

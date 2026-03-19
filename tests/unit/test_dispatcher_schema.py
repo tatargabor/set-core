@@ -1,4 +1,4 @@
-"""Tests for wt_orch.dispatcher_schema — Prisma schema parsing and digest generation."""
+"""Tests for set_orch.dispatcher_schema — Prisma schema parsing and digest generation."""
 
 import os
 import sys
@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.dispatcher_schema import (
+from set_orch.dispatcher_schema import (
     ParsedSchema,
     SchemaEnum,
     SchemaField,

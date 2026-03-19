@@ -1,13 +1,13 @@
 ## Context
 
-The shodh-memory audit revealed we use ~35% of the Python API surface. The `wt-memory` CLI (`bin/wt-memory`) is a bash script that invokes inline Python via `run_shodh_python`. The `cmd_remember()` function passes only 3 of 7 available `remember()` parameters. The `cmd_recall()` function uses `recall()` but never exposes `proactive_context()` or `recall_by_tags()`. The recall hook (`bin/wt-hook-memory-recall`) builds change-specific queries manually, which `proactive_context()` could replace with relevance-scored automatic retrieval.
+The shodh-memory audit revealed we use ~35% of the Python API surface. The `set-memory` CLI (`bin/set-memory`) is a bash script that invokes inline Python via `run_shodh_python`. The `cmd_remember()` function passes only 3 of 7 available `remember()` parameters. The `cmd_recall()` function uses `recall()` but never exposes `proactive_context()` or `recall_by_tags()`. The recall hook (`bin/wt-hook-memory-recall`) builds change-specific queries manually, which `proactive_context()` could replace with relevance-scored automatic retrieval.
 
 Confirmed working during audit: `proactive_context()` returns results in ~84ms with `relevance_score` (float) and `relevance_reason` (string). The import code (`cmd_import`, line 786-794) already demonstrates passing the full API surface (entities, metadata, is_failure, is_anomaly).
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Expose `proactive_context()` as `wt-memory proactive` command
+- Expose `proactive_context()` as `set-memory proactive` command
 - Extend `remember` with `--metadata`, `--failure`, `--anomaly` flags
 - Extend `recall` with `--tags-only` and `--min-importance` options
 - Add `stats` and `cleanup` commands for memory quality maintenance
@@ -25,10 +25,10 @@ Confirmed working during audit: `proactive_context()` returns results in ~84ms w
 ### D1: Inline Python pattern for new commands
 **Decision**: Follow the existing pattern of inline Python via `run_shodh_python -c "..."` with env vars for data passing.
 **Rationale**: Consistency with all existing commands. Avoids introducing a separate Python script layer. The import code already proves this pattern works for the full API surface.
-**Alternatives**: (a) Separate Python module — rejected because it adds a dependency management layer for a simple CLI. (b) REST API — rejected because wt-memory uses the library directly, not the server.
+**Alternatives**: (a) Separate Python module — rejected because it adds a dependency management layer for a simple CLI. (b) REST API — rejected because set-memory uses the library directly, not the server.
 
 ### D2: proactive_context() as primary recall for hooks
-**Decision**: Replace `wt-memory recall` with `wt-memory proactive` in the recall hook. Keep the change-context mapping (stock-rethink → "revising shopping-cart...") but pass it as conversation context to proactive_context() instead of as a recall query.
+**Decision**: Replace `set-memory recall` with `set-memory proactive` in the recall hook. Keep the change-context mapping (stock-rethink → "revising shopping-cart...") but pass it as conversation context to proactive_context() instead of as a recall query.
 **Rationale**: proactive_context() was designed for exactly this use case — auto-surfacing relevant memories from conversation context. It returns relevance scores, enabling the hook to filter low-relevance noise (score < 0.3).
 **Alternatives**: (a) Keep recall + add proactive as separate command only — rejected because the hook is the primary consumer and benefits most. (b) Use proactive everywhere immediately — rejected because recall is still useful for direct searches from skill hooks.
 

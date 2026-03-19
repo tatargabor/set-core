@@ -1,19 +1,19 @@
 ## Context
 
-Documentation for wt-tools is scattered across multiple locations: SKILL.md files (loaded on skill invocation), CLI `--help` flags, `docs/*.md` guides, and README.md. When an LLM is asked "how does X work?", it has no routing instruction telling it where to find the answer. The existing deployment mechanism (`wt-project init`) already copies `.claude/commands/wt/*.md` to target projects, so adding a new command file requires zero deployment changes.
+Documentation for set-core is scattered across multiple locations: SKILL.md files (loaded on skill invocation), CLI `--help` flags, `docs/*.md` guides, and README.md. When an LLM is asked "how does X work?", it has no routing instruction telling it where to find the answer. The existing deployment mechanism (`set-project init`) already copies `.claude/commands/wt/*.md` to target projects, so adding a new command file requires zero deployment changes.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- LLM can answer "how does X work?" questions about any wt-tools feature
-- Works in both wt-tools repo and deployed projects (via existing deploy mechanism)
+- LLM can answer "how does X work?" questions about any set-core feature
+- Works in both set-core repo and deployed projects (via existing deploy mechanism)
 - Minimal context overhead (on-demand, not always-loaded)
 
 **Non-Goals:**
 - Interactive help system (search, filtering)
 - Auto-generating help from source code or --help output
 - Replacing existing detailed docs (docs/developer-memory.md, etc.)
-- Modifying the deployment mechanism in `bin/wt-project`
+- Modifying the deployment mechanism in `bin/set-project`
 
 ## Decisions
 
@@ -26,7 +26,7 @@ Documentation for wt-tools is scattered across multiple locations: SKILL.md file
 - Dedicated skill (`.claude/skills/wt-help/SKILL.md`): Requires deployment changes, separate skill maintenance
 - MCP resource: Overkill, not user-invocable
 
-**Rationale:** Command files in `.claude/commands/wt/` are already deployed by `deploy_wt_tools()`. Zero deployment changes needed. Content loads on-demand when user types `/wt:help`, not on every session.
+**Rationale:** Command files in `.claude/commands/wt/` are already deployed by `deploy_set_tools()`. Zero deployment changes needed. Content loads on-demand when user types `/wt:help`, not on every session.
 
 ### D2: CLAUDE.md help router section (~5-10 lines)
 
@@ -42,9 +42,9 @@ Documentation for wt-tools is scattered across multiple locations: SKILL.md file
 
 ### D4: Help content scope — deployed tools only
 
-**Choice:** Only document tools/skills/commands that are available in deployed projects (what users actually encounter), plus wt-tools-internal ones marked as such.
+**Choice:** Only document tools/skills/commands that are available in deployed projects (what users actually encounter), plus set-core-internal ones marked as such.
 
-**Rationale:** The help command deploys to target projects. Users there shouldn't see docs about internal wt-tools development commands they don't have.
+**Rationale:** The help command deploys to target projects. Users there shouldn't see docs about internal set-core development commands they don't have.
 
 ## Risks / Trade-offs
 

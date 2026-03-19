@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# set-close - Remove a worktree
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+usage() {
+    cat <<EOF
+Usage: set-close <change-id> [options]
+
+Remove a worktree and optionally its branch.
+
+Arguments:
+  change-id               The change identifier
+
+Options:
+  -p, --project <name>    Use specific project (default: auto-detect)
+  -f, --force             Remove without prompts, delete local branch too
+  --keep-branch           Keep the branch after removing worktree
+  --delete-remote         Also delete remote branch (with -f or interactive)
+  -h, --help              Show this help
+
+Examples:
+  set-close add-user-auth
+  set-close add-user-auth --force
+  set-close add-user-auth --keep-branch
+  set-close add-user-auth --force --delete-remote
+EOF
+}
+
+# Check if branch exists on remote
+has_remote_branch() {
+    local project_path="$1"
+    local branch_name="$2"
+    git -C "$project_path" ls-remote --heads origin "$branch_name" 2>/dev/null | grep -q "$branch_name"
+}
+
+main() {
+    local change_id=""
+    local project_name=""
+    local force=false
+    local keep_branch=false
+    local delete_remote=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project_name="$2"
+                shift 2
+                ;;
+            -f|--force)
+                force=true
+                shift
+                ;;
+            --keep-branch)
+                keep_branch=true
+                shift
+                ;;
+            --delete-remote)
+                delete_remote=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                if [[ -z "$change_id" ]]; then
+                    change_id="$1"
+                else
+                    error "Unexpected argument: $1"
+                    usage
+                    exit 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$change_id" ]]; then
+        error "Change ID required"
+        usage
+        exit 1
+    fi
+
+    # Resolve project
+    local resolved_project
+    resolved_project=$(resolve_project "$project_name") || exit 1
+
+    local project_path
+    project_path=$(get_project_path "$resolved_project")
+
+    # Find existing worktree
+    local wt_path
+    wt_path=$(find_existing_worktree "$project_path" "$change_id")
+
+    if [[ -z "$wt_path" || ! -d "$wt_path" ]]; then
+        error "Worktree not found for: $change_id"
+        exit 1
+    fi
+
+    # Get branch name from worktree
+    local branch_name
+    branch_name=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+
+    # Check if branch exists on remote
+    local remote_exists=false
+    if [[ -n "$branch_name" ]] && has_remote_branch "$project_path" "$branch_name"; then
+        remote_exists=true
+    fi
+
+    # Check for uncommitted changes (excluding .zed/ which we create)
+    local has_changes=false
+    local changes
+    changes=$(git -C "$wt_path" status --porcelain 2>/dev/null | grep -v "^?? \.zed/" || true)
+    if [[ -n "$changes" ]]; then
+        has_changes=true
+    fi
+
+    info "Removing worktree: $wt_path"
+    if [[ -n "$branch_name" ]]; then
+        echo "  Branch: $branch_name"
+        if $remote_exists; then
+            echo "  Remote: origin/$branch_name (exists)"
+        fi
+    fi
+
+    # Block if uncommitted changes (unless forced)
+    if $has_changes; then
+        if ! $force; then
+            error "Worktree has uncommitted changes!"
+            echo ""
+            echo "$changes"
+            echo ""
+            echo "Use --force to remove anyway."
+            exit 1
+        else
+            warn "Forcing removal with uncommitted changes"
+        fi
+    fi
+
+    # Remove worktree
+    git -C "$project_path" worktree remove "$wt_path" --force
+    if [[ $? -ne 0 ]]; then
+        error "Failed to remove worktree"
+        exit 1
+    fi
+
+    success "Worktree removed"
+
+    # Handle branch deletion
+    if [[ -n "$branch_name" && "$branch_name" != "main" && "$branch_name" != "master" ]]; then
+        local action="none"
+
+        if $keep_branch; then
+            action="none"
+        elif $force; then
+            if $delete_remote; then
+                action="remote"
+            else
+                action="local"
+            fi
+        elif [[ ! -t 0 ]]; then
+            # Non-interactive (e.g. orchestrator) — delete local branch by default
+            action="local"
+        else
+            # Interactive mode
+            echo ""
+            echo "What to do with branch '$branch_name'?"
+            echo "  1) Keep branch (can reopen later with set-work)"
+            echo "  2) Delete local branch"
+            if $remote_exists; then
+                echo "  3) Delete local and remote branch"
+            fi
+            echo ""
+
+            local max_choice=2
+            if $remote_exists; then
+                max_choice=3
+            fi
+
+            while true; do
+                read -p "Choice [1-$max_choice]: " -n 1 -r choice
+                echo
+                case "$choice" in
+                    1) action="none"; break ;;
+                    2) action="local"; break ;;
+                    3)
+                        if $remote_exists; then
+                            action="remote"
+                            break
+                        fi
+                        ;;
+                esac
+                echo "Invalid choice. Please enter 1-$max_choice"
+            done
+        fi
+
+        # Execute action
+        case "$action" in
+            none)
+                info "Branch '$branch_name' kept"
+                ;;
+            local)
+                git -C "$project_path" branch -D "$branch_name" 2>/dev/null
+                if [[ $? -eq 0 ]]; then
+                    success "Local branch '$branch_name' deleted"
+                else
+                    warn "Could not delete local branch '$branch_name'"
+                fi
+                ;;
+            remote)
+                # Delete local first
+                git -C "$project_path" branch -D "$branch_name" 2>/dev/null
+                if [[ $? -eq 0 ]]; then
+                    success "Local branch '$branch_name' deleted"
+                else
+                    warn "Could not delete local branch '$branch_name'"
+                fi
+                # Delete remote
+                if $remote_exists; then
+                    git -C "$project_path" push origin --delete "$branch_name" 2>/dev/null
+                    if [[ $? -eq 0 ]]; then
+                        success "Remote branch 'origin/$branch_name' deleted"
+                    else
+                        warn "Could not delete remote branch 'origin/$branch_name'"
+                    fi
+                fi
+                ;;
+        esac
+    fi
+}
+
+main "$@"

@@ -3,7 +3,7 @@
 ## IN SCOPE
 - Structured event logging to `.wt/sentinel/events.jsonl` (append-only JSONL)
 - Event types: poll, crash, restart, decision, escalation, finding, assessment, message_received, message_sent
-- Python API for emitting events (`lib/wt_orch/sentinel/events.py`)
+- Python API for emitting events (`lib/set_orch/sentinel/events.py`)
 - CLI wrapper for bash sentinel compatibility
 - Run rotation (archive old events on new run start)
 - `.wt/` directory creation and `.gitignore` entry
@@ -37,7 +37,7 @@ The system SHALL write sentinel events as newline-delimited JSON to `.wt/sentine
 - **THEN** an event with `type: "escalation"` is appended containing `reason` and `context`
 
 ### Requirement: Event logging Python API
-The system SHALL provide a Python module `lib/wt_orch/sentinel/events.py` with a `SentinelEventLogger` class that provides typed methods for each event type.
+The system SHALL provide a Python module `lib/set_orch/sentinel/events.py` with a `SentinelEventLogger` class that provides typed methods for each event type.
 
 #### Scenario: Logger initialization with project path
 - **WHEN** `SentinelEventLogger(project_path)` is instantiated
@@ -45,22 +45,22 @@ The system SHALL provide a Python module `lib/wt_orch/sentinel/events.py` with a
 
 #### Scenario: Logger creates .wt directory and gitignore
 - **WHEN** the logger initializes and `.wt/` does not exist
-- **THEN** it SHALL create the directory AND append `/.wt/` to the project's `.gitignore` if not already present
+- **THEN** it SHALL create the directory AND append `/.set/` to the project's `.gitignore` if not already present
 
 ### Requirement: Event logging CLI
-The system SHALL provide a CLI command `wt-sentinel-log` that wraps the Python API for use from bash scripts.
+The system SHALL provide a CLI command `set-sentinel-log` that wraps the Python API for use from bash scripts.
 
 #### Scenario: CLI poll event
-- **WHEN** `wt-sentinel-log poll --state running --change add-products --iteration 42` is executed
+- **WHEN** `set-sentinel-log poll --state running --change add-products --iteration 42` is executed
 - **THEN** a poll event is appended to `events.jsonl` with the provided fields
 
 #### Scenario: CLI crash event
-- **WHEN** `wt-sentinel-log crash --pid 45231 --exit-code 1 --stderr "error text"` is executed
+- **WHEN** `set-sentinel-log crash --pid 45231 --exit-code 1 --stderr "error text"` is executed
 - **THEN** a crash event is appended to `events.jsonl`
 
 ### Requirement: Event rotation on new run
 The system SHALL support rotating events.jsonl to an archive directory when a new orchestration run starts.
 
 #### Scenario: Rotation moves old events to archive
-- **WHEN** `SentinelEventLogger.rotate()` is called (or `wt-sentinel-rotate`)
+- **WHEN** `SentinelEventLogger.rotate()` is called (or `set-sentinel-rotate`)
 - **THEN** the current `events.jsonl` SHALL be moved to `.wt/sentinel/archive/events-{ISO-date}.jsonl` and a fresh empty `events.jsonl` SHALL be created

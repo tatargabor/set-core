@@ -1,28 +1,28 @@
 ## Requirements
 
 ### Requirement: CLI maps unsupported memory types to valid shodh-memory types
-`wt-memory remember` SHALL map unsupported `--type` values to valid shodh-memory types before storage: `Observation` → `Learning`, `Event` → `Context`. A warning SHALL be printed to stderr when mapping occurs.
+`set-memory remember` SHALL map unsupported `--type` values to valid shodh-memory types before storage: `Observation` → `Learning`, `Event` → `Context`. A warning SHALL be printed to stderr when mapping occurs.
 
 #### Scenario: Observation type mapped
-- **WHEN** user runs `echo "insight" | wt-memory remember --type Observation --tags test`
+- **WHEN** user runs `echo "insight" | set-memory remember --type Observation --tags test`
 - **THEN** the memory is stored with `experience_type: Learning`
 - **AND** stderr contains a warning: `Note: type 'Observation' mapped to 'Learning'`
 
 #### Scenario: Event type mapped
-- **WHEN** user runs `echo "done" | wt-memory remember --type Event --tags test`
+- **WHEN** user runs `echo "done" | set-memory remember --type Event --tags test`
 - **THEN** the memory is stored with `experience_type: Context`
 - **AND** stderr contains a warning: `Note: type 'Event' mapped to 'Context'`
 
 #### Scenario: Valid types pass through unchanged
-- **WHEN** user runs `echo "x" | wt-memory remember --type Decision --tags test`
+- **WHEN** user runs `echo "x" | set-memory remember --type Decision --tags test`
 - **THEN** the memory is stored with `experience_type: Decision`
 - **AND** no mapping warning is printed
 
 ### Requirement: Valid memory types are documented
-The CLI help text (`wt-memory --help`) SHALL list the 3 valid shodh-memory types: `Decision`, `Learning`, `Context`.
+The CLI help text (`set-memory --help`) SHALL list the 3 valid shodh-memory types: `Decision`, `Learning`, `Context`.
 
 #### Scenario: Help text shows valid types
-- **WHEN** user runs `wt-memory --help`
+- **WHEN** user runs `set-memory --help`
 - **THEN** output includes the valid types and mapping note
 
 ### Requirement: GUI shows only valid memory types

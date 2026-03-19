@@ -25,7 +25,7 @@ Python module for orchestration HTML report generation, replacing reporter.sh's 
 
 ### Jinja2 Template
 
-- Single `report.html.j2` in `lib/wt_orch/templates/`
+- Single `report.html.j2` in `lib/set_orch/templates/`
 - Reproduces identical HTML structure: head (meta refresh 15s, dark theme CSS), 6 sections, footer
 - Macros: `status_badge(status)`, `token_display(tokens)`, `duration_display(seconds)`, `gate_icon(result)`, `coverage_bar(merged_pct, inprog_pct)`
 - Coverage section includes the JS toggle script for "Include previous phases" checkbox

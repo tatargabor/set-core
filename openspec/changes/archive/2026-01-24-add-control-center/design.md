@@ -171,7 +171,7 @@ uv pip install PySide6 psutil
 
 ## Configuration
 
-Add to `~/.config/wt-tools/config.json`:
+Add to `~/.config/set-core/config.json`:
 ```json
 {
   "controlCenter": {

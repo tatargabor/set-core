@@ -1,8 +1,8 @@
 ## Context
 
-A wt-tools-nak nincs end-to-end tesztje ami a teljes pipeline-t (project init → spec → plan → dispatch → implement → smoke → merge → archive) futtatná valódi projekten. Az eddigi bugok (opsx:ff→apply chaining, smoke blocking gate, orchestrator kill nem öli gyerekprocesszt, state corruption) mind a komponensek közti interakcióból eredtek — amit unit tesztek nem fednek le.
+A set-core-nak nincs end-to-end tesztje ami a teljes pipeline-t (project init → spec → plan → dispatch → implement → smoke → merge → archive) futtatná valódi projekten. Az eddigi bugok (opsx:ff→apply chaining, smoke blocking gate, orchestrator kill nem öli gyerekprocesszt, state corruption) mind a komponensek közti interakcióból eredtek — amit unit tesztek nem fednek le.
 
-A teszt egy MiniShop nevű minimális Express.js webshop API-t használ mint "áldozat projekt". A lényeg: a valódi wt-tools pipeline fut rajta, mock nélkül. Git tag-ekkel checkpoint-olunk, hogy javítás után visszatérhessünk.
+A teszt egy MiniShop nevű minimális Express.js webshop API-t használ mint "áldozat projekt". A lényeg: a valódi set-core pipeline fut rajta, mock nélkül. Git tag-ekkel checkpoint-olunk, hogy javítás után visszatérhessünk.
 
 Jelenlegi test infra: `tests/unit/` (bash), `tests/orchestrator/` (parse/state), `tests/*.py` (memory, compaction). Ezek maradnak — az e2e ezek fölötti réteg.
 
@@ -11,7 +11,7 @@ Jelenlegi test infra: `tests/unit/` (bash), `tests/orchestrator/` (parse/state),
 **Goals:**
 - Működő MiniShop Express API scaffold ami az első `npm test`-től PASS-ol
 - Orchestrator-kompatibilis spec (`docs/v1-minishop.md`) 4 change-dzsel és dependency gráffal
-- Runner script ami a scaffold-ot friss git repo-ba másolja, `wt-project init --project-type web`-et futtat, és git tag-ekkel checkpoint-ol
+- Runner script ami a scaffold-ot friss git repo-ba másolja, `set-project init --project-type web`-et futtat, és git tag-ekkel checkpoint-ol
 - A valódi sentinel → orchestrate → wt-loop pipeline tesztelhető rajta
 - Kézi edge case injektálás lehetősége (smoke fail, merge conflict) menet közben
 
@@ -47,7 +47,7 @@ auth (cross-cutting, depends: products-crud, cart, orders — runs LAST)
 
 ### D3: Valódi pipeline, nincs mock
 
-**Választás:** A teljes wt-sentinel → wt-orchestrate → wt-loop pipeline fut valódi Claude hívásokkal
+**Választás:** A teljes set-sentinel → set-orchestrate → wt-loop pipeline fut valódi Claude hívásokkal
 **Alternatíva:** Mock wt-loop fixture fájlokkal (PATH manipulation)
 **Indoklás:** A production bugok a komponensek interakciójából erednek. Mock pont ezt rejti el. Token költség (~600K-1M/futás, ~$6-15) elhanyagolható a megelőzött production bugok költségéhez képest.
 
@@ -57,27 +57,27 @@ auth (cross-cutting, depends: products-crud, cart, orders — runs LAST)
 **Séma:**
 ```
 v0-scaffold        — friss projekt, npm test PASS
-v1-initialized     — wt-project init lefutott
+v1-initialized     — set-project init lefutott
 v2-ready           — npm install kész, indulásra kész
 v3-after-plan      — orchestrator plan elkészült (kézzel tag-eljük)
 v4-after-products  — első change merge-ölve
 ...
 ```
 **Checkpoint-ból folytatás sorrendje** (FONTOS — a sorrend számít!):
-1. Fix wt-tools kódbázisban
+1. Fix set-core kódbázisban
 2. Test projektben: `git worktree list` → `git worktree remove --force <wt>` mindegyikre
 3. `git checkout -b resume-<tag> <tag>` (NEM detached HEAD-re!)
-4. `wt-project init` — EZUTÁN (a git checkout visszaállítja a .claude/-t, tehát utána kell redeploy)
+4. `set-project init` — EZUTÁN (a git checkout visszaállítja a .claude/-t, tehát utána kell redeploy)
 5. `rm -f orchestration-state.json orchestration-plan.json`
 6. Sentinel újraindítás
 
-**Indoklás:** Egyszerűbb mint bármi más megoldás. A sorrend azért fontos mert `git checkout` visszaállítja a `.claude/` könyvtárat a tag állapotára — a `wt-project init` utána kell hogy a frissített hook-ok/skill-ek deploy-olva legyenek.
+**Indoklás:** Egyszerűbb mint bármi más megoldás. A sorrend azért fontos mert `git checkout` visszaállítja a `.claude/` könyvtárat a tag állapotára — a `set-project init` utána kell hogy a frissített hook-ok/skill-ek deploy-olva legyenek.
 
 ### D5: A scaffold a tests/e2e/scaffold/ alatt él, fix path-ra másolva
 
 **Választás:** `tests/e2e/scaffold/` template + runner ami `$TMPDIR/minishop-e2e/`-be másolja (fix path, nem timestamped)
 **Alternatíva:** Külön git repo, timestamped temp dir
-**Indoklás:** Fix path megoldja a wt-project registry név-konfliktust (mindig ugyanaz a path) és a stale MCP regisztrációk felhalmozódását. Ha bug van, a dir megmarad vizsgálatra. Második futáshoz a meglévő dirt detektáljuk és folytatást ajánlunk.
+**Indoklás:** Fix path megoldja a set-project registry név-konfliktust (mindig ugyanaz a path) és a stale MCP regisztrációk felhalmozódását. Ha bug van, a dir megmarad vizsgálatra. Második futáshoz a meglévő dirt detektáljuk és folytatást ajánlunk.
 
 ### D6: Orchestrator spec formátum
 

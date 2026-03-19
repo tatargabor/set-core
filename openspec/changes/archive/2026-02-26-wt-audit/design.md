@@ -1,8 +1,8 @@
 ## Context
 
-wt-tools deploys hooks, skills, and commands to projects via `wt-project init`. But a "well-configured" project needs more than hooks — it needs design docs, path-scoped rules, code-reviewer agents, permission allowlists, OpenSpec config context, and verification hooks. Today these are created ad-hoc per project, often via dedicated OpenSpec changes (e.g. "claude-code-best-practices", "add-code-hygiene-rules"). There's no way to assess what's missing or stale.
+set-core deploys hooks, skills, and commands to projects via `set-project init`. But a "well-configured" project needs more than hooks — it needs design docs, path-scoped rules, code-reviewer agents, permission allowlists, OpenSpec config context, and verification hooks. Today these are created ad-hoc per project, often via dedicated OpenSpec changes (e.g. "claude-code-best-practices", "add-code-hygiene-rules"). There's no way to assess what's missing or stale.
 
-The existing `wt-project init` handles deploy (hooks, commands, skills) but not audit. `wt-deploy-hooks` handles the `.claude/settings.json` hook entries but doesn't check permissions, agents, or rules.
+The existing `set-project init` handles deploy (hooks, commands, skills) but not audit. `wt-deploy-hooks` handles the `.claude/settings.json` hook entries but doesn't check permissions, agents, or rules.
 
 ## Goals / Non-Goals
 
@@ -12,7 +12,7 @@ The existing `wt-project init` handles deploy (hooks, commands, skills) but not 
 - Modular check functions (one per dimension) for easy extension
 - Reference doc describing target state so the LLM knows what "good" looks like
 - `/wt:audit` skill for interactive LLM-driven gap remediation
-- Post-init audit call in `wt-project init`
+- Post-init audit call in `set-project init`
 
 **Non-Goals:**
 - Generating design doc or rule FILE CONTENT (the LLM does that, not wt-audit)

@@ -1,4 +1,4 @@
-"""Tests for wt_orch.events."""
+"""Tests for set_orch.events."""
 
 import json
 import time
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from wt_orch.events import EventBus, _resolve_log_path
+from set_orch.events import EventBus, _resolve_log_path
 
 
 # ─── EventBus.emit ──────────────────────────────────────────────────

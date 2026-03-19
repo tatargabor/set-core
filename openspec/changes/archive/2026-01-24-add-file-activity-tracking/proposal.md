@@ -21,7 +21,7 @@ Current activity detection only uses timestamps from existing sources (git commi
 
 ### Activity Log Format
 
-`~/.config/wt-tools/claude-activity.jsonl`:
+`~/.config/set-core/claude-activity.jsonl`:
 ```json
 {"ts":"2026-01-21T10:15:32Z","tool":"Edit","path":"/home/user/project/src/api.ts","session":"abc123","project":"my-project","change_id":"add-feature"}
 {"ts":"2026-01-21T10:16:45Z","tool":"Read","path":"/home/user/project/src/utils.ts","session":"abc123","project":"my-project","change_id":"add-feature"}
@@ -64,7 +64,7 @@ wt-jira auto --reconstruct     # Now includes claude-activity source
 - Affected code: `bin/wt-jira` (reconstruct mode)
 - New files:
   - `bin/wt-activity` - Activity logging and query script
-  - `~/.config/wt-tools/claude-activity.jsonl` - Activity log
+  - `~/.config/set-core/claude-activity.jsonl` - Activity log
 - New dependencies: None (uses Claude Code built-in hooks)
 
 ## Configuration

@@ -38,7 +38,7 @@ Run #4 stats: 2h wall, 1h18m active, 7 watchdog kills, 8 resumes. The 42 min idl
 - Rationale: Without this, running worktrees fall behind main after each merge. When they complete and enter gates, the build gate may fail due to stale dependencies, causing a retry cycle (~5-10 min + tokens wasted).
 
 **D4: Default max_parallel 3**
-- Change `DEFAULT_MAX_PARALLEL=2` to `DEFAULT_MAX_PARALLEL=3` in `bin/wt-orchestrate`
+- Change `DEFAULT_MAX_PARALLEL=2` to `DEFAULT_MAX_PARALLEL=3` in `bin/set-orchestrate`
 - Still overridable via CLI `--max-parallel` and orchestration.yaml
 - Rationale: With 7-change plans, max_parallel=2 creates unnecessary serialization. The merge queue is already flock-protected, so 3 concurrent branches are safe.
 

@@ -35,7 +35,7 @@ The `wt-focus` script already contains editor window detection logic that we can
 
 ### 2. Skill tracking with timestamp-based status file
 
-**Decision:** Skills write to `.wt-tools/current_skill` file in `name|timestamp` format.
+**Decision:** Skills write to `.set-core/current_skill` file in `name|timestamp` format.
 
 **Rationale:**
 - Simple to implement

@@ -37,7 +37,7 @@ The decomposition prompt for spec mode SHALL guide the LLM to extract and decomp
 - **THEN** it SHALL include (regardless of mode):
   - Existing spec names from `openspec/specs/`
   - Active change names from `openspec/changes/`
-  - Memory context from `wt-memory` (if available)
+  - Memory context from `set-memory` (if available)
 
 ### Requirement: find_input() replaces find_brief()
 The input discovery function SHALL support both brief and spec sources.

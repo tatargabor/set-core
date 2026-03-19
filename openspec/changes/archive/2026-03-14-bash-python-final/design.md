@@ -1,26 +1,26 @@
 ## Context
 
-The `orch-python-cutover` change migrated the monitor loop, merge pipeline, and replan to Python. Five bash files with ~2,950 lines of active logic remain: `digest.sh`, `planner.sh`, `watchdog.sh`, `auditor.sh`, `builder.sh`. Each has a partial or complete Python counterpart in `lib/wt_orch/` (totalling 3,340 lines), but the bash versions still run. Some bash functions delegate to `wt-orch-core` already; others have pure bash logic with inline `python3 -c` snippets.
+The `orch-python-cutover` change migrated the monitor loop, merge pipeline, and replan to Python. Five bash files with ~2,950 lines of active logic remain: `digest.sh`, `planner.sh`, `watchdog.sh`, `auditor.sh`, `builder.sh`. Each has a partial or complete Python counterpart in `lib/set_orch/` (totalling 3,340 lines), but the bash versions still run. Some bash functions delegate to `set-orch-core` already; others have pure bash logic with inline `python3 -c` snippets.
 
 Current state per file:
 - **digest.sh** (1,311 LOC): Zero delegation — all logic is bash + inline python3. Python `digest.py` (1,170 LOC) exists but is only called for a few helpers.
 - **planner.sh** (768 LOC): Partial delegation — subcommands like `validate`, `check-triage`, `build-context` delegate. But `cmd_plan()` (~250 LOC of orchestration) and `plan_via_agent()` (~80 LOC) are pure bash.
-- **watchdog.sh** (424 LOC): Reads state via `wt-orch-core state get` but all watchdog logic (hash ring, escalation, progress detection) is bash.
-- **auditor.sh** (298 LOC): Uses `wt-orch-core template audit` for prompt rendering but builds input JSON and parses output in bash.
+- **watchdog.sh** (424 LOC): Reads state via `set-orch-core state get` but all watchdog logic (hash ring, escalation, progress detection) is bash.
+- **auditor.sh** (298 LOC): Uses `set-orch-core template audit` for prompt rendering but builds input JSON and parses output in bash.
 - **builder.sh** (151 LOC): Pure bash — package manager detection, build caching, LLM-assisted fix with escalation.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Port all active bash logic to Python modules under `lib/wt_orch/`
-- Wire new Python functions into `wt-orch-core` CLI subcommands
-- Reduce each bash file to a thin wrapper (~10-20 lines: source guard + `wt-orch-core` call)
+- Port all active bash logic to Python modules under `lib/set_orch/`
+- Wire new Python functions into `set-orch-core` CLI subcommands
+- Reduce each bash file to a thin wrapper (~10-20 lines: source guard + `set-orch-core` call)
 - Maintain 100% behavioral compatibility
 - No feature flag needed — the previous cutover validated the pattern
 
 **Non-Goals:**
-- Changing the `wt-orchestrate` CLI interface (bash entry points stay)
-- Rewriting `bin/wt-orchestrate` itself (stays bash)
+- Changing the `set-orchestrate` CLI interface (bash entry points stay)
+- Rewriting `bin/set-orchestrate` itself (stays bash)
 - Adding new features beyond parity
 - Migrating `dispatcher.sh` signal handling (already done in orch-python-cutover)
 
@@ -28,7 +28,7 @@ Current state per file:
 
 ### D1: Direct cutover without feature flag
 
-**Decision**: Unlike `orch-python-cutover`, no `ORCH_ENGINE` flag. Each bash function gets replaced by a `wt-orch-core` call directly.
+**Decision**: Unlike `orch-python-cutover`, no `ORCH_ENGINE` flag. Each bash function gets replaced by a `set-orch-core` call directly.
 
 **Why**: The feature flag pattern was needed for the monitor loop (critical, long-running). These are request-response functions — if Python fails, the error is immediate and obvious. The previous cutover validated that the delegation pattern works.
 
@@ -56,9 +56,9 @@ Current state per file:
 
 **Why**: Consistent with how the already-migrated functions work. The Claude CLI is the interface — no direct API SDK needed.
 
-### D5: Bash `cmd_plan()` becomes thin wrapper calling `wt-orch-core plan run`
+### D5: Bash `cmd_plan()` becomes thin wrapper calling `set-orch-core plan run`
 
-**Decision**: The ~250 LOC `cmd_plan()` bash orchestration (digest freshness → triage gate → design bridge → Claude decomposition → validation → coverage) moves entirely to Python. Bash keeps only argument parsing and `wt-orch-core plan run "$@"`.
+**Decision**: The ~250 LOC `cmd_plan()` bash orchestration (digest freshness → triage gate → design bridge → Claude decomposition → validation → coverage) moves entirely to Python. Bash keeps only argument parsing and `set-orch-core plan run "$@"`.
 
 **Why**: This is the most complex remaining bash function with many interleaved steps. Half of them already delegate to Python subcommands — consolidating removes the interleaving.
 
@@ -83,26 +83,26 @@ Current state per file:
 ### Phase 1: Watchdog + Builder (smallest, lowest risk)
 1. Port `watchdog_check()` full pipeline to `watchdog.py`
 2. Port `check_base_build()` + `fix_base_build_with_llm()` to `builder.py`
-3. Add CLI subcommands: `wt-orch-core watchdog check`, `wt-orch-core build check`
+3. Add CLI subcommands: `set-orch-core watchdog check`, `set-orch-core build check`
 4. Replace bash functions with thin wrappers
 5. Test via orchestration run
 
 ### Phase 2: Auditor (medium, clear boundaries)
 1. Port `build_audit_input()`, `parse_audit_result()`, `run_post_phase_audit()` to `auditor.py`
-2. Add CLI: `wt-orch-core audit run`
+2. Add CLI: `set-orch-core audit run`
 3. Replace bash with wrapper
 
 ### Phase 3: Planner orchestration (complex, many dependencies)
 1. Port `cmd_plan()` orchestration to `planner.py:run_plan()`
 2. Port `plan_via_agent()` to `planner.py:plan_via_agent()`
-3. Add CLI: `wt-orch-core plan run`
+3. Add CLI: `set-orch-core plan run`
 4. Replace bash `cmd_plan()` with thin wrapper
 
 ### Phase 4: Digest pipeline (largest, most complex)
 1. Port `scan_spec_directory()`, `call_digest_api()`, `write_digest_output()` to `digest.py`
 2. Port triage pipeline (`generate_triage_md`, `parse_triage_md`, etc.)
 3. Port coverage functions (`populate_coverage`, `check_coverage_gaps`)
-4. Add CLI: `wt-orch-core digest run`
+4. Add CLI: `set-orch-core digest run`
 5. Replace bash `cmd_digest()` with thin wrapper
 
 ### Phase 5: Cleanup

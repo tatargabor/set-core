@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# wt-hook-memory-posttool - Backward-compatible wrapper
-# Delegates to unified handler: wt-hook-memory PostToolUseFailure
-exec wt-hook-memory PostToolUseFailure

@@ -1,5 +1,5 @@
 """
-Status Worker - Background thread for polling wt-status
+Status Worker - Background thread for polling set-status
 """
 
 import json
@@ -13,11 +13,11 @@ from ..config import Config
 
 __all__ = ["StatusWorker"]
 
-logger = logging.getLogger("wt-control.workers.status")
+logger = logging.getLogger("set-control.workers.status")
 
 
 class StatusWorker(QThread):
-    """Background thread for polling wt-status"""
+    """Background thread for polling set-status"""
     status_updated = Signal(dict)
     error_occurred = Signal(str)
 
@@ -30,7 +30,7 @@ class StatusWorker(QThread):
         while self._running:
             try:
                 result = subprocess.run(
-                    [str(SCRIPT_DIR / "wt-status"), "--json"],
+                    [str(SCRIPT_DIR / "set-status"), "--json"],
                     capture_output=True,
                     text=True,
                     timeout=10
@@ -41,13 +41,13 @@ class StatusWorker(QThread):
                 else:
                     self.error_occurred.emit(result.stderr)
             except subprocess.TimeoutExpired:
-                logger.error("wt-status timed out")
+                logger.error("set-status timed out")
                 self.error_occurred.emit("Status check timed out")
             except json.JSONDecodeError as e:
-                logger.error("wt-status invalid JSON: %s", e)
+                logger.error("set-status invalid JSON: %s", e)
                 self.error_occurred.emit(f"Invalid JSON: {e}")
             except Exception as e:
-                logger.error("wt-status error: %s", e)
+                logger.error("set-status error: %s", e)
                 self.error_occurred.emit(str(e))
 
             # Sleep for configured interval

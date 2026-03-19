@@ -8,7 +8,7 @@ The v5 orchestration run (5 changes, 75 min, 3.3M tokens) revealed six issues:
 5. TUI token counter flashes to zero during replan state reinit
 6. No crash recovery — if orchestrator dies, everything stops
 
-Current code: `bin/wt-merge` (merge model selection), `bin/wt-orchestrate` (monitor loop, planner prompt, cycle transitions), `gui/tui/orchestrator_tui.py` (token display).
+Current code: `bin/wt-merge` (merge model selection), `bin/set-orchestrate` (monitor loop, planner prompt, cycle transitions), `gui/tui/orchestrator_tui.py` (token display).
 
 ## Goals / Non-Goals
 
@@ -88,8 +88,8 @@ if current_tokens == 0 and prev_tokens > 0:
 
 ### 6. Sentinel as minimal bash wrapper
 
-**Decision:** Create `bin/wt-sentinel` — a ~35 line bash script that:
-1. Wraps `wt-orchestrate start "$@"` in a supervised loop
+**Decision:** Create `bin/set-sentinel` — a ~35 line bash script that:
+1. Wraps `set-orchestrate start "$@"` in a supervised loop
 2. On exit code 0 + state `done`: stop (orchestration complete)
 3. On exit code 0 + state `stopped`: stop (user Ctrl+C, don't restart)
 4. On non-zero exit + no SIGINT: log, wait 30s, restart

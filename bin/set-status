@@ -1,0 +1,959 @@
+#!/usr/bin/env bash
+# set-status - Display worktree and agent status
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+# Status icons
+ICON_RUNNING="●"
+ICON_WAITING="⚡"
+ICON_IDLE="○"
+ICON_DONE="✓"
+
+# =============================================================================
+# Window cache: ONE osascript/xdotool call per set-status run
+# Format: "pid|proc_name|window_id|window_name" per line
+# =============================================================================
+_WINDOW_CACHE=""
+_WINDOW_CACHE_LOADED=false
+
+cache_all_windows() {
+    [[ "$_WINDOW_CACHE_LOADED" == "true" ]] && return
+
+    case "$PLATFORM" in
+        macos)
+            # Only query known editors/terminals (not all GUI processes)
+            # Uses window index (not id) because AppleScript can't coerce
+            # window id to text for some apps (Zed, Terminal)
+            _WINDOW_CACHE=$(osascript -e '
+                tell application "System Events"
+                    set output to ""
+                    set targetProcs to every process whose background only is false and (name is "Zed" or name is "Code" or name is "Cursor" or name is "Windsurf" or name is "Terminal" or name is "iTerm2" or name is "kitty" or name is "Alacritty" or name is "WezTerm" or name is "Python")
+                    repeat with proc in targetProcs
+                        try
+                            set procPID to unix id of proc
+                            set procName to name of proc
+                            set winCount to count of windows of proc
+                            if winCount > 0 then
+                                repeat with i from 1 to winCount
+                                    try
+                                        set win to window i of proc
+                                        set winName to name of win
+                                        set output to output & procPID & "|" & procName & "|" & i & "|" & winName & linefeed
+                                    end try
+                                end repeat
+                            end if
+                        end try
+                    end repeat
+                    return output
+                end tell
+            ' 2>/dev/null) || true
+            ;;
+        linux)
+            if command -v xdotool &>/dev/null; then
+                local all_wids
+                all_wids=$(xdotool search --onlyvisible --name '' 2>/dev/null) || true
+                while read -r wid; do
+                    [[ -z "$wid" ]] && continue
+                    local win_pid win_name proc_name
+                    win_pid=$(xdotool getwindowpid "$wid" 2>/dev/null) || continue
+                    win_name=$(xdotool getwindowname "$wid" 2>/dev/null) || win_name=""
+                    proc_name=$(ps -o comm= -p "$win_pid" 2>/dev/null | tr -d ' ') || proc_name="unknown"
+                    _WINDOW_CACHE+="${win_pid}|${proc_name}|${wid}|${win_name}"$'\n'
+                done <<< "$all_wids"
+            fi
+            ;;
+    esac
+
+    _WINDOW_CACHE_LOADED=true
+}
+
+# Find the window that owns an agent process by walking the PPID chain
+# Uses the pre-cached window data (no osascript calls)
+# Args: $1 = agent PID, $2 = worktree basename (optional, for multi-window disambiguation)
+# Returns (stdout): "window_id|process_name" if found, empty if not
+find_window_for_agent() {
+    local agent_pid="$1"
+    local wt_basename="${2:-}"
+    local current_pid="$agent_pid"
+    local depth=0
+    local max_depth=20
+
+    [[ -z "$_WINDOW_CACHE" ]] && return 1
+
+    while [[ "$depth" -lt "$max_depth" && "$current_pid" -gt 1 ]] 2>/dev/null; do
+        # Check if this PID owns any window in the cache
+        local matches
+        matches=$(echo "$_WINDOW_CACHE" | grep "^${current_pid}|") || true
+        if [[ -n "$matches" ]]; then
+            local match_count
+            match_count=$(echo "$matches" | wc -l)
+
+            if [[ "$match_count" -gt 1 && -n "$wt_basename" ]]; then
+                # Multi-window process (e.g. Zed): match by worktree basename in title
+                local title_match
+                title_match=$(echo "$matches" | grep -F "$wt_basename" | head -1) || true
+                if [[ -n "$title_match" ]]; then
+                    local proc_name wid
+                    IFS='|' read -r _ proc_name wid _ <<< "$title_match"
+                    echo "$wid|$proc_name"
+                    return 0
+                fi
+                # No title match — this agent's window is not open
+                return 1
+            fi
+
+            # Single window or no basename hint — use first match
+            local match
+            match=$(echo "$matches" | head -1)
+            local proc_name wid
+            # Format: pid|proc_name|window_id|window_name
+            IFS='|' read -r _ proc_name wid _ <<< "$match"
+            echo "$wid|$proc_name"
+            return 0
+        fi
+
+        # Walk up to parent
+        local ppid
+        ppid=$(ps -o ppid= -p "$current_pid" 2>/dev/null | tr -d ' ') || break
+        [[ -z "$ppid" || "$ppid" == "$current_pid" ]] && break
+        current_pid="$ppid"
+        ((depth++))
+    done
+
+    return 1
+}
+
+# Check if an editor window is open for a given worktree (title-based search only)
+# Agent PPID chain detection is now done per-agent in detect_agents()
+# Args: $1 = worktree path, $2 = "true" if main repo
+# Sets global: _last_window_id, _last_editor_type
+# Returns: 0 (true) if editor window found, 1 (false) otherwise
+_last_window_id=""
+_last_editor_type=""
+is_editor_open() {
+    local wt_path="$1"
+    local is_main="${2:-false}"
+    _last_window_id=""
+    _last_editor_type=""
+
+    # Title-based search for editor window
+    local wt_basename
+    wt_basename=$(basename "$wt_path")
+
+    case "$PLATFORM" in
+        linux)
+            if command -v xdotool &>/dev/null; then
+                # Search for window whose title contains the worktree basename
+                # (Zed appends " — filename" to the title, so exact match won't work)
+                local wid
+                wid=$(xdotool search --name "$wt_basename" 2>/dev/null | head -1) || true
+                if [[ -n "$wid" ]]; then
+                    _last_window_id="$wid"
+                    local proc_pid
+                    proc_pid=$(xdotool getwindowpid "$wid" 2>/dev/null) || true
+                    if [[ -n "$proc_pid" ]]; then
+                        _last_editor_type=$(ps -o comm= -p "$proc_pid" 2>/dev/null | tr -d ' ') || _last_editor_type="unknown"
+                    fi
+                    return 0
+                fi
+            fi
+            ;;
+        macos)
+            # Search cached window data for title match
+            if [[ -n "$_WINDOW_CACHE" ]]; then
+                local found
+                found=$(echo "$_WINDOW_CACHE" | grep -F "$wt_basename" | head -1) || true
+                if [[ -n "$found" ]]; then
+                    local proc_pid proc_name wid win_name
+                    IFS='|' read -r proc_pid proc_name wid win_name <<< "$found"
+                    _last_window_id="$wid"
+                    _last_editor_type="$proc_name"
+                    return 0
+                fi
+            fi
+
+            # Fallback: lsof-based detection (works over SSH/headless)
+            cache_editor_lsof
+            if [[ -n "$_EDITOR_LSOF_CACHE" ]]; then
+                local lsof_match
+                lsof_match=$(echo "$_EDITOR_LSOF_CACHE" | grep -F "$wt_path" | head -1) || true
+                if [[ -n "$lsof_match" ]]; then
+                    _last_editor_type=$(echo "$lsof_match" | awk '{print $1}')
+                    return 0
+                fi
+            fi
+            ;;
+    esac
+
+    return 1
+}
+
+# Check if a Ralph loop is active for a worktree
+# Args: $1 = worktree path
+# Returns: 0 (true) if Ralph loop is running, 1 (false) otherwise
+is_ralph_loop_active() {
+    local wt_path="$1"
+    local loop_state="$wt_path/.set/loop-state.json"
+
+    [[ ! -f "$loop_state" ]] && return 1
+
+    local status
+    status=$(jq -r '.status // ""' "$loop_state" 2>/dev/null) || return 1
+
+    [[ "$status" == "running" ]] && return 0
+    return 1
+}
+
+# Orphan grace period helpers
+# Marker files: .set-core/orphan-detect/<pid> containing "<first_seen_timestamp>:<count>"
+# Kill threshold: count >= 3 AND (now - first_seen) >= 15 seconds
+
+orphan_marker_dir() {
+    local wt_path="$1"
+    local dir="$wt_path/.set-core/orphan-detect"
+    mkdir -p "$dir" 2>/dev/null
+    echo "$dir"
+}
+
+cleanup_stale_markers() {
+    local marker_dir="$1"
+    [[ ! -d "$marker_dir" ]] && return
+    for marker in "$marker_dir"/*; do
+        [[ ! -f "$marker" ]] && continue
+        local mpid
+        mpid=$(basename "$marker")
+        if [[ "$mpid" =~ ^[0-9]+$ ]] && ! kill -0 "$mpid" 2>/dev/null; then
+            rm -f "$marker"
+        fi
+    done
+}
+
+record_orphan_detection() {
+    local marker_dir="$1"
+    local pid="$2"
+    local marker="$marker_dir/$pid"
+    local now
+    now=$(date +%s)
+    if [[ -f "$marker" ]]; then
+        local content
+        content=$(cat "$marker" 2>/dev/null) || { echo "$now:1" > "$marker"; return; }
+        local first_seen="${content%%:*}"
+        local count="${content#*:}"
+        ((count++))
+        echo "$first_seen:$count" > "$marker"
+    else
+        echo "$now:1" > "$marker"
+    fi
+}
+
+should_kill_orphan() {
+    local marker_dir="$1"
+    local pid="$2"
+    local marker="$marker_dir/$pid"
+    [[ ! -f "$marker" ]] && return 1
+    local content
+    content=$(cat "$marker" 2>/dev/null) || return 1
+    local first_seen="${content%%:*}"
+    local count="${content#*:}"
+    local now
+    now=$(date +%s)
+    local elapsed=$((now - first_seen))
+    if [[ "$count" -ge 3 ]] && [[ "$elapsed" -ge 15 ]]; then
+        return 0
+    fi
+    return 1
+}
+
+reset_orphan_marker() {
+    local marker_dir="$1"
+    local pid="$2"
+    rm -f "$marker_dir/$pid" 2>/dev/null
+}
+
+# Check if a process has an active TTY with a shell running on it
+# Args: $1 = PID
+# Returns: 0 (true) if TTY has a shell, 1 (false) otherwise
+has_tty_with_shell() {
+    local pid="$1"
+    local _tty
+    _tty=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
+    if [[ -n "$_tty" ]] && [[ "$_tty" != "?" ]] && [[ "$_tty" != "??" ]]; then
+        local _tty_procs
+        _tty_procs=$(ps -t "$_tty" -o comm= 2>/dev/null)
+        if echo "$_tty_procs" | grep -qE '^(zsh|bash|fish|sh|dash|-zsh|-bash|-fish|-sh|-dash|/usr/bin/login|login)$'; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Clean up orphan agents: kill "waiting" agents with no window and no interactive shell
+# Args: $1 = worktree path, $2 = agent_lines (status:pid:window_id:editor_type entries)
+# Outputs: filtered agent_lines with orphans removed
+cleanup_orphan_agents() {
+    local wt_path="$1"
+    local agent_lines="$2"
+
+    [[ -z "$agent_lines" ]] && return
+
+    local marker_dir
+    marker_dir=$(orphan_marker_dir "$wt_path")
+
+    # Clean up stale markers for PIDs that no longer exist
+    cleanup_stale_markers "$marker_dir"
+
+    # Ralph loop protects ALL agents (worktree-level)
+    if is_ralph_loop_active "$wt_path"; then
+        while IFS=: read -r _s _p _w _e; do
+            [[ -n "$_p" ]] && reset_orphan_marker "$marker_dir" "$_p"
+        done <<< "$agent_lines"
+        echo "$agent_lines"
+        return
+    fi
+
+    # Per-agent cleanup: each agent evaluated independently
+    local kept_lines=""
+    while IFS=: read -r agent_status agent_pid agent_wid agent_etype; do
+        [[ -z "$agent_status" ]] && continue
+
+        if [[ "$agent_status" == "waiting" ]]; then
+            if [[ -n "$agent_wid" ]]; then
+                # Agent has its own window → keep
+                reset_orphan_marker "$marker_dir" "$agent_pid"
+            elif has_tty_with_shell "$agent_pid"; then
+                # Interactive terminal session → keep
+                reset_orphan_marker "$marker_dir" "$agent_pid"
+            else
+                # No window, no interactive shell → orphan candidate
+                record_orphan_detection "$marker_dir" "$agent_pid"
+
+                # Auto-kill disabled: window detection is unreliable (especially
+                # macOS osascript), causing active sessions to be killed.
+                # Orphans are shown in UI with ⚠ — user kills manually via
+                # GUI context menu "Kill Orphan Process".
+                # if should_kill_orphan "$marker_dir" "$agent_pid"; then
+                #     kill "$agent_pid" 2>/dev/null || true
+                #     echo "set-status: killed orphan agent PID $agent_pid in $wt_path (grace period expired: 3x + 15s)" >&2
+                #     rm -f "$marker_dir/$agent_pid" 2>/dev/null
+                #     local skill_file="$wt_path/.set/agents/${agent_pid}.skill"
+                #     rm -f "$skill_file" 2>/dev/null
+                #     continue
+                # fi
+            fi
+        else
+            # running/orphan: keep as-is, reset marker
+            reset_orphan_marker "$marker_dir" "$agent_pid"
+        fi
+
+        if [[ -n "$kept_lines" ]]; then
+            kept_lines+=$'\n'
+        fi
+        kept_lines+="${agent_status}:${agent_pid}:${agent_wid}:${agent_etype}"
+    done <<< "$agent_lines"
+
+    [[ -n "$kept_lines" ]] && echo "$kept_lines"
+}
+
+usage() {
+    cat <<EOF
+Usage: set-status [options]
+
+Display worktree and Claude agent status.
+
+Options:
+  -p, --project <name>    Show status for specific project
+  -a, --all               Show all projects (default)
+  -j, --json              Output as JSON
+  -c, --compact           One-line summary for status bars
+  -w, --watch             Continuous refresh (2s interval)
+  -h, --help              Show this help
+
+Examples:
+  set-status               # Show all worktrees with status
+  set-status --compact     # One-liner for status bar
+  set-status --json        # Machine-readable output
+  set-status --watch       # Auto-refresh every 2s
+EOF
+}
+
+# =============================================================================
+# Claude process cache: ONE ps + batch lsof per set-status run
+# Format: "pid|cwd|tty" per line
+# =============================================================================
+_CLAUDE_PROCS_CACHE=""
+_CLAUDE_PROCS_LOADED=false
+
+cache_claude_procs() {
+    [[ "$_CLAUDE_PROCS_LOADED" == "true" ]] && return
+
+    # Find all claude PIDs with their TTYs
+    local pids_ttys
+    pids_ttys=$(ps -e -o pid=,comm=,tty= | awk '$2 == "claude" {print $1"|"$3}') || true
+
+    if [[ -z "$pids_ttys" ]]; then
+        _CLAUDE_PROCS_LOADED=true
+        return
+    fi
+
+    # Batch get CWDs for all claude processes
+    while IFS='|' read -r pid tty; do
+        [[ -z "$pid" ]] && continue
+        pid=$(echo "$pid" | tr -d ' ')
+        tty=$(echo "$tty" | tr -d ' ')
+        local cwd
+        cwd=$(get_proc_cwd "$pid") || cwd=""
+        [[ -n "$cwd" ]] && _CLAUDE_PROCS_CACHE+="${pid}|${cwd}|${tty}"$'\n'
+    done <<< "$pids_ttys"
+
+    _CLAUDE_PROCS_LOADED=true
+}
+
+# =============================================================================
+# Editor lsof cache: ONE lsof call for editor file detection
+# =============================================================================
+_EDITOR_LSOF_CACHE=""
+_EDITOR_LSOF_LOADED=false
+
+cache_editor_lsof() {
+    [[ "$_EDITOR_LSOF_LOADED" == "true" ]] && return
+    _EDITOR_LSOF_CACHE=$(lsof -c zed -c code -c Cursor -c sublime_text 2>/dev/null) || true
+    _EDITOR_LSOF_LOADED=true
+}
+
+# Detect ALL Claude processes for a directory
+# Returns: newline-separated list of "status:pid:window_id:editor_type" entries, or empty if none found
+detect_agents() {
+    local wt_path="$1"
+
+    [[ -z "$_CLAUDE_PROCS_CACHE" ]] && return
+
+    # Collect PIDs that belong to this worktree (from cache)
+    local matching_pids=()
+    local matching_ttys=()
+    while IFS='|' read -r pid cwd tty; do
+        [[ -z "$pid" ]] && continue
+
+        # Check if process is in this worktree (exact match or subdir)
+        if [[ "$cwd" == "$wt_path" ]] || [[ "$cwd" == "$wt_path/"* ]]; then
+            matching_pids+=("$pid")
+            matching_ttys+=("$tty")
+        fi
+    done <<< "$_CLAUDE_PROCS_CACHE"
+
+    if [[ ${#matching_pids[@]} -eq 0 ]]; then
+        return
+    fi
+
+    # Get session files sorted by mtime (freshest first)
+    local proj_dir_name
+    proj_dir_name=$(echo "$wt_path" | sed 's|/|-|g')
+    local session_dir="$HOME/.claude/projects/$proj_dir_name"
+
+    local session_files=()
+    if [[ -d "$session_dir" ]]; then
+        while IFS= read -r f; do
+            [[ -n "$f" ]] && session_files+=("$f")
+        done < <(ls -t "$session_dir"/*.jsonl 2>/dev/null)
+    fi
+
+    local now
+    now=$(date +%s)
+    local num_agents=${#matching_pids[@]}
+    local num_sessions=${#session_files[@]}
+
+    # Match PIDs to session files by mtime order (best-effort heuristic)
+    # For each agent, determine status from the corresponding session file
+    for i in "${!matching_pids[@]}"; do
+        local pid="${matching_pids[$i]}"
+        local status="waiting"
+
+        if [[ $i -lt $num_sessions ]]; then
+            local session_file="${session_files[$i]}"
+            local mtime age
+            mtime=$(get_file_mtime "$session_file")
+            age=$((now - mtime))
+
+            if [[ "$age" -lt 10 ]]; then
+                status="running"
+            fi
+        fi
+
+        # Check if agent is orphaned: no TTY means detached/abandoned process
+        # Agents with a valid TTY are legitimate (terminal or IDE-launched)
+        local tty="${matching_ttys[$i]}"
+        if [[ -z "$tty" ]] || [[ "$tty" == "?" ]] || [[ "$tty" == "??" ]]; then
+            # No TTY at all — orphan (terminal was closed, process survived)
+            status="orphan"
+        fi
+
+        # Per-agent window detection via PPID chain
+        # Pass worktree basename for multi-window disambiguation (e.g. Zed)
+        local agent_wid="" agent_etype=""
+        local win_result wt_basename
+        wt_basename=$(basename "$wt_path")
+        win_result=$(find_window_for_agent "$pid" "$wt_basename") || true
+        if [[ -n "$win_result" ]]; then
+            agent_wid="${win_result%%|*}"
+            agent_etype="${win_result#*|}"
+        fi
+
+        echo "$status:$pid:$agent_wid:$agent_etype"
+    done
+}
+
+# Get last git activity time
+get_last_activity() {
+    local wt_path="$1"
+    local last_commit
+    last_commit=$(git -C "$wt_path" log -1 --format=%ct 2>/dev/null) || echo "0"
+    echo "$last_commit"
+}
+
+# Check if Claude Code hooks are installed in a worktree
+# Returns "true" if .claude/settings.json has both UserPromptSubmit and Stop hooks
+check_hooks_installed() {
+    local wt_path="$1"
+    local settings_file="$wt_path/.claude/settings.json"
+
+    if [[ ! -f "$settings_file" ]]; then
+        echo "false"
+        return
+    fi
+
+    if jq -e '.hooks.Stop' "$settings_file" &>/dev/null && jq -e '.hooks.UserPromptSubmit' "$settings_file" &>/dev/null; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+# Get current skill for a specific agent PID
+# Reads from .set/agents/<pid>.skill only (no legacy fallback)
+# Returns "skill_name|freshness" if < 30 min, empty string otherwise
+# freshness is "fresh" (just invoked) or "last" (subsequent prompts since)
+get_agent_skill() {
+    local wt_path="$1"
+    local pid="$2"
+
+    local skill_file="$wt_path/.set/agents/${pid}.skill"
+
+    if [[ ! -f "$skill_file" ]]; then
+        echo ""
+        return
+    fi
+
+    local content
+    content=$(cat "$skill_file" 2>/dev/null) || { echo ""; return; }
+
+    # Parse: skill_name|timestamp|freshness
+    local skill_name="${content%%|*}"
+    local rest="${content#*|}"
+    local timestamp="${rest%%|*}"
+    local freshness="${rest#*|}"
+    # Default freshness for old-format files without 3rd field
+    [[ "$freshness" == "$timestamp" ]] && freshness="last"
+
+    # Check if timestamp is valid and fresh (< 30 minutes = 1800 seconds)
+    if [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+        local now age
+        now=$(date +%s)
+        age=$((now - timestamp))
+        if [[ "$age" -lt 1800 ]]; then
+            echo "${skill_name}|${freshness}"
+            return
+        fi
+    fi
+
+    echo ""
+}
+
+# Clean up stale PID skill files in .set/agents/
+cleanup_stale_agents() {
+    local wt_path="$1"
+    local agents_dir="$wt_path/.set/agents"
+
+    [[ ! -d "$agents_dir" ]] && return
+
+    for skill_file in "$agents_dir"/*.skill; do
+        [[ ! -f "$skill_file" ]] && continue
+        local file_pid
+        file_pid=$(basename "$skill_file" .skill)
+        if [[ "$file_pid" =~ ^[0-9]+$ ]]; then
+            if ! kill -0 "$file_pid" 2>/dev/null; then
+                rm -f "$skill_file"
+                rm -f "$agents_dir/${file_pid}.memory"
+            fi
+        fi
+    done
+}
+
+# Collect status for one worktree
+collect_worktree_status() {
+    local project_name="$1"
+    local wt_path="$2"
+    local wt_name="$3"
+    local branch="$4"
+    local is_main_repo="${5:-false}"
+
+    # Clean up stale agent skill files
+    cleanup_stale_agents "$wt_path"
+
+    # Detect all agents on this worktree (with per-agent window info)
+    local agent_lines
+    agent_lines=$(detect_agents "$wt_path")
+
+    # Derive worktree-level editor info from per-agent window data
+    local editor_open="false"
+    local window_id="null"
+    local editor_type="null"
+    if [[ -n "$agent_lines" ]]; then
+        while IFS=: read -r _s _p _wid _etype; do
+            if [[ -n "$_wid" ]]; then
+                editor_open="true"
+                window_id="\"$_wid\""
+                editor_type="\"$_etype\""
+                break
+            fi
+        done <<< "$agent_lines"
+    fi
+
+    # No agent has a window — fall back to title-based search
+    if [[ "$editor_open" == "false" ]]; then
+        if is_editor_open "$wt_path" "$is_main_repo"; then
+            editor_open="true"
+            [[ -n "$_last_window_id" ]] && window_id="\"$_last_window_id\""
+            [[ -n "$_last_editor_type" ]] && editor_type="\"$_last_editor_type\""
+        fi
+    fi
+
+    # Cleanup orphan agents (per-agent: window/TTY/grace period)
+    if [[ -n "$agent_lines" ]]; then
+        agent_lines=$(cleanup_orphan_agents "$wt_path" "$agent_lines")
+    fi
+
+    # Build agents JSON array (with per-agent window_id and editor_type)
+    local agents_json="["
+    local first_agent=true
+    _wt_running_count=0
+    _wt_waiting_count=0
+    _wt_agent_count=0
+    if [[ -n "$agent_lines" ]]; then
+        while IFS=: read -r agent_status agent_pid agent_wid agent_etype; do
+            [[ -z "$agent_status" ]] && continue
+
+            _wt_agent_count=$((_wt_agent_count + 1))
+            case "$agent_status" in
+                running) _wt_running_count=$((_wt_running_count + 1)) ;;
+                waiting) _wt_waiting_count=$((_wt_waiting_count + 1)) ;;
+            esac
+
+            local skill_raw skill_name skill_fresh
+            skill_raw=$(get_agent_skill "$wt_path" "$agent_pid")
+            local skill_json="null"
+            local skill_fresh_json="null"
+            if [[ -n "$skill_raw" ]]; then
+                skill_name="${skill_raw%%|*}"
+                skill_fresh="${skill_raw#*|}"
+                skill_json="\"$skill_name\""
+                skill_fresh_json="\"$skill_fresh\""
+            fi
+
+            local wid_json="null"
+            local etype_json="null"
+            [[ -n "$agent_wid" ]] && wid_json="\"$agent_wid\""
+            [[ -n "$agent_etype" ]] && etype_json="\"$agent_etype\""
+
+            if ! $first_agent; then
+                agents_json+=","
+            fi
+            first_agent=false
+
+            agents_json+="{\"pid\":$agent_pid,\"status\":\"$agent_status\",\"skill\":$skill_json,\"skill_fresh\":$skill_fresh_json,\"window_id\":$wid_json,\"editor_type\":$etype_json}"
+        done <<< "$agent_lines"
+    fi
+    agents_json+="]"
+
+    local last_activity
+    last_activity=$(get_last_activity "$wt_path")
+
+    # Check for uncommitted changes
+    local has_changes="false"
+    if git -C "$wt_path" status --porcelain 2>/dev/null | grep -q .; then
+        has_changes="true"
+    fi
+
+    # Get git remote URL (use origin, normalized)
+    local remote_url
+    remote_url=$(git -C "$wt_path" remote get-url origin 2>/dev/null | sed 's/\.git$//' || echo "")
+
+    # Check hook installation status
+    local hooks_installed
+    hooks_installed=$(check_hooks_installed "$wt_path")
+
+    # Output as JSON object (will be collected into array)
+    cat <<EOF
+{
+  "project": "$project_name",
+  "change_id": "$wt_name",
+  "path": "$wt_path",
+  "branch": "$branch",
+  "remote_url": "$remote_url",
+  "is_main_repo": $is_main_repo,
+  "hooks_installed": $hooks_installed,
+  "editor_open": $editor_open,
+  "window_id": $window_id,
+  "editor_type": $editor_type,
+  "agents": $agents_json,
+  "git": {
+    "last_commit": $last_activity,
+    "uncommitted_changes": $has_changes
+  }
+}
+EOF
+}
+
+# Collect all worktrees
+collect_all_status() {
+    local filter_project="$1"
+    local worktrees_json="[]"
+    local running=0
+    local waiting=0
+    local idle=0
+    local total=0
+
+    # Cache all window data upfront (single osascript/xdotool call)
+    cache_all_windows
+    # Cache all claude process CWDs upfront (single ps + batch lsof)
+    cache_claude_procs
+
+    ensure_config
+
+    local projects
+    if [[ -n "$filter_project" ]]; then
+        projects="$filter_project"
+    else
+        projects=$(jq -r '.projects | keys[]' "$CONFIG_FILE" 2>/dev/null)
+    fi
+
+    [[ -z "$projects" ]] && echo '{"worktrees":[],"summary":{"total":0,"running":0,"compacting":0,"waiting":0,"idle":0}}' && return
+
+    local first=true
+    echo '{"worktrees":['
+
+    # Helper to emit one entry and count agent statuses
+    emit_entry() {
+        local _proj="$1" _path="$2" _name="$3" _branch="$4" _is_main="$5"
+
+        if ! $first; then
+            echo ","
+        fi
+        first=false
+
+        collect_worktree_status "$_proj" "$_path" "$_name" "$_branch" "$_is_main"
+
+        # Use counters set by collect_worktree_status (avoids double detect_agents call)
+        if [[ $_wt_agent_count -gt 0 ]]; then
+            running=$(( running + _wt_running_count ))
+            waiting=$(( waiting + _wt_waiting_count ))
+        else
+            idle=$((idle + 1))
+        fi
+        total=$((total + 1))
+    }
+
+    while IFS= read -r proj_name; do
+        [[ -z "$proj_name" ]] && continue
+
+        local proj_path
+        proj_path=$(get_project_path "$proj_name")
+        [[ ! -d "$proj_path" ]] && continue
+
+        # Get worktrees
+        local worktrees
+        worktrees=$(git -C "$proj_path" worktree list --porcelain 2>/dev/null)
+        [[ -z "$worktrees" ]] && continue
+
+        # Emit main repo first
+        local main_branch
+        main_branch=$(get_main_branch "$proj_path")
+        if [[ -n "$main_branch" ]]; then
+            emit_entry "$proj_name" "$proj_path" "$main_branch" "$main_branch" "true"
+        fi
+
+        # Then emit worktrees (skip main repo and .set-control)
+        local current_path=""
+        local current_branch=""
+
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^worktree\ (.+)$ ]]; then
+                current_path="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^branch\ refs/heads/(.+)$ ]]; then
+                current_branch="${BASH_REMATCH[1]}"
+            elif [[ -z "$line" && -n "$current_path" ]]; then
+                # Skip main repo and .set-control worktree
+                if [[ "$current_path" != "$proj_path" && "$current_path" != "$proj_path/.set-control" ]]; then
+                    # Extract change-id from branch (change/xxx -> xxx)
+                    local change_id
+                    if [[ "$current_branch" =~ ^change/(.+)$ ]]; then
+                        change_id="${BASH_REMATCH[1]}"
+                    else
+                        change_id=$(basename "$current_path")
+                    fi
+
+                    emit_entry "$proj_name" "$current_path" "$change_id" "$current_branch" "false"
+                fi
+                current_path=""
+                current_branch=""
+            fi
+        done <<< "$worktrees"
+
+        # Handle last entry
+        if [[ -n "$current_path" && "$current_path" != "$proj_path" && "$current_path" != "$proj_path/.set-control" ]]; then
+            local change_id
+            if [[ "$current_branch" =~ ^change/(.+)$ ]]; then
+                change_id="${BASH_REMATCH[1]}"
+            else
+                change_id=$(basename "$current_path")
+            fi
+
+            emit_entry "$proj_name" "$current_path" "$change_id" "$current_branch" "false"
+        fi
+    done <<< "$projects"
+
+    echo '],"summary":{"total":'$total',"running":'$running',"compacting":0,"waiting":'$waiting',"idle":'$idle'}}'
+}
+
+# Format output for terminal
+format_terminal() {
+    local json="$1"
+
+    local total running waiting idle
+    total=$(echo "$json" | jq -r '.summary.total')
+    running=$(echo "$json" | jq -r '.summary.running')
+    waiting=$(echo "$json" | jq -r '.summary.waiting')
+    idle=$(echo "$json" | jq -r '.summary.idle')
+
+    if [[ "$total" == "0" ]]; then
+        info "No active worktrees"
+        return
+    fi
+
+    echo ""
+    printf "  %-20s %-25s %-10s\n" "PROJECT" "CHANGE" "STATUS"
+    echo "  ────────────────────────────────────────────────────────"
+
+    echo "$json" | jq -r '.worktrees[] | . as $wt | (if (.agents | length) == 0 then [{"status":(if .editor_open then "idle (IDE)" else "idle" end),"skill":null}] else .agents end)[] | "\($wt.project)|\($wt.change_id)|\(.status)|\(.skill // "")"' | \
+    while IFS='|' read -r project change status skill; do
+        local icon color
+        case "$status" in
+            running)      icon="$ICON_RUNNING";    color="$GREEN" ;;
+            waiting)      icon="$ICON_WAITING";    color="$YELLOW" ;;
+            "idle (IDE)") icon="◇";                color="$BLUE" ;;
+            idle)         icon="$ICON_IDLE";       color="$NC" ;;
+            *)            icon="?";                color="$NC" ;;
+        esac
+
+        local status_str="$icon $status"
+        [[ -n "$skill" ]] && status_str="$status_str ($skill)"
+
+        printf "  %-20s %-25s ${color}%-10s${NC}\n" "$project" "$change" "$status_str"
+    done
+
+    echo ""
+    local summary="  Summary: $total worktrees | ${GREEN}$running agents running${NC}"
+    summary="$summary | ${YELLOW}$waiting waiting${NC} | $idle idle"
+    echo "$summary"
+    echo ""
+}
+
+# Format compact output
+format_compact() {
+    local json="$1"
+
+    local total running waiting
+    total=$(echo "$json" | jq -r '.summary.total')
+    running=$(echo "$json" | jq -r '.summary.running')
+    waiting=$(echo "$json" | jq -r '.summary.waiting')
+
+    local output="wt: $total"
+    [[ "$running" -gt 0 ]] && output="$output | $ICON_RUNNING $running"
+    [[ "$waiting" -gt 0 ]] && output="$output | $ICON_WAITING $waiting"
+    [[ "$running" -eq 0 && "$waiting" -eq 0 ]] && output="$output idle"
+
+    echo "$output"
+}
+
+main() {
+    local project=""
+    local output_json=false
+    local output_compact=false
+    local watch_mode=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project="$2"
+                shift 2
+                ;;
+            -a|--all)
+                project=""
+                shift
+                ;;
+            -j|--json)
+                output_json=true
+                shift
+                ;;
+            -c|--compact)
+                output_compact=true
+                shift
+                ;;
+            -w|--watch)
+                watch_mode=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
+    if $watch_mode; then
+        # Watch mode - continuous refresh
+        while true; do
+            clear
+            local json
+            json=$(collect_all_status "$project")
+
+            if $output_json; then
+                echo "$json" | jq .
+            elif $output_compact; then
+                format_compact "$json"
+            else
+                echo "  Worktree Status (refreshing every 2s, Ctrl+C to exit)"
+                format_terminal "$json"
+            fi
+
+            sleep 2
+        done
+    else
+        local json
+        json=$(collect_all_status "$project")
+
+        if $output_json; then
+            echo "$json" | jq .
+        elif $output_compact; then
+            format_compact "$json"
+        else
+            format_terminal "$json"
+        fi
+    fi
+}
+
+main "$@"

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "WARNING: wt-status is renamed to set-status. Update your scripts/aliases." >&2
+exec set-status "$@"

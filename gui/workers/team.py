@@ -1,5 +1,5 @@
 """
-Team Worker - Background thread for team synchronization via wt-control
+Team Worker - Background thread for team synchronization via set-control
 """
 
 import json
@@ -14,11 +14,11 @@ from ..config import Config
 
 __all__ = ["TeamWorker"]
 
-logger = logging.getLogger("wt-control.workers.team")
+logger = logging.getLogger("set-control.workers.team")
 
 
 class TeamWorker(QThread):
-    """Background thread for team synchronization via wt-control"""
+    """Background thread for team synchronization via set-control"""
     team_updated = Signal(dict)
     error_occurred = Signal(str)
 
@@ -50,7 +50,7 @@ class TeamWorker(QThread):
     def _get_enabled_project_paths(self) -> list:
         """Get list of project paths that have team enabled.
 
-        Discovers project paths from wt-status worktrees instead of relying
+        Discovers project paths from set-status worktrees instead of relying
         solely on projects.json, which may not contain all projects.
         """
         # Collect enabled URLs (normalize for comparison)
@@ -62,10 +62,10 @@ class TeamWorker(QThread):
         if not enabled_urls:
             return []
 
-        # Get all worktrees from wt-status
+        # Get all worktrees from set-status
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-status"), "--json"],
+                [str(SCRIPT_DIR / "set-status"), "--json"],
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode != 0:
@@ -96,8 +96,8 @@ class TeamWorker(QThread):
             if not main_path.exists():
                 continue
 
-            # Check if .wt-control exists (or can be auto-initialized)
-            if (main_path / ".wt-control").exists():
+            # Check if .set-control exists (or can be auto-initialized)
+            if (main_path / ".set-control").exists():
                 project_paths[remote_url] = str(main_path)
 
         return list(project_paths.values())
@@ -122,7 +122,7 @@ class TeamWorker(QThread):
                 # Sync each project
                 for project_path in project_paths:
                     sync_result = subprocess.run(
-                        [str(SCRIPT_DIR / "wt-control-sync"), "--full", "--json"],
+                        [str(SCRIPT_DIR / "set-control-sync"), "--full", "--json"],
                         capture_output=True,
                         text=True,
                         timeout=30,
@@ -177,8 +177,8 @@ class TeamWorker(QThread):
                 logger.error("team sync timed out")
                 self.error_occurred.emit("Team sync timed out")
             except FileNotFoundError:
-                logger.error("wt-control-sync not found")
-                self.error_occurred.emit("wt-control-sync not found")
+                logger.error("set-control-sync not found")
+                self.error_occurred.emit("set-control-sync not found")
             except json.JSONDecodeError as e:
                 logger.error("team sync invalid JSON: %s", e)
                 self.error_occurred.emit(f"Invalid team JSON: {e}")

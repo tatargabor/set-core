@@ -20,7 +20,7 @@ Additionally, the human-readable `spec-coverage-report.md` is generated once dur
 
 ## Impact
 
-- `lib/wt_orch/planner.py`: `generate_coverage_report()` — add state-aware status rendering + new `extract_source_items()` function
-- `lib/wt_orch/engine.py`: `_on_all_complete()` or equivalent — trigger report regeneration
+- `lib/set_orch/planner.py`: `generate_coverage_report()` — add state-aware status rendering + new `extract_source_items()` function
+- `lib/set_orch/engine.py`: `_on_all_complete()` or equivalent — trigger report regeneration
 - `.claude/skills/wt/decompose/SKILL.md`: Add `source_items` array to plan schema for single-file mode
 - No breaking changes — existing digest-mode coverage tracking is unaffected

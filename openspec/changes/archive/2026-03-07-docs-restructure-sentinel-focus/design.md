@@ -111,7 +111,7 @@ Content from `agent-messaging.md` merges into the new `docs/team-sync.md`. The o
 ### D7: Plugin docs structure
 
 `docs/plugins.md` contains:
-- What plugins are (extend wt-tools without modifying core)
+- What plugins are (extend set-core without modifying core)
 - How to install a plugin (future: `wt-plugin install <repo>`)
 - Plugin registry (table of known plugins with repo links — starts empty)
 - How to create a plugin (brief, links to contributing)

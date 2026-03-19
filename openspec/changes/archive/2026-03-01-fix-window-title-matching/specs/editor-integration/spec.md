@@ -78,18 +78,18 @@ The system SHALL close the editor window for a worktree using platform-appropria
 The system SHALL use boundary-aware matching for all window title searches to prevent false positives from prefix-overlapping names.
 
 #### Scenario: Exact title match
-- **WHEN** the search term is "wt-tools"
-- **AND** a window title is "wt-tools"
+- **WHEN** the search term is "set-core"
+- **AND** a window title is "set-core"
 - **THEN** the match SHALL succeed
 
 #### Scenario: Zed em-dash separator match
-- **WHEN** the search term is "wt-tools"
-- **AND** a window title is "wt-tools — main.py"
+- **WHEN** the search term is "set-core"
+- **AND** a window title is "set-core — main.py"
 - **THEN** the match SHALL succeed (em-dash `\u2014` separator)
 
 #### Scenario: VS Code hyphen separator match
-- **WHEN** the search term is "wt-tools"
-- **AND** a window title is "wt-tools - main.py"
+- **WHEN** the search term is "set-core"
+- **AND** a window title is "set-core - main.py"
 - **THEN** the match SHALL succeed (hyphen separator with spaces)
 
 #### Scenario: Reject prefix-only substring match

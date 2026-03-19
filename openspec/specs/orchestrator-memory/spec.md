@@ -3,15 +3,15 @@ The orchestrator SHALL provide helper functions for saving and recalling memorie
 
 #### Scenario: orch_remember saves with orchestrator tag
 - **WHEN** `orch_remember "content" [type] [extra,tags]` is called
-- **THEN** the orchestrator SHALL invoke `wt-memory remember` with tags `source:orchestrator,{extra_tags}`
-- **AND** return 0 regardless of wt-memory success/failure (graceful degradation)
+- **THEN** the orchestrator SHALL invoke `set-memory remember` with tags `source:orchestrator,{extra_tags}`
+- **AND** return 0 regardless of set-memory success/failure (graceful degradation)
 - **AND** track operation timing for performance stats
 
 #### Scenario: orch_recall retrieves memories with phase filtering
 - **WHEN** `orch_recall "query" [limit] [tag_filter]` is called
 - **AND** `tag_filter` is non-empty (e.g., `"phase:planning"`)
-- **THEN** the orchestrator SHALL invoke `wt-memory recall` with `--tags "$tag_filter"` in hybrid mode
-- **AND** return plain text (max 2000 chars) or empty string if wt-memory unavailable
+- **THEN** the orchestrator SHALL invoke `set-memory recall` with `--tags "$tag_filter"` in hybrid mode
+- **AND** return plain text (max 2000 chars) or empty string if set-memory unavailable
 - **AND** memories tagged `stale:true` SHALL be excluded from results
 
 #### Scenario: orch_recall with empty tag filter (backward compat)
@@ -112,20 +112,20 @@ The orchestrator SHALL periodically check memory system health during monitoring
 
 #### Scenario: Memory audit every ~10 polls
 - **WHEN** the monitor loop has completed a multiple of 10 poll cycles
-- **THEN** the orchestrator SHALL check wt-memory health, log orchestrator memory count
+- **THEN** the orchestrator SHALL check set-memory health, log orchestrator memory count
 - **AND** run gate cost stats summary
 - **AND** log warnings if memory system is unhealthy (non-blocking)
 ## Requirements
 ### Requirement: Helper functions for orchestrator memory access
-The orchestrator SHALL provide `orch_remember` and `orch_recall` helper functions that encapsulate wt-memory CLI access with consistent tagging, availability checks, and failure handling.
+The orchestrator SHALL provide `orch_remember` and `orch_recall` helper functions that encapsulate set-memory CLI access with consistent tagging, availability checks, and failure handling.
 
 #### Scenario: orch_remember saves with orchestrator tags
 - **WHEN** `orch_remember "merge conflict between X and Y" Learning "phase:merge,change:my-change"` is called
-- **THEN** the content SHALL be saved via `wt-memory remember` with type `Learning` and tags `source:orchestrator,phase:merge,change:my-change`
-- **AND** the function SHALL return 0 regardless of wt-memory success or failure
+- **THEN** the content SHALL be saved via `set-memory remember` with type `Learning` and tags `source:orchestrator,phase:merge,change:my-change`
+- **AND** the function SHALL return 0 regardless of set-memory success or failure
 
-#### Scenario: orch_remember when wt-memory is not installed
-- **WHEN** `orch_remember` is called and `wt-memory` is not on PATH
+#### Scenario: orch_remember when set-memory is not installed
+- **WHEN** `orch_remember` is called and `set-memory` is not on PATH
 - **THEN** the function SHALL return 0 immediately without error
 
 #### Scenario: orch_recall retrieves filtered memories
@@ -133,8 +133,8 @@ The orchestrator SHALL provide `orch_remember` and `orch_recall` helper function
 - **THEN** the function SHALL return memory content as plain text, limited to 2000 characters
 - **AND** the function SHALL use hybrid recall mode
 
-#### Scenario: orch_recall when wt-memory is not installed
-- **WHEN** `orch_recall` is called and `wt-memory` is not on PATH
+#### Scenario: orch_recall when set-memory is not installed
+- **WHEN** `orch_recall` is called and `set-memory` is not on PATH
 - **THEN** the function SHALL return empty string and exit 0
 
 ### Requirement: Orchestrator saves merge outcomes as memories
@@ -241,14 +241,14 @@ When `dispatch_change()` creates a proposal.md in a worktree, it SHALL recall me
 - **AND** the recall SHALL NOT filter by `source:orchestrator` tags (to capture both agent and orchestrator memories)
 
 ### Requirement: Memory audit periodic health check
-The orchestrator SHALL run `orch_memory_audit()` periodically during the monitor loop (approximately every 10 poll cycles). The audit SHALL check wt-memory health, count orchestrator memories, and spot-check the latest memory content.
+The orchestrator SHALL run `orch_memory_audit()` periodically during the monitor loop (approximately every 10 poll cycles). The audit SHALL check set-memory health, count orchestrator memories, and spot-check the latest memory content.
 
 #### Scenario: Memory system healthy
-- **WHEN** orch_memory_audit runs and wt-memory health returns OK
+- **WHEN** orch_memory_audit runs and set-memory health returns OK
 - **THEN** the audit SHALL log memory count and pass silently
 
 #### Scenario: Memory system unhealthy
-- **WHEN** wt-memory health fails or memory count is 0
+- **WHEN** set-memory health fails or memory count is 0
 - **THEN** the audit SHALL log a warning but NOT block orchestration
 
 ### Requirement: Quality gate steps are timed
@@ -312,7 +312,7 @@ The orchestrator SHALL perform a lightweight memory health check before starting
 #### Scenario: Pre-decomposition hygiene check
 - **WHEN** `cmd_plan()` is invoked (either API or agent method)
 - **THEN** before planning, the orchestrator SHALL:
-  1. Run `wt-memory dedup --dry-run` and log the duplicate count
+  1. Run `set-memory dedup --dry-run` and log the duplicate count
   2. Log total memory count and phase tag distribution
   3. Note stale memory count for the run log
 - **AND** these checks SHALL be best-effort (failure does not block planning)

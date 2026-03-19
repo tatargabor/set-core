@@ -1,4 +1,4 @@
-"""Tests for wt_orch.loop_state — state round-trip, token parsing, date parsing, activity write."""
+"""Tests for set_orch.loop_state — state round-trip, token parsing, date parsing, activity write."""
 
 import json
 import os
@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.loop_state import (
+from set_orch.loop_state import (
     LoopState,
     init_loop_state,
     read_loop_state,
@@ -36,9 +36,9 @@ def tmp_dir():
 
 @pytest.fixture
 def wt(tmp_dir):
-    """Create a fake worktree with .wt/ dir."""
+    """Create a fake worktree with .set/ dir."""
     wt = os.path.join(tmp_dir, "worktree")
-    os.makedirs(os.path.join(wt, ".wt", "logs"))
+    os.makedirs(os.path.join(wt, ".set", "logs"))
     return wt
 
 
@@ -47,10 +47,10 @@ def wt(tmp_dir):
 
 class TestPathHelpers:
     def test_state_file_path(self, wt):
-        assert get_loop_state_file(wt).endswith(".wt/loop-state.json")
+        assert get_loop_state_file(wt).endswith(".set/loop-state.json")
 
     def test_log_dir_path(self, wt):
-        assert get_loop_log_dir(wt).endswith(".wt/logs")
+        assert get_loop_log_dir(wt).endswith(".set/logs")
 
     def test_iter_log_file(self, wt):
         path = get_iter_log_file(wt, 5)
@@ -205,7 +205,7 @@ class TestWriteActivity:
         )
         assert result is True
 
-        activity_file = os.path.join(wt, ".wt", "activity.json")
+        activity_file = os.path.join(wt, ".set", "activity.json")
         assert os.path.isfile(activity_file)
 
         with open(activity_file, "r") as f:
@@ -216,7 +216,7 @@ class TestWriteActivity:
 
     def test_write_with_broadcast(self, wt):
         write_activity(wt, broadcast="working on auth")
-        activity_file = os.path.join(wt, ".wt", "activity.json")
+        activity_file = os.path.join(wt, ".set", "activity.json")
         with open(activity_file, "r") as f:
             data = json.load(f)
         assert data["broadcast"] == "working on auth"
@@ -224,7 +224,7 @@ class TestWriteActivity:
     def test_overwrite(self, wt):
         write_activity(wt, skill="first")
         write_activity(wt, skill="second")
-        activity_file = os.path.join(wt, ".wt", "activity.json")
+        activity_file = os.path.join(wt, ".set", "activity.json")
         with open(activity_file, "r") as f:
             data = json.load(f)
         assert data["skill"] == "second"
@@ -252,7 +252,7 @@ class TestLoopStateDataclass:
 
     def test_test_command_roundtrip(self, wt):
         """test_command field survives write→read cycle."""
-        from wt_orch.loop_state import _state_to_dict, _dict_to_state
+        from set_orch.loop_state import _state_to_dict, _dict_to_state
 
         s = LoopState(test_command="pnpm test")
         d = _state_to_dict(s)
@@ -263,7 +263,7 @@ class TestLoopStateDataclass:
 
     def test_test_command_none_roundtrip(self, wt):
         """None test_command serializes as null and deserializes back to None."""
-        from wt_orch.loop_state import _state_to_dict, _dict_to_state
+        from set_orch.loop_state import _state_to_dict, _dict_to_state
 
         s = LoopState(test_command=None)
         d = _state_to_dict(s)

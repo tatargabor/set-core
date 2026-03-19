@@ -29,12 +29,12 @@ Team sync (Phase 1-2) is already working - we can see who's working on what. A s
 - PyNaCl library (libsodium wrapper)
 - Asymmetric keypair per user per project
 - Public key: `member.json` (synced via git)
-- Private key: `~/.wt-tools/chat-keys/{project}.key` (local, NEVER in git!)
+- Private key: `~/.set-core/chat-keys/{project}.key` (local, NEVER in git!)
 
 ### Architecture
 
 ```
-~/.wt-tools/
+~/.set-core/
   chat-keys/
     {project}.key           # Private key (0600 permissions)
 

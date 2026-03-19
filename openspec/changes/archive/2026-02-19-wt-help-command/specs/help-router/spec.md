@@ -23,7 +23,7 @@ The help router SHALL map common question categories to specific documentation p
 - **THEN** the router SHALL direct the LLM to `docs/developer-memory.md`
 
 #### Scenario: General overview questions routed
-- **WHEN** a user asks for a general overview of wt-tools features
+- **WHEN** a user asks for a general overview of set-core features
 - **THEN** the router SHALL direct the LLM to the `/wt:help` command
 
 ### Requirement: Help router is concise

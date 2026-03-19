@@ -1,20 +1,20 @@
 ## ADDED Requirements
 
 ### Requirement: Sentinel process wrapper
-The `wt-sentinel` command SHALL run `wt-orchestrate start` in a supervised loop, restarting on crash.
+The `set-sentinel` command SHALL run `set-orchestrate start` in a supervised loop, restarting on crash.
 
 #### Scenario: Clean exit with done state
-- **WHEN** `wt-orchestrate start` exits with code 0
+- **WHEN** `set-orchestrate start` exits with code 0
 - **AND** `orchestration-state.json` has status `done`
 - **THEN** the sentinel SHALL stop and exit with code 0
 
 #### Scenario: Clean exit with stopped state
-- **WHEN** `wt-orchestrate start` exits with code 0
+- **WHEN** `set-orchestrate start` exits with code 0
 - **AND** `orchestration-state.json` has status `stopped`
 - **THEN** the sentinel SHALL treat this as a normal stop (user Ctrl+C) and exit with code 0
 
 #### Scenario: Crash recovery
-- **WHEN** `wt-orchestrate start` exits with a non-zero code
+- **WHEN** `set-orchestrate start` exits with a non-zero code
 - **AND** the sentinel did not receive SIGINT or SIGTERM
 - **THEN** the sentinel SHALL log the exit code and timestamp
 - **AND** wait 30 seconds before restarting
@@ -37,7 +37,7 @@ The `wt-sentinel` command SHALL run `wt-orchestrate start` in a supervised loop,
 The sentinel SHALL fix stale orchestration state before restarting.
 
 #### Scenario: State says running but no orchestrator process
-- **WHEN** the sentinel is about to restart `wt-orchestrate start`
+- **WHEN** the sentinel is about to restart `set-orchestrate start`
 - **AND** `orchestration-state.json` has status `running`
 - **THEN** the sentinel SHALL update the status to `stopped` using jq
 - **AND** log that stale state was cleaned up
@@ -58,8 +58,8 @@ The sentinel SHALL write its PID to a file for external monitoring.
 - **THEN** it SHALL remove the `sentinel.pid` file via trap
 
 ### Requirement: Sentinel passthrough
-The sentinel SHALL pass all arguments to `wt-orchestrate start`.
+The sentinel SHALL pass all arguments to `set-orchestrate start`.
 
 #### Scenario: Argument forwarding
-- **WHEN** `wt-sentinel --spec docs/v5.md --max-parallel 3` is invoked
-- **THEN** the sentinel SHALL invoke `wt-orchestrate start --spec docs/v5.md --max-parallel 3`
+- **WHEN** `set-sentinel --spec docs/v5.md --max-parallel 3` is invoked
+- **THEN** the sentinel SHALL invoke `set-orchestrate start --spec docs/v5.md --max-parallel 3`

@@ -26,9 +26,9 @@ Three root causes need fixing together:
 
 ## Impact
 
-- **lib/wt_orch/loop_tasks.py**: `is_done()` gains uncommitted work pre-check across all done_criteria modes
-- **lib/wt_orch/verifier.py**: `handle_change_done()` gains uncommitted work gate step before build/test/review
-- **lib/wt_orch/dispatcher.py**: Dispatch writes/appends startup guide section to worktree CLAUDE.md
-- **lib/wt_orch/config.py**: `auto_detect_smoke_command()` prefers `build && test` when build script exists
-- **wt-project-web templates**: Planning rules and testing conventions updated with startup guide pattern and build-inclusive smoke defaults
+- **lib/set_orch/loop_tasks.py**: `is_done()` gains uncommitted work pre-check across all done_criteria modes
+- **lib/set_orch/verifier.py**: `handle_change_done()` gains uncommitted work gate step before build/test/review
+- **lib/set_orch/dispatcher.py**: Dispatch writes/appends startup guide section to worktree CLAUDE.md
+- **lib/set_orch/config.py**: `auto_detect_smoke_command()` prefers `build && test` when build script exists
+- **set-project-web templates**: Planning rules and testing conventions updated with startup guide pattern and build-inclusive smoke defaults
 - **No breaking changes** — all additions are additive guards that improve existing pipeline behavior

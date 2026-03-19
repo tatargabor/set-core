@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# set-control-gui - Launch the Worktree Control Center GUI
+
+# Follow symlinks to find the real script location
+get_real_dir() {
+    local script="${BASH_SOURCE[0]}"
+    while [[ -L "$script" ]]; do
+        local link=$(readlink "$script")
+        if [[ "$link" == /* ]]; then
+            script="$link"
+        else
+            script="$(dirname "$script")/$link"
+        fi
+    done
+    cd "$(dirname "$script")" && pwd
+}
+
+SCRIPT_DIR="$(get_real_dir)"
+GUI_DIR="$(dirname "$SCRIPT_DIR")/gui"
+
+# Check Python
+if ! command -v python3 &>/dev/null; then
+    echo "Error: python3 is required but not installed" >&2
+    exit 1
+fi
+
+# Check if PySide6 is installed
+if ! python3 -c "import PySide6" 2>/dev/null; then
+    echo "PySide6 not found. Installing dependencies..."
+    pip3 install -r "$GUI_DIR/requirements.txt"
+fi
+
+# Launch GUI
+exec python3 "$GUI_DIR/main.py" "$@"

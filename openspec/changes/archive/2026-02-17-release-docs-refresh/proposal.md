@@ -5,7 +5,7 @@ Preparing for release. The README and supporting docs have accumulated drift sin
 ## What Changes
 
 - Full README refresh following `docs/readme-guide.md` mandatory section structure
-- Add missing CLI commands to README: `wt-openspec` (3 subcommands), `wt-memory sync` (4 subcommands), `wt-memory proactive`, `wt-memory stats`, `wt-memory cleanup`, `wt-memory-hooks remove`
+- Add missing CLI commands to README: `wt-openspec` (3 subcommands), `set-memory sync` (4 subcommands), `set-memory proactive`, `set-memory stats`, `set-memory cleanup`, `set-memory-hooks remove`
 - Add `wt-hook-memory-recall` and `wt-hook-memory-save` to internal hooks note
 - Add GUI memory features to Features section: [M] button, Browse dialog, Export/Import, Remember Note
 - Add wt-control GitHub traffic warning and usage guidance

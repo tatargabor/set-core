@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""
+set-usage - Get Claude Code token usage statistics
+
+Uses the UsageCalculator to read local JSONL files and calculate usage.
+Optionally fetches exact percentages from claude.ai API with a session key.
+"""
+
+import sys
+import json
+import platform
+import subprocess
+import urllib.request
+import urllib.error
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+# Add project root to path for imports (resolve symlinks so ~/.local/bin/set-usage → set-core/bin/)
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent
+sys.path.insert(0, str(project_root))
+
+try:
+    # Import directly to avoid gui/__init__.py pulling in PySide6 (not needed for CLI)
+    from gui.usage_calculator import UsageCalculator, UsageData
+except ImportError:
+    # Fallback: import the module file directly, bypassing gui package init
+    import importlib.util
+    uc_path = project_root / "gui" / "usage_calculator.py"
+    if uc_path.exists():
+        spec = importlib.util.spec_from_file_location("usage_calculator", uc_path)
+        uc_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(uc_mod)
+        UsageCalculator = uc_mod.UsageCalculator
+        UsageData = uc_mod.UsageData
+    else:
+        print(json.dumps({"error": "usage_calculator not found", "total_tokens": 0}))
+        sys.exit(1)
+
+CONFIG_DIR = Path.home() / ".config" / "set-core"
+SESSION_FILE = CONFIG_DIR / "claude-session.json"
+API_BASE = "https://claude.ai/api"
+
+
+def get_usage(calc, args):
+    """Get usage data for the requested time range."""
+    if args.since:
+        since = datetime.fromisoformat(args.since.replace("Z", "+00:00"))
+        return calc.calculate_usage(since=since), "custom"
+
+    if args.today:
+        since = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        return calc.calculate_usage(since=since), "today"
+
+    if args.week:
+        return calc.calculate_weekly_usage(), "week"
+
+    if args.month:
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+        return calc.calculate_usage(since=since), "month"
+
+    # Default: 5h window
+    return calc.calculate_5h_usage(), "5h"
+
+
+def load_session_key():
+    """Load saved session key."""
+    try:
+        if SESSION_FILE.exists():
+            with open(SESSION_FILE) as f:
+                data = json.load(f)
+                return data.get("sessionKey")
+    except Exception:
+        pass
+    return None
+
+
+def api_get(url, session_key):
+    """Make API GET request with session key."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 set-core/1.0",
+        "Accept": "application/json",
+        "Cookie": f"sessionKey={session_key}",
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            if resp.status == 200:
+                return json.loads(resp.read().decode())
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
+        pass
+
+    # Fallback: curl
+    try:
+        result = subprocess.run(
+            ["curl", "-s",
+             "-H", f"Cookie: sessionKey={session_key}",
+             "-H", "Accept: application/json",
+             "-H", "User-Agent: set-core/1.0",
+             "--max-time", "15", url],
+            capture_output=True, text=True, timeout=20
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return json.loads(result.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+        pass
+    return None
+
+
+def fetch_api_usage(session_key):
+    """Fetch usage from claude.ai API."""
+    orgs = api_get(f"{API_BASE}/organizations", session_key)
+    if not orgs or not isinstance(orgs, list):
+        return None
+
+    org_id = None
+    for org in orgs:
+        if "claude_max" in org.get("capabilities", []):
+            org_id = org.get("uuid")
+            break
+    if not org_id:
+        org_id = orgs[0].get("uuid")
+    if not org_id:
+        return None
+
+    data = api_get(f"{API_BASE}/organizations/{org_id}/usage", session_key)
+    if not data:
+        return None
+
+    return {
+        "session_pct": data.get("five_hour", {}).get("utilization", 0) or 0,
+        "session_reset": data.get("five_hour", {}).get("resets_at"),
+        "weekly_pct": data.get("seven_day", {}).get("utilization", 0) or 0,
+        "weekly_reset": data.get("seven_day", {}).get("resets_at"),
+    }
+
+
+def format_remaining(reset_str):
+    """Format time remaining until reset."""
+    if not reset_str:
+        return None
+    try:
+        reset = datetime.fromisoformat(reset_str.replace("Z", "+00:00"))
+        delta = reset - datetime.now(timezone.utc)
+        secs = max(0, int(delta.total_seconds()))
+        hours, remainder = divmod(secs, 3600)
+        mins = remainder // 60
+        if hours >= 24:
+            days = hours // 24
+            hours = hours % 24
+            return f"{days}d {hours}h"
+        return f"{hours}h {mins:02d}m"
+    except Exception:
+        return None
+
+
+def do_login():
+    """Login flow: open browser, prompt for session key, save + test."""
+    # Open browser
+    url = "https://claude.ai"
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            subprocess.run(["open", url], check=False)
+        elif system == "Linux":
+            subprocess.run(["xdg-open", url], check=False)
+        elif system == "Windows":
+            subprocess.run(["start", url], check=False, shell=True)
+    except Exception:
+        pass
+
+    print("To get your Claude session key:")
+    print(f"  1. Browser opened to {url}")
+    print("  2. Press F12 → Application → Cookies → claude.ai")
+    print("  3. Copy the 'sessionKey' value")
+    print()
+
+    try:
+        key = input("Paste session key: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled.")
+        return
+
+    if not key:
+        print("No key provided.")
+        return
+
+    # Save
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(SESSION_FILE, "w") as f:
+        json.dump({"sessionKey": key}, f)
+
+    # Test
+    print("Testing...", end=" ", flush=True)
+    api_data = fetch_api_usage(key)
+    if api_data:
+        print(f"OK! Session: {api_data['session_pct']:.0f}%/5h, Weekly: {api_data['weekly_pct']:.0f}%/7d")
+    else:
+        print("API call failed (key may be invalid or Cloudflare blocked).")
+        print("Local token counting will still work.")
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Get Claude Code token usage")
+    parser.add_argument("--since", help="ISO timestamp to calculate usage since")
+    parser.add_argument("--format", choices=["json", "text"], default="text",
+                       help="Output format (default: text)")
+
+    # Time range flags (mutually exclusive)
+    time_group = parser.add_mutually_exclusive_group()
+    time_group.add_argument("--today", action="store_true", help="Today's usage (since midnight UTC)")
+    time_group.add_argument("--week", action="store_true", help="Last 7 days")
+    time_group.add_argument("--month", action="store_true", help="Last 30 days")
+
+    parser.add_argument("--project-dir", help="Only count tokens from this project directory name")
+    parser.add_argument("--cost", action="store_true", help="Include estimated USD cost")
+    parser.add_argument("--login", action="store_true", help="Set session key for exact API data")
+
+    args = parser.parse_args()
+
+    if args.login:
+        do_login()
+        return
+
+    calc = UsageCalculator(project_dir=getattr(args, 'project_dir', None))
+    usage, period = get_usage(calc, args)
+
+    if args.format == "json":
+        result = {
+            "period": period,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "cache_read_tokens": usage.cache_read_tokens,
+            "cache_creation_tokens": usage.cache_creation_tokens,
+            "api_tokens": usage.api_tokens,
+            "total_tokens": usage.total_tokens,
+        }
+        if args.cost:
+            result["estimated_cost_usd"] = round(usage.estimate_cost(), 4)
+
+        # Add API data if available
+        session_key = load_session_key()
+        if session_key:
+            api_data = fetch_api_usage(session_key)
+            if api_data:
+                result["api"] = api_data
+
+        print(json.dumps(result))
+    else:
+        # Text format
+        label = {"5h": "5h window", "today": "today", "week": "last 7 days",
+                 "month": "last 30 days", "custom": "custom range"}
+        print(f"Claude Usage ({label.get(period, period)}):")
+        print(f"  Input tokens:     {usage.input_tokens:>12,}")
+        print(f"  Output tokens:    {usage.output_tokens:>12,}")
+        print(f"  Cache read:       {usage.cache_read_tokens:>12,}")
+        print(f"  Cache creation:   {usage.cache_creation_tokens:>12,}")
+        print(f"  API (in+out):     {usage.api_tokens:>12,}")
+        print(f"  Total (w/cache):  {usage.total_tokens:>12,}")
+
+        if args.cost:
+            cost = usage.estimate_cost()
+            print(f"  Est. cost:        ~${cost:>11,.2f}")
+
+        # Show API data if available
+        session_key = load_session_key()
+        if session_key:
+            api_data = fetch_api_usage(session_key)
+            if api_data:
+                print()
+                s_remain = format_remaining(api_data["session_reset"])
+                w_remain = format_remaining(api_data["weekly_reset"])
+                s_line = f"  Session: {api_data['session_pct']:.0f}%"
+                if s_remain:
+                    s_line += f" | resets in {s_remain}"
+                w_line = f"  Weekly:  {api_data['weekly_pct']:.0f}%"
+                if w_remain:
+                    w_line += f" | resets in {w_remain}"
+                print(s_line)
+                print(w_line)
+
+
+if __name__ == "__main__":
+    main()

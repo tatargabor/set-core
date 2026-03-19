@@ -16,9 +16,9 @@ The dispatcher heavily calls these plus external CLIs (`git`, `wt-new`, `wt-loop
 
 **Goals:**
 - 1:1 function mapping from bash to Python with source line references in comments
-- All 17 functions migrated to `lib/wt_orch/dispatcher.py`
-- CLI subcommands in `wt-orch-core dispatch *` for bash bridge
-- `dispatcher.sh` reduced to thin wrappers (~50 LOC) calling `wt-orch-core`
+- All 17 functions migrated to `lib/set_orch/dispatcher.py`
+- CLI subcommands in `set-orch-core dispatch *` for bash bridge
+- `dispatcher.sh` reduced to thin wrappers (~50 LOC) calling `set-orch-core`
 - Structured logging via `logging.getLogger(__name__)`
 - Type hints on all functions, dataclasses for structured returns
 - pytest tests per capability group
@@ -39,12 +39,12 @@ The dispatcher heavily calls these plus external CLIs (`git`, `wt-new`, `wt-loop
 **Rationale**: Git operations (sync, merge, branch management) are inherently shell commands. Using `subprocess_utils.run_cmd()` (from phase 1) provides structured error handling, timeout, and logging. No benefit from a git library (gitpython adds deps, pygit2 is complex).
 **Alternative**: `gitpython` library — rejected, adds dependency for marginal benefit.
 
-### 3. State access via `wt_orch.state` module directly (not CLI bridge)
-**Rationale**: dispatcher.py lives in the same Python package as state.py. Direct function calls are faster and type-safe vs. shelling out to `wt-orch-core state *`. The CLI bridge is only for bash→Python interop.
+### 3. State access via `set_orch.state` module directly (not CLI bridge)
+**Rationale**: dispatcher.py lives in the same Python package as state.py. Direct function calls are faster and type-safe vs. shelling out to `set-orch-core state *`. The CLI bridge is only for bash→Python interop.
 **Alternative**: CLI bridge for all state access — rejected, unnecessary indirection within Python.
 
 ### 4. Bash wrapper pattern: same as phases 3-4
-**Rationale**: `dispatcher.sh` functions become one-liner calls to `wt-orch-core dispatch <subcmd>`. This allows gradual migration — bash callers (monitor.sh, engine.sh) keep working without changes.
+**Rationale**: `dispatcher.sh` functions become one-liner calls to `set-orch-core dispatch <subcmd>`. This allows gradual migration — bash callers (monitor.sh, engine.sh) keep working without changes.
 
 ### 5. `cmd_start` stays in bash initially
 **Rationale**: `cmd_start` is 370 lines orchestrating plan→state→dispatch→monitor_loop sequence, deeply integrated with bash trap handlers and the monitor loop. Migrating the full cmd_start requires monitor_loop (phase 7). For phase 5, we migrate the _dispatch-related_ helpers that cmd_start calls, but cmd_start itself remains in bash calling the new Python functions via CLI bridge.

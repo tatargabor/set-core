@@ -3,11 +3,11 @@
 - [x] 1.1 Add `is_lockfile()` helper in `bin/wt-merge` that checks if a filename is a lock file (using profile `lockfile_pm_map()` with hardcoded JS fallback: pnpm-lock.yaml, yarn.lock, package-lock.json)
 - [x] 1.2 Add `regenerate_lockfile()` function in `bin/wt-merge` that maps a lock file name to its PM install command (via profile then fallback), runs install, and stages the regenerated file
 - [x] 1.3 Update `auto_resolve_generated_files()` to call `regenerate_lockfile()` after accepting "ours" for each lock file, and emit `LOCKFILE_CONFLICTED=<filename>` to stdout
-- [x] 1.4 Add profile integration: source `wt/plugins/project-type.yaml` or call profile lockfile map via a helper that reads the `.generated-file-patterns` mechanism or a new `.lockfile-pm-map` file written by `wt-project init`
+- [x] 1.4 Add profile integration: source `wt/plugins/project-type.yaml` or call profile lockfile map via a helper that reads the `.generated-file-patterns` mechanism or a new `.lockfile-pm-map` file written by `set-project init`
 
 ## 2. Pre-Merge Runtime File Cleanup
 
-- [x] 2.1 Add `cleanup_runtime_files()` function in `bin/wt-merge` that runs `git rm --cached` on `.wt-tools/.last-memory-commit`, `.wt-tools/agents/`, `.wt-tools/orphan-detect/` if they are tracked
+- [x] 2.1 Add `cleanup_runtime_files()` function in `bin/wt-merge` that runs `git rm --cached` on `.set-core/.last-memory-commit`, `.set-core/agents/`, `.set-core/orphan-detect/` if they are tracked
 - [x] 2.2 Add `.gitignore` update logic: ensure the three runtime patterns are present in `.gitignore`, appending them if missing (no duplicates)
 - [x] 2.3 Call `cleanup_runtime_files()` early in the `wt-merge` flow, before the merge attempt, committing the cleanup if any files were removed
 

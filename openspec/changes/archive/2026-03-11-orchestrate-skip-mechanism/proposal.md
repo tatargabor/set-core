@@ -4,7 +4,7 @@ When a change fails during orchestration (e.g., due to spec issues, budget exhau
 
 ## What Changes
 
-- New `wt-orchestrate skip <name>` CLI command to mark a change as "skipped"
+- New `set-orchestrate skip <name>` CLI command to mark a change as "skipped"
 - `deps_satisfied()` treats "skipped" as terminal (same as "merged") for dependency resolution
 - Monitor loop counts "skipped" as terminal — no active processing needed
 - HTML reporter shows "skipped" with distinct amber/yellow styling, separate from merged (green) and failed (red)
@@ -25,5 +25,5 @@ When a change fails during orchestration (e.g., due to spec issues, budget exhau
 - `lib/orchestration/state.sh` — deps_satisfied(), status validation
 - `lib/orchestration/monitor.sh` — terminal status check, completion condition
 - `lib/orchestration/reporter.sh` — CSS, status rendering, summary stats
-- `bin/wt-orchestrate` — new `skip` subcommand
+- `bin/set-orchestrate` — new `skip` subcommand
 - State JSON — new "skipped" status value with metadata (reason, timestamp)

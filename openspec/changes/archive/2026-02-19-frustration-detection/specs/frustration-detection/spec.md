@@ -74,7 +74,7 @@ The module SHALL include agent-correction patterns as strong triggers, detecting
 - **THEN** detection returns level "high" with trigger "agent-correction"
 
 ### Requirement: Full prompt saved as memory
-When detection level is moderate or high, the module SHALL save the ENTIRE user prompt as a `Learning` memory via `wt-memory remember`. The saved content SHALL use a prefix indicating the level:
+When detection level is moderate or high, the module SHALL save the ENTIRE user prompt as a `Learning` memory via `set-memory remember`. The saved content SHALL use a prefix indicating the level:
 - High: `"🔴 User frustrated (high): <entire prompt>"`
 - Moderate: `"⚠️ User frustrated (moderate): <entire prompt>"`
 

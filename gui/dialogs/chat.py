@@ -129,7 +129,7 @@ class ChatDialog(QDialog):
 
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-control-chat"), "--path", project_path, "--json", "read"],
+                [str(SCRIPT_DIR / "set-control-chat"), "--path", project_path, "--json", "read"],
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
@@ -193,10 +193,10 @@ class ChatDialog(QDialog):
         if shared_projects:
             return shared_projects[0]
 
-        # Fallback: find any project with wt-control where this member exists
+        # Fallback: find any project with set-control where this member exists
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-status"), "--json"],
+                [str(SCRIPT_DIR / "set-status"), "--json"],
                 capture_output=True, text=True, timeout=5
             )
             if result.returncode == 0:
@@ -208,7 +208,7 @@ class ChatDialog(QDialog):
                     main_path = get_main_repo_path(wt_path)
                     if main_path and main_path not in seen_repos:
                         seen_repos.add(main_path)
-                        control_path = Path(main_path) / ".wt-control"
+                        control_path = Path(main_path) / ".set-control"
                         if control_path.exists():
                             # Check if recipient exists in this project's members
                             members_dir = control_path / "members"
@@ -240,7 +240,7 @@ class ChatDialog(QDialog):
             return
 
         try:
-            cmd = [str(SCRIPT_DIR / "wt-control-chat"), "--path", project_path, "send", recipient, message]
+            cmd = [str(SCRIPT_DIR / "set-control-chat"), "--path", project_path, "send", recipient, message]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode == 0:
                 self.message_input.clear()

@@ -18,13 +18,13 @@ The `cleanup_orphan_agents()` function in `bin/wt-status` currently kills "waiti
 
 ## Decisions
 
-### Decision 1: Per-PID marker files in `.wt-tools/orphan-detect/`
+### Decision 1: Per-PID marker files in `.set-core/orphan-detect/`
 
-Store orphan tracking state as one file per PID: `.wt-tools/orphan-detect/<pid>`
+Store orphan tracking state as one file per PID: `.set-core/orphan-detect/<pid>`
 
 File content: `<first_seen_timestamp>:<count>`
 
-Example: `.wt-tools/orphan-detect/12345` contains `1707400000:2`
+Example: `.set-core/orphan-detect/12345` contains `1707400000:2`
 
 **Why files over in-memory:**
 - `wt-status` is a bash script invoked fresh each time (no persistent state)
@@ -47,11 +47,11 @@ With ~2s GUI refresh cycles, 3 detections takes ~6 seconds minimum. The 15-secon
 
 ### Decision 3: Stale marker cleanup
 
-On each `cleanup_orphan_agents()` call, before processing agents, clean up marker files for PIDs that no longer exist (`kill -0 $pid` check). This prevents `.wt-tools/orphan-detect/` from accumulating dead files.
+On each `cleanup_orphan_agents()` call, before processing agents, clean up marker files for PIDs that no longer exist (`kill -0 $pid` check). This prevents `.set-core/orphan-detect/` from accumulating dead files.
 
 ### Decision 4: Marker directory location
 
-Use `$wt_path/.wt-tools/orphan-detect/` (per-worktree). This keeps tracking local to each worktree and is naturally cleaned up when a worktree is removed.
+Use `$wt_path/.set-core/orphan-detect/` (per-worktree). This keeps tracking local to each worktree and is naturally cleaned up when a worktree is removed.
 
 ## Risks / Trade-offs
 

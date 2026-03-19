@@ -67,7 +67,7 @@
 - **THEN** both auto-configured (via installer) and manual (`claude mcp add`) paths SHALL be documented
 
 ### Requirement: Plugins page
-`docs/plugins.md` SHALL contain the plugin concept (extend wt-tools without modifying core), planned installation pattern, plugin registry table (initially empty, with column headers for Name, Repo, Description, Status), and brief guidance on creating a plugin.
+`docs/plugins.md` SHALL contain the plugin concept (extend set-core without modifying core), planned installation pattern, plugin registry table (initially empty, with column headers for Name, Repo, Description, Status), and brief guidance on creating a plugin.
 
 #### Scenario: Registry table structure
 - **WHEN** viewing the plugin registry
@@ -94,7 +94,7 @@
 
 #### Scenario: Config file inventory
 - **WHEN** reading the configuration page
-- **THEN** every config file used by wt-tools SHALL be listed with path and purpose
+- **THEN** every config file used by set-core SHALL be listed with path and purpose
 
 #### Scenario: Orchestration config
 - **WHEN** looking for orchestration.yaml options

@@ -134,7 +134,7 @@ The `orch_recall` function already accepts a tags parameter (3rd arg) — it jus
 **Over:** No cleanup (current), or aggressive pruning
 
 **Steps:**
-1. Run `wt-memory dedup --dry-run` — log count, don't auto-delete
+1. Run `set-memory dedup --dry-run` — log count, don't auto-delete
 2. Check for stale memories (tagged `stale:true`) — exclude from recall
 3. Log memory stats for the run log
 

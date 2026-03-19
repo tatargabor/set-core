@@ -38,7 +38,7 @@ A single script `bin/wt-hook-memory` SHALL handle all memory hook events. It SHA
 #### Scenario: SubagentStop event
 - **WHEN** `wt-hook-memory SubagentStop` is called
 - **THEN** it SHALL read the subagent's transcript summary from `agent_transcript_path` (last few entries)
-- **AND** SHALL use the summary as query for `wt-memory proactive`
+- **AND** SHALL use the summary as query for `set-memory proactive`
 - **AND** SHALL inject relevant memories as additionalContext
 
 #### Scenario: Stop event

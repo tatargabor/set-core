@@ -50,9 +50,9 @@ On phase completion, the orchestrator SHALL send an email via `send_email()` con
 
 #### Scenario: Email sent with server URL
 - **WHEN** phase 1 completes and dev server is running on port 3101
-- **THEN** email SHALL be sent with subject `[wt-tools] <project> — Phase 1 complete (3/3 changes)`
+- **THEN** email SHALL be sent with subject `[set-core] <project> — Phase 1 complete (3/3 changes)`
 - **AND** body SHALL include `http://localhost:3101` as review URL
-- **AND** body SHALL include "Orchestrator continues automatically. Stop with: wt-orchestrate stop"
+- **AND** body SHALL include "Orchestrator continues automatically. Stop with: set-orchestrate stop"
 
 #### Scenario: Email sent without server
 - **WHEN** phase completes but no dev server is running
@@ -82,5 +82,5 @@ When orchestration completes (status transitions to `done`), the orchestrator SH
 - **AND** git tags `milestone/phase-*` SHALL NOT be removed
 
 #### Scenario: Cleanup on stop
-- **WHEN** user runs `wt-orchestrate stop`
+- **WHEN** user runs `set-orchestrate stop`
 - **THEN** milestone servers and worktrees SHALL be cleaned up (same as completion)

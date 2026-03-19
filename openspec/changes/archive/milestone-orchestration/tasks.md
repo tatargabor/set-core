@@ -1,12 +1,12 @@
 ## 1. Plan JSON Schema — Phase Field
 
-- [x] 1.1 Add `"phase": 1` field to `_SPEC_OUTPUT_JSON`, `_SPEC_OUTPUT_JSON_DIGEST`, and `_BRIEF_OUTPUT_JSON` in `lib/wt_orch/templates.py`. Add it after the `depends_on` field in each schema.
+- [x] 1.1 Add `"phase": 1` field to `_SPEC_OUTPUT_JSON`, `_SPEC_OUTPUT_JSON_DIGEST`, and `_BRIEF_OUTPUT_JSON` in `lib/set_orch/templates.py`. Add it after the `depends_on` field in each schema.
 - [x] 1.2 Add phase assignment instruction to the decompose prompt in `render_planning_prompt()`: "Assign a phase integer (1..N, max 5) to each change. Phase 1: infrastructure/schema/foundational. Phases 2..N-1: features grouped by domain coherence. Last phase: cleanup-after/polish. For specs with fewer than 4 changes, assign all to phase 1."
-- [x] 1.3 Update `wt-orch-core state init` (the Python command that reads plan JSON and creates state) to propagate the `phase` field from plan changes to state changes. Default to phase 1 if missing.
+- [x] 1.3 Update `set-orch-core state init` (the Python command that reads plan JSON and creates state) to propagate the `phase` field from plan changes to state changes. Default to phase 1 if missing.
 
 ## 2. Phase State Tracking
 
-- [x] 2.1 Add phase state initialization to `init_state()` in `lib/orchestration/state.sh` — after `wt-orch-core state init`, compute unique phases from changes and create the `phases` object (`{status: "pending", tag: null, server_port: null, server_pid: null, completed_at: null}` per phase). Set `current_phase: 1`.
+- [x] 2.1 Add phase state initialization to `init_state()` in `lib/orchestration/state.sh` — after `set-orch-core state init`, compute unique phases from changes and create the `phases` object (`{status: "pending", tag: null, server_port: null, server_pid: null, completed_at: null}` per phase). Set `current_phase: 1`.
 - [x] 2.2 Add `milestones` config parsing in `monitor_loop()` in `lib/orchestration/monitor.sh` — read `milestones.enabled`, `milestones.dev_server`, `milestones.base_port` (default 3100), `milestones.max_worktrees` (default 3), `milestones.phase_overrides` from directives.
 - [x] 2.3 Apply phase overrides: after state init, if `milestones.phase_overrides` exists in directives, update matching changes' `phase` field and recalculate the `phases` object.
 
@@ -28,7 +28,7 @@
 - [x] 5.2 Implement git tagging: `git tag -f "milestone/phase-$N" HEAD`. Store tag name in `phases["$N"].tag`.
 - [x] 5.3 Implement worktree creation: `git worktree add .claude/milestones/phase-$N milestone/phase-$N`. Before creating, check max_worktrees limit and remove oldest if exceeded (kill server + git worktree remove).
 - [x] 5.4 Implement dev server start: follow the `smoke_dev_server_command` pattern from `merger.sh` (PID tracking, health check wait). Run `install_dependencies` then detected command with `PORT=$((base_port + N))` in background. Store PID and port in state. If `smoke_health_check_url` pattern is configured, use `health_check()` to verify; otherwise wait 5s and check if process is alive. Warn if dead.
-- [x] 5.5 Implement milestone email: use `send_email()` with phase summary (changes merged, tokens, server URL). Subject: `[wt-tools] <project> — Phase N complete (M/T changes)`.
+- [x] 5.5 Implement milestone email: use `send_email()` with phase summary (changes merged, tokens, server URL). Subject: `[set-core] <project> — Phase N complete (M/T changes)`.
 - [x] 5.6 Add `MILESTONE_COMPLETE` event type. Emit with phase number, change count, server port, tag name.
 
 ## 6. Cleanup
@@ -50,7 +50,7 @@
 
 ## 9. Integration & Wiring
 
-- [x] 9.1 Source `milestone.sh` and `server-detect.sh` in `bin/wt-orchestrate` (after existing sources).
+- [x] 9.1 Source `milestone.sh` and `server-detect.sh` in `bin/set-orchestrate` (after existing sources).
 - [x] 9.2 Add `milestones` section to directive resolution in `lib/orchestration/config.sh` (or wherever `resolve_directives` handles orchestration.yaml) — parse `milestones.enabled`, `milestones.dev_server`, `milestones.base_port`, `milestones.max_worktrees`, `milestones.phase_overrides`.
 - [x] 9.3 Update `send_summary_email()` in `lib/notify-email.sh` — include per-phase breakdown in completion email when phases exist in state.
 

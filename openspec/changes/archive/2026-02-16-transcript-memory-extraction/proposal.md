@@ -6,7 +6,7 @@ The memory hook architecture has 3 layers that all depend on agent compliance: C
 
 - Enhance `wt-hook-memory-save` to read `transcript_path` from Stop hook stdin (currently discarded via `cat > /dev/null`)
 - Detect whether opsx/openspec skills were invoked during the session by scanning the transcript JSONL
-- When skills were active: extract the last ~50 transcript entries, pipe to a small LLM (claude haiku via CLI) for insight extraction, save results to `wt-memory remember`
+- When skills were active: extract the last ~50 transcript entries, pipe to a small LLM (claude haiku via CLI) for insight extraction, save results to `set-memory remember`
 - Keep existing commit-based design choice extraction as a parallel path
 - Add `stop_hook_active` check to prevent infinite loops
 

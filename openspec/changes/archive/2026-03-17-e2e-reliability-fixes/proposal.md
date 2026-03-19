@@ -18,7 +18,7 @@ E2E MiniShop Run #17 (11/11 merged, 5h17m) required 11 manual merge intervention
 
 ## Impact
 
-- `bin/wt-sentinel` — single line: add `9>&-` to child spawn (L455)
-- `lib/wt_orch/dispatcher.py` — `sync_worktree_with_main()`: detect lockfile/package.json changes in merge diff, run `pnpm install` if changed
+- `bin/set-sentinel` — single line: add `9>&-` to child spawn (L455)
+- `lib/set_orch/dispatcher.py` — `sync_worktree_with_main()`: detect lockfile/package.json changes in merge diff, run `pnpm install` if changed
 - `tests/e2e/minishop/README.md` — bug index status updates
 - `tests/e2e/craftbrew/README.md` — bug index status updates

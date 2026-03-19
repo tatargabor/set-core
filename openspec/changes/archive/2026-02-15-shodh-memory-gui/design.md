@@ -1,6 +1,6 @@
 ## Context
 
-The `wt-memory` CLI wrapper and shodh-memory Python library are already installed and working. The CLI currently uses a single global storage directory. The 5 core OpenSpec SKILL.md files lack memory hooks, so remember/recall never fires automatically. The Control Center GUI has no visibility into memory. The project header currently ignores right-clicks (returns early at `menus.py:143`).
+The `set-memory` CLI wrapper and shodh-memory Python library are already installed and working. The CLI currently uses a single global storage directory. The 5 core OpenSpec SKILL.md files lack memory hooks, so remember/recall never fires automatically. The Control Center GUI has no visibility into memory. The project header currently ignores right-clicks (returns early at `menus.py:143`).
 
 shodh-memory is a Python library (not a server) — `Memory(storage_path=...)` creates an embedded database, operations are synchronous file I/O, no daemon or background process needed.
 
@@ -23,7 +23,7 @@ shodh-memory is a Python library (not a server) — `Memory(storage_path=...)` c
 ## Decisions
 
 ### Decision 1: Per-project storage via git root basename
-**Choice**: Use `basename $(git rev-parse --show-toplevel)` to determine project name, creating `~/.local/share/wt-tools/memory/<project>/` directories.
+**Choice**: Use `basename $(git rev-parse --show-toplevel)` to determine project name, creating `~/.local/share/set-core/memory/<project>/` directories.
 
 **Rationale**: Tested that shodh-memory `Memory(storage_path=...)` creates fully isolated instances — no cross-talk between paths. Git root detection works identically from any worktree of the same repo (worktrees share the same git root name). Zero configuration needed.
 
@@ -47,9 +47,9 @@ shodh-memory is a Python library (not a server) — `Memory(storage_path=...)` c
 **Alternative considered**: MemoryWorker polling on timer — rejected as over-engineering for a <50ms operation.
 
 ### Decision 5: SKILL.md hooks call CLI directly, no separate health check
-**Choice**: SKILL.md memory steps call `wt-memory recall/remember` directly without a preceding `wt-memory health` gate. The CLI itself already performs a health check inside every command and degrades gracefully.
+**Choice**: SKILL.md memory steps call `set-memory recall/remember` directly without a preceding `set-memory health` gate. The CLI itself already performs a health check inside every command and degrades gracefully.
 
-**Rationale**: The original spec called for `wt-memory health && wt-memory recall ...` which causes two Python subprocess invocations (double health check). Since every CLI command already health-checks internally and returns `[]` or exits 0 on failure, the SKILL.md only needs the direct call. Simpler instructions, less latency.
+**Rationale**: The original spec called for `set-memory health && set-memory recall ...` which causes two Python subprocess invocations (double health check). Since every CLI command already health-checks internally and returns `[]` or exits 0 on failure, the SKILL.md only needs the direct call. Simpler instructions, less latency.
 
 **Reuse note**: The `skill-memory-hooks` spec from the original `shodh-memory-integration` change is correct for what-to-save (decisions, errors, patterns, events). The how (health gating) is simplified per this decision.
 
@@ -57,4 +57,4 @@ shodh-memory is a Python library (not a server) — `Memory(storage_path=...)` c
 
 - **[Python subprocess overhead]** Each `get_stats()` check spawns a Python subprocess during table refresh. Mitigation: one call per project (not per worktree), <50ms each. Cache result for the refresh cycle.
 - **[SKILL.md fragility]** Memory hooks in SKILL.md are soft instructions — the LLM might skip them under context pressure. Mitigation: place recall early and remember late in each skill flow, keep instructions concise.
-- **[Legacy storage confusion]** Users with existing global memories won't see them automatically in per-project view. Mitigation: `wt-memory status` shows both legacy and project storage; `_legacy` project name accessible via `--project _legacy`.
+- **[Legacy storage confusion]** Users with existing global memories won't see them automatically in per-project view. Mitigation: `set-memory status` shows both legacy and project storage; `_legacy` project name accessible via `--project _legacy`.

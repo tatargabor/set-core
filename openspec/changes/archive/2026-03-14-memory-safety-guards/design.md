@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools memory system (shodh-memory) injects recalled memories into agent sessions via hooks (L1-L5). During CraftBrew E2E orchestration (471 sessions, 76 explicit citations), analysis revealed a specific failure mode:
+The set-core memory system (shodh-memory) injects recalled memories into agent sessions via hooks (L1-L5). During CraftBrew E2E orchestration (471 sessions, 76 explicit citations), analysis revealed a specific failure mode:
 
 1. Agent correctly identifies a "false positive" pattern in worktree A (user-auth review only checked diff, not filesystem)
 2. Memory saves this as a general pattern
@@ -13,8 +13,8 @@ The wt-tools memory system (shodh-memory) injects recalled memories into agent s
 ### Current architecture
 
 ```
-Hook event → wt-memory recall/proactive → filter (score ≥ 0.3) → format with MEM#id → inject as system-reminder
-Stop hook → extract transcript → wt-memory remember → tags: phase:auto-extract
+Hook event → set-memory recall/proactive → filter (score ≥ 0.3) → format with MEM#id → inject as system-reminder
+Stop hook → extract transcript → set-memory remember → tags: phase:auto-extract
 ```
 
 No distinction exists between deterministic and heuristic memories at any layer.
@@ -54,7 +54,7 @@ No distinction exists between deterministic and heuristic memories at any layer.
 
 **Rationale**: New memories get tagged going forward. Combined with Decision 1 (display-time detection for existing memories), this provides both retroactive and proactive coverage.
 
-**Implementation**: In the Python block that calls `wt-memory remember`, check content for the same heuristic patterns and append `,volatile` to the tags string.
+**Implementation**: In the Python block that calls `set-memory remember`, check content for the same heuristic patterns and append `,volatile` to the tags string.
 
 ### Decision 3: Volatile decay in orch_recall() — 24h window
 
@@ -98,8 +98,8 @@ No distinction exists between deterministic and heuristic memories at any layer.
 **[Risk] 24h volatile decay too aggressive** — Useful heuristic memories expire during a long orchestration run.
 → Mitigation: 24h is generous for typical runs (2-6h). The decay only affects `orch_recall()`, not the hook-level `proactive_and_format()` which still shows volatile memories with the HEURISTIC prefix.
 
-**[Risk] SKILL.md hot-patch may be overwritten** — If `openspec update --force` or `wt-project init` runs on a consumer project, the SKILL.md gets replaced from source.
-→ Mitigation: The change modifies the SOURCE SKILL.md in wt-tools, so wt-project init deploys the new version. openspec update only regenerates from npm templates, which don't include our custom sections.
+**[Risk] SKILL.md hot-patch may be overwritten** — If `openspec update --force` or `set-project init` runs on a consumer project, the SKILL.md gets replaced from source.
+→ Mitigation: The change modifies the SOURCE SKILL.md in set-core, so set-project init deploys the new version. openspec update only regenerates from npm templates, which don't include our custom sections.
 
 **[Risk] Quarantine memories accumulate** — Many verify failures could flood memory with quarantine warnings.
 → Mitigation: Quarantine memories are tagged `phase:verify-failed,volatile` — they auto-decay via the same 24h volatile filter. The existing dedup system also prevents identical content.

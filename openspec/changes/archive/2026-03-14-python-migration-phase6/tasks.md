@@ -27,8 +27,8 @@
 
 ## 5. CLI Bridge
 
-- [x] 5.1 Add `wt-orch-core verify` subcommands to cli.py — run-tests, review, evaluate-rules, check-merge-scope, check-impl-scope, health-check, poll, handle-done, smoke-fix, phase-e2e, build-req-section, extract-health-url
-- [x] 5.2 Replace verifier.sh functions with thin wrappers calling `wt-orch-core verify *`
+- [x] 5.1 Add `set-orch-core verify` subcommands to cli.py — run-tests, review, evaluate-rules, check-merge-scope, check-impl-scope, health-check, poll, handle-done, smoke-fix, phase-e2e, build-req-section, extract-health-url
+- [x] 5.2 Replace verifier.sh functions with thin wrappers calling `set-orch-core verify *`
 
 ## 6. Tests
 

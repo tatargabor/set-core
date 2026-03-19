@@ -4,7 +4,7 @@ Benchmark v5 revealed 37% memory noise rate (up from v4's 15%) and missing tags 
 
 ## What Changes
 
-- **Disable auto-ingest in proactive context**: Pass `auto_ingest=False` to `proactive_context()` in `wt-memory proactive` command. Eliminates 21 noise entries (~25% of all memories).
+- **Disable auto-ingest in proactive context**: Pass `auto_ingest=False` to `proactive_context()` in `set-memory proactive` command. Eliminates 21 noise entries (~25% of all memories).
 - **Add change: tag to transcript extraction**: Ensure all hook-saved memories include `change:<name>` tag so they can be associated with specific changes during recall.
 - **Add convention extraction to save hook**: After transcript extraction, scan the change definition for convention patterns ("use X utility", "all queries must Y") and save them as explicit Learning memories.
 - **Improve code map safety net**: Make code-map generation unconditional (don't skip if commit-based detection misses the change) and scan all recent commits, not just the latest.
@@ -24,6 +24,6 @@ Benchmark v5 revealed 37% memory noise rate (up from v4's 15%) and missing tags 
 
 ## Impact
 
-- `bin/wt-memory` — `cmd_proactive()` function (add `auto_ingest=False`)
+- `bin/set-memory` — `cmd_proactive()` function (add `auto_ingest=False`)
 - `bin/wt-hook-memory-save` — transcript extraction tags, convention extraction, code-map safety net
 - `benchmark/changes/07-stock-rethink.md` — TRAP-F explicit requirement

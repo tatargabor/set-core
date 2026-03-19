@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
 # wt-project deploy functions: split from deploy_wt_tools() monolith
-# Dependencies: wt-common.sh must be sourced, WT_TOOLS_ROOT and SCRIPT_DIR must be set
+# Dependencies: set-common.sh must be sourced, SET_TOOLS_ROOT and SCRIPT_DIR must be set
 
 # Runtime guards
 [[ -n "${SCRIPT_DIR:-}" ]] || { echo "deploy.sh: SCRIPT_DIR not set" >&2; return 1; }
-[[ -n "${WT_TOOLS_ROOT:-}" ]] || { echo "deploy.sh: WT_TOOLS_ROOT not set" >&2; return 1; }
+[[ -n "${SET_TOOLS_ROOT:-}" ]] || { echo "deploy.sh: SET_TOOLS_ROOT not set" >&2; return 1; }
 
-# Register wt-tools MCP server for given project paths
+# Register set-core MCP server for given project paths
 _register_mcp_server() {
     if ! command -v claude &>/dev/null; then
         return 0  # claude CLI not available, skip
     fi
-    local mcp_server_dir="$WT_TOOLS_ROOT/mcp-server"
+    local mcp_server_dir="$SET_TOOLS_ROOT/mcp-server"
     [[ -d "$mcp_server_dir" ]] || return 0
     local had_failure=0
     for reg_path in "$@"; do
         [[ -d "$reg_path" ]] || continue
         # Remove old server names (may not exist — stderr suppressed intentionally)
-        (cd "$reg_path" && claude mcp remove wt-memory 2>/dev/null; claude mcp remove wt-tools 2>/dev/null) || true
+        (cd "$reg_path" && claude mcp remove wt-memory 2>/dev/null; claude mcp remove set-core 2>/dev/null) || true
         # Register — capture errors, do NOT suppress stderr
         local mcp_err
-        mcp_err=$(cd "$reg_path" && claude mcp add wt-tools -- env CLAUDE_PROJECT_DIR="$reg_path" uv --directory "$mcp_server_dir" run python wt_mcp_server.py 2>&1)
+        mcp_err=$(cd "$reg_path" && claude mcp add set-core -- env CLAUDE_PROJECT_DIR="$reg_path" uv --directory "$mcp_server_dir" run python wt_mcp_server.py 2>&1)
         if [[ $? -ne 0 ]]; then
             warn "  MCP registration failed for $reg_path: $mcp_err"
             had_failure=1
         fi
     done
     if [[ $had_failure -eq 0 ]]; then
-        success "  Registered wt-tools MCP server"
+        success "  Registered set-core MCP server"
     fi
     return $had_failure
 }
@@ -57,10 +57,10 @@ if cleaned != content:
     fi
 
     # Remove manual wt-memory recall/remember instructions from command .md files
-    # Exclude commands/wt/ — those are wt-tools' own commands that legitimately use wt-memory
+    # Exclude commands/wt/ — those are set-core' own commands that legitimately use wt-memory
     if [[ -d "$project_path/.claude/commands" ]]; then
         find "$project_path/.claude/commands" -name "*.md" -type f 2>/dev/null | while read -r f; do
-            # Skip wt-tools command files (commands/wt/*.md) — they use wt-memory intentionally
+            # Skip set-core command files (commands/wt/*.md) — they use wt-memory intentionally
             [[ "$f" == */commands/wt/*.md ]] && continue
             if grep -qE 'wt-memory (recall|remember)' "$f" 2>/dev/null; then
                 if ! python3 -c "
@@ -104,7 +104,7 @@ _deploy_commands() {
     local claude_dir="$project_path/.claude"
 
     # /wt:* commands
-    local src_commands="$WT_TOOLS_ROOT/.claude/commands/wt"
+    local src_commands="$SET_TOOLS_ROOT/.claude/commands/wt"
     local dst_commands="$claude_dir/commands/wt"
     if [[ -d "$src_commands" ]]; then
         [[ -L "$dst_commands" ]] && rm -f "$dst_commands"
@@ -120,7 +120,7 @@ _deploy_commands() {
     fi
 
     # /opsx:* commands
-    local src_opsx_commands="$WT_TOOLS_ROOT/.claude/commands/opsx"
+    local src_opsx_commands="$SET_TOOLS_ROOT/.claude/commands/opsx"
     local dst_opsx_commands="$claude_dir/commands/opsx"
     if [[ -d "$src_opsx_commands" ]]; then
         [[ -L "$dst_opsx_commands" ]] && rm -f "$dst_opsx_commands"
@@ -140,7 +140,7 @@ _deploy_skills() {
     local claude_dir="$project_path/.claude"
 
     # wt skills
-    local src_skills="$WT_TOOLS_ROOT/.claude/skills/wt"
+    local src_skills="$SET_TOOLS_ROOT/.claude/skills/wt"
     local dst_skills="$claude_dir/skills/wt"
     if [[ -d "$src_skills" ]]; then
         [[ -L "$dst_skills" ]] && rm -f "$dst_skills"
@@ -155,7 +155,7 @@ _deploy_skills() {
 
     # openspec-* skills
     local openspec_skill_count=0
-    for src_skill_dir in "$WT_TOOLS_ROOT/.claude/skills"/openspec-*/; do
+    for src_skill_dir in "$SET_TOOLS_ROOT/.claude/skills"/openspec-*/; do
         [[ -d "$src_skill_dir" ]] || continue
         local skill_name
         skill_name=$(basename "$src_skill_dir")
@@ -172,7 +172,7 @@ _deploy_skills() {
     fi
 
     # Rules (path-scoped)
-    local src_rules="$WT_TOOLS_ROOT/.claude/rules"
+    local src_rules="$SET_TOOLS_ROOT/.claude/rules"
     local dst_rules="$claude_dir/rules"
     if [[ -d "$src_rules" ]]; then
         local is_self=false
@@ -185,8 +185,8 @@ _deploy_skills() {
                 local rel_path="${src_file#"$src_rules/"}"
                 local dir_part
                 dir_part=$(dirname "$rel_path")
-                [[ "$dir_part" == gui ]] && continue  # gui/ rules are for wt-tools' own GUI, not consumer projects
-                [[ "$dir_part" == web ]] && continue  # web/ rules come from wt-project-web templates, not wt-tools
+                [[ "$dir_part" == gui ]] && continue  # gui/ rules are for set-core' own GUI, not consumer projects
+                [[ "$dir_part" == web ]] && continue  # web/ rules come from wt-project-web templates, not set-core
                 local base_name
                 base_name=$(basename "$rel_path")
                 local dst_dir="$dst_rules"
@@ -202,7 +202,7 @@ _deploy_skills() {
     fi
 
     # Agents
-    local src_agents="$WT_TOOLS_ROOT/.claude/agents"
+    local src_agents="$SET_TOOLS_ROOT/.claude/agents"
     local dst_agents="$claude_dir/agents"
     if [[ -d "$src_agents" ]]; then
         [[ -L "$dst_agents" ]] && rm -f "$dst_agents"
@@ -244,7 +244,7 @@ _deploy_memory() {
         snippet=$(cat << 'MEMORY_SNIPPET'
 
 ## Persistent Memory
-<!-- wt-tools:managed — DO NOT edit or remove this section. It is auto-generated by `wt-project init`. -->
+<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `wt-project init`. -->
 
 This project uses persistent memory (shodh-memory) across sessions. Memory context is automatically injected into `<system-reminder>` tags in your conversation — **you MUST read and use this context**.
 
@@ -302,10 +302,10 @@ if result != content:
     fi
 
     # Ensure managed markers are present (upgrade path for existing deployments)
-    local managed_marker="wt-tools:managed"
+    local managed_marker="set-core:managed"
     if [[ -f "$claude_md" ]] && grep -q "$memory_marker" "$claude_md" 2>/dev/null && ! grep -q "$managed_marker" "$claude_md" 2>/dev/null; then
-        sed -i "s|^## Persistent Memory$|## Persistent Memory\n<!-- wt-tools:managed — DO NOT edit or remove this section. It is auto-generated by \`wt-project init\`. -->|" "$claude_md"
-        sed -i "s|^## Auto-Commit After Apply$|## Auto-Commit After Apply\n<!-- wt-tools:managed — DO NOT edit or remove this section. It is auto-generated by \`wt-project init\`. -->|" "$claude_md"
+        sed -i "s|^## Persistent Memory$|## Persistent Memory\n<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by \`wt-project init\`. -->|" "$claude_md"
+        sed -i "s|^## Auto-Commit After Apply$|## Auto-Commit After Apply\n<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by \`wt-project init\`. -->|" "$claude_md"
         success "  Added managed markers to CLAUDE.md sections"
     fi
 
@@ -316,7 +316,7 @@ if result != content:
         commit_snippet=$(cat << 'COMMIT_SNIPPET'
 
 ## Auto-Commit After Apply
-<!-- wt-tools:managed — DO NOT edit or remove this section. It is auto-generated by `wt-project init`. -->
+<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `wt-project init`. -->
 
 After a skill-driven apply (e.g. `/opsx:apply`) finishes or pauses, automatically commit all changes. Follow the standard commit flow (stage relevant files, write a concise commit message).
 COMMIT_SNIPPET

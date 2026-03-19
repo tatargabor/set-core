@@ -12,14 +12,14 @@ Python is the right choice: psutil is already installed (via install.sh for the 
 
 ## What Changes
 
-- Create `lib/wt_orch/` Python package with three modules:
+- Create `lib/set_orch/` Python package with three modules:
   - `process.py` — PID lifecycle management with `/proc/cmdline` verification, psutil-based orphan detection, safe kill sequences
   - `state.py` — Typed JSON state management with dataclasses, atomic file operations, validation on read/write
   - `templates.py` — Proposal.md, review prompts, event JSON generation with proper escaping
-- Create `bin/wt-orch-core` CLI entry point that exposes Python functions to bash scripts
-- Migrate dispatcher.sh PID operations to call `wt-orch-core process ...`
-- Migrate state.sh complex jq queries to call `wt-orch-core state ...`
-- Migrate dispatcher.sh proposal generation to call `wt-orch-core template ...`
+- Create `bin/set-orch-core` CLI entry point that exposes Python functions to bash scripts
+- Migrate dispatcher.sh PID operations to call `set-orch-core process ...`
+- Migrate state.sh complex jq queries to call `set-orch-core state ...`
+- Migrate dispatcher.sh proposal generation to call `set-orch-core template ...`
 - Bash scripts remain as entry points and git/worktree orchestration — Python handles the fragile internals
 
 ## Capabilities
@@ -35,7 +35,7 @@ Python is the right choice: psutil is already installed (via install.sh for the 
 
 ## Impact
 
-- **New files:** `lib/wt_orch/__init__.py`, `process.py`, `state.py`, `templates.py`, `bin/wt-orch-core`
+- **New files:** `lib/set_orch/__init__.py`, `process.py`, `state.py`, `templates.py`, `bin/set-orch-core`
 - **Modified:** `lib/orchestration/dispatcher.sh` (PID ops → Python), `lib/orchestration/state.sh` (complex queries → Python), `lib/orchestration/watchdog.sh` (process checks → Python)
 - **Dependencies:** psutil (installed by install.sh for GUI, to be added to pyproject.toml main deps)
 - **Tests:** `tests/unit/test_process.py`, `test_state.py`, `test_templates.py`

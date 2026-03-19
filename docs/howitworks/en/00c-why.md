@@ -18,7 +18,7 @@ All of this is **management overhead**: a significant portion of the developer's
 
 ## The Solution: Autonomous Orchestration
 
-`wt-orchestrate` automates this overhead. Starting from a single specification:
+`set-orchestrate` automates this overhead. Starting from a single specification:
 
 1. **Automatically plans** the tasks (decomposition, DAG)
 2. **Executes them in parallel** in isolated worktrees
@@ -36,9 +36,9 @@ This system is built for **individual developers and small teams** working with 
 Typical usage pattern:
 
 ```
-Morning:   Hand off spec → wt-orchestrate plan → start
+Morning:   Hand off spec → set-orchestrate plan → start
 Daytime:   Other tasks, meetings, planning
-Evening:   wt-orchestrate status → 12/15 changes merged, 2 running, 1 failed
+Evening:   set-orchestrate status → 12/15 changes merged, 2 running, 1 failed
            Review → approve → the rest continues
 Next day:  Everything done, open PR
 ```
@@ -49,7 +49,7 @@ The goal is not that humans "aren't needed." The goal is that humans are needed 
 
 ## How Is This Different from CI/CD?
 
-| Aspect | CI/CD (e.g., GitHub Actions) | wt-orchestrate |
+| Aspect | CI/CD (e.g., GitHub Actions) | set-orchestrate |
 |--------|------------------------------|----------------|
 | **When it runs** | After commit/PR | *Before* commit — during development |
 | **What it does** | Build, test, deploy | Planning, implementation, test, merge |
@@ -58,4 +58,4 @@ The goal is not that humans "aren't needed." The goal is that humans are needed 
 | **Parallelism** | Job matrix (fixed) | DAG-based, dynamic dispatch |
 | **Feedback loop** | Human fixes, re-push | Agent fixes, re-tests |
 
-The two complement each other: `wt-orchestrate` produces the code, the CI/CD pipeline validates and deploys it.
+The two complement each other: `set-orchestrate` produces the code, the CI/CD pipeline validates and deploys it.

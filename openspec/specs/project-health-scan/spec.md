@@ -4,7 +4,7 @@
 The system SHALL provide a `bin/wt-audit` command with subcommands `scan` and `help`.
 
 #### Scenario: Run scan on current project
-- **WHEN** user runs `wt-audit scan` in a registered wt-tools project directory
+- **WHEN** user runs `wt-audit scan` in a registered set-core project directory
 - **THEN** system scans all 6 dimensions and prints a structured report to stdout
 
 #### Scenario: Run scan with JSON output
@@ -12,7 +12,7 @@ The system SHALL provide a `bin/wt-audit` command with subcommands `scan` and `h
 - **THEN** system outputs a JSON object with `project`, `timestamp`, `dimensions`, and `summary` fields
 
 #### Scenario: Run scan on non-project directory
-- **WHEN** user runs `wt-audit scan` in a directory not registered with wt-project
+- **WHEN** user runs `wt-audit scan` in a directory not registered with set-project
 - **THEN** system prints an error message and exits with code 1
 
 #### Scenario: Show help
@@ -51,7 +51,7 @@ The system SHALL check `.claude/settings.json` for permissions, hooks, agents, a
 - **THEN** report status ✅ listing rule files and their path globs
 
 #### Scenario: No project-specific rules
-- **WHEN** `.claude/rules/` only contains wt-tools managed rules (prefixed `wt-`) or is empty
+- **WHEN** `.claude/rules/` only contains set-core managed rules (prefixed `wt-`) or is empty
 - **THEN** report status ⚠️ with guidance to create path-scoped rules for distinct code areas
 
 ### Requirement: Design documentation dimension

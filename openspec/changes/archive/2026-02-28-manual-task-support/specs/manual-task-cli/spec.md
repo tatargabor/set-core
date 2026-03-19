@@ -62,9 +62,9 @@ Resume the Ralph loop after manual tasks are resolved.
 - **THEN** warn the user about unresolved tasks and ask for confirmation before resuming
 
 #### Scenario: Resume without orchestrator
-- **WHEN** user runs `wt-manual resume <change-name>` and wt-orchestrate is NOT running
+- **WHEN** user runs `wt-manual resume <change-name>` and set-orchestrate is NOT running
 - **THEN** resume the Ralph loop directly (standalone mode — wt-loop resume in the worktree)
 
 #### Scenario: Resume with orchestrator
-- **WHEN** user runs `wt-manual resume <change-name>` and wt-orchestrate IS running
+- **WHEN** user runs `wt-manual resume <change-name>` and set-orchestrate IS running
 - **THEN** update the change status in orchestration-state.json back to `"running"` so the orchestrator picks it up, and let the orchestrator handle the resume

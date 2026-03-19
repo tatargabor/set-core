@@ -30,8 +30,8 @@
 
 ## 6. CLI Bridge
 
-- [x] 6.1 Add `wt-orch-core dispatch` subcommands to cli.py — dispatch-change, dispatch-ready, pause, resume, resume-stopped, resume-stalled, recover-orphans, redispatch, retry-builds, resolve-model, sync-worktree, bootstrap, prune-context
-- [x] 6.2 Replace dispatcher.sh functions with thin wrappers calling `wt-orch-core dispatch *`
+- [x] 6.1 Add `set-orch-core dispatch` subcommands to cli.py — dispatch-change, dispatch-ready, pause, resume, resume-stopped, resume-stalled, recover-orphans, redispatch, retry-builds, resolve-model, sync-worktree, bootstrap, prune-context
+- [x] 6.2 Replace dispatcher.sh functions with thin wrappers calling `set-orch-core dispatch *`
 
 ## 7. Tests
 

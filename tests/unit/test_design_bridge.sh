@@ -29,7 +29,7 @@ test_detect_figma_mcp() {
     cat > "$_TMPDIR/.claude/settings.json" <<'JSON'
 {
   "mcpServers": {
-    "wt-tools": {"command": "uv", "args": ["run"]},
+    "set-core": {"command": "uv", "args": ["run"]},
     "figma": {"type": "http", "url": "https://mcp.figma.com/mcp"}
   }
 }
@@ -58,7 +58,7 @@ test_detect_no_design_mcp() {
     setup
     mkdir -p "$_TMPDIR/.claude"
     cat > "$_TMPDIR/.claude/settings.json" <<'JSON'
-{"mcpServers": {"wt-tools": {"command": "uv"}}}
+{"mcpServers": {"set-core": {"command": "uv"}}}
 JSON
 
     local rc=0
@@ -99,7 +99,7 @@ test_config_export() {
 {
   "mcpServers": {
     "figma": {"type": "http", "url": "https://mcp.figma.com/mcp"},
-    "wt-tools": {"command": "uv"}
+    "set-core": {"command": "uv"}
   }
 }
 JSON

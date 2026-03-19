@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+"""set-orch-core — CLI bridge between bash orchestration scripts and Python core.
+
+Thin forwarder to set_orch.cli.main(). The canonical implementation lives in
+lib/set_orch/cli.py. This script exists for install.sh symlink-based installs;
+pip-installed environments use pyproject.toml [project.scripts] instead.
+"""
+
+import sys
+import os
+
+# Add lib/ to path so set_orch package is importable without pip install
+# Use realpath to resolve symlinks (install.sh creates symlinks in ~/.local/bin/)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+
+from set_orch.cli import main
+
+if __name__ == "__main__":
+    main()

@@ -4,7 +4,7 @@
 Usage data SHALL be fetched from multiple sources with automatic fallback.
 
 #### Scenario: Primary - Claude.ai API
-Given a saved session key exists in `~/.config/wt-tools/claude-session.json`
+Given a saved session key exists in `~/.config/set-core/claude-session.json`
 When fetching usage data
 Then the worker calls the claude.ai organizations API using stdlib `urllib.request`
 And retrieves exact utilization percentages and reset times
@@ -36,7 +36,7 @@ The GUI SHALL provide a menu option to set the Claude session key via a simple i
 #### Scenario: Set session key via menu
 - **WHEN** user selects "Set Session Key..." from the menu
 - **THEN** a `QInputDialog` appears prompting for the session key
-- **AND** the entered key is saved to `~/.config/wt-tools/claude-session.json`
+- **AND** the entered key is saved to `~/.config/set-core/claude-session.json`
 
 #### Scenario: Session key validation in GUI
 - **WHEN** user enters a session key in the dialog

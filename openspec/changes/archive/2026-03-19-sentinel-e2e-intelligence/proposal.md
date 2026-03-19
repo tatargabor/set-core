@@ -8,7 +8,7 @@ Specific gaps:
 - **No expected-pattern awareness**: sentinel can't distinguish "Prisma generate needed post-merge" from a real build failure
 - **No token-budget stuck detection**: a change burning >500K tokens with no commits goes unnoticed
 - **No dependency deadlock recognition**: dependent changes stuck in `pending` forever when a dependency fails
-- **No framework fix authority for E2E**: sentinel must stop and report instead of fixing obvious wt-tools bugs mid-run
+- **No framework fix authority for E2E**: sentinel must stop and report instead of fixing obvious set-core bugs mid-run
 - **Unsafe state reset**: full state reset (destructive) is documented inline with no safety guardrails
 
 ## What Changes
@@ -16,8 +16,8 @@ Specific gaps:
 - **A: Expected patterns → Tier 1 expansion** — add known false-positive patterns (post-merge Prisma generate, watchdog grace period for new dispatches, stale `.next/` cache) to the sentinel's Tier 1 (defer) list with explanations
 - **B: Token stuck detection** — sentinel warns when a change exceeds token budget threshold with no recent commits; included in completion report
 - **C: Dependency deadlock detection** — sentinel recognizes when pending changes are blocked by failed dependencies and warns/reports instead of silently waiting
-- **D: E2E framework fix authority (Tier 3)** — new tier allowing sentinel to fix wt-tools framework code and deploy to running test, with strict scope boundary: wt-tools repo only, consumer project code NEVER, no branch merging, no quality decisions
-- **E: State reset → dedicated CLI tool** — remove state reset guidance from sentinel scope, create `wt-orchestrate reset` with `--partial` (safe default, failed→pending) and `--full` (requires `--yes-i-know` flag)
+- **D: E2E framework fix authority (Tier 3)** — new tier allowing sentinel to fix set-core framework code and deploy to running test, with strict scope boundary: set-core repo only, consumer project code NEVER, no branch merging, no quality decisions
+- **E: State reset → dedicated CLI tool** — remove state reset guidance from sentinel scope, create `set-orchestrate reset` with `--partial` (safe default, failed→pending) and `--full` (requires `--yes-i-know` flag)
 
 ## Capabilities
 
@@ -30,6 +30,6 @@ Specific gaps:
 
 ## Impact
 
-- **Files**: `.claude/commands/wt/sentinel.md`, `docs/sentinel.md`, `bin/wt-orchestrate`, `tests/e2e/E2E-GUIDE.md`
+- **Files**: `.claude/commands/wt/sentinel.md`, `docs/sentinel.md`, `bin/set-orchestrate`, `tests/e2e/E2E-GUIDE.md`
 - **Risk**: Low-medium — sentinel behavior changes are additive (new warnings, expanded tier list). E2E mode is opt-in. Reset CLI is new tool.
 - **Testing**: Run against next E2E orchestration to validate false-positive reduction and stuck detection

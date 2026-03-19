@@ -21,9 +21,9 @@
 
 ## 4. Runner script
 
-- [x] 4.1 Create `tests/e2e/run.sh` — futtatható bash script: előfeltétel check (wt-project, node, npm, web project type), scaffold másolás `$TMPDIR/minishop-e2e/`-be (vagy megadott path), `cp .env.example .env`, git init + tag v0-scaffold, `wt-project init --name minishop-e2e --project-type web` + ellenőrzés, `wt/orchestration/config.yaml` létrehozás (smoke_command, test_command, max_parallel, merge_policy, smoke_blocking, auto_replan) — config.yaml BEFORE v1-initialized commit!, git add + commit + tag v1-initialized, npm install + npm test + git add + commit + tag v2-ready, sentinel indítási parancs kiírás
+- [x] 4.1 Create `tests/e2e/run.sh` — futtatható bash script: előfeltétel check (set-project, node, npm, web project type), scaffold másolás `$TMPDIR/minishop-e2e/`-be (vagy megadott path), `cp .env.example .env`, git init + tag v0-scaffold, `set-project init --name minishop-e2e --project-type web` + ellenőrzés, `wt/orchestration/config.yaml` létrehozás (smoke_command, test_command, max_parallel, merge_policy, smoke_blocking, auto_replan) — config.yaml BEFORE v1-initialized commit!, git add + commit + tag v1-initialized, npm install + npm test + git add + commit + tag v2-ready, sentinel indítási parancs kiírás
 - [x] 4.2 Add meglévő dir detektálás a runner-be — ha target dir-ben van .git, ne inicializáljon újra, tag-eket és folytatási parancsot írjon ki
-- [x] 4.3 Add név konfliktus kezelés — ha "minishop-e2e" más path-hoz regisztrálva, `wt-project remove minishop-e2e` futtatás az újra-regisztrálás előtt
+- [x] 4.3 Add név konfliktus kezelés — ha "minishop-e2e" más path-hoz regisztrálva, `set-project remove minishop-e2e` futtatás az újra-regisztrálás előtt
 - [x] 4.4 Add cleanup jelzés a runner végére — kiírja a test dir és registry cleanup parancsokat
 
 ## 5. Validálás

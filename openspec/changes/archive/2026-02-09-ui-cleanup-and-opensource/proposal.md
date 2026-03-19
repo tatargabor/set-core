@@ -6,10 +6,10 @@ The Control Center GUI has a "Change" column that's misleading — it actually s
 
 - **BREAKING** Rename the "Change" table column to "Branch" in the Control Center GUI and update all related references (change_id → branch name semantics)
 - **BREAKING** Remove ALL JIRA integration: `bin/wt-jira` CLI, `bin/jira-move-subtask.py`, `bin/wt-activity`, GUI mixin/dialogs/menus/settings tab/"J" column, `.claude/commands/jira/` commands, JIRA skills, OpenSpec JIRA specs, JIRA config files and templates
-- **BREAKING** Remove ALL Confluence integration: `bin/wt-docs-upload`, `bin/docs-upload`, `bin/docs-gen`, `bin/md2confluence`, `docs/confluence.md`, OpenSpec confluence-docs spec, `.wt-tools/confluence.json(.example)`
+- **BREAKING** Remove ALL Confluence integration: `bin/wt-docs-upload`, `bin/docs-upload`, `bin/docs-gen`, `bin/md2confluence`, `docs/confluence.md`, OpenSpec confluence-docs spec, `.set-core/confluence.json(.example)`
 - Replace personal GitHub username (`tatargabor`) with the correct public repo URL in README.md, CONTRIBUTING.md, pyproject.toml, docs/config.md
 - Clean up archived OpenSpec changes that contain internal company references (`jira.zengo.eu`, `ARVRMTEAM`, personal names)
-- Remove OpenSpec CLI from `install.sh` — it's a per-project dev tool, not a wt-tools runtime dependency
+- Remove OpenSpec CLI from `install.sh` — it's a per-project dev tool, not a set-core runtime dependency
 - Change default color profile from "light" to "gray" in `gui/constants.py`
 - Fix chat icon click bug: `show_chat_dialog` signature mismatch between table button (passes project arg) and method definition (takes no args)
 - Replace git-commit-hash versioning with proper semver from `pyproject.toml` (start at v0.1.0)

@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
 from unittest.mock import MagicMock, patch
 
-from wt_orch.merger import _post_merge_deps_install
-from wt_orch.dispatcher import SyncResult
-from wt_orch.profile_loader import reset_cache as reset_profile_cache
+from set_orch.merger import _post_merge_deps_install
+from set_orch.dispatcher import SyncResult
+from set_orch.profile_loader import reset_cache as reset_profile_cache
 
 
 @pytest.fixture(autouse=True)
@@ -31,11 +31,11 @@ def _reset_profile():
 class TestPostMergeDepsInstallLockfileConflicted:
     """Task 5.3: verify install runs unconditionally when lockfile_conflicted=True."""
 
-    @patch("wt_orch.merger.run_command")
-    @patch("wt_orch.profile_loader.load_profile")
+    @patch("set_orch.merger.run_command")
+    @patch("set_orch.profile_loader.load_profile")
     def test_lockfile_conflicted_skips_diff_check(self, mock_load_profile, mock_run):
         """When lockfile_conflicted=True, install runs without checking package.json diff."""
-        from wt_orch.profile_loader import NullProfile
+        from set_orch.profile_loader import NullProfile
 
         mock_load_profile.return_value = NullProfile()
 
@@ -67,11 +67,11 @@ class TestPostMergeDepsInstallLockfileConflicted:
             finally:
                 os.chdir(orig_cwd)
 
-    @patch("wt_orch.merger.run_command")
-    @patch("wt_orch.profile_loader.load_profile")
+    @patch("set_orch.merger.run_command")
+    @patch("set_orch.profile_loader.load_profile")
     def test_no_lockfile_conflict_checks_diff(self, mock_load_profile, mock_run):
         """When lockfile_conflicted=False (default), check package.json in diff."""
-        from wt_orch.profile_loader import NullProfile
+        from set_orch.profile_loader import NullProfile
 
         mock_load_profile.return_value = NullProfile()
 
@@ -94,8 +94,8 @@ class TestPostMergeDepsInstallLockfileConflicted:
         ]
         assert len(install_calls) == 0, "Should not install when package.json not changed"
 
-    @patch("wt_orch.merger.run_command")
-    @patch("wt_orch.profile_loader.load_profile")
+    @patch("set_orch.merger.run_command")
+    @patch("set_orch.profile_loader.load_profile")
     def test_lockfile_conflicted_with_profile(self, mock_load_profile, mock_run):
         """When lockfile_conflicted=True and profile is loaded, use profile.post_merge_install()."""
         mock_profile_inst = MagicMock()
@@ -129,12 +129,12 @@ class TestSyncResultLockfileRegenerated:
 class TestSyncWorktreeLockfileRegen:
     """Task 5.4: unit test for sync_worktree_with_main() lock file regeneration path."""
 
-    @patch("wt_orch.dispatcher.run_command")
-    @patch("wt_orch.dispatcher.run_git")
+    @patch("set_orch.dispatcher.run_command")
+    @patch("set_orch.dispatcher.run_git")
     def test_lockfile_conflict_triggers_regeneration(self, mock_run_git, mock_run_cmd):
         """When sync encounters a lockfile conflict, it should regenerate via install."""
-        from wt_orch.dispatcher import sync_worktree_with_main
-        from wt_orch.profile_loader import NullProfile
+        from set_orch.dispatcher import sync_worktree_with_main
+        from set_orch.profile_loader import NullProfile
 
         wt_path = "/fake/worktree"
 
@@ -194,7 +194,7 @@ class TestSyncWorktreeLockfileRegen:
         # Mock install command
         mock_run_cmd.return_value = MagicMock(exit_code=0)
 
-        with patch("wt_orch.profile_loader.load_profile", return_value=NullProfile()):
+        with patch("set_orch.profile_loader.load_profile", return_value=NullProfile()):
             result = sync_worktree_with_main(wt_path, "test-feature")
 
         assert result.ok is True
@@ -208,12 +208,12 @@ class TestSyncWorktreeLockfileRegen:
         ]
         assert len(install_calls) > 0, "Should have called install command for lock file"
 
-    @patch("wt_orch.dispatcher.run_command")
-    @patch("wt_orch.dispatcher.run_git")
+    @patch("set_orch.dispatcher.run_command")
+    @patch("set_orch.dispatcher.run_git")
     def test_non_lockfile_conflict_no_regeneration(self, mock_run_git, mock_run_cmd):
         """When sync encounters only non-lockfile generated conflicts, no regeneration."""
-        from wt_orch.dispatcher import sync_worktree_with_main
-        from wt_orch.profile_loader import NullProfile
+        from set_orch.dispatcher import sync_worktree_with_main
+        from set_orch.profile_loader import NullProfile
 
         wt_path = "/fake/worktree"
 
@@ -242,7 +242,7 @@ class TestSyncWorktreeLockfileRegen:
 
         mock_run_git.side_effect = git_side_effect
 
-        with patch("wt_orch.profile_loader.load_profile", return_value=NullProfile()):
+        with patch("set_orch.profile_loader.load_profile", return_value=NullProfile()):
             result = sync_worktree_with_main(wt_path, "test-feature")
 
         assert result.ok is True
@@ -257,7 +257,7 @@ class TestSyncWorktreeLockfileRegen:
 
 
 class TestLockfileConflictedMarkerParsing:
-    """Task 5.5: verify LOCKFILE_CONFLICTED markers are parsed from wt-merge output."""
+    """Task 5.5: verify LOCKFILE_CONFLICTED markers are parsed from set-merge output."""
 
     def test_parse_single_marker(self):
         """Parse a single LOCKFILE_CONFLICTED marker from merge output."""

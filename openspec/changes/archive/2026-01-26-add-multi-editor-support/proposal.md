@@ -1,11 +1,11 @@
 # Change: Add Multi-Editor Support
 
 ## Why
-Currently wt-tools is hardcoded to use Zed editor only. Users may prefer other editors that support Claude Code integration (VS Code, Cursor, Windsurf). This limits adoption and flexibility.
+Currently set-core is hardcoded to use Zed editor only. Users may prefer other editors that support Claude Code integration (VS Code, Cursor, Windsurf). This limits adoption and flexibility.
 
 ## What Changes
 - **BREAKING**: Replace hardcoded Zed with configurable editor system
-- Add editor configuration to `~/.config/wt-tools/config.json`
+- Add editor configuration to `~/.config/set-core/config.json`
 - Support 4 editors: Zed, VS Code, Cursor, Windsurf
 - Each editor has specific CLI command and Claude Code launch method
 - Add automatic editor detection fallback chain
@@ -21,9 +21,9 @@ Currently wt-tools is hardcoded to use Zed editor only. Users may prefer other e
 | **Cursor** | `cursor <path>` | VSIX extension, or `claude` in terminal | All |
 | **Windsurf** | `windsurf <path>` | Built-in Cascade, or `claude` in terminal | All |
 
-## Editor Requirements for wt-tools
+## Editor Requirements for set-core
 
-For proper wt-tools integration, an editor must:
+For proper set-core integration, an editor must:
 1. Open a specific folder via CLI
 2. Support Claude Code terminal/extension for AI coding
 3. Show worktree folder name in window title (for `wt-focus`)

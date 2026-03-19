@@ -6,7 +6,7 @@ E2E test projects (minishop, craftbrew) are created in `/tmp/` by default. This 
 
 ## Solution
 
-Change the default base directory from `/tmp/` to `~/.local/share/wt-tools/e2e-runs/` (XDG data directory, alongside the existing memory storage). Add `WT_E2E_DIR` env var for override.
+Change the default base directory from `/tmp/` to `~/.local/share/set-core/e2e-runs/` (XDG data directory, alongside the existing memory storage). Add `WT_E2E_DIR` env var for override.
 
 ## Scope
 

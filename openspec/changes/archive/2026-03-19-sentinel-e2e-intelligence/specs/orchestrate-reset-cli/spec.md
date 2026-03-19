@@ -14,25 +14,25 @@ Dedicated CLI tool for safe orchestration state reset, replacing inline reset sn
 - Remote state reset (only local state files)
 
 ### Requirement: partial-reset-safe-default
-`wt-orchestrate reset` and `wt-orchestrate reset --partial` SHALL reset only failed changes to pending, preserving merged/done changes.
+`set-orchestrate reset` and `set-orchestrate reset --partial` SHALL reset only failed changes to pending, preserving merged/done changes.
 
 #### Scenario: Partial reset of failed changes
-- **WHEN** user runs `wt-orchestrate reset` or `wt-orchestrate reset --partial`
+- **WHEN** user runs `set-orchestrate reset` or `set-orchestrate reset --partial`
 - **THEN** the tool SHALL set status to "pending", clear worktree_path, ralph_pid, and verify_retry_count for all changes with status "failed", set overall status to "running", and print a summary of what was reset
 
 #### Scenario: No failed changes
-- **WHEN** user runs `wt-orchestrate reset --partial` and no changes have status "failed"
+- **WHEN** user runs `set-orchestrate reset --partial` and no changes have status "failed"
 - **THEN** the tool SHALL print "Nothing to reset — no failed changes found" and exit 0
 
 ### Requirement: full-reset-requires-confirmation
-`wt-orchestrate reset --full` SHALL require `--yes-i-know` flag and create a backup before executing.
+`set-orchestrate reset --full` SHALL require `--yes-i-know` flag and create a backup before executing.
 
 #### Scenario: Full reset without confirmation flag
-- **WHEN** user runs `wt-orchestrate reset --full` without `--yes-i-know`
+- **WHEN** user runs `set-orchestrate reset --full` without `--yes-i-know`
 - **THEN** the tool SHALL print what would be destroyed (number of changes, worktrees, events) and exit without making changes
 
 #### Scenario: Full reset with confirmation
-- **WHEN** user runs `wt-orchestrate reset --full --yes-i-know`
+- **WHEN** user runs `set-orchestrate reset --full --yes-i-know`
 - **THEN** the tool SHALL:
   1. Create backup at `orchestration-state.backup.json`
   2. Remove all non-main worktrees
@@ -46,8 +46,8 @@ Dedicated CLI tool for safe orchestration state reset, replacing inline reset sn
 - **THEN** the tool SHALL overwrite the backup (latest backup wins) and print a warning
 
 ### Requirement: sentinel-no-longer-resets-state
-The sentinel skill documentation SHALL NOT contain state reset code or instructions. Reset operations are delegated to `wt-orchestrate reset`.
+The sentinel skill documentation SHALL NOT contain state reset code or instructions. Reset operations are delegated to `set-orchestrate reset`.
 
 #### Scenario: Sentinel encounters unrecoverable state
 - **WHEN** sentinel detects a state that requires reset (e.g., too many failed changes)
-- **THEN** sentinel SHALL stop and report to the user with the command to run: `wt-orchestrate reset --partial`
+- **THEN** sentinel SHALL stop and report to the user with the command to run: `set-orchestrate reset --partial`

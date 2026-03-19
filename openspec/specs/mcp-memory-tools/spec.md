@@ -1,118 +1,118 @@
 ## ADDED Requirements
 
-### Requirement: Own MCP server wrapping full wt-memory CLI
-The unified MCP server (`mcp-server/wt_mcp_server.py`) SHALL expose the full `wt-memory` CLI as MCP tools. It SHALL shell out to `wt-memory` commands with `cwd=CLAUDE_PROJECT_DIR`, ensuring all custom logic (branch boosting, auto-tagging, dedup, sync) applies to MCP calls and resolves to the correct project storage.
+### Requirement: Own MCP server wrapping full set-memory CLI
+The unified MCP server (`mcp-server/wt_mcp_server.py`) SHALL expose the full `set-memory` CLI as MCP tools. It SHALL shell out to `set-memory` commands with `cwd=CLAUDE_PROJECT_DIR`, ensuring all custom logic (branch boosting, auto-tagging, dedup, sync) applies to MCP calls and resolves to the correct project storage.
 
 #### Scenario: MCP server registration
-- **WHEN** `wt-project init` runs on a project
-- **THEN** it SHALL register the unified MCP server via `claude mcp add wt-tools -- env CLAUDE_PROJECT_DIR="<project-path>" uv --directory "<mcp-server-dir>" run python wt_mcp_server.py`
+- **WHEN** `set-project init` runs on a project
+- **THEN** it SHALL register the unified MCP server via `claude mcp add set-core -- env CLAUDE_PROJECT_DIR="<project-path>" uv --directory "<mcp-server-dir>" run python wt_mcp_server.py`
 - **AND** the server SHALL use stdio transport (standard MCP protocol)
 
 #### Scenario: MCP server re-registration on init
-- **WHEN** `wt-project init` runs and a `wt-tools` MCP is already registered
+- **WHEN** `set-project init` runs and a `set-core` MCP is already registered
 - **THEN** it SHALL re-register (overwrite) to ensure the command and CLAUDE_PROJECT_DIR are correct
-- **AND** it SHALL remove any legacy `wt-memory` MCP registration
+- **AND** it SHALL remove any legacy `set-memory` MCP registration
 
 #### Scenario: LLM can use memory tools
 - **WHEN** Claude Code starts a session with the unified MCP server active
-- **THEN** the LLM SHALL have access to all memory tools covering the full wt-memory interface
-- **AND** these tools SHALL operate through the same `wt-memory` CLI path as hooks
-- **AND** `wt-memory` SHALL run with CWD set to the project root
+- **THEN** the LLM SHALL have access to all memory tools covering the full set-memory interface
+- **AND** these tools SHALL operate through the same `set-memory` CLI path as hooks
+- **AND** `set-memory` SHALL run with CWD set to the project root
 
 ### Requirement: Core memory tools
 The MCP server SHALL expose core memory operations as tools.
 
 #### Scenario: remember tool
 - **WHEN** the LLM calls `remember(content, type, tags)`
-- **THEN** the server SHALL execute `echo <content> | wt-memory remember --type <type> --tags <tags>`
+- **THEN** the server SHALL execute `echo <content> | set-memory remember --type <type> --tags <tags>`
 - **AND** SHALL return the result (memory ID or error)
 
 #### Scenario: recall tool
 - **WHEN** the LLM calls `recall(query, limit, mode, tags)`
-- **THEN** the server SHALL execute `wt-memory recall "<query>" --limit <limit> --mode <mode> --tags <tags>`
+- **THEN** the server SHALL execute `set-memory recall "<query>" --limit <limit> --mode <mode> --tags <tags>`
 - **AND** SHALL return the JSON result array
 
 #### Scenario: proactive_context tool
 - **WHEN** the LLM calls `proactive_context(context, limit)`
-- **THEN** the server SHALL execute `wt-memory proactive "<context>" --limit <limit>`
+- **THEN** the server SHALL execute `set-memory proactive "<context>" --limit <limit>`
 - **AND** SHALL return the JSON result array with relevance scores
 
 #### Scenario: forget tool
 - **WHEN** the LLM calls `forget(id)`
-- **THEN** the server SHALL execute `wt-memory forget <id>`
+- **THEN** the server SHALL execute `set-memory forget <id>`
 
 #### Scenario: forget_by_tags tool
 - **WHEN** the LLM calls `forget_by_tags(tags)`
-- **THEN** the server SHALL execute `wt-memory forget --tags <tags>`
+- **THEN** the server SHALL execute `set-memory forget --tags <tags>`
 
 #### Scenario: list_memories tool
 - **WHEN** the LLM calls `list_memories(type, limit)`
-- **THEN** the server SHALL execute `wt-memory list --type <type> --limit <limit>`
+- **THEN** the server SHALL execute `set-memory list --type <type> --limit <limit>`
 
 #### Scenario: get_memory tool
 - **WHEN** the LLM calls `get_memory(id)`
-- **THEN** the server SHALL execute `wt-memory get <id>`
+- **THEN** the server SHALL execute `set-memory get <id>`
 
 #### Scenario: context_summary tool
 - **WHEN** the LLM calls `context_summary(topic)`
-- **THEN** the server SHALL execute `wt-memory context <topic>`
+- **THEN** the server SHALL execute `set-memory context <topic>`
 
 #### Scenario: brain tool
 - **WHEN** the LLM calls `brain()`
-- **THEN** the server SHALL execute `wt-memory brain`
+- **THEN** the server SHALL execute `set-memory brain`
 
 #### Scenario: memory_stats tool
 - **WHEN** the LLM calls `memory_stats()`
-- **THEN** the server SHALL execute `wt-memory stats --json`
+- **THEN** the server SHALL execute `set-memory stats --json`
 
 ### Requirement: Maintenance tools
 The MCP server SHALL expose memory maintenance operations.
 
 #### Scenario: health tool
 - **WHEN** the LLM calls `health()`
-- **THEN** the server SHALL execute `wt-memory health`
+- **THEN** the server SHALL execute `set-memory health`
 
 #### Scenario: audit tool
 - **WHEN** the LLM calls `audit(threshold)`
-- **THEN** the server SHALL execute `wt-memory audit --threshold <threshold> --json`
+- **THEN** the server SHALL execute `set-memory audit --threshold <threshold> --json`
 
 #### Scenario: cleanup tool
 - **WHEN** the LLM calls `cleanup(threshold, dry_run)`
-- **THEN** the server SHALL execute `wt-memory cleanup --threshold <threshold>` with optional `--dry-run`
+- **THEN** the server SHALL execute `set-memory cleanup --threshold <threshold>` with optional `--dry-run`
 
 #### Scenario: dedup tool
 - **WHEN** the LLM calls `dedup(threshold, dry_run)`
-- **THEN** the server SHALL execute `wt-memory dedup --threshold <threshold>` with optional `--dry-run`
+- **THEN** the server SHALL execute `set-memory dedup --threshold <threshold>` with optional `--dry-run`
 
 ### Requirement: Sync tools
 The MCP server SHALL expose git-based memory sync operations.
 
 #### Scenario: sync tool
 - **WHEN** the LLM calls `sync()`
-- **THEN** the server SHALL execute `wt-memory sync`
+- **THEN** the server SHALL execute `set-memory sync`
 
 #### Scenario: sync_push tool
 - **WHEN** the LLM calls `sync_push()`
-- **THEN** the server SHALL execute `wt-memory sync push`
+- **THEN** the server SHALL execute `set-memory sync push`
 
 #### Scenario: sync_pull tool
 - **WHEN** the LLM calls `sync_pull(from_source)`
-- **THEN** the server SHALL execute `wt-memory sync pull --from <from_source>`
+- **THEN** the server SHALL execute `set-memory sync pull --from <from_source>`
 
 #### Scenario: sync_status tool
 - **WHEN** the LLM calls `sync_status()`
-- **THEN** the server SHALL execute `wt-memory sync status`
+- **THEN** the server SHALL execute `set-memory sync status`
 
 ### Requirement: Export/Import tools
 The MCP server SHALL expose memory export and import operations.
 
 #### Scenario: export tool
 - **WHEN** the LLM calls `export_memories()`
-- **THEN** the server SHALL execute `wt-memory export` and return the JSON
+- **THEN** the server SHALL execute `set-memory export` and return the JSON
 
 #### Scenario: import_memories tool
 - **WHEN** the LLM calls `import_memories(file_path, dry_run)`
-- **THEN** the server SHALL execute `wt-memory import <file_path>` with optional `--dry-run`
+- **THEN** the server SHALL execute `set-memory import <file_path>` with optional `--dry-run`
 
 ### Requirement: CLAUDE.md documents MCP tools alongside hooks
 The CLAUDE.md Persistent Memory section SHALL document both automatic (hooks) and active (MCP) memory access.
@@ -124,16 +124,16 @@ The CLAUDE.md Persistent Memory section SHALL document both automatic (hooks) an
 - **AND** SHALL list the key MCP tool names: remember, recall, proactive_context
 
 ### Requirement: Daemon-first routing
-The MCP server SHALL try the wt-memoryd daemon client before falling back to the `wt-memory` CLI for core memory operations (remember, recall, proactive_context, forget, list, get, context_summary, brain, stats, health, verify_index, consolidation_report, graph_stats, recall_by_date).
+The MCP server SHALL try the set-memoryd daemon client before falling back to the `set-memory` CLI for core memory operations (remember, recall, proactive_context, forget, list, get, context_summary, brain, stats, health, verify_index, consolidation_report, graph_stats, recall_by_date).
 
 #### Scenario: Daemon available
-- **WHEN** the wt-memoryd daemon is running
+- **WHEN** the set-memoryd daemon is running
 - **THEN** the MCP server SHALL route memory operations through the daemon client
-- **AND** SHALL NOT spawn a `wt-memory` CLI subprocess
+- **AND** SHALL NOT spawn a `set-memory` CLI subprocess
 
 #### Scenario: Daemon unavailable
-- **WHEN** the wt-memoryd daemon is not running or the client fails to connect
-- **THEN** the MCP server SHALL fall back to the `wt-memory` CLI subprocess
+- **WHEN** the set-memoryd daemon is not running or the client fails to connect
+- **THEN** the MCP server SHALL fall back to the `set-memory` CLI subprocess
 - **AND** SHALL function identically to the CLI-only path
 
 #### Scenario: Daemon client cached per process
@@ -142,10 +142,10 @@ The MCP server SHALL try the wt-memoryd daemon client before falling back to the
 - **AND** subsequent tool calls SHALL reuse the cached client
 
 ### Requirement: Hooks and MCP share the same path
-Both the hook system (via daemon client or `wt-memory` CLI) and the unified MCP server (via daemon client or `wt-memory` CLI with `cwd=CLAUDE_PROJECT_DIR`) SHALL use the identical code path and resolve to the same project storage.
+Both the hook system (via daemon client or `set-memory` CLI) and the unified MCP server (via daemon client or `set-memory` CLI with `cwd=CLAUDE_PROJECT_DIR`) SHALL use the identical code path and resolve to the same project storage.
 
 #### Scenario: Memory saved via hook, recalled via MCP
-- **WHEN** the Stop hook saves a memory via `wt-memory remember` (CWD = project root)
+- **WHEN** the Stop hook saves a memory via `set-memory remember` (CWD = project root)
 - **AND** the LLM later calls the MCP `recall` tool (CWD = CLAUDE_PROJECT_DIR = project root)
 - **THEN** the saved memory SHALL be findable via MCP recall
 

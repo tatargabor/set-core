@@ -1,6 +1,6 @@
 ## Context
 
-The orchestrator (`wt-orchestrate`) takes a spec document or project brief, decomposes it into changes via an LLM call, and executes them in parallel worktrees. Plan quality directly determines batch success — yet users have no documentation on how to write effective inputs. The existing `docs/orchestration.md` covers CLI usage but not planning strategy. The Hungarian PM guide (`docs/pm-guide/05-orchestracio.md`) covers workflow but not input authoring best practices.
+The orchestrator (`set-orchestrate`) takes a spec document or project brief, decomposes it into changes via an LLM call, and executes them in parallel worktrees. Plan quality directly determines batch success — yet users have no documentation on how to write effective inputs. The existing `docs/orchestration.md` covers CLI usage but not planning strategy. The Hungarian PM guide (`docs/pm-guide/05-orchestracio.md`) covers workflow but not input authoring best practices.
 
 Real-world failure patterns observed:
 - Overlapping change scopes causing merge conflicts (e.g., multiple changes editing `activity-logger.ts` union types)

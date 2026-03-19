@@ -10,8 +10,8 @@ The `mcp-server/wt_mcp_server.py` SHALL expose all memory tools alongside existi
 
 #### Scenario: Memory tools use project-scoped CWD
 - **WHEN** a memory tool is invoked
-- **THEN** the subprocess call to `wt-memory` SHALL use `cwd=os.environ.get("CLAUDE_PROJECT_DIR")`
-- **AND** `wt-memory`'s `resolve_project()` SHALL detect the correct git project from that CWD
+- **THEN** the subprocess call to `set-memory` SHALL use `cwd=os.environ.get("CLAUDE_PROJECT_DIR")`
+- **AND** `set-memory`'s `resolve_project()` SHALL detect the correct git project from that CWD
 
 #### Scenario: Worktree tools unaffected
 - **WHEN** a worktree or team tool is invoked
@@ -22,25 +22,25 @@ The `mcp-server/wt_mcp_server.py` SHALL expose all memory tools alongside existi
 The MCP server registration command SHALL include `CLAUDE_PROJECT_DIR` set to the project root path.
 
 #### Scenario: Registration command includes env var
-- **WHEN** `wt-project init` registers the MCP server
+- **WHEN** `set-project init` registers the MCP server
 - **THEN** the registration command SHALL be: `env CLAUDE_PROJECT_DIR="<project-path>" uv --directory "<mcp-server-dir>" run python wt_mcp_server.py`
 
 #### Scenario: env var available at runtime
 - **WHEN** the MCP server process starts
 - **THEN** `os.environ["CLAUDE_PROJECT_DIR"]` SHALL contain the absolute path to the project root
 
-### Requirement: Standalone wt-memory MCP server removed
-The `bin/wt-memory-mcp-server.py` file SHALL be deleted.
+### Requirement: Standalone set-memory MCP server removed
+The `bin/set-memory-mcp-server.py` file SHALL be deleted.
 
 #### Scenario: File removed from repository
 - **WHEN** this change is applied
-- **THEN** `bin/wt-memory-mcp-server.py` SHALL NOT exist
+- **THEN** `bin/set-memory-mcp-server.py` SHALL NOT exist
 - **AND** no code SHALL reference it
 
-### Requirement: Legacy wt-memory MCP registration cleaned up
-Registration flows SHALL remove any existing `wt-memory` MCP server registration.
+### Requirement: Legacy set-memory MCP registration cleaned up
+Registration flows SHALL remove any existing `set-memory` MCP server registration.
 
-#### Scenario: wt-project init cleans up legacy registration
-- **WHEN** `wt-project init` runs
-- **THEN** it SHALL run `claude mcp remove wt-memory` before registering the unified server
-- **AND** it SHALL register the unified server as `wt-tools`
+#### Scenario: set-project init cleans up legacy registration
+- **WHEN** `set-project init` runs
+- **THEN** it SHALL run `claude mcp remove set-memory` before registering the unified server
+- **AND** it SHALL register the unified server as `set-core`

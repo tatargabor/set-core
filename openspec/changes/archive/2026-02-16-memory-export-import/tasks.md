@@ -1,13 +1,13 @@
 ## 1. CLI Export
 
-- [x] 1.1 Add `cmd_export` function to `bin/wt-memory` — list all memories, build JSON with version header, output to stdout
+- [x] 1.1 Add `cmd_export` function to `bin/set-memory` — list all memories, build JSON with version header, output to stdout
 - [x] 1.2 Add `--output <path>` flag to write export JSON to file instead of stdout
 - [x] 1.3 Handle empty project (valid JSON with count: 0, empty records)
 - [x] 1.4 Wire `export` command in main dispatch case statement and update usage text
 
 ## 2. CLI Import
 
-- [x] 2.1 Add `cmd_import` function to `bin/wt-memory` — read JSON file, validate format/version
+- [x] 2.1 Add `cmd_import` function to `bin/set-memory` — read JSON file, validate format/version
 - [x] 2.2 Implement dedup logic: build known-ID set from existing records (id + metadata.original_id), skip matches
 - [x] 2.3 Import non-duplicate records via `remember()` with original content, type, tags, entities, and metadata.original_id
 - [x] 2.4 Add `--dry-run` flag that reports would_import/would_skip without writing
@@ -33,10 +33,10 @@
 ## 4. GUI Export/Import Buttons
 
 - [x] 4.1 Add Export button to Memory Browse Dialog top bar (after Show All/Summary toggle)
-- [x] 4.2 Implement `_on_export` handler: directory picker, auto-named file, call `wt-memory export --output`, success/warning dialog
+- [x] 4.2 Implement `_on_export` handler: directory picker, auto-named file, call `set-memory export --output`, success/warning dialog
 - [x] 4.3 Add Import button to Memory Browse Dialog top bar
-- [x] 4.4 Implement `_on_import` handler: file picker (JSON filter), call `wt-memory import`, result dialog with counts, refresh list
-- [x] 4.5 Handle edge cases: no memories to export, invalid file on import, wt-memory not available
+- [x] 4.4 Implement `_on_import` handler: file picker (JSON filter), call `set-memory import`, result dialog with counts, refresh list
+- [x] 4.5 Handle edge cases: no memories to export, invalid file on import, set-memory not available
 
 ## 5. GUI Tests
 

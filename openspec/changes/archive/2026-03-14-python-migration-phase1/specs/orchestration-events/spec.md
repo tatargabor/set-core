@@ -80,12 +80,12 @@ The system SHALL provide an in-process event bus with `subscribe()` and `emit()`
 - **THEN** the handler receives all events regardless of type
 
 ### Requirement: CLI integration
-The events module SHALL be callable via `wt-orch-core events` subcommand.
+The events module SHALL be callable via `set-orch-core events` subcommand.
 
 #### Scenario: Query events via CLI
-- **WHEN** `wt-orch-core events --type STATE_CHANGE --last 20 --json` is called
+- **WHEN** `set-orch-core events --type STATE_CHANGE --last 20 --json` is called
 - **THEN** it outputs matching events as a JSON array to stdout
 
 #### Scenario: Formatted output
-- **WHEN** `wt-orch-core events --last 10` is called (without --json)
+- **WHEN** `set-orch-core events --last 10` is called (without --json)
 - **THEN** events are printed in a formatted table: Timestamp, Type, Change, Data

@@ -36,8 +36,8 @@ The recall output is formatted as a concise bulleted list with an instruction he
 - **THEN** no output is produced (silent exit)
 
 ### Requirement: Timeout safety
-The recall hook must complete within its 15-second timeout even if git log or wt-memory recall is slow.
+The recall hook must complete within its 15-second timeout even if git log or set-memory recall is slow.
 
-#### Scenario: wt-memory recall hangs
-- **WHEN** wt-memory recall takes >10 seconds
+#### Scenario: set-memory recall hangs
+- **WHEN** set-memory recall takes >10 seconds
 - **THEN** the hook exits silently (killed by Claude Code timeout)

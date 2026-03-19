@@ -5,11 +5,11 @@ Both init scripts (`init-baseline.sh` and `init-with-memory.sh`) must create the
 
 #### Scenario: Init script enables metrics
 - **WHEN** `init-baseline.sh` or `init-with-memory.sh` runs
-- **THEN** `~/.local/share/wt-tools/metrics/.enabled` exists after completion
+- **THEN** `~/.local/share/set-core/metrics/.enabled` exists after completion
 
 #### Scenario: Metrics collected during benchmark
 - **WHEN** a Claude session runs in either benchmark directory with hooks deployed
-- **THEN** per-hook metrics (query, result_count, relevance_scores, duration_ms, dedup_hit) are appended to the session cache and flushed to `~/.local/share/wt-tools/metrics/metrics.db` on session Stop
+- **THEN** per-hook metrics (query, result_count, relevance_scores, duration_ms, dedup_hit) are appended to the session cache and flushed to `~/.local/share/set-core/metrics/metrics.db` on session Stop
 
 ---
 
@@ -35,5 +35,5 @@ The run-guide "Current Status" section must reflect that test fixes are implemen
 The with-memory.md must include stronger guidance about verifying recalled information against current code state.
 
 #### Scenario: Agent recalls implementation details
-- **WHEN** Run B agent uses `wt-memory recall` and receives results about file locations or implementations
+- **WHEN** Run B agent uses `set-memory recall` and receives results about file locations or implementations
 - **THEN** the CLAUDE.md instructs it to verify the recalled information against current code before acting on it

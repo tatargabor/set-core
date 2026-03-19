@@ -1,1 +1,1 @@
-"""wt-tools test suite"""
+"""set-core test suite"""

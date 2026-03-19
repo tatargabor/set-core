@@ -19,7 +19,7 @@ A single script `bin/wt-hook-memory` SHALL handle all memory hook events. It SHA
 #### Scenario: PreToolUse event
 - **WHEN** `wt-hook-memory PreToolUse` is called
 - **THEN** it SHALL extract the query from tool_input (file_path, command, or prompt depending on tool)
-- **AND** SHALL use `wt-memory proactive` (not just recall) for richer context surfacing
+- **AND** SHALL use `set-memory proactive` (not just recall) for richer context surfacing
 - **AND** SHALL inject results as additionalContext
 - **AND** SHALL record an L3 metrics entry with timing, result counts, relevance scores, and dedup hit/miss (if metrics enabled)
 
@@ -61,7 +61,7 @@ The handler SHALL maintain a session-scoped cache to prevent redundant recalls f
 
 #### Scenario: Cache location
 - **WHEN** the handler starts
-- **THEN** the cache file SHALL be at `/tmp/wt-memory-session-<SESSION_ID>.json`
+- **THEN** the cache file SHALL be at `/tmp/set-memory-session-<SESSION_ID>.json`
 - **AND** `SESSION_ID` SHALL be extracted from the `session_id` field of the hook input JSON
 
 #### Scenario: Cache cleared on new session

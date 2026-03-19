@@ -11,12 +11,12 @@ But many projects still have the old expanded config (6 PreToolUse + 6 PostToolU
 **Goals:**
 - `wt-deploy-hooks` can downgrade stale configs to match the canonical hook set
 - Only removes `wt-hook-memory` entries — never touches non-wt hooks (activity-track.sh, user-added)
-- Works transparently via existing `install.sh` → `wt-project init` → `wt-deploy-hooks` flow
+- Works transparently via existing `install.sh` → `set-project init` → `wt-deploy-hooks` flow
 
 **Non-Goals:**
 - Changing the canonical hook config itself (that was `raw-conversation-ingest`)
 - Adding a `--force` flag (surgical comparison is better)
-- Migrating non-registered projects (user must run `wt-project init` manually)
+- Migrating non-registered projects (user must run `set-project init` manually)
 
 ## Decisions
 

@@ -1,33 +1,33 @@
 ## 0. Hook test & pre-flight infrastructure
 
 - [x] 0.1 Create `benchmark/tests/test-hooks.sh` — isolated test script for memory hook fixes. Uses a temp shodh-memory storage dir (not production). Tests:
-  - auto_ingest=False: run `wt-memory proactive "test"`, assert zero Conversation memories created
+  - auto_ingest=False: run `set-memory proactive "test"`, assert zero Conversation memories created
   - change: tag: simulate transcript extraction with a known change name, assert output memory has `change:<name>` tag
   - code-map: create fake commits in a temp repo, trigger save hook, assert code-map memory exists
   - convention extraction: verify LLM prompt contains convention extraction section (grep the hook source)
 - [x] 0.2 Create `benchmark/preflight.sh` — pre-benchmark infrastructure check. Validates before a multi-hour run:
-  - `wt-memory health` passes
+  - `set-memory health` passes
   - Hooks installed: `.claude/settings.json` contains `wt-hook-memory-save` and `wt-hook-memory-recall`
   - All 12 change files exist: `benchmark/changes/[0-9]*.md` matches 12 files
   - All 12 test scripts exist and are executable: `benchmark/tests/test-[0-9]*.sh`
   - Glob pattern `[0-9]*.md` works (no repeat of v5 `0*.md` bug)
-  - `auto_ingest=False` is in `bin/wt-memory` proactive function
+  - `auto_ingest=False` is in `bin/set-memory` proactive function
   - Dev port (3000/3001) is free
 - [x] 0.3 Add single-change smoke test mode to `benchmark/tests/test-hooks.sh --smoke`: run C01 (product-catalog) end-to-end with memory enabled, then verify:
   - At least 1 memory saved with `change:product-catalog` tag
   - Zero `Conversation` type memories from proactive-context
   - Code-map memory exists for the change
-  - `wt-memory stats` shows noise rate < 20%
+  - `set-memory stats` shows noise rate < 20%
 
 ## 1. Disable proactive-context auto-ingest (P0)
 
-- [x] 1.1 In `bin/wt-memory` `cmd_proactive()`, pass `auto_ingest=False` to `m.proactive_context()` call (line ~609)
-- [x] 1.2 Verify: run `wt-memory proactive "test context"` and confirm no new Conversation memory is created
+- [x] 1.1 In `bin/set-memory` `cmd_proactive()`, pass `auto_ingest=False` to `m.proactive_context()` call (line ~609)
+- [x] 1.2 Verify: run `set-memory proactive "test context"` and confirm no new Conversation memory is created
 
 ## 2. Add change: tag to transcript extraction (P0)
 
 - [x] 2.1 In `bin/wt-hook-memory-save` `extract_from_transcript()`, extract first change name from `$change_names` into a variable (e.g., `first_change`)
-- [x] 2.2 Prepend `change:$first_change,` to the tags string in the `wt-memory remember` call (line ~254) — before `phase:auto-extract`
+- [x] 2.2 Prepend `change:$first_change,` to the tags string in the `set-memory remember` call (line ~254) — before `phase:auto-extract`
 - [x] 2.3 Handle edge case: if `$change_names` is empty, skip the `change:` tag (don't add `change:,`)
 
 ## 3. Convention extraction via LLM prompt (P1)

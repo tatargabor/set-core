@@ -1,4 +1,4 @@
-"""Tests for wt_hooks.stop — metrics flush, transcript extraction, commit save, checkpoint."""
+"""Tests for set_hooks.stop — metrics flush, transcript extraction, commit save, checkpoint."""
 
 import json
 import os
@@ -10,13 +10,13 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_hooks.stop import (
+from set_hooks.stop import (
     extract_insights,
     save_checkpoint,
     _filter_transcript,
     _save_design_choices,
 )
-from wt_hooks.util import read_cache, write_cache
+from set_hooks.util import read_cache, write_cache
 
 
 @pytest.fixture
@@ -147,7 +147,7 @@ class TestFilterTranscript:
 
     def test_max_entries_cap(self, transcript_file):
         """Hard cap at _MAX_EXTRACT_ENTRIES."""
-        from wt_hooks.stop import _MAX_EXTRACT_ENTRIES
+        from set_hooks.stop import _MAX_EXTRACT_ENTRIES
         entries = []
         for i in range(_MAX_EXTRACT_ENTRIES + 20):
             entries.append({
@@ -187,9 +187,9 @@ class TestFilterTranscript:
 class TestSaveCheckpoint:
     def test_empty_metrics(self, cache_file):
         write_cache(cache_file, {"_metrics": []})
-        # Returns False because no wt-memory command to run
+        # Returns False because no set-memory command to run
         result = save_checkpoint(cache_file, 10, 0)
-        # Can't test True without wt-memory available, but should not crash
+        # Can't test True without set-memory available, but should not crash
         assert isinstance(result, bool)
 
     def test_with_metrics(self, cache_file):

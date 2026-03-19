@@ -4,9 +4,9 @@ Phase 6 of the 8-phase Python migration (per master plan). `verifier.sh` (1453 l
 
 ## What Changes
 
-- New `lib/wt_orch/verifier.py` (~800 LOC) with 1:1 function mapping from verifier.sh
+- New `lib/set_orch/verifier.py` (~800 LOC) with 1:1 function mapping from verifier.sh
 - 12 functions migrated: test runner, requirement review builder, LLM code review, verification rules, scope checks, health check, smoke fix, phase-end E2E, poll_change, handle_change_done
-- New CLI subcommands under `wt-orch-core verify *` for all functions
+- New CLI subcommands under `set-orch-core verify *` for all functions
 - `lib/orchestration/verifier.sh` replaced with thin bash wrappers (~50 LOC)
 - Unit tests for all pure-logic functions
 
@@ -24,7 +24,7 @@ Phase 6 of the 8-phase Python migration (per master plan). `verifier.sh` (1453 l
 ## Impact
 
 - `lib/orchestration/verifier.sh` — rewritten to thin wrappers
-- `lib/wt_orch/cli.py` — new `verify` subcommand group
-- `lib/wt_orch/verifier.py` — new module
+- `lib/set_orch/cli.py` — new `verify` subcommand group
+- `lib/set_orch/verifier.py` — new module
 - `tests/unit/test_verifier.py` — new test file
 - Dependencies: existing `subprocess_utils`, `state`, `events`, `process`, `notifications`, `dispatcher` modules

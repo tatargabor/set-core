@@ -52,15 +52,15 @@ The sentinel poll script SHALL detect pending changes whose dependencies have al
 - **THEN** sentinel SHALL NOT automatically modify state — it reports and the user decides whether to clear deps or mark as failed
 
 ### Requirement: e2e-tier3-framework-fix-authority
-In E2E mode, the sentinel SHALL have Tier 3 authority to fix wt-tools framework bugs and deploy them to the running test environment.
+In E2E mode, the sentinel SHALL have Tier 3 authority to fix set-core framework bugs and deploy them to the running test environment.
 
 #### Scenario: Framework bug detected during E2E monitoring
 - **WHEN** sentinel identifies a framework bug (dispatch error, path resolution, state machine bug) during E2E monitoring
-- **THEN** sentinel SHALL fix the bug in the wt-tools repo, commit, deploy via wt-project init, sync worktrees, and restart
+- **THEN** sentinel SHALL fix the bug in the set-core repo, commit, deploy via set-project init, sync worktrees, and restart
 
-#### Scenario: Scope boundary — wt-tools only
+#### Scenario: Scope boundary — set-core only
 - **WHEN** sentinel is fixing a framework bug in E2E mode
-- **THEN** sentinel SHALL only modify files in the wt-tools repo (bin/, lib/, .claude/, docs/) and MUST NOT modify consumer project source code
+- **THEN** sentinel SHALL only modify files in the set-core repo (bin/, lib/, .claude/, docs/) and MUST NOT modify consumer project source code
 
 #### Scenario: Scope boundary — no branch merging
 - **WHEN** sentinel is in E2E mode
@@ -72,4 +72,4 @@ In E2E mode, the sentinel SHALL have Tier 3 authority to fix wt-tools framework 
 
 #### Scenario: Fix logging
 - **WHEN** sentinel fixes a framework bug in E2E mode
-- **THEN** sentinel SHALL log the fix as a finding via wt-sentinel-finding add with the commit hash
+- **THEN** sentinel SHALL log the fix as a finding via set-sentinel-finding add with the commit hash

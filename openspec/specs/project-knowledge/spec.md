@@ -49,10 +49,10 @@ Structured project knowledge system enabling AI agents to understand feature rel
 - Template `.claude/rules/cross-cutting-checklist.md` with path-scoped frontmatter
 - Contains a concise checklist of cross-cutting concerns (5-8 items)
 - Path-scoped to dashboard/feature file patterns so agents see it during implementation
-- Project-specific content — wt-tools provides a template, projects customize it
+- Project-specific content — set-core provides a template, projects customize it
 
 ### R6: Scaffolding Tool
-- `wt-project init-knowledge` subcommand
+- `set-project init-knowledge` subcommand
 - Scans project for common patterns: dashboard pages, i18n files, sidebar component, activity logger
 - Generates a draft `.claude/project-knowledge.yaml` with detected features and cross-cutting files
 - One-time scaffolding tool, not ongoing sync

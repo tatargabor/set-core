@@ -25,4 +25,4 @@ MiniShop E2E Run #4 completed 7/7 changes in 2h wall clock but only 1h18m active
 - `lib/orchestration/dispatcher.sh` — dispatch ordering in `dispatch_ready_changes()`
 - `lib/orchestration/merger.sh` — post-merge sync loop
 - `lib/orchestration/state.sh` — topological sort complexity weighting
-- `bin/wt-orchestrate` — DEFAULT_MAX_PARALLEL constant
+- `bin/set-orchestrate` — DEFAULT_MAX_PARALLEL constant

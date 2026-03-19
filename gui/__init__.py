@@ -1,5 +1,5 @@
 """
-Worktree Control Center GUI
+SET Control Center GUI
 
 Modular GUI package with the following structure:
 - constants.py: Colors, paths, default configuration

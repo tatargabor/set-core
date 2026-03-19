@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/hooks/stop.sh` (420 LOC) to `lib/wt_hooks/stop.py`. The Stop hook fires at session end: flushes metrics, extracts insights from transcript, and saves commit-based memories.
+Migrate `lib/hooks/stop.sh` (420 LOC) to `lib/set_hooks/stop.py`. The Stop hook fires at session end: flushes metrics, extracts insights from transcript, and saves commit-based memories.
 
 ## Requirements
 

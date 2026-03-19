@@ -127,7 +127,7 @@ If total tokens (including previous replan cycles) reach the hard limit:
 - After approval, the limit is raised
 
 ```bash
-wt-orchestrate approve   # approve, continue
+set-orchestrate approve   # approve, continue
 ```
 
 ## Time Limit
@@ -135,8 +135,8 @@ wt-orchestrate approve   # approve, continue
 The `time_limit` directive (default: 5 hours) limits **active** runtime:
 
 ```bash
-wt-orchestrate --time-limit 4h start     # 4 hour limit
-wt-orchestrate --time-limit none start   # no limit
+set-orchestrate --time-limit 4h start     # 4 hour limit
+set-orchestrate --time-limit none start   # no limit
 ```
 
 When the limit expires:
@@ -147,7 +147,7 @@ When the limit expires:
 4. HTML report generated
 5. Execution stops, but worktrees remain
 
-Execution can be resumed: `wt-orchestrate start` — the timer continues where it left off.
+Execution can be resumed: `set-orchestrate start` — the timer continues where it left off.
 
 ## Memory and Auditing
 

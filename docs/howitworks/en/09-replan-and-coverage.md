@@ -47,7 +47,7 @@ Phase 3: no more   → done
 The user can request a replan at any time:
 
 ```bash
-wt-orchestrate replan
+set-orchestrate replan
 ```
 
 This is useful when:
@@ -69,7 +69,7 @@ The coverage system is based on the REQ-XXX identifiers from the digest. Its pur
 ### Coverage Report
 
 ```bash
-wt-orchestrate coverage
+set-orchestrate coverage
 ```
 
 Output:

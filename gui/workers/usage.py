@@ -25,11 +25,11 @@ except ImportError:
 
 __all__ = ["UsageWorker", "load_accounts", "save_accounts"]
 
-logger = logging.getLogger("wt-control.workers.usage")
+logger = logging.getLogger("set-control.workers.usage")
 
 _API_BASE = "https://claude.ai/api"
 _HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) wt-tools/1.0",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) set-core/1.0",
     "Accept": "application/json",
 }
 

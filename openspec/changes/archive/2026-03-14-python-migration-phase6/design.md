@@ -1,6 +1,6 @@
 ## Architecture
 
-### Module: `lib/wt_orch/verifier.py`
+### Module: `lib/set_orch/verifier.py`
 
 1:1 function migration from `lib/orchestration/verifier.sh` (1453 lines). Four logical groups:
 
@@ -65,31 +65,31 @@ class VerifyGateResult:
 
 ### CLI Bridge
 
-New `wt-orch-core verify` subcommand group:
+New `set-orch-core verify` subcommand group:
 
 ```
-wt-orch-core verify run-tests --wt-path PATH --command CMD [--timeout N] [--max-chars N]
-wt-orch-core verify review --change NAME --wt-path PATH --scope SCOPE [--model MODEL]
-wt-orch-core verify evaluate-rules --change NAME --wt-path PATH
-wt-orch-core verify check-merge-scope --change NAME
-wt-orch-core verify check-impl-scope --change NAME --wt-path PATH
-wt-orch-core verify health-check --url URL [--timeout N]
-wt-orch-core verify poll --change NAME --state-file PATH [full args]
-wt-orch-core verify handle-done --change NAME --state-file PATH [full args]
-wt-orch-core verify smoke-fix --change NAME --smoke-cmd CMD [opts]
-wt-orch-core verify phase-e2e --command CMD [--timeout N] --state-file PATH
-wt-orch-core verify build-req-section --change NAME --state-file PATH
-wt-orch-core verify extract-health-url --smoke-cmd CMD
+set-orch-core verify run-tests --wt-path PATH --command CMD [--timeout N] [--max-chars N]
+set-orch-core verify review --change NAME --wt-path PATH --scope SCOPE [--model MODEL]
+set-orch-core verify evaluate-rules --change NAME --wt-path PATH
+set-orch-core verify check-merge-scope --change NAME
+set-orch-core verify check-impl-scope --change NAME --wt-path PATH
+set-orch-core verify health-check --url URL [--timeout N]
+set-orch-core verify poll --change NAME --state-file PATH [full args]
+set-orch-core verify handle-done --change NAME --state-file PATH [full args]
+set-orch-core verify smoke-fix --change NAME --smoke-cmd CMD [opts]
+set-orch-core verify phase-e2e --command CMD [--timeout N] --state-file PATH
+set-orch-core verify build-req-section --change NAME --state-file PATH
+set-orch-core verify extract-health-url --smoke-cmd CMD
 ```
 
 ### Dependencies
 
-- `wt_orch.state` — `locked_state`, `update_change_field`, `update_state_field`, `Change`, `OrchestratorState`
-- `wt_orch.events` — `EventBus.emit()`
-- `wt_orch.subprocess_utils` — `run_command()`, `run_git()`, `CommandResult`
-- `wt_orch.process` — `check_pid()`
-- `wt_orch.notifications` — `send_notification()`
-- `wt_orch.dispatcher` — `resume_change()`, `sync_worktree_with_main()`
+- `set_orch.state` — `locked_state`, `update_change_field`, `update_state_field`, `Change`, `OrchestratorState`
+- `set_orch.events` — `EventBus.emit()`
+- `set_orch.subprocess_utils` — `run_command()`, `run_git()`, `CommandResult`
+- `set_orch.process` — `check_pid()`
+- `set_orch.notifications` — `send_notification()`
+- `set_orch.dispatcher` — `resume_change()`, `sync_worktree_with_main()`
 
 ### Design Decisions
 

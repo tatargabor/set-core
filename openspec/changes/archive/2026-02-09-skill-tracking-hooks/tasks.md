@@ -1,6 +1,6 @@
 ## 1. Hook Script
 
-- [x] 1.1 Create `bin/wt-hook-stop` script that reads `.wt-tools/current_skill`, refreshes its timestamp if present, exits 0 silently otherwise
+- [x] 1.1 Create `bin/wt-hook-stop` script that reads `.set-core/current_skill`, refreshes its timestamp if present, exits 0 silently otherwise
 
 ## 2. Install Script Updates
 

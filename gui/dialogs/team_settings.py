@@ -44,7 +44,7 @@ class TeamSettingsDialog(QDialog):
 
         # Enable team sync (project-specific, stored by remote_url)
         self.team_enabled = QCheckBox("Enable team synchronization")
-        self.team_enabled.setToolTip("Sync your status with team members via wt-control branch")
+        self.team_enabled.setToolTip("Sync your status with team members via set-control branch")
         # Use remote_url as key for settings
         config_key = remote_url if remote_url else project
         proj_settings = config.team.get("projects", {}).get(config_key, {})
@@ -60,8 +60,8 @@ class TeamSettingsDialog(QDialog):
         layout.addSpacing(10)
 
         # Initialize button
-        self.init_btn = QPushButton("Initialize wt-control branch")
-        self.init_btn.setToolTip("Create the wt-control branch if it doesn't exist")
+        self.init_btn = QPushButton("Initialize set-control branch")
+        self.init_btn.setToolTip("Create the set-control branch if it doesn't exist")
         self.init_btn.clicked.connect(self._init_wt_control)
         layout.addWidget(self.init_btn)
 
@@ -70,7 +70,7 @@ class TeamSettingsDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        # Check wt-control status and update button
+        # Check set-control status and update button
         self._check_wt_control_status()
 
         layout.addSpacing(15)
@@ -113,11 +113,11 @@ class TeamSettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def _check_wt_control_status(self):
-        """Check if wt-control is initialized and update UI accordingly"""
+        """Check if set-control is initialized and update UI accordingly"""
         try:
-            # Get project path using wt-status
+            # Get project path using set-status
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-status"), "--json"],
+                [str(SCRIPT_DIR / "set-status"), "--json"],
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode != 0:
@@ -129,31 +129,31 @@ class TeamSettingsDialog(QDialog):
                 if wt.get("project") == self.project:
                     wt_path = wt.get("path", "")
                     main_repo = get_main_repo_path(wt_path)
-                    if main_repo and Path(main_repo, ".wt-control").exists():
-                        self.init_btn.setText("wt-control (initialized)")
+                    if main_repo and Path(main_repo, ".set-control").exists():
+                        self.init_btn.setText("set-control (initialized)")
                         self.init_btn.setEnabled(False)
-                        self.status_label.setText(f"wt-control active at {main_repo}/.wt-control")
+                        self.status_label.setText(f"set-control active at {main_repo}/.set-control")
                         self.status_label.setStyleSheet("color: green;")
                     return
         except Exception:
             pass  # Silently fail - button remains enabled
 
     def _init_wt_control(self):
-        """Initialize wt-control branch for the project"""
-        self.status_label.setText("Initializing wt-control...")
+        """Initialize set-control branch for the project"""
+        self.status_label.setText("Initializing set-control...")
         self.status_label.setStyleSheet("")
 
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-control-init"), "-p", self.project],
+                [str(SCRIPT_DIR / "set-control-init"), "-p", self.project],
                 capture_output=True,
                 text=True,
                 timeout=30
             )
             if result.returncode == 0:
-                self.status_label.setText("wt-control initialized successfully!")
+                self.status_label.setText("set-control initialized successfully!")
                 self.status_label.setStyleSheet("color: green;")
-                self.init_btn.setText("wt-control (initialized)")
+                self.init_btn.setText("set-control (initialized)")
                 self.init_btn.setEnabled(False)
             else:
                 error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
@@ -210,7 +210,7 @@ class TeamSettingsDialog(QDialog):
             # Auto-sync to share public key with team
             try:
                 result = subprocess.run(
-                    [str(SCRIPT_DIR / "wt-control-sync"), "-p", self.project, "--full"],
+                    [str(SCRIPT_DIR / "set-control-sync"), "-p", self.project, "--full"],
                     capture_output=True,
                     text=True,
                     timeout=30
@@ -239,18 +239,18 @@ class TeamSettingsDialog(QDialog):
         self.config.team["projects"][config_key]["auto_sync"] = self.team_auto_sync.isChecked()
         self.config.save()
 
-        # Auto-initialize wt-control when team is enabled (silently skip if already initialized)
+        # Auto-initialize set-control when team is enabled (silently skip if already initialized)
         if enabling_team:
             self._auto_init_wt_control()
 
         self.accept()
 
     def _auto_init_wt_control(self):
-        """Auto-initialize wt-control branch when team is enabled"""
+        """Auto-initialize set-control branch when team is enabled"""
         try:
-            # wt-control-init will fetch from remote if branch exists, or create new
+            # set-control-init will fetch from remote if branch exists, or create new
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-control-init"), "-p", self.project],
+                [str(SCRIPT_DIR / "set-control-init"), "-p", self.project],
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -260,12 +260,12 @@ class TeamSettingsDialog(QDialog):
                 # Don't show error if already initialized
                 if "already initialized" not in error_msg:
                     show_warning(
-                        self, "wt-control Init",
-                        f"Could not auto-initialize wt-control:\n{error_msg}\n\n"
+                        self, "set-control Init",
+                        f"Could not auto-initialize set-control:\n{error_msg}\n\n"
                         "You can initialize manually from Project menu."
                     )
         except Exception as e:
             show_warning(
-                self, "wt-control Init",
-                f"Error initializing wt-control: {e}"
+                self, "set-control Init",
+                f"Error initializing set-control: {e}"
             )

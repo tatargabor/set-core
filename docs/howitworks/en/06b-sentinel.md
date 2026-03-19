@@ -4,14 +4,14 @@
 
 The orchestrator itself is a process — and processes sometimes die. OOM kill, API timeout, unexpected exception, broken pipe. If the orchestrator runs overnight without supervision and stops, the developer finds a half-finished state in the morning.
 
-`wt-sentinel` answers this problem: a supervisor that watches the orchestrator, and if it stops, tries to restart it. It operates in two modes: **bash mode** (cost-free, deterministic) and **agent mode** (LLM-based, intelligent decision-making).
+`set-sentinel` answers this problem: a supervisor that watches the orchestrator, and if it stops, tries to restart it. It operates in two modes: **bash mode** (cost-free, deterministic) and **agent mode** (LLM-based, intelligent decision-making).
 
 ## Bash Sentinel
 
-The bash sentinel is a standalone script that wraps the `wt-orchestrate start` command:
+The bash sentinel is a standalone script that wraps the `set-orchestrate start` command:
 
 ```bash
-wt-sentinel --spec docs/v3.md --time-limit 5h
+set-sentinel --spec docs/v3.md --time-limit 5h
 # ↑ all options are passed through to the orchestrator
 ```
 
@@ -64,7 +64,7 @@ The sentinel distinguishes between **terminal** and **transient** exits:
 
 ## Agent Sentinel
 
-The `/wt:sentinel` skill runs as a Claude Code session and makes intelligent decisions:
+The `/set:sentinel` skill runs as a Claude Code session and makes intelligent decisions:
 
 ### Tiered Intervention
 

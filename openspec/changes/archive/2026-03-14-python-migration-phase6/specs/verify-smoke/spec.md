@@ -18,7 +18,7 @@ Health checks, scoped smoke fix agent, and phase-end E2E orchestration.
 - Multi-retry loop (configurable max_retries, default 3)
 - Get modified files from merge commit, change scope from state
 - Multi-change context: if last_smoke_pass_commit exists, find all merges since
-- Build fix prompt via wt-orch-core template fix
+- Build fix prompt via set-orch-core template fix
 - Run fix agent via run_claude with sonnet model
 - After fix: verify unit tests still pass, revert if broken
 - Re-run smoke to verify fix, update smoke_output for next attempt

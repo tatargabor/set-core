@@ -30,7 +30,7 @@
 
 ## 6. Hook upgrade
 
-- [x] 6.1 Replace `wt-memory recall "$QUERY" --limit 8 --mode hybrid` with `wt-memory proactive "<context>" --limit 8` in wt-hook-memory-recall
+- [x] 6.1 Replace `set-memory recall "$QUERY" --limit 8 --mode hybrid` with `set-memory proactive "<context>" --limit 8` in wt-hook-memory-recall
 - [x] 6.2 Build proactive context string from change name + revision notes + REREAD_FILES context
 - [x] 6.3 Add relevance_score filtering (< 0.3) in the Python formatting block
-- [x] 6.4 Add fallback: if `wt-memory proactive` exits non-zero, fall back to `wt-memory recall` (preserves current behavior)
+- [x] 6.4 Add fallback: if `set-memory proactive` exits non-zero, fall back to `set-memory recall` (preserves current behavior)

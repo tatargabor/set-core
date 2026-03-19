@@ -8,7 +8,7 @@ Memory hooks inject ~3,761 tokens/session across 4 layers, but we have no way to
 - Add passive transcript matching in Stop hook: compare injected memory keywords against agent responses to detect actual usage without agent burden
 - Continue detecting legacy explicit citation patterns ("From memory:") as bonus signal
 - Store inject/cite pairs in SQLite metrics DB (new `mem_citations` table)
-- Create `wt-memory tui` command: unified dashboard showing memory DB stats, hook metrics, and usage signals
+- Create `set-memory tui` command: unified dashboard showing memory DB stats, hook metrics, and usage signals
 - Extend `lib/metrics.py` with usage rate calculations (cited/injected ratio)
 
 ## Capabilities
@@ -26,6 +26,6 @@ Memory hooks inject ~3,761 tokens/session across 4 layers, but we have no way to
 - `bin/wt-hook-memory` — modify `proactive_and_format()` and `recall_and_format()` to tag each result with `[MEM#xxxx]`
 - `bin/wt-hook-memory` — modify Stop handler transcript scanning to detect `[MEM_CITE:xxxx]`
 - `lib/metrics.py` — new table, new queries for usage rate
-- `bin/wt-memory` — new `tui` subcommand
-- `bin/wt-project` — no changes needed (passive approach requires no CLAUDE.md modifications)
+- `bin/set-memory` — new `tui` subcommand
+- `bin/set-project` — no changes needed (passive approach requires no CLAUDE.md modifications)
 - `.claude/settings.json` — no changes (hooks already in place)

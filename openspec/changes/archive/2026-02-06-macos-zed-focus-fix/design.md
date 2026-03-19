@@ -7,7 +7,7 @@ A Python platform abstraction layer exists at `gui/platform/` with `macos.py` co
 2. `macos.py:find_window_by_title()` has a broken AppleScript that searches process names instead of window titles
 3. `macos.py:focus_window()` takes a PID and sets the process frontmost, but doesn't activate a specific window
 
-Zed window titles contain the worktree directory name (e.g., `"wt-tools-wt-teszt2"`).
+Zed window titles contain the worktree directory name (e.g., `"set-core-wt-teszt2"`).
 
 ## Goals / Non-Goals
 

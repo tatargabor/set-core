@@ -1,18 +1,18 @@
 ## ADDED Requirements
 
 ### Requirement: Unified TUI command
-The `wt-memory tui` command SHALL display a unified dashboard combining memory DB statistics, hook overhead metrics, and usage signals.
+The `set-memory tui` command SHALL display a unified dashboard combining memory DB statistics, hook overhead metrics, and usage signals.
 
 #### Scenario: Default invocation
-- **WHEN** `wt-memory tui` is run without arguments
+- **WHEN** `set-memory tui` is run without arguments
 - **THEN** it SHALL display a formatted report covering the last 7 days of metrics data
 
 #### Scenario: Custom time range
-- **WHEN** `wt-memory tui --since 30d` is run
+- **WHEN** `set-memory tui --since 30d` is run
 - **THEN** it SHALL display metrics covering the last 30 days
 
 #### Scenario: JSON output
-- **WHEN** `wt-memory tui --json` is run
+- **WHEN** `set-memory tui --json` is run
 - **THEN** it SHALL output the full dashboard data as structured JSON
 
 ### Requirement: Memory DB stats section
@@ -23,7 +23,7 @@ The TUI SHALL display a "Memory Database" section showing current state of the m
 - **THEN** it SHALL show: total memory count, type distribution (Learning/Context/Decision counts), noise ratio (% with importance < 0.3), top 5 tags by frequency
 
 #### Scenario: Memory DB unavailable
-- **WHEN** `wt-memory stats` fails or returns no data
+- **WHEN** `set-memory stats` fails or returns no data
 - **THEN** the section SHALL show "Memory DB: unavailable" and continue rendering other sections
 
 ### Requirement: Hook overhead section

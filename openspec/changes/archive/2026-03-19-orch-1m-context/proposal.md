@@ -1,6 +1,6 @@
 ## Why
 
-The wt-tools orchestration system's context injection was designed for 200K windows — everything is truncated, keyword-matched, and narrowed. With Claude Opus 1M context available, the constraint shifts from "fit in window" to "maximize signal quality." Meanwhile, the `data-definitions.md` digest file actively teaches agents wrong field names (e.g., `shipping_address` instead of `addressId`, `total` instead of `totalAmount`), directly causing schema naming drift that burns retry cycles.
+The set-core orchestration system's context injection was designed for 200K windows — everything is truncated, keyword-matched, and narrowed. With Claude Opus 1M context available, the constraint shifts from "fit in window" to "maximize signal quality." Meanwhile, the `data-definitions.md` digest file actively teaches agents wrong field names (e.g., `shipping_address` instead of `addressId`, `total` instead of `totalAmount`), directly causing schema naming drift that burns retry cycles.
 
 ## What Changes
 

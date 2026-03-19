@@ -1,6 +1,6 @@
 ## Architecture
 
-### Module: `lib/wt_orch/merger.py`
+### Module: `lib/set_orch/merger.py`
 
 1:1 function migration from `lib/orchestration/merger.sh` (672 lines). Three logical groups:
 
@@ -10,7 +10,7 @@
 
 **Merge Queue** — `execute_merge_queue`, `retry_merge_queue`, `_try_merge` with conflict fingerprint dedup, max 5 retries
 
-### Module: `lib/wt_orch/milestone.py`
+### Module: `lib/set_orch/milestone.py`
 
 1:1 function migration from `lib/orchestration/milestone.sh` (242 lines). Two logical groups:
 
@@ -18,7 +18,7 @@
 
 **Cleanup** — `cleanup_milestone_servers`, `cleanup_milestone_worktrees`, `_enforce_max_milestone_worktrees`
 
-### Module: `lib/wt_orch/engine.py`
+### Module: `lib/set_orch/engine.py`
 
 1:1 function migration from `lib/orchestration/monitor.sh` (586 lines). Single entry point:
 
@@ -82,40 +82,40 @@ class Directives:
 
 ### CLI Bridge
 
-New `wt-orch-core merge` subcommand group:
+New `set-orch-core merge` subcommand group:
 
 ```
-wt-orch-core merge change --change NAME --state PATH
-wt-orch-core merge archive --change NAME
-wt-orch-core merge cleanup-worktree --change NAME --wt-path PATH
-wt-orch-core merge cleanup-all --state PATH
-wt-orch-core merge execute-queue --state PATH
-wt-orch-core merge retry-queue --state PATH
+set-orch-core merge change --change NAME --state PATH
+set-orch-core merge archive --change NAME
+set-orch-core merge cleanup-worktree --change NAME --wt-path PATH
+set-orch-core merge cleanup-all --state PATH
+set-orch-core merge execute-queue --state PATH
+set-orch-core merge retry-queue --state PATH
 ```
 
-New `wt-orch-core milestone` subcommand group:
+New `set-orch-core milestone` subcommand group:
 
 ```
-wt-orch-core milestone checkpoint --phase N --base-port PORT --max-worktrees N --state PATH
-wt-orch-core milestone cleanup-servers --state PATH
-wt-orch-core milestone cleanup-worktrees
+set-orch-core milestone checkpoint --phase N --base-port PORT --max-worktrees N --state PATH
+set-orch-core milestone cleanup-servers --state PATH
+set-orch-core milestone cleanup-worktrees
 ```
 
-New `wt-orch-core engine` subcommand group:
+New `set-orch-core engine` subcommand group:
 
 ```
-wt-orch-core engine monitor --directives-json PATH --state PATH
+set-orch-core engine monitor --directives-json PATH --state PATH
 ```
 
 ### Dependencies
 
-- `wt_orch.state` — `locked_state`, `update_change_field`, `update_state_field`, `load_state`, `Change`, `OrchestratorState`
-- `wt_orch.events` — `EventBus.emit()`
-- `wt_orch.subprocess_utils` — `run_command()`, `run_git()`, `CommandResult`
-- `wt_orch.process` — `check_pid()`
-- `wt_orch.notifications` — `send_notification()`
-- `wt_orch.verifier` — `poll_change()`, `extract_health_check_url()`, `health_check()`, `smoke_fix_scoped()`, `verify_merge_scope()`, `run_phase_end_e2e()`
-- `wt_orch.dispatcher` — `resume_change()`, `dispatch_ready_changes()`, `cascade_failed_deps()`, `resume_stalled_changes()`, `retry_failed_builds()`, `sync_worktree_with_main()`, `check_base_build()`, `fix_base_build_with_llm()`
+- `set_orch.state` — `locked_state`, `update_change_field`, `update_state_field`, `load_state`, `Change`, `OrchestratorState`
+- `set_orch.events` — `EventBus.emit()`
+- `set_orch.subprocess_utils` — `run_command()`, `run_git()`, `CommandResult`
+- `set_orch.process` — `check_pid()`
+- `set_orch.notifications` — `send_notification()`
+- `set_orch.verifier` — `poll_change()`, `extract_health_check_url()`, `health_check()`, `smoke_fix_scoped()`, `verify_merge_scope()`, `run_phase_end_e2e()`
+- `set_orch.dispatcher` — `resume_change()`, `dispatch_ready_changes()`, `cascade_failed_deps()`, `resume_stalled_changes()`, `retry_failed_builds()`, `sync_worktree_with_main()`, `check_base_build()`, `fix_base_build_with_llm()`
 
 ### Design Decisions
 
@@ -125,4 +125,4 @@ wt-orch-core engine monitor --directives-json PATH --state PATH
 4. **Conflict fingerprint dedup** — `git merge-tree` + md5sum piped through subprocess, same as bash. No Python-native alternative needed.
 5. **Milestone dev server** — background subprocess with PID tracking, same pattern as bash. `subprocess.Popen` with stdout/stderr redirected.
 6. **`flock` serialization for merge** — the bash merger relies on flock held by monitor_loop. Python equivalent: `fcntl.flock()` or delegate to bash wrapper. Decision: bash wrapper holds flock, Python does the work inside.
-7. **Engine CLI is fire-and-forget** — `wt-orch-core engine monitor` runs as a long-lived process. The bash `monitor_loop()` wrapper starts it and waits.
+7. **Engine CLI is fire-and-forget** — `set-orch-core engine monitor` runs as a long-lived process. The bash `monitor_loop()` wrapper starts it and waits.

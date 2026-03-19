@@ -17,7 +17,7 @@
 
 ## 3. Configuration
 
-- [x] 3.1 Extend `.wt-tools/jira.json` schema with `autoWorklog` section
+- [x] 3.1 Extend `.set-core/jira.json` schema with `autoWorklog` section
 - [x] 3.2 Implement config loading and defaults (dailyTarget, roundTo, minActivityGap)
 - [x] 3.3 Implement config validation
 

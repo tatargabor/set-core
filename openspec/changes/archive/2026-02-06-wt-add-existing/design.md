@@ -1,6 +1,6 @@
 ## Context
 
-The `wt-add` command and the GUI "Add" button currently only accept git worktrees (directories where `.git` is a file pointing to the main repo). This was the original design since wt-tools was built around `git worktree`.
+The `wt-add` command and the GUI "Add" button currently only accept git worktrees (directories where `.git` is a file pointing to the main repo). This was the original design since set-core was built around `git worktree`.
 
 However, the system has evolved — `wt-status` already displays the main repo alongside worktrees, and branches are first-class citizens in the GUI table. Users want to register standalone git repositories (clones, forks, or the main checkout of a different project) via the Add button, but the strict `is_worktree()` check rejects them.
 

@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+# set-deploy-hooks - Deploy Claude Code hooks to a target directory
+#
+# Usage: set-deploy-hooks [--quiet] [--no-memory] <target-dir>
+#
+# Deploys 7 hook events to <target-dir>/.claude/settings.json:
+#   - SessionStart: unified memory handler (timeout: 10s)
+#   - UserPromptSubmit: skill detection + unified memory handler (timeout: 15s)
+#   - PreToolUse[Skill]: activity tracking only (timeout: 5s)
+#   - PostToolUse[Read,Bash]: unified memory handler (timeout: 5s)
+#   - PostToolUseFailure[Bash]: unified memory handler (timeout: 5s)
+#   - SubagentStart: unified memory handler (timeout: 10s)
+#   - SubagentStop: unified memory handler (timeout: 5s)
+#   - Stop: stop hook + unified memory handler (timeout: 30s)
+#
+# Use --no-memory to deploy only base hooks (for benchmark baseline).
+# Idempotent: skips if all hooks are already present.
+# Upgrades existing configs: detects old individual scripts and replaces with unified handler.
+# Creates backup before modifying existing settings.
+
+set -e
+
+QUIET=false
+NO_MEMORY=false
+TARGET_DIR=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --quiet|-q)
+            QUIET=true
+            shift
+            ;;
+        --no-memory)
+            NO_MEMORY=true
+            shift
+            ;;
+        *)
+            TARGET_DIR="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$TARGET_DIR" ]]; then
+    echo "Usage: set-deploy-hooks [--quiet] [--no-memory] <target-dir>" >&2
+    exit 1
+fi
+
+if [[ ! -d "$TARGET_DIR" ]]; then
+    echo "Error: directory does not exist: $TARGET_DIR" >&2
+    exit 1
+fi
+
+_info() { $QUIET || echo "$@"; }
+_success() { $QUIET || echo "  ✔ $*"; }
+
+settings_file="$TARGET_DIR/.claude/settings.json"
+
+mkdir -p "$TARGET_DIR/.claude"
+
+# Full hook config (unified handler for all memory events)
+hook_json=$(cat << 'HOOKJSON'
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-memory SessionStart",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-memory SessionStart",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-skill",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "set-hook-memory UserPromptSubmit",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-activity",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-memory PostToolUse",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-memory PostToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-memory PostToolUseFailure",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-memory SubagentStart",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-memory SubagentStop",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-stop",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "set-hook-memory Stop",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+HOOKJSON
+)
+
+# Base-only hook config (no memory hooks)
+hook_json_no_memory=$(cat << 'HOOKJSON'
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-skill",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-stop",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+HOOKJSON
+)
+
+# Select which config to deploy
+if $NO_MEMORY; then
+    deploy_json="$hook_json_no_memory"
+else
+    deploy_json="$hook_json"
+fi
+
+if [[ -f "$settings_file" ]]; then
+    # Detect current hook state
+    has_base=false
+    has_unified=false
+    has_old_individual=false
+    has_stale=false
+
+    # Base hooks present?
+    if jq -e '.hooks.Stop[0].hooks[] | select(.command == "set-hook-stop")' "$settings_file" &>/dev/null \
+        && jq -e '.hooks.UserPromptSubmit[0].hooks[] | select(.command == "set-hook-skill")' "$settings_file" &>/dev/null; then
+        has_base=true
+    fi
+
+    # Unified handler already deployed?
+    if jq -e '.hooks.SessionStart[0].hooks[] | select(.command == "set-hook-memory SessionStart")' "$settings_file" &>/dev/null \
+        && jq -e '.hooks.PostToolUse' "$settings_file" &>/dev/null \
+        && jq -e '.hooks.SubagentStart' "$settings_file" &>/dev/null \
+        && jq -e '.hooks.SubagentStop' "$settings_file" &>/dev/null; then
+        has_unified=true
+    fi
+
+    # Old individual scripts present?
+    if jq -e '.hooks | to_entries[] | .value[][] | .hooks[] | select(.command | test("set-hook-memory-(warmstart|recall|pretool|posttool|save)"))' "$settings_file" &>/dev/null; then
+        has_old_individual=true
+    fi
+
+    # Stale set-hook-memory entries? (PreToolUse memory hooks or PostToolUse with unknown matchers)
+    if ! $NO_MEMORY; then
+        # Stale PreToolUse: any entry with set-hook-memory PreToolUse command
+        stale_pre=$(jq '[.hooks.PreToolUse // [] | .[] | select(.hooks[]?.command == "set-hook-memory PreToolUse")] | length' "$settings_file" 2>/dev/null || echo 0)
+        # Stale PostToolUse: set-hook-memory PostToolUse entries whose matcher is NOT Read or Bash (Write/Edit removed)
+        stale_post=$(jq '[.hooks.PostToolUse // [] | .[] | select(.hooks[]?.command == "set-hook-memory PostToolUse") | select(.matcher != "Read" and .matcher != "Bash")] | length' "$settings_file" 2>/dev/null || echo 0)
+        if [[ "$stale_pre" -gt 0 ]] || [[ "$stale_post" -gt 0 ]]; then
+            has_stale=true
+        fi
+    fi
+
+    # Old activity-track.sh path? (pre-PATH migration)
+    has_old_activity=false
+    if jq -e '.hooks.PreToolUse[]? | .hooks[]? | select(.command == ".claude/hooks/activity-track.sh")' "$settings_file" &>/dev/null; then
+        has_old_activity=true
+    fi
+
+    # Already canonical? (unified + base + no stale entries + no old activity path)
+    if $has_unified && $has_base && ! $has_stale && ! $has_old_activity && ! $NO_MEMORY; then
+        return 0 2>/dev/null || exit 0
+    fi
+    if $has_base && $NO_MEMORY && ! $has_old_individual && ! $has_unified; then
+        return 0 2>/dev/null || exit 0
+    fi
+
+    # Backup before modification
+    cp "$settings_file" "$settings_file.bak"
+
+    if $has_old_activity && $has_unified && ! $has_stale; then
+        # Migrate old activity-track.sh path to set-hook-activity
+        jq '
+            .hooks.PreToolUse = [.hooks.PreToolUse // [] | .[] |
+                if (.hooks[]?.command == ".claude/hooks/activity-track.sh")
+                then .hooks = [.hooks[] | if .command == ".claude/hooks/activity-track.sh" then .command = "set-hook-activity" else . end]
+                else . end
+            ]
+        ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
+        _success "Migrated: $settings_file (activity-track.sh → set-hook-activity)"
+    elif $has_stale && $has_unified; then
+        # Downgrade path: remove stale set-hook-memory entries, preserve everything else
+        jq '
+            # Remove stale PreToolUse: any entry whose hooks contain "set-hook-memory PreToolUse"
+            .hooks.PreToolUse = [.hooks.PreToolUse // [] | .[] | select((.hooks[]?.command == "set-hook-memory PreToolUse") | not)]
+            # Remove stale PostToolUse: set-hook-memory PostToolUse entries where matcher is NOT Read or Bash
+            | .hooks.PostToolUse = [.hooks.PostToolUse // [] | .[] | select(
+                ((.hooks[]?.command == "set-hook-memory PostToolUse") and (.matcher != "Read" and .matcher != "Bash")) | not
+            )]
+            # Ensure Skill/set-hook-activity is present in PreToolUse
+            | if ([.hooks.PreToolUse[]? | select(.matcher == "Skill")] | length) == 0
+              then .hooks.PreToolUse += [{"matcher": "Skill", "hooks": [{"type": "command", "command": "set-hook-activity", "timeout": 5}]}]
+              else . end
+        ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
+        _success "Downgraded: $settings_file (removed $stale_pre stale PreToolUse, $stale_post stale PostToolUse)"
+    elif $has_old_individual && ! $NO_MEMORY; then
+        # Upgrade path: replace old individual scripts with unified handler
+        jq --argjson hooks "$(echo "$deploy_json" | jq '.hooks')" \
+            '.hooks = $hooks + (
+                .hooks | to_entries
+                | map(select(.key as $k | ["SessionStart","UserPromptSubmit","PreToolUse","PostToolUse","PostToolUseFailure","SubagentStart","SubagentStop","Stop"] | index($k) | not))
+                | from_entries
+            )' \
+            "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
+        _success "Upgraded: $settings_file (replaced old individual hooks with unified handler)"
+    else
+        # Fresh merge: deploy full config
+        jq --argjson hooks "$(echo "$deploy_json" | jq '.hooks')" \
+            '. * {"hooks": $hooks}' \
+            "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
+        _success "Updated: $settings_file (hooks)"
+    fi
+else
+    echo "$deploy_json" | jq '.' > "$settings_file"
+    _success "Created: $settings_file (hooks)"
+fi

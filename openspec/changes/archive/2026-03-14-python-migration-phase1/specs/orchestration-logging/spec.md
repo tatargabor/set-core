@@ -6,7 +6,7 @@ Structured logging framework for all orchestration modules with file and stderr 
 ### Requirement: Structured logging configuration
 The system SHALL provide a `logging_config.py` module that configures Python's `logging` framework for all orchestration modules.
 
-The logger hierarchy SHALL use `wt_orch` as root logger name. Each module SHALL obtain its logger via `logging.getLogger(__name__)`.
+The logger hierarchy SHALL use `set_orch` as root logger name. Each module SHALL obtain its logger via `logging.getLogger(__name__)`.
 
 #### Scenario: Default initialization
 - **WHEN** `setup_logging()` is called without arguments
@@ -26,11 +26,11 @@ The logger hierarchy SHALL use `wt_orch` as root logger name. Each module SHALL 
 - **AND** extras dict keys are appended as `key=value` pairs when present
 
 ### Requirement: Module-level logger access
-Every Python module in `lib/wt_orch/` SHALL use `logger = logging.getLogger(__name__)` for logging.
+Every Python module in `lib/set_orch/` SHALL use `logger = logging.getLogger(__name__)` for logging.
 
 #### Scenario: Logger naming
-- **WHEN** `lib/wt_orch/config.py` logs a message
-- **THEN** the logger name is `wt_orch.config`
+- **WHEN** `lib/set_orch/config.py` logs a message
+- **THEN** the logger name is `set_orch.config`
 
 ### Requirement: Extras support in log messages
 The logging system SHALL support structured extras via the standard `logging` extra mechanism.

@@ -1,14 +1,14 @@
 ## Tasks
 
 ### 1. Create logging_config.py
-- [x] Create `lib/wt_orch/logging_config.py` with `setup_logging(log_path=None)` function
+- [x] Create `lib/set_orch/logging_config.py` with `setup_logging(log_path=None)` function
 - [x] Implement `ExtraFormatter` that appends extra dict keys as `key=value` pairs
 - [x] Configure rotating file handler (5MB, 3 backups) for DEBUG+ and stderr handler for WARNING+
 - [x] Add `STATE_FILENAME` env var detection for backward-compatible log path
 - [x] Create `tests/unit/test_logging_config.py` with tests for all scenarios
 
 ### 2. Create subprocess_utils.py
-- [x] Create `lib/wt_orch/subprocess_utils.py` with `CommandResult`, `ClaudeResult`, `GitResult` dataclasses
+- [x] Create `lib/set_orch/subprocess_utils.py` with `CommandResult`, `ClaudeResult`, `GitResult` dataclasses
 - [x] Implement `run_command(cmd, timeout, cwd, max_output_size)` with timeout and output truncation
 - [x] Implement `run_claude(prompt, timeout, model, extra_args)` wrapping claude CLI
 - [x] Implement `run_git(*args)` wrapping git CLI
@@ -16,7 +16,7 @@
 - [x] Create `tests/unit/test_subprocess_utils.py` with tests for all scenarios
 
 ### 3. Create config.py
-- [x] Create `lib/wt_orch/config.py` with `Directives` dataclass (all 50+ fields with defaults)
+- [x] Create `lib/set_orch/config.py` with `Directives` dataclass (all 50+ fields with defaults)
 - [x] Implement `parse_duration(input_str) -> int` — Migrated from: utils.sh:parse_duration() L46-73
 - [x] Implement `format_duration(secs) -> str` — Migrated from: utils.sh:format_duration() L119-130
 - [x] Implement `brief_hash(path) -> str` — Migrated from: utils.sh:brief_hash() L732-737
@@ -30,7 +30,7 @@
 - [x] Create `tests/unit/test_config.py` with tests for all functions, including edge cases from bash
 
 ### 4. Create events.py
-- [x] Create `lib/wt_orch/events.py` with `EventBus` class
+- [x] Create `lib/set_orch/events.py` with `EventBus` class
 - [x] Implement `emit(type, change, data)` appending JSONL lines — Migrated from: events.sh:emit_event() L19-61
 - [x] Implement `rotate_log()` with size check and 3-archive retention — Migrated from: events.sh:rotate_events_log() L66-86
 - [x] Implement periodic rotation check every 100 emissions
@@ -44,16 +44,16 @@
 - [x] Add `events` subcommand to `cli.py` with `--type`, `--change`, `--last`, `--since`, `--json` flags
 - [x] Test CLI dispatch end-to-end
 
-### 6. Update bash callers to use wt-orch-core
-- [x] Replace `parse_directives()` call in `bin/wt-orchestrate` with `wt-orch-core config parse-directives`
-- [x] Replace `resolve_directives()` call with `wt-orch-core config resolve-directives`
-- [x] Replace `load_config_file()` call with `wt-orch-core config load-config`
-- [x] Replace `parse_duration()` calls across orchestration modules with `wt-orch-core config parse-duration`
-- [x] Replace `format_duration()` calls across orchestration modules with `wt-orch-core config format-duration`
-- [x] Replace `brief_hash()` call with `wt-orch-core config brief-hash`
-- [x] Replace `parse_next_items()` call with `wt-orch-core config parse-next-items`
-- [x] Replace `find_input()` call with `wt-orch-core config find-input`
-- [x] Update `cmd_events()` in `bin/wt-orchestrate` to delegate to `wt-orch-core events`
+### 6. Update bash callers to use set-orch-core
+- [x] Replace `parse_directives()` call in `bin/set-orchestrate` with `set-orch-core config parse-directives`
+- [x] Replace `resolve_directives()` call with `set-orch-core config resolve-directives`
+- [x] Replace `load_config_file()` call with `set-orch-core config load-config`
+- [x] Replace `parse_duration()` calls across orchestration modules with `set-orch-core config parse-duration`
+- [x] Replace `format_duration()` calls across orchestration modules with `set-orch-core config format-duration`
+- [x] Replace `brief_hash()` call with `set-orch-core config brief-hash`
+- [x] Replace `parse_next_items()` call with `set-orch-core config parse-next-items`
+- [x] Replace `find_input()` call with `set-orch-core config find-input`
+- [x] Update `cmd_events()` in `bin/set-orchestrate` to delegate to `set-orch-core events`
 
 ### 7. Delete migrated bash functions
 - [x] Replace `parse_duration()`, `format_duration()`, `find_brief()`, `find_input()`, `find_openspec_dir()`, `parse_next_items()`, `parse_directives()`, `brief_hash()`, `load_config_file()`, `resolve_directives()` in `lib/orchestration/utils.sh` with thin Python-delegating wrappers

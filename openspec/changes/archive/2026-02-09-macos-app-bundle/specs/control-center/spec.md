@@ -10,12 +10,12 @@ The system SHALL start the Control Center GUI reliably regardless of how it is i
 - **AND** all relative imports within the gui package resolve correctly
 
 #### Scenario: Launch directly
-- **GIVEN** the user is in the wt-tools source directory
+- **GIVEN** the user is in the set-core source directory
 - **WHEN** the user runs `python gui/main.py`
 - **THEN** the GUI starts without import errors
 
 #### Scenario: Launch as module
-- **GIVEN** the user is in the wt-tools source directory
+- **GIVEN** the user is in the set-core source directory
 - **WHEN** the user runs `python -m gui.main`
 - **THEN** the GUI starts without import errors
 

@@ -6,7 +6,7 @@ The orchestrator SHALL support an agent-based planning method alongside the exis
 
 #### Scenario: Agent-based decomposition with plan_method directive
 - **WHEN** `plan_method: agent` is set in orchestration config
-- **AND** `wt-orchestrate plan --spec <path>` is invoked
+- **AND** `set-orchestrate plan --spec <path>` is invoked
 - **THEN** a planning worktree named `wt-planning-v{N}` SHALL be created
 - **AND** a Ralph loop SHALL be dispatched with the decomposition skill as task description
 - **AND** the orchestrator SHALL wait for the Ralph loop to complete

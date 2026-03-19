@@ -1,6 +1,6 @@
-# Contributing to wt-tools
+# Contributing to set-core
 
-Thank you for your interest in contributing to wt-tools! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to set-core! This document provides guidelines and information for contributors.
 
 ## Development Setup
 
@@ -15,8 +15,8 @@ Thank you for your interest in contributing to wt-tools! This document provides 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/tatargabor/wt-tools.git
-   cd wt-tools
+   git clone https://github.com/tatargabor/set-core.git
+   cd set-core
    ```
 
 2. Run the installer:
@@ -32,11 +32,11 @@ Thank you for your interest in contributing to wt-tools! This document provides 
 ## Project Structure
 
 ```
-wt-tools/
+set-core/
 ├── bin/                    # Shell scripts (CLI tools)
-│   ├── wt-new             # Create new worktree
-│   ├── wt-work            # Open worktree
-│   ├── wt-list            # List worktrees
+│   ├── set-new             # Create new worktree
+│   ├── set-work            # Open worktree
+│   ├── set-list            # List worktrees
 │   ├── wt-close           # Close worktree
 │   ├── wt-merge           # Merge branch
 │   ├── wt-status          # JSON status output
@@ -46,7 +46,7 @@ wt-tools/
 │   ├── dialogs/           # Dialog windows
 │   ├── workers/           # Background workers
 │   └── widgets/           # Custom widgets
-├── wt_tools/              # Python package
+├── set_tools/              # Python package
 │   └── plugins/           # Plugin system
 ├── docs/                  # Documentation
 └── tests/                 # Test suite
@@ -61,9 +61,9 @@ wt-tools/
    git checkout -b feature/your-feature-name
    ```
 
-2. Or use wt-tools itself:
+2. Or use set-core itself:
    ```bash
-   wt-new your-feature-name
+   set-new your-feature-name
    ```
 
 ### Code Style
@@ -93,17 +93,17 @@ Co-Authored-By: Your Name <email@example.com>
 
 ## Plugin Development
 
-wt-tools supports plugins via entry points. To create a plugin:
+set-core supports plugins via entry points. To create a plugin:
 
-1. Create a Python package with a class inheriting from `wt_tools.Plugin`
+1. Create a Python package with a class inheriting from `set_tools.Plugin`
 2. Implement required methods (`info`, etc.)
 3. Register via entry point in `pyproject.toml`:
    ```toml
-   [project.entry-points."wt_tools.plugins"]
+   [project.entry-points."set_tools.plugins"]
    your-plugin = "your_package:YourPlugin"
    ```
 
-See `wt_tools/plugins/base.py` for the plugin interface.
+See `set_tools/plugins/base.py` for the plugin interface.
 
 ## Reporting Issues
 

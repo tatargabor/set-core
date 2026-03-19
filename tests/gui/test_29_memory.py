@@ -468,7 +468,7 @@ def test_export_no_memories_shows_warning(control_center, qtbot):
 def test_export_triggers_directory_picker(control_center, qtbot, tmp_path):
     """Export with memories should open directory picker and write file."""
     status_json = json.dumps({"available": True, "count": 5})
-    export_json = json.dumps({"version": 1, "format": "wt-memory-export", "count": 5, "records": []})
+    export_json = json.dumps({"version": 1, "format": "set-memory-export", "count": 5, "records": []})
 
     def mock_wt_memory(*args):
         args_list = list(args)

@@ -1,8 +1,8 @@
 ## Context
 
-`wt-memory` is a bash wrapper around the shodh-memory Python/Rust library. Each invocation spawns a new `python3` process that opens a RocksDB database at `~/.local/share/wt-tools/memory/<project>/`. RocksDB uses an exclusive `LOCK` file — only one process can open a directory at a time.
+`set-memory` is a bash wrapper around the shodh-memory Python/Rust library. Each invocation spawns a new `python3` process that opens a RocksDB database at `~/.local/share/set-core/memory/<project>/`. RocksDB uses an exclusive `LOCK` file — only one process can open a directory at a time.
 
-The GUI's `FeatureWorker` (in `gui/workers/feature.py`) polls `wt-memory status --json` every 15 seconds, briefly opening the database. Agent sessions call `wt-memory remember` during OpenSpec hooks and proactive memory saves. When these overlap, the second process fails with `RuntimeError: Failed to create memory system`, which is silently swallowed.
+The GUI's `FeatureWorker` (in `gui/workers/feature.py`) polls `set-memory status --json` every 15 seconds, briefly opening the database. Agent sessions call `set-memory remember` during OpenSpec hooks and proactive memory saves. When these overlap, the second process fails with `RuntimeError: Failed to create memory system`, which is silently swallowed.
 
 The `run_shodh_python` helper compounds the problem:
 1. `2>/dev/null` discards all Python stderr (including errors)
@@ -12,7 +12,7 @@ The `run_shodh_python` helper compounds the problem:
 ## Goals / Non-Goals
 
 **Goals:**
-- Prevent silent data loss from concurrent `wt-memory` access
+- Prevent silent data loss from concurrent `set-memory` access
 - Make errors visible and diagnosable
 - Zero behavior change for callers — same CLI interface, same exit codes on success
 
@@ -26,9 +26,9 @@ The `run_shodh_python` helper compounds the problem:
 
 ### Decision 1: `flock` for serialization (over retry logic)
 
-Use `flock` (POSIX file locking) on a per-project lock file to serialize all `wt-memory` operations that touch RocksDB.
+Use `flock` (POSIX file locking) on a per-project lock file to serialize all `set-memory` operations that touch RocksDB.
 
-**Lock file path**: `/tmp/wt-memory-<project>.lock`
+**Lock file path**: `/tmp/set-memory-<project>.lock`
 
 **Why flock over retry:**
 - Retry adds complexity (how many retries? what delay? still might fail)
@@ -53,10 +53,10 @@ Set `sys._shodh_star_shown = True` before importing shodh_memory. This prevents 
 
 ### Decision 3: Stderr to log file (over /dev/null)
 
-Replace `2>/dev/null` with `2>>"$log_file"` where the log file is at `${SHODH_STORAGE}/<project>/wt-memory.log`. This preserves the quiet CLI behavior while making errors diagnosable.
+Replace `2>/dev/null` with `2>>"$log_file"` where the log file is at `${SHODH_STORAGE}/<project>/set-memory.log`. This preserves the quiet CLI behavior while making errors diagnosable.
 
 **Why a log file:**
-- Users don't want Python tracebacks on every `wt-memory` call
+- Users don't want Python tracebacks on every `set-memory` call
 - But invisible errors led to the original bug — need a middle ground
 - Log file lives next to the memory storage, easy to find
 
@@ -65,6 +65,6 @@ Replace `2>/dev/null` with `2>>"$log_file"` where the log file is at `${SHODH_ST
 ## Risks / Trade-offs
 
 - **[flock on macOS]** → macOS has `flock` via Homebrew or BSD `flock`. The `util-linux` `flock` and BSD `flock` have slightly different flags. Use POSIX-compatible syntax only. Test on macOS.
-- **[Lock file cleanup]** → `/tmp/wt-memory-*.lock` files persist after use. They're empty files in /tmp, cleaned on reboot. Acceptable.
+- **[Lock file cleanup]** → `/tmp/set-memory-*.lock` files persist after use. They're empty files in /tmp, cleaned on reboot. Acceptable.
 - **[10s timeout]** → If a process hangs holding the lock, other callers wait up to 10s then fail. This is better than the current behavior (immediate silent failure), and 10s is generous for any normal operation.
-- **[Log file growth]** → `wt-memory.log` could grow unbounded in error-heavy scenarios. Not adding log rotation — the file only grows on errors, which should be rare after this fix.
+- **[Log file growth]** → `set-memory.log` could grow unbounded in error-heavy scenarios. Not adding log rotation — the file only grows on errors, which should be rare after this fix.

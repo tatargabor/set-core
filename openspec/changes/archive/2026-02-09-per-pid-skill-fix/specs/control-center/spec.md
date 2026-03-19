@@ -5,11 +5,11 @@ The system SHALL provide a `wt-status` command that displays worktree and agent 
 
 #### Scenario: Per-agent skill display
 - **WHEN** wt-status checks a worktree with agents
-- **THEN** each agent's skill is read exclusively from `.wt-tools/agents/<pid>.skill`
-- **AND** no fallback to `.wt-tools/current_skill` is used
+- **THEN** each agent's skill is read exclusively from `.set-core/agents/<pid>.skill`
+- **AND** no fallback to `.set-core/current_skill` is used
 
 #### Scenario: Agent with no skill file
-- **WHEN** an agent PID has no corresponding `.wt-tools/agents/<pid>.skill` file
+- **WHEN** an agent PID has no corresponding `.set-core/agents/<pid>.skill` file
 - **THEN** the skill field for that agent is null
 - **AND** no legacy fallback file is consulted
 

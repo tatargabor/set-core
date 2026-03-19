@@ -23,7 +23,7 @@ COL_EXTRA = 5
 NUM_COLS = 6
 
 
-# Known IDE process names (from PPID chain detection in wt-status)
+# Known IDE process names (from PPID chain detection in set-status)
 _IDE_EDITOR_TYPES = {"zed", "Zed", "code", "Code", "cursor", "Cursor", "windsurf", "Windsurf"}
 
 
@@ -607,7 +607,7 @@ class TableMixin:
         if not wt_path:
             return {}
 
-        loop_state_file = Path(wt_path) / ".wt" / "loop-state.json"
+        loop_state_file = Path(wt_path) / ".set" / "loop-state.json"
         if not loop_state_file.exists():
             return {}
 

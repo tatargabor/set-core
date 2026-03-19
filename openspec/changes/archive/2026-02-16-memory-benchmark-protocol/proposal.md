@@ -1,6 +1,6 @@
 ## Why
 
-The shodh-memory system is integrated into wt-tools and OpenSpec workflows, but there is no empirical evidence showing its value. We need a reproducible benchmark that demonstrates how persistent developer memory helps AI agents avoid repeated mistakes, dead ends, and design rework across independent sessions. Beyond measuring value, the benchmark must also serve as a diagnostic tool — identifying where memory fell short, what types of knowledge were missing, and what improvements the memory system needs.
+The shodh-memory system is integrated into set-core and OpenSpec workflows, but there is no empirical evidence showing its value. We need a reproducible benchmark that demonstrates how persistent developer memory helps AI agents avoid repeated mistakes, dead ends, and design rework across independent sessions. Beyond measuring value, the benchmark must also serve as a diagnostic tool — identifying where memory fell short, what types of knowledge were missing, and what improvements the memory system needs.
 
 ## What Changes
 
@@ -10,7 +10,7 @@ The shodh-memory system is integrated into wt-tools and OpenSpec workflows, but 
 - Include a scoring rubric, session annotation templates, and comparison report templates
 - Include per-change trap documentation so evaluators know what to look for
 - Include a diagnostic framework for analyzing memory gaps and improvement opportunities
-- Provide a step-by-step run guide covering full toolchain bootstrap (openspec init, wt-tools init, memory hooks, openspec hooks)
+- Provide a step-by-step run guide covering full toolchain bootstrap (openspec init, set-core init, memory hooks, openspec hooks)
 - Include a project-spec document that serves as the initial brief for the test project
 
 ## Capabilities

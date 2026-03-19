@@ -1,7 +1,7 @@
 ## 1. Foundation
 
 - [x] 1.1 Create `useIsMobile()` hook in `web/src/hooks/useIsMobile.ts` — returns boolean for viewport < 768px, debounced resize listener (150ms), only triggers on boundary crossing
-- [x] 1.2 Change default host from `127.0.0.1` to `0.0.0.0` in `lib/wt_orch/cli.py` `cmd_serve`, update help text to note the bind address
+- [x] 1.2 Change default host from `127.0.0.1` to `0.0.0.0` in `lib/set_orch/cli.py` `cmd_serve`, update help text to note the bind address
 
 ## 2. Sidebar Drawer
 

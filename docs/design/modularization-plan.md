@@ -1,4 +1,4 @@
-# wt-tools Modularization Plan
+# set-core Modularization Plan
 
 Status: COMPLETED (2026-03-07)
 Context: Explore session analysis of all major source files
@@ -9,13 +9,13 @@ Several core scripts were monolithic (1000-3700 lines), making them hard to main
 
 | File | Before | After | Reduction |
 |------|--------|-------|-----------|
-| bin/wt-memory | 3,713 | 377 | 90% → lib/memory/ (7 modules) |
-| bin/wt-loop | 2,248 | 832 | 63% → lib/loop/ (4 modules) |
-| bin/wt-hook-memory | 1,817 | 55 | 97% → lib/hooks/ (5 modules) |
+| bin/set-memory | 3,713 | 377 | 90% → lib/memory/ (7 modules) |
+| bin/set-loop | 2,248 | 832 | 63% → lib/loop/ (4 modules) |
+| bin/set-hook-memory | 1,817 | 55 | 97% → lib/hooks/ (5 modules) |
 | lib/orchestration/state.sh | 1,597 | 794 | 50% → config.sh, utils.sh, orch-memory.sh |
 | lib/orchestration/dispatcher.sh | 1,456 | 952 | 35% → builder.sh, monitor.sh |
-| bin/wt-project | 1,224 | 995 | 19% → lib/project/deploy.sh |
-| bin/wt-common.sh | 990 | 515 | 48% → lib/editor.sh |
+| bin/set-project | 1,224 | 995 | 19% → lib/project/deploy.sh |
+| bin/set-common.sh | 990 | 515 | 48% → lib/editor.sh |
 
 ## Approach
 
@@ -26,14 +26,14 @@ Several core scripts were monolithic (1000-3700 lines), making them hard to main
 
 ## Completed Phases
 
-### Phase 1: wt-common.sh editor extract ✅
+### Phase 1: set-common.sh editor extract ✅
 
-Extracted 19 editor functions (497 lines) to `lib/editor.sh`. wt-common.sh auto-sources it for backward compatibility. 4 editor-using scripts work unchanged.
+Extracted 19 editor functions (497 lines) to `lib/editor.sh`. set-common.sh auto-sources it for backward compatibility. 4 editor-using scripts work unchanged.
 
-### Phase 2: wt-memory split ✅
+### Phase 2: set-memory split ✅
 
 ```
-bin/wt-memory              (377)  infra + dispatcher + main()
+bin/set-memory              (377)  infra + dispatcher + main()
 lib/memory/core.sh        (1001)  remember, recall, proactive, list, get, forget, export, import
 lib/memory/maintenance.sh  (743)  stats, cleanup, audit, dedup, verify, consolidation, graph_stats
 lib/memory/rules.sh        (241)  rules YAML add/list/remove/match
@@ -43,10 +43,10 @@ lib/memory/migrate.sh      (222)  migration framework
 lib/memory/ui.sh           (482)  metrics, tui, dashboard, seed
 ```
 
-### Phase 3: wt-hook-memory split ✅
+### Phase 3: set-hook-memory split ✅
 
 ```
-bin/wt-hook-memory          (55)  thin dispatcher
+bin/set-hook-memory          (55)  thin dispatcher
 lib/hooks/util.sh          (154)  logging, timers, root resolution
 lib/hooks/session.sh       (134)  session cache, dedup, context IDs
 lib/hooks/memory-ops.sh    (372)  recall, proactive, output formatting
@@ -68,20 +68,20 @@ lib/orchestration/dispatcher.sh  (952)  dispatch/resume/pause (kept name)
 
 Note: Task 5.8 (merger.sh BASE_BUILD dedup) was skipped — too tightly coupled for safe extraction.
 
-### Phase 5: wt-loop split ✅
+### Phase 5: set-loop split ✅
 
 ```
-bin/wt-loop                (832)  CLI commands + main()
+bin/set-loop                (832)  CLI commands + main()
 lib/loop/state.sh          (209)  state JSON, token accounting
 lib/loop/tasks.sh          (236)  task detection (3 modes + manual tasks)
 lib/loop/prompt.sh         (231)  prompt generation, change detection
 lib/loop/engine.sh         (763)  cmd_run() iteration loop
 ```
 
-### Phase 6: wt-project deploy refactor ✅
+### Phase 6: set-project deploy refactor ✅
 
 ```
-bin/wt-project             (995)  cmd_init + dispatch (from 1224)
+bin/set-project             (995)  cmd_init + dispatch (from 1224)
 lib/project/deploy.sh      (253)  _deploy_hooks, _deploy_commands, _deploy_skills, _deploy_mcp, _deploy_memory
 ```
 
@@ -99,7 +99,7 @@ lib/project/deploy.sh      (253)  _deploy_hooks, _deploy_commands, _deploy_skill
 
 ## What was NOT touched (by design)
 
-- **wt-sentinel** (390 lines) — already well-modularized
+- **set-sentinel** (390 lines) — already well-modularized
 - **events.sh** (155 lines) — foundational, pure, zero coupling
 - **gui/** — already uses mixins pattern
 - **MCP server** — single file, simpler deployment

@@ -1,4 +1,4 @@
-"""Tests for wt_orch.milestone — Worktree limit, cleanup, email."""
+"""Tests for set_orch.milestone — Worktree limit, cleanup, email."""
 
 import json
 import os
@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.milestone import (
+from set_orch.milestone import (
     MILESTONE_WORKTREE_DIR,
     _enforce_max_milestone_worktrees,
     cleanup_milestone_servers,
@@ -19,7 +19,7 @@ from wt_orch.milestone import (
     _detect_dev_server,
     _install_dependencies,
 )
-from wt_orch.state import Change, OrchestratorState
+from set_orch.state import Change, OrchestratorState
 
 
 @pytest.fixture

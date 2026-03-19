@@ -1,8 +1,8 @@
 """Tests for the plugin system"""
 
 import pytest
-from wt_tools.plugins import Plugin, PluginRegistry
-from wt_tools.plugins.base import PluginInfo, MenuItem, ColumnInfo
+from set_tools.plugins import Plugin, PluginRegistry
+from set_tools.plugins.base import PluginInfo, MenuItem, ColumnInfo
 
 
 class DummyPlugin(Plugin):

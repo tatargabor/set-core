@@ -24,6 +24,6 @@ The verify → merge → quality gate pipeline has accumulated bugs and structur
 
 ## Impact
 
-- **Files modified**: `lib/wt_orch/verifier.py` (major refactor), `lib/wt_orch/engine.py` (bug fixes), `lib/wt_orch/merger.py` (screenshot dedup), new `lib/wt_orch/gate_runner.py`
+- **Files modified**: `lib/set_orch/verifier.py` (major refactor), `lib/set_orch/engine.py` (bug fixes), `lib/set_orch/merger.py` (screenshot dedup), new `lib/set_orch/gate_runner.py`
 - **Risk**: `handle_change_done` is the most critical function in the orchestrator — refactor must preserve all existing gate behaviors exactly
 - **Tests**: Existing unit tests in `tests/unit/test_verifier.py` and `tests/test_gate_profiles.py` must continue passing; new tests for GatePipeline

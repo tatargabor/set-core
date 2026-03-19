@@ -1,6 +1,6 @@
 ## Context
 
-wt-tools consumer projects currently store wt-related files in scattered locations:
+set-core consumer projects currently store wt-related files in scattered locations:
 - `.claude/orchestration.yaml` — hidden directory, mixed with Claude-specific config
 - `project-knowledge.yaml` — project root, no namespace
 - `docs/orchestration-runs/*.md` — mixed with general docs
@@ -11,8 +11,8 @@ The OpenSpec project solved this same problem with a dedicated `openspec/` direc
 ## Goals / Non-Goals
 
 **Goals:**
-- Standardized `wt/` directory in consumer projects for all wt-tools artifacts
-- `wt-project init` scaffolds the structure automatically
+- Standardized `wt/` directory in consumer projects for all set-core artifacts
+- `set-project init` scaffolds the structure automatically
 - Backward-compatible: existing file locations work as fallback
 - Planner, dispatcher, verifier find files in new locations
 - Simple migration path for existing projects
@@ -62,7 +62,7 @@ wt/
 
 ### Decision 2: Lookup Chain (Backward Compatibility)
 
-All wt-tools components use a fallback chain when looking for files:
+All set-core components use a fallback chain when looking for files:
 
 ```
 1. wt/orchestration/config.yaml    → .claude/orchestration.yaml     → defaults
@@ -96,9 +96,9 @@ wt_find_config() {
 
 **Why not symlinks:** Symlinks cause issues with git (tracked vs untracked), and the fallback chain is explicit and debuggable.
 
-### Decision 3: Scaffolding in wt-project init
+### Decision 3: Scaffolding in set-project init
 
-`wt-project init` gains a new step after deployment:
+`set-project init` gains a new step after deployment:
 
 1. Create `wt/` directory structure (mkdir -p for each subdir)
 2. Detect existing files in legacy locations
@@ -108,11 +108,11 @@ wt_find_config() {
      .claude/orchestration.yaml → wt/orchestration/config.yaml
      project-knowledge.yaml → wt/knowledge/project-knowledge.yaml
 
-   Run 'wt-project migrate' to move them.
+   Run 'set-project migrate' to move them.
    ```
-4. A separate `wt-project migrate` command handles the actual move + git mv
+4. A separate `set-project migrate` command handles the actual move + git mv
 
-**Why separate migrate command:** `wt-project init` is already used for re-deployment (re-running updates). Adding auto-migration would be risky for existing workflows. Explicit migration is safer.
+**Why separate migrate command:** `set-project init` is already used for re-deployment (re-running updates). Adding auto-migration would be risky for existing workflows. Explicit migration is safer.
 
 ### Decision 4: Requirements File Format
 
@@ -155,7 +155,7 @@ Saved plan JSONs go to `wt/orchestration/plans/` with naming: `plan-v{N}-{date}.
 
 ### Decision 6: Plugin Workspace Directory
 
-Each wt-tools plugin (e.g., wt-web, wt-spec-capture) gets its own workspace under `wt/plugins/<plugin-name>/`. The plugin defines its own internal structure.
+Each set-core plugin (e.g., wt-web, wt-spec-capture) gets its own workspace under `wt/plugins/<plugin-name>/`. The plugin defines its own internal structure.
 
 ```
 wt/plugins/
@@ -172,8 +172,8 @@ wt/plugins/
 **Why under `wt/plugins/`:**
 - Plugins are part of the wt ecosystem, so they live under `wt/`
 - Each plugin gets a namespace to avoid collisions between plugins
-- The plugin controls its own internal structure — wt-tools only creates the parent directory
-- `wt-project add-plugin <name>` would create `wt/plugins/<name>/` and run plugin-specific init
+- The plugin controls its own internal structure — set-core only creates the parent directory
+- `set-project add-plugin <name>` would create `wt/plugins/<name>/` and run plugin-specific init
 
 **Convention:** Plugin workspace is for plugin-generated data and state. Plugin *rules* and *skills* go into `.claude/` via the normal deployment mechanism.
 
@@ -193,11 +193,11 @@ Scaffolding adds `wt/.work/` to `.gitignore` automatically.
 
 ### Decision 8: Memory Integration with wt/
 
-The memory system (shodh-memory via wt-memory) currently lives entirely outside the project tree (`~/.wt-tools/memory/<project>/`). This change connects it to `wt/` in three ways:
+The memory system (shodh-memory via set-memory) currently lives entirely outside the project tree (`~/.set-core/memory/<project>/`). This change connects it to `wt/` in three ways:
 
 **A. Memory Seed File — `wt/knowledge/memory-seed.yaml` (versioned)**
 
-Project-essential memories that every developer/agent should start with. Committed to git, imported on `wt-project init` or `wt-memory seed`.
+Project-essential memories that every developer/agent should start with. Committed to git, imported on `set-project init` or `set-memory seed`.
 
 ```yaml
 # wt/knowledge/memory-seed.yaml
@@ -215,19 +215,19 @@ seeds:
 ```
 
 **Why seed files:**
-- New team member clones repo → `wt-project init` → memory has project fundamentals
+- New team member clones repo → `set-project init` → memory has project fundamentals
 - Fresh memory store (after cleanup/reset) → re-seed without losing project knowledge
 - Versioned → team reviews what's considered "essential project knowledge"
 - Small — 10-30 seeds, not a full memory dump
 
 **Import behavior:**
-- `wt-project init` checks if seeds exist and memory is empty → auto-import
-- `wt-memory seed` command for explicit re-import (skips duplicates via content hash)
+- `set-project init` checks if seeds exist and memory is empty → auto-import
+- `set-memory seed` command for explicit re-import (skips duplicates via content hash)
 - Seeds tagged `source:seed` for traceability
 
 **B. Memory Sync Working Directory — `wt/.work/memory/` (gitignored)**
 
-The `wt-memory sync push/pull` currently uses temp dirs. Move working files to `wt/.work/memory/`:
+The `set-memory sync push/pull` currently uses temp dirs. Move working files to `wt/.work/memory/`:
 - `wt/.work/memory/export.json` — last export before push
 - `wt/.work/memory/import-staging/` — pulled data before import
 - `wt/.work/memory/.sync-state` — sync state tracking (was in memory store dir)
@@ -241,10 +241,10 @@ The `wt/knowledge/lessons/` files (versioned markdown) and the memory store (run
 ```
 wt/knowledge/lessons/       ← curated, versioned, team-shared
         ↕ (manual)
-~/.wt-tools/memory/         ← runtime, per-machine, auto-accumulated
+~/.set-core/memory/         ← runtime, per-machine, auto-accumulated
 ```
 
-For now: no auto-sync between them. Lessons are manually written/curated. Memory is auto-accumulated. A future `wt-memory export-lessons` could extract high-value memories into `wt/knowledge/lessons/`.
+For now: no auto-sync between them. Lessons are manually written/curated. Memory is auto-accumulated. A future `set-memory export-lessons` could extract high-value memories into `wt/knowledge/lessons/`.
 
 ## Risks / Trade-offs
 
@@ -256,4 +256,4 @@ For now: no auto-sync between them. Lessons are manually written/curated. Memory
 ## Resolved Questions
 
 - **Plan archiving:** Auto-save on every plan generation (task 5.1). Plans are small JSON files, no cleanup needed.
-- **Lessons population:** Manually curated for now. A future `wt-memory export-lessons` could auto-extract, but premature to build before the directory convention is established.
+- **Lessons population:** Manually curated for now. A future `set-memory export-lessons` could auto-extract, but premature to build before the directory convention is established.

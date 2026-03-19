@@ -1,4 +1,4 @@
-"""Tests for wt_hooks.session — dedup cycle, cache round-trip, turn counter."""
+"""Tests for set_hooks.session — dedup cycle, cache round-trip, turn counter."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_hooks.session import (
+from set_hooks.session import (
     dedup_clear,
     dedup_check,
     dedup_add,
@@ -22,7 +22,7 @@ from wt_hooks.session import (
     get_last_checkpoint_turn,
     set_last_checkpoint_turn,
 )
-from wt_hooks.util import read_cache, write_cache
+from set_hooks.util import read_cache, write_cache
 
 
 @pytest.fixture

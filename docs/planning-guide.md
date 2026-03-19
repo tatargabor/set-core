@@ -1,8 +1,8 @@
 # Orchestration Planning Guide
 
-How to write effective inputs for `wt-orchestrate` so your batch runs succeed on the first attempt.
+How to write effective inputs for `set-orchestrate` so your batch runs succeed on the first attempt.
 
-> **Prerequisites**: This guide assumes you've read [docs/orchestration.md](orchestration.md) and know how to run `wt-orchestrate plan`, `start`, and `status`.
+> **Prerequisites**: This guide assumes you've read [docs/orchestration.md](orchestration.md) and know how to run `set-orchestrate plan`, `start`, and `status`.
 
 ---
 
@@ -32,7 +32,7 @@ The orchestrator supports two input modes. **Spec mode is recommended** — it a
 Pass any markdown document — a release plan, design doc, feature list, or roadmap. The orchestrator sends it to Claude (opus) for decomposition into changes.
 
 ```bash
-wt-orchestrate --spec docs/v4-release.md plan
+set-orchestrate --spec docs/v4-release.md plan
 ```
 
 **Good spec structure:**
@@ -68,8 +68,8 @@ wt-orchestrate --spec docs/v4-release.md plan
 **For large specs** (>8000 tokens estimated), the orchestrator auto-summarizes before decomposition. To control which phase is planned, use `--phase`:
 
 ```bash
-wt-orchestrate --spec docs/v4-release.md --phase 1 plan    # by number
-wt-orchestrate --spec docs/v4-release.md --phase "Data" plan # by name
+set-orchestrate --spec docs/v4-release.md --phase 1 plan    # by number
+set-orchestrate --spec docs/v4-release.md --phase "Data" plan # by name
 ```
 
 ### Brief Mode (`project-brief.md`)
@@ -184,7 +184,7 @@ All three changes add union type variants to the same file. When they merge in s
 | Barrel exports (`index.ts`) | Re-exports added by multiple changes | Chain dependent changes |
 | Config files (`next.config.js`, `.env`) | Multiple changes add entries | Chain or use a setup change |
 | Schema files (`schema.prisma`) | Multiple migrations conflict | DB changes MUST be sequential |
-| Generated files (`.claude/reflection.md`, lockfiles) | Per-session AI-generated content | Already handled by wt-merge auto-resolution |
+| Generated files (`.claude/reflection.md`, lockfiles) | Per-session AI-generated content | Already handled by set-merge auto-resolution |
 
 ---
 
@@ -503,8 +503,8 @@ Mark phases explicitly in your spec:
 
 ### How the Orchestrator Handles Phases
 
-1. `wt-orchestrate plan` decomposes the **first incomplete phase**
-2. `wt-orchestrate start` executes that batch
+1. `set-orchestrate plan` decomposes the **first incomplete phase**
+2. `set-orchestrate start` executes that batch
 3. When all changes are merged, if `auto_replan: true`, the orchestrator re-reads the spec, detects Phase 1 is done, and plans Phase 2
 4. Repeat until all phases are done
 
@@ -512,10 +512,10 @@ To manually control phases:
 
 ```bash
 # Plan specific phase
-wt-orchestrate --spec docs/v4.md --phase 2 plan
+set-orchestrate --spec docs/v4.md --phase 2 plan
 
 # Or update the spec, marking Phase 1 as done, then replan
-wt-orchestrate replan
+set-orchestrate replan
 ```
 
 ### Status Markers
@@ -948,7 +948,7 @@ Unit tests validate logic. Functional e2e validates the feature works end-to-end
 
 **Symptom**: Merge-blocked on `.claude/reflection.md`, lockfiles, build artifacts.
 
-These are auto-resolved by `wt-merge` and shouldn't cause manual intervention. If they do, check that the conflicting file pattern is in `wt-merge`'s `GENERATED_FILE_PATTERNS` list.
+These are auto-resolved by `set-merge` and shouldn't cause manual intervention. If they do, check that the conflicting file pattern is in `set-merge`'s `GENERATED_FILE_PATTERNS` list.
 
 ### Anti-pattern: No Phase Boundaries in Large Specs
 
@@ -971,7 +971,7 @@ These are auto-resolved by `wt-merge` and shouldn't cause manual intervention. I
 
 **Symptom**: Build passes in the worktree, merge succeeds, but the app crashes at runtime with `Module not found` or `Cannot resolve` errors.
 
-Each worktree has its own `node_modules` populated during `wt-new`. But after merge, main's `node_modules` may be stale — it doesn't have packages added by the merged branch. The orchestrator now runs post-merge `pnpm install` when `package.json` changes, but your spec should still be explicit about new dependencies:
+Each worktree has its own `node_modules` populated during `set-new`. But after merge, main's `node_modules` may be stale — it doesn't have packages added by the merged branch. The orchestrator now runs post-merge `pnpm install` when `package.json` changes, but your spec should still be explicit about new dependencies:
 
 ```markdown
 # Good: explicit about new packages
@@ -1149,7 +1149,7 @@ plan_method: agent
 ### How it works
 
 1. Orchestrator creates a planning worktree (`wt-planning-v{N}`)
-2. A Ralph loop runs with the `/wt:decompose` skill
+2. A Ralph loop runs with the `/set:decompose` skill
 3. The planning agent reads the spec, explores the codebase (via Agent tool sub-agents), recalls relevant memories, and generates `orchestration-plan.json`
 4. The plan is validated and extracted; the planning worktree is cleaned up
 5. If agent planning fails, it falls back to the API method automatically

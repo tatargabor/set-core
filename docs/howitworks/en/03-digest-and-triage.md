@@ -19,7 +19,7 @@ This enables the orchestrator to:
 The system maps the input file or directory:
 
 ```bash
-wt-orchestrate --spec docs/specs/ digest
+set-orchestrate --spec docs/specs/ digest
 ```
 
 Scan results:
@@ -123,7 +123,7 @@ The triage gate is the only point where the orchestrator stops and asks for huma
 The digest enables requirement coverage tracking throughout the entire pipeline:
 
 ```bash
-wt-orchestrate coverage
+set-orchestrate coverage
 ```
 
 Output:

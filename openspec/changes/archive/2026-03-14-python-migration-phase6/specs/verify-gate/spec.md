@@ -12,7 +12,7 @@ Test runner, scope checks, verification rule evaluation, and gate pipeline orche
 
 #### VG-SCOPE-MERGE — Post-merge scope verification
 - Diff HEAD~1 to find files changed in merge commit
-- Filter out artifact/config/bootstrap paths (openspec/*, .claude/*, orchestration*, .wt-tools/*, prisma/dev.db, *.lock, jest.config.*, .gitignore, .env*)
+- Filter out artifact/config/bootstrap paths (openspec/*, .claude/*, orchestration*, .set-core/*, prisma/dev.db, *.lock, jest.config.*, .gitignore, .env*)
 - Return pass if any implementation file exists, fail if only artifacts
 
 #### VG-SCOPE-IMPL — Pre-merge implementation scope check

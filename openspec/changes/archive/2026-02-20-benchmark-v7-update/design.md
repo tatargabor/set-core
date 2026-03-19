@@ -23,10 +23,10 @@ The metrics system (`lib/metrics.py`, `wt-hook-memory` metrics appendage) was ad
 **Choice**: Enable metrics in both init-baseline.sh AND init-with-memory.sh. Run A generates hook metrics too (SessionStart, UserPromptSubmit via wt-hook-skill) even without memory — capturing baseline hook overhead and providing a comparison denominator.
 
 ### Decision 2: Metrics enablement via flag file
-**Choice**: Create `~/.local/share/wt-tools/metrics/.enabled` in init scripts. This matches the existing opt-in mechanism in `wt-hook-memory` (line 47-49). The flag is user-global, not project-local, so create it once and it persists. Add a cleanup note to run-guide.
+**Choice**: Create `~/.local/share/set-core/metrics/.enabled` in init scripts. This matches the existing opt-in mechanism in `wt-hook-memory` (line 47-49). The flag is user-global, not project-local, so create it once and it persists. Add a cleanup note to run-guide.
 
 ### Decision 3: Post-run metrics analysis as manual step
-**Choice**: Add a new section to run-guide.md with `wt-memory metrics report` or `python3 lib/dashboard.py` commands for post-run analysis. Don't automate collection into the evaluator pipeline — keep it a manual inspection step.
+**Choice**: Add a new section to run-guide.md with `set-memory metrics report` or `python3 lib/dashboard.py` commands for post-run analysis. Don't automate collection into the evaluator pipeline — keep it a manual inspection step.
 
 ### Decision 4: CLAUDE.md recall-verify wording
 **Choice**: Keep the existing recall-verify paragraph (line 67 of with-memory.md) but add a stronger version: "Memory provides starting points, not final answers. After recalling implementation details, always grep/read the current code to verify — files may have changed since the memory was saved." This addresses the v6 finding where Run B used half the tokens on C12 but produced worse implementations.

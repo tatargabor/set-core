@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Help command file exists
-The system SHALL provide a `.claude/commands/wt/help.md` file that serves as a quick reference for all wt-tools features.
+The system SHALL provide a `.claude/commands/wt/help.md` file that serves as a quick reference for all set-core features.
 
 #### Scenario: File location
 - **WHEN** a user or LLM looks for the help command
@@ -12,7 +12,7 @@ The help command SHALL list all user-facing CLI commands (`wt-*` scripts in `bin
 
 #### Scenario: CLI tools listed
 - **WHEN** the help command content is loaded
-- **THEN** it SHALL contain a "CLI Commands" section listing at minimum: `wt-new`, `wt-list`, `wt-work`, `wt-close`, `wt-merge`, `wt-status`, `wt-memory`, `wt-loop`, `wt-control`, `wt-project`, `wt-usage`, `wt-config`
+- **THEN** it SHALL contain a "CLI Commands" section listing at minimum: `wt-new`, `wt-list`, `wt-work`, `wt-close`, `wt-merge`, `wt-status`, `set-memory`, `wt-loop`, `wt-control`, `set-project`, `wt-usage`, `wt-config`
 
 #### Scenario: Each CLI tool has description
 - **WHEN** a CLI tool is listed in the help command
@@ -30,7 +30,7 @@ The help command SHALL list all available slash command skills (`/opsx:*` and `/
 - **THEN** it SHALL list `/wt:new`, `/wt:work`, `/wt:list`, `/wt:close`, `/wt:merge`, `/wt:push`, `/wt:status`, `/wt:loop`, `/wt:help`
 
 ### Requirement: Help command covers MCP tools
-The help command SHALL list key MCP tools from `wt-memory` with a one-line description for each.
+The help command SHALL list key MCP tools from `set-memory` with a one-line description for each.
 
 #### Scenario: Core memory tools listed
 - **WHEN** the help command content is loaded
@@ -48,9 +48,9 @@ The help command SHALL include a "Common Workflows" section showing typical task
 - **THEN** it SHALL describe the typical flow: create worktree → create change → implement → verify → merge
 
 ### Requirement: Help command auto-deploys
-The help command SHALL be deployed to target projects automatically by the existing `deploy_wt_tools()` mechanism without any changes to the deployment code.
+The help command SHALL be deployed to target projects automatically by the existing `deploy_set_tools()` mechanism without any changes to the deployment code.
 
-#### Scenario: Deployment via wt-project init
-- **WHEN** `wt-project init` is run on a target project
+#### Scenario: Deployment via set-project init
+- **WHEN** `set-project init` is run on a target project
 - **THEN** `.claude/commands/wt/help.md` SHALL be copied along with other command files
-- **THEN** no changes to `bin/wt-project` SHALL be required
+- **THEN** no changes to `bin/set-project` SHALL be required

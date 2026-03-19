@@ -1,7 +1,7 @@
 ## Requirements
 
 ### Requirement: PostToolUse hook surfaces memory after supported tool calls
-A `PostToolUse` hook SHALL fire after successful execution of Read and Bash tools. For Read and Bash (non-commit) tools, the hook SHALL extract a query from the tool's input and recall relevant memories via `wt-memory proactive`, injecting results as `additionalContext`. For Bash (git commit) tools, the hook SHALL perform commit-save logic before recall.
+A `PostToolUse` hook SHALL fire after successful execution of Read and Bash tools. For Read and Bash (non-commit) tools, the hook SHALL extract a query from the tool's input and recall relevant memories via `set-memory proactive`, injecting results as `additionalContext`. For Bash (git commit) tools, the hook SHALL perform commit-save logic before recall.
 
 #### Scenario: After reading a file
 - **WHEN** Claude successfully reads a file

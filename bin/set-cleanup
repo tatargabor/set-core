@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# set-cleanup — Manual garbage collection for old worktrees.
+#
+# Removes worktrees for merged/done changes older than N days.
+# Designed for manual use or cron jobs.
+#
+# Usage:
+#   set-cleanup --older-than 7d    # Remove worktrees merged 7+ days ago
+#   set-cleanup --older-than 30d   # Remove worktrees merged 30+ days ago
+#   set-cleanup --dry-run --older-than 7d  # Preview what would be removed
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-paths" 2>/dev/null || true
+
+usage() {
+    cat <<EOF
+Usage: set-cleanup [OPTIONS]
+
+Remove worktrees for merged/done changes older than a threshold.
+
+Options:
+  --older-than <Nd>   Remove worktrees merged more than N days ago (required)
+  --dry-run           Show what would be removed without actually removing
+  -h, --help          Show this help
+
+Examples:
+  set-cleanup --older-than 7d
+  set-cleanup --dry-run --older-than 30d
+EOF
+}
+
+DRY_RUN=false
+THRESHOLD_DAYS=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --older-than)
+            THRESHOLD_DAYS="${2%d}"  # Strip trailing 'd'
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$THRESHOLD_DAYS" ]]; then
+    echo "Error: --older-than is required" >&2
+    usage >&2
+    exit 1
+fi
+
+# Read state file
+STATE_FILE="${WT_STATE_FILE:-}"
+if [[ -z "$STATE_FILE" || ! -f "$STATE_FILE" ]]; then
+    # Try legacy locations
+    for candidate in "wt/orchestration/orchestration-state.json" "orchestration-state.json"; do
+        if [[ -f "$candidate" ]]; then
+            STATE_FILE="$candidate"
+            break
+        fi
+    done
+fi
+
+if [[ -z "$STATE_FILE" || ! -f "$STATE_FILE" ]]; then
+    echo "No orchestration state file found"
+    exit 0
+fi
+
+threshold_epoch=$(date -d "-${THRESHOLD_DAYS} days" +%s 2>/dev/null || date -v-${THRESHOLD_DAYS}d +%s 2>/dev/null)
+now=$(date +%s)
+removed=0
+
+# Iterate merged/done changes
+while IFS='|' read -r name status wt_path merged_at; do
+    [[ -z "$wt_path" || "$wt_path" == "null" ]] && continue
+    [[ ! -d "$wt_path" ]] && continue
+
+    # Parse merged_at timestamp
+    if [[ -n "$merged_at" && "$merged_at" != "null" ]]; then
+        merge_epoch=$(date -d "$merged_at" +%s 2>/dev/null || echo "0")
+    else
+        # Use worktree mtime as fallback
+        merge_epoch=$(stat -c %Y "$wt_path" 2>/dev/null || stat -f %m "$wt_path" 2>/dev/null || echo "$now")
+    fi
+
+    if [[ "$merge_epoch" -lt "$threshold_epoch" ]]; then
+        age_days=$(( (now - merge_epoch) / 86400 ))
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo "[dry-run] Would remove: $name ($wt_path, merged ${age_days}d ago)"
+        else
+            echo "Removing: $name ($wt_path, merged ${age_days}d ago)"
+            "$SCRIPT_DIR/set-close" "$name" 2>/dev/null || {
+                git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path"
+            }
+            removed=$((removed + 1))
+        fi
+    fi
+done < <(jq -r '.changes[] | select(.status == "merged" or .status == "done") | "\(.name)|\(.status)|\(.worktree_path // "null")|\(.merged_at // "null")"' "$STATE_FILE" 2>/dev/null)
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "Dry run complete. Use without --dry-run to actually remove."
+else
+    echo "Cleaned up $removed worktree(s)"
+fi

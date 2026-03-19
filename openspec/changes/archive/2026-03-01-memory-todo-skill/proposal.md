@@ -18,5 +18,5 @@ During development conversations, ideas and future directions pop up that should
 ## Impact
 
 - **`.claude/commands/wt/todo.md`**: New slash command definition
-- **No code changes to `bin/wt-memory`**: Uses existing CLI commands (`remember`, `recall --tags-only`, `forget`)
+- **No code changes to `bin/set-memory`**: Uses existing CLI commands (`remember`, `recall --tags-only`, `forget`)
 - **No breaking changes**: Purely additive

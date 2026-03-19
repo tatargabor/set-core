@@ -11,9 +11,9 @@ Az orchestrátor háromféle bemenetet fogad el. Ezek kölcsönösen kizárják 
 A legtöbb projekt specifikációs dokumentumokkal dolgozik:
 
 ```bash
-wt-orchestrate --spec docs/v3.md plan
-wt-orchestrate --spec v12 plan          # rövidnév: wt/orchestration/specs/v12.md
-wt-orchestrate --spec docs/ plan         # egész könyvtár
+set-orchestrate --spec docs/v3.md plan
+set-orchestrate --spec v12 plan          # rövidnév: wt/orchestration/specs/v12.md
+set-orchestrate --spec docs/ plan         # egész könyvtár
 ```
 
 A `--spec` egy fájlra vagy könyvtárra mutathat. Könyvtár esetén a rendszer az összes `.md` fájlt feldolgozza, és a `scan_spec_directory()` függvény felépíti a teljes képet.
@@ -21,8 +21,8 @@ A `--spec` egy fájlra vagy könyvtárra mutathat. Könyvtár esetén a rendszer
 **Fázis szűrés**: A `--phase` opcióval egy adott fázisra lehet szűkíteni:
 
 ```bash
-wt-orchestrate --spec docs/v3.md --phase 2 plan    # csak a 2. fázis
-wt-orchestrate --spec docs/v3.md --phase "Security" plan  # szöveges szűrés
+set-orchestrate --spec docs/v3.md --phase 2 plan    # csak a 2. fázis
+set-orchestrate --spec docs/v3.md --phase "Security" plan  # szöveges szűrés
 ```
 
 ### 2. Brief mód (`--brief`)

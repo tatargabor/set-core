@@ -4,9 +4,9 @@ Continuing the Python migration (phase 5 of 8). `dispatcher.sh` is 1438 lines of
 
 ## What Changes
 
-- New `lib/wt_orch/dispatcher.py` module (~800-1000 lines Python) replacing all functions in `lib/orchestration/dispatcher.sh`
-- New CLI subcommands in `wt-orch-core dispatch *` for bash-to-Python bridge
-- `dispatcher.sh` reduced to thin bash wrapper (~50 LOC) calling `wt-orch-core dispatch *`
+- New `lib/set_orch/dispatcher.py` module (~800-1000 lines Python) replacing all functions in `lib/orchestration/dispatcher.sh`
+- New CLI subcommands in `set-orch-core dispatch *` for bash-to-Python bridge
+- `dispatcher.sh` reduced to thin bash wrapper (~50 LOC) calling `set-orch-core dispatch *`
 - 1:1 function mapping with source comments tracing back to `dispatcher.sh` line numbers
 
 ### Function inventory (17 functions → Python):
@@ -30,7 +30,7 @@ Continuing the Python migration (phase 5 of 8). `dispatcher.sh` is 1438 lines of
 
 ## Impact
 
-- **Code**: `lib/orchestration/dispatcher.sh` → `lib/wt_orch/dispatcher.py` + CLI extensions in `lib/wt_orch/cli.py`
-- **Dependencies**: Uses existing `wt_orch.state`, `wt_orch.events`, `wt_orch.process`, `wt_orch.config`, `wt_orch.templates`
+- **Code**: `lib/orchestration/dispatcher.sh` → `lib/set_orch/dispatcher.py` + CLI extensions in `lib/set_orch/cli.py`
+- **Dependencies**: Uses existing `set_orch.state`, `set_orch.events`, `set_orch.process`, `set_orch.config`, `set_orch.templates`
 - **External**: `subprocess` calls to `git`, `wt-new`, `wt-loop` (these remain as shell commands)
 - **Testing**: `pytest` tests for each capability group

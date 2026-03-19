@@ -6,8 +6,8 @@ Story: TBD
 ## Summary
 
 Extend the wt tooling to support two new scenarios:
-1. **Add existing worktree** - Register an already checked-out git worktree with wt-tools
-2. **Init existing branch** - Initialize a branch for wt-tools without creating a worktree
+1. **Add existing worktree** - Register an already checked-out git worktree with set-core
+2. **Init existing branch** - Initialize a branch for set-core without creating a worktree
 
 ## Motivation
 
@@ -15,7 +15,7 @@ Currently `wt-open` creates a new worktree and branch. But users often have:
 - Worktrees already checked out manually via `git worktree add`
 - Existing branches they want to work on without creating a worktree
 
-These users want to use wt-tools features (GUI, skills, Ralph loop) without recreating their setup.
+These users want to use set-core features (GUI, skills, Ralph loop) without recreating their setup.
 
 ## Use Cases
 
@@ -26,10 +26,10 @@ User has manually created a worktree:
 git worktree add ../myproject-wt-feature feature/auth
 ```
 
-Now they want to register it with wt-tools:
+Now they want to register it with set-core:
 ```bash
 cd ../myproject-wt-feature
-wt-add  # or: wt-project add-worktree
+wt-add  # or: set-project add-worktree
 ```
 
 Result:
@@ -40,13 +40,13 @@ Result:
 
 ### Use Case 2: Init Branch Without Worktree
 
-User has an existing branch they want to prepare for wt-tools:
+User has an existing branch they want to prepare for set-core:
 ```bash
-wt-init feature/auth  # Initialize branch for wt-tools, no worktree created
+wt-init feature/auth  # Initialize branch for set-core, no worktree created
 ```
 
 Result:
-- Branch is tracked by wt-tools
+- Branch is tracked by set-core
 - If user later creates a worktree from this branch, it's recognized
 - OpenSpec init is done on the main repo for this branch
 
@@ -68,7 +68,7 @@ wt-add --project myproject  # Associate with specific project
 **What it does:**
 1. Validates current directory (or specified path) is a git worktree
 2. Extracts change-id from branch name or directory name
-3. Registers with wt-tools (projects.json worktrees section)
+3. Registers with set-core (projects.json worktrees section)
 4. Runs `openspec init` if not already initialized
 5. Shows confirmation
 
@@ -84,9 +84,9 @@ wt-init feature/auth --as add-auth
 
 **What it does:**
 1. Validates branch exists (locally or remote)
-2. Creates change metadata in main repo's `.wt-tools/` directory
+2. Creates change metadata in main repo's `.set-core/` directory
 3. Runs openspec init for the change (in main repo context)
-4. Branch is now "known" to wt-tools
+4. Branch is now "known" to set-core
 
 ## Implementation Details
 
@@ -111,7 +111,7 @@ Priority order:
 ### Storage Changes
 
 ```json
-// ~/.config/wt-tools/projects.json
+// ~/.config/set-core/projects.json
 {
   "projects": {
     "myproject": {
@@ -141,7 +141,7 @@ Priority order:
 ```
 /wt:add [path]
 
-Add an existing git worktree to wt-tools.
+Add an existing git worktree to set-core.
 If no path provided, uses current directory.
 ```
 
@@ -150,7 +150,7 @@ If no path provided, uses current directory.
 ```
 /wt:init <branch> [--as <change-id>]
 
-Initialize an existing branch for wt-tools without creating a worktree.
+Initialize an existing branch for set-core without creating a worktree.
 ```
 
 ## GUI Integration

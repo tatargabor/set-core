@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # wt-loop state management: state file paths, init, update, token tracking
-# Dependencies: wt-common.sh must be sourced first (provides jq, SCRIPT_DIR)
+# Dependencies: set-common.sh must be sourced first (provides jq, SCRIPT_DIR)
 
 # Parse ISO 8601 date to epoch seconds (cross-platform)
 # Works on both Linux (GNU date) and macOS (BSD date)
@@ -19,15 +19,15 @@ parse_date_to_epoch() {
     echo "$epoch"
 }
 
-# Get loop state file path for a worktree (per-agent ephemeral in .wt/)
+# Get loop state file path for a worktree (per-agent ephemeral in .set/)
 get_loop_state_file() {
     local wt_path="$1"
-    echo "$wt_path/.wt/loop-state.json"
+    echo "$wt_path/.set/loop-state.json"
 }
 
 get_loop_log_dir() {
     local wt_path="$1"
-    echo "$wt_path/.wt/logs"
+    echo "$wt_path/.set/logs"
 }
 
 get_iter_log_file() {
@@ -41,7 +41,7 @@ get_iter_log_file() {
 # Get terminal PID file path
 get_terminal_pid_file() {
     local wt_path="$1"
-    echo "$wt_path/.wt/ralph-terminal.pid"
+    echo "$wt_path/.set/ralph-terminal.pid"
 }
 
 # Initialize loop state
@@ -61,7 +61,7 @@ init_loop_state() {
     state_file=$(get_loop_state_file "$wt_path")
 
     # Ensure .wt agent directory exists
-    mkdir -p "$wt_path/.wt" "$wt_path/.wt/logs"
+    mkdir -p "$wt_path/.wt" "$wt_path/.set/logs"
 
     # Create initial state
     cat > "$state_file" <<EOF

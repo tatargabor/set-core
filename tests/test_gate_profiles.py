@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
-from wt_orch.gate_profiles import (
+from set_orch.gate_profiles import (
     BUILTIN_GATE_PROFILES,
     DEFAULT_GATE_PROFILE,
     GateConfig,

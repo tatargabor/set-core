@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# set-hook-memory-save - Backward-compatible wrapper
+# Delegates to unified handler: set-hook-memory Stop
+exec set-hook-memory Stop

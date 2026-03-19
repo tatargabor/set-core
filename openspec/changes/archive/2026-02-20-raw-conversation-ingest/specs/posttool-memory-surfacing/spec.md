@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: PostToolUse hook surfaces memory after supported tool calls
-A `PostToolUse` hook SHALL fire after successful execution of Read and Bash tools only. The hook SHALL extract a query from the tool's input and recall relevant memories via `wt-memory proactive`, injecting results as `additionalContext`.
+A `PostToolUse` hook SHALL fire after successful execution of Read and Bash tools only. The hook SHALL extract a query from the tool's input and recall relevant memories via `set-memory proactive`, injecting results as `additionalContext`.
 
 #### Scenario: After reading a file
 - **WHEN** Claude successfully reads `moldmaker/cnc/contour.py`

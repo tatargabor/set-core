@@ -80,7 +80,7 @@ The activity-track.sh hook on Skill matcher stays (it writes to activity.json, u
 
 ### D7: No staging/debounce needed
 
-Without Haiku LLM, there's no expensive operation to debounce. Raw filter runs in <100ms. Each Stop event saves directly to wt-memory (no staging files, no .ts timestamps, no commit-on-next-session). Simplifies the code significantly — the entire `_stop_commit_staged()` and staging file management is removed.
+Without Haiku LLM, there's no expensive operation to debounce. Raw filter runs in <100ms. Each Stop event saves directly to set-memory (no staging files, no .ts timestamps, no commit-on-next-session). Simplifies the code significantly — the entire `_stop_commit_staged()` and staging file management is removed.
 
 ### D8: Background execution preserved
 

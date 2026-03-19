@@ -1,4 +1,4 @@
-# wt-tools
+# set-core
 
 **Autonomous multi-agent orchestration for Claude Code** — give it a spec, get merged features.
 
@@ -7,13 +7,13 @@
 
 ---
 
-## Why wt-tools?
+## Why set-core?
 
-Claude Code is already incredibly powerful. wt-tools asks: *how far can we push it?*
+Claude Code is already incredibly powerful. set-core asks: *how far can we push it?*
 
-You have a spec with 10 features. Hand it to wt-tools — parallel agents decompose, implement, test, and merge all of them while you sleep. Some of these capabilities will eventually land in Claude Code natively (like Agent Teams). We're exploring the frontier now, learning what works in production, and sharing the patterns.
+You have a spec with 10 features. Hand it to set-core — parallel agents decompose, implement, test, and merge all of them while you sleep. Some of these capabilities will eventually land in Claude Code natively (like Agent Teams). We're exploring the frontier now, learning what works in production, and sharing the patterns.
 
-**wt-tools is a full autonomous pipeline:**
+**set-core is a full autonomous pipeline:**
 
 ```
 spec.md ──► digest ──► decompose ──► parallel agents ──► verify ──► merge ──► done
@@ -68,7 +68,7 @@ merged, tested, done
 
 ### What we've learned pushing the limits
 
-| Capability | What wt-tools adds |
+| Capability | What set-core adds |
 |---|---|
 | **Full pipeline** | Spec → digest → decompose → parallel dispatch → verify → merge — hands-off |
 | **Design bridge** | Figma → `design-snapshot.md` → tokens + hierarchy injected into agent context |
@@ -84,11 +84,11 @@ merged, tested, done
 
 ```bash
 # Install
-git clone https://github.com/tatargabor/wt-tools.git
-cd wt-tools && ./install.sh
+git clone https://github.com/tatargabor/set-core.git
+cd set-core && ./install.sh
 
 # Register your project
-cd ~/my-project && wt-project init --project-type web --template nextjs
+cd ~/my-project && set-project init --project-type web --template nextjs
 
 # Run autonomous orchestration (from a Claude Code session)
 /wt:sentinel --spec docs/my-spec.md --max-parallel 2
@@ -97,8 +97,8 @@ cd ~/my-project && wt-project init --project-type web --template nextjs
 Or start simple — just use worktrees:
 
 ```bash
-wt-new my-feature        # create isolated worktree
-wt-work my-feature       # open in editor + start Claude Code
+set-new my-feature        # create isolated worktree
+set-work my-feature       # open in editor + start Claude Code
 # ... work ...
 wt-merge my-feature      # merge back to main
 ```
@@ -109,7 +109,7 @@ See [Getting Started](docs/getting-started.md) for the full guide.
 
 ## Orchestration Pipeline
 
-The orchestration pipeline is the heart of wt-tools. It takes a spec file and autonomously builds, tests, and merges a complete application.
+The orchestration pipeline is the heart of set-core. It takes a spec file and autonomously builds, tests, and merges a complete application.
 
 <!-- TODO: screenshot — orchestration TUI showing active changes, progress bars, quality gate status -->
 ![Orchestrator workspace — TUI, memory dashboard, agent terminal](docs/images/orchestrator-workspace.png)
@@ -127,7 +127,7 @@ The orchestration pipeline is the heart of wt-tools. It takes a spec file and au
 └─────────┘    └──────────┘    └───────────┘    └──────────┘    └─────────┘    └────────┘
 ```
 
-<!-- TODO: screenshot — wt-orchestrate architecture diagram showing all modules -->
+<!-- TODO: screenshot — set-orchestrate architecture diagram showing all modules -->
 
 **Spec digest** — For complex multi-file specs, the system first generates a structured digest: domain summaries, requirement IDs, dependency graph, and coverage tracking. This ensures no requirements are lost during decomposition.
 
@@ -179,24 +179,24 @@ Figma ──► wt-figma-fetch ──► design-snapshot.md ──► planner (t
 
 **[OpenSpec Workflow](docs/openspec.md)** — Structured spec-driven development: `/opsx:new` → `/opsx:ff` → `/opsx:apply` → `/opsx:verify` → `/opsx:archive`. Prevents agents from going off-track with artifact tracking.
 
-**[Worktrees](docs/worktrees.md)** — Git worktree lifecycle with editor integration and Claude Code auto-launch. CLI (`wt-new`, `wt-work`, `wt-merge`) or agent skills (`/wt:new`, `/wt:merge`).
+**[Worktrees](docs/worktrees.md)** — Git worktree lifecycle with editor integration and Claude Code auto-launch. CLI (`set-new`, `set-work`, `wt-merge`) or agent skills (`/wt:new`, `/wt:merge`).
 
 **[Ralph Loop](docs/ralph.md)** — Autonomous agent execution. Runs Claude Code in iterations through task lists with configurable limits and progress-based trend detection.
 
 **[Web Dashboard](docs/gui.md)** — Browser-based dashboard (React + TypeScript) for orchestration monitoring, agent status, memory browser. Desktop GUI (PySide6) for always-on-top compact view.
 
-**[Team Sync](docs/team-sync.md) · [MCP Server](docs/mcp-server.md)** — Cross-machine coordination via `wt-control` git branch. MCP server exposes worktree status, memory tools, and Ralph progress to agents.
+**[Team Sync](docs/team-sync.md) · [MCP Server](docs/mcp-server.md)** — Cross-machine coordination via `set-control` git branch. MCP server exposes worktree status, memory tools, and Ralph progress to agents.
 
 ### When to use what
 
 | Situation | Tool |
 |---|---|
 | Single agent, single project | Claude Code alone is great — start there |
-| 2+ agents or switching projects | Web Dashboard + `wt-work` |
+| 2+ agents or switching projects | Web Dashboard + `set-work` |
 | Structured feature development | OpenSpec (`/opsx:new` → `/opsx:apply`) |
 | Task list to grind through | Ralph Loop (`wt-loop start`) |
 | Multiple changes from a spec | Sentinel (`/wt:sentinel --spec`) |
-| Agents learning across sessions | Developer Memory (`wt-memory`) |
+| Agents learning across sessions | Developer Memory (`set-memory`) |
 
 ---
 
@@ -213,7 +213,7 @@ The wt-web dashboard shows running projects, orchestration state, agent status, 
 ```bash
 cp .env.example .env
 # Edit .env — set WT_WEB_PORT (default: 7400) and WT_TAILSCALE_HOSTNAME
-wt-orch-core serve                    # http://localhost:7400
+set-orch-core serve                    # http://localhost:7400
 ```
 
 **As a systemd service:**
@@ -270,7 +270,7 @@ E2E tests validate the full orchestration pipeline against real projects. Each t
 
 ### Spec Structure (how to write orchestratable specs)
 
-wt-tools orchestrates from **markdown spec files**. Any project can be orchestrated if the spec follows this structure:
+set-core orchestrates from **markdown spec files**. Any project can be orchestrated if the spec follows this structure:
 
 ```markdown
 # My Project v1 — Feature Spec
@@ -342,7 +342,7 @@ tests/e2e/scaffold/
 
 # In the test project, start orchestration
 cd /tmp/minishop-test
-wt-sentinel --spec docs/v1-minishop.md
+set-sentinel --spec docs/v1-minishop.md
 ```
 
 See [E2E Test Guide](tests/e2e/E2E-GUIDE.md) for sentinel monitoring, partial reset, deploy workflow, and run history.
@@ -378,28 +378,28 @@ When multiple agents work on a codebase, they need shared conventions — not co
 **Project type plugins** solve this:
 
 ```
-wt-project-base          Universal rules (file size, secrets, TODOs)
-  └── wt-project-web      Web domain rules (SEO, a11y, security, i18n, ...)
+set-project-base          Universal rules (file size, secrets, TODOs)
+  └── set-project-web      Web domain rules (SEO, a11y, security, i18n, ...)
         └── your-org-web   Organization-specific rules
 ```
 
 ```bash
-wt-project init --project-type web --template nextjs
+set-project init --project-type web --template nextjs
 ```
 
 This deploys path-scoped convention files, verification rules, orchestration directives, and gate overrides into the project. Agents only see the rules relevant to the files they're editing — an agent working on `prisma/schema.prisma` gets data-model conventions, not UI rules.
 
 Available project types:
-- **[wt-project-base](https://github.com/tatargabor/wt-project-base)** — `ProjectType` ABC, universal rules, resolver, template deploy, feedback system
-- **[wt-project-web](https://github.com/tatargabor/wt-project-web)** — 13 convention rule files, 11 verification rules, 7 orchestration directives, gate overrides, Figma design integration
+- **[set-project-base](https://github.com/tatargabor/set-project-base)** — `ProjectType` ABC, universal rules, resolver, template deploy, feedback system
+- **[set-project-web](https://github.com/tatargabor/set-project-web)** — 13 convention rule files, 11 verification rules, 7 orchestration directives, gate overrides, Figma design integration
 
-See [Plugin Architecture](https://github.com/tatargabor/wt-project-web/blob/master/docs/plugin-architecture.md) for customization and layering.
+See [Plugin Architecture](https://github.com/tatargabor/set-project-web/blob/master/docs/plugin-architecture.md) for customization and layering.
 
 ---
 
 ## Fork & Adapt
 
-Our primary focus is web development — that's where we push hardest. But wt-tools is project-agnostic by design. The base tooling (worktrees, memory, orchestration) works on any codebase: APIs, mobile apps, data pipelines, research projects. Built from months of production work across web apps, sensor systems, education platforms, and more.
+Our primary focus is web development — that's where we push hardest. But set-core is project-agnostic by design. The base tooling (worktrees, memory, orchestration) works on any codebase: APIs, mobile apps, data pipelines, research projects. Built from months of production work across web apps, sensor systems, education platforms, and more.
 
 **Why fork or study it:**
 - Battle-tested orchestration patterns from real client projects
@@ -422,8 +422,8 @@ Claude Code is evolving fast — Agent Teams, persistent memory, and better auto
 **Prerequisites:** Git, Python 3.10+, jq, Node.js
 
 ```bash
-git clone https://github.com/tatargabor/wt-tools.git
-cd wt-tools && ./install.sh
+git clone https://github.com/tatargabor/set-core.git
+cd set-core && ./install.sh
 ```
 
 The installer handles everything: CLI symlinks, shell completions, MCP server config, GUI dependencies, and optional memory system setup. See [Getting Started](docs/getting-started.md) for platform-specific notes.
@@ -451,7 +451,7 @@ The installer handles everything: CLI symlinks, shell completions, MCP server co
 | **Workflow** | [OpenSpec](docs/openspec.md) · [Worktrees](docs/worktrees.md) · [Ralph Loop](docs/ralph.md) |
 | **Infrastructure** | [Memory](docs/developer-memory.md) · [MCP Server](docs/mcp-server.md) · [Team Sync](docs/team-sync.md) |
 | **UI** | [Web Dashboard / GUI](docs/gui.md) · [Architecture](docs/architecture.md) |
-| **Plugins** | [Project Setup](docs/project-setup.md) · [Plugins](docs/plugins.md) · [Plugin Architecture](https://github.com/tatargabor/wt-project-web/blob/master/docs/plugin-architecture.md) |
+| **Plugins** | [Project Setup](docs/project-setup.md) · [Plugins](docs/plugins.md) · [Plugin Architecture](https://github.com/tatargabor/set-project-web/blob/master/docs/plugin-architecture.md) |
 | **Testing** | [E2E Test Guide](tests/e2e/E2E-GUIDE.md) · [Benchmark Report](docs/benchmark-minishop-run4.md) · [E2E Findings](tests/e2e/minishop/) |
 
 ---
@@ -463,9 +463,9 @@ The Claude Code multi-agent space is evolving fast. Tools fall into three catego
 
 **Session managers** — run N agents, switch between them (claude-squad, agent-deck)
 **Plugins/enhancements** — make Claude Code smarter from within (oh-my-claudecode, wshobson/agents)
-**Spec-driven orchestrators** — decompose work, dispatch, verify, merge (wt-tools, ccpm, overstory)
+**Spec-driven orchestrators** — decompose work, dispatch, verify, merge (set-core, ccpm, overstory)
 
-Note: Claude Code's native Agent Teams (experimental) is moving fast — many wt-tools patterns will likely become built-in. We see this as validation, not competition. The value is in what we've learned building production orchestration, and this repo shares those patterns openly.
+Note: Claude Code's native Agent Teams (experimental) is moving fast — many set-core patterns will likely become built-in. We see this as validation, not competition. The value is in what we've learned building production orchestration, and this repo shares those patterns openly.
 
 | Tool | Stars | Category | Focus |
 |---|---|---|---|
@@ -484,7 +484,7 @@ Note: Claude Code's native Agent Teams (experimental) is moving fast — many wt
                      Spec→Merge  Worktree  Auto   Memory  Structured   Crash    Design   GUI
                      Pipeline    Isolation Loop   Recall  Workflow     Recovery Bridge
 ──────────────────────────────────────────────────────────────────────────────────────────────
-wt-tools              Y          Y        Y      Y       Y (OpenSpec)  Y       Y (Figma)  Y
+set-core              Y          Y        Y      Y       Y (OpenSpec)  Y       Y (Figma)  Y
 ccpm                  Y          Y        Y      -       Y (PRD→Issue) -       -          -
 oh-my-claudecode      -          -        Y      -       -             Y       -          -
 claude-squad          -          Y        Y      -       -             -       -         TUI
@@ -493,7 +493,7 @@ automaker             Y          Y        Y      -       -             -       -
 overstory             ~          Y        Y      -       -             Y       -         TUI
 ```
 
-**wt-tools is the only tool combining full spec-to-merge pipeline, persistent cross-session memory, design bridge, and structured spec workflow.** Closest competitor is ccpm (spec-driven, parallel agents) but it requires GitHub Issues as its task store and lacks memory, design integration, and sentinel supervision.
+**set-core is the only tool combining full spec-to-merge pipeline, persistent cross-session memory, design bridge, and structured spec workflow.** Closest competitor is ccpm (spec-driven, parallel agents) but it requires GitHub Issues as its task store and lacks memory, design integration, and sentinel supervision.
 
 </details>
 

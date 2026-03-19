@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
 ### Requirement: Python audit pipeline
-The system SHALL provide `run_post_phase_audit()` in `lib/wt_orch/auditor.py` that replicates the full bash audit pipeline: input JSON construction, Claude API call for gap detection, result parsing, and state update with replan context injection.
+The system SHALL provide `run_post_phase_audit()` in `lib/set_orch/auditor.py` that replicates the full bash audit pipeline: input JSON construction, Claude API call for gap detection, result parsing, and state update with replan context injection.
 
 #### Scenario: Successful audit
-- **WHEN** `wt-orch-core audit run --state-file <path>` is invoked after a phase completes
+- **WHEN** `set-orch-core audit run --state-file <path>` is invoked after a phase completes
 - **THEN** the system builds audit input from merged changes, calls Claude for gap analysis, parses the result, and updates state with findings
 
 #### Scenario: Audit with critical gaps
@@ -34,8 +34,8 @@ The system SHALL provide `parse_audit_result()` in `auditor.py` that extracts st
 - **THEN** the parser extracts the JSON block and returns typed findings
 
 ### Requirement: Bash auditor.sh becomes thin wrapper
-After migration, `auditor.sh` SHALL contain only delegation to `wt-orch-core audit run`.
+After migration, `auditor.sh` SHALL contain only delegation to `set-orch-core audit run`.
 
 #### Scenario: Thin wrapper delegation
 - **WHEN** `run_post_phase_audit()` is called in bash
-- **THEN** it delegates to `wt-orch-core audit run` with equivalent arguments
+- **THEN** it delegates to `set-orch-core audit run` with equivalent arguments

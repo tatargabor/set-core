@@ -12,7 +12,7 @@ Always-on-top PySide6 window showing all worktrees and agent status across all y
 - **Context usage**: how full each agent's context window is (%)
 - **API burn rate**: hourly and daily token usage with visual bars
 - **Ralph Loop progress**: iteration count and task completion for autonomous runs
-- **Orchestration status**: when `wt-orchestrate` is running, dispatched changes and merge progress
+- **Orchestration status**: when `set-orchestrate` is running, dispatched changes and merge progress
 - **Team members**: what other machines/agents are working on (if Team Sync is enabled)
 - **Status badges**: per-project indicators — **M** (memory available), **O** (OpenSpec initialized), **R** (Ralph loop running)
 
@@ -50,7 +50,7 @@ You're working on 3 projects. Each has 1-2 worktrees with Claude agents running.
 
 ## Configuration
 
-GUI settings are in `~/.config/wt-tools/gui-config.json`:
+GUI settings are in `~/.config/set-core/gui-config.json`:
 
 ```json
 {
@@ -88,8 +88,8 @@ Features: semantic search, export/import buttons, "Remember Note" for quick save
 ## Launch
 
 ```bash
-wt-control          # launch GUI
-wt-control-gui      # alternative launcher
+set-control          # launch GUI
+set-control-gui      # alternative launcher
 ```
 
 The GUI is optional — all functionality is available via CLI and Claude Code skills.

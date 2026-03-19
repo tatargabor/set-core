@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# set-skill-start - Register current skill for status display
+#
+# Usage: set-skill-start <skill-name>
+#
+# Finds the claude ancestor PID (walking up process tree) and writes
+# skill name + timestamp to .set/agents/<claude-pid>.skill.
+# The set-status command reads per-PID files to display skill info per agent.
+# Entries older than 30 minutes are considered stale and ignored.
+
+set -e
+
+SKILL_NAME="$1"
+
+if [[ -z "$SKILL_NAME" ]]; then
+    echo "Usage: set-skill-start <skill-name>" >&2
+    echo "Example: set-skill-start wt:status" >&2
+    exit 1
+fi
+
+# Find which claude PID (from pgrep) is our ancestor.
+# Walk up the PID tree and check against pgrep -x claude results.
+# This ensures the PID we write matches what detect_agents() finds.
+find_claude_pid() {
+    local claude_pids
+    claude_pids=$(ps -e -o pid=,comm= | awk '$2 == "claude" {print $1}') || true
+
+    local pid=$$
+    while [[ "$pid" -gt 1 ]]; do
+        # Check if this PID is in the claude process list
+        if echo "$claude_pids" | grep -qx "$pid"; then
+            echo "$pid"
+            return
+        fi
+        pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ') || break
+    done
+    # No claude ancestor found — return empty (caller will skip writing)
+}
+
+CLAUDE_PID=$(find_claude_pid)
+TIMESTAMP=$(date +%s)
+
+# Map skill invocation name to SKILL.md directory name
+# opsx:apply → openspec-apply-change, opsx:explore → openspec-explore, etc.
+# wt:* → wt (single skill directory for all wt subcommands)
+map_skill_to_dir() {
+    local name="$1"
+    case "$name" in
+        opsx:new)       echo "openspec-new-change" ;;
+        opsx:continue)  echo "openspec-continue-change" ;;
+        opsx:ff)        echo "openspec-ff-change" ;;
+        opsx:apply)     echo "openspec-apply-change" ;;
+        opsx:verify)    echo "openspec-verify-change" ;;
+        opsx:archive)   echo "openspec-archive-change" ;;
+        opsx:bulk-archive) echo "openspec-bulk-archive-change" ;;
+        opsx:sync)      echo "openspec-sync-specs" ;;
+        opsx:explore)   echo "openspec-explore" ;;
+        opsx:onboard)   echo "openspec-onboard" ;;
+        wt:*)           echo "wt" ;;
+        *)              echo "$name" ;;
+    esac
+}
+
+# Write per-PID skill file only if we found the actual claude PID
+# Format: skill_name|timestamp|freshness (fresh = just invoked, last = subsequent prompts)
+if [[ -n "$CLAUDE_PID" ]]; then
+    mkdir -p .set/agents
+
+    # Remove old .memory marker before writing new skill
+    rm -f ".set/agents/${CLAUDE_PID}.memory"
+
+    echo "${SKILL_NAME}|${TIMESTAMP}|fresh" > ".set/agents/${CLAUDE_PID}.skill"
+
+    # Check if the new skill has set-memory hooks in its SKILL.md
+    local_skill_dir=$(map_skill_to_dir "$SKILL_NAME")
+    skill_md=".claude/skills/${local_skill_dir}/SKILL.md"
+    if [[ -f "$skill_md" ]] && grep -q "set-memory" "$skill_md" 2>/dev/null; then
+        echo "$SKILL_NAME" > ".set/agents/${CLAUDE_PID}.memory"
+    fi
+fi

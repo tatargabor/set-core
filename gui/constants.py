@@ -25,7 +25,7 @@ SCRIPT_DIR = Path(__file__).parent.parent / "bin"
 
 # Config file paths - support WT_CONFIG_DIR override for testing
 _config_override = os.environ.get("WT_CONFIG_DIR")
-CONFIG_DIR = Path(_config_override) if _config_override else Path.home() / ".config" / "wt-tools"
+CONFIG_DIR = Path(_config_override) if _config_override else Path.home() / ".config" / "set-core"
 CONFIG_FILE = CONFIG_DIR / "gui-config.json"
 STATE_FILE = CONFIG_DIR / "gui-state.json"
 CLAUDE_SESSION_FILE = CONFIG_DIR / "claude-session.json"

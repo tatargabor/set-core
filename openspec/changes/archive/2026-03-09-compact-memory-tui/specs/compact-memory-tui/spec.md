@@ -1,29 +1,29 @@
 ## ADDED Requirements
 
 ### Requirement: 3-column ANSI layout
-The `wt-memory tui` command SHALL render a 3-column layout when terminal width >= 120 characters.
+The `set-memory tui` command SHALL render a 3-column layout when terminal width >= 120 characters.
 
 #### Scenario: Wide terminal layout
-- **WHEN** `wt-memory tui` is run in a terminal with width >= 120 characters
+- **WHEN** `set-memory tui` is run in a terminal with width >= 120 characters
 - **THEN** it SHALL render three columns: left (DB stats + usage signals), center (hook overhead + layers + daily trend), right (recent sessions list)
 
 #### Scenario: Narrow terminal fallback
-- **WHEN** `wt-memory tui` is run in a terminal with width < 120 characters
+- **WHEN** `set-memory tui` is run in a terminal with width < 120 characters
 - **THEN** it SHALL fall back to the existing single-column layout
 
 ### Requirement: Project auto-detection
-The `wt-memory tui` command SHALL auto-detect the current project from the working directory.
+The `set-memory tui` command SHALL auto-detect the current project from the working directory.
 
 #### Scenario: Running from a git project
-- **WHEN** `wt-memory tui` is run from within a git repository without `--project` flag
+- **WHEN** `set-memory tui` is run from within a git repository without `--project` flag
 - **THEN** it SHALL detect the project name from the git root directory basename and filter all metrics to that project (prefix match)
 
 #### Scenario: Running with explicit project flag
-- **WHEN** `wt-memory tui --project sales-raketa` is run
+- **WHEN** `set-memory tui --project sales-raketa` is run
 - **THEN** it SHALL filter all metrics to sessions whose project name starts with `sales-raketa`
 
 #### Scenario: Running outside a git repo without project flag
-- **WHEN** `wt-memory tui` is run outside a git repository without `--project` flag
+- **WHEN** `set-memory tui` is run outside a git repository without `--project` flag
 - **THEN** it SHALL show global metrics (all projects) as current behavior
 
 ### Requirement: Project name in header

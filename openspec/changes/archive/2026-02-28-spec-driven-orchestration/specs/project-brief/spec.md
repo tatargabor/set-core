@@ -27,4 +27,4 @@ The `project-brief.md.template` SHALL mention the `--spec` alternative for users
 
 #### Scenario: Template content
 - **WHEN** a new project runs `openspec init` or copies the template
-- **THEN** the template SHALL include a comment explaining: "If you already have a specification document, use `wt-orchestrate --spec <path>` instead of maintaining this brief separately"
+- **THEN** the template SHALL include a comment explaining: "If you already have a specification document, use `set-orchestrate --spec <path>` instead of maintaining this brief separately"

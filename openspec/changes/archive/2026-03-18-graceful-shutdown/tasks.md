@@ -2,7 +2,7 @@
 
 ## 1. Sentinel Shutdown Command
 
-- [x] 1.1 Add `--shutdown` flag parsing to `bin/wt-sentinel` argument handling [REQ: sentinel-graceful-shutdown-command]
+- [x] 1.1 Add `--shutdown` flag parsing to `bin/set-sentinel` argument handling [REQ: sentinel-graceful-shutdown-command]
 - [x] 1.2 Implement SIGUSR1 handler in sentinel main loop that triggers shutdown sequence [REQ: sentinel-graceful-shutdown-command]
 - [x] 1.3 Implement `--shutdown` flag logic: read PID file, send SIGUSR1 to running sentinel, wait for exit [REQ: sentinel-graceful-shutdown-command]
 - [x] 1.4 Add shutdown timeout: wait up to 60s for agents, then SIGKILL remaining [REQ: sentinel-graceful-shutdown-command]
@@ -37,7 +37,7 @@
 
 ## 6. wt-web API & Settings UI
 
-- [x] 6.1 Add `POST /api/{project}/shutdown` endpoint to `lib/wt_orch/api.py` — reads sentinel PID file, sends SIGUSR1, returns JSON [REQ: shutdown-api-endpoint]
+- [x] 6.1 Add `POST /api/{project}/shutdown` endpoint to `lib/set_orch/api.py` — reads sentinel PID file, sends SIGUSR1, returns JSON [REQ: shutdown-api-endpoint]
 - [x] 6.2 Add `shutdownOrchestration()` function to `web/src/lib/api.ts` [REQ: shutdown-api-endpoint]
 - [x] 6.3 Add "Orchestration Control" section to `web/src/pages/Settings.tsx` with Shutdown button + confirmation dialog [REQ: settings-page-shutdown-controls]
 - [x] 6.4 Add status badge showing current orchestration state (running/shutdown/stopped) [REQ: settings-page-shutdown-controls]
@@ -54,8 +54,8 @@
 
 ## Acceptance Criteria (from spec scenarios)
 
-- [x] AC-1: WHEN user runs `wt-sentinel --shutdown` while sentinel is running THEN all agents receive SIGTERM, state updated to `"shutdown"`, sentinel exits 0 [REQ: sentinel-graceful-shutdown-command, scenario: user-triggers-graceful-shutdown]
-- [x] AC-2: WHEN `wt-sentinel --shutdown` with no sentinel running THEN prints "No sentinel running" and exits 0 [REQ: sentinel-graceful-shutdown-command, scenario: shutdown-with-no-running-sentinel]
+- [x] AC-1: WHEN user runs `set-sentinel --shutdown` while sentinel is running THEN all agents receive SIGTERM, state updated to `"shutdown"`, sentinel exits 0 [REQ: sentinel-graceful-shutdown-command, scenario: user-triggers-graceful-shutdown]
+- [x] AC-2: WHEN `set-sentinel --shutdown` with no sentinel running THEN prints "No sentinel running" and exits 0 [REQ: sentinel-graceful-shutdown-command, scenario: shutdown-with-no-running-sentinel]
 - [x] AC-3: WHEN agents don't exit within 60s THEN SIGKILL sent, changes marked `"stalled"` [REQ: sentinel-graceful-shutdown-command, scenario: shutdown-timeout-exceeded]
 - [x] AC-4: WHEN wt-loop receives SIGTERM during task THEN completes iteration, commits WIP, writes last_commit, exits 0 [REQ: agent-graceful-stop-on-sigterm, scenario: agent-receives-sigterm-during-task-execution]
 - [x] AC-5: WHEN wt-loop receives SIGTERM between iterations THEN exits immediately with code 0 [REQ: agent-graceful-stop-on-sigterm, scenario: agent-receives-sigterm-between-iterations]

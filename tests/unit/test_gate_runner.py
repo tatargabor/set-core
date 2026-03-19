@@ -1,4 +1,4 @@
-"""Tests for wt_orch.gate_runner — GatePipeline execution, retry, skip, batch commit."""
+"""Tests for set_orch.gate_runner — GatePipeline execution, retry, skip, batch commit."""
 
 import os
 import sys
@@ -7,8 +7,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.gate_runner import GatePipeline, GateResult
-from wt_orch.state import Change, OrchestratorState, load_state, save_state
+from set_orch.gate_runner import GatePipeline, GateResult
+from set_orch.state import Change, OrchestratorState, load_state, save_state
 
 
 class FakeGateConfig:

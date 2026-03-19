@@ -29,17 +29,17 @@
 
 - [x] 5.1 Add usage rate queries to `query_report()` in `lib/metrics.py`: compute `total_injected_ids`, `total_matched_ids`, `usage_rate` from sessions table
 - [x] 5.2 Update `format_tui_report()` to display usage rate in the USAGE SIGNALS section
-- [x] 5.3 Update existing `wt-memory metrics` JSON output to include `usage_rate`, `total_injected_ids`, `total_matched_ids`
+- [x] 5.3 Update existing `set-memory metrics` JSON output to include `usage_rate`, `total_injected_ids`, `total_matched_ids`
 
 ## 6. TUI Dashboard Command
 
-- [x] 6.1 Add `cmd_tui()` function to `bin/wt-memory` with `--since` and `--json` argument parsing
-- [x] 6.2 Implement Memory Database section: call `wt-memory stats --json` and format total count, type distribution, noise ratio, top tags
+- [x] 6.1 Add `cmd_tui()` function to `bin/set-memory` with `--since` and `--json` argument parsing
+- [x] 6.2 Implement Memory Database section: call `set-memory stats --json` and format total count, type distribution, noise ratio, top tags
 - [x] 6.3 Implement Hook Overhead section: read from `query_report()` and format per-layer breakdown with count, avg tokens, avg relevance, avg duration
 - [x] 6.4 Implement Usage Signals section: display usage rate (matched/injected), legacy citation rate, relevance distribution histogram (ASCII bars), empty injection rate
 - [x] 6.5 Implement Daily Trend section: ASCII sparklines for token burn, relevance, and usage rate using block characters (▁▂▃▄▅▆▇█)
-- [x] 6.6 Add `tui` to the command dispatch case statement in `bin/wt-memory`
-- [x] 6.7 Implement JSON output mode for `wt-memory tui --json` combining all section data
+- [x] 6.6 Add `tui` to the command dispatch case statement in `bin/set-memory`
+- [x] 6.7 Implement JSON output mode for `set-memory tui --json` combining all section data
 
 ## 7. Testing
 

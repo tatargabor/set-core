@@ -9,12 +9,12 @@ When all of a change's dependencies are satisfied (merged status), `dispatch_rea
 ### 1. Worktree Creation
 
 ```bash
-wt-new <change-name>
+set-new <change-name>
 # → .claude/worktrees/<change-name>/
 # → branch: change/<change-name>
 ```
 
-`wt-new` creates an isolated git worktree where the agent can work freely without affecting the main branch.
+`set-new` creates an isolated git worktree where the agent can work freely without affecting the main branch.
 
 ### 2. Bootstrap
 
@@ -36,14 +36,14 @@ wt-new <change-name>
 ### 4. Ralph Loop Start
 
 ```bash
-wt-loop start --change <name> --model <model_id> --max-turns <N>
+set-loop start --change <name> --model <model_id> --max-turns <N>
 ```
 
 The Ralph PID is saved to the state file.
 
 ## The Ralph Loop
 
-The Ralph loop starts with the `wt-loop` command and executes an iterative development cycle:
+The Ralph loop starts with the `set-loop` command and executes an iterative development cycle:
 
 ### Iteration Cycle
 
@@ -146,10 +146,10 @@ Parallel execution doesn't mean all changes run simultaneously. The DAG and max\
 Execution can be suspended and resumed at any time:
 
 ```bash
-wt-orchestrate pause auth-system    # one change
-wt-orchestrate pause --all          # all changes
-wt-orchestrate resume auth-system   # resume
-wt-orchestrate resume --all         # resume all
+set-orchestrate pause auth-system    # one change
+set-orchestrate pause --all          # all changes
+set-orchestrate resume auth-system   # resume
+set-orchestrate resume --all         # resume all
 ```
 
 `pause` stops the Ralph loop (PID kill), but the worktree remains. `resume` restarts the loop, optionally with retry context.

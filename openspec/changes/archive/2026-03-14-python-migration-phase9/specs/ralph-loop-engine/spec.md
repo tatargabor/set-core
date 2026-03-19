@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/loop/engine.sh` (903 LOC) to `lib/wt_orch/loop.py`. The main Ralph iteration loop: runs Claude CLI repeatedly in a worktree, handles API errors with exponential backoff, enforces token budgets, detects completion, and manages iteration lifecycle.
+Migrate `lib/loop/engine.sh` (903 LOC) to `lib/set_orch/loop.py`. The main Ralph iteration loop: runs Claude CLI repeatedly in a worktree, handles API errors with exponential backoff, enforces token budgets, detects completion, and manages iteration lifecycle.
 
 ## Requirements
 
@@ -35,8 +35,8 @@ Migrate `lib/loop/engine.sh` (903 LOC) to `lib/wt_orch/loop.py`. The main Ralph 
 - Report tokens in loop state file
 
 ### LOOP-06: CLI Subcommands
-- `wt-orch-core loop run --wt-path <path> [--change <name>] [--max-iter <n>] [--token-budget <n>]`
-- `wt-orch-core loop status --wt-path <path>` — show current loop state
+- `set-orch-core loop run --wt-path <path> [--change <name>] [--max-iter <n>] [--token-budget <n>]`
+- `set-orch-core loop status --wt-path <path>` — show current loop state
 - Registered in `cli.py` under `loop` group
 
 ### LOOP-07: Unit Tests

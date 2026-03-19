@@ -1,0 +1,495 @@
+#!/usr/bin/env bash
+# set-control-chat - Send and receive encrypted chat messages
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+usage() {
+    cat <<EOF
+Usage: set-control-chat <command> [options]
+
+Commands:
+  send <to> <message>    Send encrypted message to team member
+  send <to> -            Read message from stdin (multiline support)
+  read                   Read messages (decrypts and displays)
+  list-members           List members with chat keys
+
+Options:
+  -p, --project <name>   Use specific project (default: auto-detect)
+  -j, --json             Output as JSON
+  --since <timestamp>    Only show messages after timestamp
+  --no-push              Send only: append to outbox without git commit/push
+  -h, --help             Show this help
+
+Examples:
+  set-control-chat send peter@laptop "Hey, can you review my PR?"
+  echo "Bug report..." | set-control-chat send peter@laptop -
+  set-control-chat send --no-push peter@laptop "queued message"
+  set-control-chat read
+  set-control-chat read --since 2026-01-25T10:00:00Z
+  set-control-chat list-members
+EOF
+}
+
+# Python helper for crypto operations
+CHAT_CRYPTO_PY='
+import sys
+import json
+import os
+import re
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Add gui directory to path for chat_crypto module
+script_dir = os.environ.get("SCRIPT_DIR", ".")
+gui_dir = Path(script_dir).parent / "gui"
+sys.path.insert(0, str(gui_dir))
+
+try:
+    import chat_crypto
+except ImportError:
+    print("Error: chat_crypto module not found. Install PyNaCl and ensure gui/chat_crypto.py exists.", file=sys.stderr)
+    sys.exit(1)
+
+def get_my_name():
+    """Get the current member name (user@hostname)"""
+    import subprocess
+    result = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True)
+    user_name = result.stdout.strip() if result.returncode == 0 else os.environ.get("USER", "unknown")
+    hostname = subprocess.run(["hostname", "-s"], capture_output=True, text=True).stdout.strip()
+    user_clean = user_name.lower().replace(" ", "-")
+    # Remove non-alphanumeric chars except hyphens (match set-control-sync sanitization)
+    user_clean = re.sub(r"[^a-z0-9-]", "", user_clean)
+    return f"{user_clean}@{hostname.lower()}"
+
+def get_outbox_dir(control_dir):
+    """Get the outbox directory path"""
+    return Path(control_dir) / "chat" / "outbox"
+
+def migrate_legacy_messages(control_dir, members_dir, project):
+    """Migrate legacy chat/messages.jsonl to per-sender outbox files.
+
+    If chat/messages.jsonl exists and chat/outbox/ doesn't, split messages
+    into per-sender outbox files and rename original to messages.jsonl.migrated.
+    """
+    legacy_file = Path(control_dir) / "chat" / "messages.jsonl"
+    outbox_dir = get_outbox_dir(control_dir)
+
+    # Only migrate if legacy exists and outbox doesn't
+    if not legacy_file.exists() or outbox_dir.exists():
+        return
+
+    outbox_dir.mkdir(parents=True, exist_ok=True)
+
+    # Read all messages and split by sender
+    sender_messages = {}
+    with open(legacy_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+                sender = msg.get("from", "unknown")
+                if sender not in sender_messages:
+                    sender_messages[sender] = []
+                sender_messages[sender].append(json.dumps(msg))
+            except json.JSONDecodeError:
+                continue
+
+    # Write per-sender outbox files
+    for sender, lines in sender_messages.items():
+        outbox_file = outbox_dir / f"{sender}.jsonl"
+        with open(outbox_file, "w") as f:
+            f.write("\n".join(lines) + "\n")
+
+    # Rename original
+    legacy_file.rename(legacy_file.with_suffix(".jsonl.migrated"))
+    print(f"Migrated {sum(len(v) for v in sender_messages.values())} messages to per-sender outbox", file=sys.stderr)
+
+def read_all_outbox_messages(control_dir):
+    """Read all messages from all outbox files, merged and sorted by timestamp"""
+    outbox_dir = get_outbox_dir(control_dir)
+    messages = []
+
+    if not outbox_dir.exists():
+        return messages
+
+    for outbox_file in outbox_dir.glob("*.jsonl"):
+        try:
+            with open(outbox_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                        messages.append(msg)
+                    except json.JSONDecodeError:
+                        continue
+        except Exception:
+            continue
+
+    # Sort by timestamp
+    messages.sort(key=lambda m: m.get("ts", ""))
+    return messages
+
+def cmd_send(project, recipient, message, members_dir, control_dir):
+    """Send encrypted message to per-sender outbox"""
+    if not chat_crypto.is_available():
+        print("Error: PyNaCl not installed", file=sys.stderr)
+        return 1
+
+    if not chat_crypto.has_key(project):
+        print("Error: No chat key for this project. Generate one in Control Center Settings.", file=sys.stderr)
+        return 1
+
+    # Get sender info
+    my_public = chat_crypto.get_public_key(project)
+    if not my_public:
+        print("Error: Could not load chat key", file=sys.stderr)
+        return 1
+
+    # Find recipient public key from members
+    recipient_public_key = None
+    for member_file in Path(members_dir).glob("*.json"):
+        if member_file.name == ".gitkeep":
+            continue
+        try:
+            with open(member_file) as f:
+                member = json.load(f)
+                if member.get("name") == recipient:
+                    recipient_public_key = member.get("chat_public_key")
+                    break
+        except:
+            continue
+
+    if not recipient_public_key:
+        print(f"Error: Recipient {recipient} not found or has no chat key", file=sys.stderr)
+        return 1
+
+    my_name = get_my_name()
+
+    # Run migration if needed
+    migrate_legacy_messages(control_dir, members_dir, project)
+
+    # Encrypt message
+    encrypted = chat_crypto.encrypt_message(project, recipient_public_key, message)
+    if not encrypted:
+        print("Error: Failed to encrypt message", file=sys.stderr)
+        return 1
+
+    ciphertext, nonce = encrypted
+
+    # Create message
+    msg = {
+        "id": str(uuid.uuid4()),
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "from": my_name,
+        "to": recipient,
+        "enc": ciphertext,
+        "nonce": nonce
+    }
+
+    # Append to sender's outbox file
+    outbox_dir = get_outbox_dir(control_dir)
+    outbox_dir.mkdir(parents=True, exist_ok=True)
+    outbox_file = outbox_dir / f"{my_name}.jsonl"
+    with open(outbox_file, "a") as f:
+        f.write(json.dumps(msg) + "\n")
+
+    print(f"Message sent to {recipient}")
+    return 0
+
+def cmd_read(project, members_dir, control_dir, since=None, output_json=False):
+    """Read and decrypt messages from all outbox files"""
+    if not chat_crypto.is_available():
+        print("Error: PyNaCl not installed", file=sys.stderr)
+        return 1
+
+    if not chat_crypto.has_key(project):
+        print("Error: No chat key for this project.", file=sys.stderr)
+        return 1
+
+    # Run migration if needed
+    migrate_legacy_messages(control_dir, members_dir, project)
+
+    outbox_dir = get_outbox_dir(control_dir)
+    if not outbox_dir.exists() or not list(outbox_dir.glob("*.jsonl")):
+        if output_json:
+            print("[]")
+        else:
+            print("No messages")
+        return 0
+
+    my_name = get_my_name()
+
+    # Load member public keys
+    member_keys = {}
+    for member_file in Path(members_dir).glob("*.json"):
+        if member_file.name == ".gitkeep":
+            continue
+        try:
+            with open(member_file) as f:
+                member = json.load(f)
+                if member.get("chat_public_key"):
+                    member_keys[member.get("name")] = member.get("chat_public_key")
+        except:
+            continue
+
+    # Read all outbox messages
+    all_messages = read_all_outbox_messages(control_dir)
+
+    # Filter and decrypt
+    messages = []
+    for msg in all_messages:
+        # Filter: only messages to/from me
+        if msg.get("to") != my_name and msg.get("from") != my_name:
+            continue
+
+        # Filter by timestamp if specified
+        if since and msg.get("ts", "") <= since:
+            continue
+
+        # Determine whose key to use for decryption
+        if msg.get("from") == my_name:
+            # I sent this - use recipient key
+            other_key = member_keys.get(msg.get("to"))
+        else:
+            # I received this - use sender key
+            other_key = member_keys.get(msg.get("from"))
+
+        if not other_key:
+            msg["text"] = "[Cannot decrypt: missing key]"
+        else:
+            plaintext = chat_crypto.decrypt_message(
+                project, other_key, msg.get("enc", ""), msg.get("nonce", "")
+            )
+            if plaintext:
+                msg["text"] = plaintext
+            else:
+                msg["text"] = "[Decryption failed]"
+
+        messages.append(msg)
+
+    # Output
+    if output_json:
+        print(json.dumps(messages, indent=2))
+    else:
+        for msg in messages:
+            ts = msg.get("ts", "")[:19].replace("T", " ")
+            sender = "Me" if msg.get("from") == my_name else msg.get("from", "?")
+            text = msg.get("text", "[encrypted]")
+            print(f"[{ts}] {sender}: {text}")
+
+    return 0
+
+def cmd_list_members(members_dir, output_json=False):
+    """List members with chat keys"""
+    members = []
+    for member_file in Path(members_dir).glob("*.json"):
+        if member_file.name == ".gitkeep":
+            continue
+        try:
+            with open(member_file) as f:
+                member = json.load(f)
+                has_key = bool(member.get("chat_public_key"))
+                members.append({
+                    "name": member.get("name"),
+                    "display_name": member.get("display_name"),
+                    "has_chat_key": has_key,
+                    "fingerprint": member.get("chat_key_fingerprint")
+                })
+        except:
+            continue
+
+    if output_json:
+        print(json.dumps(members, indent=2))
+    else:
+        for m in members:
+            fingerprint = m["fingerprint"]
+            key_status = f"[{fingerprint}]" if m["has_chat_key"] else "[no key]"
+            display = m["display_name"] or m["name"]
+            print(f"  {display} {key_status}")
+
+    return 0
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", choices=["send", "read", "list-members"])
+    parser.add_argument("args", nargs="*")
+    parser.add_argument("--project", required=True)
+    parser.add_argument("--members-dir", required=True)
+    parser.add_argument("--control-dir", required=True)
+    parser.add_argument("--since")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--stdin-message", action="store_true")
+
+    args = parser.parse_args()
+
+    if args.command == "send":
+        if len(args.args) < 2 and not args.stdin_message:
+            print("Usage: send <to> <message>", file=sys.stderr)
+            sys.exit(1)
+        recipient = args.args[0]
+        if args.stdin_message:
+            message = sys.stdin.read().rstrip("\n")
+        else:
+            message = " ".join(args.args[1:])
+        sys.exit(cmd_send(args.project, recipient, message,
+                         args.members_dir, args.control_dir))
+    elif args.command == "read":
+        sys.exit(cmd_read(args.project, args.members_dir, args.control_dir,
+                         args.since, args.json))
+    elif args.command == "list-members":
+        sys.exit(cmd_list_members(args.members_dir, args.json))
+'
+
+main() {
+    local command=""
+    local project_name=""
+    local project_path_override=""
+    local output_json=false
+    local since=""
+    local no_push=false
+    local args=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project_name="$2"
+                shift 2
+                ;;
+            --path)
+                project_path_override="$2"
+                shift 2
+                ;;
+            -j|--json)
+                output_json=true
+                shift
+                ;;
+            --since)
+                since="$2"
+                shift 2
+                ;;
+            --no-push)
+                no_push=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            send|read|list-members)
+                command="$1"
+                shift
+                # Collect remaining args
+                args=("$@")
+                break
+                ;;
+            -*)
+                error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                error "Unknown command: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$command" ]]; then
+        error "No command specified"
+        usage
+        exit 1
+    fi
+
+    # Resolve project (use --path override if provided)
+    local resolved_project
+    local project_path
+
+    if [[ -n "$project_path_override" ]]; then
+        # Direct path provided - use it
+        project_path="$project_path_override"
+        resolved_project=$(basename "$project_path")
+    else
+        resolved_project=$(resolve_project "$project_name") || exit 1
+        project_path=$(get_project_path "$resolved_project")
+    fi
+
+    if [[ -z "$project_path" || ! -d "$project_path" ]]; then
+        error "Project path not found: $project_path"
+        exit 1
+    fi
+
+    local control_worktree="$project_path/.set-control"
+
+    # Check if set-control is initialized
+    if [[ ! -d "$control_worktree" ]]; then
+        error "set-control not initialized. Run 'set-control-init' first."
+        exit 1
+    fi
+
+    local members_dir="$control_worktree/members"
+
+    # Check for stdin message (send <to> -)
+    local stdin_message=false
+    if [[ "$command" == "send" && "${args[1]:-}" == "-" ]]; then
+        stdin_message=true
+        # Remove the "-" from args, keep only the recipient
+        args=("${args[0]}")
+    fi
+
+    # Build Python command
+    local py_args=()
+    py_args+=("--project" "$resolved_project")
+    py_args+=("--members-dir" "$members_dir")
+    py_args+=("--control-dir" "$control_worktree")
+
+    if [[ -n "$since" ]]; then
+        py_args+=("--since" "$since")
+    fi
+
+    if $output_json; then
+        py_args+=("--json")
+    fi
+
+    if $stdin_message; then
+        py_args+=("--stdin-message")
+    fi
+
+    # Export SCRIPT_DIR for Python
+    export SCRIPT_DIR
+
+    # Run Python with the embedded script
+    if $stdin_message; then
+        # Pipe stdin through to Python
+        python3 -c "$CHAT_CRYPTO_PY" "$command" "${args[@]}" "${py_args[@]}"
+    else
+        python3 -c "$CHAT_CRYPTO_PY" "$command" "${args[@]}" "${py_args[@]}"
+    fi
+    local exit_code=$?
+
+    # If send command succeeded and --no-push not set, commit and push
+    if [[ "$command" == "send" && $exit_code -eq 0 && "$no_push" == "false" ]]; then
+        # Commit the outbox changes
+        if git -C "$control_worktree" status --porcelain | grep -q "chat/outbox/"; then
+            git -C "$control_worktree" add chat/outbox/
+            git -C "$control_worktree" commit --amend -m "Chat update" --no-verify 2>/dev/null || \
+                git -C "$control_worktree" commit -m "Chat update" --no-verify 2>/dev/null
+
+            # Push (force with lease for amend)
+            git -C "$control_worktree" push --force-with-lease origin set-control 2>/dev/null || \
+                git -C "$control_worktree" push origin set-control 2>/dev/null || \
+                warn "Could not push chat message"
+        fi
+    fi
+
+    exit $exit_code
+}
+
+main "$@"

@@ -5,9 +5,9 @@ A single script `bin/wt-hook-memory` SHALL handle all memory hook events. It SHA
 
 #### Scenario: Daemon auto-start
 - **WHEN** `wt-hook-memory` is invoked for any event
-- **THEN** it SHALL attempt to start wt-memoryd via `wt-memoryd start` before processing
-- **AND** if daemon start succeeds, it SHALL skip the `wt-memory health` check
-- **AND** if daemon start fails (wt-memoryd not installed), it SHALL fall back to `wt-memory health`
+- **THEN** it SHALL attempt to start set-memoryd via `set-memoryd start` before processing
+- **AND** if daemon start succeeds, it SHALL skip the `set-memory health` check
+- **AND** if daemon start fails (set-memoryd not installed), it SHALL fall back to `set-memory health`
 
 #### Scenario: Session ID extraction without Python subprocess
 - **WHEN** `wt-hook-memory` reads the input JSON

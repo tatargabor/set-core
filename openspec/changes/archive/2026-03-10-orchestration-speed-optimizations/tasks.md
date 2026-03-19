@@ -17,4 +17,4 @@
 
 ## 4. Default max_parallel
 
-- [x] 4.1 Change `DEFAULT_MAX_PARALLEL=2` to `DEFAULT_MAX_PARALLEL=3` in `bin/wt-orchestrate`
+- [x] 4.1 Change `DEFAULT_MAX_PARALLEL=2` to `DEFAULT_MAX_PARALLEL=3` in `bin/set-orchestrate`

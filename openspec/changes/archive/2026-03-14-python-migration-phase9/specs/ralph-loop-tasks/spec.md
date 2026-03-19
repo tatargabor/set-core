@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/loop/tasks.sh` (235 LOC) to `lib/wt_orch/loop_tasks.py`. Task file discovery, completion checking, manual task detection, and done criteria.
+Migrate `lib/loop/tasks.sh` (235 LOC) to `lib/set_orch/loop_tasks.py`. Task file discovery, completion checking, manual task detection, and done criteria.
 
 ## Requirements
 

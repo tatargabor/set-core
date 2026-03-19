@@ -59,7 +59,7 @@ Single script with mode flag:
 ```
 
 Steps:
-1. Validate prerequisites: `node`, `npm`, `claude` CLI, `wt-memory` (modes B/C only)
+1. Validate prerequisites: `node`, `npm`, `claude` CLI, `set-memory` (modes B/C only)
 2. Create target directory, `git init`
 3. `npm init -y && npm install express better-sqlite3 nanoid`
 4. Copy `project-spec.md` to `docs/`
@@ -108,22 +108,22 @@ For Mode C only. Injects 6 perfectly-written convention memories:
 # pre-seed.sh — Inject convention memories for Mode C
 
 echo 'LogBook project convention: All list endpoints return {entries: [...], paging: {current: N, size: N, count: N, pages: N}}. Query params: ?page=1&size=20. Key names: entries (not data), paging (not pagination), current (not page), size (not limit), count (not total), pages (not totalPages).' \
-  | wt-memory remember --type Decision --tags "convention,pagination,api-format"
+  | set-memory remember --type Decision --tags "convention,pagination,api-format"
 
 echo 'LogBook project convention: All error responses use {fault: {reason: string, code: string, ts: string}}. Key: fault (not error), reason (not message). Error codes are SCREAMING_SNAKE. ts is ISO timestamp. Example: {fault: {reason: "Event not found", code: "EVT_NOT_FOUND", ts: "2026-02-17T10:30:00Z"}}' \
-  | wt-memory remember --type Decision --tags "convention,error-format,api-format"
+  | set-memory remember --type Decision --tags "convention,error-format,api-format"
 
 echo 'LogBook project convention: Soft-delete uses removedAt column (DATETIME, nullable). NOT deletedAt, NOT isDeleted. All queries filter WHERE removedAt IS NULL. Archive = set removedAt to now. Purge = hard DELETE where removedAt older than threshold.' \
-  | wt-memory remember --type Decision --tags "convention,soft-delete,database"
+  | set-memory remember --type Decision --tags "convention,soft-delete,database"
 
 echo 'LogBook project convention: All human-readable timestamps use fmtDate(date) from lib/fmt.js. Returns YYYY/MM/DD HH:mm (slash-separated, 24h, no seconds). Import: const {fmtDate} = require("./lib/fmt") or similar. Do NOT use toISOString(), toLocaleDateString(), dayjs, moment, or inline formatting.' \
-  | wt-memory remember --type Decision --tags "convention,date-format,utility"
+  | set-memory remember --type Decision --tags "convention,date-format,utility"
 
 echo 'LogBook project convention: All entity IDs use prefixed nanoid format. Events: evt_<nanoid(12)>, Categories: cat_<nanoid(12)>, Comments: cmt_<nanoid(12)>, Tags: tag_<nanoid(12)>, Batches: bat_<nanoid(12)>. Use nanoid package. Generate at insert time. Do NOT use auto-increment, UUID, CUID, or ULID.' \
-  | wt-memory remember --type Decision --tags "convention,id-format,database"
+  | set-memory remember --type Decision --tags "convention,id-format,database"
 
 echo 'LogBook project convention: ALL successful API responses include ok: true at the top level. Format: {ok: true, ...payload}. For lists: {ok: true, entries: [...], paging: {...}}. For single items: {ok: true, event: {...}}. For actions: {ok: true, archived: 5}. The ok field is always present and always true for 2xx responses.' \
-  | wt-memory remember --type Decision --tags "convention,response-format,api-format"
+  | set-memory remember --type Decision --tags "convention,response-format,api-format"
 
 echo "Pre-seeded 6 convention memories."
 ```
@@ -169,18 +169,18 @@ Same as baseline, plus:
 
 Before implementing, recall relevant project context:
 \`\`\`bash
-wt-memory recall "LogBook conventions" --limit 5 --mode hybrid
-wt-memory recall "project patterns API format" --limit 5 --mode semantic
+set-memory recall "LogBook conventions" --limit 5 --mode hybrid
+set-memory recall "project patterns API format" --limit 5 --mode semantic
 \`\`\`
 
 When you discover project conventions or patterns, save them:
 \`\`\`bash
-echo "<convention description>" | wt-memory remember --type Decision --tags "convention,<topic>"
+echo "<convention description>" | set-memory remember --type Decision --tags "convention,<topic>"
 \`\`\`
 
 After completing the change, save what you learned:
 \`\`\`bash
-echo "<insight>" | wt-memory remember --type Learning --tags "change:0N,<topic>"
+echo "<insight>" | set-memory remember --type Learning --tags "change:0N,<topic>"
 \`\`\`
 ```
 

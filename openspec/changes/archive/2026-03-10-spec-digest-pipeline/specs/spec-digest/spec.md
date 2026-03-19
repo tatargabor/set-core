@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: Directory spec input
-The system SHALL accept a directory path as spec input to `wt-orchestrate plan --spec <path>` and `wt-orchestrate digest --spec <path>`. When the path is a directory, the system SHALL discover all `.md` files recursively and treat them as a multi-file specification. The directory branch SHALL be added to `find_input()` in `lib/orchestration/utils.sh`.
+The system SHALL accept a directory path as spec input to `set-orchestrate plan --spec <path>` and `set-orchestrate digest --spec <path>`. When the path is a directory, the system SHALL discover all `.md` files recursively and treat them as a multi-file specification. The directory branch SHALL be added to `find_input()` in `lib/orchestration/utils.sh`.
 
 #### Scenario: Directory input resolves all markdown files
-- **WHEN** user runs `wt-orchestrate plan --spec docs/v1-project/`
+- **WHEN** user runs `set-orchestrate plan --spec docs/v1-project/`
 - **THEN** `find_input()` sets `INPUT_MODE="digest"` and `INPUT_PATH` to the absolute directory path
 
 #### Scenario: Single file input unchanged
-- **WHEN** user runs `wt-orchestrate plan --spec docs/v1.md`
+- **WHEN** user runs `set-orchestrate plan --spec docs/v1.md`
 - **THEN** the existing single-file flow is used (`INPUT_MODE="spec"`) with no digest phase
 - **AND** planner prompt construction, plan output schema, and downstream dispatch are unaffected
 
@@ -17,11 +17,11 @@ The system SHALL accept a directory path as spec input to `wt-orchestrate plan -
 - **THEN** the system identifies it as the master file and reads it first for structure context
 
 #### Scenario: Empty spec directory
-- **WHEN** user runs `wt-orchestrate digest --spec docs/empty-dir/` and the directory contains no `.md` files
+- **WHEN** user runs `set-orchestrate digest --spec docs/empty-dir/` and the directory contains no `.md` files
 - **THEN** the system exits with error: "No .md files found in <path>" and exit code 1
 
 #### Scenario: Non-existent path
-- **WHEN** user runs `wt-orchestrate digest --spec docs/nonexistent/`
+- **WHEN** user runs `set-orchestrate digest --spec docs/nonexistent/`
 - **THEN** the system exits with error: "Path not found: <path>" and exit code 1
 
 ### Requirement: Spec file classification
@@ -53,16 +53,16 @@ The digest SHALL classify each spec file into one of four categories: `conventio
 The system SHALL process a multi-file spec into a structured digest at `wt/orchestration/digest/`. The digest contains: `index.json` (file manifest with `spec_base_dir`), `conventions.json` (project-wide rules), `data-definitions.md` (entity/catalog summaries), `requirements.json` (behavioral requirements with IDs), `dependencies.json` (requirement cross-references), `coverage.json` (initially empty `{}`), `ambiguities.json` (detected spec issues), and `domains/*.md` (domain summaries).
 
 #### Scenario: Digest from directory spec
-- **WHEN** user runs `wt-orchestrate digest --spec docs/v1-project/`
+- **WHEN** user runs `set-orchestrate digest --spec docs/v1-project/`
 - **THEN** the system creates `wt/orchestration/digest/` with all eight output types (index.json, conventions.json, data-definitions.md, requirements.json, dependencies.json, coverage.json, ambiguities.json, domains/*.md)
 - **AND** `index.json` contains `spec_base_dir` (absolute path), `source_hash`, file list, file classifications, and timestamp
 
 #### Scenario: Digest from single file spec
-- **WHEN** user runs `wt-orchestrate digest --spec docs/v1.md`
+- **WHEN** user runs `set-orchestrate digest --spec docs/v1.md`
 - **THEN** the system creates a digest with one domain and treats the single file as the only spec source
 
 #### Scenario: Digest with dry-run
-- **WHEN** user runs `wt-orchestrate digest --spec docs/v1-project/ --dry-run`
+- **WHEN** user runs `set-orchestrate digest --spec docs/v1-project/ --dry-run`
 - **THEN** the system prints the digest output to stdout without writing files
 
 #### Scenario: Digest output uses JSON for structured data
@@ -142,7 +142,7 @@ When re-running digest on modified specs, the system SHALL preserve existing req
 #### Scenario: Section rename produces new ID
 - **WHEN** a user renames a spec section heading and re-runs digest
 - **THEN** the old requirement becomes `status: removed` and a new requirement with a new ID is created
-- **AND** `wt-orchestrate coverage` reports the orphaned coverage entry
+- **AND** `set-orchestrate coverage` reports the orphaned coverage entry
 
 ### Requirement: Domain grouping
 The digest SHALL group spec files into domains based on directory structure (if present) or topic similarity. Each domain produces a markdown summary. Domain count is not enforced — it follows the natural spec structure.
@@ -181,7 +181,7 @@ The system SHALL detect when the raw spec has changed since last digest by compa
 When the planner detects a directory input without an existing fresh digest, it SHALL automatically run the digest phase before planning.
 
 #### Scenario: Auto-digest on first plan
-- **WHEN** user runs `wt-orchestrate plan --spec docs/v1-project/` and no `wt/orchestration/digest/` exists
+- **WHEN** user runs `set-orchestrate plan --spec docs/v1-project/` and no `wt/orchestration/digest/` exists
 - **THEN** the system runs digest automatically, then proceeds with planning using the digest
 
 #### Scenario: Auto-digest skipped when digest exists and fresh
@@ -216,7 +216,7 @@ The digest SHALL identify underspecified, contradictory, or missing-reference is
 - **THEN** `ambiguities.json` contains an entry with `type: "contradictory"` listing both sources
 
 #### Scenario: Ambiguities shown in dry-run
-- **WHEN** user runs `wt-orchestrate digest --dry-run`
+- **WHEN** user runs `set-orchestrate digest --dry-run`
 - **THEN** detected ambiguities are printed to stdout in a human-readable format
 
 ### Requirement: Embedded behavioral rules in data files
@@ -233,7 +233,7 @@ The digest SHALL extract behavioral rules embedded in data-classified files as s
 - **AND** individual product entries (each coffee, each equipment) remain as data definitions only
 
 ### Requirement: Digest CLI error handling
-The `wt-orchestrate digest` command SHALL handle errors gracefully.
+The `set-orchestrate digest` command SHALL handle errors gracefully.
 
 #### Scenario: Write permission error
 - **WHEN** `wt/orchestration/digest/` cannot be created due to permissions

@@ -68,7 +68,7 @@ Previously, artifact generation (ff) and implementation (apply) ran in separate 
 |------|----------|------|
 | **Interactive** | `/opsx:new` → `/opsx:continue` → `/opsx:apply` → `/opsx:verify` → `/opsx:archive` | Developer working alone, step by step |
 | **Fast-forward** | `/opsx:ff` → `/opsx:apply` → `/opsx:archive` | Developer, but no time for step-by-step |
-| **Orchestrated** | Automatic — dispatcher and Ralph loop handle it | `wt-orchestrate start` |
+| **Orchestrated** | Automatic — dispatcher and Ralph loop handle it | `set-orchestrate start` |
 
 ## Traceability
 

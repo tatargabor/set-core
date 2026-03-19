@@ -7,7 +7,7 @@
 
 ## 2. CLAUDE.md auto-commit template
 
-- [x] 2.1 Add auto-commit snippet to `bin/wt-project` `deploy_wt_tools()` — after the memory section, add `## Auto-Commit After Apply` section with idempotent marker check (same pattern as `memory_marker`)
+- [x] 2.1 Add auto-commit snippet to `bin/set-project` `deploy_set_tools()` — after the memory section, add `## Auto-Commit After Apply` section with idempotent marker check (same pattern as `memory_marker`)
 
 ## 3. Apply skill commit step
 

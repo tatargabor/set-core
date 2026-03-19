@@ -107,13 +107,13 @@ class TestPermissionFlags:
     """Test get_claude_permission_flags() bash function."""
 
     def _run_bash(self, script: str) -> str:
-        """Run a bash snippet that sources wt-common.sh."""
+        """Run a bash snippet that sources set-common.sh."""
         full_script = f"""
         set -euo pipefail
-        export WT_CONFIG_DIR=$(mktemp -d)
-        source bin/wt-common.sh
+        export SET_CONFIG_DIR=$(mktemp -d)
+        source bin/set-common.sh
         {script}
-        rm -rf "$WT_CONFIG_DIR"
+        rm -rf "$SET_CONFIG_DIR"
         """
         result = subprocess.run(
             ["bash", "-c", full_script],

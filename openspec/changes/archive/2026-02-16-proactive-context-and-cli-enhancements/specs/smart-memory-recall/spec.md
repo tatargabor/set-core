@@ -17,19 +17,19 @@ The recall hook detects completed changes from git commit history (parsing `chan
 - **THEN** the hook falls back to prompt-based recall
 
 ### Requirement: Proactive context retrieval
-The recall hook SHALL use `wt-memory proactive` instead of `wt-memory recall` for memory retrieval. The proactive command provides relevance-scored results without requiring carefully crafted queries. The hook SHALL pass the current change context (change name, revision notes, and recent prompt summary) as the conversation context to `wt-memory proactive`.
+The recall hook SHALL use `set-memory proactive` instead of `set-memory recall` for memory retrieval. The proactive command provides relevance-scored results without requiring carefully crafted queries. The hook SHALL pass the current change context (change name, revision notes, and recent prompt summary) as the conversation context to `set-memory proactive`.
 
 #### Scenario: Hook uses proactive on change boundary
 - **WHEN** a change boundary is detected (new change differs from last-recall-change marker)
-- **THEN** the hook calls `wt-memory proactive "<change-context>" --limit 8` instead of `wt-memory recall`
+- **THEN** the hook calls `set-memory proactive "<change-context>" --limit 8` instead of `set-memory recall`
 
 #### Scenario: Proactive with revision change context
 - **WHEN** the current change is a revision change (e.g., stock-rethink revises shopping-cart)
 - **THEN** the proactive context includes both the current change name and the original change context (e.g., "stock-rethink: revising shopping-cart, focus on cart stock variant checkout")
 
 #### Scenario: Proactive command not available
-- **WHEN** `wt-memory proactive` is not available (old wt-memory version)
-- **THEN** the hook falls back to `wt-memory recall` with hybrid mode (current behavior preserved)
+- **WHEN** `set-memory proactive` is not available (old set-memory version)
+- **THEN** the hook falls back to `set-memory recall` with hybrid mode (current behavior preserved)
 
 ### Requirement: Actionable output format
 The recall output is formatted as a concise bulleted list with an instruction header, not raw memory JSON.
@@ -55,8 +55,8 @@ The recall output is formatted as a concise bulleted list with an instruction he
 - **THEN** memories with relevance_score < 0.3 SHALL be filtered out before formatting
 
 ### Requirement: Timeout safety
-The recall hook must complete within its 15-second timeout even if git log or wt-memory proactive is slow.
+The recall hook must complete within its 15-second timeout even if git log or set-memory proactive is slow.
 
-#### Scenario: wt-memory proactive hangs
-- **WHEN** wt-memory proactive takes >10 seconds
+#### Scenario: set-memory proactive hangs
+- **WHEN** set-memory proactive takes >10 seconds
 - **THEN** the hook exits silently (killed by Claude Code timeout)

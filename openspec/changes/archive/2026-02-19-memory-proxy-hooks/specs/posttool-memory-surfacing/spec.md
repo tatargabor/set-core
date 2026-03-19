@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: PostToolUse hook surfaces memory after every supported tool call
-A `PostToolUse` hook SHALL fire after successful execution of Read, Edit, Write, Bash, Task, and Grep tools. The hook SHALL extract a query from the tool's input/output and recall relevant memories via `wt-memory recall`, injecting results as `additionalContext`.
+A `PostToolUse` hook SHALL fire after successful execution of Read, Edit, Write, Bash, Task, and Grep tools. The hook SHALL extract a query from the tool's input/output and recall relevant memories via `set-memory recall`, injecting results as `additionalContext`.
 
 #### Scenario: After reading a file
 - **WHEN** Claude successfully reads `moldmaker/cnc/contour.py`
@@ -67,12 +67,12 @@ After successful Edit or Write tool calls, the hook SHALL create a memory record
 
 #### Scenario: After editing a file
 - **WHEN** PostToolUse fires for Edit of `bin/wt-hook-memory`
-- **THEN** the hook SHALL call `wt-memory remember --type Context --tags "file-access,<file_path>"` with a summary of the modification
+- **THEN** the hook SHALL call `set-memory remember --type Context --tags "file-access,<file_path>"` with a summary of the modification
 - **AND** the content SHALL include the file path and a brief description extracted from tool_input (old_string → new_string summary, truncated)
 
 #### Scenario: After writing a file
-- **WHEN** PostToolUse fires for Write of `bin/wt-memory-mcp-server.py`
-- **THEN** the hook SHALL call `wt-memory remember --type Context --tags "file-access,<file_path>"` recording the file creation
+- **WHEN** PostToolUse fires for Write of `bin/set-memory-mcp-server.py`
+- **THEN** the hook SHALL call `set-memory remember --type Context --tags "file-access,<file_path>"` recording the file creation
 
 #### Scenario: Read does NOT create FileAccess
 - **WHEN** PostToolUse fires for Read
@@ -84,7 +84,7 @@ After successful Bash tool calls that contain error-like output (stderr, warning
 #### Scenario: Bash command with error in output
 - **WHEN** PostToolUse fires for Bash
 - **AND** the tool_output contains "error", "Error", "failed", "FAILED", or "warning"
-- **THEN** the hook SHALL call `wt-memory remember --type Learning --tags "error,bash"` with the command and error excerpt
+- **THEN** the hook SHALL call `set-memory remember --type Learning --tags "error,bash"` with the command and error excerpt
 - **AND** the content SHALL be truncated to 300 characters
 
 #### Scenario: Bash command with clean output

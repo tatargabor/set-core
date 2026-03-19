@@ -1,4 +1,4 @@
-**Dependencies:** Groups 1-2 (bridge.sh) must precede groups 3-4 (Python integration) and 7.2-7.5 (tests). Group 6 (wt-project-web) is independent. Task 7.1 (fixture creation) can precede groups 1-2.
+**Dependencies:** Groups 1-2 (bridge.sh) must precede groups 3-4 (Python integration) and 7.2-7.5 (tests). Group 6 (set-project-web) is independent. Task 7.1 (fixture creation) can precede groups 1-2.
 
 ## 1. Source File Discovery & Matching (bridge.sh)
 
@@ -35,10 +35,10 @@
 - [x] 5.3 Add layout pattern extraction — find grid/flex container patterns with specific classes, report key layout structures
 - [x] 5.4 Append "Component Structure" subsection to review output — all items reported as [WARNING] severity
 
-## 6. wt-project-web Rule Updates
+## 6. set-project-web Rule Updates
 
-- [x] 6.1 Update `wt-project-web/templates/nextjs/rules/design-integration.md` — add "## Figma Source Files" section: when `docs/figma-raw/*/sources/` exists, agents MUST read matched source files before implementing; source files are ground-truth for component structure, icon usage, data model fields, and layout patterns
-- [x] 6.2 Update `wt-project-web/templates/nextjs/rules/ui-conventions.md` — add note under Icons section: when design source files specify particular icons (e.g., `ShoppingBag` for cart), use those exact icons; design source files override generic conventions
+- [x] 6.1 Update `set-project-web/templates/nextjs/rules/design-integration.md` — add "## Figma Source Files" section: when `docs/figma-raw/*/sources/` exists, agents MUST read matched source files before implementing; source files are ground-truth for component structure, icon usage, data model fields, and layout patterns
+- [x] 6.2 Update `set-project-web/templates/nextjs/rules/ui-conventions.md` — add note under Icons section: when design source files specify particular icons (e.g., `ShoppingBag` for cart), use those exact icons; design source files override generic conventions
 
 ## 7. Testing
 

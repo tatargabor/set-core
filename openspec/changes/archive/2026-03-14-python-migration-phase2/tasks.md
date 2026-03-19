@@ -36,23 +36,23 @@
 
 ## 6. Notifications & Hooks
 
-- [x] 6.1 Create `lib/wt_orch/notifications.py` with `send_notification(title, body, urgency, channels)` — desktop via notify-send subprocess, email via Resend API
+- [x] 6.1 Create `lib/set_orch/notifications.py` with `send_notification(title, body, urgency, channels)` — desktop via notify-send subprocess, email via Resend API
 - [x] 6.2 Add `run_hook(hook_name, hook_script, change_name, status, wt_path, event_bus=None)` to state.py — execute script, capture stderr, return bool, emit HOOK_BLOCKED on failure
 - [x] 6.3 Add tests for notifications (mock subprocess/requests) and hook runner (mock script execution)
 
 ## 7. CLI Bridge Subcommands
 
-- [x] 7.1 Add `wt-orch-core state update-field` subcommand
-- [x] 7.2 Add `wt-orch-core state update-change` subcommand
-- [x] 7.3 Add `wt-orch-core state get-status` and `count-by-status` subcommands
-- [x] 7.4 Add `wt-orch-core state deps-satisfied` and `cascade-failed` subcommands
-- [x] 7.5 Add `wt-orch-core state topo-sort` subcommand
-- [x] 7.6 Add `wt-orch-core state advance-phase` and `reconstruct` subcommands
+- [x] 7.1 Add `set-orch-core state update-field` subcommand
+- [x] 7.2 Add `set-orch-core state update-change` subcommand
+- [x] 7.3 Add `set-orch-core state get-status` and `count-by-status` subcommands
+- [x] 7.4 Add `set-orch-core state deps-satisfied` and `cascade-failed` subcommands
+- [x] 7.5 Add `set-orch-core state topo-sort` subcommand
+- [x] 7.6 Add `set-orch-core state advance-phase` and `reconstruct` subcommands
 - [x] 7.7 Add CLI integration tests verifying subcommand exit codes and output format
 
 ## 8. Bash Wrapper Migration
 
-- [x] 8.1 Replace `state.sh` mutation functions with `wt-orch-core state` calls (update_state_field, update_change_field, get_change_status, get_changes_by_status, count_changes_by_status)
+- [x] 8.1 Replace `state.sh` mutation functions with `set-orch-core state` calls (update_state_field, update_change_field, get_change_status, get_changes_by_status, count_changes_by_status)
 - [x] 8.2 Replace `state.sh` dependency functions with CLI calls (deps_satisfied, deps_failed, cascade_failed_deps, topological_sort)
 - [x] 8.3 Replace `state.sh` phase functions with CLI calls (apply_phase_overrides, _init_phase_state, all_phase_changes_terminal, advance_phase)
 - [x] 8.4 Replace `state.sh` reconstruct_state_from_events with CLI call

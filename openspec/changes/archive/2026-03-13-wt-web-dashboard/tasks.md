@@ -1,8 +1,8 @@
 ## 1. Python Backend — API Foundation
 
 - [x] 1.1 Add `fastapi`, `uvicorn[standard]`, `watchfiles` to pyproject.toml dependencies
-- [x] 1.2 Create `lib/wt_orch/server.py` — FastAPI app factory with CORS, lifespan handler, and static file mount for `web/dist/`
-- [x] 1.3 Create `lib/wt_orch/api.py` — read endpoints: `GET /api/projects` (read projects.json), `GET /api/{project}/state`, `GET /api/{project}/changes`, `GET /api/{project}/changes/{name}`, `GET /api/{project}/worktrees`, `GET /api/{project}/activity`, `GET /api/{project}/log`
+- [x] 1.2 Create `lib/set_orch/server.py` — FastAPI app factory with CORS, lifespan handler, and static file mount for `web/dist/`
+- [x] 1.3 Create `lib/set_orch/api.py` — read endpoints: `GET /api/projects` (read projects.json), `GET /api/{project}/state`, `GET /api/{project}/changes`, `GET /api/{project}/changes/{name}`, `GET /api/{project}/worktrees`, `GET /api/{project}/activity`, `GET /api/{project}/log`
 - [x] 1.4 Add project resolution helper — map project name to path via projects.json, validate path exists, return 404 for unknown projects
 - [x] 1.5 Add worktree enrichment — for each worktree, read `loop-state.json` for iteration data and `.claude/activity.json` for agent activity
 
@@ -10,13 +10,13 @@
 
 - [x] 2.1 Add flock-based state locking helper in `api.py` — async wrapper around fcntl.flock compatible with bash `with_state_lock`, with 10s timeout returning 503
 - [x] 2.2 Add `POST /api/{project}/approve` — acquire flock, load state, verify checkpoint status, mark approved with timestamp, save atomically
-- [x] 2.3 Add `POST /api/{project}/stop` — read orchestrator PID from state, call `safe_kill()` with "wt-orchestrate" pattern, update state to "stopped"
+- [x] 2.3 Add `POST /api/{project}/stop` — read orchestrator PID from state, call `safe_kill()` with "set-orchestrate" pattern, update state to "stopped"
 - [x] 2.4 Add `POST /api/{project}/changes/{name}/stop` — read ralph_pid for the change, call `safe_kill()` with "wt-loop" pattern, update change status
 - [x] 2.5 Add `POST /api/{project}/changes/{name}/skip` — acquire flock, set change status to "skipped", save atomically
 
 ## 3. Python Backend — WebSocket & File Watching
 
-- [x] 3.1 Create `lib/wt_orch/watcher.py` — async file watcher using `watchfiles.awatch()` for state.json, orchestration.log, and worktree loop-state.json files per project
+- [x] 3.1 Create `lib/set_orch/watcher.py` — async file watcher using `watchfiles.awatch()` for state.json, orchestration.log, and worktree loop-state.json files per project
 - [x] 3.2 Add WebSocket connection manager — track connected clients per project, handle connect/disconnect/broadcast
 - [x] 3.3 Add `WS /ws/{project}/stream` endpoint — on connect send full state; on file change push `state_update`, `log_lines`, `checkpoint_pending`, or `error` events as JSON
 - [x] 3.4 Implement log tail streaming — track file offset per connection, send only new lines on change (same approach as TUI `StateReader.read_log()`)
@@ -24,9 +24,9 @@
 
 ## 4. CLI Integration
 
-- [x] 4.1 Add `serve` subcommand to `lib/wt_orch/cli.py` — argparse with `--port` (default 7400, env `WT_WEB_PORT`) and `--host` (default 127.0.0.1), imports and starts uvicorn
+- [x] 4.1 Add `serve` subcommand to `lib/set_orch/cli.py` — argparse with `--port` (default 7400, env `WT_WEB_PORT`) and `--host` (default 127.0.0.1), imports and starts uvicorn
 - [x] 4.2 Add graceful shutdown handler — catch SIGTERM, close WebSocket connections, stop watchers, exit cleanly within 5s
-- [x] 4.3 Create systemd user service file `templates/systemd/wt-web.service` — ExecStart pointing to wt-orch-core serve, Restart=always, RestartSec=5
+- [x] 4.3 Create systemd user service file `templates/systemd/wt-web.service` — ExecStart pointing to set-orch-core serve, Restart=always, RestartSec=5
 - [x] 4.4 Update `install.sh` — copy service file to `~/.config/systemd/user/`, run daemon-reload, enable and start service (skip if no systemd)
 
 ## 5. Frontend — Vite + React SPA Setup

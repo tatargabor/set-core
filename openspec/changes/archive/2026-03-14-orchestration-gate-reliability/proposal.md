@@ -36,5 +36,5 @@ The orchestration quality gate pipeline has several reliability issues discovere
 - **lib/orchestration/monitor.sh**: Self-watchdog logic, "done" safety net addition
 - **lib/orchestration/merger.sh**: Merge timeout wrapper, smoke dev server auto-start
 - **lib/orchestration/utils.sh**: New `smoke_dev_server_command` directive parsing
-- **bin/wt-orchestrate**: `DEFAULT_REVIEW_MODEL` change (1 line)
+- **bin/set-orchestrate**: `DEFAULT_REVIEW_MODEL` change (1 line)
 - **docs/howitworks/en/07-quality-gates.md**: Documentation updates for new behavior

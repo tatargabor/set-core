@@ -2,11 +2,11 @@
 
 ## What Is Orchestration?
 
-`wt-orchestrate` is an autonomous orchestration system that independently plans, executes, and verifies development tasks starting from a software specification. The entire process begins with a single command:
+`set-orchestrate` is an autonomous orchestration system that independently plans, executes, and verifies development tasks starting from a software specification. The entire process begins with a single command:
 
 ```bash
-wt-orchestrate --spec docs/v3.md plan
-wt-orchestrate start
+set-orchestrate --spec docs/v3.md plan
+set-orchestrate start
 ```
 
 The system then:
@@ -40,10 +40,10 @@ L1 and L2 are the "thinking" phase: the system understands the task and plans th
 
 ## Modular Architecture
 
-`wt-orchestrate` has a single entry point (`bin/wt-orchestrate`), but the implementation is split across 14 source modules under `lib/orchestration/`:
+`set-orchestrate` has a single entry point (`bin/set-orchestrate`), but the implementation is split across 14 source modules under `lib/orchestration/`:
 
 ```
-bin/wt-orchestrate          ← entry point, CLI parsing
+bin/set-orchestrate          ← entry point, CLI parsing
 lib/orchestration/
 ├── events.sh               ← JSONL event log
 ├── config.sh               ← configuration resolution

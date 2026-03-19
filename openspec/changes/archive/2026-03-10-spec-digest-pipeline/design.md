@@ -9,7 +9,7 @@ The pipeline is bash-based (planner.sh, dispatcher.sh, utils.sh) with Claude API
 ## Goals / Non-Goals
 
 **Goals:**
-- Multi-file spec input: `wt-orchestrate plan --spec docs/` accepts a directory
+- Multi-file spec input: `set-orchestrate plan --spec docs/` accepts a directory
 - Structured digest output: requirements with IDs, domain summaries, cross-reference map
 - Coverage tracking: every requirement mapped to a change, gaps detectable
 - Spec context in worktrees: agents read original spec files during implementation
@@ -33,7 +33,7 @@ raw spec (user) → digest → plan → dispatch → execute
 
 **Why not inline in planner?** The planner prompt is already large (~800 lines in planner.sh). Adding multi-file reading, subagent coordination, and requirement extraction would make it unmanageable. A separate phase also lets the user inspect and edit the digest before planning.
 
-**Trigger:** Both explicit (`wt-orchestrate digest --spec docs/`) and automatic (planner detects directory input without existing digest → runs digest first). The auto-trigger checks `wt/orchestration/digest/index.json` — if it exists and its `source_hash` matches current spec, skip re-digest.
+**Trigger:** Both explicit (`set-orchestrate digest --spec docs/`) and automatic (planner detects directory input without existing digest → runs digest first). The auto-trigger checks `wt/orchestration/digest/index.json` — if it exists and its `source_hash` matches current spec, skip re-digest.
 
 **Single-file input:** If `--spec` resolves to a single file, `cmd_digest` treats it as a single-domain spec (one file = one domain) and proceeds normally. This lets users pre-generate a digest for any spec size.
 
@@ -217,7 +217,7 @@ plan phase:     populate_coverage() fills coverage.json (requirement → change 
 dispatch phase: update_coverage_status() → dispatched (in dispatcher.sh)
 running phase:  update_coverage_status() → running (in monitor.sh)
 merge phase:    update_coverage_status() → merged (in merge handler)
-completion:     wt-orchestrate coverage shows full report
+completion:     set-orchestrate coverage shows full report
 ```
 
 ```json
@@ -254,7 +254,7 @@ When re-running digest on modified specs, the system must preserve existing requ
 5. If removed (existing ID not in new output) → keep in requirements.json with `"status": "removed"`
 6. Write updated requirements.json with stable IDs
 
-**Limitation:** If a user renames a spec section heading, the match fails and a new ID is generated. The old ID becomes `status: removed` and coverage.json retains an orphan reference. This is acceptable — the `wt-orchestrate coverage` report shows orphaned requirements so the user can manually reconcile.
+**Limitation:** If a user renames a spec section heading, the match fails and a new ID is generated. The old ID becomes `status: removed` and coverage.json retains an orphan reference. This is acceptable — the `set-orchestrate coverage` report shows orphaned requirements so the user can manually reconcile.
 
 ### D9: Spec file classification
 
@@ -351,7 +351,7 @@ The digest agent SHALL identify underspecified, contradictory, or ambiguous requ
 - `missing_reference` — one file references a behavior/template/entity that doesn't exist in the referenced file
 - `implicit_assumption` — behavior depends on an undeclared dependency
 
-**Usage:** The planner includes `ambiguities.json` in its prompt, allowing it to make explicit decisions for ambiguous cases or flag them for human review. `wt-orchestrate digest --dry-run` shows ambiguities to the user before committing.
+**Usage:** The planner includes `ambiguities.json` in its prompt, allowing it to make explicit decisions for ambiguous cases or flag them for human review. `set-orchestrate digest --dry-run` shows ambiguities to the user before committing.
 
 ### D13: Embedded behavioral rules in data files
 
@@ -369,7 +369,7 @@ This is critical because without it, the gift card mechanics in merch.md or the 
 ## Risks / Trade-offs
 
 **[Risk] Digest quality depends on Claude's requirement extraction accuracy**
-→ Mitigation: The digest is human-reviewable (MD + YAML). User can edit requirements.json before planning. `wt-orchestrate digest --dry-run` shows what would be generated without writing.
+→ Mitigation: The digest is human-reviewable (MD + YAML). User can edit requirements.json before planning. `set-orchestrate digest --dry-run` shows what would be generated without writing.
 
 **[Risk] Stale digest after spec edits**
 → Mitigation: `index.json` stores `source_hash` (SHA256 of all spec files concatenated). Planner checks hash match — if stale, auto-re-digests or warns.
@@ -381,7 +381,7 @@ This is critical because without it, the gift card mechanics in merch.md or the 
 → Mitigation: For now, specs up to ~5000 lines (~50K tokens) work in one call. If exceeded, fall back to summarize-per-file approach (each file summarized individually, then merged). The D6 subagent approach is the escape hatch if this isn't enough.
 
 **[Risk] Spec section renames break ID matching on re-digest**
-→ Mitigation: Re-digest match is by `source` + `source_section`. If a user renames a section, old ID becomes `status: removed` and a new ID is generated. `wt-orchestrate coverage` reports orphaned coverage entries so the user can reconcile. No silent data loss — just a warning.
+→ Mitigation: Re-digest match is by `source` + `source_section`. If a user renames a section, old ID becomes `status: removed` and a new ID is generated. `set-orchestrate coverage` reports orphaned coverage entries so the user can reconcile. No silent data loss — just a warning.
 
 **[Trade-off] Extra step in pipeline**
 → The digest adds ~30-60 seconds to the orchestration start. Acceptable given it saves hours of agent misdirection from lost spec context.

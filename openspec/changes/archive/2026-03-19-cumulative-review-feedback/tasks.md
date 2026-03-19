@@ -2,9 +2,9 @@
 
 ## Group 1: State helpers
 
-- [x] 1. Add `_append_review_history()` helper to `lib/wt_orch/verifier.py` — appends a dict entry to `change.extras["review_history"]` using `locked_state` [REQ: REQ-CRF-01]
-- [x] 2. Add `_get_review_history()` helper to `lib/wt_orch/verifier.py` — reads `change.extras.get("review_history", [])` from state [REQ: REQ-CRF-02]
-- [x] 3. Add `_capture_retry_diff()` to `lib/wt_orch/verifier.py` — runs `git diff --stat HEAD~1` in worktree, returns truncated string or None [REQ: REQ-CRF-03]
+- [x] 1. Add `_append_review_history()` helper to `lib/set_orch/verifier.py` — appends a dict entry to `change.extras["review_history"]` using `locked_state` [REQ: REQ-CRF-01]
+- [x] 2. Add `_get_review_history()` helper to `lib/set_orch/verifier.py` — reads `change.extras.get("review_history", [])` from state [REQ: REQ-CRF-02]
+- [x] 3. Add `_capture_retry_diff()` to `lib/set_orch/verifier.py` — runs `git diff --stat HEAD~1` in worktree, returns truncated string or None [REQ: REQ-CRF-03]
 
 ## Group 2: Write side — append history on CRITICAL review
 

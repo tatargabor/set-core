@@ -1,0 +1,496 @@
+#!/usr/bin/env bash
+# set-manual - Interact with manual/human tasks in orchestrated changes
+#
+# When Ralph encounters [?] tasks (manual/human tasks), it pauses with
+# status "waiting:human". This CLI lets the user see what's needed,
+# provide input, confirm completion, and resume the agent.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+STATE_FILENAME="orchestration-state.json"
+PLAN_FILENAME="orchestration-plan.json"
+
+# ─── Helpers ──────────────────────────────────────────────────────────
+
+# Find worktree path for a change (from orchestration state or by worktree name)
+find_change_worktree() {
+    local change_name="$1"
+
+    # Try orchestration state first
+    if [[ -f "$STATE_FILENAME" ]]; then
+        local wt_path
+        wt_path=$(jq -r --arg n "$change_name" \
+            '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME" 2>/dev/null)
+        if [[ -n "$wt_path" && -d "$wt_path" ]]; then
+            echo "$wt_path"
+            return 0
+        fi
+    fi
+
+    # Fallback: search worktrees by name pattern
+    local git_root
+    git_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+    local worktree_base="$git_root/.claude/worktrees"
+
+    if [[ -d "$worktree_base" ]]; then
+        local found
+        found=$(find "$worktree_base" -maxdepth 1 -type d -name "*${change_name}*" 2>/dev/null | head -1)
+        if [[ -n "$found" && -d "$found" ]]; then
+            echo "$found"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+# Find tasks.md in a worktree (same logic as set-loop)
+find_tasks_file() {
+    local wt_path="$1"
+
+    if [[ -f "$wt_path/tasks.md" ]]; then
+        echo "$wt_path/tasks.md"
+        return
+    fi
+
+    local found
+    found=$(find "$wt_path" -maxdepth 3 -name "tasks.md" -type f \
+        ! -path "*/archive/*" ! -path "*/node_modules/*" 2>/dev/null | head -1)
+    if [[ -n "$found" ]]; then
+        echo "$found"
+        return
+    fi
+
+    return 1
+}
+
+# Parse [?] tasks from tasks.md into display format
+parse_manual_tasks_from_file() {
+    local tasks_file="$1"
+
+    grep -nE '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null | while IFS= read -r line; do
+        local lineno="${line%%:*}"
+        local content="${line#*:}"
+        # Strip leading whitespace and checkbox
+        content=$(echo "$content" | sed 's/^\s*-\s*\[?\]\s*//')
+        echo "$lineno|$content"
+    done
+}
+
+# Extract ### Manual: section for a task id from tasks.md
+extract_manual_section() {
+    local tasks_file="$1"
+    local task_id="$2"
+
+    # Look for ### Manual: <task_id> — or ### Manual: <task_id> -
+    local in_section=false
+    local found=false
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^###[[:space:]]+Manual:[[:space:]]+$task_id ]]; then
+            in_section=true
+            found=true
+            continue
+        fi
+        if $in_section; then
+            # End on next ## or ### header
+            if [[ "$line" =~ ^##[[:space:]] ]]; then
+                break
+            fi
+            echo "$line"
+        fi
+    done < "$tasks_file"
+
+    $found
+}
+
+# Count pending [?] tasks
+count_pending_manual() {
+    local tasks_file="$1"
+    local count
+    count=$(grep -cE '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null || true)
+    echo "${count:-0}"
+}
+
+# ─── Subcommands ──────────────────────────────────────────────────────
+
+cmd_list() {
+    echo ""
+    info "═══ Changes Waiting for Manual Input ═══"
+    echo ""
+
+    local found=false
+
+    # Check orchestration state
+    if [[ -f "$STATE_FILENAME" ]]; then
+        local waiting_changes
+        waiting_changes=$(jq -r '.changes[] | select(.status == "waiting:human") | .name' "$STATE_FILENAME" 2>/dev/null)
+
+        if [[ -n "$waiting_changes" ]]; then
+            while IFS= read -r name; do
+                [[ -z "$name" ]] && continue
+                found=true
+
+                local wt_path
+                wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
+
+                local manual_count=0
+                local first_task=""
+                if [[ -n "$wt_path" && -f "$wt_path/.set/loop-state.json" ]]; then
+                    manual_count=$(jq -r '.manual_tasks | length // 0' "$wt_path/.set/loop-state.json" 2>/dev/null)
+                    first_task=$(jq -r '.manual_tasks[0]? | "[\(.id)] \(.description)"' "$wt_path/.set/loop-state.json" 2>/dev/null)
+                    local waiting_since
+                    waiting_since=$(jq -r '.waiting_since // empty' "$wt_path/.set/loop-state.json" 2>/dev/null)
+                    if [[ -n "$waiting_since" ]]; then
+                        local ws_epoch now_epoch elapsed
+                        ws_epoch=$(date -d "$waiting_since" +%s 2>/dev/null || echo 0)
+                        now_epoch=$(date +%s)
+                        elapsed=$(( (now_epoch - ws_epoch) / 60 ))
+                        echo "  $name  ⏸ ${manual_count} manual task(s) — waiting ${elapsed}m"
+                    else
+                        echo "  $name  ⏸ ${manual_count} manual task(s)"
+                    fi
+                else
+                    echo "  $name  ⏸ (details unavailable)"
+                fi
+                [[ -n "$first_task" && "$first_task" != "null" ]] && echo "    → $first_task"
+            done <<< "$waiting_changes"
+        fi
+    fi
+
+    # Also scan worktrees for standalone (non-orchestrated) waiting:human loops
+    local git_root
+    git_root=$(git rev-parse --show-toplevel 2>/dev/null) || true
+    if [[ -n "$git_root" && -d "$git_root/.claude/worktrees" ]]; then
+        for wt_dir in "$git_root/.claude/worktrees"/*/; do
+            [[ -d "$wt_dir" ]] || continue
+            local ls_file="$wt_dir.set/loop-state.json"
+            [[ -f "$ls_file" ]] || continue
+
+            local ls_status
+            ls_status=$(jq -r '.status // ""' "$ls_file" 2>/dev/null)
+            if [[ "$ls_status" == "waiting:human" ]]; then
+                local wt_name
+                wt_name=$(basename "$wt_dir")
+                # Skip if already shown from orchestration state
+                if [[ -f "$STATE_FILENAME" ]]; then
+                    local in_orch
+                    in_orch=$(jq -r --arg n "$wt_name" '.changes[] | select(.name == $n) | .name // empty' "$STATE_FILENAME" 2>/dev/null)
+                    [[ -n "$in_orch" ]] && continue
+                fi
+
+                found=true
+                local mc
+                mc=$(jq -r '.manual_tasks | length // 0' "$ls_file" 2>/dev/null)
+                echo "  $wt_name  ⏸ ${mc} manual task(s) (standalone)"
+            fi
+        done
+    fi
+
+    if ! $found; then
+        echo "  No changes waiting for manual input."
+    fi
+    echo ""
+}
+
+cmd_show() {
+    local change_name="${1:-}"
+    if [[ -z "$change_name" ]]; then
+        error "Usage: set-manual show <change-name>"
+        return 1
+    fi
+
+    local wt_path
+    wt_path=$(find_change_worktree "$change_name") || {
+        error "Could not find worktree for change '$change_name'"
+        return 1
+    }
+
+    local tasks_file
+    tasks_file=$(find_tasks_file "$wt_path") || {
+        error "No tasks.md found in $wt_path"
+        return 1
+    }
+
+    echo ""
+    info "═══ Manual Tasks: $change_name ═══"
+    echo ""
+    echo "  Worktree: $wt_path"
+    echo ""
+
+    local has_tasks=false
+
+    while IFS='|' read -r lineno content; do
+        [[ -z "$lineno" ]] && continue
+        has_tasks=true
+
+        # Extract task id
+        local task_id=""
+        local task_type="confirm"
+        local input_key=""
+        local description="$content"
+
+        if [[ "$content" =~ ^([0-9]+\.[0-9]+)[[:space:]]+(.*) ]]; then
+            task_id="${BASH_REMATCH[1]}"
+            description="${BASH_REMATCH[2]}"
+        fi
+
+        # Extract type annotation
+        if [[ "$description" =~ \[input:([^\]]+)\] ]]; then
+            task_type="input"
+            input_key="${BASH_REMATCH[1]}"
+            description="${description% \[input:*}"
+        elif [[ "$description" =~ \[confirm\] ]]; then
+            task_type="confirm"
+            description="${description% \[confirm\]}"
+        fi
+
+        echo "  ┌─ Task $task_id ($task_type) ────────────────────────────"
+        echo "  │ $description"
+        if [[ "$task_type" == "input" ]]; then
+            echo "  │ Input: $input_key"
+        fi
+
+        # Show ### Manual: instructions if available
+        local instructions
+        instructions=$(extract_manual_section "$tasks_file" "$task_id" 2>/dev/null)
+        if [[ -n "$instructions" ]]; then
+            echo "  │"
+            while IFS= read -r iline; do
+                echo "  │ $iline"
+            done <<< "$instructions"
+        fi
+
+        echo "  │"
+        if [[ "$task_type" == "input" ]]; then
+            echo "  │ → set-manual input $change_name $input_key \"<value>\""
+        else
+            echo "  │ → set-manual done $change_name $task_id"
+        fi
+        echo "  └──────────────────────────────────────────────────────"
+        echo ""
+
+    done < <(parse_manual_tasks_from_file "$tasks_file")
+
+    if ! $has_tasks; then
+        echo "  No pending manual tasks."
+    else
+        echo "  After resolving all tasks: set-manual resume $change_name"
+    fi
+    echo ""
+}
+
+cmd_input() {
+    local change_name="${1:-}"
+    local key="${2:-}"
+    local value="${3:-}"
+
+    if [[ -z "$change_name" || -z "$key" || -z "$value" ]]; then
+        error "Usage: set-manual input <change-name> <KEY> <value>"
+        return 1
+    fi
+
+    local wt_path
+    wt_path=$(find_change_worktree "$change_name") || {
+        error "Could not find worktree for change '$change_name'"
+        return 1
+    }
+
+    local env_file="$wt_path/.env.local"
+
+    # Write or update key in .env.local
+    if [[ -f "$env_file" ]] && grep -q "^${key}=" "$env_file" 2>/dev/null; then
+        # Update existing key
+        sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+        success "Updated $key in $env_file"
+    else
+        # Append new key
+        echo "${key}=${value}" >> "$env_file"
+        success "Added $key to $env_file"
+    fi
+
+    # Find and mark the corresponding [?] task as [x] in tasks.md
+    local tasks_file
+    tasks_file=$(find_tasks_file "$wt_path") || {
+        warn "No tasks.md found — input saved but task not marked complete"
+        return 0
+    }
+
+    # Find the line with [?] and [input:KEY]
+    local matched=false
+    local tmp_file="${tasks_file}.tmp"
+    while IFS= read -r line; do
+        if [[ "$matched" == "false" && "$line" =~ ^\s*-\s*\[\?\].*\[input:${key}\] ]]; then
+            # Replace [?] with [x]
+            echo "$line" | sed 's/\[\?\]/[x]/' >> "$tmp_file"
+            matched=true
+        else
+            echo "$line" >> "$tmp_file"
+        fi
+    done < "$tasks_file"
+    mv "$tmp_file" "$tasks_file"
+
+    if [[ "$matched" == "true" ]]; then
+        success "Task marked complete: [input:$key]"
+    else
+        warn "No [?] task found with [input:$key] — input saved but no task marked"
+    fi
+}
+
+cmd_done() {
+    local change_name="${1:-}"
+    local task_id="${2:-}"
+
+    if [[ -z "$change_name" || -z "$task_id" ]]; then
+        error "Usage: set-manual done <change-name> <task-id>"
+        return 1
+    fi
+
+    local wt_path
+    wt_path=$(find_change_worktree "$change_name") || {
+        error "Could not find worktree for change '$change_name'"
+        return 1
+    }
+
+    local tasks_file
+    tasks_file=$(find_tasks_file "$wt_path") || {
+        error "No tasks.md found in $wt_path"
+        return 1
+    }
+
+    # Find the [?] task with matching task id and mark [x]
+    local matched=false
+    local tmp_file="${tasks_file}.tmp"
+    while IFS= read -r line; do
+        if [[ "$matched" == "false" && "$line" =~ ^\s*-\s*\[\?\]\s+${task_id}[[:space:]] ]]; then
+            echo "$line" | sed 's/\[\?\]/[x]/' >> "$tmp_file"
+            matched=true
+        else
+            echo "$line" >> "$tmp_file"
+        fi
+    done < "$tasks_file"
+    mv "$tmp_file" "$tasks_file"
+
+    if [[ "$matched" == "true" ]]; then
+        success "Task $task_id marked complete"
+    else
+        error "No pending [?] task found with id '$task_id'"
+        echo "  Available manual tasks:"
+        grep -E '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null | while IFS= read -r line; do
+            echo "    $line"
+        done
+        return 1
+    fi
+}
+
+cmd_resume() {
+    local change_name="${1:-}"
+
+    if [[ -z "$change_name" ]]; then
+        error "Usage: set-manual resume <change-name>"
+        return 1
+    fi
+
+    local wt_path
+    wt_path=$(find_change_worktree "$change_name") || {
+        error "Could not find worktree for change '$change_name'"
+        return 1
+    }
+
+    local tasks_file
+    tasks_file=$(find_tasks_file "$wt_path") || {
+        error "No tasks.md found in $wt_path"
+        return 1
+    }
+
+    # Check for remaining manual tasks
+    local remaining
+    remaining=$(count_pending_manual "$tasks_file")
+
+    if [[ "$remaining" -gt 0 ]]; then
+        warn "$remaining manual task(s) still pending:"
+        grep -E '^\s*-\s*\[\?\]' "$tasks_file" 2>/dev/null | while IFS= read -r line; do
+            echo "  $line"
+        done
+        echo ""
+        read -r -p "Resume anyway? [y/N] " confirm
+        if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+            echo "Aborted."
+            return 0
+        fi
+    fi
+
+    # Check if orchestrator is running
+    if [[ -f "$STATE_FILENAME" ]]; then
+        local orch_status
+        orch_status=$(jq -r '.status // ""' "$STATE_FILENAME" 2>/dev/null)
+
+        if [[ "$orch_status" == "running" || "$orch_status" == "paused" ]]; then
+            # Update change status to "dispatched" — orchestrator will resume it
+            local cur_status
+            cur_status=$(jq -r --arg n "$change_name" '.changes[] | select(.name == $n) | .status // ""' "$STATE_FILENAME" 2>/dev/null)
+            if [[ "$cur_status" == "waiting:human" ]]; then
+                local tmp
+                tmp=$(jq --arg n "$change_name" \
+                    '(.changes[] | select(.name == $n) | .status) = "dispatched"' "$STATE_FILENAME")
+                echo "$tmp" > "$STATE_FILENAME"
+                success "Change '$change_name' status set to 'dispatched' — orchestrator will resume it on next poll cycle"
+                return 0
+            fi
+        fi
+    fi
+
+    # Standalone mode: resume set-loop directly
+    info "Resuming Ralph loop for $change_name..."
+    (cd "$wt_path" && set-loop resume) || {
+        error "Failed to resume loop"
+        return 1
+    }
+    success "Loop resumed"
+}
+
+cmd_help() {
+    cat <<'HELP'
+set-manual — Interact with manual/human tasks in orchestrated changes
+
+USAGE:
+  set-manual list                           Show all changes waiting for human input
+  set-manual show <change>                  Show detailed instructions for manual tasks
+  set-manual input <change> <KEY> <value>   Provide a secret/value for an input task
+  set-manual done <change> <task-id>        Mark a confirm-type task as complete
+  set-manual resume <change>                Resume the agent after resolving manual tasks
+
+TASK SYNTAX:
+  - [?] 3.3 Task description [input:KEY]   Input task — requires a value
+  - [?] 4.1 Task description [confirm]     Confirm task — requires manual action
+  - [?] 5.2 Task description               Default: confirm type
+
+WORKFLOW:
+  1. Agent encounters [?] tasks → pauses with "waiting:human" status
+  2. Run: set-manual list          — see what needs attention
+  3. Run: set-manual show <change> — read detailed instructions
+  4. Provide input or confirm:
+     - set-manual input <change> STRIPE_KEY "sk_test_..."
+     - set-manual done <change> 3.3
+  5. Run: set-manual resume <change> — restart the agent
+
+HELP
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    list)       shift; cmd_list "$@" ;;
+    show)       shift; cmd_show "$@" ;;
+    input)      shift; cmd_input "$@" ;;
+    done)       shift; cmd_done "$@" ;;
+    resume)     shift; cmd_resume "$@" ;;
+    -h|--help|help|"")
+                cmd_help ;;
+    *)
+        error "Unknown subcommand: $1"
+        cmd_help
+        exit 1
+        ;;
+esac

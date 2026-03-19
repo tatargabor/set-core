@@ -67,13 +67,13 @@ sentinel-v2 already addresses many core orchestration needs:
 
 ### GAP 5: Quality Gate Hooks (Pre/Post Events)
 
-**Description:** Claude Code Agent Teams has `TeammateIdle` and `TaskCompleted` hooks that run external scripts to enforce quality gates -- exit code 2 sends feedback and keeps the agent working. sentinel-v2's verification is built-in (test, review, smoke, project-knowledge rules) but not extensible. Users cannot inject custom checks without modifying wt-tools source.
+**Description:** Claude Code Agent Teams has `TeammateIdle` and `TaskCompleted` hooks that run external scripts to enforce quality gates -- exit code 2 sends feedback and keeps the agent working. sentinel-v2's verification is built-in (test, review, smoke, project-knowledge rules) but not extensible. Users cannot inject custom checks without modifying set-core source.
 
 **Who does it:** Claude Code Agent Teams (hooks system: TeammateIdle, TaskCompleted), Codex (MCP-based tool gating), Multiclaude (CI-centric gates)
 
 **Priority:** MEDIUM
 
-**Recommendation:** Add hook points in the orchestration lifecycle: `pre_dispatch`, `post_verify`, `pre_merge`, `post_merge`, `on_fail`. Each hook is an optional shell script path in `orchestration.yaml`. The hook receives change name, status, worktree path as arguments. Non-zero exit blocks the transition. This makes verification extensible without modifying wt-tools internals. Example: a `pre_merge` hook that runs `pnpm lint` or checks for console.log statements.
+**Recommendation:** Add hook points in the orchestration lifecycle: `pre_dispatch`, `post_verify`, `pre_merge`, `post_merge`, `on_fail`. Each hook is an optional shell script path in `orchestration.yaml`. The hook receives change name, status, worktree path as arguments. Non-zero exit blocks the transition. This makes verification extensible without modifying set-core internals. Example: a `pre_merge` hook that runs `pnpm lint` or checks for console.log statements.
 
 ---
 
@@ -145,7 +145,7 @@ sentinel-v2 already addresses many core orchestration needs:
 
 **Priority:** MEDIUM
 
-**Recommendation:** Add a `plan_approval` directive (default: false). When true, after `cmd_plan()` generates the plan, the orchestrator enters a `plan_review` status. The user can view the plan (`wt-orchestrate plan --show`), modify it (edit the JSON), and approve (`wt-orchestrate approve`). Only after approval does `cmd_start()` proceed to dispatch. The current checkpoint/approve flow handles this partially but not at the plan stage.
+**Recommendation:** Add a `plan_approval` directive (default: false). When true, after `cmd_plan()` generates the plan, the orchestrator enters a `plan_review` status. The user can view the plan (`set-orchestrate plan --show`), modify it (edit the JSON), and approve (`set-orchestrate approve`). Only after approval does `cmd_start()` proceed to dispatch. The current checkpoint/approve flow handles this partially but not at the plan stage.
 
 ---
 

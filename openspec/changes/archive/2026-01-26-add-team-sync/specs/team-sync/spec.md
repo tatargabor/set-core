@@ -294,7 +294,7 @@ The system SHALL fetch Claude usage data with fallback session sources.
 
 #### Scenario: Saved session works
 
-- **GIVEN** a valid session key exists in `~/.wt-tools/claude-session.json`
+- **GIVEN** a valid session key exists in `~/.set-core/claude-session.json`
 - **WHEN** UsageWorker fetches usage data
 - **THEN** the saved session is used for API calls
 

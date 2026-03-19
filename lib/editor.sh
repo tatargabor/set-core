@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# wt-tools editor detection and configuration
-# Dependencies: wt-common.sh must be sourced first (provides PLATFORM, CONFIG_DIR, ensure_config, json_get, warn, error)
+# set-core editor detection and configuration
+# Dependencies: set-common.sh must be sourced first (provides PLATFORM, CONFIG_DIR, ensure_config, json_get, warn, error)
 
 # =============================================================================
 # Multi-Editor Support

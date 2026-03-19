@@ -1,4 +1,4 @@
-"""Tests for wt_orch WebSocket connection manager."""
+"""Tests for set_orch WebSocket connection manager."""
 
 import asyncio
 import json
@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.websocket import ConnectionManager
+from set_orch.websocket import ConnectionManager
 
 
 def test_manager_connect_disconnect():

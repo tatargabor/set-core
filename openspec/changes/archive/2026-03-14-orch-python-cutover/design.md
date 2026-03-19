@@ -1,17 +1,17 @@
 ## Context
 
-The orchestration system was migrated from bash to Python in stages. The "heavy lifting" functions (dispatch, verify, poll, report) were migrated first and the bash versions became thin wrappers calling `wt-orch-core <subcommand>`. However, the "control plane" functions — the monitor loop, merge pipeline, planning orchestration, and auto-replan cycle — remained as full bash implementations.
+The orchestration system was migrated from bash to Python in stages. The "heavy lifting" functions (dispatch, verify, poll, report) were migrated first and the bash versions became thin wrappers calling `set-orch-core <subcommand>`. However, the "control plane" functions — the monitor loop, merge pipeline, planning orchestration, and auto-replan cycle — remained as full bash implementations.
 
 During migration, Python clean-room reimplementations were written for these too (`engine.py`, `merger.py`), but they were never wired in. The bash versions continue to run, creating ~2500 lines of maintained-but-dead Python code and a dual-maintenance burden for every bug fix.
 
 Current call chain:
 ```
-wt-orchestrate start → cmd_start() [bash]
+set-orchestrate start → cmd_start() [bash]
   → monitor_loop() [bash, 590 LOC]
-    → poll_change() → wt-orch-core [python ✓]
-    → dispatch_ready() → wt-orch-core [python ✓]
+    → poll_change() → set-orch-core [python ✓]
+    → dispatch_ready() → set-orch-core [python ✓]
     → merge_change() [bash, 420 LOC — NOT delegated]
-    → watchdog_check() → wt-orch-core [python ✓]
+    → watchdog_check() → set-orch-core [python ✓]
     → auto_replan_cycle() [bash, 170 LOC — NOT delegated]
     → completion logic [bash, 150 LOC — duplicated in engine.py]
 ```
@@ -28,7 +28,7 @@ wt-orchestrate start → cmd_start() [bash]
 
 **Non-Goals:**
 - Rewriting `wt-loop` (PTY management stays in bash — fundamentally different concern)
-- Changing the `wt-orchestrate` CLI interface
+- Changing the `set-orchestrate` CLI interface
 - Migrating `cmd_digest()` entry point (too large, defer to follow-up)
 - Removing `dispatcher.sh` entirely — `cmd_start()` stays bash for signal traps
 
@@ -36,21 +36,21 @@ wt-orchestrate start → cmd_start() [bash]
 
 ### D1: Phased cutover via feature flag, not big-bang
 
-**Decision**: Add a `ORCH_ENGINE=python` env var (default: `bash` initially). `cmd_start()` checks this and either calls bash `monitor_loop()` or `wt-orch-core engine monitor`. After validation, flip default to `python` and remove bash monitor_loop().
+**Decision**: Add a `ORCH_ENGINE=python` env var (default: `bash` initially). `cmd_start()` checks this and either calls bash `monitor_loop()` or `set-orch-core engine monitor`. After validation, flip default to `python` and remove bash monitor_loop().
 
 **Why**: A big-bang switch is too risky for the core orchestration loop. The feature flag allows running a test orchestration with Python, comparing results, and reverting instantly if something breaks.
 
 **Alternative rejected**: Gradual function-by-function delegation (current approach) — led to the duplication problem in the first place.
 
-### D2: Python monitor_loop() calls Python functions directly, not via wt-orch-core CLI
+### D2: Python monitor_loop() calls Python functions directly, not via set-orch-core CLI
 
-**Decision**: When running in Python mode, `engine.py:monitor_loop()` imports and calls `merger.merge_change()`, `dispatcher.dispatch_ready_changes()`, etc. as Python function calls — not by shelling out to `wt-orch-core`.
+**Decision**: When running in Python mode, `engine.py:monitor_loop()` imports and calls `merger.merge_change()`, `dispatcher.dispatch_ready_changes()`, etc. as Python function calls — not by shelling out to `set-orch-core`.
 
-**Why**: The whole point is eliminating bash subprocess overhead and having a single-process orchestrator. The `wt-orch-core` CLI is for bash→Python bridging; Python→Python should be direct imports.
+**Why**: The whole point is eliminating bash subprocess overhead and having a single-process orchestrator. The `set-orch-core` CLI is for bash→Python bridging; Python→Python should be direct imports.
 
 ### D3: Signal handling via Python signal module + atexit
 
-**Decision**: `cmd_start()` (bash) does `exec wt-orch-core engine monitor ...` which replaces the bash process. Python registers SIGTERM/SIGINT/SIGHUP handlers and atexit cleanup.
+**Decision**: `cmd_start()` (bash) does `exec set-orch-core engine monitor ...` which replaces the bash process. Python registers SIGTERM/SIGINT/SIGHUP handlers and atexit cleanup.
 
 **Why**: `exec` means bash exits and Python becomes PID — signal handling is clean. No zombie processes.
 
@@ -89,7 +89,7 @@ signal.signal(signal.SIGHUP, lambda *_: sys.exit(0))
 
 **Decision**: Move `auto_replan_cycle()` entirely to `engine.py` (or a new `replanner.py`). The Python version calls `planner.py:collect_replan_context()` and `planner.py:build_decomposition_context()` directly, then calls Claude via `subprocess_utils.run_claude()`.
 
-**Why**: The current Python `_handle_auto_replan()` shells out to `bash planner.sh auto_replan_cycle()` which shells back to `wt-orch-core plan build-context` — absurd circular dependency.
+**Why**: The current Python `_handle_auto_replan()` shells out to `bash planner.sh auto_replan_cycle()` which shells back to `set-orch-core plan build-context` — absurd circular dependency.
 
 ### D6: merge_change() delegates hooks via subprocess, not Python reimplementation
 
@@ -113,9 +113,9 @@ signal.signal(signal.SIGHUP, lambda *_: sys.exit(0))
 
 ### Phase 1: Monitor loop cutover
 1. Fill Python gaps in `engine.py` (checkpoint, coverage, email, memory)
-2. Add `wt-orch-core engine monitor` CLI handler with signal setup
+2. Add `set-orch-core engine monitor` CLI handler with signal setup
 3. Add `ORCH_ENGINE` feature flag to `cmd_start()`
-4. Test with `ORCH_ENGINE=python wt-orchestrate start`
+4. Test with `ORCH_ENGINE=python set-orchestrate start`
 5. Validate with minishop-run
 6. Flip default to `python`
 7. Delete bash `monitor_loop()` from `monitor.sh`

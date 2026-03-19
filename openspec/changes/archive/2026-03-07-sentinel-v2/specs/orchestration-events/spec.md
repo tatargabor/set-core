@@ -34,7 +34,7 @@ Append-only event log system providing structured audit trail for every orchestr
 - Rotation checked at orchestrator startup and periodically (every 100 poll cycles)
 
 ### R5: Event Query
-- `wt-orchestrate events` subcommand for querying the event log
+- `set-orchestrate events` subcommand for querying the event log
 - Filters: `--type`, `--change`, `--since`, `--last N`
 - Output: formatted table or raw JSON (`--json`)
 

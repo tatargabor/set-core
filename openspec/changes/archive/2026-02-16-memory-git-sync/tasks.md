@@ -2,12 +2,12 @@
 
 - [x] 1.1 Add `sync_resolve_identity()` helper: derive `<user>/<machine>` from `git config user.name` + `hostname -s` (lowercase, sanitize)
 - [x] 1.2 Add `.sync-state` read/write helpers: `sync_read_state()` and `sync_write_state()` operating on `<storage_path>/.sync-state` JSON
-- [x] 1.3 Add `sync_export_hash()` helper: run `wt-memory export` and return sha256 of the output
+- [x] 1.3 Add `sync_export_hash()` helper: run `set-memory export` and return sha256 of the output
 
 ## 2. Push Command
 
 - [x] 2.1 Implement `cmd_sync_push`: export → hash check → skip if unchanged → temp dir clone/init → write file → commit → push → update `.sync-state` → cleanup
-- [x] 2.2 Handle first push: create orphan branch when `wt-memory` branch doesn't exist on remote
+- [x] 2.2 Handle first push: create orphan branch when `set-memory` branch doesn't exist on remote
 - [x] 2.3 Handle subsequent push: clone existing branch with `--depth 1`, update file, commit, push
 
 ## 3. Pull Command

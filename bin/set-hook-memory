@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# set-hook-memory - Unified Claude Code memory hook handler
+#
+# Single handler replacing 5 separate scripts. Dispatches by event type.
+# Usage: set-hook-memory <EventName>
+#
+# Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse,
+#         PostToolUseFailure, SubagentStart, SubagentStop, Stop
+#
+# Configuration in .claude/settings.json via set-deploy-hooks.
+
+set -e
+
+EVENT="$1"
+[[ -z "$EVENT" ]] && exit 0
+
+# --- Resolve set-core root (follow symlinks) ---
+_script="${BASH_SOURCE[0]}"
+while [[ -L "$_script" ]]; do
+    _link=$(readlink "$_script")
+    if [[ "$_link" == /* ]]; then _script="$_link"; else _script="$(dirname "$_script")/$_link"; fi
+done
+_bin_dir="$(cd "$(dirname "$_script")" && pwd)"
+SET_TOOLS_ROOT="$(cd "$_bin_dir/.." && pwd)"
+
+# --- Health check (quick bail-out if set-memory unavailable) ---
+if ! command -v set-memory &>/dev/null; then
+    exit 0
+fi
+
+# --- Auto-start memory daemon, or fall back to direct health check ---
+# Try daemon first (avoids RocksDB lock conflict with direct health check)
+_daemon_ok=false
+if command -v set-memoryd &>/dev/null; then
+    set-memoryd start &>/dev/null && _daemon_ok=true
+fi
+if [[ "$_daemon_ok" != "true" ]]; then
+    # No daemon — check shodh-memory availability the old way
+    if ! set-memory health &>/dev/null; then
+        exit 0
+    fi
+fi
+
+# --- Store input in temp file ---
+INPUT_FILE=$(mktemp)
+trap 'rm -f "$INPUT_FILE"' EXIT
+cat > "$INPUT_FILE"
+
+# --- Session ID for cache file (pure bash, no python subprocess) ---
+SESSION_ID=$(grep -o '"session_id":"[^"]*"' "$INPUT_FILE" 2>/dev/null | head -1 | cut -d'"' -f4)
+[[ -z "$SESSION_ID" ]] && SESSION_ID="unknown"
+CACHE_FILE="/tmp/set-memory-session-${SESSION_ID}.json"
+
+# =============================================================================
+# Dispatch to Python handler
+# =============================================================================
+export PYTHONPATH="$SET_TOOLS_ROOT/lib${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m set_hooks "$EVENT" "$INPUT_FILE" "$CACHE_FILE" --set-core-root "$SET_TOOLS_ROOT"

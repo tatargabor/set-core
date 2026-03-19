@@ -40,5 +40,5 @@ CraftBazaar runs all 12 changes in one long loop — conventions stay in context
 
 - New directory: `benchmark/synthetic/` — all benchmark files
 - No changes to existing `benchmark/` files (CraftBazaar benchmark stays intact)
-- Reuses existing infrastructure: `wt-memory`, Claude Code CLI
+- Reuses existing infrastructure: `set-memory`, Claude Code CLI
 - Does NOT use OpenSpec or wt-loop — simpler execution model

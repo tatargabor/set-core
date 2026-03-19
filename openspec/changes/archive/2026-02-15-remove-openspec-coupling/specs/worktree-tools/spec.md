@@ -23,7 +23,7 @@ The system SHALL create a git worktree for a specified change-id in a standardiz
 - **THEN** an error message is displayed with usage instructions
 
 ### Requirement: Add Existing Git Repository
-The system SHALL allow users to register any existing git repository (worktree or standalone clone) with wt-tools via `wt-add`.
+The system SHALL allow users to register any existing git repository (worktree or standalone clone) with set-core via `wt-add`.
 
 #### Scenario: Add a git worktree
 - **WHEN** user runs `wt-add /path/to/worktree` where the path is a git worktree (`.git` is a file)
@@ -178,5 +178,5 @@ The system SHALL provide installation scripts for all supported platforms that i
 **Migration**: Remove `openspec init` calls from `wt-new` and `wt-add`. Remove `--no-openspec` flag from `wt-new`.
 
 ### Requirement: OpenSpec installation via install.sh
-**Reason**: OpenSpec is a separate tool that users install independently if they choose to use it. wt-tools should not mandate or install it.
+**Reason**: OpenSpec is a separate tool that users install independently if they choose to use it. set-core should not mandate or install it.
 **Migration**: Remove OpenSpec installation step from `install.sh`. Users install OpenSpec via its own installation method.

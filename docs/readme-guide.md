@@ -9,12 +9,12 @@ This document defines the structure, content rules, and style for `README.md`. I
 The README MUST contain these sections in this exact order:
 
 ### 1. Header
-- Project name: `# wt-tools`
+- Project name: `# set-core`
 - One-line tagline: what it does (autonomous multi-agent orchestration)
 - MIT + Platform badges
 - NO "Latest update" date — rely on git history
 
-### 2. Why wt-tools?
+### 2. Why set-core?
 - Problem → Solution narrative (3-4 sentences)
 - Simple ASCII pipeline diagram (max 6 lines)
 - Screenshot of orchestrator TUI
@@ -88,7 +88,7 @@ Content that does NOT belong in the README:
 ## Key Principles
 
 1. **WHY → WHAT → HOW** — lead with the problem, show the solution, then explain how
-2. **Differentiators first** — what makes wt-tools unique should be visible above the fold
+2. **Differentiators first** — what makes set-core unique should be visible above the fold
 3. **Copy-paste examples** — every code block must work if pasted
 4. **Fork-friendly** — emphasize production experience and modularity
 5. **Honest positioning** — don't overclaim; show the feature matrix and let it speak

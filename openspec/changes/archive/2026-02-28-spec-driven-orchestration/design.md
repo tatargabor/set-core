@@ -1,6 +1,6 @@
 ## Context
 
-`wt-orchestrate` currently has a two-stage input pipeline:
+`set-orchestrate` currently has a two-stage input pipeline:
 1. **Bash parsing** — `parse_next_items()` extracts bullets from `### Next` via regex; `parse_directives()` extracts key-value config from `## Orchestrator Directives`
 2. **Claude decomposition** — `generate_plan()` passes the entire brief + a fixed prompt to `claude -p`, which outputs a plan JSON
 
@@ -128,5 +128,5 @@ The hint is injected into the decomposition prompt: `"The user requested phase: 
 
 ## Open Questions
 
-- Should `wt-orchestrate init` be added as a subcommand to interactively generate `.claude/orchestration.yaml`? (Deferred — not needed for MVP.)
+- Should `set-orchestrate init` be added as a subcommand to interactively generate `.claude/orchestration.yaml`? (Deferred — not needed for MVP.)
 - Should the spec summarization cache the summary to avoid re-summarizing on re-runs? (Nice-to-have, not MVP.)

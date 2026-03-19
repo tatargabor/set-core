@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Add Existing Git Repository
-The system SHALL allow users to register any existing git repository (worktree or standalone clone) with wt-tools via `wt-add`.
+The system SHALL allow users to register any existing git repository (worktree or standalone clone) with set-core via `wt-add`.
 
 #### Scenario: Add a git worktree
 - **WHEN** user runs `wt-add /path/to/worktree` where the path is a git worktree (`.git` is a file)

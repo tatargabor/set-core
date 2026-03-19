@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools system already has:
+The set-core system already has:
 - **Control Center GUI** (PySide6) - worktree management, Ralph launch
 - **wt skill** - action-based commands (wt-new, wt-close, wt-merge, wt-loop)
 - **Ralph loop** - autonomous Claude iteration in separate terminal
@@ -11,7 +11,7 @@ Current limitation: These components can't see each other. An agent running in Z
 ## Goals / Non-Goals
 
 **Goals:**
-- MCP server providing READ-ONLY access to wt-tools state
+- MCP server providing READ-ONLY access to set-core state
 - Cross-context visibility: any agent can query any worktree's state
 - Status line integration: own worktree's Ralph status shown automatically
 - Global availability: works in every project (`--scope user`)
@@ -32,7 +32,7 @@ Current limitation: These components can't see each other. An agent running in Z
 - `mcp` SDK direct usage - more boilerplate
 - Node.js `@modelcontextprotocol/sdk` - different language, less fitting
 
-**Rationale:** FastMCP has a simple decorator-based API, tools can be defined quickly. wt-tools already uses Python (GUI), consistent.
+**Rationale:** FastMCP has a simple decorator-based API, tools can be defined quickly. set-core already uses Python (GUI), consistent.
 
 ### 2. Stdio transport
 
@@ -63,7 +63,7 @@ No overlap, no confusion.
 
 ```
 Ralph writes:   <wt>/.claude/loop-state.json
-GUI writes:     ~/.cache/wt-tools/team_status.json
+GUI writes:     ~/.cache/set-core/team_status.json
 MCP reads:      both
 ```
 

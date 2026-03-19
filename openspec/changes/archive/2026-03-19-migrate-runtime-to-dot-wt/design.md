@@ -2,12 +2,12 @@
 
 ## Context
 
-Runtime files are scattered across `.claude/`, project root, `wt/orchestration/`, `.wt-tools/`, and `.wt/sentinel/`. The memory system and metrics already use `~/.local/share/wt-tools/<project>/` — this change migrates all shared runtime there and keeps only minimal per-agent ephemeral files in worktrees.
+Runtime files are scattered across `.claude/`, project root, `wt/orchestration/`, `.set-core/`, and `.wt/sentinel/`. The memory system and metrics already use `~/.local/share/set-core/<project>/` — this change migrates all shared runtime there and keeps only minimal per-agent ephemeral files in worktrees.
 
 ### Current → Target migration table
 
 ```
-SHARED RUNTIME → ~/.local/share/wt-tools/<project>/
+SHARED RUNTIME → ~/.local/share/set-core/<project>/
 ──────────────────────────────────────────────────────────────────────────
 Current location                              Target location
 ──────────────────────────────────────────────────────────────────────────
@@ -32,16 +32,16 @@ wt/orchestration/e2e-screenshots/cycle-*/     screenshots/e2e/cycle-*/
 .wt/sentinel/inbox.cursor                     sentinel/inbox.cursor
 .wt/sentinel/archive/                         sentinel/archive/
 sentinel.pid (project root)                   sentinel/sentinel.pid
-.wt-tools/.saved-codemaps                     cache/codemaps/
-.wt-tools/.saved-designs                      cache/designs/
-.wt-tools/.last-memory-commit                 cache/last-memory-commit
-.wt-tools/agents/*.skill                      cache/skill-invocations/
-.wt-tools/jira.json                           cache/credentials/jira.json
-.wt-tools/confluence.json                     cache/credentials/confluence.json
+.set-core/.saved-codemaps                     cache/codemaps/
+.set-core/.saved-designs                      cache/designs/
+.set-core/.last-memory-commit                 cache/last-memory-commit
+.set-core/agents/*.skill                      cache/skill-invocations/
+.set-core/jira.json                           cache/credentials/jira.json
+.set-core/confluence.json                     cache/credentials/confluence.json
 design-snapshot.md (project root)             design-snapshot.md
 .claude/.wt-version                           version
 
-PER-WORKTREE AGENT EPHEMERAL → <worktree>/.wt/
+PER-WORKTREE AGENT EPHEMERAL → <worktree>/.set/
 ──────────────────────────────────────────────────────────────────────────
 .claude/loop-state.json                       loop-state.json
 .claude/activity.json                         activity.json
@@ -54,18 +54,18 @@ STAYS AS-IS (not migrated)
 ──────────────────────────────────────────────────────────────────────────
 wt/orchestration/specs/                       Config, user-provided, git-tracked
 wt/orchestration/orchestration.yaml           Config, git-tracked
-/tmp/wt-memoryd-<project>.sock                OS convention for daemon IPC
-/tmp/wt-memoryd-<project>.pid                 OS convention for daemon PID
-~/.local/share/wt-tools/memory/               Already correct
-~/.local/share/wt-tools/metrics/              Already correct
-~/.local/share/wt-tools/e2e-runs/             Already correct
+/tmp/set-memoryd-<project>.sock                OS convention for daemon IPC
+/tmp/set-memoryd-<project>.pid                 OS convention for daemon PID
+~/.local/share/set-core/memory/               Already correct
+~/.local/share/set-core/metrics/              Already correct
+~/.local/share/set-core/e2e-runs/             Already correct
 ```
 
 ## Goals / Non-Goals
 
 **Goals:**
-- `~/.local/share/wt-tools/<project>/` for all shared runtime (worktree-independent, branch-independent, merge-conflict-free)
-- Minimal `<worktree>/.wt/` for per-agent ephemeral only (loop-state, activity, PID)
+- `~/.local/share/set-core/<project>/` for all shared runtime (worktree-independent, branch-independent, merge-conflict-free)
+- Minimal `<worktree>/.set/` for per-agent ephemeral only (loop-state, activity, PID)
 - Centralized path resolution (Python class + bash helper)
 - Clean separation: `.claude/` = config, `wt/` = config+artifacts, `~/.local/share/` = runtime
 - Worktree retention after merge (configurable)
@@ -79,7 +79,7 @@ wt/orchestration/orchestration.yaml           Config, git-tracked
 
 ## Decisions
 
-### 1. Shared runtime goes to `~/.local/share/wt-tools/<project>/`
+### 1. Shared runtime goes to `~/.local/share/set-core/<project>/`
 
 **Decision:** All runtime that is NOT per-agent-ephemeral goes to the XDG data directory, keyed by project name (git repo name, same as memory system).
 
@@ -92,7 +92,7 @@ wt/orchestration/orchestration.yaml           Config, git-tracked
 
 **Project name resolution:** Same as memory system — uses `git rev-parse --show-toplevel` to get repo name, handles worktrees via `git rev-parse --git-common-dir`.
 
-### 2. Per-worktree ephemeral stays in `<worktree>/.wt/`
+### 2. Per-worktree ephemeral stays in `<worktree>/.set/`
 
 **Decision:** Only `loop-state.json`, `activity.json`, `ralph-terminal.pid`, `scheduled_tasks.lock`, `reflection.md`, and current iteration logs stay in the worktree.
 
@@ -104,16 +104,16 @@ wt/orchestration/orchestration.yaml           Config, git-tracked
 
 ### 3. Python WtRuntime class for shared path resolution
 
-**Decision:** Centralized `WtRuntime` class in `lib/wt_orch/paths.py` (renamed from WtDirs — it resolves to `~/.local/share/`, not a project-local dir).
+**Decision:** Centralized `WtRuntime` class in `lib/set_orch/paths.py` (renamed from WtDirs — it resolves to `~/.local/share/`, not a project-local dir).
 
 ```python
 class WtRuntime:
-    """Resolves paths to ~/.local/share/wt-tools/<project>/"""
+    """Resolves paths to ~/.local/share/set-core/<project>/"""
     def __init__(self, project_path: str):
         self.project_name = _resolve_project_name(project_path)
         self.root = os.path.join(
             os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
-            "wt-tools", self.project_name
+            "set-core", self.project_name
         )
 
     @property
@@ -132,7 +132,7 @@ class WtRuntime:
 
     @staticmethod
     def agent_dir(worktree_path: str) -> str:
-        """Resolves per-worktree ephemeral path: <worktree>/.wt/"""
+        """Resolves per-worktree ephemeral path: <worktree>/.set/"""
         return os.path.join(worktree_path, ".wt")
 ```
 
@@ -143,7 +143,7 @@ class WtRuntime:
 ```bash
 # Resolves project name same way as Python
 WT_PROJECT_NAME=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
-WT_RUNTIME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/wt-tools/$WT_PROJECT_NAME"
+WT_RUNTIME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/set-core/$WT_PROJECT_NAME"
 WT_STATE_FILE="$WT_RUNTIME_DIR/orchestration/state.json"
 WT_EVENTS_FILE="$WT_RUNTIME_DIR/orchestration/events.jsonl"
 WT_SENTINEL_DIR="$WT_RUNTIME_DIR/sentinel"
@@ -175,17 +175,17 @@ worktree_retention: keep              # keep | auto-clean-after-7d | delete-on-m
 
 ### 6. Clean cutover, no dual-write
 
-**Decision:** After migration, old paths are not supported. `wt-project init` creates the new structure. Projects must re-run `wt-project init`.
+**Decision:** After migration, old paths are not supported. `set-project init` creates the new structure. Projects must re-run `set-project init`.
 
-### 7. Auto-migration in wt-project init
+### 7. Auto-migration in set-project init
 
-**Decision:** `wt-project init` detects old-style paths and moves files to `~/.local/share/wt-tools/<project>/` automatically. Also migrates `.wt/sentinel/` to the new shared location.
+**Decision:** `set-project init` detects old-style paths and moves files to `~/.local/share/set-core/<project>/` automatically. Also migrates `.wt/sentinel/` to the new shared location.
 
 ### 8. Sentinel migration from `.wt/sentinel/` to `~/.local/share/`
 
-**Decision:** The sentinel-tab change put sentinel files in `.wt/sentinel/` (project-local). This change migrates them to `~/.local/share/wt-tools/<project>/sentinel/` because sentinel is project-level, not worktree-level.
+**Decision:** The sentinel-tab change put sentinel files in `.wt/sentinel/` (project-local). This change migrates them to `~/.local/share/set-core/<project>/sentinel/` because sentinel is project-level, not worktree-level.
 
-The `.wt/sentinel/` code in `lib/wt_orch/sentinel/wt_dir.py` will be updated to resolve to the shared location via `WtRuntime`.
+The `.wt/sentinel/` code in `lib/set_orch/sentinel/wt_dir.py` will be updated to resolve to the shared location via `WtRuntime`.
 
 ### 9. Git untrack currently tracked runtime files
 
@@ -194,7 +194,7 @@ The `.wt/sentinel/` code in `lib/wt_orch/sentinel/wt_dir.py` will be updated to 
 ## Full directory structure (target)
 
 ```
-~/.local/share/wt-tools/<project>/
+~/.local/share/set-core/<project>/
 ├── memory/                        # EXISTING (RocksDB)
 ├── metrics/                       # EXISTING (SQLite) — global, not per-project
 ├── e2e-runs/                      # EXISTING
@@ -233,7 +233,7 @@ The `.wt/sentinel/` code in `lib/wt_orch/sentinel/wt_dir.py` will be updated to 
 ├── design-snapshot.md
 └── version
 
-<worktree>/.wt/                    # Per-agent ephemeral (minimal)
+<worktree>/.set/                    # Per-agent ephemeral (minimal)
 ├── loop-state.json
 ├── activity.json
 ├── ralph-terminal.pid
@@ -243,8 +243,8 @@ The `.wt/sentinel/` code in `lib/wt_orch/sentinel/wt_dir.py` will be updated to 
     └── ralph-iter-*.log           # Current run only; archived on merge
 
 /tmp/                              # OS ephemeral (stays)
-├── wt-memoryd-<project>.sock
-└── wt-memoryd-<project>.pid
+├── set-memoryd-<project>.sock
+└── set-memoryd-<project>.pid
 ```
 
 ## Risks / Trade-offs
@@ -253,42 +253,42 @@ The `.wt/sentinel/` code in `lib/wt_orch/sentinel/wt_dir.py` will be updated to 
 - **[Risk] Many files reference old paths (~30+ files)** → Mitigation: systematic `WtRuntime` adoption. Python linter/grep to catch stragglers.
 - **[Risk] Worktree retention fills disk** → Mitigation: `wt-cleanup --older-than Nd` for explicit GC. Config option for auto-clean.
 - **[Risk] `~/.local/share/` path resolution in agents** → Mitigation: agents in worktrees need project name. Bootstrap injects `WT_PROJECT_NAME` env var or agents resolve via git.
-- **[Risk] Running orchestration during migration** → Mitigation: migration happens during `wt-project init` which requires no running processes.
+- **[Risk] Running orchestration during migration** → Mitigation: migration happens during `set-project init` which requires no running processes.
 - **[Risk] Git-tracked state files** → Mitigation: `git rm --cached` for `wt/orchestration/orchestration-state.json` and `spec-coverage-report.md`.
 
 ## Migration checklist (files to update)
 
 ### Python — import WtRuntime, replace hardcoded paths:
-- `lib/wt_orch/engine.py` — state.json, events.jsonl, plans/, loop-state queries
-- `lib/wt_orch/dispatcher.py` — state.json, worktree bootstrap, ralph-terminal.pid
-- `lib/wt_orch/verifier.py` — spec-coverage-report.md, screenshots
-- `lib/wt_orch/merger.py` — state.json, log archival, cleanup_worktree retention
-- `lib/wt_orch/planner.py` — plans/, state.json
-- `lib/wt_orch/api.py` — all state reads, sentinel.pid, sentinel endpoints
-- `lib/wt_orch/websocket.py` — state.json file watch path
-- `lib/wt_orch/chat.py` — project path resolution
-- `lib/wt_orch/events.py` — events file resolution
-- `lib/wt_orch/state.py` — state file hardcoded name
-- `lib/wt_orch/logging_config.py` — log file paths
-- `lib/wt_orch/watchdog.py` — loop-state monitoring
-- `lib/wt_orch/loop_state.py` — loop state, PID, activity, log getters
-- `lib/wt_orch/loop_tasks.py` — state file references
-- `lib/wt_orch/auditor.py` — audit-cycle log paths
-- `lib/wt_orch/reporter.py` — report.html output path
-- `lib/wt_orch/digest.py` — digest directory
-- `lib/wt_orch/milestone.py` — milestone worktree cleanup (retention-aware)
-- `lib/wt_orch/sentinel/wt_dir.py` — migrate from `.wt/sentinel/` to WtRuntime
-- `lib/wt_orch/sentinel/events.py` — use WtRuntime.sentinel_dir
-- `lib/wt_orch/sentinel/findings.py` — use WtRuntime.sentinel_dir
-- `lib/wt_orch/sentinel/status.py` — use WtRuntime.sentinel_dir
-- `lib/wt_orch/sentinel/inbox.py` — use WtRuntime.sentinel_dir
-- `lib/wt_orch/sentinel/rotation.py` — use WtRuntime.sentinel_dir
+- `lib/set_orch/engine.py` — state.json, events.jsonl, plans/, loop-state queries
+- `lib/set_orch/dispatcher.py` — state.json, worktree bootstrap, ralph-terminal.pid
+- `lib/set_orch/verifier.py` — spec-coverage-report.md, screenshots
+- `lib/set_orch/merger.py` — state.json, log archival, cleanup_worktree retention
+- `lib/set_orch/planner.py` — plans/, state.json
+- `lib/set_orch/api.py` — all state reads, sentinel.pid, sentinel endpoints
+- `lib/set_orch/websocket.py` — state.json file watch path
+- `lib/set_orch/chat.py` — project path resolution
+- `lib/set_orch/events.py` — events file resolution
+- `lib/set_orch/state.py` — state file hardcoded name
+- `lib/set_orch/logging_config.py` — log file paths
+- `lib/set_orch/watchdog.py` — loop-state monitoring
+- `lib/set_orch/loop_state.py` — loop state, PID, activity, log getters
+- `lib/set_orch/loop_tasks.py` — state file references
+- `lib/set_orch/auditor.py` — audit-cycle log paths
+- `lib/set_orch/reporter.py` — report.html output path
+- `lib/set_orch/digest.py` — digest directory
+- `lib/set_orch/milestone.py` — milestone worktree cleanup (retention-aware)
+- `lib/set_orch/sentinel/wt_dir.py` — migrate from `.wt/sentinel/` to WtRuntime
+- `lib/set_orch/sentinel/events.py` — use WtRuntime.sentinel_dir
+- `lib/set_orch/sentinel/findings.py` — use WtRuntime.sentinel_dir
+- `lib/set_orch/sentinel/status.py` — use WtRuntime.sentinel_dir
+- `lib/set_orch/sentinel/inbox.py` — use WtRuntime.sentinel_dir
+- `lib/set_orch/sentinel/rotation.py` — use WtRuntime.sentinel_dir
 - `mcp-server/wt_mcp_server.py` — state reads, activity reads
 - `gui/control_center/mixins/handlers.py` — loop-state I/O
 - `gui/control_center/mixins/table.py` — loop-state reads
 
 ### Bash — source wt-paths:
-- `bin/wt-sentinel` — state.json, events.jsonl, sentinel.pid
+- `bin/set-sentinel` — state.json, events.jsonl, sentinel.pid
 - `bin/wt-loop` — loop-state.json, activity.json, reflection.md
 - `bin/wt-new` — bootstrap worktree
 - `bin/wt-merge` — state.json, generated file patterns
@@ -308,5 +308,5 @@ The `.wt/sentinel/` code in `lib/wt_orch/sentinel/wt_dir.py` will be updated to 
 - `.claude/skills/wt/*/SKILL.md` — any referencing .claude/ runtime files
 
 ### Deploy:
-- `lib/project/deploy.sh` — create `~/.local/share/wt-tools/<project>/` structure, auto-migrate old paths, update .gitignore
+- `lib/project/deploy.sh` — create `~/.local/share/set-core/<project>/` structure, auto-migrate old paths, update .gitignore
 - `dispatcher.py::bootstrap_worktree()` — create `.wt/` in worktrees for per-agent ephemeral

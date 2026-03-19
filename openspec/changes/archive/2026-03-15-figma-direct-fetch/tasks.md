@@ -52,7 +52,7 @@
 
 ## Phase 4: Planner integration
 
-- [x] 7. Simplify `_fetch_design_context()` in `lib/wt_orch/planner.py`
+- [x] 7. Simplify `_fetch_design_context()` in `lib/set_orch/planner.py`
   - Keep the cache-read branch (L1275-1282): `os.path.isfile("design-snapshot.md")` → read + return
   - Remove L1284-1341: MCP detection, bridge.sh subprocess, 1800s timeout, RuntimeError
   - The `force` param becomes no-op (keep for signature compat)

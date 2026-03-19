@@ -1,6 +1,6 @@
 ## 1. Context Builder Module
 
-- [x] 1.1 Create `lib/wt_orch/chat_context.py` with `build_chat_context(project_path: Path) -> str` function
+- [x] 1.1 Create `lib/set_orch/chat_context.py` with `build_chat_context(project_path: Path) -> str` function
 - [x] 1.2 Implement role description section — supervisor identity, Hungarian language instruction, Level 2 capabilities summary
 - [x] 1.3 Implement state summary section — read `orchestration-state.json`, format as compact table (change, status, tokens, last activity)
 - [x] 1.4 Implement config summary section — read `.claude/orchestration.yaml`, extract key directives (max_parallel, token_budget, test_command, etc.)
@@ -15,7 +15,7 @@
 
 ## 3. Verification
 
-- [x] 3.1 Start wt-orch-core serve, open chat tab, send a message — verify agent identifies as orchestration supervisor and responds in Hungarian
+- [x] 3.1 Start set-orch-core serve, open chat tab, send a message — verify agent identifies as orchestration supervisor and responds in Hungarian
 - [x] 3.2 Test with a project that has active orchestration — verify agent can describe current state without being told what files to read
 - [x] 3.3 Test with a project without orchestration — verify agent handles gracefully
 - [x] 3.4 Test follow-up messages — verify --resume works with --append-system-prompt together

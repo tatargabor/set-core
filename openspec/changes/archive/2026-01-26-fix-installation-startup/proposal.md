@@ -1,7 +1,7 @@
 # Fix Installation and Startup Issues
 
 ## Summary
-Fix Python import errors, desktop entry, and improve robustness of the wt-tools installation and GUI startup process.
+Fix Python import errors, desktop entry, and improve robustness of the set-core installation and GUI startup process.
 
 ## Problem
 1. **Relative import error**: `gui/main.py` uses relative imports (`from .control_center import ControlCenter`) but is executed as a script via `wt-control`, causing `ImportError: attempted relative import with no known parent package`

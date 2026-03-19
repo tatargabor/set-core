@@ -1,11 +1,11 @@
-"""Tests for wt_orch.subprocess_utils."""
+"""Tests for set_orch.subprocess_utils."""
 
 import subprocess
 import sys
 
 import pytest
 
-from wt_orch.subprocess_utils import (
+from set_orch.subprocess_utils import (
     ClaudeResult,
     CommandResult,
     GitResult,

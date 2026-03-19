@@ -2,7 +2,7 @@
 
 ### Requirement: Decomposition skill for planning agent
 
-A `/wt:decompose` skill SHALL exist that guides the planning agent through spec-to-execution-plan conversion. The skill SHALL be deployed to consumer projects via `wt-project init`.
+A `/wt:decompose` skill SHALL exist that guides the planning agent through spec-to-execution-plan conversion. The skill SHALL be deployed to consumer projects via `set-project init`.
 
 #### Scenario: Skill invocation with spec path
 - **WHEN** the planning agent receives the decomposition task

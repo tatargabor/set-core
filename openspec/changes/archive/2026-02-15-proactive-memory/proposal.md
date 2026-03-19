@@ -7,7 +7,7 @@ Memory hooks currently only save at workflow endpoints (apply completion, archiv
 - Add recall + remember hooks to `/opsx:explore` SKILL.md — the most natural place for sharing learnings and past experience
 - Extend `/opsx:apply`, `/opsx:continue`, `/opsx:ff` hooks to save mid-flow, not just at completion — when the user provides corrections, warnings, or context
 - Add a "Proactive Memory" section to CLAUDE.md instructing the agent to recognize and save valuable knowledge during any conversation (not just inside skills)
-- Update `wt-memory-hooks` install script to patch the new hook content into all affected SKILL.md files
+- Update `set-memory-hooks` install script to patch the new hook content into all affected SKILL.md files
 
 ## Capabilities
 
@@ -24,6 +24,6 @@ Memory hooks currently only save at workflow endpoints (apply completion, archiv
 - Modified: `.claude/skills/openspec-apply-change/SKILL.md` — add mid-flow remember
 - Modified: `.claude/skills/openspec-continue-change/SKILL.md` — add mid-flow remember
 - Modified: `.claude/skills/openspec-ff-change/SKILL.md` — add mid-flow remember
-- Modified: `bin/wt-memory-hooks` — new hook templates for explore, updated templates for apply/continue/ff
+- Modified: `bin/set-memory-hooks` — new hook templates for explore, updated templates for apply/continue/ff
 - Modified: `CLAUDE.md` — new "Proactive Memory" section
 - Modified: tests for new hook patterns

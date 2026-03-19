@@ -2,7 +2,7 @@
 
 # Orchestration Guide
 
-`wt-orchestrate` is an autonomous multi-change execution engine. It reads a specification document, decomposes it into independent changes using an LLM, dispatches each to its own worktree with a Ralph loop, and monitors everything to completion — merging results back to main as they finish.
+`set-orchestrate` is an autonomous multi-change execution engine. It reads a specification document, decomposes it into independent changes using an LLM, dispatches each to its own worktree with a Ralph loop, and monitors everything to completion — merging results back to main as they finish.
 
 ---
 
@@ -13,16 +13,16 @@
 cat docs/v3-release.md
 
 # 2. Generate a plan
-wt-orchestrate --spec docs/v3-release.md plan
+set-orchestrate --spec docs/v3-release.md plan
 
 # 3. Review the plan
-wt-orchestrate plan --show
+set-orchestrate plan --show
 
 # 4. Execute
-wt-orchestrate start
+set-orchestrate start
 
 # 5. Monitor progress
-wt-orchestrate status
+set-orchestrate status
 ```
 
 That's it. The orchestrator creates worktrees, starts Ralph loops, monitors progress, merges completed work, and stops when everything is done.
@@ -52,7 +52,7 @@ Suppose you have a project with this spec document (`docs/v3-release.md`):
 ### Step 1: Plan
 
 ```bash
-wt-orchestrate --spec docs/v3-release.md plan
+set-orchestrate --spec docs/v3-release.md plan
 ```
 
 The orchestrator sends your spec to Claude, which decomposes it into sized, dependency-ordered changes:
@@ -67,7 +67,7 @@ The orchestrator sends your spec to Claude, which decomposes it into sized, depe
 ### Step 2: Review
 
 ```bash
-wt-orchestrate plan --show
+set-orchestrate plan --show
 ```
 
 ```
@@ -100,7 +100,7 @@ The orchestrator respects dependencies — `add-user-roles` won't start until `a
 ### Step 3: Execute
 
 ```bash
-wt-orchestrate start
+set-orchestrate start
 ```
 
 The orchestrator:
@@ -133,7 +133,7 @@ The orchestrator:
 While the orchestrator runs, check status anytime from another terminal:
 
 ```bash
-wt-orchestrate status
+set-orchestrate status
 ```
 
 ```
@@ -157,15 +157,15 @@ Orchestration Status: running
 Pass any document — the orchestrator uses Claude to extract actionable changes:
 
 ```bash
-wt-orchestrate --spec docs/release-plan.md plan
-wt-orchestrate --spec docs/design-doc.md plan
+set-orchestrate --spec docs/release-plan.md plan
+set-orchestrate --spec docs/design-doc.md plan
 ```
 
 For large specs, use `--phase` to focus on a subset:
 
 ```bash
-wt-orchestrate --spec docs/v3-release.md --phase 1 plan        # plan phase 1
-wt-orchestrate --spec docs/v3-release.md --phase "Security" plan # plan by name
+set-orchestrate --spec docs/v3-release.md --phase 1 plan        # plan phase 1
+set-orchestrate --spec docs/v3-release.md --phase "Security" plan # plan by name
 ```
 
 ### Brief mode (legacy)
@@ -180,7 +180,7 @@ Create `openspec/project-brief.md` with a `### Next` section:
 ```
 
 ```bash
-wt-orchestrate plan    # auto-detects project-brief.md
+set-orchestrate plan    # auto-detects project-brief.md
 ```
 
 ---
@@ -220,7 +220,7 @@ pause_on_exit: false         # pause running changes on Ctrl+C
 CLI flags override config and directives:
 
 ```bash
-wt-orchestrate --max-parallel 4 --time-limit 2h start
+set-orchestrate --max-parallel 4 --time-limit 2h start
 ```
 
 ### Precedence
@@ -247,7 +247,7 @@ Settings are resolved in order (highest wins):
 | `smoke_blocking` | bool | `true` | Whether smoke failure blocks the pipeline |
 | `review_model` | string | `""` | Model for code review gate (auto-escalates on failure) |
 | `model_routing` | string | `off` | `off` or `complexity` — auto-route S-complexity non-feature changes to sonnet |
-| `plan_approval` | bool | `false` | Require `wt-orchestrate approve` after plan generation |
+| `plan_approval` | bool | `false` | Require `set-orchestrate approve` after plan generation |
 | `context_pruning` | bool | `true` | Remove orchestrator commands from agent worktrees |
 | `max_tokens_per_change` | int | `0` | Per-change token budget (0 = complexity defaults: S=500K, M=2M, L=5M, XL=10M) |
 | `watchdog_timeout` | int | `""` | Seconds before watchdog considers a change stuck |
@@ -276,7 +276,7 @@ Hook scripts receive `(change_name, status, worktree_path)` as arguments. Non-ze
 |--------|----------|
 | `eager` | Queue changes for sequential merge as they complete (one at a time) |
 | `checkpoint` | Batch merges every N completed changes, wait for approval |
-| `manual` | Queue merges, only flush on `wt-orchestrate approve --merge` |
+| `manual` | Queue merges, only flush on `set-orchestrate approve --merge` |
 
 All merge policies use a sequential queue — only one merge runs at a time. Each merge runs the full post-merge pipeline (dep install, custom command, scope verify, build verify, smoke test) before the next merge starts.
 
@@ -286,17 +286,17 @@ All merge policies use a sequential queue — only one merge runs at a time. Eac
 
 ```bash
 # Pause one change
-wt-orchestrate pause add-user-roles
+set-orchestrate pause add-user-roles
 
 # Pause everything
-wt-orchestrate pause --all
+set-orchestrate pause --all
 
 # Resume
-wt-orchestrate resume add-user-roles
-wt-orchestrate resume --all
+set-orchestrate resume add-user-roles
+set-orchestrate resume --all
 
 # Update your spec, then re-plan (preserves completed work)
-wt-orchestrate replan
+set-orchestrate replan
 ```
 
 ---
@@ -345,7 +345,7 @@ post_merge_command: pnpm db:generate  # project-specific command after dep insta
 ## Safety
 
 - **Time limit**: default 5 hours. Override with `--time-limit 2h` or `--time-limit none`
-- **Crash recovery**: state is persisted to `orchestration-state.json`. Run `wt-orchestrate start` again to resume
+- **Crash recovery**: state is persisted to `orchestration-state.json`. Run `set-orchestrate start` again to resume
 - **Ctrl+C**: saves state and optionally pauses running changes (`pause_on_exit: true`)
 - **Post-merge verification**: if `test_command` or `smoke_command` is set, they run after each merge. Failures attempt LLM auto-fix; if auto-fix fails, a critical notification is sent (pipeline continues)
 
@@ -384,30 +384,30 @@ Each event has: `ts` (ISO timestamp), `type`, optional `change` (change name), a
 | `WATCHDOG_FAILED` | `_watchdog_escalate` | `level` | Watchdog failure (level 4+) |
 | `WATCHDOG_TOKEN_BUDGET` | `_watchdog_check_token_budget` | `tokens_used`, `limit`, `pct`, `action` | Token budget enforcement |
 | `WATCHDOG_SALVAGE` | `_watchdog_salvage_partial_work` | `files`, `patch` | Partial work salvaged before failure |
-| `SENTINEL_RESTART` | `wt-sentinel` | `exit_code`, `runtime`, `reason` | Sentinel restarted orchestrator |
-| `SENTINEL_FAILED` | `wt-sentinel` | `rapid_crashes` | Sentinel gave up |
+| `SENTINEL_RESTART` | `set-sentinel` | `exit_code`, `runtime`, `reason` | Sentinel restarted orchestrator |
+| `SENTINEL_FAILED` | `set-sentinel` | `rapid_crashes` | Sentinel gave up |
 | `STATE_RECONSTRUCTED` | `reconstruct_state_from_events` | `event_count`, `status` | State rebuilt from events |
 
 ### Querying Events
 
 ```bash
 # Show all events (table format)
-wt-orchestrate events
+set-orchestrate events
 
 # Filter by type
-wt-orchestrate events --type STATE_CHANGE
+set-orchestrate events --type STATE_CHANGE
 
 # Filter by change
-wt-orchestrate events --change add-auth
+set-orchestrate events --change add-auth
 
 # Recent events
-wt-orchestrate events --last 20
+set-orchestrate events --last 20
 
 # Since a timestamp
-wt-orchestrate events --since 2026-03-07T14:00:00
+set-orchestrate events --since 2026-03-07T14:00:00
 
 # JSON output for scripting
-wt-orchestrate events --type ERROR --json
+set-orchestrate events --type ERROR --json
 ```
 
 ### Log Rotation
@@ -425,7 +425,7 @@ The events log rotates when it exceeds `events_max_size` (default 1MB). The last
 | `.claude/orchestration.yaml` | Optional configuration |
 | `.claude/orchestration.log` | Debug log (auto-rotated at 100KB) |
 | `project-knowledge.yaml` | Optional project knowledge for smarter orchestration |
-| `design-snapshot.md` | Combined Figma design data (generated by `wt-figma-fetch`) |
+| `design-snapshot.md` | Combined Figma design data (generated by `set-figma-fetch`) |
 
 ## Design Integration
 
@@ -433,10 +433,10 @@ The orchestrator reads `design-snapshot.md` from the project root — no runtime
 
 **Workflow:**
 
-1. Run `wt-figma-fetch docs/` to scan markdown files for Figma URLs and fetch design data
+1. Run `set-figma-fetch docs/` to scan markdown files for Figma URLs and fetch design data
 2. Commit the `figma-raw/` directories and `design-snapshot.md` to the repo
 3. The planner, dispatcher, verifier, and engine all read `design-snapshot.md` from CWD automatically
-4. Re-run `wt-figma-fetch --force docs/` when designs change in Figma
+4. Re-run `set-figma-fetch --force docs/` when designs change in Figma
 
 **What gets fetched:**
 
@@ -468,7 +468,7 @@ When a merge conflict can't be auto-resolved (LLM resolver output is empty), the
 
 To resolve:
 1. Manually resolve conflicts in the change's worktree
-2. Run `wt-orchestrate approve <change-name>` to retry merge
+2. Run `set-orchestrate approve <change-name>` to retry merge
 
 ### Token budget exceeded
 
@@ -491,12 +491,12 @@ Manual reconstruction is also available via the `reconstruct_state_from_events()
 
 ### Plan approval gate
 
-With `plan_approval: true`, the orchestrator enters `plan_review` status after generating the plan. Review with `wt-orchestrate plan --show`, then `wt-orchestrate approve` to start dispatch.
+With `plan_approval: true`, the orchestrator enters `plan_review` status after generating the plan. Review with `set-orchestrate plan --show`, then `set-orchestrate approve` to start dispatch.
 
 ## CLI Reference
 
 ```
-wt-orchestrate [options] <command>
+set-orchestrate [options] <command>
 
 Options:
   --spec <path>          Specification document

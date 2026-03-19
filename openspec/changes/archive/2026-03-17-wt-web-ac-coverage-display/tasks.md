@@ -9,7 +9,7 @@
 
 ## 2. Backend API Endpoint
 
-- [x] 2.1 Add `GET /api/{project}/coverage-report` endpoint in `lib/wt_orch/api.py` that reads `wt/orchestration/spec-coverage-report.md` and returns `{exists, content}` [REQ: coverage-report-endpoint]
+- [x] 2.1 Add `GET /api/{project}/coverage-report` endpoint in `lib/set_orch/api.py` that reads `wt/orchestration/spec-coverage-report.md` and returns `{exists, content}` [REQ: coverage-report-endpoint]
 
 ## 3. GateBar — Spec Coverage Badge
 

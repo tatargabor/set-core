@@ -1,13 +1,13 @@
 ## Context
 
-The wt-tools system already has team-sync infrastructure: `wt-control-sync` pushes member status (worktree, branch, agent running/idle) to a git branch, and the GUI polls it every 30s. MCP exposes read-only queries for cross-agent visibility. However, this only tracks structural state (which worktrees exist), not behavioral state (what is the agent actually doing right now).
+The set-core system already has team-sync infrastructure: `wt-control-sync` pushes member status (worktree, branch, agent running/idle) to a git branch, and the GUI polls it every 30s. MCP exposes read-only queries for cross-agent visibility. However, this only tracks structural state (which worktrees exist), not behavioral state (what is the agent actually doing right now).
 
 A previous `context-sharing` proposal designed a separate git-synced context system. We've decided to merge it into the existing team-sync infrastructure with a two-layer architecture: local files for same-machine agents (<100ms), git sync for remote machines (30-65s).
 
 Current communication channels:
 - `.claude/loop-state.json` — Ralph loop state (iteration, task, status)
 - `.wt-control/members/*.json` — team member state (git-synced)
-- `~/.cache/wt-tools/team_status.json` — GUI cache for MCP
+- `~/.cache/set-core/team_status.json` — GUI cache for MCP
 - MCP tools — `get_ralph_status()`, `get_team_status()`, `list_worktrees()`
 
 ## Goals / Non-Goals
@@ -35,7 +35,7 @@ Each worktree gets a local activity file at `.claude/activity.json`, written by 
 
 **Why `.claude/` and not `.wt-control/`**: The `.claude/` directory is per-worktree and local. The MCP server already reads `.claude/loop-state.json` from each worktree, so the pattern is established. No git sync needed for same-machine reads.
 
-**Alternative considered**: Writing directly to `~/.cache/wt-tools/activity/`. Rejected because activity is per-worktree, not per-machine, and `.claude/` is the natural home.
+**Alternative considered**: Writing directly to `~/.cache/set-core/activity/`. Rejected because activity is per-worktree, not per-machine, and `.claude/` is the natural home.
 
 **Format:**
 ```json

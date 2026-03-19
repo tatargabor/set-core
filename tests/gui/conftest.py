@@ -17,7 +17,7 @@ def git_env(tmp_path_factory):
     """Create an isolated git environment with bare repo + clone + config.
 
     Module-scoped: created once per test file for speed.
-    Sets WT_CONFIG_DIR so GUI uses temp config instead of ~/.config/wt-tools.
+    Sets SET_CONFIG_DIR so GUI uses temp config instead of ~/.config/set-core.
     """
     base = tmp_path_factory.mktemp("wt-gui-test")
 
@@ -75,8 +75,8 @@ def git_env(tmp_path_factory):
     (config_dir / "gui-config.json").write_text("{}")
 
     # Set environment variable for test isolation
-    old_config_dir = os.environ.get("WT_CONFIG_DIR")
-    os.environ["WT_CONFIG_DIR"] = str(config_dir)
+    old_config_dir = os.environ.get("SET_CONFIG_DIR")
+    os.environ["SET_CONFIG_DIR"] = str(config_dir)
 
     # We need to reload constants since CONFIG_DIR is set at import time
     import gui.constants
@@ -104,9 +104,9 @@ def git_env(tmp_path_factory):
     gui.constants.CLAUDE_SESSION_FILE = original_session_file
 
     if old_config_dir is not None:
-        os.environ["WT_CONFIG_DIR"] = old_config_dir
+        os.environ["SET_CONFIG_DIR"] = old_config_dir
     else:
-        os.environ.pop("WT_CONFIG_DIR", None)
+        os.environ.pop("SET_CONFIG_DIR", None)
 
 
 @pytest.fixture(scope="module")

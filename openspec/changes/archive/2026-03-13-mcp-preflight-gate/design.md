@@ -42,7 +42,7 @@ The `mcp_auth` checkpoint type requires human action (OAuth in browser). The `ch
 The preflight runs inside `run_decomposition()` in `planner.sh`, after `setup_design_bridge()` succeeds but before the LLM decompose call. This is the narrowest insertion point.
 
 **Alternatives considered:**
-- In `wt-orchestrate start` before calling planner: too early, bridge not yet set up
+- In `set-orchestrate start` before calling planner: too early, bridge not yet set up
 - As a separate orchestrator phase: over-engineered for a single check
 - In `bridge.sh` itself: wrong layer — bridge is a library, checkpoints are orchestrator concerns
 

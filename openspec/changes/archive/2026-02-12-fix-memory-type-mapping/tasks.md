@@ -1,13 +1,13 @@
 # Tasks: fix-memory-type-mapping
 
-## 1. wt-memory CLI mapping
+## 1. set-memory CLI mapping
 
-- [x] 1.1 Add type mapping in `cmd_remember` (bin/wt-memory): map `Observation` → `Learning`, `Event` → `Context`, print warning to stderr
+- [x] 1.1 Add type mapping in `cmd_remember` (bin/set-memory): map `Observation` → `Learning`, `Event` → `Context`, print warning to stderr
 - [x] 1.2 Update `usage()` help text to list valid types (`Decision`, `Learning`, `Context`) and note the mapping
 
-## 2. wt-memory-hooks templates
+## 2. set-memory-hooks templates
 
-- [x] 2.1 In `bin/wt-memory-hooks` `get_hook_content()`: change `--type Event` → `--type Context` in archive hook (line ~152)
+- [x] 2.1 In `bin/set-memory-hooks` `get_hook_content()`: change `--type Event` → `--type Context` in archive hook (line ~152)
 - [x] 2.2 In `get_apply_remember_content()`: change `--type Observation` → `--type Learning` (error observations) and `--type Event` → `--type Context` (completion event)
 - [x] 2.3 In `get_midflow_remember_content()`: change `<Decision|Observation|Learning>` → `<Decision|Learning|Context>`
 
@@ -22,8 +22,8 @@
 
 ## 5. README documentation
 
-- [x] 5.1 Add `### Developer Memory (Experimental)` section under Features in README.md — describe wt-memory CLI, GUI browse/remember, OpenSpec hooks integration, shodh-memory dependency. Mark as experimental.
-- [x] 5.2 Add `wt-memory` and `wt-memory-hooks` to CLI Reference in README.md under a new "Developer Memory" category
+- [x] 5.1 Add `### Developer Memory (Experimental)` section under Features in README.md — describe set-memory CLI, GUI browse/remember, OpenSpec hooks integration, shodh-memory dependency. Mark as experimental.
+- [x] 5.2 Add `set-memory` and `set-memory-hooks` to CLI Reference in README.md under a new "Developer Memory" category
 - [x] 5.3 Update `docs/readme-guide.md` Features section (### 6) to include `**Developer Memory** — per-project remember/recall, OpenSpec hooks, GUI browse`
 
 ## 6. Tests
@@ -36,4 +36,4 @@
 
 ## 8. Cleanup test memories
 
-- [x] 7.1 Delete the test "test event type" memories from wt-memory storage (2 orphan Context entries from our investigation)
+- [x] 7.1 Delete the test "test event type" memories from set-memory storage (2 orphan Context entries from our investigation)

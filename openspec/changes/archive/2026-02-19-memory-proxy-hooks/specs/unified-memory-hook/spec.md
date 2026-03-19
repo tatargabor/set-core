@@ -17,7 +17,7 @@ A single script `bin/wt-hook-memory` SHALL handle all memory hook events. It SHA
 #### Scenario: PreToolUse event
 - **WHEN** `wt-hook-memory PreToolUse` is called
 - **THEN** it SHALL extract the query from tool_input (file_path, command, or prompt depending on tool)
-- **AND** SHALL use `wt-memory proactive` (not just recall) for richer context surfacing
+- **AND** SHALL use `set-memory proactive` (not just recall) for richer context surfacing
 - **AND** SHALL inject results as additionalContext
 
 #### Scenario: PostToolUse event
@@ -35,7 +35,7 @@ A single script `bin/wt-hook-memory` SHALL handle all memory hook events. It SHA
 #### Scenario: SubagentStop event
 - **WHEN** `wt-hook-memory SubagentStop` is called
 - **THEN** it SHALL read the subagent's transcript summary from `agent_transcript_path` (last few entries)
-- **AND** SHALL use the summary as query for `wt-memory proactive`
+- **AND** SHALL use the summary as query for `set-memory proactive`
 - **AND** SHALL inject relevant memories as additionalContext
 
 #### Scenario: Stop event
@@ -48,10 +48,10 @@ A single script `bin/wt-hook-memory` SHALL handle all memory hook events. It SHA
 - **THEN** it SHALL exit 0 silently
 
 ### Requirement: Shared health check
-The unified handler SHALL check `wt-memory health` once at the start and exit 0 if unhealthy. This avoids repeating the check in each event handler.
+The unified handler SHALL check `set-memory health` once at the start and exit 0 if unhealthy. This avoids repeating the check in each event handler.
 
-#### Scenario: wt-memory not available
-- **WHEN** `wt-memory` is not in PATH
+#### Scenario: set-memory not available
+- **WHEN** `set-memory` is not in PATH
 - **THEN** the handler SHALL exit 0 immediately for any event
 
 ### Requirement: Session-level deduplication cache
@@ -68,7 +68,7 @@ The handler SHALL maintain a session-scoped cache to prevent redundant recalls f
 
 #### Scenario: Cache location
 - **WHEN** the handler starts
-- **THEN** the cache file SHALL be at `/tmp/wt-memory-session-<SESSION_ID>.json`
+- **THEN** the cache file SHALL be at `/tmp/set-memory-session-<SESSION_ID>.json`
 - **AND** `SESSION_ID` SHALL be extracted from the `session_id` field of the hook input JSON
 
 #### Scenario: Cache cleared on new session

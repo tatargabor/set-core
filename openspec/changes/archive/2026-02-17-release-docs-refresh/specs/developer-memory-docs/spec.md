@@ -1,15 +1,15 @@
 ## MODIFIED Requirements
 
 ### Requirement: Developer Memory CLI documentation in README
-The README CLI Reference SHALL document all user-facing `wt-memory` subcommands including sync, proactive, stats, and cleanup.
+The README CLI Reference SHALL document all user-facing `set-memory` subcommands including sync, proactive, stats, and cleanup.
 
-#### Scenario: All wt-memory subcommands listed
+#### Scenario: All set-memory subcommands listed
 - **WHEN** a user reads the Developer Memory CLI table in README
 - **THEN** they SHALL see entries for: remember, recall, list, status, forget, context, brain, get, export, import, repair, sync, sync push, sync pull, sync status, proactive, stats, cleanup
 
-#### Scenario: wt-memory-hooks commands listed
+#### Scenario: set-memory-hooks commands listed
 - **WHEN** a user reads the Developer Memory CLI table
-- **THEN** they SHALL see entries for: wt-memory-hooks install, wt-memory-hooks check, wt-memory-hooks remove
+- **THEN** they SHALL see entries for: set-memory-hooks install, set-memory-hooks check, set-memory-hooks remove
 
 ### Requirement: GUI memory features documented in README
 The README Features section SHALL describe the GUI memory capabilities.

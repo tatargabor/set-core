@@ -4,12 +4,12 @@ The GUI Control Center's "Skill" column is always empty. The `wt-skill-start` co
 
 ## What Changes
 
-- Create `bin/wt-hook-stop` script that refreshes `.wt-tools/current_skill` timestamp on every Claude `Stop` event
+- Create `bin/wt-hook-stop` script that refreshes `.set-core/current_skill` timestamp on every Claude `Stop` event
 - Add `wt-skill-start` and `wt-hook-stop` to the `install_scripts()` list in `install.sh`
 - Add `wt-skill-start <skill-name>` to all opsx SKILL.md files that don't have it
 - Create `install_project_hooks()` in `install.sh` that deploys Claude hooks to every registered project's `.claude/settings.json`
 - Add hook deployment to `wt-add` so new projects get hooks automatically
-- Graceful fallback: hooks exit silently if wt-tools is not installed
+- Graceful fallback: hooks exit silently if set-core is not installed
 
 ## Capabilities
 

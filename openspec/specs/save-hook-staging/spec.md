@@ -6,12 +6,12 @@ Staging and debounce mechanism for wt-hook-memory-save transcript extraction, pr
 ## Removed
 
 ### Requirement: Staging file write instead of direct memory save
-**Reason**: Raw filter saves directly to wt-memory (no LLM to debounce). Staging files are no longer needed.
-**Migration**: The new raw filter in `_stop_extract_from_transcript()` calls `wt-memory remember` directly. Any existing staged files from previous Haiku sessions are committed as a one-time migration during the first Stop event after upgrade.
+**Reason**: Raw filter saves directly to set-memory (no LLM to debounce). Staging files are no longer needed.
+**Migration**: The new raw filter in `_stop_extract_from_transcript()` calls `set-memory remember` directly. Any existing staged files from previous Haiku sessions are committed as a one-time migration during the first Stop event after upgrade.
 
 ### Requirement: Commit staged extractions on session switch
 **Reason**: No staging files to commit. Direct save eliminates the two-phase commit pattern.
-**Migration**: One-time migration commits all existing `.wt-tools/.staged-extract-*` files, then the staging logic is removed.
+**Migration**: One-time migration commits all existing `.set-core/.staged-extract-*` files, then the staging logic is removed.
 
 ### Requirement: Stale staged file auto-commit
 **Reason**: No staging files exist in the new flow.

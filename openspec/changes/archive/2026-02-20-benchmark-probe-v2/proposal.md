@@ -24,5 +24,5 @@ MemoryProbe v1 only tests convention compliance (format, naming patterns) — 2 
 ## Impact
 
 - `benchmark/synthetic/` — All files: project-spec.md, changes/*.md, tests/*.sh, scripts/*.sh, claude-md/*.md, run-guide.md
-- No impact on main wt-tools code — benchmark-only changes
+- No impact on main set-core code — benchmark-only changes
 - Backward incompatible with MemoryProbe v1 scoring (new categories, new weights)

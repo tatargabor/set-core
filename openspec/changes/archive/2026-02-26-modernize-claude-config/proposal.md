@@ -2,7 +2,7 @@
 
 Claude Code now supports `.claude/rules/` (path-scoped auto-loaded rules), `.claude/agents/` (custom subagents with tool restrictions, model selection, persistent memory), skill frontmatter options (`context: fork`, `disable-model-invocation`), and `@path` imports in CLAUDE.md. This project uses none of these features — all project instructions live in a monolithic CLAUDE.md, there are no custom subagents, and GUI-specific rules consume context even when working on non-GUI code. Adopting these patterns will reduce context waste, enable specialized AI workers, and make the configuration more maintainable.
 
-**Constraint**: The existing memory hook system (7 hook events in `.claude/settings.json` calling `wt-hook-memory`, `wt-hook-skill`, `wt-hook-activity`, `wt-hook-stop`) and the Persistent Memory CLAUDE.md section (managed by `wt-project init`) must remain untouched.
+**Constraint**: The existing memory hook system (7 hook events in `.claude/settings.json` calling `wt-hook-memory`, `wt-hook-skill`, `wt-hook-activity`, `wt-hook-stop`) and the Persistent Memory CLAUDE.md section (managed by `set-project init`) must remain untouched.
 
 ## What Changes
 
@@ -13,7 +13,7 @@ Claude Code now supports `.claude/rules/` (path-scoped auto-loaded rules), `.cla
 - **Optimize skill frontmatter** — add `context: fork` to exploration-heavy skills, `disable-model-invocation: true` to rarely-invoked skills
 - **Add `SubagentStart` hook** to inject project memory context into spawned subagents
 - **Add `SessionStart[compact]` hook** to re-inject critical context after auto-compaction
-- **Update `wt-project init`** to deploy rules/ and agents/ alongside existing CLAUDE.md deployment
+- **Update `set-project init`** to deploy rules/ and agents/ alongside existing CLAUDE.md deployment
 
 ## Capabilities
 
@@ -24,7 +24,7 @@ Claude Code now supports `.claude/rules/` (path-scoped auto-loaded rules), `.cla
 - `subagent-context-injection`: SubagentStart hook that injects project memory context into spawned subagents
 
 ### Modified Capabilities
-- `project-init-deploy`: wt-project init must deploy rules/ and agents/ directories alongside CLAUDE.md to target projects
+- `project-init-deploy`: set-project init must deploy rules/ and agents/ directories alongside CLAUDE.md to target projects
 
 ## Impact
 
@@ -33,5 +33,5 @@ Claude Code now supports `.claude/rules/` (path-scoped auto-loaded rules), `.cla
 - `CLAUDE.md` — significant content reduction (from ~144 lines to ~60-70 lines)
 - `.claude/settings.json` — 2 new hook entries (SubagentStart, SessionStart[compact]) added alongside existing memory hooks (existing hooks untouched)
 - `.claude/skills/openspec-*/SKILL.md` — frontmatter additions (context, disable-model-invocation)
-- `lib/` or `bin/` — wt-project init updated to deploy new directories
+- `lib/` or `bin/` — set-project init updated to deploy new directories
 - No changes to: memory hooks, memory MCP tools, skill command files, hook scripts

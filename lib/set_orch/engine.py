@@ -1,0 +1,1471 @@
+"""Main orchestration monitoring loop (engine).
+
+Migrated from: lib/orchestration/monitor.sh (586 lines)
+Source line comments reference the original bash function names.
+
+Functions:
+    monitor_loop       — main while-loop: poll, dispatch, merge, replan, watchdog
+    parse_directives   — JSON to Directives dataclass
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import subprocess
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Optional
+
+from .root import SET_TOOLS_ROOT
+from .state import (
+    OrchestratorState,
+    load_state,
+    locked_state,
+    update_change_field,
+    update_state_field,
+)
+from .subprocess_utils import run_command
+
+logger = logging.getLogger(__name__)
+
+# ─── Constants (from bash globals) ──────────────────────────────────
+
+DEFAULT_POLL_INTERVAL = 15
+DEFAULT_TIME_LIMIT = "5h"
+DEFAULT_TOKEN_HARD_LIMIT = 50_000_000
+DEFAULT_MONITOR_IDLE_TIMEOUT = 600
+DEFAULT_MAX_REPLAN_RETRIES = 3
+MAX_REPLAN_CYCLES = 5
+VERIFY_TIMEOUT = 600  # 10 min max for verify gate
+
+
+# ─── Directives ────────────────────────────────────────────────────
+
+@dataclass
+class Directives:
+    """Parsed orchestration directives from JSON input.
+
+    Mirrors the ~40 variables parsed from JSON in monitor.sh L5-106.
+    """
+
+    max_parallel: int = 3
+    checkpoint_every: int = 0
+    test_command: str = ""
+    merge_policy: str = "eager"
+    token_budget: int = 0
+    auto_replan: bool = False
+    max_replan_cycles: int = MAX_REPLAN_CYCLES
+    test_timeout: int = 300
+    max_verify_retries: int = 3
+    review_before_merge: bool = False
+    review_model: str = "opus"
+    default_model: str = "opus"
+    smoke_command: str = ""
+    smoke_timeout: int = 120
+    smoke_blocking: bool = False
+    smoke_fix_token_budget: int = 0
+    smoke_fix_max_turns: int = 15
+    smoke_fix_max_retries: int = 3
+    smoke_health_check_url: str = ""
+    smoke_health_check_timeout: int = 30
+    e2e_command: str = ""
+    e2e_timeout: int = 120
+    e2e_mode: str = "per_change"
+    e2e_port_base: int = 3100
+    token_hard_limit: int = DEFAULT_TOKEN_HARD_LIMIT
+    events_log: bool = True
+    events_max_size: int = 1048576
+    watchdog_timeout: int = 0
+    watchdog_loop_threshold: int = 0
+    max_redispatch: int = 2
+    context_pruning: bool = True
+    model_routing: str = "off"
+    team_mode: bool = False
+    post_phase_audit: bool = True
+    milestones_enabled: bool = False
+    milestones_dev_server: str = ""
+    milestones_base_port: int = 3100
+    milestones_max_worktrees: int = 3
+    checkpoint_auto_approve: bool = False
+    checkpoint_timeout: int = 0
+    post_merge_command: str = ""
+    monitor_idle_timeout: int = DEFAULT_MONITOR_IDLE_TIMEOUT
+    time_limit_secs: int = 0
+
+    # Hook scripts
+    hook_pre_dispatch: str = ""
+    hook_post_verify: str = ""
+    hook_pre_merge: str = ""
+    hook_post_merge: str = ""
+    hook_on_fail: str = ""
+
+
+def parse_directives(raw: dict) -> Directives:
+    """Parse JSON directives dict into Directives dataclass.
+
+    Source: monitor.sh L5-106 (all the jq -r '.field // default' calls)
+    """
+    d = Directives()
+    d.max_parallel = _int(raw, "max_parallel", d.max_parallel)
+    d.checkpoint_every = _int(raw, "checkpoint_every", d.checkpoint_every)
+    d.test_command = _str(raw, "test_command", d.test_command)
+    d.merge_policy = _str(raw, "merge_policy", d.merge_policy)
+    d.token_budget = _int(raw, "token_budget", d.token_budget)
+    d.auto_replan = _bool(raw, "auto_replan", d.auto_replan)
+    d.max_replan_cycles = _int(raw, "max_replan_cycles", d.max_replan_cycles)
+    d.test_timeout = _int(raw, "test_timeout", d.test_timeout)
+    d.max_verify_retries = _int(raw, "max_verify_retries", d.max_verify_retries)
+    d.review_before_merge = _bool(raw, "review_before_merge", d.review_before_merge)
+    d.review_model = _str(raw, "review_model", d.review_model)
+    d.default_model = _str(raw, "default_model", d.default_model)
+    d.smoke_command = _str(raw, "smoke_command", d.smoke_command)
+    d.smoke_timeout = _int(raw, "smoke_timeout", d.smoke_timeout)
+    d.smoke_blocking = _bool(raw, "smoke_blocking", d.smoke_blocking)
+    d.smoke_fix_token_budget = _int(raw, "smoke_fix_token_budget", d.smoke_fix_token_budget)
+    d.smoke_fix_max_turns = _int(raw, "smoke_fix_max_turns", d.smoke_fix_max_turns)
+    d.smoke_fix_max_retries = _int(raw, "smoke_fix_max_retries", d.smoke_fix_max_retries)
+    d.smoke_health_check_url = _str(raw, "smoke_health_check_url", d.smoke_health_check_url)
+    d.smoke_health_check_timeout = _int(raw, "smoke_health_check_timeout", d.smoke_health_check_timeout)
+    d.e2e_command = _str(raw, "e2e_command", d.e2e_command)
+    d.e2e_timeout = _int(raw, "e2e_timeout", d.e2e_timeout)
+    d.e2e_mode = _str(raw, "e2e_mode", d.e2e_mode)
+    d.e2e_port_base = _int(raw, "e2e_port_base", d.e2e_port_base)
+    d.token_hard_limit = _int(raw, "token_hard_limit", d.token_hard_limit)
+    d.events_log = _bool(raw, "events_log", d.events_log)
+    d.events_max_size = _int(raw, "events_max_size", d.events_max_size)
+    d.watchdog_timeout = _int(raw, "watchdog_timeout", d.watchdog_timeout)
+    d.watchdog_loop_threshold = _int(raw, "watchdog_loop_threshold", d.watchdog_loop_threshold)
+    d.max_redispatch = _int(raw, "max_redispatch", d.max_redispatch)
+    d.context_pruning = _bool(raw, "context_pruning", d.context_pruning)
+    d.model_routing = _str(raw, "model_routing", d.model_routing)
+    d.team_mode = _bool(raw, "team_mode", d.team_mode)
+    d.post_phase_audit = _bool(raw, "post_phase_audit", d.post_phase_audit)
+    d.post_merge_command = _str(raw, "post_merge_command", d.post_merge_command)
+    d.monitor_idle_timeout = _int(raw, "monitor_idle_timeout", d.monitor_idle_timeout)
+    d.checkpoint_auto_approve = _bool(raw, "checkpoint_auto_approve", d.checkpoint_auto_approve)
+    d.checkpoint_timeout = _int(raw, "checkpoint_timeout", d.checkpoint_timeout)
+
+    # Milestones sub-object
+    ms = raw.get("milestones", {})
+    if isinstance(ms, dict):
+        d.milestones_enabled = _bool(ms, "enabled", d.milestones_enabled)
+        d.milestones_dev_server = _str(ms, "dev_server", d.milestones_dev_server)
+        d.milestones_base_port = _int(ms, "base_port", d.milestones_base_port)
+        d.milestones_max_worktrees = _int(ms, "max_worktrees", d.milestones_max_worktrees)
+
+    # Hooks
+    d.hook_pre_dispatch = _str(raw, "hook_pre_dispatch", d.hook_pre_dispatch)
+    d.hook_post_verify = _str(raw, "hook_post_verify", d.hook_post_verify)
+    d.hook_pre_merge = _str(raw, "hook_pre_merge", d.hook_pre_merge)
+    d.hook_post_merge = _str(raw, "hook_post_merge", d.hook_post_merge)
+    d.hook_on_fail = _str(raw, "hook_on_fail", d.hook_on_fail)
+
+    # Parse time limit
+    tl = raw.get("time_limit", DEFAULT_TIME_LIMIT)
+    if isinstance(tl, str) and tl not in ("none", "0", ""):
+        from .config import parse_duration
+        d.time_limit_secs = parse_duration(tl)
+    elif isinstance(tl, (int, float)):
+        d.time_limit_secs = int(tl)
+
+    return d
+
+
+# ─── Cleanup / Shutdown ────────────────────────────────────────────
+
+
+def cleanup_orchestrator(state_file: str, directives: Directives | None = None) -> None:
+    """Cleanup on orchestrator exit: update state, kill dev servers, pause if needed.
+
+    Called via atexit or signal handlers.
+
+    Args:
+        state_file: Path to orchestration state file.
+        directives: Parsed directives (optional, for pause_on_exit check).
+    """
+    try:
+        state = load_state(state_file)
+
+        # Don't overwrite terminal states
+        if state.status not in ("done", "time_limit"):
+            update_state_field(state_file, "status", "stopped")
+            logger.info("Orchestrator state set to 'stopped'")
+
+        # Kill auto-started dev server PIDs
+        dev_pids = state.extras.get("dev_server_pids", [])
+        if dev_pids:
+            import signal as sig
+            for pid in dev_pids:
+                try:
+                    os.kill(pid, sig.SIGTERM)
+                    logger.info("Killed dev server PID %d", pid)
+                except (OSError, ProcessLookupError):
+                    pass
+
+        # Pause running changes if directive set
+        if directives and getattr(directives, 'hook_on_fail', ''):
+            # Check for pause_on_exit in raw directives
+            pass  # Handled by individual change cleanup
+
+        # Generate final report
+        _generate_report_safe(state_file)
+
+    except Exception:
+        logger.error("cleanup_orchestrator failed", exc_info=True)
+
+
+# ─── Monitor Loop ──────────────────────────────────────────────────
+
+# Source: monitor.sh monitor_loop() L5-586
+def monitor_loop(
+    directives_json: str,
+    state_file: str,
+    *,
+    poll_interval: int = DEFAULT_POLL_INTERVAL,
+    event_bus: Any = None,
+    checkpoint_auto_approve: bool = False,
+    checkpoint_timeout: int = 0,
+) -> None:
+    """Run the main orchestration monitoring loop.
+
+    This is the Python equivalent of monitor.sh monitor_loop().
+    Parses directives, then loops: poll → dispatch → merge → replan → watchdog.
+    """
+    # Single-instance guard: flock on orchestrator lock file
+    import fcntl
+    lock_path = os.path.join(os.path.dirname(state_file) or ".", "orchestrator.lock")
+    lock_fd = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        logger.error("Another orchestrator is already running — exiting")
+        lock_fd.close()
+        return
+    logger.info("Acquired orchestrator lock: %s", lock_path)
+
+    # Parse directives — try file path, then JSON string, then state fallback
+    raw = None
+    if os.path.isfile(directives_json):
+        with open(directives_json) as f:
+            raw = json.load(f)
+    else:
+        try:
+            raw = json.loads(directives_json)
+        except (json.JSONDecodeError, ValueError):
+            # Temp file was deleted between restarts — fall back to persisted directives
+            logger.warning(
+                "Directives not found at %s — loading from state file", directives_json
+            )
+            state_for_directives = load_state(state_file)
+            raw = state_for_directives.extras.get("directives")
+            if raw is None:
+                logger.error("No directives in state file either — cannot continue")
+                return
+
+    d = parse_directives(raw)
+
+    # Apply CLI overrides
+    if checkpoint_auto_approve:
+        d.checkpoint_auto_approve = True
+    if checkpoint_timeout:
+        d.checkpoint_timeout = checkpoint_timeout
+
+    # Persist timing info and orchestrator PID
+    start_epoch = int(time.time())
+    update_state_field(state_file, "started_epoch", start_epoch)
+    update_state_field(state_file, "time_limit_secs", d.time_limit_secs)
+    update_state_field(state_file, "orchestrator_pid", os.getpid())
+
+    # Restore active_seconds from state (cumulative across restarts)
+    state = load_state(state_file)
+    active_seconds = state.extras.get("active_seconds", 0)
+    token_wait = False
+    replan_retry_count = 0
+
+    # Ensure state is "running" — the bash layer may have set "stopped"
+    # via EXIT trap before exec'ing to us
+    if state.status == "stopped":
+        logger.info("Resuming orchestration (was: stopped)")
+        update_state_field(state_file, "status", "running")
+    elif state.status == "checkpoint":
+        logger.info("Stale checkpoint cleared on restart — resuming")
+        update_state_field(state_file, "status", "running")
+
+    # Clear checkpoint-specific transient state on restart
+    _clear_checkpoint_state(state_file)
+
+    logger.info("Monitor loop started (poll every %ds, auto_replan=%s)", poll_interval, d.auto_replan)
+
+    # Self-watchdog tracking
+    last_progress_ts = int(time.time())
+    idle_escalation_count = 0
+
+    poll_count = 0
+
+    while True:
+        time.sleep(poll_interval)
+        poll_count += 1
+
+        # Track active time
+        if not token_wait and _any_loop_active(state_file):
+            active_seconds += poll_interval
+            update_state_field(state_file, "active_seconds", active_seconds)
+
+        # Check time limit
+        if d.time_limit_secs > 0 and active_seconds >= d.time_limit_secs:
+            wall_elapsed = int(time.time()) - start_epoch
+            logger.warning(
+                "Time limit reached (%ds active, %ds wall clock)",
+                active_seconds, wall_elapsed,
+            )
+            update_state_field(state_file, "status", "time_limit")
+            _send_terminal_notifications(state_file, "time_limit", event_bus)
+            _generate_report_safe(state_file)
+            break
+
+        # Check external stop
+        state = load_state(state_file)
+        if state.status in ("stopped", "done"):
+            _generate_report_safe(state_file)
+            break
+        if state.status == "paused":
+            continue
+
+        # Poll active changes (running + verifying) — must run even
+        # during checkpoint so dead Ralph processes are detected and
+        # verify/merge can complete.
+        poll_e2e_cmd = d.e2e_command if d.e2e_mode != "phase_end" else ""
+        _signal_alive(state_file, event_bus)
+        _poll_active_changes(state_file, d, poll_e2e_cmd, event_bus)
+        _signal_alive(state_file, event_bus)
+
+        # Safety net: check suspended changes
+        _poll_suspended_changes(state_file, d, poll_e2e_cmd, event_bus)
+
+        # During checkpoint, skip dispatch and advancement but still
+        # allow completion detection and merge queue retries.
+        if state.status == "checkpoint":
+            _signal_alive(state_file, event_bus)
+            _drain_merge_then_dispatch(state_file, d, event_bus)
+            _signal_alive(state_file, event_bus)
+            if _check_completion(state_file, d, event_bus):
+                break
+            if d.checkpoint_auto_approve:
+                logger.info("Checkpoint auto-approved — resuming")
+                update_state_field(state_file, "status", "running")
+            elif _checkpoint_approved(state):
+                logger.info("Checkpoint approved via API — resuming")
+                update_state_field(state_file, "status", "running")
+            elif d.checkpoint_timeout > 0:
+                started = state.extras.get("checkpoint_started_at", 0)
+                if started and (int(time.time()) - started) >= d.checkpoint_timeout:
+                    elapsed = int(time.time()) - started
+                    logger.warning(
+                        "Checkpoint timed out after %ds — auto-resuming",
+                        elapsed,
+                    )
+                    update_state_field(state_file, "status", "running")
+                    if event_bus:
+                        event_bus.emit(
+                            "CHECKPOINT_TIMEOUT",
+                            data={"elapsed": elapsed},
+                        )
+                else:
+                    continue
+            else:
+                continue
+
+        # Token budget enforcement
+        if d.token_budget > 0:
+            total_tokens = sum(c.tokens_used for c in load_state(state_file).changes)
+            if total_tokens > d.token_budget:
+                if not token_wait:
+                    logger.warning("Token budget exceeded (%d > %d) — waiting", total_tokens, d.token_budget)
+                    token_wait = True
+                # Still drain merges while waiting for token budget
+                _signal_alive(state_file, event_bus)
+                _drain_merge_then_dispatch(state_file, d, event_bus)
+                _signal_alive(state_file, event_bus)
+                continue
+            elif token_wait:
+                logger.info("Token budget available — resuming dispatch")
+                token_wait = False
+
+        # Verify-failed recovery
+        _recover_verify_failed(state_file, d, event_bus)
+
+        # Note: no cascade_failed_deps() — pending changes with failed deps
+        # simply stay pending (never dispatched because deps_met() returns False).
+        # _check_all_done() and _check_phase_milestone() treat them as terminal.
+
+        # Merge-before-dispatch serialization: if merge queue has items,
+        # drain it completely before dispatching new changes. This ensures
+        # archive commits are on main before new worktrees are created,
+        # eliminating the archive race (Bug #38).
+        state = load_state(state_file)
+        pre_running = _count_by_status(state_file, "running")
+        pre_merged = _count_by_status(state_file, "merged")
+
+        _signal_alive(state_file, event_bus)
+        if state.merge_queue:
+            merged = _drain_merge_then_dispatch(state_file, d, event_bus)
+        else:
+            _dispatch_ready_safe(state_file, d, event_bus)
+            merged = 0
+        _signal_alive(state_file, event_bus)
+
+        post_running = _count_by_status(state_file, "running")
+        post_merged = _count_by_status(state_file, "merged")
+        if post_running > pre_running or post_merged > pre_merged:
+            last_progress_ts = int(time.time())
+
+        # Phase advancement (always) + optional milestone check
+        _check_phase_completion(state_file, d, event_bus)
+
+        # Resume stalled changes
+        _resume_stalled_safe(state_file, event_bus)
+
+        # Retry failed builds
+        _retry_failed_builds_safe(state_file, d, event_bus)
+
+        # Token hard limit
+        if d.token_hard_limit > 0:
+            _check_token_hard_limit(state_file, d, event_bus)
+
+        # Self-watchdog
+        _self_watchdog(
+            state_file, d, last_progress_ts,
+            idle_escalation_count, event_bus,
+        )
+        idle_elapsed = int(time.time()) - last_progress_ts
+        if idle_elapsed > d.monitor_idle_timeout:
+            idle_escalation_count += 1
+            last_progress_ts = int(time.time())
+        else:
+            idle_escalation_count = 0
+
+        # Generate report
+        _generate_report_safe(state_file)
+
+        # Periodic memory operations (every ~10 polls ≈ 2.5 minutes)
+        if poll_count % 10 == 0:
+            _periodic_memory_ops_safe(state_file)
+
+        # Watchdog heartbeat — must be more frequent than sentinel stuck timeout (180s)
+        # Every 8th poll at 15s = 120s, well within the 180s threshold
+        if event_bus and poll_count % 8 == 0:
+            event_bus.emit("WATCHDOG_HEARTBEAT")
+
+        # Checkpoint check
+        if d.checkpoint_every > 0:
+            state = load_state(state_file)
+            if state.changes_since_checkpoint >= d.checkpoint_every:
+                _trigger_checkpoint_safe(state_file, "periodic", event_bus)
+                continue
+
+        # Completion detection
+        if _check_completion(state_file, d, event_bus):
+            break
+
+
+# ─── Poll Helpers ──────────────────────────────────────────────────
+
+def _verify_gates_already_passed(change: Any) -> bool:
+    """Return True if all blocking verify gates have already passed.
+
+    Used on monitor restart to detect changes in "verifying" status where the
+    gates completed successfully but the monitor died before queuing the merge
+    (Bug #5b). Any blocking gate result of "fail" or "critical" → False.
+    A gate with no result (None) → False (gates haven't run yet).
+    """
+    _PASS_VALUES = {"pass", "skipped", "warn-fail"}
+    _FAIL_VALUES = {"fail", "critical"}
+
+    extras = change.extras or {}
+
+    # Collect results from all gates — dataclass fields and extras.
+    # Must check ALL blocking gates, not just a subset. Rules gate result
+    # is not persisted (failure always sets status to verify-failed before
+    # crash window), but e2e and spec_coverage ARE persisted to extras.
+    gate_results = [
+        change.test_result,
+        change.build_result,
+        change.review_result,
+        extras.get("scope_check"),
+        extras.get("e2e_result"),
+        extras.get("spec_coverage_result"),
+    ]
+
+    # All checked gates must have a result (not None) and none can be a hard failure
+    for result in gate_results:
+        if result is None:
+            return False
+        if result in _FAIL_VALUES:
+            return False
+    return True
+
+
+def _signal_alive(state_file: str, event_bus: Any) -> None:
+    """Emit heartbeat + touch state file mtime to prevent false sentinel kills.
+
+    Called before and after long-running operations (dispatch, merge, poll)
+    to keep the sentinel's idle timer well under 180s.
+    """
+    if event_bus:
+        try:
+            event_bus.emit("WATCHDOG_HEARTBEAT")
+        except Exception:
+            pass
+    try:
+        os.utime(state_file, None)
+    except OSError:
+        logger.warning("_signal_alive: could not touch state file %s", state_file)
+
+
+def _has_live_children(pid: int) -> bool:
+    """Check if a process has any child processes via pgrep -P."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-P", str(pid)],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Check if a PID exists."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _poll_active_changes(
+    state_file: str, d: Directives, poll_e2e_cmd: str, event_bus: Any
+) -> None:
+    """Poll all running + verifying changes."""
+    from .verifier import poll_change
+
+    state = load_state(state_file)
+    for change in state.changes:
+        if change.status not in ("running", "verifying"):
+            continue
+
+        # --- Worktree existence check (removed-worktree-resilience) ---
+        wt_path = change.worktree_path or ""
+        if wt_path and not os.path.isdir(wt_path):
+            logger.warning(
+                "Worktree missing for %s (status=%s, path=%s) — auto-transitioning to merged",
+                change.name, change.status, wt_path,
+            )
+            update_change_field(state_file, change.name, "status", "merged")
+            if event_bus:
+                event_bus.emit("CHANGE_AUTO_MERGED", change=change.name,
+                               reason="worktree_missing")
+            continue
+
+        # --- Dead verify agent detection ---
+        if change.status == "verifying":
+            ralph_pid = change.ralph_pid or 0
+
+            # Check 1: verify timeout
+            verifying_since = change.extras.get("verifying_since", 0) if change.extras else 0
+            if verifying_since:
+                elapsed = int(time.time()) - verifying_since
+                if elapsed > VERIFY_TIMEOUT:
+                    logger.warning(
+                        "Change %s verify timeout (%ds > %ds) — marking stalled",
+                        change.name, elapsed, VERIFY_TIMEOUT,
+                    )
+                    update_change_field(state_file, change.name, "status", "stalled")
+                    update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                    if event_bus:
+                        event_bus.emit("CHANGE_STALLED", change=change.name,
+                                       reason="verify_timeout")
+                    continue
+
+            # Check 2: dead agent (PID dead or alive with no children)
+            if ralph_pid > 0:
+                pid_alive = _is_pid_alive(ralph_pid)
+                if not pid_alive or (pid_alive and not _has_live_children(ralph_pid)):
+                    reason = "dead_verify_agent"
+                    logger.warning(
+                        "Change %s verifying but agent dead (pid=%d, alive=%s, children=%s) — marking stalled",
+                        change.name, ralph_pid, pid_alive,
+                        "no" if pid_alive else "n/a",
+                    )
+                    update_change_field(state_file, change.name, "status", "stalled")
+                    update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                    if event_bus:
+                        event_bus.emit("CHANGE_STALLED", change=change.name,
+                                       reason=reason)
+                    continue
+
+        # Fast-merge path: if change is "verifying" and all gates already passed,
+        # the monitor likely died between verify completion and merge queuing (Bug #5b).
+        # Queue it for merge directly instead of re-running the full verify gate.
+        if change.status == "verifying" and _verify_gates_already_passed(change):
+            logger.info(
+                "Resume fast-merge: %s has all gates passed — adding to merge queue directly",
+                change.name,
+            )
+            with locked_state(state_file) as s:
+                if change.name not in s.merge_queue:
+                    s.merge_queue.append(change.name)
+            continue
+
+        try:
+            poll_change(
+                change.name, state_file,
+                test_command=d.test_command,
+                merge_policy=d.merge_policy,
+                test_timeout=d.test_timeout,
+                max_verify_retries=d.max_verify_retries,
+                review_before_merge=d.review_before_merge,
+                review_model=d.review_model,
+                smoke_command=d.smoke_command,
+                smoke_timeout=d.smoke_timeout,
+                e2e_command=poll_e2e_cmd,
+                e2e_timeout=d.e2e_timeout,
+                event_bus=event_bus,
+                design_snapshot_dir=os.getcwd(),
+            )
+        except Exception:
+            logger.warning("Poll failed for %s", change.name, exc_info=True)
+
+
+def _poll_suspended_changes(
+    state_file: str, d: Directives, poll_e2e_cmd: str, event_bus: Any
+) -> None:
+    """Check paused/waiting/done changes for completed loop-state."""
+    # Source: monitor.sh L211-249
+    from .verifier import poll_change
+
+    state = load_state(state_file)
+    for change in state.changes:
+        if change.status not in ("paused", "waiting:budget", "budget_exceeded", "done"):
+            continue
+
+        wt_path = change.worktree_path or ""
+
+        # For "done" changes: check merge queue
+        if change.status == "done":
+            if change.name not in state.merge_queue:
+                logger.warning("Monitor: orphaned 'done' change %s — adding to merge queue", change.name)
+                with locked_state(state_file) as st:
+                    if change.name not in st.merge_queue:
+                        st.merge_queue.append(change.name)
+            continue
+
+        # Check loop-state for suspended changes
+        if not wt_path:
+            continue
+        loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
+        if not os.path.isfile(loop_state_path):
+            continue
+
+        try:
+            with open(loop_state_path) as f:
+                ls = json.load(f)
+            if ls.get("status") == "done":
+                logger.info("Monitor: suspended change %s has loop-state=done — processing", change.name)
+                update_change_field(state_file, change.name, "status", "running")
+                poll_change(
+                    change.name, state_file,
+                    test_command=d.test_command,
+                    merge_policy=d.merge_policy,
+                    test_timeout=d.test_timeout,
+                    max_verify_retries=d.max_verify_retries,
+                    review_before_merge=d.review_before_merge,
+                    review_model=d.review_model,
+                    smoke_command=d.smoke_command,
+                    smoke_timeout=d.smoke_timeout,
+                    e2e_command=poll_e2e_cmd,
+                    e2e_timeout=d.e2e_timeout,
+                    event_bus=event_bus,
+                    design_snapshot_dir=os.getcwd(),
+                )
+        except Exception:
+            pass
+
+
+# ─── Recovery ──────────────────────────────────────────────────────
+
+def _recover_verify_failed(
+    state_file: str, d: Directives, event_bus: Any
+) -> None:
+    """Resume verify-failed changes with retry context."""
+    # Source: monitor.sh L274-306
+    from .dispatcher import resume_change
+
+    state = load_state(state_file)
+    for change in state.changes:
+        if change.status != "verify-failed":
+            continue
+
+        if change.verify_retry_count < d.max_verify_retries:
+            # NOTE: Do NOT increment verify_retry_count here — handle_change_done
+            # already incremented it before setting status to "verify-failed".
+            # This recovery path runs only after crash between status write and
+            # resume_change call. Double-incrementing would consume 2 retry slots.
+            logger.info(
+                "Recovering verify-failed %s (retry %d/%d)",
+                change.name, change.verify_retry_count, d.max_verify_retries,
+            )
+
+            # Rebuild retry_context from stored build_output if missing
+            retry_ctx = change.extras.get("retry_context", "")
+            if not retry_ctx:
+                build_output = change.extras.get("build_output", "")
+                if build_output:
+                    rebuild_prompt = (
+                        f"Build failed after implementation. Fix the build errors.\n\n"
+                        f"Build output (last 2000 chars):\n{build_output[-2000:]}\n\n"
+                        f"Original scope: {change.scope}"
+                    )
+                    update_change_field(state_file, change.name, "retry_context", rebuild_prompt)
+
+            resume_change(state_file, change.name)
+        else:
+            # Build failure reason from last available output
+            reason = ""
+            for output_key in ("build_output", "review_output", "test_output"):
+                val = change.extras.get(output_key, "")
+                if val:
+                    reason = val[:500]
+                    break
+            logger.info("Verify-failed %s exhausted retries — marking failed (reason: %s)", change.name, reason[:100])
+            update_change_field(state_file, change.name, "status", "failed")
+            if reason:
+                update_change_field(state_file, change.name, "failure_reason", reason)
+
+
+# ─── Completion Detection ──────────────────────────────────────────
+
+def _check_completion(
+    state_file: str, d: Directives, event_bus: Any
+) -> bool:
+    """Check if all changes are terminal. Returns True if loop should exit."""
+    # Source: monitor.sh L428-583
+    state = load_state(state_file)
+    total = len(state.changes)
+    if total == 0:
+        return False
+
+    # Guard: don't exit while merge queue has unmerged changes.
+    # A merge exception can leave changes in "done" status (gates passed but
+    # not yet merged) — exiting now would lose them.
+    if state.merge_queue:
+        return False
+
+    truly_complete = sum(
+        1 for c in state.changes
+        if c.status in ("done", "merged", "skipped")
+    )
+    failed_count = sum(1 for c in state.changes if c.status == "failed")
+    merge_blocked = sum(1 for c in state.changes if c.status == "merge-blocked")
+    # Pending changes with all deps failed will never run — count as blocked, not active
+    from .state import deps_failed
+    blocked_pending = sum(
+        1 for c in state.changes
+        if c.status == "pending" and deps_failed(state, c.name)
+    )
+    active_count = sum(
+        1 for c in state.changes
+        if c.status in ("running", "pending", "verifying", "stalled")
+    ) - blocked_pending
+
+    # Partial completion: no active changes, some failed/blocked
+    all_resolved = truly_complete + failed_count + merge_blocked + blocked_pending
+    if active_count == 0 and truly_complete < total:
+        if all_resolved >= total:
+            logger.info(
+                "%d succeeded, %d failed, %d merge-blocked, %d dep-blocked — all resolved",
+                truly_complete, failed_count, merge_blocked, blocked_pending,
+            )
+
+    if truly_complete < total and not (active_count == 0 and all_resolved >= total):
+        return False
+
+    # Reconcile coverage before any terminal decision — fix stale entries
+    # from requirements whose changes merged but coverage wasn't updated
+    # (e.g. after sentinel partial reset)
+    try:
+        from .digest import reconcile_coverage, DIGEST_DIR
+        fixed = reconcile_coverage(state_file, DIGEST_DIR)
+        if fixed:
+            logger.warning("Reconciled %d coverage entries before completion check", fixed)
+    except Exception:
+        logger.warning("Coverage reconciliation failed", exc_info=True)
+
+    logger.info("All %d changes resolved (%d complete, %d dep-blocked)", total, truly_complete, blocked_pending)
+
+    # Dep-blocked: some changes couldn't run because dependencies failed.
+    # Stop with "stopped" status so user can fix failed changes and restart.
+    if blocked_pending > 0:
+        logger.info(
+            "%d changes blocked by failed dependencies — stopping (not done)",
+            blocked_pending,
+        )
+        update_state_field(state_file, "status", "stopped")
+        update_state_field(state_file, "stop_reason", "dep_blocked")
+        update_state_field(state_file, "dep_blocked_count", blocked_pending)
+        _send_terminal_notifications(state_file, "dep_blocked", event_bus)
+        _generate_report_safe(state_file)
+        return True
+
+    # Total failure: all changes failed, none succeeded — don't replan
+    # (nothing was merged, so there's no foundation to build on)
+    if truly_complete == 0 and failed_count > 0:
+        logger.info(
+            "Total failure: 0/%d succeeded — skipping replan, marking done",
+            total,
+        )
+        update_state_field(state_file, "status", "done")
+        update_state_field(state_file, "all_failed", True)
+        from .merger import cleanup_all_worktrees
+        cleanup_all_worktrees(state_file)
+        _send_terminal_notifications(state_file, "total_failure", event_bus)
+        _generate_report_safe(state_file)
+        return True
+
+    # Phase-end E2E
+    if d.e2e_mode == "phase_end" and d.e2e_command and truly_complete > 0:
+        from .verifier import run_phase_end_e2e
+        run_phase_end_e2e(d.e2e_command, state_file, e2e_timeout=d.e2e_timeout, event_bus=event_bus)
+
+    # Auto-replan
+    if d.auto_replan:
+        return _handle_auto_replan(state_file, d, event_bus)
+
+    # Non-replan completion
+    update_state_field(state_file, "status", "done")
+    from .merger import cleanup_all_worktrees
+    cleanup_all_worktrees(state_file)
+    run_command(["git", "tag", "-f", "orch/complete", "HEAD"], timeout=10)
+    _send_terminal_notifications(state_file, "done", event_bus)
+    _generate_report_safe(state_file)
+    return True
+
+
+def _handle_auto_replan(
+    state_file: str, d: Directives, event_bus: Any
+) -> bool:
+    """Handle auto-replan cycle. Returns True if loop should exit.
+
+    Fully Python implementation — no bash shell-out.
+    Calls planner.collect_replan_context() and planner.build_decomposition_context()
+    directly, then invokes Claude for a new plan.
+    """
+    state = load_state(state_file)
+    cycle = state.extras.get("replan_cycle", 0)
+
+    if cycle >= d.max_replan_cycles:
+        logger.info("Replan cycle limit reached (%d/%d) — stopping", cycle, d.max_replan_cycles)
+        update_state_field(state_file, "status", "done")
+        update_state_field(state_file, "replan_limit_reached", True)
+        from .merger import cleanup_all_worktrees
+        cleanup_all_worktrees(state_file)
+        _send_terminal_notifications(state_file, "replan_limit", event_bus)
+        _generate_report_safe(state_file)
+        return True
+
+    replan_attempt = state.extras.get("replan_attempt", 0)
+    if replan_attempt == 0:
+        cycle += 1
+        update_state_field(state_file, "replan_cycle", cycle)
+
+    logger.info("Auto-replanning (cycle %d/%d)...", cycle, d.max_replan_cycles)
+
+    try:
+        replan_result = _auto_replan_cycle(state_file, d, cycle, event_bus)
+    except Exception:
+        logger.error("Replan cycle %d failed with exception", cycle, exc_info=True)
+        replan_result = "error"
+
+    if replan_result == "dispatched":
+        update_state_field(state_file, "replan_attempt", 0)
+        logger.info("Replan cycle %d: new changes dispatched", cycle)
+        return False  # continue monitoring
+
+    if replan_result == "no_new_work":
+        update_state_field(state_file, "replan_attempt", 0)
+        update_state_field(state_file, "status", "done")
+        from .merger import cleanup_all_worktrees
+        cleanup_all_worktrees(state_file)
+        _send_terminal_notifications(state_file, "done", event_bus)
+        _generate_report_safe(state_file)
+        return True
+
+    # Replan failed — retry with limit
+    replan_attempt += 1
+    update_state_field(state_file, "replan_attempt", replan_attempt)
+
+    if replan_attempt >= DEFAULT_MAX_REPLAN_RETRIES:
+        logger.error("Replan failed %d consecutive times — giving up", replan_attempt)
+        update_state_field(state_file, "status", "done")
+        update_state_field(state_file, "replan_exhausted", True)
+        update_state_field(state_file, "replan_attempt", 0)
+        _send_terminal_notifications(state_file, "replan_exhausted", event_bus)
+        _generate_report_safe(state_file)
+        return True
+
+    logger.warning("Replan failed (cycle %d, attempt %d) — will retry", cycle, replan_attempt)
+    time.sleep(30)
+    return False  # continue monitoring
+
+
+def _auto_replan_cycle(
+    state_file: str, d: Directives, cycle: int, event_bus: Any
+) -> str:
+    """Execute one auto-replan cycle entirely in Python.
+
+    Returns: "dispatched", "no_new_work", or "error".
+    """
+    from .planner import collect_replan_context, build_decomposition_context, validate_plan, enrich_plan_metadata
+    from .subprocess_utils import run_claude
+    from .dispatcher import dispatch_ready_changes
+
+    # 1. Archive completed changes to state-archive.jsonl
+    _archive_completed_to_jsonl(state_file)
+
+    # 2. Collect replan context
+    replan_ctx = collect_replan_context(state_file)
+    if not replan_ctx.get("completed_names"):
+        logger.warning("Replan: no completed changes found — nothing to build on")
+        return "no_new_work"
+
+    # 3. Read plan metadata for input_mode/input_path
+    plan_file = os.environ.get("PLAN_FILENAME", "orchestration-plan.json")
+    if not os.path.isfile(plan_file):
+        logger.error("Replan: plan file not found at %s", plan_file)
+        return "error"
+
+    with open(plan_file) as f:
+        plan_data = json.load(f)
+
+    input_mode = plan_data.get("input_mode", "spec")
+    input_path = plan_data.get("input_path", "")
+
+    # 4. Build decomposition context
+    context = build_decomposition_context(
+        input_mode, input_path,
+        replan_ctx=replan_ctx,
+    )
+
+    # 5. Build the prompt and call Claude
+    from .templates import render_planning_prompt
+    prompt = render_planning_prompt(**context)
+
+    claude_result = run_claude(prompt, timeout=1800, model=d.default_model or "opus")
+    if claude_result.exit_code != 0:
+        logger.error("Replan: Claude invocation failed (exit %d)", claude_result.exit_code)
+        return "error"
+
+    # 6. Parse response
+    response_text = claude_result.stdout.strip()
+
+    # Extract JSON from response
+    plan_json = None
+    try:
+        plan_json = json.loads(response_text)
+    except json.JSONDecodeError:
+        # Try extracting JSON from markdown fences
+        import re
+        match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response_text, re.DOTALL)
+        if match:
+            try:
+                plan_json = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+        # Try finding first { to last }
+        if plan_json is None:
+            first = response_text.find("{")
+            last = response_text.rfind("}")
+            if first >= 0 and last > first:
+                try:
+                    plan_json = json.loads(response_text[first:last + 1])
+                except json.JSONDecodeError:
+                    pass
+
+    if not plan_json or "changes" not in plan_json:
+        logger.error("Replan: could not parse plan JSON from Claude response")
+        return "error"
+
+    new_changes = plan_json.get("changes", [])
+    if not new_changes:
+        logger.info("Replan: Claude returned empty changes list")
+        return "no_new_work"
+
+    # 7. Novelty check — skip if all changes duplicate previously failed ones
+    state = load_state(state_file)
+    failed_names = {c.name for c in state.changes if c.status == "failed"}
+    new_names = {c.get("name", "") for c in new_changes}
+    if new_names and new_names.issubset(failed_names):
+        logger.info("Replan: all %d new changes are duplicates of failed ones — no new work", len(new_names))
+        return "no_new_work"
+
+    # 8. Write updated plan
+    plan_data["changes"] = new_changes
+    plan_data["replan_cycle"] = cycle
+    with open(plan_file, "w") as f:
+        json.dump(plan_data, f, indent=2)
+
+    # 9. Add new changes to existing state
+    _append_changes_to_state(state_file, new_changes)
+
+    dispatch_ready_changes(
+        state_file, d.max_parallel,
+        default_model=d.default_model,
+        model_routing=d.model_routing,
+        team_mode=d.team_mode,
+        context_pruning=d.context_pruning,
+        event_bus=event_bus,
+        design_snapshot_dir=os.getcwd(),
+    )
+
+    if event_bus:
+        event_bus.emit("REPLAN_DISPATCHED", data={"cycle": cycle, "changes": len(new_changes)})
+
+    return "dispatched"
+
+
+def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
+    """Append new plan changes to existing orchestration state."""
+    from .state import Change, locked_state
+
+    with locked_state(state_file) as state:
+        existing_names = {c.name for c in state.changes}
+        for c in new_changes:
+            if c.get("name") in existing_names:
+                continue
+            change = Change(
+                name=c["name"],
+                scope=c.get("scope", ""),
+                complexity=c.get("complexity", "M"),
+                change_type=c.get("change_type", "feature"),
+                depends_on=c.get("depends_on", []),
+                roadmap_item=c.get("roadmap_item", ""),
+                model=c.get("model", None),
+                phase=c.get("phase", 1),
+                gate_hints=c.get("gate_hints") or None,
+            )
+            state.changes.append(change)
+        logger.info("Appended %d new changes to state", len(new_changes))
+
+
+def _archive_completed_to_jsonl(state_file: str) -> None:
+    """Archive completed changes to state-archive.jsonl before replan."""
+    state = load_state(state_file)
+    archive_path = os.path.join(os.path.dirname(state_file), "state-archive.jsonl")
+
+    completed = [
+        c for c in state.changes
+        if c.status in ("merged", "done", "failed", "merge-blocked", "skipped")
+    ]
+    if not completed:
+        return
+
+    try:
+        with open(archive_path, "a") as f:
+            for c in completed:
+                entry = {
+                    "name": c.name,
+                    "status": c.status,
+                    "tokens_used": c.tokens_used,
+                    "scope": c.scope,
+                    "archived_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+                f.write(json.dumps(entry) + "\n")
+        logger.info("Archived %d completed changes to %s", len(completed), archive_path)
+    except OSError:
+        logger.warning("Failed to archive completed changes")
+
+
+# ─── Utility Helpers ───────────────────────────────────────────────
+
+def _any_loop_active(state_file: str) -> bool:
+    """Check if any change has an active loop (running status)."""
+    state = load_state(state_file)
+    return any(c.status == "running" for c in state.changes)
+
+
+def _count_by_status(state_file: str, status: str) -> int:
+    """Count changes with a specific status."""
+    state = load_state(state_file)
+    return sum(1 for c in state.changes if c.status == status)
+
+
+def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None:
+    """Dispatch ready changes (exception-safe wrapper)."""
+    # Guard: don't dispatch new work if main build is broken
+    state = load_state(state_file)
+    if state.extras.get("build_broken_on_main", False):
+        logger.warning("Dispatch skipped — build broken on main (waiting for fix)")
+        return
+    try:
+        from .dispatcher import dispatch_ready_changes
+        dispatch_ready_changes(
+            state_file, d.max_parallel,
+            default_model=d.default_model,
+            model_routing=d.model_routing,
+            team_mode=d.team_mode,
+            context_pruning=d.context_pruning,
+            event_bus=event_bus,
+            design_snapshot_dir=os.getcwd(),
+        )
+    except Exception:
+        logger.warning("Dispatch failed", exc_info=True)
+
+
+def _retry_merge_queue_safe(state_file: str, event_bus: Any) -> None:
+    """Retry merge queue (exception-safe)."""
+    try:
+        from .merger import retry_merge_queue
+        retry_merge_queue(state_file, event_bus=event_bus)
+    except Exception:
+        logger.warning("Merge queue retry failed", exc_info=True)
+
+
+def _drain_merge_then_dispatch(
+    state_file: str, d: "Directives", event_bus: Any
+) -> int:
+    """Drain the merge queue completely, then dispatch ready changes.
+
+    Serializes merge and dispatch: archive commits land on main BEFORE
+    new worktrees are created, eliminating the archive race (Bug #38)
+    where new worktrees miss openspec/changes/ deletions.
+
+    Returns count of changes merged.
+    """
+    merged = 0
+    try:
+        from .merger import retry_merge_queue
+        merged = retry_merge_queue(state_file, event_bus=event_bus)
+        if merged > 0:
+            logger.info("Drain-then-dispatch: merged %d change(s) before dispatch", merged)
+    except Exception:
+        logger.warning("Drain-then-dispatch: merge failed", exc_info=True)
+
+    # Dispatch after merge — worktrees created with archive commits present
+    _dispatch_ready_safe(state_file, d, event_bus)
+    return merged
+
+
+def _resume_stalled_safe(state_file: str, event_bus: Any) -> None:
+    """Resume stalled changes (exception-safe)."""
+    try:
+        from .dispatcher import resume_stalled_changes
+        resume_stalled_changes(state_file, event_bus=event_bus)
+    except Exception:
+        logger.warning("Resume stalled failed", exc_info=True)
+
+
+def _retry_failed_builds_safe(state_file: str, d: Directives, event_bus: Any) -> None:
+    """Retry failed builds (exception-safe)."""
+    try:
+        from .dispatcher import retry_failed_builds
+        retry_failed_builds(state_file, max_retries=d.max_verify_retries, event_bus=event_bus)
+    except Exception:
+        logger.warning("Retry failed builds failed", exc_info=True)
+
+
+def _check_token_hard_limit(state_file: str, d: Directives, event_bus: Any = None) -> None:
+    """Check token hard limit and trigger checkpoint if exceeded."""
+    # Source: monitor.sh L354-377
+    state = load_state(state_file)
+    total_tokens = sum(c.tokens_used for c in state.changes)
+    prev_tokens = state.extras.get("prev_total_tokens", 0)
+    cumulative = total_tokens + prev_tokens
+
+    if cumulative <= d.token_hard_limit:
+        return
+
+    already_triggered = state.extras.get("token_hard_limit_triggered", False)
+    if already_triggered:
+        return
+
+    update_state_field(state_file, "token_hard_limit_triggered", True)
+    logger.warning(
+        "Token hard limit reached: %dM / %dM tokens",
+        cumulative // 1_000_000, d.token_hard_limit // 1_000_000,
+    )
+    _trigger_checkpoint_safe(state_file, "token_hard_limit", event_bus)
+    update_state_field(state_file, "token_hard_limit_triggered", False)
+
+
+def _self_watchdog(
+    state_file: str, d: Directives,
+    last_progress_ts: int, escalation: int, event_bus: Any,
+) -> None:
+    """Self-watchdog: detect all-idle stall."""
+    # Source: monitor.sh L379-410
+    now = int(time.time())
+    idle_duration = now - last_progress_ts
+
+    if idle_duration <= d.monitor_idle_timeout:
+        return
+
+    if escalation == 0:
+        # First: attempt recovery — drain merge queue then dispatch
+        logger.warning("Monitor self-watchdog: no progress for %ds — attempting recovery", idle_duration)
+        _drain_merge_then_dispatch(state_file, d, event_bus)
+
+        # Check orphaned "done" changes
+        state = load_state(state_file)
+        for change in state.changes:
+            if change.status != "done":
+                continue
+            if change.name not in state.merge_queue:
+                logger.warning("Monitor self-watchdog: orphaned 'done' %s — adding to merge queue", change.name)
+                with locked_state(state_file) as st:
+                    if change.name not in st.merge_queue:
+                        st.merge_queue.append(change.name)
+    else:
+        # Persistent idle: escalate
+        logger.error(
+            "Monitor self-watchdog: persistent idle (%ds, escalation #%d)",
+            idle_duration, escalation,
+        )
+        if event_bus:
+            event_bus.emit(
+                "MONITOR_STALL",
+                data={"idle_secs": idle_duration, "escalation": escalation},
+            )
+
+
+def _check_phase_completion(
+    state_file: str, d: Directives, event_bus: Any
+) -> None:
+    """Check phase completion, run optional milestone, and advance phase.
+
+    Phase advancement ALWAYS happens when all changes in the current phase
+    are terminal. Milestone checkpoints only run if milestones_enabled.
+    Bug #17 fix: previously phase advancement was gated behind
+    milestones_enabled, so phases never advanced when milestones were off.
+    """
+    state = load_state(state_file)
+    current_phase = state.extras.get("current_phase", 999)
+    if current_phase >= 999:
+        return
+
+    # Check if all changes in current phase are terminal
+    # Pending changes with failed deps are effectively terminal (will never run)
+    from .state import deps_failed
+    phase_changes = [c for c in state.changes if c.phase == current_phase]
+    terminal_statuses = {"merged", "done", "skipped", "failed", "merge-blocked"}
+    all_terminal = all(
+        c.status in terminal_statuses or (c.status == "pending" and deps_failed(state, c.name))
+        for c in phase_changes
+    )
+
+    if not all_terminal or not phase_changes:
+        return
+
+    logger.info("Phase %d complete — advancing", current_phase)
+
+    # Optional milestone checkpoint
+    if d.milestones_enabled:
+        from .milestone import run_milestone_checkpoint
+        run_milestone_checkpoint(
+            current_phase,
+            base_port=d.milestones_base_port,
+            max_worktrees=d.milestones_max_worktrees,
+            state_file=state_file,
+            milestone_dev_server=d.milestones_dev_server,
+            event_bus=event_bus,
+        )
+
+    # Advance phase (always)
+    from .state import advance_phase
+    with locked_state(state_file) as st:
+        advance_phase(st, event_bus=event_bus)
+
+
+def _send_terminal_notifications(
+    state_file: str, reason: str, event_bus: Any = None,
+) -> None:
+    """Send desktop notification + summary email at terminal state."""
+    try:
+        from .notifications import send_notification, send_summary_email
+        from .digest import final_coverage_check
+
+        state = load_state(state_file)
+        total = len(state.changes)
+        merged = sum(1 for c in state.changes if c.status == "merged")
+
+        # Regenerate spec-coverage-report.md with live statuses
+        try:
+            from .planner import generate_coverage_report
+            import json as _json
+            plan_path = "orchestration-plan.json"
+            plan_data = {}
+            if os.path.isfile(plan_path):
+                plan_data = _json.loads(open(plan_path).read())
+            try:
+                from .paths import SetRuntime
+                _rt = SetRuntime()
+                _default_digest = _rt.digest_dir
+                _default_coverage = _rt.spec_coverage_report
+            except Exception:
+                _default_digest = "wt/orchestration/digest"
+                _default_coverage = "wt/orchestration/spec-coverage-report.md"
+            digest_dir = state.extras.get("digest_dir", _default_digest)
+            if not os.path.isdir(digest_dir):
+                digest_dir = ""
+            generate_coverage_report(
+                plan=plan_data,
+                digest_dir=digest_dir,
+                output_path=_default_coverage,
+                state_file=state_file,
+                plan_path=plan_path,
+            )
+        except Exception:
+            logger.debug("Terminal coverage report regeneration failed (non-critical)", exc_info=True)
+
+        title = f"Orchestration {reason}"
+        body = f"{merged}/{total} changes merged"
+
+        send_notification(title, body, urgency="normal", channels="desktop,email")
+        coverage = final_coverage_check()
+        send_summary_email(state_file, coverage_summary=coverage)
+    except Exception:
+        logger.debug("Terminal notification failed (non-critical)", exc_info=True)
+
+
+def _periodic_memory_ops_safe(state_file: str) -> None:
+    """Run periodic memory operations (exception-safe)."""
+    try:
+        from .orch_memory import orch_memory_stats, orch_gate_stats, orch_memory_audit
+
+        orch_memory_stats()
+
+        state = load_state(state_file)
+        orch_gate_stats(state.to_dict() if hasattr(state, 'to_dict') else {"changes": []})
+
+        orch_memory_audit()
+    except Exception:
+        logger.debug("Periodic memory ops failed (non-critical)", exc_info=True)
+
+
+def _generate_report_safe(state_file: str) -> None:
+    """Generate HTML report (exception-safe)."""
+    try:
+        from .reporter import generate_report
+        generate_report(state_path=state_file)
+    except Exception:
+        pass
+
+
+def _clear_checkpoint_state(state_file: str) -> None:
+    """Clear checkpoint-specific transient state on restart.
+
+    Removes checkpoint_reason, checkpoint_started_at from extras and
+    resets changes_since_checkpoint to 0. These fields are meaningful
+    only within a single orchestrator execution.
+    """
+    with locked_state(state_file) as state:
+        changed = False
+        if "checkpoint_reason" in state.extras:
+            del state.extras["checkpoint_reason"]
+            changed = True
+        if "checkpoint_started_at" in state.extras:
+            del state.extras["checkpoint_started_at"]
+            changed = True
+        if state.changes_since_checkpoint != 0:
+            state.changes_since_checkpoint = 0
+            changed = True
+        if changed:
+            logger.info("Cleared checkpoint transient state on restart")
+
+
+def _checkpoint_approved(state: OrchestratorState) -> bool:
+    """Check if the latest checkpoint has been approved via API.
+
+    Checks state.checkpoints[-1].get("approved", False), handling both
+    the checkpoints list on the dataclass and a fallback in extras.
+    Returns False if no checkpoints exist.
+    """
+    # Primary: check state.checkpoints list
+    checkpoints = state.checkpoints
+    if not checkpoints:
+        # Fallback: check extras for legacy storage
+        checkpoints = state.extras.get("checkpoints", [])
+    if not checkpoints:
+        return False
+    latest = checkpoints[-1]
+    if isinstance(latest, dict):
+        return bool(latest.get("approved", False))
+    return False
+
+
+def trigger_checkpoint(state_file: str, reason: str, event_bus: Any = None) -> None:
+    """Set state to checkpoint, log reason, emit CHECKPOINT event.
+
+    Args:
+        state_file: Path to state file.
+        reason: Reason for checkpoint (e.g., "periodic", "token_hard_limit").
+        event_bus: Optional EventBus for CHECKPOINT event emission.
+    """
+    update_state_field(state_file, "status", "checkpoint")
+    update_state_field(state_file, "checkpoint_reason", reason)
+    update_state_field(state_file, "changes_since_checkpoint", 0)
+    update_state_field(state_file, "checkpoint_started_at", int(time.time()))
+    # Append checkpoint record to state.checkpoints
+    state = load_state(state_file)
+    completed_count = sum(
+        1 for c in state.changes if c.status in ("merged", "done", "skipped", "failed")
+    )
+    checkpoint_record = {
+        "reason": reason,
+        "triggered_at": datetime.now().astimezone().isoformat(),
+        "changes_completed": completed_count,
+        "approved": False,
+    }
+    with locked_state(state_file) as st:
+        st.checkpoints.append(checkpoint_record)
+    logger.info("Checkpoint triggered: %s", reason)
+    if event_bus:
+        event_bus.emit("CHECKPOINT", data={"reason": reason})
+
+
+def _trigger_checkpoint_safe(state_file: str, reason: str, event_bus: Any = None) -> None:
+    """Trigger a checkpoint (exception-safe)."""
+    try:
+        trigger_checkpoint(state_file, reason, event_bus)
+    except Exception:
+        pass
+
+
+# ─── JSON parsing helpers ──────────────────────────────────────────
+
+def _int(d: dict, key: str, default: int) -> int:
+    v = d.get(key, default)
+    if v is None or v == "":
+        return default
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return default
+
+
+def _str(d: dict, key: str, default: str) -> str:
+    v = d.get(key, default)
+    if v is None:
+        return default
+    return str(v)
+
+
+def _bool(d: dict, key: str, default: bool) -> bool:
+    v = d.get(key, default)
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        return v.lower() in ("true", "1", "yes")
+    return default

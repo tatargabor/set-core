@@ -24,7 +24,7 @@
 - [x] 3.3 Delete `bin/wt-activity` (JIRA worklog file activity tracker)
 - [x] 3.4 Delete `.claude/commands/jira/` directory (all 6 command files)
 - [x] 3.5 Remove JIRA/Confluence sections from `.claude/skills/wt/SKILL.md`
-- [x] 3.6 Delete `.wt-tools/jira.json` and `.wt-tools/jira.json.example`
+- [x] 3.6 Delete `.set-core/jira.json` and `.set-core/jira.json.example`
 - [x] 3.7 No `.mcp.template.json` exists — skipped
 
 ## 4. Remove Confluence CLI and files
@@ -34,7 +34,7 @@
 - [x] 4.3 Delete `bin/docs-gen`
 - [x] 4.4 Delete `bin/md2confluence`
 - [x] 4.5 Delete `docs/confluence.md`
-- [x] 4.6 Delete `.wt-tools/confluence.json` and `.wt-tools/confluence.json.example`
+- [x] 4.6 Delete `.set-core/confluence.json` and `.set-core/confluence.json.example`
 
 ## 5. Remove Atlassian OpenSpec specs
 
@@ -52,7 +52,7 @@
 
 ## 7. Open source cleanup
 
-- [x] 7.1 Replace `tatargabor/wt-tools` with `anthropic-tools/wt-tools` in `README.md`, `CONTRIBUTING.md`, `pyproject.toml`, `docs/config.md`
+- [x] 7.1 Replace `tatargabor/set-core` with `anthropic-tools/set-core` in `README.md`, `CONTRIBUTING.md`, `pyproject.toml`, `docs/config.md`
 - [x] 7.2 Remove JIRA and Confluence sections from `README.md` and `docs/config.md`
 - [x] 7.3 Clean internal references from archived changes (`jira.zengo.eu`, `ARVRMTEAM`, `zengo-mirror`, personal names)
 

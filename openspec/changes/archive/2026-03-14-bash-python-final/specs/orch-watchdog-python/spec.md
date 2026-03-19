@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Python watchdog check pipeline
-The system SHALL provide `watchdog_check()` in `lib/wt_orch/watchdog.py` that replicates the full bash watchdog pipeline: state init, activity detection, action hash computation, stuck/spinning detection, and escalation.
+The system SHALL provide `watchdog_check()` in `lib/set_orch/watchdog.py` that replicates the full bash watchdog pipeline: state init, activity detection, action hash computation, stuck/spinning detection, and escalation.
 
 #### Scenario: Healthy change with activity
 - **WHEN** watchdog checks a change that has recent activity (loop-state.json mtime updated)
@@ -49,8 +49,8 @@ The system SHALL emit WATCHDOG_HEARTBEAT events via `events.emit()` for sentinel
 - **THEN** a WATCHDOG_HEARTBEAT event is emitted with change name and status
 
 ### Requirement: Bash watchdog.sh becomes thin wrapper
-After migration, `watchdog.sh` SHALL contain only delegation to `wt-orch-core watchdog check`.
+After migration, `watchdog.sh` SHALL contain only delegation to `set-orch-core watchdog check`.
 
 #### Scenario: Thin wrapper delegation
 - **WHEN** `watchdog_check()` is called in bash
-- **THEN** it delegates to `wt-orch-core watchdog check` with equivalent arguments
+- **THEN** it delegates to `set-orch-core watchdog check` with equivalent arguments

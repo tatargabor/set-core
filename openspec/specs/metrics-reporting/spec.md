@@ -1,23 +1,23 @@
 ## MODIFIED Requirements
 
 ### Requirement: TUI metrics report command
-The `wt-memory metrics` command SHALL read the SQLite database and print a formatted text report to stdout, including usage rate from passive transcript matching.
+The `set-memory metrics` command SHALL read the SQLite database and print a formatted text report to stdout, including usage rate from passive transcript matching.
 
 #### Scenario: Default report (last 7 days)
-- **WHEN** `wt-memory metrics` is run without arguments
+- **WHEN** `set-memory metrics` is run without arguments
 - **THEN** it SHALL display metrics for the last 7 days including: session count, total injections, total tokens burned, per-layer breakdown (count, avg tokens, avg relevance), relevance distribution (strong >0.7, partial 0.3-0.7, filtered <0.3), usage rate (passively matched/injected), legacy citation rate, dedup hit rate, empty injection rate
 
 #### Scenario: Custom time range
-- **WHEN** `wt-memory metrics --since 30d` is run
+- **WHEN** `set-memory metrics --since 30d` is run
 - **THEN** it SHALL display metrics for the last 30 days
 
 #### Scenario: JSON output
-- **WHEN** `wt-memory metrics --json` is run
+- **WHEN** `set-memory metrics --json` is run
 - **THEN** it SHALL output the same data as structured JSON including `usage_rate`, `total_injected_ids`, `total_matched_ids` fields
 
 #### Scenario: No data available
-- **WHEN** `wt-memory metrics` is run and the database is empty or does not exist
-- **THEN** it SHALL print "No metrics data. Enable with: wt-memory metrics --enable" and exit 0
+- **WHEN** `set-memory metrics` is run and the database is empty or does not exist
+- **THEN** it SHALL print "No metrics data. Enable with: set-memory metrics --enable" and exit 0
 
 ## ADDED Requirements
 

@@ -25,14 +25,14 @@
 - Orchestrator directives: max_parallel: 2, smoke_command: pnpm test, smoke_blocking: true, auto_replan: true, merge_policy: checkpoint, checkpoint_auto_approve: true
 
 ### R4: Scaffold CLAUDE.md
-- Documents all conventions from wt-project-web: Server Actions pattern, shadcn usage, Prisma conventions
+- Documents all conventions from set-project-web: Server Actions pattern, shadcn usage, Prisma conventions
 - Commands: `pnpm dev`, `pnpm test`, `pnpm build`, `pnpm prisma migrate dev`
 - File conventions: `src/app/**/page.tsx`, `src/components/ui/`, `src/lib/`, `src/actions/`
 - Explicit rules: use shadcn not raw Radix, "use client" only where needed, Server Components by default, TypeScript strict mode
 
 ### R5: E2E Runner Update
 - `tests/e2e/run.sh` updated for pnpm: `pnpm install`, `pnpm test`, `pnpm prisma migrate dev`, `pnpm prisma db seed`
-- wt-project init with `--project-type web`
+- set-project init with `--project-type web`
 - Playwright browsers installed during scaffold init: `pnpm exec playwright install chromium`
 - After sentinel completes, invoke `wt-e2e-report` for report + screenshots
 

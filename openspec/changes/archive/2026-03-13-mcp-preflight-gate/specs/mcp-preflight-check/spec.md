@@ -66,7 +66,7 @@ The `mcp_auth` checkpoint SHALL include actionable instructions in its notificat
 
 #### Scenario: Checkpoint notification content
 - **WHEN** an `mcp_auth` checkpoint is triggered
-- **THEN** the notification message includes the MCP server name and instructions: "Run /mcp → <server_name> → Authenticate in Claude Code, then run 'wt-orchestrate approve'"
+- **THEN** the notification message includes the MCP server name and instructions: "Run /mcp → <server_name> → Authenticate in Claude Code, then run 'set-orchestrate approve'"
 
 #### Scenario: Web dashboard checkpoint banner
 - **WHEN** the orchestration state has status `checkpoint` with type `mcp_auth`

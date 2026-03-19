@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Worktree Control Center - Entry Point
+SET Control Center - Entry Point
 
 A GUI tool for managing git worktrees with Claude AI integration.
 
@@ -30,8 +30,8 @@ if __name__ == "__main__" or __package__ is None:
 else:
     from .control_center import ControlCenter
 
-LOCK_FILE = Path("/tmp/wt-control-gui.lock")
-PID_FILE = Path("/tmp/wt-control-gui.pid")
+LOCK_FILE = Path("/tmp/set-control-gui.lock")
+PID_FILE = Path("/tmp/set-control-gui.pid")
 
 
 def kill_existing_instance():
@@ -80,7 +80,7 @@ def main():
     lock = acquire_lock()
     if lock is None:
         QMessageBox.warning(None, "Already Running",
-                          "Worktree Control Center is already running.")
+                          "SET Control Center is already running.")
         sys.exit(1)
 
     window = ControlCenter()

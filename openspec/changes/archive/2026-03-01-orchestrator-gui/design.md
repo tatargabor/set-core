@@ -2,7 +2,7 @@
 
 The wt-control GUI is a PySide6 frameless, always-on-top dashboard. It displays worktrees in a single QTableWidget with project header rows containing feature badges (`[M]` for memory, `[O]` for OpenSpec). Background QThread workers (StatusWorker, UsageWorker, TeamWorker, ChatWorker, FeatureWorker) poll data and emit signals to the UI thread. The ControlCenter class uses four mixins: TableMixin, HandlersMixin, MenusMixin, TeamMixin.
 
-The `wt-orchestrate` CLI writes `orchestration-state.json` at the project root. This file contains the full plan: per-change status (pending/dispatched/running/paused/done/merged/failed/merge-blocked), dependency graph, merge queue, checkpoint history, token usage, and gate metrics (test/review/verify/build timing). Per-worktree Ralph status comes from `.claude/loop-state.json` (already read by the GUI).
+The `set-orchestrate` CLI writes `orchestration-state.json` at the project root. This file contains the full plan: per-change status (pending/dispatched/running/paused/done/merged/failed/merge-blocked), dependency graph, merge queue, checkpoint history, token usage, and gate metrics (test/review/verify/build timing). Per-worktree Ralph status comes from `.claude/loop-state.json` (already read by the GUI).
 
 Since the orchestrator-layer change, several improvements landed: spec-driven orchestration, verify gate with retry, quality gates (worktree bootstrap, build verify, scope overlap detection), and memory integration. The GUI needs to reflect this full current state.
 
@@ -16,9 +16,9 @@ Since the orchestrator-layer change, several improvements landed: spec-driven or
 - Follow existing GUI patterns (dialog-based, FeatureWorker polling, color profiles)
 
 **Non-Goals:**
-- Starting/stopping orchestration from GUI (use `wt-orchestrate start/pause/resume` CLI)
+- Starting/stopping orchestration from GUI (use `set-orchestrate start/pause/resume` CLI)
 - Editing the project brief from GUI
-- Replanning from GUI (`wt-orchestrate replan` stays CLI-only)
+- Replanning from GUI (`set-orchestrate replan` stays CLI-only)
 - Real-time streaming logs (use "View Log" to open the file)
 
 ## Decisions
@@ -33,7 +33,7 @@ The orchestrator detail view is a new `OrchestratorDialog` (modeless QDialog), o
 
 ### D2: Extend FeatureWorker for orchestration state polling
 
-Add orchestration-state.json reading to the existing FeatureWorker (polls every 15s). The FeatureWorker already reads per-project wt-memory and wt-openspec status. Adding orchestration state is a natural extension.
+Add orchestration-state.json reading to the existing FeatureWorker (polls every 15s). The FeatureWorker already reads per-project set-memory and wt-openspec status. Adding orchestration state is a natural extension.
 
 The FeatureWorker emits `features_updated(dict)` — the dict gains a new `orchestration` key per project containing the parsed state (or `None` if no orchestration-state.json exists).
 
@@ -107,7 +107,7 @@ Node rendering: rounded rectangle with change name (truncated to 20 chars) and s
 
 ### D6: Checkpoint approval via state file
 
-The approve button writes to `orchestration-state.json` exactly as `wt-orchestrate approve` does:
+The approve button writes to `orchestration-state.json` exactly as `set-orchestrate approve` does:
 
 ```python
 # Read current state

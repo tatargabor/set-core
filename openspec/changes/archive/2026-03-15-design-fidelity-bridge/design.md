@@ -16,7 +16,7 @@ Meanwhile, `docs/figma-raw/<key>/sources/` contains the actual component code ex
 - Agents receive relevant Figma source file contents during dispatch — they see actual component structure, icons, layout patterns
 - Planner extracts data model fields from Figma sources (e.g., mockData.ts interface definitions) and embeds them in scope descriptions
 - Design review checks component structure (missing icons, missing images, layout divergence), not just token colors
-- wt-project-web rules guide agents to read Figma source files when present
+- set-project-web rules guide agents to read Figma source files when present
 
 **Non-Goals:**
 - Changing the Figma fetch pipeline itself (wt-figma-fetch works fine)
@@ -55,7 +55,7 @@ Meanwhile, `docs/figma-raw/<key>/sources/` contains the actual component code ex
 - Layout patterns (`flex`, `grid`, specific container patterns)
 - Build a concise checklist (max 20 items)
 
-### D4: wt-project-web rules updates
+### D4: set-project-web rules updates
 
 **Decision**: Update existing rules (not create new ones) — `design-integration.md` and `ui-conventions.md` already exist and are the right place.
 

@@ -1,6 +1,6 @@
 ## Context
 
-`wt-orchestrate` (4960 lines) manages the full lifecycle of parallel changes: planning → dispatch → loop → verify → merge → post-merge. Two persistent bugs affect every orchestration run:
+`set-orchestrate` (4960 lines) manages the full lifecycle of parallel changes: planning → dispatch → loop → verify → merge → post-merge. Two persistent bugs affect every orchestration run:
 
 1. **ff→apply gap**: `wt-loop`'s `build_prompt()` correctly detects `ff:*` and `apply:*` states via `detect_next_change_action()`, but there's an iteration boundary between ff completing and apply starting. Memory injection from the previous iteration ("artifacts complete, ready for apply") confuses the agent, wasting 1 iteration (~60K tokens) per affected change.
 
@@ -109,7 +109,7 @@ State field additions to each change in state.json:
 
 ### D5: Integration test architecture
 
-**Approach**: Source `wt-orchestrate` functions (same pattern as existing `test-orchestrate.sh` — `eval "$(sed '/^main/d' ...)"`) then call individual functions with controlled state.
+**Approach**: Source `set-orchestrate` functions (same pattern as existing `test-orchestrate.sh` — `eval "$(sed '/^main/d' ...)"`) then call individual functions with controlled state.
 
 **Mock infrastructure**:
 - `setup_test_repo()`: Creates a temp git repo with main branch, a feature branch with a commit, and configurable merge scenario (clean merge, conflict)

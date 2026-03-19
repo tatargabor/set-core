@@ -1,6 +1,6 @@
 ## 1. CLI: Forget Operations
 
-- [x] 1.1 Add `cmd_forget` function to `bin/wt-memory` — single memory delete by ID (`m.forget(memory_id)`)
+- [x] 1.1 Add `cmd_forget` function to `bin/set-memory` — single memory delete by ID (`m.forget(memory_id)`)
 - [x] 1.2 Add `forget --all --confirm` variant (`m.forget_all()`) — reject without `--confirm`
 - [x] 1.3 Add `forget --older-than <days>` variant (`m.forget_by_age(days)`)
 - [x] 1.4 Add `forget --tags <t1,t2>` variant (`m.forget_by_tags(tags)`)
@@ -54,7 +54,7 @@
 
 ## 9. SKILL.md: New Memory Hooks (Verify + Sync-specs)
 
-- [x] 9.1 Add recall hook to `openspec-verify-change/SKILL.md` — before verification: `wt-memory recall "<change-name> verification issues" --limit 5 --mode hybrid --tags change:<name>`
+- [x] 9.1 Add recall hook to `openspec-verify-change/SKILL.md` — before verification: `set-memory recall "<change-name> verification issues" --limit 5 --mode hybrid --tags change:<name>`
 - [x] 9.2 Add remember hook to `openspec-verify-change/SKILL.md` — after verification: save problems as Learning, patterns as Learning
 - [x] 9.3 Add remember hook to `openspec-sync-specs/SKILL.md` — save merge decisions as Decision when conflicts are resolved
 

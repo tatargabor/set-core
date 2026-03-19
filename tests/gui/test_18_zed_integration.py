@@ -105,7 +105,7 @@ def test_on_double_click_uses_platform(control_center, git_env, qtbot):
 
         # Should try to find window via platform
         mock_platform.find_window_by_title.assert_called_once()
-        # Should fall back to wt-work
+        # Should fall back to set-work
         mock_sub.Popen.assert_called_once()
 
     finally:

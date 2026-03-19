@@ -1,4 +1,4 @@
-"""Tests for wt_orch.merger — Archive, cleanup, merge queue, conflict fingerprint."""
+"""Tests for set_orch.merger — Archive, cleanup, merge queue, conflict fingerprint."""
 
 import json
 import os
@@ -10,14 +10,14 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.merger import (
+from set_orch.merger import (
     MergeResult,
     MAX_MERGE_RETRIES,
     archive_change,
     cleanup_worktree,
     merge_i18n_sidecars,
 )
-from wt_orch.state import Change, OrchestratorState
+from set_orch.state import Change, OrchestratorState
 
 
 @pytest.fixture
@@ -133,7 +133,7 @@ class TestCleanupWorktree:
             with open(os.path.join(logs_dir, "agent.log"), "w") as f:
                 f.write("test log content\n")
 
-            # Run cleanup — will fail on wt-close and git commands, but log archiving should work
+            # Run cleanup — will fail on set-close and git commands, but log archiving should work
             cleanup_worktree("test-change", wt_path)
 
             # Check archived logs

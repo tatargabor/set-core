@@ -21,8 +21,8 @@ E2E MiniShop Run #16 (11/11 merged, 3h13m, 4.6M tokens) exposed 4 framework bugs
 
 ## Impact
 
-- `lib/wt_orch/verifier.py` — build retry logic, verify gate result persistence
-- `lib/wt_orch/engine.py` — monitor resume logic for verifying changes with passed gates
-- `lib/wt_orch/dispatcher.py` — `_CORE_GENERATED_FILE_PATTERNS` and conflict matching logic
-- `bin/wt-sentinel` — flock guard with PID validation
-- `lib/wt_orch/state.py` — new `build_retry_count` field on change dataclass (if needed)
+- `lib/set_orch/verifier.py` — build retry logic, verify gate result persistence
+- `lib/set_orch/engine.py` — monitor resume logic for verifying changes with passed gates
+- `lib/set_orch/dispatcher.py` — `_CORE_GENERATED_FILE_PATTERNS` and conflict matching logic
+- `bin/set-sentinel` — flock guard with PID validation
+- `lib/set_orch/state.py` — new `build_retry_count` field on change dataclass (if needed)

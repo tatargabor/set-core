@@ -23,12 +23,12 @@
 4. Return exit code 1 if none work
 
 #### Scenario: Saved config points to valid python
-- **WHEN** `~/.config/wt-tools/shodh-python` contains `/home/user/miniconda3/bin/python3`
+- **WHEN** `~/.config/set-core/shodh-python` contains `/home/user/miniconda3/bin/python3`
 - **AND** that python can import shodh_memory
 - **THEN** `find_shodh_python` returns `/home/user/miniconda3/bin/python3` and exit code 0
 
 #### Scenario: Saved config is stale
-- **WHEN** `~/.config/wt-tools/shodh-python` contains a path to a python that can no longer import shodh_memory
+- **WHEN** `~/.config/set-core/shodh-python` contains a path to a python that can no longer import shodh_memory
 - **THEN** `find_shodh_python` SHALL fall through to probing other python3 locations
 
 #### Scenario: No config, python3 in PATH has shodh-memory
@@ -40,11 +40,11 @@
 - **THEN** `find_shodh_python` returns the miniconda python3, saves it to config, and exits 0
 
 ### Requirement: Config persistence at shodh-python
-The resolved shodh-memory Python path SHALL be persisted at `$CONFIG_DIR/shodh-python` (typically `~/.config/wt-tools/shodh-python`). The file SHALL contain a single line: the absolute path to the python3 binary. The file SHALL be created or updated whenever a successful probe finds a new Python.
+The resolved shodh-memory Python path SHALL be persisted at `$CONFIG_DIR/shodh-python` (typically `~/.config/set-core/shodh-python`). The file SHALL contain a single line: the absolute path to the python3 binary. The file SHALL be created or updated whenever a successful probe finds a new Python.
 
 #### Scenario: Config file created after probe
 - **WHEN** `find_shodh_python` probes and finds a working python
-- **THEN** the absolute path is written to `~/.config/wt-tools/shodh-python`
+- **THEN** the absolute path is written to `~/.config/set-core/shodh-python`
 
 #### Scenario: Config file updated after re-probe
 - **WHEN** the saved config is stale and a new python is found via probing

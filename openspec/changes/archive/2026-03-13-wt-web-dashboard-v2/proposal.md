@@ -32,7 +32,7 @@ The wt-web dashboard (v1) provides basic orchestration monitoring but is missing
 
 ## Impact
 
-- **Backend (lib/wt_orch/)**: New API endpoints for screenshots, gate output, plan data. Log archive hook in merger/dispatcher.
+- **Backend (lib/set_orch/)**: New API endpoints for screenshots, gate output, plan data. Log archive hook in merger/dispatcher.
 - **Frontend (web/src/)**: New components for gate detail, screenshot gallery, timeline, chart. LogPanel restructured for split view.
 - **Orchestrator (lib/orchestration/)**: merger.sh modified to archive logs before worktree cleanup.
 - **Dependencies**: No new deps — Recharts already included.

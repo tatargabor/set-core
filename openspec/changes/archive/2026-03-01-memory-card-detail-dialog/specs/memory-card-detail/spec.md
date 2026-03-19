@@ -14,9 +14,9 @@ The system SHALL display a `MemoryDetailDialog` showing the complete, untruncate
 - **WHEN** the detail dialog opens for a memory
 - **THEN** it SHALL display: type badge with color, creation date, full content text (word-wrapped, selectable), tags, and memory ID
 
-#### Scenario: Detail dialog fetches via wt-memory get
+#### Scenario: Detail dialog fetches via set-memory get
 - **WHEN** the memory has an `id` field
-- **THEN** the dialog SHALL fetch the full record via `wt-memory get <id>` and display the result
+- **THEN** the dialog SHALL fetch the full record via `set-memory get <id>` and display the result
 
 #### Scenario: Memory without ID (summary mode fallback)
 - **WHEN** the memory dict has no `id` field

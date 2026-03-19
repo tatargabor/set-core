@@ -6,7 +6,7 @@
 User: /wt:sentinel --spec docs/v6.md
   │
   ├─ Step 1: Start orchestrator in background (bash, instant)
-  │   └─ wt-orchestrate start ... &
+  │   └─ set-orchestrate start ... &
   │
   ├─ Step 2: Run poll loop (bash, 10-min timeout, BLOCKING)
   │   └─ while true; do sleep 15; check state; done
@@ -27,7 +27,7 @@ User: /wt:sentinel --spec docs/v6.md
 User: /wt:sentinel --spec docs/v6.md
   │
   ├─ Step 1: Start orchestrator in background (bash, instant)
-  │   └─ wt-orchestrate start ... &
+  │   └─ set-orchestrate start ... &
   │
   ├─ Step 2: Start background poller (run_in_background, NON-BLOCKING)
   │   └─ sleep 30 && read state && echo EVENT:...

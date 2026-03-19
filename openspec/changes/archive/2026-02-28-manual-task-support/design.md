@@ -5,8 +5,8 @@ wt-loop (Ralph) processes tasks.md checkboxes autonomously. When a task requires
 Key code touchpoints:
 - `bin/wt-loop` lines 296-306: `check_tasks_done()` counts `- [ ]` patterns
 - `bin/wt-loop` lines 873-930: stall detection (no commits → stall_count++)
-- `bin/wt-orchestrate` lines 3240-3303: `poll_change()` handles `done|running|stopped|stalled|stuck`
-- `bin/wt-orchestrate` lines 1690-1760: planner prompt generates change decomposition
+- `bin/set-orchestrate` lines 3240-3303: `poll_change()` handles `done|running|stopped|stalled|stuck`
+- `bin/set-orchestrate` lines 1690-1760: planner prompt generates change decomposition
 
 ## Goals / Non-Goals
 

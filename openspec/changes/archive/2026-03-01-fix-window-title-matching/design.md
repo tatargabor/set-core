@@ -42,9 +42,9 @@ The false positive occurs because worktree dirs follow the pattern `<repo>-wt-<c
 Separators: ` — ` (Zed em-dash), ` - ` (VS Code hyphen). These cover all known editor title formats.
 
 ```
-MATCH:     "wt-tools"         matches "wt-tools — main.py"         ✓ (exact prefix + " — ")
-MATCH:     "wt-tools"         matches "wt-tools - main.py"         ✓ (exact prefix + " - ")
-MATCH:     "wt-tools"         matches "wt-tools"                   ✓ (exact)
+MATCH:     "set-core"         matches "set-core — main.py"         ✓ (exact prefix + " — ")
+MATCH:     "set-core"         matches "set-core - main.py"         ✓ (exact prefix + " - ")
+MATCH:     "set-core"         matches "set-core"                   ✓ (exact)
 NO MATCH:  "mediapipe-python-mirror" vs "mediapipe-python-mirror-wt-screen-locked-fk — start.sh"
            ↑ next char is "-", not a separator → rejected
 ```

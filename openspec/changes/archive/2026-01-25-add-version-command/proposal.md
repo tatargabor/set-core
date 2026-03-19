@@ -4,7 +4,7 @@ JIRA Key: EXAMPLE-561
 Story: EXAMPLE-466
 
 ## Why
-Currently there's no easy way to check which version of wt-tools is installed. This makes troubleshooting and support difficult.
+Currently there's no easy way to check which version of set-core is installed. This makes troubleshooting and support difficult.
 
 ## What Changes
 - New `wt-version` command that displays:

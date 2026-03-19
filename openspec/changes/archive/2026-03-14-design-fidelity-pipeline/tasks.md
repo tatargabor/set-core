@@ -7,7 +7,7 @@
 ## 2. Design Compliance in Verify Gate
 
 - [x] 2.1 Add `build_design_review_section()` function to `lib/design/bridge.sh` — extracts concise token summary (primary colors, radius, typography scale, shadows — max 15-20 tokens) from `design-snapshot.md` for the review prompt. Returns empty string if no snapshot.
-- [x] 2.2 Add `design_compliance` field to `render_review_prompt()` in `lib/wt_orch/templates.py` — pass-through for the design review section (same pattern as `req_context`)
+- [x] 2.2 Add `design_compliance` field to `render_review_prompt()` in `lib/set_orch/templates.py` — pass-through for the design review section (same pattern as `req_context`)
 - [x] 2.3 Integrate into `review_change()` in `lib/orchestration/verifier.sh` — call `build_design_review_section` and include result in review prompt. Add instruction: "Report design token mismatches as [WARNING], not [CRITICAL]"
 - [x] 2.4 Update review template in `templates.py` to include design compliance section when `design_compliance` is non-empty
 

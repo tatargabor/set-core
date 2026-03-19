@@ -34,7 +34,7 @@ The startup guide generator SHALL detect project configuration and produce relev
 - **THEN** the startup guide SHALL include only the dev server section
 
 ### Requirement: Planning rules include startup guide maintenance
-The planning rules (wt-project-web) SHALL instruct the planner that infrastructure and foundational changes MUST update the `## Application Startup` section in CLAUDE.md when they add new setup steps (e.g., adding a database, adding E2E testing).
+The planning rules (set-project-web) SHALL instruct the planner that infrastructure and foundational changes MUST update the `## Application Startup` section in CLAUDE.md when they add new setup steps (e.g., adding a database, adding E2E testing).
 
 #### Scenario: Infrastructure change adds Prisma
 - **WHEN** the planner decomposes an infrastructure change that introduces Prisma

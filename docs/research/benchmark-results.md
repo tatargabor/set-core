@@ -10,7 +10,7 @@ How much does persistent cross-session memory improve AI agent work? We ran two 
 
 ### CraftBazaar (v3–v6) — Full-Scale Realism
 
-Two autonomous agents build the same 12-change e-commerce marketplace (CraftBazaar) in parallel. One has shodh-memory enabled, the other doesn't. Both use identical tooling (wt-loop, OpenSpec, Claude Opus 4.6). Each run takes ~2 hours and produces a complete Next.js + Prisma application with products, shopping cart, multi-vendor support, discounts, checkout, stock management, and more.
+Two autonomous agents build the same 12-change e-commerce marketplace (CraftBazaar) in parallel. One has shodh-memory enabled, the other doesn't. Both use identical tooling (set-loop, OpenSpec, Claude Opus 4.6). Each run takes ~2 hours and produces a complete Next.js + Prisma application with products, shopping cart, multi-vendor support, discounts, checkout, stock management, and more.
 
 **What it measures:** End-to-end impact across 12 sequential changes with cascading decisions, hidden quality traps, and a final sprint-retro (C12) that audits the entire codebase for cross-cutting bugs.
 
@@ -277,7 +277,7 @@ Each run revealed specific problems that we fixed before the next. The benchmark
 - C02 Developer Notes now say "Starting in C03, don't apply to C02" — corrections are forward-looking only
 - Convention probes removed from test scripts (moved to post-hoc `score.sh`) to prevent probe leakage through failure messages
 
-**Result:** Still 0% delta, but for a new reason — the agent never saved anything to memory (0 `wt-memory remember` calls across 5 sessions). The trap design was validated: Category A showed 45% (correct — code-readable), Category C showed 11% (correct — no memories to recall).
+**Result:** Still 0% delta, but for a new reason — the agent never saved anything to memory (0 `set-memory remember` calls across 5 sessions). The trap design was validated: Category A showed 45% (correct — code-readable), Category C showed 11% (correct — no memories to recall).
 
 ### SYN-03 → SYN-04: Infrastructure-Level Saving
 
@@ -286,7 +286,7 @@ Each run revealed specific problems that we fixed before the next. The benchmark
 **Discovery: Prompts beat instructions.** The agent follows the `claude -p` prompt more strictly than CLAUDE.md. If the prompt says "implement and fix tests", the agent does exactly that — nothing more.
 
 **Fixes applied:**
-- **`post-session-save.sh`:** A mechanical script that runs after each session, reads the change files (including Developer Notes), extracts conventions and corrections, and saves them to `wt-memory`. No agent cooperation needed.
+- **`post-session-save.sh`:** A mechanical script that runs after each session, reads the change files (including Developer Notes), extracts conventions and corrections, and saves them to `set-memory`. No agent cooperation needed.
 - Run prompt updated to explicitly mention CLAUDE.md workflow
 - Max turns increased from 25 → 30
 
@@ -348,7 +348,7 @@ These should have been saved but weren't (agents don't save convention-level kno
 
 ### 1. Recall works; save is the bottleneck
 
-Across all synthetic runs (SYN-03, SYN-04, SYN-05), agents made **zero voluntary `wt-memory remember` calls** despite:
+Across all synthetic runs (SYN-03, SYN-04, SYN-05), agents made **zero voluntary `set-memory remember` calls** despite:
 - CLAUDE.md step 8 mandating saves
 - run.sh prompt explicitly requesting saves ("IMPORTANT: save project conventions...")
 - 30 available turns per session
@@ -408,7 +408,7 @@ TRAP-F (coupon increment) failed for 3 consecutive benchmarks regardless of memo
 
 ### Cross-contamination risk
 
-In v6, both runs resolved to the same shodh-memory storage path (`~/.local/share/wt-tools/memory/craftbazaar`) because both projects were named "craftbazaar". Run B wrote 57 memories while Run A was running concurrently. However, triple-layer isolation (no memory hooks in Run A's settings.json, no memory instructions in Run A's CLAUDE.md, no memory hooks in Run A's skills) prevented contamination.
+In v6, both runs resolved to the same shodh-memory storage path (`~/.local/share/set-core/memory/craftbazaar`) because both projects were named "craftbazaar". Run B wrote 57 memories while Run A was running concurrently. However, triple-layer isolation (no memory hooks in Run A's settings.json, no memory instructions in Run A's CLAUDE.md, no memory hooks in Run A's skills) prevented contamination.
 
 **Fix for future runs:** Use different project names (e.g., `craftbazaar-baseline` vs `craftbazaar-memory`) for physically separate memory databases.
 

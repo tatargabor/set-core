@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ## IN SCOPE
-- Correct `postcss.config.mjs` for Tailwind CSS v4 in wt-project-web nextjs template
+- Correct `postcss.config.mjs` for Tailwind CSS v4 in set-project-web nextjs template
 - Correct `jest.config.ts` key name and add Prisma test environment guidance
 - Add common `next.config.js` defaults (images.unoptimized)
 - Extend `data-model.md` rule with worktree DB init and Prisma version guidance
@@ -17,7 +17,7 @@
 The `postcss.config.mjs` template SHALL use the `@tailwindcss/postcss` plugin syntax required by Tailwind CSS v4, not the v3 `tailwindcss: {}` syntax.
 
 #### Scenario: Deployed postcss.config.mjs works with Tailwind v4
-- **WHEN** `wt-project init` deploys templates to a new project
+- **WHEN** `set-project init` deploys templates to a new project
 - **THEN** `postcss.config.mjs` contains `"@tailwindcss/postcss": {}` as the plugin key
 - **AND** a Next.js build does not fail with "Unknown plugin: tailwindcss"
 
@@ -38,7 +38,7 @@ The `jest.config.ts` template SHALL use `setupFilesAfterEnv` (not `setupFilesAft
 The `next.config.js` template SHALL include `images: { unoptimized: true }` as a default, since consumer projects commonly use placeholder image paths that trigger Next.js image optimization errors.
 
 #### Scenario: next.config.js deployed with images setting
-- **WHEN** `wt-project init` deploys the nextjs template
+- **WHEN** `set-project init` deploys the nextjs template
 - **THEN** `next.config.js` contains `images: { unoptimized: true }` in the config object
 - **AND** a Next.js build with local/placeholder image paths does not error on image optimization
 
@@ -76,6 +76,6 @@ A new rule file `worktree-setup.md` SHALL be added to the nextjs template, path-
 - **THEN** the YAML frontmatter contains `paths:` entries covering `prisma/**` and `jest.config*`
 - **AND** the rule body covers: db init (`prisma migrate deploy && prisma db seed`), port conflict resolution, pnpm non-interactive setup
 
-#### Scenario: Rule is deployed by wt-project init
-- **WHEN** `wt-project init --project-type web` runs
+#### Scenario: Rule is deployed by set-project init
+- **WHEN** `set-project init --project-type web` runs
 - **THEN** `worktree-setup.md` appears in the project's `.claude/rules/` directory

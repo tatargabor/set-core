@@ -2,7 +2,7 @@
 
 ## Context
 
-The sentinel process tree is: `wt-sentinel` → `wt-orchestrate` → Python monitor → `wt-loop` (per change). Currently, SIGTERM/SIGINT causes immediate cascade kill — the orchestrator's atexit sets status to `"stopped"`, but agents are killed mid-work. The sentinel's `fix_stale_state()` can recover from crashes, but there's no orderly shutdown that preserves agent progress.
+The sentinel process tree is: `set-sentinel` → `set-orchestrate` → Python monitor → `wt-loop` (per change). Currently, SIGTERM/SIGINT causes immediate cascade kill — the orchestrator's atexit sets status to `"stopped"`, but agents are killed mid-work. The sentinel's `fix_stale_state()` can recover from crashes, but there's no orderly shutdown that preserves agent progress.
 
 The existing signal flow:
 - Sentinel traps SIGINT/SIGTERM → sends SIGTERM to orchestrator child → exits
@@ -61,12 +61,12 @@ Simple flag on `run.sh` / `run-complex.sh`. Default remains `/tmp/` for backward
 ## Risks / Trade-offs
 
 - **[Risk] Claude session may take 5+ minutes to complete** → 60s timeout with SIGKILL fallback. Stalled changes get re-dispatched on resume.
-- **[Risk] Worktree disk space not freed on shutdown** → Intentional: worktrees are needed for resume. Document that `wt-sentinel --cleanup` (existing) removes them.
+- **[Risk] Worktree disk space not freed on shutdown** → Intentional: worktrees are needed for resume. Document that `set-sentinel --cleanup` (existing) removes them.
 - **[Risk] PID file stale after reboot** → Already handled by existing `fix_stale_state()`. Shutdown writes `shutdown_at` as additional signal.
 
 ### 6. wt-web integration: API endpoint + Settings UI
 
-**API:** New `POST /api/{project}/shutdown` endpoint in `lib/wt_orch/api.py`. Follows the same pattern as existing `/api/{project}/stop` — reads sentinel PID file, sends SIGUSR1, returns JSON. Distinct from `/stop` because `/stop` kills the orchestrator immediately while `/shutdown` triggers the graceful sequence.
+**API:** New `POST /api/{project}/shutdown` endpoint in `lib/set_orch/api.py`. Follows the same pattern as existing `/api/{project}/stop` — reads sentinel PID file, sends SIGUSR1, returns JSON. Distinct from `/stop` because `/stop` kills the orchestrator immediately while `/shutdown` triggers the graceful sequence.
 
 **Settings page:** `web/src/pages/Settings.tsx` gains an "Orchestration Control" section with:
 - **Shutdown button** (red, destructive styling) → confirmation dialog → calls shutdown API → shows spinner

@@ -14,7 +14,7 @@ The installer SHALL generate a valid macOS `.app` bundle at `~/Applications/WT C
 - **WHEN** the `.app` bundle is generated
 - **THEN** `Info.plist` SHALL contain:
   - `CFBundleName` = "WT Control"
-  - `CFBundleIdentifier` = "com.wt-tools.control"
+  - `CFBundleIdentifier` = "com.set-core.control"
   - `CFBundleExecutable` = "wt-control"
   - `CFBundleIconFile` = "app"
   - `LSUIElement` = true
@@ -59,7 +59,7 @@ The `.app` wrapper SHALL handle missing dependencies gracefully.
 
 #### Scenario: wt-control not installed
 - **WHEN** the `.app` bundle's executable runs but `~/.local/bin/wt-control` does not exist
-- **THEN** a macOS dialog SHALL appear with an error message explaining that wt-tools is not installed
+- **THEN** a macOS dialog SHALL appear with an error message explaining that set-core is not installed
 - **AND** the script SHALL exit with a non-zero status
 
 ### Requirement: Platform Guard

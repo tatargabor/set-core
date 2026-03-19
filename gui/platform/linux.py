@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 
 from .base import PlatformInterface
 
-logger = logging.getLogger("wt-control.linux")
+logger = logging.getLogger("set-control.linux")
 
 
 class LinuxPlatform(PlatformInterface):
@@ -40,14 +40,14 @@ class LinuxPlatform(PlatformInterface):
             return False
 
     def get_config_dir(self) -> Path:
-        """Return XDG config directory for wt-tools."""
+        """Return XDG config directory for set-core."""
         xdg_config = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
-        return Path(xdg_config) / "wt-tools"
+        return Path(xdg_config) / "set-core"
 
     def get_cache_dir(self) -> Path:
-        """Return XDG cache directory for wt-tools."""
+        """Return XDG cache directory for set-core."""
         xdg_cache = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
-        return Path(xdg_cache) / "wt-tools"
+        return Path(xdg_cache) / "set-core"
 
     def get_process_cmdline(self, pid: int) -> Optional[str]:
         """Get command line from /proc filesystem."""

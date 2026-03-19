@@ -6,7 +6,7 @@
 # build from the structured digest.
 #
 # Usage:
-#   ./tests/e2e/run-complex.sh                              # Auto-increment: ~/.local/share/wt-tools/e2e-runs/craftbrew-run1, ...
+#   ./tests/e2e/run-complex.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/craftbrew-run1, ...
 #   ./tests/e2e/run-complex.sh /path/to/dir                 # Clone to specified dir
 #   ./tests/e2e/run-complex.sh --project-dir ~/other-dir    # Override base dir
 #
@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCAFFOLD_DIR="$SCRIPT_DIR/scaffold-complex"
 CRAFTBREW_REPO="https://github.com/tatargabor/craftbrew.git"
 CRAFTBREW_BRANCH="spec-only"
-E2E_RUNS_DIR="${HOME}/.local/share/wt-tools/e2e-runs"
+E2E_RUNS_DIR="${HOME}/.local/share/set-core/e2e-runs"
 BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
 mkdir -p "$BASE_DIR"
 
@@ -190,7 +190,7 @@ init_project() {
     # Lockfile regeneration happens via wt-merge's regenerate_lockfile() and
     # merger.py's _post_merge_deps_install() — NOT via git hook.
     cat > .gitattributes << 'ATTRS'
-# wt-tools: generated/runtime files — always prefer ours on conflict
+# set-core: generated/runtime files — always prefer ours on conflict
 pnpm-lock.yaml    merge=ours
 yarn.lock         merge=ours
 package-lock.json merge=ours
@@ -205,7 +205,7 @@ ATTRS
     success "Tagged v0-spec (merge drivers configured)"
 
     step "Clean stale memory"
-    local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/wt-tools/memory}/${PROJECT_NAME}"
+    local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/set-core/memory}/${PROJECT_NAME}"
     if [[ -d "$mem_storage" ]]; then
         info "Removing stale memory storage: $mem_storage"
         rm -rf "$mem_storage"
@@ -290,9 +290,9 @@ show_completion() {
     echo "  4. Dispatch agents with spec-context per worktree"
     echo "  5. Track requirement coverage through execution"
     echo ""
-    warn "IMPORTANT: Mid-run wt-tools fixes"
+    warn "IMPORTANT: Mid-run set-core fixes"
     echo "  Symlinks are NOT enough — .claude/ files must be real copies."
-    echo "  After fixing a bug in wt-tools during a run:"
+    echo "  After fixing a bug in set-core during a run:"
     echo "    1. wt-project init --name $PROJECT_NAME   # re-deploy to main worktree"
     echo "    2. Sync to active agent worktrees:"
     echo "       for wt in \$(git worktree list --porcelain | grep '^worktree ' | awk '{print \$2}'); do"
@@ -311,7 +311,7 @@ show_completion() {
     echo ""
     info "When done, cleanup:"
     echo "  rm -rf $TEST_DIR"
-    echo "  rm -rf ~/.local/share/wt-tools/memory/$PROJECT_NAME"
+    echo "  rm -rf ~/.local/share/set-core/memory/$PROJECT_NAME"
     echo "  wt-project remove $PROJECT_NAME"
 }
 

@@ -30,10 +30,10 @@ Complex projects (15+ changes) take 4+ hours to orchestrate and consume 6M+ toke
 - `lib/orchestration/dispatcher.sh` — phase-gated dispatch logic
 - `lib/orchestration/monitor.sh` — phase completion detection + checkpoint trigger
 - `lib/orchestration/planner.sh` — pass phase instruction to decompose prompt
-- `lib/wt_orch/templates.py` — decompose template: phase assignment instructions
+- `lib/set_orch/templates.py` — decompose template: phase assignment instructions
 - `lib/orchestration/auditor.sh` — tie audit to phase boundaries
 - `lib/orchestration/state.sh` — phase state tracking helpers
-- `bin/wt-orchestrate` — resume/stop commands, phase-aware status
+- `bin/set-orchestrate` — resume/stop commands, phase-aware status
 - `lib/web/` — dashboard milestone UI
 - `lib/notifications/` — email templates for milestone notifications
 - `orchestration.yaml` — new `milestones` config section

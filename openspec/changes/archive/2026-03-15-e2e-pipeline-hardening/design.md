@@ -25,7 +25,7 @@ The orchestration pipeline has a blind spot: it trusts agent self-reporting with
 
 ### D1: Uncommitted work check as a utility function
 
-Create `git_has_uncommitted_work(wt_path) -> tuple[bool, str]` in a shared location (`lib/wt_orch/git_utils.py` or inline in `loop_tasks.py`). It runs:
+Create `git_has_uncommitted_work(wt_path) -> tuple[bool, str]` in a shared location (`lib/set_orch/git_utils.py` or inline in `loop_tasks.py`). It runs:
 ```
 git -C <wt_path> status --porcelain
 ```
@@ -49,7 +49,7 @@ The uncommitted work check runs in two places:
 
 On dispatch, the dispatcher reads the current project state and appends an `## Application Startup` section to the worktree's CLAUDE.md (if it doesn't already have one). The content comes from:
 
-1. **Template defaults** (from wt-project-web planning_rules): dev server command, DB setup pattern
+1. **Template defaults** (from set-project-web planning_rules): dev server command, DB setup pattern
 2. **Runtime detection**: package manager, framework (Next.js/Vite/etc.), DB (Prisma/Drizzle)
 3. **Existing state**: if prior changes have already set up infrastructure, the guide reflects that
 

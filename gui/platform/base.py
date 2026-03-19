@@ -27,12 +27,12 @@ class PlatformInterface(ABC):
 
     @abstractmethod
     def get_config_dir(self) -> Path:
-        """Return the platform-specific configuration directory for wt-tools."""
+        """Return the platform-specific configuration directory for set-core."""
         pass
 
     @abstractmethod
     def get_cache_dir(self) -> Path:
-        """Return the platform-specific cache directory for wt-tools."""
+        """Return the platform-specific cache directory for set-core."""
         pass
 
     def get_process_cmdline(self, pid: int) -> Optional[str]:

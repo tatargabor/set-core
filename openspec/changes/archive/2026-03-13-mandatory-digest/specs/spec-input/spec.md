@@ -4,12 +4,12 @@
 The system SHALL accept an arbitrary markdown specification document as the primary input for orchestration via the `--spec <path>` CLI flag. When `--spec` points to a file, the system SHALL route it through the digest pipeline (same as directory input), producing structured requirements, ambiguities, and domain summaries before decomposition.
 
 #### Scenario: Explicit spec file path
-- **WHEN** the user runs `wt-orchestrate --spec docs/v1-minishop.md`
+- **WHEN** the user runs `set-orchestrate --spec docs/v1-minishop.md`
 - **THEN** the system SHALL set `INPUT_MODE="digest"` and `INPUT_PATH` to the absolute file path
 - **AND** auto-trigger `cmd_digest` to produce `wt/orchestration/digest/` output before decomposition
 
 #### Scenario: Explicit spec directory path
-- **WHEN** the user runs `wt-orchestrate --spec docs/`
+- **WHEN** the user runs `set-orchestrate --spec docs/`
 - **THEN** the system SHALL set `INPUT_MODE="digest"` and `INPUT_PATH` to the absolute directory path
 - **AND** auto-trigger `cmd_digest` to produce `wt/orchestration/digest/` output before decomposition
 

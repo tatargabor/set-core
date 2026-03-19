@@ -89,7 +89,7 @@ send_summary_email() {
         return 0  # silently skip if not configured
     fi
 
-    local subject="[wt-tools] $project_name — orchestration $reason"
+    local subject="[set-core] $project_name — orchestration $reason"
     local html=""
 
     # Header

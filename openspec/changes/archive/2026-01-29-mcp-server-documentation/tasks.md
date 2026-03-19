@@ -32,7 +32,7 @@
 
 ## 5. GUI Team Status Cache
 
-- [x] 5.1 Create `~/.cache/wt-tools/` directory if not exists
+- [x] 5.1 Create `~/.cache/set-core/` directory if not exists
 - [x] 5.2 Update Control Center GUI to write team_status.json
 - [x] 5.3 Define team_status.json schema (members, agent_status, change_id)
 - [x] 5.4 Test MCP reads team status correctly

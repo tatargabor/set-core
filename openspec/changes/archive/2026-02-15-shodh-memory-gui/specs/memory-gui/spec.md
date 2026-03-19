@@ -38,19 +38,19 @@ The Memory submenu SHALL show: a disabled status line ("Status: available (N mem
 - **THEN** status shows "not installed", Browse and Remember actions are disabled
 
 #### Scenario: SKILL.md hook warning
-- **WHEN** user opens Memory submenu and no SKILL.md file in the project's main repo `.claude/skills/openspec-*/SKILL.md` contains "wt-memory"
+- **WHEN** user opens Memory submenu and no SKILL.md file in the project's main repo `.claude/skills/openspec-*/SKILL.md` contains "set-memory"
 - **THEN** a disabled warning line "OpenSpec skills not hooked" appears in the submenu
 
 ### Requirement: Memory browse dialog
-The browse dialog SHALL have two modes: **list mode** (initial) showing all memories, and **search mode** (when query entered) showing semantic recall results. List mode SHALL use `wt-memory list --project X` to fetch all memories. Search mode SHALL use `wt-memory recall --project X "query"` for semantic search. The dialog SHALL use `WindowStaysOnTopHint` per project conventions.
+The browse dialog SHALL have two modes: **list mode** (initial) showing all memories, and **search mode** (when query entered) showing semantic recall results. List mode SHALL use `set-memory list --project X` to fetch all memories. Search mode SHALL use `set-memory recall --project X "query"` for semantic search. The dialog SHALL use `WindowStaysOnTopHint` per project conventions.
 
 #### Scenario: Initial load shows all memories
 - **WHEN** user opens browse dialog and project has memories
-- **THEN** all memories are listed (via `wt-memory list`) with content preview, type badge, tags, and date
+- **THEN** all memories are listed (via `set-memory list`) with content preview, type badge, tags, and date
 
 #### Scenario: Search filters by semantic recall
 - **WHEN** user enters a query in the search field and presses Enter
-- **THEN** results switch to semantic recall results (via `wt-memory recall`)
+- **THEN** results switch to semantic recall results (via `set-memory recall`)
 
 #### Scenario: Clear search returns to full list
 - **WHEN** user clears the search field
@@ -61,7 +61,7 @@ The browse dialog SHALL have two modes: **list mode** (initial) showing all memo
 - **THEN** dialog shows "No memories yet" with explanation
 
 ### Requirement: Remember note dialog
-The remember dialog SHALL allow the user to type a note, select a memory type (Learning, Decision, Observation, Event), and optionally add comma-separated tags. On submit, it SHALL save via `wt-memory remember` with the project context.
+The remember dialog SHALL allow the user to type a note, select a memory type (Learning, Decision, Observation, Event), and optionally add comma-separated tags. On submit, it SHALL save via `set-memory remember` with the project context.
 
 #### Scenario: Save a manual note
 - **WHEN** user types content, selects type "Learning", and clicks Save

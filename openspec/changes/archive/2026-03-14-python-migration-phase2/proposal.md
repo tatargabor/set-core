@@ -11,7 +11,7 @@ Phase 1 established the Python infrastructure (`logging_config.py`, `subprocess_
 - Migrate notification system: `send_notification` (desktop + email channels)
 - Migrate hook runner: `run_hook` (lifecycle hook execution with blocking semantics)
 - Add file-level locking to `save_state` using `fcntl.flock` (replacing bash `with_state_lock`)
-- Add `wt-orch-core state` CLI subcommands for each migrated function so bash callers can use them during transition
+- Add `set-orch-core state` CLI subcommands for each migrated function so bash callers can use them during transition
 - Migrate `cmd_status` display logic to Python (formatted table output)
 
 ## Capabilities
@@ -28,8 +28,8 @@ Phase 1 established the Python infrastructure (`logging_config.py`, `subprocess_
 
 ## Impact
 
-- `lib/wt_orch/state.py` — major extension (~400 LOC added)
-- `lib/orchestration/state.sh` — functions replaced by `wt-orch-core state <subcommand>` calls (bash wrappers shrink to ~50 LOC each)
-- `lib/wt_orch/cli.py` — new `state` subcommands registered
-- `lib/wt_orch/events.py` — consumed by mutation functions for event emission
+- `lib/set_orch/state.py` — major extension (~400 LOC added)
+- `lib/orchestration/state.sh` — functions replaced by `set-orch-core state <subcommand>` calls (bash wrappers shrink to ~50 LOC each)
+- `lib/set_orch/cli.py` — new `state` subcommands registered
+- `lib/set_orch/events.py` — consumed by mutation functions for event emission
 - `tests/unit/test_state.py` — extended with mutation, locking, dependency, phase, recovery tests

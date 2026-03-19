@@ -46,7 +46,7 @@
 
 - [x] 6.1 Update `README.md`: remove or rewrite "OpenSpec Integration" section
 - [x] 6.2 Update `CONTRIBUTING.md`: remove openspec directory from file structure
-- [x] 6.3 Update `wt_tools/__init__.py`: remove "OpenSpec-driven" from description
+- [x] 6.3 Update `set_tools/__init__.py`: remove "OpenSpec-driven" from description
 - [x] 6.4 Update `docs/readme-guide.md`: remove OpenSpec references
 - [x] 6.5 Update `bin/wt-control-init`: remove OpenSpec reference
 - [x] 6.6 Update `CLAUDE.md`: remove `/opsx:apply` reference from auto-commit rule (change to generic skill reference)

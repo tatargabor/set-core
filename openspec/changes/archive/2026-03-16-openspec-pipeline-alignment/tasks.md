@@ -18,5 +18,5 @@
 
 ## 4. Ellenőrzés
 
-- [x] 4.1 `grep -n "proposal_path\|proposal.md" lib/wt_orch/dispatcher.py` — nem marad write logika proposal.md-re
-- [x] 4.2 `grep -n "shutil.move\|git add" lib/wt_orch/merger.py` — a shutil.move és régi git add eltűnt, `openspec archive` van helyette
+- [x] 4.1 `grep -n "proposal_path\|proposal.md" lib/set_orch/dispatcher.py` — nem marad write logika proposal.md-re
+- [x] 4.2 `grep -n "shutil.move\|git add" lib/set_orch/merger.py` — a shutil.move és régi git add eltűnt, `openspec archive` van helyette

@@ -1,0 +1,237 @@
+#!/usr/bin/env bash
+# set-list - List active worktrees
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+usage() {
+    cat <<EOF
+Usage: set-list [options]
+
+List active worktrees for projects.
+
+Options:
+  -p, --project <name>    List worktrees for specific project
+  -a, --all               List worktrees for all registered projects
+  -r, --remote            List remote change/* branches (can continue with set-work)
+  -h, --help              Show this help
+
+Examples:
+  set-list                 # List for default/current project
+  set-list --all           # List all projects' worktrees
+  set-list -p myproject    # List for specific project
+  set-list --remote        # List remote change branches
+EOF
+}
+
+list_project_worktrees() {
+    local project_name="$1"
+    local project_path="$2"
+    local show_project_name="${3:-false}"
+
+    if [[ ! -d "$project_path" ]]; then
+        warn "Project path not found: $project_path"
+        return
+    fi
+
+    # Get worktrees from git
+    local worktrees
+    worktrees=$(git -C "$project_path" worktree list --porcelain 2>/dev/null)
+
+    if [[ -z "$worktrees" ]]; then
+        return
+    fi
+
+    local found=false
+    local current_path=""
+    local current_branch=""
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^worktree\ (.+)$ ]]; then
+            current_path="${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ ^branch\ refs/heads/(.+)$ ]]; then
+            current_branch="${BASH_REMATCH[1]}"
+        elif [[ -z "$line" && -n "$current_path" ]]; then
+            # Skip main repo, only show worktrees
+            if [[ "$current_path" != "$project_path" ]]; then
+                local wt_name
+                wt_name=$(basename "$current_path")
+                found=true
+
+                if $show_project_name; then
+                    echo -e "  ${BLUE}$project_name${NC} / ${GREEN}$wt_name${NC}"
+                else
+                    echo -e "  ${GREEN}$wt_name${NC}"
+                fi
+                echo "    Path: $current_path"
+                if [[ -n "$current_branch" ]]; then
+                    echo "    Branch: $current_branch"
+                fi
+            fi
+
+            current_path=""
+            current_branch=""
+        fi
+    done <<< "$worktrees"
+
+    # Process last entry if exists
+    if [[ -n "$current_path" && "$current_path" != "$project_path" ]]; then
+        local wt_name
+        wt_name=$(basename "$current_path")
+        found=true
+
+        if $show_project_name; then
+            echo -e "  ${BLUE}$project_name${NC} / ${GREEN}$wt_name${NC}"
+        else
+            echo -e "  ${GREEN}$wt_name${NC}"
+        fi
+        echo "    Path: $current_path"
+        if [[ -n "$current_branch" ]]; then
+            echo "    Branch: $current_branch"
+        fi
+    fi
+
+    if ! $found && ! $show_project_name; then
+        info "No worktrees found for project '$project_name'"
+    fi
+}
+
+list_remote_changes() {
+    local project_name="$1"
+    local project_path="$2"
+    local show_project_name="${3:-false}"
+
+    if [[ ! -d "$project_path" ]]; then
+        warn "Project path not found: $project_path"
+        return
+    fi
+
+    # Fetch latest from remote
+    git -C "$project_path" fetch origin 2>/dev/null || true
+
+    # Get remote change/* branches
+    local remote_branches
+    remote_branches=$(git -C "$project_path" branch -r 2>/dev/null | grep "origin/change/" | sed 's/^[[:space:]]*//')
+
+    if [[ -z "$remote_branches" ]]; then
+        if ! $show_project_name; then
+            info "No remote change/* branches found"
+        fi
+        return
+    fi
+
+    # Get local worktree branches for comparison
+    local local_branches
+    local_branches=$(git -C "$project_path" worktree list --porcelain 2>/dev/null | grep "^branch " | sed 's/branch refs\/heads\///')
+
+    while IFS= read -r remote_branch; do
+        [[ -z "$remote_branch" ]] && continue
+
+        # Extract branch name (remove origin/ prefix)
+        local branch_name="${remote_branch#origin/}"
+        # Extract change-id (remove change/ prefix)
+        local change_id="${branch_name#change/}"
+
+        # Check if we have a local worktree for this
+        local has_local=false
+        if echo "$local_branches" | grep -q "^$branch_name$"; then
+            has_local=true
+        fi
+
+        if $show_project_name; then
+            if $has_local; then
+                echo -e "  ${BLUE}$project_name${NC} / ${GREEN}$change_id${NC} (local worktree exists)"
+            else
+                echo -e "  ${BLUE}$project_name${NC} / ${YELLOW}$change_id${NC} (remote only)"
+            fi
+        else
+            if $has_local; then
+                echo -e "  ${GREEN}$change_id${NC} (local worktree exists)"
+            else
+                echo -e "  ${YELLOW}$change_id${NC} (remote only - run: set-work $change_id)"
+            fi
+        fi
+        echo "    Branch: $remote_branch"
+    done <<< "$remote_branches"
+}
+
+main() {
+    local project_name=""
+    local show_all=false
+    local show_remote=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project_name="$2"
+                shift 2
+                ;;
+            -a|--all)
+                show_all=true
+                shift
+                ;;
+            -r|--remote)
+                show_remote=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
+    ensure_config
+
+    if $show_all; then
+        if $show_remote; then
+            echo "Remote change branches (all projects):"
+        else
+            echo "All worktrees:"
+        fi
+        echo ""
+
+        local projects
+        projects=$(jq -r '.projects | keys[]' "$CONFIG_FILE" 2>/dev/null)
+
+        if [[ -z "$projects" ]]; then
+            info "No projects registered."
+            exit 0
+        fi
+
+        local found_any=false
+        while IFS= read -r name; do
+            local path
+            path=$(get_project_path "$name")
+            if $show_remote; then
+                list_remote_changes "$name" "$path" true
+            else
+                list_project_worktrees "$name" "$path" true
+            fi
+        done <<< "$projects"
+    else
+        # Single project
+        local resolved_project
+        resolved_project=$(resolve_project "$project_name") || exit 1
+
+        local project_path
+        project_path=$(get_project_path "$resolved_project")
+
+        if $show_remote; then
+            echo "Remote change branches for '$resolved_project':"
+            echo ""
+            list_remote_changes "$resolved_project" "$project_path" false
+        else
+            echo "Worktrees for '$resolved_project':"
+            echo ""
+            list_project_worktrees "$resolved_project" "$project_path" false
+        fi
+    fi
+}
+
+main "$@"

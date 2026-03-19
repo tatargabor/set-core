@@ -5,14 +5,14 @@ A new hook script `wt-hook-memory-pretool` SHALL run on `PreToolUse` events matc
 
 #### Scenario: Bash command matches a discovered project hot topic
 - **WHEN** Claude is about to execute a Bash command matching a pattern from `.claude/hot-topics.json`
-- **AND** wt-memory is healthy
+- **AND** set-memory is healthy
 - **THEN** the hook SHALL recall memories using the matched command as query
 - **AND** SHALL output JSON with `hookSpecificOutput.additionalContext` containing relevant memories
 - **AND** SHALL limit to 2 memories maximum
 
 #### Scenario: Bash command matches a generic base pattern
 - **WHEN** Claude is about to execute a Bash command matching a generic base pattern (ssh, rm -rf, sudo, docker/kubectl)
-- **AND** wt-memory is healthy
+- **AND** set-memory is healthy
 - **THEN** the hook SHALL recall memories related to that command category
 
 #### Scenario: Bash command does not match any hot topic
@@ -40,8 +40,8 @@ The SessionStart hook (L1) SHALL discover project-specific hot topics and write 
 4. Frequently-used memory tags → topics from past sessions
 5. Error memories → tools/commands that failed before
 
-#### Scenario: wt-tools project discovery
-- **WHEN** SessionStart runs in the wt-tools project
+#### Scenario: set-core project discovery
+- **WHEN** SessionStart runs in the set-core project
 - **THEN** `.claude/hot-topics.json` SHALL contain patterns for `wt-\w+`, `openspec\s`, and other project-specific commands
 
 #### Scenario: Discovery cap

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QMessageBox
 def test_on_focus_uses_platform_layer(control_center, git_env, qtbot):
     """on_focus() should use platform.find_window_by_title + focus_window, not subprocess."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-focus-test")
+    wt_path = str(git_env["base"] / "test-project-set-focus-test")
 
     subprocess.run(
         ["git", "-C", project_path, "worktree", "add", "-b", "change/focus-test", wt_path],
@@ -44,7 +44,7 @@ def test_on_focus_uses_platform_layer(control_center, git_env, qtbot):
 
         # Mock the platform layer
         mock_platform = MagicMock()
-        mock_platform.find_window_by_title.return_value = "test-project-wt-focus-test"
+        mock_platform.find_window_by_title.return_value = "test-project-set-focus-test"
         mock_platform.focus_window.return_value = True
 
         with patch("gui.control_center.mixins.handlers.get_platform", return_value=mock_platform):
@@ -53,11 +53,11 @@ def test_on_focus_uses_platform_layer(control_center, git_env, qtbot):
         # Verify platform methods were called with correct args
         mock_platform.find_window_by_title.assert_called_once()
         call_args = mock_platform.find_window_by_title.call_args
-        assert "test-project-wt-focus-test" in call_args[0][0]  # worktree basename
+        assert "test-project-set-focus-test" in call_args[0][0]  # worktree basename
 
         mock_platform.focus_window.assert_called_once()
         focus_args = mock_platform.focus_window.call_args
-        assert "test-project-wt-focus-test" in focus_args[0][0]  # window_id from find
+        assert "test-project-set-focus-test" in focus_args[0][0]  # window_id from find
 
     finally:
         subprocess.run(
@@ -71,9 +71,9 @@ def test_on_focus_uses_platform_layer(control_center, git_env, qtbot):
 
 
 def test_on_focus_opens_editor_when_no_window(control_center, git_env, qtbot):
-    """on_focus() should call wt-work when no editor window found (non-blocking)."""
+    """on_focus() should call set-work when no editor window found (non-blocking)."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-focus-warn")
+    wt_path = str(git_env["base"] / "test-project-set-focus-warn")
 
     subprocess.run(
         ["git", "-C", project_path, "worktree", "add", "-b", "change/focus-warn", wt_path],
@@ -129,9 +129,9 @@ def test_on_focus_opens_editor_when_no_window(control_center, git_env, qtbot):
 
 
 def test_double_click_opens_editor_when_no_window(control_center, git_env, qtbot):
-    """Double-click should call wt-work when no IDE window exists, regardless of agent status."""
+    """Double-click should call set-work when no IDE window exists, regardless of agent status."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-focus-dblclk")
+    wt_path = str(git_env["base"] / "test-project-set-focus-dblclk")
 
     subprocess.run(
         ["git", "-C", project_path, "worktree", "add", "-b", "change/focus-dblclk", wt_path],

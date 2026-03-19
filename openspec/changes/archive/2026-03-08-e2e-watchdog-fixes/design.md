@@ -3,8 +3,8 @@
 E2E #2 minishop test run (2026-03-08) completed successfully (4/4 changes merged, 49 tests pass, ~50 min) but exposed:
 1. **Watchdog false-positive kills** (4x) during artifact creation phase — loop-state.json doesn't exist yet, watchdog hash detection escalates L1→L3 in ~30s
 2. **Token tracking broken** — `wt-usage` crashes with `ModuleNotFoundError: No module named 'gui'`, `get_current_tokens()` always returns 0 via fallback
-3. **`wt-sentinel` missing from install.sh** — already fixed in proposal
-4. **Checkpoint blocks unattended E2E** — `merge_policy: checkpoint` requires manual `wt-orchestrate approve`
+3. **`set-sentinel` missing from install.sh** — already fixed in proposal
+4. **Checkpoint blocks unattended E2E** — `merge_policy: checkpoint` requires manual `set-orchestrate approve`
 
 ## Goals / Non-Goals
 
@@ -36,13 +36,13 @@ The existing timeout check (WATCHDOG_TIMEOUT_RUNNING=600s) with PID-alive guard 
 
 **Problem:** `wt-usage` does `from gui.usage_calculator import UsageCalculator` but the `gui` package is not on Python path when called from arbitrary directories.
 
-**Decision:** Fix the Python import in `wt-usage` to use the correct path relative to the wt-tools install. Add `sys.path.insert` pointing to the wt-tools lib directory, or use relative imports.
+**Decision:** Fix the Python import in `wt-usage` to use the correct path relative to the set-core install. Add `sys.path.insert` pointing to the set-core lib directory, or use relative imports.
 
 **Fallback:** If wt-usage fix is complex, add a lightweight bash-based token estimator in `get_current_tokens()` that reads JSONL session files directly and sums `usage.output_tokens` fields.
 
 ### D3: Auto-approve checkpoint for E2E
 
-**Problem:** `merge_policy: checkpoint` pauses orchestration and waits for `wt-orchestrate approve`.
+**Problem:** `merge_policy: checkpoint` pauses orchestration and waits for `set-orchestrate approve`.
 
 **Decision:** Add `checkpoint_auto_approve: true` directive. When set, checkpoint emits the event but immediately continues without waiting. The E2E run.sh config sets this.
 

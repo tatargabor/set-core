@@ -4,7 +4,7 @@
 A test script (`benchmark/tests/test-hooks.sh`) SHALL validate all memory hook fixes in isolation using a temporary shodh-memory storage directory. The script MUST NOT modify production memory storage.
 
 #### Scenario: Auto-ingest disabled
-- **WHEN** the test runs `wt-memory proactive "test context"` with the temp storage
+- **WHEN** the test runs `set-memory proactive "test context"` with the temp storage
 - **THEN** zero memories with `experience_type: Conversation` SHALL exist in temp storage
 
 #### Scenario: Change tag propagation
@@ -39,7 +39,7 @@ The hook test script SHALL support a `--smoke` mode that runs one change (C01 pr
 
 #### Scenario: Smoke test passes
 - **WHEN** C01 completes with memory enabled
-- **THEN** the script SHALL verify: at least 1 memory with `change:product-catalog` tag, zero `Conversation` type memories from proactive-context, code-map memory exists, `wt-memory stats` noise rate below 20%
+- **THEN** the script SHALL verify: at least 1 memory with `change:product-catalog` tag, zero `Conversation` type memories from proactive-context, code-map memory exists, `set-memory stats` noise rate below 20%
 
 #### Scenario: Smoke test fails on noise
 - **WHEN** C01 completes but proactive-context creates `Conversation` memories

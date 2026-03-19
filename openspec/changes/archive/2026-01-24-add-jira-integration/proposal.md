@@ -26,7 +26,7 @@ When using a standalone JIRA Server, every developer has to manually copy JIRA i
   - Summary = `[prefix] proposal title` (prefix from project config)
   - Parent Task: interactive prompt (create new Task or use existing)
   - **JIRA Key storage: in proposal.md** in `JIRA Key: EXAMPLE-XXX` format
-- **Project-level JIRA config:** `.wt-tools/jira.json` in repo root
+- **Project-level JIRA config:** `.set-core/jira.json` in repo root
   - `titlePrefix`: JIRA ticket title prefix (e.g., `"[OpenSpec]"`, `"[MyProject]"`)
   - `defaultProject`: Override JIRA project key at project level
   - `defaultParentTask`: Default parent Task key (for non-interactive sync)
@@ -41,7 +41,7 @@ When using a standalone JIRA Server, every developer has to manually copy JIRA i
   - If has `JIRA Key:` → verifies existence in JIRA (optional update)
   - `--dry-run` flag: only shows what would be done
   - `--project <name>` flag: only for specific project worktrees
-- Global credentials configuration: `~/.config/wt-tools/jira.json`
+- Global credentials configuration: `~/.config/set-core/jira.json`
   - JIRA server URL (e.g., `https://jira.example.com`)
   - Username/password or API token
   - Optional: default project key
@@ -56,4 +56,4 @@ When using a standalone JIRA Server, every developer has to manually copy JIRA i
 - Affected code: `bin/wt-jira` (CLI tool), `.mcp.json` template
 - **Depends on:** `add-worktree-tools` change (config infrastructure, install scripts)
 - **External dependency:** `mcp-atlassian` Python package
-- Extends: `~/.config/wt-tools/` directory (jira.json), `install.sh/ps1` scripts
+- Extends: `~/.config/set-core/` directory (jira.json), `install.sh/ps1` scripts

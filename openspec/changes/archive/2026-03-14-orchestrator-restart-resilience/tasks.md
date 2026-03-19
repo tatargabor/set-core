@@ -1,6 +1,6 @@
 ## 1. Extend recover_orphaned_changes() with PID liveness check
 
-- [x] 1.1 In `lib/wt_orch/dispatcher.py` `recover_orphaned_changes()`: after the existing worktree-exists skip (line 342), add PID liveness check — if worktree exists but PID is dead/missing, set status to "stopped" and clear ralph_pid. Emit CHANGE_RECONCILED event with reason "dead_pid_live_worktree" or "no_pid_live_worktree"
+- [x] 1.1 In `lib/set_orch/dispatcher.py` `recover_orphaned_changes()`: after the existing worktree-exists skip (line 342), add PID liveness check — if worktree exists but PID is dead/missing, set status to "stopped" and clear ralph_pid. Emit CHANGE_RECONCILED event with reason "dead_pid_live_worktree" or "no_pid_live_worktree"
 - [x] 1.2 Add logging: log each reconciled change name and previous status, plus summary count
 
 ## 2. Clear stale audit/E2E results on resume

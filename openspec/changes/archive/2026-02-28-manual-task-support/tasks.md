@@ -25,11 +25,11 @@
 - [x] 4.4 Implement `wt-manual input <change> <KEY> <value>`: find the worktree, write/update `KEY=value` in worktree's `.env.local`, find the `[?]` task with matching `[input:KEY]` annotation, change it to `[x]` in tasks.md
 - [x] 4.5 Implement `wt-manual done <change> <task-id>`: find the worktree, locate the `[?]` task with matching id (e.g. "3.3") in tasks.md, change it to `[x]`. Error if task-id not found.
 - [x] 4.6 Implement `wt-manual resume <change>`: check if all `[?]` tasks are resolved. If yes, call `wt-loop resume` in the worktree. If orchestrator is running, also update change status to `"dispatched"` in orchestration-state.json. Warn if unresolved `[?]` tasks remain.
-- [x] 4.7 Add `wt-manual` to install.sh / wt-project init deployment so it's available on PATH
+- [x] 4.7 Add `wt-manual` to install.sh / set-project init deployment so it's available on PATH
 
 ## 5. Planner Prompt Update
 
-- [x] 5.1 Update the planner decomposition prompt in `wt-orchestrate` (lines ~1690-1760) to include `has_manual_tasks: true|false` in the change JSON schema, with instruction to set it when the change involves external services, API keys, webhooks, or manual account setup
+- [x] 5.1 Update the planner decomposition prompt in `set-orchestrate` (lines ~1690-1760) to include `has_manual_tasks: true|false` in the change JSON schema, with instruction to set it when the change involves external services, API keys, webhooks, or manual account setup
 - [x] 5.2 Add examples to the planner prompt showing when to flag `has_manual_tasks`: Stripe API keys, Firebase project creation, DNS configuration, OAuth app registration, etc.
 - [x] 5.3 Update plan validation (`validate_plan`) to accept the new `has_manual_tasks` field without error
 

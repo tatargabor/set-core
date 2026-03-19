@@ -4,7 +4,7 @@
 If shodh-memory is not installed, both `audit` and `dedup` commands SHALL exit silently with code 0 and appropriate empty output (empty report or `{"deleted_count": 0}`). The session-end memory hook SHALL also respect the no-op marker to avoid saving redundant memories during unproductive loop iterations.
 
 #### Scenario: Shodh-memory not installed
-- **WHEN** `wt-memory audit` or `wt-memory dedup` is run without shodh-memory installed
+- **WHEN** `set-memory audit` or `set-memory dedup` is run without shodh-memory installed
 - **THEN** the command exits 0 with no error output
 
 #### Scenario: Session-end hook skips save on no-op marker

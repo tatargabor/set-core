@@ -8,7 +8,7 @@ E2E run #13 analysis shows two recurring efficiency issues that waste agent time
 
 ## What Changes
 
-- Add post-install hooks to `wt-project-web` `bootstrap_worktree()`:
+- Add post-install hooks to `set-project-web` `bootstrap_worktree()`:
   - Run `prisma generate` if `prisma/schema.prisma` exists
   - Run `npx playwright install chromium` if `@playwright/test` is in devDependencies
 - Throttle `WATCHDOG_HEARTBEAT` events in `engine.py` — emit to event bus at reduced frequency (e.g., every 5 minutes) instead of every poll cycle. Internal heartbeat logic unchanged.
@@ -23,6 +23,6 @@ E2E run #13 analysis shows two recurring efficiency issues that waste agent time
 
 ## Impact
 
-- `wt-project-web/wt_project_web/project_type.py` — `bootstrap_worktree()` method
-- `wt-tools/lib/wt_orch/engine.py` — heartbeat emit logic in monitor loop
-- Two repos affected: `wt-project-web` and `wt-tools`
+- `set-project-web/wt_project_web/project_type.py` — `bootstrap_worktree()` method
+- `set-core/lib/set_orch/engine.py` — heartbeat emit logic in monitor loop
+- Two repos affected: `set-project-web` and `set-core`

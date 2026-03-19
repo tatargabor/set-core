@@ -5,7 +5,7 @@ When running multiple `wt-loop` instances in parallel (e.g., benchmark Run A vs 
 ## What Changes
 
 - Add `--label <text>` flag to `wt-loop start` — a free-text identifier that appears in the banner and terminal title
-- Expand the startup banner with: full path, git branch, label, `wt-memory` status (active/inactive), and start timestamp
+- Expand the startup banner with: full path, git branch, label, `set-memory` status (active/inactive), and start timestamp
 - Include the label in terminal title: `Ralph: <name> (<label>) [iter/max]`
 - Store label in `loop-state.json` for MCP/status consumption
 - macOS AppleScript: set explicit terminal tab title (currently missing)

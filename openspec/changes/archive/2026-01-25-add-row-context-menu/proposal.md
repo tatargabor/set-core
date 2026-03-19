@@ -91,14 +91,14 @@ Git → Merge from... pulls in another branch:
 
 ### 5. Worktree Config Dialog
 
-Editable config files from the worktree's `.wt-tools/` directory:
+Editable config files from the worktree's `.set-core/` directory:
 - Tabs: Jira, Confluence, etc.
 - Editable fields + Save button
 
 ### 6. State Persistence
 
 The "needs attention" state persists after restart:
-- `~/.config/wt-tools/gui-state.json`
+- `~/.config/set-core/gui-state.json`
 - needs_attention set + previous_statuses
 
 ### 7. Command Output Dialog

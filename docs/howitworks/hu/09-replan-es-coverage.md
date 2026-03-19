@@ -47,7 +47,7 @@ Fázis 3: nincs több → done
 A felhasználó bármikor kérhet replant:
 
 ```bash
-wt-orchestrate replan
+set-orchestrate replan
 ```
 
 Ez hasznos, ha:
@@ -69,7 +69,7 @@ A coverage rendszer a digest-ből származó REQ-XXX azonosítókon alapul. Cél
 ### Coverage riport
 
 ```bash
-wt-orchestrate coverage
+set-orchestrate coverage
 ```
 
 Kimenet:

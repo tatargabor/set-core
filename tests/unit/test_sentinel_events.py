@@ -1,4 +1,4 @@
-"""Tests for sentinel event logging, rotation, and .wt/ directory creation."""
+"""Tests for sentinel event logging, rotation, and .set/ directory creation."""
 
 import json
 import os
@@ -6,40 +6,40 @@ import tempfile
 
 import pytest
 
-from wt_orch.sentinel.events import SentinelEventLogger
-from wt_orch.sentinel.rotation import rotate
-from wt_orch.sentinel.wt_dir import ensure_wt_dir
+from set_orch.sentinel.events import SentinelEventLogger
+from set_orch.sentinel.rotation import rotate
+from set_orch.sentinel.set_dir import ensure_set_dir
 
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
     """Create a temporary project directory with isolated runtime."""
-    # Override XDG_DATA_HOME so WtRuntime resolves to tmp_path
+    # Override XDG_DATA_HOME so SetRuntime resolves to tmp_path
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     # Reload paths module to pick up new env
     import importlib
-    import wt_orch.paths
-    importlib.reload(wt_orch.paths)
+    import set_orch.paths
+    importlib.reload(set_orch.paths)
     yield str(tmp_path)
     # Restore
-    importlib.reload(wt_orch.paths)
+    importlib.reload(set_orch.paths)
 
 
 class TestWtDir:
     def test_creates_sentinel_dir(self, project):
-        path = ensure_wt_dir(project)
+        path = ensure_set_dir(project)
         assert os.path.isdir(path)
         assert os.path.isdir(os.path.join(path, "archive"))
 
     def test_sentinel_dir_under_xdg(self, project):
-        """Sentinel dir is now under ~/.local/share/wt-tools/, not project-local."""
-        path = ensure_wt_dir(project)
-        assert "wt-tools" in path
+        """Sentinel dir is now under ~/.local/share/set-core/, not project-local."""
+        path = ensure_set_dir(project)
+        assert "set-core" in path
         assert "sentinel" in path
 
     def test_idempotent(self, project):
-        path1 = ensure_wt_dir(project)
-        path2 = ensure_wt_dir(project)
+        path1 = ensure_set_dir(project)
+        path2 = ensure_set_dir(project)
         assert path1 == path2
         assert os.path.isdir(path1)
 
@@ -169,14 +169,14 @@ class TestRotation:
         assert os.path.getsize(logger.events_file) == 0
 
     def test_rotate_no_files(self, project):
-        ensure_wt_dir(project)
+        ensure_set_dir(project)
         result = rotate(project)
         assert result["events_archived"] == ""
         assert result["findings_archived"] == ""
 
     def test_rotate_empty_files(self, project):
         logger = SentinelEventLogger(project)
-        # events_file exists but is empty (created by ensure_wt_dir -> no)
+        # events_file exists but is empty (created by ensure_set_dir -> no)
         # Actually, SentinelEventLogger doesn't create the file on init
         open(logger.events_file, "w").close()
         result = rotate(project)

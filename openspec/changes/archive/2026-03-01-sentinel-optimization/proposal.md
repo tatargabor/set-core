@@ -23,7 +23,7 @@ Redesign the sentinel to use **short, non-blocking poll cycles** instead of a lo
 ## Scope
 
 - Modify `.claude/commands/wt/sentinel.md` skill prompt
-- No changes to `wt-orchestrate` itself
+- No changes to `set-orchestrate` itself
 - No changes to `wt-loop`
 
 ## Out of Scope

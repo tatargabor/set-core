@@ -61,25 +61,25 @@ The section SHALL appear before the `=== PROJECT MEMORY ===` section in the hook
 - **WHEN** both rules match AND project memory exists
 - **THEN** `=== MANDATORY RULES ===` SHALL appear before `=== PROJECT MEMORY ===` in the output
 
-### Requirement: wt-memory rules CLI subcommand
-`wt-memory rules` SHALL provide subcommands: `add`, `list`, `remove`.
+### Requirement: set-memory rules CLI subcommand
+`set-memory rules` SHALL provide subcommands: `add`, `list`, `remove`.
 
 #### Scenario: Add a rule
-- **WHEN** user runs `wt-memory rules add --topics "customer,sql" "Use customer_ro / XYZ123"`
+- **WHEN** user runs `set-memory rules add --topics "customer,sql" "Use customer_ro / XYZ123"`
 - **THEN** a new entry is appended to `.claude/rules.yaml`
 - **AND** `id` is auto-generated as a kebab-case slug of the first 4 words of the content
 
 #### Scenario: List rules
-- **WHEN** user runs `wt-memory rules list`
+- **WHEN** user runs `set-memory rules list`
 - **THEN** all rules are printed with id, topics, and content preview
 
 #### Scenario: Remove a rule
-- **WHEN** user runs `wt-memory rules remove <id>`
+- **WHEN** user runs `set-memory rules remove <id>`
 - **AND** a rule with that id exists
 - **THEN** the rule is removed from `.claude/rules.yaml`
 
 #### Scenario: Remove non-existent rule
-- **WHEN** user runs `wt-memory rules remove <id>`
+- **WHEN** user runs `set-memory rules remove <id>`
 - **AND** no rule with that id exists
 - **THEN** an error message is shown and exit code is 1
 

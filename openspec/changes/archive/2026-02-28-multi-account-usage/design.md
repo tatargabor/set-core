@@ -1,6 +1,6 @@
 ## Context
 
-The Control Center GUI currently displays usage for a single Claude account via `UsageWorker`, which reads one session key from `~/.config/wt-tools/claude-session.json`. The `DualStripeBar` widget renders two stacked stripes (time elapsed + usage consumed) for each time window (5h/7d). Users with multiple Anthropic accounts must manually check each account in the browser.
+The Control Center GUI currently displays usage for a single Claude account via `UsageWorker`, which reads one session key from `~/.config/set-core/claude-session.json`. The `DualStripeBar` widget renders two stacked stripes (time elapsed + usage consumed) for each time window (5h/7d). Users with multiple Anthropic accounts must manually check each account in the browser.
 
 The existing architecture: `UsageWorker` (single QThread) → `_load_session()` → one API fetch → `usage_updated` signal → `update_usage_bars()` → two `DualStripeBar` widgets (5h + 7d).
 

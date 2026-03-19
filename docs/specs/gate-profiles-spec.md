@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Date**: 2026-03-15
-> **Scope**: wt-tools core + wt-project-base + wt-project-web
+> **Scope**: set-core core + set-project-base + set-project-web
 
 ## Problem Statement
 
@@ -86,7 +86,7 @@ class GateConfig:
 
 ### Built-in Gate Profiles
 
-These are the defaults in wt-tools core. Project type plugins can override.
+These are the defaults in set-core core. Project type plugins can override.
 
 ```python
 BUILTIN_GATE_PROFILES: dict[str, GateConfig] = {
@@ -222,22 +222,22 @@ resolve_gate_config(change: Change, profile, directives) -> GateConfig
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  wt-tools core                                                  │
-│  ├── lib/wt_orch/gate_profiles.py    ← NEW: GateConfig,        │
+│  set-core core                                                  │
+│  ├── lib/set_orch/gate_profiles.py    ← NEW: GateConfig,        │
 │  │                                      BUILTIN_GATE_PROFILES,  │
 │  │                                      resolve_gate_config()   │
-│  ├── lib/wt_orch/verifier.py         ← MODIFY: use GateConfig  │
-│  ├── lib/wt_orch/merger.py           ← MODIFY: smoke uses GC   │
-│  ├── lib/wt_orch/state.py            ← MODIFY: gate_hints fld  │
-│  ├── lib/wt_orch/templates.py        ← MODIFY: planning rules  │
-│  ├── lib/wt_orch/profile_loader.py   ← MODIFY: gate_overrides  │
-│  └── lib/wt_orch/config.py           ← MODIFY: new directives  │
+│  ├── lib/set_orch/verifier.py         ← MODIFY: use GateConfig  │
+│  ├── lib/set_orch/merger.py           ← MODIFY: smoke uses GC   │
+│  ├── lib/set_orch/state.py            ← MODIFY: gate_hints fld  │
+│  ├── lib/set_orch/templates.py        ← MODIFY: planning rules  │
+│  ├── lib/set_orch/profile_loader.py   ← MODIFY: gate_overrides  │
+│  └── lib/set_orch/config.py           ← MODIFY: new directives  │
 ├─────────────────────────────────────────────────────────────────┤
-│  wt-project-base                                                │
+│  set-project-base                                                │
 │  └── wt_project_base/base.py         ← MODIFY: gate_overrides  │
 │                                         method on ProjectType   │
 ├─────────────────────────────────────────────────────────────────┤
-│  wt-project-web                                                 │
+│  set-project-web                                                 │
 │  └── wt_project_web/project_type.py  ← MODIFY: web-specific    │
 │                                         gate overrides          │
 └─────────────────────────────────────────────────────────────────┘
@@ -245,7 +245,7 @@ resolve_gate_config(change: Change, profile, directives) -> GateConfig
 
 ## Detailed Changes
 
-### 1. New file: `lib/wt_orch/gate_profiles.py`
+### 1. New file: `lib/set_orch/gate_profiles.py`
 
 **Purpose**: Single source of truth for gate profile logic.
 
@@ -361,7 +361,7 @@ def resolve_gate_config(
     return config
 ```
 
-### 2. Modify: `lib/wt_orch/state.py`
+### 2. Modify: `lib/set_orch/state.py`
 
 Add `gate_hints` field to `Change` dataclass:
 
@@ -391,7 +391,7 @@ gate_hints=c.get("gate_hints", None),
 
 Serialization in `to_dict()`: include `gate_hints` if not None.
 
-### 3. Modify: `lib/wt_orch/verifier.py` — `handle_change_done()`
+### 3. Modify: `lib/set_orch/verifier.py` — `handle_change_done()`
 
 Replace the current gate-by-gate logic with GateConfig-driven execution:
 
@@ -467,7 +467,7 @@ def handle_change_done(self, change_name, state_file, ...):
         # Use gc.is_blocking("spec_verify") instead of hardcoded soft-pass
 ```
 
-### 4. Modify: `lib/wt_orch/merger.py` — `post_merge_smoke()`
+### 4. Modify: `lib/set_orch/merger.py` — `post_merge_smoke()`
 
 Add gate config check before running smoke:
 
@@ -490,7 +490,7 @@ def post_merge_smoke(change_name, state_file, ...):
     # ... existing smoke logic, respecting gc.is_blocking("smoke") ...
 ```
 
-### 5. Modify: `lib/wt_orch/profile_loader.py` — NullProfile
+### 5. Modify: `lib/set_orch/profile_loader.py` — NullProfile
 
 Add `gate_overrides` method:
 
@@ -507,7 +507,7 @@ class NullProfile:
         return {}
 ```
 
-### 6. Modify: `wt-project-base/wt_project_base/base.py` — ProjectType
+### 6. Modify: `set-project-base/wt_project_base/base.py` — ProjectType
 
 Add `gate_overrides` to the abstract base:
 
@@ -530,7 +530,7 @@ class ProjectType(ABC):
         return {}
 ```
 
-### 7. Modify: `wt-project-web/wt_project_web/project_type.py`
+### 7. Modify: `set-project-web/wt_project_web/project_type.py`
 
 Web-specific gate overrides:
 
@@ -563,7 +563,7 @@ class WebProjectType(BaseProjectType):
         return overrides.get(change_type, {})
 ```
 
-### 8. Modify: `lib/wt_orch/templates.py` — Planning rules
+### 8. Modify: `lib/set_orch/templates.py` — Planning rules
 
 Update `_PLANNING_RULES_CORE` to inform the LLM about gate profiles:
 
@@ -595,7 +595,7 @@ Update the JSON schema examples to include the optional field:
 }
 ```
 
-### 9. Modify: `lib/wt_orch/config.py` — New directives
+### 9. Modify: `lib/set_orch/config.py` — New directives
 
 Add directive overrides for gate profiles:
 
@@ -650,17 +650,17 @@ if event_bus:
 
 | Component | File | Change | Priority |
 |-----------|------|--------|----------|
-| Gate profiles module | `lib/wt_orch/gate_profiles.py` | **NEW** | P0 |
-| Change dataclass | `lib/wt_orch/state.py` | Add `gate_hints` field | P0 |
-| Verifier pipeline | `lib/wt_orch/verifier.py` | Use GateConfig for all gates | P0 |
-| Merger smoke gate | `lib/wt_orch/merger.py` | Check GateConfig for smoke | P0 |
-| NullProfile | `lib/wt_orch/profile_loader.py` | Add `gate_overrides()` | P0 |
-| ProjectType ABC | `wt-project-base/base.py` | Add `gate_overrides()` | P1 |
-| WebProjectType | `wt-project-web/project_type.py` | Web gate overrides | P1 |
-| Planning rules | `lib/wt_orch/templates.py` | Gate profile docs for LLM | P1 |
-| Config directives | `lib/wt_orch/config.py` | `gate_overrides` directive | P2 |
-| Event logging | `lib/wt_orch/verifier.py` | Gate profile in events | P2 |
-| JSON schema | `lib/wt_orch/templates.py` | `gate_hints` in output schema | P2 |
+| Gate profiles module | `lib/set_orch/gate_profiles.py` | **NEW** | P0 |
+| Change dataclass | `lib/set_orch/state.py` | Add `gate_hints` field | P0 |
+| Verifier pipeline | `lib/set_orch/verifier.py` | Use GateConfig for all gates | P0 |
+| Merger smoke gate | `lib/set_orch/merger.py` | Check GateConfig for smoke | P0 |
+| NullProfile | `lib/set_orch/profile_loader.py` | Add `gate_overrides()` | P0 |
+| ProjectType ABC | `set-project-base/base.py` | Add `gate_overrides()` | P1 |
+| WebProjectType | `set-project-web/project_type.py` | Web gate overrides | P1 |
+| Planning rules | `lib/set_orch/templates.py` | Gate profile docs for LLM | P1 |
+| Config directives | `lib/set_orch/config.py` | `gate_overrides` directive | P2 |
+| Event logging | `lib/set_orch/verifier.py` | Gate profile in events | P2 |
+| JSON schema | `lib/set_orch/templates.py` | `gate_hints` in output schema | P2 |
 | Tests | `tests/test_gate_profiles.py` | Unit tests for resolution | P0 |
 | Docs | `docs/howitworks/en/07-quality-gates.md` | Update gate docs | P2 |
 
@@ -675,8 +675,8 @@ if event_bus:
 
 ### Rollout plan
 
-1. **Phase 1** (wt-tools core): Add `gate_profiles.py`, wire into verifier/merger. All existing behavior preserved.
-2. **Phase 2** (project plugins): Add `gate_overrides()` to base.py and web. Deploy via `wt-project init`.
+1. **Phase 1** (set-core core): Add `gate_profiles.py`, wire into verifier/merger. All existing behavior preserved.
+2. **Phase 2** (project plugins): Add `gate_overrides()` to base.py and web. Deploy via `set-project init`.
 3. **Phase 3** (planner awareness): Update planning rules so LLM knows about gate profiles. Add `gate_hints` to JSON schema.
 4. **Phase 4** (directive overrides): Add `gate_overrides` directive for runtime tuning without code changes.
 

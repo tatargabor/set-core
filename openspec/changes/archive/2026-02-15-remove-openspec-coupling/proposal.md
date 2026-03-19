@@ -1,6 +1,6 @@
 ## Why
 
-wt-tools has hardcoded OpenSpec dependencies throughout its CLI tools (`wt-new`, `wt-add`, `wt-loop`) and GUI. This couples the worktree management layer to a specific spec workflow tool. Since git worktrees already carry all files from the branch (including `openspec/` if initialized), the `openspec init` calls are redundant. The `wt-loop` takes a `change-id` parameter that maps to OpenSpec's concept, but it actually just identifies the worktree — and since the loop always runs inside a worktree (CWD), no identifier parameter is needed at all.
+set-core has hardcoded OpenSpec dependencies throughout its CLI tools (`wt-new`, `wt-add`, `wt-loop`) and GUI. This couples the worktree management layer to a specific spec workflow tool. Since git worktrees already carry all files from the branch (including `openspec/` if initialized), the `openspec init` calls are redundant. The `wt-loop` takes a `change-id` parameter that maps to OpenSpec's concept, but it actually just identifies the worktree — and since the loop always runs inside a worktree (CWD), no identifier parameter is needed at all.
 
 ## What Changes
 
@@ -14,7 +14,7 @@ wt-tools has hardcoded OpenSpec dependencies throughout its CLI tools (`wt-new`,
 - Update GUI `start_ralph_loop_dialog` to stop passing `change_id`
 - Update MCP server `get_worktree_tasks()` to use generic tasks.md search instead of openspec-specific paths
 - Update terminal title / display from `Ralph: $change_id` to `Ralph: $(basename $wt_path)`
-- Clean up documentation references (README, CONTRIBUTING, `wt_tools/__init__.py`)
+- Clean up documentation references (README, CONTRIBUTING, `set_tools/__init__.py`)
 - Remove old `/openspec:*` skill references from `wt-new` help text
 
 ## Capabilities
@@ -40,4 +40,4 @@ _None — this is a simplification/removal change._
 - **gui/control_center/mixins/handlers.py**: Update ralph terminal focus (title change)
 - **mcp-server/wt_mcp_server.py**: Generic tasks.md search
 - **tests/gui/test_19_*.py, test_21_*.py**: Update openspec paths in fixtures
-- **README.md, CONTRIBUTING.md, wt_tools/__init__.py, docs/readme-guide.md**: Remove/update openspec references
+- **README.md, CONTRIBUTING.md, set_tools/__init__.py, docs/readme-guide.md**: Remove/update openspec references

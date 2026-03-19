@@ -11,13 +11,13 @@
 
 ## 3. Checkpoint auto-approve
 
-- [x] 3.1 Add `checkpoint_auto_approve` directive to `bin/wt-orchestrate` defaults (default: `false`) and directive parsing.
+- [x] 3.1 Add `checkpoint_auto_approve` directive to `bin/set-orchestrate` defaults (default: `false`) and directive parsing.
 - [x] 3.2 In `trigger_checkpoint()` (state.sh), when `CHECKPOINT_AUTO_APPROVE` global is `true`, auto-approve and return immediately without waiting.
 - [x] 3.3 Update `tests/e2e/run.sh` config to include `checkpoint_auto_approve: true`.
 
 ## 4. Install script fix
 
-- [x] 4.1 Verified `wt-sentinel` is in `install.sh` scripts list.
+- [x] 4.1 Verified `set-sentinel` is in `install.sh` scripts list.
 
 ## 5. Validation
 

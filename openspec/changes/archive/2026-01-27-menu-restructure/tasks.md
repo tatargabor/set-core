@@ -1,5 +1,5 @@
 ## Phase 1: Plugin Menu Infrastructure
-- [x] 1.1 Add MenuItem dataclass to wt_tools/plugins/base.py
+- [x] 1.1 Add MenuItem dataclass to set_tools/plugins/base.py
 - [x] 1.2 Add get_menu_items() to Plugin interface
 - [x] 1.3 Update PluginRegistry to collect menu items
 

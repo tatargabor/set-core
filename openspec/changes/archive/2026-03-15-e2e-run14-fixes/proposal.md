@@ -21,6 +21,6 @@ E2E run #14 exposed 2 framework bugs that waste tokens and produce false smoke f
 
 ## Impact
 
-- `lib/wt_orch/merger.py` — `merge_change()` saves pre-merge SHA, `_post_merge_deps_install()` uses it
-- `lib/wt_orch/verifier.py` — `handle_change_done()` spec_coverage block no longer sets `verify_ok = False`
+- `lib/set_orch/merger.py` — `merge_change()` saves pre-merge SHA, `_post_merge_deps_install()` uses it
+- `lib/set_orch/verifier.py` — `handle_change_done()` spec_coverage block no longer sets `verify_ok = False`
 - No API changes, no breaking changes, no new dependencies

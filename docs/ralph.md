@@ -8,14 +8,14 @@ Ralph runs Claude Code autonomously through task lists. Start a loop, let the ag
 
 | Command | Description |
 |---------|-------------|
-| `wt-loop start [change-id]` | Start autonomous Claude Code loop |
-| `wt-loop stop [change-id]` | Stop running loop |
-| `wt-loop status [change-id]` | Show loop status |
-| `wt-loop list` | List all active loops |
-| `wt-loop history [change-id]` | Show iteration history |
-| `wt-loop monitor [change-id]` | Watch loop progress live |
+| `set-loop start [change-id]` | Start autonomous Claude Code loop |
+| `set-loop stop [change-id]` | Stop running loop |
+| `set-loop status [change-id]` | Show loop status |
+| `set-loop list` | List all active loops |
+| `set-loop history [change-id]` | Show iteration history |
+| `set-loop monitor [change-id]` | Watch loop progress live |
 
-Claude Code skill: `/wt:loop`
+Claude Code skill: `/set:loop`
 
 ## How It Works
 
@@ -36,15 +36,15 @@ The GUI shows progress in real-time:
 You have a well-defined task list. Start a Ralph loop and let Claude work through it:
 
 ```bash
-wt-loop start add-user-auth --task "Implement all tasks in tasks.md"
+set-loop start add-user-auth --task "Implement all tasks in tasks.md"
 ```
 
 Come back in the morning:
 
 ```bash
-wt-loop history add-user-auth   # what happened?
-wt-loop monitor add-user-auth   # watch live if still running
-wt-loop stop add-user-auth      # stop if needed
+set-loop history add-user-auth   # what happened?
+set-loop monitor add-user-auth   # watch live if still running
+set-loop stop add-user-auth      # stop if needed
 ```
 
 ## When to Use Ralph

@@ -24,6 +24,6 @@ _(none — no existing specs affected)_
 
 ## Impact
 
-- **Files**: `lib/wt_orch/verifier.py`, `lib/wt_orch/engine.py`, `lib/wt_orch/dispatcher.py`
+- **Files**: `lib/set_orch/verifier.py`, `lib/set_orch/engine.py`, `lib/set_orch/dispatcher.py`
 - **Risk**: Low — all changes are additive guards/checks, no existing behavior modified
 - **Testing**: E2E run validation against the same project that exposed these bugs

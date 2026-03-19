@@ -29,9 +29,9 @@ The system SHALL detect orphan Claude agent processes (no editor window, no acti
 - **AND** none SHALL be automatically killed
 
 ### Requirement: Orphan Cleanup Respects Skill Files
-The system SHALL NOT automatically clean up `.wt-tools/agents/<pid>.skill` files. Skill file cleanup only happens when an agent is manually killed via the GUI.
+The system SHALL NOT automatically clean up `.set-core/agents/<pid>.skill` files. Skill file cleanup only happens when an agent is manually killed via the GUI.
 
 #### Scenario: Skill file preserved for orphan agent
 - **WHEN** an orphan agent with PID N exists
-- **AND** a file `.wt-tools/agents/N.skill` exists
+- **AND** a file `.set-core/agents/N.skill` exists
 - **THEN** the skill file SHALL NOT be automatically removed

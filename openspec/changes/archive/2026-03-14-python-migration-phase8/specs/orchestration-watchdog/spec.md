@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/orchestration/watchdog.sh` (424 LOC) to `lib/wt_orch/watchdog.py`. The watchdog monitors per-change health during orchestration — detecting timeouts, action hash loops, and escalating stuck changes through restart → redispatch → fail levels.
+Migrate `lib/orchestration/watchdog.sh` (424 LOC) to `lib/set_orch/watchdog.py`. The watchdog monitors per-change health during orchestration — detecting timeouts, action hash loops, and escalating stuck changes through restart → redispatch → fail levels.
 
 ## Requirements
 
@@ -35,8 +35,8 @@ Migrate `lib/orchestration/watchdog.sh` (424 LOC) to `lib/wt_orch/watchdog.py`. 
 - Read/write via existing `state.py` functions
 
 ### WATCH-06: CLI Subcommands
-- `wt-orch-core watchdog check --change <name>` — run watchdog check for one change
-- `wt-orch-core watchdog status` — show watchdog state for all active changes
+- `set-orch-core watchdog check --change <name>` — run watchdog check for one change
+- `set-orch-core watchdog status` — show watchdog state for all active changes
 - Registered in `cli.py` under `watchdog` group
 
 ### WATCH-07: Unit Tests

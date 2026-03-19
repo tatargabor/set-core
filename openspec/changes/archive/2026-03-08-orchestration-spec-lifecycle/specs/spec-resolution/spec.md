@@ -1,6 +1,6 @@
 ## Capability: spec-resolution
 
-Short-name spec resolution for the `--spec` flag, enabling `wt-orchestrate --spec v12 plan` instead of requiring full paths.
+Short-name spec resolution for the `--spec` flag, enabling `set-orchestrate --spec v12 plan` instead of requiring full paths.
 
 ## Requirements
 

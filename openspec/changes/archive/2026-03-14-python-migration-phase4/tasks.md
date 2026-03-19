@@ -1,6 +1,6 @@
 ## 1. Data Types and Module Setup
 
-- [x] 1.1 Create `lib/wt_orch/planner.py` with dataclasses: `ValidationResult` (errors: list[str], warnings: list[str]), `ScopeOverlap` (name_a: str, name_b: str, similarity: int), `TestInfra` (framework: str, config_exists: bool, test_file_count: int, has_helpers: bool, test_command: str), `TriageStatus` (status: str, count: int)
+- [x] 1.1 Create `lib/set_orch/planner.py` with dataclasses: `ValidationResult` (errors: list[str], warnings: list[str]), `ScopeOverlap` (name_a: str, name_b: str, similarity: int), `TestInfra` (framework: str, config_exists: bool, test_file_count: int, has_helpers: bool, test_command: str), `TriageStatus` (status: str, count: int)
 - [x] 1.2 Add imports from existing modules: `config.py` (find_input, resolve_directives, brief_hash, load_config_file), `state.py` (topological_sort), `templates.py` (render_planning_prompt), `events.py` (EventBus)
 
 ## 2. Plan Validation
@@ -57,15 +57,15 @@
 
 ## 9. Bash Wrapper Migration
 
-- [x] 9.1 Replace `estimate_tokens()` in planner.sh with `wt-orch-core plan` call or inline (trivial function)
-- [x] 9.2 Replace `summarize_spec()` in planner.sh with `wt-orch-core plan summarize-spec` wrapper
-- [x] 9.3 Replace `detect_test_infra()` and `auto_detect_test_command()` in planner.sh with `wt-orch-core plan detect-test-infra` wrapper
-- [x] 9.4 Replace `validate_plan()` in planner.sh with `wt-orch-core plan validate` wrapper
-- [x] 9.5 Replace `check_scope_overlap()` in planner.sh with `wt-orch-core plan check-scope-overlap` wrapper
-- [x] 9.6 Replace `check_triage_gate()` in planner.sh with `wt-orch-core plan check-triage` wrapper
-- [x] 9.7 Replace decomposition context assembly block in `cmd_plan()` (lines 638-963) with `wt-orch-core plan build-context` wrapper
-- [x] 9.8 Replace plan metadata enrichment block in `cmd_plan()` (lines 1049-1092) with `wt-orch-core plan enrich-metadata` wrapper
-- [x] 9.9 Replace replan context collection in `auto_replan_cycle()` (lines 1280-1343) with `wt-orch-core plan replan-context` wrapper
+- [x] 9.1 Replace `estimate_tokens()` in planner.sh with `set-orch-core plan` call or inline (trivial function)
+- [x] 9.2 Replace `summarize_spec()` in planner.sh with `set-orch-core plan summarize-spec` wrapper
+- [x] 9.3 Replace `detect_test_infra()` and `auto_detect_test_command()` in planner.sh with `set-orch-core plan detect-test-infra` wrapper
+- [x] 9.4 Replace `validate_plan()` in planner.sh with `set-orch-core plan validate` wrapper
+- [x] 9.5 Replace `check_scope_overlap()` in planner.sh with `set-orch-core plan check-scope-overlap` wrapper
+- [x] 9.6 Replace `check_triage_gate()` in planner.sh with `set-orch-core plan check-triage` wrapper
+- [x] 9.7 Replace decomposition context assembly block in `cmd_plan()` (lines 638-963) with `set-orch-core plan build-context` wrapper
+- [x] 9.8 Replace plan metadata enrichment block in `cmd_plan()` (lines 1049-1092) with `set-orch-core plan enrich-metadata` wrapper
+- [x] 9.9 Replace replan context collection in `auto_replan_cycle()` (lines 1280-1343) with `set-orch-core plan replan-context` wrapper
 - [x] 9.10 Add "Migrated to: planner.py" comments to all replaced function bodies in planner.sh
 
 ## 10. Tests

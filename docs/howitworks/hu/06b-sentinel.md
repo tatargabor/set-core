@@ -4,14 +4,14 @@
 
 Az orchestrátor maga is egy process — és a processek néha meghalnak. OOM kill, API timeout, váratlan exception, broken pipe. Ha az orchestrátor éjszaka, felügyelet nélkül fut és leáll, reggel egy félkész állapotot talál a fejlesztő.
 
-A `wt-sentinel` erre a problémára ad választ: egy supervisor, amely figyeli az orchestrátort, és ha az leáll, megpróbálja újraindítani. Két üzemmódban működik: **bash mód** (költségmentes, determinisztikus) és **ágens mód** (LLM-alapú, intelligens döntéshozatal).
+A `set-sentinel` erre a problémára ad választ: egy supervisor, amely figyeli az orchestrátort, és ha az leáll, megpróbálja újraindítani. Két üzemmódban működik: **bash mód** (költségmentes, determinisztikus) és **ágens mód** (LLM-alapú, intelligens döntéshozatal).
 
 ## Bash Sentinel
 
-A bash sentinel egy önálló script, amely a `wt-orchestrate start` parancsot csomagolja:
+A bash sentinel egy önálló script, amely a `set-orchestrate start` parancsot csomagolja:
 
 ```bash
-wt-sentinel --spec docs/v3.md --time-limit 5h
+set-sentinel --spec docs/v3.md --time-limit 5h
 # ↑ minden opció az orchestrátornak adódik tovább
 ```
 
@@ -64,7 +64,7 @@ A sentinel különbséget tesz **végleges** és **átmeneti** kilépés közöt
 
 ## Ágens Sentinel
 
-A `/wt:sentinel` skill egy Claude Code session-ként fut, és intelligens döntéseket hoz:
+A `/set:sentinel` skill egy Claude Code session-ként fut, és intelligens döntéseket hoz:
 
 ### Tiered beavatkozás
 

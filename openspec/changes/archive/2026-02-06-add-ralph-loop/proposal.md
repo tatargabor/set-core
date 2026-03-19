@@ -363,7 +363,7 @@ wt-loop list
 ## Configuration
 
 ```json
-// ~/.config/wt-tools/gui-config.json
+// ~/.config/set-core/gui-config.json
 {
   "ralph": {
     "default_max_iterations": 10,
@@ -371,7 +371,7 @@ wt-loop list
     "default_capacity_limit_pct": 80,
     "auto_notify": true,
     "terminal_command": "gnome-terminal --title=\"Ralph: {change_id}\" --",
-    "prompts_dir": "~/.config/wt-tools/ralph-prompts/"
+    "prompts_dir": "~/.config/set-core/ralph-prompts/"
   }
 }
 ```

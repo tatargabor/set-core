@@ -3,7 +3,7 @@
 # Sourced by bin/wt-orchestrate before state.sh
 
 
-# Find a wt-tools config file using the fallback chain:
+# Find a set-core config file using the fallback chain:
 #   wt/ location → legacy location → empty
 # Usage: wt_find_config <name>
 # Names: orchestration, project-knowledge

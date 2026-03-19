@@ -18,7 +18,7 @@ Mindez **menedzsment overhead**: a fejlesztő idejének jelentős része nem kó
 
 ## A megoldás: autonóm orchestráció
 
-A `wt-orchestrate` ezt az overheadet automatizálja. Egyetlen specifikációból kiindulva:
+A `set-orchestrate` ezt az overheadet automatizálja. Egyetlen specifikációból kiindulva:
 
 1. **Automatikusan megtervezi** a feladatokat (dekompozíció, DAG)
 2. **Párhuzamosan végrehajtja** őket izolált worktree-kben
@@ -36,9 +36,9 @@ Ez a rendszer **egyéni fejlesztőknek és kis csapatoknak** készült, akik AI 
 Tipikus felhasználási minta:
 
 ```
-Reggel:   Spec átadása → wt-orchestrate plan → start
+Reggel:   Spec átadása → set-orchestrate plan → start
 Napközben: Más feladatok, meeting-ek, tervezés
-Este:     wt-orchestrate status → 12/15 change merged, 2 running, 1 failed
+Este:     set-orchestrate status → 12/15 change merged, 2 running, 1 failed
           Review → approve → a maradék megy tovább
 Másnap:   Minden kész, PR nyitása
 ```
@@ -49,7 +49,7 @@ A cél nem az, hogy az ember "ne kelljen". A cél az, hogy az ember ott kelljen,
 
 ## Miben más, mint egy CI/CD rendszer?
 
-| Szempont | CI/CD (pl. GitHub Actions) | wt-orchestrate |
+| Szempont | CI/CD (pl. GitHub Actions) | set-orchestrate |
 |----------|---------------------------|----------------|
 | **Mikor fut** | Commit/PR után | Commit *előtt* — a fejlesztés közben |
 | **Mit csinál** | Build, test, deploy | Tervezés, implementáció, teszt, merge |
@@ -58,4 +58,4 @@ A cél nem az, hogy az ember "ne kelljen". A cél az, hogy az ember ott kelljen,
 | **Párhuzamosság** | Job matrix (fix) | DAG-alapú, dinamikus dispatch |
 | **Feedback loop** | Ember javít, újra push | Ágens javít, újra tesztel |
 
-A kettő kiegészíti egymást: a `wt-orchestrate` előállítja a kódot, a CI/CD pipeline validálja és deploy-olja.
+A kettő kiegészíti egymást: a `set-orchestrate` előállítja a kódot, a CI/CD pipeline validálja és deploy-olja.

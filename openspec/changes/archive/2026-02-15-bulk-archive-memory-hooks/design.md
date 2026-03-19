@@ -17,7 +17,7 @@ The bulk-archive skill was created before the memory integration and has none of
 **Non-Goals:**
 - Changing bulk-archive's core behavior (selection, conflict resolution, archiving)
 - Adding memory hooks to other skills (already done)
-- Modifying the wt-memory CLI tool itself
+- Modifying the set-memory CLI tool itself
 
 ## Decisions
 

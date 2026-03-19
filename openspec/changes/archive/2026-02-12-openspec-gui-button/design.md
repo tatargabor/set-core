@@ -1,6 +1,6 @@
 ## Context
 
-The Control Center GUI renders a project header row per project with buttons for memory [M], team filter, and chat. Currently `get_memory_status()` runs `wt-memory status --json` as a synchronous subprocess on the UI thread during every table rebuild (every 2 seconds). Adding an OpenSpec [O] button with similar detection would compound this to ~870ms+ of UI blocking per project per cycle.
+The Control Center GUI renders a project header row per project with buttons for memory [M], team filter, and chat. Currently `get_memory_status()` runs `set-memory status --json` as a synchronous subprocess on the UI thread during every table rebuild (every 2 seconds). Adding an OpenSpec [O] button with similar detection would compound this to ~870ms+ of UI blocking per project per cycle.
 
 Existing worker pattern: `StatusWorker`, `UsageWorker`, `TeamWorker`, `ChatWorker` — all `QThread` subclasses in `gui/workers/`, emitting signals when new data is available.
 
@@ -39,7 +39,7 @@ The FeatureWorker needs to know which projects exist and their main repo paths. 
 
 ### Decision 4: wt-openspec CLI as thin bash wrapper
 
-Same pattern as `wt-memory`: a bash script in `bin/` that wraps the `openspec` npm CLI. The `status` subcommand uses pure bash/filesystem checks for speed; `init` and `update` delegate to `openspec` CLI.
+Same pattern as `set-memory`: a bash script in `bin/` that wraps the `openspec` npm CLI. The `status` subcommand uses pure bash/filesystem checks for speed; `init` and `update` delegate to `openspec` CLI.
 
 ### Decision 5: [O] button placement — after [M], before team filter
 

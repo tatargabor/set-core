@@ -29,4 +29,4 @@ The fix must be surgical — protect against heuristic memory misuse without deg
 - `lib/orchestration/verifier.sh` — safety prompt injection + quarantine/promote memories
 - `.claude/skills/openspec-verify-change/SKILL.md` — "Memory suggests, never concludes" rule
 - `CLAUDE.md` template — Memory Safety During Verification section
-- **Deploy impact**: memory-ops.sh and stop.sh changes are immediate (symlink); SKILL.md requires wt-project init or hot-patch copy; verifier.sh takes effect on next verify call (bash source, no cache)
+- **Deploy impact**: memory-ops.sh and stop.sh changes are immediate (symlink); SKILL.md requires set-project init or hot-patch copy; verifier.sh takes effect on next verify call (bash source, no cache)

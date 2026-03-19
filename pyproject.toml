@@ -1,14 +1,14 @@
 [project]
-name = "wt-tools"
-version = "0.2.4"
-description = "AI-Assisted Development Workflow with Git Worktrees"
+name = "set-core"
+version = "0.3.0"
+description = "SET (ShipExactlyThis) — Autonomous Multi-Agent Orchestration Platform"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "wt-tools contributors"}
+    {name = "SET contributors"}
 ]
 requires-python = ">=3.10"
-keywords = ["git", "worktree", "ai", "development", "claude"]
+keywords = ["git", "worktree", "ai", "development", "claude", "orchestration", "multi-agent"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -45,16 +45,16 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tatargabor/wt-tools"
-Documentation = "https://github.com/tatargabor/wt-tools#readme"
-Repository = "https://github.com/tatargabor/wt-tools"
-Issues = "https://github.com/tatargabor/wt-tools/issues"
+Homepage = "https://github.com/tatargabor/set-core"
+Documentation = "https://github.com/tatargabor/set-core#readme"
+Repository = "https://github.com/tatargabor/set-core"
+Issues = "https://github.com/tatargabor/set-core/issues"
 
 [project.scripts]
-wt-control = "gui.main:main"
-wt-orch-core = "wt_orch.cli:main"
+set-control = "gui.main:main"
+set-orch-core = "set_orch.cli:main"
 
-[project.entry-points."wt_tools.plugins"]
+[project.entry-points."set_tools.plugins"]
 # Plugins register themselves here
 # Example:
 
@@ -63,7 +63,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["wt_tools*", "wt_orch*", "gui*"]
+include = ["set_tools*", "set_orch*", "gui*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Developer Memory User Guide
-The project SHALL have a `docs/developer-memory.md` file that serves as the comprehensive user-facing guide for the developer memory system. The guide SHALL include a "Migration from Legacy Hooks" section that links to `MIGRATION.md` and briefly summarizes the transition from `wt-memory-hooks install` to `wt-deploy-hooks`.
+The project SHALL have a `docs/developer-memory.md` file that serves as the comprehensive user-facing guide for the developer memory system. The guide SHALL include a "Migration from Legacy Hooks" section that links to `MIGRATION.md` and briefly summarizes the transition from `set-memory-hooks install` to `wt-deploy-hooks`.
 
 #### Scenario: Guide file exists
 - **WHEN** a user looks for memory documentation

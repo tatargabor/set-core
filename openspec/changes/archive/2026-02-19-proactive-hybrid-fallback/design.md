@@ -1,13 +1,13 @@
 ## Context
 
-`wt-memory proactive` is used by all 5 hook layers (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, SubagentStop) to surface relevant memories. It calls shodh-memory's `proactive_context()` which uses pure semantic similarity. This works well for English technical queries but fails for:
+`set-memory proactive` is used by all 5 hook layers (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, SubagentStop) to surface relevant memories. It calls shodh-memory's `proactive_context()` which uses pure semantic similarity. This works well for English technical queries but fails for:
 - Short queries ("levelibéka") — too little semantic content
 - Non-English text ("mac és alwaysontop") — embedding model is English-centric
 - Abbreviated terms — embedding distance is too large
 
-Meanwhile, `wt-memory recall --mode hybrid` (semantic + keyword) finds these memories reliably. The two functions use the same underlying database but different retrieval strategies.
+Meanwhile, `set-memory recall --mode hybrid` (semantic + keyword) finds these memories reliably. The two functions use the same underlying database but different retrieval strategies.
 
-Current `cmd_proactive` code (lines ~706-729 of `bin/wt-memory`):
+Current `cmd_proactive` code (lines ~706-729 of `bin/set-memory`):
 ```python
 if hasattr(m, 'proactive_context'):
     raw = m.proactive_context(context, max_results=limit, auto_ingest=False, semantic_threshold=0.3)
@@ -58,9 +58,9 @@ The `else` branch (hybrid fallback) only runs if `proactive_context` doesn't exi
 
 ### Decision 3: Implementation location
 
-**Choice:** Modify `cmd_proactive` Python inline code in `bin/wt-memory`
+**Choice:** Modify `cmd_proactive` Python inline code in `bin/set-memory`
 
-**Rationale:** Single location, no new files. The change is ~15 lines of Python within the existing inline script. All hooks benefit automatically since they call `wt-memory proactive`.
+**Rationale:** Single location, no new files. The change is ~15 lines of Python within the existing inline script. All hooks benefit automatically since they call `set-memory proactive`.
 
 ## Risks / Trade-offs
 

@@ -19,6 +19,6 @@ The orchestrator's merge path has five reliability gaps exposed during a 6-chang
 
 ## Impact
 
-- **Modified files**: `bin/wt-orchestrate` (merge_change, _try_merge, retry_merge_queue, monitor_loop all-done check)
+- **Modified files**: `bin/set-orchestrate` (merge_change, _try_merge, retry_merge_queue, monitor_loop all-done check)
 - **No new dependencies**
 - **No breaking changes**: All fixes are internal to the merge path

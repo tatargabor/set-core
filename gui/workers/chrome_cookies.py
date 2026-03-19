@@ -18,7 +18,7 @@ from pathlib import Path
 
 __all__ = ["scan_chrome_sessions", "is_pycookiecheat_available", "ChromeScanWorker"]
 
-logger = logging.getLogger("wt-control.chrome-cookies")
+logger = logging.getLogger("set-control.chrome-cookies")
 
 
 def is_pycookiecheat_available() -> bool:

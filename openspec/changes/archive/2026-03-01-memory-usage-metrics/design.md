@@ -5,14 +5,14 @@ Memory hooks inject context into Claude Code sessions across 4 layers (L1-L4), t
 Key files:
 - `bin/wt-hook-memory` — unified hook handler, dispatches by event type
 - `lib/metrics.py` — SQLite metrics storage and reporting
-- `bin/wt-memory` — CLI with existing `metrics` and `dashboard` subcommands
-- `bin/wt-project` — manages CLAUDE.md sections per project (no changes needed for this change)
+- `bin/set-memory` — CLI with existing `metrics` and `dashboard` subcommands
+- `bin/set-project` — manages CLAUDE.md sections per project (no changes needed for this change)
 
 ## Goals / Non-Goals
 
 **Goals:**
 - Measure true memory usage rate with context_id inject+cite tracking
-- Provide a unified `wt-memory tui` dashboard showing DB stats, hook overhead, and usage signals
+- Provide a unified `set-memory tui` dashboard showing DB stats, hook overhead, and usage signals
 - Keep hook latency impact near zero (ID generation is cheap)
 
 **Non-Goals:**
@@ -56,13 +56,13 @@ Key files:
 
 **Rationale**: The injections table already has session_id and per-injection records. Adding context_id is a simple ALTER TABLE. The cites table links back to session_id + context_id for join queries.
 
-### Decision 4: TUI as single `wt-memory tui` command
+### Decision 4: TUI as single `set-memory tui` command
 
-**Choice**: New subcommand that combines three data sources in one view: (1) memory DB stats via `wt-memory stats`, (2) hook metrics from SQLite, (3) usage signals from inject/cite ratio.
+**Choice**: New subcommand that combines three data sources in one view: (1) memory DB stats via `set-memory stats`, (2) hook metrics from SQLite, (3) usage signals from inject/cite ratio.
 
 **Alternatives considered:**
 - Interactive curses TUI: over-engineered for this use case
-- Extend existing `wt-memory metrics`: already has output, but cramming more makes it unreadable
+- Extend existing `set-memory metrics`: already has output, but cramming more makes it unreadable
 
 **Rationale**: Plain text output (like current `metrics` command) but structured into clear sections. Can be piped, redirected, or read in terminal. No external dependencies needed.
 

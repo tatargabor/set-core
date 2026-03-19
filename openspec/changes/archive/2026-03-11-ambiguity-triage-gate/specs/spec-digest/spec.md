@@ -16,7 +16,7 @@ The digest SHALL identify underspecified, contradictory, or missing-reference is
 - **THEN** `ambiguities.json` contains an entry with `type: "contradictory"` listing both sources
 
 #### Scenario: Ambiguities shown in dry-run
-- **WHEN** user runs `wt-orchestrate digest --dry-run`
+- **WHEN** user runs `set-orchestrate digest --dry-run`
 - **THEN** detected ambiguities are printed to stdout in a human-readable format
 
 #### Scenario: Resolution fields present after triage
@@ -31,7 +31,7 @@ The digest SHALL identify underspecified, contradictory, or missing-reference is
 The system SHALL process a multi-file spec into a structured digest at `wt/orchestration/digest/`. The digest contains: `index.json` (file manifest with `spec_base_dir`), `conventions.json` (project-wide rules), `data-definitions.md` (entity/catalog summaries), `requirements.json` (behavioral requirements with IDs), `dependencies.json` (requirement cross-references), `coverage.json` (initially empty `{}`), `ambiguities.json` (detected spec issues), `triage.md` (human triage template, generated only when ambiguities exist), and `domains/*.md` (domain summaries).
 
 #### Scenario: Digest from directory spec
-- **WHEN** user runs `wt-orchestrate digest --spec docs/v1-project/`
+- **WHEN** user runs `set-orchestrate digest --spec docs/v1-project/`
 - **THEN** the system creates `wt/orchestration/digest/` with all output types including `triage.md` if ambiguities were detected
 
 #### Scenario: Triage template generated as part of digest output

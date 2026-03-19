@@ -35,7 +35,7 @@ engine.py:_poll_active_changes
 
 ### D1: GatePipeline as a class in new gate_runner.py
 
-**Decision:** New `lib/wt_orch/gate_runner.py` with `GatePipeline` class.
+**Decision:** New `lib/set_orch/gate_runner.py` with `GatePipeline` class.
 
 **Why not modify handle_change_done in-place?** The function is too tangled — each gate block has slightly different retry context, different field names, and different edge cases. A clean abstraction in a new file lets us test the pipeline logic independently.
 

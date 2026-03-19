@@ -1,6 +1,6 @@
 ## Why
 
-The wt-tools ecosystem currently consists of isolated components (Control Center GUI, Ralph loop, CLI tools) that don't communicate with each other. AI agents (Claude Code in Zed, VS Code, terminal) can't see each other's work, Ralph loop status, or team activity.
+The set-core ecosystem currently consists of isolated components (Control Center GUI, Ralph loop, CLI tools) that don't communicate with each other. AI agents (Claude Code in Zed, VS Code, terminal) can't see each other's work, Ralph loop status, or team activity.
 
 By introducing an MCP (Model Context Protocol) server, all components can be connected, enabling:
 - Coordination between agents
@@ -9,7 +9,7 @@ By introducing an MCP (Model Context Protocol) server, all components can be con
 
 ## What Changes
 
-- **New MCP server** (`mcp-server/wt_mcp_server.py`): FastMCP-based server that exposes wt-tools STATE (read-only)
+- **New MCP server** (`mcp-server/wt_mcp_server.py`): FastMCP-based server that exposes set-core STATE (read-only)
 - **Ralph loop integration**: The MCP server directly reads worktree-level Ralph state files (`loop-state.json`)
 - **Global availability**: The MCP server is available in every project (`--scope user`)
 - **GUI-MCP connection**: The Control Center GUI writes team status cache that the MCP reads
@@ -56,7 +56,7 @@ By introducing an MCP (Model Context Protocol) server, all components can be con
 ## Capabilities
 
 ### New Capabilities
-- `mcp-server`: MCP server that exposes wt-tools state (read-only observation)
+- `mcp-server`: MCP server that exposes set-core state (read-only observation)
 - `ralph-mcp-integration`: Querying Ralph loop state via MCP
 - `cross-context-visibility`: Inter-agent visibility - who's working on what, in which worktree
 
@@ -68,7 +68,7 @@ By introducing an MCP (Model Context Protocol) server, all components can be con
 
 **File structure:**
 ```
-~/.config/wt-tools/
+~/.config/set-core/
   projects.json              ← MCP reads
 
 <project>-wt-<change-id>/    ← worktree
@@ -76,7 +76,7 @@ By introducing an MCP (Model Context Protocol) server, all components can be con
     loop-state.json          ← Ralph state (MCP reads)
     ralph-loop.log           ← Ralph log
 
-~/.cache/wt-tools/
+~/.cache/set-core/
   team_status.json           ← GUI writes, MCP reads
 
 ~/.claude.json               ← MCP server config (--scope user)
@@ -86,7 +86,7 @@ By introducing an MCP (Model Context Protocol) server, all components can be con
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                   MCP Server (wt-tools) - READ ONLY             │
+│                   MCP Server (set-core) - READ ONLY             │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
 │  │ list_       │  │ get_ralph_  │  │ get_team_   │              │
 │  │ worktrees() │  │ status()    │  │ status()    │              │

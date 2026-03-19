@@ -1,8 +1,8 @@
 ## Context
 
-The `wt-memory` CLI uses `mkdir`-based locking (`run_with_lock()`, lines 211-234 in `bin/wt-memory`) to serialize RocksDB access. The current implementation has a critical flaw: if the process holding the lock is killed (SIGKILL, OOM, power loss) or the MCP server crashes, the lock directory is never cleaned up. This orphaned lock blocks ALL subsequent write operations permanently.
+The `set-memory` CLI uses `mkdir`-based locking (`run_with_lock()`, lines 211-234 in `bin/set-memory`) to serialize RocksDB access. The current implementation has a critical flaw: if the process holding the lock is killed (SIGKILL, OOM, power loss) or the MCP server crashes, the lock directory is never cleaned up. This orphaned lock blocks ALL subsequent write operations permanently.
 
-The MCP server (`mcp-server/wt_mcp_server.py`) calls `wt-memory` CLI for all operations. When the lock is stuck, write operations (forget, cleanup, dedup, export) return fallback/empty JSON instead of meaningful errors.
+The MCP server (`mcp-server/wt_mcp_server.py`) calls `set-memory` CLI for all operations. When the lock is stuck, write operations (forget, cleanup, dedup, export) return fallback/empty JSON instead of meaningful errors.
 
 Current `run_with_lock()` flow:
 1. Try `mkdir` in a loop (10s timeout)

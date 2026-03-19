@@ -1,6 +1,6 @@
 ## Context
 
-The Control Center GUI displays one row per worktree. Agent detection (`wt-status`) finds the first matching Claude PID per worktree and returns a single `agent: {status, skill}` object. Skill tracking uses a single file (`.wt-tools/current_skill`) that gets overwritten when multiple agents run on the same worktree.
+The Control Center GUI displays one row per worktree. Agent detection (`wt-status`) finds the first matching Claude PID per worktree and returns a single `agent: {status, skill}` object. Skill tracking uses a single file (`.set-core/current_skill`) that gets overwritten when multiple agents run on the same worktree.
 
 Users commonly run 2+ Claude agents on the same worktree (e.g., one exploring, one applying). The GUI currently can't display this. The table also has two columns (Project, Change) that are never populated simultaneously — Project is always empty on worktree rows because the project name appears in the header row above.
 
@@ -29,9 +29,9 @@ Users commonly run 2+ Claude agents on the same worktree (e.g., one exploring, o
 
 **Alternative considered:** Keep `agent` for backward compat and add `agents` alongside — rejected because it creates confusion and all consumers are internal.
 
-### D2: Per-PID skill files in `.wt-tools/agents/`
+### D2: Per-PID skill files in `.set-core/agents/`
 
-**Decision:** Replace single `.wt-tools/current_skill` with `.wt-tools/agents/<pid>.skill` files. Each file has same format: `<skill-name>|<timestamp>`. On read, verify PID is alive (`kill -0 $pid`); delete stale files.
+**Decision:** Replace single `.set-core/current_skill` with `.set-core/agents/<pid>.skill` files. Each file has same format: `<skill-name>|<timestamp>`. On read, verify PID is alive (`kill -0 $pid`); delete stale files.
 
 **Rationale:** Multiple agents need independent skill tracking. PID-based filenames provide natural namespacing without coordination. Stale cleanup is cheap (one `kill -0` per file).
 

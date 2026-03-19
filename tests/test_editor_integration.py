@@ -1,5 +1,5 @@
 """
-Tests for multi-editor support in wt-tools.
+Tests for multi-editor support in set-core.
 
 Run with: pytest tests/test_editor_integration.py -v
 """
@@ -20,12 +20,12 @@ BIN_DIR = PROJECT_DIR / "bin"
 
 
 class TestWtConfig:
-    """Tests for wt-config command."""
+    """Tests for set-config command."""
 
     def test_editor_list_runs(self):
-        """wt-config editor list runs without error."""
+        """set-config editor list runs without error."""
         result = subprocess.run(
-            [str(BIN_DIR / "wt-config"), "editor", "list"],
+            [str(BIN_DIR / "set-config"), "editor", "list"],
             capture_output=True,
             text=True,
         )
@@ -35,9 +35,9 @@ class TestWtConfig:
         assert "vscode" in result.stdout
 
     def test_editor_show_runs(self):
-        """wt-config editor show runs without error."""
+        """set-config editor show runs without error."""
         result = subprocess.run(
-            [str(BIN_DIR / "wt-config"), "editor", "show"],
+            [str(BIN_DIR / "set-config"), "editor", "show"],
             capture_output=True,
             text=True,
         )
@@ -45,13 +45,13 @@ class TestWtConfig:
         assert "editor:" in result.stdout.lower()
 
     def test_editor_set_invalid_rejects(self):
-        """wt-config editor set rejects invalid editor names."""
+        """set-config editor set rejects invalid editor names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             env = os.environ.copy()
-            env["WT_CONFIG_DIR"] = tmpdir
+            env["SET_CONFIG_DIR"] = tmpdir
 
             result = subprocess.run(
-                [str(BIN_DIR / "wt-config"), "editor", "set", "invalid_editor"],
+                [str(BIN_DIR / "set-config"), "editor", "set", "invalid_editor"],
                 capture_output=True,
                 text=True,
                 env=env,
@@ -60,14 +60,14 @@ class TestWtConfig:
             assert "Invalid editor" in result.stderr or "Error" in result.stderr
 
     def test_editor_set_valid_accepts(self):
-        """wt-config editor set accepts valid editor names."""
+        """set-config editor set accepts valid editor names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             env = os.environ.copy()
-            env["WT_CONFIG_DIR"] = tmpdir
+            env["SET_CONFIG_DIR"] = tmpdir
 
             # Set to vscode
             result = subprocess.run(
-                [str(BIN_DIR / "wt-config"), "editor", "set", "vscode"],
+                [str(BIN_DIR / "set-config"), "editor", "set", "vscode"],
                 capture_output=True,
                 text=True,
                 env=env,
@@ -83,12 +83,12 @@ class TestWtConfig:
 
 
 class TestWtWork:
-    """Tests for wt-work command."""
+    """Tests for set-work command."""
 
     def test_help_shows_editor_option(self):
-        """wt-work --help shows -e/--editor option."""
+        """set-work --help shows -e/--editor option."""
         result = subprocess.run(
-            [str(BIN_DIR / "wt-work"), "--help"],
+            [str(BIN_DIR / "set-work"), "--help"],
             capture_output=True,
             text=True,
         )
@@ -97,9 +97,9 @@ class TestWtWork:
         assert "vscode" in result.stdout
 
     def test_requires_change_id(self):
-        """wt-work requires change-id argument."""
+        """set-work requires change-id argument."""
         result = subprocess.run(
-            [str(BIN_DIR / "wt-work")],
+            [str(BIN_DIR / "set-work")],
             capture_output=True,
             text=True,
         )
@@ -108,12 +108,12 @@ class TestWtWork:
 
 
 class TestWtFocus:
-    """Tests for wt-focus command."""
+    """Tests for set-focus command."""
 
     def test_help_shows_editor_option(self):
-        """wt-focus --help shows -e/--editor option."""
+        """set-focus --help shows -e/--editor option."""
         result = subprocess.run(
-            [str(BIN_DIR / "wt-focus"), "--help"],
+            [str(BIN_DIR / "set-focus"), "--help"],
             capture_output=True,
             text=True,
         )
@@ -122,9 +122,9 @@ class TestWtFocus:
         assert "vscode" in result.stdout
 
     def test_list_runs(self):
-        """wt-focus --list runs without error."""
+        """set-focus --list runs without error."""
         result = subprocess.run(
-            [str(BIN_DIR / "wt-focus"), "--list"],
+            [str(BIN_DIR / "set-focus"), "--list"],
             capture_output=True,
             text=True,
         )
@@ -133,12 +133,12 @@ class TestWtFocus:
 
 
 class TestEditorDetection:
-    """Tests for editor detection in wt-common.sh."""
+    """Tests for editor detection in set-common.sh."""
 
     def run_bash_function(self, function_name: str, *args, env=None) -> subprocess.CompletedProcess:
-        """Helper to run a bash function from wt-common.sh."""
+        """Helper to run a bash function from set-common.sh."""
         script = f"""
-        source "{BIN_DIR}/wt-common.sh"
+        source "{BIN_DIR}/set-common.sh"
         {function_name} {' '.join(f'"{a}"' for a in args)}
         """
         return subprocess.run(
@@ -196,10 +196,10 @@ class TestEditorDetection:
             assert result.stdout.strip() in ["zed", "vscode", "cursor", "windsurf"]
 
     def test_config_isolation(self):
-        """Configuration changes are isolated with WT_CONFIG_DIR."""
+        """Configuration changes are isolated with SET_CONFIG_DIR."""
         with tempfile.TemporaryDirectory() as tmpdir:
             env = os.environ.copy()
-            env["WT_CONFIG_DIR"] = tmpdir
+            env["SET_CONFIG_DIR"] = tmpdir
 
             # Set editor
             result = self.run_bash_function("set_configured_editor", "cursor", env=env)

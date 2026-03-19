@@ -2,7 +2,7 @@
 
 > Full-scale specialty coffee e-commerce webshop built from spec to production-ready code.
 > **First complex orchestration run** — 15 changes, multi-layer dependencies, manual merges required.
-> 2026-03-18, wt-tools on Claude Opus 4.6.
+> 2026-03-18, set-core on Claude Opus 4.6.
 
 ## Summary
 

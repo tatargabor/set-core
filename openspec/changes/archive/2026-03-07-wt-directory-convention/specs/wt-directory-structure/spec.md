@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: wt directory exists in consumer projects
-Every consumer project using wt-tools SHALL have a `wt/` directory at the project root. This directory is the canonical location for all wt-tools project-specific artifacts.
+Every consumer project using set-core SHALL have a `wt/` directory at the project root. This directory is the canonical location for all set-core project-specific artifacts.
 
 #### Scenario: New project initialization
-- **WHEN** `wt-project init` runs in a project without a `wt/` directory
+- **WHEN** `set-project init` runs in a project without a `wt/` directory
 - **THEN** the `wt/` directory structure is created with all subdirectories
 
 #### Scenario: Existing project re-init
-- **WHEN** `wt-project init` runs in a project that already has a `wt/` directory
+- **WHEN** `set-project init` runs in a project that already has a `wt/` directory
 - **THEN** missing subdirectories are created without modifying existing files
 
 ### Requirement: Orchestration subdirectory
@@ -45,7 +45,7 @@ The `wt/knowledge/` directory SHALL contain project knowledge artifacts used by 
 The `wt/requirements/` directory SHALL contain business requirement YAML files that serve as input for spec generation and planning.
 
 #### Scenario: Requirements directory exists
-- **WHEN** `wt-project init` completes
+- **WHEN** `set-project init` completes
 - **THEN** `wt/requirements/` directory exists and is ready for requirement files
 
 #### Scenario: Requirements are discoverable
@@ -53,10 +53,10 @@ The `wt/requirements/` directory SHALL contain business requirement YAML files t
 - **THEN** it can scan `wt/requirements/*.yaml` for business requirements to inform decomposition
 
 ### Requirement: Plugins subdirectory
-The `wt/plugins/` directory SHALL provide a workspace for each installed wt-tools plugin, where plugins can store their data, state, and generated artifacts.
+The `wt/plugins/` directory SHALL provide a workspace for each installed set-core plugin, where plugins can store their data, state, and generated artifacts.
 
 #### Scenario: Plugin workspace created on plugin init
-- **WHEN** a plugin is installed or initialized (e.g., `wt-project add-plugin wt-spec-capture`)
+- **WHEN** a plugin is installed or initialized (e.g., `set-project add-plugin wt-spec-capture`)
 - **THEN** `wt/plugins/<plugin-name>/` directory is created
 - **AND** the plugin can define its own internal directory structure within its workspace
 
@@ -77,7 +77,7 @@ The `wt/plugins/` directory SHALL provide a workspace for each installed wt-tool
 The `wt/.work/` directory SHALL be a gitignored scratch space for temporary files that should not be version-controlled.
 
 #### Scenario: Work directory created on init
-- **WHEN** `wt-project init` creates the `wt/` structure
+- **WHEN** `set-project init` creates the `wt/` structure
 - **THEN** `wt/.work/` directory is created
 - **AND** `wt/.work/` is added to the project's `.gitignore`
 
@@ -90,7 +90,7 @@ The `wt/.work/` directory SHALL be a gitignored scratch space for temporary file
 - **THEN** no versioned data is lost and the system continues to function
 
 ### Requirement: Backward-compatible file lookup
-All wt-tools components SHALL use a fallback chain when looking for configuration and knowledge files, checking the new `wt/` location first and falling back to legacy locations.
+All set-core components SHALL use a fallback chain when looking for configuration and knowledge files, checking the new `wt/` location first and falling back to legacy locations.
 
 #### Scenario: New location takes precedence
 - **WHEN** both `wt/orchestration/config.yaml` and `.claude/orchestration.yaml` exist

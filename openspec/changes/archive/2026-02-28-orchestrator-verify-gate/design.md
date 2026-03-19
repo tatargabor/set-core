@@ -1,8 +1,8 @@
 ## Context
 
-wt-orchestrate decomposes specs into changes, dispatches Ralph loops in parallel worktrees, monitors progress, and merges results. Currently there is no verification between Ralph completing and merge — `handle_change_done` goes straight from "done" to merge (with an optional but unused `test_command`). The `run_claude` function always uses the default model (Opus), even for cheap tasks like summarization.
+set-orchestrate decomposes specs into changes, dispatches Ralph loops in parallel worktrees, monitors progress, and merges results. Currently there is no verification between Ralph completing and merge — `handle_change_done` goes straight from "done" to merge (with an optional but unused `test_command`). The `run_claude` function always uses the default model (Opus), even for cheap tasks like summarization.
 
-Key functions in `bin/wt-orchestrate`:
+Key functions in `bin/set-orchestrate`:
 - `cmd_plan()` — LLM decomposes spec into changes (lines ~900-1070)
 - `summarize_spec()` — hierarchical spec summarization for large docs
 - `dispatch_change()` — creates worktree + starts Ralph loop

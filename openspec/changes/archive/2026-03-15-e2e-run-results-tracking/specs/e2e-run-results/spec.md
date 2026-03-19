@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Last Run Results section in E2E-GUIDE.md
-The E2E-GUIDE.md SHALL contain a `## Last Run Results` section with per-project subsections. Each subsection SHALL display the latest run's metrics, wt-tools commit delta, open regressions, and comparison to the previous run.
+The E2E-GUIDE.md SHALL contain a `## Last Run Results` section with per-project subsections. Each subsection SHALL display the latest run's metrics, set-core commit delta, open regressions, and comparison to the previous run.
 
 #### Scenario: First run for a project with no previous results
 - **WHEN** `wt-e2e-report --update-guide <path>` runs for project "minishop" and no minishop subsection exists in the guide
@@ -24,15 +24,15 @@ Each project subsection SHALL be wrapped in HTML comment delimiters: `<!-- e2e-r
   ```
   <!-- e2e-results:minishop:start -->
   ### minishop — Run #14 (2026-03-15)
-  <!-- wt-tools-commit: abc1234 -->
-  - **wt-tools range**: ...
+  <!-- set-core-commit: abc1234 -->
+  - **set-core range**: ...
   ...
   <!-- e2e-results:minishop:end -->
   ```
 
 #### Scenario: Commit hash preserved for next run delta
 - **WHEN** the report tool writes results
-- **THEN** a `<!-- wt-tools-commit: {hash} -->` comment SHALL be included inside the block containing the current HEAD commit of the wt-tools repo at time of writing
+- **THEN** a `<!-- set-core-commit: {hash} -->` comment SHALL be included inside the block containing the current HEAD commit of the set-core repo at time of writing
 
 ### Requirement: wt-e2e-report --update-guide flag
 The `wt-e2e-report` script SHALL accept a `--update-guide <path>` argument that writes the current run's results into the specified E2E-GUIDE.md file.
@@ -45,12 +45,12 @@ The `wt-e2e-report` script SHALL accept a `--update-guide <path>` argument that 
 - **WHEN** the guide file exists but has no `## Last Run Results` section
 - **THEN** the tool SHALL append the section at the end of the file
 
-#### Scenario: Previous wt-tools commit available for delta
-- **WHEN** the guide contains a previous results block with `<!-- wt-tools-commit: {hash} -->` for the same project
-- **THEN** the tool SHALL run `git log {prev_hash}..HEAD --oneline` in the wt-tools repo to generate the commit delta and include it in the "wt-tools range" line
+#### Scenario: Previous set-core commit available for delta
+- **WHEN** the guide contains a previous results block with `<!-- set-core-commit: {hash} -->` for the same project
+- **THEN** the tool SHALL run `git log {prev_hash}..HEAD --oneline` in the set-core repo to generate the commit delta and include it in the "set-core range" line
 
 ### Requirement: Results content includes run metrics and context
-Each project results block SHALL include: wt-tools commit range (with commit count), merged/total changes with duration and tokens, total verify retries, open regressions from findings.md, active OpenSpec changes in wt-tools, and comparison to previous run.
+Each project results block SHALL include: set-core commit range (with commit count), merged/total changes with duration and tokens, total verify retries, open regressions from findings.md, active OpenSpec changes in set-core, and comparison to previous run.
 
 #### Scenario: Metrics extracted from state.json
 - **WHEN** state.json contains 6 changes with 5 merged and 1 failed, total tokens 2.7M, and duration 105 minutes
@@ -65,5 +65,5 @@ Each project results block SHALL include: wt-tools commit range (with commit cou
 - **THEN** the "Open regressions" line SHALL read "none"
 
 #### Scenario: Active OpenSpec changes listed
-- **WHEN** the wt-tools repo has active changes in `openspec/changes/` (non-archived)
+- **WHEN** the set-core repo has active changes in `openspec/changes/` (non-archived)
 - **THEN** the results block SHALL include an "Applied changes" line listing change names

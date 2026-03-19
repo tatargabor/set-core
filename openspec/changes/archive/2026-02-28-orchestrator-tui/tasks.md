@@ -1,7 +1,7 @@
 ## 1. Project Setup
 
 - [x] 1.1 Create `gui/tui/` directory and empty `__init__.py`
-- [x] 1.2 Add `tui` subcommand dispatch in `bin/wt-orchestrate`: detect `tui)` case, call `python3 "$SCRIPT_DIR/../gui/tui/orchestrator_tui.py" "$STATE_FILENAME" "$LOG_FILE"`
+- [x] 1.2 Add `tui` subcommand dispatch in `bin/set-orchestrate`: detect `tui)` case, call `python3 "$SCRIPT_DIR/../gui/tui/orchestrator_tui.py" "$STATE_FILENAME" "$LOG_FILE"`
 
 ## 2. Core App Shell
 
@@ -42,8 +42,8 @@
 
 ## 8. Subcommand Integration
 
-- [x] 8.1 In `bin/wt-orchestrate`, add `tui)` case to the main command dispatcher, passing resolved STATE_FILENAME and LOG_FILE paths
-- [x] 8.2 Add `tui` to the usage/help text of wt-orchestrate
+- [x] 8.1 In `bin/set-orchestrate`, add `tui)` case to the main command dispatcher, passing resolved STATE_FILENAME and LOG_FILE paths
+- [x] 8.2 Add `tui` to the usage/help text of set-orchestrate
 - [x] 8.3 Validate python3 and textual availability on launch, show actionable error if missing
 
 ## 9. Testing

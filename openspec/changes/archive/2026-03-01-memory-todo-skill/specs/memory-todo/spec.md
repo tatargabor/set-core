@@ -39,7 +39,7 @@ The `/wt:todo done <id>` subcommand SHALL delete the specified memory by ID. It 
 
 #### Scenario: Complete a todo
 - **WHEN** the user types `/wt:todo done abc123`
-- **THEN** the memory with id `abc123` is deleted via `wt-memory forget abc123`
+- **THEN** the memory with id `abc123` is deleted via `set-memory forget abc123`
 - **AND** output shows `[Todo done: "<content preview>"]`
 
 #### Scenario: Invalid todo ID
@@ -51,5 +51,5 @@ If shodh-memory is not available, the command SHALL inform the user and exit wit
 
 #### Scenario: Memory system unavailable
 - **WHEN** the user types `/wt:todo something`
-- **AND** `wt-memory health` fails
+- **AND** `set-memory health` fails
 - **THEN** output shows "Memory system not available."

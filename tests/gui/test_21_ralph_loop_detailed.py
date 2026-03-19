@@ -1090,7 +1090,7 @@ class TestStartDialog:
             _cleanup_wt(git_env, wt_path, cid)
 
     def test_dialog_accept_spawns_command(self, control_center, git_env, qtbot):
-        """Accepting dialog with valid task should spawn wt-loop start."""
+        """Accepting dialog with valid task should spawn set-loop start."""
         cid = "dlg-spawn"
         wt_path = _create_wt(control_center, git_env, qtbot, cid)
         try:
@@ -1106,9 +1106,9 @@ class TestStartDialog:
 
             mock_popen.assert_called_once()
             cmd = mock_popen.call_args[0][0]
-            assert "wt-loop" in cmd[0]
+            assert "set-loop" in cmd[0]
             assert "start" in cmd
-            assert cid not in cmd  # change_id should NOT be passed to wt-loop
+            assert cid not in cmd  # change_id should NOT be passed to set-loop
             assert "Implement feature Y" in cmd
             assert "--max" in cmd
             assert "--done" in cmd

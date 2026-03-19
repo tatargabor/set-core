@@ -35,7 +35,7 @@ Benchmark v6 showed both runs completing 12/12 changes with 0 test-fix cycles, b
 **Alternative**: Duplicate the code-map block before the continue. Rejected — code duplication.
 
 ### D5: Memory DB isolation — project name approach
-**Choice**: Use `--project-name` or environment variable in init scripts to make wt-memory use `craftbazaar-baseline` vs `craftbazaar-memory` as storage names. This ensures physically separate databases.
+**Choice**: Use `--project-name` or environment variable in init scripts to make set-memory use `craftbazaar-baseline` vs `craftbazaar-memory` as storage names. This ensures physically separate databases.
 **Alternative**: Use `--db-path` to point to run-specific directories. Rejected — more invasive, requires all memory commands to pass the path.
 
 ## Risks / Trade-offs

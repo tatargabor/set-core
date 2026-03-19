@@ -5,7 +5,7 @@ The system SHALL execute the orchestration monitor loop via Python (`engine.py:m
 
 #### Scenario: Python monitor loop starts via cmd_start
 - **WHEN** `cmd_start()` is called with `ORCH_ENGINE=python` (or default after cutover)
-- **THEN** bash `cmd_start()` SHALL exec `wt-orch-core engine monitor --directives <json> --state <file> --poll-interval <int>`
+- **THEN** bash `cmd_start()` SHALL exec `set-orch-core engine monitor --directives <json> --state <file> --poll-interval <int>`
 - **AND** the Python process SHALL replace the bash process (via exec)
 
 #### Scenario: Feature flag selects engine

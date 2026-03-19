@@ -24,4 +24,4 @@ The orchestrator's plan quality is the single biggest determinant of batch succe
 
 - New files in `docs/` directory (documentation only)
 - No code changes
-- References existing orchestration infrastructure (`wt-orchestrate plan`, `project-brief.md`, spec mode)
+- References existing orchestration infrastructure (`set-orchestrate plan`, `project-brief.md`, spec mode)

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Automatic memory save after Write tool
-When `handle_post_tool()` receives a Write tool event, it SHALL extract the `file_path` from `tool_input` and save a Learning memory with the format: `Modified <file_path> (new file)`. The save SHALL use `wt-memory remember --type Learning --tags "phase:write-save,source:hook"`.
+When `handle_post_tool()` receives a Write tool event, it SHALL extract the `file_path` from `tool_input` and save a Learning memory with the format: `Modified <file_path> (new file)`. The save SHALL use `set-memory remember --type Learning --tags "phase:write-save,source:hook"`.
 
 #### Scenario: New file created
 - **WHEN** PostToolUse fires for Write tool with `file_path: "src/components/Button.tsx"`

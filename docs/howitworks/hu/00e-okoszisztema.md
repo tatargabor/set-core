@@ -1,8 +1,8 @@
-# A wt-tools ökoszisztéma
+# A set-core ökoszisztéma
 
 ## Áttekintés
 
-A `wt-orchestrate` nem egyedül áll — egy tágabb eszközkészlet része, amely a teljes AI-asszisztált fejlesztési workflow-t lefedi. A `wt-tools` csomag CLI eszközöket, hookokat, memória rendszert, és projekt sablonokat tartalmaz.
+A `set-orchestrate` nem egyedül áll — egy tágabb eszközkészlet része, amely a teljes AI-asszisztált fejlesztési workflow-t lefedi. A `set-core` csomag CLI eszközöket, hookokat, memória rendszert, és projekt sablonokat tartalmaz.
 
 ## A fő eszközök
 
@@ -12,23 +12,23 @@ Ezek az eszközök a git worktree-k teljes életciklusát kezelik — a létreho
 
 | Eszköz | Funkció |
 |--------|---------|
-| `wt-new` | Új worktree és branch létrehozása, .claude/ inicializálás |
-| `wt-list` | Aktív worktree-k listázása, állapot összefoglaló |
-| `wt-status` | Részletes ágens-állapot: PID, iteráció, token, modell |
-| `wt-merge` | Worktree merge main-be, LLM conflict resolution |
-| `wt-close` | Worktree cleanup (branch törlés, könyvtár eltávolítás) |
+| `set-new` | Új worktree és branch létrehozása, .claude/ inicializálás |
+| `set-list` | Aktív worktree-k listázása, állapot összefoglaló |
+| `set-status` | Részletes ágens-állapot: PID, iteráció, token, modell |
+| `set-merge` | Worktree merge main-be, LLM conflict resolution |
+| `set-close` | Worktree cleanup (branch törlés, könyvtár eltávolítás) |
 | `wt-focus` | Ágens-váltás: terminál fókusz a kiválasztott worktree-re |
 | `wt-add` | Meglévő branch hozzáadása worktree-ként |
 
 ### Ágens futtatás
 
-A Ralph loop a `wt-loop` által vezérelt iteratív fejlesztési ciklus. Az ágens minden iterációban kódot ír, teszteket futtat, és az eredmény alapján dönt a folytatásról. A loop automatikusan kezeli a context window limiteket, a token budgetet, és az API rate limiteket.
+A Ralph loop a `set-loop` által vezérelt iteratív fejlesztési ciklus. Az ágens minden iterációban kódot ír, teszteket futtat, és az eredmény alapján dönt a folytatásról. A loop automatikusan kezeli a context window limiteket, a token budgetet, és az API rate limiteket.
 
 | Eszköz | Funkció |
 |--------|---------|
-| `wt-loop` | Ralph iteratív loop: max-turns, token budget, model routing |
-| `wt-work` | Interaktív munka session worktree-ben |
-| `wt-skill-start` | Skill-alapú session indítás worktree-ben |
+| `set-loop` | Ralph iteratív loop: max-turns, token budget, model routing |
+| `set-work` | Interaktív munka session worktree-ben |
+| `set-skill-start` | Skill-alapú session indítás worktree-ben |
 
 ### Orchestráció és felügyelet
 
@@ -36,10 +36,10 @@ Az orchestrációs réteg felelős a teljes pipeline koordinálásáért — a s
 
 | Eszköz | Funkció |
 |--------|---------|
-| `wt-orchestrate` | Teljes orchestrációs pipeline (ez a dokumentum tárgya) |
-| `wt-sentinel` | Orchestrátor felügyelő: crash recovery, checkpoint kezelés |
-| `wt-manual` | Kézi orchestrációs beavatkozás (debug, state edit) |
-| `wt-e2e-report` | E2E teszt eredmények összesítése és riportálás |
+| `set-orchestrate` | Teljes orchestrációs pipeline (ez a dokumentum tárgya) |
+| `set-sentinel` | Orchestrátor felügyelő: crash recovery, checkpoint kezelés |
+| `set-manual` | Kézi orchestrációs beavatkozás (debug, state edit) |
+| `set-e2e-report` | E2E teszt eredmények összesítése és riportálás |
 
 ### Memória és kontextus
 
@@ -47,37 +47,37 @@ A memória rendszer biztosítja, hogy az ágensek tanuljanak a korábbi session-
 
 | Eszköz | Funkció |
 |--------|---------|
-| `wt-memory` | Memória CLI: remember, recall, forget, search, sync |
-| `wt-hook-memory` | Automatikus memória injekció (SessionStart, PostTool) |
-| `wt-hook-memory-warmstart` | Session indítás: releváns memóriák betöltése |
-| `wt-hook-memory-recall` | Prompt-szintű téma-alapú memória visszahívás |
-| `wt-hook-memory-posttool` | Eszköz-használat utáni kontextus kiegészítés |
-| `wt-hook-memory-save` | Session végi memória mentés és extrakció |
+| `set-memory` | Memória CLI: remember, recall, forget, search, sync |
+| `set-hook-memory` | Automatikus memória injekció (SessionStart, PostTool) |
+| `set-hook-memory-warmstart` | Session indítás: releváns memóriák betöltése |
+| `set-hook-memory-recall` | Prompt-szintű téma-alapú memória visszahívás |
+| `set-hook-memory-posttool` | Eszköz-használat utáni kontextus kiegészítés |
+| `set-hook-memory-save` | Session végi memória mentés és extrakció |
 
 ### Projekt menedzsment
 
-A `wt-project` rendszer biztosítja, hogy az új és meglévő projektek egyetlen paranccsal beállíthatók legyenek — hookak, parancsok, skill-ek telepítése, projekt regisztráció. Az `init` parancs idempotens: újrafuttatása frissíti a telepített fájlokat anélkül, hogy a konfigurációt felülírná.
+A `set-project` rendszer biztosítja, hogy az új és meglévő projektek egyetlen paranccsal beállíthatók legyenek — hookak, parancsok, skill-ek telepítése, projekt regisztráció. Az `init` parancs idempotens: újrafuttatása frissíti a telepített fájlokat anélkül, hogy a konfigurációt felülírná.
 
 | Eszköz | Funkció |
 |--------|---------|
-| `wt-project` | Projekt inicializálás, hook telepítés, regisztráció |
-| `wt-config` | Globális és projekt-szintű konfiguráció kezelés |
-| `wt-deploy-hooks` | Claude Code hookak telepítése projekthez |
-| `wt-version` | Verziószám megjelenítés |
-| `wt-usage` | Token használati statisztikák |
+| `set-project` | Projekt inicializálás, hook telepítés, regisztráció |
+| `set-config` | Globális és projekt-szintű konfiguráció kezelés |
+| `set-deploy-hooks` | Claude Code hookak telepítése projekthez |
+| `set-version` | Verziószám megjelenítés |
+| `set-usage` | Token használati statisztikák |
 
 ### Csapat szinkronizáció
 
-A team sync lehetővé teszi több fejlesztő (vagy ágens) közötti kommunikációt — üzenetküldés, aktivitás megosztás, memória szinkronizáció. A `wt-control` egy git orphan branch-et használ a kommunikációs csatornaként.
+A team sync lehetővé teszi több fejlesztő (vagy ágens) közötti kommunikációt — üzenetküldés, aktivitás megosztás, memória szinkronizáció. A `set-control` egy git orphan branch-et használ a kommunikációs csatornaként.
 
 | Eszköz | Funkció |
 |--------|---------|
-| `wt-control` | Team sync: üzenetküldés, aktivitás, koordináció |
-| `wt-control-init` | Team sync inicializálás (orphan branch) |
-| `wt-control-sync` | Szinkronizáció: push/pull üzenetek és aktivitás |
-| `wt-control-chat` | Csevegés más ágensekkel / fejlesztőkkel |
-| `wt-control-gui` | Grafikus team dashboard |
-| `wt-hook-activity` | Automatikus aktivitás megosztás |
+| `set-control` | Team sync: üzenetküldés, aktivitás, koordináció |
+| `set-control-init` | Team sync inicializálás (orphan branch) |
+| `set-control-sync` | Szinkronizáció: push/pull üzenetek és aktivitás |
+| `set-control-chat` | Csevegés más ágensekkel / fejlesztőkkel |
+| `set-control-gui` | Grafikus team dashboard |
+| `set-hook-activity` | Automatikus aktivitás megosztás |
 
 ### OpenSpec és minőség
 
@@ -85,26 +85,26 @@ Az OpenSpec a strukturált fejlesztési workflow: a proposal-tól a design-on é
 
 | Eszköz | Funkció |
 |--------|---------|
-| `wt-openspec` | OpenSpec artifact kezelés (proposal, design, tasks) |
-| `wt-audit` | Kód audit: security, minőség, best practices |
+| `set-openspec` | OpenSpec artifact kezelés (proposal, design, tasks) |
+| `set-audit` | Kód audit: security, minőség, best practices |
 
 ## Projekt sablonok
 
-A `wt-project` rendszer sablon-alapú. Jelenleg két sablon érhető el, de a rendszer nyitott bármilyen technológiai stack-re:
+A `set-project` rendszer sablon-alapú. Jelenleg két sablon érhető el, de a rendszer nyitott bármilyen technológiai stack-re:
 
-### wt-project-base
+### set-project-base
 
 Az alap sablon, amely minden projekthez használható. Tartalmazza:
 
 - Claude Code hookak (memória, activity, skill dispatch)
-- `/wt:*` parancsok (orchestrate, decompose, help)
+- `/set:*` parancsok (orchestrate, decompose, help)
 - OpenSpec skillek (fast-forward, apply, verify)
 - Sentinel szabályok
 - Alapértelmezett `.claude/` konfiguráció
 
-### wt-project-web (Next.js)
+### set-project-web (Next.js)
 
-A web alkalmazásokhoz készült sablon, a `wt-project-base` kiterjesztése. Tartalmazza:
+A web alkalmazásokhoz készült sablon, a `set-project-base` kiterjesztése. Tartalmazza:
 
 - Next.js specifikus konfigurációk
 - Tesztelési stratégia (Jest + Playwright)
@@ -114,43 +114,43 @@ A web alkalmazásokhoz készült sablon, a `wt-project-base` kiterjesztése. Tar
 
 ### Más irányok
 
-A sablon rendszer szándékosan nyitott. A `wt-project-web` a Next.js irányt mutatja, de bármilyen más technológiai stack támogatható saját sablonnal:
+A sablon rendszer szándékosan nyitott. A `set-project-web` a Next.js irányt mutatja, de bármilyen más technológiai stack támogatható saját sablonnal:
 
-- **wt-project-api** — REST/GraphQL API backend-ek
-- **wt-project-mobile** — React Native, Flutter alkalmazások
-- **wt-project-python** — Python/FastAPI/Django projektek
-- **wt-project-scraper** — Adatgyűjtő és feldolgozó projektek
+- **set-project-api** — REST/GraphQL API backend-ek
+- **set-project-mobile** — React Native, Flutter alkalmazások
+- **set-project-python** — Python/FastAPI/Django projektek
+- **set-project-scraper** — Adatgyűjtő és feldolgozó projektek
 
-Ezek a sablonok a `wt-project-base`-re épülnének, és a projekt-specifikus konfigurációt, tesztelési stratégiát, és build pipeline-t adnák hozzá.
+Ezek a sablonok a `set-project-base`-re épülnének, és a projekt-specifikus konfigurációt, tesztelési stratégiát, és build pipeline-t adnák hozzá.
 
 ## Az ökoszisztéma térképe
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    wt-tools ökoszisztéma                 │
+│                    set-core ökoszisztéma                 │
 ├──────────────┬──────────────┬───────────────────────────┤
 │  Worktree    │  Orchestráció │  Memória & Kontextus     │
 │  lifecycle   │  & felügyelet │                          │
 │              │              │                           │
-│  wt-new      │  wt-orchestr.│  wt-memory               │
-│  wt-list     │  wt-sentinel │  wt-hook-memory-*        │
-│  wt-status   │  wt-manual   │                          │
-│  wt-merge    │  wt-e2e-rep. │                          │
-│  wt-close    │              │                          │
-│  wt-loop     │              │                          │
+│  set-new      │  wt-orchestr.│  set-memory               │
+│  set-list     │  set-sentinel │  set-hook-memory-*        │
+│  set-status   │  set-manual   │                          │
+│  set-merge    │  wt-e2e-rep. │                          │
+│  set-close    │              │                          │
+│  set-loop     │              │                          │
 ├──────────────┼──────────────┼───────────────────────────┤
 │  Projekt     │  Team Sync   │  OpenSpec & Minőség      │
 │  menedzsment │              │                          │
-│              │  wt-control  │  wt-openspec             │
-│  wt-project  │  wt-ctrl-*   │  wt-audit               │
-│  wt-config   │  wt-hook-act.│  /opsx:* skillek        │
+│              │  set-control  │  set-openspec             │
+│  set-project  │  wt-ctrl-*   │  set-audit               │
+│  set-config   │  set-hook-act.│  /opsx:* skillek        │
 │  wt-deploy   │              │                          │
 ├──────────────┴──────────────┴───────────────────────────┤
 │  Projekt sablonok                                       │
-│  wt-project-base │ wt-project-web │ wt-project-...     │
+│  set-project-base │ set-project-web │ set-project-...     │
 └─────────────────────────────────────────────────────────┘
 ```
 
 \begin{fontos}
-Az ökoszisztéma moduláris: nem kötelező mindent használni. A legegyszerűbb belépési pont a wt-new + wt-loop (egyetlen ágens, egyetlen worktree). Az orchestráció és a memória rendszer fokozatosan, szükség szerint kapcsolható be.
+Az ökoszisztéma moduláris: nem kötelező mindent használni. A legegyszerűbb belépési pont a set-new + set-loop (egyetlen ágens, egyetlen worktree). Az orchestráció és a memória rendszer fokozatosan, szükség szerint kapcsolható be.
 \end{fontos}

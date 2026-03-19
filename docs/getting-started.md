@@ -4,7 +4,7 @@
 
 ## Platform Support
 
-wt-tools is developed and primarily tested on **Linux** (Ubuntu 22.04+). **macOS** has partial support — core functionality works, but platform-specific features are less tested. Feature development is Linux-first; contributors are actively working on improving macOS parity.
+set-core is developed and primarily tested on **Linux** (Ubuntu 22.04+). **macOS** has partial support — core functionality works, but platform-specific features are less tested. Feature development is Linux-first; contributors are actively working on improving macOS parity.
 
 Platform-specific differences may exist in areas like window management (GUI), process signals, and shell behavior. We welcome macOS-focused contributions and bug reports.
 
@@ -18,11 +18,11 @@ Platform-specific differences may exist in areas like window management (GUI), p
 | **Node.js** | `node --version` | Claude Code CLI |
 | **OpenSpec v1.1.1** | `openspec --version` | Spec-driven workflow (`npm i -g @fission-ai/openspec@1.1.1`) |
 
-## Install wt-tools
+## Install set-core
 
 ```bash
-git clone https://github.com/tatargabor/wt-tools.git
-cd wt-tools
+git clone https://github.com/tatargabor/set-core.git
+cd set-core
 ./install.sh
 ```
 
@@ -32,7 +32,7 @@ The installer:
 - Configures the MCP server for Claude Code
 - Installs GUI dependencies (PySide6, psutil, PyNaCl)
 - Installs Shodh-Memory (optional, interactive prompt)
-- Deploys wt-tools to all registered projects (`wt-project init`)
+- Deploys set-core to all registered projects (`set-project init`)
 - Sets up editor choice, permission mode, and model prefix
 
 ## GUI Dependencies (Optional)
@@ -48,7 +48,7 @@ pip install PySide6 psutil PyNaCl
 If you use conda or a non-system Python, set the Qt plugin path:
 
 ```bash
-QT_PLUGIN_PATH="$(python -c 'import PySide6; print(PySide6.__path__[0])')/Qt/plugins" wt-control
+QT_PLUGIN_PATH="$(python -c 'import PySide6; print(PySide6.__path__[0])')/Qt/plugins" set-control
 ```
 
 ## Developer Memory (Optional)
@@ -57,7 +57,7 @@ The installer offers to install Shodh-Memory. To install manually:
 
 ```bash
 pip install 'shodh-memory>=0.1.81'
-wt-memory health   # verify installation
+set-memory health   # verify installation
 ```
 
 Memory degrades gracefully — if not installed, all memory commands silently no-op.
@@ -66,7 +66,7 @@ Memory degrades gracefully — if not installed, all memory commands silently no
 
 ```bash
 cd ~/my-project
-wt-project init
+set-project init
 ```
 
 This registers the project, deploys hooks, commands, skills, and agents to `.claude/`, configures the MCP server, and adds memory sections to `CLAUDE.md`. Re-run anytime to update.
@@ -78,7 +78,7 @@ Use `--dry-run` to preview changes without modifying files.
 ### 1. Create a worktree
 
 ```bash
-wt-new add-user-auth
+set-new add-user-auth
 ```
 
 Creates a new git worktree with branch `change/add-user-auth`.
@@ -86,7 +86,7 @@ Creates a new git worktree with branch `change/add-user-auth`.
 ### 2. Open it
 
 ```bash
-wt-work add-user-auth
+set-work add-user-auth
 ```
 
 Opens the worktree in your configured editor and starts Claude Code automatically.
@@ -94,7 +94,7 @@ Opens the worktree in your configured editor and starts Claude Code automaticall
 ### 3. Launch the Control Center (optional)
 
 ```bash
-wt-control
+set-control
 ```
 
 A compact always-on-top window showing all worktrees and agent status. Double-click any row to jump to that worktree.
@@ -103,7 +103,7 @@ A compact always-on-top window showing all worktrees and agent status. Double-cl
 
 ```bash
 # From a Claude Code session in your project:
-/wt:sentinel --spec docs/my-spec.md --max-parallel 2
+/set:sentinel --spec docs/my-spec.md --max-parallel 2
 ```
 
 The sentinel starts the orchestrator, monitors it, handles crashes, auto-approves checkpoints, and produces a summary when done.
@@ -111,21 +111,21 @@ The sentinel starts the orchestrator, monitors it, handles crashes, auto-approve
 ### 5. Clean up
 
 ```bash
-wt-merge add-user-auth    # merge branch back to main
-wt-close add-user-auth    # remove worktree and branch
+set-merge add-user-auth    # merge branch back to main
+set-close add-user-auth    # remove worktree and branch
 ```
 
 ## When to Use What
 
 | Situation | Tool |
 |-----------|------|
-| 1 agent, 1 project | You probably don't need wt-tools yet |
-| 2+ agents or switching projects often | Control Center GUI + `wt-work` |
+| 1 agent, 1 project | You probably don't need set-core yet |
+| 2+ agents or switching projects often | Control Center GUI + `set-work` |
 | Structured feature development | OpenSpec (`/opsx:new` → `/opsx:apply`) |
-| Well-defined task list to grind through | Ralph Loop (`wt-loop start`) |
-| Multiple changes from a spec | Sentinel (`/wt:sentinel --spec`) |
-| Want agents to learn across sessions | Developer Memory (`wt-memory`) |
-| Multiple machines or team members | Team Sync (`wt-control-init`) |
+| Well-defined task list to grind through | Ralph Loop (`set-loop start`) |
+| Multiple changes from a spec | Sentinel (`/set:sentinel --spec`) |
+| Want agents to learn across sessions | Developer Memory (`set-memory`) |
+| Multiple machines or team members | Team Sync (`set-control-init`) |
 
 ## Next Steps
 

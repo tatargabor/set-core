@@ -23,4 +23,4 @@
 ## 5. Verify
 
 - [x] 5.1 Run `openspec status` to confirm all specs are properly structured
-- [x] 5.2 Spot-check each new main spec against `bin/wt-orchestrate` code for accuracy
+- [x] 5.2 Spot-check each new main spec against `bin/set-orchestrate` code for accuracy

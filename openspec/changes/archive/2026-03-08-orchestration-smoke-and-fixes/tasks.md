@@ -23,20 +23,20 @@
 - [x] 3.3 Include a concrete example showing a conflict with additions on both sides and the correct merged resolution
 - [x] 3.4 Keep existing behavior unchanged for non-additive conflicts (modifications, deletions)
 
-## 4. Smoke Blocking Gate — Directives & Parsing (wt-orchestrate)
+## 4. Smoke Blocking Gate — Directives & Parsing (set-orchestrate)
 
-- [x] 4.1 Add new directive defaults at top of `wt-orchestrate`: `DEFAULT_SMOKE_BLOCKING=false`, `DEFAULT_SMOKE_FIX_TOKEN_BUDGET=500000`, `DEFAULT_SMOKE_FIX_MAX_TURNS=15`, `DEFAULT_SMOKE_FIX_MAX_RETRIES=3`, `DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT=30`
+- [x] 4.1 Add new directive defaults at top of `set-orchestrate`: `DEFAULT_SMOKE_BLOCKING=false`, `DEFAULT_SMOKE_FIX_TOKEN_BUDGET=500000`, `DEFAULT_SMOKE_FIX_MAX_TURNS=15`, `DEFAULT_SMOKE_FIX_MAX_RETRIES=3`, `DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT=30`
 - [x] 4.2 Extend `parse_directives()` to parse: `smoke_blocking`, `smoke_fix_token_budget`, `smoke_fix_max_turns`, `smoke_fix_max_retries`, `smoke_health_check_url`, `smoke_health_check_timeout` — with validation (boolean, positive integers, valid URL)
 - [x] 4.3 Store new directives in state.json under `.directives`
 - [x] 4.4 Add unit tests in `test-orchestrate.sh` for new directive parsing (valid values, invalid values, defaults)
 
-## 5. Health Check Function (wt-orchestrate)
+## 5. Health Check Function (set-orchestrate)
 
 - [x] 5.1 Implement `health_check()` function: takes URL and timeout, uses `curl -s -o /dev/null -w '%{http_code}'` in a retry loop (1s interval), returns 0 on 200 response, 1 on timeout
 - [x] 5.2 Implement `extract_health_check_url()`: parses `localhost:PORT` from `smoke_command` using grep, returns `http://localhost:PORT`
 - [x] 5.3 Add 5-second recompile buffer (sleep) after health check passes before running smoke
 
-## 6. Scoped Smoke Fix Agent (wt-orchestrate)
+## 6. Scoped Smoke Fix Agent (set-orchestrate)
 
 - [x] 6.1 Implement `smoke_fix_scoped()` function that replaces the current inline smoke fix in `merge_change()`. Parameters: change_name, smoke_command, smoke_timeout, max_retries, token_budget, max_turns
 - [x] 6.2 Build scoped fix prompt: include smoke output (full, not truncated), modified files list (`git diff HEAD~1 --name-only`), change scope from state.json, containment constraints ("MAY ONLY modify files from this change", "MUST NOT delete test assertions")
@@ -44,7 +44,7 @@
 - [x] 6.4 Track `smoke_fix_attempts` in state.json per change
 - [x] 6.5 On all retries exhausted: set `smoke_result="fail"`, `smoke_status="failed"`, send critical notification
 
-## 7. Smoke Blocking Pipeline in merge_change() (wt-orchestrate)
+## 7. Smoke Blocking Pipeline in merge_change() (set-orchestrate)
 
 - [x] 7.1 Refactor the smoke section (lines 4323-4376) of `merge_change()`: branch on `smoke_blocking` — if false, keep existing non-blocking behavior; if true, enter blocking pipeline
 - [x] 7.2 Blocking pipeline: after post_merge_command → `health_check()` → if fail: status=`smoke_blocked`, notify, release lock, return → if pass: sleep 5 (recompile buffer) → run smoke

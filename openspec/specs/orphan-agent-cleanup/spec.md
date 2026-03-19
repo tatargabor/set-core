@@ -57,9 +57,9 @@ The system SHALL automatically terminate Claude agent processes that have no ass
 - **THEN** a message SHALL be written to stderr with the PID and worktree path
 
 ### Requirement: Orphan Cleanup Respects Skill Files
-The system SHALL clean up `.wt-tools/agents/<pid>.skill` files for killed orphan agents.
+The system SHALL clean up `.set-core/agents/<pid>.skill` files for killed orphan agents.
 
 #### Scenario: Skill file removed after orphan kill
 - **WHEN** an orphan agent with PID N is killed
-- **AND** a file `.wt-tools/agents/N.skill` exists
+- **AND** a file `.set-core/agents/N.skill` exists
 - **THEN** the skill file SHALL be removed

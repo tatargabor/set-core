@@ -46,7 +46,7 @@ wt-jira auto --range this-week           # This week (Mon-today)
 Multi-machine work support with duplicate prevention:
 
 - Machine ID tracking (`hostname`)
-- Local history: `~/.config/wt-tools/worklog-history.jsonl`
+- Local history: `~/.config/set-core/worklog-history.jsonl`
 - Worklog ID saved to history for reliable updates
 - Display: "✓ logged" or "✓ logged from <machine>"
 
@@ -70,7 +70,7 @@ Handling midnight-crossing sessions:
 
 - Affected specs: `jira-worklog` (extended capability)
 - Affected code: `bin/wt-jira` (`auto` command)
-- New files: `~/.config/wt-tools/worklog-history.jsonl`
+- New files: `~/.config/set-core/worklog-history.jsonl`
 - New dependencies: None (uses existing git, sqlite3, jq)
 
 ## CLI Interface
@@ -142,7 +142,7 @@ total: 1h 1m
 
 ## History File Format
 
-`~/.config/wt-tools/worklog-history.jsonl`:
+`~/.config/set-core/worklog-history.jsonl`:
 
 ```json
 {"date":"2026-01-13","jira_key":"EXAMPLE-549","duration":14400,"machine":"hostname","submitted_at":"2026-01-13T16:20:00Z","sources":"git","change_id":"feature-name","worklog_id":"527960"}

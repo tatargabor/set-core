@@ -11,4 +11,4 @@
 
 ## 3. Clean up stuck state
 
-- [x] 3.1 Remove the stuck staged file from reddit project (`.wt-tools/.staged-extract-b638eef0*`)
+- [x] 3.1 Remove the stuck staged file from reddit project (`.set-core/.staged-extract-b638eef0*`)

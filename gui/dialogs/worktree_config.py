@@ -53,15 +53,15 @@ class WorktreeConfigDialog(QDialog):
         layout.addWidget(buttons)
 
     def load_configs(self):
-        """Load and display config files from .wt-tools/"""
+        """Load and display config files from .set-core/"""
         if not self.config_dir.exists():
-            label = QLabel("No .wt-tools/ config directory found.")
+            label = QLabel("No .set-core/ config directory found.")
             self.tabs.addTab(label, "Info")
             return
 
         config_files = list(self.config_dir.glob("*.json"))
         if not config_files:
-            label = QLabel("No config files found in .wt-tools/")
+            label = QLabel("No config files found in .set-core/")
             self.tabs.addTab(label, "Info")
             return
 

@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/orchestration/digest.sh` (1,311 LOC) to `lib/wt_orch/digest.py`. The digest engine scans multi-file spec directories, classifies content, extracts structured requirements, validates output, and tracks coverage. This is the largest unmigrated orchestration module.
+Migrate `lib/orchestration/digest.sh` (1,311 LOC) to `lib/set_orch/digest.py`. The digest engine scans multi-file spec directories, classifies content, extracts structured requirements, validates output, and tracks coverage. This is the largest unmigrated orchestration module.
 
 ## Requirements
 
@@ -59,10 +59,10 @@ Migrate `lib/orchestration/digest.sh` (1,311 LOC) to `lib/wt_orch/digest.py`. Th
 - Used by planner to auto-trigger re-digest
 
 ### DIGEST-10: CLI Subcommands
-- `wt-orch-core digest run --spec <path> [--dry-run]` — full digest pipeline
-- `wt-orch-core digest validate [--dir <path>]` — validate existing digest
-- `wt-orch-core digest coverage [--dir <path>]` — show coverage report
-- `wt-orch-core digest freshness --spec <path> [--dir <path>]` — check staleness
+- `set-orch-core digest run --spec <path> [--dry-run]` — full digest pipeline
+- `set-orch-core digest validate [--dir <path>]` — validate existing digest
+- `set-orch-core digest coverage [--dir <path>]` — show coverage report
+- `set-orch-core digest freshness --spec <path> [--dir <path>]` — check staleness
 - All subcommands registered in `cli.py` under `digest` group
 
 ### DIGEST-11: Unit Tests

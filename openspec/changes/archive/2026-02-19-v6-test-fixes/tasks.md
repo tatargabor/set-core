@@ -22,5 +22,5 @@
 
 ## 5. Memory DB Isolation
 
-- [x] 5.1 Update `benchmark/init-with-memory.sh` to use project name `craftbazaar-memory` for wt-memory storage (via project directory name or wt-memory config)
+- [x] 5.1 Update `benchmark/init-with-memory.sh` to use project name `craftbazaar-memory` for set-memory storage (via project directory name or set-memory config)
 - [x] 5.2 Verify that init-baseline.sh does NOT install memory hooks (already the case — confirm no regression)

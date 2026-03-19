@@ -1,6 +1,6 @@
 ## Purpose
 
-Migrate `lib/orchestration/auditor.sh` (298 LOC) to `lib/wt_orch/auditor.py`. The auditor runs post-phase LLM analysis comparing merged changes against spec requirements to detect implementation gaps.
+Migrate `lib/orchestration/auditor.sh` (298 LOC) to `lib/set_orch/auditor.py`. The auditor runs post-phase LLM analysis comparing merged changes against spec requirements to detect implementation gaps.
 
 ## Requirements
 
@@ -23,8 +23,8 @@ Migrate `lib/orchestration/auditor.sh` (298 LOC) to `lib/wt_orch/auditor.py`. Th
 - Critical gaps block phase completion; warnings are advisory
 
 ### AUDIT-04: CLI Subcommands
-- `wt-orch-core audit run [--cycle <n>]` — run post-phase audit
-- `wt-orch-core audit prompt [--cycle <n>]` — print audit prompt without executing
+- `set-orch-core audit run [--cycle <n>]` — run post-phase audit
+- `set-orch-core audit prompt [--cycle <n>]` — print audit prompt without executing
 - Registered in `cli.py` under `audit` group
 
 ### AUDIT-05: Unit Tests

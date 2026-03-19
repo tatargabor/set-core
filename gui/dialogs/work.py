@@ -60,10 +60,10 @@ class WorkDialog(QDialog):
         self.load_remote_branches()
 
     def load_local_worktrees(self):
-        """Load local worktrees from wt-list --all"""
+        """Load local worktrees from set-list --all"""
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-list"), "--all"],
+                [str(SCRIPT_DIR / "set-list"), "--all"],
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
@@ -138,10 +138,10 @@ class WorkDialog(QDialog):
         return (0, "")
 
     def load_remote_branches(self):
-        """Load remote change branches from wt-list --remote --all"""
+        """Load remote change branches from set-list --remote --all"""
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-list"), "--remote", "--all"],
+                [str(SCRIPT_DIR / "set-list"), "--remote", "--all"],
                 capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
@@ -200,8 +200,8 @@ class WorkDialog(QDialog):
     def get_remote_branch_info(self, project: str, branch: str) -> tuple:
         """Get last commit timestamp and relative date for a remote branch"""
         try:
-            # Try to find project path from ~/.config/wt-tools/projects.json
-            config_path = Path.home() / ".config" / "wt-tools" / "projects.json"
+            # Try to find project path from ~/.config/set-core/projects.json
+            config_path = Path.home() / ".config" / "set-core" / "projects.json"
             if config_path.exists():
                 with open(config_path) as f:
                     config = json.load(f)

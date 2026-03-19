@@ -114,30 +114,30 @@ test_cleanup_runtime_files_removes_tracked() {
     git init --quiet
 
     # Create and track runtime files
-    mkdir -p .wt-tools/agents
-    echo "commit-hash" > .wt-tools/.last-memory-commit
-    echo "agent-data" > .wt-tools/agents/agent1.json
-    git add .wt-tools/
+    mkdir -p .set-core/agents
+    echo "commit-hash" > .set-core/.last-memory-commit
+    echo "agent-data" > .set-core/agents/agent1.json
+    git add .set-core/
     git commit -m "init with runtime files" --quiet
 
     # Verify they are tracked
     local tracked
-    tracked=$(git ls-files .wt-tools/)
+    tracked=$(git ls-files .set-core/)
     assert_contains "$tracked" ".last-memory-commit" "file should be tracked before cleanup"
 
     cleanup_runtime_files "$tmpdir"
 
     # Verify removed from index
-    tracked=$(git ls-files .wt-tools/.last-memory-commit 2>/dev/null || true)
+    tracked=$(git ls-files .set-core/.last-memory-commit 2>/dev/null || true)
     assert_equals "" "$tracked" ".last-memory-commit should be removed from index"
 
     # Verify .gitignore updated
     assert_file_exists "$tmpdir/.gitignore" ".gitignore should exist"
     local gitignore_content
     gitignore_content=$(cat "$tmpdir/.gitignore")
-    assert_contains "$gitignore_content" ".wt-tools/.last-memory-commit" ".gitignore should have runtime pattern"
-    assert_contains "$gitignore_content" ".wt-tools/agents/" ".gitignore should have agents pattern"
-    assert_contains "$gitignore_content" ".wt-tools/orphan-detect/" ".gitignore should have orphan-detect pattern"
+    assert_contains "$gitignore_content" ".set-core/.last-memory-commit" ".gitignore should have runtime pattern"
+    assert_contains "$gitignore_content" ".set-core/agents/" ".gitignore should have agents pattern"
+    assert_contains "$gitignore_content" ".set-core/orphan-detect/" ".gitignore should have orphan-detect pattern"
 
     cd /
     rm -rf "$tmpdir"
@@ -154,9 +154,9 @@ test_cleanup_runtime_files_noop_when_clean() {
 
     # Add all patterns to .gitignore already
     cat > .gitignore << 'EOF'
-.wt-tools/.last-memory-commit
-.wt-tools/agents/
-.wt-tools/orphan-detect/
+.set-core/.last-memory-commit
+.set-core/agents/
+.set-core/orphan-detect/
 EOF
     git add .gitignore
     git commit -m "add gitignore" --quiet
@@ -179,7 +179,7 @@ test_cleanup_gitignore_no_duplicates() {
     git commit -m "init" --quiet
 
     # Pre-populate .gitignore with one pattern
-    echo ".wt-tools/.last-memory-commit" > .gitignore
+    echo ".set-core/.last-memory-commit" > .gitignore
     git add .gitignore
     git commit -m "partial gitignore" --quiet
 
@@ -187,13 +187,13 @@ test_cleanup_gitignore_no_duplicates() {
 
     # Count occurrences of the pre-existing pattern
     local count
-    count=$(grep -c ".wt-tools/.last-memory-commit" .gitignore)
+    count=$(grep -c ".set-core/.last-memory-commit" .gitignore)
     assert_equals "1" "$count" "should not duplicate existing pattern"
 
     # But the others should be added
     local gitignore_content
     gitignore_content=$(cat .gitignore)
-    assert_contains "$gitignore_content" ".wt-tools/agents/" "missing agents/ pattern should be added"
+    assert_contains "$gitignore_content" ".set-core/agents/" "missing agents/ pattern should be added"
 
     cd /
     rm -rf "$tmpdir"

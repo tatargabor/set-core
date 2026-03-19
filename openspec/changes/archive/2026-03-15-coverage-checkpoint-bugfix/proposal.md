@@ -19,7 +19,7 @@ _none_
 
 ## Impact
 
-- `bin/wt-sentinel` — stuck detection logic (checkpoint-aware timeout)
-- `lib/wt_orch/engine.py` — `_check_completion()`, checkpoint state handling in monitor loop
-- `lib/wt_orch/merger.py` — coverage sync on merge after restart
-- `lib/wt_orch/digest.py` — coverage reconciliation helper
+- `bin/set-sentinel` — stuck detection logic (checkpoint-aware timeout)
+- `lib/set_orch/engine.py` — `_check_completion()`, checkpoint state handling in monitor loop
+- `lib/set_orch/merger.py` — coverage sync on merge after restart
+- `lib/set_orch/digest.py` — coverage reconciliation helper

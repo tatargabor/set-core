@@ -10,7 +10,7 @@ Two bugs persist across multiple orchestration runs (v8, v9) that waste tokens a
 
 4. **LLM conflict resolver fails on additive list patterns** — When two parallel changes both add entries to the same array/list/object, the `llm_resolve_conflicts()` function in `wt-merge` fails to produce output. The prompt says "keep both sides' changes where possible" but lacks explicit guidance for the common "both sides append to the same collection" pattern. Production v8 required manual sentinel intervention to merge 3 files where both sides added entries to the same array.
 
-5. **No integration tests for the orchestration pipeline** — `wt-orchestrate` (4960 lines) has only unit tests for parsing and state management. The merge pipeline, smoke pipeline, dispatch flow, and failure recovery paths are untested.
+5. **No integration tests for the orchestration pipeline** — `set-orchestrate` (4960 lines) has only unit tests for parsing and state management. The merge pipeline, smoke pipeline, dispatch flow, and failure recovery paths are untested.
 
 Evidence from two production orchestration runs:
 
@@ -68,7 +68,7 @@ Implementation: Modify the `prompt` variable in `llm_resolve_conflicts()` (aroun
 
 ### Fix 4: Smoke as blocking gate with scoped fix agent (existing)
 
-Replace the current non-blocking smoke pipeline (lines 4323-4376 of `wt-orchestrate`) with:
+Replace the current non-blocking smoke pipeline (lines 4323-4376 of `set-orchestrate`) with:
 
 1. After merge + post_merge_command → **health_check** dev server (curl localhost:PORT, 30s timeout, 5s recompile buffer)
 2. If no server → `smoke_blocked` status, sentinel notification, release lock
@@ -146,14 +146,14 @@ Test infrastructure:
 - `orchestration-smoke-blocking`: Blocking smoke gate with health check, scoped fix agent, new state machine, and configurable directives
 - `loop-idle-detection-v2`: Output-level idle iteration detection via content hashing — stops loops that repeat the same output
 - `merge-additive-resolver`: Enhanced LLM merge conflict resolution for additive list/array/import patterns
-- `orchestration-integration-tests`: Integration test suite for wt-orchestrate merge/smoke/dispatch/failure flows
+- `orchestration-integration-tests`: Integration test suite for set-orchestrate merge/smoke/dispatch/failure flows
 
 ### Modified Capabilities
 - `dispatch-and-loop-control`: ff→apply explicit chaining — eliminate iteration boundary between ff and apply phases
 
 ## Impact
 
-- `bin/wt-orchestrate` — merge_change() rewrite: health_check(), smoke blocking gate, scoped fix prompt, new states, new directives parsing
+- `bin/set-orchestrate` — merge_change() rewrite: health_check(), smoke blocking gate, scoped fix prompt, new states, new directives parsing
 - `bin/wt-loop` — ff→apply chaining in main loop + output-level idle detection (content hash comparison)
 - `bin/wt-merge` — enhanced LLM resolver prompt with additive pattern guidance and example
 - `tests/orchestrator/test-orchestrate-integration.sh` — new file (~400-600 lines)

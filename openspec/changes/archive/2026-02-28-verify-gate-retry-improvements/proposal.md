@@ -17,6 +17,6 @@ The verify gate retry system has two gaps that waste tokens and reduce success r
 
 ## Impact
 
-- **Code**: `bin/wt-orchestrate` — `resume_change()`, `merge_change()`, `retry_merge_queue()`, `handle_change_done()`
+- **Code**: `bin/set-orchestrate` — `resume_change()`, `merge_change()`, `retry_merge_queue()`, `handle_change_done()`
 - **Dependencies**: None new — uses existing `wt-merge`, `wt-loop`, `orch_recall`/`orch_remember`
 - **Systems**: Agents in worktrees will receive richer retry prompts; merge conflict flow changes from "retry same merge" to "agent rebase + retry merge"

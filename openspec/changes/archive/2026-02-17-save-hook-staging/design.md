@@ -1,6 +1,6 @@
 ## Context
 
-`wt-hook-memory-save` is a Claude Code Stop hook that fires after **every response**. PATH 1 (transcript-based extraction) calls Haiku LLM to extract insights, then saves them directly to `wt-memory`. Since the Stop event fires ~25 times per session, the same transcript is processed repeatedly, creating near-duplicate memories (231/336 hook-generated) and wasting Haiku calls ($0.07 vs target $0.003/session).
+`wt-hook-memory-save` is a Claude Code Stop hook that fires after **every response**. PATH 1 (transcript-based extraction) calls Haiku LLM to extract insights, then saves them directly to `set-memory`. Since the Stop event fires ~25 times per session, the same transcript is processed repeatedly, creating near-duplicate memories (231/336 hook-generated) and wasting Haiku calls ($0.07 vs target $0.003/session).
 
 The hook is a bash script at `bin/wt-hook-memory-save`. It already has:
 - A lockfile mechanism to prevent concurrent extractions
@@ -28,10 +28,10 @@ PATH 1 lacks any mechanism to avoid re-processing the same transcript.
 
 ### Decision 1: Staging file pattern (overwrite, not append)
 
-**Choice**: Write extraction results to `.wt-tools/.staged-extract-{transcript-basename}` instead of directly calling `wt-memory remember`. Each extraction overwrites the previous staged file for the same transcript.
+**Choice**: Write extraction results to `.set-core/.staged-extract-{transcript-basename}` instead of directly calling `set-memory remember`. Each extraction overwrites the previous staged file for the same transcript.
 
 **Alternatives considered:**
-- Per-memory dedup via `wt-memory recall` before save → adds latency, complex, semantic matching unreliable
+- Per-memory dedup via `set-memory recall` before save → adds latency, complex, semantic matching unreliable
 - Single-fire (extract only once per transcript) → loses content from later in the session
 - Accumulate in file + dedup at commit → complex, still needs similarity matching
 
@@ -39,7 +39,7 @@ PATH 1 lacks any mechanism to avoid re-processing the same transcript.
 
 ### Decision 2: Commit trigger — next-session detection
 
-**Choice**: At the start of each hook invocation (before PATH 1 extraction), check for staged files from **other** transcripts. If found, commit those to `wt-memory` and delete them. This means a session's staged extraction gets committed when the **next** session starts.
+**Choice**: At the start of each hook invocation (before PATH 1 extraction), check for staged files from **other** transcripts. If found, commit those to `set-memory` and delete them. This means a session's staged extraction gets committed when the **next** session starts.
 
 **Alternatives considered:**
 - Timer/cron-based commit → external dependency, complexity
@@ -56,7 +56,7 @@ PATH 1 lacks any mechanism to avoid re-processing the same transcript.
 
 ### Decision 4: Debounce via timestamp file
 
-**Choice**: Write a timestamp to `.wt-tools/.staged-extract-{id}.ts` on each extraction. Before running Haiku, check if the timestamp is less than 5 minutes old — if so, skip the LLM call entirely.
+**Choice**: Write a timestamp to `.set-core/.staged-extract-{id}.ts` on each extraction. Before running Haiku, check if the timestamp is less than 5 minutes old — if so, skip the LLM call entirely.
 
 **Alternatives considered:**
 - File modification time of staged file → `stat` format differs across Linux/macOS
@@ -65,10 +65,10 @@ PATH 1 lacks any mechanism to avoid re-processing the same transcript.
 
 **Rationale**: Separate `.ts` file with epoch seconds is portable and simple. 5 minutes balances cost reduction with content freshness.
 
-### Decision 5: Test approach — bash integration tests with mocked wt-memory
+### Decision 5: Test approach — bash integration tests with mocked set-memory
 
 **Choice**: Create `tests/test_save_hook_staging.sh` that tests the hook's staging logic by:
-1. Mocking `wt-memory` and `claude` CLI with shell functions/scripts
+1. Mocking `set-memory` and `claude` CLI with shell functions/scripts
 2. Creating fake transcript files with known content
 3. Running the hook multiple times and asserting staged file state
 4. Simulating session switch and asserting commit behavior

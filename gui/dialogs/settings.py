@@ -323,7 +323,7 @@ class SettingsDialog(QDialog):
         team = self.config.team
         self.team_sync_interval.setValue(team.get("sync_interval_ms", 30000))
 
-        # Editor & Permission settings (from wt-tools config.json)
+        # Editor & Permission settings (from set-core config.json)
         self._load_editor_config()
 
     def apply_settings(self):
@@ -351,7 +351,7 @@ class SettingsDialog(QDialog):
 
         self.config.save()
 
-        # Editor & Permission settings (to wt-tools config.json)
+        # Editor & Permission settings (to set-core config.json)
         self._save_editor_config()
 
         # Apply theme to parent window if it has the method
@@ -359,11 +359,11 @@ class SettingsDialog(QDialog):
             self.parent().apply_theme()
 
     def _get_wt_config_path(self) -> Path:
-        """Get the wt-tools config.json path"""
+        """Get the set-core config.json path"""
         return CONFIG_DIR / "config.json"
 
     def _load_editor_config(self):
-        """Load editor and permission settings from wt-tools config.json"""
+        """Load editor and permission settings from set-core config.json"""
         config_path = self._get_wt_config_path()
         editor_name = "auto"
         perm_mode = "auto-accept"
@@ -391,7 +391,7 @@ class SettingsDialog(QDialog):
             self.perm_auto_accept.setChecked(True)
 
     def _save_editor_config(self):
-        """Save editor and permission settings to wt-tools config.json"""
+        """Save editor and permission settings to set-core config.json"""
         config_path = self._get_wt_config_path()
         data = {}
         try:

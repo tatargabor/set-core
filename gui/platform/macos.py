@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 
 from .base import PlatformInterface
 
-logger = logging.getLogger("wt-control.macos")
+logger = logging.getLogger("set-control.macos")
 
 
 class MacOSPlatform(PlatformInterface):
@@ -31,12 +31,12 @@ class MacOSPlatform(PlatformInterface):
             return False
 
     def get_config_dir(self) -> Path:
-        """Return macOS config directory for wt-tools."""
-        return Path.home() / "Library" / "Application Support" / "wt-tools"
+        """Return macOS config directory for set-core."""
+        return Path.home() / "Library" / "Application Support" / "set-core"
 
     def get_cache_dir(self) -> Path:
-        """Return macOS cache directory for wt-tools."""
-        return Path.home() / "Library" / "Caches" / "wt-tools"
+        """Return macOS cache directory for set-core."""
+        return Path.home() / "Library" / "Caches" / "set-core"
 
     def get_process_cmdline(self, pid: int) -> Optional[str]:
         """Get command line using ps command."""

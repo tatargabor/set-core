@@ -110,7 +110,7 @@ def test_copy_path_to_clipboard(control_center, git_env, qtbot):
 def test_close_worktree(git_env):
     """Removing a worktree with git should clean up directory and branch listing."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-close-test")
+    wt_path = str(git_env["base"] / "test-project-set-close-test")
 
     # Create worktree
     subprocess.run(

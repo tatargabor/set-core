@@ -4,7 +4,7 @@
 
 ## Overview
 
-wt-tools has four layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle, an **orchestration engine** (`wt-orchestrate`) for autonomous multi-change execution, a **PySide6 GUI** for real-time monitoring, and an **MCP server** that connects Claude Code agents to the system. Everything is file-based — no daemon, no database, no external service.
+set-core has four layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle, an **orchestration engine** (`set-orchestrate`) for autonomous multi-change execution, a **PySide6 GUI** for real-time monitoring, and an **MCP server** that connects Claude Code agents to the system. Everything is file-based — no daemon, no database, no external service.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -24,18 +24,18 @@ wt-tools has four layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle,
              ▼                      ▼
   ┌────────────────────┐  ┌──────────────────┐
   │   CLI Tools (bash) │  │  MCP Server (py) │
-  │   wt-new/work/list │  │  list_worktrees  │
-  │   wt-loop (Ralph)  │  │  get_ralph_status│
-  │   wt-control-sync  │  │  get_team_status │
+  │   set-new/work/list │  │  list_worktrees  │
+  │   set-loop (Ralph)  │  │  get_ralph_status│
+  │   set-control-sync  │  │  get_team_status │
   └────────┬───────────┘  └────────┬─────────┘
            │                       │
            ▼                       ▼
   ┌──────────────────────────────────────────┐
-  │  Orchestration Engine (wt-orchestrate)   │
+  │  Orchestration Engine (set-orchestrate)   │
   │  spec → plan → dispatch → monitor       │
   │  parallel worktrees + merge queue        │
   ├──────────────────────────────────────────┤
-  │  Git worktrees + wt-control branch       │
+  │  Git worktrees + set-control branch       │
   │  (file-based state, git for team sync)   │
   └──────────────────────────────────────────┘
 ```
@@ -48,18 +48,18 @@ wt-tools has four layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle,
 | Orchestration | Bash + Claude LLM | Spec decomposition, dependency DAG, parallel dispatch |
 | GUI | Python + PySide6 (Qt) | Native look, always-on-top, system tray, cross-platform |
 | MCP server | Python | Exposes worktree/agent data to Claude Code |
-| State | JSON files + git | No database — `wt-status` reads `/proc`, agent PIDs, git state |
-| Team sync | Git branch (`wt-control`) | No server — machines push/pull member status via git |
+| State | JSON files + git | No database — `set-status` reads `/proc`, agent PIDs, git state |
+| Team sync | Git branch (`set-control`) | No server — machines push/pull member status via git |
 | Encryption | NaCl Box (libsodium) | End-to-end encrypted chat between team members |
 | Memory | RocksDB (via shodh-memory) | Per-project semantic search with vector embeddings |
 
 ## Claude Code Agent Teams Integration
 
-Claude Code's [Agent Teams](https://code.claude.com/docs/en/agent-teams) (experimental) let a lead session spawn teammate agents with shared task lists. This is complementary to wt-tools — Agent Teams work inside a single worktree, while wt-tools orchestrates across worktrees:
+Claude Code's [Agent Teams](https://code.claude.com/docs/en/agent-teams) (experimental) let a lead session spawn teammate agents with shared task lists. This is complementary to set-core — Agent Teams work inside a single worktree, while set-core orchestrates across worktrees:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  wt-tools (outer loop — git-level isolation)             │
+│  set-core (outer loop — git-level isolation)             │
 │                                                          │
 │  ┌──────────────────┐      ┌──────────────────┐         │
 │  │ Worktree A        │      │ Worktree B        │         │
@@ -76,12 +76,12 @@ Claude Code's [Agent Teams](https://code.claude.com/docs/en/agent-teams) (experi
 │           │                         │                    │
 │           └─── MCP + team sync ─────┘                    │
 │                                                          │
-│  Cross-machine: wt-control git branch (no server)        │
+│  Cross-machine: set-control git branch (no server)        │
 └──────────────────────────────────────────────────────────┘
 ```
 
 - **Agent Teams** = parallelism within a worktree (implement + test + docs at once)
-- **wt-tools** = parallelism across worktrees (separate features in isolated branches)
+- **set-core** = parallelism across worktrees (separate features in isolated branches)
 - **Together** = nested parallelism with full git isolation
 
 ## Vision: Nested Agent Collaboration
@@ -89,7 +89,7 @@ Claude Code's [Agent Teams](https://code.claude.com/docs/en/agent-teams) (experi
 The long-term direction is layered coordination — from local teammates inside a worktree, through cross-worktree MCP visibility, to cross-machine team sync:
 
 ```
-Layer 3: Cross-machine (wt-control git branch)
+Layer 3: Cross-machine (set-control git branch)
   ┌─────────────────┐          ┌─────────────────┐
   │  Linux machine   │◄────────►│  Mac machine     │
   │  3 worktrees     │  git sync │  2 worktrees     │
@@ -117,7 +117,7 @@ Layer 1: Within worktree (Agent Teams)
 | **Custom subagents** (`.claude/agents/`) | Available now | Specialized `ralph-worker`, `code-reviewer` agents with persistent memory |
 | **Additional hooks** (`SessionStart`, `PostToolUse`, `SessionEnd`) | Available now | Auto worktree detection, file tracking, idle status |
 | **Async hooks** | Available now | Non-blocking activity tracking and team broadcasts |
-| **Plugin packaging** | Available now | `plugin install wt-tools` — one-command setup |
+| **Plugin packaging** | Available now | `plugin install set-core` — one-command setup |
 | **SDK-based Ralph loops** | Available now | Structured output, crash recovery, session resume |
 | **Persistent shared tasks** (`CLAUDE_CODE_TASK_LIST_ID`) | Available now | Cross-session task state for Ralph loops |
 | **Agent Teams inner loop** | Experimental | Parallel subtasks within a single worktree |

@@ -1,4 +1,4 @@
-"""Tests for wt_orch.loop — API error classification, backoff, completion, token budget."""
+"""Tests for set_orch.loop — API error classification, backoff, completion, token budget."""
 
 import os
 import sys
@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.loop import (
+from set_orch.loop import (
     ApiErrorResult,
     BackoffState,
     classify_api_error,

@@ -20,7 +20,7 @@ When the orchestrator process restarts (crash, manual stop, sentinel restart), t
 
 - `lib/orchestration/dispatcher.sh` — resume path in `cmd_start()` (lines ~330-440)
 - `lib/orchestration/dispatcher.sh` — `cmd_resume()` function
-- `wt_orch/dispatcher.py` — `resume_stopped_changes()` Python counterpart
+- `set_orch/dispatcher.py` — `resume_stopped_changes()` Python counterpart
 - `lib/orchestration/planner.sh` — audit results carry-forward logic (lines ~907-928) needs awareness of restart vs replan distinction
 - Orchestration events JSONL — new `CHANGE_RECONCILED` event type
 - Web dashboard — stale audit results will no longer appear after restart

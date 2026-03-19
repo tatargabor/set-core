@@ -24,5 +24,5 @@ All fixes are already implemented and committed (session work). This change docu
 - `web/src/components/SessionPanel.tsx` — per-change sessions
 - `web/src/pages/Dashboard.tsx` — pass selectedChange to SessionPanel
 - `web/src/lib/api.ts` — change-aware session API wrappers, mangling fix
-- `lib/wt_orch/api.py` — `_claude_mangle()` helper
-- `lib/wt_orch/merger.py` — coverage update in skip_merged paths
+- `lib/set_orch/api.py` — `_claude_mangle()` helper
+- `lib/set_orch/merger.py` — coverage update in skip_merged paths

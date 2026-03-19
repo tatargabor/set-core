@@ -3,7 +3,7 @@
 Three orthogonal improvements to reduce per-change agent friction and improve observability.
 
 **Current state:**
-- `wt-project-web` templates deploy broken config files (Tailwind v4 PostCSS syntax, wrong Jest key) — every E2E run agent spends 1-3 iterations re-fixing these
+- `set-project-web` templates deploy broken config files (Tailwind v4 PostCSS syntax, wrong Jest key) — every E2E run agent spends 1-3 iterations re-fixing these
 - `project-knowledge.yaml` features define `rules_file` per feature, but dispatcher only builds text context from feature `touches` — it never copies rule files to the worktree
 - `loop-state.json` tracks `total_tokens`, `total_input_tokens`, `total_cache_create`, `capacity_limit_pct` — rich data for context utilization — but orchestration state and wt-web don't expose it per-change
 
@@ -25,13 +25,13 @@ Three orthogonal improvements to reduce per-change agent friction and improve ob
 - Runtime rule injection mid-iteration (rules are injected at dispatch time only)
 - Dynamic context window size detection (hardcode 200K for Claude 4.x Sonnet/Opus)
 - Rewriting the project-knowledge feature matching logic (reuse existing `build_project_knowledge_context` path-glob logic)
-- wt-project-web template corrections for non-Next.js templates (spa template excluded)
+- set-project-web template corrections for non-Next.js templates (spa template excluded)
 
 ## Decisions
 
 ### D1: Template corrections are file fixes, not new abstractions
 
-The `postcss.config.mjs`, `jest.config.ts`, `next.config.js` in `wt-project-web/templates/nextjs/` are simply wrong. Fix them directly. No new abstraction needed — `wt-project init` redeploys them. Rules (`data-model.md`, `testing-conventions.md`) get additive paragraphs.
+The `postcss.config.mjs`, `jest.config.ts`, `next.config.js` in `set-project-web/templates/nextjs/` are simply wrong. Fix them directly. No new abstraction needed — `set-project init` redeploys them. Rules (`data-model.md`, `testing-conventions.md`) get additive paragraphs.
 
 New `worktree-setup.md` rule is path-scoped to `prisma/**` and `src/lib/prisma*` (like `data-model.md`) + `jest.config*` — so it activates specifically when those files are touched.
 
@@ -44,7 +44,7 @@ Extend `build_project_knowledge_context()` (or a new `_inject_feature_rules()` c
 2. For each feature, glob-match the feature's `touches` paths against the change's `scope` (existing logic)
 3. If match: resolve `rules_file` path relative to project `.claude/` and copy to worktree `.claude/rules/`
 
-Injection happens **after `bootstrap_worktree()`** in `dispatch_change()`, so bootstrap doesn't overwrite injected files. Files are namespaced as `rules_file` path's basename — no collision risk since rule files are already namespaced in wt-project-web.
+Injection happens **after `bootstrap_worktree()`** in `dispatch_change()`, so bootstrap doesn't overwrite injected files. Files are namespaced as `rules_file` path's basename — no collision risk since rule files are already namespaced in set-project-web.
 
 **Alternative considered:** inject rules content into proposal.md — rejected because proposal.md is one-shot context, rules files persist across iterations.
 
@@ -74,12 +74,12 @@ Format: `start → end / window`. Show only `end / window` if start unavailable.
 
 - **[Risk] Hardcoded 200K window** → Mitigation: add `context_window_size` as a constant in `monitor.py`, comment with "update when Sonnet 5 ships". Model-aware resolution is future work.
 - **[Risk] Rules injection path conflict** → Mitigation: only inject if `rules_file` resolves to an existing file. Log warning and skip on missing file. Never overwrite an existing file in the worktree's `.claude/rules/` with a different name.
-- **[Risk] wt-project-web and wt-tools are separate repos** → Template fixes are in wt-project-web; dispatcher/monitor/wt-web fixes are in wt-tools. Tasks must cover both repos.
+- **[Risk] set-project-web and set-core are separate repos** → Template fixes are in set-project-web; dispatcher/monitor/wt-web fixes are in set-core. Tasks must cover both repos.
 - **[Risk] `total_cache_create` doesn't perfectly measure context fill** → It's the best available proxy without API introspection. The number is meaningful for trend analysis even if not exact.
 
 ## Migration Plan
 
-1. Fix wt-project-web templates (standalone, deployable via `wt-project init`)
+1. Fix set-project-web templates (standalone, deployable via `set-project init`)
 2. Add rule injection to dispatcher (additive, guarded by `project-knowledge.yaml` presence)
 3. Add context fields to monitor (additive, optional fields — old state files without them display nothing in wt-web)
 4. Update wt-web change list (conditional column — no display regression)

@@ -6,17 +6,17 @@
 The system SHALL provide a `wt-version` command that displays installed version information.
 
 #### Scenario: Display version info
-Given wt-tools is installed via symlinks
+Given set-core is installed via symlinks
 When the user runs `wt-version`
 Then the output shows:
-  - wt-tools version header
+  - set-core version header
   - Branch name (e.g., "master")
   - Commit hash (short, 7 chars)
   - Commit date (ISO format)
   - Source directory path
 
 #### Scenario: JSON output
-Given wt-tools is installed
+Given set-core is installed
 When the user runs `wt-version --json`
 Then the output is valid JSON with fields: branch, commit, date, source_dir
 

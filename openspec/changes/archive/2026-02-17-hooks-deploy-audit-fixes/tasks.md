@@ -1,13 +1,13 @@
-## 1. CLI: wt-memory-hooks HOOK_SKILLS expansion
+## 1. CLI: set-memory-hooks HOOK_SKILLS expansion
 
-- [ ] 1.1 Add `openspec-bulk-archive-change` to HOOK_SKILLS array in `bin/wt-memory-hooks`
+- [ ] 1.1 Add `openspec-bulk-archive-change` to HOOK_SKILLS array in `bin/set-memory-hooks`
 - [ ] 1.2 Add command file mapping for `bulk-archive-change` → `bulk-archive.md` in the COMMAND_MAP
-- [ ] 1.3 Verify `wt-memory-hooks check --json` reports correct `files_total: 9`
+- [ ] 1.3 Verify `set-memory-hooks check --json` reports correct `files_total: 9`
 - [ ] 1.4 Check if existing manual hooks in bulk-archive SKILL.md use marker comments; if not, add markers so install/remove can manage them
 
 ## 2. SKILL.md: openspec-new-change explicit recall
 
-- [ ] 2.1 Replace passive "Use injected memories" step 1b in `.claude/skills/openspec-new-change/SKILL.md` with explicit `wt-memory health` + `wt-memory recall` matching the command file pattern
+- [ ] 2.1 Replace passive "Use injected memories" step 1b in `.claude/skills/openspec-new-change/SKILL.md` with explicit `set-memory health` + `set-memory recall` matching the command file pattern
 - [ ] 2.2 Verify the patched SKILL.md loads correctly via Skill tool invocation
 
 ## 3. CLI: wt-deploy-hooks flag validation

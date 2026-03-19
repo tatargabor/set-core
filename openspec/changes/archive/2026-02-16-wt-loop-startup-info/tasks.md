@@ -8,7 +8,7 @@
 
 - [x] 2.1 In `cmd_run`, read label from state file: `label=$(jq -r '.label // empty' "$state_file")`
 - [x] 2.2 Read additional context: `wt_path` (already have), git branch (`git -C "$wt_path" branch --show-current`), permission mode from state
-- [x] 2.3 Detect memory status: run `wt-memory health &>/dev/null` and set `memory_status` to "active" or "inactive"
+- [x] 2.3 Detect memory status: run `set-memory health &>/dev/null` and set `memory_status` to "active" or "inactive"
 - [x] 2.4 Replace the banner block (lines 576-581) with expanded version showing: worktree name, label (conditional), path, branch, full task, separator, config params, memory status, start timestamp
 
 ## 3. Terminal title with label

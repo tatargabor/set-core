@@ -24,4 +24,4 @@ Egy PM barátnak szükséges egy átfogó, magyar nyelvű dokumentáció, ami el
 
 - Új fájlok a `docs/pm-guide/` alatt (~7 markdown fejezet + build script + LaTeX template)
 - Nincs kód módosítás, nincs API változás, nincs dependency változás
-- A wt-tools projekt dokumentációját bővíti külső (PM) célközönség számára
+- A set-core projekt dokumentációját bővíti külső (PM) célközönség számára

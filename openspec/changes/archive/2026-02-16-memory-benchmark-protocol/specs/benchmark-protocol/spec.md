@@ -17,21 +17,21 @@ The benchmark protocol SHALL be organized in a `benchmark/` directory at the pro
 - **THEN** the `benchmark/` directory contains all listed files and subdirectories
 
 ### Requirement: Run guide with full toolchain bootstrap
-The run guide SHALL include exact, copy-pasteable commands for setting up the test project from scratch. The bootstrap sequence SHALL cover: repository creation, `openspec init --tools claude`, `wt-deploy-hooks .` (Claude Code hooks), CLAUDE.md placement, and copying agent-only change definitions to `docs/benchmark/`. For Run B additionally: `wt-memory-hooks install`. Prerequisites SHALL be listed: wt-tools installed and on PATH, Node.js, Claude Code CLI.
+The run guide SHALL include exact, copy-pasteable commands for setting up the test project from scratch. The bootstrap sequence SHALL cover: repository creation, `openspec init --tools claude`, `wt-deploy-hooks .` (Claude Code hooks), CLAUDE.md placement, and copying agent-only change definitions to `docs/benchmark/`. For Run B additionally: `set-memory-hooks install`. Prerequisites SHALL be listed: set-core installed and on PATH, Node.js, Claude Code CLI.
 
 #### Scenario: Evaluator follows run guide for baseline run
 - **WHEN** an evaluator follows the run guide step by step for Run A
 - **THEN** a fresh CraftBazaar repository is created at `~/benchmark/run-a/craftbazaar/`
 - **THEN** openspec is configured, Claude Code hooks are deployed, `baseline.md` is copied as CLAUDE.md
 - **THEN** agent-only change definitions are in `docs/benchmark/01-*.md` through `06-*.md`
-- **THEN** `wt-memory-hooks` is NOT installed (no memory in skills)
+- **THEN** `set-memory-hooks` is NOT installed (no memory in skills)
 - **THEN** the repository is ready to start `wt-loop`
 
 #### Scenario: Evaluator follows run guide for memory run
 - **WHEN** an evaluator follows the run guide step by step for Run B
 - **THEN** a fresh CraftBazaar repository is created at `~/benchmark/run-b/craftbazaar/`
 - **THEN** openspec is configured, Claude Code hooks are deployed, `with-memory.md` is copied as CLAUDE.md
-- **THEN** `wt-memory-hooks install` has been run (memory hooks in skills)
+- **THEN** `set-memory-hooks install` has been run (memory hooks in skills)
 - **THEN** agent-only change definitions are in `docs/benchmark/01-*.md` through `06-*.md`
 - **THEN** the memory store is empty (fresh start)
 - **THEN** the repository is ready to start `wt-loop`
@@ -122,16 +122,16 @@ The benchmark SHALL automatically collect data during execution without human in
 - **THEN** `results/change-0N.json` files exist for each completed change
 
 ### Requirement: Memory event logging for Run B
-During Run B (with memory), memory events are automatically captured in the session transcript (ralph-loop.log) because `wt-memory recall` and `wt-memory remember` commands appear in the log output. After the run, the evaluator SHALL review the transcript to extract and annotate memory events.
+During Run B (with memory), memory events are automatically captured in the session transcript (ralph-loop.log) because `set-memory recall` and `set-memory remember` commands appear in the log output. After the run, the evaluator SHALL review the transcript to extract and annotate memory events.
 
 #### Scenario: Extracting memory events from Run B transcript
 - **WHEN** Run B completes and the evaluator reviews `.claude/ralph-loop.log`
-- **THEN** all `wt-memory recall` invocations and their results are visible in the log
-- **THEN** all `wt-memory remember` invocations and what was saved are visible in the log
+- **THEN** all `set-memory recall` invocations and their results are visible in the log
+- **THEN** all `set-memory remember` invocations and what was saved are visible in the log
 - **THEN** the evaluator annotates which recalls directly influenced agent behavior
 
 ### Requirement: Post-run results collection guide
-The benchmark SHALL include a results collection guide that documents how to extract, organize, and compare data from both completed runs. The guide SHALL cover: copying logs and status files to a results directory, running `wt-loop history` and `wt-memory list --json` (Run B), and using the comparison report template.
+The benchmark SHALL include a results collection guide that documents how to extract, organize, and compare data from both completed runs. The guide SHALL cover: copying logs and status files to a results directory, running `wt-loop history` and `set-memory list --json` (Run B), and using the comparison report template.
 
 #### Scenario: Evaluator collects results after both runs
 - **WHEN** both Run A and Run B have completed

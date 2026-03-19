@@ -4,7 +4,7 @@
 The system SHALL store and use a configurable Claude Code permission mode instead of hardcoding `--dangerously-skip-permissions`.
 
 #### Scenario: Config file stores permission mode
-- **WHEN** the config file `~/.config/wt-tools/config.json` is read
+- **WHEN** the config file `~/.config/set-core/config.json` is read
 - **THEN** it SHALL contain a `claude.permission_mode` field
 - **AND** valid values are: `"auto-accept"`, `"plan"`, `"allowedTools"`
 - **AND** the default value for new installs SHALL be `"auto-accept"`

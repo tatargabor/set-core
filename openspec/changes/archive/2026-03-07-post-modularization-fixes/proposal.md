@@ -14,7 +14,7 @@ The modularization effort (completed 2026-03-07) split 7 monolithic scripts into
 - Fix `run_with_lock` missing on `cmd_projects` RocksDB access
 - Fix bare `python3` usage instead of `$SHODH_PYTHON`
 - Add missing dependency declarations in module headers
-- Fix `deploy.sh` hidden coupling (calls functions defined in caller `wt-project`)
+- Fix `deploy.sh` hidden coupling (calls functions defined in caller `set-project`)
 - Fix `_save_project_type` basename lookup vs custom `--name`
 
 ## Capabilities
@@ -34,5 +34,5 @@ The modularization effort (completed 2026-03-07) split 7 monolithic scripts into
 - **lib/orchestration/** — dispatcher.sh, merger.sh, verifier.sh scope fixes
 - **lib/loop/** — engine.sh, state.sh, tasks.sh, prompt.sh fixes
 - **lib/editor.sh** — permission flag return convention
-- **lib/project/deploy.sh** + **bin/wt-project** — coupling and lookup fixes
-- **bin/wt-memory** — missing cmd_repair dispatch target
+- **lib/project/deploy.sh** + **bin/set-project** — coupling and lookup fixes
+- **bin/set-memory** — missing cmd_repair dispatch target

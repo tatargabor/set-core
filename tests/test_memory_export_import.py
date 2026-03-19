@@ -1,4 +1,4 @@
-"""Tests for wt-memory export/import with deduplication.
+"""Tests for set-memory export/import with deduplication.
 
 Uses isolated SHODH_STORAGE per test to avoid polluting real memory.
 Requires shodh-memory to be installed (skips otherwise).
@@ -11,8 +11,8 @@ import tempfile
 
 import pytest
 
-# Path to the wt-memory script (relative to project root)
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "wt-memory")
+# Path to the set-memory script (relative to project root)
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "set-memory")
 
 # Check if shodh-memory is available
 try:
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.skipif(not HAS_SHODH, reason="shodh-memory not installe
 
 
 def run_wt(storage_path, *args, stdin=None):
-    """Run wt-memory with isolated storage. Returns (stdout, returncode)."""
+    """Run set-memory with isolated storage. Returns (stdout, returncode)."""
     env = os.environ.copy()
     env["SHODH_STORAGE"] = storage_path
     result = subprocess.run(
@@ -97,7 +97,7 @@ class TestExport:
 
         data = json.loads(out)
         assert data["version"] == 1
-        assert data["format"] == "wt-memory-export"
+        assert data["format"] == "set-memory-export"
         assert data["project"] == "test-proj"
         assert "exported_at" in data
         assert data["count"] == 3
@@ -119,7 +119,7 @@ class TestExport:
 
         data = json.loads(out)
         assert data["version"] == 1
-        assert data["format"] == "wt-memory-export"
+        assert data["format"] == "set-memory-export"
         assert data["count"] == 0
         assert data["records"] == []
 
@@ -378,7 +378,7 @@ class TestInvalidFile:
         """Unknown version returns error."""
         bad = str(tmp_path / "v99.json")
         with open(bad, "w") as f:
-            json.dump({"version": 99, "format": "wt-memory-export", "records": []}, f)
+            json.dump({"version": 99, "format": "set-memory-export", "records": []}, f)
 
         out, rc = run_wt(storage_a, "import", bad)
         assert rc != 0

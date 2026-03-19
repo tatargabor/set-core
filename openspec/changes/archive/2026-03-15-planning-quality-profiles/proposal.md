@@ -9,7 +9,7 @@ E2E run #13 revealed that agents produce code requiring multiple review retries 
 A **complete project-type plugin system already exists** across 3 repos:
 
 ```
-wt-project-base (pip package)           wt-project-web (pip package)
+set-project-base (pip package)           set-project-web (pip package)
 ├── ProjectType ABC                      ├── WebProjectType(BaseProjectType)
 │   ├── info()                           │   ├── 11 verification rules (i18n, auth, prisma...)
 │   ├── get_templates()                  │   ├── 7 orchestration directives
@@ -21,16 +21,16 @@ wt-project-base (pip package)           wt-project-web (pip package)
 └── Python entry_points registration     └── extends base via inheritance
 ```
 
-`wt-project init --project-type web` correctly loads and deploys these. **But the orchestration engine ignores them entirely** and uses its own hardcoded web patterns:
+`set-project init --project-type web` correctly loads and deploys these. **But the orchestration engine ignores them entirely** and uses its own hardcoded web patterns:
 
 | Engine file | What's hardcoded | Plugin equivalent (unused) |
 |-------------|-----------------|---------------------------|
-| `templates.py:244-344` | Playwright E2E, auth middleware, IDOR in `_PLANNING_RULES` | `wt-project-web` security.md, auth-conventions.md, testing-conventions.md |
-| `dispatcher.py:46-60` | `LOCKFILE_PM_MAP`, `pnpm install`, `GENERATED_FILE_PATTERNS` | `wt-project-base` orchestration directives |
+| `templates.py:244-344` | Playwright E2E, auth middleware, IDOR in `_PLANNING_RULES` | `set-project-web` security.md, auth-conventions.md, testing-conventions.md |
+| `dispatcher.py:46-60` | `LOCKFILE_PM_MAP`, `pnpm install`, `GENERATED_FILE_PATTERNS` | `set-project-base` orchestration directives |
 | `planner.py:164-195` | `_auto_detect_test_command()` reads `package.json` | Should be profile method |
-| `verifier.py:136-174` | `_load_web_security_rules()` hardcoded to `rules/web/` | `wt-project-web` verification rules |
+| `verifier.py:136-174` | `_load_web_security_rules()` hardcoded to `rules/web/` | `set-project-web` verification rules |
 | `builder.py:190-225` | `_detect_build_cmd()` reads `package.json` | Should be profile method |
-| `merger.py:562-611` | `_install_post_merge_deps()` pnpm/yarn/npm only | `wt-project-base` `install-deps-npm` directive |
+| `merger.py:562-611` | `_install_post_merge_deps()` pnpm/yarn/npm only | `set-project-base` `install-deps-npm` directive |
 | `milestone.py:353-376` | PM detection + install (duplicated) | Same — duplicated 5 times across engine |
 | `config.py:560-619` | PM detection + test command (duplicated) | Same |
 | `bin/wt-merge:47-59` | `GENERATED_FILE_PATTERNS` (Node.js only) | Should come from profile |
@@ -41,7 +41,7 @@ wt-project-base (pip package)           wt-project-web (pip package)
 
 ### Problem 3: Self-use vs consumer rules conflated
 
-wt-tools is itself a web application (wt-control dashboard, API endpoints). Its own `.claude/rules/web/` are needed for self-development — but these same rules also get deployed to consumer projects via `deploy.sh`, even though consumer projects already get rules from `wt-project-web` templates.
+set-core is itself a web application (wt-control dashboard, API endpoints). Its own `.claude/rules/web/` are needed for self-development — but these same rules also get deployed to consumer projects via `deploy.sh`, even though consumer projects already get rules from `set-project-web` templates.
 
 ### Evidence from E2E runs
 
@@ -69,11 +69,11 @@ The goal is not just to move existing rules earlier, but to **discover what patt
 ### Phase 1: Research & Analysis
 - Research OWASP/SANS/NIST standards for which security patterns are most effective as "shift-left" planning context
 - Analyze all 13 E2E runs to categorize: what did agents get wrong, what did review catch, what could planning have prevented
-- Audit `wt-project-web` existing rules (13 rule files in templates/nextjs/rules/) for completeness vs our hardcoded patterns
+- Audit `set-project-web` existing rules (13 rule files in templates/nextjs/rules/) for completeness vs our hardcoded patterns
 - Design the bridge between existing plugin interface and orchestration engine
 
 ### Phase 2: Extend ProjectType Interface
-The existing `ProjectType` ABC in `wt-project-base` has `get_verification_rules()` and `get_orchestration_directives()`. It needs new methods for orchestration engine integration:
+The existing `ProjectType` ABC in `set-project-base` has `get_verification_rules()` and `get_orchestration_directives()`. It needs new methods for orchestration engine integration:
 
 - `planning_rules() -> str` — quality patterns for the decompose prompt (security, architecture, testing)
 - `security_rules() -> List[Path]` — rule files for review retry context
@@ -86,7 +86,7 @@ The existing `ProjectType` ABC in `wt-project-base` has `get_verification_rules(
 - `ignore_patterns() -> List[str]` — for digest generation (node_modules, venv, etc.)
 
 ### Phase 3: Connect Engine to Plugin System
-- **New `lib/wt_orch/profile_loader.py`** — loads the active profile from `wt/plugins/project-type.yaml` via Python entry_points (same mechanism `wt-project init` uses)
+- **New `lib/set_orch/profile_loader.py`** — loads the active profile from `wt/plugins/project-type.yaml` via Python entry_points (same mechanism `set-project init` uses)
 - Replace hardcoded patterns in engine files with profile method calls:
   - `templates.py` — `_PLANNING_RULES` split into core + `profile.planning_rules()`
   - `dispatcher.py` — `LOCKFILE_PM_MAP`, `GENERATED_FILE_PATTERNS`, bootstrap → profile methods
@@ -117,24 +117,24 @@ The existing `ProjectType` ABC in `wt-project-base` has `get_verification_rules(
 
 ### Phase 6: Separate Self-Use vs Deploy Rules
 
-**Critical distinction**: wt-tools' own `.claude/rules/web/` stay — they're for developing wt-tools itself (wt-control dashboard, API endpoints). Consumer rules come from `wt-project-web` templates.
+**Critical distinction**: set-core' own `.claude/rules/web/` stay — they're for developing set-core itself (wt-control dashboard, API endpoints). Consumer rules come from `set-project-web` templates.
 
 ```
-wt-tools/.claude/rules/web/        ← STAYS: wt-tools' own dev rules
+set-core/.claude/rules/web/        ← STAYS: set-core' own dev rules
                                       (auth-middleware.md, security-patterns.md, api-design.md)
 
-wt-project-web/templates/nextjs/   ← ALREADY EXISTS: consumer rules
+set-project-web/templates/nextjs/   ← ALREADY EXISTS: consumer rules
   rules/security.md                   (CSP, CORS, rate limiting, input validation)
   rules/auth-conventions.md           (NextAuth, roles, middleware)
   rules/testing-conventions.md        (Playwright, Jest patterns)
   rules/...                           (13 rule files)
 ```
 
-- `deploy.sh` stops deploying wt-tools' own `.claude/rules/web/` to consumer projects
-- Consumer rules come exclusively from `wt-project-web` templates (already working via `wt-project init`)
+- `deploy.sh` stops deploying set-core' own `.claude/rules/web/` to consumer projects
+- Consumer rules come exclusively from `set-project-web` templates (already working via `set-project init`)
 - Engine loads security rules from profile path, not hardcoded `rules/web/`
 
-### Phase 7: Implement in wt-project-web
+### Phase 7: Implement in set-project-web
 - Add new methods to `WebProjectType`:
   - `planning_rules()` — based on research output + existing templates/nextjs/rules/ content
   - `security_rules()` — points to templates/nextjs/rules/security.md + auth-conventions.md
@@ -159,31 +159,31 @@ wt-project-web/templates/nextjs/   ← ALREADY EXISTS: consumer rules
 - `change-dispatch`: `dispatch_change()` uses profile for PM detection, bootstrap, security context
 - `code-review-verification`: `_load_web_security_rules()` uses profile's `security_rules()` instead of hardcoded path
 - `merge-pipeline`: Post-merge install uses profile's `post_merge_install()`
-- `project-deployment`: `deploy.sh` stops deploying wt-tools' own rules to consumer projects
+- `project-deployment`: `deploy.sh` stops deploying set-core' own rules to consumer projects
 - `worktree-bootstrap`: `bin/wt-new` uses profile's `bootstrap_worktree()` instead of hardcoded PM detection
 
 ## Impact
 
-### wt-tools (this repo)
-- **New**: `lib/wt_orch/profile_loader.py` — loads active profile from `wt/plugins/project-type.yaml`
-- **Modified**: `lib/wt_orch/templates.py` — split `_PLANNING_RULES` into core + `profile.planning_rules()`
-- **Modified**: `lib/wt_orch/dispatcher.py` — PM detection, bootstrap, proposal enrichment → profile methods
-- **Modified**: `lib/wt_orch/planner.py` — test command detection → profile method
-- **Modified**: `lib/wt_orch/verifier.py` — security rules → profile method
-- **Modified**: `lib/wt_orch/builder.py` — build command detection → profile method
-- **Modified**: `lib/wt_orch/merger.py` — post-merge install → profile method
-- **Modified**: `lib/wt_orch/milestone.py` — PM detection → profile method
-- **Modified**: `lib/wt_orch/config.py` — PM + test + build detection → profile methods
-- **Modified**: `lib/wt_orch/digest.py` — ignore patterns → includes profile patterns
+### set-core (this repo)
+- **New**: `lib/set_orch/profile_loader.py` — loads active profile from `wt/plugins/project-type.yaml`
+- **Modified**: `lib/set_orch/templates.py` — split `_PLANNING_RULES` into core + `profile.planning_rules()`
+- **Modified**: `lib/set_orch/dispatcher.py` — PM detection, bootstrap, proposal enrichment → profile methods
+- **Modified**: `lib/set_orch/planner.py` — test command detection → profile method
+- **Modified**: `lib/set_orch/verifier.py` — security rules → profile method
+- **Modified**: `lib/set_orch/builder.py` — build command detection → profile method
+- **Modified**: `lib/set_orch/merger.py` — post-merge install → profile method
+- **Modified**: `lib/set_orch/milestone.py` — PM detection → profile method
+- **Modified**: `lib/set_orch/config.py` — PM + test + build detection → profile methods
+- **Modified**: `lib/set_orch/digest.py` — ignore patterns → includes profile patterns
 - **Modified**: `bin/wt-merge` — generated file patterns → profile config
 - **Modified**: `bin/wt-new` — bootstrap → profile method
 - **Modified**: `lib/project/deploy.sh` — stop deploying own rules, only profile rules
-- **Kept**: `.claude/rules/web/*.md` — wt-tools' own dev rules stay (wt-tools is itself a web app)
+- **Kept**: `.claude/rules/web/*.md` — set-core' own dev rules stay (set-core is itself a web app)
 
-### wt-project-base (separate repo)
+### set-project-base (separate repo)
 - **Modified**: `base.py` — add new abstract methods to `ProjectType` ABC (with default no-op implementations for backward compat)
 
-### wt-project-web (separate repo)
+### set-project-web (separate repo)
 - **Modified**: `project_type.py` — implement new methods in `WebProjectType`
 - **Research output**: Document which OWASP/SANS patterns are most effective in planning vs dispatch vs review, backed by E2E run data
 

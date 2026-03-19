@@ -1,7 +1,7 @@
 ## 1. Skill Tracking Infrastructure
 
 - [x] 1.1 Create bin/wt-skill-start helper script
-- [x] 1.2 Update bin/wt-status to read skill from .wt-tools/current_skill
+- [x] 1.2 Update bin/wt-status to read skill from .set-core/current_skill
 - [x] 1.3 Add skill name to wt-status JSON output (replace PID)
 - [x] 1.4 Update status display in wt-status human-readable output
 

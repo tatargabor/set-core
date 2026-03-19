@@ -5,7 +5,7 @@ The `shodh-memory-integration` change manually added memory hooks to 5 OpenSpec 
 ## Goals / Non-Goals
 
 **Goals:**
-- Idempotent `wt-memory-hooks install/check/remove` CLI for hook lifecycle management
+- Idempotent `set-memory-hooks install/check/remove` CLI for hook lifecycle management
 - `/wt:memory` slash command for agents to interact with memory
 - GUI integration: "Install Memory Hooks" menu action, auto-reinstall after openspec update
 - Hook status visible in FeatureWorker cache and [M] button tooltip
@@ -18,8 +18,8 @@ The `shodh-memory-integration` change manually added memory hooks to 5 OpenSpec 
 ## Decisions
 
 ### 1. Marker-based patching over diff/patch
-Hook sections are wrapped in marker comments (`<!-- wt-memory hooks start -->` / `<!-- wt-memory hooks end -->`). This allows:
-- Reliable detection: `grep -q "wt-memory hooks start"` → instant check
+Hook sections are wrapped in marker comments (`<!-- set-memory hooks start -->` / `<!-- set-memory hooks end -->`). This allows:
+- Reliable detection: `grep -q "set-memory hooks start"` → instant check
 - Clean removal: delete between markers
 - Idempotent install: skip if markers present
 - No dependency on `patch` or diff tooling
@@ -27,7 +27,7 @@ Hook sections are wrapped in marker comments (`<!-- wt-memory hooks start -->` /
 Alternative: `git apply` patches — fragile when SKILL.md content changes between openspec versions.
 
 ### 2. Hardcoded hook templates in the script
-Each of the 5 SKILL.md files gets a specific hook template stored as a heredoc in `wt-memory-hooks`. The templates match the exact patterns from shodh-memory-integration.
+Each of the 5 SKILL.md files gets a specific hook template stored as a heredoc in `set-memory-hooks`. The templates match the exact patterns from shodh-memory-integration.
 
 Alternative: External template files — adds complexity with no benefit since hooks rarely change.
 
@@ -42,13 +42,13 @@ Strategy: Find the step N header line, then insert the hook block on the next bl
 - `openspec-archive-change`: before guardrails → insert step 7
 
 ### 4. Auto-reinstall via chained command in _run_openspec_action
-After `wt-openspec update --force` completes, `_run_openspec_action` checks if memory hooks were previously installed (via `wt-memory-hooks check --json`). If yes, it runs `wt-memory-hooks install` automatically, showing both commands in the CommandOutputDialog.
+After `wt-openspec update --force` completes, `_run_openspec_action` checks if memory hooks were previously installed (via `set-memory-hooks check --json`). If yes, it runs `set-memory-hooks install` automatically, showing both commands in the CommandOutputDialog.
 
 ### 5. /wt:memory as a simple command file
 `.claude/commands/wt/memory.md` follows the same pattern as `wt/msg.md`, `wt/broadcast.md` — a markdown file describing what the agent should do with `$ARGUMENTS` parsing. No new infrastructure needed.
 
 ## Risks / Trade-offs
 
-- **Hook content drift**: If openspec significantly restructures SKILL.md step numbering, insertion points may break. → Mitigation: `wt-memory-hooks check` detects partial installation; step anchors use semantic patterns not just numbers.
+- **Hook content drift**: If openspec significantly restructures SKILL.md step numbering, insertion points may break. → Mitigation: `set-memory-hooks check` detects partial installation; step anchors use semantic patterns not just numbers.
 - **Openspec version compatibility**: Future openspec versions may change SKILL.md format. → Mitigation: Marker-based detection is format-agnostic; only insertion logic depends on structure.
-- **Auto-reinstall timing**: If `wt-memory-hooks install` fails after `wt-openspec update`, hooks are silently lost. → Mitigation: FeatureWorker's next poll detects missing hooks and updates [M] tooltip.
+- **Auto-reinstall timing**: If `set-memory-hooks install` fails after `wt-openspec update`, hooks are silently lost. → Mitigation: FeatureWorker's next poll detects missing hooks and updates [M] tooltip.

@@ -55,11 +55,11 @@ The system SHALL remove orphan marker files for PIDs that no longer exist as run
 
 ### Requirement: Marker file storage
 
-The system SHALL store orphan detection state in `.wt-tools/orphan-detect/<pid>` files within each worktree directory. Each file SHALL contain `<first_seen_timestamp>:<count>`.
+The system SHALL store orphan detection state in `.set-core/orphan-detect/<pid>` files within each worktree directory. Each file SHALL contain `<first_seen_timestamp>:<count>`.
 
 #### Scenario: Marker file format
 - **WHEN** an orphan agent with PID 12345 is first detected at Unix timestamp 1707400000
-- **THEN** the file `.wt-tools/orphan-detect/12345` is created with content `1707400000:1`
+- **THEN** the file `.set-core/orphan-detect/12345` is created with content `1707400000:1`
 
 #### Scenario: Marker file update
 - **WHEN** the same agent is detected as orphan again

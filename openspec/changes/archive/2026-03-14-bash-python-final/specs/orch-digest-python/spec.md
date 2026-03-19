@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
 ### Requirement: Python digest orchestration
-The system SHALL provide a Python implementation of the full spec digestion pipeline in `lib/wt_orch/digest.py`, callable via `wt-orch-core digest run`. The implementation SHALL replicate all behavior of `cmd_digest()` in `digest.sh`.
+The system SHALL provide a Python implementation of the full spec digestion pipeline in `lib/set_orch/digest.py`, callable via `set-orch-core digest run`. The implementation SHALL replicate all behavior of `cmd_digest()` in `digest.sh`.
 
 #### Scenario: Full digest run
-- **WHEN** `wt-orch-core digest run --state-file <path> --spec-dir <dir>` is invoked
+- **WHEN** `set-orch-core digest run --state-file <path> --spec-dir <dir>` is invoked
 - **THEN** the system scans the spec directory, calls Claude API for analysis, writes digest output files (index.json, requirements.json), and updates state
 
 #### Scenario: Freshness check skips re-digest
@@ -52,8 +52,8 @@ The system SHALL provide `populate_coverage()`, `check_coverage_gaps()`, and `up
 - **THEN** the gaps are reported with requirement IDs and descriptions
 
 ### Requirement: Bash digest.sh becomes thin wrapper
-After migration, `digest.sh` SHALL contain only a source guard and delegation to `wt-orch-core digest run`, passing through all arguments. All active logic SHALL be removed.
+After migration, `digest.sh` SHALL contain only a source guard and delegation to `set-orch-core digest run`, passing through all arguments. All active logic SHALL be removed.
 
 #### Scenario: Thin wrapper delegation
 - **WHEN** `cmd_digest()` is called in bash
-- **THEN** it delegates to `wt-orch-core digest run` with equivalent arguments
+- **THEN** it delegates to `set-orch-core digest run` with equivalent arguments

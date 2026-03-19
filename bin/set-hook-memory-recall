@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# set-hook-memory-recall - Backward-compatible wrapper
+# Delegates to unified handler: set-hook-memory UserPromptSubmit
+exec set-hook-memory UserPromptSubmit

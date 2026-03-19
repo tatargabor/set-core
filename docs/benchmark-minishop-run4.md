@@ -1,7 +1,7 @@
 # Benchmark: MiniShop E2E — Run #4
 
 > Fully autonomous Next.js webshop built from spec to merged, tested code.
-> **Zero human intervention.** 2026-03-09, wt-tools on Claude Opus 4.6.
+> **Zero human intervention.** 2026-03-09, set-core on Claude Opus 4.6.
 
 ## Summary
 
@@ -161,7 +161,7 @@ First 2 merges triggered prisma client build errors on main — the auto-fix mec
 | #2 | Functional test planning in planner | Per-change test specs generated |
 | #3 | Pre-merge Playwright gate, PW_PORT randomization | E2E tests run in worktrees |
 | #3 | NEVER e2e-consolidation planner rule | No standalone E2E change |
-| #3 | package.json jq deep-merge in wt-merge | Merge conflicts resolved |
+| #3 | package.json jq deep-merge in set-merge | Merge conflicts resolved |
 | #3 | done-state transition in monitor | Orchestrator exits cleanly |
 | #4 | All above + speed optimizations | **Fully autonomous, zero interventions** |
 
@@ -170,14 +170,14 @@ First 2 merges triggered prisma client build errors on main — the auto-fix mec
 ## Architecture Used
 
 ```
-wt-sentinel
-  ├── wt-orchestrate start --spec docs/v1-minishop.md
+set-sentinel
+  ├── set-orchestrate start --spec docs/v1-minishop.md
   │     ├── Planner (Claude Opus) → 6 changes, dependency graph
   │     ├── Dispatcher → git worktree per change
   │     ├── Ralph Loop (Claude Opus) → OpenSpec: proposal → design → spec → tasks → code
   │     ├── Watchdog → PID guard, hash-based stall detection
   │     ├── Verify Gate → Jest + build + Playwright E2E + OpenSpec verify
-  │     ├── wt-merge → fast-forward or 3-way merge + jq deep-merge
+  │     ├── set-merge → fast-forward or 3-way merge + jq deep-merge
   │     ├── Post-merge → sync parallel branches, smoke test, build verify
   │     └── Auto-replan → confirms all work done, exits
   └── TUI Dashboard (orchestrator_tui.py)
@@ -220,7 +220,7 @@ auto_replan: true
 
 ## Screenshots
 
-Captured automatically by `wt-e2e-report` from the running app after all changes merged.
+Captured automatically by `set-e2e-report` from the running app after all changes merged.
 
 | Page | Screenshot |
 |---|---|
@@ -230,22 +230,22 @@ Captured automatically by `wt-e2e-report` from the running app after all changes
 | Admin dashboard | ![admin-dashboard](../tests/e2e/screenshots/admin-dashboard.png) |
 | Admin product management | ![admin-products](../tests/e2e/screenshots/admin-products.png) |
 
-> **Note:** Cart page screenshot excluded — runtime cookie error in client component (minishop app bug, not wt-tools).
+> **Note:** Cart page screenshot excluded — runtime cookie error in client component (minishop app bug, not set-core).
 
 ---
 
 ## Reproducing This Benchmark
 
 ```bash
-# Prerequisites: wt-tools installed, wt-project-web plugin, pnpm, node
-cd /path/to/wt-tools
+# Prerequisites: set-core installed, set-project-web plugin, pnpm, node
+cd /path/to/set-core
 
 # Initialize fresh project
 ./tests/e2e/run.sh /tmp/minishop-e2e
 
 # Start autonomous execution
 cd /tmp/minishop-e2e
-wt-sentinel --spec docs/v1-minishop.md
+set-sentinel --spec docs/v1-minishop.md
 
 # Monitor (in another terminal)
 tail -f .claude/orchestration.log

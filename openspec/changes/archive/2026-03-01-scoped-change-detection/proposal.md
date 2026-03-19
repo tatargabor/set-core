@@ -7,7 +7,7 @@ The Ralph loop's `detect_next_change_action()` in `wt-loop` scans ALL OpenSpec c
 - Add `--change <name>` flag to `wt-loop start` that gets stored in `loop-state.json`
 - Modify `detect_next_change_action()` to accept an optional change name parameter — when provided, only inspect that single change; when absent, **skip detection entirely** (let the user's task prompt and OpenSpec skills handle selection)
 - Modify `build_prompt()` to pass the stored change name to the detect function
-- Modify `wt-orchestrate` `dispatch_change()` to pass `--change "$change_name"` when starting the Ralph loop
+- Modify `set-orchestrate` `dispatch_change()` to pass `--change "$change_name"` when starting the Ralph loop
 
 ## Capabilities
 
@@ -20,5 +20,5 @@ The Ralph loop's `detect_next_change_action()` in `wt-loop` scans ALL OpenSpec c
 ## Impact
 
 - `bin/wt-loop`: `detect_next_change_action()`, `build_prompt()`, `cmd_start()`, `init_loop_state()`
-- `bin/wt-orchestrate`: `dispatch_change()` (one-line addition of `--change` flag)
+- `bin/set-orchestrate`: `dispatch_change()` (one-line addition of `--change` flag)
 - Solo Ralph loop behavior changes: without `--change`, detection no longer runs — the agent relies on its task prompt and OpenSpec skill auto-selection instead of hardcoded alphabetical scanning

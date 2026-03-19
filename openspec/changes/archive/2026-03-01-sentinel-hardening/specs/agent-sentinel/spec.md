@@ -4,13 +4,13 @@
 The `/wt:sentinel` skill SHALL start and supervise an orchestration run as a Claude agent session.
 
 #### Scenario: Start orchestration
-- **WHEN** the user invokes `/wt:sentinel` with optional wt-orchestrate arguments
-- **THEN** the agent SHALL start `wt-orchestrate start` in background via Bash tool
+- **WHEN** the user invokes `/wt:sentinel` with optional set-orchestrate arguments
+- **THEN** the agent SHALL start `set-orchestrate start` in background via Bash tool
 - **AND** enter a poll loop checking orchestration-state.json every 15 seconds
 
 #### Scenario: Pass arguments through
 - **WHEN** the user invokes `/wt:sentinel --spec docs/v5.md --max-parallel 3`
-- **THEN** the agent SHALL pass all arguments to `wt-orchestrate start`
+- **THEN** the agent SHALL pass all arguments to `set-orchestrate start`
 
 ### Requirement: Poll loop with event detection
 The sentinel poll loop SHALL run in bash, returning control to the agent only when a decision is needed.

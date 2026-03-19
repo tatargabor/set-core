@@ -1,6 +1,6 @@
 ## Context
 
-The wt-orchestrate pipeline processes changes in dependency order. When a change fails (implementation issues, budget exhaustion, spec problems), it becomes a terminal state — but `deps_satisfied()` only accepts `"merged"` as a satisfying status. This means any change downstream of a failure is permanently blocked, even if the failed change was a leaf or non-critical feature.
+The set-orchestrate pipeline processes changes in dependency order. When a change fails (implementation issues, budget exhaustion, spec problems), it becomes a terminal state — but `deps_satisfied()` only accepts `"merged"` as a satisfying status. This means any change downstream of a failure is permanently blocked, even if the failed change was a leaf or non-critical feature.
 
 Currently the operator's only options are: fix the failing change, manually edit the state JSON, or restart the entire orchestration. A clean skip mechanism is needed.
 
@@ -8,7 +8,7 @@ Key files:
 - `lib/orchestration/state.sh` — `deps_satisfied()` (line 160), `deps_failed()` (line 181), `cascade_failed_deps()` (line 202)
 - `lib/orchestration/monitor.sh` — completion check (lines 320-344)
 - `lib/orchestration/reporter.sh` — CSS classes (lines 49-57), status rendering
-- `bin/wt-orchestrate` — subcommand dispatch (lines 605-636)
+- `bin/set-orchestrate` — subcommand dispatch (lines 605-636)
 
 ## Goals / Non-Goals
 
@@ -38,7 +38,7 @@ Change the check from `!= "merged"` to `!= "merged" && != "skipped"`. This is th
 When skipping, store `skip_reason` (optional operator-provided text) and `skipped_at` (ISO timestamp) on the change object. This provides audit trail without adding complexity.
 
 ### D4: CLI command structure
-`wt-orchestrate skip <name> [--reason "text"]` — follows existing pattern of `cmd_pause`, `cmd_resume`. Validates that the change exists and is in a skippable status (failed, pending, stalled, merge-blocked, build-blocked, verify-failed). Refuses to skip running/verifying changes (must pause first).
+`set-orchestrate skip <name> [--reason "text"]` — follows existing pattern of `cmd_pause`, `cmd_resume`. Validates that the change exists and is in a skippable status (failed, pending, stalled, merge-blocked, build-blocked, verify-failed). Refuses to skip running/verifying changes (must pause first).
 
 ### D5: Reporter amber styling
 Use `#ff9800` (amber/orange — same as running) would be confusing. Use `#ffc107` (distinct amber/yellow) for `.status-skipped`. Summary row shows skipped count separately: "3 merged, 1 skipped, 1 failed".

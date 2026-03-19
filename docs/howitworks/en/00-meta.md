@@ -1,5 +1,5 @@
 ---
-title: "wt-orchestrate"
+title: "set-orchestrate"
 subtitle: "How It Works — The Complete Orchestration Pipeline"
 date: "March 2026"
 lang: en

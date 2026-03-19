@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test helpers for wt-tools
+# Unit test helpers for set-core
 # Usage: source this file, define test_* functions, call run_tests at end
 
 _TEST_PASS=0

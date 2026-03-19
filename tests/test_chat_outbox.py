@@ -15,7 +15,7 @@ import pytest
 @pytest.fixture
 def outbox_env(tmp_path):
     """Create a temporary outbox environment"""
-    control_dir = tmp_path / ".wt-control"
+    control_dir = tmp_path / ".set-control"
     chat_dir = control_dir / "chat"
     outbox_dir = chat_dir / "outbox"
     members_dir = control_dir / "members"
@@ -122,7 +122,7 @@ class TestMigration:
         ]
         legacy.write_text("\n".join(json.dumps(m) for m in msgs) + "\n")
 
-        # Simulate migration logic (same as in wt-control-chat)
+        # Simulate migration logic (same as in set-control-chat)
         assert legacy.exists()
         assert not outbox.exists()
 
@@ -203,7 +203,7 @@ class TestBatchedDelivery:
 
     def test_sync_would_pick_up_outbox_changes(self, outbox_env):
         """Verify git add -A would include outbox changes"""
-        # This is a structural verification — git add -A in wt-control-sync
+        # This is a structural verification — git add -A in set-control-sync
         # includes chat/outbox/ since it adds ALL changes
         outbox = outbox_env["outbox_dir"]
         outbox.mkdir(parents=True)

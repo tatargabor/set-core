@@ -5,10 +5,10 @@ import os
 
 import pytest
 
-from wt_orch.sentinel.events import SentinelEventLogger
-from wt_orch.sentinel.findings import SentinelFindings
-from wt_orch.sentinel.status import SentinelStatus
-from wt_orch.sentinel.inbox import check_inbox, write_to_inbox
+from set_orch.sentinel.events import SentinelEventLogger
+from set_orch.sentinel.findings import SentinelFindings
+from set_orch.sentinel.status import SentinelStatus
+from set_orch.sentinel.inbox import check_inbox, write_to_inbox
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ The messaging system (wt-control-chat) exists but the sentinel doesn't poll for 
 
 ### Current architecture
 ```
-Bash sentinel (bin/wt-sentinel)     Agent sentinel (/wt:sentinel skill)
+Bash sentinel (bin/set-sentinel)     Agent sentinel (/wt:sentinel skill)
 ├── 10s poll via kill -0             ├── 30s poll via background bash
 ├── mtime-based liveness            ├── State.json-based decisions
 ├── 2 event types to JSONL          ├── Unstructured terminal output
@@ -34,11 +34,11 @@ Bash sentinel (bin/wt-sentinel)     Agent sentinel (/wt:sentinel skill)
 
 ### 1. Python library with CLI wrappers
 
-**Decision:** New `lib/wt_orch/sentinel/` package with CLI entry points.
+**Decision:** New `lib/set_orch/sentinel/` package with CLI entry points.
 
 **Why not just prompt changes?** The agent sentinel skill could theoretically be updated to write JSON files directly via bash commands. But: (a) the bash sentinel also needs the same capability, (b) structured JSON manipulation in bash is fragile, (c) Python gives us proper file locking, atomic writes, and testability.
 
-**Why not just Python (no CLI)?** The bash sentinel (`bin/wt-sentinel`) is 560 lines of battle-tested bash. Rewriting it in Python is out of scope. CLI wrappers let bash call Python for structured operations while keeping its process supervision logic.
+**Why not just Python (no CLI)?** The bash sentinel (`bin/set-sentinel`) is 560 lines of battle-tested bash. Rewriting it in Python is out of scope. CLI wrappers let bash call Python for structured operations while keeping its process supervision logic.
 
 **Alternative considered:** Node.js — rejected because the rest of the backend is Python (FastAPI).
 
@@ -71,7 +71,7 @@ Agent (30s poll): sleep 3 → inbox → sleep 3 → ... (10x) → state poll
 
 ### 5. `.wt/sentinel/` directory
 
-**Decision:** All sentinel runtime data lives under `.wt/sentinel/` in the project root, gitignored via `/.wt/`.
+**Decision:** All sentinel runtime data lives under `.wt/sentinel/` in the project root, gitignored via `/.set/`.
 
 **Why `.wt/` and not `.claude/sentinel/`?** `.claude/` is for configuration (settings, commands, skills, rules). Runtime data mixed with config causes the gitignore fragmentation problem we already encountered. `.wt/` is the new convention for runtime-only data.
 
@@ -86,7 +86,7 @@ Agent (30s poll): sleep 3 → inbox → sleep 3 → ... (10x) → state poll
 ## Module structure
 
 ```
-lib/wt_orch/sentinel/
+lib/set_orch/sentinel/
 ├── __init__.py           # Package init, convenience imports
 ├── events.py             # SentinelEventLogger class
 ├── findings.py           # SentinelFindings class
@@ -95,12 +95,12 @@ lib/wt_orch/sentinel/
 └── rotation.py           # rotate() — archive events + findings for new run
 
 bin/
-├── wt-sentinel           # (existing) bash sentinel — modified to call CLI tools
-├── wt-sentinel-log       # CLI: event logging
-├── wt-sentinel-finding   # CLI: findings CRUD
-├── wt-sentinel-inbox     # CLI: inbox check
-├── wt-sentinel-status    # CLI: status management
-└── wt-sentinel-rotate    # CLI: run rotation
+├── set-sentinel           # (existing) bash sentinel — modified to call CLI tools
+├── set-sentinel-log       # CLI: event logging
+├── set-sentinel-finding   # CLI: findings CRUD
+├── set-sentinel-inbox     # CLI: inbox check
+├── set-sentinel-status    # CLI: status management
+└── set-sentinel-rotate    # CLI: run rotation
 
 web/src/components/
 └── SentinelPanel.tsx      # Sentinel tab component
@@ -108,7 +108,7 @@ web/src/components/
 web/src/hooks/
 └── useSentinelData.ts     # Polling hook for sentinel REST endpoints
 
-lib/wt_orch/
+lib/set_orch/
 └── api.py                 # (existing) — add sentinel REST endpoints
 ```
 
@@ -117,10 +117,10 @@ lib/wt_orch/
 ```
 ┌─ Sentinel (terminal) ───────────────────────────────┐
 │                                                      │
-│  State poll (15-30s)  ──► wt-sentinel-log poll ...   │
-│  Crash detected       ──► wt-sentinel-log crash ...  │
-│  Finding discovered   ──► wt-sentinel-finding add .. │
-│  Inbox check (3-5s)   ──► wt-sentinel-inbox check    │
+│  State poll (15-30s)  ──► set-sentinel-log poll ...   │
+│  Crash detected       ──► set-sentinel-log crash ...  │
+│  Finding discovered   ──► set-sentinel-finding add .. │
+│  Inbox check (3-5s)   ──► set-sentinel-inbox check    │
 │                            │                         │
 │  All CLI tools call ───────┘                         │
 │  Python library which                                │
@@ -156,7 +156,7 @@ lib/wt_orch/
 - **[Risk] File locking on concurrent writes** → Mitigation: only one sentinel writes at a time (enforced by existing flock in bash sentinel). The wt-web backend only reads.
 - **[Risk] events.jsonl grows indefinitely** → Mitigation: rotation on new run. For very long runs, the wt-web `since` filter avoids loading the entire file.
 - **[Risk] Inbox check overhead in tight loop** → Mitigation: it's a single file stat + read, <1ms. Even at 3s intervals this is negligible.
-- **[Risk] Backward compatibility** → Mitigation: all changes are additive. Existing sentinel behavior is preserved. If CLI tools aren't available (old wt-tools version), sentinel falls back to current behavior.
+- **[Risk] Backward compatibility** → Mitigation: all changes are additive. Existing sentinel behavior is preserved. If CLI tools aren't available (old set-core version), sentinel falls back to current behavior.
 
 ## Open Questions
 

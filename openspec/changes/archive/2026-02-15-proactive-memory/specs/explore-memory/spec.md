@@ -1,22 +1,22 @@
 ## ADDED Requirements
 
 ### Requirement: Recall at explore start
-The `/opsx:explore` skill SHALL check `wt-memory health` at the beginning of an explore session. If healthy, it SHALL run `wt-memory recall` with the user's topic as query and use relevant memories to inform the exploration. If health fails, it SHALL skip silently.
+The `/opsx:explore` skill SHALL check `set-memory health` at the beginning of an explore session. If healthy, it SHALL run `set-memory recall` with the user's topic as query and use relevant memories to inform the exploration. If health fails, it SHALL skip silently.
 
 #### Scenario: Explore with relevant past memories
 - **WHEN** user starts `/opsx:explore redis caching options` and memories exist about Redis
-- **THEN** the agent runs `wt-memory recall "redis caching options" --limit 5` and incorporates relevant results (e.g., "Note: Past memory found — Redis was too slow for per-request caching in this project")
+- **THEN** the agent runs `set-memory recall "redis caching options" --limit 5` and incorporates relevant results (e.g., "Note: Past memory found — Redis was too slow for per-request caching in this project")
 
 #### Scenario: Explore with no relevant memories
 - **WHEN** user starts `/opsx:explore` and no relevant memories match
 - **THEN** the agent proceeds normally without mentioning memory
 
 #### Scenario: Memory service unavailable
-- **WHEN** user starts `/opsx:explore` and `wt-memory health` fails
+- **WHEN** user starts `/opsx:explore` and `set-memory health` fails
 - **THEN** the agent skips recall silently and proceeds normally
 
 ### Requirement: Remember during exploration
-During an explore session, the agent SHALL recognize when the user shares knowledge worth preserving and save it using `wt-memory remember`. Recognition SHALL be language-independent — based on semantic intent, not keyword matching. The agent SHALL briefly confirm what was saved (one line) and continue the conversation.
+During an explore session, the agent SHALL recognize when the user shares knowledge worth preserving and save it using `set-memory remember`. Recognition SHALL be language-independent — based on semantic intent, not keyword matching. The agent SHALL briefly confirm what was saved (one line) and continue the conversation.
 
 #### Scenario: User shares negative experience (any language)
 - **WHEN** user says something expressing "we tried X and it didn't work" (in any language, e.g., "ezt már kipróbáltuk és nem volt jó", "we tried this and it was bad", "das haben wir probiert, hat nicht funktioniert")

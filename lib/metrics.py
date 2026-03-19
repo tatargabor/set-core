@@ -15,7 +15,7 @@ from pathlib import Path
 
 # --- Paths ---
 
-METRICS_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "wt-tools", "metrics")
+METRICS_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "set-core", "metrics")
 METRICS_DB = os.path.join(METRICS_DIR, "metrics.db")
 ENABLED_FLAG = os.path.join(METRICS_DIR, ".enabled")
 

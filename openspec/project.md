@@ -1,7 +1,7 @@
 # Project Context
 
 ## Purpose
-wt-tools - Git worktree management tools with Control Center GUI.
+set-core - Git worktree management tools with Control Center GUI.
 Manages multiple worktrees for parallel AI agent development.
 
 ## Tech Stack

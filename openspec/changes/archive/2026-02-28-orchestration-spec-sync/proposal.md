@@ -30,6 +30,6 @@ The orchestration system has evolved through 7 completed changes (orchestrator-l
 
 ## Impact
 
-- `bin/wt-orchestrate`: minor code fix in `init_state()` (boolean→integer), potential dead code removal
+- `bin/set-orchestrate`: minor code fix in `init_state()` (boolean→integer), potential dead code removal
 - `openspec/specs/`: 6+ new or updated main spec files
 - `openspec/changes/*/specs/`: delta specs corrected in archived changes (informational only)

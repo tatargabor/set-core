@@ -14,7 +14,7 @@
 
 ### Review default change
 
-- [x] In `bin/wt-orchestrate`, change `DEFAULT_REVIEW_BEFORE_MERGE="false"` to `DEFAULT_REVIEW_BEFORE_MERGE="true"`
+- [x] In `bin/set-orchestrate`, change `DEFAULT_REVIEW_BEFORE_MERGE="false"` to `DEFAULT_REVIEW_BEFORE_MERGE="true"`
 - [x] In `tests/test_wt_directory.sh` and `tests/orchestrator/test-orchestrate-integration.sh`, update the corresponding `DEFAULT_REVIEW_BEFORE_MERGE` values to `"true"`
 
 ### VERIFY_GATE event enrichment

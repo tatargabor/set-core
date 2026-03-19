@@ -3,13 +3,13 @@
 - [x] 1.1 Implement `_stop_raw_filter()` function in `bin/wt-hook-memory` — parse full JSONL transcript, apply word-count/pattern filters (user <15 chars, assistant <50 chars, system-reminder, repeated file reads)
 - [x] 1.2 Add change-name extraction from opsx/openspec skill invocations (reuse existing logic from `_stop_extract_from_transcript`)
 - [x] 1.3 Add context prefix formatting: `[session:<change>, turn N/total]` on each saved turn
-- [x] 1.4 Save filtered turns via `wt-memory remember` with tags `raw,phase:auto-extract,source:hook,change:<name>` — user turns as Context type, assistant turns as Learning type
+- [x] 1.4 Save filtered turns via `set-memory remember` with tags `raw,phase:auto-extract,source:hook,change:<name>` — user turns as Context type, assistant turns as Learning type
 
 ## 2. Stop Handler Rewrite
 
 - [x] 2.1 Replace `_stop_extract_from_transcript()` Haiku LLM flow with call to `_stop_raw_filter()`
 - [x] 2.2 Remove staging file logic (`_stop_commit_staged`, `.staged-extract-*` files, `.ts` timestamp files, debounce check)
-- [x] 2.3 Add one-time migration: commit any existing `.wt-tools/.staged-extract-*` files from previous Haiku sessions before switching to raw filter
+- [x] 2.3 Add one-time migration: commit any existing `.set-core/.staged-extract-*` files from previous Haiku sessions before switching to raw filter
 - [x] 2.4 Keep background execution pattern (disowned process) for the raw filter
 
 ## 3. PreToolUse Removal

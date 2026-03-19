@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, QTimer
 
 __all__ = ["CommandOutputDialog"]
 
-logger = logging.getLogger("wt-control.dialogs")
+logger = logging.getLogger("set-control.dialogs")
 
 
 class CommandOutputDialog(QDialog):

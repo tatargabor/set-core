@@ -1,4 +1,4 @@
-"""Tests for wt_orch.config."""
+"""Tests for set_orch.config."""
 
 import json
 import textwrap
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from wt_orch.config import (
+from set_orch.config import (
     DIRECTIVE_DEFAULTS,
     auto_detect_smoke_command,
     auto_detect_test_command,

@@ -14,6 +14,6 @@
 
 ### Testing
 
-- [x] Manual test: create orphaned lock dir (no pid file, age > 60s), verify `wt-memory status` succeeds
+- [x] Manual test: create orphaned lock dir (no pid file, age > 60s), verify `set-memory status` succeeds
 - [x] Manual test: create orphaned lock dir with dead PID file, verify auto-recovery
 - [x] Manual test: create lock dir with own PID (simulating active lock), verify timeout still works

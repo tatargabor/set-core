@@ -2,11 +2,11 @@
 
 ## Mi az orchestráció?
 
-A `wt-orchestrate` egy autonóm orchestrációs rendszer, amely egy szoftver-specifikációból kiindulva önállóan tervezi, végrehajtja és ellenőrzi a fejlesztési feladatokat. Az egész folyamat egyetlen paranccsal indul:
+A `set-orchestrate` egy autonóm orchestrációs rendszer, amely egy szoftver-specifikációból kiindulva önállóan tervezi, végrehajtja és ellenőrzi a fejlesztési feladatokat. Az egész folyamat egyetlen paranccsal indul:
 
 ```bash
-wt-orchestrate --spec docs/v3.md plan
-wt-orchestrate start
+set-orchestrate --spec docs/v3.md plan
+set-orchestrate start
 ```
 
 A rendszer ezt követően:
@@ -40,10 +40,10 @@ Az L1 és L2 rétegek a "gondolkodási" fázis: a rendszer megérti a feladatot 
 
 ## Moduláris architektúra
 
-A `wt-orchestrate` egyetlen belépési ponttal rendelkezik (`bin/wt-orchestrate`), de az implementáció 14 forrásmodulra van bontva a `lib/orchestration/` alatt:
+A `set-orchestrate` egyetlen belépési ponttal rendelkezik (`bin/set-orchestrate`), de az implementáció 14 forrásmodulra van bontva a `lib/orchestration/` alatt:
 
 ```
-bin/wt-orchestrate          ← belépési pont, CLI parsing
+bin/set-orchestrate          ← belépési pont, CLI parsing
 lib/orchestration/
 ├── events.sh               ← JSONL eseménynapló
 ├── config.sh               ← konfiguráció feloldás

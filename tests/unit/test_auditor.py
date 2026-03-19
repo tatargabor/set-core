@@ -1,4 +1,4 @@
-"""Tests for wt_orch.auditor — prompt construction, result parsing, severity."""
+"""Tests for set_orch.auditor — prompt construction, result parsing, severity."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.auditor import (
+from set_orch.auditor import (
     AuditGap,
     AuditResult,
     build_audit_prompt,

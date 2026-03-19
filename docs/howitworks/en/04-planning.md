@@ -15,7 +15,7 @@ Two planning methods exist, controlled by the `plan_method` directive:
 A single Claude API call performs the decomposition:
 
 ```bash
-wt-orchestrate --spec docs/v3.md plan   # plan_method: api (default)
+set-orchestrate --spec docs/v3.md plan   # plan_method: api (default)
 ```
 
 Advantages:
@@ -112,7 +112,7 @@ T3: D (after B and C merged)
 
 ```bash
 # The self-test includes a test:
-wt-orchestrate self-test
+set-orchestrate self-test
 # → PASS: circular dependency detected
 ```
 
@@ -138,7 +138,7 @@ If the spec is too large (many thousand tokens), `summarize_spec()` uses a haiku
 3. The planner receives only the relevant phase
 
 \begin{keypoint}
-The plan is always viewable after generation: \texttt{wt-orchestrate plan --show}. Before issuing the \texttt{start} command, it's worth checking that the decomposition is sensible.
+The plan is always viewable after generation: \texttt{set-orchestrate plan --show}. Before issuing the \texttt{start} command, it's worth checking that the decomposition is sensible.
 \end{keypoint}
 
 ## Plan Validation

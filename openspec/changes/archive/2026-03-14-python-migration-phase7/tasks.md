@@ -1,6 +1,6 @@
 ## 1. Merger Module
 
-- [x] 1.1 Create `lib/wt_orch/merger.py` with `MergeResult` dataclass and module constants (MAX_MERGE_RETRIES=5, MILESTONE_WORKTREE_DIR)
+- [x] 1.1 Create `lib/set_orch/merger.py` with `MergeResult` dataclass and module constants (MAX_MERGE_RETRIES=5, MILESTONE_WORKTREE_DIR)
 - [x] 1.2 Implement `archive_change(change_name)` — move openspec dir to dated archive, git add+commit
 - [x] 1.3 Implement `_collect_smoke_screenshots(change_name, state_file)` — copy test-results to attempt-N subdirs
 - [x] 1.4 Implement `_archive_worktree_logs(change_name, wt_path)` — copy .claude/logs to orchestration archive
@@ -14,7 +14,7 @@
 
 ## 2. Milestone Module
 
-- [x] 2.1 Create `lib/wt_orch/milestone.py` with constants and imports
+- [x] 2.1 Create `lib/set_orch/milestone.py` with constants and imports
 - [x] 2.2 Implement `_enforce_max_milestone_worktrees(max_wts, state_file)` — kill servers, remove oldest worktrees
 - [x] 2.3 Implement `_send_milestone_email(phase, port, pid, state_file)` — HTML email with phase stats
 - [x] 2.4 Implement `run_milestone_checkpoint(phase, base_port, max_worktrees, state_file)` — full pipeline: tag, worktree, deps, server, email, event
@@ -23,7 +23,7 @@
 
 ## 3. Engine Module
 
-- [x] 3.1 Create `lib/wt_orch/engine.py` with `Directives` dataclass for ~40 directive fields with defaults
+- [x] 3.1 Create `lib/set_orch/engine.py` with `Directives` dataclass for ~40 directive fields with defaults
 - [x] 3.2 Implement `_parse_directives(directives_json)` — JSON to Directives dataclass
 - [x] 3.3 Implement `monitor_loop(directives_json, state_file)` — main while-loop: poll interval, active time tracking, time limit, status checks
 - [x] 3.4 Implement poll active changes section — iterate running+verifying changes, call poll_change+watchdog_check
@@ -36,15 +36,15 @@
 
 ## 4. CLI Bridge
 
-- [x] 4.1 Add `merge` subcommand group to `lib/wt_orch/cli.py` with argparse for all merge subcommands
-- [x] 4.2 Add `milestone` subcommand group to `lib/wt_orch/cli.py` with argparse for all milestone subcommands
-- [x] 4.3 Add `engine` subcommand group to `lib/wt_orch/cli.py` with argparse for monitor subcommand
+- [x] 4.1 Add `merge` subcommand group to `lib/set_orch/cli.py` with argparse for all merge subcommands
+- [x] 4.2 Add `milestone` subcommand group to `lib/set_orch/cli.py` with argparse for all milestone subcommands
+- [x] 4.3 Add `engine` subcommand group to `lib/set_orch/cli.py` with argparse for monitor subcommand
 
 ## 5. Bash Wrappers
 
-- [x] 5.1 Replace `lib/orchestration/merger.sh` with thin wrappers delegating to `wt-orch-core merge *`
-- [x] 5.2 Replace `lib/orchestration/milestone.sh` with thin wrappers delegating to `wt-orch-core milestone *`
-- [x] 5.3 Replace `lib/orchestration/monitor.sh` with thin wrapper delegating to `wt-orch-core engine monitor`
+- [x] 5.1 Replace `lib/orchestration/merger.sh` with thin wrappers delegating to `set-orch-core merge *`
+- [x] 5.2 Replace `lib/orchestration/milestone.sh` with thin wrappers delegating to `set-orch-core milestone *`
+- [x] 5.3 Replace `lib/orchestration/monitor.sh` with thin wrapper delegating to `set-orch-core engine monitor`
 
 ## 6. Tests
 

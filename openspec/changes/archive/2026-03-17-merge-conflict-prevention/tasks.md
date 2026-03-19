@@ -6,7 +6,7 @@
   > Already done in linter pass — verified present in bin/wt-merge
 
 - [x] T2: Verify pattern consistency across all three pattern lists
-  > Added .wt-tools/, .next/, dist/, build/, coverage/, node_modules/ to dispatcher.py _AUTO_RESOLVE_PREFIXES
+  > Added .set-core/, .next/, dist/, build/, coverage/, node_modules/ to dispatcher.py _AUTO_RESOLVE_PREFIXES
   > Added next-env.d.ts to _CORE_GENERATED_FILE_PATTERNS
 
 ## Group 2: Engine Serialization (ES-1 through ES-5)

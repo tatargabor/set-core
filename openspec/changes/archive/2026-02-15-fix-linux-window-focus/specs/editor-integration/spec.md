@@ -9,7 +9,7 @@ The system SHALL focus the correct editor window for a worktree using platform-a
 - **THEN** the system SHALL filter windows by the editor's WM_CLASS using `xdotool search --class`
 - **AND** the system SHALL match window titles precisely: exact match or the editor's folder+file pattern (e.g. "basename — filename")
 - **AND** the system SHALL NOT match windows from other applications (e.g. Chrome tabs containing the worktree name)
-- **AND** the system SHALL NOT match other worktree windows whose names start with the same prefix (e.g. "wt-tools-wt-o_test" when searching for "wt-tools")
+- **AND** the system SHALL NOT match other worktree windows whose names start with the same prefix (e.g. "set-core-wt-o_test" when searching for "set-core")
 
 #### Scenario: Focus from GUI uses platform abstraction
 - **WHEN** user double-clicks a running worktree in the Control Center

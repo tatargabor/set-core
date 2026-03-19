@@ -1,8 +1,8 @@
-# Kiro vs wt-tools — Feature Comparison & Adoption Analysis
+# Kiro vs set-core — Feature Comparison & Adoption Analysis
 
 **Date:** 2026-03-14
 **Sources:** https://kiro.dev/docs/, https://kiro.dev/blog/ (47 blog posts, 7 doc sections)
-**Purpose:** Identify Kiro innovations worth adopting into wt-tools
+**Purpose:** Identify Kiro innovations worth adopting into set-core
 
 ---
 
@@ -25,7 +25,7 @@ Key capabilities:
 - "Run All Tasks" — batch execution with PBT + LSP + subagent validation per task
 - Design-first workflow: start from technical design, derive requirements backward
 
-### wt-tools OpenSpec
+### set-core OpenSpec
 
 4-5 file system with richer lifecycle:
 - `proposal.md` — scope, rationale, impact
@@ -44,7 +44,7 @@ Key capabilities:
 
 ### Comparison
 
-| Capability | Kiro | wt-tools |
+| Capability | Kiro | set-core |
 |-----------|------|----------|
 | Spec structure | 3 files, flat | 4-5 files, per-capability specs |
 | Bugfix formalism (C, P, ¬C) | Yes | No |
@@ -78,7 +78,7 @@ Key discoveries:
 
 Philosophy: trajectory-based — 5-step success ≠ 17-step success. Efficiency matters, not just outcome.
 
-### wt-tools: Shodh-Memory (5-Layer Hook System)
+### set-core: Shodh-Memory (5-Layer Hook System)
 
 Per-project real-time memory:
 - **L1 (SessionStart)**: warmstart cheat-sheet + hot-topics discovery (~500ms)
@@ -94,7 +94,7 @@ Sharing: git-based cross-machine sync, export/import
 
 ### Comparison
 
-| Capability | Kiro CORAL | wt-tools Shodh |
+| Capability | Kiro CORAL | set-core Shodh |
 |-----------|-----------|----------------|
 | Scope | Fleet (thousands of users) | Per-project |
 | Analysis | Batch (daily) | Real-time (per-prompt) |
@@ -121,7 +121,7 @@ Sharing: git-based cross-machine sync, export/import
 - Network access tiers: integration-only / common deps / open internet
 - MCP integrations for specialized tools
 
-### wt-tools Orchestration Engine
+### set-core Orchestration Engine
 
 - Spec → plan (DAG with dependencies) → dispatch (parallel worktrees) → monitor → verify → merge
 - Sentinel supervision: 15s poll, auto-restart, crash diagnosis, findings report
@@ -135,7 +135,7 @@ Sharing: git-based cross-machine sync, export/import
 
 ### Comparison
 
-| Capability | Kiro | wt-tools |
+| Capability | Kiro | set-core |
 |-----------|------|----------|
 | Parallelism | Max 10 tasks | Configurable (max_parallel) |
 | Isolation | Docker sandbox | Git worktree |
@@ -184,7 +184,7 @@ Sharing: git-based cross-machine sync, export/import
 - Session-scoped (not persistent across restarts)
 - Complements (not replaces) git version control
 
-### wt-tools Current State
+### set-core Current State
 
 - Text-based editing (Claude Code's native strReplace)
 - Build-time validation only (test_command, build_command in orchestration gates)
@@ -194,7 +194,7 @@ Sharing: git-based cross-machine sync, export/import
 
 ### Comparison
 
-| Capability | Kiro | wt-tools |
+| Capability | Kiro | set-core |
 |-----------|------|----------|
 | Code editing | AST-based (semantic) | Text-based (strReplace) |
 | Read efficiency | 58% fewer tokens | Full file reads |
@@ -239,22 +239,22 @@ Dynamic MCP + steering bundles:
 - Partner ecosystem: Datadog, Figma, Neon, Netlify, Postman, Supabase, Stripe
 - Planned cross-IDE support (CLI, Cline, Cursor, Claude Code)
 
-### wt-tools Context System
+### set-core Context System
 
 - `.claude/rules/` — always-on markdown rules (committed to git)
 - `CLAUDE.md` — project instructions
 - `orchestration.yaml` — orchestration configuration
-- Skills — on-demand invocation (`/opsx:*`, `/wt:*`)
+- Skills — on-demand invocation (`/opsx:*`, `/set:*`)
 - Memory hooks — automatic context injection (L1-L5)
 - Hot-topics — discovered patterns for L3 optimization
 
 ### Comparison
 
-| Capability | Kiro | wt-tools |
+| Capability | Kiro | set-core |
 |-----------|------|----------|
 | Always-on rules | .kiro/steering/ | .claude/rules/ + CLAUDE.md |
 | Conditional (fileMatch) | Yes | No |
-| Manual reference | #steering-name | Skills (/opsx:*, /wt:*) |
+| Manual reference | #steering-name | Skills (/opsx:*, /set:*) |
 | Auto-include (description) | Yes | L2 memory recall (semantic) |
 | Dynamic tool loading | Powers (keyword-activated) | Skills (manually invoked) |
 | Baseline context cost | Near-zero (Powers) | Skills metadata always loaded |
@@ -264,7 +264,7 @@ Dynamic MCP + steering bundles:
 
 ---
 
-## 6. Unique wt-tools Strengths (Not in Kiro)
+## 6. Unique set-core Strengths (Not in Kiro)
 
 1. **Multi-agent DAG orchestration** — dependency-aware parallel execution with N agents
 2. **Sentinel supervision** — 15s poll, auto-restart, crash diagnosis, findings report
@@ -331,7 +331,7 @@ Dynamic MCP + steering bundles:
 
 **How:**
 - Ralph loop: track per-task metrics (iteration count, tool calls, errors, duration)
-- `wt-memory metrics` extended: trajectory quality scoring
+- `set-memory metrics` extended: trajectory quality scoring
 - L5 hook: extract "this took too many steps" patterns → memory
 - Periodic analysis: which tasks/patterns cause inefficiency
 
@@ -398,7 +398,7 @@ Explicit "design-first" option in `/opsx:new` — start from design.md, derive r
 Would require tree-sitter + language-specific rename logic. High effort, limited benefit in CLI context.
 
 #### 7.11 Enterprise Governance
-Not relevant — wt-tools is single-user/small-team. MCP registry controls unnecessary.
+Not relevant — set-core is single-user/small-team. MCP registry controls unnecessary.
 
 #### 7.12 ACP (Agent Communication Protocol)
 We have git-based team sync. ACP is IDE-centric. Only relevant if we want Kiro CLI interop.
@@ -415,8 +415,8 @@ We have git-based team sync. ACP is IDE-centric. Only relevant if we want Kiro C
 
 4. **Bugfix Spec formalism solves a real problem** — agents over-engineer fixes. The C/P/¬C structure prevents scope drift with minimal overhead.
 
-5. **wt-tools is significantly ahead in orchestration** — Kiro has no multi-agent DAG, no sentinel, no merge pipeline, no cross-machine sync. This is our core differentiator.
+5. **set-core is significantly ahead in orchestration** — Kiro has no multi-agent DAG, no sentinel, no merge pipeline, no cross-machine sync. This is our core differentiator.
 
 6. **Context efficiency matters** — Kiro's conditional loading (fileMatch) and Powers (keyword activation) reduce waste. Our hooks do similar work but less precisely.
 
-7. **The two tools complement more than compete** — Kiro excels at single-agent code quality; wt-tools excels at multi-agent coordination. Best ideas from both create a stronger system.
+7. **The two tools complement more than compete** — Kiro excels at single-agent code quality; set-core excels at multi-agent coordination. Best ideas from both create a stronger system.

@@ -17,6 +17,6 @@ Playwright E2E tests run during the verify gate and phase-end, but produce only 
 
 ## Impact
 
-- `lib/wt_orch/templates.py` — one line addition to the Playwright E2E planning section
+- `lib/set_orch/templates.py` — one line addition to the Playwright E2E planning section
 - No new dependencies, no new functions, no runtime changes
 - Backwards compatible — projects without Playwright or with custom configs are unaffected

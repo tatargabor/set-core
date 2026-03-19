@@ -2,47 +2,47 @@
 
 ## 1. Foundation — `.wt/` directory and Python package
 
-- [x] 1.1 Create `lib/wt_orch/sentinel/__init__.py` package with convenience imports [REQ: event-logging-python-api]
+- [x] 1.1 Create `lib/set_orch/sentinel/__init__.py` package with convenience imports [REQ: event-logging-python-api]
 - [x] 1.2 Add `.wt/` directory creation utility (mkdir -p + .gitignore append if missing) [REQ: event-logging-python-api]
 
 ## 2. Event logging
 
-- [x] 2.1 Implement `SentinelEventLogger` class in `lib/wt_orch/sentinel/events.py` — typed methods for each event type (poll, crash, restart, decision, escalation), atomic JSONL append [REQ: structured-event-logging]
-- [x] 2.2 Implement `rotate()` in `lib/wt_orch/sentinel/rotation.py` — move events.jsonl and findings.json to archive/ with date suffix [REQ: event-rotation-on-new-run]
-- [x] 2.3 Create `bin/wt-sentinel-log` CLI entry point wrapping the Python API [REQ: event-logging-cli]
+- [x] 2.1 Implement `SentinelEventLogger` class in `lib/set_orch/sentinel/events.py` — typed methods for each event type (poll, crash, restart, decision, escalation), atomic JSONL append [REQ: structured-event-logging]
+- [x] 2.2 Implement `rotate()` in `lib/set_orch/sentinel/rotation.py` — move events.jsonl and findings.json to archive/ with date suffix [REQ: event-rotation-on-new-run]
+- [x] 2.3 Create `bin/set-sentinel-log` CLI entry point wrapping the Python API [REQ: event-logging-cli]
 - [x] 2.4 Add unit tests for event logger (append, rotate, directory creation) [REQ: structured-event-logging]
-- [x] 2.5 Create `bin/wt-sentinel-rotate` CLI entry point wrapping rotation.py [REQ: event-rotation-on-new-run]
+- [x] 2.5 Create `bin/set-sentinel-rotate` CLI entry point wrapping rotation.py [REQ: event-rotation-on-new-run]
 
 ## 3. Findings management
 
-- [x] 3.1 Implement `SentinelFindings` class in `lib/wt_orch/sentinel/findings.py` — add, update, list, assess methods with atomic JSON write. `add()` SHALL also emit a `finding` event via `SentinelEventLogger` (depends on 2.1) [REQ: structured-findings-storage]
-- [x] 3.2 Create `bin/wt-sentinel-finding` CLI entry point (add, update, list, assess subcommands) [REQ: findings-cli]
+- [x] 3.1 Implement `SentinelFindings` class in `lib/set_orch/sentinel/findings.py` — add, update, list, assess methods with atomic JSON write. `add()` SHALL also emit a `finding` event via `SentinelEventLogger` (depends on 2.1) [REQ: structured-findings-storage]
+- [x] 3.2 Create `bin/set-sentinel-finding` CLI entry point (add, update, list, assess subcommands) [REQ: findings-cli]
 - [x] 3.3 Add unit tests for findings (add, update, list filtering, assess, rotation) [REQ: structured-findings-storage]
 
 ## 4. Status and inbox
 
-- [x] 4.1 Implement `SentinelStatus` class in `lib/wt_orch/sentinel/status.py` — register, heartbeat, deactivate, get methods [REQ: sentinel-status-registration]
-- [x] 4.2 Implement `check_inbox()` in `lib/wt_orch/sentinel/inbox.py` — lightweight file-based inbox read using existing outbox/chat file format [REQ: sentinel-inbox-polling]
-- [x] 4.3 Create `bin/wt-sentinel-inbox` CLI (check, ack subcommands) [REQ: sentinel-inbox-polling]
-- [x] 4.4 Create `bin/wt-sentinel-status` CLI (register, heartbeat, get subcommands) [REQ: sentinel-status-registration]
+- [x] 4.1 Implement `SentinelStatus` class in `lib/set_orch/sentinel/status.py` — register, heartbeat, deactivate, get methods [REQ: sentinel-status-registration]
+- [x] 4.2 Implement `check_inbox()` in `lib/set_orch/sentinel/inbox.py` — lightweight file-based inbox read using existing outbox/chat file format [REQ: sentinel-inbox-polling]
+- [x] 4.3 Create `bin/set-sentinel-inbox` CLI (check, ack subcommands) [REQ: sentinel-inbox-polling]
+- [x] 4.4 Create `bin/set-sentinel-status` CLI (register, heartbeat, get subcommands) [REQ: sentinel-status-registration]
 - [x] 4.5 Add unit tests for status and inbox [REQ: sentinel-status-registration]
 
 ## 5. Integrate with bash sentinel
 
-- [x] 5.1 Modify `bin/wt-sentinel` — replace `emit_event` calls with `wt-sentinel-log` CLI calls. Map legacy event names: SENTINEL_RESTART→restart, SENTINEL_FAILED→escalation, STATE_RECONSTRUCTED→decision [REQ: structured-event-logging]
-- [x] 5.2 Modify `bin/wt-sentinel` — split 10s sleep into 2x5s with `wt-sentinel-inbox check` between [REQ: sentinel-inbox-polling]
-- [x] 5.3 Modify `bin/wt-sentinel` — add `wt-sentinel-status register` on startup (after ORCH_PID is known, pass --orchestrator-pid) and expand `cleanup()` EXIT trap to call `wt-sentinel-status deactivate` [REQ: sentinel-status-registration]
-- [x] 5.4 Modify `bin/wt-sentinel` — add `wt-sentinel-rotate` on new run start (full-reset path only, not partial reset) [REQ: event-rotation-on-new-run]
-- [x] 5.5 Add `wt-sentinel-status heartbeat` call after each state poll cycle [REQ: sentinel-status-registration]
+- [x] 5.1 Modify `bin/set-sentinel` — replace `emit_event` calls with `set-sentinel-log` CLI calls. Map legacy event names: SENTINEL_RESTART→restart, SENTINEL_FAILED→escalation, STATE_RECONSTRUCTED→decision [REQ: structured-event-logging]
+- [x] 5.2 Modify `bin/set-sentinel` — split 10s sleep into 2x5s with `set-sentinel-inbox check` between [REQ: sentinel-inbox-polling]
+- [x] 5.3 Modify `bin/set-sentinel` — add `set-sentinel-status register` on startup (after ORCH_PID is known, pass --orchestrator-pid) and expand `cleanup()` EXIT trap to call `set-sentinel-status deactivate` [REQ: sentinel-status-registration]
+- [x] 5.4 Modify `bin/set-sentinel` — add `set-sentinel-rotate` on new run start (full-reset path only, not partial reset) [REQ: event-rotation-on-new-run]
+- [x] 5.5 Add `set-sentinel-status heartbeat` call after each state poll cycle [REQ: sentinel-status-registration]
 - [x] 5.6 Add integration smoke test for bash sentinel — verify events.jsonl written, status.json created on startup, inbox checked during sleep split [REQ: structured-event-logging]
 
 ## 6. Integrate with agent sentinel skill
 
-- [x] 6.1 Update `.claude/commands/wt/sentinel.md` — add event logging instructions (call `wt-sentinel-log` on every decision) [REQ: structured-event-logging]
+- [x] 6.1 Update `.claude/commands/wt/sentinel.md` — add event logging instructions (call `set-sentinel-log` on every decision) [REQ: structured-event-logging]
 - [x] 6.2 Update `.claude/commands/wt/sentinel.md` — add inbox check instructions (3s interval in poll loop) [REQ: sentinel-inbox-polling]
-- [x] 6.3 Update `.claude/commands/wt/sentinel.md` — add status registration on startup (call `wt-sentinel-status register` after ORCH_PID=$! is set, pass --orchestrator-pid) [REQ: sentinel-status-registration]
-- [x] 6.5 Update `.claude/commands/wt/sentinel.md` — add heartbeat call (`wt-sentinel-status heartbeat`) after each state poll [REQ: sentinel-status-registration]
-- [x] 6.4 Update `.claude/commands/wt/sentinel.md` — add findings instructions (call `wt-sentinel-finding add` when discovering issues) [REQ: structured-findings-storage]
+- [x] 6.3 Update `.claude/commands/wt/sentinel.md` — add status registration on startup (call `set-sentinel-status register` after ORCH_PID=$! is set, pass --orchestrator-pid) [REQ: sentinel-status-registration]
+- [x] 6.5 Update `.claude/commands/wt/sentinel.md` — add heartbeat call (`set-sentinel-status heartbeat`) after each state poll [REQ: sentinel-status-registration]
+- [x] 6.4 Update `.claude/commands/wt/sentinel.md` — add findings instructions (call `set-sentinel-finding add` when discovering issues) [REQ: structured-findings-storage]
 
 ## 7. wt-web backend — REST endpoints
 
@@ -68,7 +68,7 @@
 - [x] AC-3: WHEN sentinel restarts orchestrator THEN restart event with new_pid/attempt appended [REQ: structured-event-logging, scenario: restart-event-emitted]
 - [x] AC-4: WHEN sentinel makes autonomous decision THEN decision event with action/reason appended [REQ: structured-event-logging, scenario: decision-event-emitted]
 - [x] AC-5: WHEN sentinel needs user input THEN escalation event with reason/context appended [REQ: structured-event-logging, scenario: escalation-event-emitted]
-- [x] AC-6: WHEN SentinelEventLogger initializes and .wt/ missing THEN .wt/ created and /.wt/ added to .gitignore [REQ: event-logging-python-api, scenario: logger-creates-wt-directory-and-gitignore]
+- [x] AC-6: WHEN SentinelEventLogger initializes and .wt/ missing THEN .wt/ created and /.set/ added to .gitignore [REQ: event-logging-python-api, scenario: logger-creates-wt-directory-and-gitignore]
 - [x] AC-7: WHEN rotation triggered THEN events.jsonl moved to archive/ with date suffix [REQ: event-rotation-on-new-run, scenario: rotation-moves-old-events-to-archive]
 - [x] AC-8: WHEN finding added THEN appended to findings array with auto-generated ID and finding event emitted [REQ: structured-findings-storage, scenario: finding-added]
 - [x] AC-9: WHEN finding updated THEN matching entry updated in place [REQ: structured-findings-storage, scenario: finding-updated]

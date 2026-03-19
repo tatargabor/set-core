@@ -8,7 +8,7 @@ The goal is simple: **detect if a prompt is emotionally charged, save it immedia
 
 - Add an **emotion detection module** (`lib/frustration.py`) with bilingual (English + Hungarian) pattern matching using ~30-35 regexes organized in 3 trigger groups (strong, medium, session boost)
 - Integrate into the **UserPromptSubmit** handler in `wt-hook-memory`:
-  - **Save**: moderate+ detection → save entire prompt as high-priority `Learning` memory via `wt-memory remember`
+  - **Save**: moderate+ detection → save entire prompt as high-priority `Learning` memory via `set-memory remember`
   - **Inject**: any detection → add warning to `additionalContext` output so the current agent is immediately aware
 - Track **session frustration history** in the existing dedup cache to detect escalation patterns (3+ mild triggers → next mild triggers save)
 - Add **agent-correction** as a primary detection pattern ("nem ezt kértem", "wrong file", "that's not what I asked") — the most valuable signal in a developer-agent context
@@ -25,6 +25,6 @@ The goal is simple: **detect if a prompt is emotionally charged, save it immedia
 
 - **Modified**: `bin/wt-hook-memory` — UserPromptSubmit handler gains emotion detection + injection + save
 - **New**: `lib/frustration.py` — Python module (~30-35 regex patterns, simple trigger logic, no scoring/multipliers)
-- **Modified**: Session dedup cache (`/tmp/wt-memory-session-*.json`) — extended with `frustration_history` key
-- **Dependencies**: None new — uses existing `wt-memory remember` CLI and Python stdlib
+- **Modified**: Session dedup cache (`/tmp/set-memory-session-*.json`) — extended with `frustration_history` key
+- **Dependencies**: None new — uses existing `set-memory remember` CLI and Python stdlib
 - **Performance**: Pattern matching adds ~5-10ms per prompt (pure regex, no ML inference)

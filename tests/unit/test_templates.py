@@ -1,4 +1,4 @@
-"""Tests for wt_orch.templates — Safe structured text generation."""
+"""Tests for set_orch.templates — Safe structured text generation."""
 
 import os
 import sys
@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.templates import (
+from set_orch.templates import (
     escape_for_prompt,
     render_fix_prompt,
     render_planning_prompt,

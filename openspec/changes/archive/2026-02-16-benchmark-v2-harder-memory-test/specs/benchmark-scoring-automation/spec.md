@@ -11,8 +11,8 @@ For each run (A and B):
 - Run all eval-*.sh scripts and collect results
 
 For Run B additionally:
-- Total memories from `wt-memory status`
-- Memory list from `wt-memory list`
+- Total memories from `set-memory status`
+- Memory list from `set-memory list`
 
 Output: `results/run-{a,b}-metrics.json` with structured data.
 

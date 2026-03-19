@@ -1,6 +1,6 @@
 ## 1. CLI Argument Parsing
 
-- [x] 1.1 Add `--spec <path>` flag to argument parser in `wt-orchestrate` (alongside existing `--brief`)
+- [x] 1.1 Add `--spec <path>` flag to argument parser in `set-orchestrate` (alongside existing `--brief`)
 - [x] 1.2 Add `--phase <hint>` flag — accepts number or string, only valid with `--spec`
 - [x] 1.3 Add `--max-parallel <N>` flag as CLI directive override
 - [x] 1.4 Update `usage()` help text to document new flags with examples
@@ -42,7 +42,7 @@
 ## 7. Template & Docs
 
 - [x] 7.1 Update `openspec/project-brief.md.template` to add a comment mentioning `--spec` as an alternative
-- [x] 7.2 Update `wt-orchestrate --help` output with usage examples for `--spec` and `--phase`
+- [x] 7.2 Update `set-orchestrate --help` output with usage examples for `--spec` and `--phase`
 
 ## 8. Tests
 

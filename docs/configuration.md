@@ -2,23 +2,23 @@
 
 # Configuration
 
-All wt-tools configuration files, their locations, and option reference.
+All set-core configuration files, their locations, and option reference.
 
 ## Config Files
 
 | File | Location | Purpose |
 |------|----------|---------|
-| `gui-config.json` | `~/.config/wt-tools/` | GUI settings (opacity, theme, refresh) |
-| `projects.json` | `~/.config/wt-tools/` | Project registry |
-| `editor` | `~/.config/wt-tools/` | Preferred editor name |
+| `gui-config.json` | `~/.config/set-core/` | GUI settings (opacity, theme, refresh) |
+| `projects.json` | `~/.config/set-core/` | Project registry |
+| `editor` | `~/.config/set-core/` | Preferred editor name |
 | `orchestration.yaml` | `<project>/.claude/` | Orchestration settings |
 | `rules.yaml` | `<project>/.claude/` | Deterministic memory rules |
 | `project-knowledge.yaml` | `<project>/` | Cross-cutting file awareness |
-| `.wt-version` | `<project>/.claude/` | Deployed wt-tools version |
+| `.set-version` | `<project>/.claude/` | Deployed set-core version |
 
 ## GUI Settings
 
-`~/.config/wt-tools/gui-config.json`:
+`~/.config/set-core/gui-config.json`:
 
 ```json
 {
@@ -45,8 +45,8 @@ All wt-tools configuration files, their locations, and option reference.
 ## Editor Configuration
 
 ```bash
-wt-config editor list           # list supported editors
-wt-config editor set <name>     # set preferred editor
+set-config editor list           # list supported editors
+set-config editor set <name>     # set preferred editor
 ```
 
 Supported editors: `zed` (primary), `vscode`, `cursor`, `windsurf`.
@@ -132,9 +132,9 @@ rules:
 Manage via CLI:
 
 ```bash
-wt-memory rules add --topics "customer,sql" "Use customer_ro for queries"
-wt-memory rules list
-wt-memory rules remove <id>
+set-memory rules add --topics "customer,sql" "Use customer_ro for queries"
+set-memory rules list
+set-memory rules remove <id>
 ```
 
 ## Project Knowledge
@@ -142,7 +142,7 @@ wt-memory rules remove <id>
 `<project>/project-knowledge.yaml` — cross-cutting file awareness for smarter orchestration:
 
 ```bash
-wt-project init-knowledge    # scaffold from project scan
+set-project init-knowledge    # scaffold from project scan
 ```
 
 See [project-knowledge.md](project-knowledge.md) for the full schema.

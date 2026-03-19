@@ -6,7 +6,7 @@ The GUI Control Center has a "Skill" column that shows which Claude skill is act
 3. The 30-minute TTL in `wt-status` means even a single registration expires during long sessions
 4. There is no mechanism to refresh the timestamp while an agent is working
 
-The existing data flow: `wt-skill-start` writes `name|timestamp` to `.wt-tools/current_skill` → `wt-status --json` reads it (30min TTL) → GUI displays in Skill column.
+The existing data flow: `wt-skill-start` writes `name|timestamp` to `.set-core/current_skill` → `wt-status --json` reads it (30min TTL) → GUI displays in Skill column.
 
 ## Goals / Non-Goals
 
@@ -19,7 +19,7 @@ The existing data flow: `wt-skill-start` writes `name|timestamp` to `.wt-tools/c
 
 **Non-Goals:**
 - Cross-machine context sharing (future: context-sharing change)
-- Changing the `.wt-tools/current_skill` file format
+- Changing the `.set-core/current_skill` file format
 - Changing the `wt-status` TTL logic (30min stays)
 - GUI changes (the column already works, just needs data)
 
@@ -47,15 +47,15 @@ This avoids the hook needing to know which skill is running.
 
 Project `.claude/settings.json` contains `"command": "wt-hook-stop"`.
 Since `wt-hook-stop` is symlinked to PATH via `install_scripts()`:
-- `git pull` on wt-tools automatically updates the script
+- `git pull` on set-core automatically updates the script
 - No need to re-run install for script content changes
 - Only need to re-run install when adding new hook event types
 
-### 4. Graceful fallback when wt-tools not installed
+### 4. Graceful fallback when set-core not installed
 
 Hook script exits 0 immediately if `wt-hook-stop` is not on PATH.
 This allows `.claude/settings.json` to be committed to project repos —
-team members without wt-tools get zero impact.
+team members without set-core get zero impact.
 
 ### 5. install_project_hooks() merges into existing settings.json
 
@@ -72,4 +72,4 @@ When a new project is added via `wt-add`, hooks are deployed to its
 
 - [Hook not firing if Claude Code changes hook API] → Low risk; hooks are stable. Script is trivial to update.
 - [settings.json merge conflicts with user edits] → jq merge preserves existing keys. Backup created before modify.
-- [wt-hook-stop on PATH but project not wt-managed] → Graceful: checks for `.wt-tools/` dir before writing.
+- [wt-hook-stop on PATH but project not wt-managed] → Graceful: checks for `.set-core/` dir before writing.

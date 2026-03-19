@@ -1,6 +1,6 @@
 ## 1. Core Module — gate_profiles.py
 
-- [x] 1.1 Create `lib/wt_orch/gate_profiles.py` with GateConfig dataclass (fields: build, test, test_files_required, e2e, scope_check, review, spec_verify, rules, smoke, max_retries, review_model)
+- [x] 1.1 Create `lib/set_orch/gate_profiles.py` with GateConfig dataclass (fields: build, test, test_files_required, e2e, scope_check, review, spec_verify, rules, smoke, max_retries, review_model)
 - [x] 1.2 Add helper methods: `should_run(gate_name)`, `is_blocking(gate_name)`, `is_warn_only(gate_name)`
 - [x] 1.3 Define `BUILTIN_GATE_PROFILES` dict with all 6 change_type profiles (infrastructure, schema, foundational, feature, cleanup-before, cleanup-after)
 - [x] 1.4 Define `DEFAULT_GATE_PROFILE` as feature-equivalent (all "run")
@@ -15,8 +15,8 @@
 ## 3. Profile Extension Point
 
 - [x] 3.1 Add `gate_overrides(self, change_type: str) -> dict` method to NullProfile in `profile_loader.py`
-- [x] 3.2 Add `gate_overrides(self, change_type: str) -> dict` method to ProjectType ABC in `wt-project-base/wt_project_base/base.py` with default empty-dict implementation
-- [x] 3.3 Implement web-specific gate overrides in `wt-project-web/wt_project_web/project_type.py` (foundational→e2e:run+smoke:warn, schema→test_files_required:False, cleanup-after→smoke:warn)
+- [x] 3.2 Add `gate_overrides(self, change_type: str) -> dict` method to ProjectType ABC in `set-project-base/wt_project_base/base.py` with default empty-dict implementation
+- [x] 3.3 Implement web-specific gate overrides in `set-project-web/wt_project_web/project_type.py` (foundational→e2e:run+smoke:warn, schema→test_files_required:False, cleanup-after→smoke:warn)
 
 ## 4. Verifier Integration
 

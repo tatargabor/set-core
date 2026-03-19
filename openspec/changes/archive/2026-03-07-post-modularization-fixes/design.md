@@ -32,7 +32,7 @@ Variables like `smoke_command`, `directives`, `PROJECT_PATH` are local to `monit
 
 ### D4: deploy.sh coupling — move functions into deploy.sh
 
-`_register_mcp_server` and `_cleanup_deprecated_memory_refs` are called from `deploy.sh` but defined in `wt-project`. Move them into `deploy.sh` to make it self-contained. `wt-project` can still call them (they'll be sourced from deploy.sh).
+`_register_mcp_server` and `_cleanup_deprecated_memory_refs` are called from `deploy.sh` but defined in `set-project`. Move them into `deploy.sh` to make it self-contained. `set-project` can still call them (they'll be sourced from deploy.sh).
 
 ### D5: Task grouping — fix by module, not by severity
 
@@ -41,5 +41,5 @@ Group tasks by module (memory, hooks, orchestration, loop, project) rather than 
 ## Risks / Trade-offs
 
 - [Risk] `eval` for allowedTools flag → Mitigation: value is hardcoded in `editor.sh`, never from user input. Add comment explaining safety.
-- [Risk] Moving functions into deploy.sh may break existing sourcing → Mitigation: functions are only called from deploy.sh and wt-project; after move, wt-project sources deploy.sh first, so all callers still see the functions.
+- [Risk] Moving functions into deploy.sh may break existing sourcing → Mitigation: functions are only called from deploy.sh and set-project; after move, set-project sources deploy.sh first, so all callers still see the functions.
 - [Risk] Reading from STATE_FILENAME in orchestration adds jq calls → Mitigation: these are infrequent paths (merge, smoke fix), not hot loops. Negligible performance impact.

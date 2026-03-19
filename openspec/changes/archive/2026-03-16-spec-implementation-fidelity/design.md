@@ -133,7 +133,7 @@ This is a prompt-level change in the decompose skill, not a code change.
 - [Trade-off] Acceptance criteria in tasks.md increases file size → Acceptable: tasks.md is already the agent's primary working document
 - [Risk] AC item inflation — large specs with many scenarios could generate 30+ AC items, increasing tasks.md size and agent context → Mitigation: the ff-change skill should note that AC items are generated from scenarios in the change's own delta specs only, not from all specs in the project
 - [Risk] `[REQ: ...]` tag parsing fragility — variations in whitespace or casing (`[REQ:name]` vs `[REQ: name]`) could break traceability → Mitigation: verify skill parser must be whitespace-tolerant and case-insensitive; canonical format defined as `[REQ: kebab-case-slug]`
-- [Risk] Plan schema backward-compatibility — `deferred_requirements[]` is a new field in plan JSON → Mitigation: field is optional with default `[]`; older validators skip unknown fields; plan JSON is not persisted across wt-tools versions
+- [Risk] Plan schema backward-compatibility — `deferred_requirements[]` is a new field in plan JSON → Mitigation: field is optional with default `[]`; older validators skip unknown fields; plan JSON is not persisted across set-core versions
 - [Risk] Plan completeness check may be overly strict for partial/incremental planning → Mitigation: only enforce when `digest_dir` is provided; `deferred_requirements` provides the explicit escape hatch
 - [Risk] Decompose agent may generate low-quality deferral reasons → Mitigation: reasons are informational (warnings), not blocking; the value is forcing explicit acknowledgment rather than silent omission
 

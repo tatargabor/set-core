@@ -9,7 +9,7 @@ The orchestrator has 3 bugs that prevent reliable start with `--spec`:
 
 ## What Changes
 
-- Add `default_model` to `resolve_directives()` case statement and JSON output in `bin/wt-orchestrate`
+- Add `default_model` to `resolve_directives()` case statement and JSON output in `bin/set-orchestrate`
 - Fix sentinel.md restart command to include `$ARGUMENTS`
 - Verify auto-plan fix works end-to-end
 
@@ -20,5 +20,5 @@ The orchestrator has 3 bugs that prevent reliable start with `--spec`:
 
 ## Impact
 
-- `bin/wt-orchestrate` — directive parser + JSON output
+- `bin/set-orchestrate` — directive parser + JSON output
 - `.claude/commands/wt/sentinel.md` — restart command

@@ -38,10 +38,10 @@ When creating missing files, the skill SHALL read the project's actual source co
 - **THEN** it reads existing design docs and CLAUDE.md conventions to build a project-specific review checklist, not a generic one
 
 ### Requirement: Command file deployment
-The skill SHALL be deployable to projects via `wt-project init`.
+The skill SHALL be deployable to projects via `set-project init`.
 
 #### Scenario: Command file exists
-- **WHEN** `wt-project init` runs on a project
+- **WHEN** `set-project init` runs on a project
 - **THEN** `.claude/commands/wt/audit.md` exists in the project, enabling `/wt:audit` invocation
 
 #### Scenario: SKILL.md updated

@@ -14,7 +14,7 @@ Az agent-nek van Figma MCP-je (`design-bridge.md` rule mondja, hogy használja),
 - `lib/design/bridge.sh:84-138` — `design_prompt_section()` (planner-only)
 - `lib/orchestration/verifier.sh:134-188` — `review_change()` (no design check)
 - `.claude/rules/design-bridge.md` — passzív rule
-- `lib/wt_orch/templates.py` — review template (no design section)
+- `lib/set_orch/templates.py` — review template (no design section)
 
 ## Goals / Non-Goals
 

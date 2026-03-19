@@ -1,8 +1,8 @@
 ## Context
 
-The current `wt-sentinel` is a 123-line bash loop that blindly restarts `wt-orchestrate start` on crash with 30s backoff. It has bugs (restarts on `time_limit`), no logging, no notifications, and cannot reason about failures. An agent-based sentinel can read logs, diagnose crashes, auto-approve routine checkpoints, and produce reports — all using Haiku for cost efficiency.
+The current `set-sentinel` is a 123-line bash loop that blindly restarts `set-orchestrate start` on crash with 30s backoff. It has bugs (restarts on `time_limit`), no logging, no notifications, and cannot reason about failures. An agent-based sentinel can read logs, diagnose crashes, auto-approve routine checkpoints, and produce reports — all using Haiku for cost efficiency.
 
-Current code: `bin/wt-sentinel` (bash wrapper), `bin/wt-orchestrate` (orchestrator with state.json + .log), `.claude/skills/wt/SKILL.md` (worktree skill), `.claude/commands/wt/loop.md` (wt-loop skill pattern).
+Current code: `bin/set-sentinel` (bash wrapper), `bin/set-orchestrate` (orchestrator with state.json + .log), `.claude/skills/wt/SKILL.md` (worktree skill), `.claude/commands/wt/loop.md` (wt-loop skill pattern).
 
 ## Goals / Non-Goals
 
@@ -17,7 +17,7 @@ Current code: `bin/wt-sentinel` (bash wrapper), `bin/wt-orchestrate` (orchestrat
 
 **Non-Goals:**
 - Active beavatkozás (merge conflict resolution, worktree fixes) — that's v3
-- New wt-orchestrate features or state changes — sentinel reads existing state
+- New set-orchestrate features or state changes — sentinel reads existing state
 - Complex multi-model routing — Haiku for everything in v2
 - Replacing wt-loop — sentinel is orchestration-specific, wt-loop is general-purpose
 
@@ -25,7 +25,7 @@ Current code: `bin/wt-sentinel` (bash wrapper), `bin/wt-orchestrate` (orchestrat
 
 ### 1. Skill-based agent, not bash loop
 
-**Decision:** Create a `/wt:sentinel` skill (command file + SKILL.md section) that runs as a Claude agent session. The agent starts `wt-orchestrate start` via `Bash` tool in background, then enters a poll loop reading state.json and logs.
+**Decision:** Create a `/wt:sentinel` skill (command file + SKILL.md section) that runs as a Claude agent session. The agent starts `set-orchestrate start` via `Bash` tool in background, then enters a poll loop reading state.json and logs.
 
 **Why:** An agent can read log lines, understand error messages, and make informed decisions. A bash loop can only check exit codes.
 
@@ -42,7 +42,7 @@ Current code: `bin/wt-sentinel` (bash wrapper), `bin/wt-orchestrate` (orchestrat
 
 ```
 Agent session:
-  1. Start orchestrator: Bash(wt-orchestrate start "$@" &)
+  1. Start orchestrator: Bash(set-orchestrate start "$@" &)
   2. Poll loop: Bash(while true; read state.json; sleep 15; done)
   3. On state change → agent decides next action
   4. Loop back to poll or exit with report
@@ -114,7 +114,7 @@ Agent session:
 
 ### 8. Bash sentinel kept as fallback
 
-**Decision:** Keep `bin/wt-sentinel` but fix the `time_limit` bug (add it to the clean-exit conditions). The agent skill is the recommended way, but the bash fallback works for environments without Claude agent access.
+**Decision:** Keep `bin/set-sentinel` but fix the `time_limit` bug (add it to the clean-exit conditions). The agent skill is the recommended way, but the bash fallback works for environments without Claude agent access.
 
 **Fixes to bash sentinel:**
 - Add `time_limit` to clean exit states

@@ -1,7 +1,7 @@
 ## 1. Helper Functions
 
-- [x] 1.1 Add `orch_remember` helper function to wt-orchestrate — wraps `wt-memory remember` with availability check, `source:orchestrator` tag prefix, and `|| true` error suppression
-- [x] 1.2 Add `orch_recall` helper function to wt-orchestrate — wraps `wt-memory recall` with availability check, hybrid mode, `--tags` filtering, 2000-char limit, and `|| true` error suppression
+- [x] 1.1 Add `orch_remember` helper function to set-orchestrate — wraps `set-memory remember` with availability check, `source:orchestrator` tag prefix, and `|| true` error suppression
+- [x] 1.2 Add `orch_recall` helper function to set-orchestrate — wraps `set-memory recall` with availability check, hybrid mode, `--tags` filtering, 2000-char limit, and `|| true` error suppression
 
 ## 2. Event Saving — Merge Outcomes
 

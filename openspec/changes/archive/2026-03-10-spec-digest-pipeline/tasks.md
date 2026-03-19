@@ -1,6 +1,6 @@
 ## 1. Digest module — core infrastructure
 
-- [x] 1.1 Create `lib/orchestration/digest.sh` with module skeleton: `cmd_digest()` entry point, `source` from `wt-orchestrate`, error handling for missing/empty paths
+- [x] 1.1 Create `lib/orchestration/digest.sh` with module skeleton: `cmd_digest()` entry point, `source` from `set-orchestrate`, error handling for missing/empty paths
 - [x] 1.2 Implement `scan_spec_directory()` — recursively find all `.md` files, detect master file (matching `v*-*.md` or `README.md` at root), compute combined SHA256 source hash, error on empty directory
 - [x] 1.3 Implement `build_digest_prompt()` — concatenate all spec files with file path headers, add structured output instructions for: (1) file classification (convention/feature/data/execution), (2) conventions.json extraction, (3) data-definitions.md generation, (4) requirements.json with REQ-* IDs and `cross_cutting` field, (5) domains/*.md, (6) dependencies.json with implicit dependency detection, (7) ambiguities.json with underspecified/contradictory/missing_reference detection, (8) verification checklist de-duplication, (9) embedded behavioral rule extraction from data files. Include granularity heuristic ("one requirement = one independently testable behavior"), classification heuristic, de-dup instruction ("each unique behavior = exactly one REQ-* ID"), and embedded rule instruction ("data files may contain business logic — extract as REQ-* IDs")
 - [x] 1.4 Implement `call_digest_api()` — single Claude API call via `run_claude`, extract JSON and MD sections from response
@@ -11,8 +11,8 @@
 
 ## 2. Digest CLI integration
 
-- [x] 2.1 Add `digest` subcommand to `bin/wt-orchestrate` — route to `cmd_digest()`, accept `--spec <path>` and `--dry-run` flags, add `--help` text
-- [x] 2.2 Add `coverage` subcommand to `bin/wt-orchestrate` — read `wt/orchestration/digest/coverage.json` and `requirements.json`, display per-domain breakdown (total/planned/dispatched/running/merged/uncovered), handle no-digest and digest-but-no-plan states, show orphaned entries from removed requirements
+- [x] 2.1 Add `digest` subcommand to `bin/set-orchestrate` — route to `cmd_digest()`, accept `--spec <path>` and `--dry-run` flags, add `--help` text
+- [x] 2.2 Add `coverage` subcommand to `bin/set-orchestrate` — read `wt/orchestration/digest/coverage.json` and `requirements.json`, display per-domain breakdown (total/planned/dispatched/running/merged/uncovered), handle no-digest and digest-but-no-plan states, show orphaned entries from removed requirements
 
 ## 3. Planner — directory input and digest awareness
 

@@ -4,7 +4,7 @@
 The system SHALL accept an arbitrary markdown specification document as the primary input for orchestration via the `--spec <path>` CLI flag.
 
 #### Scenario: Explicit spec path
-- **WHEN** the user runs `wt-orchestrate --spec docs/v3/v3.md`
+- **WHEN** the user runs `set-orchestrate --spec docs/v3/v3.md`
 - **THEN** the system SHALL read the file at the given path
 - **AND** pass its content to the LLM for extraction and decomposition
 

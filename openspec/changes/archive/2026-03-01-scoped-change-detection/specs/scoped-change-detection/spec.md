@@ -40,7 +40,7 @@ When `--change` is NOT set, `detect_next_change_action()` SHALL NOT run. The `bu
 - **THEN** the done-check in `check_done_criteria()` SHALL still evaluate OpenSpec completion by scanning all changes (existing behavior preserved for exit-condition only)
 
 ### Requirement: Orchestrator passes change name
-The `dispatch_change()` function in `wt-orchestrate` SHALL pass `--change "$change_name"` to the `wt-loop start` invocation.
+The `dispatch_change()` function in `set-orchestrate` SHALL pass `--change "$change_name"` to the `wt-loop start` invocation.
 
 #### Scenario: Orchestrator dispatch
 - **WHEN** the orchestrator dispatches change `smoke-config` to a worktree

@@ -36,7 +36,7 @@ Decryption (B receives):
 
 | Location | Content | Permissions |
 |----------|---------|-------------|
-| `~/.wt-tools/chat-keys/{project}.key` | Private key (base64) | 0600 |
+| `~/.set-core/chat-keys/{project}.key` | Private key (base64) | 0600 |
 | `.wt-control/members/{name}.json` | Public key + fingerprint | git tracked |
 
 **Fingerprint:** SHA256(public_key)[:8] - 8 hex characters, for human verification
@@ -96,7 +96,7 @@ Decryption (B receives):
 ### Unread Tracking
 
 ```
-~/.wt-tools/chat-read-state.json:
+~/.set-core/chat-read-state.json:
 {
   "last_read_id": {"project1": "uuid", "project2": "uuid"},
   "last_read_ts": {"project1": "2026-01-25T14:35:00Z", ...}

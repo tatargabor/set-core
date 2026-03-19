@@ -1,6 +1,6 @@
 ## Why
 
-The bulk-archive skill (both SKILL.md and command file) is missing `wt-memory` hooks that all other stateful OpenSpec skills already have. The regular archive skill saves completion context, decisions, and learnings per change — but the bulk version, which archives multiple changes at once, saves nothing. This is a gap: bulk archiving produces even richer context (conflict resolutions, batch-level patterns) that should be captured.
+The bulk-archive skill (both SKILL.md and command file) is missing `set-memory` hooks that all other stateful OpenSpec skills already have. The regular archive skill saves completion context, decisions, and learnings per change — but the bulk version, which archives multiple changes at once, saves nothing. This is a gap: bulk archiving produces even richer context (conflict resolutions, batch-level patterns) that should be captured.
 
 ## What Changes
 
@@ -28,4 +28,4 @@ _(no spec-level requirement changes — this is a skill prompt enhancement, not 
   - `.claude/skills/openspec-bulk-archive-change/SKILL.md`
   - `.claude/commands/opsx/bulk-archive.md`
 - **No code changes**: This is purely prompt/skill file edits
-- **No breaking changes**: Existing bulk-archive behavior is preserved; memory hooks are additive and gracefully degrade (skip silently if `wt-memory health` fails)
+- **No breaking changes**: Existing bulk-archive behavior is preserved; memory hooks are additive and gracefully degrade (skip silently if `set-memory health` fails)

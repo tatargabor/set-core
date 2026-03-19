@@ -8,7 +8,7 @@ The Stop handler SHALL process the full JSONL transcript using rule-based filter
 - **AND** the transcript contains 30 user+assistant turns
 - **THEN** the filter SHALL parse ALL entries (not just last 80)
 - **AND** SHALL apply word-count and pattern filters
-- **AND** SHALL save filtered turns directly via `wt-memory remember`
+- **AND** SHALL save filtered turns directly via `set-memory remember`
 - **AND** SHALL NOT call Claude Haiku or any LLM
 
 #### Scenario: Empty or trivial session
@@ -68,7 +68,7 @@ The full tag set SHALL be: `raw,phase:auto-extract,source:hook,change:<name>`
 
 #### Scenario: Tag verification
 - **WHEN** a raw memory is saved
-- **THEN** calling `wt-memory recall --tags raw` SHALL return it
+- **THEN** calling `set-memory recall --tags raw` SHALL return it
 - **AND** the memory tags SHALL include `raw`, `phase:auto-extract`, `source:hook`
 
 ### Requirement: User and assistant turns saved as separate memories
@@ -76,11 +76,11 @@ Each filtered user turn and each filtered assistant turn SHALL be saved as separ
 
 #### Scenario: User question saved
 - **WHEN** a user turn passes the filter
-- **THEN** it SHALL be saved via `wt-memory remember --type Context`
+- **THEN** it SHALL be saved via `set-memory remember --type Context`
 
 #### Scenario: Assistant explanation saved
 - **WHEN** an assistant text turn passes the filter
-- **THEN** it SHALL be saved via `wt-memory remember --type Learning`
+- **THEN** it SHALL be saved via `set-memory remember --type Learning`
 
 ### Requirement: Background execution
 The raw filter SHALL run as a disowned background process, same as the current Haiku extraction. It SHALL NOT block the session exit.

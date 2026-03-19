@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # NOTE: Requires python with textual package installed (pip install textual)
-"""Orchestrator TUI — live terminal dashboard for wt-orchestrate."""
+"""Orchestrator TUI — live terminal dashboard for set-orchestrate."""
 
 import json
 import os
@@ -296,9 +296,9 @@ CSS = """
 
 
 class OrchestratorTUI(App):
-    """Live terminal dashboard for wt-orchestrate."""
+    """Live terminal dashboard for set-orchestrate."""
 
-    TITLE = "wt-orchestrate"
+    TITLE = "set-orchestrate"
     CSS = CSS
 
     BINDINGS = [
@@ -466,7 +466,7 @@ class OrchestratorTUI(App):
 
         # Extra note for time_limit status
         if orch_status == "time_limit":
-            line2 += "  [yellow]Run 'wt-orchestrate start' to continue[/]"
+            line2 += "  [yellow]Run 'set-orchestrate start' to continue[/]"
 
         lines = f"{line1}\n{line2}"
         if line3.strip():
@@ -665,7 +665,7 @@ def main():
 
     if not Path(state_file).exists():
         print(f"No orchestration state found at: {state_file}", file=sys.stderr)
-        print("Run 'wt-orchestrate plan' first.", file=sys.stderr)
+        print("Run 'set-orchestrate plan' first.", file=sys.stderr)
         sys.exit(1)
 
     app = OrchestratorTUI(state_file, log_file)

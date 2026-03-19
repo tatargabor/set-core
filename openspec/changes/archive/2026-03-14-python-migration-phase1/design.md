@@ -1,24 +1,24 @@
 ## Context
 
-The orchestration engine (`lib/orchestration/*.sh`, ~18,000 LOC) is being migrated to Python in phases. Phase 1 establishes the foundational infrastructure: logging, subprocess wrappers, config parsing, and event system. The existing Python bridge (`lib/wt_orch/`, 10 modules) provides the package structure, CLI dispatch via `wt-orch-core`, and dataclass patterns.
+The orchestration engine (`lib/orchestration/*.sh`, ~18,000 LOC) is being migrated to Python in phases. Phase 1 establishes the foundational infrastructure: logging, subprocess wrappers, config parsing, and event system. The existing Python bridge (`lib/set_orch/`, 10 modules) provides the package structure, CLI dispatch via `set-orch-core`, and dataclass patterns.
 
 **Current state:**
-- `lib/wt_orch/cli.py` dispatches subcommands: `process`, `state`, `template`, `serve`
+- `lib/set_orch/cli.py` dispatches subcommands: `process`, `state`, `template`, `serve`
 - `lib/orchestration/utils.sh` (~820 LOC): directive parsing, duration utilities, file hashing, input resolution
 - `lib/orchestration/events.sh` (~155 LOC): JSONL event emission, rotation, querying
 - Python >= 3.10, stdlib only (no new external deps)
 
 **Constraints:**
 - JSON format for events.jsonl and directives output MUST remain byte-compatible
-- Bash callers transition via `wt-orch-core` CLI — no direct Python imports from bash
+- Bash callers transition via `set-orch-core` CLI — no direct Python imports from bash
 - All existing tests must continue to pass
 
 ## Goals / Non-Goals
 
 **Goals:**
-- 4 new Python modules in `lib/wt_orch/` with full test coverage
+- 4 new Python modules in `lib/set_orch/` with full test coverage
 - 1:1 behavioral parity with bash originals (every edge case preserved)
-- Bash functions replaced with `wt-orch-core` CLI calls
+- Bash functions replaced with `set-orch-core` CLI calls
 - Structured logging ready for all future Python modules
 
 **Non-Goals:**
@@ -29,11 +29,11 @@ The orchestration engine (`lib/orchestration/*.sh`, ~18,000 LOC) is being migrat
 
 ## Decisions
 
-### 1. Module structure: flat in wt_orch/
+### 1. Module structure: flat in set_orch/
 
-New files added to `lib/wt_orch/`:
+New files added to `lib/set_orch/`:
 ```
-lib/wt_orch/
+lib/set_orch/
 ├── logging_config.py      # NEW
 ├── subprocess_utils.py    # NEW
 ├── config.py              # NEW
@@ -118,25 +118,25 @@ class EventBus:
 ### 6. CLI dispatch: extend existing argparse in cli.py
 
 Add two new subcommands to `cli.py`:
-- `wt-orch-core config parse-directives --input-file <path>`
-- `wt-orch-core config resolve-directives --input-file <path> [--cli-overrides '{"max_parallel":5}']`
-- `wt-orch-core events --type <TYPE> --change <NAME> --last <N> --json`
+- `set-orch-core config parse-directives --input-file <path>`
+- `set-orch-core config resolve-directives --input-file <path> [--cli-overrides '{"max_parallel":5}']`
+- `set-orch-core events --type <TYPE> --change <NAME> --last <N> --json`
 
 **Why extend cli.py:** Consistent with existing pattern (`process`, `state`, `template`). No new entry points needed.
 
-### 7. Bash transition: source → wt-orch-core calls
+### 7. Bash transition: source → set-orch-core calls
 
-Migrated bash functions are replaced with `wt-orch-core` calls:
+Migrated bash functions are replaced with `set-orch-core` calls:
 
 ```bash
 # Before (utils.sh):
 directives=$(parse_directives "$brief_file")
 
 # After:
-directives=$(wt-orch-core config parse-directives --input-file "$brief_file")
+directives=$(set-orch-core config parse-directives --input-file "$brief_file")
 ```
 
-The bash functions are deleted entirely (not wrapped). Callers in `bin/wt-orchestrate` and `lib/orchestration/*.sh` are updated.
+The bash functions are deleted entirely (not wrapped). Callers in `bin/set-orchestrate` and `lib/orchestration/*.sh` are updated.
 
 ### 8. Test command auto-detection
 
@@ -147,7 +147,7 @@ Moved as-is from bash. Checks:
 
 ## Risks / Trade-offs
 
-**[Risk] Subprocess overhead for CLI calls** → The `wt-orch-core` process startup adds ~100ms per call. Acceptable for directive parsing (called 1-2 times at start), but would be problematic for high-frequency operations (e.g., `emit_event` called 100s of times). Mitigation: events.sh stays in bash for now; Python `events.py` is used when the caller is already Python.
+**[Risk] Subprocess overhead for CLI calls** → The `set-orch-core` process startup adds ~100ms per call. Acceptable for directive parsing (called 1-2 times at start), but would be problematic for high-frequency operations (e.g., `emit_event` called 100s of times). Mitigation: events.sh stays in bash for now; Python `events.py` is used when the caller is already Python.
 
 **[Risk] Directive JSON format drift** → If Python serializes JSON differently (key ordering, null handling). Mitigation: Test with exact byte comparison against bash output for known inputs.
 
@@ -160,7 +160,7 @@ Moved as-is from bash. Checks:
 1. Create the 4 Python modules with tests
 2. Add CLI subcommands to `cli.py`
 3. Verify output parity: run both bash and Python for same inputs, diff results
-4. Update bash callers to use `wt-orch-core` commands
+4. Update bash callers to use `set-orch-core` commands
 5. Delete migrated bash functions from `utils.sh` and `events.sh`
 6. Run full test suite (bash + Python)
 

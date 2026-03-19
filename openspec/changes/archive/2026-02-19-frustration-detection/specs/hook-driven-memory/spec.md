@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Hooks replace inline memory instructions in skills and commands
-All `<!-- wt-memory hooks -->` blocks (including `hooks-midflow`, `hooks-remember`, `hooks-reflection`, `hooks-save` variants) SHALL be removed from OpenSpec skill SKILL.md files and opsx command .md files. The 5-layer hook system handles recall (L2 on every prompt) and save (L5 on every stop) automatically — skills SHALL NOT contain manual `wt-memory recall` or `wt-memory remember` instructions.
+All `<!-- set-memory hooks -->` blocks (including `hooks-midflow`, `hooks-remember`, `hooks-reflection`, `hooks-save` variants) SHALL be removed from OpenSpec skill SKILL.md files and opsx command .md files. The 5-layer hook system handles recall (L2 on every prompt) and save (L5 on every stop) automatically — skills SHALL NOT contain manual `set-memory recall` or `set-memory remember` instructions.
 
 The UserPromptSubmit handler SHALL additionally perform emotion detection on the user's prompt before proactive recall. When emotion is detected:
 - **Moderate or high**: save the entire prompt as a `Learning` memory with `frustration,recurring` tags (moderate) or `frustration,high-priority` tags (high), AND inject a warning into `additionalContext`

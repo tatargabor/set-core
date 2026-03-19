@@ -15,7 +15,7 @@ from ...logging_setup import safe_slot
 __all__ = ["TeamMixin"]
 
 # Cache directory for MCP server access
-CACHE_DIR = Path.home() / ".cache" / "wt-tools"
+CACHE_DIR = Path.home() / ".cache" / "set-core"
 
 
 class TeamMixin:
@@ -103,7 +103,7 @@ class TeamMixin:
                 if change.get("remote_url", "") in project_urls:
                     return True
 
-        # Also return True if this is the active project (where wt-control lives)
+        # Also return True if this is the active project (where set-control lives)
         team_project = self._get_team_project()
         return project == team_project
 
@@ -314,23 +314,23 @@ class TeamMixin:
             show_warning(self, "Error", f"Failed to generate key: {e}")
 
     def init_wt_control_for_project(self, project: str):
-        """Initialize wt-control branch for the given project"""
+        """Initialize set-control branch for the given project"""
         if not project:
             show_warning(self, "Error", "No project specified")
             return
 
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-control-init"), "-p", project],
+                [str(SCRIPT_DIR / "set-control-init"), "-p", project],
                 capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
-                show_information(self, "Success", f"wt-control initialized for '{project}'")
+                show_information(self, "Success", f"set-control initialized for '{project}'")
                 # Trigger team sync
                 self.team_worker.start()
             else:
                 error = result.stderr.strip() or result.stdout.strip() or "Unknown error"
-                show_warning(self, "Error", f"Failed to initialize wt-control:\n{error}")
+                show_warning(self, "Error", f"Failed to initialize set-control:\n{error}")
         except subprocess.TimeoutExpired:
             show_warning(self, "Error", "Initialization timed out")
         except Exception as e:

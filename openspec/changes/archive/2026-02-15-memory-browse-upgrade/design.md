@@ -1,12 +1,12 @@
 ## Context
 
-The Memory Browse dialog (`gui/dialogs/memory_dialog.py`) opens with `_load_all()` which runs `wt-memory list` → returns ALL memories as JSON → renders one QFrame card per memory. This is O(n) on both data and widgets.
+The Memory Browse dialog (`gui/dialogs/memory_dialog.py`) opens with `_load_all()` which runs `set-memory list` → returns ALL memories as JSON → renders one QFrame card per memory. This is O(n) on both data and widgets.
 
 Shodh-memory v0.1.75 added two APIs we can leverage:
 - `list_memories(limit=N, memory_type=None)` — paginated listing
 - `context_summary(max_items=5, include_decisions=True, include_learnings=True, include_context=True)` — condensed category overview
 
-The CLI wrapper `bin/wt-memory` currently has no `--limit` flag on `list` and no `context` command.
+The CLI wrapper `bin/set-memory` currently has no `--limit` flag on `list` and no `context` command.
 
 ## Goals / Non-Goals
 
@@ -14,7 +14,7 @@ The CLI wrapper `bin/wt-memory` currently has no `--limit` flag on `list` and no
 - Dialog opens instantly regardless of memory count
 - Default view gives a useful overview (context summary)
 - Users can browse all memories with pagination
-- CLI supports `wt-memory list --limit N` and `wt-memory context`
+- CLI supports `set-memory list --limit N` and `set-memory context`
 
 **Non-Goals:**
 - Virtual scrolling or lazy widget rendering (over-engineering for current scale)
@@ -36,13 +36,13 @@ The CLI wrapper `bin/wt-memory` currently has no `--limit` flag on `list` and no
 
 ### Decision 2: Page size of 50 with "Load More"
 
-**Choice**: `wt-memory list --limit 50` for first page, "Load More" appends next 50.
+**Choice**: `set-memory list --limit 50` for first page, "Load More" appends next 50.
 
 **Rationale**: 50 QFrame cards render comfortably (<100ms). Offset-based pagination isn't available in native shodh API, so we use `list_memories(limit=N)` and slice client-side from cached full list on subsequent pages. Since `list_memories()` returns sorted by time, this works naturally.
 
 **Implementation detail**: First call fetches all IDs/metadata, but we only render 50 cards at a time. The data is cached in the dialog instance. "Load More" renders the next batch from cache without a new subprocess call.
 
-Actually — simpler approach: just call `wt-memory list` once (same as now), cache the full result, but only render 50 cards initially. "Load More" renders next 50 from the cached list. The bottleneck is widget rendering, not data loading. A JSON list of 2000 memories is ~1MB, fast to parse.
+Actually — simpler approach: just call `set-memory list` once (same as now), cache the full result, but only render 50 cards initially. "Load More" renders next 50 from the cached list. The bottleneck is widget rendering, not data loading. A JSON list of 2000 memories is ~1MB, fast to parse.
 
 ### Decision 3: Two-mode dialog (Summary / List)
 

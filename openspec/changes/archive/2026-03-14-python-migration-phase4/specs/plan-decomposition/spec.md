@@ -63,7 +63,7 @@
 - **THEN** the context includes: conventions, data_model, execution_hints, domain_summaries, requirements (compact), dependencies, deferred_ambiguities, coverage_info, replan_context
 
 #### Scenario: Memory context integration
-- **WHEN** wt-memory is available
+- **WHEN** set-memory is available
 - **THEN** relevant memories are recalled for planning context (per-roadmap-item in brief mode, phase-based in spec mode)
 
 #### Scenario: Design context integration

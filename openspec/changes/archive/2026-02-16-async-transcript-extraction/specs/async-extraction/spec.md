@@ -12,7 +12,7 @@ The transcript-based extraction (haiku LLM call + memory save) runs as a backgro
 - **THEN** hook skips extraction entirely (same as current behavior), proceeds to Path 2
 
 ### Requirement: Lockfile concurrency control
-Only one transcript extraction runs at a time per project. Uses `.wt-tools/.transcript-extraction.lock` with PID validation.
+Only one transcript extraction runs at a time per project. Uses `.set-core/.transcript-extraction.lock` with PID validation.
 
 #### Scenario: No existing lock
 - **WHEN** extraction starts and no lockfile exists
@@ -38,7 +38,7 @@ Background process cleans up its own temp files and lockfile on exit.
 - **THEN** trap handler removes tmpfile and lockfile
 
 ### Requirement: Error logging
-Background extraction logs errors to `.wt-tools/transcript-extraction.log` for debugging.
+Background extraction logs errors to `.set-core/transcript-extraction.log` for debugging.
 
 #### Scenario: Haiku call fails
 - **WHEN** claude CLI returns empty or errors

@@ -1,8 +1,8 @@
 # Tasks: shodh-memory-integration
 
-## 1. Create `bin/wt-memory` bash helper
+## 1. Create `bin/set-memory` bash helper
 
-- [x] Create `bin/wt-memory` with `health`, `remember`, `recall`, `status` commands
+- [x] Create `bin/set-memory` with `health`, `remember`, `recall`, `status` commands
 - [x] Implement graceful degradation: health check before every operation, silent no-op on failure
 - [x] Support `SHODH_HOST`, `SHODH_PORT`, `SHODH_API_KEY` environment variables (defaults: 127.0.0.1:3030)
 - [x] Remember: read content from stdin, POST to `/api/remember` with `--type` and `--tags`
@@ -20,11 +20,11 @@
 
 ## 3. Update install.sh
 
-- [x] Add `wt-memory` to the `scripts` array in `install_scripts()` function
+- [x] Add `set-memory` to the `scripts` array in `install_scripts()` function
 
 ## 4. Verify graceful degradation
 
-- [x] `wt-memory health` exits 1 when shodh-memory is not running
-- [x] `echo "test" | wt-memory remember --type Learning` exits 0 silently (no-op)
-- [x] `wt-memory recall "test"` outputs `[]` and exits 0
-- [x] `wt-memory status` shows config and "not reachable" message
+- [x] `set-memory health` exits 1 when shodh-memory is not running
+- [x] `echo "test" | set-memory remember --type Learning` exits 0 silently (no-op)
+- [x] `set-memory recall "test"` outputs `[]` and exits 0
+- [x] `set-memory status` shows config and "not reachable" message

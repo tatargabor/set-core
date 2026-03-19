@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # MiniShop E2E Test Runner
-# Sets up a test project for wt-tools end-to-end testing.
+# Sets up a test project for set-core end-to-end testing.
 # The scaffold is a single file (docs/v1-minishop.md). Agents build everything from the spec.
 #
 # Usage:
-#   ./tests/e2e/run.sh                              # Auto-increment: ~/.local/share/wt-tools/e2e-runs/minishop-run9, ...
+#   ./tests/e2e/run.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/minishop-run9, ...
 #   ./tests/e2e/run.sh /path/to/dir                 # Use specified dir
 #   ./tests/e2e/run.sh --project-dir ~/other-dir    # Override base dir
 
@@ -13,7 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCAFFOLD_DIR="$SCRIPT_DIR/scaffold"
 SPEC_FILE="$SCAFFOLD_DIR/docs/v1-minishop.md"
-E2E_RUNS_DIR="${HOME}/.local/share/wt-tools/e2e-runs"
+E2E_RUNS_DIR="${HOME}/.local/share/set-core/e2e-runs"
 BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
 mkdir -p "$BASE_DIR"
 
@@ -165,7 +165,7 @@ init_project() {
     # merger.py's _post_merge_deps_install() — NOT via git hook (hooks leave
     # dirty working tree state that blocks subsequent merges).
     cat > .gitattributes << 'ATTRS'
-# wt-tools: generated/runtime files — always prefer ours on conflict
+# set-core: generated/runtime files — always prefer ours on conflict
 pnpm-lock.yaml    merge=ours
 yarn.lock         merge=ours
 package-lock.json merge=ours
@@ -182,7 +182,7 @@ ATTRS
     success "Git initialized, tagged v0-spec (merge drivers + post-merge hook configured)"
 
     step "Clean stale memory"
-    local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/wt-tools/memory}/${PROJECT_NAME}"
+    local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/set-core/memory}/${PROJECT_NAME}"
     if [[ -d "$mem_storage" ]]; then
         info "Removing stale memory storage: $mem_storage"
         rm -rf "$mem_storage"
@@ -259,7 +259,7 @@ show_completion() {
     echo ""
     info "When done, cleanup:"
     echo "  rm -rf $TEST_DIR"
-    echo "  rm -rf ~/.local/share/wt-tools/memory/$PROJECT_NAME"
+    echo "  rm -rf ~/.local/share/set-core/memory/$PROJECT_NAME"
     echo "  wt-project remove $PROJECT_NAME"
 }
 

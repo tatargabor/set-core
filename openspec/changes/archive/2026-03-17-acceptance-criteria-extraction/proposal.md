@@ -20,8 +20,8 @@ The digest pipeline extracts requirements with only a `brief` (1-2 sentence summ
 
 ## Impact
 
-- `lib/wt_orch/digest.py`: digest prompt template (`_DIGEST_PROMPT_TEMPLATE`) — add AC extraction instruction + schema field
-- `lib/wt_orch/dispatcher.py`: `_build_input_content()` — include AC items when building input.md
-- `lib/wt_orch/verifier.py`: `build_req_review_section()` — render AC checklist in review prompt
+- `lib/set_orch/digest.py`: digest prompt template (`_DIGEST_PROMPT_TEMPLATE`) — add AC extraction instruction + schema field
+- `lib/set_orch/dispatcher.py`: `_build_input_content()` — include AC items when building input.md
+- `lib/set_orch/verifier.py`: `build_req_review_section()` — render AC checklist in review prompt
 - No breaking changes to existing digest output (AC field is additive, absent in old digests gracefully)
 - Existing digests without `acceptance_criteria` degrade gracefully: dispatcher and verifier fall back to `brief`

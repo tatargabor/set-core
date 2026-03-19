@@ -84,12 +84,12 @@ When resolving conflicts, the LLM merge prompt SHALL be enriched with file-type 
 - **AND** the prompt SHALL indicate the strategy type (e.g., "Merge strategy: additive — keep all entities from both sides")
 
 ### Requirement: Profile system supplies default merge strategies
-Project profiles SHALL be able to supply default merge strategies that apply when no project-level config exists. Profile defaults are written as a JSON file at `.wt-tools/.merge-strategies.json` during `wt-project init`.
+Project profiles SHALL be able to supply default merge strategies that apply when no project-level config exists. Profile defaults are written as a JSON file at `.set-core/.merge-strategies.json` during `set-project init`.
 
 #### Scenario: Profile provides defaults
 - **WHEN** a profile implements `merge_strategies()` method
 - **AND** the project has no `merge_strategies` in `project-knowledge.yaml`
-- **THEN** the profile's default strategies SHALL be used (read from `.wt-tools/.merge-strategies.json`)
+- **THEN** the profile's default strategies SHALL be used (read from `.set-core/.merge-strategies.json`)
 
 #### Scenario: Project config overrides profile defaults
 - **WHEN** both profile and project-knowledge.yaml define strategies for the same pattern
@@ -99,7 +99,7 @@ Project profiles SHALL be able to supply default merge strategies that apply whe
 A new agent rule SHALL be deployed to consumer projects prohibiting the use of `any` type on database client parameters.
 
 #### Scenario: Rule file exists and is deployed
-- **WHEN** `wt-project init` runs on a consumer project
+- **WHEN** `set-project init` runs on a consumer project
 - **THEN** `.claude/rules/web/db-type-safety.md` SHALL be created
 - **AND** it SHALL contain instructions prohibiting `prisma: any`, `prisma as any`, and similar patterns
 - **AND** it SHALL instruct: "If a DB model is missing from the schema, add the model — do not work around it with type hacks"

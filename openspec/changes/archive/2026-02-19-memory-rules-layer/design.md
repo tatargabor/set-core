@@ -1,7 +1,7 @@
 ## Context
 
-The wt-tools memory system has two injection paths in `wt-hook-memory`:
-1. `cheat-sheet` tagged memories — loaded at L1 (session start) via `wt-memory recall --tags cheat-sheet`
+The set-core memory system has two injection paths in `wt-hook-memory`:
+1. `cheat-sheet` tagged memories — loaded at L1 (session start) via `set-memory recall --tags cheat-sheet`
 2. Semantic recall — L2 (UserPromptSubmit), L3 (PreToolUse) via `proactive_and_format()`
 
 Both paths go through shodh-memory's relevance filtering. There is no guaranteed, deterministic injection path for operational constraints that MUST be surfaced. The gap: agents trial-and-error with credentials/gates rather than using the known-correct value immediately.
@@ -12,7 +12,7 @@ New file: `.claude/rules.yaml` — per-project, git-committable, no shodh-memory
 
 **Goals:**
 - Deterministic injection of operational rules when topic matches
-- `wt-memory rules` CLI for managing rules without hand-editing YAML
+- `set-memory rules` CLI for managing rules without hand-editing YAML
 - Rules section appears BEFORE project memory in hook output (priority order)
 - Zero shodh-memory dependency for the rules path
 - Clarify cheat-sheet's role: soft conventions only
@@ -53,13 +53,13 @@ Match logic: any rule whose topics array has ≥1 word appearing in the lowercas
 
 Visual separation + label contrast ("MANDATORY" vs "Past experience") signals to the agent that these are constraints, not suggestions. This is purely a formatting decision in the hook output — no schema changes.
 
-### D4: `wt-memory rules` subcommand in existing `wt-memory` CLI
+### D4: `set-memory rules` subcommand in existing `set-memory` CLI
 
-Adding to `bin/wt-memory` (bash script) rather than a new binary. Keeps the CLI surface unified. Subcommands: `add`, `list`, `remove`.
+Adding to `bin/set-memory` (bash script) rather than a new binary. Keeps the CLI surface unified. Subcommands: `add`, `list`, `remove`.
 
 `add` syntax:
 ```bash
-wt-memory rules add --topics "customer,sql" "Use customer_ro / XYZ123 for customer table"
+set-memory rules add --topics "customer,sql" "Use customer_ro / XYZ123 for customer table"
 ```
 
 `remove` takes the rule id (auto-generated slug from content prefix).
@@ -70,7 +70,7 @@ The L5 haiku extraction prompt will be updated to explicitly NOT promote credent
 
 ## Risks / Trade-offs
 
-- **Topic list maintenance**: If user forgets to add relevant topics, rule won't fire. Mitigation: `wt-memory rules add` CLI makes it low-friction; docs show examples.
+- **Topic list maintenance**: If user forgets to add relevant topics, rule won't fire. Mitigation: `set-memory rules add` CLI makes it low-friction; docs show examples.
 - **Prompt text dependency**: Matching on the raw user prompt means "mi a customer tábla tartalma" (Hungarian) needs "customer" in topics list — not "ügyfél". Mitigation: users add terms in the language they actually use.
 - **YAML parse failure**: If `.claude/rules.yaml` is malformed, hook should silently skip rules injection (graceful degrade). Hard fail would break the entire hook.
 - **Rules vs cheat-sheet confusion**: Two mechanisms for "important things to remember." Mitigation: clear docs and CLI help text distinguishing the two.
@@ -79,7 +79,7 @@ The L5 haiku extraction prompt will be updated to explicitly NOT promote credent
 
 1. Hook reads `.claude/rules.yaml` if present; skips silently if absent or malformed
 2. No migration needed for existing memories
-3. Users adopt rules gradually via `wt-memory rules add`
+3. Users adopt rules gradually via `set-memory rules add`
 4. Existing cheat-sheet entries remain valid — no removal, just scope guidance in docs
 
 ## Open Questions

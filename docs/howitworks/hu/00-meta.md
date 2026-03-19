@@ -1,5 +1,5 @@
 ---
-title: "wt-orchestrate"
+title: "set-orchestrate"
 subtitle: "Hogyan Működik — A teljes orchestrációs pipeline"
 date: "2026. március"
 lang: hu

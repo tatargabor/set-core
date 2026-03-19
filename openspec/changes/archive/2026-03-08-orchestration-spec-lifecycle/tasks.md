@@ -6,16 +6,16 @@
 
 ## 2. specs subcommand
 
-- [x] 2.1 Add `cmd_specs()` function to `bin/wt-orchestrate` — lists spec files in `wt/orchestration/specs/` (active first, then archive/)
+- [x] 2.1 Add `cmd_specs()` function to `bin/set-orchestrate` — lists spec files in `wt/orchestration/specs/` (active first, then archive/)
 - [x] 2.2 Add `specs show <name>` — resolve short name, cat the file content
 - [x] 2.3 Add `specs archive <name>` — move spec from top-level to archive/ using `git mv` (or `mv`)
-- [x] 2.4 Add `specs` to the case statement in `bin/wt-orchestrate` main dispatcher
+- [x] 2.4 Add `specs` to the case statement in `bin/set-orchestrate` main dispatcher
 - [x] 2.5 Update `usage()` help text with specs subcommand documentation
 - [x] 2.6 Graceful handling when `wt/orchestration/specs/` doesn't exist
 
 ## 3. Legacy spec migration
 
-- [x] 3.1 Update `cmd_migrate()` in `bin/wt-project`: detect `docs/v[0-9]*.md` files and move them to `wt/orchestration/specs/archive/` using `git mv`
+- [x] 3.1 Update `cmd_migrate()` in `bin/set-project`: detect `docs/v[0-9]*.md` files and move them to `wt/orchestration/specs/archive/` using `git mv`
 - [x] 3.2 Print migration message for detected legacy spec files in `scaffold_wt_directory()` legacy detection
 
 ## 4. Testing

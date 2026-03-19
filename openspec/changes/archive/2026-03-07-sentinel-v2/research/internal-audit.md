@@ -123,9 +123,9 @@ Design D1 specifies a precise sourcing order: `events.sh` first (other modules e
 **Recommendation:** Add a note to task 1.7 or a new sub-task: "1.7a: Verify source order matches design D1 -- events.sh must be sourced before all other modules."
 
 ### GAP-5: No task for SENTINEL_RESTART event emission
-The events spec (R2) lists `SENTINEL_RESTART` as an event type. Task 9.4 says "Emit SENTINEL_RESTART event when restarting orchestrator." However, `wt-sentinel` is a standalone script that does NOT source `lib/orchestration/events.sh`. The sentinel currently uses its own `sentinel_log()` function. There is no task for how the sentinel will emit a JSONL event to the events file.
+The events spec (R2) lists `SENTINEL_RESTART` as an event type. Task 9.4 says "Emit SENTINEL_RESTART event when restarting orchestrator." However, `set-sentinel` is a standalone script that does NOT source `lib/orchestration/events.sh`. The sentinel currently uses its own `sentinel_log()` function. There is no task for how the sentinel will emit a JSONL event to the events file.
 
-**Recommendation:** Add a sub-task under 9.4: "Implement JSONL append in wt-sentinel (either inline or source events.sh) to emit SENTINEL_RESTART events."
+**Recommendation:** Add a sub-task under 9.4: "Implement JSONL append in set-sentinel (either inline or source events.sh) to emit SENTINEL_RESTART events."
 
 ### GAP-6: Existing stall detection overlap with watchdog
 The current `poll_change()` (lines 3596-3641) already implements stall detection: tracking `stall_count`, checking loop-state mtime staleness, verifying PID liveness, auto-resuming up to 3 times, then marking failed. The watchdog spec (R1, R4) proposes a very similar but different mechanism: `last_activity_epoch`, `escalation_level` 0-4, with different thresholds.
@@ -154,7 +154,7 @@ Every `update_change_field()` call for a status change will now also call `emit_
 **Mitigation:** Consider batching events or only emitting TOKENS events on significant deltas (e.g., >10K tokens change).
 
 ### RISK-4: Sentinel sourcing events.sh (LOW-MEDIUM)
-The sentinel (`bin/wt-sentinel`) is a 146-line standalone script. To emit `SENTINEL_RESTART` events, it needs access to `emit_event()`. Sourcing all of `lib/orchestration/events.sh` is one option, but if events.sh depends on globals set by the orchestrator (like `LOG_FILE`), this could fail.
+The sentinel (`bin/set-sentinel`) is a 146-line standalone script. To emit `SENTINEL_RESTART` events, it needs access to `emit_event()`. Sourcing all of `lib/orchestration/events.sh` is one option, but if events.sh depends on globals set by the orchestrator (like `LOG_FILE`), this could fail.
 
 ### RISK-5: Context pruning false positives (LOW)
 The prune patterns (`.claude/commands/wt/orchestrate*.md`, `sentinel*.md`, `manual*.md`) are glob-based. If a consumer project creates a file like `.claude/commands/wt/manual-testing-guide.md`, it would be pruned. The spec does not address user-defined files that match the glob.
@@ -167,7 +167,7 @@ The prune patterns (`.claude/commands/wt/orchestrate*.md`, `sentinel*.md`, `manu
 
 2. **Add task 1.7a** to explicitly validate the source ordering constraint from design D1, with a comment in the wrapper explaining why `events.sh` must be first.
 
-3. **Clarify task 9.4** to specify HOW `wt-sentinel` emits JSONL events -- either inline JSONL append (simple, no dependencies) or sourcing a minimal events helper.
+3. **Clarify task 9.4** to specify HOW `set-sentinel` emits JSONL events -- either inline JSONL append (simple, no dependencies) or sourcing a minimal events helper.
 
 4. **Address smoke variable closure** in task 1.5 or 1.4: the `smoke_command`, `smoke_timeout`, `smoke_blocking` variables used by `poll_change()` / `handle_change_done()` in verifier.sh are currently local to `monitor_loop()` in dispatcher.sh. After extraction, these must either become globals or be explicitly passed as function arguments. This is the highest-risk extraction detail.
 

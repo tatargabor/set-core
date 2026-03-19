@@ -1,8 +1,8 @@
 ## Context
 
-`wt-project init` orchestrates project setup via `deploy_wt_tools()` which calls several sub-steps: hook deployment, command/skill copying, deprecated ref cleanup, and MCP server registration. Currently, failures in these steps are silently swallowed through `2>/dev/null` and `|| true` patterns, always printing "success" regardless of outcome. This caused a real issue where MCP registration failed silently — the user spent a debugging session discovering `claude mcp list` was empty.
+`set-project init` orchestrates project setup via `deploy_set_tools()` which calls several sub-steps: hook deployment, command/skill copying, deprecated ref cleanup, and MCP server registration. Currently, failures in these steps are silently swallowed through `2>/dev/null` and `|| true` patterns, always printing "success" regardless of outcome. This caused a real issue where MCP registration failed silently — the user spent a debugging session discovering `claude mcp list` was empty.
 
-The `_register_mcp_server` function (lines 124-138 in `bin/wt-project`) is the worst offender: the entire `claude mcp add` command has its stderr suppressed, and `|| true` prevents the exit code from propagating. The function unconditionally prints success on line 137.
+The `_register_mcp_server` function (lines 124-138 in `bin/set-project`) is the worst offender: the entire `claude mcp add` command has its stderr suppressed, and `|| true` prevents the exit code from propagating. The function unconditionally prints success on line 137.
 
 ## Goals / Non-Goals
 
@@ -21,20 +21,20 @@ The `_register_mcp_server` function (lines 124-138 in `bin/wt-project`) is the w
 
 ### D1: Warn-and-continue model (not fail-fast)
 
-`deploy_wt_tools` will continue through all steps even if some fail, collecting warnings. At the end, `cmd_init` prints a summary. Rationale: a partial deployment (e.g. hooks work but MCP failed) is still useful — the user can fix the one failing step.
+`deploy_set_tools` will continue through all steps even if some fail, collecting warnings. At the end, `cmd_init` prints a summary. Rationale: a partial deployment (e.g. hooks work but MCP failed) is still useful — the user can fix the one failing step.
 
 Alternative considered: fail-fast (abort on first error) — rejected because it would leave deployment in a half-done state.
 
 ### D2: Use a `warnings` counter pattern
 
-Each helper function returns 0 on success, 1 on failure. `deploy_wt_tools` tracks a warning counter. At the end it returns 0 if all succeeded, 1 if any warnings. `cmd_init` uses this to print either "complete" or "complete with N warnings".
+Each helper function returns 0 on success, 1 on failure. `deploy_set_tools` tracks a warning counter. At the end it returns 0 if all succeeded, 1 if any warnings. `cmd_init` uses this to print either "complete" or "complete with N warnings".
 
 Alternative considered: collecting error messages in an array — overkill for this scope.
 
 ### D3: Keep `2>/dev/null` only for expected-to-fail commands
 
-- `claude mcp remove wt-memory 2>/dev/null` — keep (may not exist, that's fine)
-- `claude mcp remove wt-tools 2>/dev/null` — keep (same reason)
+- `claude mcp remove set-memory 2>/dev/null` — keep (may not exist, that's fine)
+- `claude mcp remove set-core 2>/dev/null` — keep (same reason)
 - `claude mcp add ... 2>/dev/null` — **remove** (this is the critical command, errors must be visible)
 - `python3 ... 2>/dev/null || true` in cleanup — **replace** with stderr capture to warn
 
@@ -42,7 +42,7 @@ Alternative considered: collecting error messages in an array — overkill for t
 
 ```bash
 local mcp_err
-mcp_err=$(claude mcp add wt-tools -- env ... 2>&1 >/dev/null)
+mcp_err=$(claude mcp add set-core -- env ... 2>&1 >/dev/null)
 if [[ $? -ne 0 ]]; then
     warn "  MCP registration failed for $reg_path: $mcp_err"
     return 1

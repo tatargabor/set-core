@@ -27,7 +27,7 @@ The GUI's `_get_editor_app_name()` returns the configured editor name (e.g., `"Z
 
 **Choice**: In `_render_worktree_row()`, compare the worktree's `editor_type` against a set of known IDE process names (`{"zed", "Zed", "code", "Code", "cursor", "Cursor", "windsurf", "Windsurf"}`). If `editor_type` is truthy but NOT in the IDE set, the agent is in a terminal.
 
-**Alternative considered**: Read the wt-tools config and compare against the configured editor name. Rejected because the PPID chain returns the process name (e.g., `gnome-terminal-`), not the config name. A simple IDE-set check is more robust than trying to match config name ↔ process name.
+**Alternative considered**: Read the set-core config and compare against the configured editor name. Rejected because the PPID chain returns the process name (e.g., `gnome-terminal-`), not the config name. A simple IDE-set check is more robust than trying to match config name ↔ process name.
 
 ### Decision 2: Terminal-waiting display — dimmed "waiting" instead of new status
 

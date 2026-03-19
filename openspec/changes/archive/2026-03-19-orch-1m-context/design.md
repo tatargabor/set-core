@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools orchestration pipeline (dispatcher, verifier, merger, planner in `~/code2/wt-tools/lib/wt_orch/`) injects context into subagent worktrees at dispatch time. Current injection was designed for 200K context windows:
+The set-core orchestration pipeline (dispatcher, verifier, merger, planner in `~/code2/set-core/lib/set_orch/`) injects context into subagent worktrees at dispatch time. Current injection was designed for 200K context windows:
 
 - `data-definitions.md` — LLM-generated entity summary, copied to `.claude/spec-context/` (dispatcher.py:1337-1343)
 - `conventions.json` — project conventions, same path

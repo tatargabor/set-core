@@ -3,7 +3,7 @@
 ## Current flow (problem)
 
 ```
-wt-orchestrate start --spec docs/
+set-orchestrate start --spec docs/
   → cmd_start()
   → need_plan? (plan file missing → YES)
   → cmd_plan() → digest → decompose → 5-10 min wasted
@@ -14,7 +14,7 @@ wt-orchestrate start --spec docs/
 ## New flow (resume)
 
 ```
-wt-orchestrate start --spec docs/
+set-orchestrate start --spec docs/
   → cmd_start()
   → state file exists with active changes? → AUTO-RESUME
   → skip digest, planning, state init
@@ -51,7 +51,7 @@ if [[ -f "$STATE_FILENAME" ]] && ! ${FORCE_REPLAN:-false}; then
         trap - EXIT
         update_state_field "status" '"running"'
         local _directives_file="wt/orchestration/directives.json"
-        exec wt-orch-core engine monitor \
+        exec set-orch-core engine monitor \
             --directives "$_directives_file" \
             --state "$STATE_FILENAME" \
             --poll-interval "${POLL_INTERVAL:-15}" \
@@ -92,7 +92,7 @@ if [[ -f "$STATE_FILENAME" ]]; then
 fi
 ```
 
-### 4. wt-orchestrate — Resume subcommand alias
+### 4. set-orchestrate — Resume subcommand alias
 
 ```bash
 case "$command" in

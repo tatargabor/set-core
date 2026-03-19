@@ -7,7 +7,7 @@
 # If no design MCP is detected, functions return 1 silently.
 
 # ─── Log Fallbacks ────────────────────────────────────────────────────
-# When sourced standalone (e.g. from Python subprocess), wt-common.sh
+# When sourced standalone (e.g. from Python subprocess), set-common.sh
 # may not be loaded.  Define no-op fallbacks so calls never fail.
 type -t info  &>/dev/null || info()  { echo "[design-bridge] $*"; }
 type -t warn  &>/dev/null || warn()  { echo "[design-bridge] WARN: $*" >&2; }

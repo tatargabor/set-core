@@ -4,12 +4,12 @@ E2E Run 16 shows that agents produce structurally correct code (all gates pass) 
 
 ## What Changes
 
-- **wt-tools `lib/design/bridge.sh`**: New function `design_sources_for_dispatch()` — finds `docs/figma-raw/*/sources/` files, matches them against change scope keywords, returns relevant source file contents for injection into agent proposals
-- **wt-tools `lib/wt_orch/dispatcher.py`**: Call the new bridge function and append matched Figma source files to proposal context alongside tokens
-- **wt-tools `lib/wt_orch/templates.py`**: Planner instructions enhanced — when Figma sources exist, extract data model names/fields and embed them in scope descriptions
-- **wt-tools `lib/design/bridge.sh` `build_design_review_section()`**: Include component structure checks (not just token matching) — missing icons, missing images, wrong layout pattern flagged as WARNING
-- **wt-project-web `design-integration.md`**: New rule — when `docs/figma-raw/*/sources/` exists, agents MUST read matched source files before implementing UI; source files are the ground-truth for component structure, model fields, icon usage, and layout patterns
-- **wt-project-web `ui-conventions.md`**: Clarify that when design source files show specific icons (e.g., `ShoppingBag` for cart), agents must use those exact icons, not generic text
+- **set-core `lib/design/bridge.sh`**: New function `design_sources_for_dispatch()` — finds `docs/figma-raw/*/sources/` files, matches them against change scope keywords, returns relevant source file contents for injection into agent proposals
+- **set-core `lib/set_orch/dispatcher.py`**: Call the new bridge function and append matched Figma source files to proposal context alongside tokens
+- **set-core `lib/set_orch/templates.py`**: Planner instructions enhanced — when Figma sources exist, extract data model names/fields and embed them in scope descriptions
+- **set-core `lib/design/bridge.sh` `build_design_review_section()`**: Include component structure checks (not just token matching) — missing icons, missing images, wrong layout pattern flagged as WARNING
+- **set-project-web `design-integration.md`**: New rule — when `docs/figma-raw/*/sources/` exists, agents MUST read matched source files before implementing UI; source files are the ground-truth for component structure, model fields, icon usage, and layout patterns
+- **set-project-web `ui-conventions.md`**: Clarify that when design source files show specific icons (e.g., `ShoppingBag` for cart), agents must use those exact icons, not generic text
 
 ## Capabilities
 
@@ -23,7 +23,7 @@ E2E Run 16 shows that agents produce structurally correct code (all gates pass) 
 
 ## Impact
 
-- **wt-tools**: `lib/design/bridge.sh`, `lib/wt_orch/dispatcher.py`, `lib/wt_orch/templates.py`, `lib/wt_orch/verifier.py`
-- **wt-project-web**: `templates/nextjs/rules/design-integration.md`, `templates/nextjs/rules/ui-conventions.md`
-- **Consumer projects**: After `wt-project init`, agents will receive Figma source file context and follow design structure more accurately
+- **set-core**: `lib/design/bridge.sh`, `lib/set_orch/dispatcher.py`, `lib/set_orch/templates.py`, `lib/set_orch/verifier.py`
+- **set-project-web**: `templates/nextjs/rules/design-integration.md`, `templates/nextjs/rules/ui-conventions.md`
+- **Consumer projects**: After `set-project init`, agents will receive Figma source file context and follow design structure more accurately
 - No breaking changes — purely additive context injection

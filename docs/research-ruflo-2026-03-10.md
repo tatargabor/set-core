@@ -1,7 +1,7 @@
 # Ruflo (ruvnet/ruflo) Kutatás — 2026-03-10
 
 > Átfogó kutatás a ruflo (korábban claude-flow) orchestration platformról,
-> kifejezetten a wt-tools-ba átvehető minták szemszögéből.
+> kifejezetten a set-core-ba átvehető minták szemszögéből.
 
 ## Háttér
 
@@ -42,7 +42,7 @@ active → stealable → stolen (+ contest mechanizmus)
 
 **Contest:** eredeti agent `contestSteal()` → queen/human dönt a winner-ről
 
-**wt-tools alkalmazás:** Amikor Ralph loop 3+ iteráció nulla haladás → change `stealable`
+**set-core alkalmazás:** Amikor Ralph loop 3+ iteráció nulla haladás → change `stealable`
 → sentinel új worktree-be re-dispatch-ol fresh context-tel.
 Jelenleg ez manuális beavatkozás.
 
@@ -55,7 +55,7 @@ SubTask { id, dependencies: string[], requiredCapabilities[], recommendedDomain 
 // + topologikus rendezés ciklus-detektálással
 ```
 
-**wt-tools alkalmazás:** A planner `depends_on` mezőt generál, de a dispatcher
+**set-core alkalmazás:** A planner `depends_on` mezőt generál, de a dispatcher
 nem mindig tartja tiszteletben. Explicit `blockedBy` tracking + topologikus
 rendezés a dispatch sorrendhez.
 
@@ -68,7 +68,7 @@ totalScore = capability(0.30) + load(0.20) + performance(0.25)
            + health(0.15) + availability(0.10)
 ```
 
-**wt-tools alkalmazás:** Jelenleg round-robin-szerű dispatch. Score-alapú
+**set-core alkalmazás:** Jelenleg round-robin-szerű dispatch. Score-alapú
 dispatch jobb lenne: magas error rate → alacsony score → kevesebb task.
 
 ### P2: Circuit Breaker + Exponential Backoff
@@ -79,9 +79,9 @@ dispatch jobb lenne: magas error rate → alacsony score → kevesebb task.
 - **Retry:** jitter + backoff multiplier + per-attempt timeout + retryableErrors filter
 - **Bulkhead:** max concurrent executions + overflow queue
 
-**wt-tools alkalmazás:**
+**set-core alkalmazás:**
 - API hívásokra: N egymást követő fail → circuit open → ne pazarolj tokent
-- Meglévő `wt-loop` backoff generalizálása `retry_with_backoff()` függvénnyé
+- Meglévő `set-loop` backoff generalizálása `retry_with_backoff()` függvénnyé
 - Bulkhead = `max_parallel_changes` + queue, ami már részben létezik
 
 ### P2: Health Monitor (agent-szintű egészség)
@@ -93,7 +93,7 @@ errorRate = errors / (completed + failed)
 → healthy (<20%), degraded (20-50%), unhealthy (>50%)
 ```
 
-**wt-tools alkalmazás a watchdog/sentinel-ben:**
+**set-core alkalmazás a watchdog/sentinel-ben:**
 - Rolling error rate worktree-nként
 - 30s-onkénti health check: token consumption rate, iteráció/progress ráta
 - Degraded worktree → alacsonyabb dispatch priority
@@ -106,7 +106,7 @@ urgent > high > normal > low
 
 Graceful degradation: overflow → lowest-priority drop.
 
-**wt-tools alkalmazás:** Sentinel beavatkozás = urgent, task completion = normal,
+**set-core alkalmazás:** Sentinel beavatkozás = urgent, task completion = normal,
 heartbeat = low. A jelenlegi flat `send_message` nem priorizál.
 
 ### P3: Event correlation/causation ID-k
@@ -115,7 +115,7 @@ heartbeat = low. A jelenlegi flat `send_message` nem priorizál.
 DomainEvent { causationId, correlationId }
 ```
 
-**wt-tools alkalmazás:** Run log post-mortem elemzéshez — planner_decision →
+**set-core alkalmazás:** Run log post-mortem elemzéshez — planner_decision →
 dispatch → agent_failure → replan lánc összekapcsolása.
 
 ### P3: ReasoningBank (korábbi megoldások újrafelhasználása)
@@ -123,7 +123,7 @@ dispatch → agent_failure → replan lánc összekapcsolása.
 Sikeres reasoning trajectory-k tárolása embedding-gel → hasonló feladatnál
 retrieve past solution as context.
 
-**wt-tools alkalmazás:** shodh-memory már support-olja, explicit integrálás
+**set-core alkalmazás:** shodh-memory már support-olja, explicit integrálás
 kell az orchestrator dispatch-be.
 
 ### P3: Confidence decay stale memóriákra
@@ -136,9 +136,9 @@ prioritás-csökkentés retrieval-nál.
 Append-only event log + snapshot + replay. A state.yaml korrupció ellen véd.
 Csak ha a korrupció ismétlődő probléma lesz.
 
-## III. wt-tools előnyei ruflo-val szemben
+## III. set-core előnyei ruflo-val szemben
 
-| Szempont | wt-tools | ruflo |
+| Szempont | set-core | ruflo |
 |----------|----------|-------|
 | Valódi multi-process | Claude Code worktree-kben | In-memory callback stub |
 | Spec digest | `digest.sh` — domain decomposition | Nincs |

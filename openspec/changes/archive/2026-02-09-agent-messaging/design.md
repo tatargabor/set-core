@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools system currently has two communication channels:
+The set-core system currently has two communication channels:
 1. **Broadcast** (`activity.json`): One-way status announcements via `/context:broadcast`, synced through git. Agents can broadcast but can only see others via `/context:status` which relies on LLM file parsing.
 2. **Chat** (`wt-control-chat`): E2E encrypted 1:1 messaging with GUI dialog. Only human-accessible — no agent integration.
 
@@ -83,7 +83,7 @@ send_message("target", "msg")
 
 **Decision**: Move from `/context:*` to `/wt:*` namespace. New commands: `/wt:broadcast`, `/wt:status`, `/wt:msg`, `/wt:inbox`.
 
-**Rationale**: All other wt-tools commands use the `/wt:` prefix. The `context` namespace was created before the convention was established.
+**Rationale**: All other set-core commands use the `/wt:` prefix. The `context` namespace was created before the convention was established.
 
 **Implementation**: Move `.claude/commands/context/*.md` to `.claude/commands/wt/broadcast.md` and `wt/status.md`. Add new `wt/msg.md` and `wt/inbox.md`. Remove old `context/` directory.
 

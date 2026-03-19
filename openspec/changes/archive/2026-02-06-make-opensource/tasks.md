@@ -1,5 +1,5 @@
 ## Phase 1: Proprietary Content Removal
-- [x] 1.1 Update `.gitignore` to exclude `.wt-tools/*.json`
+- [x] 1.1 Update `.gitignore` to exclude `.set-core/*.json`
 - [x] 1.2 Create example config templates
 - [x] 1.3 Replace Zengo URLs with GitHub URL
 - [x] 1.4 Replace EXAMPLE with MYPROJECT
@@ -15,8 +15,8 @@
 - [x] 2.6 Update example names in specs
 
 ## Phase 3: Plugin Architecture
-- [x] 3.1 Create `wt_tools/plugins/__init__.py`
-- [x] 3.2 Create `wt_tools/plugins/base.py` with Plugin, PluginRegistry
+- [x] 3.1 Create `set_tools/plugins/__init__.py`
+- [x] 3.2 Create `set_tools/plugins/base.py` with Plugin, PluginRegistry
 - [x] 3.3 Update JiraMixin with `is_jira_available()` check
 - [x] 3.4 Create `pyproject.toml` with entry points
 - [x] 3.5 Create LICENSE (MIT)
@@ -40,7 +40,7 @@
 - [x] 5.6 Create PR template
 
 ## Phase 6: GitHub Release
-- [x] 6.1 Update all URLs to github.com/anthropic-tools/wt-tools
+- [x] 6.1 Update all URLs to github.com/anthropic-tools/set-core
 - [x] 6.2 Add Related Projects section to README
 - [ ] 6.3 Push to private GitHub repo
 - [ ] 6.4 Add collaborators for testing

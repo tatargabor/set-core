@@ -123,7 +123,7 @@ def _get_review_history(state_file, change_name):
 
 ## Decision: No Cross-Run Persistence Yet
 
-The `review_history` lives in `orchestration-state.json` which is per-run. Cross-run learning (extracting patterns into wt-project-web rules) is a separate future change — done manually at wrap-up or automated later.
+The `review_history` lives in `orchestration-state.json` which is per-run. Cross-run learning (extracting patterns into set-project-web rules) is a separate future change — done manually at wrap-up or automated later.
 
 ## Risks
 

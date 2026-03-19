@@ -2,7 +2,7 @@
 
 ## 1. wt-openspec CLI
 
-- [x] 1.1 Create `bin/wt-openspec` bash script with usage/help, `--project` flag, and `resolve_project()` (same pattern as `wt-memory`)
+- [x] 1.1 Create `bin/wt-openspec` bash script with usage/help, `--project` flag, and `resolve_project()` (same pattern as `set-memory`)
 - [x] 1.2 Implement `cmd_status`: filesystem-based checks — `openspec/config.yaml` exists, count `openspec/changes/*/` dirs (excluding `archive`), check `.claude/skills/openspec-*` dirs. Support `--json` flag.
 - [x] 1.3 Implement `cmd_init`: check `openspec` CLI exists (`which openspec`), check not already initialized, run `openspec init --tools claude` in main repo
 - [x] 1.4 Implement `cmd_update`: check `openspec` CLI exists, check already initialized, run `openspec update` in main repo
@@ -11,7 +11,7 @@
 ## 2. FeatureWorker background thread
 
 - [x] 2.1 Create `gui/workers/feature.py` with `FeatureWorker(QThread)`: `features_updated = Signal(dict)`, poll interval 15s, `_running` flag, `stop()` method
-- [x] 2.2 Implement `_poll_project(project, main_repo_path)`: run `wt-memory status --json --project X` and `wt-openspec status --json` (with cwd=main_repo), return combined dict `{"memory": {...}, "openspec": {...}}`
+- [x] 2.2 Implement `_poll_project(project, main_repo_path)`: run `set-memory status --json --project X` and `wt-openspec status --json` (with cwd=main_repo), return combined dict `{"memory": {...}, "openspec": {...}}`
 - [x] 2.3 Implement `run()` loop: iterate `self._projects` list, call `_poll_project` for each, emit `features_updated` with `{project_name: {memory: ..., openspec: ...}}`. First poll runs immediately.
 - [x] 2.4 Add `set_projects(projects_with_paths)` method to update the project list from StatusWorker data
 - [x] 2.5 Add `refresh_now()` method that wakes the worker for an immediate poll (for post-init/update refresh)

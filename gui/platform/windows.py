@@ -8,7 +8,7 @@ from typing import Optional
 
 from .base import PlatformInterface
 
-logger = logging.getLogger("wt-control.windows")
+logger = logging.getLogger("set-control.windows")
 
 
 class WindowsPlatform(PlatformInterface):
@@ -35,16 +35,16 @@ class WindowsPlatform(PlatformInterface):
             return False
 
     def get_config_dir(self) -> Path:
-        """Return Windows config directory for wt-tools."""
+        """Return Windows config directory for set-core."""
         appdata = os.environ.get("APPDATA", os.path.expanduser("~\\AppData\\Roaming"))
-        return Path(appdata) / "wt-tools"
+        return Path(appdata) / "set-core"
 
     def get_cache_dir(self) -> Path:
-        """Return Windows cache directory for wt-tools."""
+        """Return Windows cache directory for set-core."""
         localappdata = os.environ.get(
             "LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local")
         )
-        return Path(localappdata) / "wt-tools" / "cache"
+        return Path(localappdata) / "set-core" / "cache"
 
     def get_process_cmdline(self, pid: int) -> Optional[str]:
         """Get command line using wmic."""

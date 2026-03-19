@@ -24,13 +24,13 @@ The verification pipeline runs the same 7 gates for every change regardless of i
 
 ## Impact
 
-- `lib/wt_orch/gate_profiles.py` — new module (GateConfig, BUILTIN_GATE_PROFILES, resolve_gate_config)
-- `lib/wt_orch/verifier.py` — handle_change_done uses GateConfig for all gate decisions
-- `lib/wt_orch/merger.py` — post_merge_smoke checks GateConfig.smoke
-- `lib/wt_orch/state.py` — Change dataclass gets gate_hints field
-- `lib/wt_orch/templates.py` — planning rules + JSON schema updated with gate profile info and gate_hints
-- `lib/wt_orch/profile_loader.py` — NullProfile gets gate_overrides()
-- `lib/wt_orch/config.py` — gate_overrides directive for runtime tuning
-- `wt-project-base/base.py` — ProjectType ABC gets gate_overrides() method
-- `wt-project-web/project_type.py` — web-specific gate overrides (foundational+e2e, schema+build)
+- `lib/set_orch/gate_profiles.py` — new module (GateConfig, BUILTIN_GATE_PROFILES, resolve_gate_config)
+- `lib/set_orch/verifier.py` — handle_change_done uses GateConfig for all gate decisions
+- `lib/set_orch/merger.py` — post_merge_smoke checks GateConfig.smoke
+- `lib/set_orch/state.py` — Change dataclass gets gate_hints field
+- `lib/set_orch/templates.py` — planning rules + JSON schema updated with gate profile info and gate_hints
+- `lib/set_orch/profile_loader.py` — NullProfile gets gate_overrides()
+- `lib/set_orch/config.py` — gate_overrides directive for runtime tuning
+- `set-project-base/base.py` — ProjectType ABC gets gate_overrides() method
+- `set-project-web/project_type.py` — web-specific gate overrides (foundational+e2e, schema+build)
 - Zero breaking changes: feature type = all gates run (identical to current behavior)

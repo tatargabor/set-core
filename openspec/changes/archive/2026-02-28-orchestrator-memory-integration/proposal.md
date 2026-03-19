@@ -1,6 +1,6 @@
 ## Why
 
-The orchestrator (wt-orchestrate) has near-zero memory integration. While agents running inside worktrees get full memory support via hooks, the orchestrator layer itself neither saves its operational decisions nor recalls past experience when planning, dispatching, or replanning. This means merge conflicts, test failures, and review outcomes are lost between cycles — the orchestrator repeats the same mistakes instead of learning from them.
+The orchestrator (set-orchestrate) has near-zero memory integration. While agents running inside worktrees get full memory support via hooks, the orchestrator layer itself neither saves its operational decisions nor recalls past experience when planning, dispatching, or replanning. This means merge conflicts, test failures, and review outcomes are lost between cycles — the orchestrator repeats the same mistakes instead of learning from them.
 
 ## What Changes
 
@@ -16,13 +16,13 @@ Not included: loop prompt memory injection (redundant — agent hooks already pr
 ## Capabilities
 
 ### New Capabilities
-- `orchestrator-memory`: Memory integration for the wt-orchestrate orchestration layer — saving operational events, recalling past experience during planning/dispatch/replan
+- `orchestrator-memory`: Memory integration for the set-orchestrate orchestration layer — saving operational events, recalling past experience during planning/dispatch/replan
 
 ### Modified Capabilities
-<!-- None — dispatch_change lives in wt-orchestrate, covered by orchestrator-memory -->
+<!-- None — dispatch_change lives in set-orchestrate, covered by orchestrator-memory -->
 
 ## Impact
 
-- **Code**: `bin/wt-orchestrate` (plan, dispatch, replan, merge/test/review functions), `bin/wt-loop` (dispatch_change proposal writing)
-- **Dependencies**: Requires `wt-memory` CLI available on PATH (already a prerequisite for memory-enabled projects)
-- **Systems**: shodh-memory database receives additional `source:orchestrator` tagged memories; projects using wt-orchestrate get richer memory context over time
+- **Code**: `bin/set-orchestrate` (plan, dispatch, replan, merge/test/review functions), `bin/wt-loop` (dispatch_change proposal writing)
+- **Dependencies**: Requires `set-memory` CLI available on PATH (already a prerequisite for memory-enabled projects)
+- **Systems**: shodh-memory database receives additional `source:orchestrator` tagged memories; projects using set-orchestrate get richer memory context over time

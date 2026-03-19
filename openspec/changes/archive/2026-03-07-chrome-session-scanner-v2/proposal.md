@@ -26,4 +26,4 @@ The v1 Chrome session scanner (from `chrome-session-scanner`) works but has issu
 - `gui/control_center/main_window.py` — conditional toolbar button
 - `gui/platform/__init__.py` — stdlib platform fix
 - `tests/gui/test_17_chrome_cookies.py` — update tests
-- `~/.config/wt-tools/claude-session.json` — org name caching in account entries
+- `~/.config/set-core/claude-session.json` — org name caching in account entries

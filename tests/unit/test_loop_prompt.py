@@ -1,4 +1,4 @@
-"""Tests for wt_orch.loop_prompt — action detection, prompt assembly."""
+"""Tests for set_orch.loop_prompt — action detection, prompt assembly."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.loop_prompt import (
+from set_orch.loop_prompt import (
     detect_next_change_action,
     build_claude_prompt,
     get_spec_context,

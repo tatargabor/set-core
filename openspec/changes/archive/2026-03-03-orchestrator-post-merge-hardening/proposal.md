@@ -20,7 +20,7 @@ The v7 sales-raketa orchestration run exposed 3 critical failure modes in the po
 
 ## Impact
 
-- `bin/wt-orchestrate` — directive parsing, state persistence, merge flow
+- `bin/set-orchestrate` — directive parsing, state persistence, merge flow
 - `.claude/commands/wt/sentinel.md` — guardrails section
 - `.claude/orchestration.yaml` in target projects — new `post_merge_command` directive
 - Orchestration docs — new directive documentation

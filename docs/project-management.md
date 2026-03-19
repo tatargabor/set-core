@@ -2,27 +2,27 @@
 
 # Consumer Project Management
 
-How to set up, maintain, and update wt-tools in a consumer project.
+How to set up, maintain, and update set-core in a consumer project.
 
 ## Initial Setup
 
 ```bash
 cd /path/to/your-project
-wt-project init
+set-project init
 ```
 
 This:
-1. Registers the project in wt-tools registry
+1. Registers the project in set-core registry
 2. Deploys hooks, commands, skills, agents, and rules to `.claude/`
-3. Registers the wt-tools MCP server
+3. Registers the set-core MCP server
 4. Adds `Persistent Memory` and `Auto-Commit After Apply` sections to `CLAUDE.md`
-5. Writes `.claude/.wt-version` with the current wt-tools version
+5. Writes `.claude/.set-version` with the current set-core version
 
 Use `--name <custom>` to override the project name (defaults to directory name).
 
 ## Version Tracking
 
-Each `wt-project init` stores the wt-tools version (git short hash or tag) in `.claude/.wt-version`. On subsequent runs, wt-project compares the stored version against the current wt-tools version.
+Each `set-project init` stores the set-core version (git short hash or tag) in `.claude/.set-version`. On subsequent runs, set-project compares the stored version against the current set-core version.
 
 When a version change is detected, automatic migration runs:
 - **Additive directive merge** — new `orchestration.yaml` directives are appended as comments (never overwrites existing values)
@@ -34,7 +34,7 @@ When a version change is detected, automatic migration runs:
 Preview what `init` would change without modifying any files:
 
 ```bash
-wt-project init --dry-run
+set-project init --dry-run
 ```
 
 ## Project Knowledge
@@ -42,20 +42,20 @@ wt-project init --dry-run
 Scaffold a `project-knowledge.yaml` for cross-cutting file awareness:
 
 ```bash
-wt-project init-knowledge
+set-project init-knowledge
 ```
 
 This scans the project for common patterns (i18n files, sidebar components, route definitions, database schemas) and generates a draft. See [project-knowledge.md](project-knowledge.md) for the full schema.
 
-## Updating wt-tools
+## Updating set-core
 
 ```bash
-cd /path/to/wt-tools
+cd /path/to/set-core
 git pull
 
 # Re-deploy to all registered projects
-wt-project list                    # see registered projects
-cd /path/to/your-project && wt-project init   # update one project
+set-project list                    # see registered projects
+cd /path/to/your-project && set-project init   # update one project
 ```
 
 The migration system ensures updates are safe:
@@ -86,19 +86,19 @@ See the [orchestration directive reference](orchestration.md#configuration) for 
 ## Bidirectional Flow
 
 ```
-wt-tools (source)                     consumer project
+set-core (source)                     consumer project
    │                                      │
-   ├── wt-project init ──────────────────►│  deploy .claude/ files
+   ├── set-project init ──────────────────►│  deploy .claude/ files
    │                                      │
    │◄── run logs (bugs, design) ──────────┤  diagnostics after each run
    │◄── .claude/ diffs ──────────────────┤  sentinel/user improvements
    │◄── orchestration.yaml ──────────────┤  config evolution
    │                                      │
    ├── fix bugs, add features             │
-   ├── wt-project init ──────────────────►│  redeploy (with migration)
+   ├── set-project init ──────────────────►│  redeploy (with migration)
 ```
 
-After orchestration runs, check the run log for issues to report back to wt-tools development.
+After orchestration runs, check the run log for issues to report back to set-core development.
 
 ---
 

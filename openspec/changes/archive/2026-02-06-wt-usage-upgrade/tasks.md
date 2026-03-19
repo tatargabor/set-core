@@ -22,7 +22,7 @@
 ## 4. GUI: session key input dialog
 
 - [x] 4.1 Add "Set Session Key..." menu action that opens `QInputDialog.getText()`
-- [x] 4.2 Save entered key to `~/.config/wt-tools/claude-session.json`
+- [x] 4.2 Save entered key to `~/.config/set-core/claude-session.json`
 - [x] 4.3 Test the key with an API call and show success/failure feedback
 - [x] 4.4 Remove old "Login to Claude" / "Usage (Browser)" menu items referencing WebEngine
 

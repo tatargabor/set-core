@@ -4,8 +4,8 @@ The `wt-hook-memory-save` Stop hook fires on **every Claude response** (not just
 
 ## What Changes
 
-- **Staging pattern**: Instead of saving extracted insights directly to `wt-memory`, write them to a staging file (`.wt-tools/.staged-extract-{transcript-id}`). Each Stop event overwrites the same staging file, so only the latest (most complete) extraction persists.
-- **Commit on next session**: When the hook detects a **different** transcript than the staged one, it commits the staged file's contents to `wt-memory` and starts staging for the new transcript. Staged files older than 1 hour are also auto-committed (handles "last session in project" edge case).
+- **Staging pattern**: Instead of saving extracted insights directly to `set-memory`, write them to a staging file (`.set-core/.staged-extract-{transcript-id}`). Each Stop event overwrites the same staging file, so only the latest (most complete) extraction persists.
+- **Commit on next session**: When the hook detects a **different** transcript than the staged one, it commits the staged file's contents to `set-memory` and starts staging for the new transcript. Staged files older than 1 hour are also auto-committed (handles "last session in project" edge case).
 - **Debounce**: Skip Haiku extraction if the staging file was written less than 5 minutes ago for the same transcript. This reduces Haiku calls from ~25/session to ~6-10/session.
 - **Tests**: Add bash-based integration tests covering: staging write, commit-on-switch, debounce skip, stale commit, and no-duplicate-memories.
 
@@ -22,6 +22,6 @@ The `wt-hook-memory-save` Stop hook fires on **every Claude response** (not just
 
 - **File modified**: `bin/wt-hook-memory-save` (PATH 1 transcript extraction section)
 - **Files created**: `tests/test_save_hook_staging.sh` (integration tests)
-- **Marker files**: `.wt-tools/.staged-extract-*` (new staging files), `.wt-tools/.staged-extract-*.ts` (debounce timestamps)
+- **Marker files**: `.set-core/.staged-extract-*` (new staging files), `.set-core/.staged-extract-*.ts` (debounce timestamps)
 - **No API changes**: Hook input/output contract unchanged
-- **No dependency changes**: Still uses `claude` CLI with haiku, `wt-memory remember`
+- **No dependency changes**: Still uses `claude` CLI with haiku, `set-memory remember`

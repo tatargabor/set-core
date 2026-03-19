@@ -1,16 +1,16 @@
 ## Context
 
-`wt-memory` has 348+ memories accumulated over benchmark runs and development sessions. Hooks (especially transcript extraction on Stop events) create near-duplicate memories. The existing `cleanup` command only removes low-importance entries — there's no way to detect or remove semantic duplicates, and no health audit command.
+`set-memory` has 348+ memories accumulated over benchmark runs and development sessions. Hooks (especially transcript extraction on Stop events) create near-duplicate memories. The existing `cleanup` command only removes low-importance entries — there's no way to detect or remove semantic duplicates, and no health audit command.
 
 The shodh-memory Rust engine uses MiniLM-L6 embeddings (384-dim) for recall, but these embeddings are not exposed for pairwise comparison via CLI. The Python API (`Memory.list_memories()`) returns content strings, so similarity must be computed in Python using `difflib.SequenceMatcher`.
 
-All commands follow the established `cmd_*` pattern in `bin/wt-memory`: bash function wrapping an inline Python script run via `run_with_lock run_shodh_python -c "..."`, passing parameters through environment variables.
+All commands follow the established `cmd_*` pattern in `bin/set-memory`: bash function wrapping an inline Python script run via `run_with_lock run_shodh_python -c "..."`, passing parameters through environment variables.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- `wt-memory audit` — diagnostic report showing total count, duplicate clusters, redundant entry count, and the largest clusters
-- `wt-memory dedup` — remove duplicate memories with configurable similarity threshold, dry-run mode, and interactive mode
+- `set-memory audit` — diagnostic report showing total count, duplicate clusters, redundant entry count, and the largest clusters
+- `set-memory dedup` — remove duplicate memories with configurable similarity threshold, dry-run mode, and interactive mode
 - Dedup resolution keeps the "best" memory per cluster (highest access_count, importance, longest content) and merges tags from deleted entries into the survivor
 - `--interactive` mode presents each cluster for user confirmation before deleting
 
@@ -54,7 +54,7 @@ Shodh-memory has no `update()` method. To merge tags from deleted cluster member
 
 ### D6: Audit output — human-readable by default, `--json` for machine
 
-`wt-memory audit` prints a formatted report by default. With `--json`, outputs a structured JSON object for scripting.
+`set-memory audit` prints a formatted report by default. With `--json`, outputs a structured JSON object for scripting.
 
 ## Risks / Trade-offs
 

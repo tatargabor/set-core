@@ -1,6 +1,6 @@
 ## Why
 
-Agents currently save user-shared knowledge mid-flow and run self-reflection at session end, but they forget to save their OWN non-obvious discoveries at the moment of discovery. The pattern is: Discover → Summarize to user → forget to save. This was observed during a benchmark verification where the agent found a critical project-isolation gotcha in wt-memory but only saved it after being prompted. The fix is to enforce a "Discover → Save → Tell" ordering in all relevant skills and in the CLAUDE.md ambient instruction.
+Agents currently save user-shared knowledge mid-flow and run self-reflection at session end, but they forget to save their OWN non-obvious discoveries at the moment of discovery. The pattern is: Discover → Summarize to user → forget to save. This was observed during a benchmark verification where the agent found a critical project-isolation gotcha in set-memory but only saved it after being prompted. The fix is to enforce a "Discover → Save → Tell" ordering in all relevant skills and in the CLAUDE.md ambient instruction.
 
 ## What Changes
 
@@ -23,5 +23,5 @@ Agents currently save user-shared knowledge mid-flow and run self-reflection at 
 ## Impact
 
 - Modified files: CLAUDE.md (proactive memory section), all SKILL.md files that have memory hooks, all command .md files that have memory hooks
-- No code changes to wt-memory CLI, hooks, or GUI
+- No code changes to set-memory CLI, hooks, or GUI
 - Behavioral change: agents will save discoveries immediately instead of deferring to session-end self-reflection

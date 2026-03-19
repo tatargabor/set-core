@@ -18,14 +18,14 @@ The sentinel main loop SHALL check for incoming messages every 3-5 seconds inste
 
 #### Scenario: Bash sentinel inbox check
 - **WHEN** the bash sentinel is in its 10s sleep between state polls
-- **THEN** it SHALL split the sleep into 2x5s intervals and call `wt-sentinel-inbox check` between them, achieving max 5s message latency
+- **THEN** it SHALL split the sleep into 2x5s intervals and call `set-sentinel-inbox check` between them, achieving max 5s message latency
 
 #### Scenario: Agent sentinel inbox check
 - **WHEN** the agent sentinel is in its 30s sleep between state polls
 - **THEN** it SHALL split the sleep into 10x3s intervals and check inbox between each, achieving max 3s message latency
 
 #### Scenario: Message received during inbox check
-- **WHEN** `wt-sentinel-inbox check` finds a new message
+- **WHEN** `set-sentinel-inbox check` finds a new message
 - **THEN** the message content and sender SHALL be printed to stdout AND a `message_received` event SHALL be emitted to events.jsonl
 
 ### Requirement: Sentinel status registration
@@ -44,7 +44,7 @@ The sentinel SHALL register its identity in `.wt/sentinel/status.json` on startu
 - **THEN** it SHALL set `active: false` in `status.json` (best-effort via signal handler)
 
 ### Requirement: Inbox Python API
-The system SHALL provide `lib/wt_orch/sentinel/inbox.py` with lightweight inbox check functions.
+The system SHALL provide `lib/set_orch/sentinel/inbox.py` with lightweight inbox check functions.
 
 #### Scenario: Check inbox with no messages
 - **WHEN** `check_inbox(member)` is called and no messages exist

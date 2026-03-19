@@ -17,14 +17,14 @@ Claude Code now supports:
 - Make CLAUDE.md concise (~60-70 lines) by moving reference content to rules/
 - Preserve critical state through context compaction via compact instructions and hooks
 - Inject project memory into spawned subagents via SubagentStart hook
-- Update wt-project init to deploy rules/ and agents/ to target projects
+- Update set-project init to deploy rules/ and agents/ to target projects
 
 **Non-Goals:**
 - Changing memory hook logic or scripts (wt-hook-memory, wt-hook-skill, etc.)
 - Modifying OpenSpec skill/command file content (only frontmatter additions)
-- Packaging wt-tools as a Claude Code plugin (future consideration)
+- Packaging set-core as a Claude Code plugin (future consideration)
 - Agent Teams integration (experimental, separate effort)
-- Creating path-scoped rules for non-wt-tools projects (only this project's rules)
+- Creating path-scoped rules for non-set-core projects (only this project's rules)
 
 ## Decisions
 
@@ -127,13 +127,13 @@ Sections staying (modified):
 - Auto-Commit After Apply (managed, unchanged)
 - Compact Instructions (new)
 
-### D6: wt-project init deployment — copy rules/ and agents/
+### D6: set-project init deployment — copy rules/ and agents/
 
-**Decision**: Extend `deploy_wt_tools()` in `bin/wt-project` to also deploy `.claude/rules/` and `.claude/agents/` directories from the wt-tools repo to target projects.
+**Decision**: Extend `deploy_set_tools()` in `bin/set-project` to also deploy `.claude/rules/` and `.claude/agents/` directories from the set-core repo to target projects.
 
-The deploy follows the same copy pattern as commands and skills: `cp -r` with self-detection (skip if source == destination). Only wt-tools-owned rules are deployed (files in the wt-tools repo's `.claude/rules/`). Project-specific custom rules are not overwritten — use a naming convention or marker to distinguish.
+The deploy follows the same copy pattern as commands and skills: `cp -r` with self-detection (skip if source == destination). Only set-core-owned rules are deployed (files in the set-core repo's `.claude/rules/`). Project-specific custom rules are not overwritten — use a naming convention or marker to distinguish.
 
-**Decision on conflict avoidance**: wt-tools rules use a `wt-` prefix (e.g., `wt-gui-testing.md`) in target projects to avoid conflicts with project-specific rules. In the wt-tools repo itself, the prefix is not needed since these ARE the project rules.
+**Decision on conflict avoidance**: set-core rules use a `wt-` prefix (e.g., `wt-gui-testing.md`) in target projects to avoid conflicts with project-specific rules. In the set-core repo itself, the prefix is not needed since these ARE the project rules.
 
 ## Risks / Trade-offs
 

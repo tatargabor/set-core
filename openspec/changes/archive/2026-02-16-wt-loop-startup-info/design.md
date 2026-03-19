@@ -46,7 +46,7 @@ When running parallel benchmark instances (Run A baseline vs Run B with memory),
 ╚════════════════════════════════════════════════════════════════╝
 ```
 
-**Rationale**: Show everything useful at a glance. Task is NOT truncated (it's the startup, verbosity is fine). The separator line groups config vs. identity info. Memory status is detected via `wt-memory health`.
+**Rationale**: Show everything useful at a glance. Task is NOT truncated (it's the startup, verbosity is fine). The separator line groups config vs. identity info. Memory status is detected via `set-memory health`.
 
 ### 3. Terminal title format
 
@@ -66,6 +66,6 @@ Examples:
 
 ## Risks / Trade-offs
 
-- **`wt-memory health` call at startup**: Adds ~200ms to banner display. Acceptable for a one-time startup cost. → Run it once and cache the result.
+- **`set-memory health` call at startup**: Adds ~200ms to banner display. Acceptable for a one-time startup cost. → Run it once and cache the result.
 - **Long labels**: Could break box alignment. → No box-width enforcement; the box grows. The `║` chars are decorative, not aligned to a fixed width currently anyway.
 - **macOS AppleScript compatibility**: `set custom title` requires Terminal.app preferences to not override custom titles. → Document as a known limitation.

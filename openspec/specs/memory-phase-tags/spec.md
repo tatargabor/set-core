@@ -31,7 +31,7 @@ The orchestrator SHALL perform a lightweight memory health check before starting
 #### Scenario: Pre-decomposition hygiene
 - **WHEN** `cmd_plan()` is invoked (either API or agent method)
 - **THEN** before planning, the orchestrator SHALL:
-  1. Run `wt-memory dedup --dry-run` and log duplicate count
+  1. Run `set-memory dedup --dry-run` and log duplicate count
   2. Log total memory count and phase tag distribution
   3. Exclude memories tagged `stale:true` from all recall
 
@@ -47,7 +47,7 @@ The `orch_recall` function SHALL support phase tag filtering through its existin
 #### Scenario: Tags parameter usage for phase filtering
 - **WHEN** `orch_recall "$query" $limit "phase:planning"` is called
 - **THEN** only memories with `phase:planning` tag SHALL be returned
-- **AND** the tag filter SHALL be passed to `wt-memory recall --tags`
+- **AND** the tag filter SHALL be passed to `set-memory recall --tags`
 
 #### Scenario: Empty tags parameter (backward compat)
 - **WHEN** `orch_recall "$query" $limit ""` is called with empty tags

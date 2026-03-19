@@ -1,6 +1,6 @@
 ## Context
 
-The wt-tools codebase is ~31K lines of Bash across 79 files. A quality audit revealed:
+The set-core codebase is ~31K lines of Bash across 79 files. A quality audit revealed:
 
 - **86% of files** lack `set -euo pipefail` — errors silently propagate
 - **940 jq calls** across 41 files — the core state manipulation pattern (`mktemp` + `jq` + `mv`) does not validate jq output, meaning a failed jq command can overwrite state.json with an empty file

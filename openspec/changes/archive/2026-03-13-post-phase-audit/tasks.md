@@ -3,14 +3,14 @@
 ### 1. New auditor.sh module
 
 - [x] Create `lib/orchestration/auditor.sh` with source guard and `source` of shared utils
-- [x] Implement `build_audit_prompt()`: two modes — digest (requirements.json + coverage.json) and spec/brief (raw spec text). Include merged change names, scopes, and file lists (git log on main, max 50 files per change). Truncate spec to 30000 chars. Build input JSON and pipe through `wt-orch-core template audit --input-file -`.
+- [x] Implement `build_audit_prompt()`: two modes — digest (requirements.json + coverage.json) and spec/brief (raw spec text). Include merged change names, scopes, and file lists (git log on main, max 50 files per change). Truncate spec to 30000 chars. Build input JSON and pipe through `set-orch-core template audit --input-file -`.
 - [x] Implement `run_post_phase_audit()`: emit `AUDIT_START` event. Call `build_audit_prompt()`, pipe to `run_claude` with review_model (sonnet default), parse JSON from output (same `extract_json_block` pattern as planner.sh). Store result in state `phase_audit_results[]` array (append, not overwrite) with cycle number, timestamp, model, duration_ms, input_tokens. Emit `AUDIT_GAPS` or `AUDIT_CLEAN` event. Export `_REPLAN_AUDIT_GAPS` with gap descriptions. Timeout 120s. On parse failure, store raw output as `phase_audit_raw` and log warning (no block).
 
 ### 2. Directive and default constant
 
-- [x] In `bin/wt-orchestrate`, add `DEFAULT_POST_PHASE_AUDIT="true"` (after existing DEFAULT_ constants, ~line 66)
+- [x] In `bin/set-orchestrate`, add `DEFAULT_POST_PHASE_AUDIT="true"` (after existing DEFAULT_ constants, ~line 66)
 - [x] In `lib/orchestration/utils.sh` `parse_directives()` (~line 259), add `post_phase_audit` directive parsing (valid values: true, false). Follow the same pattern as `team_mode` (~line 544).
-- [x] Source `auditor.sh` from `bin/wt-orchestrate` (alongside other lib sources, ~line 136-137)
+- [x] Source `auditor.sh` from `bin/set-orchestrate` (alongside other lib sources, ~line 136-137)
 
 ### 3. Monitor loop integration
 
@@ -25,10 +25,10 @@
 - [x] In `monitor.sh` where `_REPLAN_E2E_FAILURES` is referenced (~line 901), also pass `_REPLAN_AUDIT_GAPS` into the replan_json.
 - [x] In `planner.sh` `auto_replan_cycle()` (~line 1257), add `_REPLAN_AUDIT_GAPS` to the unset list (~line 1343-1346).
 
-### 5. Audit prompt template (wt-orch-core)
+### 5. Audit prompt template (set-orch-core)
 
-- [x] Add `render_audit_prompt()` to `lib/wt_orch/templates.py`. Receives: `spec_text` OR `requirements[]`, `changes[]` with name/scope/status/file_list, `coverage` data, `mode` ("digest"/"spec"). Output format instructions: JSON with audit_result, gaps[], summary. Follow the same Python f-string pattern as `render_planning_prompt()`.
-- [x] Register `audit` subcommand in `lib/wt_orch/cli.py` `cmd_template()` (~line 76-129): add `elif args.template_cmd == "audit":` dispatching to `templates.render_audit_prompt()`. Pass input_data fields.
+- [x] Add `render_audit_prompt()` to `lib/set_orch/templates.py`. Receives: `spec_text` OR `requirements[]`, `changes[]` with name/scope/status/file_list, `coverage` data, `mode` ("digest"/"spec"). Output format instructions: JSON with audit_result, gaps[], summary. Follow the same Python f-string pattern as `render_planning_prompt()`.
+- [x] Register `audit` subcommand in `lib/set_orch/cli.py` `cmd_template()` (~line 76-129): add `elif args.template_cmd == "audit":` dispatching to `templates.render_audit_prompt()`. Pass input_data fields.
 - [x] Add argparse `audit` subparser in the template parser section of cli.py (follow existing proposal/review/fix/planning pattern).
 
 ### 6. Audit logging

@@ -6,9 +6,9 @@ Additionally, as the memory schema evolves (this being the first example), there
 
 ## What Changes
 
-- `wt-memory remember` automatically appends a `branch:<current-branch>` tag to every new memory
-- `wt-memory recall` boosts relevance of memories tagged with the current branch (others still returned)
-- New `wt-memory migrate` subcommand with a versioned migration framework
+- `set-memory remember` automatically appends a `branch:<current-branch>` tag to every new memory
+- `set-memory recall` boosts relevance of memories tagged with the current branch (others still returned)
+- New `set-memory migrate` subcommand with a versioned migration framework
 - First migration: tags existing memories with `branch:unknown`
 - Migrations run automatically on first use after upgrade (with `--no-migrate` escape hatch)
 
@@ -24,7 +24,7 @@ Additionally, as the memory schema evolves (this being the first example), there
 
 ## Impact
 
-- `bin/wt-memory`: remember, recall, and new migrate subcommand
+- `bin/set-memory`: remember, recall, and new migrate subcommand
 - `bin/wt-hook-memory-save`: may need branch tag injection
 - `bin/wt-hook-memory-recall`: may leverage branch context for better queries
 - Existing memories: retroactively tagged via migration (non-destructive)

@@ -17,7 +17,7 @@
 ## 3. wt-loop Reflection (file-based learning capture)
 
 - [x] 3.1 Add reflection instruction to `build_prompt` in `bin/wt-loop`: ask agent to write `.claude/reflection.md` as last step
-- [x] 3.2 Add post-iteration reflection processing in `cmd_run`: read `.claude/reflection.md`, save to wt-memory, delete file
+- [x] 3.2 Add post-iteration reflection processing in `cmd_run`: read `.claude/reflection.md`, save to set-memory, delete file
 
 ## 4. Verify
 

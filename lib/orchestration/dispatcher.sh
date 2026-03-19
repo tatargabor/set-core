@@ -114,7 +114,7 @@ dispatch_via_wt_loop() {
     ) &
     wait $! 2>/dev/null || true
 
-    local loop_state="$wt_path/.wt/loop-state.json"
+    local loop_state="$wt_path/.set/loop-state.json"
     local retries=0
     while [[ ! -f "$loop_state" && $retries -lt 10 ]]; do
         sleep 1

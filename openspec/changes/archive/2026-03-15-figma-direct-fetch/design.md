@@ -76,7 +76,7 @@ Only `_fetch_design_context()` changes: remove the MCP fetch branch, keep the ca
 
 ## Component: bin/wt-figma-fetch
 
-Bash entry point following wt-tools convention (like `wt-new`, `wt-close`, etc.).
+Bash entry point following set-core convention (like `wt-new`, `wt-close`, etc.).
 
 ```bash
 #!/usr/bin/env bash
@@ -242,7 +242,7 @@ Key behavior:
 
 ## Component: Planner preflight disable
 
-Minimal change to `lib/wt_orch/planner.py` `_fetch_design_context()` (L1256-1341):
+Minimal change to `lib/set_orch/planner.py` `_fetch_design_context()` (L1256-1341):
 
 **Keep the cache-read branch (L1275-1282), remove everything after it.**
 

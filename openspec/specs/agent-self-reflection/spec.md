@@ -4,30 +4,30 @@
 TBD - created by archiving change agent-insight-memory. Update Purpose after archive.
 ## Requirements
 ### Requirement: Agent self-reflection at session end
-Each OpenSpec skill that creates or modifies artifacts (continue, ff, explore) SHALL include an agent self-reflection step at the end of the session, where the agent reviews its own insights from the session and saves them to wt-memory.
+Each OpenSpec skill that creates or modifies artifacts (continue, ff, explore) SHALL include an agent self-reflection step at the end of the session, where the agent reviews its own insights from the session and saves them to set-memory.
 
 #### Scenario: Continue skill session ends with agent insights
 - **WHEN** the continue skill finishes creating an artifact
 - **THEN** the agent reviews the session for its own insights (decision rationale, discovered patterns, architectural observations)
-- **AND** saves each valuable insight via `wt-memory remember --type <Learning|Decision> --tags change:<name>,phase:continue,source:agent,<topic>`
+- **AND** saves each valuable insight via `set-memory remember --type <Learning|Decision> --tags change:<name>,phase:continue,source:agent,<topic>`
 - **AND** confirms with `[Agent insights saved: N items]`
 
 #### Scenario: Continue skill session with no agent insights
 - **WHEN** the continue skill finishes creating an artifact
 - **AND** the agent has no insights worth saving (routine work, no surprises)
 - **THEN** the agent confirms with `[Agent insights saved: 0 items]`
-- **AND** does not call `wt-memory remember`
+- **AND** does not call `set-memory remember`
 
 #### Scenario: FF skill session ends with agent insights
 - **WHEN** the ff skill finishes creating all artifacts
 - **THEN** the agent reviews the session for its own insights
-- **AND** saves each valuable insight via `wt-memory remember --type <Learning|Decision> --tags change:<name>,phase:ff,source:agent,<topic>`
+- **AND** saves each valuable insight via `set-memory remember --type <Learning|Decision> --tags change:<name>,phase:ff,source:agent,<topic>`
 - **AND** confirms with `[Agent insights saved: N items]`
 
 #### Scenario: Explore skill session ends with agent insights
 - **WHEN** the explore skill session ends (user moves on or starts a change)
 - **THEN** the agent reviews the session for its own insights
-- **AND** saves each valuable insight via `wt-memory remember --type <Learning|Decision> --tags change:<topic>,phase:explore,source:agent,<topic>`
+- **AND** saves each valuable insight via `set-memory remember --type <Learning|Decision> --tags change:<topic>,phase:explore,source:agent,<topic>`
 - **AND** confirms with `[Agent insights saved: N items]`
 
 ### Requirement: Self-reflection saves only future-valuable insights

@@ -3,11 +3,11 @@
 ## Purpose
 TBD - created by archiving change mcp-server-documentation. Update Purpose after archive.
 ## Requirements
-### Requirement: MCP server exposes wt-tools state
-The system SHALL provide an MCP server (`wt_mcp_server.py`) that exposes wt-tools state through the Model Context Protocol.
+### Requirement: MCP server exposes set-core state
+The system SHALL provide an MCP server (`wt_mcp_server.py`) that exposes set-core state through the Model Context Protocol.
 
 #### Scenario: Server starts successfully
-- **WHEN** Claude Code starts with wt-tools MCP configured
+- **WHEN** Claude Code starts with set-core MCP configured
 - **THEN** the MCP server connects via stdio transport
 - **AND** server reports "Connected" status in `claude mcp list`
 
@@ -42,6 +42,6 @@ The system SHALL read state from JSON files rather than executing CLI commands.
 
 #### Scenario: Projects from config file
 - **WHEN** MCP needs project list
-- **THEN** reads from `~/.config/wt-tools/projects.json`
+- **THEN** reads from `~/.config/set-core/projects.json`
 - **AND** does NOT call `wt-list` command
 

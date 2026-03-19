@@ -9,13 +9,13 @@ The orchestration planner assumes a single-file specification. When a product sp
 - **Coverage tracking**: every requirement gets a unique ID, every change maps to requirements, gaps are detectable at any point
 - **Spec context in worktrees**: dispatcher copies relevant raw spec files into each change's worktree so agents can read original detail during implementation
 - Planner `find_input()` supports **directory input** (not just single file)
-- `wt-orchestrate digest` command (explicit) + automatic trigger when planner detects multi-file/large spec without existing digest
+- `set-orchestrate digest` command (explicit) + automatic trigger when planner detects multi-file/large spec without existing digest
 
 ## Capabilities
 
 ### New Capabilities
 - `spec-digest`: Multi-file spec ingestion — scan, classify (convention/feature/data/execution), requirement identification with de-duplication, cross-reference mapping, ambiguity detection, embedded rule extraction from data files, structured output (index.json + conventions.json + data-definitions.md + requirements.json + dependencies.json + ambiguities.json + coverage.json + domains/*.md)
-- `coverage-tracking`: Requirement-to-change mapping throughout the pipeline — planner populates coverage at plan time, verified at any point via `wt-orchestrate coverage`, final validation before completion
+- `coverage-tracking`: Requirement-to-change mapping throughout the pipeline — planner populates coverage at plan time, verified at any point via `set-orchestrate coverage`, final validation before completion
 - `spec-context-dispatch`: Dispatcher copies relevant raw spec files to `.claude/spec-context/` in each change's worktree based on `spec_files[]` from plan.json, so implementation agents read original specs
 
 ### Modified Capabilities
@@ -28,7 +28,7 @@ _(none — no existing specs to modify)_
 - `lib/orchestration/planner.sh` — digest-aware prompt building, `spec_files[]` + `requirements[]` in plan output, auto-digest trigger, `auto_replan_cycle()` digest mode
 - `lib/orchestration/dispatcher.sh` — `dispatch_change()` copies spec files to worktree `.claude/spec-context/`, enriches proposal.md with spec refs + requirement IDs
 - `lib/orchestration/monitor.sh` — coverage status hook (→ running)
-- `bin/wt-orchestrate` — new subcommands: `digest`, `coverage`
+- `bin/set-orchestrate` — new subcommands: `digest`, `coverage`
 - `.claude/skills/wt/decompose/SKILL.md` — multi-file spec reading strategy for agent-based planning
 - `orchestration-plan.json` schema — new fields per change: `spec_files[]`, `requirements[]`
 - `wt/orchestration/digest/` — new directory: `index.json`, `conventions.json`, `data-definitions.md`, `requirements.json`, `dependencies.json`, `ambiguities.json`, `coverage.json`, `domains/*.md`

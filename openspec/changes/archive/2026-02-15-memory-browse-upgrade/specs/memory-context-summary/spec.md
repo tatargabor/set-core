@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: CLI context command
-`wt-memory context` SHALL call `context_summary()` on the shodh-memory API and output the result as JSON. It SHALL accept `--project` (global flag) and follow the same graceful degradation pattern as other commands.
+`set-memory context` SHALL call `context_summary()` on the shodh-memory API and output the result as JSON. It SHALL accept `--project` (global flag) and follow the same graceful degradation pattern as other commands.
 
 #### Scenario: Context summary output
-- **WHEN** user runs `wt-memory context`
+- **WHEN** user runs `set-memory context`
 - **THEN** output is a JSON object with category keys (decisions, learnings, context) containing recent items per category
 
 #### Scenario: Shodh-memory not installed
-- **WHEN** shodh-memory is not installed and user runs `wt-memory context`
+- **WHEN** shodh-memory is not installed and user runs `set-memory context`
 - **THEN** output is `{}`
 - **AND** exit code is 0
 

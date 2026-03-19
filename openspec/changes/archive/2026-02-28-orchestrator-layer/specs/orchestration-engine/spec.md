@@ -4,7 +4,7 @@
 The system SHALL decompose a project brief into an ordered list of OpenSpec changes via a single Claude CLI invocation.
 
 #### Scenario: Generate plan from brief
-- **WHEN** the developer runs `wt-orchestrate plan`
+- **WHEN** the developer runs `set-orchestrate plan`
 - **AND** `openspec/project-brief.md` exists with a `## Next` section containing roadmap items
 - **THEN** the system SHALL invoke `claude -p` with the brief, existing spec names, active changes, and top 5 memory results
 - **AND** write the resulting change plan to `orchestration-plan.json`
@@ -19,7 +19,7 @@ The system SHALL decompose a project brief into an ordered list of OpenSpec chan
   - `changes`: array of change objects, each with `name` (kebab-case), `scope` (string), `complexity` (S/M/L), `depends_on` (array of change names), `roadmap_item` (string matching a Next bullet)
 
 #### Scenario: No brief found
-- **WHEN** the developer runs `wt-orchestrate plan`
+- **WHEN** the developer runs `set-orchestrate plan`
 - **AND** `openspec/project-brief.md` does not exist
 - **THEN** the system SHALL exit with error: "No project brief found. Create openspec/project-brief.md first."
 
@@ -31,13 +31,13 @@ The system SHALL decompose a project brief into an ordered list of OpenSpec chan
 The system SHALL require explicit developer approval before executing a plan.
 
 #### Scenario: Show plan for review
-- **WHEN** the developer runs `wt-orchestrate plan --show`
+- **WHEN** the developer runs `set-orchestrate plan --show`
 - **THEN** the system SHALL display the current plan in human-readable format: change names, scopes, dependency graph (ASCII), and estimated complexity
 
 #### Scenario: Start requires existing plan
-- **WHEN** the developer runs `wt-orchestrate start`
+- **WHEN** the developer runs `set-orchestrate start`
 - **AND** no `orchestration-plan.json` exists
-- **THEN** the system SHALL exit with error: "No plan found. Run 'wt-orchestrate plan' first."
+- **THEN** the system SHALL exit with error: "No plan found. Run 'set-orchestrate plan' first."
 
 ### Requirement: Change dispatch
 The system SHALL dispatch changes to worktrees and start Ralph loops based on the dependency graph.
@@ -189,7 +189,7 @@ The system SHALL merge completed changes according to the configured merge polic
 - **WHEN** merge policy is "checkpoint"
 - **AND** a change transitions to "done" with passing tests
 - **THEN** the system SHALL add the change to the merge queue
-- **AND** execute all queued merges only when the developer runs `wt-orchestrate approve --merge`
+- **AND** execute all queued merges only when the developer runs `set-orchestrate approve --merge`
 
 #### Scenario: Manual merge
 - **WHEN** merge policy is "manual"
@@ -211,31 +211,31 @@ The system SHALL merge completed changes according to the configured merge polic
 The system SHALL support pausing and resuming individual changes or the entire plan.
 
 #### Scenario: Pause single change
-- **WHEN** the developer runs `wt-orchestrate pause <change-name>`
+- **WHEN** the developer runs `set-orchestrate pause <change-name>`
 - **AND** the change is currently "running"
 - **THEN** the system SHALL send SIGTERM to the Ralph terminal PID
 - **AND** update the change status to "paused" in orchestration-state.json
 
 #### Scenario: Pause all
-- **WHEN** the developer runs `wt-orchestrate pause --all`
+- **WHEN** the developer runs `set-orchestrate pause --all`
 - **THEN** the system SHALL pause all changes with status "running"
 - **AND** set the orchestration status to "paused"
 
 #### Scenario: Resume single change
-- **WHEN** the developer runs `wt-orchestrate resume <change-name>`
+- **WHEN** the developer runs `set-orchestrate resume <change-name>`
 - **AND** the change has status "paused"
 - **THEN** the system SHALL restart Ralph in the existing worktree: `cd <worktree> && wt-loop start --max 30 --done openspec`
 - **AND** update the change status to "running"
 
 #### Scenario: Resume all
-- **WHEN** the developer runs `wt-orchestrate resume --all`
+- **WHEN** the developer runs `set-orchestrate resume --all`
 - **THEN** the system SHALL resume all paused changes (respecting max_parallel)
 
 ### Requirement: Replan
 The system SHALL support re-planning from an updated brief while preserving completed work.
 
 #### Scenario: Replan command
-- **WHEN** the developer runs `wt-orchestrate replan`
+- **WHEN** the developer runs `set-orchestrate replan`
 - **THEN** the system SHALL:
   1. Read the current orchestration-state.json (completed/active/pending changes)
   2. Read the updated project-brief.md
@@ -249,7 +249,7 @@ The system SHALL support re-planning from an updated brief while preserving comp
 
 #### Scenario: Brief staleness warning
 - **WHEN** the orchestrator detects that `project-brief.md` has a different SHA-256 hash than `brief_hash` in the state
-- **THEN** it SHALL display a warning: "Brief has changed since plan was created. Consider running 'wt-orchestrate replan'."
+- **THEN** it SHALL display a warning: "Brief has changed since plan was created. Consider running 'set-orchestrate replan'."
 
 ### Requirement: Auto-replan system
 The orchestrator SHALL support automatic replanning via the `auto_replan` directive (default: false). When all changes complete and auto_replan is true, the orchestrator SHALL re-run cmd_plan to find new work.
@@ -308,7 +308,7 @@ The system SHALL merge completed changes using `wt-merge --llm-resolve` directly
 The system SHALL provide a human-readable status overview.
 
 #### Scenario: Status command
-- **WHEN** the developer runs `wt-orchestrate status`
+- **WHEN** the developer runs `set-orchestrate status`
 - **THEN** the system SHALL display:
   - Overall status (planning/running/paused/done)
   - Per-change: name, status, iteration progress (N/M), tokens used

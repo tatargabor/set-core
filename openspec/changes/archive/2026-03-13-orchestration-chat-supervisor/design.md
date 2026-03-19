@@ -1,10 +1,10 @@
 ## Context
 
-The orchestration chat tab (`lib/wt_orch/chat.py`) uses `claude -p --resume {session_id}` to maintain multi-turn conversations. Currently it passes no context about the agent's role — it's a generic Claude session in the project directory.
+The orchestration chat tab (`lib/set_orch/chat.py`) uses `claude -p --resume {session_id}` to maintain multi-turn conversations. Currently it passes no context about the agent's role — it's a generic Claude session in the project directory.
 
 The `claude` CLI supports `--append-system-prompt` which adds text to the default system prompt (preserving CLAUDE.md loading). This is the injection point.
 
-The orchestration state lives in `wt/orchestration/orchestration-state.json` (typed dataclasses in `lib/wt_orch/state.py`). Config lives in `.claude/orchestration.yaml`.
+The orchestration state lives in `wt/orchestration/orchestration-state.json` (typed dataclasses in `lib/set_orch/state.py`). Config lives in `.claude/orchestration.yaml`.
 
 ## Goals / Non-Goals
 
@@ -40,7 +40,7 @@ The orchestration state lives in `wt/orchestration/orchestration-state.json` (ty
 
 ### D4: Separate module `chat_context.py`
 
-**Choice:** New file `lib/wt_orch/chat_context.py` with a single `build_chat_context(project_path) -> str` function
+**Choice:** New file `lib/set_orch/chat_context.py` with a single `build_chat_context(project_path) -> str` function
 **Rationale:** Keeps chat.py focused on WS/subprocess lifecycle. Context building involves file I/O and formatting — separate concern. Easy to test and extend.
 
 ### D5: Hungarian language default in system prompt

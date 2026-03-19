@@ -39,8 +39,8 @@ The audit SHALL compare the input spec against merged change evidence.
 - **AND** ask the LLM to identify spec sections with no corresponding implementation
 
 #### Scenario: Prompt template
-- **THEN** the prompt SHALL be built via `wt-orch-core template audit --input-file -`
-- **AND** the template SHALL be `render_audit_prompt()` in `lib/wt_orch/templates.py` (Python f-string, same pattern as existing templates)
+- **THEN** the prompt SHALL be built via `set-orch-core template audit --input-file -`
+- **AND** the template SHALL be `render_audit_prompt()` in `lib/set_orch/templates.py` (Python f-string, same pattern as existing templates)
 
 ### Requirement: Structured gap report output
 The audit LLM output SHALL be parsed into a structured JSON gap report.

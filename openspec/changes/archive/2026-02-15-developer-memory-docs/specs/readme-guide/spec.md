@@ -39,8 +39,8 @@ The guide's Use Cases section (Section 13) SHALL include instructions for a "Dev
 - **THEN** a Developer Memory use case appears with cross-session recall scenario and OpenSpec integration scenario
 
 ### Requirement: Developer Memory CLI Reference Instructions
-The guide's CLI Reference section (Section 8) SHALL list the Developer Memory category with all `wt-memory` and `wt-memory-hooks` user-facing commands, requiring a one-line description for each.
+The guide's CLI Reference section (Section 8) SHALL list the Developer Memory category with all `set-memory` and `set-memory-hooks` user-facing commands, requiring a one-line description for each.
 
 #### Scenario: CLI reference completeness
 - **WHEN** an LLM generates the CLI Reference following the guide
-- **THEN** the Developer Memory category includes `wt-memory remember`, `wt-memory recall`, `wt-memory list`, `wt-memory status`, `wt-memory-hooks install`, and `wt-memory-hooks check`
+- **THEN** the Developer Memory category includes `set-memory remember`, `set-memory recall`, `set-memory list`, `set-memory status`, `set-memory-hooks install`, and `set-memory-hooks check`

@@ -8,7 +8,7 @@ Lock file merge conflicts are the most persistent recurring issue across E2E run
 |-----|------|--------|------------|
 | #3 | pnpm-lock.yaml | Merge-blocked, sentinel manual fix | `pnpm install --no-frozen-lockfile` |
 | #8 | pnpm-lock.yaml | Merge-blocked | Manual conflict resolution |
-| #13 (Bug #24) | pnpm-lock.yaml + `.wt-tools/.last-memory-commit` | Merge-blocked, 11 leftover conflict markers | `git checkout --ours` + `pnpm install` |
+| #13 (Bug #24) | pnpm-lock.yaml + `.set-core/.last-memory-commit` | Merge-blocked, 11 leftover conflict markers | `git checkout --ours` + `pnpm install` |
 
 ### Root cause analysis
 
@@ -26,7 +26,7 @@ conflict detected → auto_resolve_generated_files() → git checkout --ours →
                                                                             ^^^ pnpm/yarn/npm install
 ```
 
-Additionally, `.wt-tools/` runtime files (`.last-memory-commit`, agent state) sometimes get committed by worktree agents and block merge. These should be cleaned before merge, not resolved during.
+Additionally, `.set-core/` runtime files (`.last-memory-commit`, agent state) sometimes get committed by worktree agents and block merge. These should be cleaned before merge, not resolved during.
 
 ### Modular architecture context (post-`planning-quality-profiles`)
 
@@ -42,10 +42,10 @@ Implementation must use profile methods for PM detection and lockfile-to-PM mapp
 
 - `bin/wt-merge:45-134` — `GENERATED_FILE_PATTERNS` base list + `.generated-file-patterns` file reading, `auto_resolve_generated_files()`
 - `bin/wt-merge:511-554` — pre-merge stashing
-- `lib/wt_orch/merger.py:314-380` — merge orchestration calling `wt-merge`
-- `lib/wt_orch/merger.py:561-584` — `_post_merge_deps_install()` (uses `profile.post_merge_install()` with legacy fallback)
-- `lib/wt_orch/dispatcher.py:46-60` — `_CORE_GENERATED_FILE_PATTERNS` + `_get_generated_file_patterns()`
-- `lib/wt_orch/dispatcher.py:150-165` — worktree sync generated file handling
+- `lib/set_orch/merger.py:314-380` — merge orchestration calling `wt-merge`
+- `lib/set_orch/merger.py:561-584` — `_post_merge_deps_install()` (uses `profile.post_merge_install()` with legacy fallback)
+- `lib/set_orch/dispatcher.py:46-60` — `_CORE_GENERATED_FILE_PATTERNS` + `_get_generated_file_patterns()`
+- `lib/set_orch/dispatcher.py:150-165` — worktree sync generated file handling
 
 ## What Changes
 
@@ -61,10 +61,10 @@ Implementation must use profile methods for PM detection and lockfile-to-PM mapp
 - Change: always run dependency install after merge if a lock file was in the conflict set, regardless of package.json changes
 
 ### 3. Pre-Merge Runtime File Cleanup
-- Before merge, remove `.wt-tools/` runtime files from the worktree's git index:
-  - `.wt-tools/.last-memory-commit`
-  - `.wt-tools/agents/`
-  - `.wt-tools/orphan-detect/`
+- Before merge, remove `.set-core/` runtime files from the worktree's git index:
+  - `.set-core/.last-memory-commit`
+  - `.set-core/agents/`
+  - `.set-core/orphan-detect/`
 - Add these to the worktree's `.gitignore` if not already present
 - Prevent worktree agents from committing runtime state files
 
@@ -76,7 +76,7 @@ Implementation must use profile methods for PM detection and lockfile-to-PM mapp
 
 ### New Capabilities
 - `lockfile-regeneration-on-conflict`: Auto-regenerate lock files after merge conflict resolution instead of using stale "ours" version
-- `pre-merge-runtime-cleanup`: Remove `.wt-tools/` runtime files from git index before merge
+- `pre-merge-runtime-cleanup`: Remove `.set-core/` runtime files from git index before merge
 
 ### Modified Capabilities
 - `merge-conflict-resolution`: Lock file conflicts trigger regeneration, not just "ours" acceptance
@@ -85,10 +85,10 @@ Implementation must use profile methods for PM detection and lockfile-to-PM mapp
 
 ## Impact
 
-- **Modified (wt-tools)**: `bin/wt-merge` — add lock file regeneration after auto-resolve, use profile lockfile_pm_map with hardcoded fallback
-- **Modified (wt-tools)**: `lib/wt_orch/merger.py` — pass conflict file list to post-merge pipeline, unconditional deps install on lock conflict via `profile.post_merge_install()`
-- **Modified (wt-tools)**: `lib/wt_orch/dispatcher.py` — lock file regeneration in worktree sync
-- **New logic (wt-tools)**: Pre-merge cleanup of `.wt-tools/` runtime files in worktree git index
-- **No changes to wt-project-web/base** — existing `lockfile_pm_map()` and `post_merge_install()` methods are sufficient
+- **Modified (set-core)**: `bin/wt-merge` — add lock file regeneration after auto-resolve, use profile lockfile_pm_map with hardcoded fallback
+- **Modified (set-core)**: `lib/set_orch/merger.py` — pass conflict file list to post-merge pipeline, unconditional deps install on lock conflict via `profile.post_merge_install()`
+- **Modified (set-core)**: `lib/set_orch/dispatcher.py` — lock file regeneration in worktree sync
+- **New logic (set-core)**: Pre-merge cleanup of `.set-core/` runtime files in worktree git index
+- **No changes to set-project-web/base** — existing `lockfile_pm_map()` and `post_merge_install()` methods are sufficient
 - **Risk**: Lock file regeneration adds ~10-30s to merge time (acceptable for preventing recurring failures)
 - **No breaking changes**: Existing behavior preserved for non-lock-file conflicts

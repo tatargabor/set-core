@@ -32,6 +32,6 @@ Additionally, there's no clear separation between the initial spec decomposition
 - **lib/orchestration/dispatcher.sh**: Minor — spec reference injection into proposal.md, phase-tagged memory recall at dispatch
 - **.claude/skills/wt/decompose/**: New skill directory with SKILL.md
 - **.claude/commands/wt/decompose.md**: New command for manual decomposition trigger
-- **wt-project init**: Deploy new skill and command to consumer projects
+- **set-project init**: Deploy new skill and command to consumer projects
 - **Memory system**: Tag convention documentation, recall filtering guidance
 - **orchestration-plan.json format**: Additive — new optional fields, backward compatible

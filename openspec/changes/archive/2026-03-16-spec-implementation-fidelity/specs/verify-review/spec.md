@@ -16,7 +16,7 @@ Read requirements[] and also_affects_reqs[] from change state. Look up titles fr
 - **AND** no overshoot instruction SHALL be included
 
 ### Requirement: VR-REVIEW — LLM code review
-Generate diff of change branch vs merge-base. Truncate diff to 30000 chars. Build review prompt via wt-orch-core template review. Include overshoot detection instruction in review prompt. Run via run_claude with configurable model. On failure: escalate from configured model to opus, then skip. Return ReviewResult with has_critical flag. Detect CRITICAL via regex: `[CRITICAL]`, `severity.*critical`, `CRITICAL:`.
+Generate diff of change branch vs merge-base. Truncate diff to 30000 chars. Build review prompt via set-orch-core template review. Include overshoot detection instruction in review prompt. Run via run_claude with configurable model. On failure: escalate from configured model to opus, then skip. Return ReviewResult with has_critical flag. Detect CRITICAL via regex: `[CRITICAL]`, `severity.*critical`, `CRITICAL:`.
 
 #### Scenario: Reviewer flags overshoot in diff
 - **WHEN** the LLM code reviewer processes a diff

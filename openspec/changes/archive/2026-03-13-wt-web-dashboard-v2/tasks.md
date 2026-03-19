@@ -5,8 +5,8 @@
 ### Log Archive (log-archive)
 - [x] T01: Add `_archive_worktree_logs()` function in `lib/orchestration/merger.sh` — copies `<wt>/.claude/logs/*.log` to `wt/orchestration/logs/<change-name>/` before worktree removal
 - [x] T02: Call `_archive_worktree_logs` in merger.sh `cleanup_worktree()` before `git worktree remove`
-- [x] T03: Update `_list_change_logs()` in `lib/wt_orch/api.py` to check `wt/orchestration/logs/<change-name>/` as fallback when worktree is gone
-- [x] T04: Update `_read_change_log()` in `lib/wt_orch/api.py` to serve from archive dir as fallback
+- [x] T03: Update `_list_change_logs()` in `lib/set_orch/api.py` to check `wt/orchestration/logs/<change-name>/` as fallback when worktree is gone
+- [x] T04: Update `_read_change_log()` in `lib/set_orch/api.py` to serve from archive dir as fallback
 
 ### Gate Output API (gate-detail)
 - [x] T05: Add `build_output`, `test_output`, `smoke_output`, `review_output` fields to `ChangeInfo` TypeScript interface

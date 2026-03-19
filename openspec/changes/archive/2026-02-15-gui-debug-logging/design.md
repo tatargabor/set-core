@@ -43,7 +43,7 @@ Use `logging.getLogger("wt-control")` hierarchy with per-module child loggers.
 
 Use `tempfile.gettempdir()` for cross-platform resolution. Rotation: 5 MB max, keep 3 backup files (15 MB total worst case).
 
-**Why**: `/tmp` survives app restarts but not reboots (on macOS), is always writable, and users can find it easily. Alternative considered: `~/.config/wt-tools/logs/` — rejected because config dir is for persistent data, not ephemeral debug logs.
+**Why**: `/tmp` survives app restarts but not reboots (on macOS), is always writable, and users can find it easily. Alternative considered: `~/.config/set-core/logs/` — rejected because config dir is for persistent data, not ephemeral debug logs.
 
 ### 3. Centralized setup in `gui/logging_setup.py`
 

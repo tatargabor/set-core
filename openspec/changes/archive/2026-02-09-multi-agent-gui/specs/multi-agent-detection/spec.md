@@ -24,22 +24,22 @@ The system SHALL track skills per agent PID rather than per worktree.
 
 #### Scenario: Register skill for specific agent
 - **WHEN** `wt-skill-start <skill-name>` is called
-- **THEN** a file `.wt-tools/agents/<pid>.skill` is created with format `<skill-name>|<timestamp>`
+- **THEN** a file `.set-core/agents/<pid>.skill` is created with format `<skill-name>|<timestamp>`
 - **AND** the PID used is the caller's parent process PID (`$PPID`)
 
 #### Scenario: Read skill per agent
 - **WHEN** `wt-status` reads skill information for a worktree
-- **THEN** it checks `.wt-tools/agents/<pid>.skill` for each detected agent PID
+- **THEN** it checks `.set-core/agents/<pid>.skill` for each detected agent PID
 - **AND** returns the skill name if the file exists and is fresh (< 30 minutes)
 
 #### Scenario: Stale PID cleanup
-- **WHEN** `wt-status` reads `.wt-tools/agents/` directory
+- **WHEN** `wt-status` reads `.set-core/agents/` directory
 - **THEN** for each `.skill` file, it verifies the PID is alive using `kill -0 <pid>`
 - **AND** removes files for dead PIDs
 
 #### Scenario: Backward compatibility of wt-skill-start
 - **WHEN** `wt-skill-start` writes a new per-PID skill file
-- **THEN** it also writes the legacy `.wt-tools/current_skill` file for any consumers that haven't been updated
+- **THEN** it also writes the legacy `.set-core/current_skill` file for any consumers that haven't been updated
 
 ### Requirement: Multi-Agent JSON Format
 The `wt-status --json` output SHALL use an `agents` array instead of a single `agent` object.

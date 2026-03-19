@@ -5,8 +5,8 @@ Skills SHALL register themselves by writing to a status file when they start.
 
 #### Scenario: Skill writes status file
 - **WHEN** a skill starts executing
-- **THEN** it writes `<skill-name>|<unix-timestamp>` to `.wt-tools/current_skill`
-- **AND** creates the `.wt-tools` directory if it doesn't exist
+- **THEN** it writes `<skill-name>|<unix-timestamp>` to `.set-core/current_skill`
+- **AND** creates the `.set-core` directory if it doesn't exist
 
 #### Scenario: Skill registration format
 - **WHEN** the opsx:explore skill starts
@@ -24,7 +24,7 @@ The wt-status command SHALL read and report the current skill from the status fi
 - **THEN** the skill name is NOT included (status file is stale)
 
 #### Scenario: No status file exists
-- **WHEN** wt-status runs and no `.wt-tools/current_skill` file exists
+- **WHEN** wt-status runs and no `.set-core/current_skill` file exists
 - **THEN** no skill name is reported (graceful handling)
 
 ### Requirement: Skill helper script

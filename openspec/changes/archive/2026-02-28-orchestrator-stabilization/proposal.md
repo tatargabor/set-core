@@ -1,6 +1,6 @@
 ## Why
 
-After 2 days of live orchestration on sales-raketa v3, `wt-orchestrate` accumulated 35 adhoc fix commits and diverged significantly from its specs. A comprehensive audit found: 10 known bugs in the code, 11 features implemented without specs, 7 contradictions between specs and code, and 6 spec items that were never implemented. The most critical issue — an infinite replan loop burning ~50-100k tokens per 5-minute cycle — was caused by the interaction of two separately-correct adhoc fixes that together create a logic contradiction.
+After 2 days of live orchestration on sales-raketa v3, `set-orchestrate` accumulated 35 adhoc fix commits and diverged significantly from its specs. A comprehensive audit found: 10 known bugs in the code, 11 features implemented without specs, 7 contradictions between specs and code, and 6 spec items that were never implemented. The most critical issue — an infinite replan loop burning ~50-100k tokens per 5-minute cycle — was caused by the interaction of two separately-correct adhoc fixes that together create a logic contradiction.
 
 The orchestrator cannot be safely restarted for the next project until these issues are resolved and the specs are synchronized with reality.
 

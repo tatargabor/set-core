@@ -4,21 +4,21 @@
 The orchestrator SHALL decompose a project brief or specification document into an ordered list of OpenSpec changes via a single Claude CLI invocation, OR via an agent-based decomposition in a planning worktree.
 
 #### Scenario: Brief mode plan generation
-- **WHEN** `wt-orchestrate plan` is invoked
+- **WHEN** `set-orchestrate plan` is invoked
 - **AND** a valid `openspec/project-brief.md` with `### Next` items exists (or `--brief` flag)
 - **THEN** the orchestrator SHALL parse Next items via bash regex
 - **AND** invoke Claude (Opus model) with the items, existing spec names, active changes, and memory context
 - **AND** write the result to `orchestration-plan.json`
 
 #### Scenario: Spec mode plan generation
-- **WHEN** `wt-orchestrate plan` is invoked with `--spec <path>`
+- **WHEN** `set-orchestrate plan` is invoked with `--spec <path>`
 - **THEN** the orchestrator SHALL read the spec document
 - **AND** if the spec exceeds ~8000 tokens, summarize it first using a cheap model (haiku by default)
 - **AND** invoke Claude (Opus) with instructions to identify completed items and determine the next actionable batch
 - **AND** include `phase_detected` and `reasoning` fields in the plan JSON
 
 #### Scenario: Agent-based plan generation
-- **WHEN** `wt-orchestrate plan` is invoked
+- **WHEN** `set-orchestrate plan` is invoked
 - **AND** directive `plan_method: agent` is set in orchestration config
 - **THEN** the orchestrator SHALL create a planning worktree via `wt-new wt-planning-v{N}`
 - **AND** dispatch a Ralph loop with the `/wt:decompose` skill as task context

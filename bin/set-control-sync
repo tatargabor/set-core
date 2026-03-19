@@ -1,0 +1,687 @@
+#!/usr/bin/env bash
+# set-control-sync - Sync member status to set-control branch
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh"
+
+usage() {
+    cat <<EOF
+Usage: set-control-sync [options]
+
+Synchronize your member status to the set-control branch.
+This updates your member JSON file and syncs with team members.
+
+Options:
+  -p, --project <name>    Use specific project (default: auto-detect)
+  --push                  Push changes to remote after sync
+  --pull                  Pull changes from remote before sync
+  --full                  Both pull and push (default for automated sync)
+  --compact               Squash all commits to root, force-push (reduces history)
+  --status-only           Only show current status, don't write
+  -j, --json              Output as JSON
+  -h, --help              Show this help
+
+Examples:
+  set-control-sync                    # Sync local only
+  set-control-sync --full             # Pull, sync, push (automated mode)
+  set-control-sync --compact          # Squash history and force-push
+  set-control-sync --status-only      # Show team status
+  set-control-sync --json             # Output team status as JSON
+EOF
+}
+
+# Fix stuck git state (rebase, merge, etc.)
+fix_stuck_git_state() {
+    local repo_path="$1"
+
+    # Get actual git dir (works for worktrees too)
+    local git_dir
+    git_dir=$(git -C "$repo_path" rev-parse --git-dir 2>/dev/null) || return
+
+    # Check for stuck rebase (use git status to detect reliably)
+    if git -C "$repo_path" status 2>/dev/null | grep -q "rebase in progress"; then
+        $output_json || warn "Stuck rebase detected, aborting..."
+        git -C "$repo_path" rebase --abort 2>/dev/null || true
+    fi
+
+    # Check for stuck merge
+    if git -C "$repo_path" status 2>/dev/null | grep -q "You have unmerged paths"; then
+        $output_json || warn "Stuck merge detected, aborting..."
+        git -C "$repo_path" merge --abort 2>/dev/null || true
+    fi
+
+    # Check for stuck cherry-pick
+    if git -C "$repo_path" status 2>/dev/null | grep -q "cherry-pick"; then
+        $output_json || warn "Stuck cherry-pick detected, aborting..."
+        git -C "$repo_path" cherry-pick --abort 2>/dev/null || true
+    fi
+
+    # If in detached HEAD, try to checkout the branch
+    if git -C "$repo_path" status 2>/dev/null | grep -q "HEAD detached"; then
+        $output_json || warn "Detached HEAD detected, checking out set-control..."
+        git -C "$repo_path" checkout set-control 2>/dev/null || true
+    fi
+
+    # Reset any uncommitted changes that might block operations
+    if git -C "$repo_path" status --porcelain 2>/dev/null | grep -q "^[UDA][UDA]"; then
+        $output_json || warn "Conflict markers detected, resetting..."
+        git -C "$repo_path" checkout --theirs . 2>/dev/null || true
+        git -C "$repo_path" add -A 2>/dev/null || true
+    fi
+}
+
+# Get member name from git config (includes hostname for multi-machine support)
+get_member_name() {
+    local name
+    name=$(git config user.name 2>/dev/null)
+    if [[ -z "$name" ]]; then
+        name=$(whoami)
+    fi
+    local hostname
+    hostname=$(hostname -s 2>/dev/null || hostname)
+    # Sanitize for filename (lowercase, replace spaces with hyphens)
+    local sanitized_name
+    sanitized_name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-')
+    local sanitized_host
+    sanitized_host=$(echo "$hostname" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+    echo "${sanitized_name}@${sanitized_host}"
+}
+
+# Get display name (original case, includes hostname)
+get_display_name() {
+    local name
+    name=$(git config user.name 2>/dev/null)
+    if [[ -z "$name" ]]; then
+        name=$(whoami)
+    fi
+    local hostname
+    hostname=$(hostname -s 2>/dev/null || hostname)
+    echo "$name@$hostname"
+}
+
+# Get just the user part (for grouping by user)
+get_user_name() {
+    local name
+    name=$(git config user.name 2>/dev/null)
+    if [[ -z "$name" ]]; then
+        name=$(whoami)
+    fi
+    echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-'
+}
+
+# Check for hostname change and cleanup old member file
+cleanup_old_hostname() {
+    local control_worktree="$1"
+    local user_name="$2"
+    local current_hostname="$3"
+
+    local state_dir="$control_worktree/.local-state"
+    local hostname_file="$state_dir/hostname"
+
+    # Ensure state dir exists and is gitignored
+    mkdir -p "$state_dir"
+    if ! grep -q "^\.local-state" "$control_worktree/.gitignore" 2>/dev/null; then
+        echo ".local-state/" >> "$control_worktree/.gitignore"
+    fi
+
+    # Read previous hostname
+    local prev_hostname=""
+    if [[ -f "$hostname_file" ]]; then
+        prev_hostname=$(cat "$hostname_file")
+    fi
+
+    # If hostname changed, delete old member file
+    if [[ -n "$prev_hostname" && "$prev_hostname" != "$current_hostname" ]]; then
+        local old_member_file="$control_worktree/members/${user_name}@${prev_hostname}.json"
+        if [[ -f "$old_member_file" ]]; then
+            rm "$old_member_file"
+            $output_json || info "Removed old member file: ${user_name}@${prev_hostname}"
+        fi
+    fi
+
+    # Save current hostname
+    echo "$current_hostname" > "$hostname_file"
+}
+
+# Extract change-ids and their status from set-status
+get_my_changes() {
+    local project_path="$1"
+    local tmpfile
+    tmpfile=$(mktemp)
+
+    # Get the remote URL for this project (normalized, without .git suffix)
+    local project_remote_url
+    project_remote_url=$(git -C "$project_path" remote get-url origin 2>/dev/null | sed 's/\.git$//' || echo "")
+
+    # Write status to temp file to avoid pipe issues
+    "$SCRIPT_DIR/set-status" --json > "$tmpfile" 2>/dev/null || echo '{"worktrees":[]}' > "$tmpfile"
+
+    # Filter worktrees by remote_url (not project name) and extract change info
+    local result
+    result=$(jq -c --arg remote_url "$project_remote_url" '
+        [.worktrees[] | select(.remote_url == $remote_url) |
+        {
+            id: .change_id,
+            remote_url: .remote_url,
+            agent_status: .agent.status,
+            last_activity: (.git.last_commit | todate),
+            wt_path: .path
+        }]
+    ' "$tmpfile" 2>/dev/null) || result='[]'
+
+    rm -f "$tmpfile"
+
+    # Enrich each change entry with activity data from .claude/activity.json
+    local enriched='[]'
+    local len
+    len=$(echo "$result" | jq 'length') || len=0
+    for (( i=0; i<len; i++ )); do
+        local entry
+        entry=$(echo "$result" | jq -c ".[$i]")
+        local wt_path
+        wt_path=$(echo "$entry" | jq -r '.wt_path // empty')
+
+        local activity='null'
+        if [[ -n "$wt_path" ]]; then
+            local activity_file="$wt_path/.set/activity.json"
+            if [[ -f "$activity_file" ]]; then
+                activity=$(jq -c '.' "$activity_file" 2>/dev/null) || activity='null'
+            fi
+        fi
+
+        # Add activity and remove wt_path (internal only)
+        entry=$(echo "$entry" | jq -c --argjson activity "$activity" '. + {activity: $activity} | del(.wt_path)')
+        enriched=$(echo "$enriched" | jq -c --argjson entry "$entry" '. + [$entry]')
+    done
+
+    echo "$enriched"
+}
+
+# Get chat public key for this project
+get_chat_public_key() {
+    local project_name="$1"
+    local key_file="$HOME/.set-core/chat-keys/${project_name}.key"
+
+    if [[ ! -f "$key_file" ]]; then
+        echo ""
+        return
+    fi
+
+    # We need to derive public key from private key
+    # This requires Python with PyNaCl
+    python3 -c "
+import sys
+import base64
+try:
+    from nacl.public import PrivateKey
+    with open('$key_file', 'r') as f:
+        private_b64 = f.read().strip()
+    private_bytes = base64.b64decode(private_b64)
+    private_key = PrivateKey(private_bytes)
+    public_key = private_key.public_key
+    public_b64 = base64.b64encode(bytes(public_key)).decode('ascii')
+    print(public_b64)
+except Exception as e:
+    print('', file=sys.stderr)
+    sys.exit(0)
+" 2>/dev/null || echo ""
+}
+
+# Compute fingerprint for public key
+compute_key_fingerprint() {
+    local public_key="$1"
+    if [[ -z "$public_key" ]]; then
+        echo ""
+        return
+    fi
+    # SHA256 hash, first 8 hex chars
+    echo -n "$public_key" | sha256sum | head -c 8
+}
+
+# Generate member JSON
+generate_member_json() {
+    local member_name="$1"
+    local display_name="$2"
+    local changes_json="$3"
+    local user_name="$4"
+    local project_name="$5"
+
+    local now
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    local hostname
+    hostname=$(hostname -s 2>/dev/null || hostname)
+
+    # Determine overall status based on changes
+    local status="idle"
+    if echo "$changes_json" | jq -e '.[] | select(.agent_status == "running")' &>/dev/null; then
+        status="active"
+    elif echo "$changes_json" | jq -e '.[] | select(.agent_status == "waiting")' &>/dev/null; then
+        status="waiting"
+    fi
+
+    # Get chat public key
+    local chat_public_key
+    chat_public_key=$(get_chat_public_key "$project_name")
+    local chat_key_fingerprint=""
+    if [[ -n "$chat_public_key" ]]; then
+        chat_key_fingerprint=$(compute_key_fingerprint "$chat_public_key")
+    fi
+
+    jq -n \
+        --arg name "$member_name" \
+        --arg display_name "$display_name" \
+        --arg user "$user_name" \
+        --arg hostname "$hostname" \
+        --arg status "$status" \
+        --argjson changes "$changes_json" \
+        --arg last_seen "$now" \
+        --arg chat_public_key "$chat_public_key" \
+        --arg chat_key_fingerprint "$chat_key_fingerprint" \
+        '{
+            name: $name,
+            display_name: $display_name,
+            user: $user,
+            hostname: $hostname,
+            status: $status,
+            changes: $changes,
+            last_seen: $last_seen,
+            chat_public_key: (if $chat_public_key == "" then null else $chat_public_key end),
+            chat_key_fingerprint: (if $chat_key_fingerprint == "" then null else $chat_key_fingerprint end)
+        }'
+}
+
+# Read all team members
+read_team_status() {
+    local control_worktree="$1"
+    local members_dir="$control_worktree/members"
+
+    local members_json='[]'
+
+    if [[ -d "$members_dir" ]]; then
+        local first=true
+        echo '['
+        for member_file in "$members_dir"/*.json; do
+            [[ ! -f "$member_file" ]] && continue
+            [[ "$(basename "$member_file")" == ".gitkeep" ]] && continue
+
+            if ! $first; then
+                echo ','
+            fi
+            first=false
+            cat "$member_file"
+        done
+        echo ']'
+    else
+        echo '[]'
+    fi
+}
+
+# Detect conflicts (multiple members on same change-id)
+detect_conflicts() {
+    local team_json="$1"
+
+    echo "$team_json" | jq -c '
+        [.[] | .changes[] | {member: .name, change_id: .id}] |
+        group_by(.change_id) |
+        map(select(length > 1)) |
+        map({change_id: .[0].change_id, members: [.[].member]})
+    ' 2>/dev/null || echo '[]'
+}
+
+# Compact the set-control branch history
+compact_history() {
+    local control_worktree="$1"
+    local member_name="$2"
+    local member_json="$3"
+    local member_file="$4"
+
+    # Get current commit count
+    local commit_count
+    commit_count=$(git -C "$control_worktree" rev-list --count HEAD 2>/dev/null) || commit_count=0
+
+    $output_json || info "Compacting set-control branch ($commit_count commits -> 1)..."
+
+    # Pull latest first
+    git -C "$control_worktree" pull --rebase origin set-control >/dev/null 2>&1 || true
+
+    # Squash all commits to root
+    local root_commit
+    root_commit=$(git -C "$control_worktree" rev-list --max-parents=0 HEAD 2>/dev/null)
+    if [[ -z "$root_commit" ]]; then
+        $output_json || warn "Could not find root commit"
+        return 1
+    fi
+
+    local now
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    git -C "$control_worktree" reset --soft "$root_commit" >/dev/null 2>&1 || {
+        $output_json || warn "Reset failed"
+        return 1
+    }
+
+    git -C "$control_worktree" commit --amend -m "Compacted: all status as of $now" --no-verify >/dev/null 2>&1 || {
+        $output_json || warn "Compact commit failed"
+        return 1
+    }
+
+    # Force push with lease (prevents concurrent compaction)
+    if git -C "$control_worktree" push --force-with-lease origin set-control >/dev/null 2>&1; then
+        $output_json || success "Compacted set-control ($commit_count -> 1 commits)"
+        return 0
+    else
+        $output_json || warn "Force push failed (another machine may have compacted simultaneously)"
+        # Recovery: fetch and reset to remote
+        fix_stuck_git_state "$control_worktree"
+        git -C "$control_worktree" fetch origin set-control >/dev/null 2>&1 || true
+        git -C "$control_worktree" reset --hard origin/set-control >/dev/null 2>&1 || true
+        # Re-write our member file
+        echo "$member_json" | jq . > "$member_file"
+        git -C "$control_worktree" add -A >/dev/null 2>&1 || true
+        git -C "$control_worktree" commit -m "Update status: $member_name" --no-verify >/dev/null 2>&1 || true
+        git -C "$control_worktree" push origin set-control >/dev/null 2>&1 || true
+        return 1
+    fi
+}
+
+# Get compact threshold from team settings
+get_compact_threshold() {
+    local control_worktree="$1"
+    local settings_file="$control_worktree/team_settings.json"
+    local default_threshold=1000
+
+    if [[ -f "$settings_file" ]]; then
+        local threshold
+        threshold=$(jq -r '.compact_threshold // empty' "$settings_file" 2>/dev/null)
+        if [[ -n "$threshold" ]]; then
+            echo "$threshold"
+            return
+        fi
+    fi
+    echo "$default_threshold"
+}
+
+# Check if auto-compact should trigger
+check_auto_compact() {
+    local control_worktree="$1"
+
+    local threshold
+    threshold=$(get_compact_threshold "$control_worktree")
+
+    local commit_count
+    commit_count=$(git -C "$control_worktree" rev-list --count HEAD 2>/dev/null) || commit_count=0
+
+    if [[ "$commit_count" -gt "$threshold" ]]; then
+        $output_json || info "Auto-compacting set-control ($commit_count commits, threshold: $threshold)"
+        return 0  # Should compact
+    fi
+    return 1  # No need
+}
+
+main() {
+    local project_name=""
+    local do_push=false
+    local do_pull=false
+    local do_compact=false
+    local status_only=false
+    local output_json=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project_name="$2"
+                shift 2
+                ;;
+            --push)
+                do_push=true
+                shift
+                ;;
+            --pull)
+                do_pull=true
+                shift
+                ;;
+            --full)
+                do_push=true
+                do_pull=true
+                shift
+                ;;
+            --compact)
+                do_compact=true
+                shift
+                ;;
+            --status-only)
+                status_only=true
+                shift
+                ;;
+            -j|--json)
+                output_json=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                error "Unexpected argument: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
+    # Resolve project
+    local resolved_project
+    resolved_project=$(resolve_project "$project_name") || exit 1
+
+    local project_path
+    project_path=$(get_project_path "$resolved_project")
+
+    if [[ -z "$project_path" || ! -d "$project_path" ]]; then
+        error "Project path not found: $project_path"
+        exit 1
+    fi
+
+    local control_worktree="$project_path/.set-control"
+
+    # Check if set-control is initialized
+    if [[ ! -d "$control_worktree" ]]; then
+        error "set-control not initialized. Run 'set-control-init' first."
+        exit 1
+    fi
+
+    # Fix any stuck git state before operations
+    fix_stuck_git_state "$control_worktree"
+
+    # Pull from remote first if requested
+    if $do_pull; then
+        $output_json || info "Pulling from remote..."
+        if git -C "$control_worktree" pull --rebase origin set-control >/dev/null 2>&1; then
+            $output_json || success "Pulled latest changes"
+        else
+            # If pull failed, might be due to new stuck state - try to fix and retry
+            fix_stuck_git_state "$control_worktree"
+            if git -C "$control_worktree" pull --rebase origin set-control >/dev/null 2>&1; then
+                $output_json || success "Pulled latest changes (after recovery)"
+            else
+                $output_json || warn "Pull failed or nothing to pull"
+            fi
+        fi
+    fi
+
+    # Get member info
+    local member_name
+    member_name=$(get_member_name)
+
+    local display_name
+    display_name=$(get_display_name)
+
+    local user_name
+    user_name=$(get_user_name)
+
+    # Cleanup old hostname if changed
+    local current_hostname
+    current_hostname=$(hostname -s 2>/dev/null || hostname)
+    current_hostname=$(echo "$current_hostname" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-')
+    cleanup_old_hostname "$control_worktree" "$user_name" "$current_hostname"
+
+    # If status-only (no sync), just show team status and exit
+    if $status_only; then
+        local team_json
+        team_json=$(read_team_status "$control_worktree")
+
+        if $output_json; then
+            local conflicts
+            conflicts=$(detect_conflicts "$team_json")
+
+            jq -n \
+                --argjson members "$team_json" \
+                --argjson conflicts "$conflicts" \
+                --arg my_name "$member_name" \
+                '{
+                    my_name: $my_name,
+                    members: $members,
+                    conflicts: $conflicts
+                }'
+        else
+            # Terminal output
+            echo ""
+            info "Team Status for: $resolved_project"
+            echo ""
+
+            echo "$team_json" | jq -r '.[] | "  \(.display_name // .name) [\(.status)]"'
+            echo ""
+
+            # Show active changes
+            local has_active=false
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                if ! $has_active; then
+                    info "Active Changes:"
+                    has_active=true
+                fi
+                echo "  $line"
+            done <<< "$(echo "$team_json" | jq -r '.[] | .changes[] | select(.agent_status != "idle") | "  \(.id) by \(.name // "unknown") [\(.agent_status)]"')"
+
+            # Show conflicts
+            local conflicts
+            conflicts=$(detect_conflicts "$team_json")
+            if [[ "$conflicts" != "[]" ]]; then
+                echo ""
+                warn "Conflicts detected:"
+                echo "$conflicts" | jq -r '.[] | "  \(.change_id): \(.members | join(", "))"'
+            fi
+        fi
+
+        exit 0
+    fi
+
+    # Generate my status
+    local my_changes
+    my_changes=$(get_my_changes "$project_path")
+
+    local member_json
+    member_json=$(generate_member_json "$member_name" "$display_name" "$my_changes" "$user_name" "$resolved_project")
+
+    # Write to member file
+    local member_file="$control_worktree/members/${member_name}.json"
+    echo "$member_json" | jq . > "$member_file"
+
+    $output_json || info "Updated member status: $member_file"
+
+    # Commit changes (use --amend if last commit was from same member to avoid history bloat)
+    if git -C "$control_worktree" status --porcelain | grep -q .; then
+        git -C "$control_worktree" add -A
+
+        # Check if last commit was from this member (to amend instead of new commit)
+        local last_commit_msg
+        last_commit_msg=$(git -C "$control_worktree" log -1 --format=%s 2>/dev/null) || last_commit_msg=""
+
+        if [[ "$last_commit_msg" == "Update status: $member_name" ]]; then
+            # Amend last commit to avoid history bloat (--reset-author updates the date)
+            git -C "$control_worktree" commit --amend --reset-author -m "Update status: $member_name" --no-verify >/dev/null 2>&1 || true
+        else
+            # New commit (different member or first commit)
+            git -C "$control_worktree" commit -m "Update status: $member_name" --no-verify >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # Push to remote if requested (force push needed due to amend)
+    if $do_push; then
+        # Fix any stuck state before push
+        fix_stuck_git_state "$control_worktree"
+
+        $output_json || info "Pushing to remote..."
+        # Try normal push first, fall back to force push if amend was used
+        if git -C "$control_worktree" push origin set-control >/dev/null 2>&1; then
+            $output_json || success "Pushed to remote"
+        elif git -C "$control_worktree" push --force-with-lease origin set-control >/dev/null 2>&1; then
+            $output_json || success "Pushed to remote (force-with-lease)"
+        else
+            # Last resort: fetch + reset to remote + reapply our changes
+            $output_json || warn "Push failed, attempting recovery..."
+            fix_stuck_git_state "$control_worktree"
+            git -C "$control_worktree" fetch origin set-control >/dev/null 2>&1 || true
+            git -C "$control_worktree" reset --hard origin/set-control >/dev/null 2>&1 || true
+            # Re-write our member file
+            echo "$member_json" | jq . > "$member_file"
+            git -C "$control_worktree" add -A >/dev/null 2>&1 || true
+            git -C "$control_worktree" commit -m "Update status: $member_name" --no-verify >/dev/null 2>&1 || true
+            if git -C "$control_worktree" push origin set-control >/dev/null 2>&1; then
+                $output_json || success "Pushed to remote (after recovery)"
+            else
+                $output_json || warn "Push failed (may need manual intervention)"
+            fi
+        fi
+    fi
+
+    # Handle compaction (manual --compact or auto-compact during --full)
+    if $do_compact; then
+        compact_history "$control_worktree" "$member_name" "$member_json" "$member_file"
+    elif $do_push && $do_pull; then
+        # Auto-compact during --full sync if threshold exceeded
+        if check_auto_compact "$control_worktree"; then
+            compact_history "$control_worktree" "$member_name" "$member_json" "$member_file"
+        fi
+    fi
+
+    # Output JSON or text summary
+    if $output_json; then
+        # Read team status and output as JSON
+        local team_json
+        team_json=$(read_team_status "$control_worktree")
+        local conflicts
+        conflicts=$(detect_conflicts "$team_json")
+
+        jq -n \
+            --argjson members "$team_json" \
+            --argjson conflicts "$conflicts" \
+            --arg my_name "$member_name" \
+            '{
+                my_name: $my_name,
+                members: $members,
+                conflicts: $conflicts
+            }'
+    else
+        # Show text summary
+        echo ""
+        echo "  Member: $display_name ($member_name)"
+        echo "  Status: $(echo "$member_json" | jq -r '.status')"
+        echo "  Changes: $(echo "$my_changes" | jq -r 'length')"
+
+        if [[ "$(echo "$my_changes" | jq -r 'length')" -gt 0 ]]; then
+            echo ""
+            echo "  Active changes:"
+            echo "$my_changes" | jq -r '.[] | "    - \(.id) [\(.agent_status)]"'
+        fi
+
+        success "Sync complete"
+    fi
+}
+
+main "$@"

@@ -6,7 +6,7 @@ The memory system's only hard save point is the Stop hook (session-end transcrip
 
 - Add a **turn counter** to `handle_user_prompt()` in `wt-hook-memory` that triggers lightweight memory extraction every N turns (default: 15). The extraction summarizes accumulated context from the session dedup cache's metrics array, using the same haiku-based extraction as the Stop hook but on a rolling window.
 - Add a **write-save trigger** to `handle_post_tool()` that automatically saves a "what changed and why" Learning memory after Write/Edit tool use and after Bash commands containing `git commit`. This uses tool input parameters directly (no LLM call needed) — file path, old/new content summary, and commit message.
-- Extend the **session dedup cache** (`/tmp/wt-memory-session-*.json`) with `turn_count`, `last_checkpoint_turn`, and `checkpoint_entries` fields for checkpoint state tracking.
+- Extend the **session dedup cache** (`/tmp/set-memory-session-*.json`) with `turn_count`, `last_checkpoint_turn`, and `checkpoint_entries` fields for checkpoint state tracking.
 
 ## Capabilities
 
@@ -24,4 +24,4 @@ The memory system's only hard save point is the Stop hook (session-end transcrip
 - Session dedup cache: Extended with checkpoint tracking fields
 - Memory volume: Expected ~3-5 additional memories per long session (checkpoints) + ~1 per file modification (write-saves)
 - Hook timeout: UserPromptSubmit checkpoint extraction needs haiku call (~5-8s) — may need timeout increase from 15s to 20s for checkpoint turns only
-- No new dependencies — uses existing `wt-memory remember` CLI and haiku extraction patterns from Stop hook
+- No new dependencies — uses existing `set-memory remember` CLI and haiku extraction patterns from Stop hook

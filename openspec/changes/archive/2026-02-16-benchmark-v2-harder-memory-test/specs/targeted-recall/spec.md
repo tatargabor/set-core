@@ -10,7 +10,7 @@ Detection logic:
 4. If different → recall memories for the new change name, update marker file
 
 Query strategy:
-- Use the change name as primary query: `wt-memory recall "<change-name> implementation" --limit 5`
+- Use the change name as primary query: `set-memory recall "<change-name> implementation" --limit 5`
 - If revision change (07-09): also recall the original change being revised (e.g., C07 recalls C02 memories)
 
 #### Scenario: First prompt of new change

@@ -1,4 +1,4 @@
-"""Tests for wt_orch.digest — scanning, ID stabilization, validation, coverage, freshness."""
+"""Tests for set_orch.digest — scanning, ID stabilization, validation, coverage, freshness."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.digest import (
+from set_orch.digest import (
     ScanResult,
     DigestResult,
     scan_spec_directory,

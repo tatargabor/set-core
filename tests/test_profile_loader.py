@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from wt_orch.profile_loader import NullProfile, load_profile, reset_cache
+from set_orch.profile_loader import NullProfile, load_profile, reset_cache
 
 
 @pytest.fixture(autouse=True)
@@ -127,11 +127,11 @@ class TestLoadProfile:
         pt_dir.mkdir(parents=True)
         (pt_dir / "project-type.yaml").write_text("type: web\n")
 
-        # Only works if wt-project-web is installed
+        # Only works if set-project-web is installed
         try:
             from wt_project_web.project_type import WebProjectType
         except ImportError:
-            pytest.skip("wt-project-web not installed")
+            pytest.skip("set-project-web not installed")
 
         p = load_profile(str(tmp_path))
         assert type(p).__name__ == "WebProjectType"
@@ -140,4 +140,4 @@ class TestLoadProfile:
     def test_default_path_resolves_cwd(self):
         """Default project_path='.' resolves to absolute path."""
         p = load_profile()  # uses "."
-        assert isinstance(p, NullProfile)  # no project-type.yaml in wt-tools root
+        assert isinstance(p, NullProfile)  # no project-type.yaml in set-core root

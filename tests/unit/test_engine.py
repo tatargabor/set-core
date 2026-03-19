@@ -1,4 +1,4 @@
-"""Tests for wt_orch.engine — Directive parsing, token budget, time limit, completion, checkpoints."""
+"""Tests for set_orch.engine — Directive parsing, token budget, time limit, completion, checkpoints."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.engine import (
+from set_orch.engine import (
     Directives,
     _check_completion,
     _checkpoint_approved,
@@ -21,7 +21,7 @@ from wt_orch.engine import (
     parse_directives,
     trigger_checkpoint,
 )
-from wt_orch.state import OrchestratorState, Change, load_state, save_state
+from set_orch.state import OrchestratorState, Change, load_state, save_state
 
 
 class TestDirectivesDefaults:
@@ -458,7 +458,7 @@ class TestCheckpointTimeoutAutoResume:
         if d.checkpoint_timeout > 0:
             cs = state.extras.get("checkpoint_started_at", 0)
             if cs and (int(time.time()) - cs) >= d.checkpoint_timeout:
-                from wt_orch.state import update_state_field
+                from set_orch.state import update_state_field
                 update_state_field(state_file, "status", "running")
 
         state = load_state(state_file)
@@ -528,7 +528,7 @@ class TestCheckpointCounterResetCadence:
         for i in range(1, 10):
             # Increment counter (simulating a change completing)
             state = load_state(state_file)
-            from wt_orch.state import update_state_field
+            from set_orch.state import update_state_field
             update_state_field(
                 state_file,
                 "changes_since_checkpoint",
@@ -560,7 +560,7 @@ class TestCheckpointCounterResetCadence:
         _make_checkpoint_state(state_file, changes_since_checkpoint=0)
 
         # First checkpoint at change 3
-        from wt_orch.state import update_state_field
+        from set_orch.state import update_state_field
         update_state_field(state_file, "changes_since_checkpoint", 3)
         trigger_checkpoint(state_file, "periodic")
 
@@ -831,7 +831,7 @@ class TestRecoverVerifyFailedNoDoubleIncrement:
 
         # Mock resume_change at the dispatcher module level (imported locally)
         resumed = []
-        import wt_orch.dispatcher as _disp_mod
+        import set_orch.dispatcher as _disp_mod
         monkeypatch.setattr(
             _disp_mod, "resume_change",
             lambda sf, cn, **kw: resumed.append(cn) or True,
@@ -866,7 +866,7 @@ class TestRecoverVerifyFailedNoDoubleIncrement:
 
         # Mock resume_change at the dispatcher module level
         resumed = []
-        import wt_orch.dispatcher as _disp_mod
+        import set_orch.dispatcher as _disp_mod
         monkeypatch.setattr(
             _disp_mod, "resume_change",
             lambda sf, cn, **kw: resumed.append(cn) or True,

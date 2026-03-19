@@ -2,18 +2,18 @@
 
 # Team Sync & Messaging
 
-Cross-machine collaboration **without a central server** — using a `wt-control` git branch for team and machine-level coordination. Each machine syncs agent status automatically. Includes encrypted chat and directed agent-to-agent messaging.
+Cross-machine collaboration **without a central server** — using a `set-control` git branch for team and machine-level coordination. Each machine syncs agent status automatically. Includes encrypted chat and directed agent-to-agent messaging.
 
 > **Status:** Experimental. Usable but expect rough edges.
 
-> **Note:** Claude Code's Teams feature does not replace this — wt-tools team sync operates at the agent level, enabling different remote machines, users, or local agents to coordinate at a higher level.
+> **Note:** Claude Code's Teams feature does not replace this — set-core team sync operates at the agent level, enabling different remote machines, users, or local agents to coordinate at a higher level.
 
 ## Setup
 
 ```bash
 # On each machine (one-time)
-wt-control-init
-wt-control-sync --full
+set-control-init
+set-control-sync --full
 ```
 
 Now the Control Center on each machine shows what the other is doing:
@@ -29,36 +29,36 @@ Agents can send direct messages to each other across machines:
 
 ```
 # Send a message
-/wt:msg tg@mac/add-frontend "API endpoints ready, schema at docs/api.md"
+/set:msg tg@mac/add-frontend "API endpoints ready, schema at docs/api.md"
 
 # Read incoming messages
-/wt:inbox
+/set:inbox
 # → [10:30] tg@linux/add-api: API endpoints ready, schema at docs/api.md
 
 # Broadcast what you're working on
-/wt:broadcast "Refactoring checkout flow"
+/set:broadcast "Refactoring checkout flow"
 
 # See all agent activity
-/wt:status
+/set:status
 ```
 
 ### CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `wt-control-init` | Initialize wt-control team sync branch |
-| `wt-control-sync` | Sync member status (pull/push/compact) |
-| `wt-control-chat send <to> <msg>` | Send encrypted message |
-| `wt-control-chat read` | Read received messages |
+| `set-control-init` | Initialize set-control team sync branch |
+| `set-control-sync` | Sync member status (pull/push/compact) |
+| `set-control-chat send <to> <msg>` | Send encrypted message |
+| `set-control-chat read` | Read received messages |
 
 ### Skills
 
 | Skill | Description |
 |-------|-------------|
-| `/wt:msg <target> <msg>` | Send message to another agent |
-| `/wt:inbox` | Read incoming messages |
-| `/wt:broadcast <msg>` | Broadcast what you're working on |
-| `/wt:status` | Show agent activity |
+| `/set:msg <target> <msg>` | Send message to another agent |
+| `/set:inbox` | Read incoming messages |
+| `/set:broadcast <msg>` | Broadcast what you're working on |
+| `/set:status` | Show agent activity |
 
 ## Use Cases
 
@@ -68,27 +68,27 @@ One machine handles backend, another handles frontend:
 
 ```
 # On linux (backend agent):
-/wt:msg tg@mac/game-ui "Game loop API ready at engine.start()"
+/set:msg tg@mac/game-ui "Game loop API ready at engine.start()"
 
 # On mac (frontend agent):
-/wt:inbox
+/set:inbox
 # → [10:30] tg@linux/game-logic: Game loop API ready at engine.start()
 ```
 
 ### Parallel testing with bug reports
 
-One machine codes, another tests. Bug reports go via `/wt:msg`:
+One machine codes, another tests. Bug reports go via `/set:msg`:
 
 ```
 # Tester agent finds a bug:
-/wt:msg tg@mac/feature-x "BUG: Start button unresponsive.
+/set:msg tg@mac/feature-x "BUG: Start button unresponsive.
 Steps: 1. Click start button
 Expected: Game starts
 Actual: Nothing happens"
 
 # Developer agent reads and fixes:
-/wt:inbox
-/wt:msg tg@linux/testing "Fixed in commit def456, please retest"
+/set:inbox
+/set:msg tg@linux/testing "Fixed in commit def456, please retest"
 ```
 
 ## Batch Messaging Architecture
@@ -102,7 +102,7 @@ Agent sends message:
     → NO git commit, NO git push
 
 Next sync cycle (every 2 minutes):
-  wt-control-sync --full
+  set-control-sync --full
     → git pull --rebase
     → git add -A  ← picks up outbox changes too
     → git commit --amend
@@ -111,18 +111,18 @@ Next sync cycle (every 2 minutes):
 
 Whether an agent sends 0 or 100 messages in a sync window, the sync cost is identical. Per-sender outbox files prevent git merge conflicts — each machine writes only to its own file.
 
-> **Traffic note:** `wt-control-sync` runs git fetch+push on every sync cycle. The default interval is 2 minutes. Lower intervals increase GitHub API traffic — at 15 seconds, that's ~480 git operations/hour per machine. Adjust in Settings > Team Sync interval.
+> **Traffic note:** `set-control-sync` runs git fetch+push on every sync cycle. The default interval is 2 minutes. Lower intervals increase GitHub API traffic — at 15 seconds, that's ~480 git operations/hour per machine. Adjust in Settings > Team Sync interval.
 
 ## History Compaction
 
-The `wt-control` branch uses `--amend` to keep history small.
+The `set-control` branch uses `--amend` to keep history small.
 
 ```bash
 # Manual compaction
-wt-control-sync --compact
+set-control-sync --compact
 
 # Auto-compaction triggers when commit count exceeds threshold (default: 1000)
-# Configure in team_settings.json on the wt-control branch:
+# Configure in team_settings.json on the set-control branch:
 # { "compact_threshold": 50 }
 ```
 
@@ -130,7 +130,7 @@ Recovery after compaction is automatic — when a machine's `git pull --rebase` 
 
 ## Encrypted Chat
 
-`wt-control-chat` uses NaCl Box (libsodium) for end-to-end encrypted messages between team members.
+`set-control-chat` uses NaCl Box (libsodium) for end-to-end encrypted messages between team members.
 
 ---
 

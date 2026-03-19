@@ -2,7 +2,7 @@
 
 # OpenSpec Workflow
 
-OpenSpec is a spec-driven development workflow built into wt-tools. It structures changes as a sequence of artifacts — proposal, design, specs, tasks — before implementation begins. Each artifact builds on the previous one, creating a traceable path from idea to code.
+OpenSpec is a spec-driven development workflow built into set-core. It structures changes as a sequence of artifacts — proposal, design, specs, tasks — before implementation begins. Each artifact builds on the previous one, creating a traceable path from idea to code.
 
 ## Skills
 
@@ -127,7 +127,7 @@ The orchestrator uses OpenSpec internally — each dispatched change runs `/opsx
 
 ## Version
 
-wt-tools is pinned to **OpenSpec v1.1.1**. Do not upgrade — v1.2.0 introduced deselection pruning that can delete our custom skills/commands during `openspec update`.
+set-core is pinned to **OpenSpec v1.1.1**. Do not upgrade — v1.2.0 introduced deselection pruning that can delete our custom skills/commands during `openspec update`.
 
 ```bash
 npm install -g @fission-ai/openspec@1.1.1
@@ -137,9 +137,9 @@ npm install -g @fission-ai/openspec@1.1.1
 
 | Command | Description |
 |---------|-------------|
-| `wt-openspec status [--json]` | Show OpenSpec change status |
-| `wt-openspec init` | Initialize OpenSpec in the project |
-| `wt-openspec update` | Update OpenSpec skills to latest version |
+| `set-openspec status [--json]` | Show OpenSpec change status |
+| `set-openspec init` | Initialize OpenSpec in the project |
+| `set-openspec update` | Update OpenSpec skills to latest version |
 | `openspec list [--json]` | List all changes with status |
 | `openspec status --change <name> [--json]` | Detailed change status |
 | `openspec new change <name>` | Create a new change (CLI) |

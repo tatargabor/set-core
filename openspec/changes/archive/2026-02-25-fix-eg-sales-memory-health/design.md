@@ -6,7 +6,7 @@ Projects with non-ASCII content (Hungarian, emoji, CJK) lose memories silently. 
 
 2. **Silent error swallowing**: In `_stop_raw_filter()`, the `except Exception: pass` on line 1078 silently drops entries that fail `subprocess.run(..., text=True)` — which also fails on surrogate content. Additionally, Node.js JSONL transcripts can contain unpaired surrogate escapes from `JSON.stringify`, which `json.loads()` faithfully decodes into Python surrogate codepoints.
 
-3. **RocksDB LOG.old accumulation**: Each `wt-memory` CLI call opens/closes RocksDB, creating a LOG.old file. Over many sessions, thousands of LOG.old files accumulate (tens of MB wasted per project).
+3. **RocksDB LOG.old accumulation**: Each `set-memory` CLI call opens/closes RocksDB, creating a LOG.old file. Over many sessions, thousands of LOG.old files accumulate (tens of MB wasted per project).
 
 Secondary issue: Memory citation rate is near-zero across projects. The CLAUDE.md instruction exists but agents don't follow it consistently.
 
@@ -14,7 +14,7 @@ Secondary issue: Memory citation rate is near-zero across projects. The CLAUDE.m
 
 **Goals:**
 - Fix UTF-8 handling so all non-ASCII content (Hungarian, emoji, CJK) flows safely through the entire pipeline
-- Add defense-in-depth sanitization at the `wt-memory remember` boundary
+- Add defense-in-depth sanitization at the `set-memory remember` boundary
 - Replace silent error swallowing with logged errors in transcript extraction
 - Provide RocksDB LOG.old cleanup mechanism
 - Strengthen CLAUDE.md citation instruction to increase actual usage
@@ -43,7 +43,7 @@ Secondary issue: Memory citation rate is near-zero across projects. The CLAUDE.m
 **Choice**: Add `content.encode('utf-8', errors='replace').decode('utf-8')` in the Python inline script before calling `m.remember()`.
 
 **Alternatives considered:**
-- Sanitize only at the source (wt-hook-memory) — misses other callers of `wt-memory remember`
+- Sanitize only at the source (wt-hook-memory) — misses other callers of `set-memory remember`
 - Validate and reject (raise error) — better to save with replacement char (U+FFFD) than lose the entire memory
 - Sanitize in bash before passing env var — bash can't reliably detect surrogates
 
@@ -61,9 +61,9 @@ Secondary issue: Memory citation rate is near-zero across projects. The CLAUDE.m
 
 **Rationale**: Node.js can emit unpaired surrogates in JSON. Python's `json.loads()` faithfully decodes them. We need to clean them before they propagate through the pipeline. Using `surrogateescape` → `replace` handles the specific case of lone surrogates without affecting valid text.
 
-### Decision 5: RocksDB LOG.old cleanup via `wt-memory cleanup-logs`
+### Decision 5: RocksDB LOG.old cleanup via `set-memory cleanup-logs`
 
-**Choice**: Add a `cleanup-logs` subcommand to `wt-memory` that removes LOG.old files older than 24 hours. Call it at the start of the Stop hook (before extraction, once per session).
+**Choice**: Add a `cleanup-logs` subcommand to `set-memory` that removes LOG.old files older than 24 hours. Call it at the start of the Stop hook (before extraction, once per session).
 
 **Alternatives considered:**
 - Cron job — adds external dependency, not self-contained

@@ -36,6 +36,6 @@ In CraftBrew E2E Run #3, 8 of 14 changes merged with zero implementation code. E
 - `lib/orchestration/planner.sh` — receive gap report in replan prompt
 - `lib/orchestration/reporter.sh` — new `render_audit_section()` for HTML report
 - `lib/orchestration/utils.sh` — new directive `post_phase_audit`
-- `bin/wt-orchestrate` — new default constant, source auditor.sh
+- `bin/set-orchestrate` — new default constant, source auditor.sh
 - `web/src/components/AuditPanel.tsx` — new React component for gap visualization
 - `web/src/pages/Dashboard.tsx` — integrate AuditPanel

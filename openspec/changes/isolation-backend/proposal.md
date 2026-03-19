@@ -2,11 +2,11 @@
 
 ## Why
 
-The orchestration engine is hardcoded to `git worktree` for change isolation. This prevents using wt-tools in environments where git worktrees are problematic (shared `.git` dir causes `index.lock` conflicts, worktree pruning issues) or where a simpler branch-clone approach would suffice. Introducing an abstraction layer lets the same orchestration logic work with different isolation strategies — starting with the existing worktree approach and a new branch-clone backend.
+The orchestration engine is hardcoded to `git worktree` for change isolation. This prevents using set-core in environments where git worktrees are problematic (shared `.git` dir causes `index.lock` conflicts, worktree pruning issues) or where a simpler branch-clone approach would suffice. Introducing an abstraction layer lets the same orchestration logic work with different isolation strategies — starting with the existing worktree approach and a new branch-clone backend.
 
 ## What Changes
 
-- **New**: `IsolationBackend` abstract interface in `lib/wt_orch/isolation.py` with `create()`, `remove()`, `list_active()`, `sync_with_main()` methods
+- **New**: `IsolationBackend` abstract interface in `lib/set_orch/isolation.py` with `create()`, `remove()`, `list_active()`, `sync_with_main()` methods
 - **New**: `WorktreeBackend` implementation wrapping existing `git worktree add/remove/list` calls
 - **New**: `BranchCloneBackend` implementation using `git clone --branch` for full isolation
 - **Modified**: ~15 direct `git worktree` call sites in dispatcher, merger, planner, api, milestone, and CLI scripts replaced with backend method calls

@@ -6,7 +6,7 @@ The system SHALL log Claude agent file operations using Claude Code hooks.
 #### Scenario: Log file edit operation
 - **WHEN** Claude uses the Edit tool on a file
 - **AND** the PostToolUse hook fires
-- **THEN** an activity event is logged to `~/.config/wt-tools/claude-activity.jsonl`
+- **THEN** an activity event is logged to `~/.config/set-core/claude-activity.jsonl`
 - **AND** the event includes timestamp, tool name, file path, and project context
 
 #### Scenario: Log file read operation

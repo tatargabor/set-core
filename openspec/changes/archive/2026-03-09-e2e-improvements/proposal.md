@@ -3,13 +3,13 @@
 E2E #3 validated watchdog and checkpoint fixes but revealed:
 1. **Token counting inflated** — `wt-usage --since` scans ALL `~/.claude/projects/` dirs, not just the current worktree. Parallel changes + user sessions get cross-counted.
 2. **No E2E report** — no structured summary with screenshots after a run completes.
-3. **Minishop is API-only Express** — doesn't test the `wt-project-web` stack (Next.js, shadcn/ui, Tailwind, Prisma). A realistic frontend + modern stack will expose real wt-tools bugs when agents work with complex frameworks.
+3. **Minishop is API-only Express** — doesn't test the `set-project-web` stack (Next.js, shadcn/ui, Tailwind, Prisma). A realistic frontend + modern stack will expose real set-core bugs when agents work with complex frameworks.
 
 ## What Changes
 
 1. **Token scoping** — add `--project-dir` filter to `wt-usage` and `UsageCalculator` so token counting is per-worktree.
 2. **E2E report with screenshots** — generate markdown report after orchestration, capture Playwright screenshots of the running app.
-3. **Minishop scaffold rewrite → Next.js** — replace Express+SQLite scaffold with Next.js App Router + Prisma + SQLite + shadcn/ui + Tailwind. This also validates `wt-project-web` conventions. More complex feature set (6 changes instead of 4) to stress-test parallel orchestration, merge conflicts, and cross-cutting concerns.
+3. **Minishop scaffold rewrite → Next.js** — replace Express+SQLite scaffold with Next.js App Router + Prisma + SQLite + shadcn/ui + Tailwind. This also validates `set-project-web` conventions. More complex feature set (6 changes instead of 4) to stress-test parallel orchestration, merge conflicts, and cross-cutting concerns.
 
 ## Capabilities
 

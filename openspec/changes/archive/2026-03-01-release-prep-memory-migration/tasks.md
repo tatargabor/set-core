@@ -7,8 +7,8 @@
 
 ## 2. install.sh Legacy Detection
 
-- [ ] 2.1 Add legacy hook detection after install completes: run `wt-memory-hooks check` and warn if inline hooks found
-- [ ] 2.2 Warning message includes `wt-memory-hooks remove` command and MIGRATION.md reference
+- [ ] 2.1 Add legacy hook detection after install completes: run `set-memory-hooks check` and warn if inline hooks found
+- [ ] 2.2 Warning message includes `set-memory-hooks remove` command and MIGRATION.md reference
 
 ## 3. Documentation Updates
 
@@ -23,12 +23,12 @@
 
 ## 5. CLI Consistency Audit
 
-- [ ] 5.1 Verify `wt-memory --help` output is current and consistent
+- [ ] 5.1 Verify `set-memory --help` output is current and consistent
 - [ ] 5.2 Verify `wt-deploy-hooks --help` output is current and consistent
-- [ ] 5.3 Verify `wt-project --help` output is current and consistent
+- [ ] 5.3 Verify `set-project --help` output is current and consistent
 - [ ] 5.4 Fix any inconsistencies found in --help text
 
 ## 6. Skill Audit
 
-- [ ] 6.1 Grep all `.claude/skills/*/SKILL.md` for stale `wt-memory recall` or `wt-memory remember` instructions
+- [ ] 6.1 Grep all `.claude/skills/*/SKILL.md` for stale `set-memory recall` or `set-memory remember` instructions
 - [ ] 6.2 Remove any found stale manual memory instructions (hooks handle this now)

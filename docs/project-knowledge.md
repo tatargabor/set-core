@@ -6,7 +6,7 @@
 
 ```bash
 cd /path/to/your-project
-wt-project init-knowledge
+set-project init-knowledge
 ```
 
 This scans the project for common cross-cutting patterns (i18n files, sidebar/navigation components, route definitions, database schemas) and generates a draft `project-knowledge.yaml` at the repo root.

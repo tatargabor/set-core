@@ -7,7 +7,7 @@ The orchestration pipeline (planner, decompose, dispatcher, agent runtime, verif
 - Introduce a design-bridge abstraction in `lib/design/` that detects registered design MCP servers, exports their config for `run_claude --mcp-config`, and generates prompt enrichment sections
 - Extend `run_claude()` in `wt-common.sh` to accept `--mcp-config` passthrough when design MCP is available
 - Inject design context at every pipeline stage: decompose skill gets frame/component awareness, planner gets `--mcp-config`, dispatcher writes design references into `proposal.md`, agent runtime rule tells agents to query design MCP, verifier can optionally check design compliance
-- The bridge is tool-agnostic — it detects any registered design MCP (figma, penpot, etc). Concrete adapters (Figma token, file ID) live in project templates (`wt-project-web`), not here
+- The bridge is tool-agnostic — it detects any registered design MCP (figma, penpot, etc). Concrete adapters (Figma token, file ID) live in project templates (`set-project-web`), not here
 - Ambiguity handling: when a required frame/page is missing from the design tool, the system surfaces it as an ambiguity for user resolution
 
 ## Capabilities

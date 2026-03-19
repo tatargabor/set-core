@@ -1,6 +1,6 @@
 ## Context
 
-The E2E minishop scaffold tests wt-tools orchestration end-to-end. Currently it's a simple Express+SQLite API with 4 changes. We're upgrading to Next.js + Prisma + shadcn/ui to test a realistic modern web stack — the same stack `wt-project-web` targets. This will expose bugs in how agents handle complex frameworks, cross-cutting changes, and merge conflicts.
+The E2E minishop scaffold tests set-core orchestration end-to-end. Currently it's a simple Express+SQLite API with 4 changes. We're upgrading to Next.js + Prisma + shadcn/ui to test a realistic modern web stack — the same stack `set-project-web` targets. This will expose bugs in how agents handle complex frameworks, cross-cutting changes, and merge conflicts.
 
 ## Goals / Non-Goals
 
@@ -39,7 +39,7 @@ Backward compatible — without the flag, behavior is unchanged. Also change `it
 - **Package manager:** pnpm
 - **Testing:** Jest + React Testing Library (unit), Playwright (E2E)
 
-**Why this stack:** Matches `wt-project-web` conventions exactly. More complex than Express — agents must handle:
+**Why this stack:** Matches `set-project-web` conventions exactly. More complex than Express — agents must handle:
 - App Router file conventions (`page.tsx`, `layout.tsx`, `loading.tsx`)
 - Server Components vs Client Components (`"use client"`)
 - Server Actions for mutations
@@ -80,16 +80,16 @@ tests/e2e/scaffold/
 - `package.json` — agent generates from spec. Version non-determinism is acceptable; the test validates orchestration, not pinned deps.
 - `prisma/` — schema and seed described in spec text. Agent creates the files.
 - `.env` — not needed. SQLite uses hardcoded `file:./dev.db` in schema. NextAuth secret has dev default in code.
-- Config files (tsconfig, tailwind, next.config, etc.) — deployed by `wt-project init --project-type web --template nextjs`.
-- CLAUDE.md and rules — deployed by `wt-project init`.
+- Config files (tsconfig, tailwind, next.config, etc.) — deployed by `set-project init --project-type web --template nextjs`.
+- CLAUDE.md and rules — deployed by `set-project init`.
 - shadcn components — agents add via `pnpm dlx shadcn@latest add`.
 
 **E2E run.sh flow:**
 1. Create empty directory
 2. `cp scaffold/docs/v1-minishop.md <project>/docs/`
 3. `cd <project> && git init`
-4. `wt-project init --project-type web --template nextjs` → deploys configs, rules, CLAUDE.md
-5. `wt-orchestrate` → planner reads `docs/v1-minishop.md`, creates changes, agents build everything
+4. `set-project init --project-type web --template nextjs` → deploys configs, rules, CLAUDE.md
+5. `set-orchestrate` → planner reads `docs/v1-minishop.md`, creates changes, agents build everything
 
 **What agents create during orchestration (everything):**
 - `package.json` with all dependencies
@@ -116,9 +116,9 @@ After orchestration completes:
 3. Kill server
 4. Generate report
 
-### D6: Conventions via wt-project-web
+### D6: Conventions via set-project-web
 
-No scaffold CLAUDE.md — conventions are deployed by `wt-project init --project-type web --template nextjs`. The nextjs template provides:
+No scaffold CLAUDE.md — conventions are deployed by `set-project init --project-type web --template nextjs`. The nextjs template provides:
 - Config files: `tsconfig.json`, `tailwind.config.ts`, `next.config.js`, `postcss.config.mjs`, `components.json`
 - Rules: `ui-conventions.md`, `functional-conventions.md`, `auth-conventions.md`, `data-model.md`
 - Project knowledge YAML
@@ -129,6 +129,6 @@ Project-specific conventions (currency format, seed data, SQLite hardcode, dev a
 
 - **Agent version non-determinism** — without pinned `package.json`, agents choose dependency versions. Acceptable: the test validates orchestration workflow, not specific versions. If this causes flaky failures, we can add version hints to the spec.
 - **Playwright download** — ~130MB for Chromium. Only needed for change 6 and report.
-- **More complex = more failure modes** — that's the point. We want to find wt-tools bugs with a realistic workload.
+- **More complex = more failure modes** — that's the point. We want to find set-core bugs with a realistic workload.
 - **Full agent autonomy** — agents must create everything from spec (package.json, prisma schema, all code). This is a harder test but more realistic. If init fails, the entire E2E fails — but that's a valid signal that specs need improvement.
-- **wt-project-web dependency** — the E2E now depends on the `wt-project-web` plugin being installed and working. This is intentional: it validates both the plugin and the orchestration together.
+- **set-project-web dependency** — the E2E now depends on the `set-project-web` plugin being installed and working. This is intentional: it validates both the plugin and the orchestration together.

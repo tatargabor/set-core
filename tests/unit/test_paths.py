@@ -1,4 +1,4 @@
-"""Tests for wt_orch.paths — WtRuntime path resolution and directory creation."""
+"""Tests for set_orch.paths — SetRuntime path resolution and directory creation."""
 
 import os
 import sys
@@ -9,17 +9,17 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.paths import WtRuntime, resolve_project_name, AGENT_DIR_NAME
+from set_orch.paths import SetRuntime, resolve_project_name, AGENT_DIR_NAME
 
 
 class TestWtRuntimePaths:
-    """Test that WtRuntime generates correct paths."""
+    """Test that SetRuntime generates correct paths."""
 
     def setup_method(self):
-        self.rt = WtRuntime(project_name="test-project")
+        self.rt = SetRuntime(project_name="test-project")
 
     def test_root_path(self):
-        assert self.rt.root.endswith("wt-tools/test-project")
+        assert self.rt.root.endswith("set-core/test-project")
 
     def test_project_name(self):
         assert self.rt.project_name == "test-project"
@@ -121,32 +121,32 @@ class TestWtRuntimeAgentPaths:
     """Test per-worktree agent ephemeral paths."""
 
     def test_agent_dir(self):
-        path = WtRuntime.agent_dir("/tmp/my-worktree")
+        path = SetRuntime.agent_dir("/tmp/my-worktree")
         assert path == "/tmp/my-worktree/.wt"
 
     def test_agent_loop_state(self):
-        path = WtRuntime.agent_loop_state("/tmp/wt")
-        assert path == "/tmp/wt/.wt/loop-state.json"
+        path = SetRuntime.agent_loop_state("/tmp/wt")
+        assert path == "/tmp/wt/.set/loop-state.json"
 
     def test_agent_activity(self):
-        path = WtRuntime.agent_activity("/tmp/wt")
-        assert path == "/tmp/wt/.wt/activity.json"
+        path = SetRuntime.agent_activity("/tmp/wt")
+        assert path == "/tmp/wt/.set/activity.json"
 
     def test_agent_pid_file(self):
-        path = WtRuntime.agent_pid_file("/tmp/wt")
-        assert path == "/tmp/wt/.wt/ralph-terminal.pid"
+        path = SetRuntime.agent_pid_file("/tmp/wt")
+        assert path == "/tmp/wt/.set/ralph-terminal.pid"
 
     def test_agent_lock_file(self):
-        path = WtRuntime.agent_lock_file("/tmp/wt")
-        assert path == "/tmp/wt/.wt/scheduled_tasks.lock"
+        path = SetRuntime.agent_lock_file("/tmp/wt")
+        assert path == "/tmp/wt/.set/scheduled_tasks.lock"
 
     def test_agent_reflection(self):
-        path = WtRuntime.agent_reflection("/tmp/wt")
-        assert path == "/tmp/wt/.wt/reflection.md"
+        path = SetRuntime.agent_reflection("/tmp/wt")
+        assert path == "/tmp/wt/.set/reflection.md"
 
     def test_agent_logs_dir(self):
-        path = WtRuntime.agent_logs_dir("/tmp/wt")
-        assert path == "/tmp/wt/.wt/logs"
+        path = SetRuntime.agent_logs_dir("/tmp/wt")
+        assert path == "/tmp/wt/.set/logs"
 
 
 class TestXDGOverride:
@@ -156,11 +156,11 @@ class TestXDGOverride:
         monkeypatch.setenv("XDG_DATA_HOME", "/custom/data")
         # Re-import to pick up env change
         from importlib import reload
-        import wt_orch.paths as paths_mod
+        import set_orch.paths as paths_mod
         reload(paths_mod)
 
-        rt = paths_mod.WtRuntime(project_name="proj")
-        assert rt.root == "/custom/data/wt-tools/proj"
+        rt = paths_mod.SetRuntime(project_name="proj")
+        assert rt.root == "/custom/data/set-core/proj"
 
         # Restore
         monkeypatch.delenv("XDG_DATA_HOME", raising=False)
@@ -172,9 +172,9 @@ class TestEnsureDirs:
 
     def test_ensure_dirs_creates_structure(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            rt = WtRuntime(project_name="test-proj")
+            rt = SetRuntime(project_name="test-proj")
             # Override root to temp
-            rt.root = os.path.join(tmpdir, "wt-tools", "test-proj")
+            rt.root = os.path.join(tmpdir, "set-core", "test-proj")
             # Patch the properties that derive from root
             rt.ensure_dirs()
 
@@ -194,45 +194,45 @@ class TestEnsureDirs:
 
     def test_ensure_dirs_idempotent(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            rt = WtRuntime(project_name="test-proj")
-            rt.root = os.path.join(tmpdir, "wt-tools", "test-proj")
+            rt = SetRuntime(project_name="test-proj")
+            rt.root = os.path.join(tmpdir, "set-core", "test-proj")
             rt.ensure_dirs()
             rt.ensure_dirs()  # Second call should not fail
             assert os.path.isdir(rt.orchestration_dir)
 
     def test_ensure_agent_dir_creates_structure(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            agent_path = WtRuntime.ensure_agent_dir(tmpdir)
+            agent_path = SetRuntime.ensure_agent_dir(tmpdir)
             assert os.path.isdir(agent_path)
             assert os.path.isdir(os.path.join(agent_path, "logs"))
             # Check .gitignore was updated
             gitignore = os.path.join(tmpdir, ".gitignore")
             assert os.path.exists(gitignore)
             with open(gitignore) as f:
-                assert "/.wt/" in f.read()
+                assert "/.set/" in f.read()
 
     def test_ensure_agent_dir_gitignore_idempotent(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            WtRuntime.ensure_agent_dir(tmpdir)
-            WtRuntime.ensure_agent_dir(tmpdir)
+            SetRuntime.ensure_agent_dir(tmpdir)
+            SetRuntime.ensure_agent_dir(tmpdir)
             gitignore = os.path.join(tmpdir, ".gitignore")
             with open(gitignore) as f:
                 content = f.read()
-            assert content.count("/.wt/") == 1
+            assert content.count("/.set/") == 1
 
 
 class TestResolveProjectName:
     """Test project name resolution from git."""
 
     def test_resolve_from_current_repo(self):
-        # We're in a git repo (wt-tools), so this should return "wt-tools"
+        # We're in a git repo (set-core), so this should return "set-core"
         name = resolve_project_name()
-        assert name == "wt-tools"
+        assert name == "set-core"
 
     def test_resolve_with_explicit_path(self):
         # Pass the repo path explicitly
-        name = resolve_project_name("/home/tg/code2/wt-tools")
-        assert name == "wt-tools"
+        name = resolve_project_name("/home/tg/code2/set-core")
+        assert name == "set-core"
 
     def test_resolve_non_git_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:

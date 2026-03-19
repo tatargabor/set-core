@@ -147,9 +147,9 @@ New `web/src/components/AuditPanel.tsx` component. Reads `phase_audit_results[]`
 
 Integrates into Dashboard.tsx after ChangeTable, before LogPanel. Only renders if `phase_audit_results` exists and is non-empty.
 
-## Approach: Prompt template via wt-orch-core
+## Approach: Prompt template via set-orch-core
 
-The audit prompt is built via `wt-orch-core template audit --input-file -` (same pattern as review/plan/fix prompts). New `render_audit_prompt()` function in `lib/wt_orch/templates.py` + CLI registration in `lib/wt_orch/cli.py` (same pattern as `render_planning_prompt` → `cmd_template` dispatch). Template receives JSON with:
+The audit prompt is built via `set-orch-core template audit --input-file -` (same pattern as review/plan/fix prompts). New `render_audit_prompt()` function in `lib/set_orch/templates.py` + CLI registration in `lib/set_orch/cli.py` (same pattern as `render_planning_prompt` → `cmd_template` dispatch). Template receives JSON with:
 - `spec_text` or `requirements` (depending on mode)
 - `changes[]` with name, scope, status, file_list
 - `coverage` (if digest mode)

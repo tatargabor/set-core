@@ -30,10 +30,10 @@ _PAGE_SIZE = 50
 
 
 def _run_wt_memory(*args):
-    """Run wt-memory CLI and return stdout. Returns empty string on error."""
+    """Run set-memory CLI and return stdout. Returns empty string on error."""
     try:
         result = subprocess.run(
-            [str(SCRIPT_DIR / "wt-memory")] + list(args),
+            [str(SCRIPT_DIR / "set-memory")] + list(args),
             capture_output=True, text=True, timeout=10
         )
         return result.stdout.strip()
@@ -45,8 +45,8 @@ class MemoryBrowseDialog(QDialog):
     """Dialog to browse and search project memories.
 
     Two view modes:
-    - Summary (default): grouped context summary from wt-memory context
-    - List: paginated card list from wt-memory list (50 at a time)
+    - Summary (default): grouped context summary from set-memory context
+    - List: paginated card list from set-memory list (50 at a time)
 
     Search overrides both views with recall results.
     """
@@ -155,7 +155,7 @@ class MemoryBrowseDialog(QDialog):
     # ── Summary view (default) ──────────────────────────────────────
 
     def _load_summary(self):
-        """Load context summary via wt-memory context."""
+        """Load context summary via set-memory context."""
         self._mode = self.MODE_SUMMARY
         self._update_toggle_button()
         self._clear_content()
@@ -528,7 +528,7 @@ class RememberNoteDialog(QDialog):
 
         try:
             subprocess.run(
-                [str(SCRIPT_DIR / "wt-memory")] + args,
+                [str(SCRIPT_DIR / "set-memory")] + args,
                 input=content, text=True, timeout=10,
                 capture_output=True
             )

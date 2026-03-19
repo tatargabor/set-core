@@ -1,14 +1,14 @@
 ## Context
 
-Phases 1-3 delivered the Python orchestration core (`lib/wt_orch/`): logging, subprocess, config, events, state (with mutations, locking, deps, phases, crash recovery), reporter (Jinja2), templates (prompt rendering), and process management. The planner (`lib/orchestration/planner.sh`, 1456 LOC) is the next migration target — it contains 12 functions spanning spec summarization, test infrastructure detection, plan validation, scope overlap analysis, triage gate evaluation, decomposition prompt assembly, agent-based planning, and auto-replan cycles.
+Phases 1-3 delivered the Python orchestration core (`lib/set_orch/`): logging, subprocess, config, events, state (with mutations, locking, deps, phases, crash recovery), reporter (Jinja2), templates (prompt rendering), and process management. The planner (`lib/orchestration/planner.sh`, 1456 LOC) is the next migration target — it contains 12 functions spanning spec summarization, test infrastructure detection, plan validation, scope overlap analysis, triage gate evaluation, decomposition prompt assembly, agent-based planning, and auto-replan cycles.
 
-About 40% of planner.sh's logic is already delegated to Python via `wt-orch-core` calls (templates.py renders the planning prompt, config.py resolves directives, state.py does topological sort). The remaining bash logic is dominated by JSON manipulation (30+ jq calls), string-based set operations (comm, sort -u for scope overlap), and complex control flow that's fragile in shell.
+About 40% of planner.sh's logic is already delegated to Python via `set-orch-core` calls (templates.py renders the planning prompt, config.py resolves directives, state.py does topological sort). The remaining bash logic is dominated by JSON manipulation (30+ jq calls), string-based set operations (comm, sort -u for scope overlap), and complex control flow that's fragile in shell.
 
 ## Goals / Non-Goals
 
 **Goals:**
 - Migrate all data-processing functions from planner.sh to Python with 1:1 function mapping
-- Provide `wt-orch-core plan <subcommand>` CLI bridge for each migrated function
+- Provide `set-orch-core plan <subcommand>` CLI bridge for each migrated function
 - Maintain bash wrappers for functions that orchestrate external tools (run_claude, wt-new, wt-loop, wt-close)
 - Full pytest coverage for validation, overlap detection, triage gate, and decomposition context assembly
 
@@ -22,7 +22,7 @@ About 40% of planner.sh's logic is already delegated to Python via `wt-orch-core
 ## Decisions
 
 ### D1: Single planner.py module
-**Choice:** Create `lib/wt_orch/planner.py` containing all migrated planner functions.
+**Choice:** Create `lib/set_orch/planner.py` containing all migrated planner functions.
 **Rationale:** The 12 functions form a cohesive concern (plan creation and validation). Estimated ~600-800 LOC — manageable for a single module. Matches the pattern from Phase 2 (state.py) and Phase 3 (reporter.py).
 **Alternative:** Split into `planner_validate.py` + `planner_context.py` — rejected because the functions share types and helpers.
 
@@ -43,7 +43,7 @@ About 40% of planner.sh's logic is already delegated to Python via `wt-orch-core
 **Rationale:** Triage generation/parsing is a digest concern. The planner only needs to check the gate status (no_ambiguities/needs_triage/has_untriaged/has_fixes/passed). This avoids pulling digest.sh dependencies into the planner migration.
 
 ### D6: CLI bridge subcommands
-**Choice:** Add to `wt-orch-core plan` these subcommands: `validate`, `detect-test-infra`, `check-triage`, `check-scope-overlap`, `summarize-spec`, `build-context`, `enrich-metadata`, `replan-context`.
+**Choice:** Add to `set-orch-core plan` these subcommands: `validate`, `detect-test-infra`, `check-triage`, `check-scope-overlap`, `summarize-spec`, `build-context`, `enrich-metadata`, `replan-context`.
 **Rationale:** Each maps 1:1 to a bash function. Bash wrapper becomes a one-liner. Consistent with Phase 1-2 CLI bridge pattern.
 
 ### D7: YAML reading via PyYAML (conditional)

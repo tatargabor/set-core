@@ -5,7 +5,7 @@ The shodh-memory semantic recall system is probabilistic — high-stakes operati
 ## What Changes
 
 - New `.claude/rules.yaml` file format for storing deterministic, topic-matched operational rules
-- `wt-memory rules` CLI subcommand (`add`, `list`, `remove`) for managing rules
+- `set-memory rules` CLI subcommand (`add`, `list`, `remove`) for managing rules
 - `wt-hook-memory` extended to inject a `MANDATORY RULES` section before PROJECT MEMORY in UserPromptSubmit output — bypassing semantic filtering entirely
 - Rules are topic-matched via simple keyword overlap (no embeddings), git-versioned, zero shodh-memory dependency
 - Cheat-sheet tag role clarified: soft conventions/patterns only (not credentials or hard constraints)
@@ -13,7 +13,7 @@ The shodh-memory semantic recall system is probabilistic — high-stakes operati
 ## Capabilities
 
 ### New Capabilities
-- `memory-rules`: Deterministic rules layer — `.claude/rules.yaml` file format, `wt-memory rules` CLI, and hook injection of `MANDATORY RULES` section in UserPromptSubmit context
+- `memory-rules`: Deterministic rules layer — `.claude/rules.yaml` file format, `set-memory rules` CLI, and hook injection of `MANDATORY RULES` section in UserPromptSubmit context
 
 ### Modified Capabilities
 - `cheat-sheet-curation`: Role clarification — cheat-sheet is for emergent soft conventions; hard constraints belong in rules. Docs and L5 extraction prompt updated accordingly.
@@ -21,7 +21,7 @@ The shodh-memory semantic recall system is probabilistic — high-stakes operati
 ## Impact
 
 - `bin/wt-hook-memory` — UserPromptSubmit handler extended to read and inject rules
-- `bin/wt-memory` — new `rules` subcommand (add/list/remove)
+- `bin/set-memory` — new `rules` subcommand (add/list/remove)
 - `.claude/rules.yaml` — new per-project file (created by CLI, gitignored or committed per user preference)
 - `docs/developer-memory.md` — new Rules section, cheat-sheet role update
 - No shodh-memory changes required

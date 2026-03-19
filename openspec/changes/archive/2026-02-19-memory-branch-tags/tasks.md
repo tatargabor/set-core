@@ -4,7 +4,7 @@
 - [x] 1.2 Add `.migrations` JSON file read/write helpers (`migrations_read`, `migrations_write`) in storage directory
 - [x] 1.3 Implement migration runner: iterate numbered migration functions, skip already-applied, update `.migrations` after each
 - [x] 1.4 Add auto-migrate check at the top of commands that access storage (remember, recall, list, forget, etc.) — skip if `--no-migrate` flag present
-- [x] 1.5 Add `cmd_migrate` subcommand: `wt-memory migrate` (run pending) and `wt-memory migrate --status` (show history)
+- [x] 1.5 Add `cmd_migrate` subcommand: `set-memory migrate` (run pending) and `set-memory migrate --status` (show history)
 - [x] 1.6 Add `migrate` to usage text
 
 ## 2. Migration 001 — Branch Tags
@@ -36,7 +36,7 @@
 - [x] 5.7 Test migration 001 idempotency: running twice produces same result
 - [x] 5.8 Test migration auto-run: first command triggers migration, subsequent commands skip
 - [x] 5.9 Test `--no-migrate` flag prevents auto-migration
-- [x] 5.10 Test `wt-memory migrate --status` output
+- [x] 5.10 Test `set-memory migrate --status` output
 
 ## 6. Documentation
 

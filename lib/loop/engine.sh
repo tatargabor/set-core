@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # wt-loop engine: cmd_run — the main iteration loop
 # Dependencies: lib/loop/state.sh, lib/loop/tasks.sh, lib/loop/prompt.sh must be sourced first
-# Also requires: TIMEOUT_CMD, STDBUF_PREFIX, wt-common.sh (get_claude_permission_flags, etc.)
+# Also requires: TIMEOUT_CMD, STDBUF_PREFIX, set-common.sh (get_claude_permission_flags, etc.)
 
 # ─── API Error Detection ────────────────────────────────────────────────────
 # Backoff constants

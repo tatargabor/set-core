@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Archive skill saves decisions, learnings, and events
-The `openspec-archive-change` SKILL.md SHALL include a Step 7 that, after the summary display, saves developer memory. Decisions from design.md SHALL be saved as type `Decision`, lessons learned as type `Learning`, and a change completion summary as type `Event`. All memory operations SHALL be conditional on `wt-memory health` succeeding.
+The `openspec-archive-change` SKILL.md SHALL include a Step 7 that, after the summary display, saves developer memory. Decisions from design.md SHALL be saved as type `Decision`, lessons learned as type `Learning`, and a change completion summary as type `Event`. All memory operations SHALL be conditional on `set-memory health` succeeding.
 
 #### Scenario: Archive with shodh-memory running
 - **WHEN** a change is archived and shodh-memory is running
@@ -64,7 +64,7 @@ The `openspec-new-change` SKILL.md SHALL include a Step 1b that, after getting t
 - **THEN** the change creation proceeds normally
 
 ### Requirement: All memory steps are silent on failure
-Every memory step in every SKILL.md SHALL be conditional on `wt-memory health` succeeding. If health fails, the step SHALL be skipped with no error, no warning, and no user-visible output.
+Every memory step in every SKILL.md SHALL be conditional on `set-memory health` succeeding. If health fails, the step SHALL be skipped with no error, no warning, and no user-visible output.
 
 #### Scenario: Silent degradation across all skills
 - **WHEN** any OpenSpec skill runs a memory step and shodh-memory is not available

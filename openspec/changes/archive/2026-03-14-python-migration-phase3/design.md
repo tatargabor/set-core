@@ -22,13 +22,13 @@
 
 ### D4: CLI bridge pattern (same as Phase 2)
 
-**Choice**: `wt-orch-core report generate` subcommand, bash wrapper calls it.
+**Choice**: `set-orch-core report generate` subcommand, bash wrapper calls it.
 
 **Why**: Consistent with Phase 1-2 migration pattern. Bash `generate_report()` becomes a 3-line wrapper. CLI accepts `--state`, `--plan`, `--digest-dir`, `--output` flags matching the bash globals (`STATE_FILENAME`, `PLAN_FILENAME`, `DIGEST_DIR`).
 
 ### D5: Template loading from package directory
 
-**Choice**: Load Jinja2 templates from `lib/wt_orch/templates/` using `PackageLoader` or `FileSystemLoader` relative to the module.
+**Choice**: Load Jinja2 templates from `lib/set_orch/templates/` using `PackageLoader` or `FileSystemLoader` relative to the module.
 
 **Why**: Templates ship with the code. No runtime configuration needed. `Path(__file__).parent / "templates"` gives reliable path resolution.
 

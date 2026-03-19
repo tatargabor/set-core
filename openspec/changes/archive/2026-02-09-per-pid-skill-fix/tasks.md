@@ -1,7 +1,7 @@
 ## 1. Remove legacy current_skill
 
-- [x] 1.1 Remove `current_skill` write from `bin/wt-skill-start` (line that writes to `.wt-tools/current_skill`). Only keep the per-PID write.
-- [x] 1.2 Remove `current_skill` refresh logic from `bin/wt-hook-stop` (the block that reads/refreshes `.wt-tools/current_skill`). Only keep per-PID refresh.
+- [x] 1.1 Remove `current_skill` write from `bin/wt-skill-start` (line that writes to `.set-core/current_skill`). Only keep the per-PID write.
+- [x] 1.2 Remove `current_skill` refresh logic from `bin/wt-hook-stop` (the block that reads/refreshes `.set-core/current_skill`). Only keep per-PID refresh.
 - [x] 1.3 Remove `current_skill` fallback from `get_agent_skill()` in `bin/wt-status` — if per-PID file doesn't exist, return empty string immediately.
 
 ## 2. Add UserPromptSubmit hook (replaces failed PreToolUse/Skill approach)

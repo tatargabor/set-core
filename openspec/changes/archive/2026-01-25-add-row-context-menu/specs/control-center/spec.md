@@ -83,7 +83,7 @@ The GUI SHALL provide a dialog for viewing and editing worktree-specific configu
 #### Scenario: Open worktree config
 - **GIVEN** the context menu is open
 - **WHEN** the user clicks "Worktree Config..."
-- **THEN** a dialog opens showing the worktree's .wt-tools/ config files
+- **THEN** a dialog opens showing the worktree's .set-core/ config files
 
 #### Scenario: View config tabs
 - **GIVEN** the worktree config dialog is open
@@ -93,7 +93,7 @@ The GUI SHALL provide a dialog for viewing and editing worktree-specific configu
 #### Scenario: Edit config values
 - **GIVEN** the worktree config dialog is open
 - **WHEN** the user modifies a config value
-- **THEN** the change is saved to the corresponding .wt-tools/*.json file
+- **THEN** the change is saved to the corresponding .set-core/*.json file
 
 ### Requirement: State Persistence
 The GUI SHALL persist attention state across restarts.

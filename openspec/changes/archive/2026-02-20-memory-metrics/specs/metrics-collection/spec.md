@@ -16,7 +16,7 @@ The hook system SHALL record structured metrics for every memory injection in la
 - **THEN** a metrics record SHALL be appended with `dedup_hit=1`, `result_count=0`, and `duration_ms` reflecting only the cache check time
 
 ### Requirement: Session cache metrics storage
-Metrics SHALL be stored in the existing session cache file (`/tmp/wt-memory-session-{SESSION_ID}.json`) under a `_metrics` key containing an array of injection records.
+Metrics SHALL be stored in the existing session cache file (`/tmp/set-memory-session-{SESSION_ID}.json`) under a `_metrics` key containing an array of injection records.
 
 #### Scenario: Metrics array structure
 - **WHEN** a session has 5 injections
@@ -45,7 +45,7 @@ Each injection SHALL estimate the token count of the injected context using a `l
 - **THEN** the metrics record SHALL have `token_estimate=0`
 
 ### Requirement: Enable/disable toggle
-Metrics collection SHALL be toggleable via a flag file at `~/.local/share/wt-tools/metrics/.enabled`.
+Metrics collection SHALL be toggleable via a flag file at `~/.local/share/set-core/metrics/.enabled`.
 
 #### Scenario: Metrics disabled (default)
 - **WHEN** the flag file does not exist
@@ -56,13 +56,13 @@ Metrics collection SHALL be toggleable via a flag file at `~/.local/share/wt-too
 - **THEN** hooks SHALL record metrics for every injection
 
 #### Scenario: Toggle via CLI
-- **WHEN** `wt-memory metrics --enable` is run
+- **WHEN** `set-memory metrics --enable` is run
 - **THEN** the flag file SHALL be created (and parent directory if needed)
-- **WHEN** `wt-memory metrics --disable` is run
+- **WHEN** `set-memory metrics --disable` is run
 - **THEN** the flag file SHALL be removed
 
 ### Requirement: SQLite persistence in Stop hook
-The Stop hook SHALL flush session metrics from the session cache to a SQLite database at `~/.local/share/wt-tools/metrics/metrics.db`.
+The Stop hook SHALL flush session metrics from the session cache to a SQLite database at `~/.local/share/set-core/metrics/metrics.db`.
 
 #### Scenario: Normal session end
 - **WHEN** the Stop hook fires and the session cache contains `_metrics` with 20 entries

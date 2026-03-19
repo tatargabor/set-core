@@ -9,12 +9,12 @@ Amikor egy change minden függősége teljesült (merged státusz), a `dispatch_
 ### 1. Worktree létrehozás
 
 ```bash
-wt-new <change-name>
+set-new <change-name>
 # → .claude/worktrees/<change-name>/
 # → branch: change/<change-name>
 ```
 
-A `wt-new` egy izolált git worktree-t hoz létre, ahol az ágens szabadon dolgozhat anélkül, hogy a fő ágat érintené.
+A `set-new` egy izolált git worktree-t hoz létre, ahol az ágens szabadon dolgozhat anélkül, hogy a fő ágat érintené.
 
 ### 2. Bootstrap
 
@@ -36,14 +36,14 @@ A `sync_worktree_with_main()` biztosítja, hogy a worktree a legfrissebb main-re
 ### 4. Ralph Loop indítás
 
 ```bash
-wt-loop start --change <name> --model <model_id> --max-turns <N>
+set-loop start --change <name> --model <model_id> --max-turns <N>
 ```
 
 A Ralph PID-je mentésre kerül az állapotfájlba.
 
 ## A Ralph Loop
 
-A Ralph loop a `wt-loop` paranccsal indul és egy iteratív fejlesztési ciklust hajt végre:
+A Ralph loop a `set-loop` paranccsal indul és egy iteratív fejlesztési ciklust hajt végre:
 
 ### Iterációs ciklus
 
@@ -146,10 +146,10 @@ A párhuzamos végrehajtás nem jelenti, hogy az összes change egyszerre fut. A
 A futás bármikor felfüggeszthető és folytatható:
 
 ```bash
-wt-orchestrate pause auth-system    # egy change
-wt-orchestrate pause --all          # minden change
-wt-orchestrate resume auth-system   # folytatás
-wt-orchestrate resume --all         # minden folytatása
+set-orchestrate pause auth-system    # egy change
+set-orchestrate pause --all          # minden change
+set-orchestrate resume auth-system   # folytatás
+set-orchestrate resume --all         # minden folytatása
 ```
 
 A `pause` megállítja a Ralph loop-ot (PID kill), de a worktree megmarad. A `resume` újraindítja a loop-ot, opcionálisan retry context-tel.

@@ -1,4 +1,4 @@
-"""Tests for wt_orch.state — Typed JSON state management."""
+"""Tests for set_orch.state — Typed JSON state management."""
 
 import json
 import os
@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
-from wt_orch.state import (
+from set_orch.state import (
     Change,
     CircularDependencyError,
     OrchestratorState,
@@ -40,7 +40,7 @@ from wt_orch.state import (
     update_change_field,
     update_state_field,
 )
-from wt_orch.events import EventBus
+from set_orch.events import EventBus
 
 
 SAMPLE_PLAN = {

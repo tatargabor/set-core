@@ -1,6 +1,6 @@
 ## Context
 
-The wt-control GUI currently requires manual session key entry via F12 → DevTools → Cookies. This is stored in `~/.config/wt-tools/claude-session.json` as a list of `{name, sessionKey}` dicts. The `UsageWorker` polls the Claude API every 30s using these session keys. Chrome stores cookies in per-profile SQLite databases with AES-256-GCM encryption (v11 prefix), keys stored in the OS keyring (gnome-keyring on Linux, Keychain on macOS).
+The wt-control GUI currently requires manual session key entry via F12 → DevTools → Cookies. This is stored in `~/.config/set-core/claude-session.json` as a list of `{name, sessionKey}` dicts. The `UsageWorker` polls the Claude API every 30s using these session keys. Chrome stores cookies in per-profile SQLite databases with AES-256-GCM encryption (v11 prefix), keys stored in the OS keyring (gnome-keyring on Linux, Keychain on macOS).
 
 ## Goals / Non-Goals
 

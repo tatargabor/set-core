@@ -7,5 +7,5 @@
 
 ### R2: wt-usage Import Fix
 - `bin/wt-usage` must resolve its Python import path correctly regardless of CWD
-- Add `sys.path.insert(0, script_dir)` or equivalent to resolve the `gui` module relative to wt-tools installation
+- Add `sys.path.insert(0, script_dir)` or equivalent to resolve the `gui` module relative to set-core installation
 - If the gui module is not available (e.g., headless install), wt-usage should exit with a clear error instead of an unhandled ImportError

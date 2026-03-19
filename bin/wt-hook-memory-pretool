@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# wt-hook-memory-pretool - Backward-compatible wrapper
-# Delegates to unified handler: wt-hook-memory PreToolUse
-exec wt-hook-memory PreToolUse

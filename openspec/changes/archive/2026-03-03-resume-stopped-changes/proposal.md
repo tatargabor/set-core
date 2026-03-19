@@ -15,4 +15,4 @@ Add auto-resume logic for `stopped` changes on orchestrator restart. When the or
 
 ## Impact
 
-- `bin/wt-orchestrate`: resume path in `cmd_start()` (around line 2136-2139), and potentially the poll loop filter (line 3129)
+- `bin/set-orchestrate`: resume path in `cmd_start()` (around line 2136-2139), and potentially the poll loop filter (line 3129)

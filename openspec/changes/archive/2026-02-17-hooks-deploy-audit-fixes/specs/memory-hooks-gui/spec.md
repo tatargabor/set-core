@@ -17,7 +17,7 @@ The Memory submenu in the project header context menu SHALL include an "Install 
 
 #### Scenario: Install action execution
 - **WHEN** user clicks "Install Skill Memory Hooks..."
-- **THEN** the GUI runs `wt-memory-hooks install` via `CommandOutputDialog` targeting the main repo path, then triggers a feature cache refresh
+- **THEN** the GUI runs `set-memory-hooks install` via `CommandOutputDialog` targeting the main repo path, then triggers a feature cache refresh
 
 ### Requirement: Memory Hooks in OpenSpec submenu
 The OpenSpec submenu SHALL mirror the Memory submenu's hook install/reinstall actions with matching labels.
