@@ -1060,7 +1060,7 @@ def _handle_merge_conflict(
         retry_prompt = (
             f"Merge conflict: your branch conflicts with {main_branch}. "
             f"Resolve by merging {main_branch} into your branch.\n\n"
-            f"Run: git fetch origin {main_branch} && git merge origin/{main_branch}\n\n"
+            f"Run: git merge {main_branch}\n\n"
             f"Resolve any conflicts, keeping both sides' changes where possible. "
             f"Prefer your changes (the feature) when they contradict {main_branch}. "
             f"After resolving, commit the merge."

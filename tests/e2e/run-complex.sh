@@ -158,6 +158,10 @@ init_project() {
     git clone --branch "$CRAFTBREW_BRANCH" "$CRAFTBREW_REPO" "$TEST_DIR"
     cd "$TEST_DIR"
 
+    # Remove origin remote to prevent merge pipeline from pulling upstream code
+    # (the upstream repo may have full implementation on main which contaminates merges)
+    git remote remove origin 2>/dev/null || true
+
     local file_count
     file_count=$(find "$TEST_DIR/docs" -name '*.md' | wc -l)
     success "Cloned CraftBrew repo ($file_count spec files in docs/)"
