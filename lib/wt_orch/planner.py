@@ -1305,13 +1305,17 @@ def run_planning_pipeline(
     except OSError:
         pass
 
-    result = run_claude(prompt, timeout=1800, model=model, extra_args=["--max-turns", "3"])
+    result = run_claude(prompt, timeout=1800, model=model, extra_args=["--max-turns", "10"])
     if result.exit_code != 0:
         raise RuntimeError(f"Claude planning call failed (exit {result.exit_code})")
 
     # 7. Parse response
     plan_data = _parse_plan_response(result.stdout)
     if not plan_data:
+        # Debug: dump response for diagnosis
+        debug_path = Path("/tmp/wt-decompose-response.txt")
+        debug_path.write_text(result.stdout[:10000] if result.stdout else "(empty)")
+        logger.error("Decompose response dumped to %s (len=%d)", debug_path, len(result.stdout or ""))
         raise RuntimeError("Could not parse plan JSON from Claude response")
 
     # 8. Validate
