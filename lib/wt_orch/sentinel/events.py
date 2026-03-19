@@ -1,4 +1,4 @@
-"""Structured event logging to .wt/sentinel/events.jsonl."""
+"""Structured event logging to shared sentinel directory."""
 
 import json
 import os
@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from wt_orch.sentinel.wt_dir import ensure_wt_dir, SENTINEL_DIR
+from wt_orch.sentinel.wt_dir import ensure_wt_dir
 
 EVENTS_FILE = "events.jsonl"
 
@@ -14,7 +14,7 @@ EVENTS_FILE = "events.jsonl"
 class SentinelEventLogger:
     """Append-only JSONL event logger for sentinel activity.
 
-    Events are written to .wt/sentinel/events.jsonl with atomic appends.
+    Events are written to sentinel/events.jsonl with atomic appends.
     """
 
     def __init__(self, project_path: str):

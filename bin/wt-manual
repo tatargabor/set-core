@@ -137,11 +137,11 @@ cmd_list() {
 
                 local manual_count=0
                 local first_task=""
-                if [[ -n "$wt_path" && -f "$wt_path/.claude/loop-state.json" ]]; then
-                    manual_count=$(jq -r '.manual_tasks | length // 0' "$wt_path/.claude/loop-state.json" 2>/dev/null)
-                    first_task=$(jq -r '.manual_tasks[0]? | "[\(.id)] \(.description)"' "$wt_path/.claude/loop-state.json" 2>/dev/null)
+                if [[ -n "$wt_path" && -f "$wt_path/.wt/loop-state.json" ]]; then
+                    manual_count=$(jq -r '.manual_tasks | length // 0' "$wt_path/.wt/loop-state.json" 2>/dev/null)
+                    first_task=$(jq -r '.manual_tasks[0]? | "[\(.id)] \(.description)"' "$wt_path/.wt/loop-state.json" 2>/dev/null)
                     local waiting_since
-                    waiting_since=$(jq -r '.waiting_since // empty' "$wt_path/.claude/loop-state.json" 2>/dev/null)
+                    waiting_since=$(jq -r '.waiting_since // empty' "$wt_path/.wt/loop-state.json" 2>/dev/null)
                     if [[ -n "$waiting_since" ]]; then
                         local ws_epoch now_epoch elapsed
                         ws_epoch=$(date -d "$waiting_since" +%s 2>/dev/null || echo 0)
@@ -165,7 +165,7 @@ cmd_list() {
     if [[ -n "$git_root" && -d "$git_root/.claude/worktrees" ]]; then
         for wt_dir in "$git_root/.claude/worktrees"/*/; do
             [[ -d "$wt_dir" ]] || continue
-            local ls_file="$wt_dir.claude/loop-state.json"
+            local ls_file="$wt_dir.wt/loop-state.json"
             [[ -f "$ls_file" ]] || continue
 
             local ls_status

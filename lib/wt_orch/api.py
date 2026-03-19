@@ -86,14 +86,26 @@ def _resolve_project(project_name: str) -> Path:
 
 
 def _state_path(project_path: Path) -> Path:
-    """Find orchestration state file — new location first, legacy fallback."""
+    """Find orchestration state file — shared runtime first, then legacy fallbacks."""
+    try:
+        from .paths import WtRuntime
+        shared = Path(WtRuntime(str(project_path)).state_file)
+        if shared.exists():
+            return shared
+    except Exception:
+        pass
     new = project_path / "wt" / "orchestration" / "orchestration-state.json"
     if new.exists():
         return new
     legacy = project_path / "orchestration-state.json"
     if legacy.exists():
         return legacy
-    return new  # default for non-existent (will 404 cleanly)
+    # Default to shared path for non-existent (will 404 cleanly)
+    try:
+        from .paths import WtRuntime
+        return Path(WtRuntime(str(project_path)).state_file)
+    except Exception:
+        return new
 
 
 def _load_archived_changes(project_path: Path) -> list[dict]:
@@ -125,14 +137,25 @@ def _load_archived_changes(project_path: Path) -> list[dict]:
 
 
 def _log_path(project_path: Path) -> Path:
-    """Find orchestration log — new location first, legacy fallback."""
+    """Find orchestration log — shared runtime first, then legacy fallbacks."""
+    try:
+        from .paths import WtRuntime
+        shared = Path(WtRuntime(str(project_path)).orchestration_log)
+        if shared.exists():
+            return shared
+    except Exception:
+        pass
     new = project_path / "wt" / "orchestration" / "orchestration.log"
     if new.exists():
         return new
     legacy = project_path / "orchestration.log"
     if legacy.exists():
         return legacy
-    return new
+    try:
+        from .paths import WtRuntime
+        return Path(WtRuntime(str(project_path)).orchestration_log)
+    except Exception:
+        return new
 
 
 def _quick_status(project_path: Path) -> str:
@@ -141,7 +164,7 @@ def _quick_status(project_path: Path) -> str:
     if not sp.exists():
         # No state file yet — check if orchestrator is starting up
         # (sentinel.pid or recent orchestration.log indicate a running orch)
-        sentinel_pid = project_path / "sentinel.pid"
+        sentinel_pid = _sentinel_dir(project_path) / "sentinel.pid"
         if sentinel_pid.exists():
             try:
                 pid = int(sentinel_pid.read_text().strip())
@@ -212,7 +235,7 @@ def _list_worktrees(project_path: Path) -> list[dict]:
     # Enrich with loop-state
     for wt in worktrees:
         wt_path = Path(wt["path"])
-        loop_state = wt_path / ".claude" / "loop-state.json"
+        loop_state = wt_path / ".wt" / "loop-state.json"
         if loop_state.exists():
             try:
                 with open(loop_state) as f:
@@ -223,7 +246,7 @@ def _list_worktrees(project_path: Path) -> list[dict]:
                 pass
 
         # Agent activity
-        activity_file = wt_path / ".claude" / "activity.json"
+        activity_file = wt_path / ".wt" / "activity.json"
         if activity_file.exists():
             try:
                 with open(activity_file) as f:
@@ -425,7 +448,7 @@ def list_changes(project: str, status: Optional[str] = Query(None)):
         if c.worktree_path:
             wt_path = Path(c.worktree_path)
             # Enrich with loop-state
-            loop_file = wt_path / ".claude" / "loop-state.json"
+            loop_file = wt_path / ".wt" / "loop-state.json"
             if loop_file.exists():
                 try:
                     with open(loop_file) as f:
@@ -462,7 +485,7 @@ def get_change(project: str, name: str):
             d = c.to_dict()
             # Enrich with loop-state
             if c.worktree_path:
-                loop_file = Path(c.worktree_path) / ".claude" / "loop-state.json"
+                loop_file = Path(c.worktree_path) / ".wt" / "loop-state.json"
                 if loop_file.exists():
                     try:
                         with open(loop_file) as f:
@@ -553,7 +576,7 @@ def get_change_logs(project: str, name: str):
             result: dict = {"logs": logs}
             # Include iteration info
             if c.worktree_path:
-                loop_state = Path(c.worktree_path) / ".claude" / "loop-state.json"
+                loop_state = Path(c.worktree_path) / ".wt" / "loop-state.json"
                 if loop_state.exists():
                     try:
                         with open(loop_state) as f:
@@ -1384,7 +1407,7 @@ def get_project_settings(project: str):
             pass
 
     # Sentinel PID
-    sentinel_pid_file = project_path / "sentinel.pid"
+    sentinel_pid_file = _sentinel_dir(project_path) / "sentinel.pid"
     if sentinel_pid_file.exists():
         try:
             pid = int(sentinel_pid_file.read_text().strip())
@@ -1575,7 +1598,7 @@ def stop_orchestration(project: str):
 def shutdown_orchestration(project: str):
     """Graceful shutdown: signals sentinel to stop agents cleanly and preserve state."""
     project_path = _resolve_project(project)
-    pid_file = Path(project_path) / "sentinel.pid"
+    pid_file = _sentinel_dir(Path(project_path)) / "sentinel.pid"
     if not pid_file.exists():
         raise HTTPException(409, "No sentinel running")
 
@@ -1666,7 +1689,11 @@ def skip_change(project: str, name: str):
 
 
 def _sentinel_dir(project_path: Path) -> Path:
-    return project_path / ".wt" / "sentinel"
+    try:
+        from .paths import WtRuntime
+        return Path(WtRuntime(str(project_path)).sentinel_dir)
+    except Exception:
+        return project_path / ".wt" / "sentinel"
 
 
 @router.get("/api/{project}/sentinel/events")

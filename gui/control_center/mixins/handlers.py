@@ -242,7 +242,7 @@ class HandlersMixin:
 
     def focus_ralph_terminal(self, wt_path: str):
         """Focus the Ralph terminal window, or open log if terminal is closed"""
-        loop_state_file = Path(wt_path) / ".claude" / "loop-state.json"
+        loop_state_file = Path(wt_path) / ".wt" / "loop-state.json"
         if not loop_state_file.exists():
             return
 
@@ -304,7 +304,7 @@ class HandlersMixin:
 
     def stop_ralph_loop(self, wt_path: str):
         """Stop Ralph loop for a worktree"""
-        loop_state_file = Path(wt_path) / ".claude" / "loop-state.json"
+        loop_state_file = Path(wt_path) / ".wt" / "loop-state.json"
         if loop_state_file.exists():
             try:
                 with open(loop_state_file) as f:

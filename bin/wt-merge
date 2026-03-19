@@ -436,7 +436,7 @@ auto_resolve_structural_conflicts() {
                 ;;
             *)
                 # Runtime/tmp files — accept either side
-                if [[ "$file" == tmp/* || "$file" == .claude/logs/* || "$file" == .claude/ralph-terminal.pid ]]; then
+                if [[ "$file" == tmp/* || "$file" == .claude/logs/* || "$file" == .claude/ralph-terminal.pid || "$file" == .wt/* ]]; then
                     git checkout --theirs "$file" 2>/dev/null && git add "$file" 2>/dev/null
                     resolved=$((resolved + 1))
                     info "Auto-resolved runtime file: $file"
@@ -1165,7 +1165,7 @@ main() {
     fi
 
     # Auto-stash any uncommitted changes in main repo before merge.
-    # This prevents false merge failures from worktree artifacts (.claude/reflection.md),
+    # This prevents false merge failures from worktree artifacts (.wt/reflection.md, .claude/reflection.md),
     # generated files (tsconfig.tsbuildinfo), or orchestrator state files.
     local main_changes
     main_changes=$(git -C "$project_path" status --porcelain 2>/dev/null | grep -v "^?? " || true)

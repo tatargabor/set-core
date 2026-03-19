@@ -78,7 +78,7 @@ any_loop_active() {
         local wt_path
         wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME" 2>/dev/null)
         [[ -z "$wt_path" ]] && continue
-        local loop_state="$wt_path/.claude/loop-state.json"
+        local loop_state="$wt_path/.wt/loop-state.json"
         if [[ -f "$loop_state" ]]; then
             local mtime
             mtime=$(stat -c %Y "$loop_state" 2>/dev/null || stat -f %m "$loop_state" 2>/dev/null || echo 0)

@@ -12,18 +12,17 @@ Thumbs.db
 node_modules/
 *.pyc
 __pycache__/
-*.pid
-loop-state.json
 
 # Team sync worktree (wt-control branch)
 .wt-control/
 
-# Project-specific JIRA/Confluence config (contains credentials/project keys)
-.wt-tools/jira.json
-.wt-tools/confluence.json
+# Per-worktree agent ephemeral directory
+/.wt/
 
-# Runtime state files (wt-tools engine)
+# Runtime state files (legacy — shared runtime now in ~/.local/share/wt-tools/)
 .wt-tools/
+*.pid
+loop-state.json
 activity.json
 .claude/.wt-version
 .claude/logs/
@@ -47,9 +46,6 @@ test-results/
 
 # Runtime worktree state
 /wt/
-
-# Team sync worktree (wt-control branch)
-.wt-control/
 
 # Benchmark temp data
 benchmark/synthetic/.wt-tools/

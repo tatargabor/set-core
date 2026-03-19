@@ -101,7 +101,7 @@ def get_worktrees_for_project(project_path: str) -> list[dict]:
 
 def get_ralph_state(wt_path: str) -> Optional[dict]:
     """Read Ralph loop state from a worktree"""
-    state_file = Path(wt_path) / ".claude" / "loop-state.json"
+    state_file = Path(wt_path) / ".wt" / "loop-state.json"
     if not state_file.exists():
         return None
 
@@ -114,7 +114,7 @@ def get_ralph_state(wt_path: str) -> Optional[dict]:
 
 def get_activity_state(wt_path: str) -> Optional[dict]:
     """Read activity state from a worktree"""
-    activity_file = Path(wt_path) / ".claude" / "activity.json"
+    activity_file = Path(wt_path) / ".wt" / "activity.json"
     if not activity_file.exists():
         return None
 
@@ -358,7 +358,7 @@ def get_team_status() -> str:
 def get_activity(change_id: str = None) -> str:
     """Get agent activity from all local worktrees.
 
-    Reads .claude/activity.json from each worktree to show what agents
+    Reads .wt/activity.json from each worktree to show what agents
     are currently doing. This is the fast path for same-machine coordination.
 
     Args:

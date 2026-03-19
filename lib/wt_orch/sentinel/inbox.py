@@ -1,6 +1,6 @@
 """Lightweight inbox for sentinel — local file-based, no git operations.
 
-Messages are written to .wt/sentinel/inbox.jsonl by wt-web or MCP tools.
+Messages are written to the shared sentinel directory by wt-web or MCP tools.
 The sentinel reads and processes them during its poll loop.
 """
 
@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from wt_orch.sentinel.wt_dir import ensure_wt_dir, SENTINEL_DIR
+from wt_orch.sentinel.wt_dir import ensure_wt_dir
 
 INBOX_FILE = "inbox.jsonl"
 INBOX_CURSOR_FILE = "inbox.cursor"
@@ -28,7 +28,7 @@ def check_inbox(project_path: str) -> list[dict]:
     Returns list of message dicts: [{from, content, timestamp}, ...]
     Fast: single file read + cursor comparison, <5ms.
     """
-    sentinel_dir = os.path.join(os.path.abspath(project_path), SENTINEL_DIR)
+    sentinel_dir = ensure_wt_dir(project_path)
     ipath = os.path.join(sentinel_dir, INBOX_FILE)
     cursor_path = os.path.join(sentinel_dir, INBOX_CURSOR_FILE)
 

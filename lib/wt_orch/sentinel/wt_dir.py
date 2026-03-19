@@ -1,44 +1,37 @@
-"""Utility for .wt/ runtime directory management."""
+"""Sentinel runtime directory management.
+
+Sentinel files live in the shared runtime directory:
+~/.local/share/wt-tools/<project>/sentinel/
+
+Migrated from project-local .wt/sentinel/ to shared location.
+"""
 
 import os
 
-WT_DIR = ".wt"
-SENTINEL_DIR = os.path.join(WT_DIR, "sentinel")
-GITIGNORE_ENTRY = "/.wt/"
+from ..paths import WtRuntime
 
 
-def ensure_wt_dir(project_path: str) -> str:
-    """Create .wt/sentinel/ and add /.wt/ to .gitignore if missing.
+def ensure_sentinel_dir(project_path: str) -> str:
+    """Create sentinel directory under shared runtime and return its path.
 
-    Returns the sentinel directory path.
+    Creates:
+    - ~/.local/share/wt-tools/<project>/sentinel/
+    - ~/.local/share/wt-tools/<project>/sentinel/archive/
     """
-    sentinel_path = os.path.join(project_path, SENTINEL_DIR)
+    rt = WtRuntime(project_path)
+    sentinel_path = rt.sentinel_dir
     os.makedirs(sentinel_path, exist_ok=True)
 
-    archive_path = os.path.join(sentinel_path, "archive")
+    archive_path = rt.sentinel_archive_dir
     os.makedirs(archive_path, exist_ok=True)
 
-    _ensure_gitignore(project_path)
     return sentinel_path
 
 
-def _ensure_gitignore(project_path: str) -> None:
-    """Append /.wt/ to .gitignore if not already present."""
-    gitignore_path = os.path.join(project_path, ".gitignore")
+# Backward-compatible alias
+ensure_wt_dir = ensure_sentinel_dir
 
-    if os.path.exists(gitignore_path):
-        with open(gitignore_path, "r") as f:
-            content = f.read()
-        if GITIGNORE_ENTRY in content:
-            return
-        # Ensure newline before our entry
-        if content and not content.endswith("\n"):
-            content += "\n"
-    else:
-        content = ""
-
-    with open(gitignore_path, "a") as f:
-        if not content:
-            f.write(f"# wt-tools runtime directory\n{GITIGNORE_ENTRY}\n")
-        else:
-            f.write(f"\n# wt-tools runtime directory\n{GITIGNORE_ENTRY}\n")
+# Legacy constants (for any code that imports them directly)
+# These are now derived from WtRuntime at call time, not hardcoded.
+WT_DIR = ".wt"
+SENTINEL_DIR = os.path.join(WT_DIR, "sentinel")

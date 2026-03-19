@@ -50,12 +50,20 @@ def _resolve_log_path(log_path: str | Path | None = None) -> Path:
 
     Priority:
     1. Explicit log_path argument
-    2. STATE_FILENAME env var → same directory, orchestration.log
-    3. Default: wt/orchestration/orchestration.log
+    2. WtRuntime resolution (shared runtime dir)
+    3. Legacy fallback: wt/orchestration/orchestration.log
     """
     if log_path is not None:
         return Path(log_path)
 
+    try:
+        from .paths import WtRuntime
+        rt = WtRuntime()
+        return Path(rt.orchestration_log)
+    except Exception:
+        pass
+
+    # Legacy fallback
     state_file = os.environ.get("STATE_FILENAME")
     if state_file:
         return Path(state_file).parent / "orchestration.log"

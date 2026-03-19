@@ -8,13 +8,21 @@ import pytest
 
 from wt_orch.sentinel.events import SentinelEventLogger
 from wt_orch.sentinel.rotation import rotate
-from wt_orch.sentinel.wt_dir import ensure_wt_dir, GITIGNORE_ENTRY
+from wt_orch.sentinel.wt_dir import ensure_wt_dir
 
 
 @pytest.fixture
-def project(tmp_path):
-    """Create a temporary project directory."""
-    return str(tmp_path)
+def project(tmp_path, monkeypatch):
+    """Create a temporary project directory with isolated runtime."""
+    # Override XDG_DATA_HOME so WtRuntime resolves to tmp_path
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    # Reload paths module to pick up new env
+    import importlib
+    import wt_orch.paths
+    importlib.reload(wt_orch.paths)
+    yield str(tmp_path)
+    # Restore
+    importlib.reload(wt_orch.paths)
 
 
 class TestWtDir:
@@ -23,30 +31,17 @@ class TestWtDir:
         assert os.path.isdir(path)
         assert os.path.isdir(os.path.join(path, "archive"))
 
-    def test_creates_gitignore_entry(self, project):
-        ensure_wt_dir(project)
-        gitignore = os.path.join(project, ".gitignore")
-        assert os.path.exists(gitignore)
-        with open(gitignore) as f:
-            assert GITIGNORE_ENTRY in f.read()
-
-    def test_appends_to_existing_gitignore(self, project):
-        gitignore = os.path.join(project, ".gitignore")
-        with open(gitignore, "w") as f:
-            f.write("node_modules/\n")
-        ensure_wt_dir(project)
-        with open(gitignore) as f:
-            content = f.read()
-        assert "node_modules/" in content
-        assert GITIGNORE_ENTRY in content
+    def test_sentinel_dir_under_xdg(self, project):
+        """Sentinel dir is now under ~/.local/share/wt-tools/, not project-local."""
+        path = ensure_wt_dir(project)
+        assert "wt-tools" in path
+        assert "sentinel" in path
 
     def test_idempotent(self, project):
-        ensure_wt_dir(project)
-        ensure_wt_dir(project)
-        gitignore = os.path.join(project, ".gitignore")
-        with open(gitignore) as f:
-            content = f.read()
-        assert content.count(GITIGNORE_ENTRY) == 1
+        path1 = ensure_wt_dir(project)
+        path2 = ensure_wt_dir(project)
+        assert path1 == path2
+        assert os.path.isdir(path1)
 
 
 class TestSentinelEventLogger:

@@ -1,4 +1,4 @@
-"""Structured findings storage in .wt/sentinel/findings.json."""
+"""Structured findings storage in shared sentinel directory."""
 
 import json
 import os
@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from wt_orch.sentinel.wt_dir import ensure_wt_dir, SENTINEL_DIR
+from wt_orch.sentinel.wt_dir import ensure_wt_dir
 
 FINDINGS_FILE = "findings.json"
 
@@ -28,7 +28,7 @@ def _next_finding_id(findings: list[dict]) -> str:
 
 
 class SentinelFindings:
-    """CRUD manager for sentinel findings in .wt/sentinel/findings.json.
+    """CRUD manager for sentinel findings.
 
     Findings are stored as a JSON object with:
     - run_id: current run identifier

@@ -249,10 +249,21 @@ class EventBus:
 
 
 def _resolve_log_path() -> Path | None:
-    """Resolve events log path from STATE_FILENAME env var.
+    """Resolve events log path.
 
-    Migrated from: events.sh:emit_event() L29-34 (lazy init)
+    Priority:
+    1. WtRuntime resolution (shared runtime dir)
+    2. Legacy: STATE_FILENAME env var → sibling events file
+    3. Legacy fallback: orchestration-events.jsonl in cwd
     """
+    try:
+        from .paths import WtRuntime
+        rt = WtRuntime()
+        return Path(rt.events_file)
+    except Exception:
+        pass
+
+    # Legacy fallback
     state_file = os.environ.get("STATE_FILENAME")
     if state_file:
         stem = Path(state_file).stem.replace("-state", "")

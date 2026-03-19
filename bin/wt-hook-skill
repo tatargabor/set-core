@@ -30,7 +30,7 @@ else
     # Non-skill prompt — mark existing skill as "last" (no longer fresh)
     # Early bailout: skip PID lookup if no .skill files exist (common case)
     shopt -s nullglob
-    skill_files=(.wt-tools/agents/*.skill)
+    skill_files=(.wt/agents/*.skill)
     shopt -u nullglob
     [[ ${#skill_files[@]} -eq 0 ]] && exit 0
 
@@ -47,7 +47,7 @@ else
     done
 
     if [[ -n "$CLAUDE_PID" ]]; then
-        SKILL_FILE=".wt-tools/agents/${CLAUDE_PID}.skill"
+        SKILL_FILE=".wt/agents/${CLAUDE_PID}.skill"
         if [[ -f "$SKILL_FILE" ]]; then
             CONTENT=$(cat "$SKILL_FILE" 2>/dev/null)
             # Only update if currently fresh

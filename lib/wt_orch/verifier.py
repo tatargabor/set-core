@@ -1037,7 +1037,11 @@ def run_phase_end_e2e(
     # Screenshot directory
     state = load_state(state_file)
     cycle = state.extras.get("replan_cycle", 0)
-    screenshot_dir = f"wt/orchestration/e2e-screenshots/cycle-{cycle}"
+    try:
+        from .paths import WtRuntime
+        screenshot_dir = WtRuntime().e2e_screenshots_dir(cycle)
+    except Exception:
+        screenshot_dir = f"wt/orchestration/e2e-screenshots/cycle-{cycle}"
     os.makedirs(screenshot_dir, exist_ok=True)
 
     # Run E2E
@@ -1131,7 +1135,7 @@ def run_phase_end_e2e(
 
 def _read_loop_state(wt_path: str) -> dict:
     """Read loop-state.json from worktree .claude/ directory."""
-    loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")
+    loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
     if not os.path.isfile(loop_state_path):
         return {}
     try:
@@ -1143,7 +1147,7 @@ def _read_loop_state(wt_path: str) -> dict:
 
 def _read_loop_state_mtime(wt_path: str) -> int:
     """Get mtime of loop-state.json as epoch seconds."""
-    loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")
+    loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
     try:
         return int(os.path.getmtime(loop_state_path))
     except OSError:
@@ -1725,7 +1729,11 @@ def handle_change_done(
                 run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
 
                 # Collect screenshots
-                e2e_sc_dir = f"wt/orchestration/e2e-screenshots/{change_name}"
+                try:
+                    from .paths import WtRuntime
+                    e2e_sc_dir = os.path.join(WtRuntime().screenshots_dir, "e2e", change_name)
+                except Exception:
+                    e2e_sc_dir = f"wt/orchestration/e2e-screenshots/{change_name}"
                 os.makedirs(e2e_sc_dir, exist_ok=True)
                 wt_test_results = os.path.join(wt_path, "test-results")
                 if os.path.isdir(wt_test_results):

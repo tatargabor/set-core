@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 
 from wt_orch.sentinel.inbox import check_inbox, INBOX_CURSOR_FILE
-from wt_orch.sentinel.wt_dir import SENTINEL_DIR
+from wt_orch.sentinel.wt_dir import ensure_wt_dir
 
 
 def main():
@@ -36,7 +36,8 @@ def main():
             print(f'📨 {msg.get("from", "?")} [{msg.get("timestamp", "")}]: {msg.get("content", "")}')
 
     elif args.command == "ack":
-        cursor_path = os.path.join(args.project, SENTINEL_DIR, INBOX_CURSOR_FILE)
+        sentinel_dir = ensure_wt_dir(args.project)
+        cursor_path = os.path.join(sentinel_dir, INBOX_CURSOR_FILE)
         if os.path.exists(cursor_path):
             os.remove(cursor_path)
             print("Cursor reset — next check will read all messages")

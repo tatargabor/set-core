@@ -4,7 +4,7 @@
 # Usage: wt-skill-start <skill-name>
 #
 # Finds the claude ancestor PID (walking up process tree) and writes
-# skill name + timestamp to .wt-tools/agents/<claude-pid>.skill.
+# skill name + timestamp to .wt/agents/<claude-pid>.skill.
 # The wt-status command reads per-PID files to display skill info per agent.
 # Entries older than 30 minutes are considered stale and ignored.
 
@@ -64,17 +64,17 @@ map_skill_to_dir() {
 # Write per-PID skill file only if we found the actual claude PID
 # Format: skill_name|timestamp|freshness (fresh = just invoked, last = subsequent prompts)
 if [[ -n "$CLAUDE_PID" ]]; then
-    mkdir -p .wt-tools/agents
+    mkdir -p .wt/agents
 
     # Remove old .memory marker before writing new skill
-    rm -f ".wt-tools/agents/${CLAUDE_PID}.memory"
+    rm -f ".wt/agents/${CLAUDE_PID}.memory"
 
-    echo "${SKILL_NAME}|${TIMESTAMP}|fresh" > ".wt-tools/agents/${CLAUDE_PID}.skill"
+    echo "${SKILL_NAME}|${TIMESTAMP}|fresh" > ".wt/agents/${CLAUDE_PID}.skill"
 
     # Check if the new skill has wt-memory hooks in its SKILL.md
     local_skill_dir=$(map_skill_to_dir "$SKILL_NAME")
     skill_md=".claude/skills/${local_skill_dir}/SKILL.md"
     if [[ -f "$skill_md" ]] && grep -q "wt-memory" "$skill_md" 2>/dev/null; then
-        echo "$SKILL_NAME" > ".wt-tools/agents/${CLAUDE_PID}.memory"
+        echo "$SKILL_NAME" > ".wt/agents/${CLAUDE_PID}.memory"
     fi
 fi

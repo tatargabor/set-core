@@ -431,10 +431,10 @@ cmd_status() {
         # Try to read iteration progress from worktree
         local wt_path
         wt_path=$(jq -r --arg n "$name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
-        if [[ -n "$wt_path" && -f "$wt_path/.claude/loop-state.json" ]]; then
+        if [[ -n "$wt_path" && -f "$wt_path/.wt/loop-state.json" ]]; then
             local iter max_iter
-            iter=$(jq -r '.current_iteration // 0' "$wt_path/.claude/loop-state.json" 2>/dev/null)
-            max_iter=$(jq -r '.max_iterations // "?"' "$wt_path/.claude/loop-state.json" 2>/dev/null)
+            iter=$(jq -r '.current_iteration // 0' "$wt_path/.wt/loop-state.json" 2>/dev/null)
+            max_iter=$(jq -r '.max_iterations // "?"' "$wt_path/.wt/loop-state.json" 2>/dev/null)
             progress="iter $iter/$max_iter"
         fi
         # Format gate cost column
@@ -459,8 +459,8 @@ cmd_status() {
             local wh_wt
             wh_wt=$(jq -r --arg n "$wh_name" '.changes[] | select(.name == $n) | .worktree_path // empty' "$STATE_FILENAME")
             local wh_summary=""
-            if [[ -n "$wh_wt" && -f "$wh_wt/.claude/loop-state.json" ]]; then
-                wh_summary=$(jq -r '.manual_tasks[0]? | "[\(.id)] \(.description)"' "$wh_wt/.claude/loop-state.json" 2>/dev/null)
+            if [[ -n "$wh_wt" && -f "$wh_wt/.wt/loop-state.json" ]]; then
+                wh_summary=$(jq -r '.manual_tasks[0]? | "[\(.id)] \(.description)"' "$wh_wt/.wt/loop-state.json" 2>/dev/null)
             fi
             echo "  $wh_name: ${wh_summary:-details unavailable}"
             echo "    → wt-manual show $wh_name"

@@ -1,6 +1,6 @@
 # Design Tool Integration
 
-## When `design-snapshot.md` exists in the project root:
+## When `design-snapshot.md` exists (in shared runtime or project root):
 
 1. You MUST read `design-snapshot.md` BEFORE implementing any UI component
 2. Use the EXACT color, spacing, typography, and radius values from the Design Tokens section — do NOT fall back to shadcn/ui defaults if they differ from the design

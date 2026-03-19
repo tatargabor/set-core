@@ -896,7 +896,7 @@ def generate_report(
     state_path: str,
     plan_path: str,
     digest_dir: str,
-    output_path: str = "wt/orchestration/report.html",
+    output_path: str = "",
 ) -> str:
     """Generate HTML report from orchestration data.
 
@@ -913,6 +913,13 @@ def generate_report(
     Returns:
         The output file path.
     """
+    if not output_path:
+        try:
+            from .paths import WtRuntime
+            output_path = WtRuntime().report_html
+        except Exception:
+            output_path = "wt/orchestration/report.html"
+
     data = extract_report_data(state_path, plan_path, digest_dir)
 
     env = Environment(

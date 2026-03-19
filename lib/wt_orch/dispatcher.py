@@ -345,6 +345,10 @@ def bootstrap_worktree(project_path: str, wt_path: str) -> int:
     if not os.path.isdir(wt_path):
         return 0
 
+    # Create per-agent .wt/ ephemeral directory
+    from .paths import WtRuntime
+    WtRuntime.ensure_agent_dir(wt_path)
+
     # Copy .env files
     copied = 0
     for envfile in ENV_FILES:
@@ -676,7 +680,7 @@ def redispatch_change(
         diff_r = run_git("diff", "--name-only", "HEAD", cwd=wt_path)
         if diff_r.exit_code == 0 and diff_r.stdout.strip():
             partial_files = ", ".join(diff_r.stdout.strip().splitlines())
-        loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")
+        loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
         if os.path.isfile(loop_state_path):
             try:
                 with open(loop_state_path) as f:
@@ -1121,7 +1125,7 @@ def dispatch_change(
     if os.path.isdir(wt_path):
         logger.info("worktree already exists: %s", wt_path)
         # Clean stale loop state
-        old_loop = os.path.join(wt_path, ".claude", "loop-state.json")
+        old_loop = os.path.join(wt_path, ".wt", "loop-state.json")
         if os.path.isfile(old_loop):
             try:
                 with open(old_loop) as f:
@@ -1360,7 +1364,7 @@ def _kill_existing_wt_loop(wt_path: str, change_name: str) -> None:
 
     Prevents overlapping sessions that cause file conflicts and data corruption.
     """
-    loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")
+    loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
     if not os.path.isfile(loop_state_path):
         return
 
@@ -1425,7 +1429,7 @@ def dispatch_via_wt_loop(
     r = run_command(cmd, cwd=wt_path, timeout=30)
 
     # Poll for loop-state.json to verify startup
-    loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")
+    loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
     retries = 0
     while not os.path.isfile(loop_state_path) and retries < 10:
         time.sleep(1)
@@ -1545,7 +1549,7 @@ def pause_change(
         logger.warning("no worktree found for %s", change_name)
         return False
 
-    pid_file = os.path.join(change.worktree_path, ".claude", "ralph-terminal.pid")
+    pid_file = os.path.join(change.worktree_path, ".wt", "ralph-terminal.pid")
     if os.path.isfile(pid_file):
         try:
             with open(pid_file) as f:
@@ -1588,7 +1592,7 @@ def resume_change(
     _kill_existing_wt_loop(wt_path, change_name)
 
     # Store watchdog progress baseline
-    loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")
+    loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
     if os.path.isfile(loop_state_path):
         try:
             with open(loop_state_path) as f:
@@ -1672,7 +1676,7 @@ def resume_change(
     r = run_command(cmd, cwd=wt_path, timeout=30)
 
     # Verify startup
-    loop_state_file = os.path.join(wt_path, ".claude", "loop-state.json")
+    loop_state_file = os.path.join(wt_path, ".wt", "loop-state.json")
     retries = 0
     while not os.path.isfile(loop_state_file) and retries < 10:
         time.sleep(1)

@@ -607,7 +607,7 @@ class TableMixin:
         if not wt_path:
             return {}
 
-        loop_state_file = Path(wt_path) / ".claude" / "loop-state.json"
+        loop_state_file = Path(wt_path) / ".wt" / "loop-state.json"
         if not loop_state_file.exists():
             return {}
 

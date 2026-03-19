@@ -194,7 +194,7 @@ is_editor_open() {
 # Returns: 0 (true) if Ralph loop is running, 1 (false) otherwise
 is_ralph_loop_active() {
     local wt_path="$1"
-    local loop_state="$wt_path/.claude/loop-state.json"
+    local loop_state="$wt_path/.wt/loop-state.json"
 
     [[ ! -f "$loop_state" ]] && return 1
 
@@ -336,7 +336,7 @@ cleanup_orphan_agents() {
                 #     kill "$agent_pid" 2>/dev/null || true
                 #     echo "wt-status: killed orphan agent PID $agent_pid in $wt_path (grace period expired: 3x + 15s)" >&2
                 #     rm -f "$marker_dir/$agent_pid" 2>/dev/null
-                #     local skill_file="$wt_path/.wt-tools/agents/${agent_pid}.skill"
+                #     local skill_file="$wt_path/.wt/agents/${agent_pid}.skill"
                 #     rm -f "$skill_file" 2>/dev/null
                 #     continue
                 # fi
@@ -529,14 +529,14 @@ check_hooks_installed() {
 }
 
 # Get current skill for a specific agent PID
-# Reads from .wt-tools/agents/<pid>.skill only (no legacy fallback)
+# Reads from .wt/agents/<pid>.skill only (no legacy fallback)
 # Returns "skill_name|freshness" if < 30 min, empty string otherwise
 # freshness is "fresh" (just invoked) or "last" (subsequent prompts since)
 get_agent_skill() {
     local wt_path="$1"
     local pid="$2"
 
-    local skill_file="$wt_path/.wt-tools/agents/${pid}.skill"
+    local skill_file="$wt_path/.wt/agents/${pid}.skill"
 
     if [[ ! -f "$skill_file" ]]; then
         echo ""
@@ -568,10 +568,10 @@ get_agent_skill() {
     echo ""
 }
 
-# Clean up stale PID skill files in .wt-tools/agents/
+# Clean up stale PID skill files in .wt/agents/
 cleanup_stale_agents() {
     local wt_path="$1"
-    local agents_dir="$wt_path/.wt-tools/agents"
+    local agents_dir="$wt_path/.wt/agents"
 
     [[ ! -d "$agents_dir" ]] && return
 

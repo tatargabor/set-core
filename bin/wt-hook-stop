@@ -27,13 +27,13 @@ find_claude_pid() {
     # No claude ancestor found — return empty (caller will skip)
 }
 
-# Find project root (walk up to find .wt-tools/)
+# Find project root (walk up to find .wt/)
 dir="$PWD"
 while [[ "$dir" != "/" ]]; do
-    if [[ -d "$dir/.wt-tools" ]]; then
+    if [[ -d "$dir/.wt" ]]; then
         # Early bailout: skip PID lookup if no .skill files exist
         shopt -s nullglob
-        skill_files=("$dir"/.wt-tools/agents/*.skill)
+        skill_files=("$dir"/.wt/agents/*.skill)
         shopt -u nullglob
         [[ ${#skill_files[@]} -eq 0 ]] && exit 0
 
@@ -41,7 +41,7 @@ while [[ "$dir" != "/" ]]; do
         # Refresh per-PID skill file if we can find our claude ancestor
         claude_pid=$(find_claude_pid)
         if [[ -n "$claude_pid" ]]; then
-            pid_skill="$dir/.wt-tools/agents/${claude_pid}.skill"
+            pid_skill="$dir/.wt/agents/${claude_pid}.skill"
             if [[ -f "$pid_skill" ]]; then
                 content=$(cat "$pid_skill" 2>/dev/null) || exit 0
                 skill_name="${content%%|*}"
@@ -55,7 +55,7 @@ while [[ "$dir" != "/" ]]; do
             fi
 
             # Memory reminder: if this skill has memory hooks, remind the agent
-            pid_memory="$dir/.wt-tools/agents/${claude_pid}.memory"
+            pid_memory="$dir/.wt/agents/${claude_pid}.memory"
             if [[ -f "$pid_memory" ]]; then
                 echo "[MEMORY REMINDER] Active skill has wt-memory hooks. Run your recall/remember steps before finishing."
             fi

@@ -2,7 +2,7 @@
 # wt-hook-activity - Claude Code PreToolUse hook for tracking skill activity
 #
 # Called by Claude Code before every Skill tool invocation.
-# Writes .claude/activity.json with current skill info for agent coordination.
+# Writes .wt/activity.json with current skill info for agent coordination.
 # Throttled (10s) and designed to run quickly.
 #
 # Designed to be referenced by name in .claude/settings.json:
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 THROTTLE_SECONDS=10
-ACTIVITY_FILE=".claude/activity.json"
+ACTIVITY_FILE=".wt/activity.json"
 
 # Read hook input from stdin
 INPUT=$(cat)

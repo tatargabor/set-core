@@ -34,8 +34,13 @@ fi
 
 # --shutdown: send SIGUSR1 to running sentinel for graceful shutdown
 if [[ "${1:-}" == "--shutdown" ]]; then
-    if [[ -f "sentinel.pid" ]]; then
-        existing_pid=$(cat "sentinel.pid" 2>/dev/null || echo "")
+    # Resolve PID file path — source wt-paths if not already sourced
+    _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "$_SCRIPT_DIR/wt-paths" 2>/dev/null || true
+    _PID_FILE="${WT_SENTINEL_DIR:-}/sentinel.pid"
+    [[ -z "$_PID_FILE" || "$_PID_FILE" == "/sentinel.pid" ]] && _PID_FILE="sentinel.pid"
+    if [[ -f "$_PID_FILE" ]]; then
+        existing_pid=$(cat "$_PID_FILE" 2>/dev/null || echo "")
         if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
             echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] [sentinel] Sending graceful shutdown to PID $existing_pid"
             kill -USR1 "$existing_pid"
@@ -62,14 +67,17 @@ if [[ "${1:-}" == "--shutdown" ]]; then
     fi
 fi
 
-STATE_FILE="orchestration-state.json"
-# Match Python events.py: stem.replace("-state", "") + "-events.jsonl"
-# orchestration-state.json → orchestration-events.jsonl
-_stem="${STATE_FILE%.json}"
-_stem="${_stem%-state}"
-EVENTS_FILE="${_stem}-events.jsonl"
-LOG_FILE="orchestration.log"
-PID_FILE="sentinel.pid"
+# Source centralized path resolution
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/wt-paths"
+
+STATE_FILE="$WT_STATE_FILE"
+EVENTS_FILE="$WT_EVENTS_FILE"
+LOG_FILE="$WT_ORCHESTRATION_LOG"
+PID_FILE="$WT_SENTINEL_DIR/sentinel.pid"
+
+# Ensure shared runtime dirs exist
+wt_ensure_runtime_dirs
 MAX_RAPID_CRASHES=5
 SUSTAINED_RUN_SECS=300  # 5 minutes
 POLL_INTERVAL=10        # Check child every 10s

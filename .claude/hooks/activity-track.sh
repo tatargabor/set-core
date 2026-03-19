@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # activity-track.sh - Claude PreToolUse hook for tracking skill activity
-# Writes .claude/activity.json with current skill info
+# Writes .wt/activity.json with current skill info
 # Throttled (10s) and designed to run quickly
 
 set -euo pipefail
 
 THROTTLE_SECONDS=10
-ACTIVITY_FILE=".claude/activity.json"
+ACTIVITY_FILE=".wt/activity.json"
 
 # Read hook input from stdin
 INPUT=$(cat)

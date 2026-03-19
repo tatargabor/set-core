@@ -183,7 +183,7 @@ get_my_changes() {
 
         local activity='null'
         if [[ -n "$wt_path" ]]; then
-            local activity_file="$wt_path/.claude/activity.json"
+            local activity_file="$wt_path/.wt/activity.json"
             if [[ -f "$activity_file" ]]; then
                 activity=$(jq -c '.' "$activity_file" 2>/dev/null) || activity='null'
             fi

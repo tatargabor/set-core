@@ -217,7 +217,11 @@ def run_audit(
     duration_ms = int(time.time() * 1000) - start_ms
 
     # Write debug log
-    debug_log = Path(f"wt/orchestration/audit-cycle-{cycle}.log")
+    try:
+        from .paths import WtRuntime
+        debug_log = Path(WtRuntime().audit_log(cycle))
+    except Exception:
+        debug_log = Path(f"wt/orchestration/audit-cycle-{cycle}.log")
     debug_log.parent.mkdir(parents=True, exist_ok=True)
     try:
         debug_log.write_text(

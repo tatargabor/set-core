@@ -656,7 +656,7 @@ def _poll_suspended_changes(
         # Check loop-state for suspended changes
         if not wt_path:
             continue
-        loop_state_path = os.path.join(wt_path, ".claude", "loop-state.json")
+        loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
         if not os.path.isfile(loop_state_path):
             continue
 
@@ -1287,13 +1287,21 @@ def _send_terminal_notifications(
             plan_data = {}
             if os.path.isfile(plan_path):
                 plan_data = _json.loads(open(plan_path).read())
-            digest_dir = state.extras.get("digest_dir", "wt/orchestration/digest")
+            try:
+                from .paths import WtRuntime
+                _rt = WtRuntime()
+                _default_digest = _rt.digest_dir
+                _default_coverage = _rt.spec_coverage_report
+            except Exception:
+                _default_digest = "wt/orchestration/digest"
+                _default_coverage = "wt/orchestration/spec-coverage-report.md"
+            digest_dir = state.extras.get("digest_dir", _default_digest)
             if not os.path.isdir(digest_dir):
                 digest_dir = ""
             generate_coverage_report(
                 plan=plan_data,
                 digest_dir=digest_dir,
-                output_path="wt/orchestration/spec-coverage-report.md",
+                output_path=_default_coverage,
                 state_file=state_file,
                 plan_path=plan_path,
             )

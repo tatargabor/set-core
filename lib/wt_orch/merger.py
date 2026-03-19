@@ -108,7 +108,13 @@ def _collect_smoke_screenshots(
     if change:
         attempt_num = change.extras.get("smoke_fix_attempts", 0)
 
-    sc_dir = f"wt/orchestration/smoke-screenshots/{change_name}/attempt-{attempt_num + 1}"
+    try:
+        from .paths import WtRuntime
+        _rt = WtRuntime()
+        base_dir = _rt.smoke_screenshots_dir(change_name)
+    except Exception:
+        base_dir = f"wt/orchestration/smoke-screenshots/{change_name}"
+    sc_dir = os.path.join(base_dir, f"attempt-{attempt_num + 1}")
     os.makedirs(sc_dir, exist_ok=True)
 
     if os.path.isdir("test-results"):
@@ -116,9 +122,6 @@ def _collect_smoke_screenshots(
             shutil.copytree("test-results", sc_dir, dirs_exist_ok=True)
         except Exception:
             logger.warning("Failed to copy test-results for %s", change_name)
-
-    # Count PNGs across all attempts
-    base_dir = f"wt/orchestration/smoke-screenshots/{change_name}"
     sc_count = len(glob.glob(f"{base_dir}/**/*.png", recursive=True))
 
     update_change_field(state_file, change_name, "smoke_screenshot_dir", base_dir)
@@ -135,11 +138,18 @@ def _collect_smoke_screenshots(
 # Source: merger.sh _archive_worktree_logs() L506-518
 def _archive_worktree_logs(change_name: str, wt_path: str) -> int:
     """Archive worktree agent logs before cleanup. Returns file count."""
-    logs_src = os.path.join(wt_path, ".claude", "logs")
+    logs_src = os.path.join(wt_path, ".wt", "logs")
     if not os.path.isdir(logs_src):
-        return 0
+        # Legacy fallback
+        logs_src = os.path.join(wt_path, ".claude", "logs")
+        if not os.path.isdir(logs_src):
+            return 0
 
-    archive_dir = f"wt/orchestration/logs/{change_name}"
+    try:
+        from .paths import WtRuntime
+        archive_dir = WtRuntime().change_logs_dir(change_name)
+    except Exception:
+        archive_dir = f"wt/orchestration/logs/{change_name}"
     os.makedirs(archive_dir, exist_ok=True)
 
     count = 0
@@ -156,11 +166,27 @@ def _archive_worktree_logs(change_name: str, wt_path: str) -> int:
 
 
 # Source: merger.sh cleanup_worktree() L521-547
-def cleanup_worktree(change_name: str, wt_path: str) -> None:
-    """Clean up worktree and branch after successful merge."""
+def cleanup_worktree(change_name: str, wt_path: str, retention: str = "") -> None:
+    """Clean up worktree and branch after successful merge.
+
+    Args:
+        retention: "keep" (default) = archive logs only, preserve worktree+branch.
+                   "delete-on-merge" = legacy behavior, remove worktree+branch.
+                   Empty string = auto-detect from orchestration.yaml.
+    """
+    # Always archive logs regardless of retention
     if wt_path and os.path.isdir(wt_path):
         _archive_worktree_logs(change_name, wt_path)
 
+    # Resolve retention policy
+    if not retention:
+        retention = _resolve_retention()
+
+    if retention == "keep":
+        logger.info("Worktree retained for %s (retention=keep)", change_name)
+        return
+
+    # delete-on-merge: legacy behavior
     # Try wt-close first
     result = run_command(["wt-close", change_name], timeout=60)
     if result.exit_code == 0:
@@ -180,6 +206,16 @@ def cleanup_worktree(change_name: str, wt_path: str) -> None:
     if check.exit_code == 0:
         run_command(["git", "branch", "-D", branch], timeout=10)
         logger.info("Deleted branch %s", branch)
+
+
+def _resolve_retention() -> str:
+    """Read worktree_retention from orchestration.yaml, default 'keep'."""
+    try:
+        from .config import load_config_file
+        config = load_config_file("wt/orchestration/orchestration.yaml")
+        return config.get("worktree_retention", "keep")
+    except Exception:
+        return "keep"
 
 
 # Source: merger.sh cleanup_all_worktrees() L549-574

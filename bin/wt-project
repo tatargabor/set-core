@@ -403,6 +403,81 @@ CUSTOMIZATION
     fi
 }
 
+# Migrate old runtime files to shared location (~/.local/share/wt-tools/<project>/).
+# Idempotent — skips if already migrated or source doesn't exist.
+_migrate_runtime_to_shared() {
+    local project_path="$1"
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    # Source wt-paths to get WT_RUNTIME_DIR
+    if [[ ! -f "$script_dir/wt-paths" ]]; then
+        return 0
+    fi
+    (cd "$project_path" && source "$script_dir/wt-paths" 2>/dev/null) || return 0
+    local runtime_dir
+    runtime_dir=$(cd "$project_path" && source "$script_dir/wt-paths" 2>/dev/null && echo "$WT_RUNTIME_DIR")
+    [[ -z "$runtime_dir" ]] && return 0
+
+    local migrated_marker="$runtime_dir/.migrated"
+    [[ -f "$migrated_marker" ]] && return 0
+
+    local migrated=0
+
+    # Migrate orchestration state
+    for old_state in "$project_path/wt/orchestration/orchestration-state.json" "$project_path/orchestration-state.json"; do
+        if [[ -f "$old_state" && ! -f "$runtime_dir/orchestration/state.json" ]]; then
+            mkdir -p "$runtime_dir/orchestration"
+            cp "$old_state" "$runtime_dir/orchestration/state.json"
+            migrated=1
+        fi
+    done
+
+    # Migrate events
+    for old_events in "$project_path/wt/orchestration/orchestration-state-events.jsonl" "$project_path/orchestration-events.jsonl"; do
+        if [[ -f "$old_events" && ! -f "$runtime_dir/orchestration/events.jsonl" ]]; then
+            mkdir -p "$runtime_dir/orchestration"
+            cp "$old_events" "$runtime_dir/orchestration/events.jsonl"
+            migrated=1
+        fi
+    done
+
+    # Migrate orchestration log
+    for old_log in "$project_path/wt/orchestration/orchestration.log" "$project_path/.claude/orchestration.log" "$project_path/orchestration.log"; do
+        if [[ -f "$old_log" && ! -f "$runtime_dir/logs/orchestration.log" ]]; then
+            mkdir -p "$runtime_dir/logs"
+            cp "$old_log" "$runtime_dir/logs/orchestration.log"
+            migrated=1
+        fi
+    done
+
+    # Migrate sentinel from .wt/sentinel/ to shared
+    local old_sentinel="$project_path/.wt/sentinel"
+    if [[ -d "$old_sentinel" && ! -f "$runtime_dir/sentinel/events.jsonl" ]]; then
+        mkdir -p "$runtime_dir/sentinel"
+        cp -r "$old_sentinel"/* "$runtime_dir/sentinel/" 2>/dev/null || true
+        migrated=1
+    fi
+
+    # Migrate sentinel.pid from project root
+    if [[ -f "$project_path/sentinel.pid" && ! -f "$runtime_dir/sentinel/sentinel.pid" ]]; then
+        mkdir -p "$runtime_dir/sentinel"
+        mv "$project_path/sentinel.pid" "$runtime_dir/sentinel/sentinel.pid"
+        migrated=1
+    fi
+
+    # Migrate design-snapshot
+    if [[ -f "$project_path/design-snapshot.md" && ! -f "$runtime_dir/design-snapshot.md" ]]; then
+        cp "$project_path/design-snapshot.md" "$runtime_dir/design-snapshot.md"
+        migrated=1
+    fi
+
+    if [[ $migrated -gt 0 ]]; then
+        date -Iseconds > "$migrated_marker"
+        echo "Migrated runtime files to $runtime_dir"
+    fi
+}
+
 # Scaffold wt/ directory structure in a project.
 # Creates all standard subdirectories. Idempotent — safe to re-run.
 scaffold_wt_directory() {
@@ -410,14 +485,19 @@ scaffold_wt_directory() {
     local wt_dir="$project_path/wt"
 
     mkdir -p \
-        "$wt_dir/orchestration/runs" \
-        "$wt_dir/orchestration/plans" \
         "$wt_dir/orchestration/specs/archive" \
         "$wt_dir/knowledge/patterns" \
         "$wt_dir/knowledge/lessons" \
         "$wt_dir/requirements" \
         "$wt_dir/plugins" \
         "$wt_dir/.work"
+
+    # Create shared runtime directory (~/.local/share/wt-tools/<project>/)
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$script_dir/wt-paths" ]]; then
+        (cd "$project_path" && source "$script_dir/wt-paths" 2>/dev/null && wt_ensure_runtime_dirs) || true
+    fi
 
     # Add wt/.work/ to .gitignore if not already present
     local gitignore="$project_path/.gitignore"
@@ -428,6 +508,9 @@ scaffold_wt_directory() {
     else
         echo 'wt/.work/' > "$gitignore"
     fi
+
+    # Auto-migrate old runtime files to shared location
+    _migrate_runtime_to_shared "$project_path"
 
     # Create .env.example with Resend email config template (if not exists)
     local env_example="$project_path/.env.example"

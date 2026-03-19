@@ -23,6 +23,8 @@ from .subprocess_utils import run_claude
 
 logger = logging.getLogger(__name__)
 
+# Legacy default — callers should use WtRuntime().digest_dir when available.
+# Many functions accept digest_dir as a parameter; engine.py passes the resolved path.
 DIGEST_DIR = "wt/orchestration/digest"
 
 # Core ignore patterns for spec scanning

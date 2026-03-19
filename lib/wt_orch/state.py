@@ -316,7 +316,7 @@ def locked_state(path: str) -> Generator[OrchestratorState, None, None]:
     """Context manager: load state under flock, yield for modification, save on exit.
 
     Usage:
-        with locked_state("orchestration-state.json") as state:
+        with locked_state(runtime.state_file) as state:
             state.status = "stopped"
         # state saved atomically, lock released
 

@@ -245,6 +245,9 @@ main() {
         exit 1
     fi
 
+    # Create per-agent .wt/ ephemeral directory
+    mkdir -p "$wt_path/.wt/logs"
+
     # Bootstrap: copy .env files from main project
     bootstrap_env_files "$project_path" "$wt_path"
 

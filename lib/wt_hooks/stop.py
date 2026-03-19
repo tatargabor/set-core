@@ -149,9 +149,16 @@ def save_commit_memories(wt_tools_root: str = "") -> int:
 
     Returns number of commits saved.
     """
-    marker_file = ".wt-tools/.last-memory-commit"
-    design_marker = ".wt-tools/.saved-designs"
-    codemap_marker = ".wt-tools/.saved-codemaps"
+    try:
+        from wt_orch.paths import WtRuntime
+        _rt = WtRuntime()
+        marker_file = _rt.last_memory_commit_file
+        design_marker = os.path.join(_rt.designs_cache_dir, ".saved")
+        codemap_marker = os.path.join(_rt.codemaps_cache_dir, ".saved")
+    except Exception:
+        marker_file = ".wt-tools/.last-memory-commit"
+        design_marker = ".wt-tools/.saved-designs"
+        codemap_marker = ".wt-tools/.saved-codemaps"
 
     last_hash = ""
     if os.path.isfile(marker_file):

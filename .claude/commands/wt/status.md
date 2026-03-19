@@ -4,10 +4,10 @@ Show what all agents are currently working on.
 
 **What to do**:
 
-1. **Gather local activity** — Read `.claude/activity.json` from all worktrees across all projects:
+1. **Gather local activity** — Read `.wt/activity.json` from all worktrees across all projects:
    - Get projects from `~/.config/wt-tools/projects.json`
    - For each project, run `git worktree list --porcelain` to find all worktree paths
-   - Read `.claude/activity.json` from each worktree (if it exists)
+   - Read `.wt/activity.json` from each worktree (if it exists)
    - These are LOCAL agents (same machine), no "(remote)" tag
 
 2. **Gather remote activity** — Read team cache from `~/.cache/wt-tools/team_status.json`:

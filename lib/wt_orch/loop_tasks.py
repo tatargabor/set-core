@@ -177,7 +177,7 @@ def is_done(
         return action == "done"
 
     elif done_criteria == "manual":
-        state_file = os.path.join(wt_path, ".claude", "loop-state.json")
+        state_file = os.path.join(wt_path, ".wt", "loop-state.json")
         try:
             with open(state_file, "r") as f:
                 data = json.load(f)
@@ -257,7 +257,7 @@ def _check_test_done(wt_path: str) -> bool:
 
     # 1. Read test_command from loop-state.json
     test_cmd = None
-    state_file = os.path.join(wt_path, ".claude", "loop-state.json")
+    state_file = os.path.join(wt_path, ".wt", "loop-state.json")
     try:
         with open(state_file, "r") as f:
             data = json.load(f)

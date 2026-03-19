@@ -254,12 +254,24 @@ fetch_design_snapshot() {
 
     info "Design snapshot saved ($(wc -c < "$snapshot_file") bytes)"
 
-    # Copy to project root so worktree agents can find it via design-bridge rule
+    # Copy to shared runtime dir so all worktrees can find it
+    local _script_dir
+    _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    if [[ -f "$_script_dir/bin/wt-paths" ]]; then
+        source "$_script_dir/bin/wt-paths" 2>/dev/null || true
+        if [[ -n "$WT_RUNTIME_DIR" ]]; then
+            mkdir -p "$WT_RUNTIME_DIR"
+            cp "$snapshot_file" "$WT_RUNTIME_DIR/design-snapshot.md"
+            info "Design snapshot copied to shared runtime"
+        fi
+    fi
+
+    # Legacy: also copy to project root
     local project_root="${PROJECT_ROOT:-.}"
     local root_snapshot="$project_root/design-snapshot.md"
     if [[ "$snapshot_file" != "$root_snapshot" ]]; then
         cp "$snapshot_file" "$root_snapshot"
-        info "Design snapshot copied to project root"
+        info "Design snapshot copied to project root (legacy)"
     fi
 
     return 0

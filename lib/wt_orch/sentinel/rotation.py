@@ -4,7 +4,7 @@ import os
 import shutil
 from datetime import datetime, timezone
 
-from wt_orch.sentinel.wt_dir import ensure_wt_dir, SENTINEL_DIR
+from wt_orch.sentinel.wt_dir import ensure_wt_dir
 
 EVENTS_FILE = "events.jsonl"
 FINDINGS_FILE = "findings.json"

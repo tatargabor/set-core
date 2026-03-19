@@ -36,9 +36,9 @@ def tmp_dir():
 
 @pytest.fixture
 def wt(tmp_dir):
-    """Create a fake worktree with .claude/ dir."""
+    """Create a fake worktree with .wt/ dir."""
     wt = os.path.join(tmp_dir, "worktree")
-    os.makedirs(os.path.join(wt, ".claude"))
+    os.makedirs(os.path.join(wt, ".wt", "logs"))
     return wt
 
 
@@ -47,10 +47,10 @@ def wt(tmp_dir):
 
 class TestPathHelpers:
     def test_state_file_path(self, wt):
-        assert get_loop_state_file(wt).endswith(".claude/loop-state.json")
+        assert get_loop_state_file(wt).endswith(".wt/loop-state.json")
 
     def test_log_dir_path(self, wt):
-        assert get_loop_log_dir(wt).endswith(".claude/logs")
+        assert get_loop_log_dir(wt).endswith(".wt/logs")
 
     def test_iter_log_file(self, wt):
         path = get_iter_log_file(wt, 5)
@@ -205,7 +205,7 @@ class TestWriteActivity:
         )
         assert result is True
 
-        activity_file = os.path.join(wt, ".claude", "activity.json")
+        activity_file = os.path.join(wt, ".wt", "activity.json")
         assert os.path.isfile(activity_file)
 
         with open(activity_file, "r") as f:
@@ -216,7 +216,7 @@ class TestWriteActivity:
 
     def test_write_with_broadcast(self, wt):
         write_activity(wt, broadcast="working on auth")
-        activity_file = os.path.join(wt, ".claude", "activity.json")
+        activity_file = os.path.join(wt, ".wt", "activity.json")
         with open(activity_file, "r") as f:
             data = json.load(f)
         assert data["broadcast"] == "working on auth"
@@ -224,7 +224,7 @@ class TestWriteActivity:
     def test_overwrite(self, wt):
         write_activity(wt, skill="first")
         write_activity(wt, skill="second")
-        activity_file = os.path.join(wt, ".claude", "activity.json")
+        activity_file = os.path.join(wt, ".wt", "activity.json")
         with open(activity_file, "r") as f:
             data = json.load(f)
         assert data["skill"] == "second"

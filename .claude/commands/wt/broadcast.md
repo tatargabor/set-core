@@ -6,8 +6,8 @@ Broadcast what you're working on to other agents.
 
 **What to do**:
 
-1. Read the current `.claude/activity.json` if it exists (to preserve `skill`, `skill_args`, `modified_files`)
-2. Update or create `.claude/activity.json` with the broadcast message and current timestamp
+1. Read the current `.wt/activity.json` if it exists (to preserve `skill`, `skill_args`, `modified_files`)
+2. Update or create `.wt/activity.json` with the broadcast message and current timestamp
 3. The file format:
 ```json
 {

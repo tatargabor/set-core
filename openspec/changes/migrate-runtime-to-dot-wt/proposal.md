@@ -2,38 +2,52 @@
 
 ## Why
 
-Runtime files (orchestration state, agent loop state, logs, caches) are scattered across `.claude/`, project root, `wt/orchestration/`, and `.wt-tools/`. This creates: (1) complex `.gitignore` rules with frequent merge conflicts in worktrees, (2) config mixed with ephemeral data in the same directories, (3) no clear convention for where new runtime features should write. The `sentinel-tab` change introduces `.wt/sentinel/` — this change migrates everything else.
+Runtime files (orchestration state, agent loop state, logs, caches, sentinel data) are scattered across `.claude/`, project root, `wt/orchestration/`, and `.wt-tools/`. This creates: (1) complex `.gitignore` rules with frequent merge conflicts in worktrees, (2) config mixed with ephemeral data in the same directories, (3) no clear convention for where new runtime features should write, (4) worktree deletion after merge destroys valuable debug/audit data.
+
+The memory system and metrics already use `~/.local/share/wt-tools/<project>/` — this change migrates all shared runtime data there, keeping only minimal per-agent ephemeral files in the worktree.
 
 ## What Changes
 
-- **Move orchestration runtime** from `wt/orchestration/` to `.wt/orchestration/` (state.json, events.jsonl, plans/, runs/, spec-coverage-report.md)
-- **Move agent runtime** from `.claude/` to `.wt/agent/` (loop-state.json, activity.json, ralph-terminal.pid, sentinel.pid, scheduled_tasks.lock, reflection.md)
-- **Move logs** from `.claude/orchestration.log` and `.claude/logs/` to `.wt/logs/`
-- **Move caches** from `.wt-tools/` to `.wt/cache/` (codemaps, designs, skill invocations, memory commit tracker)
-- **Move design-snapshot.md** from project root to `.wt/design-snapshot.md`
-- **Update all references** — Python modules, bash scripts, skill prompts, wt-web endpoints
-- **Remove `.wt-tools/` directory** convention (fully replaced by `.wt/cache/`)
-- **Simplify `.gitignore`** — single `/.wt/` entry replaces many scattered patterns
-- **BREAKING**: `orchestration-state.json` path changes — config constant `WtDirs.STATE_DIR` for all access
+### Shared runtime → `~/.local/share/wt-tools/<project>/`
+- **Move orchestration runtime** — state.json, events.jsonl, plans/, runs/, digest/, report.html, audit logs
+- **Move sentinel runtime** — events.jsonl, findings.json, status.json, inbox.jsonl, archive/ (currently in `.wt/sentinel/`)
+- **Move logs** — orchestration.log, archived ralph-iter-*.log, change-specific log archives
+- **Move caches** — codemaps, designs, skill invocations, memory commit tracker, credentials
+- **Move screenshots** — smoke and e2e test evidence
+- **Move design-snapshot.md** — fetched design tokens
+- **Remove `.wt-tools/` directory** convention (fully replaced)
+- **Simplify `.gitignore`** — remove many scattered runtime patterns
+
+### Per-worktree agent ephemeral → `<worktree>/.wt/`
+- **loop-state.json, activity.json, ralph-terminal.pid** — agent writes these during execution, ephemeral
+- **logs/ralph-iter-*.log** — current run iteration logs (archived to shared location on merge)
+
+### Worktree retention
+- **Stop deleting worktrees after merge** — keep them for debugging, log inspection, merge conflict resolution
+- **Configurable retention** via `orchestration.yaml` (`worktree_retention: keep | auto-clean-after-Nd | delete-on-merge`)
+- **Explicit cleanup only** via `wt-close` (manual) or `wt-cleanup --older-than Nd` (manual/cron)
 
 ## Capabilities
 
 ### New Capabilities
-- `runtime-directory-convention` — standardized `.wt/` directory layout for all runtime data
+- `runtime-directory-convention` — standardized `~/.local/share/wt-tools/<project>/` layout for shared runtime data
+- `worktree-retention` — configurable worktree lifecycle after merge
 
 ### Modified Capabilities
-_(none — all changes are path migrations, no behavioral changes)_
+_(none — all changes are path migrations and lifecycle changes, no behavioral changes)_
 
 ## Dependencies
 
-This change depends on `sentinel-tab` being deployed first (or simultaneously), as the sentinel CLI tools already write to `.wt/sentinel/` which establishes the convention.
+This change depends on `sentinel-tab` being deployed first (sentinel already writes to `.wt/sentinel/` which will be migrated).
 
 ## Impact
 
-- **Python modules**: `lib/wt_orch/engine.py`, `lib/wt_orch/dispatcher.py`, `lib/wt_orch/verifier.py`, `lib/wt_orch/merger.py`, `lib/wt_orch/planner.py`, `lib/wt_orch/api.py`, `lib/wt_orch/websocket.py`, `lib/wt_orch/chat.py` — all paths that reference orchestration-state.json or events.jsonl
-- **Bash scripts**: `bin/wt-sentinel`, `bin/wt-loop`, `bin/wt-new`, `bin/wt-merge` and others referencing `.claude/` runtime files
-- **Skills/prompts**: any that reference `.claude/loop-state.json`, `orchestration-state.json`, etc.
-- **wt-web**: frontend and backend paths for state file locations
-- **wt-project init**: deploy script needs to create `.wt/` structure and update `.gitignore`
-- **bootstrap_worktree**: needs to create `.wt/` in new worktrees
-- **MCP server**: paths in `wt_mcp_server.py` that read state/events
+- **Python modules**: All `lib/wt_orch/` modules referencing state files, events, logs, sentinel paths — engine.py, dispatcher.py, verifier.py, merger.py, planner.py, api.py, websocket.py, chat.py, events.py, state.py, logging_config.py, watchdog.py, loop_state.py, auditor.py, reporter.py, digest.py, milestone.py
+- **Sentinel modules**: `lib/wt_orch/sentinel/wt_dir.py`, events.py, findings.py, status.py, inbox.py, rotation.py — migrate from `.wt/sentinel/` to `~/.local/share/`
+- **Bash scripts**: `bin/wt-sentinel`, `bin/wt-loop`, `bin/wt-new`, `bin/wt-merge`, `bin/wt-close`, `lib/orchestration/*.sh`, `lib/loop/state.sh`, `lib/design/bridge.sh`, `mcp-server/statusline.sh`
+- **Hooks**: `.claude/hooks/activity-track.sh`
+- **GUI**: `gui/control_center/mixins/handlers.py`, `gui/control_center/mixins/table.py`
+- **MCP server**: `mcp-server/wt_mcp_server.py`
+- **Skills/prompts**: sentinel command, design-bridge rule, any referencing `.claude/` runtime files
+- **Deploy**: `lib/project/deploy.sh`, `bootstrap_worktree()` in dispatcher.py
+- **Merger**: `cleanup_worktree()` → conditional based on retention config

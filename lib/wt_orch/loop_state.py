@@ -52,12 +52,12 @@ class LoopState:
 
 
 def get_loop_state_file(wt_path: str) -> str:
-    """Get loop state file path for a worktree."""
-    return os.path.join(wt_path, ".claude", "loop-state.json")
+    """Get loop state file path for a worktree (per-agent ephemeral in .wt/)."""
+    return os.path.join(wt_path, ".wt", "loop-state.json")
 
 
 def get_loop_log_dir(wt_path: str) -> str:
-    return os.path.join(wt_path, ".claude", "logs")
+    return os.path.join(wt_path, ".wt", "logs")
 
 
 def get_iter_log_file(wt_path: str, iteration: int) -> str:
@@ -66,7 +66,7 @@ def get_iter_log_file(wt_path: str, iteration: int) -> str:
 
 
 def get_terminal_pid_file(wt_path: str) -> str:
-    return os.path.join(wt_path, ".claude", "ralph-terminal.pid")
+    return os.path.join(wt_path, ".wt", "ralph-terminal.pid")
 
 
 def init_loop_state(
@@ -82,7 +82,7 @@ def init_loop_state(
     change: str = "",
 ) -> LoopState:
     """Initialize loop state and write to disk."""
-    os.makedirs(os.path.join(wt_path, ".claude"), exist_ok=True)
+    os.makedirs(os.path.join(wt_path, ".wt", "logs"), exist_ok=True)
 
     state = LoopState(
         worktree_name=worktree_name,
@@ -294,7 +294,7 @@ def write_activity(
     broadcast: str = "",
 ) -> bool:
     """Write activity.json for monitoring (skill, iteration, tokens, pid)."""
-    activity_file = os.path.join(wt_path, ".claude", "activity.json")
+    activity_file = os.path.join(wt_path, ".wt", "activity.json")
     os.makedirs(os.path.dirname(activity_file), exist_ok=True)
     data = {
         "skill": skill,

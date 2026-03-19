@@ -19,15 +19,15 @@ parse_date_to_epoch() {
     echo "$epoch"
 }
 
-# Get loop state file path for a worktree
+# Get loop state file path for a worktree (per-agent ephemeral in .wt/)
 get_loop_state_file() {
     local wt_path="$1"
-    echo "$wt_path/.claude/loop-state.json"
+    echo "$wt_path/.wt/loop-state.json"
 }
 
 get_loop_log_dir() {
     local wt_path="$1"
-    echo "$wt_path/.claude/logs"
+    echo "$wt_path/.wt/logs"
 }
 
 get_iter_log_file() {
@@ -41,7 +41,7 @@ get_iter_log_file() {
 # Get terminal PID file path
 get_terminal_pid_file() {
     local wt_path="$1"
-    echo "$wt_path/.claude/ralph-terminal.pid"
+    echo "$wt_path/.wt/ralph-terminal.pid"
 }
 
 # Initialize loop state
@@ -60,8 +60,8 @@ init_loop_state() {
     local state_file
     state_file=$(get_loop_state_file "$wt_path")
 
-    # Ensure .claude directory exists
-    mkdir -p "$wt_path/.claude"
+    # Ensure .wt agent directory exists
+    mkdir -p "$wt_path/.wt" "$wt_path/.wt/logs"
 
     # Create initial state
     cat > "$state_file" <<EOF

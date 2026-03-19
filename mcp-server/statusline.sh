@@ -26,7 +26,7 @@ agents=$(echo "$input" | jq -r '.agents // [] | length')
 
 # wt-loop status (check loop-state.json in current worktree)
 ralph_status=""
-state_file="$dir/.claude/loop-state.json"
+state_file="$dir/.wt/loop-state.json"
 if [ -f "$state_file" ]; then
     status=$(jq -r '.status // empty' "$state_file" 2>/dev/null)
     iteration=$(jq -r '.current_iteration // 0' "$state_file" 2>/dev/null)

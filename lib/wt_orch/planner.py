@@ -468,7 +468,7 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
             generate_coverage_report(
                 plan=plan,
                 digest_dir=digest_dir or "",
-                output_path="wt/orchestration/spec-coverage-report.md",
+                output_path=_default_coverage_path(),
                 plan_path=plan_path,
             )
         except Exception as exc:
@@ -477,10 +477,18 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
     return result
 
 
+def _default_coverage_path() -> str:
+    try:
+        from .paths import WtRuntime
+        return WtRuntime().spec_coverage_report
+    except Exception:
+        return "wt/orchestration/spec-coverage-report.md"
+
+
 def generate_coverage_report(
     plan: dict,
     digest_dir: str = "",
-    output_path: str = "wt/orchestration/spec-coverage-report.md",
+    output_path: str = "",
     state_file: str = "",
     plan_path: str = "",
 ) -> None:
@@ -493,6 +501,9 @@ def generate_coverage_report(
     When state_file is provided, renders live statuses (MERGED, DISPATCHED, etc.)
     instead of static COVERED.
     """
+    if not output_path:
+        output_path = _default_coverage_path()
+
     # Load change statuses from state (if available)
     change_statuses: dict[str, str] = {}
     if state_file:

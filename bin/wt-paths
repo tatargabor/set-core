@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# wt-paths — Sourceable helper exporting runtime path variables.
+#
+# Two-tier architecture:
+#   Shared runtime:       ~/.local/share/wt-tools/<project>/
+#   Per-agent ephemeral:  <worktree>/.wt/
+#
+# Usage:
+#   source "$(dirname "$0")/wt-paths"
+#   # Now $WT_STATE_FILE etc. are available
+#
+# Project name resolution matches wt-memory and WtRuntime (Python).
+
+# --- Project name resolution ---
+# Matches bin/wt-memory::resolve_project() and lib/wt_orch/paths.py::resolve_project_name()
+_wt_resolve_project() {
+    local toplevel
+    toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || true
+    if [[ -z "$toplevel" ]]; then
+        echo "_global"
+        return 0
+    fi
+
+    local common_dir
+    common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || true
+
+    if [[ -n "$common_dir" && "$common_dir" != ".git" ]]; then
+        # Worktree: resolve to main repo name
+        local abs_common
+        abs_common=$(cd "$toplevel" && cd "$common_dir" && pwd)
+        basename "$(dirname "$abs_common")"
+    else
+        basename "$toplevel"
+    fi
+}
+
+# --- Shared runtime directory ---
+WT_PROJECT_NAME=$(_wt_resolve_project)
+WT_RUNTIME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/wt-tools/$WT_PROJECT_NAME"
+
+# Orchestration
+WT_ORCHESTRATION_DIR="$WT_RUNTIME_DIR/orchestration"
+WT_STATE_FILE="$WT_ORCHESTRATION_DIR/state.json"
+WT_EVENTS_FILE="$WT_ORCHESTRATION_DIR/events.jsonl"
+WT_PLANS_DIR="$WT_ORCHESTRATION_DIR/plans"
+WT_RUNS_DIR="$WT_ORCHESTRATION_DIR/runs"
+WT_DIGEST_DIR="$WT_ORCHESTRATION_DIR/digest"
+
+# Sentinel
+WT_SENTINEL_DIR="$WT_RUNTIME_DIR/sentinel"
+WT_SENTINEL_PID="$WT_SENTINEL_DIR/sentinel.pid"
+
+# Logs
+WT_LOGS_DIR="$WT_RUNTIME_DIR/logs"
+WT_ORCHESTRATION_LOG="$WT_LOGS_DIR/orchestration.log"
+
+# Cache
+WT_CACHE_DIR="$WT_RUNTIME_DIR/cache"
+
+# Screenshots
+WT_SCREENSHOTS_DIR="$WT_RUNTIME_DIR/screenshots"
+
+# Design
+WT_DESIGN_SNAPSHOT="$WT_RUNTIME_DIR/design-snapshot.md"
+
+# --- Per-agent ephemeral (relative to worktree) ---
+WT_AGENT_DIR=".wt"
+WT_LOOP_STATE_FILE="$WT_AGENT_DIR/loop-state.json"
+WT_ACTIVITY_FILE="$WT_AGENT_DIR/activity.json"
+WT_AGENT_PID_FILE="$WT_AGENT_DIR/ralph-terminal.pid"
+WT_AGENT_LOGS_DIR="$WT_AGENT_DIR/logs"
+
+# --- Helper functions ---
+
+# Ensure shared runtime directories exist
+wt_ensure_runtime_dirs() {
+    mkdir -p \
+        "$WT_ORCHESTRATION_DIR" \
+        "$WT_PLANS_DIR" \
+        "$WT_RUNS_DIR" \
+        "$WT_DIGEST_DIR" \
+        "$WT_SENTINEL_DIR" \
+        "$WT_SENTINEL_DIR/archive" \
+        "$WT_LOGS_DIR" \
+        "$WT_SCREENSHOTS_DIR" \
+        "$WT_CACHE_DIR"
+}
+
+# Ensure per-agent ephemeral directory exists (call from worktree root)
+wt_ensure_agent_dir() {
+    mkdir -p "$WT_AGENT_DIR" "$WT_AGENT_LOGS_DIR"
+}
+
+# Get change-specific log archive directory
+wt_change_logs_dir() {
+    local change_name="$1"
+    echo "$WT_LOGS_DIR/changes/$change_name"
+}
+
+# Get smoke screenshot directory for a change
+wt_smoke_screenshots_dir() {
+    local change_name="$1"
+    echo "$WT_SCREENSHOTS_DIR/smoke/$change_name"
+}

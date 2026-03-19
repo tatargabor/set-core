@@ -1,4 +1,4 @@
-"""Sentinel status/identity management in .wt/sentinel/status.json."""
+"""Sentinel status/identity management in shared sentinel directory."""
 
 import json
 import os
@@ -6,13 +6,13 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from wt_orch.sentinel.wt_dir import ensure_wt_dir, SENTINEL_DIR
+from wt_orch.sentinel.wt_dir import ensure_wt_dir
 
 STATUS_FILE = "status.json"
 
 
 class SentinelStatus:
-    """Manages sentinel identity and heartbeat in .wt/sentinel/status.json."""
+    """Manages sentinel identity and heartbeat."""
 
     def __init__(self, project_path: str):
         self.project_path = os.path.abspath(project_path)
