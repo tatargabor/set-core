@@ -1882,10 +1882,9 @@ def handle_change_done(
                 diff_summary = _capture_retry_diff(wt_path)
 
             # Append to cumulative review history
-            from datetime import datetime, timezone as _tz
             _append_review_history(state_file, change_name, {
                 "attempt": verify_retry_count + 1,
-                "timestamp": datetime.now(_tz.utc).astimezone().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "review_output": rr.output[:1500],
                 "extracted_fixes": _extract_review_fixes(rr.output),
                 "diff_summary": diff_summary,
