@@ -781,13 +781,16 @@ def _list_session_files(sessions_dir: Path) -> list[dict]:
             try:
                 st = f.stat()
                 label, full_label = _derive_session_label(f)
+                # Active = file modified in last 60 seconds
+                age_s = time.time() - st.st_mtime
+                is_active = age_s < 60
                 files.append({
                     "id": f.stem,
                     "size": st.st_size,
                     "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
                     "label": label,
                     "full_label": full_label,
-                    "outcome": _session_outcome(f),
+                    "outcome": "active" if is_active else _session_outcome(f),
                 })
             except OSError:
                 pass

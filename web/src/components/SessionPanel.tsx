@@ -7,13 +7,15 @@ interface Props {
 }
 
 function outcomeIndicator(outcome?: string): string {
-  if (outcome === 'success') return 'border-l-2 border-l-green-600'
+  if (outcome === 'active') return 'border-l-2 border-l-green-400'
+  if (outcome === 'success') return 'border-l-2 border-l-neutral-600'
   if (outcome === 'error') return 'border-l-2 border-l-red-600'
   return 'border-l-2 border-l-transparent'
 }
 
 function outcomeDot(outcome?: string): string {
-  if (outcome === 'success') return 'bg-green-500'
+  if (outcome === 'active') return 'bg-green-400 animate-pulse'
+  if (outcome === 'success') return 'bg-neutral-500'
   if (outcome === 'error') return 'bg-red-500'
   return 'bg-neutral-700'
 }
