@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: GateConfig dataclass
-The system SHALL define a `GateConfig` dataclass with fields for each verification gate: `build`, `test`, `test_files_required`, `e2e`, `scope_check`, `review`, `spec_verify`, `rules`, `smoke`. Each gate field SHALL accept string modes: `"run"`, `"skip"`, `"warn"`, `"soft"`. The dataclass SHALL also include optional `max_retries: int` and `review_model: str` override fields.
+The system SHALL define a `GateConfig` dataclass with fields for each verification gate: `build`, `test`, `test_files_required`, `e2e`, `scope_check`, `review`, `spec_verify`, `rules`, `smoke`. Each gate field SHALL accept string modes: `"run"`, `"skip"`, `"warn"`, `"soft"`. The dataclass SHALL also include optional `max_retries: int`, `review_model: str`, and `review_extra_retries: int` (default 1) override fields.
 
 #### Scenario: Default GateConfig has all gates enabled
 - **WHEN** a GateConfig is created with no arguments
-- **THEN** all gate fields SHALL be `"run"`, `test_files_required` SHALL be `True`, `max_retries` SHALL be `None`, `review_model` SHALL be `None`
+- **THEN** all gate fields SHALL be `"run"`, `test_files_required` SHALL be `True`, `max_retries` SHALL be `None`, `review_model` SHALL be `None`, `review_extra_retries` SHALL be `1`
 
 #### Scenario: GateConfig mode helpers
 - **WHEN** `should_run(gate_name)` is called
@@ -14,6 +14,10 @@ The system SHALL define a `GateConfig` dataclass with fields for each verificati
 #### Scenario: GateConfig blocking check
 - **WHEN** `is_blocking(gate_name)` is called
 - **THEN** it SHALL return `True` only for mode `"run"` and `False` for `"warn"`, `"soft"`, `"skip"`
+
+#### Scenario: review_extra_retries controls review retry budget
+- **WHEN** GateConfig has `review_extra_retries=2`
+- **THEN** the review gate retry limit SHALL be `max_retries + 2`
 
 ### Requirement: Built-in gate profiles per change_type
 The system SHALL define a `BUILTIN_GATE_PROFILES` dict mapping each of the 6 change_type strings to a GateConfig instance with type-appropriate gate settings.
