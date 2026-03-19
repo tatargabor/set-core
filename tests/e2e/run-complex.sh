@@ -197,6 +197,7 @@ package-lock.json merge=ours
 *.tsbuildinfo     merge=ours
 next-env.d.ts     merge=ours
 .claude/**        merge=ours
+wt/**             merge=ours
 ATTRS
     git config merge.ours.driver true
 
