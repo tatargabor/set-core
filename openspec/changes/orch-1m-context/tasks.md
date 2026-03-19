@@ -18,37 +18,37 @@
 
 ## 3. Structured Retry Context — Build Error Parser
 
-- [ ] 3.1 Create `_extract_build_errors()` function in `verifier.py`: regex-based parser for TypeScript errors (`TS\d{4}`), Next.js module errors, route export violations
-- [ ] 3.2 Replace raw build output in build retry prompt (verifier.py build failure path) with structured `_extract_build_errors()` output, falling back to `[-3000:]` raw for unknown formats
-- [ ] 3.3 Write unit tests with sample TypeScript/Next.js build outputs (capture real examples from craftbrew-run2 logs)
+- [x] 3.1 Create `_extract_build_errors()` function in `verifier.py`: regex-based parser for TypeScript errors (`TS\d{4}`), Next.js module errors, route export violations
+- [x] 3.2 Replace raw build output in build retry prompt (verifier.py build failure path) with structured `_extract_build_errors()` output, falling back to `[-3000:]` raw for unknown formats
+- [x] 3.3 Write unit tests with sample TypeScript/Next.js build outputs (capture real examples from craftbrew-run2 logs)
 
 ## 4. Structured Retry Context — Test Failure Parser
 
-- [ ] 4.1 Create `_extract_test_failures()` function in `verifier.py`: parse Jest/Vitest FAIL blocks, extract test name + file + expected/received
-- [ ] 4.2 Replace raw test output in test retry prompt with structured `_extract_test_failures()` output
-- [ ] 4.3 Write unit tests with sample Jest/Vitest failure outputs
+- [x] 4.1 Create `_extract_test_failures()` function in `verifier.py`: parse Jest/Vitest FAIL blocks, extract test name + file + expected/received
+- [x] 4.2 Replace raw test output in test retry prompt with structured `_extract_test_failures()` output
+- [x] 4.3 Write unit tests with sample Jest/Vitest failure outputs
 
 ## 5. Structured Retry Context — Unified Format + Review Fix
 
-- [ ] 5.1 Modify `_build_review_retry_prompt()`: remove line 221 (`current_review_output[:1500]`), only include raw fallback when parser returns empty but `has_critical` is True (use `[:3000]`)
-- [ ] 5.2 Increase review output state storage from `[:2000]` to `[:5000]` in verifier.py review storage path
-- [ ] 5.3 Create `_build_unified_retry_context()` function: combine `_extract_build_errors()`, `_extract_test_failures()`, and `_extract_review_fixes()` into single structured markdown block with per-gate sections
-- [ ] 5.4 Add re-read instruction to all retry prompt paths: "Before fixing, re-read the files listed above. Do NOT rely on your memory of the file contents."
-- [ ] 5.5 Wire unified retry context into all three retry paths (build, test, review) replacing ad-hoc prompt construction
-- [ ] 5.6 Write integration tests: verify unified format output for combined build+review failures, verify re-read instruction present in all paths
+- [x] 5.1 Modify `_build_review_retry_prompt()`: remove line 221 (`current_review_output[:1500]`), only include raw fallback when parser returns empty but `has_critical` is True (use `[:3000]`)
+- [x] 5.2 Increase review output state storage from `[:2000]` to `[:5000]` in verifier.py review storage path
+- [x] 5.3 Create `_build_unified_retry_context()` function: combine `_extract_build_errors()`, `_extract_test_failures()`, and `_extract_review_fixes()` into single structured markdown block with per-gate sections
+- [x] 5.4 Add re-read instruction to all retry prompt paths: "Before fixing, re-read the files listed above. Do NOT rely on your memory of the file contents."
+- [x] 5.5 Wire unified retry context into all three retry paths (build, test, review) replacing ad-hoc prompt construction
+- [x] 5.6 Write integration tests: verify unified format output for combined build+review failures, verify re-read instruction present in all paths
 
 ## 6. Cross-Cutting File Strategy — i18n Sidecar
 
-- [ ] 6.1 Add i18n sidecar detection to dispatcher: detect JSON-based i18n (next-intl, react-intl from package.json), generate sidecar file path instructions for dispatch context
-- [ ] 6.2 Add namespace assignment to planner: when multiple changes need i18n keys, assign non-overlapping top-level namespaces per change
-- [ ] 6.3 Create `merge_i18n_sidecars()` utility function: scan for `<locale>.<feature>.json` files, `Object.assign` at top-level into canonical messages file
-- [ ] 6.4 Integrate `merge_i18n_sidecars()` into merger post-merge sequence (after branch merge, before build verify)
-- [ ] 6.5 Write unit tests: sidecar merge with non-overlapping namespaces, namespace collision warning, no-sidecar skip
+- [x] 6.1 Add i18n sidecar detection to dispatcher: detect JSON-based i18n (next-intl, react-intl from package.json), generate sidecar file path instructions for dispatch context
+- [x] 6.2 Add namespace assignment to planner: when multiple changes need i18n keys, assign non-overlapping top-level namespaces per change
+- [x] 6.3 Create `merge_i18n_sidecars()` utility function: scan for `<locale>.<feature>.json` files, `Object.assign` at top-level into canonical messages file
+- [x] 6.4 Integrate `merge_i18n_sidecars()` into merger post-merge sequence (after branch merge, before build verify)
+- [x] 6.5 Write unit tests: sidecar merge with non-overlapping namespaces, namespace collision warning, no-sidecar skip
 
 ## 7. Cross-Cutting File Strategy — Ownership + Serialization
 
-- [ ] 7.1 Add cross-cutting file detection to planner: read from `project-knowledge.yaml` `cross_cutting_files` list, or detect heuristically from orchestration history
-- [ ] 7.2 Add ownership assignment to planner: when multiple changes touch the same unsplittable file, assign one owner and add `depends_on` to others
-- [ ] 7.3 Add "DO NOT modify" instruction to dispatch context for non-owned cross-cutting files
-- [ ] 7.4 Add `depends_on` enforcement in dispatcher: serialize dispatch of changes that depend on cross-cutting file owners
-- [ ] 7.5 Write unit tests: single-owner assignment, depends_on generation, non-owner dispatch context contains prohibition
+- [x] 7.1 Add cross-cutting file detection to planner: read from `project-knowledge.yaml` `cross_cutting_files` list, or detect heuristically from orchestration history
+- [x] 7.2 Add ownership assignment to planner: when multiple changes touch the same unsplittable file, assign one owner and add `depends_on` to others
+- [x] 7.3 Add "DO NOT modify" instruction to dispatch context for non-owned cross-cutting files
+- [x] 7.4 Add `depends_on` enforcement in dispatcher: serialize dispatch of changes that depend on cross-cutting file owners
+- [x] 7.5 Write unit tests: single-owner assignment, depends_on generation, non-owner dispatch context contains prohibition

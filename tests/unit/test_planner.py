@@ -14,6 +14,7 @@ from wt_orch.planner import (
     TestInfra,
     TriageStatus,
     ValidationResult,
+    _assign_cross_cutting_ownership,
     _extract_scope_keywords,
     build_decomposition_context,
     check_scope_overlap,
@@ -717,3 +718,55 @@ class TestEstimateTokens:
 
     def test_missing_file(self):
         assert estimate_tokens("/nonexistent/path.txt") == 0
+
+
+class TestCrossCuttingOwnership:
+    """Tests for _assign_cross_cutting_ownership()."""
+
+    def test_single_owner_assigned(self):
+        """First change mentioning a file becomes owner, others get depends_on."""
+        plan = {"changes": [
+            {"name": "auth", "scope": "Add auth middleware.ts for route protection", "depends_on": []},
+            {"name": "admin", "scope": "Add admin routes, update middleware.ts", "depends_on": []},
+        ]}
+        _assign_cross_cutting_ownership(plan)
+        admin = next(c for c in plan["changes"] if c["name"] == "admin")
+        assert "auth" in admin["depends_on"]
+        assert "middleware.ts" in admin.get("cross_cutting_no_modify", [])
+
+    def test_owner_not_restricted(self):
+        """Owner should NOT get cross_cutting_no_modify."""
+        plan = {"changes": [
+            {"name": "auth", "scope": "Create middleware.ts", "depends_on": []},
+            {"name": "admin", "scope": "Update middleware.ts for admin", "depends_on": []},
+        ]}
+        _assign_cross_cutting_ownership(plan)
+        auth = next(c for c in plan["changes"] if c["name"] == "auth")
+        assert "cross_cutting_no_modify" not in auth or "middleware.ts" not in auth.get("cross_cutting_no_modify", [])
+
+    def test_no_overlap_no_changes(self):
+        """Changes that don't share files get no ownership."""
+        plan = {"changes": [
+            {"name": "auth", "scope": "Add login page", "depends_on": []},
+            {"name": "cart", "scope": "Add cart functionality", "depends_on": []},
+        ]}
+        _assign_cross_cutting_ownership(plan)
+        for c in plan["changes"]:
+            assert c.get("cross_cutting_no_modify", []) == []
+
+    def test_single_change_no_assignment(self):
+        plan = {"changes": [
+            {"name": "auth", "scope": "Create middleware.ts", "depends_on": []},
+        ]}
+        _assign_cross_cutting_ownership(plan)
+        assert plan["changes"][0].get("cross_cutting_no_modify", []) == []
+
+    def test_depends_on_not_duplicated(self):
+        """If depends_on already has the owner, don't add again."""
+        plan = {"changes": [
+            {"name": "auth", "scope": "Add layout.tsx and middleware.ts", "depends_on": []},
+            {"name": "admin", "scope": "Update layout.tsx and middleware.ts", "depends_on": ["auth"]},
+        ]}
+        _assign_cross_cutting_ownership(plan)
+        admin = next(c for c in plan["changes"] if c["name"] == "admin")
+        assert admin["depends_on"].count("auth") == 1

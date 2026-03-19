@@ -137,6 +137,156 @@ def _extract_review_fixes(review_output: str) -> str:
     return "\n".join(fixes)
 
 
+# ─── Build Error & Test Failure Parsers ──────────────────────────────
+
+# TypeScript error: src/file.tsx(67,5): error TS2339: Property 'x' does not exist
+_TS_ERROR_RE = re.compile(
+    r"^(.+?)\((\d+),\d+\):\s*error\s+(TS\d+):\s*(.+)$", re.MULTILINE
+)
+# TypeScript error alt format: src/file.tsx:67:5 - error TS2339: Property 'x' does not exist
+_TS_ERROR_ALT_RE = re.compile(
+    r"^(.+?):(\d+):\d+\s*-\s*error\s+(TS\d+):\s*(.+)$", re.MULTILINE
+)
+# Next.js module not found: Module not found: Can't resolve 'foo' in '/path/to/dir'
+_MODULE_NOT_FOUND_RE = re.compile(
+    r"Module not found:\s*(?:Can't resolve\s*)?'([^']+)'", re.MULTILINE
+)
+# Next.js route export violation
+_ROUTE_EXPORT_RE = re.compile(
+    r"(?:\"([^\"]+)\")\s+is not a valid (?:Next\.js )?(?:route|page) export", re.MULTILINE
+)
+
+
+def _extract_build_errors(build_output: str) -> str:
+    """Extract structured build errors from TypeScript/Next.js output.
+
+    Returns formatted lines like:
+        - src/file.tsx:67 — TS2339: Property 'x' does not exist on type 'Y'
+
+    Falls back to empty string if no known patterns match.
+    """
+    errors: list[str] = []
+    seen: set[str] = set()
+
+    for m in _TS_ERROR_RE.finditer(build_output):
+        key = f"{m.group(1)}:{m.group(2)}:{m.group(3)}"
+        if key not in seen:
+            seen.add(key)
+            errors.append(f"- {m.group(1)}:{m.group(2)} — {m.group(3)}: {m.group(4)}")
+
+    for m in _TS_ERROR_ALT_RE.finditer(build_output):
+        key = f"{m.group(1)}:{m.group(2)}:{m.group(3)}"
+        if key not in seen:
+            seen.add(key)
+            errors.append(f"- {m.group(1)}:{m.group(2)} — {m.group(3)}: {m.group(4)}")
+
+    for m in _MODULE_NOT_FOUND_RE.finditer(build_output):
+        entry = f"- Module not found: '{m.group(1)}'"
+        if entry not in errors:
+            errors.append(entry)
+
+    for m in _ROUTE_EXPORT_RE.finditer(build_output):
+        errors.append(f"- Invalid route export: \"{m.group(1)}\"")
+
+    return "\n".join(errors)
+
+
+# Jest/Vitest FAIL pattern: FAIL src/tests/foo.test.ts
+_TEST_FAIL_BLOCK_RE = re.compile(r"^\s*(?:FAIL)\s+(.+?)$", re.MULTILINE)
+# Test name + assertion: ✕ should calculate shipping (5 ms)
+_TEST_NAME_RE = re.compile(r"^\s*[✕×✗●]\s+(.+?)(?:\s+\(\d+\s*m?s\))?\s*$", re.MULTILINE)
+# Expected/received: Expected: 1500 / Received: undefined
+_EXPECTED_RE = re.compile(r"^\s*Expected:\s*(.+)$", re.MULTILINE)
+_RECEIVED_RE = re.compile(r"^\s*Received:\s*(.+)$", re.MULTILINE)
+
+
+def _extract_test_failures(test_output: str) -> str:
+    """Extract structured test failures from Jest/Vitest output.
+
+    Returns formatted lines like:
+        - checkout.test.ts: "should calculate shipping" — Expected 1500, received undefined
+    """
+    failures: list[str] = []
+
+    # Find FAIL file blocks
+    fail_files = _TEST_FAIL_BLOCK_RE.findall(test_output)
+
+    # Find failed test names
+    test_names = _TEST_NAME_RE.findall(test_output)
+
+    # Find expected/received pairs
+    expected_matches = _EXPECTED_RE.findall(test_output)
+    received_matches = _RECEIVED_RE.findall(test_output)
+
+    if test_names:
+        for i, name in enumerate(test_names):
+            file_ctx = fail_files[0].strip() if fail_files else ""
+            assertion = ""
+            if i < len(expected_matches) and i < len(received_matches):
+                assertion = f" — Expected {expected_matches[i].strip()}, received {received_matches[i].strip()}"
+            if file_ctx:
+                failures.append(f"- {file_ctx}: \"{name}\"{assertion}")
+            else:
+                failures.append(f"- \"{name}\"{assertion}")
+    elif fail_files:
+        # No individual test names extracted, list failing files
+        for f in fail_files:
+            failures.append(f"- FAIL {f.strip()}")
+
+    return "\n".join(failures)
+
+
+# ─── Unified Retry Context ──────────────────────────────────────────
+
+
+def _build_unified_retry_context(
+    build_output: str = "",
+    test_output: str = "",
+    review_output: str = "",
+    attempt: int = 1,
+    max_attempts: int = 3,
+) -> str:
+    """Build a single structured retry block combining all gate results.
+
+    Replaces ad-hoc truncated raw dumps with parsed, actionable sections.
+    """
+    sections: list[str] = []
+    sections.append(f"## Retry Context (Attempt {attempt}/{max_attempts})")
+    sections.append("")
+    sections.append(
+        "Before fixing, re-read the files listed below. "
+        "Do NOT rely on your memory of the file contents."
+    )
+
+    if build_output:
+        parsed = _extract_build_errors(build_output)
+        sections.append("\n### Build Errors")
+        if parsed:
+            sections.append(parsed)
+        else:
+            # Unknown build format — fall back to truncated raw
+            sections.append(f"```\n{build_output[-3000:]}\n```")
+
+    if test_output:
+        parsed = _extract_test_failures(test_output)
+        sections.append("\n### Test Failures")
+        if parsed:
+            sections.append(parsed)
+        else:
+            sections.append(f"```\n{test_output[-3000:]}\n```")
+
+    if review_output:
+        parsed = _extract_review_fixes(review_output)
+        sections.append("\n### Review Issues")
+        if parsed:
+            sections.append(parsed)
+        else:
+            # Only include raw if there were critical issues but parser returned nothing
+            sections.append(f"```\n{review_output[-3000:]}\n```")
+
+    return "\n".join(sections)
+
+
 # ─── Cumulative Review Feedback ─────────────────────────────────────
 
 
@@ -218,7 +368,15 @@ def _build_review_retry_prompt(
     if flagged_reqs:
         parts.append(f"Requirements with no implementation evidence: {flagged_reqs}\n")
 
-    parts.append(f"Full review output:\n{current_review_output[:1500]}\n")
+    # Only include raw review output as fallback when parser returned nothing
+    # but critical issues exist (unknown review format)
+    if not fix_instructions:
+        parts.append(f"Full review output:\n{current_review_output[:3000]}\n")
+
+    parts.append(
+        "Before fixing, re-read the files listed above. "
+        "Do NOT rely on your memory of the file contents.\n"
+    )
 
     # Final attempt escalation
     is_last_attempt = verify_retry_count >= review_retry_limit - 1
@@ -1610,9 +1768,13 @@ def handle_change_done(
                         scope = change.scope or ""
                         retry_prompt = (
                             f"Build failed after implementation. Fix the build errors.\n\n"
-                            f"Build command: {pm} run {build_command}\n"
-                            f"Build output (last 2000 chars):\n{build_output[-2000:]}\n\n"
-                            f"Original scope: {scope}"
+                            f"Build command: {pm} run {build_command}\n\n"
+                            + _build_unified_retry_context(
+                                build_output=build_output,
+                                attempt=build_fix_count + 1,
+                                max_attempts=effective_max_retries,
+                            )
+                            + f"\n\nOriginal scope: {scope}"
                         )
                         update_change_field(state_file, change_name, "retry_context", retry_prompt)
                         _snapshot_retry_tokens(state_file, change_name, wt_path)
@@ -1667,8 +1829,13 @@ def handle_change_done(
                 scope = change.scope or ""
                 retry_prompt = (
                     f"Tests failed after implementation. Fix the failing tests.\n\n"
-                    f"Test command: {test_command}\nTest output:\n{test_output}\n\n"
-                    f"Original scope: {scope}"
+                    f"Test command: {test_command}\n\n"
+                    + _build_unified_retry_context(
+                        test_output=test_output,
+                        attempt=verify_retry_count,
+                        max_attempts=effective_max_retries,
+                    )
+                    + f"\n\nOriginal scope: {scope}"
                 )
                 update_change_field(state_file, change_name, "retry_context", retry_prompt)
                 _snapshot_retry_tokens(state_file, change_name, wt_path)
@@ -1879,7 +2046,7 @@ def handle_change_done(
 
         if rr.has_critical:
             update_change_field(state_file, change_name, "review_result", "critical")
-            update_change_field(state_file, change_name, "review_output", rr.output[:2000])
+            update_change_field(state_file, change_name, "review_output", rr.output[:5000])
             # Review gets +1 extra retry beyond the shared limit because it runs
             # last — build/test retries may have consumed the budget already
             review_retry_limit = effective_max_retries + 1
@@ -1919,7 +2086,7 @@ def handle_change_done(
             return
 
         update_change_field(state_file, change_name, "review_result", "pass")
-        update_change_field(state_file, change_name, "review_output", rr.output[:2000])
+        update_change_field(state_file, change_name, "review_output", rr.output[:5000])
 
     # ── Step 5b: Verification rules ──
     if gc.should_run("rules") and wt_path:

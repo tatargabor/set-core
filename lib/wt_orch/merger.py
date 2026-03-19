@@ -20,11 +20,13 @@ from __future__ import annotations
 
 import glob
 import hashlib
+import json
 import logging
 import os
 import shutil
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 
 from .state import (
@@ -419,6 +421,16 @@ def merge_change(
         # Post-merge custom command
         _post_merge_custom_command(state_file)
 
+        # Post-merge i18n sidecar merge
+        sidecar_count = merge_i18n_sidecars(".")
+        if sidecar_count > 0:
+            logger.info("Post-merge: merged %d i18n sidecar file(s)", sidecar_count)
+            run_command(["git", "add", "-A"], timeout=10)
+            run_command(
+                ["git", "commit", "-m", f"chore: merge {sidecar_count} i18n sidecar file(s) from {change_name}"],
+                timeout=10,
+            )
+
         # Post-merge scope verification
         _heartbeat("scope_verify")
         from .verifier import verify_merge_scope
@@ -660,6 +672,79 @@ def _run_hook(hook_name: str, change_name: str, status: str, wt_path: str) -> bo
 
     logger.info("%s hook succeeded for %s", hook_name, change_name)
     return True
+
+
+def merge_i18n_sidecars(project_root: str = ".") -> int:
+    """Merge i18n sidecar files into canonical message files.
+
+    Scans for `<locale>.<namespace>.json` sidecar files in i18n message
+    directories and merges them into the canonical `<locale>.json` at the
+    top level (Object.assign semantics — no deep merge needed since each
+    sidecar owns a unique top-level namespace).
+
+    Returns the number of sidecar files merged.
+    """
+    msg_dirs = ["src/messages", "messages", "src/i18n/messages", "public/locales"]
+    msg_dir = ""
+    for d in msg_dirs:
+        full = os.path.join(project_root, d)
+        if os.path.isdir(full):
+            msg_dir = full
+            break
+
+    if not msg_dir:
+        return 0
+
+    merged_count = 0
+    # Find sidecar files: <locale>.<namespace>.json (has 2+ dots before .json)
+    for f in sorted(os.listdir(msg_dir)):
+        if not f.endswith(".json"):
+            continue
+        parts = f.rsplit(".", 2)  # e.g. ["en", "checkout", "json"]
+        if len(parts) != 3:
+            continue
+        locale, _namespace, _ext = parts
+
+        sidecar_path = os.path.join(msg_dir, f)
+        canonical_path = os.path.join(msg_dir, f"{locale}.json")
+
+        try:
+            sidecar_data = json.loads(Path(sidecar_path).read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.warning("i18n sidecar: failed to read %s", sidecar_path)
+            continue
+
+        # Load or create canonical file
+        canonical_data: dict = {}
+        if os.path.isfile(canonical_path):
+            try:
+                canonical_data = json.loads(Path(canonical_path).read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                canonical_data = {}
+
+        # Check for namespace collision
+        for key in sidecar_data:
+            if key in canonical_data:
+                logger.warning(
+                    "i18n sidecar: namespace '%s' from %s already exists in %s — overwriting",
+                    key, f, f"{locale}.json",
+                )
+
+        # Merge at top level
+        canonical_data.update(sidecar_data)
+
+        try:
+            Path(canonical_path).write_text(
+                json.dumps(canonical_data, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            os.remove(sidecar_path)
+            merged_count += 1
+            logger.info("i18n sidecar: merged %s into %s.json", f, locale)
+        except OSError:
+            logger.warning("i18n sidecar: failed to write %s", canonical_path)
+
+    return merged_count
 
 
 def _post_merge_deps_install(lockfile_conflicted: bool = False, pre_merge_sha: str = "") -> None:

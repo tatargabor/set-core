@@ -21,8 +21,11 @@ from wt_orch.verifier import (
     evaluate_verification_rules,
     _accumulate_tokens,
     _append_review_history,
-    _get_review_history,
     _build_review_retry_prompt,
+    _build_unified_retry_context,
+    _extract_build_errors,
+    _extract_test_failures,
+    _get_review_history,
 )
 from wt_orch.state import Change, OrchestratorState
 
@@ -695,3 +698,153 @@ class TestBuildReviewRetryPrompt:
         )
         assert "LAST attempt" in prompt
         assert "restructure the entire implementation" in prompt
+
+
+class TestExtractBuildErrors:
+    """Tests for _extract_build_errors() — TypeScript/Next.js build parser."""
+
+    def test_ts_error_paren_format(self):
+        output = "src/app/page.tsx(67,5): error TS2339: Property 'total' does not exist on type 'Order'"
+        result = _extract_build_errors(output)
+        assert "src/app/page.tsx:67" in result
+        assert "TS2339" in result
+        assert "Property 'total'" in result
+
+    def test_ts_error_colon_format(self):
+        output = "src/lib/utils.ts:12:3 - error TS2304: Cannot find name 'foo'"
+        result = _extract_build_errors(output)
+        assert "src/lib/utils.ts:12" in result
+        assert "TS2304" in result
+
+    def test_multiple_errors_deduped(self):
+        output = (
+            "src/a.tsx(1,1): error TS2339: Prop X\n"
+            "src/a.tsx(1,1): error TS2339: Prop X\n"
+            "src/b.tsx(2,1): error TS2345: Type Y\n"
+        )
+        result = _extract_build_errors(output)
+        assert result.count("src/a.tsx:1") == 1
+        assert "src/b.tsx:2" in result
+
+    def test_module_not_found(self):
+        output = "Module not found: Can't resolve '@/components/Foo' in '/app/src'"
+        result = _extract_build_errors(output)
+        assert "Module not found" in result
+        assert "@/components/Foo" in result
+
+    def test_no_known_patterns_returns_empty(self):
+        assert _extract_build_errors("some random output") == ""
+
+    def test_mixed_errors(self):
+        output = (
+            "src/page.tsx(10,1): error TS2339: Missing prop\n"
+            "Module not found: Can't resolve 'missing-pkg'\n"
+        )
+        result = _extract_build_errors(output)
+        assert "TS2339" in result
+        assert "missing-pkg" in result
+
+
+class TestExtractTestFailures:
+    """Tests for _extract_test_failures() — Jest/Vitest parser."""
+
+    def test_jest_fail_with_assertion(self):
+        output = (
+            " FAIL src/tests/checkout.test.ts\n"
+            "  ✕ should calculate shipping (5 ms)\n"
+            "    Expected: 1500\n"
+            "    Received: undefined\n"
+        )
+        result = _extract_test_failures(output)
+        assert "checkout.test.ts" in result
+        assert "should calculate shipping" in result
+        assert "Expected 1500" in result
+        assert "received undefined" in result
+
+    def test_multiple_failing_tests(self):
+        output = (
+            " FAIL src/tests/cart.test.ts\n"
+            "  ✕ should add item (3 ms)\n"
+            "    Expected: 1\n"
+            "    Received: 0\n"
+            "  ✕ should remove item (2 ms)\n"
+            "    Expected: 0\n"
+            "    Received: 1\n"
+        )
+        result = _extract_test_failures(output)
+        assert "should add item" in result
+        assert "should remove item" in result
+
+    def test_fail_file_only_no_test_names(self):
+        output = " FAIL src/tests/broken.test.ts\n  SyntaxError: Unexpected token\n"
+        result = _extract_test_failures(output)
+        assert "FAIL" in result
+        assert "broken.test.ts" in result
+
+    def test_no_failures_returns_empty(self):
+        output = " PASS src/tests/good.test.ts\n  ✓ works (1 ms)\n"
+        assert _extract_test_failures(output) == ""
+
+
+class TestUnifiedRetryContext:
+    """Tests for _build_unified_retry_context()."""
+
+    def test_build_only(self):
+        result = _build_unified_retry_context(
+            build_output="src/a.tsx(1,1): error TS2339: Bad prop",
+            attempt=1, max_attempts=3,
+        )
+        assert "## Retry Context (Attempt 1/3)" in result
+        assert "### Build Errors" in result
+        assert "TS2339" in result
+        assert "re-read the files" in result
+
+    def test_test_only(self):
+        result = _build_unified_retry_context(
+            test_output=" FAIL src/test.ts\n  ✕ fails (1 ms)\n    Expected: 1\n    Received: 0\n",
+            attempt=2, max_attempts=3,
+        )
+        assert "### Test Failures" in result
+        assert "fails" in result
+
+    def test_combined_build_and_review(self):
+        result = _build_unified_retry_context(
+            build_output="src/a.tsx(1,1): error TS2339: X",
+            review_output="ISSUE: [CRITICAL] Missing auth\nFILE: src/api.ts\nLINE: ~10\nFIX: Add guard",
+            attempt=1, max_attempts=3,
+        )
+        assert "### Build Errors" in result
+        assert "### Review Issues" in result
+        assert "TS2339" in result
+        assert "Missing auth" in result
+
+    def test_fallback_to_raw_on_unknown_format(self):
+        result = _build_unified_retry_context(
+            build_output="ERROR: something weird happened that we can't parse",
+            attempt=1, max_attempts=2,
+        )
+        assert "### Build Errors" in result
+        assert "```" in result  # raw fallback wrapped in code block
+        assert "something weird happened" in result
+
+    def test_reread_instruction_always_present(self):
+        result = _build_unified_retry_context(
+            build_output="src/a.tsx(1,1): error TS2339: X",
+        )
+        assert "re-read the files" in result
+
+    def test_review_retry_no_raw_when_fixes_extracted(self):
+        """Review retry prompt should NOT include raw output when fix_instructions exist."""
+        review_output = (
+            "ISSUE: [CRITICAL] SQL injection\n"
+            "FILE: src/api.ts\n"
+            "LINE: ~42\n"
+            "FIX: Use parameterized query\n"
+        )
+        prompt = _build_review_retry_prompt.__wrapped__(review_output) if hasattr(_build_review_retry_prompt, '__wrapped__') else None
+        # Test via unified context instead
+        result = _build_unified_retry_context(review_output=review_output)
+        assert "src/api.ts" in result
+        assert "SQL injection" in result
+        # Should use structured format, not raw fallback
+        assert "```" not in result

@@ -1061,6 +1061,57 @@ def _build_digest_content(digest_dir: str) -> str:
 # ─── Plan Metadata Enrichment ─────────────────────────────────────────
 # Migrated from: planner.sh cmd_plan() L1049-1092
 
+# Common unsplittable files that cause merge conflicts when touched by multiple agents
+_DEFAULT_CROSS_CUTTING_FILES = [
+    "layout.tsx", "middleware.ts", "middleware.js",
+    "next.config.js", "next.config.ts", "next.config.mjs",
+    "tailwind.config.ts", "tailwind.config.js",
+]
+
+
+def _assign_cross_cutting_ownership(plan_data: dict) -> None:
+    """Assign ownership of cross-cutting files to changes.
+
+    When multiple changes mention the same unsplittable file in their scope,
+    the first change (by plan order) becomes the owner. Others get a depends_on
+    on the owner and a `cross_cutting_no_modify` list of files they must not touch.
+    """
+    changes = plan_data.get("changes", [])
+    if len(changes) < 2:
+        return
+
+    # Build a map: file_basename → [change_names that mention it]
+    file_touchers: dict[str, list[str]] = {}
+    for cc_file in _DEFAULT_CROSS_CUTTING_FILES:
+        for c in changes:
+            scope_lower = c.get("scope", "").lower()
+            if cc_file.lower() in scope_lower:
+                file_touchers.setdefault(cc_file, []).append(c["name"])
+
+    # Assign ownership: first toucher owns, others get depends_on
+    for cc_file, touchers in file_touchers.items():
+        if len(touchers) < 2:
+            continue
+
+        owner = touchers[0]
+        logger.info(
+            "Cross-cutting: %s owned by '%s', serializing: %s",
+            cc_file, owner, touchers[1:],
+        )
+
+        for non_owner_name in touchers[1:]:
+            for c in changes:
+                if c["name"] == non_owner_name:
+                    # Add depends_on
+                    deps = c.setdefault("depends_on", [])
+                    if owner not in deps:
+                        deps.append(owner)
+                    # Track files this change must not modify
+                    no_modify = c.setdefault("cross_cutting_no_modify", [])
+                    if cc_file not in no_modify:
+                        no_modify.append(cc_file)
+                    break
+
 
 def enrich_plan_metadata(
     plan_data: dict,
@@ -1110,6 +1161,16 @@ def enrich_plan_metadata(
         "plan_phase": plan_phase,
         "plan_method": plan_method,
     })
+
+    # Assign i18n namespaces to changes (non-overlapping, derived from change name)
+    for c in plan_data.get("changes", []):
+        ns = c["name"].replace("-", "_")
+        c.setdefault("i18n_namespace", ns)
+
+    # Cross-cutting file ownership: detect from project-knowledge.yaml or scope text.
+    # When multiple changes mention the same unsplittable file, assign the first as
+    # owner and add depends_on to others (serialization at dispatch).
+    _assign_cross_cutting_ownership(plan_data)
 
     # During replan, strip depends_on references to completed changes
     if replan_cycle is not None and state_path and os.path.exists(state_path):

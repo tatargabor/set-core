@@ -177,6 +177,8 @@ class DispatchContext:
     retry_context: str = ""
     read_first_directives: list[str] = field(default_factory=list)
     conventions_summary: str = ""
+    i18n_sidecar_instructions: str = ""
+    cross_cutting_restrictions: list[str] = field(default_factory=list)
 
 
 # ─── Worktree Preparation ────────────────────────────────────────────
@@ -870,6 +872,56 @@ def _format_conventions_summary(digest_dir: str) -> str:
     return "\n".join(lines) if lines else ""
 
 
+def _detect_i18n_sidecar(wt_path: str, change_name: str, namespace: str = "") -> str:
+    """Detect i18n setup and generate sidecar file instructions.
+
+    If the project uses JSON-based i18n (next-intl, react-intl), instructs
+    the agent to write to a sidecar file instead of the canonical messages file.
+    """
+    pkg_path = os.path.join(wt_path, "package.json")
+    if not os.path.isfile(pkg_path):
+        return ""
+    try:
+        with open(pkg_path) as f:
+            pkg = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+    i18n_lib = ""
+    if "next-intl" in deps:
+        i18n_lib = "next-intl"
+    elif "react-intl" in deps:
+        i18n_lib = "react-intl"
+    elif "i18next" in deps or "react-i18next" in deps:
+        i18n_lib = "i18next"
+
+    if not i18n_lib:
+        return ""
+
+    # Detect messages directory
+    msg_dirs = ["src/messages", "messages", "src/i18n/messages", "public/locales"]
+    msg_dir = ""
+    for d in msg_dirs:
+        if os.path.isdir(os.path.join(wt_path, d)):
+            msg_dir = d
+            break
+
+    if not msg_dir:
+        return ""
+
+    # Use change name as namespace if not provided
+    ns = namespace or change_name.replace("-", "_")
+
+    return (
+        f"**i18n Sidecar Pattern ({i18n_lib}):** "
+        f"Do NOT edit the main messages files in `{msg_dir}/` directly. "
+        f"Instead, create sidecar files: `{msg_dir}/<locale>.{ns}.json` "
+        f"with your new translation keys under a `\"{ns}\"` top-level namespace. "
+        f"These will be merged into the canonical file after merge."
+    )
+
+
 def _build_input_content(
     change_name: str,
     scope: str,
@@ -954,6 +1006,16 @@ def _build_input_content(
     # Project conventions (from digest)
     if ctx.conventions_summary:
         lines.append(f"\n## Project Conventions\n{ctx.conventions_summary}")
+
+    # i18n sidecar instructions
+    if ctx.i18n_sidecar_instructions:
+        lines.append(f"\n## i18n Instructions\n{ctx.i18n_sidecar_instructions}")
+
+    # Cross-cutting file restrictions
+    if ctx.cross_cutting_restrictions:
+        lines.append("\n## Cross-Cutting File Restrictions")
+        for restriction in ctx.cross_cutting_restrictions:
+            lines.append(f"- {restriction}")
 
     if retry_ctx:
         lines.append(f"\n## Retry Context\n{retry_ctx}")
@@ -1243,6 +1305,14 @@ def dispatch_change(
         sibling_context=_build_sibling_context(state),
     )
 
+    # Cross-cutting file restrictions from planner ownership assignment
+    no_modify = change.extras.get("cross_cutting_no_modify", [])
+    if no_modify:
+        ctx.cross_cutting_restrictions = [
+            f"DO NOT modify `{f}` — owned by another change. If you need changes to this file, note them in your commit message."
+            for f in no_modify
+        ]
+
     # Design context (tokens + hierarchy)
     bridge_path = os.path.join(WT_TOOLS_ROOT, "lib", "design", "bridge.sh")
     design_r = run_command(
@@ -1349,6 +1419,9 @@ def _setup_change_in_worktree(
     # Populate conventions summary from digest
     if digest_dir:
         ctx.conventions_summary = _format_conventions_summary(digest_dir)
+
+    # Detect i18n sidecar pattern
+    ctx.i18n_sidecar_instructions = _detect_i18n_sidecar(wt_path, change_name)
 
     # Write input.md — dispatcher context for the agent (separate from proposal.md)
     input_md_path = os.path.join(change_dir, "input.md")
