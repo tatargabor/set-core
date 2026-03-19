@@ -1337,8 +1337,18 @@ main() {
                     fi
 
                     if $integrity_ok; then
-                        git commit --no-edit 2>/dev/null
-                        merge_result=$?
+                        # Post-LLM sanity: check no conflict markers remain in resolved files
+                        local marker_files
+                        marker_files=$(grep -rl '<<<<<<< ' --include='*.ts' --include='*.tsx' --include='*.json' --include='*.css' --include='*.md' --include='*.mjs' --include='*.js' --include='*.prisma' . 2>/dev/null | grep -v node_modules || true)
+                        if [[ -n "$marker_files" ]]; then
+                            warn "LLM left conflict markers in: $marker_files"
+                            error "Aborting merge — conflict markers remain after LLM resolution"
+                            git reset --merge 2>/dev/null || git checkout -- . 2>/dev/null || true
+                            merge_result=1
+                        else
+                            git commit --no-edit 2>/dev/null
+                            merge_result=$?
+                        fi
                     else
                         # Abort the uncommitted merge
                         error "Integrity checks failed — aborting merge"
