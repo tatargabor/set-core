@@ -26,7 +26,9 @@ export default function GateDetail({ change }: Props) {
     { name: 'test', label: 'Test', result: change.test_result, output: change.test_output, ms: change.gate_test_ms },
     { name: 'review', label: 'Review', result: change.review_result, output: change.review_output, ms: change.gate_review_ms },
     { name: 'smoke', label: 'Smoke', result: change.smoke_result, output: change.smoke_output, ms: change.gate_verify_ms },
-    { name: 'spec_coverage', label: 'Spec Coverage', result: change.spec_coverage_result === 'timeout' ? 'fail' : change.spec_coverage_result },
+    { name: 'spec_coverage', label: 'Spec Coverage',
+      result: change.spec_coverage_result === 'timeout' ? 'skip' : change.spec_coverage_result,
+      output: change.spec_coverage_result === 'timeout' ? 'Spec coverage check timed out (non-blocking)' : undefined },
   ].filter(g => g.result)
 
   // Auto-expand first failing gate, or none
