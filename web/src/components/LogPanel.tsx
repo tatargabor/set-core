@@ -262,6 +262,11 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
     return <div className="h-full">{sessionPane}</div>
   }
 
+  // Desktop: if no orch lines, show session pane full width
+  if (orchLines.length === 0) {
+    return <div className="h-full">{sessionPane}</div>
+  }
+
   // Desktop: split view — orch left, session right
   return (
     <div ref={containerRef} className="h-full flex" style={{ userSelect: dragging ? 'none' : undefined }}>
