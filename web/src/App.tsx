@@ -135,7 +135,7 @@ function ProjectLayout() {
 
   // Navigate to change on dashboard when clicking sidebar changes
   const navigate = useCallback((name: string) => {
-    window.dispatchEvent(new CustomEvent('wt-select-change', { detail: name }))
+    window.dispatchEvent(new CustomEvent('set-select-change', { detail: name }))
     setSidebarOpen(false)
   }, [])
 
@@ -176,7 +176,7 @@ function ProjectLayout() {
         md:relative md:translate-x-0 md:w-56 md:transition-none
       `}>
         <Link to="/wt" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
-          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">wt-tools</h1>
+          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
         </Link>
         <div className="p-3">
           <ProjectSelector
@@ -253,7 +253,7 @@ function HomeLayout() {
     <div className="flex h-screen bg-neutral-950 text-neutral-200">
       <aside className="hidden md:flex w-56 shrink-0 border-r border-neutral-800 flex-col">
         <div className="p-4 border-b border-neutral-800">
-          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">wt-tools</h1>
+          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
         </div>
       </aside>
       <main className="flex-1 overflow-auto">

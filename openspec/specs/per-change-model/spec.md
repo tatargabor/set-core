@@ -50,11 +50,11 @@ The heuristic SHALL map: S-complexity changes with `change_type` in `["cleanup-b
 - **THEN** the effective model SHALL be `"opus"`
 
 ### Requirement: Dispatch and resume use effective model
-`dispatch_change()` and `resume_change()` SHALL pass the resolved effective model to `wt-loop start` via the `--model` flag instead of hardcoding `opus`.
+`dispatch_change()` and `resume_change()` SHALL pass the resolved effective model to `set-loop start` via the `--model` flag instead of hardcoding `opus`.
 
 #### Scenario: Dispatch with per-change sonnet
 - **WHEN** dispatching a change with effective model `"sonnet"`
-- **THEN** `wt-loop start` SHALL be called with `--model sonnet`
+- **THEN** `set-loop start` SHALL be called with `--model sonnet`
 
 #### Scenario: Resume preserves model
 - **WHEN** resuming a change (retry after verify failure)

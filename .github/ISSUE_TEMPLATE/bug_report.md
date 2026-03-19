@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug in wt-tools
+about: Report a bug in set-core
 title: "[Bug] "
 labels: bug
 assignees: ''
@@ -28,7 +28,7 @@ What actually happened.
 
 - **OS**: [e.g., Ubuntu 22.04, macOS 14.0, Windows 11]
 - **Python Version**: [e.g., 3.12.0]
-- **wt-tools Version**: [e.g., 1.0.0]
+- **set-core Version**: [e.g., 1.0.0]
 - **Claude Code Version**: [e.g., 1.0.0]
 
 ## Additional Context

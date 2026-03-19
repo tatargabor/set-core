@@ -43,7 +43,7 @@ These fixes worked: Category A dropped from ~83% to 45% (probes no longer leakin
 
 ### Root Cause: Zero Memory Saves
 
-Post-mortem transcript analysis reveals **zero `wt-memory remember` calls** across all 5 Mode B sessions:
+Post-mortem transcript analysis reveals **zero `set-memory remember` calls** across all 5 Mode B sessions:
 
 | Session | `recall` calls | `remember` calls | Memories saved |
 |---------|---------------|-------------------|----------------|
@@ -53,7 +53,7 @@ Post-mortem transcript analysis reveals **zero `wt-memory remember` calls** acro
 | C04     | 3             | 0                 | 0              |
 | C05     | 3             | 0                 | 0              |
 
-*C01 has 1 `wt-memory` mention (likely recall from CLAUDE.md step 1)
+*C01 has 1 `set-memory` mention (likely recall from CLAUDE.md step 1)
 
 The agent followed CLAUDE.md steps 1-7 (recall, read, implement, test) but never reached step 8 (save). With `--max-turns 25`, all turns were consumed by implementation and test-fix loops.
 
@@ -61,7 +61,7 @@ The agent followed CLAUDE.md steps 1-7 (recall, read, implement, test) but never
 
 1. **Run prompt omission**: The `run.sh` prompt says "Implement... fix failures... Do not proceed." It doesn't mention saving. The agent follows the prompt, not the CLAUDE.md step 8.
 2. **Turn budget exhaustion**: 25 max-turns is barely enough for implementation. The agent has no turns left for saving after fixing test failures.
-3. **Save hook mismatch**: `wt-hook-memory-save` only extracts from openspec design.md files or opsx-skill transcripts. The benchmark uses neither.
+3. **Save hook mismatch**: `set-hook-memory-save` only extracts from openspec design.md files or opsx-skill transcripts. The benchmark uses neither.
 4. **Passive save instruction**: CLAUDE.md step 8 says "save important patterns" but the run.sh prompt doesn't reinforce this. The agent treats saving as optional.
 
 ### Fixes for SYN-04

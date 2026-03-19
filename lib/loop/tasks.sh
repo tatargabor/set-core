@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wt-loop task detection: find tasks, check completion, manual tasks, done criteria
+# set-loop task detection: find tasks, check completion, manual tasks, done criteria
 # Dependencies: lib/loop/state.sh must be sourced first
 
 # Find tasks.md generically in a worktree (no openspec-specific paths)

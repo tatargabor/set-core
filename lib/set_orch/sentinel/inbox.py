@@ -1,6 +1,6 @@
 """Lightweight inbox for sentinel — local file-based, no git operations.
 
-Messages are written to the shared sentinel directory by wt-web or MCP tools.
+Messages are written to the shared sentinel directory by set-web or MCP tools.
 The sentinel reads and processes them during its poll loop.
 """
 
@@ -73,7 +73,7 @@ def check_inbox(project_path: str) -> list[dict]:
 def write_to_inbox(project_path: str, sender: str, content: str) -> dict:
     """Write a message to the sentinel's inbox.
 
-    Used by wt-web backend to send messages to the sentinel.
+    Used by set-web backend to send messages to the sentinel.
     """
     sentinel_dir = ensure_set_dir(project_path)
     ipath = os.path.join(sentinel_dir, INBOX_FILE)

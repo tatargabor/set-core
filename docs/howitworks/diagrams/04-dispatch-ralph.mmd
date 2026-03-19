@@ -6,11 +6,11 @@ sequenceDiagram
     participant R as Ralph Loop
     participant C as Claude Agent
 
-    O->>G: git worktree add (wt-new)
+    O->>G: git worktree add (set-new)
     G-->>W: change/feature-name branch
     O->>W: bootstrap (.env, deps)
     O->>W: sync with main
-    O->>R: wt-loop start (PID mentés)
+    O->>R: set-loop start (PID mentés)
 
     loop Ralph iteráció
         R->>C: Claude Code session indítás

@@ -5,7 +5,7 @@ set-core - Git worktree management tools with Control Center GUI.
 Manages multiple worktrees for parallel AI agent development.
 
 ## Tech Stack
-- Bash scripts (bin/wt-*)
+- Bash scripts (bin/set-*)
 - Python 3 with PySide6 for GUI (gui/main.py)
 - OpenSpec for spec-driven development
 
@@ -17,7 +17,7 @@ Manages multiple worktrees for parallel AI agent development.
 
 ### Architecture Patterns
 - CLI tools in `bin/` directory, symlinked to PATH via install.sh
-- Common functions in `bin/wt-common.sh`
+- Common functions in `bin/set-common.sh`
 - GUI is a single-file PySide6 application
 
 ### Testing Strategy
@@ -29,7 +29,7 @@ Manages multiple worktrees for parallel AI agent development.
 - `_MenuCapture` pattern for QMenu.exec() interception (PySide6 C++ slot)
 - Screenshots on failure saved to `test-results/screenshots/`
 - New GUI feature = new test file: `tests/gui/test_XX_<feature>.py`
-- Debug logging to `/tmp/wt-*.log` when needed
+- Debug logging to `/tmp/set-*.log` when needed
 
 ### Git Workflow
 - Branch naming: `change/<change-id>`
@@ -62,7 +62,7 @@ ps aux | grep -E "python.*gui" | grep -v grep
 
 ### Check GUI Log
 ```bash
-cat /tmp/wt-gui.log
+cat /tmp/set-gui.log
 ```
 
 ## Domain Context
@@ -76,7 +76,7 @@ cat /tmp/wt-gui.log
 - **Cursor** - VS Code fork with Claude Code VSIX support
 - **Windsurf** - Cascade AI with Claude API support
 
-Configure with: `wt-config editor set <name>` or `wt-config editor list`
+Configure with: `set-config editor set <name>` or `set-config editor list`
 
 ## Important Constraints
 - Linux primary (uses xdotool, /proc filesystem for window focus)

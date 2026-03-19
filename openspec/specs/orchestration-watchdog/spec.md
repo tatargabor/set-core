@@ -5,14 +5,14 @@ The watchdog SHALL use `set-orch-core process check-pid` with cmdline pattern ve
 
 #### Scenario: Hash loop detection with PID identity check
 - **WHEN** the watchdog detects consecutive identical action hashes and checks if the Ralph PID is alive
-- **THEN** it calls `set-orch-core process check-pid --pid $ralph_pid --expect-cmd "wt-loop"` instead of `kill -0 $ralph_pid`
+- **THEN** it calls `set-orch-core process check-pid --pid $ralph_pid --expect-cmd "set-loop"` instead of `kill -0 $ralph_pid`
 
 #### Scenario: Timeout detection with PID identity check
 - **WHEN** the watchdog detects no activity for the timeout threshold and checks PID liveness
-- **THEN** it calls `set-orch-core process check-pid --pid $ralph_pid --expect-cmd "wt-loop"` to distinguish a long-running iteration from a dead/recycled process
+- **THEN** it calls `set-orch-core process check-pid --pid $ralph_pid --expect-cmd "set-loop"` to distinguish a long-running iteration from a dead/recycled process
 
 #### Scenario: Recycled PID detected as dead
-- **WHEN** the original wt-loop process died and the OS assigned the same PID to an unrelated process
+- **WHEN** the original set-loop process died and the OS assigned the same PID to an unrelated process
 - **THEN** `check-pid` returns false (cmdline mismatch) and the watchdog escalates correctly instead of skipping escalation
 
 ### Requirement: Watchdog escalation uses safe-kill

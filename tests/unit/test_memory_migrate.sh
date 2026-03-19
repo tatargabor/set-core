@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/helpers.sh"
 
 # Source dependencies
-source "$SCRIPT_DIR/../../bin/wt-common.sh"
+source "$SCRIPT_DIR/../../bin/set-common.sh"
 _wt_memory_bin_dir="$SCRIPT_DIR/../../bin"
 source "$_wt_memory_bin_dir/../lib/memory/migrate.sh"
 

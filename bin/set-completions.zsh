@@ -1,15 +1,15 @@
 #compdef set-work set-close set-merge set-new set-list set-project set-jira
-# Zsh completions for wt-* commands
+# Zsh completions for set-* commands
 
 # Get list of active worktree change-ids
-_wt_get_worktrees() {
+_set_get_worktrees() {
     local worktrees
     worktrees=(${(f)"$(set-list 2>/dev/null | grep -E '^\s+\w' | awk '{print $1}')"})
     echo "${worktrees[@]}"
 }
 
 # Get list of remote change branches
-_wt_get_remote_branches() {
+_set_get_remote_branches() {
     git fetch -q 2>/dev/null
     local branches
     branches=(${(f)"$(git branch -r 2>/dev/null | grep 'origin/change/' | sed 's|.*origin/change/||')"})
@@ -18,8 +18,8 @@ _wt_get_remote_branches() {
 
 _set-work() {
     local -a worktrees remotes
-    worktrees=(${(f)"$(_wt_get_worktrees)"})
-    remotes=(${(f)"$(_wt_get_remote_branches)"})
+    worktrees=(${(f)"$(_set_get_worktrees)"})
+    remotes=(${(f)"$(_set_get_remote_branches)"})
 
     _arguments \
         '1:change-id:(${worktrees} ${remotes})' \
@@ -29,7 +29,7 @@ _set-work() {
 
 _set-close() {
     local -a worktrees
-    worktrees=(${(f)"$(_wt_get_worktrees)"})
+    worktrees=(${(f)"$(_set_get_worktrees)"})
 
     _arguments \
         '1:change-id:(${worktrees})' \
@@ -41,7 +41,7 @@ _set-close() {
 
 _set-merge() {
     local -a worktrees
-    worktrees=(${(f)"$(_wt_get_worktrees)"})
+    worktrees=(${(f)"$(_set_get_worktrees)"})
 
     _arguments \
         '1:change-id:(${worktrees})' \

@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
-### Requirement: wt-loop accepts --change flag
-The `wt-loop start` command SHALL accept an optional `--change <name>` CLI flag that specifies which OpenSpec change the loop is scoped to. The value SHALL be stored in `loop-state.json` under the `change` key.
+### Requirement: set-loop accepts --change flag
+The `set-loop start` command SHALL accept an optional `--change <name>` CLI flag that specifies which OpenSpec change the loop is scoped to. The value SHALL be stored in `loop-state.json` under the `change` key.
 
 #### Scenario: Start with explicit change
-- **WHEN** user runs `wt-loop start "task description" --change my-change --done openspec`
+- **WHEN** user runs `set-loop start "task description" --change my-change --done openspec`
 - **THEN** `loop-state.json` SHALL contain `"change": "my-change"`
 
 #### Scenario: Start without change flag
-- **WHEN** user runs `wt-loop start "task description" --done openspec`
+- **WHEN** user runs `set-loop start "task description" --done openspec`
 - **THEN** `loop-state.json` SHALL contain `"change": null` or the key SHALL be absent
 
 ### Requirement: Scoped detection when change is specified
@@ -40,8 +40,8 @@ When `--change` is NOT set, `detect_next_change_action()` SHALL NOT run. The `bu
 - **THEN** the done-check in `check_done_criteria()` SHALL still evaluate OpenSpec completion by scanning all changes (existing behavior preserved for exit-condition only)
 
 ### Requirement: Orchestrator passes change name
-The `dispatch_change()` function in `set-orchestrate` SHALL pass `--change "$change_name"` to the `wt-loop start` invocation.
+The `dispatch_change()` function in `set-orchestrate` SHALL pass `--change "$change_name"` to the `set-loop start` invocation.
 
 #### Scenario: Orchestrator dispatch
 - **WHEN** the orchestrator dispatches change `smoke-config` to a worktree
-- **THEN** the `wt-loop start` command SHALL include `--change smoke-config`
+- **THEN** the `set-loop start` command SHALL include `--change smoke-config`

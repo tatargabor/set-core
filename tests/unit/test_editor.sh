@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/helpers.sh"
 
-# Source dependencies (wt-common.sh provides PLATFORM, CONFIG_DIR, etc.)
-source "$SCRIPT_DIR/../../bin/wt-common.sh"
+# Source dependencies (set-common.sh provides PLATFORM, CONFIG_DIR, etc.)
+source "$SCRIPT_DIR/../../bin/set-common.sh"
 
 test_supported_editors_defined() {
     assert_contains "${SUPPORTED_EDITORS[*]}" "zed:zed:ide" "has zed"

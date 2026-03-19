@@ -2,7 +2,7 @@
 After a successful merge to main, the orchestrator SHALL verify that the main branch still builds correctly.
 
 #### Scenario: Build verification after merge
-- **WHEN** `merge_change()` succeeds via `wt-merge`
+- **WHEN** `merge_change()` succeeds via `set-merge`
 - **AND** a test_command or build script exists
 - **THEN** the orchestrator SHALL run the build command on the main worktree
 - **AND** log the result (pass/fail)
@@ -29,7 +29,7 @@ After a successful merge, the orchestrator SHALL install dependencies if package
 
 #### Scenario: Pre-merge SHA available
 - **WHEN** `merge_change()` is called
-- **THEN** the merger SHALL capture `git rev-parse HEAD` before running `wt-merge`
+- **THEN** the merger SHALL capture `git rev-parse HEAD` before running `set-merge`
 - **AND** pass this SHA to `_post_merge_deps_install()` as `pre_merge_sha`
 
 #### Scenario: Pre-merge SHA not available (fallback)

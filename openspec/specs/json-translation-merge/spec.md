@@ -1,11 +1,11 @@
 # JSON Translation Merge
 
-Programmatic deep-merge for JSON files during wt-merge, resolving additive conflicts without LLM involvement.
+Programmatic deep-merge for JSON files during set-merge, resolving additive conflicts without LLM involvement.
 
 ## Requirements
 
 ### Requirement: Programmatic JSON file conflict resolution
-wt-merge SHALL automatically resolve merge conflicts in `.json` files using jq deep-merge before falling back to LLM resolution.
+set-merge SHALL automatically resolve merge conflicts in `.json` files using jq deep-merge before falling back to LLM resolution.
 
 #### Scenario: JSON files among conflicted files
 - **WHEN** `git merge` fails with conflicts

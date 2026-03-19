@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# wt-memory maintenance: stats, cleanup, audit, dedup, verify, consolidation, graph_stats, flush, status, projects
-# Dependencies: sourced by bin/wt-memory after infra + core setup
+# set-memory maintenance: stats, cleanup, audit, dedup, verify, consolidation, graph_stats, flush, status, projects
+# Dependencies: sourced by bin/set-memory after infra + core setup
 
 cmd_stats() {
     local json_mode=false
@@ -87,7 +87,7 @@ else:
 }
 
 # RocksDB LOG.old cleanup — remove accumulated LOG.old files
-# Usage: wt-memory cleanup-logs
+# Usage: set-memory cleanup-logs
 cmd_cleanup_logs() {
     local storage_path
     storage_path=$(get_storage_path) || return 0
@@ -117,7 +117,7 @@ cmd_cleanup_logs() {
 }
 
 # Memory cleanup — remove low-value and garbage memories
-# Usage: wt-memory cleanup [--threshold F] [--min-length N] [--dry-run]
+# Usage: set-memory cleanup [--threshold F] [--min-length N] [--dry-run]
 cmd_cleanup() {
     local threshold=0.2
     local min_length=20
@@ -380,7 +380,7 @@ print(json.dumps({"deleted_count": deleted_count, "merged_count": merged_count})
 '
 
 # Memory audit — report duplicate clusters and memory health
-# Usage: wt-memory audit [--threshold F] [--json]
+# Usage: set-memory audit [--threshold F] [--json]
 cmd_audit() {
     local threshold=0.75
     local json_mode=false
@@ -447,7 +447,7 @@ else:
     print('No duplicates found.')
 if d['redundant'] > 0:
     print()
-    print('Run \`wt-memory dedup --dry-run\` to preview cleanup.')
+    print('Run \`set-memory dedup --dry-run\` to preview cleanup.')
 "
     fi
 
@@ -455,7 +455,7 @@ if d['redundant'] > 0:
 }
 
 # Memory dedup — remove duplicate memories
-# Usage: wt-memory dedup [--threshold F] [--dry-run] [--interactive]
+# Usage: set-memory dedup [--threshold F] [--dry-run] [--interactive]
 cmd_dedup() {
     local threshold=0.75
     local dry_run=false
@@ -523,7 +523,7 @@ try:
     print(json.dumps(result, default=str))
     if not result.get('is_healthy', True):
         import sys as _sys
-        print('Hint: run \"wt-memory repair\" to fix orphaned memories', file=_sys.stderr)
+        print('Hint: run \"set-memory repair\" to fix orphaned memories', file=_sys.stderr)
 except AttributeError:
     print(json.dumps({'error': 'verify_index not available — upgrade shodh-memory to >=0.1.81'}))
 " || echo "{}"
@@ -532,7 +532,7 @@ except AttributeError:
 }
 
 # Repair index integrity — re-index orphaned memories
-# Usage: wt-memory repair
+# Usage: set-memory repair
 cmd_repair() {
     if ! cmd_health >/dev/null 2>&1; then
         echo '{"repaired": false, "error": "shodh-memory not available"}'
@@ -560,7 +560,7 @@ except AttributeError:
 }
 
 # Show consolidation report — memory strengthening/decay events
-# Usage: wt-memory consolidation [--since ISO] [--events]
+# Usage: set-memory consolidation [--since ISO] [--events]
 cmd_consolidation() {
     if ! cmd_health >/dev/null 2>&1; then
         echo "{}"
@@ -608,7 +608,7 @@ except AttributeError:
 }
 
 # Knowledge graph statistics
-# Usage: wt-memory graph-stats
+# Usage: set-memory graph-stats
 cmd_graph_stats() {
     if ! cmd_health >/dev/null 2>&1; then
         echo "{}"
@@ -635,7 +635,7 @@ except AttributeError:
 }
 
 # Flush pending writes to disk
-# Usage: wt-memory flush
+# Usage: set-memory flush
 cmd_flush() {
     if ! cmd_health >/dev/null 2>&1; then
         echo '{"flushed": false}'

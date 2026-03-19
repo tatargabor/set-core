@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ## IN SCOPE
-- New "Sentinel" tab in wt-web Dashboard
+- New "Sentinel" tab in set-web Dashboard
 - Event stream display (scrolling, color-coded by event type)
 - Findings panel with severity badges and status
 - Assessment section showing phase/run-level summaries
@@ -13,11 +13,11 @@
 ## OUT OF SCOPE
 - WebSocket streaming for sentinel events (1s REST polling is sufficient)
 - Voice input for sentinel messages (existing voice input is for Agent tab only)
-- Sentinel process management from wt-web (start/stop/restart — sentinel runs in terminal)
+- Sentinel process management from set-web (start/stop/restart — sentinel runs in terminal)
 - Historical run browsing (only current run shown; archived runs accessed via filesystem)
 
 ### Requirement: Sentinel tab in Dashboard
-The wt-web Dashboard SHALL include a "Sentinel" tab that displays sentinel event stream, findings, and allows message sending.
+The set-web Dashboard SHALL include a "Sentinel" tab that displays sentinel event stream, findings, and allows message sending.
 
 #### Scenario: Tab visible when sentinel data exists
 - **WHEN** the user opens the Dashboard and `.wt/sentinel/status.json` exists
@@ -65,7 +65,7 @@ The Sentinel tab SHALL provide an input field for sending messages to the sentin
 - **THEN** the message input SHALL be disabled with placeholder "Sentinel not running"
 
 ### Requirement: REST API endpoints
-The wt-web backend SHALL provide REST endpoints for sentinel data.
+The set-web backend SHALL provide REST endpoints for sentinel data.
 
 #### Scenario: GET events with since filter
 - **WHEN** `GET /api/{project}/sentinel/events?since={ISO-timestamp}` is called

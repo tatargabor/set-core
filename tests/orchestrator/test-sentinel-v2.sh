@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 TESTS_RUN=0
 TESTS_PASSED=0
@@ -52,11 +52,11 @@ assert_contains() {
 }
 
 # ============================================================
-# Setup: source wt-orchestrate functions
+# Setup: source set-orchestrate functions
 # ============================================================
 
 TEST_DIR="$SCRIPT_DIR"
-eval "$(sed '/^main "\$@"/d; /^SCRIPT_DIR=/s|=.*|="'"$PROJECT_DIR/bin"'"|' "$PROJECT_DIR/bin/wt-orchestrate")"
+eval "$(sed '/^main "\$@"/d; /^SCRIPT_DIR=/s|=.*|="'"$PROJECT_DIR/bin"'"|' "$PROJECT_DIR/bin/set-orchestrate")"
 
 # Create temp dir for test artifacts
 TMPDIR_TEST=$(mktemp -d)
@@ -426,8 +426,8 @@ EVENTS_LOG_FILE="$OLD_EVENTS"
 # ============================================================
 
 # Source sentinel functions by extracting just the functions we need
-eval "$(sed -n '/^is_transient_failure/,/^}/p' "$PROJECT_DIR/bin/wt-sentinel")"
-eval "$(sed -n '/^calculate_backoff/,/^}/p' "$PROJECT_DIR/bin/wt-sentinel")"
+eval "$(sed -n '/^is_transient_failure/,/^}/p' "$PROJECT_DIR/bin/set-sentinel")"
+eval "$(sed -n '/^calculate_backoff/,/^}/p' "$PROJECT_DIR/bin/set-sentinel")"
 
 test_start "is_transient_failure: crash is transient"
 if is_transient_failure 1 "running"; then
@@ -474,14 +474,14 @@ else
 fi
 
 # ============================================================
-# Test: wt-project version tracking (15.10)
+# Test: set-project version tracking (15.10)
 # ============================================================
 
-test_start "wt-project _get_wt_tools_version returns non-empty"
+test_start "set-project _get_set_tools_version returns non-empty"
 # Extract just the version function without executing the main script
-eval "$(sed -n '/^_get_wt_tools_version()/,/^}/p' "$PROJECT_DIR/bin/wt-project")"
+eval "$(sed -n '/^_get_set_tools_version()/,/^}/p' "$PROJECT_DIR/bin/set-project")"
 WT_TOOLS_ROOT="$PROJECT_DIR"
-version=$(_get_wt_tools_version)
+version=$(_get_set_tools_version)
 if [[ -n "$version" && "$version" != "unknown" ]]; then
     test_pass
 else

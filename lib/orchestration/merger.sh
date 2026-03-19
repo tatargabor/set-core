@@ -2,7 +2,7 @@
 # lib/orchestration/merger.sh — Merge, cleanup, archive operations
 #
 # The merge pipeline (merge_change, retry_merge_queue, smoke tests) runs in
-# Python via lib/wt_orch/merger.py, called from the Python monitor loop.
+# Python via lib/set_orch/merger.py, called from the Python monitor loop.
 #
 # This file retains thin bash wrappers used by other bash code:
 # - archive_change() — delegated to Python
@@ -12,9 +12,9 @@
 # ─── Archive (delegated to Python) ──────────────────────────────────
 
 archive_change() {
-    # Migrated to: wt_orch/merger.py archive_change()
+    # Migrated to: set_orch/merger.py archive_change()
     local change_name="$1"
-    wt-orch-core merge archive --change "$change_name" 2>/dev/null || {
+    set-orch-core merge archive --change "$change_name" 2>/dev/null || {
         log_warn "Failed to archive $change_name (non-blocking)"
     }
 }
@@ -44,13 +44,13 @@ cleanup_worktree() {
         _archive_worktree_logs "$change_name" "$wt_path"
     fi
 
-    # Try wt-close first (handles both worktree removal and branch deletion)
-    if wt-close "$change_name" 2>/dev/null; then
+    # Try set-close first (handles both worktree removal and branch deletion)
+    if set-close "$change_name" 2>/dev/null; then
         log_info "Cleaned up worktree for $change_name"
         return 0
     fi
 
-    # Fallback: manual cleanup if wt-close fails
+    # Fallback: manual cleanup if set-close fails
     if [[ -n "$wt_path" && -d "$wt_path" ]]; then
         git worktree remove "$wt_path" --force 2>/dev/null || true
         log_info "Force-removed worktree $wt_path"
@@ -64,8 +64,8 @@ cleanup_worktree() {
 }
 
 cleanup_all_worktrees() {
-    # Migrated to: wt_orch/merger.py cleanup_all_worktrees()
-    wt-orch-core merge cleanup-all --state "$STATE_FILENAME" 2>/dev/null || {
+    # Migrated to: set_orch/merger.py cleanup_all_worktrees()
+    set-orch-core merge cleanup-all --state "$STATE_FILENAME" 2>/dev/null || {
         # Fallback: inline cleanup for backward compat
         log_info "Cleaning up worktrees for merged/done changes..."
         local cleaned=0

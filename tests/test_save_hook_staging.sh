@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test_save_hook_staging.sh — Integration tests for wt-hook-memory-save staging pattern
+# test_save_hook_staging.sh — Integration tests for set-hook-memory-save staging pattern
 #
 # Tests the staging, debounce, and commit logic without real API calls.
-# Mocks: wt-memory (records calls), claude CLI (returns canned output)
+# Mocks: set-memory (records calls), claude CLI (returns canned output)
 #
 # Usage: bash tests/test_save_hook_staging.sh
 
@@ -15,7 +15,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-HOOK="$PROJECT_ROOT/bin/wt-hook-memory-save"
+HOOK="$PROJECT_ROOT/bin/set-hook-memory-save"
 
 # Create isolated test environment
 TEST_DIR=$(mktemp -d)
@@ -30,13 +30,13 @@ mkdir -p "$WORK_DIR/openspec/changes"
 MOCK_BIN="$TEST_DIR/mock-bin"
 mkdir -p "$MOCK_BIN"
 
-# Log where mock wt-memory records its calls
-MEMORY_LOG="$TEST_DIR/wt-memory-calls.log"
+# Log where mock set-memory records its calls
+MEMORY_LOG="$TEST_DIR/set-memory-calls.log"
 
-# --- Mock: wt-memory ---
-cat > "$MOCK_BIN/wt-memory" << 'MOCK_EOF'
+# --- Mock: set-memory ---
+cat > "$MOCK_BIN/set-memory" << 'MOCK_EOF'
 #!/usr/bin/env bash
-# Mock wt-memory: records calls, always succeeds
+# Mock set-memory: records calls, always succeeds
 LOG_FILE="${WTM_TEST_MEMORY_LOG:-/dev/null}"
 if [[ "$1" == "health" ]]; then
     echo "ok"
@@ -58,7 +58,7 @@ if [[ "$1" == "list" ]]; then
 fi
 exit 0
 MOCK_EOF
-chmod +x "$MOCK_BIN/wt-memory"
+chmod +x "$MOCK_BIN/set-memory"
 
 # --- Mock: claude CLI ---
 # Returns canned extraction output
@@ -218,7 +218,7 @@ echo "=== Save Hook Staging Tests ==="
 echo ""
 
 # ----------------------------------------------------------
-echo "## Test 4.2: First extraction creates staged file, no wt-memory remember calls"
+echo "## Test 4.2: First extraction creates staged file, no set-memory remember calls"
 # ----------------------------------------------------------
 
 # Clean state
@@ -242,11 +242,11 @@ assert_file_contains "$WORK_DIR/.set-core/.staged-extract-session-1" "Learning|e
 assert_file_contains "$WORK_DIR/.set-core/.staged-extract-session-1" "#CHANGE:" \
     "Staged file has change name header"
 
-# Check NO wt-memory remember calls were made
+# Check NO set-memory remember calls were made
 if [[ ! -f "$MEMORY_LOG" ]] || ! grep -q "^remember|" "$MEMORY_LOG" 2>/dev/null; then
-    pass "No wt-memory remember calls during extraction"
+    pass "No set-memory remember calls during extraction"
 else
-    fail "No wt-memory remember calls during extraction" "$(cat "$MEMORY_LOG")"
+    fail "No set-memory remember calls during extraction" "$(cat "$MEMORY_LOG")"
 fi
 
 echo ""
@@ -296,14 +296,14 @@ assert_file_not_exists "$WORK_DIR/.set-core/.staged-extract-session-1.ts" \
 assert_file_exists "$WORK_DIR/.set-core/.staged-extract-session-2" \
     "New staged file created for session-2"
 
-# Check wt-memory remember was called for session-1's content
+# Check set-memory remember was called for session-1's content
 if [[ -f "$MEMORY_LOG" ]] && grep -q "remember|" "$MEMORY_LOG" 2>/dev/null; then
-    pass "wt-memory remember called for committed content"
+    pass "set-memory remember called for committed content"
     # Check the content matches session-1's extraction
     assert_file_contains "$MEMORY_LOG" "Cache invalidation" \
         "Committed content matches session-1's staged extraction"
 else
-    fail "wt-memory remember called for committed content" "No remember calls found"
+    fail "set-memory remember called for committed content" "No remember calls found"
 fi
 
 echo ""

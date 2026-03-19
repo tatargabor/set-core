@@ -1,7 +1,7 @@
 # save-hook-staging Specification
 
 ## Purpose
-Staging and debounce mechanism for wt-hook-memory-save transcript extraction, preventing duplicate memories by writing to staging files and committing on session switch.
+Staging and debounce mechanism for set-hook-memory-save transcript extraction, preventing duplicate memories by writing to staging files and committing on session switch.
 
 ## Removed
 

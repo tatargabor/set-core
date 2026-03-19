@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/orchestration/reporter.sh — HTML report generator for orchestration dashboard
-# Sourced by bin/wt-orchestrate after digest.sh.
+# Sourced by bin/set-orchestrate after digest.sh.
 # Provides: generate_report()
 #
 # Migrated to: lib/wt_orch/reporter.py + lib/wt_orch/templates/report.html.j2
@@ -12,7 +12,7 @@ REPORT_OUTPUT_PATH="wt/orchestration/report.html"
 
 generate_report() {
     # Migrated to: reporter.py generate_report()
-    wt-orch-core report generate \
+    set-orch-core report generate \
         --state "$STATE_FILENAME" \
         --plan "${PLAN_FILENAME:-orchestration-plan.json}" \
         --digest-dir "$DIGEST_DIR" \

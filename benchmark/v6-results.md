@@ -2,7 +2,7 @@
 
 **Date**: 2026-02-17
 **Benchmark**: CraftBazaar — 12 sequential changes building a multi-vendor marketplace
-**Setup**: Two Claude Code instances (Opus 4.6), `wt-loop --max 30`
+**Setup**: Two Claude Code instances (Opus 4.6), `set-loop --max 30`
 **v6 changes**: 3 new traps (L: responsive, M: pagination UI drift, N: toast drift), C12 expanded to 12 bugs, memory noise fixes (auto_ingest=False, change: tags, convention extraction), lib/ copy fix, ports 4000/4001
 
 ## Overall
@@ -302,12 +302,12 @@ Only 2/12 code maps (product-catalog and multi-vendor) vs 4/12 in v5. The hook s
 
 #### CRITICAL design flaw: Shared memory database
 
-Both runs resolve to the same shodh-memory storage path (`~/.local/share/wt-tools/memory/craftbazaar`) because both projects are named "craftbazaar". Run B wrote 57 memories during the benchmark while Run A was running concurrently.
+Both runs resolve to the same shodh-memory storage path (`~/.local/share/set-core/memory/craftbazaar`) because both projects are named "craftbazaar". Run B wrote 57 memories during the benchmark while Run A was running concurrently.
 
 **However, Run A had no mechanism to read them:**
 - Run A `settings.json`: NO memory hooks (verified via diff)
-- Run A `CLAUDE.md`: NO memory instructions (zero mentions of wt-memory/recall/remember)
-- Run A skills: NO memory hooks (clean versions without `<!-- wt-memory hooks -->` blocks)
+- Run A `CLAUDE.md`: NO memory instructions (zero mentions of set-memory/recall/remember)
+- Run A skills: NO memory hooks (clean versions without `<!-- set-memory hooks -->` blocks)
 - No global `~/.claude/CLAUDE.md` that could inject memory instructions
 
 Triple-layer isolation (`--no-memory` hooks + clean CLAUDE.md + clean skills) prevented contamination despite the shared storage.

@@ -3,7 +3,7 @@
 #
 # Called by Claude Code after every response (Stop event).
 # Refreshes timestamps in per-PID skill files.
-# Exits silently if not in a wt-managed directory or no skill is set.
+# Exits silently if not in a set-managed directory or no skill is set.
 #
 # Designed to be referenced by name in .claude/settings.json:
 #   "command": "set-hook-stop"

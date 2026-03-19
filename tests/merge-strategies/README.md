@@ -1,7 +1,7 @@
 # Merge Strategy Benchmark
 
 Reproducible tests for evaluating git merge conflict resolution strategies
-in the wt-tools orchestration context.
+in the set-core orchestration context.
 
 ## Why This Exists
 
@@ -46,7 +46,7 @@ Each strategy is tested against these canonical conflict scenarios:
 ## Running the Benchmark
 
 ```bash
-cd /home/tg/code2/wt-tools
+cd /home/tg/code2/set-core
 ./tests/merge-strategies/run-benchmark.sh /tmp/minishop-run3
 ```
 
@@ -71,7 +71,7 @@ See latest: `results/latest.md` (symlink).
 ## Integration Plan
 
 Based on benchmark results, winning strategies get integrated into:
-1. `bin/wt-merge` — merge conflict resolution pipeline
+1. `bin/set-merge` — merge conflict resolution pipeline
 2. `tests/e2e/run.sh` — scaffold setup (gitattributes, hooks)
 3. `lib/wt_orch/dispatcher.py` — bootstrap_worktree() post-merge hooks
-4. `wt-project init` (wt-project-base) — project-level gitattributes
+4. `set-project init` (set-project-base) — project-level gitattributes

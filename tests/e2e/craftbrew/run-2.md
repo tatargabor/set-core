@@ -1,7 +1,7 @@
 # CraftBrew Run #2 — 2026-03-17
 
 **Project dir**: `/tmp/craftbrew-run2`
-**wt-tools commit**: `ea54fe779` (post-run17 fixes)
+**set-core commit**: `ea54fe779` (post-run17 fixes)
 **Spec**: `docs/` (multi-file directory spec)
 **Config**: max_parallel=2, checkpoint_every=3, smoke=`pnpm build && pnpm test`
 
@@ -24,7 +24,7 @@
 ### 2. State file lost during manual merge cleanup
 - **Type**: framework
 - **Severity**: blocking
-- **Root cause**: `wt-merge i18n-routing-foundation` cleanup step törölte/nem találta az `orchestration-state.json` fájlt. A craftbrew projekt state fájl ugyanoda kerül mint a minishop, de valami miatt a merge cleanup eltávolította.
+- **Root cause**: `set-merge i18n-routing-foundation` cleanup step törölte/nem találta az `orchestration-state.json` fájlt. A craftbrew projekt state fájl ugyanoda kerül mint a minishop, de valami miatt a merge cleanup eltávolította.
 - **Status**: Identified. Recovery nem volt lehetséges, run megszakítva.
 
 ### 3. Context overflow — database-schema 970K (485% of 200K window)
@@ -70,6 +70,6 @@
 
 ### Conclusions
 1. **Bug #37 fix (node_modules)** hatékony lesz Run #18-tól — az orchestrator cache-eli a modult, ezért ez a run még a régi kóddal futott
-2. **State fájl elvesztése** új bug — a `wt-merge` cleanup valami okból törölte. Vizsgálni kell.
+2. **State fájl elvesztése** új bug — a `set-merge` cleanup valami okból törölte. Vizsgálni kell.
 3. **Context overflow** (970K) craftbrew-specifikus app bug — a database-schema change túl komplex, felosztás szükséges lehet
 4. **Craftbrew Run #3** előtt: state-fájl törlés bugot javítani kell

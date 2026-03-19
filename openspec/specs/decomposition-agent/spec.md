@@ -7,7 +7,7 @@ The orchestrator SHALL support an agent-based planning method alongside the exis
 #### Scenario: Agent-based decomposition with plan_method directive
 - **WHEN** `plan_method: agent` is set in orchestration config
 - **AND** `set-orchestrate plan --spec <path>` is invoked
-- **THEN** a planning worktree named `wt-planning-v{N}` SHALL be created
+- **THEN** a planning worktree named `set-planning-v{N}` SHALL be created
 - **AND** a Ralph loop SHALL be dispatched with the decomposition skill as task description
 - **AND** the orchestrator SHALL wait for the Ralph loop to complete
 - **AND** the resulting `orchestration-plan.json` SHALL be copied from the planning worktree to the project root
@@ -47,7 +47,7 @@ The planning worktree SHALL follow a defined lifecycle managed by the orchestrat
 
 #### Scenario: Planning worktree creation
 - **WHEN** agent-based planning is triggered
-- **THEN** a worktree SHALL be created via `wt-new wt-planning-v{N}`
+- **THEN** a worktree SHALL be created via `set-new set-planning-v{N}`
 - **AND** the spec file SHALL be accessible in the worktree (via git)
 - **AND** orchestration context (config, knowledge, requirements) SHALL be available
 
@@ -59,4 +59,4 @@ The planning worktree SHALL follow a defined lifecycle managed by the orchestrat
 #### Scenario: Planning worktree cleanup
 - **WHEN** the planning Ralph loop completes successfully
 - **AND** `orchestration-plan.json` has been extracted and validated
-- **THEN** the planning worktree SHALL be removed via `wt-close`
+- **THEN** the planning worktree SHALL be removed via `set-close`

@@ -1148,7 +1148,7 @@ plan_method: agent
 
 ### How it works
 
-1. Orchestrator creates a planning worktree (`wt-planning-v{N}`)
+1. Orchestrator creates a planning worktree (`set-planning-v{N}`)
 2. A Ralph loop runs with the `/set:decompose` skill
 3. The planning agent reads the spec, explores the codebase (via Agent tool sub-agents), recalls relevant memories, and generates `orchestration-plan.json`
 4. The plan is validated and extracted; the planning worktree is cleaned up

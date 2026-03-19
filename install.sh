@@ -405,7 +405,7 @@ install_completions() {
     mkdir -p "$zsh_completion_dir"
 
     if [[ -f "$SCRIPT_DIR/bin/set-completions.zsh" ]]; then
-        ln -sf "$SCRIPT_DIR/bin/set-completions.zsh" "$zsh_completion_dir/_wt"
+        ln -sf "$SCRIPT_DIR/bin/set-completions.zsh" "$zsh_completion_dir/_set"
         success "  Zsh completions installed"
         echo "    Add to ~/.zshrc: fpath=(~/.local/share/zsh/site-functions \$fpath)"
     fi
@@ -529,12 +529,12 @@ EOF
     # Generate executable wrapper
     cat > "$macos_dir/set-control" << 'WRAPPER'
 #!/bin/bash
-WT_CONTROL="$HOME/.local/bin/set-control"
-if [[ ! -x "$WT_CONTROL" ]]; then
+SET_CONTROL="$HOME/.local/bin/set-control"
+if [[ ! -x "$SET_CONTROL" ]]; then
     osascript -e 'display dialog "set-core is not installed.\n\nRun install.sh from the set-core directory first." buttons {"OK"} default button "OK" with title "SET Control" with icon stop'
     exit 1
 fi
-exec "$WT_CONTROL" "$@"
+exec "$SET_CONTROL" "$@"
 WRAPPER
     chmod +x "$macos_dir/set-control"
 
@@ -579,11 +579,11 @@ verify_gui_startup() {
 }
 
 # Install Claude Code skills and commands
-# Note: wt commands/skills are deployed per-project by set-project init.
+# Note: set commands/skills are deployed per-project by set-project init.
 # No global symlinks needed — per-project deployment enables version pinning.
 install_skills() {
     info "Claude Code skills and commands..."
-    info "  wt commands/skills deployed per-project via set-project init"
+    info "  set commands/skills deployed per-project via set-project init"
 
     # Clean up legacy global symlinks if present
     local legacy_wt_commands="$HOME/.claude/commands/wt"

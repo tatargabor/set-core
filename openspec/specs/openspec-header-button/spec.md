@@ -26,10 +26,10 @@ The project header context menu SHALL include an "OpenSpec" submenu after the "M
 - **WHEN** user right-clicks a project header where OpenSpec is not installed
 - **THEN** the OpenSpec submenu shows: disabled status line ("Not initialized"), separator, "Initialize OpenSpec..." action (enabled)
 
-#### Scenario: Initialize action runs wt-openspec init
+#### Scenario: Initialize action runs set-openspec init
 - **WHEN** user clicks "Initialize OpenSpec..."
-- **THEN** the GUI runs `wt-openspec init` via `CommandOutputDialog` targeting the main repo path, then triggers a feature cache refresh
+- **THEN** the GUI runs `set-openspec init` via `CommandOutputDialog` targeting the main repo path, then triggers a feature cache refresh
 
-#### Scenario: Update action runs wt-openspec update
+#### Scenario: Update action runs set-openspec update
 - **WHEN** user clicks "Update Skills..."
-- **THEN** the GUI runs `wt-openspec update` via `CommandOutputDialog` targeting the main repo path, then triggers a feature cache refresh
+- **THEN** the GUI runs `set-openspec update` via `CommandOutputDialog` targeting the main repo path, then triggers a feature cache refresh

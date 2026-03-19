@@ -58,7 +58,7 @@ The delta comes entirely from T7 (dot.notation) and T8 (result key) — correcti
 
 2. **T8 C04 miss**: Mode B missed the result key on C04 dashboard endpoints (passed C03 and C05). Inconsistent application of recalled knowledge.
 
-3. **Agent-driven save**: Despite CLAUDE.md mandating memory saves (step 8) and the run.sh prompt explicitly mentioning it, the agent STILL used zero `wt-memory remember` calls. The post-session extraction was essential.
+3. **Agent-driven save**: Despite CLAUDE.md mandating memory saves (step 8) and the run.sh prompt explicitly mentioning it, the agent STILL used zero `set-memory remember` calls. The post-session extraction was essential.
 
 ## Architecture Note
 

@@ -2,7 +2,7 @@
 
 **Date**: 2026-02-16
 **Benchmark**: CraftBazaar — 12 sequential changes building a multi-vendor marketplace
-**Setup**: Two Claude Code instances (Opus 4.6), `wt-loop --max 30 --stall-threshold 3`
+**Setup**: Two Claude Code instances (Opus 4.6), `set-loop --max 30 --stall-threshold 3`
 
 ## Overall
 

@@ -1,4 +1,4 @@
-"""JSON-lines protocol for wt-memoryd Unix socket communication.
+"""JSON-lines protocol for set-memoryd Unix socket communication.
 
 Request:  {"id": "abc", "method": "recall", "params": {"query": "...", "limit": 3}}
 Response: {"id": "abc", "result": [...]}

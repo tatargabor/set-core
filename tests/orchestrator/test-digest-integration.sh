@@ -14,9 +14,9 @@ PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 SPEC_DIR="$PROJECT_DIR/tests/e2e/scaffold-complex/docs"
 
 # Source common functions (provides info, error, warn, success, colors)
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
-# Provide log/model stubs that digest.sh depends on (normally from wt-orchestrate)
+# Provide log/model stubs that digest.sh depends on (normally from set-orchestrate)
 LOG_FILE="/dev/null"
 log_info()  { :; }
 log_warn()  { :; }

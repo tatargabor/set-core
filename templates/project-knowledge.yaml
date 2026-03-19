@@ -1,4 +1,4 @@
-# Project Knowledge — wt-tools orchestration context
+# Project Knowledge — set-core orchestration context
 # version: 1
 #
 # This file provides project-specific knowledge to the orchestrator:
@@ -6,7 +6,7 @@
 # - features: domain-specific feature mappings for context injection
 # - verification_rules: automated checks triggered by file path patterns
 #
-# Generated via: wt-project init-knowledge
+# Generated via: set-project init-knowledge
 # Edit manually to refine after initial scan.
 
 version: 1
@@ -49,7 +49,7 @@ verification_rules:
   #   severity: warning
 
 # Merge strategies — file-type-aware merge protection.
-# Controls how wt-merge handles LLM-resolved conflicts for specific files.
+# Controls how set-merge handles LLM-resolved conflicts for specific files.
 # Strategy types:
 #   additive — entity counting + conservation check + optional validation
 #   llm_with_conservation — generic conservation check only (default for all files)

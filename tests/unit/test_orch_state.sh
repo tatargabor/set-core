@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/helpers.sh"
 
-# Source wt-common first (needed by orchestration modules)
-source "$SCRIPT_DIR/../../bin/wt-common.sh"
+# Source set-common first (needed by orchestration modules)
+source "$SCRIPT_DIR/../../bin/set-common.sh"
 
 # Source orchestration modules in order
 LIB_DIR="$SCRIPT_DIR/../../lib/orchestration"

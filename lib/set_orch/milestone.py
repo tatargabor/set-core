@@ -216,7 +216,7 @@ def _send_milestone_email(
         html += f"<tr style='background:{color};'><td>{name}</td><td>{cstatus}</td><td>{ctokens}</td></tr>"
     html += "</table>"
 
-    html += "<p style='color:#888;'>Orchestrator continues automatically. Stop with: <code>wt-orchestrate stop</code></p>"
+    html += "<p style='color:#888;'>Orchestrator continues automatically. Stop with: <code>set-orchestrate stop</code></p>"
 
     try:
         send_email(subject, html)

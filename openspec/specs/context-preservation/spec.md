@@ -12,7 +12,7 @@ CLAUDE.md SHALL contain a "Compact Instructions" section that tells Claude what 
 - **THEN** the compact instructions SHALL be included in the compaction prompt to preserve critical state
 
 ### Requirement: SessionStart compact hook re-injects memory
-The system SHALL register a SessionStart hook with matcher `compact` that calls `wt-hook-memory SessionStart` to re-inject project memory context after auto-compaction.
+The system SHALL register a SessionStart hook with matcher `compact` that calls `set-hook-memory SessionStart` to re-inject project memory context after auto-compaction.
 
 #### Scenario: Memory context restored after compaction
 - **WHEN** auto-compaction occurs during a session
@@ -20,7 +20,7 @@ The system SHALL register a SessionStart hook with matcher `compact` that calls 
 
 #### Scenario: Hook reuses existing memory script
 - **WHEN** the SessionStart[compact] hook fires
-- **THEN** it SHALL call the same `wt-hook-memory SessionStart` command used for normal session start
+- **THEN** it SHALL call the same `set-hook-memory SessionStart` command used for normal session start
 - **AND** no new hook script SHALL be required
 
 #### Scenario: Hook does not duplicate normal SessionStart

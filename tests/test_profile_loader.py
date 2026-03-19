@@ -129,7 +129,7 @@ class TestLoadProfile:
 
         # Only works if set-project-web is installed
         try:
-            from wt_project_web.project_type import WebProjectType
+            from set_project_web.project_type import WebProjectType
         except ImportError:
             pytest.skip("set-project-web not installed")
 

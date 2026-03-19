@@ -5,7 +5,7 @@
      to plan and execute changes autonomously.
 
      ALTERNATIVE: If you already have a specification/roadmap document,
-     you can skip this file and use: wt-orchestrate --spec <path> plan
+     you can skip this file and use: set-orchestrate --spec <path> plan
      The orchestrator will use LLM to extract actionable items from any format. -->
 
 ## Purpose

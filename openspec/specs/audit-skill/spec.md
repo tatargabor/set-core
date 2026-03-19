@@ -5,7 +5,7 @@ The system SHALL provide a `/wt:audit` skill invocable from Claude Code.
 
 #### Scenario: User runs audit skill
 - **WHEN** user invokes `/wt:audit` in a Claude Code session
-- **THEN** the skill runs `wt-audit scan --json`, parses the output, and presents findings grouped by dimension
+- **THEN** the skill runs `set-audit scan --json`, parses the output, and presents findings grouped by dimension
 
 #### Scenario: Skill with focus argument
 - **WHEN** user invokes `/wt:audit design-docs`

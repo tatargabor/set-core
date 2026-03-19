@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# wt-memory core operations: health, remember, recall, proactive, list, forget, context, brain, get, export, import
-# Dependencies: sourced by bin/wt-memory after infra setup
+# set-memory core operations: health, remember, recall, proactive, list, forget, context, brain, get, export, import
+# Dependencies: sourced by bin/set-memory after infra setup
 # Available: SHODH_PYTHON, PROJECT, SHODH_STORAGE, run_with_lock, run_shodh_python, resolve_project, get_storage_path, get_current_branch, get_log_path, auto_migrate
 
 cmd_health() {
@@ -59,7 +59,7 @@ print(json.dumps(result, default=str))
 }
 
 # Save a memory: reads content from stdin
-# Usage: echo "content" | wt-memory remember --type Decision --tags repo,change
+# Usage: echo "content" | set-memory remember --type Decision --tags repo,change
 cmd_remember() {
     local memory_type=""
     local tags=""
@@ -167,17 +167,17 @@ m.remember(content, memory_type=os.environ['_SHODH_TYPE'], tags=tags,
 " || rc=$?
 
     if [[ $rc -ne 0 ]]; then
-        echo "wt-memory remember: failed (exit $rc), see $(get_log_path)" >&2
+        echo "set-memory remember: failed (exit $rc), see $(get_log_path)" >&2
     fi
     return 0
 }
 
 # Forget (delete) memories
-# Usage: wt-memory forget <id>
-#        wt-memory forget --all --confirm
-#        wt-memory forget --older-than <days>
-#        wt-memory forget --tags <t1,t2>
-#        wt-memory forget --pattern <regex>
+# Usage: set-memory forget <id>
+#        set-memory forget --all --confirm
+#        set-memory forget --older-than <days>
+#        set-memory forget --tags <t1,t2>
+#        set-memory forget --pattern <regex>
 cmd_forget() {
     local memory_id=""
     local forget_all=false
@@ -339,7 +339,7 @@ print(json.dumps({'deleted': bool(result), 'id': os.environ['_SHODH_ID']}))
 }
 
 # Semantic search
-# Usage: wt-memory recall "query" --limit 5 --mode hybrid --tags t1,t2
+# Usage: set-memory recall "query" --limit 5 --mode hybrid --tags t1,t2
 cmd_recall() {
     local query=""
     local limit=5
@@ -565,7 +565,7 @@ print(json.dumps(results, default=str))
 }
 
 # Proactive context retrieval — auto-surfaces relevant memories with relevance scores
-# Usage: wt-memory proactive "conversation context" [--limit N]
+# Usage: set-memory proactive "conversation context" [--limit N]
 cmd_proactive() {
     local context=""
     local limit=5
@@ -643,7 +643,7 @@ else:
 }
 
 # List all memories for current project
-# Usage: wt-memory list [--type Decision] [--limit 20]
+# Usage: set-memory list [--type Decision] [--limit 20]
 cmd_list() {
     local memory_type=""
     local limit=""
@@ -696,7 +696,7 @@ print(json.dumps(memories, default=str))
 }
 
 # Context summary by category
-# Usage: wt-memory context [topic]
+# Usage: set-memory context [topic]
 cmd_context() {
     local topic=""
     while [[ $# -gt 0 ]]; do
@@ -741,7 +741,7 @@ except AttributeError:
 }
 
 # 3-tier memory visualization
-# Usage: wt-memory brain
+# Usage: set-memory brain
 cmd_brain() {
     if ! cmd_health >/dev/null 2>&1; then
         echo "{}"
@@ -768,7 +768,7 @@ except AttributeError:
 }
 
 # Memory quality diagnostics
-# Usage: wt-memory stats [--json]
+# Usage: set-memory stats [--json]
 
 cmd_export() {
     local output_file=""
@@ -802,14 +802,14 @@ m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
 records = m.list_memories()
 export_data = {
     'version': 1,
-    'format': 'wt-memory-export',
+    'format': 'set-memory-export',
     'project': os.environ['_SHODH_PROJECT'],
     'exported_at': datetime.now(timezone.utc).isoformat(),
     'count': len(records),
     'records': records
 }
 print(json.dumps(export_data, indent=2, default=str))
-") || { echo '{"version":1,"format":"wt-memory-export","count":0,"records":[]}'; return 0; }
+") || { echo '{"version":1,"format":"set-memory-export","count":0,"records":[]}'; return 0; }
 
     if [[ -n "$output_file" ]]; then
         echo "$json_output" > "$output_file"
@@ -820,7 +820,7 @@ print(json.dumps(export_data, indent=2, default=str))
 }
 
 # Import memories from JSON export file
-# Usage: wt-memory import FILE [--dry-run]
+# Usage: set-memory import FILE [--dry-run]
 cmd_import() {
     local import_file=""
     local dry_run=false
@@ -880,8 +880,8 @@ except json.JSONDecodeError as e:
     sys.exit(1)
 
 # Validate format
-if data.get('format') != 'wt-memory-export':
-    print(json.dumps({'error': 'Invalid file: missing or wrong format field (expected wt-memory-export)'}))
+if data.get('format') != 'set-memory-export':
+    print(json.dumps({'error': 'Invalid file: missing or wrong format field (expected set-memory-export)'}))
     sys.exit(1)
 
 if data.get('version', 0) != 1:
@@ -950,7 +950,7 @@ else:
 }
 
 # Get single memory by ID
-# Usage: wt-memory get <memory_id>
+# Usage: set-memory get <memory_id>
 cmd_get() {
     local memory_id=""
     while [[ $# -gt 0 ]]; do

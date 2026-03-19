@@ -1,4 +1,4 @@
-"""wt-memoryd: per-project memory daemon for shodh-memory.
+"""set-memoryd: per-project memory daemon for shodh-memory.
 
 Eliminates ~1580ms CLI overhead by keeping MemorySystem persistent.
 """

@@ -1,32 +1,32 @@
 # MiniShop E2E Test
 
-End-to-end test for wt-tools orchestration. A single spec file (`scaffold/docs/v1-minishop.md`) is the only input — agents build an entire Next.js webshop from it.
+End-to-end test for set-core orchestration. A single spec file (`scaffold/docs/v1-minishop.md`) is the only input — agents build an entire Next.js webshop from it.
 
 ## Prerequisites
 
 ```bash
 # These must be installed and in PATH:
 command -v pnpm          # pnpm package manager
-command -v wt-project    # wt-tools project manager
-command -v wt-sentinel   # wt-tools orchestration sentinel
+command -v set-project    # set-core project manager
+command -v set-sentinel   # set-core orchestration sentinel
 
-# wt-project-web plugin must be registered:
-wt-project list-types    # should show "web"
+# set-project-web plugin must be registered:
+set-project list-types    # should show "web"
 
 # If not installed:
-pip install -e /path/to/wt-project-web
+pip install -e /path/to/set-project-web
 ```
 
 ## Run
 
 ```bash
-# Step 1: Initialize test project (creates dir, copies spec, runs wt-project init)
-./tests/e2e/run.sh                    # default: ~/.local/share/wt-tools/e2e-runs/minishop-runN
+# Step 1: Initialize test project (creates dir, copies spec, runs set-project init)
+./tests/e2e/run.sh                    # default: ~/.local/share/set-core/e2e-runs/minishop-runN
 ./tests/e2e/run.sh ~/e2e-test         # or custom dir
 
 # Step 2: Start orchestration
-cd ~/.local/share/wt-tools/e2e-runs/minishop-runN  # or your custom dir
-wt-sentinel --spec docs/v1-minishop.md
+cd ~/.local/share/set-core/e2e-runs/minishop-runN  # or your custom dir
+set-sentinel --spec docs/v1-minishop.md
 ```
 
 The sentinel will:
@@ -40,30 +40,30 @@ To wipe a previous run and start fresh:
 
 ```bash
 # 1. Kill any running agents/sentinels
-pkill -f "wt-sentinel.*minishop" 2>/dev/null || true
+pkill -f "set-sentinel.*minishop" 2>/dev/null || true
 pkill -f "claude.*minishop" 2>/dev/null || true
 
 # 2. Remove old project + memory
-rm -rf ~/.local/share/wt-tools/e2e-runs/minishop-runN
-rm -rf ~/.local/share/wt-tools/memory/minishop-runN
-wt-project remove minishop-runN 2>/dev/null || true
+rm -rf ~/.local/share/set-core/e2e-runs/minishop-runN
+rm -rf ~/.local/share/set-core/memory/minishop-runN
+set-project remove minishop-runN 2>/dev/null || true
 
 # 3. Re-initialize and run
 ./tests/e2e/run.sh
-cd ~/.local/share/wt-tools/e2e-runs/minishop-runN
-wt-sentinel --spec docs/v1-minishop.md
+cd ~/.local/share/set-core/e2e-runs/minishop-runN
+set-sentinel --spec docs/v1-minishop.md
 ```
 
 ## After Completion
 
 ```bash
-cd ~/.local/share/wt-tools/e2e-runs/minishop-runN
+cd ~/.local/share/set-core/e2e-runs/minishop-runN
 
 # Step 3: Generate benchmark report
-wt-e2e-report --project-dir .
+set-e2e-report --project-dir .
 
-# Step 4 (optional): Update wt-tools README benchmark section
-wt-e2e-report --project-dir . --update-readme /path/to/wt-tools/README.md
+# Step 4 (optional): Update set-core README benchmark section
+set-e2e-report --project-dir . --update-readme /path/to/set-core/README.md
 ```
 
 The report generator extracts all data from `orchestration-state.json` and `.claude/orchestration.log`:
@@ -99,17 +99,17 @@ Check `e2e-report.md` and the verification checklist at the end of `docs/v1-mini
 ## Cleanup
 
 ```bash
-rm -rf ~/.local/share/wt-tools/e2e-runs/minishop-runN
-rm -rf ~/.local/share/wt-tools/memory/minishop-runN
-wt-project remove minishop-runN
+rm -rf ~/.local/share/set-core/e2e-runs/minishop-runN
+rm -rf ~/.local/share/set-core/memory/minishop-runN
+set-project remove minishop-runN
 ```
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| `wt-project-web plugin not installed` | `pip install -e /path/to/wt-project-web` |
+| `set-project-web plugin not installed` | `pip install -e /path/to/set-project-web` |
 | `run.sh` says existing project detected | Delete the test dir or use a different path |
 | Agent can't find spec | Check `docs/v1-minishop.md` exists in the test project |
 | Port 3000 in use | Kill existing process: `lsof -ti:3000 \| xargs kill` |
-| Sentinel stuck | Check `wt-sentinel` logs, use `wt-status` to see agent states |
+| Sentinel stuck | Check `set-sentinel` logs, use `set-status` to see agent states |

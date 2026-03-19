@@ -3,7 +3,7 @@
 ## Requirements
 
 ### REQ-CAM-01: Scope injection from orchestrator
-merger.py passes the change's scope to wt-merge via `WT_MERGE_SCOPE` environment variable. Truncated to 2000 chars.
+merger.py passes the change's scope to set-merge via `WT_MERGE_SCOPE` environment variable. Truncated to 2000 chars.
 
 ### REQ-CAM-02: Structural conflict auto-resolve
 Before calling the LLM, auto-resolve delete/modify and rename conflicts using pattern-based rules:
@@ -23,7 +23,7 @@ Add a "RESOLUTION STRATEGY" block to the LLM prompt explaining: prefer source fo
 
 ## Scenarios
 
-### WHEN merger.py calls wt-merge with WT_MERGE_SCOPE set
+### WHEN merger.py calls set-merge with WT_MERGE_SCOPE set
 THEN the LLM prompt contains "What the source branch implemented:" with the scope text
 AND the prompt contains source and target branch commit histories
 

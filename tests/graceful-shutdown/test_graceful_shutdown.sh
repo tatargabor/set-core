@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test_graceful_shutdown.sh — Unit tests for graceful shutdown functionality
 #
-# Tests sentinel --shutdown, wt-loop SIGTERM handling, resume from shutdown state,
+# Tests sentinel --shutdown, set-loop SIGTERM handling, resume from shutdown state,
 # and the shutdown API endpoint.
 #
 # Usage: ./tests/graceful-shutdown/test_graceful_shutdown.sh
@@ -53,7 +53,7 @@ git config user.name "Test"
 touch .gitkeep && git add -A && git commit -m "init" -q
 
 # No sentinel.pid file → should print "No sentinel running" and exit 0
-output=$(wt-sentinel --shutdown 2>&1) && rc=0 || rc=$?
+output=$(set-sentinel --shutdown 2>&1) && rc=0 || rc=$?
 if [[ $rc -eq 0 ]] && echo "$output" | grep -qi "no sentinel running"; then
     pass "--shutdown with no PID file exits 0 with message"
 else
@@ -62,7 +62,7 @@ fi
 
 # With stale PID file (non-existent process)
 echo "99999" > sentinel.pid
-output=$(wt-sentinel --shutdown 2>&1) && rc=0 || rc=$?
+output=$(set-sentinel --shutdown 2>&1) && rc=0 || rc=$?
 if [[ $rc -eq 0 ]] && echo "$output" | grep -qi "no sentinel running"; then
     pass "--shutdown with stale PID file exits 0 with message"
 else
@@ -72,19 +72,19 @@ rm -f sentinel.pid
 
 cd "$TEST_DIR"
 
-# ─── Test 7.2: wt-loop SIGTERM during idle exits immediately ─────
+# ─── Test 7.2: set-loop SIGTERM during idle exits immediately ─────
 
-echo "Test 7.2: wt-loop SIGTERM during idle"
+echo "Test 7.2: set-loop SIGTERM during idle"
 
-# We can't easily test wt-loop directly (it requires a full worktree setup),
+# We can't easily test set-loop directly (it requires a full worktree setup),
 # but we can test the cleanup_on_exit function behavior by checking the
 # engine.sh trap setup.
 # Verify the trap is registered for SIGTERM:
 
 if grep -q "trap 'cleanup_on_exit' EXIT SIGTERM" "$REPO_ROOT/lib/loop/engine.sh"; then
-    pass "wt-loop registers SIGTERM trap via cleanup_on_exit"
+    pass "set-loop registers SIGTERM trap via cleanup_on_exit"
 else
-    fail "wt-loop should register SIGTERM trap"
+    fail "set-loop should register SIGTERM trap"
 fi
 
 # Verify cleanup_on_exit has the guard against double-trap:
@@ -94,9 +94,9 @@ else
     fail "cleanup_on_exit should have double-trap guard"
 fi
 
-# ─── Test 7.3: wt-loop SIGTERM during work commits WIP ───────────
+# ─── Test 7.3: set-loop SIGTERM during work commits WIP ───────────
 
-echo "Test 7.3: wt-loop SIGTERM WIP commit behavior"
+echo "Test 7.3: set-loop SIGTERM WIP commit behavior"
 
 # Verify the WIP commit message pattern exists in cleanup_on_exit:
 if grep -q 'wip: graceful shutdown' "$REPO_ROOT/lib/loop/engine.sh"; then
@@ -166,14 +166,14 @@ else
 fi
 
 # 3. Verify the resume logic exists in sentinel
-if grep -q "resume_from_shutdown" "$REPO_ROOT/bin/wt-sentinel"; then
+if grep -q "resume_from_shutdown" "$REPO_ROOT/bin/set-sentinel"; then
     pass "resume_from_shutdown function exists in sentinel"
 else
     fail "resume_from_shutdown should exist in sentinel"
 fi
 
 # 4. Verify it checks for worktree existence
-if grep -q 'if \[\[ ! -d "$wt_path" \]\]' "$REPO_ROOT/bin/wt-sentinel"; then
+if grep -q 'if \[\[ ! -d "$wt_path" \]\]' "$REPO_ROOT/bin/set-sentinel"; then
     pass "resume_from_shutdown checks worktree directory existence"
 else
     fail "Should check worktree directory existence"
@@ -201,7 +201,7 @@ cat > orchestration-state.json <<EOF
   "shutdown_at": "2026-03-18T12:00:00+00:00",
   "changes": [
     {
-      "name": "missing-wt-change",
+      "name": "missing-set-change",
       "status": "running",
       "worktree_path": "/tmp/nonexistent-worktree-xyz",
       "last_commit": "abc123",
@@ -216,7 +216,7 @@ wt_path="/tmp/nonexistent-worktree-xyz"
 if [[ ! -d "$wt_path" ]]; then
     # This is what the sentinel does — reset to pending
     tmp=$(mktemp)
-    jq '(.changes[] | select(.name == "missing-wt-change")) |= (.status = "pending" | .worktree_path = "" | .ralph_pid = null | .last_commit = null)' \
+    jq '(.changes[] | select(.name == "missing-set-change")) |= (.status = "pending" | .worktree_path = "" | .ralph_pid = null | .last_commit = null)' \
         orchestration-state.json > "$tmp" && mv "$tmp" orchestration-state.json
 
     new_status=$(jq -r '.changes[0].status' orchestration-state.json)
@@ -231,7 +231,7 @@ else
 fi
 
 # Verify the sentinel logs this case
-if grep -q "worktree missing.*resetting to pending" "$REPO_ROOT/bin/wt-sentinel"; then
+if grep -q "worktree missing.*resetting to pending" "$REPO_ROOT/bin/set-sentinel"; then
     pass "Sentinel logs 'worktree missing...resetting to pending'"
 else
     fail "Sentinel should log worktree missing message"
@@ -300,13 +300,13 @@ fi
 
 echo "Test: Sentinel SIGUSR1 handler"
 
-if grep -q "trap handle_graceful_shutdown USR1" "$REPO_ROOT/bin/wt-sentinel"; then
+if grep -q "trap handle_graceful_shutdown USR1" "$REPO_ROOT/bin/set-sentinel"; then
     pass "Sentinel traps SIGUSR1 for graceful shutdown"
 else
     fail "Sentinel should trap SIGUSR1"
 fi
 
-if grep -q "shutdown_requested=true" "$REPO_ROOT/bin/wt-sentinel"; then
+if grep -q "shutdown_requested=true" "$REPO_ROOT/bin/set-sentinel"; then
     pass "SIGUSR1 handler sets shutdown_requested flag"
 else
     fail "Should set shutdown_requested flag"
@@ -316,13 +316,13 @@ fi
 
 echo "Test: State shutdown metadata"
 
-if grep -q "shutdown_at" "$REPO_ROOT/bin/wt-sentinel"; then
+if grep -q "shutdown_at" "$REPO_ROOT/bin/set-sentinel"; then
     pass "Sentinel writes shutdown_at to state"
 else
     fail "Should write shutdown_at"
 fi
 
-if grep -q '"shutdown"' "$REPO_ROOT/bin/wt-sentinel"; then
+if grep -q '"shutdown"' "$REPO_ROOT/bin/set-sentinel"; then
     pass "Sentinel sets status to 'shutdown'"
 else
     fail "Should set status to shutdown"

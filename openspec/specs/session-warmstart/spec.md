@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: SessionStart hook loads operational cheat sheet
-A new hook script `wt-hook-memory-warmstart` SHALL run on the `SessionStart` event and load memories tagged `cheat-sheet` from set-memory into Claude's context via `additionalContext`.
+A new hook script `set-hook-memory-warmstart` SHALL run on the `SessionStart` event and load memories tagged `cheat-sheet` from set-memory into Claude's context via `additionalContext`.
 
 #### Scenario: Session starts with cheat-sheet memories available
 - **WHEN** a Claude Code session starts
@@ -55,9 +55,9 @@ The SessionStart hook SHALL complete within 10 seconds.
 - **AND** SHALL NOT exceed the 10-second timeout
 
 ### Requirement: Hook deployment includes SessionStart
-The `wt-deploy-hooks` script SHALL include `wt-hook-memory-warmstart` in the `SessionStart` hook event.
+The `set-deploy-hooks` script SHALL include `set-hook-memory-warmstart` in the `SessionStart` hook event.
 
 #### Scenario: Deploy adds SessionStart hook
-- **WHEN** `wt-deploy-hooks /path/to/project` is called
-- **THEN** settings.json SHALL contain a `SessionStart` entry with `wt-hook-memory-warmstart`
+- **WHEN** `set-deploy-hooks /path/to/project` is called
+- **THEN** settings.json SHALL contain a `SessionStart` entry with `set-hook-memory-warmstart`
 - **AND** the timeout SHALL be 10 seconds

@@ -1,4 +1,4 @@
-"""REST API endpoints for the wt-web dashboard.
+"""REST API endpoints for the set-web dashboard.
 
 Read endpoints for projects, orchestration state, changes, worktrees, activity, logs.
 Write endpoints for approve, stop, skip.
@@ -1489,22 +1489,22 @@ def get_project_settings(project: str):
 
 
 def _run_wt_memory(project_path: Path, args: list[str], timeout: int = 10) -> dict | str:
-    """Run wt-memory CLI with project-scoped CWD, return parsed JSON or raw string."""
+    """Run set-memory CLI with project-scoped CWD, return parsed JSON or raw string."""
     try:
         result = subprocess.run(
-            ["wt-memory"] + args,
+            ["set-memory"] + args,
             capture_output=True, text=True, timeout=timeout,
             cwd=str(project_path),
         )
         out = result.stdout.strip()
         if result.returncode != 0:
-            return {"error": result.stderr.strip() or "wt-memory failed"}
+            return {"error": result.stderr.strip() or "set-memory failed"}
         try:
             return json.loads(out)
         except (json.JSONDecodeError, TypeError):
             return out
     except FileNotFoundError:
-        return {"error": "wt-memory not found"}
+        return {"error": "set-memory not found"}
     except subprocess.TimeoutExpired:
         return {"error": f"timeout after {timeout}s"}
 
@@ -1514,7 +1514,7 @@ def get_memory_overview(project: str):
     """Aggregate memory stats, health, and sync status in a single call."""
     project_path = _resolve_project(project)
 
-    # Run all three wt-memory commands in parallel (was sequential → 3-5s+ first load)
+    # Run all three set-memory commands in parallel (was sequential → 3-5s+ first load)
     with ThreadPoolExecutor(max_workers=3) as pool:
         f_health = pool.submit(_run_wt_memory, project_path, ["health"])
         f_stats = pool.submit(_run_wt_memory, project_path, ["stats", "--json"])
@@ -1580,7 +1580,7 @@ def stop_orchestration(project: str):
     # Find orchestrator PID from state extras
     orch_pid = state.extras.get("orchestrator_pid") or state.extras.get("pid")
     if orch_pid:
-        result = safe_kill(int(orch_pid), "wt-orchestrate")
+        result = safe_kill(int(orch_pid), "set-orchestrate")
         kill_result = result.outcome
     else:
         kill_result = "no_pid"
@@ -1648,7 +1648,7 @@ def stop_change(project: str, name: str):
 
     kill_result = "no_pid"
     if target.ralph_pid:
-        result = safe_kill(target.ralph_pid, "wt-loop")
+        result = safe_kill(target.ralph_pid, "set-loop")
         kill_result = result.outcome
 
     def do_stop_change():
@@ -1794,7 +1794,7 @@ async def send_sentinel_message(project: str, body: SentinelMessageBody):
 
     inbox_file = sentinel_dir / "inbox.jsonl"
     msg = {
-        "from": "wt-web",
+        "from": "set-web",
         "content": body.message,
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }

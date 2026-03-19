@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration tests for wt-orchestrate: merge pipeline, smoke pipeline, dispatch/loop control
+# Integration tests for set-orchestrate: merge pipeline, smoke pipeline, dispatch/loop control
 # Uses real git repos and stub commands (no Claude API calls).
 # Run with: ./tests/orchestrator/test-orchestrate-integration.sh
 
@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Source common functions
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 # Test framework
 TESTS_RUN=0
@@ -152,12 +152,12 @@ trap cleanup_all EXIT
 # Source orchestration modules directly (not via eval+sed)
 # ============================================================
 
-# Constants from wt-orchestrate that modules depend on
+# Constants from set-orchestrate that modules depend on
 STATE_FILENAME=""          # set per-test
 LOG_FILE="/dev/null"
 EVENTS_ENABLED="false"     # disable event logging in tests
 
-# Directive defaults (copied from wt-orchestrate)
+# Directive defaults (copied from set-orchestrate)
 DEFAULT_MAX_PARALLEL=3
 DEFAULT_MERGE_POLICY="checkpoint"
 DEFAULT_CHECKPOINT_EVERY=3
@@ -214,7 +214,7 @@ send_notification() { echo "NOTIFICATION: $*" >> "${NOTIFICATION_LOG:-/dev/null}
 orch_remember() { return 0; }
 
 echo "============================================================"
-echo "Integration Tests: wt-orchestrate"
+echo "Integration Tests: set-orchestrate"
 echo "============================================================"
 echo ""
 
@@ -411,7 +411,7 @@ while [[ $attempt -lt $smoke_fix_max_retries ]]; do
 done
 update_change_field "test-smoke-exhaust" "smoke_status" '"failed"'
 update_change_field "test-smoke-exhaust" "status" '"smoke_failed"'
-send_notification "wt-orchestrate" "Smoke FAILED for test-smoke-exhaust" "critical"
+send_notification "set-orchestrate" "Smoke FAILED for test-smoke-exhaust" "critical"
 
 ss=$(jq -r '.changes[0].smoke_status' "$STATE_FILE")
 st=$(jq -r '.changes[0].status' "$STATE_FILE")
@@ -439,7 +439,7 @@ if ! health_check "http://localhost:59999" 2; then
     update_change_field "test-hc-fail" "smoke_result" '"blocked"'
     update_change_field "test-hc-fail" "smoke_status" '"blocked"'
     update_change_field "test-hc-fail" "status" '"smoke_blocked"'
-    send_notification "wt-orchestrate" "Smoke blocked — no server" "critical"
+    send_notification "set-orchestrate" "Smoke blocked — no server" "critical"
 fi
 ss=$(jq -r '.changes[0].smoke_status' "$STATE_FILE")
 st=$(jq -r '.changes[0].status' "$STATE_FILE")
@@ -627,8 +627,8 @@ echo "--- Merge Conflict Resolver ---"
 
 # Test 12.1: Additive pattern guidance in prompt
 test_start "LLM merge prompt contains additive pattern guidance"
-# Read the wt-merge script and check the prompt text
-merge_script=$(cat "$PROJECT_DIR/bin/wt-merge")
+# Read the set-merge script and check the prompt text
+merge_script=$(cat "$PROJECT_DIR/bin/set-merge")
 assert_contains "$merge_script" "Additive conflict pattern"
 
 test_start "LLM merge prompt contains additive example"
@@ -733,7 +733,7 @@ cd "$REPO_SLIST"
 mkdir -p wt/orchestration/specs/archive
 echo "# Active spec" > wt/orchestration/specs/v9.md
 echo "# Archived spec" > wt/orchestration/specs/archive/v7.md
-list_output=$("$PROJECT_DIR/bin/wt-orchestrate" specs list 2>&1 || true)
+list_output=$("$PROJECT_DIR/bin/set-orchestrate" specs list 2>&1 || true)
 assert_contains "$list_output" "v9"
 
 test_start "specs list: shows archived section"
@@ -749,7 +749,7 @@ cd "$REPO_SARCH"
 mkdir -p wt/orchestration/specs/archive
 echo "# Spec to archive" > wt/orchestration/specs/v8.md
 git add wt/orchestration/specs/v8.md && git commit -m "add v8 spec" --quiet
-"$PROJECT_DIR/bin/wt-orchestrate" specs archive v8 2>&1 || true
+"$PROJECT_DIR/bin/set-orchestrate" specs archive v8 2>&1 || true
 if [[ -f "wt/orchestration/specs/archive/v8.md" && ! -f "wt/orchestration/specs/v8.md" ]]; then
     test_pass
 else
@@ -766,7 +766,7 @@ echo "# v2 spec" > docs/v2_minicrm.md
 echo "# not a spec" > docs/readme.md
 git add . && git commit -m "add legacy specs" --quiet
 # Run migrate
-"$PROJECT_DIR/bin/wt-project" migrate 2>&1 || true
+"$PROJECT_DIR/bin/set-project" migrate 2>&1 || true
 # Check that v1.md and v2_minicrm.md moved to archive, readme.md stayed
 if [[ -f "wt/orchestration/specs/archive/v1.md" ]]; then
     test_pass

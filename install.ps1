@@ -1,4 +1,4 @@
-# wt-tools installer for Windows PowerShell
+# set-core installer for Windows PowerShell
 # Run as: .\install.ps1
 
 $ErrorActionPreference = "Stop"
@@ -9,8 +9,8 @@ function Write-Warn { param($Message) Write-Host "[WARN] $Message" -ForegroundCo
 function Write-Err { param($Message) Write-Host "[ERROR] $Message" -ForegroundColor Red }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$InstallDir = "$env:LOCALAPPDATA\wt-tools\bin"
-$ConfigDir = "$env:APPDATA\wt-tools"
+$InstallDir = "$env:LOCALAPPDATA\set-core\bin"
+$ConfigDir = "$env:APPDATA\set-core"
 
 function Test-Command {
     param($Command)
@@ -51,7 +51,7 @@ function Check-Prerequisites {
 }
 
 function Install-Scripts {
-    Write-Info "Installing wt-tools scripts..."
+    Write-Info "Installing set-core scripts..."
 
     # Create install directory
     if (-not (Test-Path $InstallDir)) {
@@ -61,22 +61,22 @@ function Install-Scripts {
     # For Windows, we recommend using Git Bash to run the scripts
     # Copy scripts to install location
     $scripts = @(
-        "wt-common.sh",
-        "wt-project",
-        "wt-new",
-        "wt-work",
-        "wt-list",
-        "wt-close",
-        "wt-merge",
-        "wt-status",
-        "wt-version",
-        "wt-focus",
-        "wt-control",
-        "wt-control-gui",
-        "wt-control-init",
-        "wt-control-sync",
-        "wt-control-chat",
-        "wt-loop"
+        "set-common.sh",
+        "set-project",
+        "set-new",
+        "set-work",
+        "set-list",
+        "set-close",
+        "set-merge",
+        "set-status",
+        "set-version",
+        "set-focus",
+        "set-control",
+        "set-control-gui",
+        "set-control-init",
+        "set-control-sync",
+        "set-control-chat",
+        "set-loop"
     )
 
     foreach ($script in $scripts) {
@@ -93,14 +93,14 @@ function Install-Scripts {
 
     # Create wrapper batch files for easy calling from CMD/PowerShell
     $wrapperScripts = @(
-        "wt-project",
-        "wt-new",
-        "wt-work",
-        "wt-list",
-        "wt-close",
-        "wt-merge",
-        "wt-status",
-        "wt-version"
+        "set-project",
+        "set-new",
+        "set-work",
+        "set-list",
+        "set-close",
+        "set-merge",
+        "set-status",
+        "set-version"
     )
     foreach ($script in $wrapperScripts) {
         $batFile = Join-Path $InstallDir "$script.cmd"
@@ -120,7 +120,7 @@ function Install-Scripts {
     }
 
     Write-Host ""
-    Write-Warn "Note: wt-tools scripts require Git Bash or WSL to run."
+    Write-Warn "Note: set-core scripts require Git Bash or WSL to run."
     Write-Host "  The .cmd wrappers will call bash automatically."
 }
 
@@ -206,26 +206,26 @@ function Install-Skills {
         New-Item -ItemType Directory -Path $commandsDir -Force | Out-Null
     }
 
-    # Copy wt skills
-    $srcSkills = Join-Path $ScriptDir ".claude\skills\wt"
-    $dstSkills = Join-Path $skillsDir "wt"
+    # Copy set skills
+    $srcSkills = Join-Path $ScriptDir ".claude\skills\set"
+    $dstSkills = Join-Path $skillsDir "set"
     if (Test-Path $srcSkills) {
         if (Test-Path $dstSkills) {
             Remove-Item $dstSkills -Recurse -Force
         }
         Copy-Item $srcSkills $dstSkills -Recurse
-        Write-Success "  Copied: skills/wt/"
+        Write-Success "  Copied: skills/set/"
     }
 
-    # Copy wt commands
-    $srcCommands = Join-Path $ScriptDir ".claude\commands\wt"
-    $dstCommands = Join-Path $commandsDir "wt"
+    # Copy set commands
+    $srcCommands = Join-Path $ScriptDir ".claude\commands\set"
+    $dstCommands = Join-Path $commandsDir "set"
     if (Test-Path $srcCommands) {
         if (Test-Path $dstCommands) {
             Remove-Item $dstCommands -Recurse -Force
         }
         Copy-Item $srcCommands $dstCommands -Recurse
-        Write-Success "  Copied: commands/wt/"
+        Write-Success "  Copied: commands/set/"
     }
 
 }
@@ -266,7 +266,7 @@ function Install-Zed {
 function Main {
     Write-Host ""
     Write-Host "================================" -ForegroundColor Cyan
-    Write-Host "  wt-tools Installer (Windows)" -ForegroundColor Cyan
+    Write-Host "  set-core Installer (Windows)" -ForegroundColor Cyan
     Write-Host "================================" -ForegroundColor Cyan
     Write-Host ""
 
@@ -294,9 +294,9 @@ function Main {
     Write-Host ""
     Write-Host "Quick start (in Git Bash, PowerShell, or CMD):"
     Write-Host "  cd /path/to/your/project"
-    Write-Host "  wt-project init"
-    Write-Host "  wt-new my-change"
-    Write-Host "  wt-work my-change"
+    Write-Host "  set-project init"
+    Write-Host "  set-new my-change"
+    Write-Host "  set-work my-change"
     Write-Host ""
     Write-Host "GUI Control Center (requires Python):"
     Write-Host "  python gui/main.py"

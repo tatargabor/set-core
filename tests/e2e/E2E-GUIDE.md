@@ -1,6 +1,6 @@
 # E2E Test Guide — Orchestration Monitoring
 
-How to run and monitor wt-tools orchestration E2E tests.
+How to run and monitor set-core orchestration E2E tests.
 
 ## Quick Start
 
@@ -31,11 +31,11 @@ Set up a cron job that checks these 5 things concisely:
 
 ### Framework Bug vs App Bug
 
-Only fix **framework** (wt-tools) bugs. Let the orchestrator handle app-level issues.
+Only fix **framework** (set-core) bugs. Let the orchestrator handle app-level issues.
 
 **Framework bugs** — fix immediately, commit, deploy, restart:
 - Dispatch/verify/merge state machine errors
-- Path resolution failures in wt-tools modules
+- Path resolution failures in set-core modules
 - Sentinel stuck detection false positives (e.g. during long MCP calls)
 - Completion logic errors (e.g. all-failed treated as done)
 - Infinite loops in replan/retry cycles
@@ -46,13 +46,13 @@ Only fix **framework** (wt-tools) bugs. Let the orchestrator handle app-level is
 - Missing dependencies, type errors
 - Stale caches (`.next/`, `node_modules/`)
 
-### When You Fix a wt-tools Bug
+### When You Fix a set-core Bug
 
 This is the **Tier 3** workflow from the sentinel skill (`.claude/commands/wt/sentinel.md` — "E2E Mode" section). Fixes must reach the running processes:
 
-1. **Fix and commit** in wt-tools repo
+1. **Fix and commit** in set-core repo
 2. **Kill** sentinel + orchestrator + any Ralph/agent processes
-3. **Deploy** — run `wt-project init` in the test project to sync `.claude/` files
+3. **Deploy** — run `set-project init` in the test project to sync `.claude/` files
 4. **Sync worktrees** — for each active worktree, copy updated files:
    ```bash
    for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | tail -n +2); do
@@ -60,16 +60,16 @@ This is the **Tier 3** workflow from the sentinel skill (`.claude/commands/wt/se
    done
    ```
 5. **Restart** sentinel — it will start a new orchestrator automatically
-6. **Log** — `wt-sentinel-finding add --severity bug --summary "..." ` with commit hash
+6. **Log** — `set-sentinel-finding add --severity bug --summary "..." ` with commit hash
 
 If you skip step 4, worktree agents will run with old code.
 
-**Scope boundary (Tier 3):** Only wt-tools framework code may be fixed (bin/, lib/, .claude/, docs/). Consumer project source code (src/, app/, components/) MUST NOT be modified. No branch merging, no orchestration-state.json edits, no quality gate changes.
+**Scope boundary (Tier 3):** Only set-core framework code may be fixed (bin/, lib/, .claude/, docs/). Consumer project source code (src/, app/, components/) MUST NOT be modified. No branch merging, no orchestration-state.json edits, no quality gate changes.
 
 **IMPORTANT: Rules must be re-deployed too.** Web security rules (`.claude/rules/web/`) and other
-path-scoped rules are deployed by `wt-project init`. When fixing security-related bugs (IDOR,
+path-scoped rules are deployed by `set-project init`. When fixing security-related bugs (IDOR,
 missing auth middleware, etc.), always re-deploy so that retry agents get the updated rules. The
-`wt-project init` + worktree sync (steps 3-4) handles this automatically — just don't skip them.
+`set-project init` + worktree sync (steps 3-4) handles this automatically — just don't skip them.
 
 ## State Reset
 
@@ -77,13 +77,13 @@ Use the dedicated CLI tool:
 
 ```bash
 # Partial reset (safe default) — only failed→pending, merged preserved
-wt-orchestrate reset --partial
+set-orchestrate reset --partial
 
 # Full reset (destructive) — shows dry-run first
-wt-orchestrate reset --full
+set-orchestrate reset --full
 
 # Full reset (confirmed) — backs up state, removes worktrees, clears events
-wt-orchestrate reset --full --yes-i-know
+set-orchestrate reset --full --yes-i-know
 ```
 
 **Always prefer partial reset.** Full reset destroys progress — only use if state is truly unrecoverable, and always ask the user first.
@@ -145,7 +145,7 @@ Compare each run against these baselines. Track: wall clock, merged/failed ratio
 
 ### Where findings go
 
-Each E2E project gets its own findings directory **in the wt-tools repo**:
+Each E2E project gets its own findings directory **in the set-core repo**:
 
 ```
 tests/e2e/{project}/          # version-controlled, permanent record
@@ -213,17 +213,17 @@ Spawn a subagent to collect context. The sentinel does NOT read findings/git log
 
 **Subagent instructions:**
 1. Read `tests/e2e/E2E-GUIDE.md` — especially "Last Run Results" and "Performance Baseline"
-2. If a previous results block exists for the target project, extract the `<!-- wt-tools-commit: {hash} -->` and run `git log {hash}..HEAD --oneline` to get the commit delta
+2. If a previous results block exists for the target project, extract the `<!-- set-core-commit: {hash} -->` and run `git log {hash}..HEAD --oneline` to get the commit delta
 3. Read `tests/e2e/{project}/README.md` and latest `run-{N}.md` — list bugs that lack a "Verified" annotation or are marked "regressed"
 4. List active changes in `openspec/changes/` (non-archived directories)
 5. Return a summary in this format:
 
 ```
 PREP SUMMARY ({project}, based on Run #{N}):
-- wt-tools commits since last run: {count}
+- set-core commits since last run: {count}
   {commit list, one per line}
 - Open regressions: {bug numbers + short titles, or "none"}
-- Active wt-tools changes: {change names + task progress}
+- Active set-core changes: {change names + task progress}
 - Watch for:
   - {specific patterns to monitor based on above}
 ```
@@ -236,8 +236,8 @@ The sentinel launches the E2E run — not the user manually.
 
 1. Run the scaffold script:
    ```bash
-   ./tests/e2e/run.sh              # for minishop (default: ~/.local/share/wt-tools/e2e-runs/)
-   ./tests/e2e/run-complex.sh      # for craftbrew (default: ~/.local/share/wt-tools/e2e-runs/)
+   ./tests/e2e/run.sh              # for minishop (default: ~/.local/share/set-core/e2e-runs/)
+   ./tests/e2e/run-complex.sh      # for craftbrew (default: ~/.local/share/set-core/e2e-runs/)
 
    # To override base dir:
    ./tests/e2e/run.sh --project-dir ~/other-dir
@@ -248,8 +248,8 @@ The sentinel launches the E2E run — not the user manually.
 4. Report the project directory to the user
 5. Start orchestration:
    ```bash
-   wt-sentinel --spec docs/v1-minishop.md    # minishop
-   wt-sentinel --spec docs/v1.md             # craftbrew (check spec path)
+   set-sentinel --spec docs/v1-minishop.md    # minishop
+   set-sentinel --spec docs/v1.md             # craftbrew (check spec path)
    ```
 
 ### Phase 3: Monitor
@@ -257,13 +257,13 @@ The sentinel launches the E2E run — not the user manually.
 Follow the existing guide sections:
 - **Monitoring** — poll template, process checks
 - **Framework Bug vs App Bug** — only fix framework bugs
-- **When You Fix a wt-tools Bug** — fix → commit → deploy → sync → restart
+- **When You Fix a set-core Bug** — fix → commit → deploy → sync → restart
 - **State Reset** — partial preferred, full only with user approval
 
 **Use prep context during monitoring:**
 - When a failure occurs, check against the "Watch for" list from prep
 - If a failure matches a known regression pattern, reference the bug number
-- If a wt-tools commit addressed a specific bug, verify whether the fix holds
+- If a set-core commit addressed a specific bug, verify whether the fix holds
 
 ### Phase 4: Wrap-up
 
@@ -271,12 +271,12 @@ After orchestration completes (status "done", "stopped", or "time_limit"):
 
 1. Run the report tool with guide update:
    ```bash
-   wt-e2e-report --update-guide /path/to/wt-tools/tests/e2e/E2E-GUIDE.md
+   set-e2e-report --update-guide /path/to/set-core/tests/e2e/E2E-GUIDE.md
    ```
 2. Create `tests/e2e/{project}/run-{N}.md` with findings from this run, update `tests/e2e/{project}/README.md` summary table
-3. Commit changes to the wt-tools repo:
+3. Commit changes to the set-core repo:
    ```bash
-   cd /path/to/wt-tools
+   cd /path/to/set-core
    git add tests/e2e/E2E-GUIDE.md tests/e2e/{project}/
    git commit -m "e2e: {project} run #{N} results"
    ```
@@ -286,19 +286,19 @@ After orchestration completes (status "done", "stopped", or "time_limit"):
 ### Parallel Runs
 
 Two E2E tests (minishop + craftbrew) can run simultaneously:
-- Each has its own project dir (`~/.local/share/wt-tools/e2e-runs/minishop-runN`, `.../craftbrew-runN`)
+- Each has its own project dir (`~/.local/share/set-core/e2e-runs/minishop-runN`, `.../craftbrew-runN`)
 - Each has its own findings file and results subsection in this guide
 - Launch two separate sentinel sessions — they won't conflict
 - Each sentinel's wrap-up updates only its own project block
 
 ## Last Run Results
 
-<!-- Auto-updated by wt-e2e-report --update-guide. Do not edit between start/end markers. -->
+<!-- Auto-updated by set-e2e-report --update-guide. Do not edit between start/end markers. -->
 
 <!-- e2e-results:minishop:start -->
 ### minishop — Run #19 (2026-03-17)
-<!-- wt-tools-commit: 5c741058c -->
-- **wt-tools range**: `5c741058c` (review diff prioritization, merge heartbeats, review template fix, decompose stderr)
+<!-- set-core-commit: 5c741058c -->
+- **set-core range**: `5c741058c` (review diff prioritization, merge heartbeats, review template fix, decompose stderr)
 - **Result**: 11/12 merged + 1 skipped | ~8h (incl. retry run) | ~5M tokens | 4 framework bugs found
 - **Open regressions**: Bug #50 (state reconstruction loses merged status)
 - **Fixed this run**: Bug #49 `7551be1f5` (decompose stderr), Bug #51 `957d125d9` (review template f-string), Bug #52 `5c741058c` (merge heartbeats), Bug #53 `ab018fa88` (review diff prioritization — root cause of false review failures)
@@ -307,8 +307,8 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 
 <!-- e2e-results:craftbrew:start -->
 ### craftbrew — Run #4 (2026-03-19)
-<!-- wt-tools-commit: 65d6258be -->
-- **wt-tools range**: `65d6258be` (scaffold spec-only branch, decompose max-turns, sentinel stuck fix, gitattributes wt/**)
+<!-- set-core-commit: 65d6258be -->
+- **set-core range**: `65d6258be` (scaffold spec-only branch, decompose max-turns, sentinel stuck fix, gitattributes wt/**)
 - **Result**: 5/15 merged (2 failed, 8 dep-blocked) | ~3h wall clock | ~998K tokens | 4 framework bugs found
 - **Autonomous merges**: 4/5 (80%) — massive improvement over Run #3's 1/15 (7%)
 - **Bug #14 (verify agent death)**: NOT REPRODUCED — verify pipeline reliability fix confirmed working
@@ -322,7 +322,7 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 
 The orchestration pipeline:
 ```
-sentinel → orchestrator → digest → decompose → dispatch → agent (Ralph/wt-loop) → verify → merge → next phase
+sentinel → orchestrator → digest → decompose → dispatch → agent (Ralph/set-loop) → verify → merge → next phase
 ```
 
 When looking for logic to fix, search the Python modules first (`lib/wt_orch/*.py`). If not found there, check the bash layer (`lib/orchestration/*.sh`). The migration is ongoing — some logic exists in both places but only one path is active for each function.

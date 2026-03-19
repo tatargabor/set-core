@@ -1,7 +1,7 @@
 # Project Health Reference
 
 What a well-configured Claude Code project looks like. This is the target state
-that `wt-audit` checks against. When creating missing files, read the actual
+that `set-audit` checks against. When creating missing files, read the actual
 project code and describe what you find — don't copy this document.
 
 ## Claude Code Config
@@ -14,7 +14,7 @@ project code and describe what you find — don't copy this document.
 - OpenSpec CLI allowed if project uses OpenSpec
 
 ### Hooks
-- Memory hooks on all events (deployed by wt-deploy-hooks)
+- Memory hooks on all events (deployed by set-deploy-hooks)
 - TypeScript verification hook on PostToolUse:Edit and PostToolUse:Write (runs tsc --noEmit)
 
 ### Agents
@@ -53,7 +53,7 @@ Located in `docs/design/`. Each file documents ACTUAL patterns found in the code
 
 - Convention summaries pointing to design docs (not duplicating content)
 - Source of truth table (where to find what)
-- Managed sections from wt-tools (Persistent Memory, Auto-Commit)
+- Managed sections from set-core (Persistent Memory, Auto-Commit)
 - Optional: @import for automatic doc loading
 
 ## Gitignore Coverage

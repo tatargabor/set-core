@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # lib/orchestration/orch-memory.sh — Memory helpers (remember, recall, audit, gate stats)
-# Sourced by bin/wt-orchestrate after state.sh
+# Sourced by bin/set-orchestrate after state.sh
 
 orch_remember() {
     local content="$1"
     local type="${2:-Learning}"
     local tags="$3"
-    command -v wt-memory &>/dev/null || return 0
+    command -v set-memory &>/dev/null || return 0
     local start_ms
     start_ms=$(($(date +%s%N) / 1000000))
-    echo "$content" | wt-memory remember --type "$type" --tags "source:orchestrator${tags:+,$tags}" 2>/dev/null || true
+    echo "$content" | set-memory remember --type "$type" --tags "source:orchestrator${tags:+,$tags}" 2>/dev/null || true
     local elapsed_ms=$(( $(date +%s%N) / 1000000 - start_ms ))
     _MEM_OPS_COUNT=$((_MEM_OPS_COUNT + 1))
     _MEM_OPS_TOTAL_MS=$((_MEM_OPS_TOTAL_MS + elapsed_ms))
@@ -22,13 +22,13 @@ orch_recall() {
     local query="$1"
     local limit="${2:-3}"
     local tags="${3:-source:orchestrator}"
-    command -v wt-memory &>/dev/null || return 0
+    command -v set-memory &>/dev/null || return 0
     local start_ms
     start_ms=$(($(date +%s%N) / 1000000))
     local cutoff_iso
     cutoff_iso=$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-24H '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "1970-01-01T00:00:00Z")
     local result
-    result=$(wt-memory recall "$query" --limit "$limit" --tags "$tags" --mode hybrid 2>/dev/null | \
+    result=$(set-memory recall "$query" --limit "$limit" --tags "$tags" --mode hybrid 2>/dev/null | \
         jq -r --arg cutoff "$cutoff_iso" '[.[] | select(.tags // "" | test("stale:true") | not) | select(if (.tags // "" | test("volatile")) then ((.created_at // "9999") > $cutoff) else true end)] | .[].content' 2>/dev/null | head -c 2000 || true)
     local elapsed_ms=$(( $(date +%s%N) / 1000000 - start_ms ))
     local result_len=${#result}
@@ -41,21 +41,21 @@ orch_recall() {
 # Pre-decomposition memory hygiene — lightweight health check before planning.
 # Best-effort: failure does not block planning.
 plan_memory_hygiene() {
-    command -v wt-memory &>/dev/null || return 0
+    command -v set-memory &>/dev/null || return 0
 
     local start_ms
     start_ms=$(($(date +%s%N) / 1000000))
 
     # 1. Dedup dry-run — log duplicate count
     local dedup_output dedup_count=0
-    dedup_output=$(wt-memory dedup --dry-run 2>/dev/null || true)
+    dedup_output=$(set-memory dedup --dry-run 2>/dev/null || true)
     dedup_count=$(echo "$dedup_output" | grep -oE '[0-9]+ duplicates' | grep -oE '[0-9]+' || echo "0")
 
     # 2. Memory stats — total count
     local mem_count=0
-    mem_count=$(wt-memory list --limit 1 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+    mem_count=$(set-memory list --limit 1 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
     local stats_output
-    stats_output=$(wt-memory stats --json 2>/dev/null || true)
+    stats_output=$(set-memory stats --json 2>/dev/null || true)
     local total_memories=0
     if [[ -n "$stats_output" ]]; then
         total_memories=$(echo "$stats_output" | jq -r '.total_memories // 0' 2>/dev/null || echo "0")
@@ -81,24 +81,24 @@ orch_memory_stats() {
 
 # Periodic memory audit — check health + validate recent orchestrator memories.
 orch_memory_audit() {
-    command -v wt-memory &>/dev/null || return 0
+    command -v set-memory &>/dev/null || return 0
 
     local start_ms
     start_ms=$(($(date +%s%N) / 1000000))
 
     # 1. Health check
-    if ! wt-memory health &>/dev/null 2>&1; then
-        log_error "Memory audit: wt-memory health check FAILED"
+    if ! set-memory health &>/dev/null 2>&1; then
+        log_error "Memory audit: set-memory health check FAILED"
         return 1
     fi
 
     # 2. Count orchestrator memories
     local orch_mems
-    orch_mems=$(wt-memory recall "orchestration" --limit 20 --tags "source:orchestrator" --mode hybrid 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+    orch_mems=$(set-memory recall "orchestration" --limit 20 --tags "source:orchestrator" --mode hybrid 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
 
     # 3. Spot-check: most recent orchestrator memory has content
     local latest_content
-    latest_content=$(wt-memory recall "orchestration" --limit 1 --tags "source:orchestrator" --mode hybrid 2>/dev/null | jq -r '.[0].content // ""' 2>/dev/null || true)
+    latest_content=$(set-memory recall "orchestration" --limit 1 --tags "source:orchestrator" --mode hybrid 2>/dev/null | jq -r '.[0].content // ""' 2>/dev/null || true)
     local latest_len=${#latest_content}
 
     local elapsed_ms=$(( $(date +%s%N) / 1000000 - start_ms ))

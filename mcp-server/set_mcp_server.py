@@ -101,7 +101,7 @@ def get_worktrees_for_project(project_path: str) -> list[dict]:
 
 def get_ralph_state(wt_path: str) -> Optional[dict]:
     """Read Ralph loop state from a worktree"""
-    state_file = Path(wt_path) / ".wt" / "loop-state.json"
+    state_file = Path(wt_path) / ".set" / "loop-state.json"
     if not state_file.exists():
         return None
 
@@ -114,7 +114,7 @@ def get_ralph_state(wt_path: str) -> Optional[dict]:
 
 def get_activity_state(wt_path: str) -> Optional[dict]:
     """Read activity state from a worktree"""
-    activity_file = Path(wt_path) / ".wt" / "activity.json"
+    activity_file = Path(wt_path) / ".set" / "activity.json"
     if not activity_file.exists():
         return None
 
@@ -327,7 +327,7 @@ def get_worktree_tasks(worktree_path: str) -> str:
 
 @mcp.tool
 def get_team_status() -> str:
-    """Get team member activity from wt-control.
+    """Get team member activity from set-control.
 
     Shows which team members are active, what they're working on,
     and their current agent status (idle/working).
@@ -358,7 +358,7 @@ def get_team_status() -> str:
 def get_activity(change_id: str = None) -> str:
     """Get agent activity from all local worktrees.
 
-    Reads .wt/activity.json from each worktree to show what agents
+    Reads .set/activity.json from each worktree to show what agents
     are currently doing. This is the fast path for same-machine coordination.
 
     Args:
@@ -440,7 +440,7 @@ def get_activity(change_id: str = None) -> str:
 
 
 def _get_member_name() -> str:
-    """Get the current member name (user@hostname) matching wt-control-sync format"""
+    """Get the current member name (user@hostname) matching set-control-sync format"""
     try:
         result = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True)
         user_name = result.stdout.strip() if result.returncode == 0 else os.environ.get("USER", "unknown")
@@ -458,24 +458,24 @@ def _get_member_name() -> str:
 
 
 def _find_control_worktree() -> Optional[Path]:
-    """Find the first project's .wt-control worktree"""
+    """Find the first project's .set-control worktree"""
     projects = get_projects()
     for name, info in projects.items():
         project_path = info.get("path", "")
         if project_path:
-            control = Path(project_path) / ".wt-control"
+            control = Path(project_path) / ".set-control"
             if control.exists():
                 return control
     return None
 
 
 def _find_control_worktree_for_project(project_name: str) -> Optional[Path]:
-    """Find .wt-control for a specific project"""
+    """Find .set-control for a specific project"""
     projects = get_projects()
     info = projects.get(project_name, {})
     project_path = info.get("path", "")
     if project_path:
-        control = Path(project_path) / ".wt-control"
+        control = Path(project_path) / ".set-control"
         if control.exists():
             return control
     return None
@@ -487,7 +487,7 @@ def _resolve_project_name() -> Optional[str]:
     for name, info in projects.items():
         project_path = info.get("path", "")
         if project_path:
-            control = Path(project_path) / ".wt-control"
+            control = Path(project_path) / ".set-control"
             if control.exists():
                 return name
     return None
@@ -508,16 +508,16 @@ def send_message(recipient: str, message: str) -> str:
     """
     project_name = _resolve_project_name()
     if not project_name:
-        return "Error: No project with wt-control found"
+        return "Error: No project with set-control found"
 
     control = _find_control_worktree()
     if not control:
-        return "Error: No .wt-control worktree found"
+        return "Error: No .set-control worktree found"
 
-    # Use wt-control-chat with --no-push
+    # Use set-control-chat with --no-push
     try:
         cmd = [
-            str(SCRIPT_DIR / "wt-control-chat"),
+            str(SCRIPT_DIR / "set-control-chat"),
             "--path", str(control.parent),
             "--no-push",
             "send", recipient, message
@@ -551,16 +551,16 @@ def get_inbox(since: str = None) -> str:
     """
     project_name = _resolve_project_name()
     if not project_name:
-        return "Error: No project with wt-control found"
+        return "Error: No project with set-control found"
 
     control = _find_control_worktree()
     if not control:
-        return "Error: No .wt-control worktree found"
+        return "Error: No .set-control worktree found"
 
-    # Use wt-control-chat to read messages
+    # Use set-control-chat to read messages
     try:
         cmd = [
-            str(SCRIPT_DIR / "wt-control-chat"),
+            str(SCRIPT_DIR / "set-control-chat"),
             "--path", str(control.parent),
             "--json",
             "read"
@@ -593,19 +593,19 @@ def get_inbox(since: str = None) -> str:
 # RESOURCES - Data that agents can read
 # ============================================================================
 
-@mcp.resource("wt://worktrees")
+@mcp.resource("set://worktrees")
 def worktrees_resource() -> str:
     """Current worktree list as a resource"""
     return list_worktrees()
 
 
-@mcp.resource("wt://ralph/status")
+@mcp.resource("set://ralph/status")
 def ralph_status_resource() -> str:
     """Current Ralph loop status as a resource"""
     return get_ralph_status()
 
 
-@mcp.resource("wt://team")
+@mcp.resource("set://team")
 def team_resource() -> str:
     """Team member status as a resource"""
     return get_team_status()
@@ -615,7 +615,7 @@ def team_resource() -> str:
 # MEMORY TOOLS - Uses daemon client with CLI fallback
 # ============================================================================
 
-# Project dir for memory tools — set at registration time by wt-project init
+# Project dir for memory tools — set at registration time by set-project init
 MEMORY_PROJECT_DIR = os.environ.get("CLAUDE_PROJECT_DIR")
 
 # Lazy daemon client (one per process lifetime)
@@ -652,10 +652,10 @@ def _run_memory_via_daemon(method: str, **params) -> str | None:
 
 
 def _run_memory(args: list[str], input_text: str | None = None, timeout: int = 30) -> str:
-    """Run a wt-memory CLI command with project-scoped CWD (fallback path)."""
+    """Run a set-memory CLI command with project-scoped CWD (fallback path)."""
     try:
         result = subprocess.run(
-            ["wt-memory"] + args,
+            ["set-memory"] + args,
             input=input_text,
             capture_output=True,
             text=True,
@@ -667,13 +667,13 @@ def _run_memory(args: list[str], input_text: str | None = None, timeout: int = 3
             return f"Error: {result.stderr.strip()}"
         return output or "(no output)"
     except FileNotFoundError:
-        return "Error: wt-memory not found in PATH"
+        return "Error: set-memory not found in PATH"
     except subprocess.TimeoutExpired:
         return f"Error: command timed out after {timeout}s"
 
 
 def _run_memory_json(args: list[str], input_text: str | None = None) -> str:
-    """Run a wt-memory CLI command and return parsed JSON or raw output."""
+    """Run a set-memory CLI command and return parsed JSON or raw output."""
     raw = _run_memory(args, input_text)
     try:
         parsed = json.loads(raw)

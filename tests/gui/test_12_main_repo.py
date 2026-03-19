@@ -118,7 +118,7 @@ def test_main_repo_row_has_star_prefix(control_center, git_env, qtbot):
 def test_main_repo_row_is_first_under_header(control_center, git_env, qtbot):
     """Main repo row should appear before regular worktree rows under the same project."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-main-test")
+    wt_path = str(git_env["base"] / "test-project-set-main-test")
     status_data = _make_mixed_status(project_path, wt_path)
     control_center.update_status(status_data)
     qtbot.wait(200)
@@ -215,7 +215,7 @@ def test_main_repo_context_menu_includes_common_actions(control_center, git_env,
 def test_regular_worktree_context_menu_still_has_worktree_submenu(control_center, git_env, qtbot):
     """Regular worktree context menu should still have Worktree submenu (regression check)."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-main-test")
+    wt_path = str(git_env["base"] / "test-project-set-main-test")
     status_data = _make_mixed_status(project_path, wt_path)
     control_center.update_status(status_data)
     qtbot.wait(200)

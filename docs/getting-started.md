@@ -27,7 +27,7 @@ cd set-core
 ```
 
 The installer:
-- Symlinks all `wt-*` commands to `~/.local/bin`
+- Symlinks all `set-*` commands to `~/.local/bin`
 - Sets up shell completions (bash/zsh)
 - Configures the MCP server for Claude Code
 - Installs GUI dependencies (PySide6, psutil, PyNaCl)

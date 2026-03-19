@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: Editor library extraction
-The system SHALL extract all editor-related functions from `bin/wt-common.sh` into `lib/editor.sh`. Scripts that use editor functions (wt-config, wt-work, wt-new, wt-focus) SHALL source `lib/editor.sh` explicitly. `wt-common.sh` SHALL NOT contain editor functions after extraction.
+The system SHALL extract all editor-related functions from `bin/set-common.sh` into `lib/editor.sh`. Scripts that use editor functions (set-config, set-work, set-new, set-focus) SHALL source `lib/editor.sh` explicitly. `set-common.sh` SHALL NOT contain editor functions after extraction.
 
-#### Scenario: wt-common.sh sources editor lib
-- **WHEN** any script sources `wt-common.sh`
+#### Scenario: set-common.sh sources editor lib
+- **WHEN** any script sources `set-common.sh`
 - **THEN** editor functions are NOT available unless `lib/editor.sh` is also sourced
 
 #### Scenario: Editor-using scripts work unchanged
-- **WHEN** wt-config, wt-work, wt-new, or wt-focus is executed
+- **WHEN** set-config, set-work, set-new, or set-focus is executed
 - **THEN** all editor detection and configuration functions work identically to before extraction
 
 ### Requirement: Memory module extraction
@@ -23,7 +23,7 @@ The system SHALL split `bin/set-memory` into a thin dispatcher (~300 lines) and 
 - **THEN** it produces identical output and side effects as the monolithic version
 
 ### Requirement: Hook-memory module extraction
-The system SHALL split `bin/wt-hook-memory` into a thin bash dispatcher and Python modules under `lib/set_hooks/`: util.py, session.py, memory_ops.py, events.py, stop.py. All hook event handlers SHALL work identically after extraction.
+The system SHALL split `bin/set-hook-memory` into a thin bash dispatcher and Python modules under `lib/set_hooks/`: util.py, session.py, memory_ops.py, events.py, stop.py. All hook event handlers SHALL work identically after extraction.
 
 #### Scenario: Shared daemon helpers in util.py
 - **WHEN** any hook module (memory_ops.py, stop.py) needs a daemon client or daemon status check
@@ -37,17 +37,17 @@ The system SHALL split `bin/wt-hook-memory` into a thin bash dispatcher and Pyth
 
 #### Scenario: All hook events handled after split
 - **WHEN** Claude Code emits any hook event (SessionStart, UserPromptSubmit, PostToolUse, Stop, etc.)
-- **THEN** `wt-hook-memory` dispatches to the correct handler in `lib/hooks/events.sh` and produces identical JSON output
+- **THEN** `set-hook-memory` dispatches to the correct handler in `lib/hooks/events.sh` and produces identical JSON output
 
 ### Requirement: Loop module extraction
-The system SHALL split `bin/wt-loop` into a thin dispatcher (~500 lines) and 4 sourced modules under `lib/loop/`: state.sh, tasks.sh, prompt.sh, engine.sh. All CLI commands and the Ralph loop engine SHALL work identically after extraction.
+The system SHALL split `bin/set-loop` into a thin dispatcher (~500 lines) and 4 sourced modules under `lib/loop/`: state.sh, tasks.sh, prompt.sh, engine.sh. All CLI commands and the Ralph loop engine SHALL work identically after extraction.
 
 #### Scenario: Ralph loop runs after split
-- **WHEN** `wt-loop start` is executed
+- **WHEN** `set-loop start` is executed
 - **THEN** the loop engine runs iterations with identical behavior (prompt building, task detection, done detection, token budget)
 
 #### Scenario: Loop CLI commands work after split
-- **WHEN** any `wt-loop` subcommand is executed (start, stop, status, list, monitor, history, resume, budget)
+- **WHEN** any `set-loop` subcommand is executed (start, stop, status, list, monitor, history, resume, budget)
 - **THEN** it produces identical output and behavior as the monolithic version
 
 ### Requirement: Orchestration state refactor
@@ -87,5 +87,5 @@ Each extracted module SHALL declare its dependencies in a header comment. Main s
 - **THEN** the file header lists which other modules or functions it depends on
 
 #### Scenario: Main script documents source order
-- **WHEN** a developer reads a main `bin/wt-*` script
+- **WHEN** a developer reads a main `bin/set-*` script
 - **THEN** the source statements are in dependency order with comments explaining why

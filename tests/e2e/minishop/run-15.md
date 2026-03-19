@@ -52,9 +52,9 @@
 ### 31. Uncommitted work guard false positive on framework-internal files
 - **Type**: framework
 - **Severity**: blocking (failed phase-1 change, blocked all 7 dependents)
-- **Root cause**: `git_has_uncommitted_work()` in `git_utils.py` counted ALL dirty files including `.claude/` (loop-state, logs, activity.json), `.wt-tools/`, `CLAUDE.md`, and `openspec/changes/` (proposal.md). These are ALWAYS dirty during agent execution — written by Ralph loop, Claude Code session, and apply skill. The uncommitted work guard (introduced in `b0da40bf4`) didn't filter them, so every change would fail verify with "2 modified, 5 untracked" even when implementation was fully committed.
+- **Root cause**: `git_has_uncommitted_work()` in `git_utils.py` counted ALL dirty files including `.claude/` (loop-state, logs, activity.json), `.set-core/`, `CLAUDE.md`, and `openspec/changes/` (proposal.md). These are ALWAYS dirty during agent execution — written by Ralph loop, Claude Code session, and apply skill. The uncommitted work guard (introduced in `b0da40bf4`) didn't filter them, so every change would fail verify with "2 modified, 5 untracked" even when implementation was fully committed.
 - **Fix**: [60d94c999] — Added `_FRAMEWORK_NOISE_PREFIXES` filter to `git_has_uncommitted_work()`. Framework-internal paths are excluded from the dirty check.
-- **Deployed**: yes — wt-project init + worktree sync
+- **Deployed**: yes — set-project init + worktree sync
 - **Recurrence**: new (introduced in e2e-pipeline-hardening, never tested with real agent worktree)
 
 ### 32. Agent wastes iterations on nonexistent `openspec status` CLI commands

@@ -1,7 +1,7 @@
 """Hook stop pipeline: metrics flush, transcript extraction, commit-based memory save.
 
 1:1 migration of lib/hooks/stop.sh.
-Uses wt-memoryd daemon client for fast remember (bypass CLI subprocess overhead).
+Uses set-memoryd daemon client for fast remember (bypass CLI subprocess overhead).
 Falls back to CLI subprocess if daemon is unavailable.
 """
 
@@ -38,7 +38,7 @@ def _remember_via_daemon_or_cli(
         return False
     try:
         subprocess.run(
-            ["wt-memory", "remember", "--type", mem_type, "--tags", tags],
+            ["set-memory", "remember", "--type", mem_type, "--tags", tags],
             input=content,
             text=True,
             capture_output=True,

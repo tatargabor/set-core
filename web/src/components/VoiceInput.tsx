@@ -13,7 +13,7 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
   const [keyChecked, setKeyChecked] = useState(false)
   const [recording, setRecording] = useState(false)
   const [language, setLanguage] = useState<Language>(() => {
-    return (localStorage.getItem('wt-voice-lang') as Language) || 'hu'
+    return (localStorage.getItem('set-voice-lang') as Language) || 'hu'
   })
   const [duration, setDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -50,7 +50,7 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
 
   // Save language preference
   useEffect(() => {
-    localStorage.setItem('wt-voice-lang', language)
+    localStorage.setItem('set-voice-lang', language)
   }, [language])
 
   const stopRecording = useCallback(() => {

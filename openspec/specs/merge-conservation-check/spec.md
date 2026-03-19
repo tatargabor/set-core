@@ -15,7 +15,7 @@
 - Binary files (detected via `git diff --numstat` null markers)
 
 ### Requirement: Diff-based conservation check after LLM merge
-After `llm_resolve_conflicts()` resolves conflicted files and BEFORE `git commit`, `wt-merge` SHALL run a conservation check on every file that was LLM-resolved. The check SHALL verify that additions from both sides of the merge are present in the resolved output. The `llm_resolve_conflicts()` function SHALL record which files it resolved (via a bash array or temp file) so the conservation check knows which files to verify.
+After `llm_resolve_conflicts()` resolves conflicted files and BEFORE `git commit`, `set-merge` SHALL run a conservation check on every file that was LLM-resolved. The check SHALL verify that additions from both sides of the merge are present in the resolved output. The `llm_resolve_conflicts()` function SHALL record which files it resolved (via a bash array or temp file) so the conservation check knows which files to verify.
 
 #### Scenario: Both sides add content and LLM preserves all
 - **WHEN** file F has conflict between branch A (adds lines LA) and branch B (adds lines LB) relative to merge-base
@@ -30,7 +30,7 @@ After `llm_resolve_conflicts()` resolves conflicted files and BEFORE `git commit
 
 #### Scenario: Conservation check failure blocks merge
 - **WHEN** the conservation check fails for any file
-- **THEN** `wt-merge` SHALL abort the in-progress merge (the check runs BEFORE `git commit --no-edit`, so the merge is still uncommitted; use `git reset --merge` to abort)
+- **THEN** `set-merge` SHALL abort the in-progress merge (the check runs BEFORE `git commit --no-edit`, so the merge is still uncommitted; use `git reset --merge` to abort)
 - **AND** exit with non-zero status
 - **AND** log a message: "MERGE BLOCKED: conservation check failed — additions lost in {file}"
 
@@ -41,7 +41,7 @@ After `llm_resolve_conflicts()` resolves conflicted files and BEFORE `git commit
 - **AND** SHALL ignore blank lines and comment-only lines in the diff
 
 #### Scenario: Bypass via flag
-- **WHEN** `wt-merge` is called with `--no-conservation-check`
+- **WHEN** `set-merge` is called with `--no-conservation-check`
 - **THEN** the conservation check SHALL be skipped entirely
 - **AND** the merge SHALL proceed as if no conservation check exists
 

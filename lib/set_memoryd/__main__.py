@@ -1,4 +1,4 @@
-"""CLI entry point for wt-memoryd.
+"""CLI entry point for set-memoryd.
 
 Usage:
     python -m set_memoryd start [--project NAME] [--storage PATH]
@@ -19,7 +19,7 @@ from . import lifecycle
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="wt-memoryd",
+        prog="set-memoryd",
         description="Per-project memory daemon for shodh-memory",
     )
     sub = parser.add_subparsers(dest="command")
@@ -55,16 +55,16 @@ def main() -> None:
         storage = args.storage or lifecycle.storage_path_for(project)
         pid = lifecycle.start(project, storage_path=storage)
         if pid:
-            print(f"wt-memoryd started: project={project} pid={pid}")
+            print(f"set-memoryd started: project={project} pid={pid}")
         else:
-            print(f"wt-memoryd failed to start for {project}", file=sys.stderr)
+            print(f"set-memoryd failed to start for {project}", file=sys.stderr)
             sys.exit(1)
 
     elif args.command == "stop":
         if lifecycle.stop(project):
-            print(f"wt-memoryd stopped: project={project}")
+            print(f"set-memoryd stopped: project={project}")
         else:
-            print(f"wt-memoryd failed to stop for {project}", file=sys.stderr)
+            print(f"set-memoryd failed to stop for {project}", file=sys.stderr)
             sys.exit(1)
 
     elif args.command == "status":
@@ -74,7 +74,7 @@ def main() -> None:
         else:
             state = "running" if info["running"] else "stopped"
             pid_str = f" pid={info['pid']}" if info["pid"] else ""
-            print(f"wt-memoryd {state}: project={project}{pid_str}")
+            print(f"set-memoryd {state}: project={project}{pid_str}")
 
     elif args.command == "run":
         # Foreground mode — configure logging to stderr

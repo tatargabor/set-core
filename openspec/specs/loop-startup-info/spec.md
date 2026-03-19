@@ -1,19 +1,19 @@
 ### Requirement: Label flag for loop identification
-The `wt-loop start` command SHALL accept an optional `--label <text>` flag to identify the loop instance.
+The `set-loop start` command SHALL accept an optional `--label <text>` flag to identify the loop instance.
 
 #### Scenario: Starting with a label
-- **WHEN** user runs `wt-loop start "task" --label "Run A (baseline)"`
+- **WHEN** user runs `set-loop start "task" --label "Run A (baseline)"`
 - **THEN** the label SHALL be stored in `loop-state.json` as `"label": "Run A (baseline)"`
 - **AND** the label SHALL appear in the startup banner and terminal title
 
 #### Scenario: Starting without a label
-- **WHEN** user runs `wt-loop start "task"` without `--label`
+- **WHEN** user runs `set-loop start "task"` without `--label`
 - **THEN** `loop-state.json` SHALL contain `"label": null`
 - **AND** the banner SHALL omit the Label line
 - **AND** the terminal title SHALL use the existing format without parenthetical
 
 ### Requirement: Expanded startup banner
-The `wt-loop run` command SHALL display an expanded banner at startup with full context.
+The `set-loop run` command SHALL display an expanded banner at startup with full context.
 
 #### Scenario: Banner content with label
 - **WHEN** Ralph loop starts with a label set
@@ -56,5 +56,5 @@ The terminal title SHALL include the label when set.
 On macOS, the spawned Terminal.app tab SHALL have its title set explicitly via AppleScript.
 
 #### Scenario: macOS terminal title on start
-- **WHEN** `wt-loop start` spawns a Terminal.app tab on macOS
+- **WHEN** `set-loop start` spawns a Terminal.app tab on macOS
 - **THEN** the AppleScript SHALL set the custom title of the tab to the terminal title value

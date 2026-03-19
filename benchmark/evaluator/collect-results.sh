@@ -92,14 +92,14 @@ if os.path.isdir(test_dir):
 results['test_results'] = test_results
 
 # --- Memory data (Run B only) ---
-code, out, _ = run('wt-memory status --json')
+code, out, _ = run('set-memory status --json')
 if code == 0:
     try:
         results['memory_status'] = json.loads(out)
     except:
         results['memory_status'] = None
 
-    code2, out2, _ = run('wt-memory list --json')
+    code2, out2, _ = run('set-memory list --json')
     if code2 == 0:
         try:
             results['memories'] = json.loads(out2)

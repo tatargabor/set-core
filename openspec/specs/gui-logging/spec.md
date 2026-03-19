@@ -4,7 +4,7 @@
 TBD - created by archiving change gui-debug-logging. Update Purpose after archive.
 ## Requirements
 ### Requirement: Log file initialization at startup
-The system SHALL create a rotating log file when the GUI starts. The log file SHALL be located at the platform's temp directory (`/tmp/wt-control.log` on macOS/Linux, `%TEMP%\wt-control.log` on Windows). The RotatingFileHandler SHALL use 5 MB max file size with 3 backup files.
+The system SHALL create a rotating log file when the GUI starts. The log file SHALL be located at the platform's temp directory (`/tmp/set-control.log` on macOS/Linux, `%TEMP%\set-control.log` on Windows). The RotatingFileHandler SHALL use 5 MB max file size with 3 backup files.
 
 #### Scenario: GUI startup creates log file
 - **WHEN** the GUI application starts via `gui/main.py`
@@ -15,11 +15,11 @@ The system SHALL create a rotating log file when the GUI starts. The log file SH
 - **THEN** the file is rotated and up to 3 backup files are kept (`.log.1`, `.log.2`, `.log.3`)
 
 ### Requirement: Per-module logger hierarchy
-Each GUI module SHALL use a child logger under the `wt-control` root logger, named by module (e.g., `wt-control.handlers`, `wt-control.macos`, `wt-control.workers.status`).
+Each GUI module SHALL use a child logger under the `set-control` root logger, named by module (e.g., `set-control.handlers`, `set-control.macos`, `set-control.workers.status`).
 
 #### Scenario: Module logger naming
 - **WHEN** a GUI module initializes its logger
-- **THEN** it uses `logging.getLogger("wt-control.<module-name>")` to create a hierarchically named logger
+- **THEN** it uses `logging.getLogger("set-control.<module-name>")` to create a hierarchically named logger
 
 ### Requirement: User action logging
 All user-triggered handler methods (`on_double_click`, `on_focus`, `on_close_editor`, `on_new`, `on_work`, `on_add`, `on_close`, `git_merge`, `git_push`, `git_pull`, `git_fetch`, `create_worktree`) SHALL log at INFO level on entry with the key parameters (project, change_id, path).
@@ -69,14 +69,14 @@ Context menu and main menu actions SHALL log at INFO level with the action name 
 - **THEN** the log SHALL contain the action name and the target worktree's project and change_id
 
 ### Requirement: Worker thread logging
-All background worker threads (FeatureWorker, ChatWorker, UsageWorker) SHALL use child loggers under `wt-control.workers.<name>`. Each poll cycle SHALL log at DEBUG level. Errors and timeouts SHALL log at ERROR level with the exception details.
+All background worker threads (FeatureWorker, ChatWorker, UsageWorker) SHALL use child loggers under `set-control.workers.<name>`. Each poll cycle SHALL log at DEBUG level. Errors and timeouts SHALL log at ERROR level with the exception details.
 
 #### Scenario: FeatureWorker poll logging
 - **WHEN** the FeatureWorker completes a poll cycle
 - **THEN** it logs at DEBUG level the number of projects polled and per-project results
 
 #### Scenario: FeatureWorker subprocess failure
-- **WHEN** a `set-memory` or `wt-openspec` subprocess fails or times out
+- **WHEN** a `set-memory` or `set-openspec` subprocess fails or times out
 - **THEN** it logs at ERROR level with the command, project name, and exception message
 
 #### Scenario: UsageWorker poll cycle logging
@@ -94,7 +94,7 @@ When a signal handler catches an exception via the error boundary, it SHALL log 
 
 #### Scenario: Exception in update_status handler
 - **WHEN** `update_status()` catches an exception
-- **THEN** the log contains `ERROR wt-control.main_window: update_status failed:` followed by the traceback
+- **THEN** the log contains `ERROR set-control.main_window: update_status failed:` followed by the traceback
 
 ### Requirement: Worker error logging
 Background worker threads (StatusWorker, TeamWorker, ChatWorker, UsageWorker) SHALL log errors at ERROR level when polling fails. Normal polling cycles SHALL NOT be logged to avoid log noise.

@@ -1,7 +1,7 @@
 ## Requirements
 
 ### Requirement: Stop hook outputs memory reminder when skill has memory steps
-The `wt-hook-stop` script SHALL check for a `.memory` marker file alongside the active `.skill` file. When the marker exists, the hook SHALL output a reminder message to stdout that Claude Code injects into the agent's conversation.
+The `set-hook-stop` script SHALL check for a `.memory` marker file alongside the active `.skill` file. When the marker exists, the hook SHALL output a reminder message to stdout that Claude Code injects into the agent's conversation.
 
 #### Scenario: Skill with memory hooks active
 - **WHEN** the Stop event fires
@@ -29,10 +29,10 @@ The `wt-hook-stop` script SHALL check for a `.memory` marker file alongside the 
 - **NOTE** This is intentional — repeated reminders increase compliance. The skill clears both `.skill` and `.memory` on completion.
 
 ### Requirement: Memory marker cleaned up with skill file
-When a skill session ends (`.skill` file is removed by `wt-skill-start` for a new skill or by session cleanup), the corresponding `.memory` file SHALL also be removed.
+When a skill session ends (`.skill` file is removed by `set-skill-start` for a new skill or by session cleanup), the corresponding `.memory` file SHALL also be removed.
 
 #### Scenario: New skill replaces old skill
-- **WHEN** `wt-skill-start <new-skill>` is called
+- **WHEN** `set-skill-start <new-skill>` is called
 - **AND** `.set-core/agents/<pid>.memory` exists from the previous skill
 - **THEN** the old `.memory` file SHALL be removed
 - **AND** a new `.memory` file SHALL only be created if the new skill also has memory hooks

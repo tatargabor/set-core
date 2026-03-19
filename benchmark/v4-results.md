@@ -2,7 +2,7 @@
 
 **Date**: 2026-02-16
 **Benchmark**: CraftBazaar — 12 sequential changes building a multi-vendor marketplace
-**Setup**: Two Claude Code instances (Opus 4.6), `wt-loop --max 30 --stall-threshold 3`
+**Setup**: Two Claude Code instances (Opus 4.6), `set-loop --max 30 --stall-threshold 3`
 
 ## Overall
 
@@ -141,4 +141,4 @@ This directly addressed v3's "overconfidence problem" — where memory gave agen
 1. **Coupon tracking & checkout navigation** are missed by BOTH runs — these are spec comprehension issues, not memory issues. May need spec-level hints or more explicit change definitions.
 2. **Payout algorithm** is consistently wrong — the "largest-remainder" concept may need a concrete code example in the change definition, not just a name.
 3. **Memory should beat baseline, not just match**: the REREAD_FILES approach equalized quality but didn't create an advantage. Next step: save architectural "code maps" (which functions live where, what depends on what) that give the memory run structural understanding the baseline lacks.
-4. **Auto-stop bug**: loop should detect all results files exist and stop. Fix the done-detection in wt-loop.
+4. **Auto-stop bug**: loop should detect all results files exist and stop. Fix the done-detection in set-loop.

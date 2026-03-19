@@ -58,7 +58,7 @@ After orchestration completes (status "done", "stopped", or "time_limit"), the s
 #### Scenario: Successful run wrap-up
 - **WHEN** orchestration finishes with status "done"
 - **THEN** the sentinel SHALL:
-  1. Run `wt-e2e-report --update-guide <set-core-guide-path>` in the project directory
+  1. Run `set-e2e-report --update-guide <set-core-guide-path>` in the project directory
   2. Update findings.md with any new bugs discovered during monitoring
   3. Commit the guide and findings changes with message `e2e: {project} run #{N} results`
 

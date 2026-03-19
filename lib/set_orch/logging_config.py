@@ -1,6 +1,6 @@
 """Structured logging configuration for orchestration modules.
 
-Migrated from: bin/wt-orchestrate log(), log_info(), log_warn(), log_error(), log_debug()
+Migrated from: bin/set-orchestrate log(), log_info(), log_warn(), log_error(), log_debug()
 
 Provides rotating file handler + stderr handler with ExtraFormatter
 that appends structured key=value pairs from logging extras.

@@ -45,7 +45,7 @@ The system prompt SHALL list the bash commands the agent can use to query and co
 
 #### Scenario: Commands reference present
 - **WHEN** any message is sent to the chat
-- **THEN** the system prompt includes a commands reference with examples like `set-orch-core state query`, `set-orchestrate skip`, `wt-loop start`
+- **THEN** the system prompt includes a commands reference with examples like `set-orch-core state query`, `set-orchestrate skip`, `set-loop start`
 
 ### Requirement: Context builder as separate module
 The context building logic SHALL be in a separate `lib/set_orch/chat_context.py` module with a `build_chat_context(project_path: Path) -> str` function.

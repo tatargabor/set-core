@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Level 3 End-to-end test: single change through full lifecycle
-# Requires: Claude CLI, wt-new, wt-loop, wt-merge available
+# Requires: Claude CLI, set-new, set-loop, set-merge available
 # Cost: ~20-50k tokens (one Ralph session)
 # Run with: ./tests/orchestrator/test-e2e.sh
 
@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 # ============================================================
 # Setup: create a real git project with trivial brief
@@ -19,7 +19,7 @@ TMPDIR=$(mktemp -d)
 cleanup() {
     info "Cleaning up..."
     # Kill any leftover Ralph loops
-    pkill -f "wt-loop.*hello-world" 2>/dev/null || true
+    pkill -f "set-loop.*hello-world" 2>/dev/null || true
     # Clean up worktrees
     if [[ -d "$TMPDIR/test-project-hello-world" ]]; then
         cd "$TMPDIR/test-project"
@@ -80,7 +80,7 @@ info "Test project created at $PROJECT_PATH"
 
 info "Step 1: Generating plan..."
 
-"$PROJECT_DIR/bin/wt-orchestrate" plan 2>&1 || {
+"$PROJECT_DIR/bin/set-orchestrate" plan 2>&1 || {
     error "Plan generation failed"
     exit 1
 }
@@ -112,7 +112,7 @@ info "Step 2: Starting orchestration..."
 info "This will run a full Ralph loop cycle. May take several minutes."
 
 # Run orchestrator in background with timeout
-timeout 600 "$PROJECT_DIR/bin/wt-orchestrate" start 2>&1 &
+timeout 600 "$PROJECT_DIR/bin/set-orchestrate" start 2>&1 &
 ORCH_PID=$!
 
 # Wait with progress updates
@@ -129,7 +129,7 @@ while kill -0 "$ORCH_PID" 2>/dev/null; do
         # If orchestrator reached checkpoint, auto-approve
         if [[ "$status" == "checkpoint" ]]; then
             info "  Auto-approving checkpoint..."
-            "$PROJECT_DIR/bin/wt-orchestrate" approve --merge 2>/dev/null || true
+            "$PROJECT_DIR/bin/set-orchestrate" approve --merge 2>/dev/null || true
         fi
     else
         info "  [${elapsed}s] waiting for state file..."

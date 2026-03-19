@@ -4,11 +4,11 @@
 The `handle_user_prompt()` function SHALL increment a `turn_count` integer in the session dedup cache on every UserPromptSubmit event. The counter SHALL start at 1 on the first prompt of the session.
 
 #### Scenario: First prompt in session
-- **WHEN** `wt-hook-memory UserPromptSubmit` is called and no `turn_count` exists in cache
+- **WHEN** `set-hook-memory UserPromptSubmit` is called and no `turn_count` exists in cache
 - **THEN** `turn_count` SHALL be set to 1 in the cache file
 
 #### Scenario: Subsequent prompts
-- **WHEN** `wt-hook-memory UserPromptSubmit` is called and `turn_count` is N in cache
+- **WHEN** `set-hook-memory UserPromptSubmit` is called and `turn_count` is N in cache
 - **THEN** `turn_count` SHALL be updated to N+1
 
 ### Requirement: Checkpoint trigger at configurable interval
@@ -34,7 +34,7 @@ The checkpoint save SHALL summarize accumulated `_metrics` entries since `last_c
 #### Scenario: Checkpoint with mixed activity
 - **WHEN** checkpoint fires at turn 15
 - **AND** metrics since turn 0 contain 5 Read events, 3 Bash events, and prompts about "memory hooks" and "GUI testing"
-- **THEN** the saved memory SHALL contain: `[session checkpoint, turns 1-15] Files: bin/wt-hook-memory, gui/main.py, ... | Commands: 3 | Topics: memory hooks, GUI testing`
+- **THEN** the saved memory SHALL contain: `[session checkpoint, turns 1-15] Files: bin/set-hook-memory, gui/main.py, ... | Commands: 3 | Topics: memory hooks, GUI testing`
 - **AND** the memory type SHALL be Context
 - **AND** tags SHALL include `phase:checkpoint,source:hook`
 

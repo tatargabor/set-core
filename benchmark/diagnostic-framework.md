@@ -34,7 +34,7 @@ Beyond measuring "did memory help?", this framework identifies **where memory fa
 
 **Definition**: Memory was saved, but its content was too vague, too long, or too specific to be useful when recalled later.
 
-**Detection**: Review all `wt-memory remember` invocations in Run B's transcript. Check if the saved content would actually help in the change where it was later needed.
+**Detection**: Review all `set-memory remember` invocations in Run B's transcript. Check if the saved content would actually help in the change where it was later needed.
 
 **Documentation template**:
 ```
@@ -116,8 +116,8 @@ Beyond measuring "did memory help?", this framework identifies **where memory fa
 ### Step 1: Build the memory event timeline
 
 For Run B, extract all memory events from `ralph-loop.log`:
-1. All `wt-memory recall` calls (query, results, change context)
-2. All `wt-memory remember` calls (content, type, tags, change context)
+1. All `set-memory recall` calls (query, results, change context)
+2. All `set-memory remember` calls (content, type, tags, change context)
 3. Order by timestamp
 
 ### Step 2: Map traps to memory interactions

@@ -1,5 +1,5 @@
-// wt-orchestrate Architecture Diagram (Layered v7 — symmetric, no back-edges)
-// Generate: dot -Tpng -Gdpi=150 wt-orchestrate-architecture.dot -o wt-orchestrate-architecture.png
+// set-orchestrate Architecture Diagram (Layered v7 — symmetric, no back-edges)
+// Generate: dot -Tpng -Gdpi=150 set-orchestrate-architecture.dot -o set-orchestrate-architecture.png
 //
 // Design notes:
 // - 5 layer clusters (L1-L5) stacked top-to-bottom, strictly forward flow
@@ -11,7 +11,7 @@
 
 digraph orchestrate {
     graph [
-        label="wt-orchestrate — Autonomous Multi-Phase Spec Orchestration\n "
+        label="set-orchestrate — Autonomous Multi-Phase Spec Orchestration\n "
         labelloc=t fontname="Helvetica" fontsize=22 fontcolor="#212121"
         bgcolor="white" pad="0.6,0.4" nodesep=0.7 ranksep=0.6
         compound=true newrank=true center=true
@@ -64,7 +64,7 @@ digraph orchestrate {
         labeljust=c style="filled,rounded" fillcolor="#E3F2FD" color="#1565C0"
         penwidth=2 fontname="Helvetica Bold" fontsize=10 fontcolor="#0D47A1"
 
-        dispatch [label="⑤ Dispatch\nmax_parallel  |  topo order\nwt-new → openspec ff → wt-loop\n+ mem recall for proposal (max 1000 ch)\n← replan ⑩ feeds new changes here" fillcolor="#BBDEFB" color="#1565C0"]
+        dispatch [label="⑤ Dispatch\nmax_parallel  |  topo order\nset-new → openspec ff → set-loop\n+ mem recall for proposal (max 1000 ch)\n← replan ⑩ feeds new changes here" fillcolor="#BBDEFB" color="#1565C0"]
 
         ralph [label="⑥ Ralph Loop\nClaude agent in git worktree\niterative implementation\nloop-state.json + terminal PID\n$ tokens polled every 15s\n← retry/stall recovery resumes here" fillcolor="#C8E6C9" color="#2E7D32"]
 
@@ -113,7 +113,7 @@ digraph orchestrate {
         labeljust=c style="filled,rounded" fillcolor="#E8EAF6" color="#303F9F"
         penwidth=2 fontname="Helvetica Bold" fontsize=10 fontcolor="#1A237E"
 
-        merge [label="⑨ Merge\nwt-merge --no-push --llm-resolve\npolicy: eager | checkpoint | manual\n+ mem: remember success/conflict" fillcolor="#C5CAE9" color="#303F9F"]
+        merge [label="⑨ Merge\nset-merge --no-push --llm-resolve\npolicy: eager | checkpoint | manual\n+ mem: remember success/conflict" fillcolor="#C5CAE9" color="#303F9F"]
 
         checkpoint [label="Checkpoint\nevery N changes (checkpoint_every)\npause for user approval\n! notify progress (N/total)\nmerge queued on approve" fillcolor="#D1C4E9" color="#512DA8" fontsize=8]
 
@@ -174,7 +174,7 @@ digraph orchestrate {
 
             merge_wf [label="Merge Conflict Resolution (3-layer)\n───────────────────────────────────────────\n① Auto-resolve generated files\n   tsconfig, locks, dist/, .next/\n   → checkout --ours + git add\n② LLM Resolution [Sonnet]\n   all files in one prompt (300s)\n   prefer source on contradiction\n③ Agent-assisted merge\n   resume Ralph with instructions\n④ merge-blocked → queue (5x retry)\n   permanent fail → ! critical" fillcolor="#E0F2F1" color="#00897B" fontsize=7]
 
-            wt_layout [label="Worktree Filesystem Layout\n───────────────────────────────────────────\n~/project/              ← master\n~/project-wt-add-auth/  ← worktree\n~/project-wt-fix-db/    ← worktree\n  (siblings, NOT subdirs)\n───────────────────────────────────────────\nNaming: <repo>-wt-<change-id>\nShared .git · Own .claude/ + openspec/\n───────────────────────────────────────────\nwt-new → wt-loop → wt-merge → wt-close" fillcolor="#E0F2F1" color="#00897B" fontsize=7]
+            wt_layout [label="Worktree Filesystem Layout\n───────────────────────────────────────────\n~/project/              ← master\n~/project-wt-add-auth/  ← worktree\n~/project-wt-fix-db/    ← worktree\n  (siblings, NOT subdirs)\n───────────────────────────────────────────\nNaming: <repo>-wt-<change-id>\nShared .git · Own .claude/ + openspec/\n───────────────────────────────────────────\nset-new → set-loop → set-merge → set-close" fillcolor="#E0F2F1" color="#00897B" fontsize=7]
 
             git_topo -> merge_wf [style=invis]
             merge_wf -> wt_layout [style=invis]

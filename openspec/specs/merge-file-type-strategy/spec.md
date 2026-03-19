@@ -17,7 +17,7 @@
 - `json_deep_merge` and `regenerate` strategy types (already handled by existing pre-LLM pipeline)
 
 ### Requirement: Merge strategy configuration
-Projects SHALL be able to declare file-type merge strategies in `project-knowledge.yaml` under a `merge_strategies` key. Each strategy maps file patterns to merge behavior. `wt-merge` SHALL parse strategy config using `python3 -c` (YAML parsing is not feasible in pure bash; the existing codebase already depends on Python).
+Projects SHALL be able to declare file-type merge strategies in `project-knowledge.yaml` under a `merge_strategies` key. Each strategy maps file patterns to merge behavior. `set-merge` SHALL parse strategy config using `python3 -c` (YAML parsing is not feasible in pure bash; the existing codebase already depends on Python).
 
 #### Scenario: Strategy configuration format
 - **WHEN** a project has `merge_strategies` in `project-knowledge.yaml`
@@ -66,7 +66,7 @@ When a strategy specifies `validate_command`, it SHALL be executed after LLM res
 #### Scenario: Validation command passes
 - **WHEN** file F matches a strategy with `validate_command` C
 - **AND** the conservation check and entity check pass
-- **THEN** `wt-merge` SHALL execute C via `bash -c`
+- **THEN** `set-merge` SHALL execute C via `bash -c`
 - **AND** if exit code is 0, the merge SHALL proceed
 
 #### Scenario: Validation command fails

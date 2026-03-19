@@ -1,6 +1,6 @@
 """Python entry point for Claude Code memory hooks.
 
-Called by bin/wt-hook-memory:
+Called by bin/set-hook-memory:
     python3 -m set_hooks <EventName> <InputFile> <CacheFile> [--set-core-root DIR]
 
 Reads hook input from the specified file (pre-read by bash wrapper),

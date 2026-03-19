@@ -10,7 +10,7 @@ from unittest.mock import patch, MagicMock
 def test_on_focus_uses_platform_abstraction(control_center, git_env, qtbot):
     """on_focus() should call platform.find_window_by_title and platform.focus_window."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-zed-focus")
+    wt_path = str(git_env["base"] / "test-project-set-zed-focus")
 
     subprocess.run(
         ["git", "-C", project_path, "worktree", "add", "-b", "change/zed-focus", wt_path],
@@ -65,7 +65,7 @@ def test_on_focus_uses_platform_abstraction(control_center, git_env, qtbot):
 def test_on_double_click_uses_platform(control_center, git_env, qtbot):
     """on_double_click() should use platform abstraction for window detection."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-zed-dblclk")
+    wt_path = str(git_env["base"] / "test-project-set-zed-dblclk")
 
     subprocess.run(
         ["git", "-C", project_path, "worktree", "add", "-b", "change/zed-dblclk", wt_path],
@@ -122,7 +122,7 @@ def test_on_double_click_uses_platform(control_center, git_env, qtbot):
 def test_on_close_editor_uses_platform(control_center, git_env, qtbot):
     """on_close_editor() should call platform.close_window with correct window ID."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-zed-close")
+    wt_path = str(git_env["base"] / "test-project-set-zed-close")
 
     subprocess.run(
         ["git", "-C", project_path, "worktree", "add", "-b", "change/zed-close", wt_path],

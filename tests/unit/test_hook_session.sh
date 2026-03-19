@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/helpers.sh"
 # Set up minimal environment for hooks
 export WT_TOOLS_ROOT="$SCRIPT_DIR/../.."
 export SESSION_ID="test-session-$$"
-SESSION_CACHE="/tmp/wt-memory-session-${SESSION_ID}.json"
+SESSION_CACHE="/tmp/set-memory-session-${SESSION_ID}.json"
 
 # Source dependencies
 source "$WT_TOOLS_ROOT/lib/hooks/util.sh"

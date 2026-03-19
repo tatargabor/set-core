@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wt-loop state management: state file paths, init, update, token tracking
+# set-loop state management: state file paths, init, update, token tracking
 # Dependencies: set-common.sh must be sourced first (provides jq, SCRIPT_DIR)
 
 # Parse ISO 8601 date to epoch seconds (cross-platform)
@@ -178,7 +178,7 @@ add_iteration() {
        }]' "$state_file" > "$tmp" && mv "$tmp" "$state_file"
 }
 
-# Get current token usage from wt-usage
+# Get current token usage from set-usage
 # Returns JSON: {"input_tokens":N,"output_tokens":N,"cache_read_tokens":N,"cache_create_tokens":N,"total_tokens":N}
 get_current_tokens() {
     local since="${1:-}"
@@ -198,9 +198,9 @@ get_current_tokens() {
     fi
 
     if [[ -n "$since" ]]; then
-        usage_json=$("$SCRIPT_DIR/wt-usage" --since "$since" $project_dir_flag --format json 2>/dev/null || echo "$zero_json")
+        usage_json=$("$SCRIPT_DIR/set-usage" --since "$since" $project_dir_flag --format json 2>/dev/null || echo "$zero_json")
     else
-        usage_json=$("$SCRIPT_DIR/wt-usage" $project_dir_flag --format json 2>/dev/null || echo "$zero_json")
+        usage_json=$("$SCRIPT_DIR/set-usage" $project_dir_flag --format json 2>/dev/null || echo "$zero_json")
     fi
 
     # Extract all token types; total = input + output (excludes cache which inflates counts)

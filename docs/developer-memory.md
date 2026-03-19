@@ -298,7 +298,7 @@ Memory is fully automated via Claude Code hooks — no agent discipline required
 L3 only fires on commands that match hot-topic patterns. Patterns come from two sources:
 
 **At session start (L1 discovers):**
-- `bin/*` scripts → command prefixes (e.g., `wt-*`, `openspec`)
+- `bin/*` scripts → command prefixes (e.g., `set-*`, `openspec`)
 - `package.json` / `Makefile` / `pyproject.toml` → project commands
 - Memory tags → frequently-discussed topics
 - Error memories → commands that failed before

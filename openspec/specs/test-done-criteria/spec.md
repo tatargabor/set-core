@@ -41,15 +41,15 @@ The test command SHALL be executed via `subprocess.run(cmd, shell=True, cwd=wt_p
 - **WHEN** the test command is `pnpm test -- --reporter=dot`
 - **THEN** it SHALL be passed to the shell as-is, not parsed into components
 
-### Requirement: wt-loop accepts --test-command flag
-`wt-loop start` SHALL accept an optional `--test-command <cmd>` argument. When provided, the command SHALL be stored in `loop-state.json` under the `test_command` key.
+### Requirement: set-loop accepts --test-command flag
+`set-loop start` SHALL accept an optional `--test-command <cmd>` argument. When provided, the command SHALL be stored in `loop-state.json` under the `test_command` key.
 
 #### Scenario: Flag provided
-- **WHEN** `wt-loop start "task" --done test --test-command "pnpm test"`
+- **WHEN** `set-loop start "task" --done test --test-command "pnpm test"`
 - **THEN** `loop-state.json` SHALL contain `"test_command": "pnpm test"`
 
 #### Scenario: Flag omitted
-- **WHEN** `wt-loop start "task" --done test` without `--test-command`
+- **WHEN** `set-loop start "task" --done test` without `--test-command`
 - **THEN** `loop-state.json` SHALL contain `"test_command": null`
 - **AND** `_check_test_done()` SHALL treat `null` as absent and proceed to auto-detect fallback
 

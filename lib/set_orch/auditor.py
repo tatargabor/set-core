@@ -181,7 +181,7 @@ def run_audit(
         state, cycle, input_mode, input_path, digest_dir
     )
 
-    # Render via wt-orch-core template
+    # Render via set-orch-core template
     import tempfile
 
     input_file = tempfile.NamedTemporaryFile(
@@ -192,7 +192,7 @@ def run_audit(
         input_file.close()
 
         template_result = run_command(
-            ["wt-orch-core", "template", "audit", "--input-file", input_file.name],
+            ["set-orch-core", "template", "audit", "--input-file", input_file.name],
             timeout=30,
         )
     finally:

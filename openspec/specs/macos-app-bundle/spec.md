@@ -7,7 +7,7 @@ The installer SHALL generate a valid macOS `.app` bundle at `~/Applications/WT C
 - **WHEN** `install.sh` runs on macOS
 - **THEN** the following structure is created:
   - `~/Applications/WT Control.app/Contents/Info.plist`
-  - `~/Applications/WT Control.app/Contents/MacOS/wt-control` (executable)
+  - `~/Applications/WT Control.app/Contents/MacOS/set-control` (executable)
   - `~/Applications/WT Control.app/Contents/Resources/` (directory)
   - `~/Applications/WT Control.app/Contents/Resources/app.icns` (application icon)
 
@@ -16,17 +16,17 @@ The installer SHALL generate a valid macOS `.app` bundle at `~/Applications/WT C
 - **THEN** `Info.plist` SHALL contain:
   - `CFBundleName` = "WT Control"
   - `CFBundleIdentifier` = "com.set-core.control"
-  - `CFBundleExecutable` = "wt-control"
+  - `CFBundleExecutable` = "set-control"
   - `CFBundleIconFile` = "app"
   - `LSUIElement` = true
 
-#### Scenario: Executable wrapper delegates to wt-control
-- **WHEN** the `.app` bundle's `MacOS/wt-control` is executed
-- **THEN** it SHALL exec `$HOME/.local/bin/wt-control` with all arguments forwarded
+#### Scenario: Executable wrapper delegates to set-control
+- **WHEN** the `.app` bundle's `MacOS/set-control` is executed
+- **THEN** it SHALL exec `$HOME/.local/bin/set-control` with all arguments forwarded
 
 #### Scenario: Executable has correct permissions
 - **WHEN** the `.app` bundle is generated
-- **THEN** `Contents/MacOS/wt-control` SHALL have executable permission (chmod +x)
+- **THEN** `Contents/MacOS/set-control` SHALL have executable permission (chmod +x)
 
 ### Requirement: Spotlight Discoverability
 The `.app` bundle SHALL be discoverable by macOS application launchers.
@@ -58,8 +58,8 @@ The `.app` bundle SHALL support being pinned to the macOS Dock.
 ### Requirement: Graceful Failure
 The `.app` wrapper SHALL handle missing dependencies gracefully.
 
-#### Scenario: wt-control not installed
-- **WHEN** the `.app` bundle's executable runs but `~/.local/bin/wt-control` does not exist
+#### Scenario: set-control not installed
+- **WHEN** the `.app` bundle's executable runs but `~/.local/bin/set-control` does not exist
 - **THEN** a macOS dialog SHALL appear with an error message explaining that set-core is not installed
 - **AND** the script SHALL exit with a non-zero status
 

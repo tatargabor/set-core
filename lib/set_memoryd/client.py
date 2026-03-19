@@ -1,4 +1,4 @@
-"""Synchronous client for wt-memoryd Unix socket daemon.
+"""Synchronous client for set-memoryd Unix socket daemon.
 
 Connects to the daemon, sends JSON-lines requests, reads responses.
 Auto-starts daemon if not running (max 1 retry).

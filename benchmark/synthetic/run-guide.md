@@ -4,7 +4,7 @@
 
 - Node.js v18+
 - Claude Code CLI (`claude`)
-- `wt-memory` (for modes B, C, and D)
+- `set-memory` (for modes B, C, and D)
 - ~2 GB disk space (per run)
 - Internet for npm install
 
@@ -89,7 +89,7 @@ Expected weighted score: 30-50% (Category A passes + some D from code reading)
 ```
 
 What happens:
-1. Same as Mode A, but with `wt-memory` enabled
+1. Same as Mode A, but with `set-memory` enabled
 2. C01 session establishes conventions in code
 3. C02 session introduces Developer Notes with 13 knowledge items (B1-B4, C1-C3, D1-D3, E1-E3) — agent should save these
 4. C03-C05 sessions recall conventions before implementing
@@ -123,7 +123,7 @@ Time: ~15-20 minutes.
 
 What happens:
 1. Bootstraps project with `.claude/rules.yaml` containing all 17 rules (A1-A4, B1-B4, C1-C3, D1-D3, E1-E3)
-2. Deploys wt-memory hooks so rules are injected as `MANDATORY RULES` on every prompt
+2. Deploys set-memory hooks so rules are injected as `MANDATORY RULES` on every prompt
 3. Skips C01-C02 (conventions already in rules)
 4. Runs only C03-C05 — tests deterministic rule injection
 
@@ -250,7 +250,7 @@ git add -A && git commit -m "Change 02 complete"
 
 **Test script hangs**: Server may not be running. Start it manually: `node src/server.js &`
 
-**Memory not working (Mode B)**: Check `wt-memory health`. Verify hooks: `ls .claude/hooks/`.
+**Memory not working (Mode B)**: Check `set-memory health`. Verify hooks: `ls .claude/hooks/`.
 
 **Score is 0%**: Tests may not find the server running. score.sh starts the server automatically, but if port 3000 is in use, it'll skip. Kill existing processes first.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/orchestration/config.sh — wt/ directory lookup and config file resolution
-# Sourced by bin/wt-orchestrate before state.sh
+# Sourced by bin/set-orchestrate before state.sh
 
 
 # Find a set-core config file using the fallback chain:

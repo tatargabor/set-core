@@ -43,7 +43,7 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | 44 | pyyaml not installed for python3.14 — sentinel restart fails | #17 | fixed (manual pip install) |
 | 45 | archive specs not committed to worktrees | #18 | fixed (`607d134ff`) |
 | 46 | spec_verify timeout triggers retries | #18 | fixed (`021aa0818`) |
-| 47 | figma-raw tsconfig exclude missing | #18 | fixed (`ff3997f`, wt-project-web) |
+| 47 | figma-raw tsconfig exclude missing | #18 | fixed (`ff3997f`, set-project-web) |
 | 48 | stale .next cache breaks build gate | #18 | fixed (`a68170397`) |
 | 49 | decompose stderr swallowed by 2>/dev/null | #19 | fixed (`7551be1f5`) |
 | 50 | state reconstruction loses merged status (no STATE_CHANGE events) | #19 | **open** |

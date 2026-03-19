@@ -27,14 +27,14 @@ skip() {
     echo "  SKIP: $1"; ((SKIP++))
 }
 
-# Ensure wt-memory is available
-if ! command -v wt-memory &>/dev/null; then
-    echo "ERROR: wt-memory not found on PATH"
+# Ensure set-memory is available
+if ! command -v set-memory &>/dev/null; then
+    echo "ERROR: set-memory not found on PATH"
     exit 1
 fi
 
-if ! wt-memory health &>/dev/null; then
-    echo "ERROR: wt-memory health check failed"
+if ! set-memory health &>/dev/null; then
+    echo "ERROR: set-memory health check failed"
     exit 1
 fi
 
@@ -47,7 +47,7 @@ if [[ "${1:-}" == "--smoke" ]]; then
     echo "Checking memory store for recent C01 artifacts..."
 
     # Check for product-catalog memories
-    PC_MEMORIES=$(wt-memory recall "product-catalog" --limit 10 --mode hybrid 2>/dev/null)
+    PC_MEMORIES=$(set-memory recall "product-catalog" --limit 10 --mode hybrid 2>/dev/null)
     PC_COUNT=$(echo "$PC_MEMORIES" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
     check "At least 1 memory about product-catalog" '[ "$PC_COUNT" -ge 1 ]'
 
@@ -61,7 +61,7 @@ print(len(tagged))
     check "At least 1 memory with change:product-catalog tag" '[ "$TAGGED" -ge 1 ]'
 
     # Check for zero Conversation noise
-    CONV_COUNT=$(wt-memory list 2>/dev/null | python3 -c "
+    CONV_COUNT=$(set-memory list 2>/dev/null | python3 -c "
 import sys, json
 mems = json.load(sys.stdin)
 conv = [m for m in mems if m.get('experience_type') == 'Conversation']
@@ -70,7 +70,7 @@ print(len(conv))
     check "Zero Conversation type memories (proactive-context noise)" '[ "$CONV_COUNT" -eq 0 ]'
 
     # Check for code-map
-    CODEMAP=$(wt-memory recall "product-catalog code map" --limit 3 --mode semantic 2>/dev/null | python3 -c "
+    CODEMAP=$(set-memory recall "product-catalog code map" --limit 3 --mode semantic 2>/dev/null | python3 -c "
 import sys, json
 mems = json.load(sys.stdin)
 cm = [m for m in mems if any('code-map' in t for t in m.get('tags', []))]
@@ -79,7 +79,7 @@ print(len(cm))
     check "Code-map memory exists for product-catalog" '[ "$CODEMAP" -ge 1 ]'
 
     # Check noise rate via stats
-    NOISE=$(wt-memory stats --json 2>/dev/null | python3 -c "
+    NOISE=$(set-memory stats --json 2>/dev/null | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print(d.get('noise_ratio', 1.0))
@@ -140,17 +140,17 @@ echo ""
 
 # Test 2: change: tag in source code
 echo "--- Test 2: change: tag propagation ---"
-HOOK_FILE="$PROJECT_ROOT/bin/wt-hook-memory-save"
+HOOK_FILE="$PROJECT_ROOT/bin/set-hook-memory-save"
 HAS_CHANGE_TAG=$(grep -c 'change:\$first_change' "$HOOK_FILE" 2>/dev/null || echo 0)
-check "wt-hook-memory-save has change:\$first_change tag injection" '[ "$HAS_CHANGE_TAG" -ge 1 ]'
+check "set-hook-memory-save has change:\$first_change tag injection" '[ "$HAS_CHANGE_TAG" -ge 1 ]'
 
 HAS_FIRST_CHANGE=$(grep -c 'first_change=' "$HOOK_FILE" 2>/dev/null || echo 0)
-check "wt-hook-memory-save extracts first_change variable" '[ "$HAS_FIRST_CHANGE" -ge 1 ]'
+check "set-hook-memory-save extracts first_change variable" '[ "$HAS_FIRST_CHANGE" -ge 1 ]'
 
 HAS_EMPTY_CHECK=$(grep -c 'first_change.*""' "$HOOK_FILE" 2>/dev/null || echo 0)
 # Alternative pattern
 HAS_EMPTY_CHECK2=$(grep -c '-n.*first_change' "$HOOK_FILE" 2>/dev/null || echo 0)
-check "wt-hook-memory-save has empty change name guard" '[ "$((HAS_EMPTY_CHECK + HAS_EMPTY_CHECK2))" -ge 1 ]'
+check "set-hook-memory-save has empty change name guard" '[ "$((HAS_EMPTY_CHECK + HAS_EMPTY_CHECK2))" -ge 1 ]'
 
 echo ""
 
@@ -180,11 +180,11 @@ check "Code-map has openspec/changes fallback for change name" '[ "$HAS_OPENSPEC
 
 echo ""
 
-# Test 5: auto_ingest in wt-memory
-echo "--- Test 5: wt-memory proactive ---"
-WM_FILE="$PROJECT_ROOT/bin/wt-memory"
+# Test 5: auto_ingest in set-memory
+echo "--- Test 5: set-memory proactive ---"
+WM_FILE="$PROJECT_ROOT/bin/set-memory"
 HAS_AUTO_INGEST=$(grep -c 'auto_ingest=False' "$WM_FILE" 2>/dev/null || echo 0)
-check "wt-memory proactive passes auto_ingest=False" '[ "$HAS_AUTO_INGEST" -ge 1 ]'
+check "set-memory proactive passes auto_ingest=False" '[ "$HAS_AUTO_INGEST" -ge 1 ]'
 
 echo ""
 echo "=== Hook Test Results ==="

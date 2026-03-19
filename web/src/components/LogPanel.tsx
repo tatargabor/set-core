@@ -34,7 +34,7 @@ function sessionLineColor(line: string): string {
   return 'text-neutral-400'
 }
 
-const SPLIT_RATIO_KEY = 'wt-log-split-ratio'
+const SPLIT_RATIO_KEY = 'set-log-split-ratio'
 
 function loadSplitRatio(): number {
   try {

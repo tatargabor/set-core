@@ -13,8 +13,8 @@ set -euo pipefail
 CHANGE_FILE="${1:?Usage: post-session-save.sh <change-file> <change-number>}"
 CHANGE_NUM="${2:?}"
 
-command -v wt-memory &>/dev/null || exit 0
-wt-memory health &>/dev/null || exit 0
+command -v set-memory &>/dev/null || exit 0
+set-memory health &>/dev/null || exit 0
 
 # --- Extract and save Developer Notes corrections ---
 
@@ -79,7 +79,7 @@ if grep -q "Developer Notes" "$CHANGE_FILE" 2>/dev/null; then
 
   # Save to memory
   echo "LogBook project correction (from C$CHANGE_NUM code review): $clean" \
-    | wt-memory remember --type Decision --tags "$TAGS" 2>/dev/null || true
+    | set-memory remember --type Decision --tags "$TAGS" 2>/dev/null || true
   echo "    Saved: ${clean:0:80}..."
   done
 fi
@@ -94,42 +94,42 @@ if [[ "$CHANGE_NUM" == "01" ]]; then
     # Check for pagination format
     if grep -q "entries" "src/routes/events.js" 2>/dev/null; then
       echo 'LogBook convention: List endpoints use {entries: [...], paging: {current, size, count, pages}} format for pagination.' \
-        | wt-memory remember --type Decision --tags "convention,pagination,api-format,source:code" 2>/dev/null || true
+        | set-memory remember --type Decision --tags "convention,pagination,api-format,source:code" 2>/dev/null || true
       echo "    Saved: pagination convention"
     fi
 
     # Check for error format
     if grep -q "fault" "src/routes/events.js" 2>/dev/null || grep -q "fault" "src/middleware/errors.js" 2>/dev/null; then
       echo 'LogBook convention: Error responses use {fault: {reason: "...", code: "...", ts: "..."}} format. Key: fault (not error), reason (not message).' \
-        | wt-memory remember --type Decision --tags "convention,error-format,api-format,source:code" 2>/dev/null || true
+        | set-memory remember --type Decision --tags "convention,error-format,api-format,source:code" 2>/dev/null || true
       echo "    Saved: error format convention"
     fi
 
     # Check for ok wrapper
     if grep -q "ok: true" "src/routes/events.js" 2>/dev/null; then
       echo 'LogBook convention: All success responses include {ok: true, ...} wrapper.' \
-        | wt-memory remember --type Decision --tags "convention,response-format,api-format,source:code" 2>/dev/null || true
+        | set-memory remember --type Decision --tags "convention,response-format,api-format,source:code" 2>/dev/null || true
       echo "    Saved: ok wrapper convention"
     fi
 
     # Check for ID format
     if grep -q "makeId" "src/lib/ids.js" 2>/dev/null; then
       echo 'LogBook convention: Entity IDs use prefixed nanoid format via makeId(prefix) from lib/ids.js. Events: evt_, Categories: cat_.' \
-        | wt-memory remember --type Decision --tags "convention,id-format,source:code" 2>/dev/null || true
+        | set-memory remember --type Decision --tags "convention,id-format,source:code" 2>/dev/null || true
       echo "    Saved: ID format convention"
     fi
 
     # Check for fmtDate
     if [[ -f "src/lib/fmt.js" ]]; then
       echo 'LogBook convention: ALL dates in API responses use fmtDate() from lib/fmt.js. Returns YYYY/MM/DD HH:mm format.' \
-        | wt-memory remember --type Decision --tags "convention,date-format,utility,source:code" 2>/dev/null || true
+        | set-memory remember --type Decision --tags "convention,date-format,utility,source:code" 2>/dev/null || true
       echo "    Saved: date format convention"
     fi
 
     # Check for removedAt
     if grep -q "removedAt" "src/db/setup.js" 2>/dev/null; then
       echo 'LogBook convention: Soft-delete uses removedAt column (nullable DATETIME). NOT deletedAt or isDeleted.' \
-        | wt-memory remember --type Decision --tags "convention,soft-delete,database,source:code" 2>/dev/null || true
+        | set-memory remember --type Decision --tags "convention,soft-delete,database,source:code" 2>/dev/null || true
       echo "    Saved: soft-delete convention"
     fi
   fi

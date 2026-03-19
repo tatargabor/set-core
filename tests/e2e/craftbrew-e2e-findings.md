@@ -37,7 +37,7 @@
 - **Státusz**: Fixelve, de a jelenlegi run a régi kóddal fut (sentinel nem reload-ol)
 
 ## Timing Data
-- Scaffold setup: ~5s (17 fájl copy, git init, wt-project init)
+- Scaffold setup: ~5s (17 fájl copy, git init, set-project init)
 - Digest scan: <1s
 - Digest API call (opus, 118KB prompt): ~10 perc (timeout-olt 600s-nél, sikeres 900s-nél)
 - Digest parse + write: <1s
@@ -57,7 +57,7 @@
 - **Státusz**: Fixelve
 
 ## Timing Data (updated)
-- Scaffold setup: ~5s (17 fájl copy, git init, wt-project init)
+- Scaffold setup: ~5s (17 fájl copy, git init, set-project init)
 - Digest scan: <1s
 - Digest API call (opus, 118KB prompt): ~10 perc
 - Digest parse + write: <1s
@@ -73,8 +73,8 @@
 - Ez normális sentinel viselkedés: fresh start törli a worktree-ket, de a monitor újradispatch-olja
 
 ### 9. Sentinel vs manuális restart konfliktus
-- **Tünet**: Manuális `wt-orchestrate start` → "Orchestrator is already running" → azonnali exit
-- **Ok**: Az eredeti sentinel process (wt-sentinel) saját crash recovery-vel rendelkezik — kill -9 után 33s-en belül újraindít. Manuális restart felesleges és ütközik.
+- **Tünet**: Manuális `set-orchestrate start` → "Orchestrator is already running" → azonnali exit
+- **Ok**: Az eredeti sentinel process (set-sentinel) saját crash recovery-vel rendelkezik — kill -9 után 33s-en belül újraindít. Manuális restart felesleges és ütközik.
 - **Tanulság**: Ha sentinel fut, NE indítsunk manuálisan orchestrator-t. A sentinel a sole process manager.
 - **Hatás**: 3 "rapid crash" a sentinel megfigyelésben, de valójában nem crash volt — hanem "already running" error
 - **Státusz**: Nem bug, hanem operational lesson
@@ -281,7 +281,7 @@
 ## Observations
 - Sentinel auto-restart működik: digest crash → restart → digest fresh (skip) → planner újra
 - Sentinel events fájlnév mismatch BLOKKOLÓ volt — stuck detection killed healthy orchestrator after 183s
-- `wt-project init` → `.claude/` deploy teljesen automatikus és gyors
+- `set-project init` → `.claude/` deploy teljesen automatikus és gyors
 - Digest mode plan: 7 change 1. fázisban, 120/178 req uncovered → auto-replan fog kelleni
 - max_parallel: 2 de az első change-nek nincs dependency → azonnal indul
 - A digest "fresh" check működik sentinel restart-oknál — nem generálja újra

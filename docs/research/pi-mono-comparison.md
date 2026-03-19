@@ -379,7 +379,7 @@ Pi extension rendszere a **legfontosabb tanulság**. Jelenleg a set-core plugin 
 **Javaslat:** Nem kell lemásolni Pi-t, de egy erősebb plugin API a hook rendszeren túl értékes lenne. Prioritás:
 1. Tool result modification hook-ok (a jelenlegi PostToolUse csak olvas, nem módosít)
 2. Custom MCP tool regisztráció plugin-ból
-3. Plugin csomagolás és megosztás (`wt-plugin install <git-url>`)
+3. Plugin csomagolás és megosztás (`set-plugin install <git-url>`)
 
 ### 5.2 Session Tree / Branching — KÖZEPES PRIORITÁS
 

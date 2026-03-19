@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# wt-memory migrate: schema versioning and data migrations
-# Dependencies: sourced by bin/wt-memory after infra setup
+# set-memory migrate: schema versioning and data migrations
+# Dependencies: sourced by bin/set-memory after infra setup
 
 migrations_read() {
     local storage_path="$1"
@@ -146,7 +146,7 @@ auto_migrate() {
 }
 
 # Manual migrate subcommand
-# Usage: wt-memory migrate [--status]
+# Usage: set-memory migrate [--status]
 cmd_migrate() {
     local show_status=false
 

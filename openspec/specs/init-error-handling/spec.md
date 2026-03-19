@@ -56,12 +56,12 @@ When `_cleanup_deprecated_memory_refs` encounters a python3 failure during file 
 - **THEN** no extra output is produced (existing behavior)
 
 ### Requirement: hook deployment exit code is checked
-`deploy_set_tools` SHALL check the exit code of `wt-deploy-hooks` and print a warning if it fails, instead of unconditionally printing success.
+`deploy_set_tools` SHALL check the exit code of `set-deploy-hooks` and print a warning if it fails, instead of unconditionally printing success.
 
-#### Scenario: wt-deploy-hooks fails
-- **WHEN** `wt-deploy-hooks --quiet` returns non-zero
+#### Scenario: set-deploy-hooks fails
+- **WHEN** `set-deploy-hooks --quiet` returns non-zero
 - **THEN** a warning is printed: "Failed to deploy hooks" and the step is counted as a warning
 
-#### Scenario: wt-deploy-hooks succeeds
-- **WHEN** `wt-deploy-hooks --quiet` returns 0
+#### Scenario: set-deploy-hooks succeeds
+- **WHEN** `set-deploy-hooks --quiet` returns 0
 - **THEN** success message "Deployed hooks to .claude/settings.json" is printed

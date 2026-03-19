@@ -257,8 +257,8 @@ fetch_design_snapshot() {
     # Copy to shared runtime dir so all worktrees can find it
     local _script_dir
     _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-    if [[ -f "$_script_dir/bin/wt-paths" ]]; then
-        source "$_script_dir/bin/wt-paths" 2>/dev/null || true
+    if [[ -f "$_script_dir/bin/set-paths" ]]; then
+        source "$_script_dir/bin/set-paths" 2>/dev/null || true
         if [[ -n "$WT_RUNTIME_DIR" ]]; then
             mkdir -p "$WT_RUNTIME_DIR"
             cp "$snapshot_file" "$WT_RUNTIME_DIR/design-snapshot.md"

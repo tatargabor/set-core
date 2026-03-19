@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test script for wt-orchestrate: brief parsing, state management, dependency graph
+# Test script for set-orchestrate: brief parsing, state management, dependency graph
 # Tests functions without Claude calls or git operations.
 # Run with: ./tests/orchestrator/test-orchestrate.sh
 
@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Source common functions for color codes
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 # Test counters
 TESTS_RUN=0
@@ -64,13 +64,13 @@ assert_exit_code() {
 }
 
 # ============================================================
-# Setup: source wt-orchestrate functions
+# Setup: source set-orchestrate functions
 # ============================================================
 
-# Save test SCRIPT_DIR, then source wt-orchestrate with main() stripped.
-# wt-orchestrate sets its own SCRIPT_DIR and sources wt-common.sh from bin/.
+# Save test SCRIPT_DIR, then source set-orchestrate with main() stripped.
+# set-orchestrate sets its own SCRIPT_DIR and sources set-common.sh from bin/.
 TEST_DIR="$SCRIPT_DIR"
-eval "$(sed '/^main "\$@"/d; /^SCRIPT_DIR=/s|=.*|="'"$PROJECT_DIR/bin"'"|' "$PROJECT_DIR/bin/wt-orchestrate")"
+eval "$(sed '/^main "\$@"/d; /^SCRIPT_DIR=/s|=.*|="'"$PROJECT_DIR/bin"'"|' "$PROJECT_DIR/bin/set-orchestrate")"
 
 SAMPLE_BRIEF="$TEST_DIR/sample-brief.md"
 
@@ -513,29 +513,29 @@ rm -f "$BRIEF_NO_NEXT"
 # Test: Ralph PID and SIGTERM compatibility (9.1-9.3 verification)
 # ============================================================
 
-test_start "wt-loop has ralph-terminal.pid write (line 590)"
-if grep -q 'echo "\$\$" > "\$(get_terminal_pid_file' "$PROJECT_DIR/bin/wt-loop"; then
+test_start "set-loop has ralph-terminal.pid write (line 590)"
+if grep -q 'echo "\$\$" > "\$(get_terminal_pid_file' "$PROJECT_DIR/bin/set-loop"; then
     test_pass
 else
     test_fail "PID write found" "not found"
 fi
 
-test_start "wt-loop cleanup_on_exit sets status to stopped"
-if grep -q 'update_loop_state.*status.*stopped' "$PROJECT_DIR/bin/wt-loop"; then
+test_start "set-loop cleanup_on_exit sets status to stopped"
+if grep -q 'update_loop_state.*status.*stopped' "$PROJECT_DIR/bin/set-loop"; then
     test_pass
 else
     test_fail "stopped status in cleanup" "not found"
 fi
 
-test_start "wt-loop trap handles SIGTERM"
-if grep -q "trap 'cleanup_on_exit' EXIT SIGTERM" "$PROJECT_DIR/bin/wt-loop"; then
+test_start "set-loop trap handles SIGTERM"
+if grep -q "trap 'cleanup_on_exit' EXIT SIGTERM" "$PROJECT_DIR/bin/set-loop"; then
     test_pass
 else
     test_fail "SIGTERM trap found" "not found"
 fi
 
 test_start "detect_next_change_action checks unchecked tasks for restart"
-if grep -q 'grep.*\-cE.*\\\[.*\\\]' "$PROJECT_DIR/bin/wt-loop"; then
+if grep -q 'grep.*\-cE.*\\\[.*\\\]' "$PROJECT_DIR/bin/set-loop"; then
     test_pass
 else
     test_fail "unchecked task grep found" "not found"
@@ -727,10 +727,10 @@ assert_equals "api" "$pmval2"
 rm -rf "$TMPDIR_DIRECTIVE2"
 
 # ============================================================
-# Test: plan_memory_hygiene runs without error when wt-memory unavailable
+# Test: plan_memory_hygiene runs without error when set-memory unavailable
 # ============================================================
 
-test_start "plan_memory_hygiene succeeds when wt-memory not in PATH"
+test_start "plan_memory_hygiene succeeds when set-memory not in PATH"
 (
     PATH="/usr/bin:/bin"
     plan_memory_hygiene 2>/dev/null
@@ -743,10 +743,10 @@ assert_equals "0" "$rc"
 # ============================================================
 
 test_start "orch_recall passes tags parameter (verified by log output)"
-# We can't test actual recall without wt-memory, but verify the function
+# We can't test actual recall without set-memory, but verify the function
 # accepts phase tags without error
 (
-    PATH="/usr/bin:/bin"  # wt-memory unavailable
+    PATH="/usr/bin:/bin"  # set-memory unavailable
     result=$(orch_recall "test query" 3 "phase:planning" 2>/dev/null)
     # Should return empty string gracefully
     [[ -z "$result" ]]

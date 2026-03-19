@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/orchestration/utils.sh — Parsing, duration, hashing, directive resolution, safe state primitives
-# Sourced by bin/wt-orchestrate after config.sh
+# Sourced by bin/set-orchestrate after config.sh
 
 # ─── Safe State Primitives ────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ with_state_lock() {
 
 # Delegated to Python: wt_orch.config.parse_duration()
 parse_duration() {
-    wt-orch-core config parse-duration "$1"
+    set-orch-core config parse-duration "$1"
 }
 
 # Update monitor self-watchdog progress timestamp.
@@ -93,7 +93,7 @@ any_loop_active() {
 
 # Delegated to Python: wt_orch.config.format_duration()
 format_duration() {
-    wt-orch-core config format-duration "$1"
+    set-orch-core config format-duration "$1"
 }
 
 # ─── Brief Parser ────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ find_input() {
         args+=(--brief "$BRIEF_OVERRIDE")
     fi
     local result
-    result=$(wt-orch-core config find-input "${args[@]}" 2>&1)
+    result=$(set-orch-core config find-input "${args[@]}" 2>&1)
     if [[ $? -ne 0 ]]; then
         error "$result"
         return 1
@@ -146,19 +146,19 @@ find_openspec_dir() {
 
 # Delegated to Python: wt_orch.config.parse_next_items()
 parse_next_items() {
-    wt-orch-core config parse-next-items --file "$1"
+    set-orch-core config parse-next-items --file "$1"
 }
 
 # ─── Directives ──────────────────────────────────────────────────────
 
 # Delegated to Python: wt_orch.config.parse_directives()
 parse_directives() {
-    wt-orch-core config parse-directives --file "$1"
+    set-orch-core config parse-directives --file "$1"
 }
 
 # Delegated to Python: wt_orch.config.brief_hash()
 brief_hash() {
-    wt-orch-core config brief-hash --file "$1"
+    set-orch-core config brief-hash --file "$1"
 }
 
 # ─── Config & Directives ─────────────────────────────────────────────
@@ -169,7 +169,7 @@ load_config_file() {
         echo '{}'
         return 0
     fi
-    wt-orch-core config load-config --file "$CONFIG_FILE"
+    set-orch-core config load-config --file "$CONFIG_FILE"
 }
 
 # Delegated to Python: wt_orch.config.resolve_directives()
@@ -182,7 +182,7 @@ resolve_directives() {
     if [[ -n "${CLI_MAX_PARALLEL:-}" ]]; then
         args+=(--override "max_parallel=$CLI_MAX_PARALLEL")
     fi
-    wt-orch-core config resolve-directives "${args[@]}"
+    set-orch-core config resolve-directives "${args[@]}"
 }
 
 # ─── State Management ────────────────────────────────────────────────

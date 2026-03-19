@@ -4,19 +4,19 @@
 
 ## Design
 
-**Figma Design:** https://www.figma.com/make/9PH3uS4vWjSj6cUPhTGZSt/wt-minishop?p=f&t=zvhTdumJeYUpKrJm-0
+**Figma Design:** https://www.figma.com/make/9PH3uS4vWjSj6cUPhTGZSt/set-minishop?p=f&t=zvhTdumJeYUpKrJm-0
 
-**Local design snapshot:** `docs/figma-raw/9PH3uS4vWjSj6cUPhTGZSt/` — pre-fetched via `wt-figma-fetch`, contains source files, Tailwind tokens, component hierarchy, and assembled `design-snapshot.md`. Re-fetch with `wt-figma-fetch --force docs/` if the Figma design changes.
+**Local design snapshot:** `docs/figma-raw/9PH3uS4vWjSj6cUPhTGZSt/` — pre-fetched via `set-figma-fetch`, contains source files, Tailwind tokens, component hierarchy, and assembled `design-snapshot.md`. Re-fetch with `set-figma-fetch --force docs/` if the Figma design changes.
 
 ## Starting Point
 
 There is NO application code in the scaffold. Agents create everything from scratch.
 
-Platform configs (tsconfig, tailwind, next.config, postcss, components.json, `.claude/rules/`) are deployed by `wt-project init --project-type web --template nextjs` before orchestration starts. Those rules already cover: Server Actions patterns, shadcn/ui usage, Prisma singleton, "use client" rules, form validation with zod + react-hook-form, auth conventions, DataTable patterns. **Do not duplicate those conventions here.**
+Platform configs (tsconfig, tailwind, next.config, postcss, components.json, `.claude/rules/`) are deployed by `set-project init --project-type web --template nextjs` before orchestration starts. Those rules already cover: Server Actions patterns, shadcn/ui usage, Prisma singleton, "use client" rules, form validation with zod + react-hook-form, auth conventions, DataTable patterns. **Do not duplicate those conventions here.**
 
 **Setup (done by `run.sh` before orchestration):**
 1. Copy this spec to `docs/v1-minishop.md`
-2. `git init && wt-project init --project-type web --template nextjs`
+2. `git init && set-project init --project-type web --template nextjs`
 3. Orchestration starts — agents create everything from this spec
 
 ## Dependencies (package.json)

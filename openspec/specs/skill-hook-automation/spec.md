@@ -7,16 +7,16 @@ The system SHALL register the active skill for agent status display automaticall
 - **WHEN** a Claude agent invokes a skill (e.g., `/opsx:explore`)
 - **THEN** the PreToolUse hook fires before the skill prompt is processed
 - **AND** the hook extracts the skill name from the Skill tool input JSON
-- **AND** calls `wt-skill-start <skill-name>` to write the per-PID skill file
+- **AND** calls `set-skill-start <skill-name>` to write the per-PID skill file
 
-#### Scenario: Hook runs in wt-managed directory
+#### Scenario: Hook runs in set-managed directory
 - **WHEN** the hook fires in a directory with `.set-core/`
-- **THEN** `wt-skill-start` writes `.set-core/agents/<claude-pid>.skill`
+- **THEN** `set-skill-start` writes `.set-core/agents/<claude-pid>.skill`
 - **AND** no legacy `current_skill` file is written
 
-#### Scenario: Hook runs outside wt-managed directory
+#### Scenario: Hook runs outside set-managed directory
 - **WHEN** the hook fires in a directory without `.set-core/`
-- **THEN** `wt-skill-start` exits silently (no `.set-core` to write to)
+- **THEN** `set-skill-start` exits silently (no `.set-core` to write to)
 
 #### Scenario: Multiple agents invoke skills simultaneously
 - **WHEN** two Claude agents on the same worktree invoke different skills
@@ -24,23 +24,23 @@ The system SHALL register the active skill for agent status display automaticall
 - **AND** the files do not interfere with each other
 
 #### Scenario: Skill with set-memory instructions creates memory marker
-- **WHEN** `wt-skill-start <skill-name>` is called
+- **WHEN** `set-skill-start <skill-name>` is called
 - **AND** the skill's SKILL.md file contains the string `set-memory`
 - **THEN** a `.set-core/agents/<pid>.memory` marker file SHALL be created
 - **AND** the marker file SHALL contain the skill name
 
 #### Scenario: Skill without set-memory instructions skips marker
-- **WHEN** `wt-skill-start <skill-name>` is called
+- **WHEN** `set-skill-start <skill-name>` is called
 - **AND** the skill's SKILL.md file does NOT contain the string `set-memory`
 - **THEN** no `.memory` marker file SHALL be created
 - **AND** any existing `.memory` file for this PID SHALL be removed
 
 ### Requirement: SKILL.md files do not contain manual skill registration
-All SKILL.md files SHALL NOT contain manual `wt-skill-start` instructions since registration is handled by the hook.
+All SKILL.md files SHALL NOT contain manual `set-skill-start` instructions since registration is handled by the hook.
 
 #### Scenario: Skill prompt loaded
 - **WHEN** a SKILL.md prompt is expanded for the LLM
-- **THEN** it does not contain a `wt-skill-start` bash instruction block
+- **THEN** it does not contain a `set-skill-start` bash instruction block
 
 ### Requirement: Memory hooks use only valid shodh-memory types
 All `set-memory remember --type` invocations in hook templates SHALL use valid shodh-memory types: `Decision`, `Learning`, or `Context`. The hooks SHALL NOT use `Observation` or `Event`.

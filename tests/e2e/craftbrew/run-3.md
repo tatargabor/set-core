@@ -1,7 +1,7 @@
 # CraftBrew E2E Run #3
 
 **Date:** 2026-03-18
-**wt-tools commit:** `8fb62c890` (start) → `8fb62c890` (end, only sentinel `local` fix committed mid-run)
+**set-core commit:** `8fb62c890` (start) → `8fb62c890` (end, only sentinel `local` fix committed mid-run)
 **Spec:** Multi-file directory spec (17+ docs, 61 requirements, 10 domains)
 **Plan:** 15 changes across 4 phases, max_parallel=2
 
@@ -45,7 +45,7 @@
 - **Fix**: manual merge. Needs proper fix — review diff should only include files modified in the change branch.
 - **Recurrence**: Affected most changes but only caused permanent failure on database-schema-seed (3 retries exhausted).
 
-### 13. `local` keyword outside function in wt-sentinel line 536
+### 13. `local` keyword outside function in set-sentinel line 536
 - **Type**: framework (noise)
 - **Severity**: noise (bash warning on every poll cycle)
 - **Root cause**: `local _poll_state=""` in the top-level while loop, not inside a function.
@@ -54,14 +54,14 @@
 ### 14. Verify agent dies, change stuck in "verifying" forever
 - **Type**: framework
 - **Severity**: **critical** — affected 12/15 changes
-- **Root cause**: The wt-loop/Claude CLI process dies during or after verify gate execution. The monitor's `_poll_active_changes` doesn't detect and recover changes in `verifying` status with dead PIDs. The watchdog reconciliation fires but doesn't transition the state to allow retry or merge.
+- **Root cause**: The set-loop/Claude CLI process dies during or after verify gate execution. The monitor's `_poll_active_changes` doesn't detect and recover changes in `verifying` status with dead PIDs. The watchdog reconciliation fires but doesn't transition the state to allow retry or merge.
 - **Fix**: manual merge each time. ROOT CAUSE NEEDS FIX — the monitor must detect dead PIDs in `verifying` status and either retry or mark as stalled.
 - **Recurrence**: Every single verify attempt except i18n-routing-layout.
 
 ### 15. `cc/` model prefix stale — agent can't start
 - **Type**: environment/config
 - **Severity**: blocking (prevented all dispatch until fixed)
-- **Root cause**: `~/.config/wt-tools/config.json` had `model_prefix: "cc/"` which produced `cc/claude-opus-4-6`. Claude CLI no longer accepts this prefix.
+- **Root cause**: `~/.config/set-core/config.json` had `model_prefix: "cc/"` which produced `cc/claude-opus-4-6`. Claude CLI no longer accepts this prefix.
 - **Fix**: cleared model_prefix to empty string in config.
 
 ### 16. Monitor stuck for 7+ min, sentinel kills orchestrator
@@ -94,7 +94,7 @@
 
 2. **Bug #12 (phantom review) needs a proper fix.** The review diff should be scoped to files actually modified in the change branch, not all files on main. CraftBrew's Figma scaffold (100+ pre-existing component files) causes false review failures.
 
-3. **Bug #18+19 (manual state edit cycle) needs framework support.** Manual merge intervention requires: kill monitor → edit state → remove worktree → restart sentinel. The framework should have a CLI command for this: `wt-orchestrate force-merge <change-name>`.
+3. **Bug #18+19 (manual state edit cycle) needs framework support.** Manual merge intervention requires: kill monitor → edit state → remove worktree → restart sentinel. The framework should have a CLI command for this: `set-orchestrate force-merge <change-name>`.
 
 4. **Token efficiency is good.** Average 59K tokens per change (888K / 15), well within the M-complexity expected range of 300K-600K per change. No context overflow failures (Bug #10 from run #2 did not recur).
 

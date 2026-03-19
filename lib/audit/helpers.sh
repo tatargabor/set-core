@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# wt-audit shared helpers — output formatting, check registration, JSON building
-# Source this file from check-*.sh functions and bin/wt-audit
+# set-audit shared helpers — output formatting, check registration, JSON building
+# Source this file from check-*.sh functions and bin/set-audit
 
 # ─── Output arrays (populated by check functions) ───────────────────────────
 
@@ -106,7 +106,7 @@ print_summary() {
     echo "  Summary: ${icon_pass} ${pass}  ${icon_warn} ${warn}  ${icon_fail} ${fail}"
 }
 
-# Print condensed summary (for wt-project init integration)
+# Print condensed summary (for set-project init integration)
 print_condensed_summary() {
     local pass=0 warn=0 fail=0
     for entry in "${AUDIT_CHECKS[@]}"; do

@@ -4,11 +4,11 @@
 TBD - created by archiving change add-control-center. Update Purpose after archive.
 ## Requirements
 ### Requirement: Status Command
-The system SHALL provide a `wt-status` command that displays worktree and agent status.
+The system SHALL provide a `set-status` command that displays worktree and agent status.
 
 #### Scenario: List all worktrees with status
 Given multiple worktrees exist across projects
-When the user runs `wt-status`
+When the user runs `set-status`
 Then each worktree is shown with:
   - Project name
   - Branch name
@@ -17,16 +17,16 @@ Then each worktree is shown with:
 
 #### Scenario: JSON output
 Given worktrees exist
-When the user runs `wt-status --json`
+When the user runs `set-status --json`
 Then output is valid JSON with worktree details and summary
 
 #### Scenario: Compact output
 Given worktrees exist
-When the user runs `wt-status --compact`
+When the user runs `set-status --compact`
 Then output is a single line summary suitable for status bars
 
 #### Scenario: Per-agent skill display
-- **WHEN** wt-status checks a worktree with agents
+- **WHEN** set-status checks a worktree with agents
 - **THEN** each agent's skill is read exclusively from `.set-core/agents/<pid>.skill`
 - **AND** no fallback to `.set-core/current_skill` is used
 
@@ -44,33 +44,33 @@ The system SHALL detect all Claude agent processes associated with worktrees usi
 
 #### Scenario: Detect running agent
 Given a Claude process is running in a worktree directory
-When wt-status checks that worktree
+When set-status checks that worktree
 Then the agents array contains an entry with status "running" and the process PID
 
 #### Scenario: Detect compacting agent
 Given a Claude process is summarizing context (compacting)
-When wt-status checks that worktree
+When set-status checks that worktree
 Then the agents array contains an entry with status "compacting"
 
 #### Scenario: Detect waiting agent
 Given a Claude process is sleeping (waiting for input)
-When wt-status checks that worktree
+When set-status checks that worktree
 Then the agents array contains an entry with status "waiting"
 
 #### Scenario: Detect orphan agent
 Given a Claude process exists in a worktree directory
-When wt-status checks that worktree
+When set-status checks that worktree
 And the process's parent is not a known shell
 Then the agents array contains an entry with status "orphan" and the process PID
 
 #### Scenario: No agent
 Given no Claude process exists for a worktree
-When wt-status checks that worktree
+When set-status checks that worktree
 Then the agents array is empty
 
 #### Scenario: Multiple agents detected
 Given two or more Claude processes have CWD in a worktree directory
-When wt-status checks that worktree
+When set-status checks that worktree
 Then the agents array contains one entry per process with independent status, skill, and PID
 
 #### Scenario: CWD path-boundary matching
@@ -79,19 +79,19 @@ When a process has CWD /code/foo-bar
 Then it matches only /code/foo-bar, not /code/foo
 
 #### Scenario: Orphan agents excluded from output
-- **WHEN** wt-status detects agents in a worktree
+- **WHEN** set-status detects agents in a worktree
 - **AND** those agents are "waiting" status
 - **AND** no editor window is open for the worktree
 - **AND** no Ralph loop is active
 - **THEN** the agents are killed and excluded from the agents array
 
 #### Scenario: Editor open status in JSON
-- **WHEN** wt-status collects status for a worktree
+- **WHEN** set-status collects status for a worktree
 - **THEN** the JSON entry SHALL include `"editor_open": true|false`
 - **AND** the value reflects whether an editor window matching the worktree basename exists
 
 ### Requirement: Orphan Agent Detection
-The system SHALL detect orphan `claude` processes — those whose parent process is not a known shell (zsh, bash, fish, sh, dash) — and classify them with status `"orphan"` in the `wt-status` JSON output.
+The system SHALL detect orphan `claude` processes — those whose parent process is not a known shell (zsh, bash, fish, sh, dash) — and classify them with status `"orphan"` in the `set-status` JSON output.
 
 #### Scenario: Detect orphan agent
 - **WHEN** a `claude` process has CWD in a worktree directory
@@ -171,7 +171,7 @@ The system SHALL provide an interactive terminal UI for the control center.
 
 #### Scenario: Launch TUI
 Given worktrees exist
-When the user runs `wt-control` (or `wt-status --interactive`)
+When the user runs `set-control` (or `set-status --interactive`)
 Then an interactive TUI is displayed with worktree list
 
 #### Scenario: Navigate and focus
@@ -182,7 +182,7 @@ Then that worktree's Zed window is focused
 #### Scenario: Start new worktree
 Given the TUI is running
 When the user presses 'n'
-Then prompted to create a new worktree (calls wt-new flow)
+Then prompted to create a new worktree (calls set-new flow)
 
 ### Requirement: Configuration Management
 The GUI SHALL support persistent user configuration through a settings dialog.
@@ -404,7 +404,7 @@ The GUI SHALL provide an improved dialog for creating new worktrees with project
 #### Scenario: Create worktree
 - **GIVEN** valid inputs are provided
 - **WHEN** the user clicks "Create"
-- **THEN** wt-new is called with the selected project, change ID, and base branch
+- **THEN** set-new is called with the selected project, change ID, and base branch
 
 ### Requirement: Worktree Config Dialog
 The GUI SHALL provide a dialog for viewing and editing worktree-specific configuration.
@@ -529,8 +529,8 @@ The GUI SHALL display separate rows for each agent when multiple agents run on t
 The system SHALL start the Control Center GUI reliably regardless of how it is invoked.
 
 #### Scenario: Launch via symlink
-- **GIVEN** wt-control is symlinked from ~/.local/bin to the source directory
-- **WHEN** the user runs `wt-control`
+- **GIVEN** set-control is symlinked from ~/.local/bin to the source directory
+- **WHEN** the user runs `set-control`
 - **THEN** the GUI starts without import errors
 - **AND** all relative imports within the gui package resolve correctly
 
@@ -555,11 +555,11 @@ The system SHALL start the Control Center GUI reliably regardless of how it is i
 - **WHEN** the user launches "WT Control" from Spotlight, Alfred, Raycast, or Dock
 - **THEN** the GUI starts without import errors
 - **AND** no terminal window is required
-- **AND** the app bundle delegates to `~/.local/bin/wt-control`
+- **AND** the app bundle delegates to `~/.local/bin/set-control`
 
 #### Scenario: Startup failure diagnostics
 - **GIVEN** the GUI fails to start (missing dependency, import error, etc.)
-- **WHEN** the user runs `wt-control`
+- **WHEN** the user runs `set-control`
 - **THEN** the error message is displayed to stderr
 - **AND** the error includes the Python traceback for debugging
 
@@ -569,7 +569,7 @@ The installer SHALL verify the GUI can start after installation.
 #### Scenario: Verify GUI startup
 - **GIVEN** install.sh has completed dependency installation
 - **WHEN** the installer runs verification
-- **THEN** it tests that wt-control can start
+- **THEN** it tests that set-control can start
 - **AND** reports success or failure to the user
 
 ### Requirement: Dialog Always-On-Top
@@ -656,7 +656,7 @@ The GUI SHALL display a distinct "idle (IDE)" status with icon `◇` for worktre
 Double-click on a worktree row SHALL check for an existing IDE window, regardless of agent status.
 
 - If an IDE window exists for the worktree → focus it
-- If no IDE window exists → open it via `wt-work`
+- If no IDE window exists → open it via `set-work`
 
 The decision SHALL be based solely on window presence, not agent status.
 
@@ -670,14 +670,14 @@ The decision SHALL be based solely on window presence, not agent status.
 
 - **WHEN** user double-clicks a worktree row
 - **AND** no editor window matches the worktree folder name
-- **THEN** `wt-work` SHALL be called to open the worktree in the editor
+- **THEN** `set-work` SHALL be called to open the worktree in the editor
 - **AND** the GUI SHALL NOT block or freeze
 
 #### Scenario: No IDE window with active agent
 
 - **WHEN** user double-clicks a worktree row with an active agent (e.g. Ralph loop)
 - **AND** no editor window matches the worktree folder name
-- **THEN** `wt-work` SHALL be called to open the worktree in the editor
+- **THEN** `set-work` SHALL be called to open the worktree in the editor
 - **AND** the active agent SHALL NOT be affected
 
 ### Requirement: Row Visual Feedback
@@ -704,12 +704,12 @@ The system SHALL visually distinguish agents running in the configured IDE from 
 
 #### Scenario: Agent in configured IDE shows standard waiting
 - **WHEN** a worktree has an agent with status "waiting"
-- **AND** the `editor_type` from wt-status matches a known IDE process name (zed, code, cursor, windsurf)
+- **AND** the `editor_type` from set-status matches a known IDE process name (zed, code, cursor, windsurf)
 - **THEN** the agent SHALL be displayed with the standard orange `⚡ waiting` icon and colors
 
 #### Scenario: Agent in terminal shows dimmed waiting
 - **WHEN** a worktree has an agent with status "waiting"
-- **AND** the `editor_type` from wt-status is truthy but does NOT match a known IDE process name
+- **AND** the `editor_type` from set-status is truthy but does NOT match a known IDE process name
 - **THEN** the agent SHALL be displayed with dimmed/muted colors (reusing idle palette)
 - **AND** the status text SHALL still read "waiting"
 
@@ -728,7 +728,7 @@ All Qt signal handler methods that process background worker results SHALL be wr
 
 #### Scenario: Worker emits bad data
 - **WHEN** a background worker emits a signal with unexpected or malformed data
-- **THEN** the signal handler logs the exception at ERROR level to the wt-control logger
+- **THEN** the signal handler logs the exception at ERROR level to the set-control logger
 - **AND** the UI continues operating with the last known good state
 
 #### Scenario: Table rebuild exception

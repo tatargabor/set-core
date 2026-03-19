@@ -30,7 +30,7 @@ Multiple mid-run fix/restart cycles. Primary goal was validating Bug #45 (specs 
 ### Bug #47: Figma raw source files break Next.js build
 - **Type**: framework / blocking
 - **Root cause**: `docs/figma-raw/.../src__app__App.tsx` imports `react-router` which isn't in deps. tsconfig.json `include: ["**/*.ts", "**/*.tsx"]` picks up these design reference files.
-- **Fix**: `ff3997f` (wt-project-web) — `"exclude": ["node_modules", "docs/figma-raw"]` in tsconfig template
+- **Fix**: `ff3997f` (set-project-web) — `"exclude": ["node_modules", "docs/figma-raw"]` in tsconfig template
 - **Verified**: YES — auth-system build=pass after fix
 
 ### Bug #48: Stale .next cache causes ENOENT build failures
@@ -39,7 +39,7 @@ Multiple mid-run fix/restart cycles. Primary goal was validating Bug #45 (specs 
 - **Fix**: `a68170397` — `shutil.rmtree(.next)` before build gate
 - **Verified**: YES (indirectly — subsequent builds pass)
 
-### Edge Runtime: bcryptjs auth rule (wt-project-web)
+### Edge Runtime: bcryptjs auth rule (set-project-web)
 - **Fix**: `ca67130` — auth-conventions.md warns about Edge Runtime incompatibility
 - **Verified**: Untested — auth-system didn't reach full validation
 

@@ -57,7 +57,7 @@
 #### 24. Merge-blocked by dirty generated files + leftover conflict markers
 - **Type**: framework (merge pipeline)
 - **Severity**: blocking
-- **Root cause**: Two issues combined: (1) `.wt-tools/.last-memory-commit` modified in working tree blocked `git merge` with "local changes would be overwritten". (2) `pnpm-lock.yaml` had 11 leftover conflict markers from the admin-products merge that were never resolved, causing subsequent merges to fail. The auto-merge pipeline (`wt-merge`) doesn't handle these generated file conflicts.
+- **Root cause**: Two issues combined: (1) `.set-core/.last-memory-commit` modified in working tree blocked `git merge` with "local changes would be overwritten". (2) `pnpm-lock.yaml` had 11 leftover conflict markers from the admin-products merge that were never resolved, causing subsequent merges to fail. The auto-merge pipeline (`set-merge`) doesn't handle these generated file conflicts.
 - **Fix**: Manual resolution — `git checkout --ours` for runtime state files (activity.json, loop-state.json, ralph-terminal.pid, .last-memory-commit), `pnpm install --no-frozen-lockfile` to regenerate lockfile. No code fix committed — this is a known limitation of the merge pipeline (see also Bug #8 from earlier runs with pnpm-lock conflicts).
 - **Recurrence**: recurring (pnpm-lock.yaml conflicts seen in runs #3, #8, #13)
 - **Impact**: orders-checkout passed all gates (138 tests, 31 E2E, build, review) but couldn't merge. Required sentinel-level manual intervention.
@@ -96,5 +96,5 @@
 
 7. **Priority fixes for next run**:
    - P0: Auto-resolve pnpm-lock.yaml conflicts in merge pipeline (regenerate, not text merge)
-   - P1: Add `.wt-tools/` and `.claude/` runtime files to `.gitignore` in consumer projects to prevent merge-blocking dirty state
+   - P1: Add `.set-core/` and `.claude/` runtime files to `.gitignore` in consumer projects to prevent merge-blocking dirty state
    - P2: Increase `max_verify_retries` to 3 for review-failed changes (security fixes often need more iterations)

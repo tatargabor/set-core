@@ -4,13 +4,13 @@
 **Benchmark**: MemoryProbe v2 (10 traps, 3 categories, weighted scoring)
 **Model**: Claude Opus 4.6
 **Run mode**: C-first protocol (Mode C first, then Mode A if recall works)
-**Purpose**: Validate hook-driven recall after wt-deploy-hooks fixes, test C-first benchmark protocol
+**Purpose**: Validate hook-driven recall after set-deploy-hooks fixes, test C-first benchmark protocol
 
 ## What Changed Since SYN-06
 
 1. **C-first protocol**: Ran Mode C (pre-seeded recall, C03-C05 only) first to validate recall, then Mode A for comparison
-2. **init.sh fix**: Mode C was missing `wt-deploy-hooks` deployment — fixed during this run
-3. **Hook updates**: `wt-deploy-hooks` can now downgrade stale configs, raw-conversation-ingest replaces Haiku extraction
+2. **init.sh fix**: Mode C was missing `set-deploy-hooks` deployment — fixed during this run
+3. **Hook updates**: `set-deploy-hooks` can now downgrade stale configs, raw-conversation-ingest replaces Haiku extraction
 
 ## Scores (inline test results)
 
@@ -145,7 +145,7 @@ The protocol correctly identified that recall works, then the comparison reveale
 
 | Bug | Severity | Status |
 |-----|----------|--------|
-| init.sh Mode C missing `wt-deploy-hooks` | P0 | **Fixed** |
+| init.sh Mode C missing `set-deploy-hooks` | P0 | **Fixed** |
 | score.sh server exits immediately (event loop empty) | P1 | Open |
 | SYN-07 baseline non-determinism (45% vs 97%) | Design | Open |
 

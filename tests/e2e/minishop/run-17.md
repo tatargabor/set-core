@@ -1,7 +1,7 @@
 # MiniShop Run #17 — 2026-03-17
 
 **Project dir**: `/tmp/minishop-run3`
-**wt-tools commit**: `b778f9498` (baseline) → fixed to `62c11ed71`
+**set-core commit**: `b778f9498` (baseline) → fixed to `62c11ed71`
 **Spec**: `docs/v1-minishop.md`
 **Config**: max_parallel=2, checkpoint_every=3, checkpoint_auto_approve=true
 
@@ -15,7 +15,7 @@
 
 ## Prep Context (from Run #16)
 
-- **8 wt-tools commits since last run** — impl-quality-runtime, feature-rules-injection, context-window-metrics
+- **8 set-core commits since last run** — impl-quality-runtime, feature-rules-injection, context-window-metrics
 - **Open regressions**: Bug #37 (verify retry exhaustion), Bug #38 (generated file conflicts), Bug #41 (stale flock)
 - **Watch for**: .claude/* merge conflicts, verify retries consumed by build-fix, stale flock on sentinel restart
 
@@ -33,7 +33,7 @@
 ### 2. Bug #37 root cause confirmed — node_modules/ dirty files exhaust verify retries
 - **Type**: framework
 - **Severity**: blocking (recurring from #37)
-- **Root cause**: `git_has_uncommitted_work()` in `git_utils.py` excluded `.claude/`, `.wt-tools/`, `CLAUDE.md`, `openspec/changes/` but NOT `node_modules/` or `coverage/`. pnpm install modifies symlinks in `node_modules/.bin/` which show as "modified" in git status after auto-commit, causing the dirty-worktree branch to trigger and consume verify retry slots.
+- **Root cause**: `git_has_uncommitted_work()` in `git_utils.py` excluded `.claude/`, `.set-core/`, `CLAUDE.md`, `openspec/changes/` but NOT `node_modules/` or `coverage/`. pnpm install modifies symlinks in `node_modules/.bin/` which show as "modified" in git status after auto-commit, causing the dirty-worktree branch to trigger and consume verify retry slots.
 - **Fix**: `606aec640` — Add `node_modules/` and `coverage/` to `_FRAMEWORK_NOISE_PREFIXES`
 - **Status**: Fix committed but not effective this run (orchestrator cached old code). Will take effect next run.
 - **Evidence**: Every single change exhausted verify retries — 11/11 manual merges required, all due to node_modules dirty state.
@@ -41,16 +41,16 @@
 ### 3. New framework bug: pyyaml not installed for python3.14
 - **Type**: framework
 - **Severity**: blocking (sentinel restart failure)
-- **Root cause**: A Python 3.14 upgrade (or env change) removed `pyyaml` from the default python3 env. `wt-orch-core` uses `#!/usr/bin/env python3` which resolved to 3.14. The dispatch code reads `project-type.yaml` using `import yaml`.
+- **Root cause**: A Python 3.14 upgrade (or env change) removed `pyyaml` from the default python3 env. `set-orch-core` uses `#!/usr/bin/env python3` which resolved to 3.14. The dispatch code reads `project-type.yaml` using `import yaml`.
 - **Fix**: `python3 -m pip install pyyaml --break-system-packages` (manual, on-the-fly)
-- **Permanent fix needed**: Add `pyyaml` to wt-tools install dependencies, or replace yaml with json for project-type config.
-- **Status**: Fixed manually. Not committed to wt-tools yet.
+- **Permanent fix needed**: Add `pyyaml` to set-core install dependencies, or replace yaml with json for project-type config.
+- **Status**: Fixed manually. Not committed to set-core yet.
 
-### 4. Bug #37 (tailwind darkMode) — wt-project-web template fix
+### 4. Bug #37 (tailwind darkMode) — set-project-web template fix
 - **Type**: framework (template bug)
 - **Severity**: noise (agent self-heals, but consumes first verify retry)
-- **Root cause**: `wt-project-web` template had `darkMode: ["class"]` which causes TS error in Next.js 14 build.
-- **Fix**: `797fbdc` in `wt-project-web` — Change to `darkMode: "class"`
+- **Root cause**: `set-project-web` template had `darkMode: ["class"]` which causes TS error in Next.js 14 build.
+- **Fix**: `797fbdc` in `set-project-web` — Change to `darkMode: "class"`
 - **Status**: Fixed in template. Future runs won't have this build failure.
 
 ## Phase Log

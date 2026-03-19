@@ -1502,6 +1502,17 @@ wheels = [
 ]
 
 [[package]]
+name = "set-mcp-server"
+version = "0.1.1"
+source = { virtual = "." }
+dependencies = [
+    { name = "fastmcp" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "fastmcp", specifier = ">=0.1.0" }]
+
+[[package]]
 name = "shellingham"
 version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1794,17 +1805,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/46/78/10ad9781128ed2f99dbc474f43283b13fea8ba58723e98844367531c18e9/wrapt-1.17.3-cp314-cp314t-win_arm64.whl", hash = "sha256:f38e60678850c42461d4202739f9bf1e3a737c7ad283638251e79cc49effb6b6", size = 38471, upload-time = "2025-08-12T05:52:57.784Z" },
     { url = "https://files.pythonhosted.org/packages/1f/f6/a933bd70f98e9cf3e08167fc5cd7aaaca49147e48411c0bd5ae701bb2194/wrapt-1.17.3-py3-none-any.whl", hash = "sha256:7171ae35d2c33d326ac19dd8facb1e82e5fd04ef8c6c0e394d7af55a55051c22", size = 23591, upload-time = "2025-08-12T05:53:20.674Z" },
 ]
-
-[[package]]
-name = "wt-mcp-server"
-version = "0.1.1"
-source = { virtual = "." }
-dependencies = [
-    { name = "fastmcp" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "fastmcp", specifier = ">=0.1.0" }]
 
 [[package]]
 name = "zipp"

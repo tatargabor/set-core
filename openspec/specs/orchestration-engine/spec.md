@@ -17,7 +17,7 @@ The orchestrator SHALL dispatch changes respecting the dependency graph and para
 
 #### Scenario: Worktree creation and Ralph launch
 - **WHEN** a change is dispatched
-- **THEN** the orchestrator SHALL create a worktree via `wt-new`, bootstrap it (env files + dependencies), create the OpenSpec change, pre-create proposal.md, and start a Ralph loop via `wt-loop start --max 30 --done openspec --label {name} --model {effective_model} --change {name}`
+- **THEN** the orchestrator SHALL create a worktree via `set-new`, bootstrap it (env files + dependencies), create the OpenSpec change, pre-create proposal.md, and start a Ralph loop via `set-loop start --max 30 --done openspec --label {name} --model {effective_model} --change {name}`
 - **AND** the effective model SHALL be resolved via `resolve_change_model()` (see per-change-model spec)
 - **AND** no per-change token budget SHALL be passed — the iteration limit (`--max 30`) provides the safety net instead
 
@@ -43,7 +43,7 @@ The `set-orch-core` CLI SHALL support the following subcommands: `process`, `sta
 - **THEN** the FastAPI server starts with API endpoints, WebSocket support, and static file serving
 
 #### Scenario: Existing subcommands unchanged
-- **WHEN** user runs `set-orch-core process check-pid --pid 1234 --expect-cmd wt-loop`
+- **WHEN** user runs `set-orch-core process check-pid --pid 1234 --expect-cmd set-loop`
 - **THEN** the behavior is identical to the pre-change implementation
 
 #### Scenario: Help text

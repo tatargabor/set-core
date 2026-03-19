@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-memory SessionStart",
+            "command": "set-hook-memory SessionStart",
             "timeout": 10
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-memory SessionStart",
+            "command": "set-hook-memory SessionStart",
             "timeout": 10
           }
         ]
@@ -28,12 +28,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-skill",
+            "command": "set-hook-skill",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "wt-hook-memory UserPromptSubmit",
+            "command": "set-hook-memory UserPromptSubmit",
             "timeout": 15
           }
         ]
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-activity",
+            "command": "set-hook-activity",
             "timeout": 5
           }
         ]
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-memory PostToolUse",
+            "command": "set-hook-memory PostToolUse",
             "timeout": 5
           }
         ]
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-memory PostToolUse",
+            "command": "set-hook-memory PostToolUse",
             "timeout": 5
           }
         ]
@@ -79,7 +79,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-memory PostToolUseFailure",
+            "command": "set-hook-memory PostToolUseFailure",
             "timeout": 5
           }
         ]
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-memory SubagentStart",
+            "command": "set-hook-memory SubagentStart",
             "timeout": 10
           }
         ]
@@ -103,7 +103,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-memory SubagentStop",
+            "command": "set-hook-memory SubagentStop",
             "timeout": 5
           }
         ]
@@ -115,12 +115,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "wt-hook-stop",
+            "command": "set-hook-stop",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "wt-hook-memory Stop",
+            "command": "set-hook-memory Stop",
             "timeout": 30
           }
         ]

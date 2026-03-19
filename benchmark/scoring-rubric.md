@@ -74,8 +74,8 @@ Each change has an acceptance test (`tests/test-NN.sh`). Track:
 
 ### Session Length
 
-- **Iterations**: Number of wt-loop iterations spent on this change
-- **Tokens**: Total tokens consumed (from `wt-loop history`)
+- **Iterations**: Number of set-loop iterations spent on this change
+- **Tokens**: Total tokens consumed (from `set-loop history`)
 - **Time**: Wall-clock time in minutes
 
 ## Revision Change Scoring (C07-C09)
@@ -240,9 +240,9 @@ For Run B (with memory) only, also track:
 
 | Metric | Description |
 |--------|-------------|
-| Memory recalls | Count of `wt-memory recall` invocations |
+| Memory recalls | Count of `set-memory recall` invocations |
 | Useful recalls | Recalls that visibly influenced agent behavior (from transcript review) |
-| Memories saved | Count of `wt-memory remember` invocations |
+| Memories saved | Count of `set-memory remember` invocations |
 | Save quality | Were saves specific and actionable, or vague? (High/Medium/Low) |
 | Recall efficiency | useful recalls / total recalls |
 
@@ -269,7 +269,7 @@ After scoring all 12 changes, calculate:
 | Total design rework | Sum across all changes |
 | Test pass rate | Changes with first-try pass / 12 |
 | Total test iterations | Sum of test-fix cycles across all changes |
-| Total iterations | Sum of wt-loop iterations across all changes |
+| Total iterations | Sum of set-loop iterations across all changes |
 | Total tokens | Sum across all changes |
 | Total time | Sum across all changes |
 | Revision change score | C07+C08+C09 aggregate |

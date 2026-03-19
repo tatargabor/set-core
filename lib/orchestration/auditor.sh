@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/orchestration/auditor.sh — Thin wrapper: logic lives in lib/wt_orch/auditor.py
 #
-# Sourced by bin/wt-orchestrate for backward compatibility.
+# Sourced by bin/set-orchestrate for backward compatibility.
 # Python implementation: lib/wt_orch/auditor.py, cli.py:cmd_audit()
 
 # Run post-phase audit. Delegates to Python.
@@ -25,7 +25,7 @@ run_post_phase_audit() {
     audit_args+=(--model "$rev_model")
 
     local result
-    result=$(wt-orch-core audit run "${audit_args[@]}" 2>/dev/null) || {
+    result=$(set-orch-core audit run "${audit_args[@]}" 2>/dev/null) || {
         warn "Post-phase audit: failed, skipping (non-blocking)"
         export _REPLAN_AUDIT_GAPS=""
         return 0
@@ -81,7 +81,7 @@ run_post_phase_audit() {
 # Build audit prompt (for direct invocation / testing).
 build_audit_prompt() {
     local cycle="${1:-1}"
-    wt-orch-core audit prompt --state "$STATE_FILENAME" --cycle "$cycle" \
+    set-orch-core audit prompt --state "$STATE_FILENAME" --cycle "$cycle" \
         ${INPUT_MODE:+--input-mode "$INPUT_MODE"} \
         ${INPUT_PATH:+--input-path "$INPUT_PATH"} 2>/dev/null
 }
@@ -89,5 +89,5 @@ build_audit_prompt() {
 # Parse audit result JSON (delegates to Python).
 parse_audit_result() {
     local raw_file="$1"
-    wt-orch-core audit parse --raw-file "$raw_file" 2>/dev/null
+    set-orch-core audit parse --raw-file "$raw_file" 2>/dev/null
 }

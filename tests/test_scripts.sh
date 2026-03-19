@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test script for wt-work, wt-focus, wt-loop CLI behavior
+# Test script for set-work, set-focus, set-loop CLI behavior
 # Tests flag parsing, help output, and error handling (no real git operations).
 # Run with: ./tests/test_scripts.sh
 
@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Source common functions for color codes
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 # Test counters
 TESTS_RUN=0
@@ -64,105 +64,105 @@ assert_not_contains() {
 }
 
 # =============================================================================
-# Tests: wt-work
+# Tests: set-work
 # =============================================================================
 
 echo "=========================================="
 echo "Script Implementation Tests"
 echo "=========================================="
 echo ""
-echo "--- wt-work ---"
+echo "--- set-work ---"
 
-test_start "wt-work --help exits 0"
-output=$("$PROJECT_DIR/bin/wt-work" --help 2>&1) || true
+test_start "set-work --help exits 0"
+output=$("$PROJECT_DIR/bin/set-work" --help 2>&1) || true
 ec=$?
 assert_exit_code 0 $ec
 
-test_start "wt-work --help shows usage"
+test_start "set-work --help shows usage"
 assert_contains "$output" "Usage:"
 
-test_start "wt-work --help shows --editor option"
+test_start "set-work --help shows --editor option"
 assert_contains "$output" "--editor"
 
-test_start "wt-work --help shows terminal editors in examples"
+test_start "set-work --help shows terminal editors in examples"
 assert_contains "$output" "kitty"
 
-test_start "wt-work without args fails"
+test_start "set-work without args fails"
 ec=0
-output=$("$PROJECT_DIR/bin/wt-work" 2>&1) || ec=$?
+output=$("$PROJECT_DIR/bin/set-work" 2>&1) || ec=$?
 assert_exit_code 1 $ec
 
-test_start "wt-work without args shows error"
+test_start "set-work without args shows error"
 assert_contains "$output" "Change ID required"
 
-test_start "wt-work --unknown-flag fails"
+test_start "set-work --unknown-flag fails"
 ec=0
-output=$("$PROJECT_DIR/bin/wt-work" --unknown-flag 2>&1) || ec=$?
+output=$("$PROJECT_DIR/bin/set-work" --unknown-flag 2>&1) || ec=$?
 assert_exit_code 1 $ec
 
 # =============================================================================
-# Tests: wt-focus
+# Tests: set-focus
 # =============================================================================
 
 echo ""
-echo "--- wt-focus ---"
+echo "--- set-focus ---"
 
-test_start "wt-focus --help exits 0"
-output=$("$PROJECT_DIR/bin/wt-focus" --help 2>&1) || true
+test_start "set-focus --help exits 0"
+output=$("$PROJECT_DIR/bin/set-focus" --help 2>&1) || true
 ec=$?
 assert_exit_code 0 $ec
 
-test_start "wt-focus --help shows usage"
+test_start "set-focus --help shows usage"
 assert_contains "$output" "Usage:"
 
-test_start "wt-focus --help shows --editor option"
+test_start "set-focus --help shows --editor option"
 assert_contains "$output" "--editor"
 
-test_start "wt-focus without args fails"
+test_start "set-focus without args fails"
 ec=0
-output=$("$PROJECT_DIR/bin/wt-focus" 2>&1) || ec=$?
+output=$("$PROJECT_DIR/bin/set-focus" 2>&1) || ec=$?
 assert_exit_code 1 $ec
 
-test_start "wt-focus without args shows error"
+test_start "set-focus without args shows error"
 assert_contains "$output" "change-id is required"
 
-test_start "wt-focus --list shows deprecation warning"
-output=$("$PROJECT_DIR/bin/wt-focus" --list test-id 2>&1) || true
+test_start "set-focus --list shows deprecation warning"
+output=$("$PROJECT_DIR/bin/set-focus" --list test-id 2>&1) || true
 assert_contains "$output" "deprecated"
 
-test_start "wt-focus does not contain keystroke injection code"
-focus_source=$(cat "$PROJECT_DIR/bin/wt-focus")
+test_start "set-focus does not contain keystroke injection code"
+focus_source=$(cat "$PROJECT_DIR/bin/set-focus")
 assert_not_contains "$focus_source" "xdotool key"
 
-test_start "wt-focus does not contain osascript keystroke"
+test_start "set-focus does not contain osascript keystroke"
 assert_not_contains "$focus_source" "keystroke"
 
-test_start "wt-focus uses get_editor_open_command"
+test_start "set-focus uses get_editor_open_command"
 assert_contains "$focus_source" "get_editor_open_command"
 
 # =============================================================================
-# Tests: wt-loop
+# Tests: set-loop
 # =============================================================================
 
 echo ""
-echo "--- wt-loop ---"
+echo "--- set-loop ---"
 
-test_start "wt-loop --help exits 0"
-output=$("$PROJECT_DIR/bin/wt-loop" --help 2>&1) || true
+test_start "set-loop --help exits 0"
+output=$("$PROJECT_DIR/bin/set-loop" --help 2>&1) || true
 ec=$?
 assert_exit_code 0 $ec
 
-test_start "wt-loop --help shows usage"
+test_start "set-loop --help shows usage"
 assert_contains "$output" "Usage:"
 
-test_start "wt-loop --help documents --permission-mode"
+test_start "set-loop --help documents --permission-mode"
 assert_contains "$output" "--permission-mode"
 
-test_start "wt-loop source contains get_claude_permission_flags"
-loop_source=$(cat "$PROJECT_DIR/bin/wt-loop")
+test_start "set-loop source contains get_claude_permission_flags"
+loop_source=$(cat "$PROJECT_DIR/bin/set-loop")
 assert_contains "$loop_source" "get_claude_permission_flags"
 
-test_start "wt-loop does not have hardcoded --dangerously-skip-permissions in run"
+test_start "set-loop does not have hardcoded --dangerously-skip-permissions in run"
 # Should use dynamic permission flags, not hardcoded (except maybe in help text)
 # Count occurrences outside of help/comment lines
 non_help_dsp=$(echo "$loop_source" | grep -v '^#' | grep -v 'help\|echo\|cat' | grep -c "dangerously-skip-permissions" || true)
@@ -172,41 +172,41 @@ else
     test_fail "0 hardcoded occurrences" "$non_help_dsp"
 fi
 
-test_start "wt-loop supports --force flag"
+test_start "set-loop supports --force flag"
 assert_contains "$loop_source" "--force"
 
-test_start "wt-loop has plan-mode refusal logic"
+test_start "set-loop has plan-mode refusal logic"
 assert_contains "$loop_source" "plan"
 
 # =============================================================================
-# Tests: wt-work source structure
+# Tests: set-work source structure
 # =============================================================================
 
 echo ""
-echo "--- wt-work source structure ---"
+echo "--- set-work source structure ---"
 
-work_source=$(cat "$PROJECT_DIR/bin/wt-work")
+work_source=$(cat "$PROJECT_DIR/bin/set-work")
 
-test_start "wt-work does not contain keystroke injection"
+test_start "set-work does not contain keystroke injection"
 assert_not_contains "$work_source" "xdotool key"
 
-test_start "wt-work does not contain sleep/retry loops for keystrokes"
+test_start "set-work does not contain sleep/retry loops for keystrokes"
 assert_not_contains "$work_source" "sleep 0.5"
 
-test_start "wt-work uses get_editor_open_command for terminals"
+test_start "set-work uses get_editor_open_command for terminals"
 assert_contains "$work_source" "get_editor_open_command"
 
-test_start "wt-work uses get_editor_claude_tip"
+test_start "set-work uses get_editor_claude_tip"
 assert_contains "$work_source" "get_editor_claude_tip"
 
-test_start "wt-work uses get_claude_permission_flags"
+test_start "set-work uses get_claude_permission_flags"
 assert_contains "$work_source" "get_claude_permission_flags"
 
-test_start "wt-work checks editor type (ide vs terminal)"
+test_start "set-work checks editor type (ide vs terminal)"
 assert_contains "$work_source" "editor_type"
 
 # =============================================================================
-# Tests: install.sh sources wt-common.sh
+# Tests: install.sh sources set-common.sh
 # =============================================================================
 
 echo ""
@@ -214,8 +214,8 @@ echo "--- install.sh ---"
 
 install_source=$(cat "$PROJECT_DIR/install.sh")
 
-test_start "install.sh sources wt-common.sh before configure functions"
-assert_contains "$install_source" 'source "$SCRIPT_DIR/bin/wt-common.sh"'
+test_start "install.sh sources set-common.sh before configure functions"
+assert_contains "$install_source" 'source "$SCRIPT_DIR/bin/set-common.sh"'
 
 test_start "install.sh has configure_editor_choice function"
 assert_contains "$install_source" "configure_editor_choice"

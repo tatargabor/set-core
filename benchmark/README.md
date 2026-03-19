@@ -4,7 +4,7 @@ A reproducible benchmark for measuring the impact of persistent developer memory
 
 ## Overview
 
-Two autonomous agents implement the same multi-change project (CraftBazaar — a multi-vendor artisan marketplace). One agent runs without memory (baseline), the other with shodh-memory enabled. Both use identical tooling (wt-tools, OpenSpec, wt-loop) and receive the same task descriptions.
+Two autonomous agents implement the same multi-change project (CraftBazaar — a multi-vendor artisan marketplace). One agent runs without memory (baseline), the other with shodh-memory enabled. Both use identical tooling (set-core, OpenSpec, set-loop) and receive the same task descriptions.
 
 The project is designed with 6 sequential changes where early decisions cascade into later ones, creating natural traps that cross-session memory can help avoid.
 
@@ -33,10 +33,10 @@ The project is designed with 6 sequential changes where early decisions cascade 
 
 # 2. Start runs (two terminals)
 cd ~/benchmark/run-a/craftbazaar
-wt-loop start "Build CraftBazaar changes 01-06" --max 20 --stall-threshold 3 --done manual
+set-loop start "Build CraftBazaar changes 01-06" --max 20 --stall-threshold 3 --done manual
 
 cd ~/benchmark/run-b/craftbazaar
-wt-loop start "Build CraftBazaar changes 01-06" --max 20 --stall-threshold 3 --done manual
+set-loop start "Build CraftBazaar changes 01-06" --max 20 --stall-threshold 3 --done manual
 
 # 3. After both complete, collect results
 # See collect-results.md for agent-assisted evaluation

@@ -31,14 +31,14 @@ check_claude_md() {
         add_check "$dim" "memory_section" "pass" "Persistent Memory section present"
     else
         add_check "$dim" "memory_section" "warn" "No Persistent Memory section"
-        add_guidance "$dim" "Run wt-project init to add Persistent Memory section" ""
+        add_guidance "$dim" "Run set-project init to add Persistent Memory section" ""
     fi
 
     if file_contains "$claude_md" "Auto-Commit After Apply"; then
         add_check "$dim" "commit_section" "pass" "Auto-Commit section present"
     else
         add_check "$dim" "commit_section" "warn" "No Auto-Commit After Apply section"
-        add_guidance "$dim" "Run wt-project init to add Auto-Commit section" ""
+        add_guidance "$dim" "Run set-project init to add Auto-Commit section" ""
     fi
 
     # ── @import usage ────────────────────────────────────────────────────

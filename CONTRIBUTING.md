@@ -37,10 +37,10 @@ set-core/
 │   ├── set-new             # Create new worktree
 │   ├── set-work            # Open worktree
 │   ├── set-list            # List worktrees
-│   ├── wt-close           # Close worktree
-│   ├── wt-merge           # Merge branch
-│   ├── wt-status          # JSON status output
-│   └── wt-common.sh       # Shared functions
+│   ├── set-close           # Close worktree
+│   ├── set-merge           # Merge branch
+│   ├── set-status          # JSON status output
+│   └── set-common.sh       # Shared functions
 ├── gui/                    # Python GUI (PySide6)
 │   ├── control_center/    # Main window and mixins
 │   ├── dialogs/           # Dialog windows

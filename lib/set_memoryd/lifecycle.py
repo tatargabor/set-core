@@ -36,11 +36,11 @@ class DaemonInfo:
 
 
 def socket_path_for(project: str) -> str:
-    return os.path.join(RUN_DIR, f"wt-memoryd-{project}.sock")
+    return os.path.join(RUN_DIR, f"set-memoryd-{project}.sock")
 
 
 def pid_path_for(project: str) -> str:
-    return os.path.join(RUN_DIR, f"wt-memoryd-{project}.pid")
+    return os.path.join(RUN_DIR, f"set-memoryd-{project}.pid")
 
 
 def storage_path_for(project: str) -> str:
@@ -50,7 +50,7 @@ def storage_path_for(project: str) -> str:
 def log_path_for(project: str) -> str:
     log_dir = os.path.join(SHODH_STORAGE, project)
     os.makedirs(log_dir, exist_ok=True)
-    return os.path.join(log_dir, "wt-memoryd.log")
+    return os.path.join(log_dir, "set-memoryd.log")
 
 
 def _pid_exists(pid: int) -> bool:
@@ -151,7 +151,7 @@ def start(project: str, storage_path: str = "", foreground: bool = False) -> int
     logfile = log_path_for(project)
 
     if foreground:
-        # Run directly (blocking) — used by `wt-memoryd run`
+        # Run directly (blocking) — used by `set-memoryd run`
         _run_server(project, storage_path, sock, pidfile)
         return os.getpid()
 
@@ -258,7 +258,7 @@ def _find_shodh_python() -> str:
         os.environ.get("HOME", ""), ".config", "set-core", "shodh-python"
     )
 
-    # 1. Check saved config (set by wt-memory on first successful use)
+    # 1. Check saved config (set by set-memory on first successful use)
     if os.path.isfile(config_file):
         try:
             with open(config_file, "r") as f:
@@ -284,18 +284,18 @@ def _find_set_tools_root() -> str:
     # From this file: lib/set_memoryd/lifecycle.py → ../../
     here = Path(__file__).resolve()
     root = here.parent.parent.parent
-    if (root / "bin" / "wt-memory").exists():
+    if (root / "bin" / "set-memory").exists():
         return str(root)
-    # Fallback: check PATH for wt-memory
+    # Fallback: check PATH for set-memory
     import shutil
-    wt_mem = shutil.which("wt-memory")
-    if wt_mem:
-        return str(Path(wt_mem).resolve().parent.parent)
+    set_mem = shutil.which("set-memory")
+    if set_mem:
+        return str(Path(set_mem).resolve().parent.parent)
     return str(root)
 
 
 def resolve_project() -> str:
-    """Auto-detect project from git root (matches bin/wt-memory resolve_project)."""
+    """Auto-detect project from git root (matches bin/set-memory resolve_project)."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],

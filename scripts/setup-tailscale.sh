@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Setup Tailscale for mobile wt-web dashboard access.
+# Setup Tailscale for mobile set-web dashboard access.
 # Run as: sudo scripts/setup-tailscale.sh
 # Or called from install.sh which handles sudo prompting.
 #
@@ -62,7 +62,7 @@ TS_HOSTNAME="$(tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // emp
 info "Tailscale hostname: ${TS_HOSTNAME:-unknown}"
 
 # --- 3. Sudoers NOPASSWD rule ---
-SUDOERS_FILE="/etc/sudoers.d/tailscale-wt"
+SUDOERS_FILE="/etc/sudoers.d/tailscale-set"
 
 if [[ -f "$SUDOERS_FILE" ]] && grep -q "$TARGET_USER" "$SUDOERS_FILE" 2>/dev/null; then
     success "Sudoers rule already exists for $TARGET_USER"
@@ -88,8 +88,8 @@ info "Configuring tailscale serve: HTTPS :443 → localhost:7400"
 if tailscale serve --bg --https 443 http://localhost:7400 2>/dev/null; then
     success "Tailscale serve configured"
 else
-    warn "tailscale serve failed — is wt-web running on port 7400?"
-    info "Start wt-web first, then run: sudo tailscale serve --bg --https 443 http://localhost:7400"
+    warn "tailscale serve failed — is set-web running on port 7400?"
+    info "Start set-web first, then run: sudo tailscale serve --bg --https 443 http://localhost:7400"
 fi
 
 echo ""

@@ -9,7 +9,7 @@ The system SHALL expose a `send_message()` MCP tool that allows agents to send d
 - **WHEN** agent calls `send_message(recipient="tg@linux/gep2-linux", message="PONG received")`
 - **THEN** the message is encrypted using the recipient's public key
 - **AND** appended to the sender's outbox file
-- **AND** committed and pushed to wt-control
+- **AND** committed and pushed to set-control
 - **AND** returns `{"status": "sent", "id": "<uuid>", "ts": "<timestamp>"}`
 
 #### Scenario: Send message without crypto

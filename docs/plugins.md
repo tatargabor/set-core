@@ -2,7 +2,7 @@
 
 # Plugins
 
-> **Status: Experimental.** Plugin infrastructure is available but the ecosystem is just starting. The `wt-plugin install` CLI is not yet implemented.
+> **Status: Experimental.** Plugin infrastructure is available but the ecosystem is just starting. The `set-plugin install` CLI is not yet implemented.
 
 set-core is designed to be extensible. Plugins add new capabilities — custom skills, agents, hooks, or CLI commands — without modifying the core. Plugins live in separate repositories and are installed into projects independently.
 
@@ -21,7 +21,7 @@ When installed, a plugin's files are deployed to the target project's `.claude/`
 
 ```bash
 # Planned interface (not yet implemented):
-wt-plugin install <repo-url>
+set-plugin install <repo-url>
 
 # Current approach: clone and manually deploy
 git clone <plugin-repo> /path/to/plugin

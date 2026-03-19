@@ -1,6 +1,6 @@
 # Orchestrator Tests
 
-Tests for `wt-orchestrate` — the multi-change orchestration layer.
+Tests for `set-orchestrate` — the multi-change orchestration layer.
 
 ## Test Levels
 
@@ -12,7 +12,7 @@ Tests for `wt-orchestrate` — the multi-change orchestration layer.
 
 Tests all pure bash functions: brief parsing, directive validation, dependency graph (topological sort, circular detection), state management (init, update, query), and Ralph compatibility verification.
 
-Also available as `wt-orchestrate self-test` (subset).
+Also available as `set-orchestrate self-test` (subset).
 
 **Cost:** Free (no API calls)
 **Time:** < 5 seconds
@@ -23,7 +23,7 @@ Also available as `wt-orchestrate self-test` (subset).
 ./tests/orchestrator/test-plan.sh
 ```
 
-Creates a temp project with `sample-brief.md`, runs `wt-orchestrate plan`, validates the generated `orchestration-plan.json`: JSON structure, kebab-case names, valid dependency references, no circular dependencies.
+Creates a temp project with `sample-brief.md`, runs `set-orchestrate plan`, validates the generated `orchestration-plan.json`: JSON structure, kebab-case names, valid dependency references, no circular dependencies.
 
 **Cost:** ~5-10k tokens (one Claude decomposition call)
 **Time:** ~30 seconds
@@ -34,7 +34,7 @@ Creates a temp project with `sample-brief.md`, runs `wt-orchestrate plan`, valid
 ./tests/orchestrator/test-e2e.sh
 ```
 
-Creates a real git repo with a trivial brief ("create hello.txt"), runs `wt-orchestrate plan` + `start`, waits for the change to complete the full lifecycle: pending → dispatched → running → done → merged.
+Creates a real git repo with a trivial brief ("create hello.txt"), runs `set-orchestrate plan` + `start`, waits for the change to complete the full lifecycle: pending → dispatched → running → done → merged.
 
 **Cost:** ~20-50k tokens (one Ralph session)
 **Time:** 5-10 minutes

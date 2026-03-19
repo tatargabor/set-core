@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# wt-memory rules: YAML-based deterministic rules for hook injection
-# Dependencies: sourced by bin/wt-memory after infra setup
+# set-memory rules: YAML-based deterministic rules for hook injection
+# Dependencies: sourced by bin/set-memory after infra setup
 
 get_rules_file() {
     local toplevel
@@ -74,7 +74,7 @@ cmd_rules() {
         list)   cmd_rules_list "$@" ;;
         remove) cmd_rules_remove "$@" ;;
         "")
-            echo "Usage: wt-memory rules <add|list|remove>" >&2
+            echo "Usage: set-memory rules <add|list|remove>" >&2
             echo "  add --topics \"t1,t2\" \"content\"   Add a rule (injected when topics match prompt)" >&2
             echo "  list                              List all rules" >&2
             echo "  remove <id>                       Remove a rule by id" >&2
@@ -99,7 +99,7 @@ cmd_rules_add() {
     done
 
     if [[ -z "$content" ]]; then
-        echo "Error: content required (e.g., wt-memory rules add --topics \"sql,customer\" \"Use customer_ro / XYZ123\")" >&2
+        echo "Error: content required (e.g., set-memory rules add --topics \"sql,customer\" \"Use customer_ro / XYZ123\")" >&2
         return 1
     fi
     if [[ -z "$topics" ]]; then
@@ -159,7 +159,7 @@ cmd_rules_list() {
 
     if [[ ! -f "$rules_file" ]]; then
         echo "No rules file found at: $rules_file"
-        echo "Use 'wt-memory rules add --topics \"t1,t2\" \"content\"' to create one."
+        echo "Use 'set-memory rules add --topics \"t1,t2\" \"content\"' to create one."
         return 0
     fi
 
@@ -198,7 +198,7 @@ PYEOF
 cmd_rules_remove() {
     local rule_id="${1:-}"
     if [[ -z "$rule_id" ]]; then
-        echo "Error: rule id required (use 'wt-memory rules list' to see ids)" >&2
+        echo "Error: rule id required (use 'set-memory rules list' to see ids)" >&2
         return 1
     fi
 

@@ -8,7 +8,7 @@
 - Backend auto-detection based on config (default: worktree for backward compat)
 
 ## OUT OF SCOPE
-- Renaming CLI commands (wt-new, wt-close stay as-is)
+- Renaming CLI commands (set-new, set-close stay as-is)
 - Renaming state fields (worktree_path stays as-is)
 - Non-git VCS support (e.g., Mercurial, SVN)
 - Hybrid mode (mixing backends within a single orchestration run)
@@ -68,14 +68,14 @@ The system SHALL use the same path convention (`<project_path>-<change_name>`) r
 - **THEN** all downstream code (Ralph loop, verifier, merger, API) works without modification
 
 ### Requirement: CLI backend delegation
-The `wt-new` and `wt-close` scripts SHALL delegate to the configured backend instead of calling `git worktree` directly. The CLI interface (arguments, output, exit codes) SHALL remain identical.
+The `set-new` and `set-close` scripts SHALL delegate to the configured backend instead of calling `git worktree` directly. The CLI interface (arguments, output, exit codes) SHALL remain identical.
 
-#### Scenario: wt-new uses configured backend
-- **WHEN** user runs `wt-new auth-setup` with `execution.isolation: branch-clone`
+#### Scenario: set-new uses configured backend
+- **WHEN** user runs `set-new auth-setup` with `execution.isolation: branch-clone`
 - **THEN** the system creates a branch-clone instead of a worktree
 - **THEN** the output path format and bootstrap steps are identical
 
-#### Scenario: wt-close uses configured backend
-- **WHEN** user runs `wt-close auth-setup` with `execution.isolation: branch-clone`
+#### Scenario: set-close uses configured backend
+- **WHEN** user runs `set-close auth-setup` with `execution.isolation: branch-clone`
 - **THEN** the system removes the clone directory and branch
 - **THEN** the interactive prompts and options (--force, --keep-branch) work identically

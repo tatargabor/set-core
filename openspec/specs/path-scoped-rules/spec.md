@@ -8,7 +8,7 @@ The system SHALL provide `.claude/rules/gui/` directory containing GUI-specific 
 - **THEN** the dialog rules (WindowStaysOnTopHint patterns, helper imports) SHALL be loaded into context
 
 #### Scenario: Editing a non-GUI file does not load GUI rules
-- **WHEN** the user edits a file matching `bin/wt-*` or `lib/**`
+- **WHEN** the user edits a file matching `bin/set-*` or `lib/**`
 - **THEN** no GUI-specific rules SHALL be loaded into context
 
 ### Requirement: GUI testing rules file
@@ -30,7 +30,7 @@ The system SHALL provide `.claude/rules/gui/debug-startup.md` with YAML frontmat
 
 #### Scenario: Debug rules loaded when debugging GUI
 - **WHEN** the user edits a file matching `gui/**/*.py`
-- **THEN** the debug log location (`/tmp/wt-control.log`) and startup commands SHALL be available in context
+- **THEN** the debug log location (`/tmp/set-control.log`) and startup commands SHALL be available in context
 
 ### Requirement: OpenSpec artifacts rules file
 The system SHALL provide `.claude/rules/openspec-artifacts.md` with YAML frontmatter `paths: ["openspec/**"]` containing the "no project-specific content" rule for open-source artifact creation.

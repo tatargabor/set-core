@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("wt-web.chat-context")
+logger = logging.getLogger("set-web.chat-context")
 
 
 def build_chat_context(project_path: Path) -> str:
@@ -133,27 +133,27 @@ def _commands_section() -> str:
 
 ### Lekérdezés
 - `cat wt/orchestration/orchestration-state.json | python3 -m json.tool` — teljes state
-- `wt-orch-core state query --file wt/orchestration/orchestration-state.json --status running` — futó change-ek
-- `wt-orch-core state get --file wt/orchestration/orchestration-state.json --change <name> --field status` — egy mező
+- `set-orch-core state query --file wt/orchestration/orchestration-state.json --status running` — futó change-ek
+- `set-orch-core state get --file wt/orchestration/orchestration-state.json --change <name> --field status` — egy mező
 - `tail -50 .claude/orchestration.log` — utolsó log sorok
 - `tail -20 wt/orchestration/orchestration-events.jsonl` — utolsó események
 - `git worktree list` — aktív worktree-k
-- `wt-loop monitor <change-id>` — Ralph loop státusz
+- `set-loop monitor <change-id>` — Ralph loop státusz
 
 ### Vezérlés
-- `wt-orchestrate skip <change-name> --reason "text"` — change kihagyása
-- `wt-orchestrate pause <change-name>` — change szüneteltetése
-- `wt-orchestrate resume <change-name>` — change folytatása
-- `wt-loop start <change-id> "<task>"` — Ralph loop indítása
-- `wt-loop stop <change-id>` — Ralph loop leállítása
+- `set-orchestrate skip <change-name> --reason "text"` — change kihagyása
+- `set-orchestrate pause <change-name>` — change szüneteltetése
+- `set-orchestrate resume <change-name>` — change folytatása
+- `set-loop start <change-id> "<task>"` — Ralph loop indítása
+- `set-loop stop <change-id>` — Ralph loop leállítása
 
 ### Worktree
-- `wt-new <change-id>` — worktree létrehozása
-- `wt-close <change-id>` — worktree törlése
-- `wt-merge <change-id>` — worktree merge
+- `set-new <change-id>` — worktree létrehozása
+- `set-close <change-id>` — worktree törlése
+- `set-merge <change-id>` — worktree merge
 
 ### Kommunikáció
-- `wt-msg <recipient> "<message>"` — üzenet küldése agentnek"""
+- `set-msg <recipient> "<message>"` — üzenet küldése agentnek"""
 
 
 # ─── File readers ─────────────────────────────────────────────────────

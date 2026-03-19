@@ -5,7 +5,7 @@
 
 #### Scenario: Default start
 - **WHEN** user runs `set-orch-core serve`
-- **THEN** the server starts on `127.0.0.1:7400` and logs "wt-web dashboard running at http://localhost:7400"
+- **THEN** the server starts on `127.0.0.1:7400` and logs "set-web dashboard running at http://localhost:7400"
 
 #### Scenario: Custom port
 - **WHEN** user runs `set-orch-core serve --port 8080`
@@ -27,21 +27,21 @@ A systemd user service file SHALL be provided that runs `set-orch-core serve` as
 
 #### Scenario: Service auto-start
 - **WHEN** user logs in to their desktop session
-- **THEN** the wt-web service starts automatically and `localhost:7400` becomes available
+- **THEN** the set-web service starts automatically and `localhost:7400` becomes available
 
 #### Scenario: Service crash recovery
 - **WHEN** the server process crashes
 - **THEN** systemd restarts it within 5 seconds
 
 #### Scenario: Service status check
-- **WHEN** user runs `systemctl --user status wt-web`
+- **WHEN** user runs `systemctl --user status set-web`
 - **THEN** the service status, PID, and recent log lines are displayed
 
 ### Requirement: install.sh integration
 The `install.sh` script SHALL deploy the systemd service file and enable it. It SHALL handle both fresh install and update scenarios.
 
 #### Scenario: Fresh install
-- **WHEN** `install.sh` runs and no wt-web service exists
+- **WHEN** `install.sh` runs and no set-web service exists
 - **THEN** the service file is copied to `~/.config/systemd/user/`, `daemon-reload` is run, and the service is enabled and started
 
 #### Scenario: Update install

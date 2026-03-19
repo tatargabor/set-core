@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # lib/orchestration/state.sh — State initialization, queries, notifications, status
 # Dependencies: config.sh, utils.sh must be sourced first
-# Sourced by bin/wt-orchestrate
+# Sourced by bin/set-orchestrate
 
 init_state() {
     local plan_file="$1"
 
-    wt-orch-core state init --plan-file "$plan_file" --output "$STATE_FILENAME"
+    set-orch-core state init --plan-file "$plan_file" --output "$STATE_FILENAME"
 
     local change_count plan_version
     change_count=$(jq '.changes | length' "$STATE_FILENAME")
@@ -78,7 +78,7 @@ _init_phase_state() {
 update_state_field() {
     local field="$1"
     local value="$2"
-    wt-orch-core state update-field --file "$STATE_FILENAME" --field "$field" --value "$value"
+    set-orch-core state update-field --file "$STATE_FILENAME" --field "$field" --value "$value"
 }
 
 # Update a change's field in state (locked + validated)
@@ -88,35 +88,35 @@ update_change_field() {
     local change_name="$1"
     local field="$2"
     local value="$3"
-    wt-orch-core state update-change --file "$STATE_FILENAME" --name "$change_name" --field "$field" --value "$value"
+    set-orch-core state update-change --file "$STATE_FILENAME" --name "$change_name" --field "$field" --value "$value"
 }
 
 # Get a change's status
 # Migrated to: wt_orch/state.py get_change_status()
 get_change_status() {
     local change_name="$1"
-    wt-orch-core state get-status --file "$STATE_FILENAME" --name "$change_name"
+    set-orch-core state get-status --file "$STATE_FILENAME" --name "$change_name"
 }
 
 # Get all changes with a specific status
 # Migrated to: wt_orch/state.py get_changes_by_status()
 get_changes_by_status() {
     local status="$1"
-    wt-orch-core state changes-by-status --file "$STATE_FILENAME" --status "$status"
+    set-orch-core state changes-by-status --file "$STATE_FILENAME" --status "$status"
 }
 
 # Count changes with a specific status
 # Migrated to: wt_orch/state.py count_changes_by_status()
 count_changes_by_status() {
     local status="$1"
-    wt-orch-core state count-by-status --file "$STATE_FILENAME" --status "$status"
+    set-orch-core state count-by-status --file "$STATE_FILENAME" --status "$status"
 }
 
 # Check if all depends_on for a change are merged
 # Migrated to: wt_orch/state.py deps_satisfied()
 deps_satisfied() {
     local change_name="$1"
-    wt-orch-core state deps-satisfied --file "$STATE_FILENAME" --name "$change_name"
+    set-orch-core state deps-satisfied --file "$STATE_FILENAME" --name "$change_name"
 }
 
 # Check if any depends_on for a change has failed (terminal state)
@@ -147,7 +147,7 @@ deps_failed() {
 # Migrated to: wt_orch/state.py cascade_failed_deps()
 cascade_failed_deps() {
     local cascaded
-    cascaded=$(wt-orch-core state cascade-failed --file "$STATE_FILENAME")
+    cascaded=$(set-orch-core state cascade-failed --file "$STATE_FILENAME")
     [[ "$cascaded" -gt 0 ]] && log_info "Cascade: $cascaded changes marked failed due to dependency failures"
     return 0
 }
@@ -171,7 +171,7 @@ all_phase_changes_terminal() {
 # Advance to the next phase. Returns 0 if advanced, 1 if no more phases.
 # Migrated to: wt_orch/state.py advance_phase()
 advance_phase() {
-    wt-orch-core state advance-phase --file "$STATE_FILENAME"
+    set-orch-core state advance-phase --file "$STATE_FILENAME"
 }
 
 # ─── Dependency Graph ────────────────────────────────────────────────
@@ -180,7 +180,7 @@ advance_phase() {
 # Migrated to: wt_orch/state.py topological_sort()
 topological_sort() {
     local plan_file="$1"
-    wt-orch-core state topo-sort --plan-file "$plan_file"
+    set-orch-core state topo-sort --plan-file "$plan_file"
 }
 
 # ─── Quality Gate Hooks ──────────────────────────────────────────────
@@ -269,10 +269,10 @@ _MEM_RECALL_TOTAL_MS=0
 cmd_status() {
     if [[ ! -f "$STATE_FILENAME" ]]; then
         if [[ -f "$PLAN_FILENAME" ]]; then
-            info "Plan exists but orchestrator hasn't started. Run 'wt-orchestrate start'."
+            info "Plan exists but orchestrator hasn't started. Run 'set-orchestrate start'."
             cmd_plan --show
         else
-            info "No orchestration state. Run 'wt-orchestrate plan' to create a plan."
+            info "No orchestration state. Run 'set-orchestrate plan' to create a plan."
         fi
         return 0
     fi
@@ -394,7 +394,7 @@ cmd_status() {
     fi
 
     if [[ "$status" == "time_limit" ]]; then
-        echo "  Note:     Stopped by time limit. Run 'wt-orchestrate start' to continue."
+        echo "  Note:     Stopped by time limit. Run 'set-orchestrate start' to continue."
     fi
 
     # Input staleness check
@@ -411,7 +411,7 @@ cmd_status() {
         local stored_hash
         stored_hash=$(jq -r '.brief_hash' "$STATE_FILENAME")
         if [[ "$current_hash" != "$stored_hash" ]]; then
-            warn "  Input has changed since plan was created. Consider: wt-orchestrate replan"
+            warn "  Input has changed since plan was created. Consider: set-orchestrate replan"
         fi
     fi
 
@@ -463,7 +463,7 @@ cmd_status() {
                 wh_summary=$(jq -r '.manual_tasks[0]? | "[\(.id)] \(.description)"' "$wh_wt/.set/loop-state.json" 2>/dev/null)
             fi
             echo "  $wh_name: ${wh_summary:-details unavailable}"
-            echo "    → wt-manual show $wh_name"
+            echo "    → set-manual show $wh_name"
         done
     fi
 
@@ -565,7 +565,7 @@ cmd_approve() {
     if [[ "$status" == "plan_review" ]]; then
         update_state_field "status" '"running"'
         log_info "Plan approved — ready for dispatch"
-        success "Plan approved — run 'wt-orchestrate start' to begin dispatch"
+        success "Plan approved — run 'set-orchestrate start' to begin dispatch"
         return 0
     fi
     if [[ "$status" != "checkpoint" ]]; then
@@ -614,7 +614,7 @@ trigger_checkpoint() {
     done_count=$(jq '[.changes[] | select(.status == "done" or .status == "merged")] | length' "$STATE_FILENAME" 2>/dev/null || echo 0)
     local running
     running=$(count_changes_by_status "running")
-    send_notification "wt-orchestrate" "Checkpoint ($reason): $done_count/$total done, $running running. Run 'wt-orchestrate approve' to continue."
+    send_notification "set-orchestrate" "Checkpoint ($reason): $done_count/$total done, $running running. Run 'set-orchestrate approve' to continue."
 
     # Auto-approve if directive is set (unattended/E2E mode)
     # Exception: mcp_auth checkpoints require human action (browser OAuth) and cannot be auto-approved
@@ -629,7 +629,7 @@ trigger_checkpoint() {
     # Set status and wait for approval
     update_state_field "status" '"checkpoint"'
     info "Checkpoint: $reason. Waiting for approval..."
-    info "Run 'wt-orchestrate approve' (or 'approve --merge') to continue."
+    info "Run 'set-orchestrate approve' (or 'approve --merge') to continue."
 
     # Wait for approval
     while true; do
@@ -732,5 +732,5 @@ reconstruct_state_from_events() {
     local args=(--file "$state_file")
     [[ -n "$events_file" ]] && args+=(--events "$events_file")
 
-    wt-orch-core state reconstruct "${args[@]}"
+    set-orch-core state reconstruct "${args[@]}"
 }

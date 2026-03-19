@@ -4,7 +4,7 @@
 TBD - created by archiving change verify-gate-retry-improvements. Update Purpose after archive.
 ## Requirements
 ### Requirement: resume_change passes retry context to agent
-When `resume_change()` is called after a verify gate failure, it SHALL read the `retry_context` field from orchestration state and include it in the task description passed to `wt-loop`.
+When `resume_change()` is called after a verify gate failure, it SHALL read the `retry_context` field from orchestration state and include it in the task description passed to `set-loop`.
 
 #### Scenario: Test failure retry includes test output
 - **WHEN** `resume_change()` is called for a change with `retry_context` set in state
@@ -23,7 +23,7 @@ When `resume_change()` is called after a verify gate failure, it SHALL read the 
 When a merge conflict occurs and LLM resolution fails, the orchestrator SHALL resume the agent in the worktree to rebase the branch onto main, instead of blindly retrying the same merge.
 
 #### Scenario: First merge conflict triggers agent rebase
-- **WHEN** `merge_change()` fails due to merge conflict (wt-merge returns non-zero)
+- **WHEN** `merge_change()` fails due to merge conflict (set-merge returns non-zero)
 - **AND** `merge_retry_count` is 0 (first attempt)
 - **THEN** the orchestrator SHALL store a `retry_context` describing the merge conflict and requesting the agent to merge main into the branch
 - **AND** the orchestrator SHALL call `resume_change()` to restart the agent in the worktree

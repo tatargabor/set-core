@@ -17,8 +17,8 @@ Ezek az eszközök a git worktree-k teljes életciklusát kezelik — a létreho
 | `set-status` | Részletes ágens-állapot: PID, iteráció, token, modell |
 | `set-merge` | Worktree merge main-be, LLM conflict resolution |
 | `set-close` | Worktree cleanup (branch törlés, könyvtár eltávolítás) |
-| `wt-focus` | Ágens-váltás: terminál fókusz a kiválasztott worktree-re |
-| `wt-add` | Meglévő branch hozzáadása worktree-ként |
+| `set-focus` | Ágens-váltás: terminál fókusz a kiválasztott worktree-re |
+| `set-add` | Meglévő branch hozzáadása worktree-ként |
 
 ### Ágens futtatás
 
@@ -132,19 +132,19 @@ Ezek a sablonok a `set-project-base`-re épülnének, és a projekt-specifikus k
 │  Worktree    │  Orchestráció │  Memória & Kontextus     │
 │  lifecycle   │  & felügyelet │                          │
 │              │              │                           │
-│  set-new      │  wt-orchestr.│  set-memory               │
+│  set-new      │  set-orchestr.│  set-memory               │
 │  set-list     │  set-sentinel │  set-hook-memory-*        │
 │  set-status   │  set-manual   │                          │
-│  set-merge    │  wt-e2e-rep. │                          │
+│  set-merge    │  set-e2e-rep. │                          │
 │  set-close    │              │                          │
 │  set-loop     │              │                          │
 ├──────────────┼──────────────┼───────────────────────────┤
 │  Projekt     │  Team Sync   │  OpenSpec & Minőség      │
 │  menedzsment │              │                          │
 │              │  set-control  │  set-openspec             │
-│  set-project  │  wt-ctrl-*   │  set-audit               │
+│  set-project  │  set-ctrl-*   │  set-audit               │
 │  set-config   │  set-hook-act.│  /opsx:* skillek        │
-│  wt-deploy   │              │                          │
+│  set-deploy   │              │                          │
 ├──────────────┴──────────────┴───────────────────────────┤
 │  Projekt sablonok                                       │
 │  set-project-base │ set-project-web │ set-project-...     │

@@ -2,7 +2,7 @@
 
 # CLI Reference
 
-Complete reference for all user-facing `wt-*` commands.
+Complete reference for all user-facing `set-*` commands.
 
 ## Worktree Management
 
@@ -12,10 +12,10 @@ Complete reference for all user-facing `wt-*` commands.
 | `set-work <change-id>` | Open worktree in editor + Claude Code |
 | `set-close <change-id>` | Close worktree (removes directory and branch) |
 | `set-merge <change-id>` | Merge worktree branch back to main |
-| `wt-add [path]` | Add existing repo or worktree to set-core |
+| `set-add [path]` | Add existing repo or worktree to set-core |
 | `set-list` | List all active worktrees |
 | `set-status` | JSON status of all worktrees and agents |
-| `wt-focus <change-id>` | Focus editor window for a worktree |
+| `set-focus <change-id>` | Focus editor window for a worktree |
 
 ## Project Management
 
@@ -153,7 +153,7 @@ These are called by other tools or by Claude Code hooks:
 - `set-hook-memory-posttool` — post-tool error recall
 - `set-skill-start` — register active skill for status display
 - `set-control-gui` — GUI launcher (called by `set-control`)
-- `wt-completions.bash` / `wt-completions.zsh` — shell completions
+- `set-completions.bash` / `set-completions.zsh` — shell completions
 - `set-memory-hooks check/remove` — legacy inline hook management
 
 </details>

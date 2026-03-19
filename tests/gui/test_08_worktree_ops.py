@@ -50,7 +50,7 @@ def test_create_worktree(git_env):
 def test_worktree_appears_in_table(control_center, git_env, qtbot):
     """A created worktree should appear in the GUI table after status update."""
     project_path = str(git_env["project"])
-    wt_path = str(git_env["base"] / "test-project-wt-table-test")
+    wt_path = str(git_env["base"] / "test-project-set-table-test")
 
     subprocess.run(
         ["git", "-C", project_path, "worktree", "add", "-b", "change/table-test", wt_path],

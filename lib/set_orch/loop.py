@@ -1,7 +1,7 @@
 """Loop engine: API error classification, backoff, iteration lifecycle, completion.
 
 1:1 migration of lib/loop/engine.sh — the core iteration loop.
-Note: The actual PTY/terminal management stays in bin/wt-loop (bash).
+Note: The actual PTY/terminal management stays in bin/set-loop (bash).
 This module provides the logic functions called from there.
 """
 

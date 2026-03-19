@@ -4,11 +4,11 @@
 The E2E-GUIDE.md SHALL contain a `## Last Run Results` section with per-project subsections. Each subsection SHALL display the latest run's metrics, set-core commit delta, open regressions, and comparison to the previous run.
 
 #### Scenario: First run for a project with no previous results
-- **WHEN** `wt-e2e-report --update-guide <path>` runs for project "minishop" and no minishop subsection exists in the guide
+- **WHEN** `set-e2e-report --update-guide <path>` runs for project "minishop" and no minishop subsection exists in the guide
 - **THEN** a new `### minishop — Run #N (date)` subsection SHALL be appended inside the `## Last Run Results` section with metrics from state.json and no "vs previous" line
 
 #### Scenario: Subsequent run updates existing project subsection
-- **WHEN** `wt-e2e-report --update-guide <path>` runs for project "minishop" and a minishop subsection already exists
+- **WHEN** `set-e2e-report --update-guide <path>` runs for project "minishop" and a minishop subsection already exists
 - **THEN** the existing minishop subsection SHALL be replaced with updated metrics, and a "vs previous" line SHALL show the delta (merged diff, tokens diff, retries diff)
 
 #### Scenario: Two projects have independent subsections
@@ -34,11 +34,11 @@ Each project subsection SHALL be wrapped in HTML comment delimiters: `<!-- e2e-r
 - **WHEN** the report tool writes results
 - **THEN** a `<!-- set-core-commit: {hash} -->` comment SHALL be included inside the block containing the current HEAD commit of the set-core repo at time of writing
 
-### Requirement: wt-e2e-report --update-guide flag
-The `wt-e2e-report` script SHALL accept a `--update-guide <path>` argument that writes the current run's results into the specified E2E-GUIDE.md file.
+### Requirement: set-e2e-report --update-guide flag
+The `set-e2e-report` script SHALL accept a `--update-guide <path>` argument that writes the current run's results into the specified E2E-GUIDE.md file.
 
 #### Scenario: Update guide from completed run
-- **WHEN** `wt-e2e-report --update-guide /path/to/E2E-GUIDE.md` is called in a project directory containing orchestration-state.json with status "done"
+- **WHEN** `set-e2e-report --update-guide /path/to/E2E-GUIDE.md` is called in a project directory containing orchestration-state.json with status "done"
 - **THEN** the tool SHALL parse state.json for metrics (status, merged/total, duration, tokens, retries), detect project name and run number from the directory name, and write/replace the corresponding project subsection in the guide
 
 #### Scenario: Guide file does not contain Last Run Results section

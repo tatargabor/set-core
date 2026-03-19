@@ -429,7 +429,7 @@ def _load_security_rules(wt_path: str) -> str:
 def _load_web_security_rules(wt_path: str) -> str:
     """Load web security rules from the worktree's .claude/rules/ if available.
 
-    Looks for web security rule files (deployed by wt-project init) and returns
+    Looks for web security rule files (deployed by set-project init) and returns
     a condensed version for injection into review retry prompts.
     """
     rules_dir = Path(wt_path) / ".claude" / "rules"
@@ -438,7 +438,7 @@ def _load_web_security_rules(wt_path: str) -> str:
 
     # Collect web-related rule files (may be in rules/ or rules/web/)
     rule_files = []
-    for pattern in ("web/*.md", "wt-web-*.md", "*web-security*.md", "*auth-middleware*.md"):
+    for pattern in ("web/*.md", "set-web-*.md", "*web-security*.md", "*auth-middleware*.md"):
         rule_files.extend(rules_dir.glob(pattern))
 
     if not rule_files:
@@ -877,7 +877,7 @@ def review_change(
     })
 
     template_result = run_command(
-        ["wt-orch-core", "template", "review", "--input-file", "-"],
+        ["set-orch-core", "template", "review", "--input-file", "-"],
         stdin_data=template_input,
     )
     if template_result.exit_code != 0:
@@ -1119,7 +1119,7 @@ def smoke_fix_scoped(
             "variant": "scoped",
         })
         template_result = run_command(
-            ["wt-orch-core", "template", "fix", "--input-file", "-"],
+            ["set-orch-core", "template", "fix", "--input-file", "-"],
             stdin_data=template_input,
         )
         if template_result.exit_code != 0:
@@ -1263,14 +1263,14 @@ def run_phase_end_e2e(
 
     if e2e_result == "fail":
         send_notification(
-            "wt-orchestrate",
+            "set-orchestrate",
             "Phase-end E2E failed! Failures will be included in replan context.",
             "warning",
         )
         update_state_field(state_file, "phase_e2e_failure_context", e2e_output_truncated)
     else:
         send_notification(
-            "wt-orchestrate",
+            "set-orchestrate",
             "Phase-end E2E passed! All integrated tests green.",
             "normal",
         )
@@ -1416,7 +1416,7 @@ def poll_change(
         # No loop-state yet — check if terminal process is dead
         ralph_pid = change.ralph_pid or 0
         if ralph_pid > 0:
-            pid_result = check_pid(ralph_pid, "wt-loop")
+            pid_result = check_pid(ralph_pid, "set-loop")
             if not pid_result.alive or not pid_result.match:
                 logger.error(
                     "Terminal process %d for %s is dead, no loop-state found",
@@ -1463,7 +1463,7 @@ def poll_change(
     cr_tok = _safe_int(loop_state.get("total_cache_read", 0))
     cc_tok = _safe_int(loop_state.get("total_cache_create", 0))
 
-    # Fallback: if loop-state has 0 tokens, try wt-usage
+    # Fallback: if loop-state has 0 tokens, try set-usage
     if tokens == 0:
         loop_started = loop_state.get("started_at", "")
         derived_dir = wt_path.replace("/", "-")
@@ -1471,7 +1471,7 @@ def poll_change(
         projects_dir = os.path.join(home, ".claude", "projects", derived_dir)
         if loop_started and os.path.isdir(projects_dir):
             script_dir = os.environ.get("SCRIPT_DIR", os.path.dirname(os.path.abspath(__file__)))
-            usage_cmd = os.path.join(script_dir, "..", "..", "bin", "wt-usage")
+            usage_cmd = os.path.join(script_dir, "..", "..", "bin", "set-usage")
             if os.path.isfile(usage_cmd):
                 usage_result = run_command(
                     [usage_cmd, "--since", loop_started, f"--project-dir={derived_dir}", "--format", "json"],
@@ -1514,7 +1514,7 @@ def poll_change(
         if stale_secs > 300:
             terminal_pid = change.ralph_pid or 0
             if terminal_pid > 0:
-                pid_result = check_pid(terminal_pid, "wt-loop")
+                pid_result = check_pid(terminal_pid, "set-loop")
                 if pid_result.alive and pid_result.match:
                     return ralph_status  # PID alive = long iteration
             logger.warning(
@@ -1539,8 +1539,8 @@ def poll_change(
             for mt in manual_tasks[:5]:
                 logger.info("  [%s] %s (%s)", mt.get("id", "?"), mt.get("description", ""), mt.get("type", ""))
             send_notification(
-                "wt-orchestrate",
-                f"Change '{change_name}' needs human action. Run: wt-manual show {change_name}",
+                "set-orchestrate",
+                f"Change '{change_name}' needs human action. Run: set-manual show {change_name}",
                 "normal",
             )
 
@@ -1555,8 +1555,8 @@ def poll_change(
                 change_name, budget_tokens // 1000, budget_limit // 1000,
             )
             send_notification(
-                "wt-orchestrate",
-                f"Change '{change_name}' budget checkpoint — run 'wt-loop resume' to continue",
+                "set-orchestrate",
+                f"Change '{change_name}' budget checkpoint — run 'set-loop resume' to continue",
                 "normal",
             )
 
@@ -2065,7 +2065,7 @@ def handle_change_done(
                 "uncommitted_check": uncommitted_check_result,
             })
         send_notification(
-            "wt-orchestrate",
+            "set-orchestrate",
             f"Change '{change_name}' failed {pipeline.stop_gate} gate — retrying",
             "warning",
         )
@@ -2079,7 +2079,7 @@ def handle_change_done(
                 "uncommitted_check": uncommitted_check_result,
             })
         send_notification(
-            "wt-orchestrate",
+            "set-orchestrate",
             f"Change '{change_name}' failed {pipeline.stop_gate} gate — retries exhausted",
             "critical",
         )

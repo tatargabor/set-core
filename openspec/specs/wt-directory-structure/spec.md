@@ -56,18 +56,18 @@ The `wt/requirements/` directory SHALL contain business requirement YAML files t
 The `wt/plugins/` directory SHALL provide a workspace for each installed set-core plugin, where plugins can store their data, state, and generated artifacts.
 
 #### Scenario: Plugin workspace created on plugin init
-- **WHEN** a plugin is installed or initialized (e.g., `set-project add-plugin wt-spec-capture`)
+- **WHEN** a plugin is installed or initialized (e.g., `set-project add-plugin set-spec-capture`)
 - **THEN** `wt/plugins/<plugin-name>/` directory is created
 - **AND** the plugin can define its own internal directory structure within its workspace
 
 #### Scenario: Plugin workspace isolation
-- **WHEN** multiple plugins are installed (e.g., wt-web and wt-spec-capture)
+- **WHEN** multiple plugins are installed (e.g., set-web and set-spec-capture)
 - **THEN** each plugin has its own isolated directory under `wt/plugins/`
 - **AND** plugins do not write to each other's workspace
 
 #### Scenario: Chrome extension workspace example
-- **WHEN** wt-spec-capture plugin is installed
-- **THEN** it uses `wt/plugins/wt-spec-capture/` for scraped site data, generated drafts, and plugin config
+- **WHEN** set-spec-capture plugin is installed
+- **THEN** it uses `wt/plugins/set-spec-capture/` for scraped site data, generated drafts, and plugin config
 
 #### Scenario: Plugin workspace without plugin system
 - **WHEN** `wt/plugins/` exists but no formal plugin system is implemented yet

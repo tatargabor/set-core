@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: PostToolUseFailure hook for error-based recall
-A new hook script `wt-hook-memory-posttool` SHALL run on `PostToolUseFailure` events matching the `Bash` tool. It SHALL parse the error text and recall memories that describe past fixes for similar errors.
+A new hook script `set-hook-memory-posttool` SHALL run on `PostToolUseFailure` events matching the `Bash` tool. It SHALL parse the error text and recall memories that describe past fixes for similar errors.
 
 #### Scenario: Bash command fails with authentication error
 - **WHEN** a Bash command fails with stderr containing "authentication failed", "permission denied", or "access denied"
@@ -46,9 +46,9 @@ The PostToolUseFailure hook SHALL recall on every failure without debouncing, be
 - **AND** results may differ if new memories were saved between failures
 
 ### Requirement: Hook deployment includes PostToolUseFailure
-The `wt-deploy-hooks` script SHALL include `wt-hook-memory-posttool` in a `PostToolUseFailure` hook event with matcher `"Bash"`.
+The `set-deploy-hooks` script SHALL include `set-hook-memory-posttool` in a `PostToolUseFailure` hook event with matcher `"Bash"`.
 
 #### Scenario: Deploy adds PostToolUseFailure hook
-- **WHEN** `wt-deploy-hooks /path/to/project` is called
-- **THEN** settings.json SHALL contain a `PostToolUseFailure` entry matching `"Bash"` with `wt-hook-memory-posttool`
+- **WHEN** `set-deploy-hooks /path/to/project` is called
+- **THEN** settings.json SHALL contain a `PostToolUseFailure` entry matching `"Bash"` with `set-hook-memory-posttool`
 - **AND** the timeout SHALL be 5 seconds

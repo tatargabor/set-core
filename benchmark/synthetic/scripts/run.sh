@@ -58,14 +58,14 @@ for N in $(seq "$START" "$END"); do
   echo "  Starting claude session..."
 
   # Mode B prompt includes explicit save instruction; Mode A is implementation-only
-  if grep -q "wt-memory" CLAUDE.md 2>/dev/null; then
+  if grep -q "set-memory" CLAUDE.md 2>/dev/null; then
     PROMPT="Follow the workflow in CLAUDE.md. Implement the change described in $CHANGE_FILE. Read the change file and docs/project-spec.md first. Check injected memory context in system-reminder tags for relevant conventions and corrections. Implement the requirements. Start the server with: PORT=$PORT node src/server.js & — then run: bash tests/test-${NN}.sh $PORT — fix any failures until all tests pass. Do not proceed to the next change."
   else
     PROMPT="Implement the change described in $CHANGE_FILE. Read it first, then read docs/project-spec.md for conventions. Implement the requirements. Start the server with: PORT=$PORT node src/server.js & — then run: bash tests/test-${NN}.sh $PORT — fix any failures until all tests pass. Do not proceed to the next change."
   fi
 
   # Mode B (with hooks) needs more turns due to hook overhead injecting context
-  if grep -q "wt-memory" CLAUDE.md 2>/dev/null; then
+  if grep -q "set-memory" CLAUDE.md 2>/dev/null; then
     MAX_TURNS=50
   else
     MAX_TURNS=30
@@ -93,8 +93,8 @@ for N in $(seq "$START" "$END"); do
   # Agents consistently run out of turns before saving to memory.
   # This step extracts Developer Notes corrections and code conventions
   # from the change file and saves them — simulating what a well-functioning
-  # save hook would do. Only runs in memory mode (CLAUDE.md mentions wt-memory).
-  if grep -q "wt-memory" CLAUDE.md 2>/dev/null && command -v wt-memory &>/dev/null; then
+  # save hook would do. Only runs in memory mode (CLAUDE.md mentions set-memory).
+  if grep -q "set-memory" CLAUDE.md 2>/dev/null && command -v set-memory &>/dev/null; then
     echo "  Extracting conventions to memory..."
     bash "$(dirname "$0")/post-session-save.sh" "$CHANGE_FILE" "$NN" 2>/dev/null || true
   fi

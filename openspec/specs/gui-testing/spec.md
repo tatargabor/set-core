@@ -54,10 +54,10 @@
 - WorkDialog opens with Local and Remote tabs
 
 #### Worktree Operation Tests (real git)
-- `wt-new` creates worktree (verify: git worktree list, directory exists, branch exists)
+- `set-new` creates worktree (verify: git worktree list, directory exists, branch exists)
 - Created worktree appears in GUI table after refresh
 - Copy Path puts correct path in clipboard
-- `wt-close` removes worktree (verify: git worktree list, directory gone)
+- `set-close` removes worktree (verify: git worktree list, directory gone)
 
 #### Table Tests
 - Empty table renders without crash

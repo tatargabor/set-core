@@ -602,7 +602,7 @@ def recover_orphaned_changes(
         pid = change.ralph_pid or 0
         pid_alive = False
         if pid > 0:
-            result = check_pid(pid, "wt-loop")
+            result = check_pid(pid, "set-loop")
             pid_alive = result.alive and result.match
 
         # Case 1: Worktree exists
@@ -674,7 +674,7 @@ def redispatch_change(
     # 1. Kill Ralph PID
     pid = change.ralph_pid or 0
     if pid > 0:
-        kill_result = safe_kill(pid, "wt-loop", timeout=5)
+        kill_result = safe_kill(pid, "set-loop", timeout=5)
         logger.info("redispatch: safe-kill PID %d for %s: %s", pid, change_name, kill_result.outcome)
 
     # 2. Salvage partial work
@@ -747,7 +747,7 @@ def redispatch_change(
     update_change_field(state_path, change_name, "status", "pending", event_bus=event_bus)
 
     send_notification(
-        "wt-orchestrate",
+        "set-orchestrate",
         f"Redispatching '{change_name}' ({failure_pattern}, attempt {new_count}/{max_redispatch})",
         urgency="normal",
     )
@@ -1192,7 +1192,7 @@ def _recall_dispatch_memory(scope: str) -> str:
     Migrated from: dispatcher.sh dispatch_change() L331-333
     """
     r = run_command(
-        ["wt-memory", "recall", scope, "--limit", "3", "--tags", "phase:execution"],
+        ["set-memory", "recall", scope, "--limit", "3", "--tags", "phase:execution"],
         timeout=5,
     )
     if r.exit_code == 0 and r.stdout.strip():
@@ -1256,7 +1256,7 @@ def dispatch_change(
                     ls = json.load(f)
                 old_pid = int(ls.get("terminal_pid") or 0)
                 if old_pid > 0:
-                    result = check_pid(old_pid, "wt-loop")
+                    result = check_pid(old_pid, "set-loop")
                     if not result.alive:
                         logger.info("removing stale loop-state.json (PID %d dead) for %s", old_pid, change_name)
                         os.remove(old_loop)
@@ -1269,7 +1269,7 @@ def dispatch_change(
             logger.info("removing stale branch change/%s before worktree creation", change_name)
             run_git("branch", "-D", f"change/{change_name}")
 
-        wt_new_r = run_command(["wt-new", change_name, "--skip-open"], timeout=30)
+        wt_new_r = run_command(["set-new", change_name, "--skip-open"], timeout=30)
         if wt_new_r.exit_code != 0:
             logger.error("failed to create worktree for %s: %s", change_name, wt_new_r.stderr)
             update_change_field(state_path, change_name, "status", "failed", event_bus=event_bus)
@@ -1372,7 +1372,7 @@ def dispatch_change(
             update_change_field(state_path, change_name, "status", "pending", event_bus=event_bus)
             return False
 
-    # Dispatch via wt-loop
+    # Dispatch via set-loop
     impl_model = resolve_change_model(change, default_model, model_routing)
     return dispatch_via_wt_loop(
         state_path, change_name, impl_model, wt_path, scope,
@@ -1506,7 +1506,7 @@ def _setup_digest_context(
 
 
 def _kill_existing_wt_loop(wt_path: str, change_name: str) -> None:
-    """Kill any existing wt-loop/Claude session in a worktree before starting a new one.
+    """Kill any existing set-loop/Claude session in a worktree before starting a new one.
 
     Prevents overlapping sessions that cause file conflicts and data corruption.
     """
@@ -1519,16 +1519,16 @@ def _kill_existing_wt_loop(wt_path: str, change_name: str) -> None:
             ls = json.load(f)
         old_pid = int(ls.get("terminal_pid") or 0)
         if old_pid > 0:
-            result = check_pid(old_pid, "wt-loop")
+            result = check_pid(old_pid, "set-loop")
             if result.alive and result.match:
                 logger.warning(
-                    "dispatch guard: killing existing wt-loop PID %d in %s before new dispatch",
+                    "dispatch guard: killing existing set-loop PID %d in %s before new dispatch",
                     old_pid, change_name,
                 )
-                kill_result = safe_kill(old_pid, "wt-loop", timeout=10)
+                kill_result = safe_kill(old_pid, "set-loop", timeout=10)
                 logger.info("dispatch guard: kill result for %s: %s", change_name, kill_result.outcome)
                 time.sleep(1)  # Let tmux session die
-        # Remove stale loop-state so new wt-loop can start clean
+        # Remove stale loop-state so new set-loop can start clean
         os.remove(loop_state_path)
         logger.info("dispatch guard: removed stale loop-state.json for %s", change_name)
     except (json.JSONDecodeError, OSError, ValueError) as e:
@@ -1544,19 +1544,19 @@ def dispatch_via_wt_loop(
     team_mode: bool = False,
     event_bus: EventBus | None = None,
 ) -> bool:
-    """Start wt-loop in a worktree and verify startup.
+    """Start set-loop in a worktree and verify startup.
 
     Migrated from: dispatcher.sh dispatch_via_wt_loop() L590-639
 
-    Returns True if wt-loop started successfully.
+    Returns True if set-loop started successfully.
     """
-    # Guard: kill any existing wt-loop before starting a new one
+    # Guard: kill any existing set-loop before starting a new one
     _kill_existing_wt_loop(wt_path, change_name)
 
     task_desc = f"Implement {change_name}: {scope[:200]}"
 
     cmd = [
-        "wt-loop", "start", task_desc,
+        "set-loop", "start", task_desc,
         "--max", "30",
         "--done", "openspec",
         "--label", change_name,
@@ -1571,7 +1571,7 @@ def dispatch_via_wt_loop(
         change_name, impl_model, team_mode,
     )
 
-    # Start wt-loop (fire and forget — it daemonizes via tmux)
+    # Start set-loop (fire and forget — it daemonizes via tmux)
     r = run_command(cmd, cwd=wt_path, timeout=30)
 
     # Poll for loop-state.json to verify startup
@@ -1582,9 +1582,9 @@ def dispatch_via_wt_loop(
         retries += 1
 
     if not os.path.isfile(loop_state_path):
-        logger.error("wt-loop failed to start for %s (no loop-state.json after %ds)", change_name, retries)
+        logger.error("set-loop failed to start for %s (no loop-state.json after %ds)", change_name, retries)
         if event_bus:
-            event_bus.emit("ERROR", change=change_name, data={"error": "wt-loop failed to start"})
+            event_bus.emit("ERROR", change=change_name, data={"error": "set-loop failed to start"})
         update_change_field(state_path, change_name, "status", "failed", event_bus=event_bus)
         return False
 
@@ -1700,7 +1700,7 @@ def pause_change(
         try:
             with open(pid_file) as f:
                 pid = int(f.read().strip())
-            result = check_pid(pid, "wt-loop")
+            result = check_pid(pid, "set-loop")
             if result.alive and result.match:
                 os.kill(pid, 15)  # SIGTERM
                 logger.info("paused %s (SIGTERM to PID %d)", change_name, pid)
@@ -1723,7 +1723,7 @@ def resume_change(
 
     Migrated from: dispatcher.sh resume_change() L749-854
 
-    Returns True if wt-loop restarted successfully.
+    Returns True if set-loop restarted successfully.
     """
     state = load_state(state_path)
     change = _find_change(state, change_name)
@@ -1734,7 +1734,7 @@ def resume_change(
     wt_path = change.worktree_path
     logger.info("resuming %s in %s", change_name, wt_path)
 
-    # Guard: kill any existing wt-loop before starting a new one
+    # Guard: kill any existing set-loop before starting a new one
     _kill_existing_wt_loop(wt_path, change_name)
 
     # Store watchdog progress baseline
@@ -1801,7 +1801,7 @@ def resume_change(
             test_command = auto_detect_test_command(wt_path)
 
     cmd = [
-        "wt-loop", "start", task_desc,
+        "set-loop", "start", task_desc,
         "--max", str(max_iter),
         "--done", done_criteria,
         "--label", change_name,
@@ -1818,7 +1818,7 @@ def resume_change(
         change_name, impl_model, done_criteria, max_iter, team_mode,
     )
 
-    # Start wt-loop
+    # Start set-loop
     r = run_command(cmd, cwd=wt_path, timeout=30)
 
     # Verify startup
@@ -1829,9 +1829,9 @@ def resume_change(
         retries += 1
 
     if not os.path.isfile(loop_state_file):
-        logger.error("wt-loop failed to resume for %s", change_name)
+        logger.error("set-loop failed to resume for %s", change_name)
         if event_bus:
-            event_bus.emit("ERROR", change=change_name, data={"error": "wt-loop failed to resume"})
+            event_bus.emit("ERROR", change=change_name, data={"error": "set-loop failed to resume"})
         update_change_field(state_path, change_name, "status", "failed", event_bus=event_bus)
         return False
 

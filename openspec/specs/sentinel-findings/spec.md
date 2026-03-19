@@ -9,7 +9,7 @@
 - Rotation on new run (archive old findings)
 
 ## OUT OF SCOPE
-- Rendering findings in wt-web (covered by sentinel-dashboard)
+- Rendering findings in set-web (covered by sentinel-dashboard)
 - Converting findings to E2E run report markdown (manual or separate tooling)
 - Correlation with git commits (optional metadata, not enforced)
 

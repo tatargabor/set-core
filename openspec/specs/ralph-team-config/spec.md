@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: Team mode CLI flag
-`wt-loop start` SHALL accept a `--team` flag that enables Agent Teams mode for the loop. The flag SHALL default to off (disabled).
+`set-loop start` SHALL accept a `--team` flag that enables Agent Teams mode for the loop. The flag SHALL default to off (disabled).
 
 #### Scenario: Start with team mode
-- **WHEN** user runs `wt-loop start "task" --team`
+- **WHEN** user runs `set-loop start "task" --team`
 - **THEN** loop-state.json SHALL contain `"team_mode": true`
 
 #### Scenario: Start without team flag
-- **WHEN** user runs `wt-loop start "task"` (no --team flag)
+- **WHEN** user runs `set-loop start "task"` (no --team flag)
 - **THEN** loop-state.json SHALL contain `"team_mode": false`
 
 ### Requirement: Team mode in loop-state.json

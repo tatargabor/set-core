@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # set-core common functions
-# Source this file in other wt-* scripts
+# Source this file in other set-* scripts
 #
 # Editor functions have been extracted to lib/editor.sh.
 # Scripts that need editor support must source it explicitly.
@@ -27,7 +27,7 @@ if [[ -z "${SET_TOOLS_ROOT:-}" ]]; then
 fi
 
 # Find a Python interpreter that can import set_orch (lib/ on PYTHONPATH)
-# and wt_project_base (pip-installed). Caches result in _SET_PYTHON.
+# and set_project_base (pip-installed). Caches result in _SET_PYTHON.
 # Usage: py=$(set_find_python) && "$py" -c "..."
 _SET_PYTHON=""
 set_find_python() {

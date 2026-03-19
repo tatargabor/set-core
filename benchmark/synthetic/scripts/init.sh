@@ -43,11 +43,11 @@ command -v npm >/dev/null || { echo "Error: npm not found"; exit 1; }
 command -v claude >/dev/null || { echo "Error: claude CLI not found"; exit 1; }
 
 if [[ "$MODE" == "b" || "$MODE" == "c" ]]; then
-  command -v wt-memory >/dev/null || { echo "Error: wt-memory not found (required for mode $MODE)"; exit 1; }
+  command -v set-memory >/dev/null || { echo "Error: set-memory not found (required for mode $MODE)"; exit 1; }
 fi
 
 if [[ "$MODE" == "d" ]]; then
-  command -v wt-memory >/dev/null || { echo "Error: wt-memory not found (required for mode d — hook injection)"; exit 1; }
+  command -v set-memory >/dev/null || { echo "Error: set-memory not found (required for mode d — hook injection)"; exit 1; }
 fi
 
 # --- Check target ---
@@ -109,31 +109,31 @@ fi
 
 # --- Enable metrics collection (all modes with hooks) ---
 if [[ "$MODE" == "b" || "$MODE" == "c" || "$MODE" == "d" ]]; then
-  mkdir -p "$HOME/.local/share/wt-tools/metrics"
-  touch "$HOME/.local/share/wt-tools/metrics/.enabled"
+  mkdir -p "$HOME/.local/share/set-core/metrics"
+  touch "$HOME/.local/share/set-core/metrics/.enabled"
 fi
 
 # --- Mode-specific setup ---
 if [[ "$MODE" == "b" ]]; then
   echo "Setting up memory hooks..."
-  if command -v wt-deploy-hooks >/dev/null 2>&1; then
-    wt-deploy-hooks . 2>/dev/null || true
+  if command -v set-deploy-hooks >/dev/null 2>&1; then
+    set-deploy-hooks . 2>/dev/null || true
   fi
 fi
 
 if [[ "$MODE" == "c" ]]; then
   echo "Pre-seeding convention memories and deploying hooks..."
   bash "$BENCH_DIR/scripts/pre-seed.sh"
-  if command -v wt-deploy-hooks >/dev/null 2>&1; then
-    wt-deploy-hooks . 2>/dev/null || true
+  if command -v set-deploy-hooks >/dev/null 2>&1; then
+    set-deploy-hooks . 2>/dev/null || true
   fi
 fi
 
 if [[ "$MODE" == "d" ]]; then
   echo "Deploying rules.yaml and memory hooks..."
   bash "$BENCH_DIR/scripts/pre-rules.sh"
-  if command -v wt-deploy-hooks >/dev/null 2>&1; then
-    wt-deploy-hooks . 2>/dev/null || true
+  if command -v set-deploy-hooks >/dev/null 2>&1; then
+    set-deploy-hooks . 2>/dev/null || true
   fi
 fi
 

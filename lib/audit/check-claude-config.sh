@@ -28,18 +28,18 @@ check_claude_config() {
         fi
     else
         add_check "$dim" "permissions" "fail" "No .claude/settings.json found"
-        add_guidance "$dim" "Run wt-project init to create .claude/settings.json" "READ: package.json — for stack-specific safe commands"
+        add_guidance "$dim" "Run set-project init to create .claude/settings.json" "READ: package.json — for stack-specific safe commands"
     fi
 
     # ── Memory hooks ─────────────────────────────────────────────────────
     if [[ -f "$settings" ]]; then
-        if file_contains "$settings" "wt-hook-memory"; then
+        if file_contains "$settings" "set-hook-memory"; then
             local hook_events
-            hook_events=$(grep -c "wt-hook-memory" "$settings" 2>/dev/null || echo 0)
+            hook_events=$(grep -c "set-hook-memory" "$settings" 2>/dev/null || echo 0)
             add_check "$dim" "memory_hooks" "pass" "Memory hooks deployed (${hook_events} events)"
         else
-            add_check "$dim" "memory_hooks" "fail" "No wt-hook-memory hooks found"
-            add_guidance "$dim" "Run wt-deploy-hooks to install memory hooks" ""
+            add_check "$dim" "memory_hooks" "fail" "No set-hook-memory hooks found"
+            add_guidance "$dim" "Run set-deploy-hooks to install memory hooks" ""
         fi
     fi
 
@@ -95,7 +95,7 @@ check_claude_config() {
         for f in "$rules_dir"/*.md; do
             local rname
             rname=$(basename "$f")
-            if [[ "$rname" == wt-* ]]; then
+            if [[ "$rname" == set-* ]]; then
                 wt_managed=$((wt_managed + 1))
             else
                 project_specific=$((project_specific + 1))
@@ -103,9 +103,9 @@ check_claude_config() {
         done
 
         if [[ $project_specific -gt 0 ]]; then
-            add_check "$dim" "rules" "pass" "Rules: ${project_specific} project-specific, ${wt_managed} wt-managed"
+            add_check "$dim" "rules" "pass" "Rules: ${project_specific} project-specific, ${wt_managed} set-managed"
         else
-            add_check "$dim" "rules" "warn" "Only wt-managed rules (${wt_managed}), no project-specific rules"
+            add_check "$dim" "rules" "warn" "Only set-managed rules (${wt_managed}), no project-specific rules"
             add_guidance "$dim" "Create path-scoped rules for distinct code areas" "READ: src/ directory structure — identify distinct code areas (UI, API, DB); REFERENCE: lib/audit/reference.md#rules"
         fi
     else

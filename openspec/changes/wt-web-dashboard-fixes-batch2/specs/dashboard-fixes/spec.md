@@ -1,4 +1,4 @@
-# Spec: wt-web Dashboard Fixes Batch 2
+# Spec: set-web Dashboard Fixes Batch 2
 
 ## Requirements
 

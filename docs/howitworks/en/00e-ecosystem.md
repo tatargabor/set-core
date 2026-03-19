@@ -17,8 +17,8 @@ These tools manage the full lifecycle of git worktrees — from creation to merg
 | `set-status` | Detailed agent state: PID, iteration, tokens, model |
 | `set-merge` | Merge worktree to main, LLM conflict resolution |
 | `set-close` | Worktree cleanup (branch delete, directory removal) |
-| `wt-focus` | Switch focus: terminal focus to selected worktree |
-| `wt-add` | Add existing branch as worktree |
+| `set-focus` | Switch focus: terminal focus to selected worktree |
+| `set-add` | Add existing branch as worktree |
 
 ### Agent Execution
 
@@ -132,19 +132,19 @@ These templates would build on `set-project-base` and add project-specific confi
 │  Worktree    │ Orchestration│  Memory & Context         │
 │  lifecycle   │ & supervision│                           │
 │              │              │                           │
-│  set-new      │ wt-orchestr. │  set-memory               │
+│  set-new      │ set-orchestr. │  set-memory               │
 │  set-list     │ set-sentinel  │  set-hook-memory-*        │
 │  set-status   │ set-manual    │                           │
-│  set-merge    │ wt-e2e-rep.  │                           │
+│  set-merge    │ set-e2e-rep.  │                           │
 │  set-close    │              │                           │
 │  set-loop     │              │                           │
 ├──────────────┼──────────────┼───────────────────────────┤
 │  Project     │  Team Sync   │  OpenSpec & Quality       │
 │  management  │              │                           │
 │              │  set-control  │  set-openspec              │
-│  set-project  │  wt-ctrl-*   │  set-audit                │
+│  set-project  │  set-ctrl-*   │  set-audit                │
 │  set-config   │  set-hook-act.│  /opsx:* skills          │
-│  wt-deploy   │              │                           │
+│  set-deploy   │              │                           │
 ├──────────────┴──────────────┴───────────────────────────┤
 │  Project templates                                      │
 │  set-project-base │ set-project-web │ set-project-...     │

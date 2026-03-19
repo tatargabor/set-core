@@ -2,7 +2,7 @@
 # lib/orchestration/milestone.sh — Milestone checkpoint: tag, worktree, dev server, email
 #
 # Python implementation: lib/wt_orch/milestone.py
-# This file contains thin wrappers that delegate to wt-orch-core milestone *
+# This file contains thin wrappers that delegate to set-orch-core milestone *
 # Provides: run_milestone_checkpoint(), cleanup_milestone_servers(), cleanup_milestone_worktrees()
 
 MILESTONE_WORKTREE_DIR=".claude/milestones"
@@ -16,7 +16,7 @@ run_milestone_checkpoint() {
     local max_worktrees="${3:-3}"
     local milestone_dev_server="${4:-}"
 
-    wt-orch-core milestone checkpoint \
+    set-orch-core milestone checkpoint \
         --phase "$phase" \
         --state "$STATE_FILENAME" \
         --base-port "$base_port" \
@@ -31,12 +31,12 @@ run_milestone_checkpoint() {
 cleanup_milestone_servers() {
     # Migrated to: wt_orch/milestone.py cleanup_milestone_servers()
     [[ ! -f "$STATE_FILENAME" ]] && return 0
-    wt-orch-core milestone cleanup-servers --state "$STATE_FILENAME" 2>/dev/null || true
+    set-orch-core milestone cleanup-servers --state "$STATE_FILENAME" 2>/dev/null || true
 }
 
 # Remove all milestone worktrees
 cleanup_milestone_worktrees() {
     # Migrated to: wt_orch/milestone.py cleanup_milestone_worktrees()
     [[ ! -d "$MILESTONE_WORKTREE_DIR" ]] && return 0
-    wt-orch-core milestone cleanup-worktrees 2>/dev/null || true
+    set-orch-core milestone cleanup-worktrees 2>/dev/null || true
 }

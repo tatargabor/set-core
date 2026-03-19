@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-logger = logging.getLogger("wt-web.websocket")
+logger = logging.getLogger("set-web.websocket")
 
 router = APIRouter()
 

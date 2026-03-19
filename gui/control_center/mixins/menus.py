@@ -237,14 +237,14 @@ class MenusMixin:
 
         # Check if set-control is already initialized
         main_repo = get_main_repo_path(wt_path)
-        wt_control_initialized = main_repo and Path(main_repo, ".set-control").exists()
+        set_control_initialized = main_repo and Path(main_repo, ".set-control").exists()
 
-        if wt_control_initialized:
+        if set_control_initialized:
             init_control_action = project_menu.addAction("set-control (initialized)")
             init_control_action.setEnabled(False)
         else:
             init_control_action = project_menu.addAction("Initialize set-control...")
-            init_control_action.triggered.connect(lambda: self.init_wt_control_for_project(project))
+            init_control_action.triggered.connect(lambda: self.init_set_control_for_project(project))
 
         # Ralph Loop submenu
         ralph_status = self.get_ralph_status(wt_path)
@@ -365,13 +365,13 @@ class MenusMixin:
         if first_wt:
             wt_path = first_wt.get("path", "")
             main_repo = get_main_repo_path(wt_path)
-            wt_control_initialized = main_repo and Path(main_repo, ".set-control").exists()
-            if wt_control_initialized:
+            set_control_initialized = main_repo and Path(main_repo, ".set-control").exists()
+            if set_control_initialized:
                 init_action = menu.addAction("set-control (initialized)")
                 init_action.setEnabled(False)
             else:
                 init_action = menu.addAction("Initialize set-control...")
-                init_action.triggered.connect(lambda: self.init_wt_control_for_project(project))
+                init_action.triggered.connect(lambda: self.init_set_control_for_project(project))
 
         if use_global_pos:
             menu.exec(pos)
@@ -386,7 +386,7 @@ class MenusMixin:
         return None
 
     def _run_openspec_action(self, action: str, project: str):
-        """Run wt-openspec init or update via CommandOutputDialog, then refresh cache."""
+        """Run set-openspec init or update via CommandOutputDialog, then refresh cache."""
         first_wt = self._get_first_worktree_for_project(project)
         if not first_wt:
             return
@@ -395,7 +395,7 @@ class MenusMixin:
         if not main_repo:
             main_repo = wt_path
 
-        cmd = [str(SCRIPT_DIR / "wt-openspec"), action]
+        cmd = [str(SCRIPT_DIR / "set-openspec"), action]
         self.run_command_dialog(f"OpenSpec {action}", cmd, cwd=main_repo)
 
         self.refresh_feature_cache()
@@ -655,9 +655,9 @@ class MenusMixin:
             show_warning(self, "Kill Failed", f"Permission denied to kill PID {pid}.")
 
     def _install_hooks(self, wt_path: str):
-        """Install Claude Code hooks to a worktree via wt-deploy-hooks."""
+        """Install Claude Code hooks to a worktree via set-deploy-hooks."""
         logger.info("install_hooks: path=%s", wt_path)
-        deploy_script = SCRIPT_DIR / "wt-deploy-hooks"
+        deploy_script = SCRIPT_DIR / "set-deploy-hooks"
         try:
             result = subprocess.run(
                 [str(deploy_script), wt_path],
@@ -668,7 +668,7 @@ class MenusMixin:
             else:
                 show_warning(self, "Install Hooks", f"Hook installation failed:\n{result.stderr}")
         except FileNotFoundError:
-            show_warning(self, "Install Hooks", "wt-deploy-hooks script not found.")
+            show_warning(self, "Install Hooks", "set-deploy-hooks script not found.")
         except subprocess.TimeoutExpired:
             show_warning(self, "Install Hooks", "Hook installation timed out.")
         self.refresh_status()

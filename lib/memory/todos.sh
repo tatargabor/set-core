@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# wt-memory todo: lightweight task tracking backed by memory system
-# Dependencies: sourced by bin/wt-memory after infra setup
+# set-memory todo: lightweight task tracking backed by memory system
+# Dependencies: sourced by bin/set-memory after infra setup
 
 cmd_todo() {
     local subcmd="${1:-}"
@@ -12,7 +12,7 @@ cmd_todo() {
         done) cmd_todo_done "$@" ;;
         clear) cmd_todo_clear "$@" ;;
         "")
-            echo "Usage: wt-memory todo <add|list|done|clear>" >&2
+            echo "Usage: set-memory todo <add|list|done|clear>" >&2
             echo "  add [--tags t1,t2] < text    Save a todo (reads from stdin)" >&2
             echo "  list [--json]                 List open todos" >&2
             echo "  done <id>                     Mark todo as done (deletes it)" >&2
@@ -44,7 +44,7 @@ cmd_todo_add() {
     fi
 
     if [[ -z "$content" ]]; then
-        echo "Error: No todo text provided. Pipe content: echo \"text\" | wt-memory todo add" >&2
+        echo "Error: No todo text provided. Pipe content: echo \"text\" | set-memory todo add" >&2
         return 1
     fi
 
@@ -183,7 +183,7 @@ cmd_todo_done() {
     local todo_id="${1:-}"
 
     if [[ -z "$todo_id" ]]; then
-        echo "Error: specify a todo ID (use 'wt-memory todo list' to see IDs)" >&2
+        echo "Error: specify a todo ID (use 'set-memory todo list' to see IDs)" >&2
         return 1
     fi
 

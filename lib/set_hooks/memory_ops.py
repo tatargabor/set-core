@@ -1,7 +1,7 @@
 """Hook memory operations: recall, proactive context, rules matching, output formatting.
 
 1:1 migration of lib/hooks/memory-ops.sh.
-Uses wt-memoryd daemon client for fast recall (bypass CLI subprocess overhead).
+Uses set-memoryd daemon client for fast recall (bypass CLI subprocess overhead).
 Falls back to CLI subprocess if daemon is unavailable.
 """
 
@@ -46,7 +46,7 @@ def recall_memories(
     if memories is None and not daemon_is_running():
         try:
             result = subprocess.run(
-                ["wt-memory", "recall", query, "--limit", str(limit), "--mode", mode],
+                ["set-memory", "recall", query, "--limit", str(limit), "--mode", mode],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -93,7 +93,7 @@ def proactive_context(
     if memories is None and not daemon_is_running():
         try:
             result = subprocess.run(
-                ["wt-memory", "proactive", query, "--limit", str(limit)],
+                ["set-memory", "proactive", query, "--limit", str(limit)],
                 capture_output=True,
                 text=True,
                 timeout=10,

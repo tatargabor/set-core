@@ -5,29 +5,29 @@ Merge worktree branches to target with multi-layer automatic conflict resolution
 
 ## Requirements
 ### Requirement: Merge worktree branch to target
-The `wt-merge` command SHALL merge a worktree's branch into a target branch with multi-layer automatic conflict resolution.
+The `set-merge` command SHALL merge a worktree's branch into a target branch with multi-layer automatic conflict resolution.
 
 #### Scenario: Basic merge
-- **WHEN** user runs `wt-merge <change-id>`
+- **WHEN** user runs `set-merge <change-id>`
 - **THEN** the system SHALL resolve the project and worktree path
 - **AND** determine the source branch from the worktree HEAD
 - **AND** auto-detect the target branch (main or master)
 - **AND** fetch, checkout target, pull latest, then merge the source branch
 
 #### Scenario: Squash merge
-- **WHEN** user runs `wt-merge <change-id> --squash`
+- **WHEN** user runs `set-merge <change-id> --squash`
 - **THEN** the system SHALL squash all commits into one merge commit
 
 #### Scenario: Custom target branch
-- **WHEN** user runs `wt-merge <change-id> --to develop`
+- **WHEN** user runs `set-merge <change-id> --to develop`
 - **THEN** the system SHALL merge into the `develop` branch instead of main/master
 
 #### Scenario: No push after merge
-- **WHEN** user runs `wt-merge <change-id> --no-push`
+- **WHEN** user runs `set-merge <change-id> --no-push`
 - **THEN** the system SHALL NOT push to origin after merge
 
 #### Scenario: Keep source branch
-- **WHEN** user runs `wt-merge <change-id> --no-delete`
+- **WHEN** user runs `set-merge <change-id> --no-delete`
 - **THEN** the source branch SHALL NOT be deleted after merge
 
 ### Requirement: Multi-layer conflict resolution
@@ -124,7 +124,7 @@ The system SHALL push and clean up after successful merge.
 #### Scenario: Delete source branch
 - **WHEN** merge succeeds and `--no-delete` is not set
 - **THEN** the system SHALL delete the source branch (force-delete for squash case)
-- **AND** if branch is still checked out in worktree, inform user to run `wt-close`
+- **AND** if branch is still checked out in worktree, inform user to run `set-close`
 ## ADDED Requirements
 
 ### Requirement: Archive stages source deletion

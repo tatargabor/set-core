@@ -8,11 +8,11 @@ The system SHALL provide a `.claude/commands/wt/help.md` file that serves as a q
 - **THEN** it SHALL exist at `.claude/commands/wt/help.md`
 
 ### Requirement: Help command covers CLI tools
-The help command SHALL list all user-facing CLI commands (`wt-*` scripts in `bin/`) with a one-line description for each.
+The help command SHALL list all user-facing CLI commands (`set-*` scripts in `bin/`) with a one-line description for each.
 
 #### Scenario: CLI tools listed
 - **WHEN** the help command content is loaded
-- **THEN** it SHALL contain a "CLI Commands" section listing at minimum: `wt-new`, `wt-list`, `wt-work`, `wt-close`, `wt-merge`, `wt-status`, `set-memory`, `wt-loop`, `wt-control`, `set-project`, `wt-usage`, `wt-config`
+- **THEN** it SHALL contain a "CLI Commands" section listing at minimum: `set-new`, `set-list`, `set-work`, `set-close`, `set-merge`, `set-status`, `set-memory`, `set-loop`, `set-control`, `set-project`, `set-usage`, `set-config`
 
 #### Scenario: Each CLI tool has description
 - **WHEN** a CLI tool is listed in the help command

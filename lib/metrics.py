@@ -629,7 +629,7 @@ def scan_transcript_citations(transcript_path, session_id=None, injected_content
 def format_tui_report(data):
     """Format metrics data as a text report for terminal display."""
     if not data:
-        return "No metrics data. Enable with: wt-memory metrics --enable"
+        return "No metrics data. Enable with: set-memory metrics --enable"
 
     lines = []
     lines.append(f"Memory Metrics Report - Last {data['since_days']} days")

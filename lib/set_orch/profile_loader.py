@@ -1,7 +1,7 @@
 """Load project-type profile for orchestration engine integration.
 
 Reads wt/plugins/project-type.yaml to find the active project type,
-then loads it via Python entry_points (same mechanism as wt-project init).
+then loads it via Python entry_points (same mechanism as set-project init).
 
 Provides a singleton cache so profile is loaded once per engine session.
 Falls back to NullProfile when no project type is configured or the
@@ -148,7 +148,7 @@ def load_profile(project_path: str = "."):
         _cached_profile = NullProfile()
         return _cached_profile
 
-    # Load via entry_points (same mechanism as wt-project init)
+    # Load via entry_points (same mechanism as set-project init)
     try:
         from importlib.metadata import entry_points
 

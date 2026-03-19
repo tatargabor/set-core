@@ -19,7 +19,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .api import _resolve_project
 from .chat_context import build_chat_context
 
-logger = logging.getLogger("wt-web.chat")
+logger = logging.getLogger("set-web.chat")
 
 router = APIRouter()
 

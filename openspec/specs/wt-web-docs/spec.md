@@ -1,10 +1,10 @@
-# Spec: wt-web-docs
+# Spec: set-web-docs
 
 ## ADDED Requirements
 
 ## IN SCOPE
-- Documentation for wt-web dashboard access (local and remote)
-- Automated install instructions (wt-web-install)
+- Documentation for set-web dashboard access (local and remote)
+- Automated install instructions (set-web-install)
 - Manual setup instructions (systemd, Tailscale)
 - Configuration reference (.env, environment variables)
 - Troubleshooting section
@@ -16,15 +16,15 @@
 
 ### Requirement: Local access documentation
 
-The documentation SHALL explain how to access wt-web locally via `localhost:7400`.
+The documentation SHALL explain how to access set-web locally via `localhost:7400`.
 
 #### Scenario: Quick start
 - **WHEN** a user reads the quick start section
-- **THEN** they understand how to start wt-web and access it in a browser
+- **THEN** they understand how to start set-web and access it in a browser
 
 ### Requirement: Automated install documentation
 
-The documentation SHALL cover the `wt-web-install` command with all flags and interactive prompts.
+The documentation SHALL cover the `set-web-install` command with all flags and interactive prompts.
 
 #### Scenario: Install command reference
 - **WHEN** a user reads the automated install section
@@ -40,11 +40,11 @@ The documentation SHALL provide step-by-step manual instructions for both system
 
 #### Scenario: Manual Tailscale HTTPS setup
 - **WHEN** a user follows the manual Tailscale instructions
-- **THEN** they can configure `tailscale serve --https 443` and access wt-web from a remote device on the tailnet
+- **THEN** they can configure `tailscale serve --https 443` and access set-web from a remote device on the tailnet
 
 ### Requirement: Configuration reference
 
-The documentation SHALL list all environment variables and `.env` options that affect wt-web.
+The documentation SHALL list all environment variables and `.env` options that affect set-web.
 
 #### Scenario: Environment variable reference
 - **WHEN** a user reads the configuration section

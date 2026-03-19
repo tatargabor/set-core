@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wt-project deploy functions: split from deploy_wt_tools() monolith
+# set-project deploy functions: split from deploy_wt_tools() monolith
 # Dependencies: set-common.sh must be sourced, SET_TOOLS_ROOT and SCRIPT_DIR must be set
 
 # Runtime guards
@@ -17,7 +17,7 @@ _register_mcp_server() {
     for reg_path in "$@"; do
         [[ -d "$reg_path" ]] || continue
         # Remove old server names (may not exist — stderr suppressed intentionally)
-        (cd "$reg_path" && claude mcp remove wt-memory 2>/dev/null; claude mcp remove set-core 2>/dev/null) || true
+        (cd "$reg_path" && claude mcp remove set-memory 2>/dev/null; claude mcp remove set-core 2>/dev/null) || true
         # Register — capture errors, do NOT suppress stderr
         local mcp_err
         mcp_err=$(cd "$reg_path" && claude mcp add set-core -- env CLAUDE_PROJECT_DIR="$reg_path" uv --directory "$mcp_server_dir" run python wt_mcp_server.py 2>&1)
@@ -36,16 +36,16 @@ _register_mcp_server() {
 _cleanup_deprecated_memory_refs() {
     local project_path="$1"
 
-    # Remove <!-- wt-memory hooks --> blocks from SKILL.md files
+    # Remove <!-- set-memory hooks --> blocks from SKILL.md files
     if [[ -d "$project_path/.claude/skills" ]]; then
         find "$project_path/.claude/skills" -name "SKILL.md" -type f 2>/dev/null | while read -r f; do
-            if grep -q '<!-- wt-memory hooks' "$f" 2>/dev/null; then
+            if grep -q '<!-- set-memory hooks' "$f" 2>/dev/null; then
                 if ! python3 -c "
 import re, sys
 with open(sys.argv[1]) as f:
     content = f.read()
-# Remove all wt-memory hooks blocks (including variants like hooks-midflow, hooks-remember, etc.)
-cleaned = re.sub(r'<!--\s*wt-memory hooks[^>]*-->.*?<!--\s*/wt-memory hooks[^>]*-->\s*\n?', '', content, flags=re.DOTALL)
+# Remove all set-memory hooks blocks (including variants like hooks-midflow, hooks-remember, etc.)
+cleaned = re.sub(r'<!--\s*set-memory hooks[^>]*-->.*?<!--\s*/set-memory hooks[^>]*-->\s*\n?', '', content, flags=re.DOTALL)
 if cleaned != content:
     with open(sys.argv[1], 'w') as f:
         f.write(cleaned)
@@ -56,20 +56,20 @@ if cleaned != content:
         done
     fi
 
-    # Remove manual wt-memory recall/remember instructions from command .md files
-    # Exclude commands/wt/ — those are set-core' own commands that legitimately use wt-memory
+    # Remove manual set-memory recall/remember instructions from command .md files
+    # Exclude commands/wt/ — those are set-core' own commands that legitimately use set-memory
     if [[ -d "$project_path/.claude/commands" ]]; then
         find "$project_path/.claude/commands" -name "*.md" -type f 2>/dev/null | while read -r f; do
-            # Skip set-core command files (commands/wt/*.md) — they use wt-memory intentionally
+            # Skip set-core command files (commands/wt/*.md) — they use set-memory intentionally
             [[ "$f" == */commands/wt/*.md ]] && continue
-            if grep -qE 'wt-memory (recall|remember)' "$f" 2>/dev/null; then
+            if grep -qE 'set-memory (recall|remember)' "$f" 2>/dev/null; then
                 if ! python3 -c "
 import re, sys
 with open(sys.argv[1]) as f:
     content = f.read()
-# Remove lines containing wt-memory recall or wt-memory remember instructions
+# Remove lines containing set-memory recall or set-memory remember instructions
 lines = content.split('\n')
-cleaned_lines = [l for l in lines if not re.search(r'wt-memory\s+(recall|remember)', l)]
+cleaned_lines = [l for l in lines if not re.search(r'set-memory\s+(recall|remember)', l)]
 cleaned = '\n'.join(cleaned_lines)
 if cleaned != content:
     with open(sys.argv[1], 'w') as f:
@@ -87,10 +87,10 @@ if cleaned != content:
     fi
 }
 
-# Deploy hooks via wt-deploy-hooks
+# Deploy hooks via set-deploy-hooks
 _deploy_hooks() {
     local project_path="$1"
-    if "$SCRIPT_DIR/wt-deploy-hooks" --quiet "$project_path"; then
+    if "$SCRIPT_DIR/set-deploy-hooks" --quiet "$project_path"; then
         success "  Deployed hooks to .claude/settings.json"
     else
         warn "  Failed to deploy hooks to .claude/settings.json"
@@ -186,16 +186,16 @@ _deploy_skills() {
                 local dir_part
                 dir_part=$(dirname "$rel_path")
                 [[ "$dir_part" == gui ]] && continue  # gui/ rules are for set-core' own GUI, not consumer projects
-                [[ "$dir_part" == web ]] && continue  # web/ rules come from wt-project-web templates, not set-core
+                [[ "$dir_part" == web ]] && continue  # web/ rules come from set-project-web templates, not set-core
                 local base_name
                 base_name=$(basename "$rel_path")
                 local dst_dir="$dst_rules"
                 [[ "$dir_part" != "." ]] && dst_dir="$dst_rules/$dir_part"
                 mkdir -p "$dst_dir"
-                cp "$src_file" "$dst_dir/wt-$base_name"
+                cp "$src_file" "$dst_dir/set-$base_name"
                 rule_count=$((rule_count + 1))
             done < <(find "$src_rules" -name '*.md' -print0)
-            success "  Deployed $rule_count rule(s) to .claude/rules/ (wt-* prefix)"
+            success "  Deployed $rule_count rule(s) to .claude/rules/ (set-* prefix)"
         else
             success "  Rules: self-deploy detected, skipping"
         fi
@@ -229,8 +229,8 @@ _deploy_memory() {
     local claude_dir="$project_path/.claude"
 
     # Remove deprecated inline memory hooks from OpenSpec skill/command files
-    if command -v wt-memory-hooks &>/dev/null; then
-        (cd "$project_path" && wt-memory-hooks remove --quiet) 2>/dev/null || true
+    if command -v set-memory-hooks &>/dev/null; then
+        (cd "$project_path" && set-memory-hooks remove --quiet) 2>/dev/null || true
     fi
 
     # Clean up deprecated memory references
@@ -244,7 +244,7 @@ _deploy_memory() {
         snippet=$(cat << 'MEMORY_SNIPPET'
 
 ## Persistent Memory
-<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `wt-project init`. -->
+<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `set-project init`. -->
 
 This project uses persistent memory (shodh-memory) across sessions. Memory context is automatically injected into `<system-reminder>` tags in your conversation — **you MUST read and use this context**.
 
@@ -266,8 +266,8 @@ This project uses persistent memory (shodh-memory) across sessions. Memory conte
 **Active (MCP tools):** You also have MCP memory tools available (`remember`, `recall`, `proactive_context`, etc.) for deeper memory interactions when automatic context isn't enough.
 
 **Emphasis (use sparingly):**
-- `echo "<insight>" | wt-memory remember --type <Decision|Learning|Context> --tags source:user,<topic>` — mark something as HIGH IMPORTANCE
-- `wt-memory forget <id>` — suppress or correct a wrong memory
+- `echo "<insight>" | set-memory remember --type <Decision|Learning|Context> --tags source:user,<topic>` — mark something as HIGH IMPORTANCE
+- `set-memory forget <id>` — suppress or correct a wrong memory
 - Most things are remembered automatically. Only use `remember` for emphasis.
 MEMORY_SNIPPET
 )
@@ -304,8 +304,8 @@ if result != content:
     # Ensure managed markers are present (upgrade path for existing deployments)
     local managed_marker="set-core:managed"
     if [[ -f "$claude_md" ]] && grep -q "$memory_marker" "$claude_md" 2>/dev/null && ! grep -q "$managed_marker" "$claude_md" 2>/dev/null; then
-        sed -i "s|^## Persistent Memory$|## Persistent Memory\n<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by \`wt-project init\`. -->|" "$claude_md"
-        sed -i "s|^## Auto-Commit After Apply$|## Auto-Commit After Apply\n<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by \`wt-project init\`. -->|" "$claude_md"
+        sed -i "s|^## Persistent Memory$|## Persistent Memory\n<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by \`set-project init\`. -->|" "$claude_md"
+        sed -i "s|^## Auto-Commit After Apply$|## Auto-Commit After Apply\n<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by \`set-project init\`. -->|" "$claude_md"
         success "  Added managed markers to CLAUDE.md sections"
     fi
 
@@ -316,7 +316,7 @@ if result != content:
         commit_snippet=$(cat << 'COMMIT_SNIPPET'
 
 ## Auto-Commit After Apply
-<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `wt-project init`. -->
+<!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `set-project init`. -->
 
 After a skill-driven apply (e.g. `/opsx:apply`) finishes or pauses, automatically commit all changes. Follow the standard commit flow (stage relevant files, write a concise commit message).
 COMMIT_SNIPPET
@@ -327,11 +327,11 @@ COMMIT_SNIPPET
 
     # Auto-import memory seeds if memory store is empty and seed file exists
     local seed_file="$project_path/wt/knowledge/memory-seed.yaml"
-    if [[ -f "$seed_file" ]] && command -v wt-memory &>/dev/null; then
+    if [[ -f "$seed_file" ]] && command -v set-memory &>/dev/null; then
         local mem_count
-        mem_count=$(cd "$project_path" && wt-memory list --limit 1 2>/dev/null | grep -c "^[0-9a-f]" || true)
+        mem_count=$(cd "$project_path" && set-memory list --limit 1 2>/dev/null | grep -c "^[0-9a-f]" || true)
         if [[ "$mem_count" -eq 0 ]]; then
-            (cd "$project_path" && wt-memory seed 2>/dev/null) && \
+            (cd "$project_path" && set-memory seed 2>/dev/null) && \
                 success "  Auto-imported memory seeds from wt/knowledge/memory-seed.yaml" || \
                 warn "  Failed to import memory seeds"
         fi

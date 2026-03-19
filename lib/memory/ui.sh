@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# wt-memory UI: metrics, tui, dashboard, seed
-# Dependencies: sourced by bin/wt-memory after infra setup
-# Requires: _wt_memory_bin_dir, SHODH_PYTHON, run_with_lock, run_shodh_python — set by bin/wt-memory
+# set-memory UI: metrics, tui, dashboard, seed
+# Dependencies: sourced by bin/set-memory after infra setup
+# Requires: _wt_memory_bin_dir, SHODH_PYTHON, run_with_lock, run_shodh_python — set by bin/set-memory
 
 cmd_metrics() {
     local since_days=7
@@ -62,7 +62,7 @@ data = query_report(since_days=$since_days)
 if data is None:
     if not is_enabled():
         print('Metrics collection is disabled.')
-        print('Enable with: wt-memory metrics --enable')
+        print('Enable with: set-memory metrics --enable')
     else:
         print('No metrics data yet. Data is collected after sessions end.')
     sys.exit(0)
@@ -193,9 +193,9 @@ else:
 # --- Gather data ---
 mem_stats = None
 try:
-    cmd = ['wt-memory', 'stats', '--json']
+    cmd = ['set-memory', 'stats', '--json']
     if project_filter:
-        cmd = ['wt-memory', '--project', project_filter, 'stats', '--json']
+        cmd = ['set-memory', '--project', project_filter, 'stats', '--json']
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
     if result.returncode == 0:
         mem_stats = json.loads(result.stdout)
@@ -311,7 +311,7 @@ if not wide_mode:
 
     if not report:
         if not is_enabled():
-            lines.append(row(f'{YEL}No metrics. Enable: wt-memory metrics --enable{RST}'))
+            lines.append(row(f'{YEL}No metrics. Enable: set-memory metrics --enable{RST}'))
         else:
             lines.append(row(f'{DIM}No metrics data yet.{RST}'))
         lines.append(f'{CYN}└{\"─\" * w}┘{RST}')
@@ -544,7 +544,7 @@ if report:
 else:
     if not is_enabled():
         left.append(f'{YEL}No data. Enable with:{RST}')
-        left.append(f'wt-memory metrics --enable')
+        left.append(f'set-memory metrics --enable')
     else:
         left.append(f'{DIM}No metrics data yet.{RST}')
 
@@ -730,7 +730,7 @@ cmd_dashboard() {
 
     local py
     py=$(find_python)
-    local html_file="/tmp/wt-memory-dashboard.html"
+    local html_file="/tmp/set-memory-dashboard.html"
 
     "$py" -c "
 import sys, json, os
@@ -741,7 +741,7 @@ from lib.dashboard import generate_dashboard
 data = query_report(since_days=$since_days)
 if data is None:
     if not is_enabled():
-        print('Metrics collection is disabled. Enable with: wt-memory metrics --enable')
+        print('Metrics collection is disabled. Enable with: set-memory metrics --enable')
     else:
         print('No metrics data yet.')
     sys.exit(0)
@@ -779,7 +779,7 @@ cmd_seed() {
             --file) seed_file="$2"; shift 2 ;;
             --dry-run) dry_run=true; shift ;;
             -h|--help)
-                echo "Usage: wt-memory seed [--file <path>] [--dry-run]"
+                echo "Usage: set-memory seed [--file <path>] [--dry-run]"
                 echo "Import memory seeds from wt/knowledge/memory-seed.yaml"
                 return 0
                 ;;

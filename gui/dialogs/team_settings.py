@@ -62,7 +62,7 @@ class TeamSettingsDialog(QDialog):
         # Initialize button
         self.init_btn = QPushButton("Initialize set-control branch")
         self.init_btn.setToolTip("Create the set-control branch if it doesn't exist")
-        self.init_btn.clicked.connect(self._init_wt_control)
+        self.init_btn.clicked.connect(self._init_set_control)
         layout.addWidget(self.init_btn)
 
         # Status label
@@ -138,7 +138,7 @@ class TeamSettingsDialog(QDialog):
         except Exception:
             pass  # Silently fail - button remains enabled
 
-    def _init_wt_control(self):
+    def _init_set_control(self):
         """Initialize set-control branch for the project"""
         self.status_label.setText("Initializing set-control...")
         self.status_label.setStyleSheet("")
@@ -241,11 +241,11 @@ class TeamSettingsDialog(QDialog):
 
         # Auto-initialize set-control when team is enabled (silently skip if already initialized)
         if enabling_team:
-            self._auto_init_wt_control()
+            self._auto_init_set_control()
 
         self.accept()
 
-    def _auto_init_wt_control(self):
+    def _auto_init_set_control(self):
         """Auto-initialize set-control branch when team is enabled"""
         try:
             # set-control-init will fetch from remote if branch exists, or create new

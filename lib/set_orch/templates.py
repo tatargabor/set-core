@@ -314,7 +314,7 @@ Do NOT create a worktree — fix directly in the current directory."""
 # ─── Planning Prompt Templates ─────────────────────────────────────────
 
 # Core planning rules (framework-agnostic) — web-specific Playwright block
-# moved to wt-project-web/planning_rules.txt, loaded via profile.planning_rules()
+# moved to set-project-web/planning_rules.txt, loaded via profile.planning_rules()
 _PLANNING_RULES_CORE = """Rules:
 - Each change should be completable in 1 Ralph loop session (not too large, not too granular)
 - Use kebab-case names (e.g., add-user-auth, refactor-payment-flow)

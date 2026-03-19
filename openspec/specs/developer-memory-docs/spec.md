@@ -96,7 +96,7 @@ The guide SHALL include setup instructions covering `pip install shodh-memory`, 
 
 #### Scenario: Fresh project init flow
 - **WHEN** a user reads the Quick Setup Flows subsection
-- **THEN** they find a numbered sequence for initializing a fresh project with OpenSpec and memory: pip install shodh-memory, set-project init (deploys hooks+commands+skills), wt-openspec init, set-memory-hooks install, set-memory-hooks check
+- **THEN** they find a numbered sequence for initializing a fresh project with OpenSpec and memory: pip install shodh-memory, set-project init (deploys hooks+commands+skills), set-openspec init, set-memory-hooks install, set-memory-hooks check
 
 #### Scenario: Add memory to existing project flow
 - **WHEN** a user reads the Quick Setup Flows subsection
@@ -104,7 +104,7 @@ The guide SHALL include setup instructions covering `pip install shodh-memory`, 
 
 #### Scenario: Re-install hooks after update flow
 - **WHEN** a user reads the Quick Setup Flows subsection
-- **THEN** they find a numbered sequence for re-installing memory hooks after `wt-openspec update`: wt-openspec update, set-memory-hooks install, set-memory-hooks check
+- **THEN** they find a numbered sequence for re-installing memory hooks after `set-openspec update`: set-openspec update, set-memory-hooks install, set-memory-hooks check
 
 ### Requirement: Technical Architecture Appendix
 The guide SHALL end with a technical architecture appendix containing an ASCII diagram showing the layer stack: Agent Session → CLI → shodh-memory/RocksDB storage.
@@ -136,17 +136,17 @@ The README Features section SHALL describe the GUI memory capabilities.
 - **THEN** they SHALL see mention of: [M] button, Browse Memories dialog (summary/list modes), Remember Note, Export/Import buttons, semantic search
 
 ### Requirement: Memory hooks in internal scripts note
-The README internal scripts note SHALL list `wt-hook-memory-recall` and `wt-hook-memory-save` alongside the existing `wt-hook-skill` and `wt-hook-stop`.
+The README internal scripts note SHALL list `set-hook-memory-recall` and `set-hook-memory-save` alongside the existing `set-hook-skill` and `set-hook-stop`.
 
 #### Scenario: All hook scripts listed
 - **WHEN** a user expands the internal scripts section
-- **THEN** they SHALL see all 4 hook scripts: wt-hook-skill, wt-hook-stop, wt-hook-memory-recall, wt-hook-memory-save
+- **THEN** they SHALL see all 4 hook scripts: set-hook-skill, set-hook-stop, set-hook-memory-recall, set-hook-memory-save
 
 ### Requirement: Automatic hooks documentation includes staging
-The guide SHALL document the staging+debounce pattern used by `wt-hook-memory-save` for transcript extraction, explaining that it prevents duplicate memories by staging extractions and committing on session switch.
+The guide SHALL document the staging+debounce pattern used by `set-hook-memory-save` for transcript extraction, explaining that it prevents duplicate memories by staging extractions and committing on session switch.
 
 #### Scenario: Staging pattern documented
-- **WHEN** a user reads the automatic hooks section for wt-hook-memory-save
+- **WHEN** a user reads the automatic hooks section for set-hook-memory-save
 - **THEN** they find a description of the staging mechanism: extractions written to `.set-core/.staged-extract-*`, committed when a different transcript is detected, debounced at 5-minute intervals
 
 ### Requirement: README guide includes audit and dedup in mandatory list

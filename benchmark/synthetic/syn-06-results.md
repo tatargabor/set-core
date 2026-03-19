@@ -8,7 +8,7 @@
 
 ## What Changed Since SYN-05
 
-1. **Hook-driven recall**: Replaced manual `wt-memory recall` in CLAUDE.md with automatic hook injection (UserPromptSubmit, PreToolUse, PostToolUse). Agent no longer calls recall manually — hooks inject memory context on every prompt and tool use.
+1. **Hook-driven recall**: Replaced manual `set-memory recall` in CLAUDE.md with automatic hook injection (UserPromptSubmit, PreToolUse, PostToolUse). Agent no longer calls recall manually — hooks inject memory context on every prompt and tool use.
 2. **Proactive-hybrid-fallback**: Always merge keyword+semantic recall results (2 reserved hybrid slots), fixing missed short/non-English queries.
 3. **PostToolUse context fix**: Switched from `output_top_context()` to `output_hook_context()` so PostToolUse/SubagentStop context actually reaches the agent.
 4. **Increased max-turns**: Mode B uses 50 turns (vs 30 for Mode A) to compensate for hook overhead.
@@ -79,7 +79,7 @@ Note: Mode B passed fewer changes (2 vs 3) because S03 missed comments implement
 
 ### 1. Hook-driven recall matches manual recall quality (+34% weighted, same as SYN-05)
 
-The automatic hook injection produces the same +34% weighted delta as SYN-05's manual recall. This validates that hook-driven memory is a drop-in replacement — agents don't need to call `wt-memory recall` manually.
+The automatic hook injection produces the same +34% weighted delta as SYN-05's manual recall. This validates that hook-driven memory is a drop-in replacement — agents don't need to call `set-memory recall` manually.
 
 ### 2. Memory saves 20% tokens and 17% turns
 

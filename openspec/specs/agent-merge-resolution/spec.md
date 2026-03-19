@@ -1,6 +1,6 @@
 ## Requirements
 ### Requirement: Agent-assisted merge conflict resolution
-**STATUS: ASPIRATIONAL** — This feature is designed but not yet implemented in the orchestrator. The spec is retained as a backlog item. Currently, merge conflicts are handled by the multi-layer auto-resolution in `wt-merge` (generated files, package.json, JSON deep merge, LLM resolution).
+**STATUS: ASPIRATIONAL** — This feature is designed but not yet implemented in the orchestrator. The spec is retained as a backlog item. Currently, merge conflicts are handled by the multi-layer auto-resolution in `set-merge` (generated files, package.json, JSON deep merge, LLM resolution).
 
 The orchestrator SHALL attempt agent-assisted rebase before declaring a merge permanently blocked. On the first merge conflict for a change, the orchestrator SHALL launch a Ralph agent in the worktree with instructions to merge the main branch and resolve conflicts.
 

@@ -14,8 +14,8 @@ The project's `CLAUDE.md` SHALL include a "Persistent Memory" section that instr
 The section SHALL also instruct the agent that memory context applies to EVERY turn, not just the first one in a session.
 
 #### Scenario: Agent recognizes learning during ad-hoc work
-- **WHEN** user says "egyébként a wt-status timeout-ol ha nincs git repo" during a regular coding session (no skill active)
-- **THEN** the agent runs `set-memory health`, and if healthy, saves an Observation memory about the wt-status timeout behavior
+- **WHEN** user says "egyébként a set-status timeout-ol ha nincs git repo" during a regular coding session (no skill active)
+- **THEN** the agent runs `set-memory health`, and if healthy, saves an Observation memory about the set-status timeout behavior
 
 #### Scenario: Agent recognizes decision during debugging
 - **WHEN** user says "from now on always run tests before committing" during debugging
@@ -47,7 +47,7 @@ When the agent proactively saves a memory outside of a skill, it SHALL show a br
 
 #### Scenario: Inline confirmation
 - **WHEN** agent saves a memory proactively
-- **THEN** it shows something like: `[Memory saved: Learning — wt-status timeout without git repo]` and continues with the current work
+- **THEN** it shows something like: `[Memory saved: Learning — set-status timeout without git repo]` and continues with the current work
 
 #### Scenario: No confirmation for recalls
 - **WHEN** the CLAUDE.md instruction suggests the agent also recall before starting major work

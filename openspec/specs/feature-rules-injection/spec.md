@@ -19,7 +19,7 @@ When dispatching a change, the dispatcher SHALL read `project-knowledge.yaml`, m
 - **WHEN** `dispatch_change("db-migration-change")` runs
 - **AND** `project-knowledge.yaml` has a `data_model` feature with `touches: ["prisma/**"]` and `rules_file: ".claude/rules/data-model.md"`
 - **AND** the change scope mentions `prisma/schema.prisma`
-- **THEN** `data-model.md` is copied to `<worktree>/.claude/rules/data-model.md` before `wt-loop` starts
+- **THEN** `data-model.md` is copied to `<worktree>/.claude/rules/data-model.md` before `set-loop` starts
 
 #### Scenario: Non-matching feature rules are not injected
 - **WHEN** `dispatch_change("feature-change")` runs
@@ -35,7 +35,7 @@ Rule file injection SHALL occur after `bootstrap_worktree()` completes in `dispa
 
 #### Scenario: Injection order is post-bootstrap
 - **WHEN** `dispatch_change()` executes the worktree setup sequence
-- **THEN** rule file copy happens after `bootstrap_worktree()` and before `wt-loop` is started
+- **THEN** rule file copy happens after `bootstrap_worktree()` and before `set-loop` is started
 
 ### Requirement: Graceful degradation
 If `project-knowledge.yaml` does not exist, or a feature's `rules_file` path does not resolve to an existing file, the dispatcher SHALL log a warning and continue dispatch without failing.

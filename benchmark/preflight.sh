@@ -26,21 +26,21 @@ echo ""
 
 # --- Memory system ---
 echo "--- Memory System ---"
-if command -v wt-memory &>/dev/null; then
-    check "wt-memory on PATH" 'true'
+if command -v set-memory &>/dev/null; then
+    check "set-memory on PATH" 'true'
 else
-    check "wt-memory on PATH" 'false'
+    check "set-memory on PATH" 'false'
 fi
 
-if wt-memory health &>/dev/null; then
-    check "wt-memory health" 'true'
+if set-memory health &>/dev/null; then
+    check "set-memory health" 'true'
 else
-    check "wt-memory health" 'false'
+    check "set-memory health" 'false'
 fi
 
-# Check auto_ingest=False is in wt-memory proactive
-AUTO_INGEST=$(grep -c 'auto_ingest=False' "$PROJECT_ROOT/bin/wt-memory" 2>/dev/null || echo 0)
-check "wt-memory proactive has auto_ingest=False" '[ "$AUTO_INGEST" -ge 1 ]'
+# Check auto_ingest=False is in set-memory proactive
+AUTO_INGEST=$(grep -c 'auto_ingest=False' "$PROJECT_ROOT/bin/set-memory" 2>/dev/null || echo 0)
+check "set-memory proactive has auto_ingest=False" '[ "$AUTO_INGEST" -ge 1 ]'
 
 echo ""
 
@@ -48,19 +48,19 @@ echo ""
 echo "--- Hooks ---"
 SETTINGS="$PROJECT_ROOT/.claude/settings.json"
 if [[ -f "$SETTINGS" ]]; then
-    HAS_SAVE=$(grep -c 'wt-hook-memory-save' "$SETTINGS" 2>/dev/null || echo 0)
-    check "wt-hook-memory-save in settings.json" '[ "$HAS_SAVE" -ge 1 ]'
+    HAS_SAVE=$(grep -c 'set-hook-memory-save' "$SETTINGS" 2>/dev/null || echo 0)
+    check "set-hook-memory-save in settings.json" '[ "$HAS_SAVE" -ge 1 ]'
 
-    HAS_RECALL=$(grep -c 'wt-hook-memory-recall' "$SETTINGS" 2>/dev/null || echo 0)
-    check "wt-hook-memory-recall in settings.json" '[ "$HAS_RECALL" -ge 1 ]'
+    HAS_RECALL=$(grep -c 'set-hook-memory-recall' "$SETTINGS" 2>/dev/null || echo 0)
+    check "set-hook-memory-recall in settings.json" '[ "$HAS_RECALL" -ge 1 ]'
 else
     check ".claude/settings.json exists" 'false'
 fi
 
 # Verify hooks are on PATH
-command -v wt-hook-memory-save &>/dev/null
-check "wt-hook-memory-save on PATH" 'command -v wt-hook-memory-save &>/dev/null'
-check "wt-hook-memory-recall on PATH" 'command -v wt-hook-memory-recall &>/dev/null'
+command -v set-hook-memory-save &>/dev/null
+check "set-hook-memory-save on PATH" 'command -v set-hook-memory-save &>/dev/null'
+check "set-hook-memory-recall on PATH" 'command -v set-hook-memory-recall &>/dev/null'
 
 echo ""
 
@@ -102,15 +102,15 @@ check "Port $PORT is free" '[ "$PORT_USED" -eq 0 ]'
 
 echo ""
 
-# --- wt-loop ---
-echo "--- wt-loop ---"
-check "wt-loop on PATH" 'command -v wt-loop &>/dev/null'
+# --- set-loop ---
+echo "--- set-loop ---"
+check "set-loop on PATH" 'command -v set-loop &>/dev/null'
 
-# Check the glob pattern in wt-loop itself
-if command -v wt-loop &>/dev/null; then
-    WL_PATH=$(command -v wt-loop)
+# Check the glob pattern in set-loop itself
+if command -v set-loop &>/dev/null; then
+    WL_PATH=$(command -v set-loop)
     BAD_GLOB=$(grep -c '0\*\.md' "$WL_PATH" 2>/dev/null | tr -d '[:space:]' || echo 0)
-    check "wt-loop has no 0*.md glob bug" '[ "${BAD_GLOB:-0}" -eq 0 ]'
+    check "set-loop has no 0*.md glob bug" '[ "${BAD_GLOB:-0}" -eq 0 ]'
 fi
 
 echo ""

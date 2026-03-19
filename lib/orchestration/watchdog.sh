@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# lib/orchestration/watchdog.sh — Thin wrapper: logic lives in lib/wt_orch/watchdog.py
+# lib/orchestration/watchdog.sh — Thin wrapper: logic lives in lib/set_orch/watchdog.py
 #
-# Sourced by bin/wt-orchestrate for backward compatibility.
-# All functions delegate to wt-orch-core watchdog subcommands.
-# Python implementation: lib/wt_orch/watchdog.py, cli.py:cmd_watchdog()
+# Sourced by bin/set-orchestrate for backward compatibility.
+# All functions delegate to set-orch-core watchdog subcommands.
+# Python implementation: lib/set_orch/watchdog.py, cli.py:cmd_watchdog()
 
 # Per-change watchdog check. Called from Python engine.py via CLI.
 watchdog_check() {
     local change_name="$1"
     local result
-    result=$(wt-orch-core watchdog check --state "$STATE_FILENAME" --change "$change_name" 2>/dev/null) || return 0
+    result=$(set-orch-core watchdog check --state "$STATE_FILENAME" --change "$change_name" 2>/dev/null) || return 0
     local action
     action=$(echo "$result" | jq -r '.action // "ok"')
     case "$action" in
@@ -19,7 +19,7 @@ watchdog_check() {
         fail)
             _watchdog_salvage_partial_work "$change_name"
             update_change_field "$change_name" "status" '"failed"'
-            send_notification "wt-orchestrate" "Watchdog: '$change_name' failed" "critical"
+            send_notification "set-orchestrate" "Watchdog: '$change_name' failed" "critical"
             ;;
     esac
 }

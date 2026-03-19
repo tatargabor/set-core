@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for wt-tools
+about: Suggest an idea for set-core
 title: "[Feature] "
 labels: enhancement
 assignees: ''

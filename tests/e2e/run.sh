@@ -70,12 +70,12 @@ die() { error "$*"; echo "  Test dir: $TEST_DIR"; exit 1; }
 preflight() {
     step "Preflight checks"
 
-    command -v wt-project &>/dev/null || die "wt-project not found in PATH"
+    command -v set-project &>/dev/null || die "set-project not found in PATH"
     command -v node &>/dev/null || die "node not found in PATH"
     command -v pnpm &>/dev/null || die "pnpm not found in PATH"
 
-    if ! wt-project list-types 2>/dev/null | grep -q "web"; then
-        die "wt-project-web plugin not installed (wt-project list-types does not show 'web')"
+    if ! set-project list-types 2>/dev/null | grep -q "web"; then
+        die "set-project-web plugin not installed (set-project list-types does not show 'web')"
     fi
 
     [[ -f "$SPEC_FILE" ]] || die "Spec file not found: $SPEC_FILE"
@@ -87,7 +87,7 @@ preflight() {
 
 handle_name_conflict() {
     local existing_path
-    existing_path=$(wt-project list 2>/dev/null | grep "$PROJECT_NAME" | sed 's/.*-> //' || true)
+    existing_path=$(set-project list 2>/dev/null | grep "$PROJECT_NAME" | sed 's/.*-> //' || true)
 
     if [[ -n "$existing_path" ]]; then
         local abs_test_dir
@@ -96,7 +96,7 @@ handle_name_conflict() {
         if [[ "$existing_path" != "$abs_test_dir" ]]; then
             warn "Project '$PROJECT_NAME' already registered at: $existing_path"
             info "Removing old registration..."
-            wt-project remove "$PROJECT_NAME" 2>/dev/null || true
+            set-project remove "$PROJECT_NAME" 2>/dev/null || true
         fi
     fi
 }
@@ -105,7 +105,7 @@ handle_name_conflict() {
 
 check_history_guard() {
     local registered_path
-    registered_path=$(wt-project list 2>/dev/null | grep "$PROJECT_NAME" | sed 's/.*-> //' || true)
+    registered_path=$(set-project list 2>/dev/null | grep "$PROJECT_NAME" | sed 's/.*-> //' || true)
 
     if [[ -n "$registered_path" && -d "$registered_path" && ! -d "$registered_path/.git" ]]; then
         error "HISTORY PROTECTION: Project '$PROJECT_NAME' is registered at $registered_path"
@@ -115,7 +115,7 @@ check_history_guard() {
         error "If the previous run had orch/* tags, they are now lost."
         error ""
         error "To force a fresh start, first unregister:"
-        error "  wt-project remove $PROJECT_NAME"
+        error "  set-project remove $PROJECT_NAME"
         error "  rm -rf $registered_path"
         error "  $0 $*"
         exit 1
@@ -133,15 +133,15 @@ check_existing() {
         (cd "$TEST_DIR" && git tag 2>/dev/null | sort -V) || true
         echo ""
         info "To continue with sentinel:"
-        echo "  cd $TEST_DIR && wt-sentinel --spec docs/v1-minishop.md"
+        echo "  cd $TEST_DIR && set-sentinel --spec docs/v1-minishop.md"
         echo ""
         info "To reset from a checkpoint:"
         echo "  cd $TEST_DIR"
         echo "  git worktree list  # remove any worktrees"
         echo "  git checkout -b resume-<tag> <tag>"
-        echo "  wt-project init --name $PROJECT_NAME --project-type web"
+        echo "  set-project init --name $PROJECT_NAME --project-type web"
         echo "  rm -f orchestration-state.json orchestration-plan.json"
-        echo "  wt-sentinel --spec docs/v1-minishop.md"
+        echo "  set-sentinel --spec docs/v1-minishop.md"
         exit 0
     fi
 }
@@ -161,7 +161,7 @@ init_project() {
 
     # .gitattributes — prevent lockfile and runtime file conflicts at git level.
     # merge=ours: on conflict, silently keep current branch version.
-    # Lockfile regeneration happens via wt-merge's regenerate_lockfile() and
+    # Lockfile regeneration happens via set-merge's regenerate_lockfile() and
     # merger.py's _post_merge_deps_install() — NOT via git hook (hooks leave
     # dirty working tree state that blocks subsequent merges).
     cat > .gitattributes << 'ATTRS'
@@ -189,14 +189,14 @@ ATTRS
         success "Memory storage cleaned"
     fi
 
-    step "wt-project init"
+    step "set-project init"
     handle_name_conflict
-    wt-project init --name "$PROJECT_NAME" --project-type web --template nextjs || true
+    set-project init --name "$PROJECT_NAME" --project-type web --template nextjs || true
 
     if [[ ! -d ".claude" ]]; then
-        die ".claude/ directory not created by wt-project init"
+        die ".claude/ directory not created by set-project init"
     fi
-    success "wt-project initialized (configs, rules, CLAUDE.md deployed)"
+    success "set-project initialized (configs, rules, CLAUDE.md deployed)"
 
     # NOTE: Figma MCP registration removed — OAuth requires interactive auth
     # which blocks `claude -p` (pipe mode) used by the orchestrator.
@@ -236,7 +236,7 @@ YAML
     success "Created wt/orchestration/config.yaml"
 
     git add -A
-    git commit -m "chore: wt-project init + orchestration config"
+    git commit -m "chore: set-project init + orchestration config"
     git tag v1-ready
     success "Tagged v1-ready"
 }
@@ -251,16 +251,16 @@ show_completion() {
     echo ""
     info "To start the E2E test:"
     echo "  cd $TEST_DIR"
-    echo "  wt-sentinel --spec docs/v1-minishop.md"
+    echo "  set-sentinel --spec docs/v1-minishop.md"
     echo ""
     info "After sentinel completes, generate the E2E report:"
     echo "  cd $TEST_DIR"
-    echo "  wt-e2e-report --project-dir $TEST_DIR"
+    echo "  set-e2e-report --project-dir $TEST_DIR"
     echo ""
     info "When done, cleanup:"
     echo "  rm -rf $TEST_DIR"
     echo "  rm -rf ~/.local/share/set-core/memory/$PROJECT_NAME"
-    echo "  wt-project remove $PROJECT_NAME"
+    echo "  set-project remove $PROJECT_NAME"
 }
 
 # ── Main ──

@@ -13,8 +13,8 @@ from typing import Any, Optional
 
 # ─── Logging ──────────────────────────────────────────────────
 
-DEBUG_LOG = "/tmp/wt-hook-memory.log"
-_debug_enabled = os.path.exists("/tmp/wt-hook-memory.debug") or os.environ.get("WT_HOOK_DEBUG") == "1"
+DEBUG_LOG = "/tmp/set-hook-memory.log"
+_debug_enabled = os.path.exists("/tmp/set-hook-memory.debug") or os.environ.get("SET_HOOK_DEBUG") == "1"
 
 
 def _log(event: str, msg: str) -> None:
@@ -28,7 +28,7 @@ def _log(event: str, msg: str) -> None:
 
 
 def _dbg(event: str, msg: str) -> None:
-    """Verbose debug log: gated on WT_HOOK_DEBUG=1."""
+    """Verbose debug log: gated on SET_HOOK_DEBUG=1."""
     if not _debug_enabled:
         return
     _log(event, f"DBG {msg}")

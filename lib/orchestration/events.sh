@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/orchestration/events.sh — Append-only event log for orchestration audit trail
 #
-# Sourced by bin/wt-orchestrate. All functions run in the orchestrator's global scope.
+# Sourced by bin/set-orchestrate. All functions run in the orchestrator's global scope.
 # Must be sourced FIRST — other modules emit events.
 
 # ─── Event Configuration ─────────────────────────────────────────────
@@ -140,7 +140,7 @@ query_events() {
 
 # ─── cmd_events subcommand ────────────────────────────────────────────
 
-# Delegated to Python: wt_orch.events (via wt-orch-core events CLI)
+# Delegated to Python: wt_orch.events (via set-orch-core events CLI)
 cmd_events() {
     # Lazy init events log path
     if [[ -z "${EVENTS_LOG_FILE:-}" && -n "${STATE_FILENAME:-}" ]]; then
@@ -152,5 +152,5 @@ cmd_events() {
         return 0
     fi
 
-    wt-orch-core events --log "$EVENTS_LOG_FILE" "$@"
+    set-orch-core events --log "$EVENTS_LOG_FILE" "$@"
 }

@@ -1467,7 +1467,7 @@ class TestWorktreeNameState:
 
     def test_dialog_finds_tasks_md_in_subdirectory(self, control_center, git_env, qtbot):
         """8.5 tasks.md in arbitrary subdirectory (not openspec) is found by dialog"""
-        cid = "wt-sub-tasks"
+        cid = "set-sub-tasks"
         wt_path = _create_wt(control_center, git_env, qtbot, cid)
         try:
             subdir = Path(wt_path) / "myproject" / "planning"

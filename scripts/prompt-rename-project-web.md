@@ -1,6 +1,6 @@
-# SET Rename: wt-project-web → set-project-web
+# SET Rename: set-project-web
 
-A `wt-tools` → `set-core` (SET = ShipExactlyThis) átnevezés része. Ez a repó a `set-project-web` lesz.
+A `set-core` (SET = ShipExactlyThis) rename része. Ez a repó a `set-project-web` lesz.
 
 ## Feladat
 

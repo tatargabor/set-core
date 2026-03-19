@@ -6,7 +6,7 @@ The design-bridge rule deployed to consumer projects SHALL use imperative langua
 
 #### Scenario: Agent with design snapshot in project
 - **WHEN** an agent session starts in a project that has `design-snapshot.md` in its root
-- **AND** `.claude/rules/design-bridge.md` (or `wt-design-bridge.md`) is present
+- **AND** `.claude/rules/design-bridge.md` (or `set-design-bridge.md`) is present
 - **THEN** the rule instructs: "You MUST read design-snapshot.md BEFORE implementing any UI component"
 - **AND** "Use the EXACT color, spacing, typography, and radius values from the Design Tokens section"
 - **AND** "Match the component hierarchy structure from the relevant frame in the Component Hierarchy section"

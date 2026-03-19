@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration tests for wt-orch-core CLI bridge
+# Integration tests for set-orch-core CLI bridge
 # Tests: init_state round-trip, check-pid on live process, template proposal output
 
 set -euo pipefail
@@ -12,7 +12,7 @@ trap 'rm -rf "$TMPDIR_TEST"' EXIT
 _pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
 _fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1 — $2"; }
 
-echo "=== wt-orch-core integration tests ==="
+echo "=== set-orch-core integration tests ==="
 
 # ─── 8.1: init_state → load_state round-trip ──────────────────────
 
@@ -57,7 +57,7 @@ cat > "$TMPDIR_TEST/plan.json" <<'EOF'
 EOF
 
 # Run init_state
-if wt-orch-core state init --plan-file "$TMPDIR_TEST/plan.json" --output "$TMPDIR_TEST/state.json" 2>/dev/null; then
+if set-orch-core state init --plan-file "$TMPDIR_TEST/plan.json" --output "$TMPDIR_TEST/state.json" 2>/dev/null; then
     _pass "init_state completed without error"
 else
     _fail "init_state" "exit code $?"
@@ -119,7 +119,7 @@ else
 fi
 
 # Round-trip: query changes via CLI
-query_out=$(wt-orch-core state query --file "$TMPDIR_TEST/state.json" --status pending 2>/dev/null)
+query_out=$(set-orch-core state query --file "$TMPDIR_TEST/state.json" --status pending 2>/dev/null)
 qc=$(echo "$query_out" | jq 'length' 2>/dev/null)
 if [[ "$qc" == "2" ]]; then
     _pass "query pending returns 2"
@@ -134,7 +134,7 @@ echo "--- 8.2: check-pid on live process ---"
 
 # Check own PID with bash pattern (should match)
 own_pid=$$
-check_out=$(wt-orch-core process check-pid --pid "$own_pid" --expect-cmd "bash" 2>/dev/null) || true
+check_out=$(set-orch-core process check-pid --pid "$own_pid" --expect-cmd "bash" 2>/dev/null) || true
 alive=$(echo "$check_out" | jq '.alive' 2>/dev/null)
 match=$(echo "$check_out" | jq '.match' 2>/dev/null)
 
@@ -151,7 +151,7 @@ else
 fi
 
 # Check own PID with wrong pattern (should be alive but not match)
-check_out2=$(wt-orch-core process check-pid --pid "$own_pid" --expect-cmd "nonexistent-process-xyz" 2>/dev/null) || true
+check_out2=$(set-orch-core process check-pid --pid "$own_pid" --expect-cmd "nonexistent-process-xyz" 2>/dev/null) || true
 match2=$(echo "$check_out2" | jq '.match' 2>/dev/null)
 
 if [[ "$match2" == "false" ]]; then
@@ -161,7 +161,7 @@ else
 fi
 
 # Check dead PID (PID 99999 is almost certainly dead)
-check_out3=$(wt-orch-core process check-pid --pid 99999 --expect-cmd "anything" 2>/dev/null) || true
+check_out3=$(set-orch-core process check-pid --pid 99999 --expect-cmd "anything" 2>/dev/null) || true
 alive3=$(echo "$check_out3" | jq '.alive' 2>/dev/null)
 
 if [[ "$alive3" == "false" ]]; then
@@ -182,7 +182,7 @@ proposal_out=$(jq -n \
     --arg memory_ctx "Previous auth attempts used sessions" \
     --arg spec_ref "docs/spec.md" \
     '{change_name: $change_name, scope: $scope, roadmap_item: $roadmap_item, memory_ctx: $memory_ctx, spec_ref: $spec_ref}' \
-| wt-orch-core template proposal --input-file - 2>/dev/null)
+| set-orch-core template proposal --input-file - 2>/dev/null)
 
 if [[ -n "$proposal_out" ]]; then
     _pass "proposal generated non-empty output"
@@ -226,7 +226,7 @@ review_out=$(jq -n \
     --arg diff_output "diff --git a/auth.ts\n+export function login() {}" \
     --arg req_section "" \
     '{scope: $scope, diff_output: $diff_output, req_section: $req_section}' \
-| wt-orch-core template review --input-file - 2>/dev/null)
+| set-orch-core template review --input-file - 2>/dev/null)
 
 if echo "$review_out" | grep -q "senior code reviewer"; then
     _pass "review template contains reviewer instruction"
@@ -242,7 +242,7 @@ fix_out=$(jq -n \
     --arg smoke_cmd "npm test" \
     --arg variant "scoped" \
     '{change_name: $change_name, scope: $scope, output_tail: $output_tail, smoke_cmd: $smoke_cmd, variant: $variant}' \
-| wt-orch-core template fix --input-file - 2>/dev/null)
+| set-orch-core template fix --input-file - 2>/dev/null)
 
 if echo "$fix_out" | grep -q "MAY ONLY modify files"; then
     _pass "scoped fix template contains constraints"

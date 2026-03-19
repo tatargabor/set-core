@@ -15,7 +15,7 @@ export default function ResizableSplit({
   defaultRatio = 0.6,
   minTopPx = 100,
   minBottomPx = 80,
-  storageKey = 'wt-split-ratio',
+  storageKey = 'set-split-ratio',
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [ratio, setRatio] = useState(() => {

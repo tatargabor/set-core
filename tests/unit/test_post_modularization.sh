@@ -4,15 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/helpers.sh"
 
-# Source wt-common for shared functions
-source "$SCRIPT_DIR/../../bin/wt-common.sh"
+# Source set-common for shared functions
+source "$SCRIPT_DIR/../../bin/set-common.sh"
 
 # --- Test cmd_repair exists and is callable ---
 
 test_cmd_repair_defined() {
     # Source maintenance module (needs some infra stubs)
     SHODH_PYTHON="${SHODH_PYTHON:-python3}"
-    get_storage_path() { echo "/tmp/wt-test-storage-$$"; }
+    get_storage_path() { echo "/tmp/set-test-storage-$$"; }
     run_with_lock() { "$@"; }
     run_shodh_python() { "$@"; }
     cmd_health() { return 1; }  # shodh not available in test

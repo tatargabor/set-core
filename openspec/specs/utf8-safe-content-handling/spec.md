@@ -1,7 +1,7 @@
 ## Requirements
 
 ### Requirement: Character-safe truncation for all user prompt content
-All truncation of user prompt content in `wt-hook-memory` SHALL use character-level operations (`cut -c1-N`) instead of byte-level operations (`head -c N`). This prevents splitting multi-byte UTF-8 sequences (e.g., Hungarian á=0xc3 0xa1, é=0xc3 0xa9, emoji, CJK characters).
+All truncation of user prompt content in `set-hook-memory` SHALL use character-level operations (`cut -c1-N`) instead of byte-level operations (`head -c N`). This prevents splitting multi-byte UTF-8 sequences (e.g., Hungarian á=0xc3 0xa1, é=0xc3 0xa9, emoji, CJK characters).
 
 #### Scenario: Hungarian text truncated at character boundary
 - **WHEN** UserPromptSubmit fires with prompt "Ez a projekt Prisma 7-et használ és Railway-en fut, az ékezetes karakterek működnek" (89 chars, multi-byte)
@@ -30,7 +30,7 @@ The `cmd_remember` function in `set-memory` SHALL sanitize content before passin
 - **THEN** the content SHALL be stored exactly as provided, with no replacement characters
 
 ### Requirement: Transcript JSON surrogate sanitization
-The `_stop_raw_filter()` function in `wt-hook-memory` SHALL sanitize all string content extracted from JSONL transcript entries after `json.loads()`. Lone surrogates from Node.js JSON output SHALL be replaced with U+FFFD before further processing.
+The `_stop_raw_filter()` function in `set-hook-memory` SHALL sanitize all string content extracted from JSONL transcript entries after `json.loads()`. Lone surrogates from Node.js JSON output SHALL be replaced with U+FFFD before further processing.
 
 #### Scenario: Node.js lone surrogate in transcript
 - **WHEN** a JSONL line contains an unpaired surrogate escape (e.g., `\ud83c` without matching low surrogate)
@@ -43,7 +43,7 @@ The `_stop_raw_filter()` function in `wt-hook-memory` SHALL sanitize all string 
 - **THEN** the content SHALL pass through sanitization unchanged
 
 ### Requirement: UTF-8 locale fallback in hook
-The `wt-hook-memory` SHALL ensure a UTF-8 locale is active for `cut -c` operations. If `LANG` and `LC_CTYPE` are both unset or non-UTF-8, the hook SHALL export `LC_ALL=C.UTF-8` as a fallback.
+The `set-hook-memory` SHALL ensure a UTF-8 locale is active for `cut -c` operations. If `LANG` and `LC_CTYPE` are both unset or non-UTF-8, the hook SHALL export `LC_ALL=C.UTF-8` as a fallback.
 
 #### Scenario: No locale set
 - **WHEN** the hook runs in an environment where `LANG` is unset

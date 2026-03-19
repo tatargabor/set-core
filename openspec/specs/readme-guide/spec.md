@@ -35,10 +35,10 @@ The guide SHALL require a platform/editor support table with status indicators f
 - **THEN** they see a table listing Linux (primary), macOS (supported), Windows (not supported), Zed (primary editor), VS Code (basic support), and Claude Code (integrated)
 
 ### Requirement: CLI Tool Documentation Coverage
-The guide SHALL require that all user-facing `bin/wt-*` commands are documented in the CLI Reference section.
+The guide SHALL require that all user-facing `bin/set-*` commands are documented in the CLI Reference section.
 
 #### Scenario: New CLI tool added
-- **WHEN** a new `wt-*` script is added to `bin/`
+- **WHEN** a new `set-*` script is added to `bin/`
 - **THEN** the guide's update checklist reminds the author to add it to the CLI Reference
 
 ### Requirement: Known Issues Section

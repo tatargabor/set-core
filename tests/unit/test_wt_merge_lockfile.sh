@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit tests for wt-merge lockfile helpers and runtime cleanup
+# Unit tests for set-merge lockfile helpers and runtime cleanup
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,17 +7,17 @@ source "$SCRIPT_DIR/helpers.sh"
 
 WT_TOOLS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Source wt-common.sh directly (provides info/warn/error/success helpers)
-source "$WT_TOOLS_ROOT/bin/wt-common.sh"
+# Source set-common.sh directly (provides info/warn/error/success helpers)
+source "$WT_TOOLS_ROOT/bin/set-common.sh"
 
-# Extract function definitions from wt-merge without running main()
+# Extract function definitions from set-merge without running main()
 # Skip the first line (shebang), the SCRIPT_DIR/source lines, and main()
 _WM_FUNCS=$(awk '
     /^SCRIPT_DIR=/ { next }
-    /^source.*wt-common/ { next }
+    /^source.*set-common/ { next }
     /^main\(\) \{$/,0 { exit }
     { print }
-' "$WT_TOOLS_ROOT/bin/wt-merge")
+' "$WT_TOOLS_ROOT/bin/set-merge")
 eval "$_WM_FUNCS"
 
 # ─── is_lockfile tests ──────────────────────────────────────────────

@@ -4,7 +4,7 @@ Complete step-by-step guide for executing the shodh-memory benchmark v2.
 
 ## Prerequisites
 
-- **wt-tools** installed and on PATH (`wt-loop`, `wt-deploy-hooks`, `wt-memory` all available)
+- **set-core** installed and on PATH (`set-loop`, `set-deploy-hooks`, `set-memory` all available)
 - **Node.js 18+** (`node --version`)
 - **Claude Code CLI** installed (`claude --version`)
 - **openspec CLI** installed (`openspec --version`; install: `npm install -g @fission-ai/openspec@1.1.1`)
@@ -21,9 +21,9 @@ Two init scripts handle all setup. Each creates a fresh CraftBazaar repo with th
 # Default: ~/benchmark/run-a/craftbazaar-baseline
 ```
 
-What it does: `git init` → `npm init` → `openspec init --tools claude` → `wt-deploy-hooks` → copies `baseline.md` as CLAUDE.md (PORT=4000) → extracts 12 change files (agent-only, no evaluator notes) → copies test scripts to `tests/` → initial commit.
+What it does: `git init` → `npm init` → `openspec init --tools claude` → `set-deploy-hooks` → copies `baseline.md` as CLAUDE.md (PORT=4000) → extracts 12 change files (agent-only, no evaluator notes) → copies test scripts to `tests/` → initial commit.
 
-**No** `wt-memory-hooks install` — baseline has no memory.
+**No** `set-memory-hooks install` — baseline has no memory.
 
 ### Run B (With Memory)
 
@@ -32,7 +32,7 @@ What it does: `git init` → `npm init` → `openspec init --tools claude` → `
 # Default: ~/benchmark/run-b/craftbazaar-memory
 ```
 
-Same as Run A plus: copies `with-memory.md` as CLAUDE.md (PORT=4001, hook-driven persistent memory) → verifies `wt-memory health`.
+Same as Run A plus: copies `with-memory.md` as CLAUDE.md (PORT=4001, hook-driven persistent memory) → verifies `set-memory health`.
 
 ### What the scripts check
 
@@ -66,16 +66,16 @@ to implement. Run bash tests/test-NN.sh <PORT> after each change and fix until p
 Follow the Benchmark Task workflow in CLAUDE.md exactly — work through all 12 changes in order.
 ```
 
-### Option B: wt-loop automation
+### Option B: set-loop automation
 
 ```bash
 # Terminal 1 (Run A)
 cd ~/benchmark/run-a/craftbazaar-baseline
-wt-loop start "Build CraftBazaar changes 01-12" --max 30 --stall-threshold 3 --done manual
+set-loop start "Build CraftBazaar changes 01-12" --max 30 --stall-threshold 3 --done manual
 
 # Terminal 2 (Run B)
 cd ~/benchmark/run-b/craftbazaar-memory
-wt-loop start "Build CraftBazaar changes 01-12" --max 30 --stall-threshold 3 --done manual
+set-loop start "Build CraftBazaar changes 01-12" --max 30 --stall-threshold 3 --done manual
 ```
 
 ### Key flags
@@ -103,8 +103,8 @@ cd ~/benchmark/run-b/craftbazaar-memory && claude --dangerously-skip-permissions
 From a third terminal:
 ```bash
 # Check status
-cd ~/benchmark/run-a/craftbazaar-baseline && wt-loop status
-cd ~/benchmark/run-b/craftbazaar-memory && wt-loop status
+cd ~/benchmark/run-a/craftbazaar-baseline && set-loop status
+cd ~/benchmark/run-b/craftbazaar-memory && set-loop status
 ```
 
 ## 3. No-Intervention Policy
@@ -112,13 +112,13 @@ cd ~/benchmark/run-b/craftbazaar-memory && wt-loop status
 During execution:
 - **Do NOT** provide hints, answers, or direction to the agent
 - **Do NOT** fix errors, install packages, or modify files
-- If the agent asks a yes/no question, wt-loop auto-continues (fresh iteration)
+- If the agent asks a yes/no question, set-loop auto-continues (fresh iteration)
 - If the loop stalls (3 iterations with no commits), let it stop — the stall is data
 - If the loop hits max iterations (30), let it stop — record which changes completed
 
 The only acceptable interventions:
 - Restarting if the process crashes (machine reboot, OOM, etc.)
-- Checking status with `wt-loop status` (read-only)
+- Checking status with `set-loop status` (read-only)
 
 ## 4. Running Acceptance Tests (post-run)
 
@@ -145,7 +145,7 @@ done
 The evaluator scripts in `benchmark/evaluator/` provide automated checks:
 
 ```bash
-EVAL_DIR="/path/to/wt-tools/benchmark/evaluator"
+EVAL_DIR="/path/to/set-core/benchmark/evaluator"
 
 # For each run:
 cd ~/benchmark/run-a/craftbazaar-baseline
@@ -189,7 +189,7 @@ After both runs complete, gather data:
 cd ~/benchmark/<run>/craftbazaar-<label>
 
 # Iteration history
-wt-loop history
+set-loop history
 
 # Git log with timestamps
 git log --oneline --format="%h %ai %s"
@@ -210,10 +210,10 @@ cat .claude/ralph-loop.log
 cd ~/benchmark/run-b/craftbazaar-memory
 
 # All saved memories
-wt-memory list --json
+set-memory list --json
 
 # Memory count and health
-wt-memory status
+set-memory status
 ```
 
 ## 7. Post-Run Annotation
@@ -271,7 +271,7 @@ The v6 benchmark showed no measurable memory advantage:
 
 **C12 acceptance criteria (implemented):** Bug 11 requires `<Pagination .../>` rendered (not just imported). Bug 12 requires Toast globally mounted in layout.tsx.
 
-**Metrics integration (v7):** Both init scripts now enable metrics collection (`~/.local/share/wt-tools/metrics/.enabled`). This captures per-hook injection quality data (query, relevance scores, dedup hits, duration) during benchmark runs.
+**Metrics integration (v7):** Both init scripts now enable metrics collection (`~/.local/share/set-core/metrics/.enabled`). This captures per-hook injection quality data (query, relevance scores, dedup hits, duration) during benchmark runs.
 
 **Recall-verify emphasis (v7):** with-memory.md CLAUDE.md strengthened to address v6 finding that memory-induced overconfidence led to worse C12 implementations (Run B used half the tokens but missed 3 bugs).
 
@@ -297,13 +297,13 @@ After both runs complete, analyze injection quality:
 
 ```bash
 # Injection quality report (covers both runs if they share the same machine)
-wt-memory metrics --since 2d
+set-memory metrics --since 2d
 
 # JSON output for scripting
-wt-memory metrics --since 2d --json
+set-memory metrics --since 2d --json
 
-# Full dashboard (requires lib/dashboard.py from wt-tools)
-PYTHONPATH=/path/to/wt-tools python3 /path/to/wt-tools/lib/dashboard.py
+# Full dashboard (requires lib/dashboard.py from set-core)
+PYTHONPATH=/path/to/set-core python3 /path/to/set-core/lib/dashboard.py
 ```
 
 ### What to look for
@@ -319,8 +319,8 @@ PYTHONPATH=/path/to/wt-tools python3 /path/to/wt-tools/lib/dashboard.py
 
 ```bash
 # Disable metrics collection
-wt-memory metrics --disable
+set-memory metrics --disable
 
 # Or remove the flag file directly
-rm ~/.local/share/wt-tools/metrics/.enabled
+rm ~/.local/share/set-core/metrics/.enabled
 ```

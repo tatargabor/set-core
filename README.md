@@ -100,7 +100,7 @@ Or start simple — just use worktrees:
 set-new my-feature        # create isolated worktree
 set-work my-feature       # open in editor + start Claude Code
 # ... work ...
-wt-merge my-feature      # merge back to main
+set-merge my-feature      # merge back to main
 ```
 
 See [Getting Started](docs/getting-started.md) for the full guide.
@@ -164,7 +164,7 @@ When a Figma MCP server is configured, the orchestration pipeline automatically:
 <!-- TODO: screenshot — design-snapshot.md example showing extracted tokens and component hierarchy -->
 
 ```
-Figma ──► wt-figma-fetch ──► design-snapshot.md ──► planner (tokens per change)
+Figma ──► set-figma-fetch ──► design-snapshot.md ──► planner (tokens per change)
                                                  ──► dispatcher (hierarchy per agent)
                                                  ──► verifier (compliance check)
 ```
@@ -179,7 +179,7 @@ Figma ──► wt-figma-fetch ──► design-snapshot.md ──► planner (t
 
 **[OpenSpec Workflow](docs/openspec.md)** — Structured spec-driven development: `/opsx:new` → `/opsx:ff` → `/opsx:apply` → `/opsx:verify` → `/opsx:archive`. Prevents agents from going off-track with artifact tracking.
 
-**[Worktrees](docs/worktrees.md)** — Git worktree lifecycle with editor integration and Claude Code auto-launch. CLI (`set-new`, `set-work`, `wt-merge`) or agent skills (`/wt:new`, `/wt:merge`).
+**[Worktrees](docs/worktrees.md)** — Git worktree lifecycle with editor integration and Claude Code auto-launch. CLI (`set-new`, `set-work`, `set-merge`) or agent skills (`/set:new`, `/set:merge`).
 
 **[Ralph Loop](docs/ralph.md)** — Autonomous agent execution. Runs Claude Code in iterations through task lists with configurable limits and progress-based trend detection.
 
@@ -194,7 +194,7 @@ Figma ──► wt-figma-fetch ──► design-snapshot.md ──► planner (t
 | Single agent, single project | Claude Code alone is great — start there |
 | 2+ agents or switching projects | Web Dashboard + `set-work` |
 | Structured feature development | OpenSpec (`/opsx:new` → `/opsx:apply`) |
-| Task list to grind through | Ralph Loop (`wt-loop start`) |
+| Task list to grind through | Ralph Loop (`set-loop start`) |
 | Multiple changes from a spec | Sentinel (`/wt:sentinel --spec`) |
 | Agents learning across sessions | Developer Memory (`set-memory`) |
 
@@ -202,11 +202,11 @@ Figma ──► wt-figma-fetch ──► design-snapshot.md ──► planner (t
 
 ## Web Dashboard
 
-The wt-web dashboard shows running projects, orchestration state, agent status, and logs in a browser. Responsive design works on desktop and mobile.
+The set-web dashboard shows running projects, orchestration state, agent status, and logs in a browser. Responsive design works on desktop and mobile.
 
-<!-- TODO: screenshot — wt-web desktop view showing orchestration dashboard with agent cards, progress bars -->
+<!-- TODO: screenshot — set-web desktop view showing orchestration dashboard with agent cards, progress bars -->
 
-<!-- TODO: screenshot — wt-web mobile view (phone) showing compact orchestration status via Tailscale -->
+<!-- TODO: screenshot — set-web mobile view (phone) showing compact orchestration status via Tailscale -->
 
 **Start locally:**
 
@@ -219,9 +219,9 @@ set-orch-core serve                    # http://localhost:7400
 **As a systemd service:**
 
 ```bash
-cp templates/systemd/wt-web.service ~/.config/systemd/user/
+cp templates/systemd/set-web.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now wt-web
+systemctl --user enable --now set-web
 ```
 
 **Mobile access** — The dashboard works on phones via [Tailscale](https://tailscale.com). Set `WT_TAILSCALE_HOSTNAME` in `.env`, run `sudo tailscale serve --bg --http 80 http://localhost:7400`, then open in Chrome on your phone. HTTP is used because Tailscale's auto-provisioned certs can trigger Certificate Transparency errors on Android — the WireGuard tunnel already encrypts all traffic.
@@ -435,7 +435,7 @@ The installer handles everything: CLI symlinks, shell completions, MCP server co
 | **Linux** | Primary development platform — tested on Ubuntu 22.04+ |
 | **macOS** | Partial — core functionality works, contributors improving parity |
 | **Zed** | Primary editor, best tested |
-| **VS Code / Cursor / Windsurf** | Supported via `wt-config editor set` |
+| **VS Code / Cursor / Windsurf** | Supported via `set-config editor set` |
 | **Claude Code** | Integrated — auto-launch, MCP, skill hooks |
 
 > **Note:** Feature development is Linux-first. macOS is supported and used in production, but some platform-specific behavior (e.g. window management, process signals) may differ. We welcome macOS-focused contributions.

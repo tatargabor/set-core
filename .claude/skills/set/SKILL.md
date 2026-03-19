@@ -1,6 +1,6 @@
 ---
-name: wt
-description: Manage git worktrees for parallel AI agent development. Use this when asked to create, list, open, close, or merge worktrees, or when working with wt-* commands.
+name: set
+description: Manage git worktrees for parallel AI agent development. Use this when asked to create, list, open, close, or merge worktrees, or when working with set-* commands.
 ---
 
 # Worktree Management Skill

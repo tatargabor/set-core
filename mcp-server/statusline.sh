@@ -1,6 +1,6 @@
 #!/bin/bash
 # Claude Code Status Line Script
-# Shows: folder, branch, model, context usage, wt-loop status
+# Shows: folder, branch, model, context usage, set-loop status
 
 input=$(cat)
 
@@ -24,9 +24,9 @@ total_input=$(echo "$input" | jq -r '.context_window.total_input_tokens // 0')
 total_output=$(echo "$input" | jq -r '.context_window.total_output_tokens // 0')
 agents=$(echo "$input" | jq -r '.agents // [] | length')
 
-# wt-loop status (check loop-state.json in current worktree)
+# set-loop status (check loop-state.json in current worktree)
 ralph_status=""
-state_file="$dir/.wt/loop-state.json"
+state_file="$dir/.set/loop-state.json"
 if [ -f "$state_file" ]; then
     status=$(jq -r '.status // empty' "$state_file" 2>/dev/null)
     iteration=$(jq -r '.current_iteration // 0' "$state_file" 2>/dev/null)
@@ -34,16 +34,16 @@ if [ -f "$state_file" ]; then
 
     case "$status" in
         running)
-            ralph_status=" | 🔄 wt-ralph: $iteration/$max_iter"
+            ralph_status=" | 🔄 set-ralph: $iteration/$max_iter"
             ;;
         done)
-            ralph_status=" | ✅ wt-ralph: done"
+            ralph_status=" | ✅ set-ralph: done"
             ;;
         stuck)
-            ralph_status=" | ⚠️ wt-ralph: stuck"
+            ralph_status=" | ⚠️ set-ralph: stuck"
             ;;
         stopped)
-            ralph_status=" | ⏹️ wt-ralph: stopped"
+            ralph_status=" | ⏹️ set-ralph: stopped"
             ;;
     esac
 fi

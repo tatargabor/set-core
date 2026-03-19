@@ -52,14 +52,14 @@ def orch_remember(
     """
     global _mem_ops_count, _mem_ops_total_ms
 
-    if not shutil.which("wt-memory"):
+    if not shutil.which("set-memory"):
         return False
 
     tag_str = f"source:orchestrator{f',{tags}' if tags else ''}"
     start_ms = _now_ms()
 
     result = run_command(
-        ["wt-memory", "remember", "--type", mem_type, "--tags", tag_str],
+        ["set-memory", "remember", "--type", mem_type, "--tags", tag_str],
         stdin_data=content,
         timeout=30,
     )
@@ -98,14 +98,14 @@ def orch_recall(
     """
     global _mem_recall_count, _mem_recall_total_ms
 
-    if not shutil.which("wt-memory"):
+    if not shutil.which("set-memory"):
         return ""
 
     start_ms = _now_ms()
 
     result = run_command(
         [
-            "wt-memory",
+            "set-memory",
             "recall",
             query,
             "--limit",
@@ -211,14 +211,14 @@ def plan_memory_hygiene() -> dict[str, Any]:
     Returns:
         Dict with total_memories, duplicates, elapsed_ms.
     """
-    if not shutil.which("wt-memory"):
+    if not shutil.which("set-memory"):
         return {}
 
     start_ms = _now_ms()
 
     # Dedup dry-run
     dedup_result = run_command(
-        ["wt-memory", "dedup", "--dry-run"],
+        ["set-memory", "dedup", "--dry-run"],
         timeout=30,
     )
     dedup_count = 0
@@ -231,7 +231,7 @@ def plan_memory_hygiene() -> dict[str, Any]:
 
     # Stats
     stats_result = run_command(
-        ["wt-memory", "stats", "--json"],
+        ["set-memory", "stats", "--json"],
         timeout=30,
     )
     total_memories = 0
@@ -270,14 +270,14 @@ def orch_memory_audit() -> dict[str, Any]:
     Returns:
         Dict with duplicates found, total memories, elapsed_ms.
     """
-    if not shutil.which("wt-memory"):
+    if not shutil.which("set-memory"):
         return {}
 
     start_ms = _now_ms()
 
     # Dedup dry-run
     dedup_result = run_command(
-        ["wt-memory", "dedup", "--dry-run"],
+        ["set-memory", "dedup", "--dry-run"],
         timeout=30,
     )
     dedup_count = 0
@@ -290,7 +290,7 @@ def orch_memory_audit() -> dict[str, Any]:
 
     # Spot-check: verify index integrity
     verify_result = run_command(
-        ["wt-memory", "verify-index"],
+        ["set-memory", "verify-index"],
         timeout=30,
     )
     index_ok = verify_result.exit_code == 0

@@ -12,10 +12,10 @@
 - **THEN** they SHALL complete: install, register project, create worktree, open worktree, and (optionally) start sentinel
 
 ### Requirement: Worktrees page
-`docs/worktrees.md` SHALL contain all worktree CLI commands (wt-new, wt-work, wt-close, wt-merge, wt-list, wt-status, wt-focus, wt-add), Claude Code skills (/wt:new, /wt:work, etc.), and the "parallel feature development" use case from the old README.
+`docs/worktrees.md` SHALL contain all worktree CLI commands (set-new, set-work, set-close, set-merge, set-list, set-status, set-focus, set-add), Claude Code skills (/wt:new, /wt:work, etc.), and the "parallel feature development" use case from the old README.
 
 #### Scenario: CLI command coverage
-- **WHEN** comparing worktree commands in `docs/worktrees.md` with `bin/wt-*` scripts
+- **WHEN** comparing worktree commands in `docs/worktrees.md` with `bin/set-*` scripts
 - **THEN** all worktree-related commands SHALL be documented
 
 #### Scenario: Skills mapping
@@ -23,11 +23,11 @@
 - **THEN** each CLI command SHALL show its corresponding `/wt:*` skill
 
 ### Requirement: Ralph page
-`docs/ralph.md` SHALL contain Ralph loop commands (wt-loop start/stop/status/list/history/monitor), configuration options, the "let the agent work overnight" use case, and guidance on when Ralph is appropriate vs not (well-scoped tasks vs exploratory work).
+`docs/ralph.md` SHALL contain Ralph loop commands (set-loop start/stop/status/list/history/monitor), configuration options, the "let the agent work overnight" use case, and guidance on when Ralph is appropriate vs not (well-scoped tasks vs exploratory work).
 
 #### Scenario: Command reference
 - **WHEN** reading the Ralph page
-- **THEN** all `wt-loop` subcommands SHALL be documented with examples
+- **THEN** all `set-loop` subcommands SHALL be documented with examples
 
 #### Scenario: Use case inclusion
 - **WHEN** reading the Ralph page
@@ -45,7 +45,7 @@
 - **THEN** gui-config.json settings, color profiles, and window options SHALL be documented
 
 ### Requirement: Team Sync page
-`docs/team-sync.md` SHALL contain cross-machine setup (wt-control-init, wt-control-sync), agent messaging (/wt:msg, /wt:inbox, /wt:broadcast, /wt:status), batch messaging architecture (zero extra git ops), history compaction, encrypted chat, and all content from the current `docs/agent-messaging.md`.
+`docs/team-sync.md` SHALL contain cross-machine setup (set-control-init, set-control-sync), agent messaging (/wt:msg, /wt:inbox, /wt:broadcast, /wt:status), batch messaging architecture (zero extra git ops), history compaction, encrypted chat, and all content from the current `docs/agent-messaging.md`.
 
 #### Scenario: Messaging content present
 - **WHEN** reading team-sync.md
@@ -76,13 +76,13 @@
 
 #### Scenario: Installation pattern
 - **WHEN** reading the plugin install section
-- **THEN** it SHALL describe the planned `wt-plugin install <repo>` pattern (even if not yet implemented)
+- **THEN** it SHALL describe the planned `set-plugin install <repo>` pattern (even if not yet implemented)
 
 ### Requirement: CLI Reference page
 `docs/cli-reference.md` SHALL contain the complete CLI command reference currently in the README, organized by category: Worktree Management, Project Management, Ralph Loop, Orchestration, Team & Sync, Developer Memory, OpenSpec, Utilities. Internal scripts SHALL be listed in a collapsed section.
 
 #### Scenario: Command completeness
-- **WHEN** comparing `docs/cli-reference.md` with `ls bin/wt-*`
+- **WHEN** comparing `docs/cli-reference.md` with `ls bin/set-*`
 - **THEN** every user-facing command SHALL be documented
 
 #### Scenario: Category organization

@@ -1,4 +1,4 @@
-# Tasks: wt-web Dashboard Fixes Batch 2
+# Tasks: set-web Dashboard Fixes Batch 2
 
 All tasks already implemented and committed.
 

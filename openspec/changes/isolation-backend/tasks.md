@@ -16,7 +16,7 @@
 
 - [ ] 3.1 Replace `git worktree remove --force` in `redispatch_change()` (dispatcher.py:713) with `backend.remove()` [REQ: backend-interface-abstraction]
 - [ ] 3.2 Replace `git worktree list --porcelain` in `_find_existing_worktree()` (dispatcher.py:805) with `backend.list_active()` [REQ: backend-interface-abstraction]
-- [ ] 3.3 Replace worktree creation in dispatch flow (dispatcher.py, calls to wt-new) with `backend.create()` [REQ: backend-interface-abstraction]
+- [ ] 3.3 Replace worktree creation in dispatch flow (dispatcher.py, calls to set-new) with `backend.create()` [REQ: backend-interface-abstraction]
 - [ ] 3.4 Replace `sync_worktree_with_main()` (dispatcher.py:203) to delegate to `backend.sync_with_main()` [REQ: backend-interface-abstraction]
 
 ## 4. Merger & Planner Migration
@@ -32,8 +32,8 @@
 ## 6. CLI Script Migration
 
 - [ ] 6.1 Add `set-orch-core isolation create` and `set-orch-core isolation remove` thin CLI entry points that call the Python backend [REQ: cli-backend-delegation]
-- [ ] 6.2 Modify `bin/wt-new` to call `set-orch-core isolation create` instead of `git worktree add` (keep bootstrap steps in bash) [REQ: cli-backend-delegation]
-- [ ] 6.3 Modify `bin/wt-close` to call `set-orch-core isolation remove` instead of `git worktree remove` (keep branch cleanup in bash) [REQ: cli-backend-delegation]
+- [ ] 6.2 Modify `bin/set-new` to call `set-orch-core isolation create` instead of `git worktree add` (keep bootstrap steps in bash) [REQ: cli-backend-delegation]
+- [ ] 6.3 Modify `bin/set-close` to call `set-orch-core isolation remove` instead of `git worktree remove` (keep branch cleanup in bash) [REQ: cli-backend-delegation]
 
 ## 7. Tests
 
@@ -54,5 +54,5 @@
 - [ ] AC-8: WHEN BranchCloneBackend.list_active() is called THEN active clones are found by path pattern [REQ: branch-clone-backend, scenario: list-via-branch-clone-backend]
 - [ ] AC-9: WHEN BranchCloneBackend.sync_with_main() is called THEN main branch changes are merged into clone [REQ: branch-clone-backend, scenario: sync-clone-with-main]
 - [ ] AC-10: WHEN change is dispatched with either backend THEN worktree_path in state.json contains the path [REQ: path-convention-preserved, scenario: state-compatibility]
-- [ ] AC-11: WHEN wt-new runs with branch-clone config THEN clone is created with identical output format [REQ: cli-backend-delegation, scenario: wt-new-uses-configured-backend]
-- [ ] AC-12: WHEN wt-close runs with branch-clone config THEN clone is removed with identical CLI behavior [REQ: cli-backend-delegation, scenario: wt-close-uses-configured-backend]
+- [ ] AC-11: WHEN set-new runs with branch-clone config THEN clone is created with identical output format [REQ: cli-backend-delegation, scenario: set-new-uses-configured-backend]
+- [ ] AC-12: WHEN set-close runs with branch-clone config THEN clone is removed with identical CLI behavior [REQ: cli-backend-delegation, scenario: set-close-uses-configured-backend]

@@ -53,7 +53,7 @@
 
 <h2>Spec Digest</h2>
 {% if not data.digest.available %}
-<p class="not-available">Not available — run <code>wt-orchestrate digest</code> first.</p>
+<p class="not-available">Not available — run <code>set-orchestrate digest</code> first.</p>
 {% else %}
 <p><strong>Source:</strong> {{ data.digest.spec_dir }} ({{ data.digest.file_count }} files) | <strong>Hash:</strong> {{ data.digest.source_hash[:12] }} | <strong>Digested:</strong> {{ data.digest.timestamp }}</p>
 

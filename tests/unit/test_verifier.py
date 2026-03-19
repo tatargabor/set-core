@@ -138,7 +138,7 @@ class TestIsArtifactOrBootstrap:
     def test_orchestration(self):
         assert _is_artifact_or_bootstrap("orchestration-state.json") is True
 
-    def test_wt_tools(self):
+    def test_set_tools(self):
         assert _is_artifact_or_bootstrap(".set-core/config.yaml") is True
 
     def test_lock_file(self):

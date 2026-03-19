@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 # Test counters
 TESTS_RUN=0
@@ -207,11 +207,11 @@ rm -rf "$TMPDIR"/*
 echo ""
 echo "--- scaffold_wt_directory ---"
 
-# Source wt-project for scaffold_wt_directory
-source "$PROJECT_DIR/bin/wt-common.sh"
+# Source set-project for scaffold_wt_directory
+source "$PROJECT_DIR/bin/set-common.sh"
 
-# We can't source wt-project directly (it has a main dispatch),
-# so we test via the wt-project init flow or test the function inline
+# We can't source set-project directly (it has a main dispatch),
+# so we test via the set-project init flow or test the function inline
 # For unit testing, we replicate the function logic
 
 test_start "scaffold creates all subdirectories"

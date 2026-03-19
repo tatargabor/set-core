@@ -1,4 +1,4 @@
-When the user asks about set-core features, use this quick reference to answer. For deeper details, read the linked files or run `wt-<command> --help`.
+When the user asks about set-core features, use this quick reference to answer. For deeper details, read the linked files or run `set-<command> --help`.
 
 ## CLI Commands
 

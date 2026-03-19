@@ -1,7 +1,7 @@
 # MiniShop E2E Run #16
 
 **Date:** 2026-03-16
-**wt-tools commit:** 6334f5281 (feat: add spec-implementation-fidelity and impl-quality-runtime change artifacts)
+**set-core commit:** 6334f5281 (feat: add spec-implementation-fidelity and impl-quality-runtime change artifacts)
 **Project:** /tmp/minishop-run2
 **Spec:** v1-minishop.md (40 reqs, 6 domains → 11 changes, 5 phases)
 
@@ -103,7 +103,7 @@ The build_output shows `PrismaClientKnownRequestError: The table main.Product do
 
 ### 3. Bug #3 fix — dead agent detection + cart-actions redispatch (17:50)
 - **Trigger**: cart-actions stuck at running/0tok/pid=0 for 12+ minutes (4 poll cycles)
-- **Action**: Committed fix `8574cdee7`, killed sentinel+monitor, deployed (`wt-project init` + worktree sync), reset cart-actions to pending, removed stale worktree, restarted sentinel (PID 672412→monitor 672485)
+- **Action**: Committed fix `8574cdee7`, killed sentinel+monitor, deployed (`set-project init` + worktree sync), reset cart-actions to pending, removed stale worktree, restarted sentinel (PID 672412→monitor 672485)
 - **Impact**: Pipeline resumed. cart-actions will be redispatched.
 
 ### 4. Manual merge of admin-variant-crud (~17:55)

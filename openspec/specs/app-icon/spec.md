@@ -43,7 +43,7 @@ The installer SHALL deploy the appropriate icon file for each platform.
 
 #### Scenario: Linux icon installation
 - **WHEN** `install.sh` runs on Linux
-- **THEN** `assets/icon.png` SHALL be copied to `~/.local/share/icons/wt-control.png`
+- **THEN** `assets/icon.png` SHALL be copied to `~/.local/share/icons/set-control.png`
 - **AND** the `.desktop` entry SHALL reference this path in its `Icon=` field
 
 ### Requirement: Qt Application Icon

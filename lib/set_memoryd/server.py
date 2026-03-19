@@ -23,7 +23,7 @@ from .protocol import (
     make_result,
 )
 
-logger = logging.getLogger("wt-memoryd")
+logger = logging.getLogger("set-memoryd")
 
 # Default idle timeout: 30 minutes
 DEFAULT_IDLE_TIMEOUT = 30 * 60
@@ -296,7 +296,7 @@ class MemoryDaemon:
         os.chmod(self.socket_path, 0o600)
 
         logger.info(
-            "wt-memoryd started: project=%s socket=%s pid=%d",
+            "set-memoryd started: project=%s socket=%s pid=%d",
             self.project, self.socket_path, os.getpid(),
         )
 

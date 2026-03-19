@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# wt-memory sync: git-based team memory sharing
-# Dependencies: sourced by bin/wt-memory after infra setup
+# set-memory sync: git-based team memory sharing
+# Dependencies: sourced by bin/set-memory after infra setup
 
 sync_resolve_identity() {
     local user machine
@@ -128,29 +128,29 @@ cmd_sync_push() {
 
     # Get user identity for commits in temp dir
     local git_name git_email
-    git_name=$(git config user.name 2>/dev/null || echo "wt-memory")
-    git_email=$(git config user.email 2>/dev/null || echo "wt-memory@localhost")
+    git_name=$(git config user.name 2>/dev/null || echo "set-memory")
+    git_email=$(git config user.email 2>/dev/null || echo "set-memory@localhost")
 
     local tmpdir
     tmpdir=$(mktemp -d)
 
-    # Check if wt-memory branch exists on remote
+    # Check if set-memory branch exists on remote
     local branch_exists=false
-    if git ls-remote --heads origin wt-memory 2>/dev/null | grep -q wt-memory; then
+    if git ls-remote --heads origin set-memory 2>/dev/null | grep -q set-memory; then
         branch_exists=true
     fi
 
     if [[ "$branch_exists" == "true" ]]; then
         # Clone existing branch (shallow)
-        if ! git clone --branch wt-memory --single-branch --depth 1 "$remote_url" "$tmpdir" 2>/dev/null; then
-            echo "Error: failed to clone wt-memory branch" >&2
+        if ! git clone --branch set-memory --single-branch --depth 1 "$remote_url" "$tmpdir" 2>/dev/null; then
+            echo "Error: failed to clone set-memory branch" >&2
             rm -rf "$tmpdir"
             return 1
         fi
     else
         # Create new orphan branch
         git init "$tmpdir" >/dev/null 2>&1
-        git -C "$tmpdir" checkout --orphan wt-memory 2>/dev/null
+        git -C "$tmpdir" checkout --orphan set-memory 2>/dev/null
         git -C "$tmpdir" remote add origin "$remote_url" 2>/dev/null
     fi
 
@@ -180,7 +180,7 @@ cmd_sync_push() {
     timestamp=$(date -Iseconds 2>/dev/null || date)
     git -C "$tmpdir" commit -m "sync: $identity $timestamp" >/dev/null 2>&1
 
-    if git -C "$tmpdir" push origin wt-memory 2>/dev/null; then
+    if git -C "$tmpdir" push origin set-memory 2>/dev/null; then
         sync_update_state "$storage_path" \
             "last_push_hash=$current_hash" \
             "last_push_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -217,9 +217,9 @@ cmd_sync_pull() {
     local identity
     identity=$(sync_resolve_identity)
 
-    # Fetch the wt-memory branch
-    if ! git fetch origin wt-memory 2>/dev/null; then
-        echo "No sync branch found. Run 'wt-memory sync push' first."
+    # Fetch the set-memory branch
+    if ! git fetch origin set-memory 2>/dev/null; then
+        echo "No sync branch found. Run 'set-memory sync push' first."
         return 0
     fi
 
@@ -310,12 +310,12 @@ cmd_sync() {
             status) shift; cmd_sync_status "$@"; return $? ;;
             -*)
                 echo "Error: unknown option '$1'" >&2
-                echo "Usage: wt-memory sync [push|pull|status]" >&2
+                echo "Usage: set-memory sync [push|pull|status]" >&2
                 return 1
                 ;;
             *)
                 echo "Error: unknown sync subcommand '$1'" >&2
-                echo "Usage: wt-memory sync [push|pull|status]" >&2
+                echo "Usage: set-memory sync [push|pull|status]" >&2
                 return 1
                 ;;
         esac
@@ -360,7 +360,7 @@ cmd_sync_status() {
 
     # Show remote sources
     echo "Remote sources:"
-    if git fetch origin wt-memory 2>/dev/null; then
+    if git fetch origin set-memory 2>/dev/null; then
         local files
         files=$(git ls-tree -r --name-only FETCH_HEAD 2>/dev/null | grep '/memories\.json$' || true)
 

@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Source common functions for color codes
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 # Test counters
 TESTS_RUN=0
@@ -54,11 +54,11 @@ assert_contains() {
 }
 
 # ============================================================
-# Setup: source wt-orchestrate functions
+# Setup: source set-orchestrate functions
 # ============================================================
 
 TEST_DIR="$SCRIPT_DIR"
-eval "$(sed '/^main "\$@"/d; /^SCRIPT_DIR=/s|=.*|="'"$PROJECT_DIR/bin"'"|' "$PROJECT_DIR/bin/wt-orchestrate")"
+eval "$(sed '/^main "\$@"/d; /^SCRIPT_DIR=/s|=.*|="'"$PROJECT_DIR/bin"'"|' "$PROJECT_DIR/bin/set-orchestrate")"
 
 SAMPLE_BRIEF="$TEST_DIR/sample-brief.md"
 SAMPLE_SPEC="$TEST_DIR/sample-spec.md"

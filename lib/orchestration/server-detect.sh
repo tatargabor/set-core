@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/orchestration/server-detect.sh — Auto-detect dev server and package manager
-# Sourced by bin/wt-orchestrate after merger.sh
+# Sourced by bin/set-orchestrate after merger.sh
 # Provides: detect_dev_server(), detect_package_manager(), install_dependencies()
 
 # Detect dev server command for a project directory.

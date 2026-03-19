@@ -1310,7 +1310,7 @@ def run_planning_pipeline(
         from .digest import check_digest_freshness
         freshness = check_digest_freshness(input_path)
         if freshness == "stale":
-            logger.warning("Digest is stale — consider re-running wt-orchestrate digest")
+            logger.warning("Digest is stale — consider re-running set-orchestrate digest")
 
     # 2. Triage gate
     digest_dir = os.path.join(os.getcwd(), "wt", "orchestration", "digest") if input_mode == "digest" else ""
@@ -1380,13 +1380,13 @@ def run_planning_pipeline(
     plan_data = _parse_plan_response(result.stdout)
     if not plan_data:
         # Debug: dump response for diagnosis
-        debug_path = Path("/tmp/wt-decompose-response.txt")
+        debug_path = Path("/tmp/set-decompose-response.txt")
         debug_path.write_text(result.stdout[:10000] if result.stdout else "(empty)")
         logger.error("Decompose response dumped to %s (len=%d)", debug_path, len(result.stdout or ""))
         raise RuntimeError("Could not parse plan JSON from Claude response")
 
     # 8. Validate
-    plan_file_tmp = "/tmp/wt-plan-validate.json"
+    plan_file_tmp = "/tmp/set-plan-validate.json"
     with open(plan_file_tmp, "w") as f:
         json.dump(plan_data, f, indent=2)
 
@@ -1435,12 +1435,12 @@ def plan_via_agent(
                 plan_version = json.load(f).get("plan_version", 0) + 1
         except (json.JSONDecodeError, OSError):
             pass
-    wt_name = f"wt-planning-v{plan_version}"
+    wt_name = f"set-planning-v{plan_version}"
 
     logger.info("plan_via_agent: starting (spec=%s, phase_hint=%s)", spec_path, phase_hint)
 
     # Create planning worktree
-    result = run_command(["wt-new", wt_name], timeout=30)
+    result = run_command(["set-new", wt_name], timeout=30)
     wt_path = result.stdout.strip() if result.exit_code == 0 else ""
 
     if not wt_path or not Path(wt_path).is_dir():
@@ -1462,7 +1462,7 @@ def plan_via_agent(
     task_desc = f"Decompose the specification at '{spec_path}' into an orchestration execution plan."
     if phase_hint:
         task_desc += f" Focus on phase: {phase_hint}."
-    task_desc += " Use the /wt:decompose skill. Write the result to orchestration-plan.json in the project root."
+    task_desc += " Use the /set:decompose skill. Write the result to orchestration-plan.json in the project root."
 
     # Dispatch Ralph loop
     env = dict(os.environ)
@@ -1471,7 +1471,7 @@ def plan_via_agent(
         env["PHASE_HINT"] = phase_hint
 
     loop_result = run_command(
-        ["wt-loop", "start", task_desc, "--max", "10", "--model", "opus",
+        ["set-loop", "start", task_desc, "--max", "10", "--model", "opus",
          "--label", wt_name, "--change", wt_name],
         timeout=1800,
         cwd=wt_path,
@@ -1482,14 +1482,14 @@ def plan_via_agent(
     agent_plan = Path(wt_path) / "orchestration-plan.json"
     if not agent_plan.is_file():
         logger.error("plan_via_agent: no plan produced (loop rc=%d)", loop_result.exit_code)
-        run_command(["wt-close", wt_name, "--force"], timeout=30)
+        run_command(["set-close", wt_name, "--force"], timeout=30)
         return False
 
     # Validate
     validation = validate_plan(str(agent_plan))
     if not validation.ok:
         logger.error("plan_via_agent: plan failed validation: %s", validation.errors)
-        run_command(["wt-close", wt_name, "--force"], timeout=30)
+        run_command(["set-close", wt_name, "--force"], timeout=30)
         return False
 
     # Extract plan
@@ -1508,7 +1508,7 @@ def plan_via_agent(
         pass
 
     # Cleanup
-    run_command(["wt-close", wt_name, "--force"], timeout=30)
+    run_command(["set-close", wt_name, "--force"], timeout=30)
     return True
 
 
@@ -1516,7 +1516,7 @@ def plan_via_agent(
 def _fetch_design_context(force: bool = False) -> str:
     """Read committed design snapshot. No runtime MCP fetch.
 
-    Design snapshots are committed artifacts created by `wt-figma-fetch`.
+    Design snapshots are committed artifacts created by `set-figma-fetch`.
     This function only reads the existing file — it never fetches from MCP.
     Searches recursively under CWD for design-snapshot.md.
 
@@ -1536,7 +1536,7 @@ def _fetch_design_context(force: bool = False) -> str:
         except OSError:
             continue
 
-    logger.info("No design-snapshot.md found — run 'wt-figma-fetch <docs-dir>' to fetch")
+    logger.info("No design-snapshot.md found — run 'set-figma-fetch <docs-dir>' to fetch")
     return ""
 
 

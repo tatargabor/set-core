@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 # ─── Directive Defaults ─────────────────────────────────────────────
-# Migrated from: bin/wt-orchestrate L39-70 (DEFAULT_* constants)
+# Migrated from: bin/set-orchestrate L39-70 (DEFAULT_* constants)
 
 DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "max_parallel": 3,

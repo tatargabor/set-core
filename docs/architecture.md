@@ -4,7 +4,7 @@
 
 ## Overview
 
-set-core has four layers: **shell scripts** (`bin/wt-*`) for worktree lifecycle, an **orchestration engine** (`set-orchestrate`) for autonomous multi-change execution, a **PySide6 GUI** for real-time monitoring, and an **MCP server** that connects Claude Code agents to the system. Everything is file-based — no daemon, no database, no external service.
+set-core has four layers: **shell scripts** (`bin/set-*`) for worktree lifecycle, an **orchestration engine** (`set-orchestrate`) for autonomous multi-change execution, a **PySide6 GUI** for real-time monitoring, and an **MCP server** that connects Claude Code agents to the system. Everything is file-based — no daemon, no database, no external service.
 
 ```
 ┌─────────────────────────────────────────────────────────┐

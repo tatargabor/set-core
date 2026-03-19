@@ -112,13 +112,13 @@ The system SHALL deliver messages by piggybacking on the existing sync cycle, NO
 #### Scenario: Message queued locally
 
 - **WHEN** `send_message()` is called
-- **THEN** the message is appended to `chat/outbox/{sender}.jsonl` in the local `.wt-control` worktree
+- **THEN** the message is appended to `chat/outbox/{sender}.jsonl` in the local `.set-control` worktree
 - **AND** no git commit or push occurs
 
 #### Scenario: Sync cycle delivers messages
 
 - **GIVEN** new messages exist in `chat/outbox/{sender}.jsonl` since last commit
-- **WHEN** `wt-control-sync --full` runs (every 15 seconds)
+- **WHEN** `set-control-sync --full` runs (every 15 seconds)
 - **THEN** outbox changes are included in the `git add -A`
 - **AND** pushed to remote in the same commit as member status updates
 
@@ -136,18 +136,18 @@ The system SHALL deliver messages by piggybacking on the existing sync cycle, NO
 
 ### Requirement: Control Branch History Compaction
 
-The system SHALL provide a mechanism to compact the wt-control branch history to prevent unbounded growth.
+The system SHALL provide a mechanism to compact the set-control branch history to prevent unbounded growth.
 
 #### Scenario: Manual compaction
 
-- **WHEN** user runs `wt-control-sync --compact`
-- **THEN** all commits on the wt-control branch are squashed into a single commit
+- **WHEN** user runs `set-control-sync --compact`
+- **THEN** all commits on the set-control branch are squashed into a single commit
 - **AND** the branch is force-pushed with `--force-with-lease`
 
 #### Scenario: Other machines recover after compaction
 
 - **GIVEN** machine A ran `--compact` and force-pushed
-- **WHEN** machine B runs `wt-control-sync --full`
+- **WHEN** machine B runs `set-control-sync --full`
 - **THEN** the pull fails due to diverged history
 - **AND** recovery kicks in: fetch, reset --hard to remote, reapply own status
 - **AND** machine B continues syncing normally
@@ -161,19 +161,19 @@ The system SHALL provide a mechanism to compact the wt-control branch history to
 
 #### Scenario: Auto-compact on threshold
 
-- **GIVEN** the wt-control branch has more than the configured threshold commits (default: 1000)
-- **WHEN** `wt-control-sync --full` runs
+- **GIVEN** the set-control branch has more than the configured threshold commits (default: 1000)
+- **WHEN** `set-control-sync --full` runs
 - **THEN** compaction is triggered automatically (squash + force-push)
-- **AND** a log message is emitted: "Auto-compacting wt-control (N commits)"
+- **AND** a log message is emitted: "Auto-compacting set-control (N commits)"
 
 #### Scenario: Configurable compact threshold
 
 - **GIVEN** the team settings contain `compact_threshold` value (e.g., 50 for testing)
-- **WHEN** `wt-control-sync --full` runs
+- **WHEN** `set-control-sync --full` runs
 - **THEN** the configured threshold is used instead of the default 1000
 - **AND** this allows testing compaction with small numbers of commits
 
 #### Scenario: Manual compact override
 
-- **WHEN** user runs `wt-control-sync --compact`
+- **WHEN** user runs `set-control-sync --compact`
 - **THEN** compaction runs immediately regardless of commit count

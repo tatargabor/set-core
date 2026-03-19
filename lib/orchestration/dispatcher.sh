@@ -3,9 +3,9 @@
 # Dependencies: config.sh, utils.sh, state.sh, events.sh, builder.sh
 #
 # Python implementation: lib/wt_orch/dispatcher.py
-# This file contains thin wrappers that delegate to wt-orch-core dispatch *
+# This file contains thin wrappers that delegate to set-orch-core dispatch *
 # and cmd_start/cmd_pause/cmd_resume which remain in bash for init/signal setup,
-# then exec to Python monitor loop (wt-orch-core engine monitor).
+# then exec to Python monitor loop (set-orch-core engine monitor).
 
 # ─── Worktree Preparation (delegated to Python) ─────────────────────
 
@@ -14,7 +14,7 @@ sync_worktree_with_main() {
     local wt_path="$1"
     local change_name="$2"
     local result
-    result=$(wt-orch-core dispatch sync-worktree --wt-path "$wt_path" --change "$change_name" 2>&1)
+    result=$(set-orch-core dispatch sync-worktree --wt-path "$wt_path" --change "$change_name" 2>&1)
     local rc=$?
     [[ $rc -eq 0 ]] && log_info "Sync: $change_name $(echo "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("message","ok"))' 2>/dev/null || echo 'ok')"
     [[ $rc -ne 0 ]] && log_warn "Sync failed for $change_name"
@@ -25,13 +25,13 @@ bootstrap_worktree() {
     # Migrated to: wt_orch/dispatcher.py bootstrap_worktree()
     local project_path="$1"
     local wt_path="$2"
-    wt-orch-core dispatch bootstrap --project-path "$project_path" --wt-path "$wt_path" 2>/dev/null
+    set-orch-core dispatch bootstrap --project-path "$project_path" --wt-path "$wt_path" 2>/dev/null
 }
 
 prune_worktree_context() {
     # Migrated to: wt_orch/dispatcher.py prune_worktree_context()
     local wt_path="$1"
-    wt-orch-core dispatch prune-context --wt-path "$wt_path" 2>/dev/null
+    set-orch-core dispatch prune-context --wt-path "$wt_path" 2>/dev/null
 }
 
 # ─── Model Routing (delegated to Python) ─────────────────────────────
@@ -41,7 +41,7 @@ resolve_change_model() {
     local change_name="$1"
     local default_model="${2:-opus}"
     local model_routing="${3:-off}"
-    wt-orch-core dispatch resolve-model \
+    set-orch-core dispatch resolve-model \
         --state "$STATE_FILENAME" \
         --change "$change_name" \
         --default-model "$default_model" \
@@ -52,14 +52,14 @@ resolve_change_model() {
 
 recover_orphaned_changes() {
     # Migrated to: wt_orch/dispatcher.py recover_orphaned_changes()
-    wt-orch-core dispatch recover-orphans --state "$STATE_FILENAME" 2>/dev/null
+    set-orch-core dispatch recover-orphans --state "$STATE_FILENAME" 2>/dev/null
 }
 
 redispatch_change() {
     # Migrated to: wt_orch/dispatcher.py redispatch_change()
     local change_name="$1"
     local failure_pattern="${2:-stuck}"
-    wt-orch-core dispatch redispatch \
+    set-orch-core dispatch redispatch \
         --state "$STATE_FILENAME" \
         --change "$change_name" \
         --failure-pattern "$failure_pattern" \
@@ -69,7 +69,7 @@ redispatch_change() {
 retry_failed_builds() {
     # Migrated to: wt_orch/dispatcher.py retry_failed_builds()
     local max_retries="${1:-2}"
-    wt-orch-core dispatch retry-builds \
+    set-orch-core dispatch retry-builds \
         --state "$STATE_FILENAME" \
         --max-retries "$max_retries"
 }
@@ -90,7 +90,7 @@ dispatch_change() {
     [[ -n "${INPUT_MODE:-}" ]] && args+=(--input-mode "$INPUT_MODE")
     [[ -n "${INPUT_PATH:-}" ]] && args+=(--input-path "$INPUT_PATH")
     [[ -n "${DIGEST_DIR:-}" ]] && args+=(--digest-dir "$DIGEST_DIR")
-    wt-orch-core dispatch dispatch-change "${args[@]}"
+    set-orch-core dispatch dispatch-change "${args[@]}"
 }
 
 dispatch_via_wt_loop() {
@@ -110,7 +110,7 @@ dispatch_via_wt_loop() {
 
     (
         cd "$wt_path" || exit 1
-        wt-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model "$impl_model" --change "$change_name" $team_flag
+        set-loop start "$task_desc" --max 30 --done openspec --label "$change_name" --model "$impl_model" --change "$change_name" $team_flag
     ) &
     wait $! 2>/dev/null || true
 
@@ -122,7 +122,7 @@ dispatch_via_wt_loop() {
     done
 
     if [[ ! -f "$loop_state" ]]; then
-        error "wt-loop failed to start for $change_name"
+        error "set-loop failed to start for $change_name"
         update_change_field "$change_name" "status" '"failed"'
         return 1
     fi
@@ -147,7 +147,7 @@ dispatch_ready_changes() {
     [[ -n "${INPUT_MODE:-}" ]] && args+=(--input-mode "$INPUT_MODE")
     [[ -n "${INPUT_PATH:-}" ]] && args+=(--input-path "$INPUT_PATH")
     [[ -n "${DIGEST_DIR:-}" ]] && args+=(--digest-dir "$DIGEST_DIR")
-    wt-orch-core dispatch dispatch-ready "${args[@]}"
+    set-orch-core dispatch dispatch-ready "${args[@]}"
 }
 
 # ─── Lifecycle (delegated to Python) ─────────────────────────────────
@@ -155,7 +155,7 @@ dispatch_ready_changes() {
 pause_change() {
     # Migrated to: wt_orch/dispatcher.py pause_change()
     local change_name="$1"
-    wt-orch-core dispatch pause \
+    set-orch-core dispatch pause \
         --state "$STATE_FILENAME" \
         --change "$change_name"
 }
@@ -170,17 +170,17 @@ resume_change() {
         --model-routing "${MODEL_ROUTING:-off}"
     )
     [[ "${TEAM_MODE:-false}" == "true" ]] && args+=(--team)
-    wt-orch-core dispatch resume "${args[@]}"
+    set-orch-core dispatch resume "${args[@]}"
 }
 
 resume_stopped_changes() {
     # Migrated to: wt_orch/dispatcher.py resume_stopped_changes()
-    wt-orch-core dispatch resume-stopped --state "$STATE_FILENAME" 2>/dev/null
+    set-orch-core dispatch resume-stopped --state "$STATE_FILENAME" 2>/dev/null
 }
 
 resume_stalled_changes() {
     # Migrated to: wt_orch/dispatcher.py resume_stalled_changes()
-    wt-orch-core dispatch resume-stalled --state "$STATE_FILENAME" 2>/dev/null
+    set-orch-core dispatch resume-stalled --state "$STATE_FILENAME" 2>/dev/null
 }
 
 # ─── Command Handlers (remain in bash — signal traps, monitor_loop) ──
@@ -274,7 +274,7 @@ cmd_start() {
             log_info "Exec'ing to Python monitor (auto-resume path)"
             trap - EXIT
             update_state_field "status" '"running"'
-            exec wt-orch-core engine monitor \
+            exec set-orch-core engine monitor \
                 --directives "$_directives_file" \
                 --state "$STATE_FILENAME" \
                 --poll-interval "${POLL_INTERVAL:-15}" \
@@ -286,7 +286,7 @@ cmd_start() {
 
     # Auto-plan if no plan exists or CLI --spec/--brief differs from plan's input
     local need_plan=false
-    # FORCE_REPLAN=false skips planning entirely (used by 'wt-orchestrate resume')
+    # FORCE_REPLAN=false skips planning entirely (used by 'set-orchestrate resume')
     if [[ "${FORCE_REPLAN:-}" == "false" ]]; then
         need_plan=false
     elif [[ ! -f "$PLAN_FILENAME" ]]; then
@@ -414,8 +414,8 @@ cmd_start() {
         local need_approval
         need_approval=$(echo "$directives_for_gate" | jq -r '.plan_approval // false')
         if [[ "$need_approval" == "true" ]]; then
-            info "Plan generated. Review with 'wt-orchestrate plan --show'"
-            info "Approve with 'wt-orchestrate approve' to begin dispatch."
+            info "Plan generated. Review with 'set-orchestrate plan --show'"
+            info "Approve with 'set-orchestrate approve' to begin dispatch."
             log_info "Plan approval required — entering plan_review state"
             init_state "$PLAN_FILENAME"
             update_state_field "status" '"plan_review"'
@@ -436,13 +436,13 @@ cmd_start() {
             running_pids=$(jq -r '.changes[] | select(.status == "running" or .status == "verifying") | .ralph_pid // 0' "$STATE_FILENAME" 2>/dev/null || true)
             while IFS= read -r pid; do
                 [[ -z "$pid" || "$pid" == "0" || "$pid" == "null" ]] && continue
-                if wt-orch-core process check-pid --pid "$pid" --expect-cmd "wt-loop" >/dev/null 2>&1; then
+                if set-orch-core process check-pid --pid "$pid" --expect-cmd "set-loop" >/dev/null 2>&1; then
                     has_live_pid=true
                     break
                 fi
             done <<< "$running_pids"
             if [[ "$has_live_pid" == true ]]; then
-                warn "Orchestrator is already running. Use 'wt-orchestrate status' to check progress."
+                warn "Orchestrator is already running. Use 'set-orchestrate status' to check progress."
                 return 1
             fi
             # No live PIDs — crashed state, treat as stopped for resume
@@ -458,8 +458,8 @@ cmd_start() {
         fi
         # Plan review: wait for approval
         if [[ "$current_status" == "plan_review" ]]; then
-            info "Plan is pending approval. Review with 'wt-orchestrate plan --show'"
-            info "Approve with 'wt-orchestrate approve' to begin dispatch."
+            info "Plan is pending approval. Review with 'set-orchestrate plan --show'"
+            info "Approve with 'set-orchestrate approve' to begin dispatch."
             return 0
         fi
         # Resume from time_limit, stopped, or checkpoint: continue where we left off
@@ -551,7 +551,7 @@ cmd_start() {
             update_state_field "status" '"running"'
             local _directives_file="wt/orchestration/directives.json"
             echo "$directives" > "$_directives_file"
-            exec wt-orch-core engine monitor \
+            exec set-orch-core engine monitor \
                 --directives "$_directives_file" \
                 --state "$STATE_FILENAME" \
                 --poll-interval "${POLL_INTERVAL:-15}" \
@@ -675,7 +675,7 @@ cmd_start() {
     update_state_field "status" '"running"'
     local _directives_file="wt/orchestration/directives.json"
     echo "$directives" > "$_directives_file"
-    exec wt-orch-core engine monitor \
+    exec set-orch-core engine monitor \
         --directives "$_directives_file" \
         --state "$STATE_FILENAME" \
         --poll-interval "${POLL_INTERVAL:-15}" \
@@ -702,7 +702,7 @@ cmd_pause() {
     elif [[ -n "$target" ]]; then
         pause_change "$target"
     else
-        error "Usage: wt-orchestrate pause <change-name> | --all"
+        error "Usage: set-orchestrate pause <change-name> | --all"
         return 1
     fi
 }
@@ -751,7 +751,7 @@ cmd_resume() {
     else
         # No target: resume the orchestration itself (skip planning, use existing state)
         if [[ ! -f "$STATE_FILENAME" ]]; then
-            error "No orchestration state found. Use 'wt-orchestrate start --spec <path>' to begin."
+            error "No orchestration state found. Use 'set-orchestrate start --spec <path>' to begin."
             return 1
         fi
         info "Resuming orchestration from existing state..."

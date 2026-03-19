@@ -234,11 +234,11 @@ resolve_gate_config(change: Change, profile, directives) -> GateConfig
 │  └── lib/set_orch/config.py           ← MODIFY: new directives  │
 ├─────────────────────────────────────────────────────────────────┤
 │  set-project-base                                                │
-│  └── wt_project_base/base.py         ← MODIFY: gate_overrides  │
+│  └── set_project_base/base.py         ← MODIFY: gate_overrides  │
 │                                         method on ProjectType   │
 ├─────────────────────────────────────────────────────────────────┤
 │  set-project-web                                                 │
-│  └── wt_project_web/project_type.py  ← MODIFY: web-specific    │
+│  └── set_project_web/project_type.py  ← MODIFY: web-specific    │
 │                                         gate overrides          │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -507,7 +507,7 @@ class NullProfile:
         return {}
 ```
 
-### 6. Modify: `set-project-base/wt_project_base/base.py` — ProjectType
+### 6. Modify: `set-project-base/set_project_base/base.py` — ProjectType
 
 Add `gate_overrides` to the abstract base:
 
@@ -530,7 +530,7 @@ class ProjectType(ABC):
         return {}
 ```
 
-### 7. Modify: `set-project-web/wt_project_web/project_type.py`
+### 7. Modify: `set-project-web/set_project_web/project_type.py`
 
 Web-specific gate overrides:
 

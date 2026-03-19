@@ -1,7 +1,7 @@
 # CraftBrew E2E — Run #1
 
 **Date**: 2026-03-15 ~ 2026-03-16 (overnight)
-**wt-tools commit**: 58f63afa2 (master)
+**set-core commit**: 58f63afa2 (master)
 **Project dir**: `/tmp/craftbrew-run1`
 **Spec**: CraftBrew multi-file spec (15 changes, 5 phases, 50 REQs, 10 domains)
 
@@ -10,7 +10,7 @@
 ### 1. PyYAML not available in linuxbrew Python 3.14
 - **Type**: framework (non-blocking)
 - **Severity**: noise
-- **Root cause**: `wt-orch-core` runs under linuxbrew Python 3.14 which doesn't have PyYAML. `profile_loader.py` falls back to NullProfile.
+- **Root cause**: `set-orch-core` runs under linuxbrew Python 3.14 which doesn't have PyYAML. `profile_loader.py` falls back to NullProfile.
 - **Fix**: N/A — fallback works, just a warning in logs
 - **Recurrence**: known, not worth fixing
 
@@ -68,7 +68,7 @@
 - **Type**: framework (blocking)
 - **Severity**: blocking
 - **Root cause**: `handle_change_done()` crashes during Step 5b/6 (rules/spec_verify) — likely `render_review_template` failure (sentinel log: "Failed to render review template for X"). The exception is caught by `_poll_active_changes` generic handler (`except Exception: logger.warning`), but the change status remains `"verifying"` indefinitely. On next poll, `poll_change()` sees status=verifying + loop_state=done → calls `handle_change_done()` again → same crash → infinite loop with no progress.
-- **Compound issue**: Dirty main working tree (leftover file modifications from previous merges) causes `wt-merge` to fail with "no conflict markers" — even after the status is manually advanced to `done`.
+- **Compound issue**: Dirty main working tree (leftover file modifications from previous merges) causes `set-merge` to fail with "no conflict markers" — even after the status is manually advanced to `done`.
 - **Fix**: Manual intervention required (both reviews-wishlist and admin-panel). For a proper fix: `handle_change_done` should catch exceptions in the spec_verify step and fall through to merge rather than leaving status stuck. Also, main working tree should be cleaned before merge attempts.
 - **Deployed**: not yet (manual workaround applied)
 - **Recurrence**: new — hit on both Phase 5 changes

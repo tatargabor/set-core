@@ -9,7 +9,7 @@ The sentinel SHALL support a `--shutdown` flag that initiates an orderly shutdow
 #### Scenario: User triggers graceful shutdown
 - **WHEN** the user runs `set-sentinel --shutdown` while a sentinel is running
 - **THEN** the sentinel sends SIGTERM to the orchestrator process
-- **THEN** the orchestrator sends SIGTERM to all running agent processes (wt-loop)
+- **THEN** the orchestrator sends SIGTERM to all running agent processes (set-loop)
 - **THEN** the sentinel waits up to 60 seconds for all agents to exit
 - **THEN** the state file is updated with `shutdown_at` timestamp and status `"shutdown"`
 - **THEN** the sentinel exits with code 0
@@ -25,18 +25,18 @@ The sentinel SHALL support a `--shutdown` flag that initiates an orderly shutdow
 - **THEN** the sentinel exits with code 0
 
 ### Requirement: Agent graceful stop on SIGTERM
-The agent loop (wt-loop) SHALL handle SIGTERM by completing its current iteration, committing any uncommitted work, and exiting cleanly.
+The agent loop (set-loop) SHALL handle SIGTERM by completing its current iteration, committing any uncommitted work, and exiting cleanly.
 
 #### Scenario: Agent receives SIGTERM during task execution
-- **WHEN** wt-loop receives SIGTERM while a Claude session is running
-- **THEN** wt-loop sets a `stop_requested` flag
-- **THEN** after the current Claude session completes, wt-loop commits all uncommitted changes with message "wip: graceful shutdown — incomplete task"
-- **THEN** wt-loop writes `last_commit` hash to its loop-state.json
-- **THEN** wt-loop exits with code 0
+- **WHEN** set-loop receives SIGTERM while a Claude session is running
+- **THEN** set-loop sets a `stop_requested` flag
+- **THEN** after the current Claude session completes, set-loop commits all uncommitted changes with message "wip: graceful shutdown — incomplete task"
+- **THEN** set-loop writes `last_commit` hash to its loop-state.json
+- **THEN** set-loop exits with code 0
 
 #### Scenario: Agent receives SIGTERM between iterations
-- **WHEN** wt-loop receives SIGTERM between loop iterations (idle)
-- **THEN** wt-loop exits immediately with code 0 (no WIP to commit)
+- **WHEN** set-loop receives SIGTERM between loop iterations (idle)
+- **THEN** set-loop exits immediately with code 0 (no WIP to commit)
 
 ### Requirement: State persistence for resume
 The orchestration state file SHALL contain sufficient metadata to resume after a shutdown, including shutdown timestamp and per-change commit references.
@@ -81,7 +81,7 @@ The E2E scaffold scripts SHALL support a `--project-dir` flag to create the test
 - **THEN** the default `/tmp/` location is used (backward compatible)
 
 ### Requirement: Shutdown API endpoint
-The wt-web API SHALL expose a `POST /api/{project}/shutdown` endpoint that triggers graceful shutdown of the orchestration.
+The set-web API SHALL expose a `POST /api/{project}/shutdown` endpoint that triggers graceful shutdown of the orchestration.
 
 #### Scenario: Shutdown via API
 - **WHEN** a client sends `POST /api/{project}/shutdown`
@@ -94,7 +94,7 @@ The wt-web API SHALL expose a `POST /api/{project}/shutdown` endpoint that trigg
 - **THEN** the API returns `{"ok": false, "error": "No sentinel running"}` with status 409
 
 ### Requirement: Settings page shutdown controls
-The wt-web Settings page SHALL include a Shutdown button with confirmation dialog, a status indicator showing shutdown state, and a Resume button when in shutdown state.
+The set-web Settings page SHALL include a Shutdown button with confirmation dialog, a status indicator showing shutdown state, and a Resume button when in shutdown state.
 
 #### Scenario: User clicks Shutdown in Settings
 - **WHEN** the user clicks the "Shutdown" button on the Settings page

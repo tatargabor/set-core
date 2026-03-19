@@ -9,7 +9,7 @@ Functions:
     merge_change            — full merge pipeline with smoke/conflict handling
     _sync_running_worktrees — sync running worktrees after merge
     _archive_worktree_logs  — copy .claude/logs to orchestration archive
-    cleanup_worktree        — wt-close with fallback manual removal
+    cleanup_worktree        — set-close with fallback manual removal
     cleanup_all_worktrees   — iterate terminal changes, cleanup each
     execute_merge_queue     — drain merge queue
     retry_merge_queue       — retry queue + merge-blocked changes
@@ -134,7 +134,7 @@ def _archive_worktree_logs(change_name: str, wt_path: str) -> int:
         from .paths import SetRuntime
         archive_dir = SetRuntime().change_logs_dir(change_name)
     except Exception:
-        archive_dir = f"wt/orchestration/logs/{change_name}"
+        archive_dir = f"set-core/orchestration/logs/{change_name}"
     os.makedirs(archive_dir, exist_ok=True)
 
     count = 0
@@ -172,8 +172,8 @@ def cleanup_worktree(change_name: str, wt_path: str, retention: str = "") -> Non
         return
 
     # delete-on-merge: legacy behavior
-    # Try wt-close first
-    result = run_command(["wt-close", change_name], timeout=60)
+    # Try set-close first
+    result = run_command(["set-close", change_name], timeout=60)
     if result.exit_code == 0:
         logger.info("Cleaned up worktree for %s", change_name)
         return
@@ -278,7 +278,7 @@ def merge_change(
 ) -> MergeResult:
     """Execute the full merge pipeline for a completed change.
 
-    Handles: pre-merge hook, branch check, wt-merge, post-merge deps/build/scope,
+    Handles: pre-merge hook, branch check, set-merge, post-merge deps/build/scope,
     smoke pipeline, agent-assisted rebase on conflict.
     """
     logger.info("Merging %s...", change_name)
@@ -356,11 +356,11 @@ def merge_change(
 
     # Case 3: Normal merge
     pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
-    # Pass change scope to wt-merge for context-aware LLM conflict resolution
+    # Pass change scope to set-merge for context-aware LLM conflict resolution
     merge_env = dict(os.environ)
-    merge_env["WT_MERGE_SCOPE"] = (change.scope or "")[:2000]
+    merge_env["SET_MERGE_SCOPE"] = (change.scope or "")[:2000]
     merge_result = run_command(
-        ["wt-merge", change_name, "--no-push", "--llm-resolve"],
+        ["set-merge", change_name, "--no-push", "--llm-resolve"],
         timeout=600, env=merge_env,
     )
 
@@ -378,7 +378,7 @@ def merge_change(
 
         _heartbeat("merge_complete")
 
-        # Parse LOCKFILE_CONFLICTED markers from wt-merge stdout
+        # Parse LOCKFILE_CONFLICTED markers from set-merge stdout
         lockfile_conflicted = False
         merge_stdout = merge_result.stdout or ""
         for line in merge_stdout.splitlines():
@@ -1035,16 +1035,16 @@ def _handle_merge_conflict(
     if not conflict_confirmed:
         logger.info("No real conflict markers for %s — retrying merge", change_name)
         retry_env = dict(os.environ)
-        retry_env["WT_MERGE_SCOPE"] = (change.scope if change else "")[:2000]
+        retry_env["SET_MERGE_SCOPE"] = (change.scope if change else "")[:2000]
         retry_result = run_command(
-            ["wt-merge", change_name, "--no-push", "--llm-resolve"],
+            ["set-merge", change_name, "--no-push", "--llm-resolve"],
             timeout=600, env=retry_env,
         )
         if retry_result.exit_code == 0:
             update_change_field(state_file, change_name, "status", "merged")
             return MergeResult(success=True, status="merged")
 
-        logger.warning("wt-merge failed for %s but no conflict markers — merge-blocked", change_name)
+        logger.warning("set-merge failed for %s but no conflict markers — merge-blocked", change_name)
         update_change_field(state_file, change_name, "status", "merge-blocked")
         return MergeResult(success=False, status="merge-blocked")
 

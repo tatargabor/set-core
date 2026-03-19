@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/helpers.sh"
 
 # Source dependencies
-source "$SCRIPT_DIR/../../bin/wt-common.sh"
+source "$SCRIPT_DIR/../../bin/set-common.sh"
 
 # Source loop modules in order
 LIB_DIR="$SCRIPT_DIR/../../lib/loop"

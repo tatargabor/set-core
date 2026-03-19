@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Unconditional Code Map Generation
-The code-map safety net in `wt-hook-memory-save` SHALL fire for every new commit regardless of whether design.md extraction already ran for that change name. The code-map block MUST NOT be gated behind the design-marker `continue` guard.
+The code-map safety net in `set-hook-memory-save` SHALL fire for every new commit regardless of whether design.md extraction already ran for that change name. The code-map block MUST NOT be gated behind the design-marker `continue` guard.
 
 #### Scenario: Code map generated even without design.md
 - **WHEN** a commit is detected for change "foo" but no `design.md` exists

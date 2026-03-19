@@ -99,9 +99,9 @@ build_pdf() {
 
     local output_name
     if [[ "$lang" == "hu" ]]; then
-        output_name="wt-orchestrate-hogyan-mukodik.pdf"
+        output_name="set-orchestrate-hogyan-mukodik.pdf"
     else
-        output_name="wt-orchestrate-how-it-works.pdf"
+        output_name="set-orchestrate-how-it-works.pdf"
     fi
 
     echo "PDF generálás ($lang)..."

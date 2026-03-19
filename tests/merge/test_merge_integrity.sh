@@ -6,7 +6,7 @@
 # Branch B (feature): base + 2 additional models (Session, PasswordResetToken)
 # with overlapping edits that create a realistic conflict.
 #
-# The test verifies that wt-merge's conservation check catches model loss.
+# The test verifies that set-merge's conservation check catches model loss.
 #
 # Usage:
 #   ./tests/merge/test_merge_integrity.sh [--baseline]
@@ -337,8 +337,8 @@ git checkout main -q
 
 info "Attempting merge..."
 
-# Set up project structure so wt-merge can find it
-# wt-merge expects a worktree — simulate by using the branch directly
+# Set up project structure so set-merge can find it
+# set-merge expects a worktree — simulate by using the branch directly
 # We'll call git merge directly first to see if there's a conflict,
 # then test the conservation check functions
 
@@ -464,7 +464,7 @@ if [[ $THEIRS_MISSING_COUNT -gt 0 || $OURS_MISSING_COUNT -gt 0 ]]; then
 
     if $BASELINE_MODE; then
         warn "BASELINE: Conservation check detected $TOTAL_MISSING missing lines"
-        warn "  (In current wt-merge, this would NOT be caught — merge would proceed)"
+        warn "  (In current set-merge, this would NOT be caught — merge would proceed)"
         [[ -n "$THEIRS_MISSING" ]] && {
             warn "Sample missing from theirs (feature branch):"
             echo "$THEIRS_MISSING" | head -10

@@ -330,7 +330,7 @@ justify-content:center;align-items:center;height:100vh;}
 .msg{text-align:center;}.cmd{color:#58a6ff;font-family:monospace;}</style>
 </head><body><div class="msg"><h1>No Metrics Data</h1>
 <p>Enable metrics collection:</p>
-<p class="cmd">wt-memory metrics --enable</p>
+<p class="cmd">set-memory metrics --enable</p>
 <p>Then use Claude Code normally. Metrics are collected automatically.</p>
 </div></body></html>"""
 

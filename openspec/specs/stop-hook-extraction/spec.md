@@ -1,7 +1,7 @@
 ## Requirements
 
 ### Requirement: Arithmetic operations must be safe under set -e
-All `(( var++ ))` and `(( var-- ))` expressions in `bin/wt-hook-memory` SHALL use `|| true` to prevent `set -e` from terminating the process when the expression evaluates to 0.
+All `(( var++ ))` and `(( var-- ))` expressions in `bin/set-hook-memory` SHALL use `|| true` to prevent `set -e` from terminating the process when the expression evaluates to 0.
 
 #### Scenario: Counter increment from zero
 - **GIVEN** a counter variable initialized to 0

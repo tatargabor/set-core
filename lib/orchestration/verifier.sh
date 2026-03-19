@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# lib/orchestration/verifier.sh — Thin wrappers delegating to wt-orch-core verify
+# lib/orchestration/verifier.sh — Thin wrappers delegating to set-orch-core verify
 #
-# Sourced by bin/wt-orchestrate. All functions run in the orchestrator's global scope.
-# Python implementation: lib/wt_orch/verifier.py
+# Sourced by bin/set-orchestrate. All functions run in the orchestrator's global scope.
+# Python implementation: lib/set_orch/verifier.py
 
 # ─── Test Runner ─────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ run_tests_in_worktree() {
 
     TEST_OUTPUT=""
     local json_out
-    json_out=$(wt-orch-core verify run-tests \
+    json_out=$(set-orch-core verify run-tests \
         --wt-path "$wt_path" \
         --command "$test_command" \
         --timeout "$test_timeout" \
@@ -32,7 +32,7 @@ run_tests_in_worktree() {
 
 build_req_review_section() {
     local change_name="$1"
-    wt-orch-core verify build-req-section \
+    set-orch-core verify build-req-section \
         --change "$change_name" \
         --state "$STATE_FILENAME" 2>/dev/null || true
 }
@@ -48,7 +48,7 @@ review_change() {
 
     REVIEW_OUTPUT=""
     local json_out
-    json_out=$(wt-orch-core verify review \
+    json_out=$(set-orch-core verify review \
         --change "$change_name" \
         --wt-path "$wt_path" \
         --scope "$scope" \
@@ -67,7 +67,7 @@ evaluate_verification_rules() {
     local change_name="$1"
     local wt_path="$2"
 
-    wt-orch-core verify evaluate-rules \
+    set-orch-core verify evaluate-rules \
         --change "$change_name" \
         --wt-path "$wt_path" \
         --state "$STATE_FILENAME" >/dev/null 2>&1
@@ -77,13 +77,13 @@ evaluate_verification_rules() {
 
 verify_merge_scope() {
     local change_name="$1"
-    wt-orch-core verify check-merge-scope --change "$change_name" >/dev/null 2>&1
+    set-orch-core verify check-merge-scope --change "$change_name" >/dev/null 2>&1
 }
 
 verify_implementation_scope() {
     local change_name="$1"
     local wt_path="$2"
-    wt-orch-core verify check-impl-scope \
+    set-orch-core verify check-impl-scope \
         --change "$change_name" \
         --wt-path "$wt_path" >/dev/null 2>&1
 }
@@ -92,13 +92,13 @@ verify_implementation_scope() {
 
 extract_health_check_url() {
     local smoke_cmd="$1"
-    wt-orch-core verify extract-health-url --smoke-cmd "$smoke_cmd" 2>/dev/null
+    set-orch-core verify extract-health-url --smoke-cmd "$smoke_cmd" 2>/dev/null
 }
 
 health_check() {
     local url="$1"
     local timeout_secs="${2:-30}"
-    wt-orch-core verify health-check --url "$url" --timeout "$timeout_secs" >/dev/null 2>&1
+    set-orch-core verify health-check --url "$url" --timeout "$timeout_secs" >/dev/null 2>&1
 }
 
 # ─── Smoke Fix ───────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ smoke_fix_scoped() {
     local max_turns="${5:-15}"
     local smoke_output="$6"
 
-    wt-orch-core verify smoke-fix \
+    set-orch-core verify smoke-fix \
         --change "$change_name" \
         --smoke-cmd "$smoke_cmd" \
         --smoke-timeout "$smoke_tout" \
@@ -127,7 +127,7 @@ run_phase_end_e2e() {
     local e2e_command="$1"
     local e2e_timeout="${2:-180}"
 
-    wt-orch-core verify phase-e2e \
+    set-orch-core verify phase-e2e \
         --command "$e2e_command" \
         --state "$STATE_FILENAME" \
         --timeout "$e2e_timeout" >/dev/null 2>&1
@@ -155,7 +155,7 @@ poll_change() {
     local e2e_timeout="${16:-120}"
 
     local poll_args=(
-        wt-orch-core verify poll
+        set-orch-core verify poll
         --change "$change_name"
         --state "$STATE_FILENAME"
         --test-command "$test_command"
@@ -195,7 +195,7 @@ handle_change_done() {
     local e2e_timeout="${17:-120}"
 
     local done_args=(
-        wt-orch-core verify handle-done
+        set-orch-core verify handle-done
         --change "$change_name"
         --state "$STATE_FILENAME"
         --test-command "$test_command"

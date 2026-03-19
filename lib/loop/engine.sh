@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wt-loop engine: cmd_run — the main iteration loop
+# set-loop engine: cmd_run — the main iteration loop
 # Dependencies: lib/loop/state.sh, lib/loop/tasks.sh, lib/loop/prompt.sh must be sourced first
 # Also requires: TIMEOUT_CMD, STDBUF_PREFIX, set-common.sh (get_claude_permission_flags, etc.)
 
@@ -54,7 +54,7 @@ cmd_run() {
     state_file=$(get_loop_state_file "$wt_path")
 
     if [[ ! -f "$state_file" ]]; then
-        error "No loop state found. Use 'wt-loop start' first."
+        error "No loop state found. Use 'set-loop start' first."
         exit 1
     fi
 
@@ -145,7 +145,7 @@ cmd_run() {
     local git_branch
     git_branch=$(git -C "$wt_path" branch --show-current 2>/dev/null || echo "unknown")
     local memory_status="inactive"
-    if command -v wt-memory &>/dev/null && wt-memory health &>/dev/null; then
+    if command -v set-memory &>/dev/null && set-memory health &>/dev/null; then
         memory_status="active"
     fi
     local title_suffix=""
@@ -413,7 +413,7 @@ cmd_run() {
             fi
 
             if $should_save; then
-                if command -v wt-memory &>/dev/null && wt-memory health &>/dev/null 2>&1; then
+                if command -v set-memory &>/dev/null && set-memory health &>/dev/null 2>&1; then
                     # Extract change name from last commit for tagging
                     local change_tag=""
                     local last_msg
@@ -430,7 +430,7 @@ cmd_run() {
                     local prefix="${reflection_content:0:80}"
                     local is_dupe=false
                     local existing
-                    existing=$(wt-memory recall "$prefix" --limit 1 --mode semantic 2>/dev/null | \
+                    existing=$(set-memory recall "$prefix" --limit 1 --mode semantic 2>/dev/null | \
                         python3 -c "
 import sys, json
 try:
@@ -450,7 +450,7 @@ except:
                     [[ "$existing" == "dupe" ]] && is_dupe=true
 
                     if ! $is_dupe; then
-                        echo "$reflection_content" | wt-memory remember \
+                        echo "$reflection_content" | set-memory remember \
                             --type Learning \
                             --tags "${change_tag}source:agent,reflection" \
                             2>/dev/null && echo "💭 Reflection saved to memory" || true
@@ -593,7 +593,7 @@ except:
                     echo "╔════════════════════════════════════════════════════════════════╗"
                     echo "║  ⏸  WAITING FOR HUMAN: $manual_count manual task(s) pending      ║"
                     echo "║  All automated tasks complete. Human action required.            ║"
-                    echo "║  Run: wt-manual show $(basename "$wt_path")                      ║"
+                    echo "║  Run: set-manual show $(basename "$wt_path")                      ║"
                     echo "╚════════════════════════════════════════════════════════════════╝"
                     update_loop_state "$state_file" "status" '"waiting:human"'
                     # Write manual task details to loop-state
@@ -809,9 +809,9 @@ except:
             echo "║  ⏸  BUDGET CHECKPOINT: ${used_k}K / ${budget_k}K                 ║"
             echo "║  The loop exceeded the estimated token budget.                   ║"
             echo "║                                                                  ║"
-            echo "║  Continue:  wt-loop resume                                       ║"
-            echo "║  Raise:     wt-loop budget <N>                                   ║"
-            echo "║  Stop:      wt-loop stop                                         ║"
+            echo "║  Continue:  set-loop resume                                       ║"
+            echo "║  Raise:     set-loop budget <N>                                   ║"
+            echo "║  Stop:      set-loop stop                                         ║"
             echo "╚════════════════════════════════════════════════════════════════╝"
             update_loop_state "$state_file" "status" '"waiting:budget"'
             update_terminal_title "Ralph: ${worktree_name}${title_suffix} [waiting:budget]"
@@ -825,7 +825,7 @@ except:
                 if [[ "$current_budget_status" == "running" ]]; then
                     echo ""
                     echo "✅ Budget checkpoint approved, continuing..."
-                    # Re-read token_budget in case it was updated via wt-loop budget
+                    # Re-read token_budget in case it was updated via set-loop budget
                     token_budget=$(jq -r '.token_budget // 0' "$state_file")
                     break
                 elif [[ "$current_budget_status" == "stopped" ]]; then

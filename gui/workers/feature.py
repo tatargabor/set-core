@@ -98,17 +98,17 @@ class FeatureWorker(QThread):
         return {"available": False, "count": 0}
 
     def _poll_openspec(self, main_repo_path: str) -> dict:
-        """Run wt-openspec status --json with cwd=main_repo"""
+        """Run set-openspec status --json with cwd=main_repo"""
         if not main_repo_path:
             return {"installed": False, "changes_active": 0, "skills_present": False, "cli_available": False}
         try:
             result = subprocess.run(
-                [str(SCRIPT_DIR / "wt-openspec"), "status", "--json"],
+                [str(SCRIPT_DIR / "set-openspec"), "status", "--json"],
                 capture_output=True, text=True, timeout=5,
                 cwd=main_repo_path
             )
             if result.returncode == 0 and result.stdout.strip():
                 return json.loads(result.stdout.strip())
         except Exception as e:
-            logger.error("wt-openspec poll failed for %s: %s", main_repo_path, e)
+            logger.error("set-openspec poll failed for %s: %s", main_repo_path, e)
         return {"installed": False, "changes_active": 0, "skills_present": False, "cli_available": False}

@@ -1,22 +1,22 @@
 ## ADDED Requirements
 
 ### Requirement: CLI entry point
-The system SHALL provide a `bin/wt-audit` command with subcommands `scan` and `help`.
+The system SHALL provide a `bin/set-audit` command with subcommands `scan` and `help`.
 
 #### Scenario: Run scan on current project
-- **WHEN** user runs `wt-audit scan` in a registered set-core project directory
+- **WHEN** user runs `set-audit scan` in a registered set-core project directory
 - **THEN** system scans all 6 dimensions and prints a structured report to stdout
 
 #### Scenario: Run scan with JSON output
-- **WHEN** user runs `wt-audit scan --json`
+- **WHEN** user runs `set-audit scan --json`
 - **THEN** system outputs a JSON object with `project`, `timestamp`, `dimensions`, and `summary` fields
 
 #### Scenario: Run scan on non-project directory
-- **WHEN** user runs `wt-audit scan` in a directory not registered with set-project
+- **WHEN** user runs `set-audit scan` in a directory not registered with set-project
 - **THEN** system prints an error message and exits with code 1
 
 #### Scenario: Show help
-- **WHEN** user runs `wt-audit --help` or `wt-audit help`
+- **WHEN** user runs `set-audit --help` or `set-audit help`
 - **THEN** system prints usage information listing available subcommands and options
 
 ### Requirement: Claude Code config dimension
@@ -31,12 +31,12 @@ The system SHALL check `.claude/settings.json` for permissions, hooks, agents, a
 - **THEN** report status ❌ with guidance to add safe commands for the detected stack
 
 #### Scenario: Check memory hooks
-- **WHEN** `.claude/settings.json` has hooks containing `wt-hook-memory`
+- **WHEN** `.claude/settings.json` has hooks containing `set-hook-memory`
 - **THEN** report status ✅ with count of hook events configured
 
 #### Scenario: Missing memory hooks
-- **WHEN** hooks do not contain `wt-hook-memory` entries
-- **THEN** report status ❌ with guidance to run `wt-deploy-hooks`
+- **WHEN** hooks do not contain `set-hook-memory` entries
+- **THEN** report status ❌ with guidance to run `set-deploy-hooks`
 
 #### Scenario: Check agents
 - **WHEN** `.claude/agents/` directory contains `.md` files
@@ -51,7 +51,7 @@ The system SHALL check `.claude/settings.json` for permissions, hooks, agents, a
 - **THEN** report status ✅ listing rule files and their path globs
 
 #### Scenario: No project-specific rules
-- **WHEN** `.claude/rules/` only contains set-core managed rules (prefixed `wt-`) or is empty
+- **WHEN** `.claude/rules/` only contains set-core managed rules (prefixed `set-`) or is empty
 - **THEN** report status ⚠️ with guidance to create path-scoped rules for distinct code areas
 
 ### Requirement: Design documentation dimension

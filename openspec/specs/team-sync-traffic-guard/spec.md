@@ -23,6 +23,6 @@ The README Team Sync section SHALL include a warning that Team Sync generates gi
 - **WHEN** a user reads the Team Sync section in the README
 - **THEN** they SHALL see a clear note about traffic generation and the recommended 2-minute default
 
-#### Scenario: wt-control-sync documented as traffic source
+#### Scenario: set-control-sync documented as traffic source
 - **WHEN** a user reads the CLI Reference
-- **THEN** `wt-control-sync` SHALL be documented as an internal command that runs git fetch+push
+- **THEN** `set-control-sync` SHALL be documented as an internal command that runs git fetch+push

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wt-loop prompt building: detect next change action, build Claude prompts
+# set-loop prompt building: detect next change action, build Claude prompts
 # Dependencies: lib/loop/state.sh and lib/loop/tasks.sh must be sourced first
 
 # Detect the next OpenSpec change action needed.

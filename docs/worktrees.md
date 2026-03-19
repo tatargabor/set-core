@@ -12,10 +12,10 @@ Git worktrees let you work on multiple branches simultaneously — each in its o
 | `set-work <change-id>` | Open worktree in editor + start Claude Code |
 | `set-close <change-id>` | Close worktree (removes directory and branch) |
 | `set-merge <change-id>` | Merge worktree branch back to main |
-| `wt-add [path]` | Add existing repo or worktree to set-core |
+| `set-add [path]` | Add existing repo or worktree to set-core |
 | `set-list` | List all active worktrees |
 | `set-status` | JSON status of all worktrees and agents |
-| `wt-focus <change-id>` | Focus editor window for a worktree |
+| `set-focus <change-id>` | Focus editor window for a worktree |
 
 ## Claude Code Skills
 

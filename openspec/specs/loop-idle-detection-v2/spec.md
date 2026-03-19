@@ -22,7 +22,7 @@ When the loop produces identical output across consecutive iterations, it SHALL 
 - **AND** either mechanism can stop the loop
 
 #### Scenario: Configurable threshold
-- **WHEN** `wt-loop` is started with `--max-idle N`
+- **WHEN** `set-loop` is started with `--max-idle N`
 - **THEN** `max_idle_iterations` SHALL be set to N
 - **AND** stored in `loop-state.json`
 - **AND** default SHALL be 3 if not specified

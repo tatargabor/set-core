@@ -1,7 +1,7 @@
 # MiniShop E2E Run #19
 
 **Date**: 2026-03-17
-**wt-tools commit**: `957d125d9` (includes mid-run fixes)
+**set-core commit**: `957d125d9` (includes mid-run fixes)
 **Project dir**: `/tmp/minishop-run5`
 **Duration**: ~4h (14:45–18:46)
 
@@ -43,7 +43,7 @@
 ### 49. Decompose stderr swallowed by 2>/dev/null
 - **Type**: framework
 - **Severity**: blocking (decompose phase)
-- **Root cause**: `planner.sh` line 188 used `2>/dev/null` on `wt-orch-core plan run`, hiding all error details
+- **Root cause**: `planner.sh` line 188 used `2>/dev/null` on `set-orch-core plan run`, hiding all error details
 - **Fix**: `7551be1f5` — capture stderr to temp file, include in error message
 - **Recurrence**: new
 
@@ -63,10 +63,10 @@
 
 ### 52. Orchestrator stuck during merge/archive — git_failed spam
 - **Type**: framework
-- **Severity**: medium (requires manual wt-merge intervention)
+- **Severity**: medium (requires manual set-merge intervention)
 - **Root cause**: After verify gates pass, the merge/archive step emits many `git_failed` warnings (from `run_git` calls in merger/archiver). These don't emit events, causing the sentinel stuck detector to kill the orchestrator mid-merge. The change stays in `verifying` state indefinitely.
 - **Pattern**: verify pass → merge attempt → git_failed spam → no events → sentinel kills → restart → same cycle
-- **Fix**: NOT FIXED — manually merged admin-dashboard-list and admin-crud via `wt-merge`
+- **Fix**: NOT FIXED — manually merged admin-dashboard-list and admin-crud via `set-merge`
 - **Recurrence**: new (likely related to Python merger not handling worktree git operations correctly)
 
 ## Conclusions
@@ -75,7 +75,7 @@
 
 2. **Bug #50 (state reconstruction)** needs urgent fix — the Python monitor must emit STATE_CHANGE events to orchestration-state-events.jsonl so the sentinel can reconstruct correctly after crashes.
 
-3. **Bug #52 (merge stuck)** is the next priority — the orchestrator hangs during merge/archive with git_failed spam, requiring manual `wt-merge` intervention. This affected 2/9 successful merges.
+3. **Bug #52 (merge stuck)** is the next priority — the orchestrator hangs during merge/archive with git_failed spam, requiring manual `set-merge` intervention. This affected 2/9 successful merges.
 
 4. **Scope check fail pattern** wastes tokens — agents create OpenSpec artifacts (proposal, design, specs, tasks) on first dispatch, then scope_check rejects them as "only artifact/bootstrap files". This burns a full retry cycle (~100K tokens) per change. The dispatch prompt should explicitly instruct agents to IMPLEMENT, not just create artifacts.
 

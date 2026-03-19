@@ -12,19 +12,19 @@ The system SHALL send SIGTERM to the Ralph terminal PID (after identity verifica
 - **THEN** function returns failure with warning
 
 ### Requirement: Resume a paused or stopped change
-The system SHALL snapshot cumulative token counts (tokens_used → tokens_used_prev, per-type tokens), set watchdog progress baseline, determine done criteria (openspec/build/merge based on retry_context), resolve model, and start wt-loop with appropriate --max iterations.
+The system SHALL snapshot cumulative token counts (tokens_used → tokens_used_prev, per-type tokens), set watchdog progress baseline, determine done criteria (openspec/build/merge based on retry_context), resolve model, and start set-loop with appropriate --max iterations.
 
 #### Scenario: Resume with retry context (build fix)
 - **WHEN** change has retry_context and merge_rebase_pending is false
-- **THEN** wt-loop starts with --done build --max 3 using retry_context as task description
+- **THEN** set-loop starts with --done build --max 3 using retry_context as task description
 
 #### Scenario: Resume with retry context (merge conflict)
 - **WHEN** change has retry_context and merge_rebase_pending is true
-- **THEN** wt-loop starts with --done merge --max 5
+- **THEN** set-loop starts with --done merge --max 5
 
 #### Scenario: Resume without retry context
 - **WHEN** change has no retry_context
-- **THEN** wt-loop starts with --done openspec --max 30 using "Continue <name>: <scope>" as task
+- **THEN** set-loop starts with --done openspec --max 30 using "Continue <name>: <scope>" as task
 
 #### Scenario: Token accumulation across resumes
 - **WHEN** a change is resumed

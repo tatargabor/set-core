@@ -1,4 +1,4 @@
-# Design: wt-web Dashboard Fixes Batch 2
+# Design: set-web Dashboard Fixes Batch 2
 
 ## Approach
 

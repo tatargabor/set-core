@@ -9,7 +9,7 @@
 - `.wt/` directory creation and `.gitignore` entry
 
 ## OUT OF SCOPE
-- wt-web display of events (covered by sentinel-dashboard spec)
+- set-web display of events (covered by sentinel-dashboard spec)
 - Findings aggregation (covered by sentinel-findings spec)
 - Inbox/outbox messaging (covered by sentinel-messaging spec)
 

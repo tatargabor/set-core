@@ -1,8 +1,8 @@
-# Proposal: wt-web Dashboard Fixes Batch 2
+# Proposal: set-web Dashboard Fixes Batch 2
 
 ## Problem
 
-Multiple wt-web dashboard issues discovered during craftbrew E2E runs:
+Multiple set-web dashboard issues discovered during craftbrew E2E runs:
 
 1. **Digest expand broken on duplicate req IDs** — clicking one row toggles all rows with the same ID because state keyed by `r.id` not array index
 2. **Coverage not updated on skip_merged** — merger.py Case 1 & 2 (branch already merged) skip `update_coverage_status()`, leaving reqs stuck at "planned"

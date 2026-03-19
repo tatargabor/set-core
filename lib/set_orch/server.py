@@ -1,4 +1,4 @@
-"""FastAPI application factory for the wt-web dashboard.
+"""FastAPI application factory for the set-web dashboard.
 
 Creates the app with CORS, lifespan management (watcher start/stop),
 API routes, WebSocket endpoints, and static SPA file serving.

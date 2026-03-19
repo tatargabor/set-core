@@ -5,7 +5,7 @@ A `FeatureWorker(QThread)` SHALL poll per-project feature status (memory and ope
 
 #### Scenario: Normal polling cycle
 - **WHEN** the FeatureWorker timer fires
-- **THEN** it iterates all known projects, runs `set-memory status --json --project X` and `wt-openspec status --json` (with cwd set to main repo), parses results, and emits `features_updated` with the combined dict
+- **THEN** it iterates all known projects, runs `set-memory status --json --project X` and `set-openspec status --json` (with cwd set to main repo), parses results, and emits `features_updated` with the combined dict
 
 #### Scenario: Worker startup
 - **WHEN** the ControlCenter window initializes

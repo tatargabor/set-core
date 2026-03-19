@@ -124,7 +124,7 @@ The orchestration HTML report SHALL include an audit results section.
 - **THEN** the section SHALL not be rendered
 
 ### Requirement: Web dashboard AuditPanel
-The wt-web dashboard SHALL visualize audit results.
+The set-web dashboard SHALL visualize audit results.
 
 #### Scenario: AuditPanel rendering
 - **WHEN** `phase_audit_results[]` exists in state and is non-empty

@@ -5,7 +5,7 @@ Detects emotionally charged prompts using simple trigger-group logic:
 - Medium triggers (2+ = moderate, 1 = mild): repetition+negation, temporal, escalation, intensifiers
 - Session boost: 3+ prior triggers → single medium escalates to moderate
 
-Used by wt-hook-memory UserPromptSubmit handler to save high-priority memories
+Used by set-hook-memory UserPromptSubmit handler to save high-priority memories
 and inject warnings to the current agent.
 
 Note: This module intentionally contains explicit language patterns for

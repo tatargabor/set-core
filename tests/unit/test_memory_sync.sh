@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/helpers.sh"
 
 # Source dependencies
-source "$SCRIPT_DIR/../../bin/wt-common.sh"
-# Source sync module (needs infra from wt-memory)
+source "$SCRIPT_DIR/../../bin/set-common.sh"
+# Source sync module (needs infra from set-memory)
 _wt_memory_bin_dir="$SCRIPT_DIR/../../bin"
 source "$_wt_memory_bin_dir/../lib/memory/sync.sh"
 

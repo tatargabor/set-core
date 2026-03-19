@@ -69,7 +69,7 @@ The functional test gap is striking: Mode A failed to implement working endpoint
 | Scoring method | Manual + trap checks | Automated grep + curl |
 | Convention delta | 0% (tie) | +20% (B wins) |
 | Overall delta | A slightly better | B clearly better |
-| Setup complexity | High (wt-loop, workspace) | Low (init.sh, run.sh) |
+| Setup complexity | High (set-loop, workspace) | Low (init.sh, run.sh) |
 | Reproducibility | Low (timing dependent) | High (deterministic scoring) |
 
 ### Caveats

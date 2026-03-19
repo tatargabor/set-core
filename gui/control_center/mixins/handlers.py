@@ -774,7 +774,7 @@ class HandlersMixin:
         )
 
         if folder:
-            cmd = [str(SCRIPT_DIR / "wt-add"), folder]
+            cmd = [str(SCRIPT_DIR / "set-add"), folder]
             dialog = CommandOutputDialog(self, "Adding repository", cmd)
             dialog.exec()
             self.refresh_status()

@@ -8,8 +8,8 @@
 - Heartbeat updates to status.json
 
 ## OUT OF SCOPE
-- New messaging transport (uses existing wt-control-chat / MCP send_message)
-- wt-web message sending UI (covered by sentinel-dashboard)
+- New messaging transport (uses existing set-control-chat / MCP send_message)
+- set-web message sending UI (covered by sentinel-dashboard)
 - Multi-sentinel coordination (single sentinel per project assumed)
 - Encryption changes (existing NaCl box encryption unchanged)
 

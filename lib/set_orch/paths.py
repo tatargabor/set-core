@@ -4,7 +4,7 @@ Two-tier architecture:
 - Shared runtime: ~/.local/share/set-core/<project>/  (orchestration, sentinel, logs, cache)
 - Per-agent ephemeral: <worktree>/.set/  (loop-state, activity, PID files)
 
-Project name resolution matches the memory system (wt-memoryd/lifecycle.py).
+Project name resolution matches the memory system (set_memoryd/lifecycle.py).
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ _LEGACY_AGENT_DIR = ".wt"
 def resolve_project_name(project_path: str | None = None) -> str:
     """Resolve git project name, handling worktrees.
 
-    Matches the logic in bin/wt-memory::resolve_project() and
+    Matches the logic in bin/set-memory::resolve_project() and
     lib/set_memoryd/lifecycle.py::resolve_project().
 
     For worktrees, resolves to the main repo name so all worktrees
@@ -78,7 +78,7 @@ class SetRuntime:
     Usage:
         rt = SetRuntime("/path/to/project")
         state = rt.state_file          # ~/.local/share/set-core/myproject/orchestration/state.json
-        agent = rt.agent_dir("/path/to/worktree")  # /path/to/worktree/.wt
+        agent = rt.agent_dir("/path/to/worktree")  # /path/to/worktree/.set
     """
 
     def __init__(self, project_path: str | None = None, project_name: str | None = None):

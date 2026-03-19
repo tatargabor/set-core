@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test_conservation_check.sh — Unit tests for wt-merge conservation check functions
+# test_conservation_check.sh — Unit tests for set-merge conservation check functions
 #
 # Tests the conservation check, entity counting, and strategy matching
-# functions directly by sourcing wt-merge's function definitions.
+# functions directly by sourcing set-merge's function definitions.
 #
 # Usage: ./tests/merge/test_conservation_check.sh
 
@@ -10,7 +10,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-WT_MERGE="$(which wt-merge)"
+WT_MERGE="$(which set-merge)"
 TEST_DIR=""
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -30,12 +30,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Source wt-merge functions (skip main execution)
-# We need the functions but not main(). Source wt-common first.
+# Source set-merge functions (skip main execution)
+# We need the functions but not main(). Source set-common first.
 WM_DIR="$(dirname "$WT_MERGE")"
-source "$WM_DIR/wt-common.sh" 2>/dev/null || true
+source "$WM_DIR/set-common.sh" 2>/dev/null || true
 
-# Source just the function definitions from wt-merge (stop before main)
+# Source just the function definitions from set-merge (stop before main)
 eval "$(sed -n '/^# ─── Conservation Check/,/^main()/{ /^main()/d; p; }' "$WT_MERGE")"
 # Also source strategy functions
 eval "$(sed -n '/^# ─── Merge Strategy Config/,/^main()/{ /^main()/d; p; }' "$WT_MERGE")"

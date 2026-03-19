@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test script for wt-loop CWD-based operation and tasks.md lookup
+# Test script for set-loop CWD-based operation and tasks.md lookup
 # Tests: get_worktree_path_from_cwd, check_tasks_done, init_loop_state, build_prompt
 # Run with: ./tests/test_wt_loop.sh
 
@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Source common functions for color codes
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 # Test counters
 TESTS_RUN=0
@@ -78,7 +78,7 @@ assert_equals() {
 # ============================================================
 TMPDIR_BASE=$(mktemp -d)
 REPO_DIR="$TMPDIR_BASE/test-repo"
-WT_DIR="$TMPDIR_BASE/test-repo-wt-feature"
+WT_DIR="$TMPDIR_BASE/test-repo-set-feature"
 
 cleanup() {
     rm -rf "$TMPDIR_BASE"
@@ -93,14 +93,14 @@ git commit --allow-empty -m "init" --quiet
 # Create a worktree
 git worktree add -b change/feature "$WT_DIR" --quiet
 
-# Source the wt-loop functions without running main
+# Source the set-loop functions without running main
 # We strip: the SCRIPT_DIR/source lines at the top, the main call at bottom
 eval "$(sed -e '/^SCRIPT_DIR=/d' \
-            -e '/^source.*wt-common.sh/d' \
+            -e '/^source.*set-common.sh/d' \
             -e '/^main "\$@"/d' \
-            "$PROJECT_DIR/bin/wt-loop")"
+            "$PROJECT_DIR/bin/set-loop")"
 
-echo "=== wt-loop tests ==="
+echo "=== set-loop tests ==="
 echo ""
 
 # ============================================================
@@ -112,7 +112,7 @@ result=$(get_worktree_path_from_cwd)
 assert_equals "$WT_DIR" "$result"
 
 # ============================================================
-# Test 7.2: wt-loop outside a git repo shows error
+# Test 7.2: set-loop outside a git repo shows error
 # ============================================================
 test_start "7.2 get_worktree_path_from_cwd outside git repo exits with error"
 mkdir -p "$TMPDIR_BASE/not-a-repo"
@@ -202,15 +202,15 @@ rm -f "$WT_DIR/tasks.md"
 # ============================================================
 test_start "7.8 init_loop_state writes worktree_name instead of change_id"
 cd "$WT_DIR"
-init_loop_state "$WT_DIR" "test-wt-feature" "Test task" 10 "tasks" 80 2 45
+init_loop_state "$WT_DIR" "test-set-feature" "Test task" 10 "tasks" 80 2 45
 state_file="$WT_DIR/.claude/loop-state.json"
 if [[ -f "$state_file" ]]; then
     wt_name=$(jq -r '.worktree_name' "$state_file")
     has_change_id=$(jq 'has("change_id")' "$state_file")
-    if [[ "$wt_name" == "test-wt-feature" ]] && [[ "$has_change_id" == "false" ]]; then
+    if [[ "$wt_name" == "test-set-feature" ]] && [[ "$has_change_id" == "false" ]]; then
         test_pass
     else
-        test_fail "worktree_name=test-wt-feature, no change_id" "worktree_name=$wt_name, has_change_id=$has_change_id"
+        test_fail "worktree_name=test-set-feature, no change_id" "worktree_name=$wt_name, has_change_id=$has_change_id"
     fi
 else
     test_fail "state file exists" "state file not found"
@@ -236,14 +236,14 @@ rm -rf "$WT_DIR/.claude"
 # ============================================================
 # Test 7.10: cmd_start falls back to manual when no tasks.md exists
 # ============================================================
-test_start "7.10 wt-loop start falls back to manual when no tasks.md"
+test_start "7.10 set-loop start falls back to manual when no tasks.md"
 cd "$WT_DIR"
 # Ensure no tasks.md exists
 rm -f "$WT_DIR/tasks.md"
 find "$WT_DIR" -name "tasks.md" -delete 2>/dev/null || true
-# Run wt-loop start and capture output (will fail because no terminal, but we
+# Run set-loop start and capture output (will fail because no terminal, but we
 # check that the state file has done_criteria=manual)
-output=$("$PROJECT_DIR/bin/wt-loop" start "Test task" --max 1 2>&1 || true)
+output=$("$PROJECT_DIR/bin/set-loop" start "Test task" --max 1 2>&1 || true)
 state_file="$WT_DIR/.claude/loop-state.json"
 if [[ -f "$state_file" ]]; then
     criteria=$(jq -r '.done_criteria' "$state_file")

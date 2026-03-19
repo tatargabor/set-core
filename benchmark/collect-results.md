@@ -33,7 +33,7 @@ cd ~/benchmark/<run>/craftbazaar
 openspec list --json
 
 # Get iteration history
-wt-loop history
+set-loop history
 
 # Read agent-written status files
 cat results/*.json
@@ -45,8 +45,8 @@ git log --oneline --format="%h %ai %s"
 For Run B additionally:
 ```bash
 cd ~/benchmark/run-b/craftbazaar
-wt-memory list --json
-wt-memory status
+set-memory list --json
+set-memory status
 ```
 
 ### Step 2: Read session transcripts
@@ -65,38 +65,38 @@ For each change in each run, identify:
 - Whether tests passed on first try
 
 For Run B, also identify:
-- Each `wt-memory recall` call and whether results influenced behavior
-- Each `wt-memory remember` call and the quality of what was saved
+- Each `set-memory recall` call and whether results influenced behavior
+- Each `set-memory remember` call and the quality of what was saved
 
 ### Step 3: Read evaluator notes
 
 The evaluator notes for each change are in:
 ```
-<wt-tools-root>/benchmark/changes/01-product-catalog.md
-<wt-tools-root>/benchmark/changes/02-shopping-cart.md
-<wt-tools-root>/benchmark/changes/03-multi-vendor.md
-<wt-tools-root>/benchmark/changes/04-discounts.md
-<wt-tools-root>/benchmark/changes/05-checkout.md
-<wt-tools-root>/benchmark/changes/06-order-workflow.md
+<set-core-root>/benchmark/changes/01-product-catalog.md
+<set-core-root>/benchmark/changes/02-shopping-cart.md
+<set-core-root>/benchmark/changes/03-multi-vendor.md
+<set-core-root>/benchmark/changes/04-discounts.md
+<set-core-root>/benchmark/changes/05-checkout.md
+<set-core-root>/benchmark/changes/06-order-workflow.md
 ```
 
 Read the "Evaluator Notes" section (below the marker line) for each change. Use the trap documentation and memory predictions to guide your analysis.
 
 ### Step 4: Generate the comparison report
 
-Using the template at `<wt-tools-root>/benchmark/templates/comparison-report.md`, fill in:
+Using the template at `<set-core-root>/benchmark/templates/comparison-report.md`, fill in:
 
 1. **Aggregate metrics** table (sum across all changes per run)
 2. **Per-change comparison** tables with key observations
 3. **Narrative findings** — where memory helped most, where it didn't, surprises
-4. **Diagnostic summary** — memory gap analysis (see `<wt-tools-root>/benchmark/diagnostic-framework.md`)
+4. **Diagnostic summary** — memory gap analysis (see `<set-core-root>/benchmark/diagnostic-framework.md`)
 5. **Conclusion** — overall assessment with evidence
 
 Save the completed report to `~/benchmark/results/comparison-report.md`.
 
 ### Step 5: Generate per-change annotations
 
-For each change × run combination (12 total), fill out the session annotation template at `<wt-tools-root>/benchmark/templates/session-annotation.md`.
+For each change × run combination (12 total), fill out the session annotation template at `<set-core-root>/benchmark/templates/session-annotation.md`.
 
 Save to `~/benchmark/results/annotations/run-<a|b>-change-<NN>.md`.
 
@@ -106,7 +106,7 @@ Save to `~/benchmark/results/annotations/run-<a|b>-change-<NN>.md`.
 
 After the agent generates the report, verify:
 
-1. **Metric accuracy**: Cross-check iteration counts with `wt-loop history` output
+1. **Metric accuracy**: Cross-check iteration counts with `set-loop history` output
 2. **Dead end identification**: Verify by reading the transcript sections
 3. **Memory event accuracy**: Verify recall/save counts against Run B transcript
 4. **Trap assessments**: Check against evaluator notes — did the agent correctly identify which traps were encountered?

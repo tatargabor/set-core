@@ -20,28 +20,28 @@ The system SHALL resolve the implementation model using three-tier priority: (1)
 - **THEN** the default model from directive is used
 
 ### Requirement: Dispatch change to worktree
-The system SHALL create a worktree via `wt-new`, bootstrap it, prune orchestrator context, build proposal.md with scope/memory/project-knowledge/sibling context, and launch wt-loop. Token counters SHALL be reset on fresh dispatch. If worktree already exists, stale loop state SHALL be cleaned up.
+The system SHALL create a worktree via `set-new`, bootstrap it, prune orchestrator context, build proposal.md with scope/memory/project-knowledge/sibling context, and launch set-loop. Token counters SHALL be reset on fresh dispatch. If worktree already exists, stale loop state SHALL be cleaned up.
 
 #### Scenario: Fresh dispatch
 - **WHEN** dispatch_change is called for a pending change with no existing worktree
-- **THEN** worktree is created, bootstrapped, proposal.md written, wt-loop started, status set to "running"
+- **THEN** worktree is created, bootstrapped, proposal.md written, set-loop started, status set to "running"
 
 #### Scenario: Existing worktree reuse
 - **WHEN** worktree directory already exists at expected path
 - **THEN** stale loop-state.json is cleaned up if PID is dead, worktree is reused
 
 #### Scenario: Worktree creation failure
-- **WHEN** wt-new fails
+- **WHEN** set-new fails
 - **THEN** change status is set to "failed" and function returns error
 
-### Requirement: Dispatch via wt-loop backend
-The system SHALL start wt-loop in a subshell, verify startup by polling for loop-state.json (up to 10 seconds), extract terminal PID, and update state with ralph_pid and status "running".
+### Requirement: Dispatch via set-loop backend
+The system SHALL start set-loop in a subshell, verify startup by polling for loop-state.json (up to 10 seconds), extract terminal PID, and update state with ralph_pid and status "running".
 
-#### Scenario: Successful wt-loop start
-- **WHEN** wt-loop is invoked and loop-state.json appears within 10 seconds
+#### Scenario: Successful set-loop start
+- **WHEN** set-loop is invoked and loop-state.json appears within 10 seconds
 - **THEN** terminal_pid is extracted and change status is set to "running"
 
-#### Scenario: wt-loop fails to start
+#### Scenario: set-loop fails to start
 - **WHEN** loop-state.json does not appear after 10 seconds
 - **THEN** change status is set to "failed" and an ERROR event is emitted
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/orchestration/digest.sh — Thin wrapper: logic lives in lib/wt_orch/digest.py
 #
-# Sourced by bin/wt-orchestrate after planner.sh.
+# Sourced by bin/set-orchestrate after planner.sh.
 # Python implementation: lib/wt_orch/digest.py, cli.py:cmd_digest()
 
 DIGEST_DIR="wt/orchestration/digest"
@@ -19,7 +19,7 @@ cmd_digest() {
             --dry-run) dry_run=true; shift ;;
             --help|-h)
                 cat <<'USAGE'
-Usage: wt-orchestrate digest --spec <path> [--dry-run]
+Usage: set-orchestrate digest --spec <path> [--dry-run]
 
 Generate a structured digest from a multi-file specification directory.
 
@@ -56,7 +56,7 @@ USAGE
     $dry_run && run_args+=(--dry-run)
 
     local result
-    result=$(wt-orch-core digest run "${run_args[@]}" 2>/dev/null) || {
+    result=$(set-orch-core digest run "${run_args[@]}" 2>/dev/null) || {
         emit_event "DIGEST_FAILED" "" "{\"reason\":\"run_failed\"}" 2>/dev/null || true
         error "Digest generation failed"
         return 1
@@ -85,17 +85,17 @@ USAGE
     fi
 }
 
-# ─── Thin wrappers delegating to wt-orch-core ────────────────────────
+# ─── Thin wrappers delegating to set-orch-core ────────────────────────
 
 scan_spec_directory() {
     local spec_path="$1"
-    wt-orch-core digest scan --spec "$spec_path"
+    set-orch-core digest scan --spec "$spec_path"
 }
 
 check_digest_freshness() {
     local spec_path="$1"
     local result
-    result=$(wt-orch-core digest freshness --spec "$spec_path" 2>/dev/null) || {
+    result=$(set-orch-core digest freshness --spec "$spec_path" 2>/dev/null) || {
         echo "error"
         return 1
     }
@@ -104,7 +104,7 @@ check_digest_freshness() {
 
 populate_coverage() {
     local plan_file="$1"
-    wt-orch-core digest populate-coverage --plan-file "$plan_file" 2>/dev/null || {
+    set-orch-core digest populate-coverage --plan-file "$plan_file" 2>/dev/null || {
         log_warn "populate_coverage: failed"
         return 1
     }
@@ -113,14 +113,14 @@ populate_coverage() {
 update_coverage_status() {
     local change_name="$1"
     local new_status="$2"
-    wt-orch-core digest update-coverage --change "$change_name" --status "$new_status" 2>/dev/null || true
+    set-orch-core digest update-coverage --change "$change_name" --status "$new_status" 2>/dev/null || true
 }
 
 # check_coverage_gaps() — removed, runs in Python via digest.py:check_coverage_gaps()
 
 final_coverage_check() {
     local result
-    result=$(wt-orch-core digest final-coverage 2>/dev/null) || return 0
+    result=$(set-orch-core digest final-coverage 2>/dev/null) || return 0
     echo "$result" | jq -r '.summary // ""'
 }
 
@@ -132,31 +132,31 @@ generate_triage_md() {
     local existing_triage="${3:-}"
     local args=(--amb-file "$amb_file" --output "$output_file")
     [[ -n "$existing_triage" ]] && args+=(--existing-triage "$existing_triage")
-    wt-orch-core digest generate-triage "${args[@]}" 2>/dev/null || true
+    set-orch-core digest generate-triage "${args[@]}" 2>/dev/null || true
 }
 
 parse_triage_md() {
     local triage_file="$1"
-    wt-orch-core digest parse-triage --triage-file "$triage_file" 2>/dev/null || echo '{}'
+    set-orch-core digest parse-triage --triage-file "$triage_file" 2>/dev/null || echo '{}'
 }
 
 merge_triage_to_ambiguities() {
     local amb_file="$1"
     local triage_decisions="$2"
     local resolved_by="${3:-triage}"
-    wt-orch-core digest merge-triage --amb-file "$amb_file" --decisions "$triage_decisions" --resolved-by "$resolved_by" 2>/dev/null || true
+    set-orch-core digest merge-triage --amb-file "$amb_file" --decisions "$triage_decisions" --resolved-by "$resolved_by" 2>/dev/null || true
 }
 
 merge_planner_resolutions() {
     local amb_file="$1"
     local plan_file="$2"
-    wt-orch-core digest merge-planner-resolutions --amb-file "$amb_file" --plan-file "$plan_file" 2>/dev/null || true
+    set-orch-core digest merge-planner-resolutions --amb-file "$amb_file" --plan-file "$plan_file" 2>/dev/null || true
 }
 
 build_digest_prompt() {
     local spec_path="$1"
     local scan_result="$2"  # unused — Python rebuilds scan internally
-    wt-orch-core digest build-prompt --spec "$spec_path" 2>/dev/null
+    set-orch-core digest build-prompt --spec "$spec_path" 2>/dev/null
 }
 
 call_digest_api() {
@@ -171,31 +171,31 @@ call_digest_api() {
 
 parse_digest_response() {
     local raw_response="$1"
-    wt-orch-core digest parse-response <<< "$raw_response"
+    set-orch-core digest parse-response <<< "$raw_response"
 }
 
 write_digest_output() {
     local parsed="$1"
     local spec_path="$2"
     local scan_result="$3"  # unused — Python uses parsed data directly
-    wt-orch-core digest write-output --spec "$spec_path" <<< "$parsed"
+    set-orch-core digest write-output --spec "$spec_path" <<< "$parsed"
 }
 
 validate_digest() {
     local parsed="$1"
-    wt-orch-core digest validate-raw <<< "$parsed"
+    set-orch-core digest validate-raw <<< "$parsed"
 }
 
 stabilize_ids() {
     local new_parsed="$1"
-    wt-orch-core digest stabilize-ids <<< "$new_parsed"
+    set-orch-core digest stabilize-ids <<< "$new_parsed"
 }
 
 # ─── Coverage Report ────────────────────────────────────────────────
 
 cmd_coverage() {
     if [[ ! -d "$DIGEST_DIR" ]]; then
-        info "No digest found. Run \`wt-orchestrate digest --spec <path>\` first."
+        info "No digest found. Run \`set-orchestrate digest --spec <path>\` first."
         return 0
     fi
 

@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-source "$PROJECT_DIR/bin/wt-common.sh"
+source "$PROJECT_DIR/bin/set-common.sh"
 
 # ============================================================
 # Setup: temp project with sample brief
@@ -33,13 +33,13 @@ echo "# Dummy Spec" > openspec/specs/dummy-spec/spec.md
 git add -A && git commit -q -m "init"
 
 # ============================================================
-# Test: wt-orchestrate plan
+# Test: set-orchestrate plan
 # ============================================================
 
-info "Running wt-orchestrate plan..."
+info "Running set-orchestrate plan..."
 
-"$PROJECT_DIR/bin/wt-orchestrate" plan 2>&1 || {
-    error "wt-orchestrate plan failed"
+"$PROJECT_DIR/bin/set-orchestrate" plan 2>&1 || {
+    error "set-orchestrate plan failed"
     exit 1
 }
 
@@ -96,7 +96,7 @@ fi
 success "All dependency references are valid"
 
 # Validate no circular dependencies (topological sort succeeds)
-if ! "$PROJECT_DIR/bin/wt-orchestrate" plan --show &>/dev/null; then
+if ! "$PROJECT_DIR/bin/set-orchestrate" plan --show &>/dev/null; then
     error "Plan has circular dependencies"
     exit 1
 fi

@@ -6,7 +6,7 @@ The Python `merger.py:merge_change()` SHALL be the live merge implementation, ca
 #### Scenario: Merge triggered from Python monitor
 - **WHEN** the Python monitor loop detects a change ready for merge
 - **THEN** it SHALL call `merger.merge_change()` as a Python function call
-- **AND** the merge SHALL execute the full pipeline: pre-merge hook → branch check → wt-merge → post-merge validation
+- **AND** the merge SHALL execute the full pipeline: pre-merge hook → branch check → set-merge → post-merge validation
 
 ### Requirement: Python merge executes hooks via subprocess
 The Python merge pipeline SHALL execute user-defined hook scripts (pre_merge, post_merge, on_fail) via `subprocess_utils.run_command()`.

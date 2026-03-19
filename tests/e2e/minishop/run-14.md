@@ -5,14 +5,14 @@
 #### 25. bridge.sh log_warn/log_info undefined — crashes design fetch
 - **Type**: framework
 - **Severity**: blocking (planner crash loop → sentinel rapid_crashes 5/5)
-- **Root cause**: `bridge.sh` used `log_warn`/`log_info` which don't exist. When sourced standalone from Python subprocess (without `wt-common.sh`), `command not found` error crashed `check_design_mcp_health`, causing planner RuntimeError. The `2>/dev/null` on the bash bridge source swallowed the error from the orchestration log.
+- **Root cause**: `bridge.sh` used `log_warn`/`log_info` which don't exist. When sourced standalone from Python subprocess (without `set-common.sh`), `command not found` error crashed `check_design_mcp_health`, causing planner RuntimeError. The `2>/dev/null` on the bash bridge source swallowed the error from the orchestration log.
 - **Fix**: [118223a05] — Added fallback log functions at top of bridge.sh (`info`/`warn`/`error` no-ops if not already defined), renamed all `log_warn`→`warn`, `log_info`→`info`.
 - **Recurrence**: new (introduced during bash→Python migration, never tested standalone)
 
 #### 26. Design MCP health check needs run_claude PTY — hangs from Python
 - **Type**: framework
 - **Severity**: blocking (planner hangs indefinitely)
-- **Root cause**: `check_design_mcp_health()` calls `run_claude` (a bash function from `wt-common.sh` that uses `script -f` PTY wrapper). When called from Python subprocess via `bash -c 'source bridge.sh'`, `run_claude` is undefined (rc=127). Sourcing `wt-common.sh` doesn't work either — it has interactive side effects that hang the subprocess.
+- **Root cause**: `check_design_mcp_health()` calls `run_claude` (a bash function from `set-common.sh` that uses `script -f` PTY wrapper). When called from Python subprocess via `bash -c 'source bridge.sh'`, `run_claude` is undefined (rc=127). Sourcing `set-common.sh` doesn't work either — it has interactive side effects that hang the subprocess.
 - **Fix**: [a0a9f2823] → [3bca71c13] — Skip health check from Python planner, go straight to `setup_design_bridge + fetch_design_snapshot`. The fetch will fail fast if MCP isn't working.
 - **Recurrence**: new (same migration gap as #25)
 
@@ -35,7 +35,7 @@
 #### 29. Post-merge deps install uses HEAD~1 diff — misses package.json from multi-commit merges
 - **Type**: framework (merger.py)
 - **Severity**: causes smoke failure (non-blocking — change still merges)
-- **Root cause**: `_post_merge_deps_install()` (merger.py:572-576) checks `git diff HEAD~1 --name-only` for `package.json`. But wt-merge creates multiple commits (impl + archive), so HEAD~1 only shows the archive commit diff. The actual `package.json` is in an earlier commit (e.g. HEAD~3). Result: `pnpm install` never runs → `node_modules` missing → smoke `pnpm test` fails with "node_modules missing, did you mean to install?"
+- **Root cause**: `_post_merge_deps_install()` (merger.py:572-576) checks `git diff HEAD~1 --name-only` for `package.json`. But set-merge creates multiple commits (impl + archive), so HEAD~1 only shows the archive commit diff. The actual `package.json` is in an earlier commit (e.g. HEAD~3). Result: `pnpm install` never runs → `node_modules` missing → smoke `pnpm test` fails with "node_modules missing, did you mean to install?"
 - **Fix**: Not yet committed. Should diff against merge-base (pre-merge tag or saved ref), not HEAD~1. Alternative: always install if `package.json` exists and `node_modules/` doesn't.
 - **Recurrence**: new (likely present since merger.py migration but masked when smoke wasn't configured)
 - **Impact**: Both test-infrastructure-setup and products-page got smoke=fail despite all other gates passing.

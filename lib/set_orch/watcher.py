@@ -11,7 +11,7 @@ import json
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("wt-web.watcher")
+logger = logging.getLogger("set-web.watcher")
 
 
 class LogTailer:

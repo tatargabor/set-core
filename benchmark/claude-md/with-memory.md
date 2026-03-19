@@ -60,8 +60,8 @@ This project uses persistent memory (shodh-memory) across sessions. Memory conte
 - Session end → insights extracted and saved
 
 **Emphasis (use sparingly):**
-- `echo "<insight>" | wt-memory remember --type <Decision|Learning|Context> --tags source:agent,<topic>` — mark something as HIGH IMPORTANCE
-- `wt-memory forget <id>` — suppress or correct a wrong memory
+- `echo "<insight>" | set-memory remember --type <Decision|Learning|Context> --tags source:agent,<topic>` — mark something as HIGH IMPORTANCE
+- `set-memory forget <id>` — suppress or correct a wrong memory
 - Most things are remembered automatically. Only use `remember` for emphasis.
 
 **Recall-then-verify (CRITICAL):** Memory provides starting points, not final answers. After recalling implementation details, ALWAYS grep or read the current code to verify before acting. Files may have changed since the memory was saved. Do not skip verification even if the recall seems highly relevant — memory-induced overconfidence leads to incomplete implementations.
@@ -91,7 +91,7 @@ You are autonomously building CraftBazaar through 12 sequential changes. Each se
 
 2. **Recall past experience** before starting implementation:
    ```bash
-   wt-memory recall "<change-name> implementation" --limit 5 --mode hybrid
+   set-memory recall "<change-name> implementation" --limit 5 --mode hybrid
    ```
 
 3. Implement the change:

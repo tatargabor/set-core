@@ -86,7 +86,7 @@ Category C: **+5 raw probes, +15 weighted points** — this is the memory delta.
 
 ### Key Insight
 
-The agent **never voluntarily saves to memory**. Across SYN-03 and SYN-04, zero `wt-memory remember` calls were made by the agent itself, despite CLAUDE.md instructions and explicit prompt instructions. The delta only appeared when we added mechanical post-session extraction (`post-session-save.sh`).
+The agent **never voluntarily saves to memory**. Across SYN-03 and SYN-04, zero `set-memory remember` calls were made by the agent itself, despite CLAUDE.md instructions and explicit prompt instructions. The delta only appeared when we added mechanical post-session extraction (`post-session-save.sh`).
 
 This means:
 1. **CLAUDE.md save instructions don't work** — agents prioritize implementation and ignore save steps
@@ -107,5 +107,5 @@ The recall side works well. The save side is the bottleneck.
 
 1. **n=3 replication**: Run SYN-04 two more times to confirm delta consistency
 2. **T10 investigation**: Why doesn't the order convention stick? Check if recall surfaces it
-3. **Save hook enhancement**: Make `wt-hook-memory-save` extract Developer Notes from project files
+3. **Save hook enhancement**: Make `set-hook-memory-save` extract Developer Notes from project files
 4. **Mode C comparison**: Run with pre-seeded memories (10 perfectly crafted memories) as upper bound

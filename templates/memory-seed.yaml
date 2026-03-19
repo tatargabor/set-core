@@ -1,7 +1,7 @@
 # Memory Seed File — wt/knowledge/memory-seed.yaml
 #
 # Project-essential memories that every developer/agent should start with.
-# Imported on `wt-project init` (when memory store is empty) or `wt-memory seed`.
+# Imported on `set-project init` (when memory store is empty) or `set-memory seed`.
 #
 # Format:
 #   version: 1

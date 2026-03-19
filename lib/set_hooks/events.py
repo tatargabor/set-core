@@ -395,7 +395,7 @@ def _recall_cheat_sheet() -> str:
     try:
         result = subprocess.run(
             [
-                "wt-memory",
+                "set-memory",
                 "recall",
                 "cheat-sheet operational",
                 "--tags",
@@ -498,7 +498,7 @@ def _save_frustration_memory(level: str, prompt: str, triggers: str) -> None:
     content = f"{prefix}: {prompt[:500]}"
     try:
         subprocess.run(
-            ["wt-memory", "remember", "--type", "Learning", "--tags", tags],
+            ["set-memory", "remember", "--type", "Learning", "--tags", tags],
             input=content,
             text=True,
             capture_output=True,
@@ -565,7 +565,7 @@ def _commit_save(input_data: dict, cache_file: str) -> None:
     try:
         subprocess.run(
             [
-                "wt-memory",
+                "set-memory",
                 "remember",
                 "--type",
                 "Learning",

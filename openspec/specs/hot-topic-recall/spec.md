@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: PreToolUse hook for hot-topic Bash commands
-A new hook script `wt-hook-memory-pretool` SHALL run on `PreToolUse` events matching the `Bash` tool. It SHALL parse the command for hot-topic patterns (generic base + project-discovered) and inject relevant memories via `additionalContext` before the command executes.
+A new hook script `set-hook-memory-pretool` SHALL run on `PreToolUse` events matching the `Bash` tool. It SHALL parse the command for hot-topic patterns (generic base + project-discovered) and inject relevant memories via `additionalContext` before the command executes.
 
 #### Scenario: Bash command matches a discovered project hot topic
 - **WHEN** Claude is about to execute a Bash command matching a pattern from `.claude/hot-topics.json`
@@ -42,7 +42,7 @@ The SessionStart hook (L1) SHALL discover project-specific hot topics and write 
 
 #### Scenario: set-core project discovery
 - **WHEN** SessionStart runs in the set-core project
-- **THEN** `.claude/hot-topics.json` SHALL contain patterns for `wt-\w+`, `openspec\s`, and other project-specific commands
+- **THEN** `.claude/hot-topics.json` SHALL contain patterns for `set-\w+`, `openspec\s`, and other project-specific commands
 
 #### Scenario: Discovery cap
 - **WHEN** discovery finds more than 20 patterns
@@ -62,9 +62,9 @@ Regardless of discovery, the following base patterns SHALL always be checked:
 These base patterns are project-independent and cover universally relevant commands.
 
 ### Requirement: Hook deployment includes PreToolUse
-The `wt-deploy-hooks` script SHALL include `wt-hook-memory-pretool` in a `PreToolUse` hook event with matcher `"Bash"`.
+The `set-deploy-hooks` script SHALL include `set-hook-memory-pretool` in a `PreToolUse` hook event with matcher `"Bash"`.
 
 #### Scenario: Deploy adds PreToolUse hook
-- **WHEN** `wt-deploy-hooks /path/to/project` is called
-- **THEN** settings.json SHALL contain a `PreToolUse` entry matching `"Bash"` with `wt-hook-memory-pretool`
+- **WHEN** `set-deploy-hooks /path/to/project` is called
+- **THEN** settings.json SHALL contain a `PreToolUse` entry matching `"Bash"` with `set-hook-memory-pretool`
 - **AND** the timeout SHALL be 5 seconds

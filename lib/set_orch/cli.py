@@ -1,6 +1,6 @@
-"""CLI entry point for wt-orch-core.
+"""CLI entry point for set-orch-core.
 
-This module is the canonical implementation. bin/wt-orch-core delegates here.
+This module is the canonical implementation. bin/set-orch-core delegates here.
 pyproject.toml [project.scripts] also points here for pip-installed environments.
 """
 
@@ -790,11 +790,11 @@ def cmd_serve(args):
 
     from .server import create_app
 
-    port = args.port or int(os.environ.get("WT_WEB_PORT", "7400"))
+    port = args.port or int(os.environ.get("SET_WEB_PORT", "7400"))
     host = args.host or "0.0.0.0"
 
     app = create_app()
-    print(f"wt-web dashboard running at http://{host}:{port}")
+    print(f"set-web dashboard running at http://{host}:{port}")
 
     config = uvicorn.Config(
         app,
@@ -1331,7 +1331,7 @@ def cmd_build(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="wt-orch-core",
+        prog="set-orch-core",
         description="Python core for set-core orchestration engine",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

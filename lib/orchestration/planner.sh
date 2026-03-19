@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # lib/orchestration/planner.sh — Thin wrapper: logic lives in lib/wt_orch/planner.py
 #
-# Sourced by bin/wt-orchestrate for backward compatibility.
+# Sourced by bin/set-orchestrate for backward compatibility.
 # Python implementation: lib/wt_orch/planner.py, cli.py:cmd_plan()
 #
 # auto_replan_cycle() runs in Python via engine.py:_handle_auto_replan()
 
-# ─── Delegated helpers (thin wrappers to wt-orch-core) ───────────────
+# ─── Delegated helpers (thin wrappers to set-orch-core) ───────────────
 
 estimate_tokens() {
     local file="$1"
@@ -19,14 +19,14 @@ summarize_spec() {
     local spec_file="$1"
     local phase_hint="$2"
     local sum_model="${3:-$DEFAULT_SUMMARIZE_MODEL}"
-    wt-orch-core plan summarize-spec --spec-file "$spec_file" \
+    set-orch-core plan summarize-spec --spec-file "$spec_file" \
         ${phase_hint:+--phase-hint "$phase_hint"} \
         ${sum_model:+--model "$sum_model"}
 }
 
 detect_test_infra() {
     local project_dir="${1:-.}"
-    wt-orch-core plan detect-test-infra --project-dir "$project_dir"
+    set-orch-core plan detect-test-infra --project-dir "$project_dir"
 }
 
 validate_plan() {
@@ -36,7 +36,7 @@ validate_plan() {
         digest_arg="--digest-dir $DIGEST_DIR"
     fi
     local result
-    result=$(wt-orch-core plan validate --plan-file "$plan_file" $digest_arg 2>&1)
+    result=$(set-orch-core plan validate --plan-file "$plan_file" $digest_arg 2>&1)
     local rc=$?
     local errors warnings
     errors=$(echo "$result" | jq -r '.errors[]?' 2>/dev/null || true)
@@ -54,7 +54,7 @@ check_scope_overlap() {
     pk_file=$(find_project_knowledge_file)
     [[ -n "$pk_file" ]] && pk_arg="--pk-file $pk_file"
     local result
-    result=$(wt-orch-core plan check-scope-overlap --plan-file "$plan_file" $state_arg $pk_arg 2>/dev/null)
+    result=$(set-orch-core plan check-scope-overlap --plan-file "$plan_file" $state_arg $pk_arg 2>/dev/null)
     local warning_count
     warning_count=$(echo "$result" | jq '.warnings | length' 2>/dev/null || echo 0)
     if [[ "$warning_count" -gt 0 ]]; then
@@ -71,7 +71,7 @@ find_project_knowledge_file() {
 check_triage_gate() {
     local auto_defer_flag=""
     [[ "${TRIAGE_AUTO_DEFER:-false}" == "true" ]] && auto_defer_flag="--auto-defer"
-    wt-orch-core plan check-triage --digest-dir "${DIGEST_DIR:-}" $auto_defer_flag 2>/dev/null
+    set-orch-core plan check-triage --digest-dir "${DIGEST_DIR:-}" $auto_defer_flag 2>/dev/null
 }
 
 # ─── Main CLI entry points ───────────────────────────────────────────
@@ -89,7 +89,7 @@ cmd_plan() {
     # Show existing plan (pure display — stays in bash)
     if $show_only; then
         if [[ ! -f "$PLAN_FILENAME" ]]; then
-            error "No plan found. Run 'wt-orchestrate plan' first."
+            error "No plan found. Run 'set-orchestrate plan' first."
             return 1
         fi
         echo ""
@@ -155,7 +155,7 @@ cmd_plan() {
             stale)
                 local _stored_hash _current_hash
                 _stored_hash=$(jq -r '.source_hash' "$DIGEST_DIR/index.json" 2>/dev/null || echo "")
-                _current_hash=$(wt-orch-core digest scan --spec "$INPUT_PATH" 2>/dev/null | jq -r '.source_hash' 2>/dev/null || echo "none")
+                _current_hash=$(set-orch-core digest scan --spec "$INPUT_PATH" 2>/dev/null | jq -r '.source_hash' 2>/dev/null || echo "none")
                 if [[ -n "$_stored_hash" && "$_stored_hash" == "$_current_hash" ]]; then
                     info "Hash re-check: still fresh, skipping re-digest"
                 else
@@ -185,8 +185,8 @@ cmd_plan() {
     info "Calling Claude for decomposition..."
 
     local result
-    local stderr_file="/tmp/wt-decompose-stderr-$$.log"
-    result=$(wt-orch-core plan run "${plan_args[@]}" 2>"$stderr_file") || {
+    local stderr_file="/tmp/set-decompose-stderr-$$.log"
+    result=$(set-orch-core plan run "${plan_args[@]}" 2>"$stderr_file") || {
         local stderr_content
         stderr_content=$(tail -20 "$stderr_file" 2>/dev/null)
         error "Claude decomposition failed."
@@ -223,14 +223,14 @@ cmd_plan() {
     success "Plan created: $change_count changes (v$plan_version)"
     cmd_plan --show
     echo ""
-    info "Review the plan above. Start with: wt-orchestrate start"
+    info "Review the plan above. Start with: set-orchestrate start"
 }
 
 cmd_replan() {
     find_input || return 1
     info "Replanning from updated input ($INPUT_MODE: $INPUT_PATH)..."
     cmd_plan
-    info "Replan complete. Review and run 'wt-orchestrate start' to apply."
+    info "Replan complete. Review and run 'set-orchestrate start' to apply."
 }
 
 # auto_replan_cycle() runs in Python via engine.py:_handle_auto_replan()

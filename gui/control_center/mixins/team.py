@@ -313,7 +313,7 @@ class TeamMixin:
         except Exception as e:
             show_warning(self, "Error", f"Failed to generate key: {e}")
 
-    def init_wt_control_for_project(self, project: str):
+    def init_set_control_for_project(self, project: str):
         """Initialize set-control branch for the given project"""
         if not project:
             show_warning(self, "Error", "No project specified")

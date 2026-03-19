@@ -2,7 +2,7 @@
 
 ## Context
 
-Currently, ~15 direct `git worktree` calls are scattered across dispatcher.py, merger.py, planner.py, api.py, milestone.py, bin/wt-new, and bin/wt-close. These handle four operations: create, remove, list, and sync-with-main. The rest of the codebase (~200+ references to `worktree_path`) operates on paths and is backend-agnostic already.
+Currently, ~15 direct `git worktree` calls are scattered across dispatcher.py, merger.py, planner.py, api.py, milestone.py, bin/set-new, and bin/set-close. These handle four operations: create, remove, list, and sync-with-main. The rest of the codebase (~200+ references to `worktree_path`) operates on paths and is backend-agnostic already.
 
 The branch-clone approach uses `git clone --branch` to create fully independent repository copies. This eliminates shared `.git` directory issues (index.lock conflicts, worktree pruning problems) at the cost of more disk space.
 
@@ -42,11 +42,11 @@ orchestration.yaml → config.get_isolation_backend() → IsolationBackend insta
 
 ### D3: Bash CLI scripts call Python backend
 
-**Decision:** `wt-new` and `wt-close` call a thin Python entry point (`set-orch-core isolation create/remove`) instead of `git worktree` directly.
+**Decision:** `set-new` and `set-close` call a thin Python entry point (`set-orch-core isolation create/remove`) instead of `git worktree` directly.
 
 **Why:** The Python backend is the single source of truth. Duplicating logic in bash defeats the abstraction.
 
-**Alternative considered:** Rewrite wt-new/wt-close in Python — rejected as too large a change for this scope. The bash scripts remain as wrappers.
+**Alternative considered:** Rewrite set-new/set-close in Python — rejected as too large a change for this scope. The bash scripts remain as wrappers.
 
 ### D4: BranchClone merge-back uses source repo as remote
 
@@ -62,14 +62,14 @@ Source repo ←── git push (from clone) ←── Clone dir
 
 ### D5: Bootstrap operations stay in bash
 
-**Decision:** The bootstrap steps in wt-new (env file copy, dependency install, hook deploy, editor config) remain in bash and run after the Python backend creates the directory. They are backend-agnostic — they operate on a path, not on git internals.
+**Decision:** The bootstrap steps in set-new (env file copy, dependency install, hook deploy, editor config) remain in bash and run after the Python backend creates the directory. They are backend-agnostic — they operate on a path, not on git internals.
 
 ## Risks / Trade-offs
 
 - **[Risk] Branch-clone uses more disk** → Mitigation: document this in config. For large repos, worktree backend remains recommended.
 - **[Risk] Clone sync is slower than worktree sync** → Mitigation: `--single-branch` reduces fetch scope. Can add `--depth` later if needed.
 - **[Risk] Two code paths to maintain** → Mitigation: shared test suite validates both backends produce identical outcomes.
-- **[Risk] Bash→Python bridge adds complexity to wt-new/wt-close** → Mitigation: the bridge is a single subprocess call, and the Python layer is already used elsewhere (profile bootstrap).
+- **[Risk] Bash→Python bridge adds complexity to set-new/set-close** → Mitigation: the bridge is a single subprocess call, and the Python layer is already used elsewhere (profile bootstrap).
 
 ## Open Questions
 

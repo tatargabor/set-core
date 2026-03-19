@@ -22,7 +22,7 @@ The `set-memory` CLI SHALL provide a `cleanup-logs` subcommand that removes Rock
 - **THEN** the command SHALL exit cleanly with no error
 
 ### Requirement: Automatic cleanup on Stop hook
-The Stop handler in `wt-hook-memory` SHALL call `set-memory cleanup-logs` once per session before running transcript extraction. This runs synchronously in the Stop handler (not the background extraction).
+The Stop handler in `set-hook-memory` SHALL call `set-memory cleanup-logs` once per session before running transcript extraction. This runs synchronously in the Stop handler (not the background extraction).
 
 #### Scenario: Stop hook triggers cleanup
 - **WHEN** the Stop event fires

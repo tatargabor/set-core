@@ -4,7 +4,7 @@
 - `~/.local/share/set-core/<project>/` as location for all shared runtime data (worktree-independent)
 - `<worktree>/.set/` as minimal location for per-agent ephemeral data only
 - Subdirectory layout: orchestration/, sentinel/, logs/, cache/, screenshots/
-- Central path resolution via Python `WtRuntime` class and bash `wt-paths` helper
+- Central path resolution via Python `SetRuntime` class and bash `set-paths` helper
 - `.gitignore` simplification (remove scattered patterns, keep only `/.set/` for per-worktree)
 - Migration of all existing runtime files to new locations
 - Sentinel migration from project-local `.wt/sentinel/` to shared location
@@ -122,17 +122,17 @@ The system SHALL store the design snapshot under the shared runtime directory.
 ### Requirement: Path resolution via config constant
 All runtime file access SHALL go through a centralized path resolution mechanism.
 
-#### Scenario: Python code uses WtRuntime
+#### Scenario: Python code uses SetRuntime
 - **WHEN** Python code needs a shared runtime file path
-- **THEN** it SHALL use `WtRuntime(project_path).state_file`, `.events_file`, etc.
+- **THEN** it SHALL use `SetRuntime(project_path).state_file`, `.events_file`, etc.
 
-#### Scenario: Python code uses WtRuntime.agent_dir
+#### Scenario: Python code uses SetRuntime.agent_dir
 - **WHEN** Python code needs a per-worktree agent path
-- **THEN** it SHALL use `WtRuntime.agent_dir(worktree_path)` to resolve `<worktree>/.set/`
+- **THEN** it SHALL use `SetRuntime.agent_dir(worktree_path)` to resolve `<worktree>/.set/`
 
-#### Scenario: Bash code uses wt-paths helper
+#### Scenario: Bash code uses set-paths helper
 - **WHEN** bash code needs a runtime file path
-- **THEN** it SHALL source `wt-paths` and use exported variables
+- **THEN** it SHALL source `set-paths` and use exported variables
 
 ### Requirement: Gitignore simplification
 The `.gitignore` SHALL be simplified by removing scattered runtime patterns.
@@ -155,5 +155,5 @@ The system SHALL support configurable worktree lifecycle after merge.
 - **THEN** the worktree directory and branch SHALL be deleted after log archival (legacy behavior)
 
 #### Scenario: Manual cleanup
-- **WHEN** `wt-cleanup --older-than Nd` is run
+- **WHEN** `set-cleanup --older-than Nd` is run
 - **THEN** worktrees for changes merged more than N days ago SHALL be removed

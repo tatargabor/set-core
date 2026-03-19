@@ -296,7 +296,7 @@ main() {
     success "Repository added successfully!"
     echo ""
     echo "It will now appear in Control Center."
-    echo "You can use /wt skills and Ralph loop on it."
+    echo "You can use /set skills and Ralph loop on it."
 }
 
 main "$@"

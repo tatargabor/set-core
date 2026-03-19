@@ -13,7 +13,7 @@ The installer (`install.sh`) and `set-project init` automatically register the M
 ### Manual setup
 
 ```bash
-claude mcp add set-core --scope user -- python /path/to/set-core/mcp-server/wt_mcp_server.py
+claude mcp add set-core --scope user -- python /path/to/set-core/mcp-server/set_mcp_server.py
 ```
 
 ## Tools

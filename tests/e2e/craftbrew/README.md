@@ -22,11 +22,11 @@ Multi-file spec orchestration test using the [CraftBrew spec repo](https://githu
 | 6 | Verify gate fails on untracked files without auto-commit | blocking | 06e3cce | #1 |
 | 7 | UnicodeDecodeError on binary subprocess output (PNG in stdout) | blocking | cf07532 | #1 |
 | 8 | Verify gate stuck in "verifying" (spec_verify crash orphans status) | blocking | manual | #1 |
-| 9 | orchestration-state.json deleted during wt-merge cleanup | blocking | fixed (`eec894bcb`) | #2 |
+| 9 | orchestration-state.json deleted during set-merge cleanup | blocking | fixed (`eec894bcb`) | #2 |
 | 10 | Context overflow: database-schema 970K (485% of 200K window) | app-bug | open | #2 |
 | 11 | Bug #37 fix cached — orchestrator must be restarted fresh | noise | fixed `606aec640` (next run) | #2 |
 | 12 | Phantom review — scaffold files flagged in verify (Bug #53 regression) | blocking | open | #3 |
-| 13 | `local` outside function in wt-sentinel line 536 | noise | `8fb62c890` | #3 |
+| 13 | `local` outside function in set-sentinel line 536 | noise | `8fb62c890` | #3 |
 | 14 | **Verify agent dies, change stuck in "verifying" forever** | **critical** | open — #1 priority | #3 |
 | 15 | `cc/` model prefix stale — agent can't start | blocking | config fix | #3 |
 | 16 | Monitor stuck 7+ min, sentinel kills orchestrator | blocking | open | #3 |

@@ -2,7 +2,7 @@
 
 **Date**: 2026-02-16
 **Benchmark**: CraftBazaar — 12 sequential changes building a multi-vendor marketplace
-**Setup**: Two Claude Code instances (Opus 4.6), `wt-loop --max 30` (Phase 1) + `--max 15` (Phase 2)
+**Setup**: Two Claude Code instances (Opus 4.6), `set-loop --max 30` (Phase 1) + `--max 15` (Phase 2)
 **v5 changes**: 4 new convention traps (H/I/J/K), code map memories, glob bug fix for changes 10-12
 
 ## Overall
@@ -207,7 +207,7 @@ This is the single most important change for measuring memory value — the agen
 1. **Glob bug fixed**: `0*.md` → `[0-9]*.md` in `detect_next_change_action()`. Without this fix, changes 10-12 were invisible to auto-stop. Commit: `e85d0103f`.
 2. **Two-phase run**: Phase 1 (C01-C09) completed with original `0*.md` bug — both runs stopped at 9 changes. Phase 2 (C10-C12) started after the fix, both completed successfully.
 3. **Auto-stop worked in Phase 2**: Both runs stopped correctly when all 12 changes were complete.
-4. **Token reporting anomaly**: `wt-loop history` shows per-iteration tokens that appear cumulative (5M+) rather than incremental. Actual per-iteration consumption is unclear.
+4. **Token reporting anomaly**: `set-loop history` shows per-iteration tokens that appear cumulative (5M+) rather than incremental. Actual per-iteration consumption is unclear.
 
 ## Conclusions
 
@@ -245,7 +245,7 @@ This is the single most important change for measuring memory value — the agen
 
 **Gap**: 31 memories (37%) lack a `change:` tag, making them impossible to associate with specific changes during recall.
 **Evidence**: Untagged memories include proactive-context entries, auto-extract hook outputs, and some agent reflections.
-**Suggested change**: Ensure all hook saves (wt-hook-memory-save, proactive-context) include the current change name as a `change:` tag. The hook already has access to `$change_name`.
+**Suggested change**: Ensure all hook saves (set-hook-memory-save, proactive-context) include the current change name as a `change:` tag. The hook already has access to `$change_name`.
 **Expected impact**: Better recall precision — memories can be filtered by change context.
 
 ### 3. Add convention-level memory saves to hooks (P1)

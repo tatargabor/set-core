@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # lib/orchestration/builder.sh — Thin wrapper: logic lives in lib/wt_orch/builder.py
 #
-# Sourced by bin/wt-orchestrate for backward compatibility.
+# Sourced by bin/set-orchestrate for backward compatibility.
 # Python implementation: lib/wt_orch/builder.py, cli.py:cmd_build()
 
 # Run build on main project. Delegates to Python.
 check_base_build() {
     local project_path="$1"
     local result
-    result=$(wt-orch-core build check --project "$project_path" 2>/dev/null) || return 1
+    result=$(set-orch-core build check --project "$project_path" 2>/dev/null) || return 1
     local status
     status=$(echo "$result" | jq -r '.status // "fail"')
     [[ "$status" == "pass" || "$status" == "skip" ]]
@@ -18,7 +18,7 @@ check_base_build() {
 fix_base_build_with_llm() {
     local project_path="$1"
     local result
-    result=$(wt-orch-core build fix --project "$project_path" 2>/dev/null) || return 1
+    result=$(set-orch-core build fix --project "$project_path" 2>/dev/null) || return 1
     local status
     status=$(echo "$result" | jq -r '.status // "fail"')
     [[ "$status" == "pass" ]]

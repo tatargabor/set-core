@@ -15,8 +15,8 @@ missing=()
 command -v git >/dev/null || missing+=("git")
 command -v node >/dev/null || missing+=("node")
 command -v openspec >/dev/null || missing+=("openspec (npm i -g @fission-ai/openspec@1.1.1)")
-command -v wt-deploy-hooks >/dev/null || missing+=("wt-deploy-hooks")
-command -v wt-memory >/dev/null || missing+=("wt-memory")
+command -v set-deploy-hooks >/dev/null || missing+=("set-deploy-hooks")
+command -v set-memory >/dev/null || missing+=("set-memory")
 if [ ${#missing[@]} -gt 0 ]; then
   echo "ERROR: Missing prerequisites: ${missing[*]}" >&2
   exit 1
@@ -44,11 +44,11 @@ openspec init --tools claude
 # openspec init skips config in non-interactive mode — create it
 echo "schema: spec-driven" > openspec/config.yaml
 
-wt-deploy-hooks .
+set-deploy-hooks .
 
 # --- Enable metrics collection ---
-mkdir -p "$HOME/.local/share/wt-tools/metrics"
-touch "$HOME/.local/share/wt-tools/metrics/.enabled"
+mkdir -p "$HOME/.local/share/set-core/metrics"
+touch "$HOME/.local/share/set-core/metrics/.enabled"
 
 # --- Directories ---
 mkdir -p docs/benchmark results tests
@@ -105,8 +105,8 @@ if grep -rl "Evaluator Notes" docs/benchmark/*.md 2>/dev/null; then
 fi
 
 # --- Verify memory ---
-if ! wt-memory health >/dev/null 2>&1; then
-  echo "WARNING: wt-memory health check failed. Memory may not work during the run." >&2
+if ! set-memory health >/dev/null 2>&1; then
+  echo "WARNING: set-memory health check failed. Memory may not work during the run." >&2
 fi
 
 # --- Initial commit ---
@@ -122,10 +122,10 @@ echo "  Tests:     12 acceptance test scripts in tests/"
 echo "  Memory:    hooks deployed"
 echo ""
 echo "Next steps:"
-echo "  1. Trust the project (required before wt-loop can work):"
+echo "  1. Trust the project (required before set-loop can work):"
 echo "     cd $TARGET && claude --dangerously-skip-permissions"
 echo "     # Type 'hello', wait for response, Ctrl+C to exit"
 echo ""
 echo "  2. Start the run:"
 echo "     cd $TARGET"
-echo "     wt-loop start --max 30 --stall-threshold 3 --done manual \"Read CLAUDE.md, then follow the Benchmark Task workflow. There are exactly 12 changes (01-12). Check results/change-*.json to find the next incomplete one. For each: read the change definition in docs/benchmark/, run /opsx:ff to create artifacts, /opsx:apply to implement, run tests/test-NN.sh (it writes results/change-NN.json on pass), commit. Do NOT stop until all 12 results files exist. Do NOT create results files manually.\""
+echo "     set-loop start --max 30 --stall-threshold 3 --done manual \"Read CLAUDE.md, then follow the Benchmark Task workflow. There are exactly 12 changes (01-12). Check results/change-*.json to find the next incomplete one. For each: read the change definition in docs/benchmark/, run /opsx:ff to create artifacts, /opsx:apply to implement, run tests/test-NN.sh (it writes results/change-NN.json on pass), commit. Do NOT stop until all 12 results files exist. Do NOT create results files manually.\""

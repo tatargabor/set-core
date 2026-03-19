@@ -12,7 +12,7 @@ The help router SHALL map common question categories to specific documentation p
 
 #### Scenario: CLI tool questions routed
 - **WHEN** a user asks how a CLI tool works
-- **THEN** the router SHALL direct the LLM to run `wt-<tool> --help` or read the help command
+- **THEN** the router SHALL direct the LLM to run `set-<tool> --help` or read the help command
 
 #### Scenario: Skill questions routed
 - **WHEN** a user asks about `/opsx:*` or `/wt:*` skills

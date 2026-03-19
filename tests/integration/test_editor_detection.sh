@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$SCRIPT_DIR/bin/wt-common.sh"
+source "$SCRIPT_DIR/bin/set-common.sh"
 
 PASS=0
 FAIL=0
@@ -75,7 +75,7 @@ fi
 echo ""
 echo "Test: find_window_for_agent() [self PID]"
 if [[ "$PLATFORM" == "linux" ]] && command -v xdotool &>/dev/null; then
-    source "$SCRIPT_DIR/bin/wt-status"
+    source "$SCRIPT_DIR/bin/set-status"
     result=$(find_window_for_agent $$ 2>/dev/null) || result=""
     if [[ -n "$result" ]]; then
         wid="${result%%|*}"

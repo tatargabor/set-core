@@ -11,7 +11,7 @@ The orchestration engine is hardcoded to `git worktree` for change isolation. Th
 - **New**: `BranchCloneBackend` implementation using `git clone --branch` for full isolation
 - **Modified**: ~15 direct `git worktree` call sites in dispatcher, merger, planner, api, milestone, and CLI scripts replaced with backend method calls
 - **Modified**: `orchestration.yaml` gains `execution.isolation` config key (`worktree` | `branch-clone`)
-- CLI command names (`wt-new`, `wt-close`, `wt-merge`) and state field names (`worktree_path`) remain unchanged
+- CLI command names (`set-new`, `set-close`, `set-merge`) and state field names (`worktree_path`) remain unchanged
 
 ## Capabilities
 
@@ -24,7 +24,7 @@ The orchestration engine is hardcoded to `git worktree` for change isolation. Th
 ## Impact
 
 - **Core orchestration**: dispatcher.py, merger.py, planner.py, api.py, milestone.py — all `git worktree` calls routed through backend
-- **CLI scripts**: `bin/wt-new`, `bin/wt-close` — delegate to backend instead of direct git commands
+- **CLI scripts**: `bin/set-new`, `bin/set-close` — delegate to backend instead of direct git commands
 - **Config**: new `execution.isolation` key in orchestration.yaml
 - **State schema**: no change — `worktree_path` field stays as-is (it's a path, not a git concept)
 - **GUI/MCP/skills**: no change — they operate on paths, not git internals

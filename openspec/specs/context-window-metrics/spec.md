@@ -3,13 +3,13 @@
 ## IN SCOPE
 - Capturing context token usage (start and end) per change session from `loop-state.json`
 - Storing `context_tokens_start` and `context_tokens_end` in orchestration state per change
-- Displaying context metrics in the wt-web change list
+- Displaying context metrics in the set-web change list
 - Hardcoded 200K context window size constant for Claude 4.x Sonnet/Opus
 
 ## OUT OF SCOPE
 - Dynamic context window size detection per model
 - Per-iteration context sampling (start and end only)
-- Context metrics in TUI (wt-web only for now)
+- Context metrics in TUI (set-web only for now)
 - Historical context trend charts
 
 ### Requirement: Context tokens captured at first iteration completion
@@ -45,16 +45,16 @@ The monitor SHALL define `CONTEXT_WINDOW_SIZE = 200_000` as a named constant, us
 - **THEN** a constant `CONTEXT_WINDOW_SIZE = 200_000` (or equivalent) exists
 - **AND** utilization percentage is derived from it, not hardcoded inline
 
-### Requirement: wt-web change list shows context metrics
-The wt-web change list SHALL display a `ctx` indicator for each change that has `context_tokens_end` in state, showing end tokens and utilization percentage.
+### Requirement: set-web change list shows context metrics
+The set-web change list SHALL display a `ctx` indicator for each change that has `context_tokens_end` in state, showing end tokens and utilization percentage.
 
 #### Scenario: Context metric displayed for completed change
 - **WHEN** a change has `context_tokens_end = 150_000` in state
-- **THEN** the wt-web change list shows something like `ctx: 150K (75%)`
+- **THEN** the set-web change list shows something like `ctx: 150K (75%)`
 
 #### Scenario: Context metric shows start→end when both available
 - **WHEN** a change has both `context_tokens_start = 40_000` and `context_tokens_end = 150_000`
-- **THEN** the wt-web change list shows `ctx: 40K → 150K (75%)`
+- **THEN** the set-web change list shows `ctx: 40K → 150K (75%)`
 
 #### Scenario: Context metric absent for changes without data
 - **WHEN** a change has no `context_tokens_end` in state (e.g., old state file)

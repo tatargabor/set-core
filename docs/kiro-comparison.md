@@ -372,8 +372,8 @@ Dynamic MCP + steering bundles:
 **Why:** Finer rollback granularity than git commits. If task 5/10 fails, rollback to pre-task-5 state without losing tasks 1-4.
 
 **How:**
-- Ralph loop: `git tag wt-checkpoint-<task-id>` before each task
-- On failure: `git reset --hard wt-checkpoint-<task-id>`
+- Ralph loop: `git tag set-checkpoint-<task-id>` before each task
+- On failure: `git reset --hard set-checkpoint-<task-id>`
 - Cleanup: remove checkpoint tags after successful merge
 
 #### 7.8 Powers-like Dynamic Skill Loading

@@ -6,7 +6,7 @@ The orchestrator SHALL check each "running" or "verifying" change for process li
 #### Scenario: Worktree exists but PID is dead
 - **WHEN** the orchestrator resumes and a change has status "running" or "verifying"
 - **AND** the change's worktree directory exists
-- **AND** the change's `ralph_pid` is not alive or does not match "wt-loop"
+- **AND** the change's `ralph_pid` is not alive or does not match "set-loop"
 - **THEN** the change status SHALL be set to "stopped"
 - **AND** the change's `ralph_pid` SHALL be cleared
 - **AND** a `CHANGE_RECONCILED` event SHALL be emitted with `reason: "dead_pid_live_worktree"`
@@ -14,7 +14,7 @@ The orchestrator SHALL check each "running" or "verifying" change for process li
 #### Scenario: Worktree exists and PID is alive
 - **WHEN** the orchestrator resumes and a change has status "running" or "verifying"
 - **AND** the change's worktree directory exists
-- **AND** the change's `ralph_pid` is alive and matches "wt-loop"
+- **AND** the change's `ralph_pid` is alive and matches "set-loop"
 - **THEN** the change SHALL be left unchanged (agent is still working)
 
 #### Scenario: No PID recorded
