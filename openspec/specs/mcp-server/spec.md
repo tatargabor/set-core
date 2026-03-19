@@ -4,7 +4,7 @@
 TBD - created by archiving change mcp-server-documentation. Update Purpose after archive.
 ## Requirements
 ### Requirement: MCP server exposes set-core state
-The system SHALL provide an MCP server (`wt_mcp_server.py`) that exposes set-core state through the Model Context Protocol.
+The system SHALL provide an MCP server (`set_mcp_server.py`) that exposes set-core state through the Model Context Protocol.
 
 #### Scenario: Server starts successfully
 - **WHEN** Claude Code starts with set-core MCP configured

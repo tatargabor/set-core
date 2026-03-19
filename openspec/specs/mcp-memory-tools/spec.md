@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Own MCP server wrapping full set-memory CLI
-The unified MCP server (`mcp-server/wt_mcp_server.py`) SHALL expose the full `set-memory` CLI as MCP tools. It SHALL shell out to `set-memory` commands with `cwd=CLAUDE_PROJECT_DIR`, ensuring all custom logic (branch boosting, auto-tagging, dedup, sync) applies to MCP calls and resolves to the correct project storage.
+The unified MCP server (`mcp-server/set_mcp_server.py`) SHALL expose the full `set-memory` CLI as MCP tools. It SHALL shell out to `set-memory` commands with `cwd=CLAUDE_PROJECT_DIR`, ensuring all custom logic (branch boosting, auto-tagging, dedup, sync) applies to MCP calls and resolves to the correct project storage.
 
 #### Scenario: MCP server registration
 - **WHEN** `set-project init` runs on a project
-- **THEN** it SHALL register the unified MCP server via `claude mcp add set-core -- env CLAUDE_PROJECT_DIR="<project-path>" uv --directory "<mcp-server-dir>" run python wt_mcp_server.py`
+- **THEN** it SHALL register the unified MCP server via `claude mcp add set-core -- env CLAUDE_PROJECT_DIR="<project-path>" uv --directory "<mcp-server-dir>" run python set_mcp_server.py`
 - **AND** the server SHALL use stdio transport (standard MCP protocol)
 
 #### Scenario: MCP server re-registration on init

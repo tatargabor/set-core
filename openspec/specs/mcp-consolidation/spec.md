@@ -1,7 +1,7 @@
 ## Requirements
 
 ### Requirement: Unified MCP server serves both worktree and memory tools
-The `mcp-server/wt_mcp_server.py` SHALL expose all memory tools alongside existing worktree/team tools in a single FastMCP server instance.
+The `mcp-server/set_mcp_server.py` SHALL expose all memory tools alongside existing worktree/team tools in a single FastMCP server instance.
 
 #### Scenario: Server exposes memory tools
 - **WHEN** the MCP server starts
@@ -23,7 +23,7 @@ The MCP server registration command SHALL include `CLAUDE_PROJECT_DIR` set to th
 
 #### Scenario: Registration command includes env var
 - **WHEN** `set-project init` registers the MCP server
-- **THEN** the registration command SHALL be: `env CLAUDE_PROJECT_DIR="<project-path>" uv --directory "<mcp-server-dir>" run python wt_mcp_server.py`
+- **THEN** the registration command SHALL be: `env CLAUDE_PROJECT_DIR="<project-path>" uv --directory "<mcp-server-dir>" run python set_mcp_server.py`
 
 #### Scenario: env var available at runtime
 - **WHEN** the MCP server process starts

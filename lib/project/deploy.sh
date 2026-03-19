@@ -20,7 +20,7 @@ _register_mcp_server() {
         (cd "$reg_path" && claude mcp remove set-memory 2>/dev/null; claude mcp remove set-core 2>/dev/null) || true
         # Register — capture errors, do NOT suppress stderr
         local mcp_err
-        mcp_err=$(cd "$reg_path" && claude mcp add set-core -- env CLAUDE_PROJECT_DIR="$reg_path" uv --directory "$mcp_server_dir" run python wt_mcp_server.py 2>&1)
+        mcp_err=$(cd "$reg_path" && claude mcp add set-core -- env CLAUDE_PROJECT_DIR="$reg_path" uv --directory "$mcp_server_dir" run python set_mcp_server.py 2>&1)
         if [[ $? -ne 0 ]]; then
             warn "  MCP registration failed for $reg_path: $mcp_err"
             had_failure=1
