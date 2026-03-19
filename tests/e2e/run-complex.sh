@@ -238,6 +238,7 @@ ATTRS
 
     cat > wt/orchestration/config.yaml <<YAML
 # Orchestration config for CraftBrew E2E
+default_model: opus  # alternative: opus-1m
 test_command: pnpm test
 e2e_command: npx playwright test
 e2e_timeout: 180
@@ -266,6 +267,7 @@ YAML
     git add -A
     git commit -m "chore: set-project init + orchestration config"
     git tag v1-ready
+    git branch -m spec-only main
     success "Tagged v1-ready"
 }
 

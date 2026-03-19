@@ -352,11 +352,15 @@ check_orchestrator_liveness() {
         return 0
     fi
 
-    # Use the most recent mtime of events OR state file as last activity
-    local events_mtime state_mtime last_activity
+    # Use the most recent mtime of events, state, OR orchestration log as last activity.
+    # The Python monitor emits heartbeat log lines every poll cycle, so the log mtime
+    # advances even when no state/event changes occur — preventing false stuck alarms.
+    local events_mtime state_mtime log_mtime last_activity
     events_mtime=$(stat -c %Y "$EVENTS_FILE" 2>/dev/null || echo 0)
     state_mtime=$(stat -c %Y "$STATE_FILE" 2>/dev/null || echo 0)
+    log_mtime=$(stat -c %Y "$LOG_FILE" 2>/dev/null || echo 0)
     last_activity=$((events_mtime > state_mtime ? events_mtime : state_mtime))
+    last_activity=$((log_mtime > last_activity ? log_mtime : last_activity))
     local idle=$((now - last_activity))
 
     if [[ "$idle" -ge "$effective_timeout" ]]; then

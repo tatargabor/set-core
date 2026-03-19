@@ -64,19 +64,23 @@ def flush_metrics(
 
     injected_content = cache.get("_injected_content", {})
 
-    # Resolve project name
+    # Resolve project name — prefer CLAUDE_PROJECT_DIR to avoid cross-project leakage
     project = "unknown"
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            project = os.path.basename(result.stdout.strip())
-    except Exception:
-        pass
+    claude_project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if claude_project_dir:
+        project = os.path.basename(claude_project_dir)
+    else:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                project = os.path.basename(result.stdout.strip())
+        except Exception:
+            pass
 
     # Import lib.metrics (add set_tools_root to path if needed)
     import sys

@@ -431,6 +431,12 @@ def monitor_loop(
         # Retry failed builds
         _retry_failed_builds_safe(state_file, d, event_bus)
 
+        # Periodic build-on-main retry: every 5th poll (~75s), if the
+        # build_broken_on_main flag is stuck, re-run the build and clear
+        # the flag when it passes so dispatch can resume automatically.
+        if poll_count % 5 == 0:
+            _retry_broken_main_build_safe(state_file, event_bus)
+
         # Token hard limit
         if d.token_hard_limit > 0:
             _check_token_hard_limit(state_file, d, event_bus)
@@ -465,6 +471,25 @@ def monitor_loop(
             if state.changes_since_checkpoint >= d.checkpoint_every:
                 _trigger_checkpoint_safe(state_file, "periodic", event_bus)
                 continue
+
+        # Heartbeat log — ensures orchestration log mtime advances every poll
+        # so the bash sentinel doesn't trigger false "no progress" watchdog alarms.
+        state = load_state(state_file)
+        total_changes = len(state.changes)
+        running_count = sum(1 for c in state.changes if c.status == "running")
+        logger.info(
+            "monitor heartbeat: %d changes tracked, %d running (poll #%d)",
+            total_changes, running_count, poll_count,
+        )
+        if event_bus:
+            event_bus.emit(
+                "MONITOR_HEARTBEAT",
+                data={
+                    "poll": poll_count,
+                    "total": total_changes,
+                    "running": running_count,
+                },
+            )
 
         # Completion detection
         if _check_completion(state_file, d, event_bus):
@@ -1122,6 +1147,42 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
         )
     except Exception:
         logger.warning("Dispatch failed", exc_info=True)
+
+
+def _retry_broken_main_build_safe(state_file: str, event_bus: Any) -> None:
+    """If build_broken_on_main is set, re-run the build and clear on success."""
+    state = load_state(state_file)
+    if not state.extras.get("build_broken_on_main", False):
+        return
+    logger.info("Retrying build on main (build_broken_on_main is set)")
+    try:
+        from .profile_loader import load_profile
+
+        profile = load_profile()
+        pm = profile.detect_package_manager(".") or "npm"
+        build_cmd = profile.detect_build_command(".")
+
+        if not pm or pm == "npm":
+            if os.path.exists("pnpm-lock.yaml"):
+                pm = "pnpm"
+            elif os.path.exists("yarn.lock"):
+                pm = "yarn"
+
+        if build_cmd:
+            build_parts = build_cmd.split()
+        else:
+            build_parts = [pm, "run", "build"]
+
+        result = run_command(build_parts, timeout=600)
+        if result.exit_code == 0:
+            update_state_field(state_file, "build_broken_on_main", False)
+            logger.info("Build on main recovered — dispatch resumed")
+            if event_bus:
+                event_bus.emit("BUILD_RECOVERED", data={"source": "periodic_retry"})
+        else:
+            logger.warning("Build on main still failing (exit %d)", result.exit_code)
+    except Exception:
+        logger.warning("Build retry on main failed", exc_info=True)
 
 
 def _retry_merge_queue_safe(state_file: str, event_bus: Any) -> None:

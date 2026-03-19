@@ -119,16 +119,21 @@ def proactive_context(
 def load_matching_rules(prompt_text: str, project_root: str = "") -> str:
     """Read .claude/rules.yaml, match against prompt patterns. Returns rules block or empty."""
     if not project_root:
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            project_root = result.stdout.strip() if result.returncode == 0 else os.getcwd()
-        except (subprocess.TimeoutExpired, OSError):
-            project_root = os.getcwd()
+        # Prefer CLAUDE_PROJECT_DIR to avoid cross-project leakage
+        claude_project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+        if claude_project_dir:
+            project_root = claude_project_dir
+        else:
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--show-toplevel"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                project_root = result.stdout.strip() if result.returncode == 0 else os.getcwd()
+            except (subprocess.TimeoutExpired, OSError):
+                project_root = os.getcwd()
 
     rules_file = os.path.join(project_root, ".claude", "rules.yaml")
     if not os.path.isfile(rules_file):

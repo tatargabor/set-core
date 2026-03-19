@@ -213,6 +213,7 @@ ATTRS
 
     cat > wt/orchestration/config.yaml <<YAML
 # Orchestration config for MiniShop E2E test
+default_model: opus  # alternative: opus-1m
 test_command: pnpm test
 e2e_command: npx playwright test
 e2e_timeout: 120
@@ -238,6 +239,7 @@ YAML
     git add -A
     git commit -m "chore: set-project init + orchestration config"
     git tag v1-ready
+    git branch -m main
     success "Tagged v1-ready"
 }
 
