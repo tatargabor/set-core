@@ -20,6 +20,9 @@ from wt_orch.verifier import (
     build_req_review_section,
     evaluate_verification_rules,
     _accumulate_tokens,
+    _append_review_history,
+    _get_review_history,
+    _build_review_retry_prompt,
 )
 from wt_orch.state import Change, OrchestratorState
 
@@ -598,3 +601,97 @@ class TestHandleChangeDoneUncommittedGuard:
             state = json.load(f)
         change = state["changes"][0]
         assert change["status"] == "failed"
+
+
+# ─── Cumulative Review Feedback ─────────────────────────────────────
+
+
+class TestAppendReviewHistory:
+    def test_creates_and_appends(self, state_file):
+        _write_state(state_file, [{"name": "auth", "status": "running"}])
+
+        _append_review_history(state_file, "auth", {
+            "attempt": 1,
+            "review_output": "CRITICAL: cookie check",
+            "extracted_fixes": "middleware.ts:35",
+            "diff_summary": None,
+        })
+        history = _get_review_history(state_file, "auth")
+        assert len(history) == 1
+        assert history[0]["attempt"] == 1
+        assert history[0]["diff_summary"] is None
+
+        _append_review_history(state_file, "auth", {
+            "attempt": 2,
+            "review_output": "CRITICAL: no expiry check",
+            "extracted_fixes": "middleware.ts:42",
+            "diff_summary": "src/middleware.ts | 5 +++--",
+        })
+        history = _get_review_history(state_file, "auth")
+        assert len(history) == 2
+        assert history[1]["diff_summary"] == "src/middleware.ts | 5 +++--"
+
+    def test_nonexistent_change(self, state_file):
+        _write_state(state_file, [{"name": "other", "status": "running"}])
+        _append_review_history(state_file, "missing", {"attempt": 1})
+        assert _get_review_history(state_file, "missing") == []
+
+
+class TestBuildReviewRetryPrompt:
+    def test_first_attempt_no_previous_section(self, state_file):
+        _write_state(state_file, [{"name": "auth", "status": "running"}])
+        _append_review_history(state_file, "auth", {
+            "attempt": 1,
+            "review_output": "ISSUE: [CRITICAL] bad auth\nFILE: src/m.ts\nLINE: 35\nFIX: validate token",
+            "extracted_fixes": "src/m.ts:35 — bad auth",
+            "diff_summary": None,
+        })
+
+        prompt = _build_review_retry_prompt(
+            state_file, "auth",
+            "ISSUE: [CRITICAL] bad auth\nFILE: src/m.ts\nLINE: 35\nFIX: validate token",
+            "", 1, 3,
+        )
+        assert "PREVIOUS ATTEMPTS" not in prompt
+        assert "CRITICAL CODE REVIEW FAILURE" in prompt
+        assert "LAST attempt" not in prompt
+
+    def test_second_attempt_has_previous_section(self, state_file):
+        _write_state(state_file, [{"name": "auth", "status": "running"}])
+        _append_review_history(state_file, "auth", {
+            "attempt": 1,
+            "review_output": "bad cookie",
+            "extracted_fixes": "m.ts:35 — cookie",
+            "diff_summary": None,
+        })
+        _append_review_history(state_file, "auth", {
+            "attempt": 2,
+            "review_output": "still bad",
+            "extracted_fixes": "m.ts:42 — expiry",
+            "diff_summary": "src/m.ts | 5 +++--",
+        })
+
+        prompt = _build_review_retry_prompt(
+            state_file, "auth", "still bad", "", 2, 3,
+        )
+        assert "PREVIOUS ATTEMPTS" in prompt
+        assert "DO NOT REPEAT" in prompt
+        assert "m.ts:35" in prompt  # prior attempt fix
+        assert "src/m.ts | 5 +++--" in prompt  # prior diff
+        assert "fundamentally different strategy" in prompt
+
+    def test_final_attempt_escalation(self, state_file):
+        _write_state(state_file, [{"name": "auth", "status": "running"}])
+        for i in range(3):
+            _append_review_history(state_file, "auth", {
+                "attempt": i + 1,
+                "review_output": f"issue {i}",
+                "extracted_fixes": f"fix {i}",
+                "diff_summary": f"diff {i}" if i > 0 else None,
+            })
+
+        prompt = _build_review_retry_prompt(
+            state_file, "auth", "issue 2", "", 2, 3,
+        )
+        assert "LAST attempt" in prompt
+        assert "restructure the entire implementation" in prompt

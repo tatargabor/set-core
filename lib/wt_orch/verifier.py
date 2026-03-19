@@ -137,6 +137,107 @@ def _extract_review_fixes(review_output: str) -> str:
     return "\n".join(fixes)
 
 
+# ─── Cumulative Review Feedback ─────────────────────────────────────
+
+
+def _append_review_history(
+    state_file: str, change_name: str, entry: dict,
+) -> None:
+    """Append a review attempt entry to change.extras.review_history."""
+    with locked_state(state_file) as st:
+        for c in st.changes:
+            if c.name == change_name:
+                history = c.extras.get("review_history", [])
+                history.append(entry)
+                c.extras["review_history"] = history
+                break
+
+
+def _get_review_history(state_file: str, change_name: str) -> list[dict]:
+    """Read review_history from change extras."""
+    state = load_state(state_file)
+    for c in state.changes:
+        if c.name == change_name:
+            return c.extras.get("review_history", [])
+    return []
+
+
+def _capture_retry_diff(wt_path: str) -> str | None:
+    """Capture what the agent changed in the last retry (git diff --stat HEAD~1)."""
+    result = run_git("diff", "--stat", "HEAD~1", cwd=wt_path, timeout=10)
+    if result.exit_code == 0 and result.stdout.strip():
+        return result.stdout.strip()[:500]
+    return None
+
+
+def _build_review_retry_prompt(
+    state_file: str,
+    change_name: str,
+    current_review_output: str,
+    security_guide: str,
+    verify_retry_count: int,
+    review_retry_limit: int,
+) -> str:
+    """Build retry prompt with cumulative review history.
+
+    Includes a 'PREVIOUS ATTEMPTS' section showing what was tried before
+    and what the outcome was, so the agent doesn't repeat failed approaches.
+    """
+    history = _get_review_history(state_file, change_name)
+    fix_instructions = _extract_review_fixes(current_review_output)
+    flagged_reqs = ", ".join(sorted(set(re.findall(r"REQ-[A-Z0-9]+-\\d+", current_review_output))))
+
+    parts = ["CRITICAL CODE REVIEW FAILURE. You MUST fix these security/quality issues.\n"]
+
+    # Cumulative history from all attempts so far
+    if len(history) > 1:
+        parts.append("== PREVIOUS ATTEMPTS (DO NOT REPEAT THESE APPROACHES) ==")
+        for h in history:
+            parts.append(f"Attempt {h['attempt']}:")
+            parts.append(f"  Issues found: {h.get('extracted_fixes', 'unknown')}")
+            if h.get("diff_summary"):
+                parts.append(f"  What you changed: {h['diff_summary']}")
+            parts.append(f"  Result: STILL CRITICAL\n")
+        parts.append(
+            "The approaches above did NOT work. "
+            "Try a fundamentally different strategy.\n"
+        )
+
+    # Current fix instructions
+    if fix_instructions:
+        parts.append("=== REQUIRED FIXES (apply each one) ===")
+        parts.append(fix_instructions)
+        parts.append("=== END REQUIRED FIXES ===\n")
+
+    # Security reference
+    if security_guide:
+        parts.append("=== SECURITY REFERENCE (follow these patterns) ===")
+        parts.append(security_guide)
+        parts.append("=== END SECURITY REFERENCE ===\n")
+
+    if flagged_reqs:
+        parts.append(f"Requirements with no implementation evidence: {flagged_reqs}\n")
+
+    parts.append(f"Full review output:\n{current_review_output[:1500]}\n")
+
+    # Final attempt escalation
+    is_last_attempt = verify_retry_count >= review_retry_limit - 1
+    if is_last_attempt:
+        parts.append(
+            "WARNING: This is your LAST attempt. If the same approach hasn't worked, "
+            "restructure the entire implementation. Consider a completely different "
+            "architecture for the problematic code."
+        )
+
+    parts.append(
+        "INSTRUCTIONS: Open each FILE listed above, go to the LINE, and apply the FIX. "
+        "Use the SECURITY REFERENCE patterns above to ensure your fix is correct. "
+        "Commit after fixing. Do NOT work on new features — only fix the issues above."
+    )
+
+    return "\n".join(parts)
+
+
 def _load_security_rules(wt_path: str) -> str:
     """Load security rules — profile first, legacy fallback."""
     from .profile_loader import load_profile
@@ -1774,40 +1875,32 @@ def handle_change_done(
             # Review gets +1 extra retry beyond the shared limit because it runs
             # last — build/test retries may have consumed the budget already
             review_retry_limit = effective_max_retries + 1
+
+            # Capture what the agent changed since last attempt (cumulative feedback)
+            diff_summary = None
+            if verify_retry_count > 0:
+                diff_summary = _capture_retry_diff(wt_path)
+
+            # Append to cumulative review history
+            from datetime import datetime, timezone as _tz
+            _append_review_history(state_file, change_name, {
+                "attempt": verify_retry_count + 1,
+                "timestamp": datetime.now(_tz.utc).astimezone().isoformat(),
+                "review_output": rr.output[:1500],
+                "extracted_fixes": _extract_review_fixes(rr.output),
+                "diff_summary": diff_summary,
+            })
+
             if verify_retry_count < review_retry_limit:
                 verify_retry_count += 1
                 update_change_field(state_file, change_name, "verify_retry_count", verify_retry_count)
                 update_change_field(state_file, change_name, "status", "verify-failed")
 
-                # Extract concrete fix instructions from review output
-                fix_instructions = _extract_review_fixes(rr.output)
-                flagged_reqs = ", ".join(sorted(set(re.findall(r"REQ-[A-Z0-9]+-\d+", rr.output))))
-
-                parts = ["CRITICAL CODE REVIEW FAILURE. You MUST fix these security/quality issues.\n"]
-
-                if fix_instructions:
-                    parts.append("=== REQUIRED FIXES (apply each one) ===")
-                    parts.append(fix_instructions)
-                    parts.append("=== END REQUIRED FIXES ===\n")
-
-                # Inject web security rules if available in the worktree
                 security_guide = _load_security_rules(wt_path)
-                if security_guide:
-                    parts.append("=== SECURITY REFERENCE (follow these patterns) ===")
-                    parts.append(security_guide)
-                    parts.append("=== END SECURITY REFERENCE ===\n")
-
-                if flagged_reqs:
-                    parts.append(f"Requirements with no implementation evidence: {flagged_reqs}\n")
-
-                parts.append(f"Full review output:\n{rr.output[:1500]}\n")
-                parts.append(
-                    "INSTRUCTIONS: Open each FILE listed above, go to the LINE, and apply the FIX. "
-                    "Use the SECURITY REFERENCE patterns above to ensure your fix is correct. "
-                    "Commit after fixing. Do NOT work on new features — only fix the issues above."
+                retry_prompt = _build_review_retry_prompt(
+                    state_file, change_name, rr.output,
+                    security_guide, verify_retry_count, review_retry_limit,
                 )
-
-                retry_prompt = "\n".join(parts)
                 update_change_field(state_file, change_name, "retry_context", retry_prompt)
                 _snapshot_retry_tokens(state_file, change_name, wt_path)
                 from .dispatcher import resume_change
