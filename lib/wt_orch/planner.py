@@ -979,13 +979,8 @@ def _build_digest_content(digest_dir: str) -> str:
         except OSError:
             pass
 
-    # Data model
-    data_path = d / "data-definitions.md"
-    if data_path.exists():
-        try:
-            sections.append(f"## Data Model Reference\n{data_path.read_text()}\n")
-        except OSError:
-            pass
+    # Data model — data-definitions.md removed (LLM-generated, caused naming drift).
+    # Replaced by auto-parsed schema digest injected at dispatch time.
 
     # Execution hints
     index_path = d / "index.json"

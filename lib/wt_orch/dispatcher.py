@@ -15,7 +15,7 @@ import os
 import re
 import shutil
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -175,6 +175,8 @@ class DispatchContext:
     sibling_context: str = ""
     design_context: str = ""
     retry_context: str = ""
+    read_first_directives: list[str] = field(default_factory=list)
+    conventions_summary: str = ""
 
 
 # ─── Worktree Preparation ────────────────────────────────────────────
@@ -818,6 +820,56 @@ def _find_existing_worktree(project_path: str, change_name: str) -> str:
     return wt_path
 
 
+# ─── Read-First & Conventions Helpers ────────────────────────────────
+
+
+# Detectable paths → read-first directive templates.
+# Each entry: (relative_path_to_check, directive_text)
+_READ_FIRST_RULES: list[tuple[str, str]] = [
+    ("prisma/schema.prisma", "Before writing database/Prisma code, read `prisma/schema.prisma` for accurate model and field names"),
+    ("src/components", "Before creating new components, check `src/components/` for existing ones to reuse"),
+    ("src/lib", "Before adding utility functions, check `src/lib/` for existing helpers"),
+    ("src/app", "Before creating new routes, check `src/app/` for existing route structure and patterns"),
+    ("src/messages", "Before adding i18n keys, check `src/messages/` for existing namespaces and key conventions"),
+]
+
+
+def _detect_read_first_directives(wt_path: str) -> list[str]:
+    """Detect project structure and return read-first directives."""
+    directives = []
+    for rel_path, directive in _READ_FIRST_RULES:
+        full_path = os.path.join(wt_path, rel_path)
+        if os.path.exists(full_path):
+            directives.append(directive)
+    return directives
+
+
+def _format_conventions_summary(digest_dir: str) -> str:
+    """Read conventions.json from digest and format as compact markdown."""
+    conv_path = os.path.join(digest_dir, "conventions.json")
+    if not os.path.isfile(conv_path):
+        return ""
+    try:
+        with open(conv_path) as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    categories = data.get("categories", [])
+    if not categories:
+        return ""
+
+    lines = []
+    for cat in categories:
+        name = cat.get("name", "")
+        rules = cat.get("rules", [])
+        if not name or not rules:
+            continue
+        lines.append(f"**{name}:** {'; '.join(rules)}")
+
+    return "\n".join(lines) if lines else ""
+
+
 def _build_input_content(
     change_name: str,
     scope: str,
@@ -892,6 +944,16 @@ def _build_input_content(
         if cross_lines:
             lines.append("\n## Cross-Cutting Requirements (awareness only)")
             lines.extend(cross_lines)
+
+    # Read-first directives (detected from worktree structure)
+    if ctx.read_first_directives:
+        lines.append("\n## Read Before Writing")
+        for directive in ctx.read_first_directives:
+            lines.append(f"- {directive}")
+
+    # Project conventions (from digest)
+    if ctx.conventions_summary:
+        lines.append(f"\n## Project Conventions\n{ctx.conventions_summary}")
 
     if retry_ctx:
         lines.append(f"\n## Retry Context\n{retry_ctx}")
@@ -1219,6 +1281,10 @@ def dispatch_change(
     # Append startup guide to worktree CLAUDE.md (idempotent)
     append_startup_guide_to_claudemd(wt_path)
 
+    # Append schema digest to worktree CLAUDE.md (replaces data-definitions.md)
+    from wt_orch.dispatcher_schema import append_schema_digest_to_claudemd
+    append_schema_digest_to_claudemd(wt_path)
+
     # Update state
     update_change_field(state_path, change_name, "status", "dispatched", event_bus=event_bus)
     update_change_field(state_path, change_name, "worktree_path", wt_path, event_bus=event_bus)
@@ -1276,6 +1342,13 @@ def _setup_change_in_worktree(
     retry_ctx = ""
     if change:
         retry_ctx = change.extras.get("retry_context", "") or ""
+
+    # Populate read-first directives based on worktree contents
+    ctx.read_first_directives = _detect_read_first_directives(wt_path)
+
+    # Populate conventions summary from digest
+    if digest_dir:
+        ctx.conventions_summary = _format_conventions_summary(digest_dir)
 
     # Write input.md — dispatcher context for the agent (separate from proposal.md)
     input_md_path = os.path.join(change_dir, "input.md")
@@ -1338,8 +1411,8 @@ def _setup_digest_context(
             else:
                 logger.warning("spec file not found: %s", src_file)
 
-    # Copy conventions.json and data-definitions.md
-    for extra in ("conventions.json", "data-definitions.md"):
+    # Copy conventions.json (data-definitions.md removed — replaced by schema digest)
+    for extra in ("conventions.json",):
         src = os.path.join(digest_dir, extra)
         if os.path.isfile(src):
             spec_ctx_dir = os.path.join(wt_path, ".claude", "spec-context")

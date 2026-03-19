@@ -18,6 +18,8 @@ from wt_orch.dispatcher import (
     _build_input_content,
     _build_sibling_context,
     _detect_package_manager,
+    _detect_read_first_directives,
+    _format_conventions_summary,
     _is_doc_change,
     _load_requirements_lookup,
     bootstrap_worktree,
@@ -826,3 +828,83 @@ class TestBuildInputContentAC:
         assert "REQ-AUTH-001: Auth middleware" in content
         # AC items should NOT appear for cross-cutting
         assert "401 on unauthenticated" not in content
+
+
+class TestReadFirstDirectives:
+    """Tests for _detect_read_first_directives()."""
+
+    def test_detects_prisma_schema(self, tmp_dir):
+        prisma_dir = os.path.join(tmp_dir, "prisma")
+        os.makedirs(prisma_dir)
+        with open(os.path.join(prisma_dir, "schema.prisma"), "w") as f:
+            f.write("model User { id String @id }")
+        directives = _detect_read_first_directives(tmp_dir)
+        assert any("prisma/schema.prisma" in d for d in directives)
+
+    def test_detects_components_dir(self, tmp_dir):
+        os.makedirs(os.path.join(tmp_dir, "src", "components"))
+        directives = _detect_read_first_directives(tmp_dir)
+        assert any("src/components/" in d for d in directives)
+
+    def test_empty_project_returns_no_directives(self, tmp_dir):
+        directives = _detect_read_first_directives(tmp_dir)
+        assert directives == []
+
+    def test_multiple_detections(self, tmp_dir):
+        os.makedirs(os.path.join(tmp_dir, "prisma"))
+        with open(os.path.join(tmp_dir, "prisma", "schema.prisma"), "w") as f:
+            f.write("")
+        os.makedirs(os.path.join(tmp_dir, "src", "components"))
+        os.makedirs(os.path.join(tmp_dir, "src", "lib"))
+        directives = _detect_read_first_directives(tmp_dir)
+        assert len(directives) == 3
+
+    def test_injected_in_input_content(self, tmp_dir):
+        """Read-first directives appear in _build_input_content output."""
+        ctx = DispatchContext(read_first_directives=[
+            "Before writing database/Prisma code, read `prisma/schema.prisma`",
+        ])
+        content = _build_input_content("test", "Scope", "", ctx)
+        assert "## Read Before Writing" in content
+        assert "prisma/schema.prisma" in content
+
+    def test_not_injected_when_empty(self):
+        ctx = DispatchContext()
+        content = _build_input_content("test", "Scope", "", ctx)
+        assert "## Read Before Writing" not in content
+
+
+class TestConventionsSummary:
+    """Tests for _format_conventions_summary() and injection."""
+
+    def test_formats_conventions_json(self, tmp_dir):
+        conv = {
+            "categories": [
+                {"name": "Auth", "rules": ["Use NextAuth v5", "Server-side sessions"]},
+                {"name": "CSS", "rules": ["Tailwind only"]},
+            ]
+        }
+        with open(os.path.join(tmp_dir, "conventions.json"), "w") as f:
+            json.dump(conv, f)
+        result = _format_conventions_summary(tmp_dir)
+        assert "**Auth:** Use NextAuth v5; Server-side sessions" in result
+        assert "**CSS:** Tailwind only" in result
+
+    def test_missing_file_returns_empty(self, tmp_dir):
+        assert _format_conventions_summary(tmp_dir) == ""
+
+    def test_empty_categories_returns_empty(self, tmp_dir):
+        with open(os.path.join(tmp_dir, "conventions.json"), "w") as f:
+            json.dump({"categories": []}, f)
+        assert _format_conventions_summary(tmp_dir) == ""
+
+    def test_injected_in_input_content(self):
+        ctx = DispatchContext(conventions_summary="**Auth:** Use NextAuth v5")
+        content = _build_input_content("test", "Scope", "", ctx)
+        assert "## Project Conventions" in content
+        assert "**Auth:** Use NextAuth v5" in content
+
+    def test_not_injected_when_empty(self):
+        ctx = DispatchContext()
+        content = _build_input_content("test", "Scope", "", ctx)
+        assert "## Project Conventions" not in content
