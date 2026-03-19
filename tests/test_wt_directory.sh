@@ -54,7 +54,7 @@ assert_empty() {
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
-# Source state.sh to get set_find_config, wt_find_runs_dir, wt_find_requirements_dir
+# Source state.sh to get set_find_config, set_find_runs_dir, set_find_requirements_dir
 # We need to mock some globals that state.sh expects
 CONFIG_FILE=""
 STATE_FILENAME=""
@@ -87,6 +87,7 @@ DEFAULT_POST_PHASE_AUDIT="true"
 DEFAULT_TIME_LIMIT="5h"
 POLL_INTERVAL=15
 
+source "$PROJECT_DIR/lib/orchestration/config.sh"
 source "$PROJECT_DIR/lib/orchestration/state.sh"
 
 echo "═══ wt/ Directory Convention Tests ═══"
@@ -148,55 +149,55 @@ test_start "set_find_config project-knowledge — legacy fallback"
 # Cleanup
 rm -rf "$TMPDIR"/*
 
-# ─── wt_find_runs_dir tests ──────────────────────────────────────
+# ─── set_find_runs_dir tests ──────────────────────────────────────
 
 echo ""
-echo "--- wt_find_runs_dir ---"
+echo "--- set_find_runs_dir ---"
 
-test_start "wt_find_runs_dir — new location"
+test_start "set_find_runs_dir — new location"
 (
     cd "$TMPDIR"
     mkdir -p wt/orchestration/runs docs/orchestration-runs
-    result=$(wt_find_runs_dir)
+    result=$(set_find_runs_dir)
     [[ "$result" == "wt/orchestration/runs" ]]
 ) && test_pass || test_fail "wt/orchestration/runs" "other"
 
-test_start "wt_find_runs_dir — legacy fallback"
+test_start "set_find_runs_dir — legacy fallback"
 (
     cd "$TMPDIR"
     rm -rf wt
-    result=$(wt_find_runs_dir)
+    result=$(set_find_runs_dir)
     [[ "$result" == "docs/orchestration-runs" ]]
 ) && test_pass || test_fail "docs/orchestration-runs" "other"
 
-test_start "wt_find_runs_dir — missing returns empty"
+test_start "set_find_runs_dir — missing returns empty"
 (
     cd "$TMPDIR"
     rm -rf wt docs/orchestration-runs
-    result=$(wt_find_runs_dir)
+    result=$(set_find_runs_dir)
     [[ -z "$result" ]]
 ) && test_pass || test_fail "(empty)" "non-empty"
 
 rm -rf "$TMPDIR"/*
 
-# ─── wt_find_requirements_dir tests ──────────────────────────────
+# ─── set_find_requirements_dir tests ──────────────────────────────
 
 echo ""
-echo "--- wt_find_requirements_dir ---"
+echo "--- set_find_requirements_dir ---"
 
-test_start "wt_find_requirements_dir — exists"
+test_start "set_find_requirements_dir — exists"
 (
     cd "$TMPDIR"
     mkdir -p wt/requirements
-    result=$(wt_find_requirements_dir)
+    result=$(set_find_requirements_dir)
     [[ "$result" == "wt/requirements" ]]
 ) && test_pass || test_fail "wt/requirements" "other"
 
-test_start "wt_find_requirements_dir — missing returns empty"
+test_start "set_find_requirements_dir — missing returns empty"
 (
     cd "$TMPDIR"
     rm -rf wt
-    result=$(wt_find_requirements_dir)
+    result=$(set_find_requirements_dir)
     [[ -z "$result" ]]
 ) && test_pass || test_fail "(empty)" "non-empty"
 
@@ -309,7 +310,7 @@ status: implemented
 priority: should
 description: Already done
 EOF
-    dir=$(wt_find_requirements_dir)
+    dir=$(set_find_requirements_dir)
     [[ "$dir" == "wt/requirements" ]]
     # Only captured/planned should be picked up (logic tested via yq)
     if command -v yq &>/dev/null; then
@@ -322,7 +323,7 @@ test_start "requirements graceful degradation — no wt/requirements/"
 (
     cd "$TMPDIR"
     rm -rf wt
-    result=$(wt_find_requirements_dir)
+    result=$(set_find_requirements_dir)
     [[ -z "$result" ]]
 ) && test_pass || test_fail "(empty)" "non-empty"
 

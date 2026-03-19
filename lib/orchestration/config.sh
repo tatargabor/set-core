@@ -30,7 +30,7 @@ set_find_config() {
 }
 
 # Find the runs directory: wt/orchestration/runs/ or docs/orchestration-runs/ or empty
-wt_find_runs_dir() {
+set_find_runs_dir() {
     if [[ -d "wt/orchestration/runs" ]]; then
         echo "wt/orchestration/runs"
     elif [[ -d "docs/orchestration-runs" ]]; then
@@ -39,7 +39,7 @@ wt_find_runs_dir() {
 }
 
 # Find the requirements directory: wt/requirements/ or empty
-wt_find_requirements_dir() {
+set_find_requirements_dir() {
     if [[ -d "wt/requirements" ]]; then
         echo "wt/requirements"
     fi
