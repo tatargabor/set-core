@@ -57,11 +57,11 @@ if cleaned != content:
     fi
 
     # Remove manual set-memory recall/remember instructions from command .md files
-    # Exclude commands/wt/ — those are set-core' own commands that legitimately use set-memory
+    # Exclude commands/set/ — those are set-core's own commands that legitimately use set-memory
     if [[ -d "$project_path/.claude/commands" ]]; then
         find "$project_path/.claude/commands" -name "*.md" -type f 2>/dev/null | while read -r f; do
-            # Skip set-core command files (commands/wt/*.md) — they use set-memory intentionally
-            [[ "$f" == */commands/wt/*.md ]] && continue
+            # Skip set-core command files (commands/set/*.md) — they use set-memory intentionally
+            [[ "$f" == */commands/set/*.md ]] && continue
             if grep -qE 'set-memory (recall|remember)' "$f" 2>/dev/null; then
                 if ! python3 -c "
 import re, sys
@@ -98,14 +98,14 @@ _deploy_hooks() {
     fi
 }
 
-# Deploy /wt:* and /opsx:* commands (copy)
+# Deploy /set:* and /opsx:* commands (copy)
 _deploy_commands() {
     local project_path="$1"
     local claude_dir="$project_path/.claude"
 
-    # /wt:* commands
-    local src_commands="$SET_TOOLS_ROOT/.claude/commands/wt"
-    local dst_commands="$claude_dir/commands/wt"
+    # /set:* commands
+    local src_commands="$SET_TOOLS_ROOT/.claude/commands/set"
+    local dst_commands="$claude_dir/commands/set"
     if [[ -d "$src_commands" ]]; then
         [[ -L "$dst_commands" ]] && rm -f "$dst_commands"
         mkdir -p "$dst_commands"
@@ -114,7 +114,7 @@ _deploy_commands() {
         fi
         local cmd_count
         cmd_count=$(ls -1 "$src_commands"/*.md 2>/dev/null | wc -l)
-        success "  Deployed $cmd_count command(s) to .claude/commands/wt/"
+        success "  Deployed $cmd_count command(s) to .claude/commands/set/"
     else
         warn "  Source commands not found: $src_commands"
     fi
@@ -134,21 +134,21 @@ _deploy_commands() {
     fi
 }
 
-# Deploy skills (wt, openspec-*), rules, and agents
+# Deploy skills (set, openspec-*), rules, and agents
 _deploy_skills() {
     local project_path="$1"
     local claude_dir="$project_path/.claude"
 
-    # wt skills
-    local src_skills="$SET_TOOLS_ROOT/.claude/skills/wt"
-    local dst_skills="$claude_dir/skills/wt"
+    # set skills
+    local src_skills="$SET_TOOLS_ROOT/.claude/skills/set"
+    local dst_skills="$claude_dir/skills/set"
     if [[ -d "$src_skills" ]]; then
         [[ -L "$dst_skills" ]] && rm -f "$dst_skills"
         mkdir -p "$dst_skills"
         if [[ "$(realpath "$src_skills")" != "$(realpath "$dst_skills")" ]]; then
             cp -r "$src_skills"/* "$dst_skills/"
         fi
-        success "  Deployed skills to .claude/skills/wt/"
+        success "  Deployed skills to .claude/skills/set/"
     else
         warn "  Source skills not found: $src_skills"
     fi
