@@ -407,6 +407,47 @@ auto_resolve_json_files() {
     [[ $resolved_count -gt 0 ]] && return 0 || return 1
 }
 
+# Resolve delete/modify and rename conflicts without LLM
+# DU = HEAD deleted, feature modified → keep feature (git checkout --theirs)
+# UD = feature deleted, HEAD modified → accept deletion (git rm)
+# Verified with actual git status --porcelain output.
+auto_resolve_structural_conflicts() {
+    local conflicted_files="$1"
+    local resolved=0
+
+    while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+        local status
+        status=$(git status --porcelain "$file" 2>/dev/null | head -1)
+        [[ -z "$status" ]] && continue  # special conflict state, skip
+
+        case "$status" in
+            DU*)
+                # HEAD (main) deleted, feature modified → keep feature's version
+                git checkout --theirs "$file" 2>/dev/null && git add "$file" 2>/dev/null
+                resolved=$((resolved + 1))
+                info "Auto-resolved DU (keep feature): $file"
+                ;;
+            UD*)
+                # Feature deleted, HEAD (main) modified → accept feature's deletion
+                git rm "$file" 2>/dev/null || true
+                resolved=$((resolved + 1))
+                info "Auto-resolved UD (accept deletion): $file"
+                ;;
+            *)
+                # Runtime/tmp files — accept either side
+                if [[ "$file" == tmp/* || "$file" == .claude/logs/* || "$file" == .claude/ralph-terminal.pid ]]; then
+                    git checkout --theirs "$file" 2>/dev/null && git add "$file" 2>/dev/null
+                    resolved=$((resolved + 1))
+                    info "Auto-resolved runtime file: $file"
+                fi
+                ;;
+        esac
+    done <<< "$conflicted_files"
+
+    [[ $resolved -gt 0 ]] && return 0 || return 1
+}
+
 llm_resolve_conflicts() {
     local source_branch="$1"
     local target_branch="$2"
@@ -416,10 +457,37 @@ llm_resolve_conflicts() {
 
     # Extract only conflict hunks with context (not entire files)
     # This dramatically reduces prompt size for large files
+    # Context-aware merge: gather scope + branch history
+    local scope="${WT_MERGE_SCOPE:-}"
+    local source_log target_log context_section=""
+    source_log=$(git log --oneline "$target_branch..$source_branch" 2>/dev/null | head -10)
+    target_log=$(git log --oneline "$source_branch..$target_branch" 2>/dev/null | head -10)
+
+    if [[ -n "$scope" ]]; then
+        context_section="
+CONTEXT — What the source branch implemented:
+$scope
+
+Source branch commits:
+$source_log
+
+Target branch recent commits:
+$target_log
+
+RESOLUTION STRATEGY:
+- The source branch is a FEATURE being merged into main
+- Prefer source branch changes for feature-specific code (new files, new functions)
+- Keep BOTH sides for additive changes (imports, config entries, deps)
+- For config files: use target (main) as base, add source's new entries
+- For test files: prefer source (they contain the feature's tests)
+
+"
+    fi
+
     local prompt="You are resolving git merge conflicts.
 Source branch: $source_branch (being merged INTO target)
 Target branch: $target_branch
-
+${context_section}
 Below are the CONFLICT HUNKS extracted from each file (with 3 lines of surrounding context).
 Resolve each conflict by keeping both sides' changes where possible (integrate, don't pick one side).
 If changes are contradictory, prefer the source branch (the feature being merged).
@@ -877,7 +945,19 @@ get_llm_hint() {
         if [[ "$strategy_type" == "additive" ]]; then
             echo "This file uses additive merge — NEVER remove entities from either side."
         fi
+        return 0
     fi
+
+    # Fallback: path-based role hints when no strategy config exists
+    case "$file_path" in
+        *.test.* | *.spec.* | *__tests__/*) echo "TEST file — prefer source branch (feature tests)" ;;
+        prisma/* | *.prisma) echo "DATABASE SCHEMA — merge both model definitions, keep all models" ;;
+        src/app/* | src/pages/* | app/*) echo "PAGE/ROUTE — prefer source branch (new feature page)" ;;
+        *.config.* | next.config.* | tailwind.*) echo "CONFIG — use target as base, add source's new entries" ;;
+        src/components/*) echo "COMPONENT — prefer source unless target has critical fixes" ;;
+        src/lib/* | src/utils/* | lib/*) echo "SHARED LIBRARY — keep both sides, resolve import conflicts" ;;
+        *) return 1 ;;
+    esac
 }
 
 # Run post-merge validation commands for LLM-resolved files.
@@ -1204,6 +1284,20 @@ main() {
             conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null)
             if [[ -n "$conflicted_files" ]]; then
                 auto_resolve_json_files "$conflicted_files" "$source_branch" "$target_branch" || true
+                # Re-check if conflicts remain
+                conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null)
+                if [[ -z "$conflicted_files" ]]; then
+                    git commit --no-edit 2>/dev/null
+                    merge_result=$?
+                fi
+            fi
+        fi
+
+        # Try structural conflict resolution (delete/modify, rename)
+        if [[ $merge_result -ne 0 ]]; then
+            conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null)
+            if [[ -n "$conflicted_files" ]]; then
+                auto_resolve_structural_conflicts "$conflicted_files" || true
                 # Re-check if conflicts remain
                 conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null)
                 if [[ -z "$conflicted_files" ]]; then

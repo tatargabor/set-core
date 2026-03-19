@@ -335,9 +335,12 @@ def merge_change(
 
     # Case 3: Normal merge
     pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
+    # Pass change scope to wt-merge for context-aware LLM conflict resolution
+    merge_env = dict(os.environ)
+    merge_env["WT_MERGE_SCOPE"] = (change.scope or "")[:2000]
     merge_result = run_command(
         ["wt-merge", change_name, "--no-push", "--llm-resolve"],
-        timeout=600,
+        timeout=600, env=merge_env,
     )
 
     if merge_result.exit_code == 0:
@@ -918,9 +921,11 @@ def _handle_merge_conflict(
 
     if not conflict_confirmed:
         logger.info("No real conflict markers for %s — retrying merge", change_name)
+        retry_env = dict(os.environ)
+        retry_env["WT_MERGE_SCOPE"] = (change.scope if change else "")[:2000]
         retry_result = run_command(
             ["wt-merge", change_name, "--no-push", "--llm-resolve"],
-            timeout=600,
+            timeout=600, env=retry_env,
         )
         if retry_result.exit_code == 0:
             update_change_field(state_file, change_name, "status", "merged")
