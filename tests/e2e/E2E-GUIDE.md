@@ -306,14 +306,16 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->
-### craftbrew — Run #3 (2026-03-18)
-<!-- wt-tools-commit: 8fb62c890 -->
-- **wt-tools range**: `8fb62c890` (sentinel `local` fix)
-- **Result**: 15/15 merged | ~5.5h wall clock | ~888K tokens | 8 framework bugs found
-- **Autonomous merges**: 1/15 (only i18n-routing-layout) — Bug #14 dominated
-- **Critical bug**: Bug #14 — verify agent dies, change stuck in "verifying" forever. Affected 12/15 changes, required manual merge each time.
-- **Other bugs**: Bug #12 (phantom review), Bug #15 (cc/ prefix), Bug #16 (monitor stuck), Bug #18 (stale state overwrite), Bug #19 (sentinel stops on removed worktree)
-- **Watch for run #4**: Bug #14 is the #1 priority fix. Bug #12 needs review diff scoping. Bug #19 needs monitor to skip merged changes with removed worktrees.
+### craftbrew — Run #4 (2026-03-19)
+<!-- wt-tools-commit: 65d6258be -->
+- **wt-tools range**: `65d6258be` (scaffold spec-only branch, decompose max-turns, sentinel stuck fix, gitattributes wt/**)
+- **Result**: 5/15 merged (2 failed, 8 dep-blocked) | ~3h wall clock | ~998K tokens | 4 framework bugs found
+- **Autonomous merges**: 4/5 (80%) — massive improvement over Run #3's 1/15 (7%)
+- **Bug #14 (verify agent death)**: NOT REPRODUCED — verify pipeline reliability fix confirmed working
+- **Bug #16 (sentinel stuck)**: Fixed mid-run — 600s timeout + live children check (`dcc12d587`)
+- **New bugs**: Bug #20 (scaffold stale branch), Bug #21 (decompose max-turns), Bug #22 (sentinel timeout), Bug #23 (wt/** gitattributes)
+- **Blocker**: Dependency cascade deadlock — `auth-system` failure blocked 6/8 remaining changes
+- **Watch for run #5**: Dependency cascade handling (auto-skip or replan around failed deps). Consider removing GitHub repo dependency (local spec files).
 <!-- e2e-results:craftbrew:end -->
 
 ## Architecture Quick Reference
