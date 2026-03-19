@@ -65,6 +65,15 @@ def _load_projects() -> list[dict]:
         return []
 
 
+def _claude_mangle(path: str) -> str:
+    """Mangle a path the same way Claude CLI does for ~/.claude/projects/ dirs.
+
+    Claude strips leading '/', replaces '/' with '-', and removes '.' from
+    directory names (e.g. '/home/tg/.local/share' -> 'home-tg--local-share').
+    """
+    return path.lstrip("/").replace("/", "-").replace(".", "-")
+
+
 def _resolve_project(project_name: str) -> Path:
     """Resolve project name to its path. Raises 404 if not found."""
     for p in _load_projects():
@@ -340,13 +349,13 @@ def _enrich_changes(data: dict, project_path: Path):
         # Session count (only for changes that have/had a worktree)
         sessions_dir = None
         if wt_path:
-            mangled = wt_path.lstrip("/").replace("/", "-")
+            mangled = _claude_mangle(wt_path)
             d = Path.home() / ".claude" / "projects" / f"-{mangled}"
             if d.is_dir():
                 sessions_dir = d
             elif c.get("status") in ("done", "merged", "failed", "verify-failed"):
                 # Worktree cleaned up, fall back to project path
-                mangled = str(project_path).lstrip("/").replace("/", "-")
+                mangled = _claude_mangle(str(project_path))
                 d = Path.home() / ".claude" / "projects" / f"-{mangled}"
                 if d.is_dir():
                     sessions_dir = d
@@ -606,13 +615,13 @@ def _sessions_dir_for_change(state, name: str, project_path: Path | None = None)
         if c.name == name:
             # Try worktree path first
             if c.worktree_path:
-                mangled = c.worktree_path.lstrip("/").replace("/", "-")
+                mangled = _claude_mangle(c.worktree_path)
                 d = Path.home() / ".claude" / "projects" / f"-{mangled}"
                 if d.is_dir():
                     return c, d
             # Fallback: project path
             if project_path:
-                mangled = str(project_path).lstrip("/").replace("/", "-")
+                mangled = _claude_mangle(str(project_path))
                 d = Path.home() / ".claude" / "projects" / f"-{mangled}"
                 if d.is_dir():
                     return c, d
@@ -870,7 +879,7 @@ def _parse_session_jsonl(path: Path, tail: int) -> list[str]:
 def list_project_sessions(project: str):
     """List all Claude session files for the project itself (not change-specific)."""
     project_path = _resolve_project(project)
-    mangled = str(project_path).lstrip("/").replace("/", "-")
+    mangled = _claude_mangle(str(project_path))
     sessions_dir = Path.home() / ".claude" / "projects" / f"-{mangled}"
     if not sessions_dir.is_dir():
         return {"sessions": []}
@@ -884,7 +893,7 @@ def get_project_session(
 ):
     """Read a Claude session log for the project (parsed from JSONL)."""
     project_path = _resolve_project(project)
-    mangled = str(project_path).lstrip("/").replace("/", "-")
+    mangled = _claude_mangle(str(project_path))
     sessions_dir = Path.home() / ".claude" / "projects" / f"-{mangled}"
     target = sessions_dir / f"{session_id}.jsonl"
     if not target.is_file():
