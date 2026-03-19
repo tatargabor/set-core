@@ -699,6 +699,80 @@ def _derive_session_label(session_path: Path) -> tuple[str, str]:
     return "", ""
 
 
+def _session_outcome(session_path: Path) -> str:
+    """Derive session outcome from last assistant message content.
+
+    Returns 'success', 'error', or 'unknown'.
+    """
+    try:
+        # Read last ~20 lines efficiently
+        lines: list[str] = []
+        with open(session_path, "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            # Read last 32KB
+            fh.seek(max(0, size - 32768))
+            raw = fh.read().decode("utf-8", errors="replace")
+            lines = [l.strip() for l in raw.splitlines() if l.strip()]
+
+        # Find last assistant message text
+        for raw_line in reversed(lines):
+            try:
+                entry = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("type") != "assistant":
+                continue
+            msg = entry.get("message", {})
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content", [])
+            if isinstance(content, str):
+                text = content.lower()
+            elif isinstance(content, list):
+                text = " ".join(
+                    b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+                ).lower()
+            else:
+                continue
+            if not text:
+                continue
+
+            # Check for failure indicators (use phrases, not single words)
+            fail_phrases = [
+                "review fail", "build fail", "test fail", "tests fail",
+                "unable to fix", "cannot fix", "still failing",
+                "not passing", "errors remain", "could not resolve",
+                "[critical]", "review critical",
+            ]
+            # Check for success indicators
+            pass_phrases = [
+                "review pass", "all tests pass", "tests pass",
+                "committed", "commit ", "no issues found",
+                "all changes are complete", "implementation complete",
+                "all tasks", "successfully", "fixed",
+                "reflection committed", "done.",
+            ]
+
+            has_fail = any(p in text for p in fail_phrases)
+            has_pass = any(p in text for p in pass_phrases)
+
+            # When both match, success wins if "fixed"/"committed" is present
+            # (agent reported critical issues but then fixed them)
+            if has_pass and has_fail:
+                if "fixed" in text or "committed" in text:
+                    return "success"
+                return "error"
+            if has_fail:
+                return "error"
+            if has_pass:
+                return "success"
+            return "unknown"
+    except (OSError, ValueError):
+        pass
+    return "unknown"
+
+
 def _list_session_files(sessions_dir: Path) -> list[dict]:
     """List JSONL session files sorted by mtime desc."""
     files = []
@@ -713,6 +787,7 @@ def _list_session_files(sessions_dir: Path) -> list[dict]:
                     "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
                     "label": label,
                     "full_label": full_label,
+                    "outcome": _session_outcome(f),
                 })
             except OSError:
                 pass

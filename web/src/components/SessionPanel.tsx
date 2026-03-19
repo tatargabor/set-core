@@ -6,6 +6,18 @@ interface Props {
   change?: string | null
 }
 
+function outcomeIndicator(outcome?: string): string {
+  if (outcome === 'success') return 'border-l-2 border-l-green-600'
+  if (outcome === 'error') return 'border-l-2 border-l-red-600'
+  return 'border-l-2 border-l-transparent'
+}
+
+function outcomeDot(outcome?: string): string {
+  if (outcome === 'success') return 'bg-green-500'
+  if (outcome === 'error') return 'bg-red-500'
+  return 'bg-neutral-700'
+}
+
 function colorLine(line: string): string {
   if (line.startsWith('>>>')) return 'text-neutral-200'
   if (line.startsWith('  [Edit]') || line.startsWith('  [Write]')) return 'text-yellow-400'
@@ -125,14 +137,15 @@ export default function SessionPanel({ project, change }: Props) {
               <button
                 key={s.id}
                 onClick={() => { setSelected(s.id); setListOpen(false) }}
-                className={`w-full text-left px-3 py-2 border-b border-neutral-800/30 transition-colors ${
+                className={`w-full text-left px-3 py-2 border-b border-neutral-800/30 transition-colors ${outcomeIndicator(s.outcome)} ${
                   isActive ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50'
                 }`}
               >
-                <div className="text-[11px] font-medium truncate">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium truncate">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${outcomeDot(s.outcome)}`} />
                   {s.label || s.id.slice(0, 8)}
                 </div>
-                <div className="text-[10px] text-neutral-600 truncate" title={s.full_label}>
+                <div className="text-[10px] text-neutral-600 truncate pl-3" title={s.full_label}>
                   {age} · {(s.size / 1024).toFixed(0)}KB
                 </div>
               </button>
@@ -150,14 +163,15 @@ export default function SessionPanel({ project, change }: Props) {
             <button
               key={s.id}
               onClick={() => setSelected(s.id)}
-              className={`w-full text-left px-3 py-2 border-b border-neutral-800/30 transition-colors ${
+              className={`w-full text-left px-3 py-2 border-b border-neutral-800/30 transition-colors ${outcomeIndicator(s.outcome)} ${
                 isActive ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50'
               }`}
             >
-              <div className="text-[11px] font-medium truncate">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium truncate">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${outcomeDot(s.outcome)}`} />
                 {s.label || s.id.slice(0, 8)}
               </div>
-              <div className="text-[10px] text-neutral-600 truncate" title={s.full_label}>
+              <div className="text-[10px] text-neutral-600 truncate pl-3" title={s.full_label}>
                 {age} · {(s.size / 1024).toFixed(0)}KB
               </div>
             </button>

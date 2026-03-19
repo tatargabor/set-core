@@ -188,6 +188,7 @@ export interface SessionInfo {
   mtime: string
   label?: string
   full_label?: string
+  outcome?: 'success' | 'error' | 'unknown'
 }
 
 export function getChangeSession(
