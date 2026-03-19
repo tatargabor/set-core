@@ -126,15 +126,15 @@ export default function Dashboard({ project }: Props) {
   const tabs: { id: PanelTab; label: string; hidden?: boolean }[] = [
     { id: 'changes', label: 'Changes' },
     { id: 'phases', label: 'Phases' },
-    { id: 'plan', label: 'Plan', hidden: !hasPlans },
+    { id: 'log', label: 'Log' },
     { id: 'tokens', label: 'Tokens' },
     { id: 'requirements', label: 'Requirements' },
     { id: 'audit', label: 'Audit', hidden: !hasAudit },
     { id: 'digest', label: 'Digest', hidden: !hasDigest },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'log', label: 'Log' },
     { id: 'agent', label: 'Agent' },
     { id: 'sentinel', label: 'Sentinel', hidden: !sentinelData.hasSentinel },
+    { id: 'plan', label: 'Plan', hidden: !hasPlans },
   ]
 
   return (
