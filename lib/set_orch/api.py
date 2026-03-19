@@ -235,7 +235,7 @@ def _list_worktrees(project_path: Path) -> list[dict]:
     # Enrich with loop-state
     for wt in worktrees:
         wt_path = Path(wt["path"])
-        loop_state = wt_path / ".wt" / "loop-state.json"
+        loop_state = wt_path / ".set" / "loop-state.json"
         if loop_state.exists():
             try:
                 with open(loop_state) as f:
@@ -246,7 +246,7 @@ def _list_worktrees(project_path: Path) -> list[dict]:
                 pass
 
         # Agent activity
-        activity_file = wt_path / ".wt" / "activity.json"
+        activity_file = wt_path / ".set" / "activity.json"
         if activity_file.exists():
             try:
                 with open(activity_file) as f:
@@ -448,7 +448,7 @@ def list_changes(project: str, status: Optional[str] = Query(None)):
         if c.worktree_path:
             wt_path = Path(c.worktree_path)
             # Enrich with loop-state
-            loop_file = wt_path / ".wt" / "loop-state.json"
+            loop_file = wt_path / ".set" / "loop-state.json"
             if loop_file.exists():
                 try:
                     with open(loop_file) as f:
@@ -485,7 +485,7 @@ def get_change(project: str, name: str):
             d = c.to_dict()
             # Enrich with loop-state
             if c.worktree_path:
-                loop_file = Path(c.worktree_path) / ".wt" / "loop-state.json"
+                loop_file = Path(c.worktree_path) / ".set" / "loop-state.json"
                 if loop_file.exists():
                     try:
                         with open(loop_file) as f:
@@ -576,7 +576,7 @@ def get_change_logs(project: str, name: str):
             result: dict = {"logs": logs}
             # Include iteration info
             if c.worktree_path:
-                loop_state = Path(c.worktree_path) / ".wt" / "loop-state.json"
+                loop_state = Path(c.worktree_path) / ".set" / "loop-state.json"
                 if loop_state.exists():
                     try:
                         with open(loop_state) as f:
@@ -1693,7 +1693,7 @@ def _sentinel_dir(project_path: Path) -> Path:
         from .paths import SetRuntime
         return Path(SetRuntime(str(project_path)).sentinel_dir)
     except Exception:
-        return project_path / ".wt" / "sentinel"
+        return project_path / ".set" / "sentinel"
 
 
 @router.get("/api/{project}/sentinel/events")

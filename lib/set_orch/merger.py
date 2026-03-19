@@ -123,7 +123,7 @@ def _collect_smoke_screenshots(
 # Source: merger.sh _archive_worktree_logs() L506-518
 def _archive_worktree_logs(change_name: str, wt_path: str) -> int:
     """Archive worktree agent logs before cleanup. Returns file count."""
-    logs_src = os.path.join(wt_path, ".wt", "logs")
+    logs_src = os.path.join(wt_path, ".set", "logs")
     if not os.path.isdir(logs_src):
         # Legacy fallback
         logs_src = os.path.join(wt_path, ".claude", "logs")

@@ -666,7 +666,7 @@ def _poll_suspended_changes(
         # Check loop-state for suspended changes
         if not wt_path:
             continue
-        loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
+        loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
         if not os.path.isfile(loop_state_path):
             continue
 

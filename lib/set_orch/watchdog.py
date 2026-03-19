@@ -101,7 +101,7 @@ def watchdog_check(
 
     # Artifact creation grace: skip hash detection if loop-state.json absent
     wt_path = change.get("worktree_path", "")
-    if wt_path and not Path(wt_path, ".wt", "loop-state.json").is_file():
+    if wt_path and not Path(wt_path, ".set", "loop-state.json").is_file():
         return WatchdogResult(
             action="ok", reason="artifact creation phase, no loop-state yet"
         )
@@ -382,7 +382,7 @@ def _compute_action_hash(change: dict[str, Any], state_path: str) -> str:
     Migrated from: watchdog.sh:_watchdog_action_hash()
     """
     wt_path = change.get("worktree_path", "")
-    loop_state = Path(wt_path, ".wt", "loop-state.json") if wt_path else Path(".")
+    loop_state = Path(wt_path, ".set", "loop-state.json") if wt_path else Path(".")
 
     mtime = "0"
     ralph_status = "unknown"

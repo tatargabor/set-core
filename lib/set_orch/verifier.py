@@ -1293,7 +1293,7 @@ def run_phase_end_e2e(
 
 def _read_loop_state(wt_path: str) -> dict:
     """Read loop-state.json from worktree .claude/ directory."""
-    loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
+    loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
     if not os.path.isfile(loop_state_path):
         return {}
     try:
@@ -1305,7 +1305,7 @@ def _read_loop_state(wt_path: str) -> dict:
 
 def _read_loop_state_mtime(wt_path: str) -> int:
     """Get mtime of loop-state.json as epoch seconds."""
-    loop_state_path = os.path.join(wt_path, ".wt", "loop-state.json")
+    loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
     try:
         return int(os.path.getmtime(loop_state_path))
     except OSError:
