@@ -9,6 +9,8 @@ Multi-file spec orchestration test using the [CraftBrew spec repo](https://githu
 | [#1](run-1.md) | 2026-03-15/16 | COMPLETE | 15/15 | 8 | 11.0M | First CraftBrew run; 298 tests; 9h wall clock; 7 interventions |
 | [#2](run-2.md) | 2026-03-17 | INTERRUPTED | 2/15 | 4 | ~1.7M | State file lost in merge cleanup; context overflow; Bug #37 fix not yet active |
 | [#3](run-3.md) | 2026-03-18 | COMPLETE | 15/15 | 8 | ~888K | Verify agent death (Bug #14) affected 12/15 changes; 12 manual merges; ~5.5h wall clock |
+| [#4](run-4.md) | 2026-03-19 | PARTIAL | 5/15 | 4 | ~998K | 4/5 autonomous merges (80%); dep cascade deadlock blocked 8 changes |
+| [#5](run-5.md) | 2026-03-19/20 | PARTIAL | 2/15 | 4 | ~177K | Origin remote contamination (Bug #24 fixed); auth context overflow; dep cascade deadlock |
 
 ## Bug Index
 
@@ -33,3 +35,11 @@ Multi-file spec orchestration test using the [CraftBrew spec repo](https://githu
 | 17 | State extras flattening — manual edits ignored | noise | documented | #3 |
 | 18 | Monitor overwrites manual state edits (stale in-memory state) | blocking | workaround: kill monitor first | #3 |
 | 19 | Sentinel stops on removed worktree sync failure | blocking | open | #3 |
+| 20 | Scaffold uses stale branch (spec-only vs main) | blocking | fixed | #4 |
+| 21 | Decompose max-turns too low for large specs | blocking | fixed | #4 |
+| 22 | Sentinel stuck timeout too short | blocking | fixed (`dcc12d587`) | #4 |
+| 23 | wt/** gitattributes merge conflict | noise | fixed | #4 |
+| 24 | **Origin remote contamination in merge pipeline** | **blocking** | **fixed (`80b72d5b8`)** | #5 |
+| 25 | Sentinel watchdog kills monitor too aggressively | noise | open | #5 |
+| 26 | Dependency cascade deadlock (recurrence of #4 pattern) | blocking | open | #5 |
+| 27 | Auth change context overflow (443K/200K) | app-bug | open | #5 |

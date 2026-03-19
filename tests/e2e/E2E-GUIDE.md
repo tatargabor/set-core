@@ -306,16 +306,13 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->
-### craftbrew — Run #4 (2026-03-19)
-<!-- set-core-commit: 65d6258be -->
-- **set-core range**: `65d6258be` (scaffold spec-only branch, decompose max-turns, sentinel stuck fix, gitattributes wt/**)
-- **Result**: 5/15 merged (2 failed, 8 dep-blocked) | ~3h wall clock | ~998K tokens | 4 framework bugs found
-- **Autonomous merges**: 4/5 (80%) — massive improvement over Run #3's 1/15 (7%)
-- **Bug #14 (verify agent death)**: NOT REPRODUCED — verify pipeline reliability fix confirmed working
-- **Bug #16 (sentinel stuck)**: Fixed mid-run — 600s timeout + live children check (`dcc12d587`)
-- **New bugs**: Bug #20 (scaffold stale branch), Bug #21 (decompose max-turns), Bug #22 (sentinel timeout), Bug #23 (wt/** gitattributes)
-- **Blocker**: Dependency cascade deadlock — `auth-system` failure blocked 6/8 remaining changes
-- **Watch for run #5**: Dependency cascade handling (auto-skip or replan around failed deps). Consider removing GitHub repo dependency (local spec files).
+### craftbrew — Run #5 (2026-03-20)
+<!-- set-core-commit: unknown -->
+- **set-core range**: no changes since last run
+- **Result**: 2/15 merged | unknown | 177K tokens | 0 retries
+- **Open regressions**: none
+- **Applied changes**: none
+- **vs previous**: prev merged: 5/15, prev tokens: 998K tokens
 <!-- e2e-results:craftbrew:end -->
 
 ## Architecture Quick Reference
