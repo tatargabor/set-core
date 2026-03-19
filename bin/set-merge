@@ -590,7 +590,12 @@ $(cat "$file")
             fi
             current_file="${BASH_REMATCH[1]}"
             # Strip trailing whitespace and parenthetical notes from filename
-            current_file=$(echo "$current_file" | sed 's/ *(.*//')
+            current_file=$(echo "$current_file" | sed 's/[[:space:]]*$//' | sed 's/ *(.*//')
+            # Validate file exists in git — reject bogus paths from LLM hallucination
+            if ! git ls-files --error-unmatch "$current_file" &>/dev/null; then
+                warn "LLM emitted unknown file path: $current_file — skipping"
+                current_file=""
+            fi
             current_content=""
         elif [[ -n "$current_file" ]]; then
             if [[ -z "$current_content" ]]; then
@@ -1332,14 +1337,15 @@ main() {
                                 integrity_ok=false
                             fi
                         else
-                            warn "Could not compute merge-base — skipping conservation checks"
+                            error "Could not compute merge-base — cannot validate LLM resolution"
+                            integrity_ok=false
                         fi
                     fi
 
                     if $integrity_ok; then
                         # Post-LLM sanity: check no conflict markers remain in resolved files
                         local marker_files
-                        marker_files=$(grep -rl '<<<<<<< ' --include='*.ts' --include='*.tsx' --include='*.json' --include='*.css' --include='*.md' --include='*.mjs' --include='*.js' --include='*.prisma' . 2>/dev/null | grep -v node_modules || true)
+                        marker_files=$(grep -rl '<<<<<<< ' . 2>/dev/null | grep -vE 'node_modules/|\.git/|\.next/|\.set/|dist/' || true)
                         if [[ -n "$marker_files" ]]; then
                             warn "LLM left conflict markers in: $marker_files"
                             error "Aborting merge — conflict markers remain after LLM resolution"
