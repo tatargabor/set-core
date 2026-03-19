@@ -17,7 +17,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCAFFOLD_DIR="$SCRIPT_DIR/scaffold-complex"
 CRAFTBREW_REPO="https://github.com/tatargabor/craftbrew.git"
-CRAFTBREW_BRANCH="main"
+CRAFTBREW_BRANCH="spec-only"
 E2E_RUNS_DIR="${HOME}/.local/share/wt-tools/e2e-runs"
 BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
 mkdir -p "$BASE_DIR"
