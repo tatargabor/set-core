@@ -91,7 +91,7 @@ cd set-core && ./install.sh
 cd ~/my-project && set-project init --project-type web --template nextjs
 
 # Run autonomous orchestration (from a Claude Code session)
-/wt:sentinel --spec docs/my-spec.md --max-parallel 2
+/set:sentinel --spec docs/my-spec.md --max-parallel 2
 ```
 
 Or start simple — just use worktrees:
@@ -195,7 +195,7 @@ Figma ──► set-figma-fetch ──► design-snapshot.md ──► planner (
 | 2+ agents or switching projects | Web Dashboard + `set-work` |
 | Structured feature development | OpenSpec (`/opsx:new` → `/opsx:apply`) |
 | Task list to grind through | Ralph Loop (`set-loop start`) |
-| Multiple changes from a spec | Sentinel (`/wt:sentinel --spec`) |
+| Multiple changes from a spec | Sentinel (`/set:sentinel --spec`) |
 | Agents learning across sessions | Developer Memory (`set-memory`) |
 
 ---
@@ -212,7 +212,7 @@ The set-web dashboard shows running projects, orchestration state, agent status,
 
 ```bash
 cp .env.example .env
-# Edit .env — set WT_WEB_PORT (default: 7400) and WT_TAILSCALE_HOSTNAME
+# Edit .env — set SET_WEB_PORT (default: 7400) and SET_TAILSCALE_HOSTNAME
 set-orch-core serve                    # http://localhost:7400
 ```
 
@@ -224,7 +224,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now set-web
 ```
 
-**Mobile access** — The dashboard works on phones via [Tailscale](https://tailscale.com). Set `WT_TAILSCALE_HOSTNAME` in `.env`, run `sudo tailscale serve --bg --http 80 http://localhost:7400`, then open in Chrome on your phone. HTTP is used because Tailscale's auto-provisioned certs can trigger Certificate Transparency errors on Android — the WireGuard tunnel already encrypts all traffic.
+**Mobile access** — The dashboard works on phones via [Tailscale](https://tailscale.com). Set `SET_TAILSCALE_HOSTNAME` in `.env`, run `sudo tailscale serve --bg --http 80 http://localhost:7400`, then open in Chrome on your phone. HTTP is used because Tailscale's auto-provisioned certs can trigger Certificate Transparency errors on Android — the WireGuard tunnel already encrypts all traffic.
 
 ---
 
@@ -409,7 +409,7 @@ Our primary focus is web development — that's where we push hardest. But set-c
 - Comprehensive [How It Works](docs/howitworks/en/01-overview.md) guide for understanding the architecture
 - Continuously updated as Claude Code's capabilities expand
 
-Built and used in production by [ITLine Kft.](https://itline.hu) and [Zengo Kft.](https://zengo.eu).
+Built and used in production by [ITLine Kft.](https://itline.hu).
 
 ### On the horizon
 
@@ -506,8 +506,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and pull request gu
 ## Acknowledgements
 
 Built by [Gabor Tatar](https://itline.hu) (ITLine Kft.) and used across production projects.
-
-Partners: [Zengo Kft.](https://zengo.eu)
 
 Special thanks: [BlackBelt](https://blackbelt.hu) · [AIOrigo](https://aiorigo.com) · [MKIK](https://mkik.hu)
 
