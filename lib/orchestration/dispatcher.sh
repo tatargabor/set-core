@@ -2,7 +2,7 @@
 # lib/orchestration/dispatcher.sh — Change lifecycle: dispatch, resume, pause
 # Dependencies: config.sh, utils.sh, state.sh, events.sh, builder.sh
 #
-# Python implementation: lib/wt_orch/dispatcher.py
+# Python implementation: lib/set_orch/dispatcher.py
 # This file contains thin wrappers that delegate to set-orch-core dispatch *
 # and cmd_start/cmd_pause/cmd_resume which remain in bash for init/signal setup,
 # then exec to Python monitor loop (set-orch-core engine monitor).

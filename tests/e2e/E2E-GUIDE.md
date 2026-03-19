@@ -325,4 +325,4 @@ The orchestration pipeline:
 sentinel → orchestrator → digest → decompose → dispatch → agent (Ralph/set-loop) → verify → merge → next phase
 ```
 
-When looking for logic to fix, search the Python modules first (`lib/wt_orch/*.py`). If not found there, check the bash layer (`lib/orchestration/*.sh`). The migration is ongoing — some logic exists in both places but only one path is active for each function.
+When looking for logic to fix, search the Python modules first (`lib/set_orch/*.py`). If not found there, check the bash layer (`lib/orchestration/*.sh`). The migration is ongoing — some logic exists in both places but only one path is active for each function.

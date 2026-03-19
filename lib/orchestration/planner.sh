@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# lib/orchestration/planner.sh — Thin wrapper: logic lives in lib/wt_orch/planner.py
+# lib/orchestration/planner.sh — Thin wrapper: logic lives in lib/set_orch/planner.py
 #
 # Sourced by bin/set-orchestrate for backward compatibility.
-# Python implementation: lib/wt_orch/planner.py, cli.py:cmd_plan()
+# Python implementation: lib/set_orch/planner.py, cli.py:cmd_plan()
 #
 # auto_replan_cycle() runs in Python via engine.py:_handle_auto_replan()
 
@@ -65,7 +65,7 @@ check_scope_overlap() {
 }
 
 find_project_knowledge_file() {
-    wt_find_config project-knowledge
+    set_find_config project-knowledge
 }
 
 check_triage_gate() {

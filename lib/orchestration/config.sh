@@ -5,9 +5,9 @@
 
 # Find a set-core config file using the fallback chain:
 #   wt/ location → legacy location → empty
-# Usage: wt_find_config <name>
+# Usage: set_find_config <name>
 # Names: orchestration, project-knowledge
-wt_find_config() {
+set_find_config() {
     local name="$1"
     case "$name" in
         orchestration)

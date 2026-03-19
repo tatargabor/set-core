@@ -26,7 +26,7 @@ PHASE_HINT=""      # set via --phase <hint>
 CLI_MAX_PARALLEL="" # set via --max-parallel <N>
 INPUT_MODE=""      # "brief" or "spec", set by find_input()
 INPUT_PATH=""      # resolved input file path
-CONFIG_FILE=""  # resolved at startup via wt_find_config
+CONFIG_FILE=""  # resolved at startup via set_find_config
 PLAN_FILENAME="orchestration-plan.json"
 STATE_FILENAME="orchestration-state.json"
 SUMMARY_FILENAME="orchestration-summary.md"
@@ -771,7 +771,7 @@ main() {
     LOG_FILE="$_root/$LOG_FILE"
 
     # Resolve config file via wt/ fallback chain
-    CONFIG_FILE=$(wt_find_config orchestration)
+    CONFIG_FILE=$(set_find_config orchestration)
     if [[ -n "$CONFIG_FILE" ]]; then
         CONFIG_FILE="$_root/$CONFIG_FILE"
     fi

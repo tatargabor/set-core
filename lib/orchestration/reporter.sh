@@ -3,7 +3,7 @@
 # Sourced by bin/set-orchestrate after digest.sh.
 # Provides: generate_report()
 #
-# Migrated to: lib/wt_orch/reporter.py + lib/wt_orch/templates/report.html.j2
+# Migrated to: lib/set_orch/reporter.py + lib/set_orch/templates/report.html.j2
 # All render_* functions replaced by Python Jinja2 template rendering.
 
 REPORT_OUTPUT_PATH="wt/orchestration/report.html"

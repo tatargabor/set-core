@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# lib/orchestration/digest.sh — Thin wrapper: logic lives in lib/wt_orch/digest.py
+# lib/orchestration/digest.sh — Thin wrapper: logic lives in lib/set_orch/digest.py
 #
 # Sourced by bin/set-orchestrate after planner.sh.
-# Python implementation: lib/wt_orch/digest.py, cli.py:cmd_digest()
+# Python implementation: lib/set_orch/digest.py, cli.py:cmd_digest()
 
 DIGEST_DIR="wt/orchestration/digest"
 

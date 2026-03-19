@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# lib/orchestration/auditor.sh — Thin wrapper: logic lives in lib/wt_orch/auditor.py
+# lib/orchestration/auditor.sh — Thin wrapper: logic lives in lib/set_orch/auditor.py
 #
 # Sourced by bin/set-orchestrate for backward compatibility.
-# Python implementation: lib/wt_orch/auditor.py, cli.py:cmd_audit()
+# Python implementation: lib/set_orch/auditor.py, cli.py:cmd_audit()
 
 # Run post-phase audit. Delegates to Python.
 # Sets _REPLAN_AUDIT_GAPS for replan prompt injection (exported).

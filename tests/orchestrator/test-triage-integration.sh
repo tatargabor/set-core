@@ -317,7 +317,7 @@ STATE_FILENAME="$WORK_DIR/orchestration-state.json"
 INPUT_MODE="digest"
 find_input() { return 0; }
 topological_sort() { return 0; }
-wt_find_config() { return 1; }
+set_find_config() { return 1; }
 generate_report() { :; }
 source "$LIB_DIR/planner.sh" 2>/dev/null || true
 

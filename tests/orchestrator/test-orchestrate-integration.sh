@@ -199,7 +199,7 @@ model_id() { echo "test-model"; }
 # Source modules in dependency order
 LIB_DIR="$PROJECT_DIR/lib/orchestration"
 source "$LIB_DIR/events.sh"        # emit_event (no-op with EVENTS_ENABLED=false)
-source "$LIB_DIR/config.sh"        # wt_find_config
+source "$LIB_DIR/config.sh"        # set_find_config
 source "$LIB_DIR/utils.sh"         # parse_duration, format_duration, brief_hash
 source "$LIB_DIR/state.sh"         # update_change_field, run_hook, etc.
 source "$LIB_DIR/verifier.sh"      # health_check, extract_health_check_url

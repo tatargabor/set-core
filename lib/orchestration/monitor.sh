@@ -4,7 +4,7 @@
 # The monitor loop runs in Python via `set-orch-core engine monitor`.
 # cmd_start() in dispatcher.sh exec's directly to the Python monitor.
 #
-# Python implementation: lib/wt_orch/engine.py
+# Python implementation: lib/set_orch/engine.py
 #
 # This file is sourced by set-orchestrate but contains no active code.
 # It exists only for backward compatibility with source chains.

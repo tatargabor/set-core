@@ -276,7 +276,7 @@ Based on test results:
 - **Status**: 🧪 Tested above
 - **Covers**: Ensures lockfile consistency after merge
 - **Requires**: Hook file in .git/hooks/
-- **Integration point**: `lib/wt_orch/dispatcher.py` bootstrap_worktree()
+- **Integration point**: `lib/set_orch/dispatcher.py` bootstrap_worktree()
 
 ## Next Steps
 1. Add .gitattributes to scaffold (run.sh) for S2

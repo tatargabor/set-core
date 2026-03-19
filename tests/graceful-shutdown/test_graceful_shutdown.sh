@@ -246,28 +246,28 @@ echo "Test 7.6: Shutdown API endpoint"
 # We can't easily start the full FastAPI server, but we can verify
 # the endpoint exists and has correct structure
 
-if grep -q 'post.*shutdown' "$REPO_ROOT/lib/wt_orch/api.py"; then
+if grep -q 'post.*shutdown' "$REPO_ROOT/lib/set_orch/api.py"; then
     pass "POST /api/{project}/shutdown endpoint exists"
 else
     fail "Shutdown endpoint should exist"
 fi
 
 # Verify it sends SIGUSR1
-if grep -q 'SIGUSR1' "$REPO_ROOT/lib/wt_orch/api.py"; then
+if grep -q 'SIGUSR1' "$REPO_ROOT/lib/set_orch/api.py"; then
     pass "Shutdown endpoint sends SIGUSR1 to sentinel"
 else
     fail "Should send SIGUSR1"
 fi
 
 # Verify it returns correct response format
-if grep -q '"ok": True.*"message".*"Shutdown initiated"' "$REPO_ROOT/lib/wt_orch/api.py"; then
+if grep -q '"ok": True.*"message".*"Shutdown initiated"' "$REPO_ROOT/lib/set_orch/api.py"; then
     pass "Shutdown endpoint returns {ok: true, message: 'Shutdown initiated'}"
 else
     fail "Should return proper JSON response"
 fi
 
 # Verify 409 on no sentinel
-if grep -q '409.*No sentinel running' "$REPO_ROOT/lib/wt_orch/api.py"; then
+if grep -q '409.*No sentinel running' "$REPO_ROOT/lib/set_orch/api.py"; then
     pass "Shutdown endpoint returns 409 when no sentinel running"
 else
     fail "Should return 409 when no sentinel"

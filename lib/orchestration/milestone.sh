@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/orchestration/milestone.sh — Milestone checkpoint: tag, worktree, dev server, email
 #
-# Python implementation: lib/wt_orch/milestone.py
+# Python implementation: lib/set_orch/milestone.py
 # This file contains thin wrappers that delegate to set-orch-core milestone *
 # Provides: run_milestone_checkpoint(), cleanup_milestone_servers(), cleanup_milestone_worktrees()
 

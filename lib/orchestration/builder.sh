@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# lib/orchestration/builder.sh — Thin wrapper: logic lives in lib/wt_orch/builder.py
+# lib/orchestration/builder.sh — Thin wrapper: logic lives in lib/set_orch/builder.py
 #
 # Sourced by bin/set-orchestrate for backward compatibility.
-# Python implementation: lib/wt_orch/builder.py, cli.py:cmd_build()
+# Python implementation: lib/set_orch/builder.py, cli.py:cmd_build()
 
 # Run build on main project. Delegates to Python.
 check_base_build() {

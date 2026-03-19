@@ -40,12 +40,12 @@ test_brief_hash() {
     assert_equals "$result" "$result2" "hash is deterministic"
 }
 
-test_wt_find_config_returns_path_or_empty() {
+test_set_find_config_returns_path_or_empty() {
     # Should not crash; returns path or empty
     local result
-    result=$(wt_find_config "nonexistent-config" 2>/dev/null) || true
+    result=$(set_find_config "nonexistent-config" 2>/dev/null) || true
     # Result can be empty — that's fine
-    assert_equals "0" "0" "wt_find_config does not crash"
+    assert_equals "0" "0" "set_find_config does not crash"
 }
 
 run_tests

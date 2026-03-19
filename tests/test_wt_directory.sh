@@ -54,7 +54,7 @@ assert_empty() {
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
-# Source state.sh to get wt_find_config, wt_find_runs_dir, wt_find_requirements_dir
+# Source state.sh to get set_find_config, wt_find_runs_dir, wt_find_requirements_dir
 # We need to mock some globals that state.sh expects
 CONFIG_FILE=""
 STATE_FILENAME=""
@@ -92,56 +92,56 @@ source "$PROJECT_DIR/lib/orchestration/state.sh"
 echo "═══ wt/ Directory Convention Tests ═══"
 echo ""
 
-# ─── wt_find_config tests ─────────────────────────────────────────
+# ─── set_find_config tests ─────────────────────────────────────────
 
-echo "--- wt_find_config ---"
+echo "--- set_find_config ---"
 
 # Test: new location wins over legacy
-test_start "wt_find_config orchestration — new location wins"
+test_start "set_find_config orchestration — new location wins"
 (
     cd "$TMPDIR"
     mkdir -p wt/orchestration .claude
     echo "test: true" > wt/orchestration/config.yaml
     echo "test: false" > .claude/orchestration.yaml
-    result=$(wt_find_config orchestration)
+    result=$(set_find_config orchestration)
     [[ "$result" == "wt/orchestration/config.yaml" ]]
 ) && test_pass || test_fail "wt/orchestration/config.yaml" "other"
 
 # Test: legacy fallback works
-test_start "wt_find_config orchestration — legacy fallback"
+test_start "set_find_config orchestration — legacy fallback"
 (
     cd "$TMPDIR"
     rm -rf wt
-    result=$(wt_find_config orchestration)
+    result=$(set_find_config orchestration)
     [[ "$result" == ".claude/orchestration.yaml" ]]
 ) && test_pass || test_fail ".claude/orchestration.yaml" "other"
 
 # Test: missing returns empty
-test_start "wt_find_config orchestration — missing returns empty"
+test_start "set_find_config orchestration — missing returns empty"
 (
     cd "$TMPDIR"
     rm -rf wt .claude
-    result=$(wt_find_config orchestration)
+    result=$(set_find_config orchestration)
     [[ -z "$result" ]]
 ) && test_pass || test_fail "(empty)" "non-empty"
 
 # Test: project-knowledge new location
-test_start "wt_find_config project-knowledge — new location"
+test_start "set_find_config project-knowledge — new location"
 (
     cd "$TMPDIR"
     mkdir -p wt/knowledge
     echo "features: {}" > wt/knowledge/project-knowledge.yaml
     echo "features: {}" > project-knowledge.yaml
-    result=$(wt_find_config project-knowledge)
+    result=$(set_find_config project-knowledge)
     [[ "$result" == "wt/knowledge/project-knowledge.yaml" ]]
 ) && test_pass || test_fail "wt/knowledge/project-knowledge.yaml" "other"
 
 # Test: project-knowledge legacy fallback
-test_start "wt_find_config project-knowledge — legacy fallback"
+test_start "set_find_config project-knowledge — legacy fallback"
 (
     cd "$TMPDIR"
     rm -rf wt/knowledge/project-knowledge.yaml
-    result=$(wt_find_config project-knowledge)
+    result=$(set_find_config project-knowledge)
     [[ "$result" == "project-knowledge.yaml" ]]
 ) && test_pass || test_fail "project-knowledge.yaml" "other"
 
