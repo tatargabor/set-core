@@ -4,7 +4,7 @@ import StatusHeader from '../components/StatusHeader'
 import ChangeTable from '../components/ChangeTable'
 import LogPanel from '../components/LogPanel'
 import CheckpointBanner from '../components/CheckpointBanner'
-import ResizableSplit from '../components/ResizableSplit'
+// ResizableSplit no longer needed — log panel moved to own tab
 import PlanViewer from '../components/PlanViewer'
 import TokenChart from '../components/TokenChart'
 import AuditPanel from '../components/AuditPanel'
@@ -14,10 +14,10 @@ import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
 import SentinelPanel from '../components/SentinelPanel'
-import useIsMobile from '../hooks/useIsMobile'
+// useIsMobile removed — no longer needed
 import { useSentinelData } from '../hooks/useSentinelData'
 import { getDigest, getPlans, getState } from '../lib/api'
-import type { StateData, ChangeInfo } from '../lib/api'
+import type { StateData } from '../lib/api'
 
 type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel'
 
@@ -33,10 +33,10 @@ export default function Dashboard({ project }: Props) {
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<PanelTab>('changes')
-  const [logExpanded, setLogExpanded] = useState(false)
+  // logExpanded removed — log panel is now its own tab
   const [hasDigest, setHasDigest] = useState(false)
   const [hasPlans, setHasPlans] = useState(false)
-  const isMobile = useIsMobile()
+  // isMobile removed — log panel no longer uses mobile bottom sheet
   const sentinelData = useSentinelData(project)
   const tabBarRef = useRef<HTMLDivElement>(null)
 
@@ -119,8 +119,7 @@ export default function Dashboard({ project }: Props) {
   }
 
   const changes = state?.changes ?? []
-  const selectedChangeInfo: ChangeInfo | null =
-    selectedChange ? changes.find((c) => c.name === selectedChange) ?? null : null
+  // selectedChangeInfo removed — log panel no longer embedded in changes tab
   const hasAudit = (state?.phase_audit_results?.length ?? 0) > 0
 
   const tabs: { id: PanelTab; label: string; hidden?: boolean }[] = [
@@ -189,64 +188,16 @@ export default function Dashboard({ project }: Props) {
           />
         )}
 
-        {/* Changes tab — with log panel */}
+        {/* Changes tab — full height, no embedded log */}
         {activeTab === 'changes' && (
-          isMobile ? (
-            <>
-              <div className={`h-full overflow-auto ${selectedChange && logExpanded ? 'pb-[60vh]' : selectedChange ? 'pb-11' : ''}`}>
-                <ChangeTable
-                  changes={changes}
-                  project={project}
-                  selected={selectedChange}
-                  onSelect={setSelectedChange}
-                />
-              </div>
-              {/* Mobile log bottom sheet — only when a change is selected */}
-              {selectedChange && (
-                <div className={`absolute bottom-0 left-0 right-0 bg-neutral-950 border-t border-neutral-800 transition-all duration-200 ${
-                  logExpanded ? 'h-[60vh]' : 'h-11'
-                }`}>
-                  <button
-                    onClick={() => setLogExpanded(!logExpanded)}
-                    className="w-full h-11 flex items-center justify-center gap-2 text-sm text-neutral-400 bg-neutral-900/80 border-b border-neutral-800"
-                  >
-                    <span>Logs</span>
-                    <span className="text-xs">{logExpanded ? '▼' : '▲'}</span>
-                  </button>
-                  {logExpanded && (
-                    <div className="h-[calc(100%-44px)] overflow-auto">
-                      <LogPanel
-                        orchLines={logLines}
-                        selectedChange={selectedChangeInfo}
-                        project={project}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <ResizableSplit
-              top={
-                <div className="h-full overflow-auto">
-                  <ChangeTable
-                    changes={changes}
-                    project={project}
-                    selected={selectedChange}
-                    onSelect={setSelectedChange}
-                  />
-                </div>
-              }
-              bottom={
-                <LogPanel
-                  orchLines={logLines}
-                  selectedChange={selectedChangeInfo}
-                  project={project}
-                />
-              }
-              defaultRatio={0.55}
+          <div className="h-full overflow-auto">
+            <ChangeTable
+              changes={changes}
+              project={project}
+              selected={selectedChange}
+              onSelect={setSelectedChange}
             />
-          )
+          </div>
         )}
 
         {/* Log tab — orchestration log full height */}
