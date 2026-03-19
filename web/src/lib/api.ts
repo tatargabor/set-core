@@ -326,11 +326,13 @@ export function getRequirements(project: string): Promise<RequirementsData> {
 
 // --- Project Sessions ---
 
-export function getProjectSessions(project: string): Promise<{ sessions: SessionInfo[] }> {
+export function getProjectSessions(project: string, change?: string | null): Promise<{ sessions: SessionInfo[] }> {
+  if (change) return fetchJSON(`/${project}/changes/${change}/sessions`)
   return fetchJSON(`/${project}/sessions`)
 }
 
-export function getProjectSession(project: string, sessionId: string, tail = 200): Promise<{ lines: string[]; session_id: string }> {
+export function getProjectSession(project: string, sessionId: string, tail = 200, change?: string | null): Promise<{ lines: string[]; session_id: string }> {
+  if (change) return fetchJSON(`/${project}/changes/${change}/session?session_id=${sessionId}&tail=${tail}`)
   return fetchJSON(`/${project}/sessions/${sessionId}?tail=${tail}`)
 }
 

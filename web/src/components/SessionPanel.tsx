@@ -3,6 +3,7 @@ import { getProjectSessions, getProjectSession, type SessionInfo } from '../lib/
 
 interface Props {
   project: string
+  change?: string | null
 }
 
 function colorLine(line: string): string {
@@ -15,7 +16,7 @@ function colorLine(line: string): string {
   return 'text-neutral-400'
 }
 
-export default function SessionPanel({ project }: Props) {
+export default function SessionPanel({ project, change }: Props) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [lines, setLines] = useState<string[]>([])
@@ -28,11 +29,19 @@ export default function SessionPanel({ project }: Props) {
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 
+  // Reset state when change switches
+  useEffect(() => {
+    setSelected(null)
+    setSessions([])
+    setLines([])
+    setError(null)
+  }, [change])
+
   // Load session list
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      getProjectSessions(project)
+      getProjectSessions(project, change)
         .then(d => {
           if (cancelled) return
           setSessions(d.sessions)
@@ -46,7 +55,7 @@ export default function SessionPanel({ project }: Props) {
     load()
     const iv = setInterval(load, 15000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [project])
+  }, [project, change])
 
   // Load selected session content
   useEffect(() => {
@@ -54,7 +63,7 @@ export default function SessionPanel({ project }: Props) {
     let cancelled = false
     setLoading(true)
     const load = () => {
-      getProjectSession(project, selected, 500)
+      getProjectSession(project, selected, 500, change)
         .then(d => {
           if (cancelled) return
           setLines(d.lines)
@@ -84,10 +93,16 @@ export default function SessionPanel({ project }: Props) {
   const selectedLabel = sessions.find(s => s.id === selected)?.label || selected?.slice(0, 8) || '—'
 
   if (error) return <div className="p-4 text-xs text-red-400">{error}</div>
-  if (sessions.length === 0) return <div className="p-4 text-xs text-neutral-500">No sessions found</div>
+  if (sessions.length === 0) return <div className="p-4 text-xs text-neutral-500">No sessions found{change ? ` for ${change}` : ''}</div>
 
   return (
     <div className="flex flex-col md:flex-row h-full">
+      {/* Change context banner */}
+      {change && (
+        <div className="px-3 py-1.5 bg-blue-950/30 border-b border-blue-900/30 text-[11px] text-blue-300 shrink-0 md:hidden">
+          Sessions for <span className="font-mono font-medium">{change}</span>
+        </div>
+      )}
       {/* Mobile: dropdown session picker */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800 md:hidden shrink-0">
         <button
