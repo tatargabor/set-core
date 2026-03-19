@@ -58,8 +58,16 @@ BOOTSTRAP_PATTERNS = ("*.lock", "*-lock.yaml", "*.lockb", "jest.config.*", "jest
 DEFAULT_TEST_TIMEOUT = 120
 DEFAULT_SMOKE_TIMEOUT = 180
 
-# Context window size for Claude 4.x Sonnet/Opus (update when model changes)
-CONTEXT_WINDOW_SIZE = 200_000
+# Context window sizes for Claude 4.x models
+CONTEXT_WINDOW_SIZE = 200_000  # default for standard models
+CONTEXT_WINDOW_SIZE_1M = 1_000_000  # for opus-1m / sonnet-1m
+
+
+def _context_window_for_model(model: str = "") -> int:
+    """Return context window size based on model name."""
+    if "1m" in model or "[1m]" in model:
+        return CONTEXT_WINDOW_SIZE_1M
+    return CONTEXT_WINDOW_SIZE
 DEFAULT_SMOKE_FIX_MAX_RETRIES = 3
 DEFAULT_SMOKE_FIX_MAX_TURNS = 15
 DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT = 30
@@ -1326,13 +1334,15 @@ def _capture_context_tokens_start(
     cc = int(iter1.get("cache_create_tokens", 0))
     if cc > 0:
         update_change_field(state_file, change_name, "context_tokens_start", cc)
-        logger.debug("context_tokens_start for %s: %d (%.0f%%)", change_name, cc, cc / CONTEXT_WINDOW_SIZE * 100)
+        cw = _context_window_for_model(change.model or "")
+        logger.debug("context_tokens_start for %s: %d (%.0f%%)", change_name, cc, cc / cw * 100)
 
 
 def _capture_context_tokens_end(
     state_file: str,
     change_name: str,
     loop_state: dict,
+    model: str = "",
 ) -> None:
     """Capture context_tokens_end at loop completion.
 
@@ -1341,11 +1351,12 @@ def _capture_context_tokens_end(
     cc = int(loop_state.get("total_cache_create", 0))
     if cc > 0:
         update_change_field(state_file, change_name, "context_tokens_end", cc)
-        pct = cc / CONTEXT_WINDOW_SIZE * 100
+        cw = _context_window_for_model(model)
+        pct = cc / cw * 100
         level = "warning" if pct >= 80 else "info"
         getattr(logger, level)(
             "context_tokens_end for %s: %d (%.0f%% of %dK window)",
-            change_name, cc, pct, CONTEXT_WINDOW_SIZE // 1000,
+            change_name, cc, pct, cw // 1000,
         )
 
 
@@ -1926,7 +1937,7 @@ def handle_change_done(
 
     # ── Context window metrics — capture end tokens at loop completion ──
     if wt_path:
-        _capture_context_tokens_end(state_file, change_name, _read_loop_state(wt_path))
+        _capture_context_tokens_end(state_file, change_name, _read_loop_state(wt_path), model=change.model or "")
 
     # ── Retry token tracking ──
     retry_tokens_start = change.extras.get("retry_tokens_start", 0)
