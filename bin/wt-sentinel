@@ -73,7 +73,7 @@ PID_FILE="sentinel.pid"
 MAX_RAPID_CRASHES=5
 SUSTAINED_RUN_SECS=300  # 5 minutes
 POLL_INTERVAL=10        # Check child every 10s
-SENTINEL_STUCK_TIMEOUT=180  # 3 minutes no activity = stuck
+SENTINEL_STUCK_TIMEOUT=600  # 10 minutes no activity = stuck (verify/merge can take 5-10 min)
 SENTINEL_STARTUP_TIMEOUT=1800  # 30 minutes for initial planning (digest + design fetch + Claude decompose)
 CHECKPOINT_MAX_WAIT=86400     # 24 hours max checkpoint wait before giving up
 
@@ -344,6 +344,14 @@ check_orchestrator_liveness() {
     local idle=$((now - last_activity))
 
     if [[ "$idle" -ge "$effective_timeout" ]]; then
+        # Before declaring stuck, check if orchestrator has active children (claude, python)
+        # A running Claude process means the orchestrator is doing work (verify, decompose)
+        local child_count
+        child_count=$(pgrep -P "$child_pid" 2>/dev/null | wc -l)
+        if [[ "$child_count" -gt 0 ]]; then
+            sentinel_log "Orchestrator idle ${idle}s but has $child_count active children — not stuck"
+            return 0
+        fi
         sentinel_log "Orchestrator stuck: no events for ${idle}s (threshold: ${effective_timeout}s)"
         return 1
     fi
