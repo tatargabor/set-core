@@ -19,7 +19,9 @@ const gateLabels: Record<string, string> = {
 const statusStyle: Record<string, string> = {
   pass: 'bg-green-900 text-green-300',
   fail: 'bg-red-900 text-red-300',
+  critical: 'bg-red-800 text-red-200',
   skip: 'bg-neutral-800 text-neutral-500',
+  skip_merged: 'bg-neutral-800 text-neutral-500',
   pending: 'bg-neutral-800 text-neutral-600',
 }
 
