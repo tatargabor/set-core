@@ -1,0 +1,24 @@
+# Tasks: Orchestrator Resume Mode
+
+## Group 1: Auto-resume in cmd_start
+
+- [ ] 1. In `dispatcher.sh` `cmd_start()`, add auto-resume detection BEFORE `need_plan` check: if state file has active changes, skip to monitor directly [REQ: REQ-ORM-01]
+- [ ] 2. Add `_detect_zombies()` helper — checks running changes for dead PIDs, logs warnings [REQ: REQ-ORM-02]
+- [ ] 3. On resume path, read directives from `wt/orchestration/directives.json`, error if missing [REQ: REQ-ORM-05]
+- [ ] 4. On resume path, call `dispatch_ready_changes` for pending changes with no worktree, then exec to Python monitor [REQ: REQ-ORM-01]
+
+## Group 2: Resume subcommand
+
+- [ ] 5. Add `resume` case in `wt-orchestrate` main dispatch — calls `cmd_start` with `FORCE_REPLAN=false` [REQ: REQ-ORM-04]
+- [ ] 6. In `cmd_start`, respect `FORCE_REPLAN` — if explicitly false, skip `need_plan` check entirely [REQ: REQ-ORM-04]
+
+## Group 3: Sentinel state protection
+
+- [ ] 7. In `wt-sentinel` "fresh start" logic, replace `rm -f STATE_FILENAME` with `cp STATE_FILENAME STATE_FILENAME.bak` [REQ: REQ-ORM-03]
+- [ ] 8. In sentinel, don't delete events file — only rotate/backup [REQ: REQ-ORM-03]
+
+## Group 4: Validation
+
+- [ ] 9. Test: `wt-orchestrate start` with active state → no "Creating plan" in output, monitor starts in <5s
+- [ ] 10. Test: `wt-orchestrate resume` with no state file → error message
+- [ ] 11. Test: sentinel on done → state.json.bak exists
