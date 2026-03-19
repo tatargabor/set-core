@@ -597,6 +597,7 @@ Commands:
   start                  Execute the plan (dispatch changes, monitor progress)
   status                 Show current orchestration state
   pause <name|--all>     Pause a change or all changes
+  resume                 Resume orchestration from existing state (skip planning)
   resume <name|--all>    Resume a paused change or all
   replan                 Re-plan from updated spec/brief, preserving completed work
   approve [--merge]      Approve a checkpoint (--merge: also flush merge queue)

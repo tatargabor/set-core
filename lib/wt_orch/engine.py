@@ -59,7 +59,7 @@ class Directives:
     auto_replan: bool = False
     max_replan_cycles: int = MAX_REPLAN_CYCLES
     test_timeout: int = 300
-    max_verify_retries: int = 1
+    max_verify_retries: int = 3
     review_before_merge: bool = False
     review_model: str = "opus"
     default_model: str = "opus"
@@ -718,8 +718,17 @@ def _recover_verify_failed(
 
             resume_change(state_file, change.name)
         else:
-            logger.info("Verify-failed %s exhausted retries — marking failed", change.name)
+            # Build failure reason from last available output
+            reason = ""
+            for output_key in ("build_output", "review_output", "test_output"):
+                val = change.extras.get(output_key, "")
+                if val:
+                    reason = val[:500]
+                    break
+            logger.info("Verify-failed %s exhausted retries — marking failed (reason: %s)", change.name, reason[:100])
             update_change_field(state_file, change.name, "status", "failed")
+            if reason:
+                update_change_field(state_file, change.name, "failure_reason", reason)
 
 
 # ─── Completion Detection ──────────────────────────────────────────
@@ -1074,6 +1083,11 @@ def _count_by_status(state_file: str, status: str) -> int:
 
 def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None:
     """Dispatch ready changes (exception-safe wrapper)."""
+    # Guard: don't dispatch new work if main build is broken
+    state = load_state(state_file)
+    if state.extras.get("build_broken_on_main", False):
+        logger.warning("Dispatch skipped — build broken on main (waiting for fix)")
+        return
     try:
         from .dispatcher import dispatch_ready_changes
         dispatch_ready_changes(

@@ -395,7 +395,16 @@ def merge_change(
 
         # Post-merge build verification
         _heartbeat("build_check")
-        _post_merge_build_check(change_name, state_file)
+        build_ok = _post_merge_build_check(change_name, state_file)
+        if not build_ok:
+            update_state_field(state_file, "build_broken_on_main", True)
+            logger.error(
+                "Build broken on main after merging %s — dispatch halted until next successful build",
+                change_name,
+            )
+        else:
+            # Clear broken flag on successful build
+            update_state_field(state_file, "build_broken_on_main", False)
 
         # Merge timeout check before smoke
         if _timed_out():

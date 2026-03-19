@@ -289,6 +289,14 @@ elif [[ -f "$STATE_FILE" ]]; then
         else
             sentinel_log "Previous run finished (status=$_prev_status) — cleaning old state for fresh start"
             "$SCRIPT_DIR/wt-sentinel-rotate" >/dev/null 2>&1 || true
+            # Backup state before cleaning — enables manual recovery and resume
+            if [[ -f "$STATE_FILE" ]]; then
+                cp "$STATE_FILE" "${STATE_FILE}.bak"
+                sentinel_log "Backed up state to ${STATE_FILE}.bak"
+            fi
+            if [[ -f "$EVENTS_FILE" ]]; then
+                cp "$EVENTS_FILE" "${EVENTS_FILE}.bak"
+            fi
             rm -f "$STATE_FILE" "$EVENTS_FILE"
             clean_old_worktrees
         fi

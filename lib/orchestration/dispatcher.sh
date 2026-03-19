@@ -189,9 +189,107 @@ cmd_start() {
     # In automated mode, auto-defer untriaged ambiguities instead of pausing
     export TRIAGE_AUTO_DEFER=true
 
+    # ── Auto-resume: if state file has active changes, skip planning entirely ──
+    if [[ -f "$STATE_FILENAME" ]] && [[ "${FORCE_REPLAN:-}" != "true" ]]; then
+        local _active_statuses='["running","pending","verifying","stalled","dispatched","verify-failed","done"]'
+        local _active_count
+        _active_count=$(jq --argjson s "$_active_statuses" \
+            '[.changes[] | select(.status as $st | $s | index($st))] | length' \
+            "$STATE_FILENAME" 2>/dev/null || echo 0)
+        if [[ "$_active_count" -gt 0 ]]; then
+            info "Resuming from existing state ($_active_count active changes)"
+            log_info "Auto-resume: $_active_count active changes in state — skipping planning"
+
+            # Detect zombie processes (dead PIDs on running changes)
+            local _zombie_pids
+            _zombie_pids=$(jq -r '.changes[] | select(.status == "running") | .name + ":" + (.ralph_pid // 0 | tostring)' "$STATE_FILENAME" 2>/dev/null || true)
+            while IFS=: read -r _zname _zpid; do
+                [[ -z "$_zname" || "$_zpid" == "0" || "$_zpid" == "null" ]] && continue
+                if ! kill -0 "$_zpid" 2>/dev/null; then
+                    log_info "Zombie detected: $_zname (PID $_zpid dead) — will be handled by monitor stall recovery"
+                    warn "Dead process detected for $_zname (PID $_zpid) — monitor will recover"
+                fi
+            done <<< "$_zombie_pids"
+
+            # Verify directives file exists
+            local _directives_file="wt/orchestration/directives.json"
+            if [[ ! -f "$_directives_file" ]]; then
+                # Try to regenerate from state or input
+                if [[ -n "${INPUT_PATH:-}" ]] && [[ -e "${INPUT_PATH:-}" ]]; then
+                    local _dir_regen
+                    _dir_regen=$(resolve_directives "$INPUT_PATH")
+                    echo "$_dir_regen" > "$_directives_file"
+                    log_info "Regenerated directives from INPUT_PATH"
+                elif [[ -f "$PLAN_FILENAME" ]]; then
+                    local _plan_input
+                    _plan_input=$(jq -r '.input_path // empty' "$PLAN_FILENAME")
+                    if [[ -n "$_plan_input" && -e "$_plan_input" ]]; then
+                        local _dir_regen
+                        _dir_regen=$(resolve_directives "$_plan_input")
+                        echo "$_dir_regen" > "$_directives_file"
+                        log_info "Regenerated directives from plan input_path"
+                    fi
+                fi
+                if [[ ! -f "$_directives_file" ]]; then
+                    error "Cannot resume: directives.json missing and cannot be regenerated"
+                    error "Re-run with --spec to start fresh"
+                    return 1
+                fi
+            fi
+
+            local _dir_content
+            _dir_content=$(cat "$_directives_file")
+            local _max_parallel
+            _max_parallel=$(echo "$_dir_content" | jq -r '.max_parallel // 3')
+
+            # Setup cleanup trap
+            local cleanup_done=false
+            cleanup_orchestrator() {
+                [[ "${cleanup_done:-}" == true ]] && return
+                cleanup_done=true
+                [[ -n "${_ORCH_DEV_SERVER_PID:-}" ]] && kill "$_ORCH_DEV_SERVER_PID" 2>/dev/null || true
+                local current_status=""
+                if [[ -f "$STATE_FILENAME" ]]; then
+                    current_status=$(jq -r '.status // ""' "$STATE_FILENAME" 2>/dev/null || true)
+                fi
+                if [[ "$current_status" == "done" ]]; then
+                    log_info "Orchestrator exiting normally (status=done)"
+                    return
+                fi
+                warn "Orchestrator interrupted, saving state..."
+                if [[ -f "$STATE_FILENAME" ]]; then
+                    update_state_field "status" '"stopped"'
+                fi
+                log_info "Orchestrator stopped (auto-resume path)"
+            }
+            trap 'cleanup_orchestrator' EXIT
+            trap 'exit 0' SIGTERM SIGINT SIGHUP
+
+            # Recover orphaned changes and dispatch pending
+            recover_orphaned_changes
+            resume_stopped_changes
+            dispatch_ready_changes "$_max_parallel"
+
+            # Exec to Python monitor
+            log_info "Exec'ing to Python monitor (auto-resume path)"
+            trap - EXIT
+            update_state_field "status" '"running"'
+            exec wt-orch-core engine monitor \
+                --directives "$_directives_file" \
+                --state "$STATE_FILENAME" \
+                --poll-interval "${POLL_INTERVAL:-15}" \
+                --default-model "$(echo "$_dir_content" | jq -r '.default_model // "opus"')" \
+                --model-routing "$(echo "$_dir_content" | jq -r '.model_routing // "off"')" \
+                ${CHECKPOINT_AUTO_APPROVE:+--checkpoint-auto-approve}
+        fi
+    fi
+
     # Auto-plan if no plan exists or CLI --spec/--brief differs from plan's input
     local need_plan=false
-    if [[ ! -f "$PLAN_FILENAME" ]]; then
+    # FORCE_REPLAN=false skips planning entirely (used by 'wt-orchestrate resume')
+    if [[ "${FORCE_REPLAN:-}" == "false" ]]; then
+        need_plan=false
+    elif [[ ! -f "$PLAN_FILENAME" ]]; then
         need_plan=true
     elif [[ -n "$SPEC_OVERRIDE" || -n "$BRIEF_OVERRIDE" ]]; then
         # CLI spec/brief provided — check if it matches the existing plan
@@ -651,8 +749,14 @@ cmd_resume() {
         resume_change "$target"
         update_state_field "status" '"running"'
     else
-        error "Usage: wt-orchestrate resume <change-name> | --all"
-        return 1
+        # No target: resume the orchestration itself (skip planning, use existing state)
+        if [[ ! -f "$STATE_FILENAME" ]]; then
+            error "No orchestration state found. Use 'wt-orchestrate start --spec <path>' to begin."
+            return 1
+        fi
+        info "Resuming orchestration from existing state..."
+        FORCE_REPLAN=false cmd_start "$@"
+        return $?
     fi
 }
 
