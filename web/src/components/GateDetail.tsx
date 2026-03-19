@@ -16,6 +16,7 @@ interface GateSection {
 const resultStyle: Record<string, string> = {
   pass: 'text-green-400',
   fail: 'text-red-400',
+  critical: 'text-red-500 font-semibold',
   skip: 'text-neutral-500',
 }
 
@@ -29,7 +30,7 @@ export default function GateDetail({ change }: Props) {
   ].filter(g => g.result)
 
   // Auto-expand first failing gate, or none
-  const firstFail = gates.findIndex(g => g.result === 'fail')
+  const firstFail = gates.findIndex(g => g.result === 'fail' || g.result === 'critical')
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     return firstFail >= 0 ? new Set([gates[firstFail].name]) : new Set()
   })
