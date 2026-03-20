@@ -180,6 +180,7 @@ def render_review_prompt(
     req_section: str = "",
     design_compliance: str = "",
     security_rules: str = "",
+    change_name: str = "",
 ) -> str:
     """Render code review prompt for Claude.
 
@@ -191,8 +192,9 @@ def render_review_prompt(
     security_section = f"\n## Security Patterns\n{security_rules}\n" if security_rules and security_rules.strip() else ""
     content_aware = _content_aware_instructions(classify_diff_content(diff_output))
     content_section = f"\n{content_aware}\n" if content_aware else ""
+    change_header = f' for "{change_name}"' if change_name else ""
 
-    return f"""You are a senior code reviewer. Review this diff for critical issues.
+    return f"""You are a senior code reviewer. Review this diff{change_header} for critical issues.
 
 ## Change Scope
 {scope}

@@ -190,6 +190,8 @@ def cmd_template(args):
             diff_output=input_data.get("diff_output", ""),
             req_section=input_data.get("req_section", ""),
             design_compliance=input_data.get("design_compliance", ""),
+            security_rules=input_data.get("security_rules", ""),
+            change_name=input_data.get("change_name", ""),
         ))
 
     elif args.template_cmd == "fix":

@@ -9,6 +9,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -367,29 +368,41 @@ def list_projects():
 
 def _enrich_changes(data: dict, project_path: Path):
     """Add session_count and log file lists to change dicts."""
+    # Pre-compute project sessions dir and cache change_name → count mapping
+    proj_mangled = _claude_mangle(str(project_path))
+    proj_sessions_dir = Path.home() / ".claude" / "projects" / f"-{proj_mangled}"
+    # Scan project-dir sessions once, build {change_name: count}
+    proj_session_counts: dict[str, int] = {}
+    if proj_sessions_dir.is_dir():
+        try:
+            for f in proj_sessions_dir.iterdir():
+                if f.is_file() and f.suffix == ".jsonl":
+                    extracted = _extract_session_change_name(f)
+                    if extracted:
+                        proj_session_counts[extracted] = proj_session_counts.get(extracted, 0) + 1
+        except OSError:
+            pass
+
     for c in data.get("changes", []):
         wt_path = c.get("worktree_path")
-        # Session count (only for changes that have/had a worktree)
-        sessions_dir = None
+        change_name = c.get("name", "")
+        # Session count — collect from worktree dir + project dir
+        count = 0
         if wt_path:
             mangled = _claude_mangle(wt_path)
             d = Path.home() / ".claude" / "projects" / f"-{mangled}"
             if d.is_dir():
-                sessions_dir = d
-            elif c.get("status") in ("done", "merged", "failed", "verify-failed"):
-                # Worktree cleaned up, fall back to project path
-                mangled = _claude_mangle(str(project_path))
-                d = Path.home() / ".claude" / "projects" / f"-{mangled}"
-                if d.is_dir():
-                    sessions_dir = d
-        if sessions_dir:
-            try:
-                c["session_count"] = sum(
-                    1 for f in sessions_dir.iterdir()
-                    if f.is_file() and f.suffix == ".jsonl"
-                )
-            except OSError:
-                pass
+                try:
+                    count += sum(
+                        1 for f in d.iterdir()
+                        if f.is_file() and f.suffix == ".jsonl"
+                    )
+                except OSError:
+                    pass
+        # Add project-dir sessions for this change
+        count += proj_session_counts.get(change_name, 0)
+        if count:
+            c["session_count"] = count
         # Log files
         if wt_path:
             logs_dir = Path(wt_path) / ".claude" / "logs"
@@ -652,6 +665,126 @@ def _sessions_dir_for_change(state, name: str, project_path: Path | None = None)
     return None, None
 
 
+def _extract_session_change_name(session_path: Path) -> str:
+    """Extract change name from a session JSONL's first enqueue content.
+
+    Scans the first queue-operation entry for known patterns that embed a change name.
+    Returns empty string if not found.
+    """
+    try:
+        with open(session_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("type") != "queue-operation":
+                    continue
+                content = entry.get("content", "")
+                # Search a generous window (smoke fix prompts can be long)
+                window = content[:3000]
+                # Pattern: merging "change-name" / the 'change-name' change
+                m = re.search(r"""(?:merging|implement|for|the)\s+['"]([a-z0-9][\w-]+)['"]""", window)
+                if m:
+                    return m.group(1)
+                # Pattern: "change_name" JSON key (template input echoed)
+                m = re.search(r'"change_name":\s*"([^"]+)"', window)
+                if m:
+                    return m.group(1)
+                # Pattern: /opsx:apply change-name or /opsx:ff change-name
+                m = re.search(r"/opsx:\w+\s+([a-z0-9][\w-]+)", window)
+                if m:
+                    return m.group(1)
+                # Pattern: branch name change/change-name (merge fix prompts)
+                m = re.search(r"\bchange/([a-z0-9][\w-]+)", window)
+                if m:
+                    return m.group(1)
+                # Pattern: for change-name (loose — after "for ")
+                m = re.search(r"\bfor\s+([a-z][a-z0-9]+-[a-z0-9-]+)", window)
+                if m:
+                    return m.group(1)
+                break
+    except OSError:
+        pass
+    return ""
+
+
+def _sessions_dirs_for_change(state, name: str, project_path: Path | None = None) -> tuple:
+    """Find ALL Claude sessions directories for a change.
+
+    Returns (Change, list[Path]) — multiple dirs that may contain sessions
+    for this change: the worktree dir AND the project dir.
+    """
+    dirs: list[Path] = []
+    for c in state.changes:
+        if c.name == name:
+            # Worktree path sessions (implementation, gate review, etc.)
+            if c.worktree_path:
+                mangled = _claude_mangle(c.worktree_path)
+                d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+                if d.is_dir():
+                    dirs.append(d)
+            # Project path sessions (smoke fix, post-merge ops)
+            if project_path:
+                mangled = _claude_mangle(str(project_path))
+                d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+                if d.is_dir() and d not in dirs:
+                    dirs.append(d)
+            return c, dirs
+    return None, []
+
+
+def _list_session_files_for_change(
+    dirs: list[Path], change_name: str, wt_dir: Path | None = None,
+) -> list[dict]:
+    """List session files across multiple dirs, filtering project-dir sessions by change name.
+
+    Sessions in the worktree dir are always included.
+    Sessions in other dirs (project dir) are only included if their content
+    mentions the change name.
+    """
+    seen_ids: set[str] = set()
+    files: list[dict] = []
+    for d in dirs:
+        is_wt_dir = d == wt_dir
+        for f in d.iterdir():
+            if not f.is_file() or f.suffix != ".jsonl":
+                continue
+            if f.stem in seen_ids:
+                continue
+            try:
+                # For project-dir sessions, filter by change name
+                if not is_wt_dir:
+                    extracted = _extract_session_change_name(f)
+                    if extracted and extracted != change_name:
+                        continue
+                    # If no change name extracted, skip (could be unrelated)
+                    if not extracted:
+                        continue
+
+                st = f.stat()
+                label, full_label = _derive_session_label(f)
+                age_s = time.time() - st.st_mtime
+                is_active = age_s < 60
+                files.append({
+                    "id": f.stem,
+                    "size": st.st_size,
+                    "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+                    "label": label,
+                    "full_label": full_label,
+                    "outcome": "active" if is_active else _session_outcome(f),
+                    "dir": str(d),
+                })
+                seen_ids.add(f.stem)
+            except OSError:
+                pass
+    files.sort(key=lambda x: x["mtime"], reverse=True)
+    return files
+
+
 def _derive_session_label(session_path: Path) -> tuple[str, str]:
     """Derive a short label and full task text from a session JSONL's first enqueue entry.
 
@@ -833,12 +966,17 @@ def list_change_sessions(project: str, name: str):
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
 
-    change, sessions_dir = _sessions_dir_for_change(state, name, project_path)
+    change, session_dirs = _sessions_dirs_for_change(state, name, project_path)
     if change is None:
         raise HTTPException(404, f"Change not found: {name}")
-    if not sessions_dir:
+    if not session_dirs:
         return {"sessions": []}
-    return {"sessions": _list_session_files(sessions_dir)}
+    # Determine worktree dir for filtering
+    wt_dir = None
+    if change.worktree_path:
+        mangled = _claude_mangle(change.worktree_path)
+        wt_dir = Path.home() / ".claude" / "projects" / f"-{mangled}"
+    return {"sessions": _list_session_files_for_change(session_dirs, name, wt_dir)}
 
 
 @router.get("/api/{project}/changes/{name}/session")
@@ -860,23 +998,36 @@ def get_change_session_log(
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
 
-    change, sessions_dir = _sessions_dir_for_change(state, name, project_path)
+    change, session_dirs = _sessions_dirs_for_change(state, name, project_path)
     if change is None:
         raise HTTPException(404, f"Change not found: {name}")
-    if not sessions_dir:
+    if not session_dirs:
         return {"lines": [], "session_id": None, "sessions": []}
 
-    session_files = _list_session_files(sessions_dir)
+    # Determine worktree dir for filtering
+    wt_dir = None
+    if change.worktree_path:
+        mangled = _claude_mangle(change.worktree_path)
+        wt_dir = Path.home() / ".claude" / "projects" / f"-{mangled}"
+
+    session_files = _list_session_files_for_change(session_dirs, name, wt_dir)
     if not session_files:
         return {"lines": [], "session_id": None, "sessions": []}
 
-    # Select target file
+    # Select target file — search across all dirs
     if session_id:
-        target = sessions_dir / f"{session_id}.jsonl"
-        if not target.is_file():
+        target = None
+        for d in session_dirs:
+            candidate = d / f"{session_id}.jsonl"
+            if candidate.is_file():
+                target = candidate
+                break
+        if not target:
             raise HTTPException(404, f"Session not found: {session_id}")
     else:
-        target = sessions_dir / f"{session_files[0]['id']}.jsonl"
+        # Most recent session — find it in the right dir
+        best = session_files[0]
+        target = Path(best["dir"]) / f"{best['id']}.jsonl"
 
     lines = _parse_session_jsonl(target, tail)
     return {

@@ -212,6 +212,7 @@ def cleanup_orchestrator(state_file: str, directives: Directives | None = None) 
 
         # Generate final report
         _generate_report_safe(state_file)
+        _generate_review_findings_summary_safe(state_file)
 
     except Exception:
         logger.error("cleanup_orchestrator failed", exc_info=True)
@@ -324,12 +325,14 @@ def monitor_loop(
             update_state_field(state_file, "status", "time_limit")
             _send_terminal_notifications(state_file, "time_limit", event_bus)
             _generate_report_safe(state_file)
+            _generate_review_findings_summary_safe(state_file)
             break
 
         # Check external stop
         state = load_state(state_file)
         if state.status in ("stopped", "done"):
             _generate_report_safe(state_file)
+            _generate_review_findings_summary_safe(state_file)
             break
         if state.status == "paused":
             continue

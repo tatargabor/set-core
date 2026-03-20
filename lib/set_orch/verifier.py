@@ -506,7 +506,7 @@ def _build_review_retry_prompt(
     fix_instructions = _extract_review_fixes(current_review_output)
     flagged_reqs = ", ".join(sorted(set(re.findall(r"REQ-[A-Z0-9]+-\\d+", current_review_output))))
 
-    parts = ["CRITICAL CODE REVIEW FAILURE. You MUST fix these security/quality issues.\n"]
+    parts = [f'CRITICAL CODE REVIEW FAILURE for "{change_name}". You MUST fix these security/quality issues.\n']
 
     # Cumulative history from all attempts so far
     if len(history) > 1:
@@ -1043,6 +1043,7 @@ def review_change(
         "req_section": req_section,
         "design_compliance": design_compliance,
         "security_rules": security_rules,
+        "change_name": change_name,
     })
 
     template_result = run_command(
