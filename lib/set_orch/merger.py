@@ -522,9 +522,10 @@ def _try_merge(
         logger.info("Updating %s branch with latest %s before merge retry", name, main_branch)
         run_command(
             ["git", "fetch", "origin", main_branch], timeout=60, cwd=wt_path,
-        )
+        )  # best-effort — origin may not exist
+        # Use local main branch ref — works with or without origin
         run_command(
-            ["git", "merge", f"origin/{main_branch}", "--no-edit"],
+            ["git", "merge", main_branch, "--no-edit"],
             timeout=120, cwd=wt_path,
         )
 
@@ -1016,10 +1017,11 @@ def _handle_merge_conflict(
 
     # Pre-validate: confirm conflict actually exists
     main_branch = _get_main_branch()
-    run_command(["git", "fetch", "origin", main_branch], timeout=60)
+    # Use local branch refs — origin may not exist (e.g., E2E tests)
+    run_command(["git", "fetch", "origin", main_branch], timeout=60)  # best-effort
 
     merge_base_result = run_command(
-        ["git", "merge-base", f"change/{change_name}", f"origin/{main_branch}"],
+        ["git", "merge-base", f"change/{change_name}", main_branch],
         timeout=30,
     )
     merge_base = merge_base_result.stdout.strip()
@@ -1027,7 +1029,7 @@ def _handle_merge_conflict(
     conflict_confirmed = False
     if merge_base:
         tree_result = run_command(
-            ["git", "merge-tree", merge_base, f"origin/{main_branch}", f"change/{change_name}"],
+            ["git", "merge-tree", merge_base, main_branch, f"change/{change_name}"],
             timeout=30,
         )
         conflict_confirmed = "<<<<<<<" in tree_result.stdout
@@ -1080,7 +1082,7 @@ def _compute_conflict_fingerprint(change_name: str) -> str:
     # Source: merger.sh L623-631
     main_branch = _get_main_branch()
     merge_base_result = run_command(
-        ["git", "merge-base", f"change/{change_name}", f"origin/{main_branch}"],
+        ["git", "merge-base", f"change/{change_name}", main_branch],
         timeout=30,
     )
     merge_base = merge_base_result.stdout.strip()
@@ -1088,7 +1090,7 @@ def _compute_conflict_fingerprint(change_name: str) -> str:
         return ""
 
     tree_result = run_command(
-        ["git", "merge-tree", merge_base, f"origin/{main_branch}", f"change/{change_name}"],
+        ["git", "merge-tree", merge_base, main_branch, f"change/{change_name}"],
         timeout=30,
     )
     # Extract "+++ b/" lines, sort, hash
