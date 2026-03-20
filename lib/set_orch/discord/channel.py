@@ -43,18 +43,19 @@ async def resolve_channel(
         logger.error("Discord guild not found: %s (bot may not be a member)", guild_id)
         return None
 
-    sanitized = _sanitize_channel_name(channel_name)
+    sanitized = _sanitize_channel_name(f"set-{channel_name}")
 
-    # Search for existing channel
+    # Search for existing channel (try both with and without set- prefix)
+    bare = _sanitize_channel_name(channel_name)
     for ch in guild.text_channels:
-        if ch.name == sanitized:
+        if ch.name == sanitized or ch.name == bare:
             return ch
 
-    # Try to create channel
+    # Try to create channel with set- prefix
     try:
         channel = await guild.create_text_channel(
             name=sanitized,
-            topic=f"set-core orchestration for {channel_name}",
+            topic=f"[SET] orchestration for {channel_name}",
         )
         logger.info("Created Discord channel #%s in guild %s", sanitized, guild.name)
         return channel
