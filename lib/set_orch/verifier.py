@@ -2233,16 +2233,20 @@ def _integrate_main_into_branch(
     else:
         main_branch = "main"
 
-    # Fetch latest main
-    run_git("fetch", "origin", main_branch, cwd=wt_path, timeout=60)
+    # Determine merge ref: prefer origin/<main> if remote exists, else local <main>
+    fetch_result = run_git("fetch", "origin", main_branch, cwd=wt_path, timeout=60)
+    has_origin = fetch_result.exit_code == 0
+    merge_ref = f"origin/{main_branch}" if has_origin else main_branch
+    if not has_origin:
+        logger.info("No origin remote — using local %s for integration", main_branch)
 
     # Check if integration is needed (is main ahead of branch?)
     merge_base_result = run_git(
-        "merge-base", "HEAD", f"origin/{main_branch}",
+        "merge-base", "HEAD", merge_ref,
         cwd=wt_path, timeout=10,
     )
     origin_head_result = run_git(
-        "rev-parse", f"origin/{main_branch}",
+        "rev-parse", merge_ref,
         cwd=wt_path, timeout=10,
     )
     if (merge_base_result.exit_code == 0 and origin_head_result.exit_code == 0
@@ -2253,7 +2257,7 @@ def _integrate_main_into_branch(
     # Merge main into branch
     logger.info("Integrating %s into %s for %s", main_branch, "branch", change_name)
     merge_result = run_git(
-        "merge", f"origin/{main_branch}",
+        "merge", merge_ref,
         "-m", f"Merge {main_branch} into branch for pre-gate integration",
         cwd=wt_path, timeout=120,
     )

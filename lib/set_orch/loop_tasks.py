@@ -322,12 +322,14 @@ def _check_merge_done(wt_path: str) -> bool:
         if result.returncode == 0:
             main_ref = result.stdout.strip().replace("refs/remotes/origin/", "")
 
-        # Fetch
-        subprocess.run(
+        # Fetch (may fail if no remote — use local ref instead)
+        fetch_result = subprocess.run(
             ["git", "-C", wt_path, "fetch", "origin", main_ref],
             capture_output=True,
             timeout=30,
         )
+        has_origin = fetch_result.returncode == 0
+        merge_ref = f"origin/{main_ref}" if has_origin else main_ref
 
         # Get current branch
         result = subprocess.run(
@@ -342,7 +344,7 @@ def _check_merge_done(wt_path: str) -> bool:
 
         # Merge base
         result = subprocess.run(
-            ["git", "-C", wt_path, "merge-base", cur_branch, f"origin/{main_ref}"],
+            ["git", "-C", wt_path, "merge-base", cur_branch, merge_ref],
             capture_output=True,
             text=True,
             timeout=10,
@@ -353,7 +355,7 @@ def _check_merge_done(wt_path: str) -> bool:
 
         # Merge tree check
         result = subprocess.run(
-            ["git", "-C", wt_path, "merge-tree", mb, f"origin/{main_ref}", cur_branch],
+            ["git", "-C", wt_path, "merge-tree", mb, merge_ref, cur_branch],
             capture_output=True,
             text=True,
             timeout=10,
