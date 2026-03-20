@@ -9,6 +9,9 @@ branch="change/${change_name}"
 shift
 while [[ "$1" == --* ]]; do shift; done
 
-# Attempt merge
-git merge "$branch" --no-edit 2>/dev/null
-exit $?
+# Attempt merge — abort on conflict (matches real set-merge behavior)
+if ! git merge "$branch" --no-edit 2>/dev/null; then
+    git merge --abort 2>/dev/null || true
+    exit 1
+fi
+exit 0

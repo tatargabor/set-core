@@ -135,14 +135,10 @@ class TestConflictMerge:
         assert result.success is False
         assert result.status == "merge-blocked"
 
-        # After merge-blocked, the working tree may have conflict state from
-        # the failed merge attempt. Abort it to verify main is clean.
-        subprocess.run(
-            ["git", "-C", str(repo), "merge", "--abort"],
-            capture_output=True,
-        )
+        # Stub set-merge aborts on conflict (like the real one).
+        # Working tree should be clean — no conflict markers.
         markers = grep_conflict_markers(repo)
-        assert markers == [], f"Conflict markers on main after abort: {markers}"
+        assert markers == [], f"Conflict markers leaked on main: {markers}"
 
 
 # ── A7/A8: Already-merged / deleted branch ─────────────────────────
