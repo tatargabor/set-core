@@ -1044,9 +1044,8 @@ def _handle_merge_conflict(
             update_change_field(state_file, change_name, "status", "merged")
             return MergeResult(success=True, status="merged")
 
-        logger.warning("set-merge failed for %s but no conflict markers — merge-blocked", change_name)
-        update_change_field(state_file, change_name, "status", "merge-blocked")
-        return MergeResult(success=False, status="merge-blocked")
+        logger.warning("set-merge failed for %s but no conflict markers — trying agent rebase", change_name)
+        # Fall through to agent rebase instead of giving up immediately
 
     # Agent-assisted rebase
     agent_rebase_done = False
