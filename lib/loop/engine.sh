@@ -258,11 +258,12 @@ cmd_run() {
         local perm_flags
         perm_flags=$(get_claude_permission_flags "$perm_mode")
 
-        # Build model flag from state
+        # Build model flag from state (resolve short names to full IDs)
         local model_flag=""
         local state_model
         state_model=$(jq -r '.model // empty' "$state_file" 2>/dev/null)
         if [[ -n "$state_model" ]]; then
+            state_model=$(resolve_model_id "$state_model")
             model_flag="--model $state_model"
         fi
 

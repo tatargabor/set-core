@@ -767,6 +767,7 @@ def _list_session_files_for_change(
 
                 st = f.stat()
                 label, full_label = _derive_session_label(f)
+                model = _extract_session_model(f)
                 age_s = time.time() - st.st_mtime
                 is_active = age_s < 60
                 files.append({
@@ -775,6 +776,7 @@ def _list_session_files_for_change(
                     "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
                     "label": label,
                     "full_label": full_label,
+                    "model": model,
                     "outcome": "active" if is_active else _session_outcome(f),
                     "dir": str(d),
                 })
@@ -783,6 +785,36 @@ def _list_session_files_for_change(
                 pass
     files.sort(key=lambda x: x["mtime"], reverse=True)
     return files
+
+
+def _extract_session_model(session_path: Path) -> str:
+    """Extract model ID from a session JSONL's first assistant message.
+
+    Returns short model name (e.g. 'opus', 'sonnet') or empty string.
+    """
+    try:
+        with open(session_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                msg = entry.get("message", {})
+                if msg.get("role") == "assistant":
+                    model = msg.get("model", "")
+                    if model:
+                        # Shorten: claude-opus-4-6 → opus, claude-sonnet-4-6 → sonnet
+                        for short in ("opus", "sonnet", "haiku"):
+                            if short in model:
+                                return short
+                        return model
+                    return ""
+    except OSError:
+        pass
+    return ""
 
 
 def _derive_session_label(session_path: Path) -> tuple[str, str]:
@@ -940,12 +972,14 @@ def _list_session_files(sessions_dir: Path) -> list[dict]:
                 # Active = file modified in last 60 seconds
                 age_s = time.time() - st.st_mtime
                 is_active = age_s < 60
+                model = _extract_session_model(f)
                 files.append({
                     "id": f.stem,
                     "size": st.st_size,
                     "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
                     "label": label,
                     "full_label": full_label,
+                    "model": model,
                     "outcome": "active" if is_active else _session_outcome(f),
                 })
             except OSError:
@@ -1051,6 +1085,7 @@ def _parse_session_jsonl(path: Path, tail: int) -> list[str]:
     output: list[str] = []
     first_ts: str | None = None
     last_ts: str | None = None
+    session_model: str | None = None
     try:
         with open(path, "r", errors="replace") as f:
             for raw_line in f:
@@ -1072,6 +1107,10 @@ def _parse_session_jsonl(path: Path, tail: int) -> list[str]:
                 msg = obj.get("message", {})
                 role = msg.get("role", "")
                 obj_type = obj.get("type", "")
+
+                # Extract model from first assistant message
+                if session_model is None and role == "assistant":
+                    session_model = msg.get("model", "")
 
                 if role == "assistant":
                     content = msg.get("content", [])
@@ -1118,9 +1157,10 @@ def _parse_session_jsonl(path: Path, tail: int) -> list[str]:
     except OSError:
         output.append("(Failed to read session log)")
 
-    # Prepend start timestamp, append end timestamp
+    # Prepend start timestamp (with model if known), append end timestamp
     if first_ts:
-        output.insert(0, f"--- session start: {_format_ts(first_ts)} ---")
+        model_suffix = f"  model: {session_model}" if session_model else ""
+        output.insert(0, f"--- session start: {_format_ts(first_ts)}{model_suffix} ---")
     if last_ts and last_ts != first_ts:
         output.append(f"--- last activity: {_format_ts(last_ts)} ---")
 

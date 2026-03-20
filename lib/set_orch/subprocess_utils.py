@@ -127,6 +127,23 @@ def run_command(
     )
 
 
+_MODEL_MAP = {
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-6",
+    "opus-1m": "claude-opus-4-6[1m]",
+    "sonnet-1m": "claude-sonnet-4-6[1m]",
+}
+
+
+def resolve_model_id(name: str) -> str:
+    """Resolve short model name to full Claude model ID.
+
+    Mirrors resolve_model_id() in set-common.sh.
+    """
+    return _MODEL_MAP.get(name, name)
+
+
 def run_claude(
     prompt: str,
     *,
@@ -142,7 +159,7 @@ def run_claude(
     Args:
         prompt: The prompt text to send via stdin.
         timeout: Timeout in seconds (default 300 = 5 min).
-        model: Model short name (e.g., "sonnet", "opus").
+        model: Model short name (e.g., "sonnet", "opus") or full ID.
         extra_args: Additional CLI arguments.
         cwd: Working directory.
 
@@ -152,7 +169,7 @@ def run_claude(
     cmd = ["claude", "-p"]
 
     if model:
-        cmd.extend(["--model", model])
+        cmd.extend(["--model", resolve_model_id(model)])
 
     if extra_args:
         cmd.extend(extra_args)
