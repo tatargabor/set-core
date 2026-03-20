@@ -430,3 +430,44 @@ export function sendSentinelMessage(project: string, message: string): Promise<{
     body: JSON.stringify({ message }),
   })
 }
+
+// --- Battle Scoreboard ---
+
+export interface ScoreboardEntry {
+  player: string
+  project: string
+  score: number
+  changes_done: number
+  total_changes: number
+  total_tokens: number
+  achievements: string[]
+  timestamp: string
+}
+
+export function getScoreboard(limit = 20): Promise<{ entries: ScoreboardEntry[] }> {
+  return fetchJSON(`/scoreboard?limit=${limit}`)
+}
+
+export async function signScore(project: string, score: number, changesDone: number, totalTokens: number): Promise<string> {
+  const data = await fetchJSON<{ signature: string }>(
+    `/scoreboard/sign?project=${encodeURIComponent(project)}&score=${score}&changes_done=${changesDone}&total_tokens=${totalTokens}`
+  )
+  return data.signature
+}
+
+export function submitScore(entry: {
+  player: string
+  project: string
+  score: number
+  changes_done: number
+  total_changes: number
+  total_tokens: number
+  achievements: string[]
+  signature: string
+}): Promise<{ status: string; rank?: number }> {
+  return fetchJSON('/scoreboard/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+  })
+}

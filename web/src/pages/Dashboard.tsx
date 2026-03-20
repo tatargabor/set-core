@@ -181,10 +181,10 @@ export default function Dashboard({ project }: Props) {
           <OrchestrationChat project={project} />
         )}
 
-        {/* Battle tab — full height */}
-        {activeTab === 'battle' && (
-          <BattleView project={project} changes={changes} />
-        )}
+        {/* Battle tab — always mounted, hidden when not active */}
+        <div className={`h-full ${activeTab === 'battle' ? '' : 'hidden'}`}>
+          <BattleView project={project} changes={changes} isVisible={activeTab === 'battle'} />
+        </div>
 
         {/* Sentinel tab — full height */}
         {activeTab === 'sentinel' && (

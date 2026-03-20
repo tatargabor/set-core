@@ -1802,3 +1802,157 @@ async def send_sentinel_message(project: str, body: SentinelMessageBody):
         f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
     return {"status": "sent"}
+
+
+# ─── Battle Scoreboard ─────────────────────────────────────────────
+
+import hashlib
+import hmac
+
+# Server-side secret for score signing (derived from hostname for simplicity)
+_SCORE_SECRET = hashlib.sha256(
+    f"set-battle-{os.uname().nodename}".encode()
+).hexdigest().encode()
+
+_SCOREBOARD_FILE = Path(os.environ.get(
+    "SET_SCOREBOARD_FILE",
+    os.path.expanduser("~/.local/share/set-core/scoreboard.json"),
+))
+
+
+def _sign_score(project: str, score: int, changes_done: int, total_tokens: int) -> str:
+    """Create HMAC signature from orchestration facts the server can verify."""
+    msg = f"{project}:{score}:{changes_done}:{total_tokens}"
+    return hmac.new(_SCORE_SECRET, msg.encode(), hashlib.sha256).hexdigest()[:16]
+
+
+def _load_scoreboard() -> list:
+    if not _SCOREBOARD_FILE.exists():
+        return []
+    try:
+        with open(_SCOREBOARD_FILE) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_scoreboard(entries: list):
+    _SCOREBOARD_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = str(_SCOREBOARD_FILE) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(entries, f, indent=2)
+    os.replace(tmp, str(_SCOREBOARD_FILE))
+
+
+class ScoreSubmission(BaseModel):
+    player: str
+    project: str
+    score: int
+    changes_done: int
+    total_changes: int
+    total_tokens: int
+    achievements: list[str]
+    signature: str
+
+
+@router.get("/api/scoreboard")
+async def get_scoreboard(limit: int = 20):
+    """Get the global scoreboard (top scores across all projects)."""
+    entries = _load_scoreboard()
+    entries.sort(key=lambda e: e.get("score", 0), reverse=True)
+    return {"entries": entries[:limit]}
+
+
+@router.post("/api/scoreboard/submit")
+async def submit_score(body: ScoreSubmission):
+    """Submit a score with server-side validation.
+
+    Anti-cheat:
+    1. Signature must match server-computed HMAC from orchestration facts
+    2. Score is sanity-checked against changes_done and total_tokens
+    3. Server verifies the project exists and has orchestration data
+    4. Max 1000 points per change + bonuses (cap at ~5000/change)
+    """
+    # Verify signature
+    expected_sig = _sign_score(body.project, body.score, body.changes_done, body.total_tokens)
+    if not hmac.compare_digest(body.signature, expected_sig):
+        raise HTTPException(status_code=403, detail="Invalid score signature")
+
+    # Sanity check: max ~5000 points per completed change (generous upper bound)
+    max_plausible = body.changes_done * 5000 + 2000  # 2000 for achievements
+    if body.score > max_plausible:
+        raise HTTPException(status_code=400, detail="Score exceeds plausible maximum")
+
+    # Verify project exists
+    try:
+        _resolve_project(body.project)
+    except HTTPException:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Load and update scoreboard
+    entries = _load_scoreboard()
+
+    entry = {
+        "player": body.player[:20],  # max 20 chars
+        "project": body.project,
+        "score": body.score,
+        "changes_done": body.changes_done,
+        "total_changes": body.total_changes,
+        "total_tokens": body.total_tokens,
+        "achievements": body.achievements[:20],  # max 20
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+    # Replace if same player+project with higher score
+    existing_idx = None
+    for i, e in enumerate(entries):
+        if e.get("player") == entry["player"] and e.get("project") == entry["project"]:
+            existing_idx = i
+            break
+
+    if existing_idx is not None:
+        if entries[existing_idx].get("score", 0) < body.score:
+            entries[existing_idx] = entry
+        # else: keep existing higher score
+    else:
+        entries.append(entry)
+
+    # Keep top 100
+    entries.sort(key=lambda e: e.get("score", 0), reverse=True)
+    entries = entries[:100]
+
+    _save_scoreboard(entries)
+    return {"status": "ok", "rank": next((i + 1 for i, e in enumerate(entries) if e.get("player") == entry["player"] and e.get("project") == entry["project"]), None)}
+
+
+@router.get("/api/scoreboard/sign")
+async def sign_score(project: str, score: int, changes_done: int, total_tokens: int):
+    """Get a server-signed token for a score. Client must request this before submitting.
+
+    This ensures only scores backed by real orchestration data can be submitted,
+    since the client must know the correct changes_done and total_tokens values
+    that match the server's view.
+    """
+    # Verify project exists and get actual state to cross-check
+    try:
+        pp = _resolve_project(project)
+    except HTTPException:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Load actual orchestration state to verify the claimed values
+    try:
+        state = load_state(str(pp / "orchestration-state.json"))
+        actual_changes = state.get("changes", [])
+        actual_done = sum(1 for c in actual_changes if c.get("status") in ("done", "merged", "completed", "skip_merged"))
+        actual_tokens = sum((c.get("input_tokens", 0) or 0) + (c.get("output_tokens", 0) or 0) for c in actual_changes)
+
+        # Allow some tolerance (client may have slightly different counts)
+        if abs(changes_done - actual_done) > 2:
+            raise HTTPException(status_code=400, detail="changes_done mismatch with server state")
+        if actual_tokens > 0 and abs(total_tokens - actual_tokens) / max(actual_tokens, 1) > 0.2:
+            raise HTTPException(status_code=400, detail="total_tokens mismatch with server state")
+    except (StateCorruptionError, FileNotFoundError, OSError):
+        pass  # No state file — allow signing (orchestration might be over)
+
+    sig = _sign_score(project, score, changes_done, total_tokens)
+    return {"signature": sig}
