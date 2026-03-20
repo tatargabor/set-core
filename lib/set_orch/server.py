@@ -23,12 +23,49 @@ from .websocket import router as ws_router, connection_manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start file watchers on startup, stop on shutdown."""
+    """Start file watchers and Discord bot on startup, stop on shutdown."""
     watcher = app.state.watcher_manager
     await watcher.start(connection_manager)
+
+    # Start Discord bot if configured
+    discord_bot = None
+    try:
+        from .config import get_discord_config, load_config_file
+        config = load_config_file(
+            _find_orch_config()
+        )
+        discord_config = get_discord_config(config)
+        if discord_config:
+            from .discord import DiscordBot
+            project_name = config.get("project_name", "")
+            discord_bot = DiscordBot(discord_config, project_name=project_name)
+            await discord_bot.start()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug("Discord bot startup skipped: %s", e)
+
     yield
+
+    # Shutdown: Discord first (flush pending), then sessions, then watchers
+    if discord_bot:
+        try:
+            await discord_bot.stop()
+        except Exception:
+            pass
     await session_manager.stop_all()
     await watcher.stop()
+
+
+def _find_orch_config() -> str | None:
+    """Find orchestration config file for Discord settings."""
+    from pathlib import Path
+    for candidate in [
+        Path.cwd() / ".claude" / "orchestration.yaml",
+        Path.cwd() / "wt" / "orchestration" / "config.yaml",
+    ]:
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 
 def create_app(web_dist_dir: str | None = None) -> FastAPI:

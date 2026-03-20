@@ -71,6 +71,7 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "milestones_max_worktrees": 3,
     "e2e_port_base": None,
     "gate_overrides": {},
+    "discord": None,
 }
 
 
@@ -382,7 +383,45 @@ def _finalize_directives(d: dict[str, Any]) -> dict[str, Any]:
     milestones["max_worktrees"] = d.get("milestones_max_worktrees", 3)
     result["milestones"] = milestones
 
+    # Discord nested object (passed through from YAML config)
+    discord_raw = d.get("discord")
+    if isinstance(discord_raw, dict) and discord_raw.get("enabled"):
+        result["discord"] = _parse_discord_config(discord_raw)
+    else:
+        result.pop("discord", None)
+
     return result
+
+
+# ─── Discord Config ──────────────────────────────────────────────────
+
+
+DISCORD_DEFAULT_NOTIFY_ON = ["start", "merge", "stuck", "complete", "crash"]
+
+
+def _parse_discord_config(raw: dict[str, Any]) -> dict[str, Any]:
+    """Parse and validate the discord: config section."""
+    return {
+        "enabled": True,
+        "guild_id": str(raw.get("guild_id", "")),
+        "channel_name": raw.get("channel_name", ""),
+        "notify_on": raw.get("notify_on", DISCORD_DEFAULT_NOTIFY_ON),
+        "mention_on_error": raw.get("mention_on_error", ""),
+        "member_map": raw.get("member_map", {}),
+    }
+
+
+def get_discord_config(directives: dict[str, Any]) -> dict[str, Any] | None:
+    """Get parsed Discord config from resolved directives. Returns None if disabled."""
+    cfg = directives.get("discord")
+    if not cfg:
+        return None
+    # Token comes from env, never from config file
+    token = os.environ.get("SET_DISCORD_TOKEN", "")
+    if not token:
+        logger.warning("Discord enabled but SET_DISCORD_TOKEN not set — Discord disabled")
+        return None
+    return cfg
 
 
 # ─── Config File Loading ─────────────────────────────────────────────

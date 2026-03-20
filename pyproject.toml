@@ -36,6 +36,9 @@ dependencies = [
 memory = [
     "shodh-memory>=0.1.81",
 ]
+discord = [
+    "discord.py>=2.3.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-qt>=4.2.0",

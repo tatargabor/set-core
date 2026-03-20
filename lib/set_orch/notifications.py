@@ -56,6 +56,10 @@ def send_notification(
     if "email" in channels:
         _send_email(title, body, urgency, project_name)
 
+    # Discord channel
+    if "discord" in channels:
+        _send_discord_sync(title, body, urgency, project_name)
+
     logger.info("Notification [%s]: %s — %s", urgency, title, body)
 
 
@@ -169,3 +173,49 @@ def _send_email(
         )
     except (subprocess.TimeoutExpired, OSError) as e:
         logger.warning("Email notification failed: %s", e)
+
+
+def _send_discord_sync(
+    title: str, body: str, urgency: str, project_name: str,
+) -> None:
+    """Send notification via Discord bot. Bridges sync caller to async bot."""
+    try:
+        from .discord import get_bot
+    except ImportError:
+        logger.debug("Discord module not available")
+        return
+
+    bot = get_bot()
+    if not bot or not bot.is_connected or not bot.channel:
+        logger.debug("Discord bot not connected — skipping notification")
+        return
+
+    import asyncio
+
+    async def _send():
+        try:
+            import discord
+            color = 0x2ECC71 if urgency == "normal" else 0xE74C3C
+            embed = discord.Embed(
+                title=title,
+                description=body[:2000],
+                color=color,
+            )
+            embed.set_footer(text=project_name)
+
+            mention = ""
+            if urgency == "critical" and hasattr(bot, "_discord_config"):
+                from .discord.events import _get_mention
+                mention = _get_mention(bot._discord_config, getattr(bot, "_member_name", ""))
+
+            content = f"{mention} " if mention else None
+            await bot.channel.send(content=content, embed=embed)
+        except Exception as e:
+            logger.debug("Discord notification failed: %s", e)
+
+    try:
+        loop = asyncio.get_running_loop()
+        asyncio.run_coroutine_threadsafe(_send(), loop)
+    except RuntimeError:
+        # No running loop — can't send
+        logger.debug("No asyncio loop — Discord notification skipped")
