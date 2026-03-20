@@ -63,7 +63,7 @@ export function TuiSection({ label, className }: {
   className?: string
 }) {
   return (
-    <div className={className ?? 'text-xs text-neutral-500 uppercase tracking-wider py-1'}>
+    <div className={className ?? 'text-sm text-neutral-500 uppercase tracking-wider py-1'}>
       {'── '}{label}{' ──'}
     </div>
   )

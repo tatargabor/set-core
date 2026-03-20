@@ -98,10 +98,10 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                 }`}
               >
                 <TuiStatus status={c.status} label={false} />
-                <span className="text-xs text-neutral-200 truncate flex-1">{c.name}</span>
-                <span className="text-xs text-neutral-500 shrink-0">{formatDuration(changeDuration(c))}</span>
-                <span className="text-xs shrink-0"><TuiStatus status={c.status} /></span>
-                <span className="text-neutral-600 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                <span className="text-sm text-neutral-200 truncate flex-1">{c.name}</span>
+                <span className="text-sm text-neutral-500 shrink-0">{formatDuration(changeDuration(c))}</span>
+                <span className="text-sm shrink-0"><TuiStatus status={c.status} /></span>
+                <span className="text-neutral-600 text-sm">{isExpanded ? '▲' : '▼'}</span>
               </button>
 
               {/* Expanded details */}
@@ -165,7 +165,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                       <button
                         onClick={(e) => handleAction(e, c.name, 'stop')}
                         disabled={actionLoading === `${c.name}:stop`}
-                        className={`px-3 py-1.5 text-xs rounded disabled:opacity-50 ${
+                        className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 ${
                           confirmAction === `${c.name}:stop`
                             ? 'bg-red-700 text-white hover:bg-red-600'
                             : 'bg-red-900/50 text-red-300 hover:bg-red-900'
@@ -178,7 +178,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                       <button
                         onClick={(e) => handleAction(e, c.name, 'skip')}
                         disabled={actionLoading === `${c.name}:skip`}
-                        className={`px-3 py-1.5 text-xs rounded disabled:opacity-50 ${
+                        className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 ${
                           confirmAction === `${c.name}:skip`
                             ? 'bg-amber-700 text-white hover:bg-amber-600'
                             : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
@@ -201,7 +201,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="text-xs text-neutral-500 border-b border-neutral-800">
+        <tr className="text-sm text-neutral-500 border-b border-neutral-800">
           <th className="text-left px-4 py-2 font-medium">Name</th>
           <th className="text-left px-2 py-2 font-medium">Status</th>
           <th className="text-center px-2 py-2 font-medium">Sess</th>
@@ -231,7 +231,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               </td>
               <td className="px-2 py-2 text-center text-neutral-400">{c.session_count ?? '—'}</td>
               <td className="px-2 py-2 text-right text-neutral-400">{formatDuration(changeDuration(c))}</td>
-              <td className="px-2 py-2 text-right text-neutral-400 text-xs">
+              <td className="px-2 py-2 text-right text-neutral-400 text-sm">
                 {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
                 {c.context_tokens_end != null && (
                   <span className={`ml-1 ${c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-500'}`}>
@@ -262,7 +262,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     <button
                       onClick={(e) => handleAction(e, c.name, 'stop')}
                       disabled={actionLoading === `${c.name}:stop`}
-                      className={`px-2 py-0.5 text-xs rounded disabled:opacity-50 ${
+                      className={`px-2 py-0.5 text-sm rounded disabled:opacity-50 ${
                         confirmAction === `${c.name}:stop`
                           ? 'bg-red-700 text-white hover:bg-red-600'
                           : 'bg-red-900/50 text-red-300 hover:bg-red-900'
@@ -275,7 +275,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     <button
                       onClick={(e) => handleAction(e, c.name, 'skip')}
                       disabled={actionLoading === `${c.name}:skip`}
-                      className={`px-2 py-0.5 text-xs rounded disabled:opacity-50 ${
+                      className={`px-2 py-0.5 text-sm rounded disabled:opacity-50 ${
                         confirmAction === `${c.name}:skip`
                           ? 'bg-amber-700 text-white hover:bg-amber-600'
                           : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'

@@ -106,8 +106,8 @@ export default function SessionPanel({ project, change }: Props) {
 
   const selectedLabel = sessions.find(s => s.id === selected)?.label || selected?.slice(0, 8) || '—'
 
-  if (error) return <div className="p-4 text-xs text-red-400">{error}</div>
-  if (sessions.length === 0) return <div className="p-4 text-xs text-neutral-500">No sessions found{change ? ` for ${change}` : ''}</div>
+  if (error) return <div className="p-4 text-sm text-red-400">{error}</div>
+  if (sessions.length === 0) return <div className="p-4 text-sm text-neutral-500">No sessions found{change ? ` for ${change}` : ''}</div>
 
   return (
     <div className="flex flex-col md:flex-row h-full">
@@ -126,7 +126,7 @@ export default function SessionPanel({ project, change }: Props) {
           <span className="truncate max-w-[200px]">{selectedLabel}</span>
           <span className="text-neutral-500">{listOpen ? '▲' : '▼'}</span>
         </button>
-        <span className="text-xs text-neutral-600 ml-auto">{sessions.length} sessions</span>
+        <span className="text-sm text-neutral-600 ml-auto">{sessions.length} sessions</span>
       </div>
 
       {/* Mobile: collapsible session list */}
@@ -147,7 +147,7 @@ export default function SessionPanel({ project, change }: Props) {
                   <span className={`shrink-0 ${outcomeChar(s.outcome).color}`}>{outcomeChar(s.outcome).char}</span>
                   {s.label || s.id.slice(0, 8)}
                 </div>
-                <div className="text-xs text-neutral-600 truncate pl-3" title={s.full_label}>
+                <div className="text-sm text-neutral-600 truncate pl-3" title={s.full_label}>
                   {age} · {(s.size / 1024).toFixed(0)}KB
                 </div>
               </button>
@@ -173,7 +173,7 @@ export default function SessionPanel({ project, change }: Props) {
                 <span className={`shrink-0 ${outcomeChar(s.outcome).color}`}>{outcomeChar(s.outcome).char}</span>
                 {s.label || s.id.slice(0, 8)}
               </div>
-              <div className="text-xs text-neutral-600 truncate pl-3" title={s.full_label}>
+              <div className="text-sm text-neutral-600 truncate pl-3" title={s.full_label}>
                 {age} · {(s.size / 1024).toFixed(0)}KB
               </div>
             </button>

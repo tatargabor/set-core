@@ -58,7 +58,7 @@ export default function CheckpointBanner({ project, checkpointType, onDismiss }:
             <span className="text-orange-300 text-sm font-medium block">
               MCP Authentication Required
             </span>
-            <span className="text-orange-400/70 text-xs">
+            <span className="text-orange-400/70 text-sm">
               Design MCP needs authentication. Run <code className="bg-neutral-800 px-1 rounded">/mcp</code> → select server → Authenticate in Claude Code, then approve.
             </span>
           </>

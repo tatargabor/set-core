@@ -74,11 +74,11 @@ export default function PlanViewer({ project }: Props) {
   }, [project, selectedPlan])
 
   if (loading) {
-    return <div className="p-4 text-xs text-neutral-500">Loading plans...</div>
+    return <div className="p-4 text-sm text-neutral-500">Loading plans...</div>
   }
 
   if (plans.length === 0) {
-    return <div className="p-4 text-xs text-neutral-500">No plans found</div>
+    return <div className="p-4 text-sm text-neutral-500">No plans found</div>
   }
 
   const changes = planData?.changes ?? []
@@ -88,11 +88,11 @@ export default function PlanViewer({ project }: Props) {
       {/* Plan selector */}
       {plans.length > 1 && (
         <div className="px-4 pt-3 flex items-center gap-2">
-          <label className="text-xs text-neutral-500">Plan:</label>
+          <label className="text-sm text-neutral-500">Plan:</label>
           <select
             value={selectedPlan ?? ''}
             onChange={e => setSelectedPlan(e.target.value)}
-            className="bg-neutral-800 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-700"
+            className="bg-neutral-800 text-neutral-300 text-sm rounded px-2 py-1 border border-neutral-700"
           >
             {plans.map(p => (
               <option key={p.filename} value={p.filename}>
@@ -105,7 +105,7 @@ export default function PlanViewer({ project }: Props) {
 
       {/* Changes table */}
       {changes.length > 0 ? (
-        <table className="w-full text-xs">
+        <table className="w-full text-sm">
           <thead>
             <tr className="text-neutral-500 border-b border-neutral-800">
               <th className="text-left px-4 py-1.5 font-medium">#</th>
@@ -138,7 +138,7 @@ export default function PlanViewer({ project }: Props) {
           </tbody>
         </table>
       ) : (
-        <div className="px-4 py-2 text-xs text-neutral-500">
+        <div className="px-4 py-2 text-sm text-neutral-500">
           {planData ? 'Plan has no changes array' : 'Loading plan data...'}
         </div>
       )}

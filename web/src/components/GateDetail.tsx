@@ -47,7 +47,7 @@ export default function GateDetail({ change }: Props) {
   }
 
   if (gates.length === 0) {
-    return <div className="px-4 py-2 text-neutral-500 text-xs">No gate results</div>
+    return <div className="px-4 py-2 text-neutral-500 text-sm">No gate results</div>
   }
 
   return (
@@ -56,7 +56,7 @@ export default function GateDetail({ change }: Props) {
         <div key={g.name} className="border border-neutral-800 rounded">
           <button
             onClick={() => toggle(g.name)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-neutral-800/50"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-neutral-800/50"
           >
             <span className="text-neutral-500">{expanded.has(g.name) ? '▾' : '▸'}</span>
             <span className="font-medium text-neutral-300">{g.label}</span>
@@ -70,14 +70,14 @@ export default function GateDetail({ change }: Props) {
               {g.output ? (
                 <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{g.output}</pre>
               ) : (
-                <span className="text-xs text-neutral-600">No output</span>
+                <span className="text-sm text-neutral-600">No output</span>
               )}
             </div>
           )}
         </div>
       ))}
       {change.gate_total_ms != null && (
-        <div className="text-xs text-neutral-500 pt-1">
+        <div className="text-sm text-neutral-500 pt-1">
           Total gate time: {(change.gate_total_ms / 1000).toFixed(1)}s
         </div>
       )}

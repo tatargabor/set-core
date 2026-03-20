@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { shutdownOrchestration, stopOrchestrator } from '../lib/api'
+import { TuiSection } from '../components/tui'
 
 interface Props {
   project: string | null
@@ -30,8 +31,8 @@ interface SettingsData {
 function ConfigValue({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-3 py-1.5">
-      <span className="text-xs text-neutral-500 w-36 shrink-0">{label}</span>
-      <span className="text-xs text-neutral-300 break-all">{value ?? <span className="text-neutral-600">—</span>}</span>
+      <span className="text-sm text-neutral-500 w-40 shrink-0">{label}</span>
+      <span className="text-sm text-neutral-300 break-all">{value ?? <span className="text-neutral-600">—</span>}</span>
     </div>
   )
 }
@@ -97,12 +98,12 @@ export default function Settings({ project }: Props) {
 
       {/* Orchestration Control */}
       <section>
-        <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Orchestration Control</h2>
+        <TuiSection label="Orchestration Control" />
         <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-xs text-neutral-500">Status</span>
-              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
+              <span className="text-sm text-neutral-500">Status</span>
+              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-sm font-medium ${
                 isRunning ? 'bg-green-900/50 text-green-300' :
                 isShutdown ? 'bg-amber-900/50 text-amber-300' :
                 orchStatus === 'done' ? 'bg-blue-900/50 text-blue-300' :
@@ -122,7 +123,7 @@ export default function Settings({ project }: Props) {
                 <button
                   onClick={handleResume}
                   disabled={actionLoading === 'resume'}
-                  className="px-3 py-1 text-xs bg-green-900/50 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 font-medium"
+                  className="px-3 py-1 text-sm bg-green-900/50 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 font-medium"
                 >
                   {actionLoading === 'resume' ? 'Resuming...' : 'Resume'}
                 </button>
@@ -131,7 +132,7 @@ export default function Settings({ project }: Props) {
                   <button
                     onClick={() => setShowConfirm(true)}
                     disabled={actionLoading === 'shutdown'}
-                    className="px-3 py-1 text-xs bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 font-medium"
+                    className="px-3 py-1 text-sm bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 font-medium"
                   >
                     {actionLoading === 'shutdown' ? 'Shutting down...' : 'Shutdown'}
                   </button>
@@ -143,19 +144,19 @@ export default function Settings({ project }: Props) {
           {/* Confirmation dialog */}
           {showConfirm && (
             <div className="mt-3 p-3 bg-red-950/30 border border-red-900/50 rounded-lg">
-              <p className="text-xs text-red-300 mb-2">
+              <p className="text-sm text-red-300 mb-2">
                 This will gracefully stop all agents and the orchestrator. Worktree state will be preserved for resume. Continue?
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={handleShutdown}
-                  className="px-3 py-1 text-xs bg-red-800 text-red-100 rounded hover:bg-red-700 font-medium"
+                  className="px-3 py-1 text-sm bg-red-800 text-red-100 rounded hover:bg-red-700 font-medium"
                 >
                   Confirm Shutdown
                 </button>
                 <button
                   onClick={() => setShowConfirm(false)}
-                  className="px-3 py-1 text-xs bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
+                  className="px-3 py-1 text-sm bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
                 >
                   Cancel
                 </button>
@@ -167,7 +168,7 @@ export default function Settings({ project }: Props) {
 
       {/* Paths */}
       <section>
-        <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Paths</h2>
+        <TuiSection label="Paths" />
         <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
           <ConfigValue label="Project path" value={data.project_path} />
           <ConfigValue label="State file" value={data.state_path} />
@@ -178,7 +179,7 @@ export default function Settings({ project }: Props) {
 
       {/* Status */}
       <section>
-        <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Runtime</h2>
+        <TuiSection label="Runtime" />
         <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
           <ConfigValue label="Orchestrator PID" value={data.orchestrator_pid} />
           <ConfigValue label="Sentinel PID" value={data.sentinel_pid} />
@@ -191,7 +192,7 @@ export default function Settings({ project }: Props) {
       {/* Directives */}
       {directives && Object.keys(directives).length > 0 && (
         <section>
-          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Orchestration Directives</h2>
+          <TuiSection label="Orchestration Directives" />
           <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
             {Object.entries(directives).map(([k, v]) => (
               <ConfigValue key={k} label={k} value={typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')} />
@@ -203,7 +204,7 @@ export default function Settings({ project }: Props) {
       {/* Data Sources */}
       {data.data_sources && (
         <section>
-          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Data Sources</h2>
+          <TuiSection label="Data Sources" />
           <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
             {Object.entries(data.data_sources).map(([key, src]) => {
               const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -229,8 +230,8 @@ export default function Settings({ project }: Props) {
       {/* Raw config fallback */}
       {data.config_raw && !directives && (
         <section>
-          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Config (raw)</h2>
-          <pre className="bg-neutral-900/50 rounded-lg border border-neutral-800 p-4 text-xs text-neutral-400 whitespace-pre-wrap overflow-auto max-h-64">
+          <TuiSection label="Config (raw)" />
+          <pre className="bg-neutral-900/50 rounded-lg border border-neutral-800 p-4 text-sm text-neutral-400 whitespace-pre-wrap overflow-auto max-h-64">
             {data.config_raw}
           </pre>
         </section>

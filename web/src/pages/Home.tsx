@@ -97,13 +97,13 @@ function ProjectCard({ project, compact }: { project: ProjectInfo; compact?: boo
       <div className="flex items-center gap-2">
         <span className={`shrink-0 ${s.color}`}>{s.char}</span>
         <span className="text-sm text-neutral-200 truncate">{project.name}</span>
-        <span className="ml-auto text-xs text-neutral-600 shrink-0">{ago}</span>
+        <span className="ml-auto text-sm text-neutral-600 shrink-0">{ago}</span>
         {!compact && (
-          <span className="text-xs text-neutral-500 shrink-0">{s.label}</span>
+          <span className="text-sm text-neutral-500 shrink-0">{s.label}</span>
         )}
       </div>
       {!compact && (
-        <div className="mt-1 text-xs text-neutral-500 truncate">{project.path}</div>
+        <div className="mt-1 text-sm text-neutral-500 truncate">{project.path}</div>
       )}
     </Link>
   )

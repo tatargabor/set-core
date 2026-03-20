@@ -31,13 +31,13 @@ export default function LogStream({ lines }: Props) {
   return (
     <div className="relative h-full flex flex-col">
       <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-800 bg-neutral-900/50">
-        <span className="text-xs text-neutral-500 font-medium">Log</span>
-        <span className="text-xs text-neutral-600">{lines.length} lines</span>
+        <span className="text-sm text-neutral-500 font-medium">Log</span>
+        <span className="text-sm text-neutral-600">{lines.length} lines</span>
       </div>
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto p-2 text-xs leading-5"
+        className="flex-1 overflow-auto p-2 text-sm leading-5"
       >
         {lines.map((line, i) => (
           <div key={i} className={lineColor(line)}>
@@ -53,7 +53,7 @@ export default function LogStream({ lines }: Props) {
               containerRef.current.scrollTop = containerRef.current.scrollHeight
             }
           }}
-          className="absolute bottom-3 right-3 px-2 py-1 text-xs bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
+          className="absolute bottom-3 right-3 px-2 py-1 text-sm bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
         >
           Jump to bottom
         </button>

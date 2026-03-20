@@ -98,7 +98,7 @@ export default function ChangeTimeline({ change }: Props) {
   const phases = derivePhases(change)
 
   if (phases.length === 0) {
-    return <div className="px-4 py-2 text-xs text-neutral-600">No timeline data</div>
+    return <div className="px-4 py-2 text-sm text-neutral-600">No timeline data</div>
   }
 
   // Calculate total for proportional widths
@@ -120,7 +120,7 @@ export default function ChangeTimeline({ change }: Props) {
               style={widthStyle}
               title={`${p.name}${p.ms ? ': ' + formatMs(p.ms) : ''}`}
             >
-              <span className={`text-xs font-medium ${phaseLabelColors[p.result ?? 'pending']}`}>
+              <span className={`text-sm font-medium ${phaseLabelColors[p.result ?? 'pending']}`}>
                 {p.name}
                 {p.ms ? <span className="ml-0.5 opacity-70">{formatMs(p.ms)}</span> : null}
               </span>

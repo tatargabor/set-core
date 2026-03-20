@@ -105,12 +105,12 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
         {/* Name with tree indent */}
         <div className="flex items-center gap-1.5 min-w-0" style={{ paddingLeft: `${depth * 20}px` }}>
           {depth > 0 && (
-            <span className="text-neutral-700 text-xs shrink-0">└</span>
+            <span className="text-neutral-700 text-sm shrink-0">└</span>
           )}
           <TuiStatus status={displayStatus} label={false} />
-          <span className="text-xs text-neutral-200 truncate">{c.name}</span>
+          <span className="text-sm text-neutral-200 truncate">{c.name}</span>
           {blockedBy && (
-            <span className="text-xs text-neutral-600 shrink-0 truncate">← {blockedBy}</span>
+            <span className="text-sm text-neutral-600 shrink-0 truncate">← {blockedBy}</span>
           )}
         </div>
 
@@ -143,7 +143,7 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
         </span>
 
         {/* Model */}
-        <span className="text-xs text-neutral-600 truncate">
+        <span className="text-sm text-neutral-600 truncate">
           {c.model ? c.model.replace('claude-', '').replace('-latest', '') : '—'}
         </span>
 
@@ -200,7 +200,7 @@ export default function PhaseView({ changes, state }: Props) {
             <div className="flex items-center gap-3 px-3 py-2.5 bg-neutral-900/50">
               <span className="text-sm">{phaseStatusIcon[phaseStatus] ?? '⏳'}</span>
               <span className="text-sm font-medium text-neutral-200">Phase {phaseNum}</span>
-              <span className={`text-xs ${
+              <span className={`text-sm ${
                 phaseStatus === 'completed' ? 'text-blue-400' :
                 phaseStatus === 'running' ? 'text-green-400' :
                 'text-neutral-500'
@@ -208,18 +208,18 @@ export default function PhaseView({ changes, state }: Props) {
 
               <span className="flex-1" />
 
-              <span className="text-xs text-neutral-400">{doneCount}/{totalCount}</span>
+              <span className="text-sm text-neutral-400">{doneCount}/{totalCount}</span>
               {totalTokens > 0 && (
-                <span className="text-xs text-neutral-500">{formatTokens(totalTokens)}</span>
+                <span className="text-sm text-neutral-500">{formatTokens(totalTokens)}</span>
               )}
               {totalDuration > 0 && (
-                <span className="text-xs text-neutral-500">{formatDuration(totalDuration)}</span>
+                <span className="text-sm text-neutral-500">{formatDuration(totalDuration)}</span>
               )}
             </div>
 
             {/* Column headers */}
             <div
-              className="grid items-center px-3 py-1 text-xs text-neutral-600 border-b border-neutral-800/30"
+              className="grid items-center px-3 py-1 text-sm text-neutral-600 border-b border-neutral-800/30"
               style={{ gridTemplateColumns: GRID_COLS }}
             >
               <span>Name</span>

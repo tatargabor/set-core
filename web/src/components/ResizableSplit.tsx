@@ -77,7 +77,7 @@ export default function ResizableSplit({
       >
         <button
           onClick={() => setCollapsed(collapsed === 'bottom' ? 'none' : 'bottom')}
-          className="text-neutral-600 hover:text-neutral-400 text-xs px-2"
+          className="text-neutral-600 hover:text-neutral-400 text-sm px-2"
         >
           {collapsed === 'bottom' ? '▲' : '▼'}
         </button>

@@ -73,8 +73,8 @@ function LogPane({ lines, colorFn, label, lineCount, live }: {
   return (
     <div className="relative flex flex-col h-full min-w-0">
       <div className="flex items-center px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50">
-        <span className="text-xs text-neutral-500 font-medium">{label}</span>
-        <span className="ml-auto text-xs text-neutral-600">
+        <span className="text-sm text-neutral-500 font-medium">{label}</span>
+        <span className="ml-auto text-sm text-neutral-600">
           {lineCount ?? lines.length} lines
           {live && <span className="ml-1.5 text-green-600 animate-pulse">LIVE</span>}
         </span>
@@ -82,7 +82,7 @@ function LogPane({ lines, colorFn, label, lineCount, live }: {
       <div
         ref={ref}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto p-2 text-xs leading-5"
+        className="flex-1 overflow-auto p-2 text-sm leading-5"
       >
         {lines.map((line, i) => (
           <div key={i} className={`whitespace-pre-wrap break-all ${colorFn(line)}`}>{line}</div>
@@ -97,7 +97,7 @@ function LogPane({ lines, colorFn, label, lineCount, live }: {
             setAutoScroll(true)
             if (ref.current) ref.current.scrollTop = ref.current.scrollHeight
           }}
-          className="absolute bottom-2 right-2 px-1.5 py-0.5 text-xs bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700"
+          className="absolute bottom-2 right-2 px-1.5 py-0.5 text-sm bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700"
         >
           Bottom
         </button>
@@ -215,7 +215,7 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
     <div className="h-full min-w-0 flex flex-col">
       {/* Session tabs */}
       <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50 overflow-x-auto">
-        <span className="text-xs text-neutral-600 shrink-0 mr-1">
+        <span className="text-sm text-neutral-600 shrink-0 mr-1">
           {selectedChange.name}
         </span>
         {sessions.map((s, i) => {
@@ -225,7 +225,7 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
             <button
               key={s.id}
               onClick={() => loadSession(s.id)}
-              className={`px-1.5 py-0.5 text-xs rounded transition-colors shrink-0 ${
+              className={`px-1.5 py-0.5 text-sm rounded transition-colors shrink-0 ${
                 isActive
                   ? 'bg-blue-900/60 text-blue-300'
                   : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
@@ -237,14 +237,14 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
           )
         })}
         {sessions.length === 0 && (
-          <span className="text-xs text-neutral-600">No sessions</span>
+          <span className="text-sm text-neutral-600">No sessions</span>
         )}
       </div>
 
       {/* Session content */}
       <div className="flex-1 min-h-0">
         {sessionLoading ? (
-          <div className="p-2 text-xs text-neutral-600">Loading session...</div>
+          <div className="p-2 text-sm text-neutral-600">Loading session...</div>
         ) : (
           <LogPane
             lines={sessionLines}

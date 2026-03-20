@@ -64,7 +64,7 @@ export default function TokenChart({ changes }: Props) {
   }, [changes])
 
   if (data.length === 0) {
-    return <div className="p-4 text-xs text-neutral-500">No token usage data</div>
+    return <div className="p-4 text-sm text-neutral-500">No token usage data</div>
   }
 
   const barHeight = Math.max(data.length * 32, 120)
@@ -73,10 +73,10 @@ export default function TokenChart({ changes }: Props) {
     <div className="flex flex-col h-full">
       {/* Summary header */}
       <div className="flex items-center gap-4 px-4 py-2 border-b border-neutral-800/50 shrink-0 flex-wrap">
-        <span className="text-xs font-medium text-neutral-300">
+        <span className="text-sm font-medium text-neutral-300">
           Total: {formatK(totals.total)}
         </span>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-3 text-sm">
           <span className="flex items-center gap-1">
             <span className="text-blue-400">{'\u2588'}</span>
             <span className="text-neutral-400">Input {formatK(totals.input)}</span>
@@ -90,7 +90,7 @@ export default function TokenChart({ changes }: Props) {
             <span className="text-neutral-400">Cache {formatK(totals.cache)}</span>
           </span>
         </div>
-        <span className="text-xs text-neutral-600 ml-auto">
+        <span className="text-sm text-neutral-600 ml-auto">
           {data.length} change{data.length !== 1 ? 's' : ''} with usage
         </span>
       </div>

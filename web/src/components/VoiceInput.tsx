@@ -178,7 +178,7 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
         value={language}
         onChange={e => setLanguage(e.target.value as Language)}
         disabled={recording || disabled}
-        className="bg-neutral-800 text-neutral-300 text-xs rounded px-1 min-h-[44px] md:min-h-[32px] border border-neutral-700 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+        className="bg-neutral-800 text-neutral-300 text-sm rounded px-1 min-h-[44px] md:min-h-[32px] border border-neutral-700 focus:outline-none focus:border-blue-500 disabled:opacity-50"
       >
         <option value="hu">HU</option>
         <option value="en">EN</option>
@@ -205,14 +205,14 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
 
       {/* Duration display */}
       {recording && (
-        <span className="text-xs text-red-400 min-w-[32px]">
+        <span className="text-sm text-red-400 min-w-[32px]">
           {formatDuration(duration)}
         </span>
       )}
 
       {/* Error display */}
       {error && (
-        <span className="text-xs text-red-400" onClick={() => setError(null)}>
+        <span className="text-sm text-red-400" onClick={() => setError(null)}>
           {error}
         </span>
       )}

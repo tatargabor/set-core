@@ -12,15 +12,15 @@ const severityColor = {
 
 function Badge({ result }: { result: AuditResult }) {
   if (result.audit_result === 'clean') {
-    return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-green-900/50 text-green-400">Clean</span>
+    return <span className="px-2 py-0.5 rounded text-sm font-semibold bg-green-900/50 text-green-400">Clean</span>
   }
   if (result.audit_result === 'parse_error') {
-    return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900/50 text-yellow-400">Parse Error</span>
+    return <span className="px-2 py-0.5 rounded text-sm font-semibold bg-yellow-900/50 text-yellow-400">Parse Error</span>
   }
   const gapCount = result.gaps?.length ?? 0
   const critCount = result.gaps?.filter(g => g.severity === 'critical').length ?? 0
   return (
-    <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-900/50 text-red-400">
+    <span className="px-2 py-0.5 rounded text-sm font-semibold bg-red-900/50 text-red-400">
       {gapCount} gap{gapCount !== 1 ? 's' : ''}{critCount > 0 ? ` (${critCount} critical)` : ''}
     </span>
   )
@@ -34,7 +34,7 @@ function CycleEntry({ result, defaultOpen }: { result: AuditResult; defaultOpen:
     <div className="border border-neutral-800 rounded mb-1">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-neutral-800/50"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-800/50"
       >
         <span className="text-neutral-500">{open ? '▾' : '▸'}</span>
         <span className="text-neutral-300">Cycle {result.cycle}</span>
@@ -70,7 +70,7 @@ function CycleEntry({ result, defaultOpen }: { result: AuditResult; defaultOpen:
                     <tr key={gap.id} className={`${sev.bg} border-b border-neutral-800/50`}>
                       <td className="py-1 pr-2 text-neutral-300">{gap.id}</td>
                       <td className="py-1 pr-2">
-                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sev.chip}`}>
+                        <span className={`px-1.5 py-0.5 rounded text-sm font-medium ${sev.chip}`}>
                           {gap.severity}
                         </span>
                       </td>

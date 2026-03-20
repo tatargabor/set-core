@@ -35,11 +35,11 @@ export default function ScreenshotGallery({ project, changeName }: Props) {
   const imgUrl = (s: ScreenshotFile) => `/api/${project}/screenshots/${s.path}`
 
   if (loading) {
-    return <div className="px-4 py-3 text-xs text-neutral-500">Loading screenshots...</div>
+    return <div className="px-4 py-3 text-sm text-neutral-500">Loading screenshots...</div>
   }
 
   if (smoke.length === 0 && e2e.length === 0) {
-    return <div className="px-4 py-3 text-xs text-neutral-500">No screenshots found</div>
+    return <div className="px-4 py-3 text-sm text-neutral-500">No screenshots found</div>
   }
 
   return (
@@ -47,7 +47,7 @@ export default function ScreenshotGallery({ project, changeName }: Props) {
       <div className="px-4 py-3 space-y-3">
         {smoke.length > 0 && (
           <div>
-            <h4 className="text-xs font-medium text-neutral-400 mb-2">Smoke Screenshots ({smoke.length})</h4>
+            <h4 className="text-sm font-medium text-neutral-400 mb-2">Smoke Screenshots ({smoke.length})</h4>
             <div className="flex flex-wrap gap-2">
               {smoke.map(s => (
                 <button
@@ -61,7 +61,7 @@ export default function ScreenshotGallery({ project, changeName }: Props) {
                     className="w-full h-full object-cover"
                     loading="lazy"
                   />
-                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-xs text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-sm text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
                     {s.name}
                   </span>
                 </button>
@@ -71,7 +71,7 @@ export default function ScreenshotGallery({ project, changeName }: Props) {
         )}
         {e2e.length > 0 && (
           <div>
-            <h4 className="text-xs font-medium text-neutral-400 mb-2">E2E Screenshots ({e2e.length})</h4>
+            <h4 className="text-sm font-medium text-neutral-400 mb-2">E2E Screenshots ({e2e.length})</h4>
             <div className="flex flex-wrap gap-2">
               {e2e.map(s => (
                 <button
@@ -85,7 +85,7 @@ export default function ScreenshotGallery({ project, changeName }: Props) {
                     className="w-full h-full object-cover"
                     loading="lazy"
                   />
-                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-xs text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-sm text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
                     {s.name}
                   </span>
                 </button>

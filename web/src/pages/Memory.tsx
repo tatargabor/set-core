@@ -93,7 +93,7 @@ export default function Memory({ project }: Props) {
           <span className={healthOk ? 'text-green-400' : 'text-red-400'}>{healthOk ? '\u25CF' : '\u2715'} {healthText}</span>
           <span className="ml-auto text-sm text-neutral-300">{total.toLocaleString()} memories</span>
           {stats.noise_ratio != null && (
-            <span className="text-xs text-neutral-500">{Math.round(stats.noise_ratio * 100)}% noise</span>
+            <span className="text-sm text-neutral-500">{Math.round(stats.noise_ratio * 100)}% noise</span>
           )}
         </div>
       </section>
@@ -174,7 +174,7 @@ export default function Memory({ project }: Props) {
       {data.sync && typeof data.sync === 'string' && !data.sync.startsWith('{') && (
         <section>
           <TuiSection label="SYNC" />
-          <pre className="bg-neutral-900/50 border border-neutral-800 px-4 py-3 text-xs text-neutral-400 whitespace-pre-wrap">
+          <pre className="bg-neutral-900/50 border border-neutral-800 px-4 py-3 text-sm text-neutral-400 whitespace-pre-wrap">
             {data.sync}
           </pre>
         </section>

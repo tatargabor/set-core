@@ -287,21 +287,21 @@ export default function OrchestrationChat({ project }: Props) {
           >{connected ? '\u25CF' : '\u25CB'}</span>
           {/* Live orchestration state */}
           {orchState && orchState.total > 0 && (
-            <span className="text-xs text-neutral-500" title={Object.entries(orchState.by_status).map(([k, v]) => `${v} ${k}`).join(', ')}>
+            <span className="text-sm text-neutral-500" title={Object.entries(orchState.by_status).map(([k, v]) => `${v} ${k}`).join(', ')}>
               {orchState.done}/{orchState.total}
             </span>
           )}
           {/* Agent status */}
           {agentStatus === 'thinking' && (
-            <span className="text-xs text-yellow-400 animate-pulse">Thinking...</span>
+            <span className="text-sm text-yellow-400 animate-pulse">Thinking...</span>
           )}
           {agentStatus === 'responding' && (
-            <span className="text-xs text-blue-400 animate-pulse">Responding...</span>
+            <span className="text-sm text-blue-400 animate-pulse">Responding...</span>
           )}
         </div>
         <button
           onClick={handleNewSession}
-          className="px-2 py-1 min-h-[44px] md:min-h-0 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+          className="px-2 py-1 min-h-[44px] md:min-h-0 text-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
         >
           New Session
         </button>
@@ -341,7 +341,7 @@ export default function OrchestrationChat({ project }: Props) {
                 <div key={tool.id} className="mt-2 border border-neutral-700 rounded overflow-hidden">
                   <button
                     onClick={() => toggleToolBlock(msg.id, tool.id)}
-                    className="w-full flex items-center gap-2 px-2 py-1 text-xs bg-neutral-800/80 hover:bg-neutral-700/80 transition-colors text-left"
+                    className="w-full flex items-center gap-2 px-2 py-1 text-sm bg-neutral-800/80 hover:bg-neutral-700/80 transition-colors text-left"
                   >
                     <span className={`transition-transform ${tool.collapsed ? '' : 'rotate-90'}`}>
                       ▶
@@ -351,11 +351,11 @@ export default function OrchestrationChat({ project }: Props) {
                       {tool.input.slice(0, 60)}
                     </span>
                     {tool.output !== undefined && (
-                      <span className="text-green-500 text-xs">done</span>
+                      <span className="text-green-500 text-sm">done</span>
                     )}
                   </button>
                   {!tool.collapsed && (
-                    <div className="px-2 py-1 text-xs bg-neutral-900/50 max-h-40 overflow-auto">
+                    <div className="px-2 py-1 text-sm bg-neutral-900/50 max-h-40 overflow-auto">
                       <div className="text-neutral-400 mb-1">Input:</div>
                       <pre className="text-neutral-300 whitespace-pre-wrap break-all">{tool.input}</pre>
                       {tool.output !== undefined && (
@@ -371,7 +371,7 @@ export default function OrchestrationChat({ project }: Props) {
 
               {/* Cost info */}
               {msg.cost_usd !== undefined && (
-                <div className="mt-1 text-xs text-neutral-600">
+                <div className="mt-1 text-sm text-neutral-600">
                   ${msg.cost_usd.toFixed(4)} · {((msg.duration_ms ?? 0) / 1000).toFixed(1)}s
                 </div>
               )}
@@ -386,7 +386,7 @@ export default function OrchestrationChat({ project }: Props) {
               setAutoScroll(true)
               scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
             }}
-            className="sticky bottom-2 ml-auto mr-2 px-3 py-1 bg-neutral-800 text-neutral-300 text-xs rounded-full shadow-lg hover:bg-neutral-700 transition-colors z-10"
+            className="sticky bottom-2 ml-auto mr-2 px-3 py-1 bg-neutral-800 text-neutral-300 text-sm rounded-full shadow-lg hover:bg-neutral-700 transition-colors z-10"
           >
             Jump to bottom
           </button>

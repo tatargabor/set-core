@@ -78,7 +78,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
     <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold text-neutral-100">{project}</h2>
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${badgeColor[statusBadge] ?? 'bg-neutral-800 text-neutral-400'}`}>
+        <span className={`px-2 py-0.5 rounded text-sm font-medium ${badgeColor[statusBadge] ?? 'bg-neutral-800 text-neutral-400'}`}>
           {statusBadge}
         </span>
         <span className={`hidden md:inline-block ${connected ? 'text-green-500' : 'text-red-500'}`} title={connected ? 'Connected' : 'Disconnected'}>{connected ? '\u25CF' : '\u25CB'}</span>
@@ -86,14 +86,14 @@ export default function StatusHeader({ state, connected, project }: Props) {
 
       {state && (
         <>
-          <div className="text-xs text-neutral-500 hidden md:block">
+          <div className="text-sm text-neutral-500 hidden md:block">
             {state.plan_version && <span>v{state.plan_version}</span>}
             {state.active_seconds ? (
               <span className="ml-2">{formatDuration(state.active_seconds)}</span>
             ) : null}
           </div>
 
-          <div className="flex gap-3 ml-auto text-xs text-neutral-400">
+          <div className="flex gap-3 ml-auto text-sm text-neutral-400">
             <span>{done}/{changes.length} changes</span>
             <span className="hidden md:inline" title="Input tokens">In: {formatTokens(totals.input)}</span>
             <span className="hidden md:inline" title="Output tokens">Out: {formatTokens(totals.output)}</span>
@@ -107,7 +107,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
               <button
                 onClick={handleApprove}
                 disabled={loading === 'approve'}
-                className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-xs rounded font-medium disabled:opacity-50 ${
+                className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-sm rounded font-medium disabled:opacity-50 ${
                   confirmAction === 'approve'
                     ? 'bg-green-600 text-white hover:bg-green-500'
                     : 'bg-green-900/60 text-green-300 hover:bg-green-900'
@@ -120,7 +120,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
               <button
                 onClick={handleStop}
                 disabled={loading === 'stop'}
-                className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-xs rounded font-medium disabled:opacity-50 ${
+                className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-sm rounded font-medium disabled:opacity-50 ${
                   confirmAction === 'stop'
                     ? 'bg-red-700 text-white hover:bg-red-600'
                     : 'bg-red-900/50 text-red-300 hover:bg-red-900'
@@ -134,7 +134,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
       )}
 
       {!state && (
-        <span className="ml-auto text-xs text-neutral-500">Waiting for data...</span>
+        <span className="ml-auto text-sm text-neutral-500">Waiting for data...</span>
       )}
     </div>
   )

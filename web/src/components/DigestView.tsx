@@ -84,8 +84,8 @@ export default function DigestView({ project }: Props) {
     return () => { cancelled = true; clearInterval(iv) }
   }, [project])
 
-  if (error) return <div className="p-4 text-xs text-red-400">{error}</div>
-  if (!data) return <div className="p-4 text-xs text-neutral-500">Loading digest...</div>
+  if (error) return <div className="p-4 text-sm text-red-400">{error}</div>
+  if (!data) return <div className="p-4 text-sm text-neutral-500">Loading digest...</div>
   if (!data.exists) return <DigestPendingView project={project} />
 
   const reqs = extractReqs(data)
@@ -130,7 +130,7 @@ export default function DigestView({ project }: Props) {
           </button>
         ))}
         {data.index && (
-          <span className="ml-auto text-xs text-neutral-600">
+          <span className="ml-auto text-sm text-neutral-600">
             {data.index.file_count} files | {new Date(data.index.timestamp).toLocaleDateString()}
           </span>
         )}
@@ -180,7 +180,7 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
   const hasMore = reqs.length > MOBILE_LIMIT && !showAll
 
   return (
-    <div className="p-3 space-y-3 text-xs">
+    <div className="p-3 space-y-3 text-sm">
       {/* Compact progress row */}
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <TuiProgress done={doneCount} total={totalReqs} className="text-sm" />
@@ -196,11 +196,11 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
               <span>Req</span>
               <button
                 onClick={() => setExpandedReqs(new Set(reqs.map((r, i) => (r.acceptance_criteria?.length ?? 0) > 0 ? i : -1).filter(i => i >= 0)))}
-                className="ml-2 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Expand All"
+                className="ml-2 px-1.5 py-0.5 text-sm text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Expand All"
               >Expand All</button>
               <button
                 onClick={() => setExpandedReqs(new Set())}
-                className="ml-1 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Collapse All"
+                className="ml-1 px-1.5 py-0.5 text-sm text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Collapse All"
               >Collapse</button>
             </th>
             <th className="text-left px-2 py-1 font-medium hidden md:table-cell">Title</th>
@@ -257,7 +257,7 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
       {Object.keys(domainCounts).length > 0 && (
         <div className="flex flex-wrap gap-1">
           {Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).map(([domain, count]) => (
-            <span key={domain} className="px-1.5 py-0.5 bg-neutral-900/50 rounded text-xs text-neutral-400">
+            <span key={domain} className="px-1.5 py-0.5 bg-neutral-900/50 rounded text-sm text-neutral-400">
               {domain} <span className="text-neutral-600">{count}</span>
             </span>
           ))}
@@ -277,7 +277,7 @@ function ACPanel({ reqs, coverage }: {
   const reqsWithAC = useMemo(() => reqs.filter(r => (r.acceptance_criteria?.length ?? 0) > 0), [reqs])
 
   if (reqsWithAC.length === 0) {
-    return <div className="p-4 text-xs text-neutral-500">No acceptance criteria extracted</div>
+    return <div className="p-4 text-sm text-neutral-500">No acceptance criteria extracted</div>
   }
 
   const allDomains = [...new Set(reqsWithAC.map(r => r.domain))].sort()
@@ -304,8 +304,8 @@ function ACPanel({ reqs, coverage }: {
     <div className="flex flex-col h-full">
       {/* Header: progress + filter */}
       <div className="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-800/50 shrink-0">
-        <span className="text-xs text-neutral-500">AC</span>
-        <TuiProgress done={checkedAC} total={totalAC} className="text-xs" />
+        <span className="text-sm text-neutral-500">AC</span>
+        <TuiProgress done={checkedAC} total={totalAC} className="text-sm" />
         <select
           value={domainFilter ?? ''}
           onChange={e => setDomainFilter(e.target.value || null)}
@@ -328,7 +328,7 @@ function ACPanel({ reqs, coverage }: {
             <div key={domain} className="border-b border-neutral-800/50">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30">
                 <span className="text-sm font-medium text-neutral-300">{domain}</span>
-                <span className="text-xs text-neutral-500">{domCheckedAC}/{domTotalAC}</span>
+                <span className="text-sm text-neutral-500">{domCheckedAC}/{domTotalAC}</span>
               </div>
               {domReqs.map(r => (
                 <div key={r.id} className="px-3 py-1">
@@ -372,8 +372,8 @@ function CoverageReportPanel({ project }: { project: string }) {
     return () => { cancelled = true }
   }, [project])
 
-  if (exists === null) return <div className="p-4 text-xs text-neutral-500">Loading coverage report...</div>
-  if (!exists || !content) return <div className="p-4 text-xs text-neutral-500">No coverage report generated yet</div>
+  if (exists === null) return <div className="p-4 text-sm text-neutral-500">Loading coverage report...</div>
+  if (!exists || !content) return <div className="p-4 text-sm text-neutral-500">No coverage report generated yet</div>
 
   return <MarkdownPanel content={content} />
 }
@@ -471,7 +471,7 @@ function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
             >
               <div className="text-sm truncate">{name}</div>
               {s && s.total > 0 && (
-                <TuiProgress done={s.done} total={s.total} className="text-xs" />
+                <TuiProgress done={s.done} total={s.total} className="text-sm" />
               )}
             </button>
           )
@@ -577,9 +577,9 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
           <TuiProgress done={done} total={total} className="text-sm" />
         </div>
         {totalAC > 0 && (
-          <div className="text-xs mt-1">
+          <div className="text-sm mt-1">
             <span className="text-neutral-500">AC </span>
-            <TuiProgress done={doneAC} total={totalAC} className="text-xs" />
+            <TuiProgress done={doneAC} total={totalAC} className="text-sm" />
           </div>
         )}
       </div>
@@ -635,7 +635,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-yellow-500 shrink-0 mt-0.5">&#9888;</span>
                 <div>
-                  <span className={`inline-block px-1 py-0 rounded text-xs font-medium mr-1.5 ${
+                  <span className={`inline-block px-1 py-0 rounded text-sm font-medium mr-1.5 ${
                     a.type === 'contradictory' ? 'bg-red-900/50 text-red-400' :
                     a.type === 'underspecified' ? 'bg-yellow-900/50 text-yellow-400' :
                     a.type === 'missing_reference' ? 'bg-orange-900/50 text-orange-400' :
@@ -643,7 +643,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
                   }`}>{a.type}</span>
                   <span className="text-neutral-400">{a.description}</span>
                   {a.resolution === 'planner-resolved' && a.resolution_note && (
-                    <div className="text-xs text-neutral-500 mt-0.5 pl-2 border-l border-neutral-700">
+                    <div className="text-sm text-neutral-500 mt-0.5 pl-2 border-l border-neutral-700">
                       Resolved: {a.resolution_note}
                     </div>
                   )}
@@ -660,7 +660,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
           <TuiSection label="DEPENDENCIES" />
           {outByDomain.length > 0 && (
             <div className="mb-1">
-              <div className="text-xs text-neutral-500 mb-0.5">Depends on:</div>
+              <div className="text-sm text-neutral-500 mb-0.5">Depends on:</div>
               {outByDomain.map(([dom, edges]) => (
                 <div key={dom} className="text-sm text-neutral-400 pl-2">
                   <span className="text-neutral-300">{dom}</span>
@@ -673,7 +673,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
           )}
           {inByDomain.length > 0 && (
             <div>
-              <div className="text-xs text-neutral-500 mb-0.5">Depended on by:</div>
+              <div className="text-sm text-neutral-500 mb-0.5">Depended on by:</div>
               {inByDomain.map(([dom, edges]) => (
                 <div key={dom} className="text-sm text-neutral-400 pl-2">
                   <span className="text-neutral-300">{dom}</span>
@@ -777,7 +777,7 @@ function DepTreePanel({ project, reqs, coverage, dependencies }: {
   }
 
   if (changeNodes.size === 0) {
-    return <div className="p-4 text-xs text-neutral-500">No dependency data available</div>
+    return <div className="p-4 text-sm text-neutral-500">No dependency data available</div>
   }
 
   const rendered = new Set<string>()
@@ -800,14 +800,14 @@ function DepTreePanel({ project, reqs, coverage, dependencies }: {
           onClick={() => hasKids && toggle(name)}
         >
           {hasKids ? (
-            <span className="text-neutral-500 w-3 text-center text-xs">{isExpanded ? '\u25BE' : '\u25B8'}</span>
+            <span className="text-neutral-500 w-3 text-center text-sm">{isExpanded ? '\u25BE' : '\u25B8'}</span>
           ) : (
             <span className="w-3" />
           )}
           <span className="text-sm text-neutral-300 truncate">{name}</span>
-          <span className="text-xs ml-auto shrink-0"><TuiStatus status={info.status} /></span>
-          <span className="text-xs text-neutral-600 shrink-0">{info.reqCount} reqs</span>
-          {hasKids && <span className="text-xs text-neutral-600 shrink-0">{kids.length} dep{kids.length > 1 ? 's' : ''}</span>}
+          <span className="text-sm ml-auto shrink-0"><TuiStatus status={info.status} /></span>
+          <span className="text-sm text-neutral-600 shrink-0">{info.reqCount} reqs</span>
+          {hasKids && <span className="text-sm text-neutral-600 shrink-0">{kids.length} dep{kids.length > 1 ? 's' : ''}</span>}
         </div>
         {isExpanded && kids.map(kid => renderNode(kid, depth + 1))}
       </div>
@@ -816,7 +816,7 @@ function DepTreePanel({ project, reqs, coverage, dependencies }: {
 
   return (
     <div className="space-y-0.5 p-2">
-      <div className="text-xs text-neutral-500 px-2 pb-1">{changeNodes.size} changes, {edges.length} dependencies</div>
+      <div className="text-sm text-neutral-500 px-2 pb-1">{changeNodes.size} changes, {edges.length} dependencies</div>
       {roots.map(r => renderNode(r, 0))}
       {[...changeNodes.keys()].filter(c => !rendered.has(c)).map(c => renderNode(c, 0))}
     </div>
@@ -877,7 +877,7 @@ function MarkdownPanel({ content }: { content: string }) {
     } else if (line.startsWith('## ')) {
       elements.push(<div key={i} className="text-neutral-200 font-semibold mt-3 mb-1 text-sm">{line.slice(3)}</div>)
     } else if (line.startsWith('### ')) {
-      elements.push(<div key={i} className="text-neutral-300 font-medium mt-2 mb-0.5 text-xs">{line.slice(4)}</div>)
+      elements.push(<div key={i} className="text-neutral-300 font-medium mt-2 mb-0.5 text-sm">{line.slice(4)}</div>)
     } else if (line.startsWith('**') && line.endsWith('**')) {
       elements.push(<div key={i} className="text-neutral-300 font-medium mt-2">{line.slice(2, -2)}</div>)
     } else if (line.startsWith('**')) {
@@ -895,7 +895,7 @@ function MarkdownPanel({ content }: { content: string }) {
   }
 
   return (
-    <div className="p-3 text-xs text-neutral-400 whitespace-pre-wrap leading-5">
+    <div className="p-3 text-sm text-neutral-400 whitespace-pre-wrap leading-5">
       {elements}
     </div>
   )
@@ -986,10 +986,10 @@ function DigestPendingView({ project }: { project: string }) {
       {/* Header */}
       <div className="px-4 py-2 border-b border-neutral-800/50 shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-neutral-300 font-medium">Digest generating...</span>
+          <span className="text-sm text-neutral-300 font-medium">Digest generating...</span>
           <span className="text-green-500 animate-pulse">{'\u25CF'}</span>
         </div>
-        <div className="text-xs text-neutral-500 mt-0.5">
+        <div className="text-sm text-neutral-500 mt-0.5">
           Parsing specs into requirements, domains, and coverage map
         </div>
       </div>
@@ -1010,7 +1010,7 @@ function DigestPendingView({ project }: { project: string }) {
       <div className="flex-1 overflow-y-auto min-h-0 p-3">
         {digestSession ? (
           <>
-            <div className="text-xs text-neutral-600 mb-2">
+            <div className="text-sm text-neutral-600 mb-2">
               {digestSession.label} session · {(digestSession.size / 1024).toFixed(0)}KB
             </div>
             {sessionLines.map((line, i) => (
@@ -1021,7 +1021,7 @@ function DigestPendingView({ project }: { project: string }) {
             <div ref={bottomRef} />
           </>
         ) : (
-          <div className="text-xs text-neutral-500">Waiting for session to start...</div>
+          <div className="text-sm text-neutral-500">Waiting for session to start...</div>
         )}
       </div>
     </div>

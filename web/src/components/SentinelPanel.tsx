@@ -156,7 +156,7 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
   return (
     <div className="flex flex-col h-full">
       {/* Status bar */}
-      <div className={`flex items-center gap-3 px-3 py-1.5 text-xs border-b border-neutral-800 ${
+      <div className={`flex items-center gap-3 px-3 py-1.5 text-sm border-b border-neutral-800 ${
         isActive ? 'bg-green-950/30' : 'bg-neutral-900'
       }`}>
         <span className={isActive ? 'text-green-400' : 'text-neutral-600'}>{isActive ? '\u25C9' : '\u25CB'}</span>
@@ -176,13 +176,13 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
         {/* Events stream */}
         <div className="flex-1 min-h-0 flex flex-col border-r border-neutral-800">
-          <div className="px-3 py-1 text-xs font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
+          <div className="px-3 py-1 text-sm font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
             Events
           </div>
           <div
             ref={eventsContainerRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-auto text-xs p-2 space-y-px"
+            className="flex-1 overflow-auto text-sm p-2 space-y-px"
           >
             {displayEvents.length === 0 && (
               <div className="text-neutral-600 text-center py-8">No events yet</div>
@@ -214,7 +214,7 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
                 setAutoScroll(true)
                 eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
               }}
-              className="absolute bottom-14 right-4 px-2 py-1 text-xs bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700"
+              className="absolute bottom-14 right-4 px-2 py-1 text-sm bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700"
             >
               ↓ Latest
             </button>
@@ -224,19 +224,19 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
         {/* Right side: findings + assessments */}
         <div className="w-full lg:w-80 flex flex-col min-h-0 shrink-0">
           {/* Findings */}
-          <div className="px-3 py-1 text-xs font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
+          <div className="px-3 py-1 text-sm font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
             Findings ({findings.findings.length})
           </div>
           <div className="flex-1 overflow-auto p-2 space-y-1.5 min-h-[100px]">
             {findings.findings.length === 0 && (
-              <div className="text-neutral-600 text-center py-4 text-xs">No findings yet</div>
+              <div className="text-neutral-600 text-center py-4 text-sm">No findings yet</div>
             )}
             {findings.findings.map(f => (
-              <div key={f.id} className={`text-xs rounded border px-2 py-1.5 ${SEVERITY_COLORS[f.severity] ?? 'bg-neutral-900 text-neutral-300 border-neutral-700'}`}>
+              <div key={f.id} className={`text-sm rounded border px-2 py-1.5 ${SEVERITY_COLORS[f.severity] ?? 'bg-neutral-900 text-neutral-300 border-neutral-700'}`}>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{f.id}</span>
-                  <span className="text-xs opacity-70">{f.change}</span>
-                  <span className={`ml-auto text-xs ${STATUS_COLORS[f.status] ?? 'text-neutral-400'}`}>{f.status}</span>
+                  <span className="text-sm opacity-70">{f.change}</span>
+                  <span className={`ml-auto text-sm ${STATUS_COLORS[f.status] ?? 'text-neutral-400'}`}>{f.status}</span>
                 </div>
                 <div className="mt-0.5 opacity-90">{f.summary}</div>
               </div>
@@ -246,12 +246,12 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
           {/* Assessments */}
           {findings.assessments.length > 0 && (
             <>
-              <div className="px-3 py-1 text-xs font-medium text-neutral-500 uppercase tracking-wider border-t border-b border-neutral-800 bg-neutral-900/50">
+              <div className="px-3 py-1 text-sm font-medium text-neutral-500 uppercase tracking-wider border-t border-b border-neutral-800 bg-neutral-900/50">
                 Assessment
               </div>
               <div className="p-2 space-y-1">
                 {findings.assessments.map((a, i) => (
-                  <div key={i} className="text-xs bg-neutral-900/50 border border-neutral-800 rounded px-2 py-1.5">
+                  <div key={i} className="text-sm bg-neutral-900/50 border border-neutral-800 rounded px-2 py-1.5">
                     <div className="text-neutral-400 font-medium">{a.scope}</div>
                     <div className="text-neutral-300 mt-0.5">{a.summary}</div>
                     {a.recommendation && <div className="text-neutral-500 mt-0.5">→ {a.recommendation}</div>}

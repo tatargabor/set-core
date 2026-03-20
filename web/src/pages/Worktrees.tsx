@@ -63,9 +63,9 @@ export default function Worktrees({ project }: Props) {
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm text-neutral-200 truncate">{wt.branch}</span>
-                  <span className="text-xs text-neutral-600">{wt.head?.slice(0, 7)}</span>
+                  <span className="text-sm text-neutral-600">{wt.head?.slice(0, 7)}</span>
                 </div>
-                <div className="flex gap-3 text-xs text-neutral-500">
+                <div className="flex gap-3 text-sm text-neutral-500">
                   {wt.iteration !== undefined && (
                     <span>iter {wt.iteration}{wt.max_iterations ? `/${wt.max_iterations}` : ''}</span>
                   )}
@@ -79,7 +79,7 @@ export default function Worktrees({ project }: Props) {
                   )}
                 </div>
                 {wt.activity?.broadcast && (
-                  <p className="mt-1 text-xs text-neutral-400 truncate">{wt.activity.broadcast}</p>
+                  <p className="mt-1 text-sm text-neutral-400 truncate">{wt.activity.broadcast}</p>
                 )}
               </button>
             ))}
@@ -150,21 +150,21 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
       <div className="flex items-center gap-3 px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
         <span className="text-sm text-neutral-200">{worktree.branch}</span>
         {worktree.iteration !== undefined && (
-          <span className="text-xs text-neutral-500">
+          <span className="text-sm text-neutral-500">
             Iteration {worktree.iteration}{worktree.max_iterations ? ` / ${worktree.max_iterations}` : ''}
           </span>
         )}
         {worktree.activity?.updated_at && (
-          <span className="text-xs text-neutral-600" title={new Date(worktree.activity.updated_at).toLocaleString()}>
+          <span className="text-sm text-neutral-600" title={new Date(worktree.activity.updated_at).toLocaleString()}>
             {shortTime(worktree.activity.updated_at)}
           </span>
         )}
-        <span className="text-xs text-neutral-600 truncate ml-auto">{worktree.path}</span>
+        <span className="text-sm text-neutral-600 truncate ml-auto">{worktree.path}</span>
       </div>
 
       {/* Activity bar */}
       {worktree.activity && (
-        <div className="px-4 py-1.5 border-b border-neutral-800 text-xs text-neutral-400 bg-neutral-900/30">
+        <div className="px-4 py-1.5 border-b border-neutral-800 text-sm text-neutral-400 bg-neutral-900/30">
           {worktree.activity.broadcast && <span>{worktree.activity.broadcast}</span>}
           {worktree.activity.skill && (
             <span className="ml-3 text-neutral-500">
@@ -183,7 +183,7 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
               <button
                 key={name}
                 onClick={() => setActiveLog(name)}
-                className={`px-2 py-1 text-xs rounded-t transition-colors ${
+                className={`px-2 py-1 text-sm rounded-t transition-colors ${
                   name === activeLog
                     ? 'bg-neutral-800 text-neutral-200'
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
@@ -197,7 +197,7 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
       )}
 
       {/* Log content */}
-      <div ref={logRef} className="flex-1 overflow-auto p-3 text-xs leading-5">
+      <div ref={logRef} className="flex-1 overflow-auto p-3 text-sm leading-5">
         {loading && <p className="text-neutral-600">Loading...</p>}
         {!loading && logLines.length === 0 && (
           <p className="text-neutral-600">No logs available</p>
