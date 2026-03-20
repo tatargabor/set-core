@@ -240,9 +240,18 @@ asyncio.run(test())
     fi
 
     # ── Save global config ──
+    # Ask about auto-enable
+    echo ""
+    read -p "Auto-enable Discord for ALL projects? [Y/n] " -n 1 -r
+    echo
+    local auto_enable="true"
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        auto_enable="false"
+    fi
+
     $PYTHON -c "
 import json
-config = {'token': '$BOT_TOKEN', 'guild_id': '$GUILD_ID', 'guild_name': '$GUILD_NAME'}
+config = {'token': '$BOT_TOKEN', 'guild_id': '$GUILD_ID', 'guild_name': '$GUILD_NAME', 'auto_enable': $auto_enable}
 print(json.dumps(config, indent=2))
 " > "$GLOBAL_DISCORD"
     chmod 600 "$GLOBAL_DISCORD"
@@ -251,9 +260,14 @@ print(json.dumps(config, indent=2))
     echo ""
     echo -e "${BOLD}Global setup complete!${NC}"
     echo ""
-    echo "Now enable Discord for a project:"
-    echo "  cd /path/to/project"
-    echo "  set-discord-setup enable"
+    if [[ "$auto_enable" == "true" ]]; then
+        success "Discord auto-enabled for all projects"
+        echo "  To disable for a specific project: set-discord-setup disable"
+    else
+        echo "Enable Discord per project:"
+        echo "  cd /path/to/project"
+        echo "  set-discord-setup enable"
+    fi
     echo ""
 }
 

@@ -424,7 +424,14 @@ def get_discord_config(directives: dict[str, Any]) -> dict[str, Any] | None:
     """
     cfg = directives.get("discord")
     if not cfg:
-        return None
+        # Check if global config has auto_enable: true
+        global_auto = _read_global_discord_field("auto_enable")
+        if global_auto == "True":
+            cfg = {"enabled": True, "guild_id": "", "channel_name": "",
+                   "notify_on": DISCORD_DEFAULT_NOTIFY_ON,
+                   "mention_on_error": "", "member_map": {}}
+        else:
+            return None
 
     # Token: env var first, then global config
     token = os.environ.get("SET_DISCORD_TOKEN", "")
