@@ -1374,6 +1374,8 @@ def dispatch_change(
 
     # Dispatch via set-loop
     impl_model = resolve_change_model(change, default_model, model_routing)
+    # Persist resolved model so verifier uses correct context window size
+    update_change_field(state_path, change_name, "model", impl_model)
     return dispatch_via_wt_loop(
         state_path, change_name, impl_model, wt_path, scope,
         team_mode=team_mode, event_bus=event_bus,
@@ -1790,6 +1792,8 @@ def resume_change(
         max_iter = 30
 
     impl_model = resolve_change_model(change, default_model, model_routing)
+    # Persist resolved model so verifier uses correct context window size
+    update_change_field(state_path, change_name, "model", impl_model)
 
     # Resolve test command for done=test criteria
     test_command = ""

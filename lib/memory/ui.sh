@@ -323,7 +323,7 @@ if not wide_mode:
     sessions_cnt = report['session_count']
     tokens = report['total_tokens']
     avg_tok = tokens / sessions_cnt if sessions_cnt > 0 else 0
-    budget_pct = avg_tok / 200000 * 100
+    budget_pct = avg_tok / 1000000 * 100
     budget_color = GRN if budget_pct < 3 else (YEL if budget_pct < 5 else RED)
     lines.append(row(
         f'{BOLD}{sessions_cnt}{RST} sess  {BOLD}{fmt_count(tokens)}{RST} tok  {avg_tok:,.0f}/s',
@@ -557,7 +557,7 @@ if report:
     tokens = report['total_tokens']
     center.append(f'{BOLD}{sessions_cnt}{RST} sessions  {BOLD}{fmt_count(injections)}{RST} inj')
     avg_tok = tokens / sessions_cnt if sessions_cnt > 0 else 0
-    budget_pct = avg_tok / 200000 * 100
+    budget_pct = avg_tok / 1000000 * 100
     budget_color = GRN if budget_pct < 3 else (YEL if budget_pct < 5 else RED)
     center.append(f'{BOLD}{tokens:,}{RST} tok  Avg: {avg_tok:,.0f}/sess')
     center.append(f'Budget: {budget_color}{budget_pct:.2f}%{RST}')
