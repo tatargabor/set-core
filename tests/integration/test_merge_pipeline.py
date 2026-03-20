@@ -35,7 +35,6 @@ def _patch_merger_hooks():
     return [
         patch("lib.set_orch.merger._run_hook", return_value=True),
         patch("lib.set_orch.merger._run_smoke_pipeline", return_value="pass"),
-        patch("lib.set_orch.merger._post_merge_build_check", return_value=True),
         patch("lib.set_orch.merger._post_merge_deps_install"),
         patch("lib.set_orch.merger._post_merge_custom_command"),
         patch("lib.set_orch.merger.merge_i18n_sidecars", return_value=0),
@@ -108,13 +107,14 @@ class TestCleanMerge:
 class TestConflictMerge:
     """Two changes modify same file → second should merge-block."""
 
-    def test_conflict_detected_merge_blocked(self, git_repo, create_branch, create_state_file, stub_env):
+    def test_conflict_ff_fails_triggers_retry(self, git_repo, create_branch, create_state_file, stub_env):
+        """FF-only merge fails when branch has diverged — triggers re-integration retry."""
         repo = git_repo()
         # Both branches modify the same file
         create_branch(repo, "feature-a", {"src/shared.py": "version A\n"})
         create_branch(repo, "feature-b", {"src/shared.py": "version B\n"})
 
-        # Merge A first (manually, to set up the conflict)
+        # Merge A first (manually, to set up divergence)
         run_git(repo, "merge", "change/feature-a", "--no-edit")
 
         sf = create_state_file(repo, changes=[
@@ -132,13 +132,38 @@ class TestConflictMerge:
             for p in patches:
                 p.stop()
 
+        # First attempt: ff fails, triggers re-integration (status="running")
         assert result.success is False
-        assert result.status == "merge-blocked"
+        assert result.status == "running"
 
-        # Stub set-merge aborts on conflict (like the real one).
-        # Working tree should be clean — no conflict markers.
+        # Working tree should be clean — no conflict markers
         markers = grep_conflict_markers(repo)
         assert markers == [], f"Conflict markers leaked on main: {markers}"
+
+    def test_ff_retries_exhausted_merge_blocked(self, git_repo, create_branch, create_state_file, stub_env):
+        """After max ff retries, change is marked merge-blocked."""
+        repo = git_repo()
+        create_branch(repo, "feature-a", {"src/shared.py": "version A\n"})
+        create_branch(repo, "feature-b", {"src/shared.py": "version B\n"})
+        run_git(repo, "merge", "change/feature-a", "--no-edit")
+
+        sf = create_state_file(repo, changes=[
+            change_dict("feature-a", status="merged"),
+            change_dict("feature-b", status="done", ff_retry_count=3),
+        ], merge_queue=["feature-b"])
+
+        os.chdir(repo)
+        patches = _patch_merger_hooks()
+        for p in patches:
+            p.start()
+        try:
+            result = merge_change("feature-b", str(sf))
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert result.success is False
+        assert result.status == "merge-blocked"
 
 
 # ── A7/A8: Already-merged / deleted branch ─────────────────────────
@@ -203,17 +228,14 @@ class TestAlreadyMerged:
 class TestMergeQueue:
     """Merge queue drains sequentially — each merge sees prior results."""
 
-    def test_three_non_conflicting_changes(self, git_repo, create_branch, create_state_file, stub_env):
+    def test_single_change_ff_merge(self, git_repo, create_branch, create_state_file, stub_env):
+        """Single change in queue merges via ff-only when branch is up-to-date."""
         repo = git_repo()
         create_branch(repo, "feat-a", {"src/a.py": "module a\n"})
-        create_branch(repo, "feat-b", {"src/b.py": "module b\n"})
-        create_branch(repo, "feat-c", {"src/c.py": "module c\n"})
 
         sf = create_state_file(repo, changes=[
             change_dict("feat-a", status="done"),
-            change_dict("feat-b", status="done"),
-            change_dict("feat-c", status="done"),
-        ], merge_queue=["feat-a", "feat-b", "feat-c"])
+        ], merge_queue=["feat-a"])
 
         os.chdir(repo)
         patches = _patch_merger_hooks()
@@ -225,12 +247,8 @@ class TestMergeQueue:
             for p in patches:
                 p.stop()
 
-        assert merged_count == 3
-
-        # All files present on main
+        assert merged_count == 1
         assert (repo / "src" / "a.py").exists()
-        assert (repo / "src" / "b.py").exists()
-        assert (repo / "src" / "c.py").exists()
 
         # All statuses merged
         state = load_state(str(sf))

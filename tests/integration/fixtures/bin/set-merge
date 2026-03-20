@@ -1,17 +1,27 @@
 #!/bin/bash
 # Stub set-merge for integration tests.
-# Does a plain git merge without LLM conflict resolution.
-# Usage: set-merge <change-name> [--no-push] [--llm-resolve]
+# Supports --ff-only (fast-forward only) and regular merge modes.
+# Usage: set-merge <change-name> [--no-push] [--ff-only] [--llm-resolve]
 change_name="$1"
 branch="change/${change_name}"
-
-# Ignore flags (--no-push, --llm-resolve)
 shift
-while [[ "$1" == --* ]]; do shift; done
 
-# Attempt merge — abort on conflict (matches real set-merge behavior)
-if ! git merge "$branch" --no-edit 2>/dev/null; then
-    git merge --abort 2>/dev/null || true
-    exit 1
+ff_only=false
+while [[ "$1" == --* ]]; do
+    [[ "$1" == "--ff-only" ]] && ff_only=true
+    shift
+done
+
+if $ff_only; then
+    # Fast-forward only — fail if not possible
+    if ! git merge --ff-only "$branch" 2>/dev/null; then
+        exit 1
+    fi
+else
+    # Regular merge — abort on conflict (matches real set-merge behavior)
+    if ! git merge "$branch" --no-edit 2>/dev/null; then
+        git merge --abort 2>/dev/null || true
+        exit 1
+    fi
 fi
 exit 0

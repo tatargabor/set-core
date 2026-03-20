@@ -2205,6 +2205,84 @@ def _execute_spec_verify_gate(
         return GateResult("spec_verify", "pass", output="timeout — no VERIFY_RESULT sentinel")
 
 
+# ─── Integrate Main Into Branch ─────────────────────────────────────
+
+
+def _integrate_main_into_branch(
+    wt_path: str,
+    change_name: str,
+    state_file: str,
+    event_bus: Any = None,
+) -> str:
+    """Merge main into the feature branch (worktree) before running gates.
+
+    Returns:
+        "ok" — integration succeeded (or was a no-op)
+        "conflict" — merge conflict, agent needs to resolve on branch
+        "failed" — git error (not conflict)
+    """
+    update_change_field(state_file, change_name, "status", "integrating")
+
+    # Find the main branch name
+    main_ref_result = run_git(
+        "symbolic-ref", "refs/remotes/origin/HEAD",
+        cwd=wt_path, timeout=10,
+    )
+    if main_ref_result.exit_code == 0:
+        main_branch = main_ref_result.stdout.strip().replace("refs/remotes/origin/", "")
+    else:
+        main_branch = "main"
+
+    # Fetch latest main
+    run_git("fetch", "origin", main_branch, cwd=wt_path, timeout=60)
+
+    # Check if integration is needed (is main ahead of branch?)
+    merge_base_result = run_git(
+        "merge-base", "HEAD", f"origin/{main_branch}",
+        cwd=wt_path, timeout=10,
+    )
+    origin_head_result = run_git(
+        "rev-parse", f"origin/{main_branch}",
+        cwd=wt_path, timeout=10,
+    )
+    if (merge_base_result.exit_code == 0 and origin_head_result.exit_code == 0
+            and merge_base_result.stdout.strip() == origin_head_result.stdout.strip()):
+        logger.info("Integration skip for %s — branch already up-to-date with %s", change_name, main_branch)
+        return "ok"
+
+    # Merge main into branch
+    logger.info("Integrating %s into %s for %s", main_branch, "branch", change_name)
+    merge_result = run_git(
+        "merge", f"origin/{main_branch}",
+        "-m", f"Merge {main_branch} into branch for pre-gate integration",
+        cwd=wt_path, timeout=120,
+    )
+
+    if merge_result.exit_code == 0:
+        logger.info("Integration merge succeeded for %s", change_name)
+        if event_bus:
+            event_bus.emit("INTEGRATION", change=change_name, data={"result": "ok"})
+        return "ok"
+
+    # Check for conflict markers
+    conflict_check = run_git("diff", "--name-only", "--diff-filter=U", cwd=wt_path, timeout=10)
+    has_conflicts = conflict_check.exit_code == 0 and conflict_check.stdout.strip()
+
+    if has_conflicts:
+        # Abort the failed merge so worktree is clean for agent
+        run_git("merge", "--abort", cwd=wt_path, timeout=10)
+        conflicted_files = conflict_check.stdout.strip()
+        logger.warning("Integration merge conflict for %s: %s", change_name, conflicted_files[:200])
+        if event_bus:
+            event_bus.emit("INTEGRATION", change=change_name, data={"result": "conflict", "files": conflicted_files[:500]})
+        return "conflict"
+
+    # Non-conflict git error
+    logger.error("Integration merge failed for %s: %s", change_name, merge_result.stderr[:300])
+    run_git("merge", "--abort", cwd=wt_path, timeout=10)
+    return "failed"
+
+
 # ─── Handle Change Done / Verify Gate Pipeline ──────────────────────
 # Source: verifier.sh handle_change_done (lines 782-1453)
 
@@ -2321,6 +2399,45 @@ def handle_change_done(
                     "uncommitted_check": uncommitted_check_result,
                 })
             return
+
+    # ── Step 0.5: Integrate main into branch before gates ──
+    if wt_path:
+        integration_retry_count = change.extras.get("integration_retry_count", 0)
+        max_integration_retries = 3
+
+        integration_result = _integrate_main_into_branch(
+            wt_path, change_name, state_file, event_bus,
+        )
+
+        if integration_result == "conflict":
+            if integration_retry_count < max_integration_retries:
+                # Dispatch agent to resolve conflict on branch
+                update_change_field(state_file, change_name, "integration_retry_count", integration_retry_count + 1)
+                update_change_field(state_file, change_name, "status", "verify-failed")
+                update_change_field(state_file, change_name, "retry_context",
+                    f"Integration merge conflict: main has diverged from your branch.\n\n"
+                    f"Run `git merge origin/main` in the worktree to pull in main's changes.\n"
+                    f"Resolve any conflicts, commit, and the pipeline will re-run gates.\n\n"
+                    f"This is attempt {integration_retry_count + 1}/{max_integration_retries}."
+                )
+                from .dispatcher import resume_change
+                _snapshot_retry_tokens(state_file, change_name, wt_path)
+                resume_change(state_file, change_name)
+                logger.info("Integration conflict for %s — agent dispatched to resolve", change_name)
+                return
+            else:
+                update_change_field(state_file, change_name, "status", "integration-failed")
+                logger.error("Integration failed for %s — retries exhausted", change_name)
+                if event_bus:
+                    event_bus.emit("INTEGRATION", change=change_name, data={"result": "failed", "reason": "retries_exhausted"})
+                return
+
+        if integration_result == "failed":
+            update_change_field(state_file, change_name, "status", "integration-failed")
+            logger.error("Integration git error for %s — marking failed", change_name)
+            return
+
+        # integration_result == "ok" — proceed to gates
 
     # ── Resolve gate config ──
     from .gate_profiles import resolve_gate_config

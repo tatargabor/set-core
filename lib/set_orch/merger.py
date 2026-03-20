@@ -354,38 +354,26 @@ def merge_change(
                 logger.debug("Coverage update failed for %s (non-critical)", change_name)
             return MergeResult(success=True, status="merged", smoke_result="skip_merged")
 
-    # Case 3: Normal merge
+    # Case 3: Fast-forward only merge (integrate-then-verify pattern)
+    # The branch already has main integrated and all gates passed.
+    # ff-only ensures we only advance main to a tested commit.
     pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
-    # Pass change scope to set-merge for context-aware LLM conflict resolution
-    merge_env = dict(os.environ)
-    merge_env["SET_MERGE_SCOPE"] = (change.scope or "")[:2000]
     merge_result = run_command(
-        ["set-merge", change_name, "--no-push", "--llm-resolve"],
-        timeout=600, env=merge_env,
+        ["set-merge", change_name, "--no-push", "--ff-only"],
+        timeout=120,
     )
 
     if merge_result.exit_code == 0:
-        # Merge succeeded
+        # FF merge succeeded — main advanced to a tested commit
         update_change_field(state_file, change_name, "status", "merged")
-        logger.info("Merged %s", change_name)
+        logger.info("Merged %s (ff-only)", change_name)
 
-        # Heartbeat helper: emit events during post-merge pipeline so sentinel
-        # doesn't kill us for "no progress" (Bug #52). The post-merge steps
-        # (deps, build, smoke, archive, sync) can take 3-5 min total.
+        # Heartbeat helper for post-merge steps
         def _heartbeat(step: str) -> None:
             if event_bus:
                 event_bus.emit("MERGE_PROGRESS", change=change_name, data={"step": step})
 
         _heartbeat("merge_complete")
-
-        # Parse LOCKFILE_CONFLICTED markers from set-merge stdout
-        lockfile_conflicted = False
-        merge_stdout = merge_result.stdout or ""
-        for line in merge_stdout.splitlines():
-            if line.startswith("LOCKFILE_CONFLICTED="):
-                lockfile_conflicted = True
-                conflicted_file = line.split("=", 1)[1]
-                logger.info("Lock file was conflicted during merge: %s", conflicted_file)
 
         # Git tags for recovery
         run_command(["git", "tag", "-f", f"orch/{change_name}", "HEAD"], timeout=10)
@@ -397,9 +385,9 @@ def merge_change(
         except Exception:
             logger.debug("Coverage update failed for %s (non-critical)", change_name)
 
-        # Post-merge dependency install
+        # Post-merge dependency install (lockfile never conflicted with ff-only)
         _heartbeat("deps_install")
-        _post_merge_deps_install(lockfile_conflicted=lockfile_conflicted, pre_merge_sha=pre_merge_sha)
+        _post_merge_deps_install(lockfile_conflicted=False, pre_merge_sha=pre_merge_sha)
 
         # Post-merge custom command
         _post_merge_custom_command(state_file)
@@ -424,18 +412,7 @@ def merge_change(
                 change_name,
             )
 
-        # Post-merge build verification
-        _heartbeat("build_check")
-        build_ok = _post_merge_build_check(change_name, state_file)
-        if not build_ok:
-            update_state_field(state_file, "build_broken_on_main", True)
-            logger.error(
-                "Build broken on main after merging %s — dispatch halted until next successful build",
-                change_name,
-            )
-        else:
-            # Clear broken flag on successful build
-            update_state_field(state_file, "build_broken_on_main", False)
+        # No post-merge build check — build already passed on integrated branch
 
         # Merge timeout check before smoke
         if _timed_out():
@@ -448,7 +425,7 @@ def merge_change(
             _remove_from_merge_queue(state_file, change_name)
             return MergeResult(success=False, status="merge_timeout")
 
-        # Smoke pipeline
+        # Smoke pipeline (still runs on main for external service integration)
         _heartbeat("smoke")
         smoke_result = _run_smoke_pipeline(change_name, state_file, merge_start, merge_timeout)
 
@@ -459,8 +436,7 @@ def merge_change(
         cleanup_worktree(change_name, wt_path or "")
         archive_change(change_name)
 
-        # Sync running worktrees AFTER archive — so they receive the archive commit
-        # (openspec/changes/{name}/ deletion) and avoid merge conflicts (Bug #38)
+        # Sync running worktrees AFTER archive (Bug #38)
         _heartbeat("worktree_sync")
         _sync_running_worktrees(change_name, state_file)
 
@@ -472,21 +448,47 @@ def merge_change(
             smoke_result=smoke_result,
         )
     else:
-        # Merge conflict
-        return _handle_merge_conflict(change_name, state_file, wt_path or "")
+        # FF failed — main has advanced since integration.
+        # Re-integrate main into branch and re-trigger gate pipeline.
+        ff_retry_count = change.extras.get("ff_retry_count", 0) if change else 0
+        max_ff_retries = 3
+
+        if ff_retry_count >= max_ff_retries:
+            logger.error("FF merge failed for %s — retry limit reached (%d)", change_name, max_ff_retries)
+            update_change_field(state_file, change_name, "status", "merge-blocked")
+            _remove_from_merge_queue(state_file, change_name)
+            return MergeResult(success=False, status="merge-blocked")
+
+        logger.warning(
+            "FF merge failed for %s — main advanced, re-integrating (attempt %d/%d)",
+            change_name, ff_retry_count + 1, max_ff_retries,
+        )
+        update_change_field(state_file, change_name, "ff_retry_count", ff_retry_count + 1)
+
+        # Re-integrate: the verifier will merge main into branch and re-run gates
+        # Set status back so the monitor dispatches the change through handle_change_done again
+        update_change_field(state_file, change_name, "status", "done")
+        _remove_from_merge_queue(state_file, change_name)
+
+        # Add back to merge queue — handle_change_done will re-integrate and re-gate,
+        # then re-queue for merge
+        return MergeResult(success=False, status="running")
 
 
 # ─── Merge Queue ────────────────────────────────────────────────────
 
 # Source: merger.sh execute_merge_queue() L578-588
 def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
-    """Drain merge queue. Returns count merged."""
+    """Drain merge queue. Returns count merged.
+
+    Uses _try_merge which integrates main into branch before ff-only merge,
+    ensuring each subsequent change sees the prior merge result.
+    """
     state = load_state(state_file)
     merged = 0
     for name in list(state.merge_queue):
         try:
-            result = merge_change(name, state_file, event_bus=event_bus)
-            if result.success:
+            if _try_merge(name, state_file, event_bus=event_bus):
                 merged += 1
         except Exception:
             logger.warning("Merge failed for %s", name, exc_info=True)

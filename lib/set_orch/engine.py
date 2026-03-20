@@ -434,12 +434,6 @@ def monitor_loop(
         # Retry failed builds
         _retry_failed_builds_safe(state_file, d, event_bus)
 
-        # Periodic build-on-main retry: every 5th poll (~75s), if the
-        # build_broken_on_main flag is stuck, re-run the build and clear
-        # the flag when it passes so dispatch can resume automatically.
-        if poll_count % 5 == 0:
-            _retry_broken_main_build_safe(state_file, event_bus)
-
         # Token hard limit
         if d.token_hard_limit > 0:
             _check_token_hard_limit(state_file, d, event_bus)
@@ -582,7 +576,7 @@ def _poll_active_changes(
 
     state = load_state(state_file)
     for change in state.changes:
-        if change.status not in ("running", "verifying"):
+        if change.status not in ("running", "verifying", "integrating"):
             continue
 
         # --- Worktree existence check (removed-worktree-resilience) ---
@@ -796,7 +790,7 @@ def _check_completion(
         1 for c in state.changes
         if c.status in ("done", "merged", "skipped")
     )
-    failed_count = sum(1 for c in state.changes if c.status == "failed")
+    failed_count = sum(1 for c in state.changes if c.status in ("failed", "integration-failed"))
     merge_blocked = sum(1 for c in state.changes if c.status == "merge-blocked")
     # Pending changes with all deps failed will never run — count as blocked, not active
     from .state import deps_failed
@@ -1100,7 +1094,7 @@ def _archive_completed_to_jsonl(state_file: str) -> None:
 
     completed = [
         c for c in state.changes
-        if c.status in ("merged", "done", "failed", "merge-blocked", "skipped")
+        if c.status in ("merged", "done", "failed", "merge-blocked", "skipped", "integration-failed")
     ]
     if not completed:
         return
@@ -1137,11 +1131,6 @@ def _count_by_status(state_file: str, status: str) -> int:
 
 def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None:
     """Dispatch ready changes (exception-safe wrapper)."""
-    # Guard: don't dispatch new work if main build is broken
-    state = load_state(state_file)
-    if state.extras.get("build_broken_on_main", False):
-        logger.warning("Dispatch skipped — build broken on main (waiting for fix)")
-        return
     try:
         from .dispatcher import dispatch_ready_changes
         dispatch_ready_changes(
@@ -1155,42 +1144,6 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
         )
     except Exception:
         logger.warning("Dispatch failed", exc_info=True)
-
-
-def _retry_broken_main_build_safe(state_file: str, event_bus: Any) -> None:
-    """If build_broken_on_main is set, re-run the build and clear on success."""
-    state = load_state(state_file)
-    if not state.extras.get("build_broken_on_main", False):
-        return
-    logger.info("Retrying build on main (build_broken_on_main is set)")
-    try:
-        from .profile_loader import load_profile
-
-        profile = load_profile()
-        pm = profile.detect_package_manager(".") or "npm"
-        build_cmd = profile.detect_build_command(".")
-
-        if not pm or pm == "npm":
-            if os.path.exists("pnpm-lock.yaml"):
-                pm = "pnpm"
-            elif os.path.exists("yarn.lock"):
-                pm = "yarn"
-
-        if build_cmd:
-            build_parts = build_cmd.split()
-        else:
-            build_parts = [pm, "run", "build"]
-
-        result = run_command(build_parts, timeout=600)
-        if result.exit_code == 0:
-            update_state_field(state_file, "build_broken_on_main", False)
-            logger.info("Build on main recovered — dispatch resumed")
-            if event_bus:
-                event_bus.emit("BUILD_RECOVERED", data={"source": "periodic_retry"})
-        else:
-            logger.warning("Build on main still failing (exit %d)", result.exit_code)
-    except Exception:
-        logger.warning("Build retry on main failed", exc_info=True)
 
 
 def _retry_merge_queue_safe(state_file: str, event_bus: Any) -> None:
@@ -1328,7 +1281,7 @@ def _check_phase_completion(
     # Pending changes with failed deps are effectively terminal (will never run)
     from .state import deps_failed
     phase_changes = [c for c in state.changes if c.phase == current_phase]
-    terminal_statuses = {"merged", "done", "skipped", "failed", "merge-blocked"}
+    terminal_statuses = {"merged", "done", "skipped", "failed", "merge-blocked", "integration-failed"}
     all_terminal = all(
         c.status in terminal_statuses or (c.status == "pending" and deps_failed(state, c.name))
         for c in phase_changes
@@ -1503,7 +1456,7 @@ def trigger_checkpoint(state_file: str, reason: str, event_bus: Any = None) -> N
     # Append checkpoint record to state.checkpoints
     state = load_state(state_file)
     completed_count = sum(
-        1 for c in state.changes if c.status in ("merged", "done", "skipped", "failed")
+        1 for c in state.changes if c.status in ("merged", "done", "skipped", "failed", "integration-failed")
     )
     checkpoint_record = {
         "reason": reason,

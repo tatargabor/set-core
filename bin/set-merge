@@ -19,6 +19,7 @@ Options:
   --squash                Squash commits into one
   --no-delete             Keep source branch after merge
   --no-push               Don't push after merge (default: push)
+  --ff-only               Fast-forward only — fail if not possible (no conflict resolution)
   --llm-resolve           Use LLM to resolve merge conflicts automatically
   --no-conservation-check Skip post-LLM conservation check (emergency bypass)
   -h, --help              Show this help
@@ -1023,6 +1024,7 @@ main() {
     local delete_branch=true
     local push_after=true
     local llm_resolve=false
+    local ff_only=false
     local conservation_check=true
 
     while [[ $# -gt 0 ]]; do
@@ -1045,6 +1047,10 @@ main() {
                 ;;
             --no-push)
                 push_after=false
+                shift
+                ;;
+            --ff-only)
+                ff_only=true
                 shift
                 ;;
             --llm-resolve)
@@ -1197,6 +1203,24 @@ main() {
 
     # Pull latest
     git pull origin "$target_branch" 2>/dev/null || true
+
+    # Fast-forward only mode — skip all conflict resolution
+    if $ff_only; then
+        local ff_result=0
+        git merge --ff-only "$source_branch" 2>/dev/null || ff_result=$?
+        if [[ $ff_result -eq 0 ]]; then
+            success "Fast-forward merge of '$source_branch' into '$target_branch'"
+            if $push_after; then
+                git push origin "$target_branch" 2>/dev/null || true
+            fi
+            exit 0
+        else
+            error "Fast-forward merge failed — branch has diverged from '$target_branch'"
+            # Checkout back to target to leave repo in clean state
+            git checkout "$target_branch" 2>/dev/null || true
+            exit 1
+        fi
+    fi
 
     # Merge (|| true to prevent set -e from killing on conflict)
     local merge_result=0
