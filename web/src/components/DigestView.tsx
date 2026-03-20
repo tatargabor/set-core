@@ -799,7 +799,7 @@ function DepTreePanel({ project, reqs, coverage, dependencies }: {
     return { changeNodes: changeMap, edges: edgeList, children: childrenMap, roots: rootList }
   }, [coverage, dependencies])
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(roots))
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(changeNodes.keys()))
 
   const toggle = (name: string) => {
     setExpanded(prev => {
