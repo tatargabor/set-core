@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { getDigest, getCoverageReport, getRequirements, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type SessionInfo, type RequirementsData, type ReqChangeInfo } from '../lib/api'
 
 interface Props {
@@ -56,7 +56,19 @@ function ACItems({ req, coverage }: {
 export default function DigestView({ project }: Props) {
   const [data, setData] = useState<DigestData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<DigestTab>('overview')
+  // URL-backed sub-tab: ?sub=domains (default: domains)
+  const VALID_TABS: DigestTab[] = ['domains', 'overview', 'ac', 'coverage', 'deptree', 'triage']
+  const initTab = useMemo(() => {
+    const s = new URLSearchParams(window.location.search).get('sub')
+    return (s && VALID_TABS.includes(s as DigestTab)) ? s as DigestTab : 'domains'
+  }, [])
+  const [tab, setTabRaw] = useState<DigestTab>(initTab)
+  const setTab = useCallback((t: DigestTab) => {
+    setTabRaw(t)
+    const url = new URL(window.location.href)
+    url.searchParams.set('sub', t)
+    window.history.replaceState(null, '', url.toString())
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -84,15 +96,16 @@ export default function DigestView({ project }: Props) {
   const domains = data.domains ?? {}
   const hasTriage = !!data.triage
   const dependencies: Dependency[] = data.dependencies?.dependencies ?? []
-  const ambiguities: Ambiguity[] = data.ambiguities ?? []
+  const rawAmb = data.ambiguities
+  const ambiguities: Ambiguity[] = Array.isArray(rawAmb) ? rawAmb : (rawAmb as unknown as { ambiguities: Ambiguity[] })?.ambiguities ?? []
 
   // Count total AC items
   const totalAC = reqs.reduce((sum, r) => sum + (r.acceptance_criteria?.length ?? 0), 0)
 
   const tabs: { id: DigestTab; label: string; hidden?: boolean }[] = [
+    { id: 'domains', label: `Domains (${Object.keys(domains).length})`, hidden: Object.keys(domains).length === 0 },
     { id: 'overview', label: `Reqs (${reqs.length})` },
     { id: 'ac', label: `AC (${totalAC})`, hidden: totalAC === 0 },
-    { id: 'domains', label: `Domains (${Object.keys(domains).length})`, hidden: Object.keys(domains).length === 0 },
     { id: 'coverage', label: 'Coverage' },
     { id: 'deptree', label: 'Dep Tree' },
     { id: 'triage', label: 'Triage', hidden: !hasTriage },

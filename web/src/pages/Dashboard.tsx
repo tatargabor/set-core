@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useWebSocket, type WSEvent } from '../hooks/useWebSocket'
 import StatusHeader from '../components/StatusHeader'
 import ChangeTable from '../components/ChangeTable'
@@ -32,7 +32,19 @@ export default function Dashboard({ project }: Props) {
   const [checkpoint, setCheckpoint] = useState(false)
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<PanelTab>('changes')
+  // URL-backed tab state: ?tab=digest&sub=domains
+  const params = useMemo(() => new URLSearchParams(window.location.search), [])
+  const [activeTab, setActiveTabRaw] = useState<PanelTab>(() => {
+    const t = params.get('tab')
+    return (t && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','battle'].includes(t)) ? t as PanelTab : 'changes'
+  })
+  const setActiveTab = useCallback((tab: PanelTab) => {
+    setActiveTabRaw(tab)
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', tab)
+    if (tab !== 'digest') url.searchParams.delete('sub')
+    window.history.replaceState(null, '', url.toString())
+  }, [])
   // logExpanded removed — log panel is now its own tab
   const [hasDigest, setHasDigest] = useState(false)
   const [hasPlans, setHasPlans] = useState(false)
