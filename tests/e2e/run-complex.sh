@@ -248,6 +248,7 @@ e2e_command: npx playwright test
 e2e_timeout: 180
 smoke_command: pnpm build && pnpm test
 smoke_blocking: true
+post_merge_command: npx prisma generate
 max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true
