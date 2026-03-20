@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
-import { getDigest, getCoverageReport, getRequirements, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type SessionInfo, type RequirementsData, type ReqChangeInfo } from '../lib/api'
+import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type SessionInfo } from '../lib/api'
 
 interface Props {
   project: string
@@ -141,7 +141,7 @@ export default function DigestView({ project }: Props) {
         {tab === 'ac' && <ACPanel reqs={reqs} coverage={coverage} />}
         {tab === 'domains' && <DomainsPanel domains={domains} reqs={reqs} coverage={coverage} dependencies={dependencies} ambiguities={ambiguities} />}
         {tab === 'coverage' && <CoverageReportPanel project={project} />}
-        {tab === 'deptree' && <DepTreePanel project={project} />}
+        {tab === 'deptree' && <DepTreePanel project={project} reqs={reqs} coverage={coverage} dependencies={dependencies} />}
         {tab === 'triage' && data.triage && <MarkdownPanel content={data.triage} />}
       </div>
     </div>
@@ -736,83 +736,70 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
   )
 }
 
-/** Dep Tree panel — lazy-loads requirements data for change-level dependency visualization */
-function DepTreePanel({ project }: { project: string }) {
-  const [data, setData] = useState<RequirementsData | null>(null)
-  const [error, setError] = useState<string | null>(null)
+/** Dep Tree — builds change-level dependency graph from digest requirement-level dependencies */
+function DepTreePanel({ project, reqs, coverage, dependencies }: {
+  project: string
+  reqs: DigestReq[]
+  coverage: Record<string, { change: string; status: string }>
+  dependencies: Dependency[]
+}) {
+  // Build change-level edges from requirement-level dependencies
+  const { changeNodes, edges, children, roots } = useMemo(() => {
+    // Map req -> change
+    const reqChange = new Map<string, string>()
+    for (const [reqId, info] of Object.entries(coverage)) {
+      reqChange.set(reqId, info.change)
+    }
 
-  useEffect(() => {
-    let cancelled = false
-    getRequirements(project)
-      .then(d => { if (!cancelled) setData(d) })
-      .catch(e => { if (!cancelled) setError(String(e)) })
-    return () => { cancelled = true }
-  }, [project])
-
-  if (error) return <div className="p-4 text-xs text-red-400">{error}</div>
-  if (!data) return <div className="p-4 text-xs text-neutral-500">Loading dependency tree...</div>
-  if (data.changes.length === 0) return <div className="p-4 text-xs text-neutral-500">No change data available</div>
-
-  return (
-    <div className="p-2">
-      <DepTree changes={data.changes} />
-    </div>
-  )
-}
-
-const DEP_STATUS_COLOR: Record<string, string> = {
-  merged: 'bg-blue-500', done: 'bg-blue-500', completed: 'bg-blue-500', skip_merged: 'bg-blue-400',
-  running: 'bg-green-500', implementing: 'bg-green-500', verifying: 'bg-cyan-500',
-  failed: 'bg-red-500', 'verify-failed': 'bg-red-500', stalled: 'bg-yellow-500',
-  pending: 'bg-neutral-600', planned: 'bg-neutral-700',
-}
-
-const DEP_STATUS_TEXT: Record<string, string> = {
-  merged: 'text-blue-400', done: 'text-blue-400', completed: 'text-blue-400',
-  running: 'text-green-400', implementing: 'text-green-400', verifying: 'text-cyan-400',
-  failed: 'text-red-400', 'verify-failed': 'text-red-400', stalled: 'text-yellow-400',
-  pending: 'text-neutral-500', planned: 'text-neutral-600',
-}
-
-function DepTree({ changes }: { changes: ReqChangeInfo[] }) {
-  const blockedBy = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const c of changes) {
-      if (c.depends_on.length > 0) {
-        map.set(c.name, c.depends_on.filter(d => changes.some(ch => ch.name === d)))
+    // Unique changes with status + req count
+    const changeMap = new Map<string, { status: string; reqCount: number }>()
+    for (const [reqId, info] of Object.entries(coverage)) {
+      const existing = changeMap.get(info.change)
+      if (!existing) {
+        changeMap.set(info.change, { status: info.status, reqCount: 1 })
+      } else {
+        existing.reqCount++
+        // Keep the "most active" status
+        const priority = ['failed', 'verify-failed', 'running', 'implementing', 'verifying', 'planned', 'merged', 'done', 'completed']
+        if (priority.indexOf(info.status) < priority.indexOf(existing.status)) {
+          existing.status = info.status
+        }
       }
     }
-    return map
-  }, [changes])
 
-  const roots = useMemo(() => {
-    return changes.filter(c => !blockedBy.has(c.name) || blockedBy.get(c.name)!.length === 0)
-  }, [changes, blockedBy])
-
-  const children = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const [child, deps] of blockedBy) {
-      for (const dep of deps) {
-        if (!map.has(dep)) map.set(dep, [])
-        map.get(dep)!.push(child)
+    // Build change-level edges (deduplicated)
+    const edgeSet = new Set<string>()
+    const edgeList: { from: string; to: string }[] = []
+    for (const dep of dependencies) {
+      const fc = reqChange.get(dep.from)
+      const tc = reqChange.get(dep.to)
+      if (fc && tc && fc !== tc) {
+        const key = `${fc}->${tc}`
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key)
+          edgeList.push({ from: fc, to: tc })
+        }
       }
     }
-    return map
-  }, [blockedBy])
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => {
-    const activeStatuses = new Set(['running', 'implementing', 'verifying', 'failed', 'verify-failed'])
-    const cMap = new Map(changes.map(c => [c.name, c]))
-    const active = new Set<string>()
-    for (const r of roots) {
-      if (activeStatuses.has(r.status)) active.add(r.name)
-      const kids = children.get(r.name) ?? []
-      if (kids.some(k => { const c = cMap.get(k); return c && activeStatuses.has(c.status) })) {
-        active.add(r.name)
-      }
+    // Build parent->children map (parent = dependency, child = dependent)
+    const childrenMap = new Map<string, string[]>()
+    const hasParent = new Set<string>()
+    for (const e of edgeList) {
+      // from depends on to, so to is the parent
+      if (!childrenMap.has(e.to)) childrenMap.set(e.to, [])
+      childrenMap.get(e.to)!.push(e.from)
+      hasParent.add(e.from)
     }
-    return active
-  })
+
+    // Roots = changes that nothing depends on (leaf dependencies) + changes with no parents
+    const allChanges = [...changeMap.keys()]
+    const rootList = allChanges.filter(c => !hasParent.has(c))
+
+    return { changeNodes: changeMap, edges: edgeList, children: childrenMap, roots: rootList }
+  }, [coverage, dependencies])
+
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(roots))
 
   const toggle = (name: string) => {
     setExpanded(prev => {
@@ -822,20 +809,23 @@ function DepTree({ changes }: { changes: ReqChangeInfo[] }) {
     })
   }
 
-  const changeMap = useMemo(() => new Map(changes.map(c => [c.name, c])), [changes])
+  if (changeNodes.size === 0) {
+    return <div className="p-4 text-xs text-neutral-500">No dependency data available</div>
+  }
+
   const rendered = new Set<string>()
 
   function renderNode(name: string, depth: number): React.ReactNode {
     if (rendered.has(name)) return null
     rendered.add(name)
-    const c = changeMap.get(name)
-    if (!c) return null
+    const info = changeNodes.get(name)
+    if (!info) return null
     const kids = children.get(name) ?? []
     const hasKids = kids.length > 0
     const isExpanded = expanded.has(name)
-    const dotColor = DEP_STATUS_COLOR[c.status] ?? 'bg-neutral-700'
-    const txtColor = DEP_STATUS_TEXT[c.status] ?? 'text-neutral-600'
-    const isDone = DONE_STATUSES.has(c.status)
+    const isDone = DONE_STATUSES.has(info.status)
+    const dotColor = isDone ? 'bg-blue-500' : info.status === 'running' || info.status === 'implementing' ? 'bg-green-500' : info.status === 'failed' || info.status === 'verify-failed' ? 'bg-red-500' : 'bg-neutral-600'
+    const txtColor = isDone ? 'text-blue-400' : info.status === 'running' || info.status === 'implementing' ? 'text-green-400' : info.status === 'failed' || info.status === 'verify-failed' ? 'text-red-400' : 'text-neutral-500'
 
     return (
       <div key={name}>
@@ -851,8 +841,9 @@ function DepTree({ changes }: { changes: ReqChangeInfo[] }) {
           )}
           <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
           <span className="font-mono text-[11px] text-neutral-300 truncate">{name}</span>
-          <span className={`text-[10px] ml-auto shrink-0 ${txtColor}`}>{c.status}</span>
-          <span className="text-[10px] text-neutral-600 shrink-0">{c.requirements.length} reqs</span>
+          <span className={`text-[10px] ml-auto shrink-0 ${txtColor}`}>{info.status}</span>
+          <span className="text-[10px] text-neutral-600 shrink-0">{info.reqCount} reqs</span>
+          {hasKids && <span className="text-[10px] text-neutral-600 shrink-0">{kids.length} dep{kids.length > 1 ? 's' : ''}</span>}
         </div>
         {isExpanded && kids.map(kid => renderNode(kid, depth + 1))}
       </div>
@@ -860,9 +851,10 @@ function DepTree({ changes }: { changes: ReqChangeInfo[] }) {
   }
 
   return (
-    <div className="space-y-0.5">
-      {roots.map(r => renderNode(r.name, 0))}
-      {changes.filter(c => !rendered.has(c.name)).map(c => renderNode(c.name, 0))}
+    <div className="space-y-0.5 p-2">
+      <div className="text-[10px] text-neutral-500 px-2 pb-1">{changeNodes.size} changes, {edges.length} dependencies</div>
+      {roots.map(r => renderNode(r, 0))}
+      {[...changeNodes.keys()].filter(c => !rendered.has(c)).map(c => renderNode(c, 0))}
     </div>
   )
 }
