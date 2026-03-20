@@ -11,6 +11,7 @@ Multi-file spec orchestration test using the [CraftBrew spec repo](https://githu
 | [#3](run-3.md) | 2026-03-18 | COMPLETE | 15/15 | 8 | ~888K | Verify agent death (Bug #14) affected 12/15 changes; 12 manual merges; ~5.5h wall clock |
 | [#4](run-4.md) | 2026-03-19 | PARTIAL | 5/15 | 4 | ~998K | 4/5 autonomous merges (80%); dep cascade deadlock blocked 8 changes |
 | [#5](run-5.md) | 2026-03-19/20 | PARTIAL | 2/15 | 4 | ~177K | Origin remote contamination (Bug #24 fixed); auth context overflow; dep cascade deadlock |
+| [#6](run-6.md) | 2026-03-20 | PARTIAL | 8/15 | 4 | ~587K | opus-1m fixed context overflow; Bug #28 (merge-blocked) fixed; Bug #30 (artifact loop) recurred |
 
 ## Bug Index
 

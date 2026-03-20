@@ -306,13 +306,12 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->
-### craftbrew — Run #5 (2026-03-20)
+### craftbrew — Run #6 (2026-03-20)
 <!-- set-core-commit: unknown -->
-- **set-core range**: no changes since last run
-- **Result**: 2/15 merged | unknown | 177K tokens | 0 retries
+- **set-core range**: first tracked run (baseline commit: `unknown`)
+- **Result**: 8/15 merged | unknown | 587K tokens | 0 retries
 - **Open regressions**: none
 - **Applied changes**: none
-- **vs previous**: prev merged: 5/15, prev tokens: 998K tokens
 <!-- e2e-results:craftbrew:end -->
 
 ## Architecture Quick Reference
