@@ -197,6 +197,39 @@ check_done() {
                 return 0  # No build command = pass
             fi
             ;;
+        test)
+            # Test command passes = done
+            # Read test_command from loop state (set by --test-command flag)
+            local state_file
+            state_file=$(get_loop_state_file "$wt_path")
+            local test_cmd
+            test_cmd=$(jq -r '.test_command // empty' "$state_file" 2>/dev/null)
+            if [[ -z "$test_cmd" ]]; then
+                # No test command configured — fall back to build check
+                local pm="npm"
+                [[ -f "$wt_path/pnpm-lock.yaml" ]] && pm="pnpm"
+                [[ -f "$wt_path/yarn.lock" ]] && pm="yarn"
+                [[ -f "$wt_path/bun.lockb" || -f "$wt_path/bun.lock" ]] && pm="bun"
+                if [[ -f "$wt_path/package.json" ]]; then
+                    local build_cmd
+                    build_cmd=$(cd "$wt_path" && node -e "
+                        const p = require('./package.json');
+                        const s = p.scripts || {};
+                        if (s['build:ci']) console.log('build:ci');
+                        else if (s['build']) console.log('build');
+                    " 2>/dev/null || true)
+                    if [[ -n "$build_cmd" ]]; then
+                        (cd "$wt_path" && timeout 300 "$pm" run "$build_cmd" >/dev/null 2>&1)
+                    else
+                        return 0
+                    fi
+                else
+                    return 0  # No package.json, no test — pass
+                fi
+            else
+                (cd "$wt_path" && timeout 300 bash -c "$test_cmd" >/dev/null 2>&1)
+            fi
+            ;;
         merge)
             # Branch merges cleanly with main = done
             local main_ref

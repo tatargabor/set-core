@@ -774,7 +774,8 @@ except:
 
         # Universal done detection safety net
         # If primary criteria says not done, check if tasks.md has all tasks [x]
-        if ! $is_done && [[ "$done_criteria" != "tasks" ]]; then
+        # Skip fallback for test/build/merge — those have objective pass/fail criteria
+        if ! $is_done && [[ "$done_criteria" != "tasks" && "$done_criteria" != "test" && "$done_criteria" != "build" && "$done_criteria" != "merge" ]]; then
             if find_tasks_file "$wt_path" &>/dev/null && check_tasks_done "$wt_path" 2>/dev/null; then
                 is_done=true
                 warn "Done by tasks.md fallback (primary criteria '$done_criteria' said not done)"
