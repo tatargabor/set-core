@@ -1,37 +1,51 @@
 # Tasks: review-rules-from-e2e
 
-## 1. Extend transaction-patterns.md
+Rules live in TWO places (hierarchical):
+- **set-core** `.claude/rules/web/` — review gate reads these via `_load_security_rules()`
+- **set-project-web** `set_project_web/templates/nextjs/rules/` — deployed to consumer projects via `set-project init`
+
+Both must be updated. set-core rules are the source of truth for the review gate;
+set-project-web templates are what agents see during implementation.
+
+## 1. Extend transaction-patterns.md (set-core)
 
 - [ ] 1.1 Add section #5 "Payment Failure Rollback of Side Effects" with wrong pattern (side effects before payment, no reversal) and correct pattern (side effects after payment, or explicit reversal in catch block) [REQ: payment-failure-rollback-of-side-effects]
 - [ ] 1.2 Add section #6 "Soft Status Transitions for Financial Records" with wrong pattern (hard delete on failure) and correct pattern (status transition PENDING → PAYMENT_FAILED) [REQ: soft-status-transitions-for-financial-records]
 - [ ] 1.3 Rename section #3 from "Atomic Inventory Operations" to "Atomic Finite Resource Operations" and add gift card balance and coupon usage limit examples alongside existing stock example [REQ: atomic-finite-resource-operations]
 
-## 2. Extend security-patterns.md
+## 2. Extend security-patterns.md (set-core)
 
 - [ ] 2.1 Add section #9 "Secret Code Enumeration Prevention" with wrong pattern (distinct error messages for not-found vs expired vs used) and correct pattern (single generic error for all failure cases) [REQ: secret-code-enumeration-prevention]
 
-## 3. Extend api-design.md
+## 3. Extend api-design.md (set-core)
 
 - [ ] 3.1 Add section #6 "Single Source of Truth for Validation" with wrong pattern (duplicated validation in preview and checkout) and correct pattern (shared validation function) [REQ: single-source-of-truth-for-validation]
 
-## 4. Create schema-integrity.md
+## 4. Create schema-integrity.md (set-core + set-project-web)
 
-- [ ] 4.1 Create `.claude/rules/web/schema-integrity.md` with YAML frontmatter (description, globs matching existing rule files) [REQ: nullable-columns-in-unique-constraints]
+- [ ] 4.1 Create `set-core/.claude/rules/web/schema-integrity.md` with sections below [REQ: nullable-columns-in-unique-constraints]
 - [ ] 4.2 Add section #1 "Nullable Columns in Unique Constraints" with wrong pattern (@@unique with nullable column) and correct pattern (partial index or sentinel value) [REQ: nullable-columns-in-unique-constraints]
 - [ ] 4.3 Add section #2 "Boolean vs Enum Status Modeling" with wrong pattern (boolean flags for multi-state) and correct pattern (enum status field) [REQ: boolean-vs-enum-status-modeling]
 - [ ] 4.4 Add section #3 "FK Cascade Strategies for Active Records" with wrong pattern (SET NULL on active order FKs) and correct pattern (RESTRICT or soft delete) [REQ: fk-cascade-strategies-for-active-records]
 - [ ] 4.5 Add section #4 "JSON Column Validation" with wrong pattern (direct property access without validation) and correct pattern (schema validation on read, size bounds on write) [REQ: json-column-validation]
+- [ ] 4.6 Create `set-project-web/set_project_web/templates/nextjs/rules/schema-integrity.md` — copy of the above for consumer project deployment [REQ: nullable-columns-in-unique-constraints]
 
-## 5. Create nextjs-patterns.md
+## 5. Create nextjs-patterns.md (set-project-web only — framework-specific)
 
-- [ ] 5.1 Create `.claude/rules/web/nextjs-patterns.md` with YAML frontmatter (description, globs for Next.js file patterns) [REQ: force-dynamic-anti-pattern-prevention]
+- [ ] 5.1 Create `set-project-web/set_project_web/templates/nextjs/rules/nextjs-patterns.md` with YAML frontmatter [REQ: force-dynamic-anti-pattern-prevention]
 - [ ] 5.2 Add section #1 "force-dynamic Anti-Pattern" with wrong pattern (blanket force-dynamic on mixed pages) and correct pattern (ISR, unstable_cache, Suspense boundaries) [REQ: force-dynamic-anti-pattern-prevention]
 - [ ] 5.3 Add section #2 "Server Actions in Client Effects" with wrong pattern (server action in useEffect without error handling) and correct pattern (try/catch with loading state) [REQ: server-actions-in-client-effects]
 
-## 6. Verify and cross-check
+## 6. Sync set-project-web templates with set-core rules
 
-- [ ] 6.1 Search codebase for any references to "Atomic Inventory Operations" heading and update them to "Atomic Finite Resource Operations" [REQ: atomic-finite-resource-operations]
-- [ ] 6.2 Verify all new sections follow the existing format: problem description, wrong pattern (code), correct pattern (code), bold "The rule:" summary [REQ: payment-failure-rollback-of-side-effects]
+- [ ] 6.1 Update `set-project-web/set_project_web/templates/nextjs/rules/security.md` to include secret code enumeration prevention (from 2.1) [REQ: secret-code-enumeration-prevention]
+- [ ] 6.2 Create `set-project-web/set_project_web/templates/nextjs/rules/transaction-safety.md` with the key patterns from transaction-patterns.md (payment ordering, atomic resources, rollback, soft status) [REQ: payment-failure-rollback-of-side-effects]
+
+## 7. Verify and cross-check
+
+- [ ] 7.1 Search set-core codebase for any references to "Atomic Inventory Operations" heading and update them to "Atomic Finite Resource Operations" [REQ: atomic-finite-resource-operations]
+- [ ] 7.2 Verify all new sections follow the existing format: problem description, wrong pattern (code), correct pattern (code), bold "The rule:" summary [REQ: payment-failure-rollback-of-side-effects]
+- [ ] 7.3 Run `set-project-web` tests to ensure templates are valid [REQ: payment-failure-rollback-of-side-effects]
 
 ## Acceptance Criteria (from spec scenarios)
 
