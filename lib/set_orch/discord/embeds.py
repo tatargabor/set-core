@@ -76,7 +76,7 @@ async def build_status_embed(
         color = COLOR_ACTIVE
 
     embed = discord.Embed(
-        title=f"Run #{run_id} — {member_name}",
+        title=f"[SET] Run #{run_id} — {member_name}",
         color=color,
         timestamp=now,
     )
@@ -147,7 +147,7 @@ async def build_summary_embed(
     color = COLOR_SUCCESS if failed == 0 and blocked == 0 else COLOR_WARNING
 
     embed = discord.Embed(
-        title=f"Run #{run_id} Complete — {member_name}",
+        title=f"[SET] Run #{run_id} Complete — {member_name}",
         color=color,
         timestamp=datetime.now(timezone.utc),
     )
@@ -190,7 +190,7 @@ async def build_error_embed(
     import discord
 
     embed = discord.Embed(
-        title=f"\u274c {change_name}",
+        title=f"[SET] \u274c {change_name}",
         description=reason[:2000],
         color=COLOR_ERROR,
         timestamp=datetime.now(timezone.utc),

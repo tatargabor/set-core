@@ -173,7 +173,7 @@ async def _handle_state_change(
             if _should_notify_main(config, "start"):
                 change_count = data.get("change_count", 0)
                 await bot.channel.send(
-                    f"\U0001f7e2 **{member_name}** started Run #{run_id} ({change_count} changes)"
+                    f"[SET] \U0001f7e2 **{member_name}** started Run #{run_id} ({change_count} changes)"
                 )
 
             # Create thread with initial embed
@@ -229,7 +229,7 @@ async def _handle_merge(
     result = data.get("result", "")
     if result == "success" and _should_notify_main(config, "merge"):
         await bot.channel.send(
-            f"\u2705 **{member_name}**: {change_name} merged"
+            f"[SET] \u2705 **{member_name}**: {change_name} merged"
         )
 
 
@@ -253,7 +253,7 @@ async def _handle_crash(
             reason,
             mention=mention,
         )
-        content = f"\u274c **{member_name}**: {change_name or 'orchestrator'} — {reason[:100]}"
+        content = f"[SET] \u274c **{member_name}**: {change_name or 'orchestrator'} — {reason[:100]}"
         if mention:
             content = f"{mention} {content}"
         await bot.channel.send(content=content, embed=embed)
@@ -271,7 +271,7 @@ async def _handle_error(
     if "stuck" in message.lower() or "stall" in message.lower():
         mention = _get_mention(config, member_name)
         if _should_notify_main(config, "stuck"):
-            content = f"\u26a0\ufe0f **{member_name}**: {change_name} — {message[:200]}"
+            content = f"[SET] \u26a0\ufe0f **{member_name}**: {change_name} — {message[:200]}"
             if mention:
                 content = f"{mention} {content}"
             await bot.channel.send(content)
@@ -314,7 +314,7 @@ async def _handle_run_complete(
                 total = len(state.changes)
                 icon = "\U0001f4ca" if status == "done" else "\u274c"
                 await bot.channel.send(
-                    f"{icon} **{member_name}** Run #{run_id} {status}: "
+                    f"[SET] {icon} **{member_name}** Run #{run_id} {status}: "
                     f"{merged}/{total} merged"
                 )
 

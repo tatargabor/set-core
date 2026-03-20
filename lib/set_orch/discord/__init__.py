@@ -85,7 +85,7 @@ class DiscordBot:
             # Set presence
             activity = discord.Activity(
                 type=discord.ActivityType.watching,
-                name=bot._project_name,
+                name=f"[SET] {bot._project_name}",
             )
             await self._client.change_presence(activity=activity)
             bot._ready.set()
