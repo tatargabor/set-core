@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { TuiProgress, TuiSection } from '../components/tui'
 
 interface Props {
   project: string | null
@@ -35,11 +36,15 @@ interface MemoryData {
   sync: string
 }
 
-function Bar({ value, max, color }: { value: number; max: number; color: string }) {
-  const pct = max > 0 ? (value / max) * 100 : 0
+function TuiBar({ value, max, label, color }: { value: number; max: number; label: string; color: string }) {
+  const barLen = 20
+  const filled = max > 0 ? Math.round((value / max) * barLen) : 0
+  const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(barLen - filled)
   return (
-    <div className="flex-1 h-2 rounded-full overflow-hidden bg-neutral-800">
-      <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+    <div className="flex items-center gap-3 text-sm">
+      <span className="text-neutral-400 w-24">{label}</span>
+      <span className={color}>{bar}</span>
+      <span className="text-neutral-300 w-12 text-right">{value}</span>
     </div>
   )
 }
@@ -75,19 +80,17 @@ export default function Memory({ project }: Props) {
   const maxType = Math.max(...Object.values(types), 1)
   const maxImportance = Math.max(...Object.values(importance), 1)
 
-  // Sort tags by count descending, take top 12
   const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]).slice(0, 12)
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
-      <h1 className="text-lg font-semibold text-neutral-100">Memory</h1>
+    <div className="p-6 max-w-3xl space-y-5">
+      <h1 className="text-base font-semibold text-neutral-100">Memory</h1>
 
-      {/* Health + total */}
+      {/* Health */}
       <section>
-        <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Health</h2>
-        <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 flex items-center gap-4">
-          <span className={`w-2.5 h-2.5 rounded-full ${healthOk ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className={`text-sm ${healthOk ? 'text-green-400' : 'text-red-400'}`}>{healthText}</span>
+        <TuiSection label="HEALTH" />
+        <div className="bg-neutral-900/50 border border-neutral-800 px-4 py-3 flex items-center gap-4">
+          <span className={healthOk ? 'text-green-400' : 'text-red-400'}>{healthOk ? '\u25CF' : '\u2715'} {healthText}</span>
           <span className="ml-auto text-sm text-neutral-300">{total.toLocaleString()} memories</span>
           {stats.noise_ratio != null && (
             <span className="text-xs text-neutral-500">{Math.round(stats.noise_ratio * 100)}% noise</span>
@@ -95,36 +98,24 @@ export default function Memory({ project }: Props) {
         </div>
       </section>
 
-      {/* Memory breakdown (from API stats) */}
+      {/* Memory breakdown */}
       {Object.keys(types).length === 0 && total > 0 && (
         <section>
-          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Breakdown</h2>
-          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 space-y-2">
+          <TuiSection label="BREAKDOWN" />
+          <div className="bg-neutral-900/50 border border-neutral-800 px-4 py-3 space-y-1">
             {stats.long_term_memory_count != null && (
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-neutral-400 w-24">Long-term</span>
-                <Bar value={stats.long_term_memory_count} max={total} color="bg-purple-500" />
-                <span className="text-xs text-neutral-300 w-12 text-right">{stats.long_term_memory_count}</span>
-              </div>
+              <TuiBar value={stats.long_term_memory_count} max={total} label="Long-term" color="text-purple-400" />
             )}
             {stats.session_memory_count != null && stats.session_memory_count > 0 && (
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-neutral-400 w-24">Session</span>
-                <Bar value={stats.session_memory_count} max={total} color="bg-blue-500" />
-                <span className="text-xs text-neutral-300 w-12 text-right">{stats.session_memory_count}</span>
-              </div>
+              <TuiBar value={stats.session_memory_count} max={total} label="Session" color="text-blue-400" />
             )}
             {stats.working_memory_count != null && stats.working_memory_count > 0 && (
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-neutral-400 w-24">Working</span>
-                <Bar value={stats.working_memory_count} max={total} color="bg-cyan-500" />
-                <span className="text-xs text-neutral-300 w-12 text-right">{stats.working_memory_count}</span>
-              </div>
+              <TuiBar value={stats.working_memory_count} max={total} label="Working" color="text-cyan-400" />
             )}
             {stats.total_retrievals != null && stats.total_retrievals > 0 && (
-              <div className="flex items-center gap-3 pt-1 border-t border-neutral-800/50">
-                <span className="text-xs text-neutral-500 w-24">Retrievals</span>
-                <span className="text-xs text-neutral-400">{stats.total_retrievals}</span>
+              <div className="flex items-center gap-3 pt-1 border-t border-neutral-800/50 text-sm">
+                <span className="text-neutral-500 w-24">Retrievals</span>
+                <span className="text-neutral-400">{stats.total_retrievals}</span>
               </div>
             )}
           </div>
@@ -134,17 +125,16 @@ export default function Memory({ project }: Props) {
       {/* Type distribution */}
       {Object.keys(types).length > 0 && (
         <section>
-          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">By Type</h2>
-          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 space-y-2">
+          <TuiSection label="BY TYPE" />
+          <div className="bg-neutral-900/50 border border-neutral-800 px-4 py-3 space-y-1">
             {Object.entries(types).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
               const pct = total > 0 ? Math.round((count / total) * 100) : 0
-              const color = type === 'Decision' ? 'bg-purple-500' : type === 'Learning' ? 'bg-blue-500' : 'bg-cyan-500'
+              const color = type === 'Decision' ? 'text-purple-400' : type === 'Learning' ? 'text-blue-400' : 'text-cyan-400'
               return (
-                <div key={type} className="flex items-center gap-3">
-                  <span className="text-xs text-neutral-400 w-20">{type}</span>
-                  <Bar value={count} max={maxType} color={color} />
-                  <span className="text-xs text-neutral-300 w-12 text-right">{count}</span>
-                  <span className="text-xs text-neutral-500 w-10 text-right">{pct}%</span>
+                <div key={type} className="flex items-center gap-3 text-sm">
+                  <span className="text-neutral-400 w-20">{type}</span>
+                  <TuiProgress done={count} total={maxType} className="text-sm" />
+                  <span className="text-neutral-500 w-10 text-right">{pct}%</span>
                 </div>
               )
             })}
@@ -155,14 +145,10 @@ export default function Memory({ project }: Props) {
       {/* Importance histogram */}
       {Object.keys(importance).length > 0 && (
         <section>
-          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Importance Distribution</h2>
-          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 space-y-2">
+          <TuiSection label="IMPORTANCE" />
+          <div className="bg-neutral-900/50 border border-neutral-800 px-4 py-3 space-y-1">
             {Object.entries(importance).map(([range, count]) => (
-              <div key={range} className="flex items-center gap-3">
-                <span className="text-xs text-neutral-500 w-14">{range}</span>
-                <Bar value={count} max={maxImportance} color="bg-amber-500" />
-                <span className="text-xs text-neutral-300 w-12 text-right">{count}</span>
-              </div>
+              <TuiBar key={range} value={count} max={maxImportance} label={range} color="text-amber-400" />
             ))}
           </div>
         </section>
@@ -171,11 +157,11 @@ export default function Memory({ project }: Props) {
       {/* Top tags */}
       {sortedTags.length > 0 && (
         <section>
-          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Top Tags</h2>
-          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3">
+          <TuiSection label="TOP TAGS" />
+          <div className="bg-neutral-900/50 border border-neutral-800 px-4 py-3">
             <div className="flex flex-wrap gap-1.5">
               {sortedTags.map(([tag, count]) => (
-                <span key={tag} className="px-2 py-0.5 bg-neutral-800 rounded text-sm text-neutral-300">
+                <span key={tag} className="px-2 py-0.5 bg-neutral-800 text-sm text-neutral-300">
                   {tag} <span className="text-neutral-500">{count}</span>
                 </span>
               ))}
@@ -187,8 +173,8 @@ export default function Memory({ project }: Props) {
       {/* Sync status */}
       {data.sync && typeof data.sync === 'string' && !data.sync.startsWith('{') && (
         <section>
-          <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Sync</h2>
-          <pre className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 text-xs text-neutral-400 whitespace-pre-wrap">
+          <TuiSection label="SYNC" />
+          <pre className="bg-neutral-900/50 border border-neutral-800 px-4 py-3 text-xs text-neutral-400 whitespace-pre-wrap">
             {data.sync}
           </pre>
         </section>

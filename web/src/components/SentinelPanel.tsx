@@ -159,7 +159,7 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
       <div className={`flex items-center gap-3 px-3 py-1.5 text-xs border-b border-neutral-800 ${
         isActive ? 'bg-green-950/30' : 'bg-neutral-900'
       }`}>
-        <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-400 animate-pulse' : 'bg-neutral-600'}`} />
+        <span className={isActive ? 'text-green-400' : 'text-neutral-600'}>{isActive ? '\u25C9' : '\u25CB'}</span>
         <span className={isActive ? 'text-green-300' : 'text-neutral-500'}>
           {isActive ? 'ACTIVE' : 'NOT RUNNING'}
         </span>

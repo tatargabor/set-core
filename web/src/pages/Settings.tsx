@@ -108,12 +108,12 @@ export default function Settings({ project }: Props) {
                 orchStatus === 'done' ? 'bg-blue-900/50 text-blue-300' :
                 'bg-neutral-800 text-neutral-400'
               }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  isRunning ? 'bg-green-400' :
-                  isShutdown ? 'bg-amber-400' :
-                  orchStatus === 'done' ? 'bg-blue-400' :
-                  'bg-neutral-500'
-                }`} />
+                <span className={
+                  isRunning ? 'text-green-400' :
+                  isShutdown ? 'text-amber-400' :
+                  orchStatus === 'done' ? 'text-blue-400' :
+                  'text-neutral-500'
+                }>{isRunning ? '\u25C9' : orchStatus === 'done' ? '\u25CF' : '\u25CB'}</span>
                 {orchStatus ?? 'unknown'}
               </span>
             </div>

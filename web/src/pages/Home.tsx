@@ -3,16 +3,16 @@ import { Link } from 'react-router-dom'
 import { getProjects, type ProjectInfo } from '../lib/api'
 import { sortByLastUpdated } from '../lib/sort'
 
-const statusStyle: Record<string, { dot: string; label: string }> = {
-  running: { dot: 'bg-green-500 animate-pulse', label: 'Running' },
-  planning: { dot: 'bg-cyan-500 animate-pulse', label: 'Planning' },
-  checkpoint: { dot: 'bg-yellow-500 animate-pulse', label: 'Checkpoint' },
-  completed: { dot: 'bg-blue-500', label: 'Completed' },
-  stopped: { dot: 'bg-neutral-500', label: 'Stopped' },
-  failed: { dot: 'bg-red-500', label: 'Failed' },
-  idle: { dot: 'bg-neutral-700', label: 'Idle' },
-  error: { dot: 'bg-red-900', label: 'Error' },
-  corrupt: { dot: 'bg-red-500 animate-pulse', label: 'Corrupt State' },
+const statusStyle: Record<string, { char: string; color: string; label: string }> = {
+  running: { char: '\u25C9', color: 'text-green-400', label: 'Running' },
+  planning: { char: '\u25C9', color: 'text-cyan-400', label: 'Planning' },
+  checkpoint: { char: '\u25C9', color: 'text-yellow-400', label: 'Checkpoint' },
+  completed: { char: '\u25CF', color: 'text-blue-400', label: 'Completed' },
+  stopped: { char: '\u25CB', color: 'text-neutral-500', label: 'Stopped' },
+  failed: { char: '\u2715', color: 'text-red-400', label: 'Failed' },
+  idle: { char: '\u25CB', color: 'text-neutral-600', label: 'Idle' },
+  error: { char: '\u2715', color: 'text-red-400', label: 'Error' },
+  corrupt: { char: '\u2715', color: 'text-red-400', label: 'Corrupt State' },
 }
 
 export default function Home() {
@@ -95,7 +95,7 @@ function ProjectCard({ project, compact }: { project: ProjectInfo; compact?: boo
       }`}
     >
       <div className="flex items-center gap-2">
-        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${s.dot}`} />
+        <span className={`shrink-0 ${s.color}`}>{s.char}</span>
         <span className="text-sm text-neutral-200 truncate">{project.name}</span>
         <span className="ml-auto text-xs text-neutral-600 shrink-0">{ago}</span>
         {!compact && (

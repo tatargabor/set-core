@@ -13,11 +13,11 @@ function outcomeIndicator(outcome?: string): string {
   return 'border-l-2 border-l-transparent'
 }
 
-function outcomeDot(outcome?: string): string {
-  if (outcome === 'active') return 'bg-green-400 animate-pulse'
-  if (outcome === 'success') return 'bg-neutral-500'
-  if (outcome === 'error') return 'bg-red-500'
-  return 'bg-neutral-700'
+function outcomeChar(outcome?: string): { char: string; color: string } {
+  if (outcome === 'active') return { char: '\u25C9', color: 'text-green-400' }
+  if (outcome === 'success') return { char: '\u25CF', color: 'text-neutral-500' }
+  if (outcome === 'error') return { char: '\u2715', color: 'text-red-400' }
+  return { char: '\u25CB', color: 'text-neutral-600' }
 }
 
 function colorLine(line: string): string {
@@ -144,7 +144,7 @@ export default function SessionPanel({ project, change }: Props) {
                 }`}
               >
                 <div className="flex items-center gap-1.5 text-sm font-medium truncate">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${outcomeDot(s.outcome)}`} />
+                  <span className={`shrink-0 ${outcomeChar(s.outcome).color}`}>{outcomeChar(s.outcome).char}</span>
                   {s.label || s.id.slice(0, 8)}
                 </div>
                 <div className="text-xs text-neutral-600 truncate pl-3" title={s.full_label}>
@@ -170,7 +170,7 @@ export default function SessionPanel({ project, change }: Props) {
               }`}
             >
               <div className="flex items-center gap-1.5 text-sm font-medium truncate">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${outcomeDot(s.outcome)}`} />
+                <span className={`shrink-0 ${outcomeChar(s.outcome).color}`}>{outcomeChar(s.outcome).char}</span>
                 {s.label || s.id.slice(0, 8)}
               </div>
               <div className="text-xs text-neutral-600 truncate pl-3" title={s.full_label}>

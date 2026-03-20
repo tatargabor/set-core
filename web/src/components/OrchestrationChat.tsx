@@ -282,9 +282,9 @@ export default function OrchestrationChat({ project }: Props) {
           <span className="text-sm text-neutral-300 font-medium">Agent Chat</span>
           {/* Connection indicator */}
           <span
-            className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
+            className={connected ? 'text-green-500' : 'text-red-500'}
             title={connected ? 'Connected' : 'Disconnected'}
-          />
+          >{connected ? '\u25CF' : '\u25CB'}</span>
           {/* Live orchestration state */}
           {orchState && orchState.total > 0 && (
             <span className="text-xs text-neutral-500" title={Object.entries(orchState.by_status).map(([k, v]) => `${v} ${k}`).join(', ')}>
