@@ -71,3 +71,36 @@ GET /api/things?page=1&limit=20
 - PUT: idempotent (same request = same result)
 - POST: not idempotent — use idempotency keys for payment/order creation if needed
 - DELETE: idempotent (deleting already-deleted = 204, not 404)
+
+## 6. Single Source of Truth for Validation
+
+When business logic validates something at multiple points (cart preview + checkout, API + webhook), extract it into a single validation function. Both paths MUST call the same function.
+
+**Wrong — duplicated validation with different strictness:**
+```
+// Cart endpoint: thorough validation
+const result = await validateCoupon(code, { userId, categories: cartCategories, subtotal, isFirstOrder })
+
+// Checkout: inline simplified check that SKIPS rules
+const coupon = await db.coupon.findFirst({ where: { code, isActive: true } })
+if (!coupon) throw new Error("Invalid coupon")
+if (coupon.expiresAt < new Date()) throw new Error("Expired")
+// Missing: category check, first-order check, minOrderValue check
+const discount = subtotal * (coupon.discountPercent / 100)
+```
+
+**Correct — shared validation function used everywhere:**
+```
+// Single source of truth
+// src/server/promotions/coupon-validator.ts
+export async function validateCoupon(code: string, context: CouponContext): Promise<CouponResult> {
+  // ALL checks: active, expired, usage limit, category, first-order, minOrderValue
+}
+
+// Cart preview:
+const result = await validateCoupon(code, { userId, categories, subtotal, isFirstOrder })
+// Checkout:
+const result = await validateCoupon(couponCode, { userId, categories: orderCategories, subtotal, isFirstOrder })
+```
+
+**The rule:** When the same business logic runs at multiple points (preview + confirm, cart + checkout, API + webhook), extract it into one function. Both paths MUST call the same function. The checkout path will always be weaker if re-implemented inline because the developer treats it as "already validated."

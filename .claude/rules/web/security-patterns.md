@@ -121,3 +121,27 @@ const orders = await db.order.findMany({ where: { userId: currentUser.id } })
 ## 8. Transaction Safety (see transaction-patterns.md)
 
 For payment ordering, server-side price recalculation, and atomic inventory operations, see `.claude/rules/web/transaction-patterns.md`. These patterns prevent financial loss from business logic bugs — distinct from auth/authz issues covered above.
+
+## 9. Secret Code Enumeration Prevention
+
+Endpoints that accept secret codes (gift cards, coupons, invite codes, password reset tokens) MUST return a single generic error for all failure cases.
+
+**Wrong — distinct errors let attackers enumerate valid codes:**
+```
+const gc = await db.giftCard.findUnique({ where: { code } })
+if (!gc) return Response.json({ error: "Gift card not found" }, { status: 404 })
+if (gc.balance <= 0) return Response.json({ error: "Gift card has no balance" }, { status: 400 })
+if (gc.expiresAt < new Date()) return Response.json({ error: "Gift card expired" }, { status: 400 })
+// Attacker learns: 404 = invalid code, 400 "no balance" = valid but spent, 400 "expired" = valid but old
+```
+
+**Correct — single generic error, log specifics server-side:**
+```
+const gc = await db.giftCard.findUnique({ where: { code } })
+if (!gc || gc.balance <= 0 || (gc.expiresAt && gc.expiresAt < new Date())) {
+  logger.info("Gift card lookup failed", { code: code.slice(0, 4) + "***", reason: !gc ? "not_found" : "exhausted_or_expired" })
+  return Response.json({ error: "Invalid or expired gift card" }, { status: 400 })
+}
+```
+
+**The rule:** Endpoints accepting secret codes MUST return the same generic error message and HTTP status for "not found," "expired," "already used," and "no balance." Log the specific failure reason server-side for debugging. This prevents attackers from probing for valid codes.
