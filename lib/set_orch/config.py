@@ -412,16 +412,51 @@ def _parse_discord_config(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_discord_config(directives: dict[str, Any]) -> dict[str, Any] | None:
-    """Get parsed Discord config from resolved directives. Returns None if disabled."""
+    """Get parsed Discord config from resolved directives. Returns None if disabled.
+
+    Token resolution order:
+    1. SET_DISCORD_TOKEN env var
+    2. ~/.config/set-core/discord.json (global config from set-discord-setup)
+
+    Guild ID resolution order:
+    1. discord.guild_id in orchestration.yaml (per-project)
+    2. ~/.config/set-core/discord.json (global config)
+    """
     cfg = directives.get("discord")
     if not cfg:
         return None
-    # Token comes from env, never from config file
+
+    # Token: env var first, then global config
     token = os.environ.get("SET_DISCORD_TOKEN", "")
     if not token:
-        logger.warning("Discord enabled but SET_DISCORD_TOKEN not set — Discord disabled")
+        token = _read_global_discord_field("token")
+    if not token:
+        logger.warning("Discord enabled but no token found — Discord disabled")
         return None
+    # Set in env so the bot can use it
+    os.environ["SET_DISCORD_TOKEN"] = token
+
+    # Guild ID: per-project config first, then global
+    if not cfg.get("guild_id"):
+        global_guild = _read_global_discord_field("guild_id")
+        if global_guild:
+            cfg["guild_id"] = global_guild
+
     return cfg
+
+
+def _read_global_discord_field(field: str) -> str:
+    """Read a field from ~/.config/set-core/discord.json."""
+    import json
+    global_path = Path.home() / ".config" / "set-core" / "discord.json"
+    if not global_path.is_file():
+        return ""
+    try:
+        with open(global_path) as f:
+            data = json.load(f)
+        return str(data.get(field, ""))
+    except (json.JSONDecodeError, OSError):
+        return ""
 
 
 # ─── Config File Loading ─────────────────────────────────────────────

@@ -210,7 +210,7 @@ install_scripts() {
 
     mkdir -p "$INSTALL_DIR"
 
-    local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-memory set-hook-memory-save set-hook-memory-recall set-hook-memory-warmstart set-hook-memory-pretool set-hook-memory-posttool set-deploy-hooks set-memory set-memoryd set-openspec set-audit set-orchestrate set-sentinel set-manual set-e2e-report set-orch-core set-web-install)
+    local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-memory set-hook-memory-save set-hook-memory-recall set-hook-memory-warmstart set-hook-memory-pretool set-hook-memory-posttool set-deploy-hooks set-memory set-memoryd set-openspec set-audit set-orchestrate set-sentinel set-manual set-e2e-report set-orch-core set-web-install set-discord-setup)
 
     for script in "${scripts[@]}"; do
         local src="$SCRIPT_DIR/bin/$script"

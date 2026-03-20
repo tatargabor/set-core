@@ -1,0 +1,431 @@
+#!/usr/bin/env bash
+# set-discord-setup — Interactive Discord integration setup for set-core
+#
+# Usage:
+#   set-discord-setup              — Global setup (bot token + guild, saved to ~/.config/set-core/)
+#   set-discord-setup enable       — Enable Discord for current project
+#   set-discord-setup disable      — Disable Discord for current project
+#   set-discord-setup status       — Show current configuration
+#   set-discord-setup test         — Send a test message
+#
+# Global config: ~/.config/set-core/discord.json (shared across all projects)
+# Per-project:   discord.enabled in orchestration.yaml (opt-in per project)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null || true
+
+# Colors (fallback if set-common.sh not available)
+GREEN=${GREEN:-'\033[0;32m'}
+YELLOW=${YELLOW:-'\033[0;33m'}
+RED=${RED:-'\033[0;31m'}
+CYAN=${CYAN:-'\033[0;36m'}
+BOLD=${BOLD:-'\033[1m'}
+NC=${NC:-'\033[0m'}
+
+info()    { echo -e "${CYAN}ℹ${NC} $*"; }
+success() { echo -e "${GREEN}✓${NC} $*"; }
+warn()    { echo -e "${YELLOW}⚠${NC} $*"; }
+error()   { echo -e "${RED}✗${NC} $*" >&2; }
+
+# ─── Paths ────────────────────────────────────────────────────────
+
+GLOBAL_CONFIG_DIR="$HOME/.config/set-core"
+GLOBAL_DISCORD="$GLOBAL_CONFIG_DIR/discord.json"
+PYTHON=$(command -v python3.11 2>/dev/null || command -v python3 2>/dev/null)
+
+# ─── Global config helpers ────────────────────────────────────────
+
+_load_global() {
+    if [[ -f "$GLOBAL_DISCORD" ]]; then
+        cat "$GLOBAL_DISCORD"
+    else
+        echo '{}'
+    fi
+}
+
+_save_global() {
+    mkdir -p "$GLOBAL_CONFIG_DIR"
+    echo "$1" > "$GLOBAL_DISCORD"
+    chmod 600 "$GLOBAL_DISCORD"
+}
+
+_get_field() {
+    echo "$1" | $PYTHON -c "import json,sys; d=json.load(sys.stdin); print(d.get('$2',''))" 2>/dev/null
+}
+
+# ─── Project config helpers ───────────────────────────────────────
+
+_find_orch_config() {
+    local project_path="${1:-.}"
+    for candidate in \
+        "$project_path/wt/orchestration/config.yaml" \
+        "$project_path/.claude/orchestration.yaml"; do
+        if [[ -f "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    echo ""
+}
+
+_set_discord_in_orch() {
+    local config_file="$1"
+    local enabled="$2"
+    local channel_name="${3:-}"
+
+    if [[ ! -f "$config_file" ]]; then
+        # Create minimal config
+        mkdir -p "$(dirname "$config_file")"
+        cat > "$config_file" <<YAML
+# Discord notifications (managed by set-discord-setup)
+discord:
+  enabled: $enabled
+YAML
+        if [[ -n "$channel_name" ]]; then
+            echo "  channel_name: \"$channel_name\"" >> "$config_file"
+        fi
+        return 0
+    fi
+
+    # Update existing config
+    if grep -q "^discord:" "$config_file" 2>/dev/null; then
+        sed -i "s/^\(  enabled:\).*/\1 $enabled/" "$config_file"
+    else
+        cat >> "$config_file" <<YAML
+
+# Discord notifications (managed by set-discord-setup)
+discord:
+  enabled: $enabled
+YAML
+        if [[ -n "$channel_name" ]]; then
+            echo "  channel_name: \"$channel_name\"" >> "$config_file"
+        fi
+    fi
+}
+
+# ─── Commands ─────────────────────────────────────────────────────
+
+cmd_setup() {
+    echo ""
+    echo -e "${BOLD}╔══════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}║   [SET] Discord Integration Setup    ║${NC}"
+    echo -e "${BOLD}╚══════════════════════════════════════╝${NC}"
+    echo ""
+    echo "This sets up Discord globally for all your set-core projects."
+    echo "Individual projects opt-in via: set-discord-setup enable"
+    echo ""
+
+    # ── Check discord.py ──
+    info "Checking discord.py..."
+    if $PYTHON -c "import discord" 2>/dev/null; then
+        success "discord.py is installed"
+    else
+        warn "discord.py not found."
+        read -p "Install now? [Y/n] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            pip install discord.py 2>/dev/null || pip install --break-system-packages discord.py
+        fi
+    fi
+
+    # ── Bot token ──
+    echo ""
+    echo -e "${BOLD}Step 1: Discord Bot Token${NC}"
+    echo ""
+
+    local existing_token
+    existing_token=$(_get_field "$(_load_global)" "token")
+
+    if [[ -n "$existing_token" ]]; then
+        success "Token already configured (${existing_token:0:20}...)"
+        read -p "Replace? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            BOT_TOKEN="$existing_token"
+        fi
+    fi
+
+    if [[ -z "${BOT_TOKEN:-}" ]]; then
+        echo "Create a Discord bot:"
+        echo "  1. https://discord.com/developers/applications → New Application"
+        echo "  2. Bot tab → Reset Token → copy"
+        echo ""
+        read -p "Paste bot token: " -r BOT_TOKEN
+        echo
+
+        if [[ -z "$BOT_TOKEN" ]]; then
+            error "No token. Exiting."
+            exit 1
+        fi
+    fi
+
+    export SET_DISCORD_TOKEN="$BOT_TOKEN"
+
+    # ── Guild ID ──
+    echo ""
+    echo -e "${BOLD}Step 2: Discord Server ID${NC}"
+    echo ""
+
+    local existing_guild
+    existing_guild=$(_get_field "$(_load_global)" "guild_id")
+
+    if [[ -n "$existing_guild" ]]; then
+        success "Guild ID already configured ($existing_guild)"
+        read -p "Replace? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            GUILD_ID="$existing_guild"
+        fi
+    fi
+
+    if [[ -z "${GUILD_ID:-}" ]]; then
+        echo "Get your server ID:"
+        echo "  Discord Settings → Advanced → Developer Mode → ON"
+        echo "  Right-click server name → Copy Server ID"
+        echo ""
+        read -p "Paste Guild ID: " -r GUILD_ID
+        echo
+
+        if [[ -z "$GUILD_ID" ]]; then
+            error "No Guild ID. Exiting."
+            exit 1
+        fi
+    fi
+
+    # ── Invite bot ──
+    echo ""
+    echo -e "${BOLD}Step 3: Invite Bot${NC}"
+    echo ""
+
+    TOKEN_PART="${BOT_TOKEN%%.*}"
+    APP_ID=$(echo "$TOKEN_PART" | base64 -d 2>/dev/null || true)
+
+    if [[ -n "$APP_ID" && "$APP_ID" =~ ^[0-9]+$ ]]; then
+        INVITE_URL="https://discord.com/oauth2/authorize?client_id=${APP_ID}&permissions=309237729296&integration_type=0&scope=bot"
+        echo "Invite URL:"
+        echo "  $INVITE_URL"
+    else
+        echo "Go to Developer Portal → OAuth2 → URL Generator"
+        echo "  Scope: bot"
+        echo "  Permissions: Send Messages, Threads, Embed Links, Read History"
+    fi
+    echo ""
+    read -p "Press Enter after inviting the bot... " -r
+
+    # ── Test connection ──
+    echo ""
+    info "Testing connection..."
+
+    TEST_RESULT=$($PYTHON -c "
+import asyncio, discord, os
+async def test():
+    client = discord.Client(intents=discord.Intents.default())
+    @client.event
+    async def on_ready():
+        g = client.get_guild(int('$GUILD_ID'))
+        print(f'OK:{g.name}' if g else f'FAIL:guild not found in {[g.name for g in client.guilds]}')
+        await client.close()
+    await asyncio.wait_for(client.start(os.environ['SET_DISCORD_TOKEN']), timeout=15)
+asyncio.run(test())
+" 2>&1) || true
+
+    if [[ "$TEST_RESULT" == OK:* ]]; then
+        GUILD_NAME="${TEST_RESULT#OK:}"
+        success "Connected to: $GUILD_NAME"
+    else
+        error "Connection failed: ${TEST_RESULT#FAIL:}"
+        exit 1
+    fi
+
+    # ── Save global config ──
+    $PYTHON -c "
+import json
+config = {'token': '$BOT_TOKEN', 'guild_id': '$GUILD_ID', 'guild_name': '$GUILD_NAME'}
+print(json.dumps(config, indent=2))
+" > "$GLOBAL_DISCORD"
+    chmod 600 "$GLOBAL_DISCORD"
+    success "Saved to $GLOBAL_DISCORD"
+
+    echo ""
+    echo -e "${BOLD}Global setup complete!${NC}"
+    echo ""
+    echo "Now enable Discord for a project:"
+    echo "  cd /path/to/project"
+    echo "  set-discord-setup enable"
+    echo ""
+}
+
+cmd_enable() {
+    local project_path
+    project_path="$(pwd)"
+    local project_name
+    project_name="$(basename "$project_path")"
+
+    # Load global config
+    local global
+    global=$(_load_global)
+    local token guild_id
+    token=$(_get_field "$global" "token")
+    guild_id=$(_get_field "$global" "guild_id")
+
+    if [[ -z "$token" || -z "$guild_id" ]]; then
+        error "Global Discord not configured. Run: set-discord-setup"
+        exit 1
+    fi
+
+    # Find or create orch config
+    local orch_config
+    orch_config=$(_find_orch_config "$project_path")
+    if [[ -z "$orch_config" ]]; then
+        orch_config="$project_path/.claude/orchestration.yaml"
+    fi
+
+    # Ask for custom channel name
+    echo ""
+    echo -e "${BOLD}[SET] Enable Discord for: $project_name${NC}"
+    echo ""
+    read -p "Channel name (Enter for #set-$project_name): " -r CHAN_NAME
+    CHAN_NAME="${CHAN_NAME:-}"
+
+    _set_discord_in_orch "$orch_config" "true" "$CHAN_NAME"
+    success "Discord enabled in $orch_config"
+
+    # Inject guild_id if not present
+    if ! grep -q "guild_id:" "$orch_config" 2>/dev/null; then
+        sed -i "/^discord:/a\\  guild_id: \"$guild_id\"" "$orch_config"
+    fi
+
+    echo ""
+    echo "Orchestration will now post to Discord."
+    echo "Run 'set-discord-setup test' to verify."
+    echo ""
+}
+
+cmd_disable() {
+    local orch_config
+    orch_config=$(_find_orch_config "$(pwd)")
+
+    if [[ -z "$orch_config" ]]; then
+        error "No orchestration config found."
+        exit 1
+    fi
+
+    _set_discord_in_orch "$orch_config" "false"
+    success "Discord disabled in $orch_config"
+}
+
+cmd_status() {
+    echo ""
+    echo -e "${BOLD}[SET] Discord Status${NC}"
+    echo ""
+
+    # Global
+    if [[ -f "$GLOBAL_DISCORD" ]]; then
+        local global
+        global=$(_load_global)
+        local guild_name guild_id
+        guild_name=$(_get_field "$global" "guild_name")
+        guild_id=$(_get_field "$global" "guild_id")
+        success "Global: configured → $guild_name ($guild_id)"
+    else
+        warn "Global: not configured (run: set-discord-setup)"
+    fi
+
+    # Project
+    local orch_config
+    orch_config=$(_find_orch_config "$(pwd)")
+    if [[ -n "$orch_config" ]] && grep -q "discord:" "$orch_config" 2>/dev/null; then
+        local enabled
+        enabled=$(grep "enabled:" "$orch_config" | head -1 | awk '{print $2}')
+        if [[ "$enabled" == "true" ]]; then
+            success "Project: enabled ($(basename "$(pwd)"))"
+        else
+            warn "Project: disabled"
+        fi
+        echo "  Config: $orch_config"
+    else
+        info "Project: no discord config"
+    fi
+    echo ""
+}
+
+cmd_test() {
+    local project_path
+    project_path="$(pwd)"
+    local project_name
+    project_name="$(basename "$project_path")"
+
+    # Load global config
+    local global
+    global=$(_load_global)
+    local token guild_id
+    token=$(_get_field "$global" "token")
+    guild_id=$(_get_field "$global" "guild_id")
+
+    if [[ -z "$token" || -z "$guild_id" ]]; then
+        error "Global Discord not configured. Run: set-discord-setup"
+        exit 1
+    fi
+
+    export SET_DISCORD_TOKEN="$token"
+
+    info "Sending test message for $project_name..."
+
+    $PYTHON -c "
+import asyncio, discord, os, sys
+sys.path.insert(0, '$(dirname "$SCRIPT_DIR")')
+from lib.set_orch.discord.channel import resolve_channel
+
+async def test():
+    client = discord.Client(intents=discord.Intents.default())
+    @client.event
+    async def on_ready():
+        ch = await resolve_channel(client, guild_id='$guild_id', channel_name='$project_name')
+        if ch:
+            embed = discord.Embed(
+                title='[SET] Discord Integration Active',
+                description='Orchestration notifications will appear in this channel.',
+                color=0x2ECC71,
+            )
+            embed.add_field(name='Project', value='$project_name', inline=True)
+            embed.add_field(name='Channel', value=f'#{ch.name}', inline=True)
+            embed.set_footer(text='set-core orchestrator')
+            await ch.send(embed=embed)
+            print(f'OK:#{ch.name}')
+        else:
+            print('FAIL:channel')
+        await client.close()
+    await asyncio.wait_for(client.start(os.environ['SET_DISCORD_TOKEN']), timeout=15)
+asyncio.run(test())
+" 2>&1 | while read -r line; do
+        if [[ "$line" == OK:* ]]; then
+            success "Test message sent to ${line#OK:}"
+        elif [[ "$line" == FAIL:* ]]; then
+            error "Failed: ${line#FAIL:}"
+        fi
+    done
+}
+
+# ─── Also update config.py to read from global discord.json ──────
+
+# ─── Main ─────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    enable)  cmd_enable ;;
+    disable) cmd_disable ;;
+    status)  cmd_status ;;
+    test)    cmd_test ;;
+    "")      cmd_setup ;;
+    *)
+        echo "Usage: set-discord-setup [enable|disable|status|test]"
+        echo ""
+        echo "  (no args)  Global setup — bot token + guild"
+        echo "  enable     Enable Discord for current project"
+        echo "  disable    Disable Discord for current project"
+        echo "  status     Show configuration"
+        echo "  test       Send test message"
+        exit 1
+        ;;
+esac
