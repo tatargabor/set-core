@@ -61,7 +61,7 @@ export default function ScreenshotGallery({ project, changeName }: Props) {
                     className="w-full h-full object-cover"
                     loading="lazy"
                   />
-                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-xs text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
                     {s.name}
                   </span>
                 </button>
@@ -85,7 +85,7 @@ export default function ScreenshotGallery({ project, changeName }: Props) {
                     className="w-full h-full object-cover"
                     loading="lazy"
                   />
-                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-xs text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
                     {s.name}
                   </span>
                 </button>

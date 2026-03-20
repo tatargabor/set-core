@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { TuiStatus } from './components/tui'
 import Dashboard from './pages/Dashboard'
 import Worktrees from './pages/Worktrees'
 import Settings from './pages/Settings'
@@ -41,7 +42,7 @@ function SidebarQuickStatus({ state }: { state: StateData | null }) {
   const done = changes.filter(c => ['done', 'merged', 'completed', 'skip_merged'].includes(c.status)).length
   const failed = changes.filter(c => ['failed', 'verify-failed'].includes(c.status)).length
   return (
-    <div className="px-3 py-2 space-y-1 text-[10px]">
+    <div className="px-3 py-2 space-y-1 text-xs">
       <div className="flex items-center justify-between text-neutral-400">
         <span>{done}/{changes.length} done</span>
         {failed > 0 && <span className="text-red-400">{failed} failed</span>}
@@ -65,9 +66,8 @@ function SidebarChanges({ changes, selected, onSelect }: {
 
   return (
     <div className="px-2 py-1 space-y-0.5">
-      <div className="px-1 py-1 text-[9px] text-neutral-600 uppercase tracking-wider font-medium">Changes</div>
+      <div className="px-1 py-1 text-xs text-neutral-600 uppercase tracking-wider font-medium">Changes</div>
       {changes.map(c => {
-        const dot = statusDot[c.status] ?? 'bg-neutral-700'
         const isActive = selected === c.name
         return (
           <button
@@ -77,8 +77,8 @@ function SidebarChanges({ changes, selected, onSelect }: {
               isActive ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
-            <span className="text-[11px] font-mono truncate">{c.name}</span>
+            <TuiStatus status={c.status} label={false} />
+            <span className="text-sm truncate">{c.name}</span>
           </button>
         )
       })}
@@ -164,7 +164,7 @@ function ProjectLayout() {
           </svg>
         </button>
         <span className="text-sm font-semibold text-neutral-100 truncate">{project}</span>
-        <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotColor}`} />
+        <TuiStatus status={orchStatus} label={false} />
       </div>
 
       {/* Backdrop overlay (mobile) */}
@@ -184,7 +184,7 @@ function ProjectLayout() {
       `}>
         <Link to="/set" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
           <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
-          <p className="text-[9px] text-neutral-500 tracking-wide">Ship Exactly This!</p>
+          <p className="text-xs text-neutral-500 tracking-wide">Ship Exactly This!</p>
         </Link>
         <div className="p-3">
           <ProjectSelector
@@ -223,7 +223,7 @@ function ProjectLayout() {
         {/* Quick status */}
         <div className="border-t border-neutral-800">
           {stateError ? (
-            <div className="px-3 py-2 text-[10px] text-red-400 bg-red-950/30">
+            <div className="px-3 py-2 text-xs text-red-400 bg-red-950/30">
               {stateError}
             </div>
           ) : (
@@ -238,8 +238,8 @@ function ProjectLayout() {
 
         {/* Footer */}
         <div className="border-t border-neutral-800 px-3 py-2">
-          <div className="text-[9px] text-neutral-600 font-mono truncate">{project}</div>
-          <div className="text-[9px] text-neutral-700">:8765</div>
+          <div className="text-xs text-neutral-600 truncate">{project}</div>
+          <div className="text-xs text-neutral-700">:8765</div>
         </div>
       </aside>
 
@@ -262,7 +262,7 @@ function HomeLayout() {
       <aside className="hidden md:flex w-56 shrink-0 border-r border-neutral-800 flex-col">
         <div className="p-4 border-b border-neutral-800">
           <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
-          <p className="text-[9px] text-neutral-500 tracking-wide">Ship Exactly This!</p>
+          <p className="text-xs text-neutral-500 tracking-wide">Ship Exactly This!</p>
         </div>
       </aside>
       <main className="flex-1 overflow-auto">

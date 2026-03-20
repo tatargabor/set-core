@@ -68,7 +68,7 @@ export default function GateDetail({ change }: Props) {
           {expanded.has(g.name) && (
             <div className="px-3 pb-2 max-h-64 overflow-auto">
               {g.output ? (
-                <pre className="text-[11px] text-neutral-400 whitespace-pre-wrap font-mono leading-relaxed">{g.output}</pre>
+                <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{g.output}</pre>
               ) : (
                 <span className="text-xs text-neutral-600">No output</span>
               )}
@@ -77,7 +77,7 @@ export default function GateDetail({ change }: Props) {
         </div>
       ))}
       {change.gate_total_ms != null && (
-        <div className="text-[10px] text-neutral-500 pt-1">
+        <div className="text-xs text-neutral-500 pt-1">
           Total gate time: {(change.gate_total_ms / 1000).toFixed(1)}s
         </div>
       )}

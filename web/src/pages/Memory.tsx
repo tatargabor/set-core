@@ -88,7 +88,7 @@ export default function Memory({ project }: Props) {
         <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 flex items-center gap-4">
           <span className={`w-2.5 h-2.5 rounded-full ${healthOk ? 'bg-green-500' : 'bg-red-500'}`} />
           <span className={`text-sm ${healthOk ? 'text-green-400' : 'text-red-400'}`}>{healthText}</span>
-          <span className="ml-auto text-sm text-neutral-300 font-mono">{total.toLocaleString()} memories</span>
+          <span className="ml-auto text-sm text-neutral-300">{total.toLocaleString()} memories</span>
           {stats.noise_ratio != null && (
             <span className="text-xs text-neutral-500">{Math.round(stats.noise_ratio * 100)}% noise</span>
           )}
@@ -104,27 +104,27 @@ export default function Memory({ project }: Props) {
               <div className="flex items-center gap-3">
                 <span className="text-xs text-neutral-400 w-24">Long-term</span>
                 <Bar value={stats.long_term_memory_count} max={total} color="bg-purple-500" />
-                <span className="text-xs text-neutral-300 font-mono w-12 text-right">{stats.long_term_memory_count}</span>
+                <span className="text-xs text-neutral-300 w-12 text-right">{stats.long_term_memory_count}</span>
               </div>
             )}
             {stats.session_memory_count != null && stats.session_memory_count > 0 && (
               <div className="flex items-center gap-3">
                 <span className="text-xs text-neutral-400 w-24">Session</span>
                 <Bar value={stats.session_memory_count} max={total} color="bg-blue-500" />
-                <span className="text-xs text-neutral-300 font-mono w-12 text-right">{stats.session_memory_count}</span>
+                <span className="text-xs text-neutral-300 w-12 text-right">{stats.session_memory_count}</span>
               </div>
             )}
             {stats.working_memory_count != null && stats.working_memory_count > 0 && (
               <div className="flex items-center gap-3">
                 <span className="text-xs text-neutral-400 w-24">Working</span>
                 <Bar value={stats.working_memory_count} max={total} color="bg-cyan-500" />
-                <span className="text-xs text-neutral-300 font-mono w-12 text-right">{stats.working_memory_count}</span>
+                <span className="text-xs text-neutral-300 w-12 text-right">{stats.working_memory_count}</span>
               </div>
             )}
             {stats.total_retrievals != null && stats.total_retrievals > 0 && (
               <div className="flex items-center gap-3 pt-1 border-t border-neutral-800/50">
                 <span className="text-xs text-neutral-500 w-24">Retrievals</span>
-                <span className="text-xs text-neutral-400 font-mono">{stats.total_retrievals}</span>
+                <span className="text-xs text-neutral-400">{stats.total_retrievals}</span>
               </div>
             )}
           </div>
@@ -143,8 +143,8 @@ export default function Memory({ project }: Props) {
                 <div key={type} className="flex items-center gap-3">
                   <span className="text-xs text-neutral-400 w-20">{type}</span>
                   <Bar value={count} max={maxType} color={color} />
-                  <span className="text-xs text-neutral-300 font-mono w-12 text-right">{count}</span>
-                  <span className="text-[10px] text-neutral-500 w-10 text-right">{pct}%</span>
+                  <span className="text-xs text-neutral-300 w-12 text-right">{count}</span>
+                  <span className="text-xs text-neutral-500 w-10 text-right">{pct}%</span>
                 </div>
               )
             })}
@@ -159,9 +159,9 @@ export default function Memory({ project }: Props) {
           <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 space-y-2">
             {Object.entries(importance).map(([range, count]) => (
               <div key={range} className="flex items-center gap-3">
-                <span className="text-xs text-neutral-500 font-mono w-14">{range}</span>
+                <span className="text-xs text-neutral-500 w-14">{range}</span>
                 <Bar value={count} max={maxImportance} color="bg-amber-500" />
-                <span className="text-xs text-neutral-300 font-mono w-12 text-right">{count}</span>
+                <span className="text-xs text-neutral-300 w-12 text-right">{count}</span>
               </div>
             ))}
           </div>
@@ -175,7 +175,7 @@ export default function Memory({ project }: Props) {
           <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3">
             <div className="flex flex-wrap gap-1.5">
               {sortedTags.map(([tag, count]) => (
-                <span key={tag} className="px-2 py-0.5 bg-neutral-800 rounded text-[11px] text-neutral-300 font-mono">
+                <span key={tag} className="px-2 py-0.5 bg-neutral-800 rounded text-sm text-neutral-300">
                   {tag} <span className="text-neutral-500">{count}</span>
                 </span>
               ))}
@@ -188,7 +188,7 @@ export default function Memory({ project }: Props) {
       {data.sync && typeof data.sync === 'string' && !data.sync.startsWith('{') && (
         <section>
           <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Sync</h2>
-          <pre className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 text-xs text-neutral-400 font-mono whitespace-pre-wrap">
+          <pre className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3 text-xs text-neutral-400 whitespace-pre-wrap">
             {data.sync}
           </pre>
         </section>

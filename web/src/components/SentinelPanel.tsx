@@ -176,13 +176,13 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
         {/* Events stream */}
         <div className="flex-1 min-h-0 flex flex-col border-r border-neutral-800">
-          <div className="px-3 py-1 text-[10px] font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
+          <div className="px-3 py-1 text-xs font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
             Events
           </div>
           <div
             ref={eventsContainerRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-auto font-mono text-xs p-2 space-y-px"
+            className="flex-1 overflow-auto text-xs p-2 space-y-px"
           >
             {displayEvents.length === 0 && (
               <div className="text-neutral-600 text-center py-8">No events yet</div>
@@ -224,7 +224,7 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
         {/* Right side: findings + assessments */}
         <div className="w-full lg:w-80 flex flex-col min-h-0 shrink-0">
           {/* Findings */}
-          <div className="px-3 py-1 text-[10px] font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
+          <div className="px-3 py-1 text-xs font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
             Findings ({findings.findings.length})
           </div>
           <div className="flex-1 overflow-auto p-2 space-y-1.5 min-h-[100px]">
@@ -234,9 +234,9 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
             {findings.findings.map(f => (
               <div key={f.id} className={`text-xs rounded border px-2 py-1.5 ${SEVERITY_COLORS[f.severity] ?? 'bg-neutral-900 text-neutral-300 border-neutral-700'}`}>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-medium">{f.id}</span>
-                  <span className="text-[10px] opacity-70">{f.change}</span>
-                  <span className={`ml-auto text-[10px] ${STATUS_COLORS[f.status] ?? 'text-neutral-400'}`}>{f.status}</span>
+                  <span className="font-medium">{f.id}</span>
+                  <span className="text-xs opacity-70">{f.change}</span>
+                  <span className={`ml-auto text-xs ${STATUS_COLORS[f.status] ?? 'text-neutral-400'}`}>{f.status}</span>
                 </div>
                 <div className="mt-0.5 opacity-90">{f.summary}</div>
               </div>
@@ -246,7 +246,7 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
           {/* Assessments */}
           {findings.assessments.length > 0 && (
             <>
-              <div className="px-3 py-1 text-[10px] font-medium text-neutral-500 uppercase tracking-wider border-t border-b border-neutral-800 bg-neutral-900/50">
+              <div className="px-3 py-1 text-xs font-medium text-neutral-500 uppercase tracking-wider border-t border-b border-neutral-800 bg-neutral-900/50">
                 Assessment
               </div>
               <div className="p-2 space-y-1">

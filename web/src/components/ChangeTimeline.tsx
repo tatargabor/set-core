@@ -120,7 +120,7 @@ export default function ChangeTimeline({ change }: Props) {
               style={widthStyle}
               title={`${p.name}${p.ms ? ': ' + formatMs(p.ms) : ''}`}
             >
-              <span className={`text-[9px] font-medium ${phaseLabelColors[p.result ?? 'pending']}`}>
+              <span className={`text-xs font-medium ${phaseLabelColors[p.result ?? 'pending']}`}>
                 {p.name}
                 {p.ms ? <span className="ml-0.5 opacity-70">{formatMs(p.ms)}</span> : null}
               </span>

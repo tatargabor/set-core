@@ -173,7 +173,7 @@ export default function Dashboard({ project }: Props) {
               }
             }}
             data-tab={t.id}
-            className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm md:text-[11px] whitespace-nowrap rounded transition-colors ${
+            className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm whitespace-nowrap rounded transition-colors ${
               activeTab === t.id
                 ? 'bg-neutral-800 text-neutral-200 font-medium'
                 : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'

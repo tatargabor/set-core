@@ -81,7 +81,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${badgeColor[statusBadge] ?? 'bg-neutral-800 text-neutral-400'}`}>
           {statusBadge}
         </span>
-        <span className={`w-2 h-2 rounded-full hidden md:inline-block ${connected ? 'bg-green-500' : 'bg-red-500'}`} title={connected ? 'Connected' : 'Disconnected'} />
+        <span className={`hidden md:inline-block ${connected ? 'text-green-500' : 'text-red-500'}`} title={connected ? 'Connected' : 'Disconnected'}>{connected ? '\u25CF' : '\u25CB'}</span>
       </div>
 
       {state && (

@@ -31,7 +31,7 @@ function ConfigValue({ label, value }: { label: string; value: React.ReactNode }
   return (
     <div className="flex items-start gap-3 py-1.5">
       <span className="text-xs text-neutral-500 w-36 shrink-0">{label}</span>
-      <span className="text-xs text-neutral-300 font-mono break-all">{value ?? <span className="text-neutral-600">—</span>}</span>
+      <span className="text-xs text-neutral-300 break-all">{value ?? <span className="text-neutral-600">—</span>}</span>
     </div>
   )
 }
@@ -230,7 +230,7 @@ export default function Settings({ project }: Props) {
       {data.config_raw && !directives && (
         <section>
           <h2 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">Config (raw)</h2>
-          <pre className="bg-neutral-900/50 rounded-lg border border-neutral-800 p-4 text-xs text-neutral-400 font-mono whitespace-pre-wrap overflow-auto max-h-64">
+          <pre className="bg-neutral-900/50 rounded-lg border border-neutral-800 p-4 text-xs text-neutral-400 whitespace-pre-wrap overflow-auto max-h-64">
             {data.config_raw}
           </pre>
         </section>

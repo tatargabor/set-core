@@ -120,14 +120,14 @@ export default function PlanViewer({ project }: Props) {
             {changes.map((c, i) => (
               <tr key={c.name} className="border-b border-neutral-800/30 hover:bg-neutral-900/50">
                 <td className="px-4 py-1.5 text-neutral-600">{i + 1}</td>
-                <td className="px-2 py-1.5 font-mono text-neutral-200">{c.name}</td>
+                <td className="px-2 py-1.5 text-neutral-200">{c.name}</td>
                 <td className={`px-2 py-1.5 text-center font-medium ${complexityColor[c.complexity ?? ''] ?? 'text-neutral-500'}`}>
                   {c.complexity ?? '?'}
                 </td>
                 <td className={`px-2 py-1.5 ${typeColor[c.change_type ?? ''] ?? 'text-neutral-500'}`}>
                   {c.change_type ?? ''}
                 </td>
-                <td className="px-2 py-1.5 text-neutral-500 font-mono">
+                <td className="px-2 py-1.5 text-neutral-500">
                   {c.dependencies?.length ? c.dependencies.join(', ') : '—'}
                 </td>
                 <td className="px-2 py-1.5 text-neutral-500 max-w-[300px] truncate" title={c.scope}>

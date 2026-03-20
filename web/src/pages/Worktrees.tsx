@@ -62,8 +62,8 @@ export default function Worktrees({ project }: Props) {
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-sm text-neutral-200 truncate">{wt.branch}</span>
-                  <span className="text-[10px] text-neutral-600 font-mono">{wt.head?.slice(0, 7)}</span>
+                  <span className="text-sm text-neutral-200 truncate">{wt.branch}</span>
+                  <span className="text-xs text-neutral-600">{wt.head?.slice(0, 7)}</span>
                 </div>
                 <div className="flex gap-3 text-xs text-neutral-500">
                   {wt.iteration !== undefined && (
@@ -148,7 +148,7 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
     <>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
-        <span className="font-mono text-sm text-neutral-200">{worktree.branch}</span>
+        <span className="text-sm text-neutral-200">{worktree.branch}</span>
         {worktree.iteration !== undefined && (
           <span className="text-xs text-neutral-500">
             Iteration {worktree.iteration}{worktree.max_iterations ? ` / ${worktree.max_iterations}` : ''}
@@ -159,7 +159,7 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
             {shortTime(worktree.activity.updated_at)}
           </span>
         )}
-        <span className="text-xs text-neutral-600 font-mono truncate ml-auto">{worktree.path}</span>
+        <span className="text-xs text-neutral-600 truncate ml-auto">{worktree.path}</span>
       </div>
 
       {/* Activity bar */}
@@ -183,7 +183,7 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
               <button
                 key={name}
                 onClick={() => setActiveLog(name)}
-                className={`px-2 py-1 text-xs rounded-t font-mono transition-colors ${
+                className={`px-2 py-1 text-xs rounded-t transition-colors ${
                   name === activeLog
                     ? 'bg-neutral-800 text-neutral-200'
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
@@ -197,7 +197,7 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
       )}
 
       {/* Log content */}
-      <div ref={logRef} className="flex-1 overflow-auto p-3 font-mono text-xs leading-5">
+      <div ref={logRef} className="flex-1 overflow-auto p-3 text-xs leading-5">
         {loading && <p className="text-neutral-600">Loading...</p>}
         {!loading && logLines.length === 0 && (
           <p className="text-neutral-600">No logs available</p>

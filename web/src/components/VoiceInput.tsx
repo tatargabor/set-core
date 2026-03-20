@@ -205,7 +205,7 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
 
       {/* Duration display */}
       {recording && (
-        <span className="text-xs text-red-400 font-mono min-w-[32px]">
+        <span className="text-xs text-red-400 min-w-[32px]">
           {formatDuration(duration)}
         </span>
       )}

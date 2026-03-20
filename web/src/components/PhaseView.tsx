@@ -1,4 +1,5 @@
 import type { ChangeInfo, StateData } from '../lib/api'
+import { TuiStatus } from './tui'
 import GateBar from './GateBar'
 
 interface Props {
@@ -122,45 +123,43 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
           {depth > 0 && (
             <span className="text-neutral-700 text-xs shrink-0">└</span>
           )}
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-            statusColor[displayStatus]?.replace('text-', 'bg-') ?? 'bg-neutral-600'
-          }`} />
-          <span className="font-mono text-xs text-neutral-200 truncate">{c.name}</span>
+          <TuiStatus status={displayStatus} label={false} />
+          <span className="text-xs text-neutral-200 truncate">{c.name}</span>
           {blockedBy && (
-            <span className="text-[10px] text-neutral-600 shrink-0 truncate">← {blockedBy}</span>
+            <span className="text-xs text-neutral-600 shrink-0 truncate">← {blockedBy}</span>
           )}
         </div>
 
         {/* Status */}
-        <span className={`text-[11px] ${statusColor[displayStatus] ?? 'text-neutral-400'}`}>
+        <span className={`text-sm ${statusColor[displayStatus] ?? 'text-neutral-400'}`}>
           {displayStatus}
         </span>
 
         {/* Complexity */}
-        <span className="text-[11px] text-neutral-500 text-center">
+        <span className="text-sm text-neutral-500 text-center">
           {c.complexity ?? '—'}
         </span>
 
         {/* Type */}
-        <span className="text-[11px] text-neutral-600 truncate">
+        <span className="text-sm text-neutral-600 truncate">
           {c.change_type ?? '—'}
         </span>
 
         {/* Sessions */}
-        <span className="text-[11px] text-neutral-500 text-center">
+        <span className="text-sm text-neutral-500 text-center">
           {c.session_count ?? '—'}
         </span>
 
         {/* Duration */}
-        <span className="text-[11px] text-neutral-500 text-right">{formatDuration(dur)}</span>
+        <span className="text-sm text-neutral-500 text-right">{formatDuration(dur)}</span>
 
         {/* Tokens */}
-        <span className="text-[11px] text-neutral-500 font-mono text-right">
+        <span className="text-sm text-neutral-500 text-right">
           {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
         </span>
 
         {/* Model */}
-        <span className="text-[10px] text-neutral-600 truncate">
+        <span className="text-xs text-neutral-600 truncate">
           {c.model ? c.model.replace('claude-', '').replace('-latest', '') : '—'}
         </span>
 
@@ -227,7 +226,7 @@ export default function PhaseView({ changes, state }: Props) {
 
               <span className="text-xs text-neutral-400">{doneCount}/{totalCount}</span>
               {totalTokens > 0 && (
-                <span className="text-xs text-neutral-500 font-mono">{formatTokens(totalTokens)}</span>
+                <span className="text-xs text-neutral-500">{formatTokens(totalTokens)}</span>
               )}
               {totalDuration > 0 && (
                 <span className="text-xs text-neutral-500">{formatDuration(totalDuration)}</span>
@@ -236,7 +235,7 @@ export default function PhaseView({ changes, state }: Props) {
 
             {/* Column headers */}
             <div
-              className="grid items-center px-3 py-1 text-[10px] text-neutral-600 border-b border-neutral-800/30"
+              className="grid items-center px-3 py-1 text-xs text-neutral-600 border-b border-neutral-800/30"
               style={{ gridTemplateColumns: GRID_COLS }}
             >
               <span>Name</span>

@@ -37,7 +37,7 @@ export default function LogStream({ lines }: Props) {
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto p-2 font-mono text-xs leading-5"
+        className="flex-1 overflow-auto p-2 text-xs leading-5"
       >
         {lines.map((line, i) => (
           <div key={i} className={lineColor(line)}>

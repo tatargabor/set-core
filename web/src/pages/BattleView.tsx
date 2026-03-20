@@ -121,7 +121,7 @@ function PlayerNameInput() {
         onClick={() => setEditing(true)}
         className="mt-4 text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
       >
-        Player: <span className="font-mono text-neutral-300">{name}</span> (click to change)
+        Player: <span className="text-neutral-300">{name}</span> (click to change)
       </button>
     )
   }

@@ -287,7 +287,7 @@ export default function OrchestrationChat({ project }: Props) {
           />
           {/* Live orchestration state */}
           {orchState && orchState.total > 0 && (
-            <span className="text-[10px] text-neutral-500" title={Object.entries(orchState.by_status).map(([k, v]) => `${v} ${k}`).join(', ')}>
+            <span className="text-xs text-neutral-500" title={Object.entries(orchState.by_status).map(([k, v]) => `${v} ${k}`).join(', ')}>
               {orchState.done}/{orchState.total}
             </span>
           )}
@@ -346,16 +346,16 @@ export default function OrchestrationChat({ project }: Props) {
                     <span className={`transition-transform ${tool.collapsed ? '' : 'rotate-90'}`}>
                       ▶
                     </span>
-                    <span className="font-mono text-cyan-400">{tool.tool}</span>
+                    <span className="text-cyan-400">{tool.tool}</span>
                     <span className="text-neutral-500 truncate flex-1">
                       {tool.input.slice(0, 60)}
                     </span>
                     {tool.output !== undefined && (
-                      <span className="text-green-500 text-[10px]">done</span>
+                      <span className="text-green-500 text-xs">done</span>
                     )}
                   </button>
                   {!tool.collapsed && (
-                    <div className="px-2 py-1 text-xs font-mono bg-neutral-900/50 max-h-40 overflow-auto">
+                    <div className="px-2 py-1 text-xs bg-neutral-900/50 max-h-40 overflow-auto">
                       <div className="text-neutral-400 mb-1">Input:</div>
                       <pre className="text-neutral-300 whitespace-pre-wrap break-all">{tool.input}</pre>
                       {tool.output !== undefined && (
@@ -371,7 +371,7 @@ export default function OrchestrationChat({ project }: Props) {
 
               {/* Cost info */}
               {msg.cost_usd !== undefined && (
-                <div className="mt-1 text-[10px] text-neutral-600">
+                <div className="mt-1 text-xs text-neutral-600">
                   ${msg.cost_usd.toFixed(4)} · {((msg.duration_ms ?? 0) / 1000).toFixed(1)}s
                 </div>
               )}

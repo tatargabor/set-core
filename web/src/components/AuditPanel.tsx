@@ -12,15 +12,15 @@ const severityColor = {
 
 function Badge({ result }: { result: AuditResult }) {
   if (result.audit_result === 'clean') {
-    return <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-green-900/50 text-green-400">Clean</span>
+    return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-green-900/50 text-green-400">Clean</span>
   }
   if (result.audit_result === 'parse_error') {
-    return <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-yellow-900/50 text-yellow-400">Parse Error</span>
+    return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900/50 text-yellow-400">Parse Error</span>
   }
   const gapCount = result.gaps?.length ?? 0
   const critCount = result.gaps?.filter(g => g.severity === 'critical').length ?? 0
   return (
-    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-900/50 text-red-400">
+    <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-900/50 text-red-400">
       {gapCount} gap{gapCount !== 1 ? 's' : ''}{critCount > 0 ? ` (${critCount} critical)` : ''}
     </span>
   )
@@ -44,16 +44,16 @@ function CycleEntry({ result, defaultOpen }: { result: AuditResult; defaultOpen:
       {open && (
         <div className="px-3 pb-2">
           {result.summary && (
-            <p className="text-[11px] text-neutral-400 italic mb-1">{result.summary}</p>
+            <p className="text-sm text-neutral-400 italic mb-1">{result.summary}</p>
           )}
           {result.audit_result === 'clean' && (
-            <p className="text-[11px] text-green-400 font-semibold">All spec sections covered</p>
+            <p className="text-sm text-green-400 font-semibold">All spec sections covered</p>
           )}
           {result.audit_result === 'parse_error' && (
-            <p className="text-[11px] text-yellow-400">Audit output could not be parsed — see debug log</p>
+            <p className="text-sm text-yellow-400">Audit output could not be parsed — see debug log</p>
           )}
           {result.audit_result === 'gaps_found' && result.gaps && result.gaps.length > 0 && (
-            <table className="w-full text-[11px] border-collapse mt-1">
+            <table className="w-full text-sm border-collapse mt-1">
               <thead>
                 <tr className="text-neutral-500 border-b border-neutral-800">
                   <th className="text-left py-1 pr-2">ID</th>
@@ -70,7 +70,7 @@ function CycleEntry({ result, defaultOpen }: { result: AuditResult; defaultOpen:
                     <tr key={gap.id} className={`${sev.bg} border-b border-neutral-800/50`}>
                       <td className="py-1 pr-2 text-neutral-300">{gap.id}</td>
                       <td className="py-1 pr-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${sev.chip}`}>
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sev.chip}`}>
                           {gap.severity}
                         </span>
                       </td>

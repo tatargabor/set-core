@@ -76,7 +76,7 @@ export default function TokenChart({ changes }: Props) {
         <span className="text-xs font-medium text-neutral-300">
           Total: {formatK(totals.total)}
         </span>
-        <div className="flex items-center gap-3 text-[10px]">
+        <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-sm bg-blue-500" />
             <span className="text-neutral-400">Input {formatK(totals.input)}</span>
@@ -90,7 +90,7 @@ export default function TokenChart({ changes }: Props) {
             <span className="text-neutral-400">Cache {formatK(totals.cache)}</span>
           </span>
         </div>
-        <span className="text-[10px] text-neutral-600 ml-auto">
+        <span className="text-xs text-neutral-600 ml-auto">
           {data.length} change{data.length !== 1 ? 's' : ''} with usage
         </span>
       </div>

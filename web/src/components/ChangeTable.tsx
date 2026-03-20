@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import type { ChangeInfo } from '../lib/api'
 import { stopChange, skipChange } from '../lib/api'
+import { TuiStatus } from './tui'
 import GateBar from './GateBar'
 import GateDetail from './GateDetail'
 import ScreenshotGallery from './ScreenshotGallery'
@@ -111,12 +112,10 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                   isExpanded ? 'bg-neutral-900/70' : ''
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full shrink-0 ${
-                  statusColor[c.status]?.replace('text-', 'bg-') ?? 'bg-neutral-600'
-                }`} />
-                <span className="font-mono text-xs text-neutral-200 truncate flex-1">{c.name}</span>
-                <span className="text-[10px] text-neutral-500 shrink-0">{formatDuration(changeDuration(c))}</span>
-                <span className={`text-[10px] shrink-0 ${statusColor[c.status] ?? 'text-neutral-400'}`}>{c.status}</span>
+                <TuiStatus status={c.status} label={false} />
+                <span className="text-xs text-neutral-200 truncate flex-1">{c.name}</span>
+                <span className="text-xs text-neutral-500 shrink-0">{formatDuration(changeDuration(c))}</span>
+                <span className="text-xs shrink-0"><TuiStatus status={c.status} /></span>
                 <span className="text-neutral-600 text-xs">{isExpanded ? '▲' : '▼'}</span>
               </button>
 
@@ -124,7 +123,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               {isExpanded && (
                 <div className="px-3 pb-3 space-y-2 bg-neutral-900/30">
                   {/* Tokens + model */}
-                  <div className="flex gap-4 text-[11px] text-neutral-400">
+                  <div className="flex gap-4 text-sm text-neutral-400">
                     <span>In: {formatTokens(c.input_tokens)}</span>
                     <span>Out: {formatTokens(c.output_tokens)}</span>
                     {c.context_tokens_end != null && (
@@ -241,13 +240,13 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                 clickable ? 'cursor-pointer hover:bg-neutral-900/50' : ''
               } ${isSelected ? 'bg-neutral-900/70 border-l-2 border-l-blue-500' : ''}`}
             >
-              <td className="px-4 py-2 font-mono text-neutral-200">{c.name}</td>
+              <td className="px-4 py-2 text-neutral-200">{c.name}</td>
               <td className={`px-2 py-2 font-medium ${statusColor[c.status] ?? 'text-neutral-400'}`}>
                 {c.status}
               </td>
               <td className="px-2 py-2 text-center text-neutral-400">{c.session_count ?? '—'}</td>
               <td className="px-2 py-2 text-right text-neutral-400">{formatDuration(changeDuration(c))}</td>
-              <td className="px-2 py-2 text-right text-neutral-400 font-mono text-xs">
+              <td className="px-2 py-2 text-right text-neutral-400 text-xs">
                 {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
                 {c.context_tokens_end != null && (
                   <span className={`ml-1 ${c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-500'}`}>

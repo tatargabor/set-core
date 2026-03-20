@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type SessionInfo } from '../lib/api'
+import { TuiProgress, TuiStatus, TuiSection, statusColor as tuiStatusColor } from './tui'
 
 interface Props {
   project: string
@@ -44,7 +45,7 @@ function ACItems({ req, coverage }: {
   return (
     <div className="pl-6 py-1 space-y-0.5">
       {ac.map((item, i) => (
-        <div key={i} className={`text-[11px] flex items-start gap-1.5 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
+        <div key={i} className={`text-sm flex items-start gap-1.5 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
           <span className="shrink-0 mt-0.5">{done ? '\u2611' : '\u2610'}</span>
           <span>{item}</span>
         </div>
@@ -119,7 +120,7 @@ export default function DigestView({ project }: Props) {
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+            className={`px-2 py-0.5 text-xs rounded transition-colors ${
               tab === t.id
                 ? 'bg-neutral-700 text-neutral-200'
                 : 'text-neutral-500 hover:text-neutral-300'
@@ -129,7 +130,7 @@ export default function DigestView({ project }: Props) {
           </button>
         ))}
         {data.index && (
-          <span className="ml-auto text-[10px] text-neutral-600">
+          <span className="ml-auto text-xs text-neutral-600">
             {data.index.file_count} files | {new Date(data.index.timestamp).toLocaleDateString()}
           </span>
         )}
@@ -181,32 +182,25 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
   return (
     <div className="p-3 space-y-3 text-xs">
       {/* Compact progress row */}
-      <div className="flex items-center gap-3 text-[11px]">
-        <span className="text-neutral-200 font-medium">{doneCount}/{totalReqs} merged</span>
-        {totalReqs > 0 && (
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-neutral-800 max-w-xs">
-            {coveredCount > 0 && <div className="h-full bg-neutral-700" style={{ width: `${(coveredCount / totalReqs) * 100}%` }} />}
-            {doneCount > 0 && <div className="h-full bg-blue-500 -mt-1.5" style={{ width: `${(doneCount / totalReqs) * 100}%` }} />}
-          </div>
-        )}
-        <span className="text-blue-400">{coveredCount} covered</span>
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <TuiProgress done={doneCount} total={totalReqs} className="text-sm" />
         {uncovered.length > 0 && <span className="text-yellow-400">{uncovered.length} uncovered</span>}
         <span className="text-neutral-500">{Object.keys(domains).length} domains</span>
       </div>
 
       {/* Requirements table — compact, capped on mobile */}
-      <table className="w-full text-[11px]">
+      <table className="w-full text-sm">
         <thead>
           <tr className="text-neutral-500 border-b border-neutral-800">
             <th className="text-left px-2 py-1 font-medium">
               <span>Req</span>
               <button
                 onClick={() => setExpandedReqs(new Set(reqs.map((r, i) => (r.acceptance_criteria?.length ?? 0) > 0 ? i : -1).filter(i => i >= 0)))}
-                className="ml-2 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Expand All"
+                className="ml-2 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Expand All"
               >Expand All</button>
               <button
                 onClick={() => setExpandedReqs(new Set())}
-                className="ml-1 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Collapse All"
+                className="ml-1 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Collapse All"
               >Collapse</button>
             </th>
             <th className="text-left px-2 py-1 font-medium hidden md:table-cell">Title</th>
@@ -226,15 +220,15 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
                   className={`border-b border-neutral-800/30 ${hasAC ? 'cursor-pointer hover:bg-neutral-900/50' : ''}`}
                   onClick={hasAC ? () => toggleReq(idx) : undefined}
                 >
-                  <td className="px-2 py-1 font-mono text-neutral-300 truncate max-w-[100px]" title={r.brief}>
+                  <td className="px-2 py-1 text-neutral-300 truncate max-w-[100px]" title={r.brief}>
                     {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
                     {r.id}
                   </td>
                   <td className="px-2 py-1 text-neutral-400 truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
                   <td className="px-2 py-1 text-neutral-500 truncate max-w-[80px]">{r.domain}</td>
-                  <td className="px-2 py-1 font-mono text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '\u2014'}</td>
-                  <td className={`px-2 py-1 ${cov ? statusColor(cov.status) : 'text-yellow-500'}`}>
-                    {cov?.status ?? '\u2014'}
+                  <td className="px-2 py-1 text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '\u2014'}</td>
+                  <td className="px-2 py-1">
+                    <TuiStatus status={cov?.status ?? 'uncovered'} />
                   </td>
                 </tr>
                 {isExpanded && hasAC && (
@@ -253,7 +247,7 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
       {hasMore && (
         <button
           onClick={() => setShowAll(true)}
-          className="w-full py-1.5 text-[11px] text-neutral-400 hover:text-neutral-200 bg-neutral-800/50 rounded transition-colors"
+          className="w-full py-1.5 text-sm text-neutral-400 hover:text-neutral-200 bg-neutral-800/50 rounded transition-colors"
         >
           Show all {reqs.length} requirements ({reqs.length - MOBILE_LIMIT} more)
         </button>
@@ -263,7 +257,7 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
       {Object.keys(domainCounts).length > 0 && (
         <div className="flex flex-wrap gap-1">
           {Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).map(([domain, count]) => (
-            <span key={domain} className="px-1.5 py-0.5 bg-neutral-900/50 rounded text-[10px] text-neutral-400">
+            <span key={domain} className="px-1.5 py-0.5 bg-neutral-900/50 rounded text-xs text-neutral-400">
               {domain} <span className="text-neutral-600">{count}</span>
             </span>
           ))}
@@ -310,15 +304,12 @@ function ACPanel({ reqs, coverage }: {
     <div className="flex flex-col h-full">
       {/* Header: progress + filter */}
       <div className="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-800/50 shrink-0">
-        <span className="text-xs font-medium text-neutral-300">{checkedAC}/{totalAC} AC</span>
-        <span className="text-[10px] text-neutral-500">{pct}%</span>
-        <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-neutral-800 max-w-xs">
-          {checkedAC > 0 && <div className="h-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />}
-        </div>
+        <span className="text-xs text-neutral-500">AC</span>
+        <TuiProgress done={checkedAC} total={totalAC} className="text-xs" />
         <select
           value={domainFilter ?? ''}
           onChange={e => setDomainFilter(e.target.value || null)}
-          className="bg-neutral-800 text-neutral-300 text-[11px] rounded px-2 py-0.5 border border-neutral-700 ml-auto"
+          className="bg-neutral-800 text-neutral-300 text-sm rounded px-2 py-0.5 border border-neutral-700 ml-auto"
         >
           <option value="">All domains</option>
           {allDomains.map(d => <option key={d} value={d}>{d}</option>)}
@@ -336,20 +327,20 @@ function ACPanel({ reqs, coverage }: {
           return (
             <div key={domain} className="border-b border-neutral-800/50">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30">
-                <span className="text-[11px] font-medium text-neutral-300">{domain}</span>
-                <span className="text-[10px] text-neutral-500">{domCheckedAC}/{domTotalAC}</span>
+                <span className="text-sm font-medium text-neutral-300">{domain}</span>
+                <span className="text-xs text-neutral-500">{domCheckedAC}/{domTotalAC}</span>
               </div>
               {domReqs.map(r => (
                 <div key={r.id} className="px-3 py-1">
-                  <div className="text-[11px] text-neutral-400 mb-0.5">
-                    <span className="font-mono text-neutral-500">{r.id}</span>
+                  <div className="text-sm text-neutral-400 mb-0.5">
+                    <span className="text-neutral-500">{r.id}</span>
                     <span className="mx-1 text-neutral-700">/</span>
                     <span>{r.title}</span>
                   </div>
                   {(r.acceptance_criteria ?? []).map((ac, i) => {
                     const done = isReqDone(r.id, coverage)
                     return (
-                      <div key={i} className={`text-[11px] flex items-start gap-1.5 pl-4 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
+                      <div key={i} className={`text-sm flex items-start gap-1.5 pl-4 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
                         <span className="shrink-0 mt-0.5">{done ? '\u2611' : '\u2610'}</span>
                         <span>{ac}</span>
                       </div>
@@ -387,13 +378,7 @@ function CoverageReportPanel({ project }: { project: string }) {
   return <MarkdownPanel content={content} />
 }
 
-function statusColor(status: string): string {
-  if (['done', 'merged', 'completed', 'skip_merged'].includes(status)) return 'text-blue-400'
-  if (['running', 'implementing'].includes(status)) return 'text-green-400'
-  if (['failed', 'verify-failed'].includes(status)) return 'text-red-400'
-  if (status === 'planned') return 'text-neutral-400'
-  return 'text-neutral-500'
-}
+const statusColor = tuiStatusColor
 
 function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
   domains: Record<string, string>
@@ -458,7 +443,7 @@ function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
         <select
           value={selected ?? ''}
           onChange={e => setSelected(e.target.value || null)}
-          className="bg-neutral-800 text-neutral-300 text-[11px] rounded px-2 py-1 border border-neutral-700 flex-1"
+          className="bg-neutral-800 text-neutral-300 text-sm rounded px-2 py-1 border border-neutral-700 flex-1"
         >
           {sortedDomains.map(name => {
             const s = domainStats[name]
@@ -481,21 +466,13 @@ function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
             <button
               key={name}
               onClick={() => setSelected(name)}
-              className={`w-full text-left px-3 py-1.5 transition-colors ${
+              className={`w-full text-left px-2 py-1.5 transition-colors ${
                 selected === name ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50'
               }`}
             >
-              <div className="flex items-center gap-1.5 text-[11px]">
-                <span className="truncate flex-1">{name}</span>
-                <span className="text-[10px] text-neutral-500 shrink-0">
-                  {s?.done ?? 0}/{s?.total ?? 0}
-                </span>
-                {allDone && <span className="text-[10px] text-blue-400 shrink-0">&#10003;</span>}
-              </div>
+              <div className="text-sm truncate">{name}</div>
               {s && s.total > 0 && (
-                <div className="h-1 rounded-full overflow-hidden bg-neutral-700 mt-1">
-                  <div className="h-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
-                </div>
+                <TuiProgress done={s.done} total={s.total} className="text-xs" />
               )}
             </button>
           )
@@ -592,27 +569,18 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
   }, [incoming])
 
   return (
-    <div className="p-3 space-y-3 text-xs">
+    <div className="p-3 space-y-3">
       {/* Summary + Progress */}
       <div>
-        <div className="text-neutral-200 font-medium text-sm mb-1">{name}</div>
-        {summary && <div className="text-neutral-400 text-[11px] mb-2">{summary}</div>}
-        <div className="flex items-center gap-3 text-[11px]">
-          <span className="text-neutral-200 font-medium">{done}/{total} merged</span>
-          <span className="text-neutral-500">{pct}%</span>
-          {total > 0 && (
-            <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-neutral-800 max-w-xs">
-              <div className="h-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
-            </div>
-          )}
+        <div className="text-neutral-200 font-medium text-base mb-1">{name}</div>
+        {summary && <div className="text-neutral-400 text-sm mb-2">{summary}</div>}
+        <div className="text-sm">
+          <TuiProgress done={done} total={total} className="text-sm" />
         </div>
         {totalAC > 0 && (
-          <div className="flex items-center gap-3 text-[11px] mt-1">
-            <span className="text-neutral-300">{doneAC}/{totalAC} AC</span>
-            <span className="text-neutral-500">{acPct}%</span>
-            <div className="flex-1 h-1 rounded-full overflow-hidden bg-neutral-800 max-w-xs">
-              <div className="h-full bg-cyan-600 transition-all" style={{ width: `${acPct}%` }} />
-            </div>
+          <div className="text-xs mt-1">
+            <span className="text-neutral-500">AC </span>
+            <TuiProgress done={doneAC} total={totalAC} className="text-xs" />
           </div>
         )}
       </div>
@@ -620,8 +588,8 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
       {/* Requirements list */}
       {sortedReqs.length > 0 && (
         <div>
-          <div className="text-[10px] text-neutral-500 font-medium mb-1 uppercase tracking-wider">Requirements</div>
-          <table className="w-full text-[11px]">
+          <TuiSection label="REQUIREMENTS" />
+          <table className="w-full text-sm">
             <tbody>
               {sortedReqs.map(r => {
                 const cov = coverage[r.id]
@@ -634,14 +602,14 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
                       className={`border-b border-neutral-800/30 ${hasAC ? 'cursor-pointer' : ''} hover:bg-neutral-900/50 ${isDone ? 'opacity-60' : ''}`}
                       onClick={hasAC ? () => setExpandedReq(isExpanded ? null : r.id) : undefined}
                     >
-                      <td className="px-1 py-1 font-mono text-neutral-400 w-28 truncate" title={r.brief}>
+                      <td className="px-1 py-1 text-neutral-400 w-28 truncate" title={r.brief}>
                         {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
                         {r.id}
                       </td>
                       <td className="px-1 py-1 text-neutral-400 truncate max-w-[200px]" title={r.brief}>{r.title}</td>
-                      <td className="px-1 py-1 font-mono text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '\u2014'}</td>
-                      <td className={`px-1 py-1 w-20 ${cov ? statusColor(cov.status) : 'text-yellow-500'}`}>
-                        {cov?.status ?? 'uncovered'}
+                      <td className="px-1 py-1 text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '\u2014'}</td>
+                      <td className="px-1 py-1 w-24">
+                        <TuiStatus status={cov?.status ?? 'uncovered'} />
                       </td>
                     </tr>
                     {isExpanded && hasAC && (
@@ -662,13 +630,13 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
       {/* Ambiguities */}
       {domAmbs.length > 0 && (
         <div>
-          <div className="text-[10px] text-neutral-500 font-medium mb-1 uppercase tracking-wider">Ambiguities</div>
+          <TuiSection label="AMBIGUITIES" />
           <div className="space-y-1.5">
             {domAmbs.map((a, i) => (
-              <div key={i} className="flex items-start gap-2 text-[11px]">
+              <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-yellow-500 shrink-0 mt-0.5">&#9888;</span>
                 <div>
-                  <span className={`inline-block px-1 py-0 rounded text-[9px] font-medium mr-1.5 ${
+                  <span className={`inline-block px-1 py-0 rounded text-xs font-medium mr-1.5 ${
                     a.type === 'contradictory' ? 'bg-red-900/50 text-red-400' :
                     a.type === 'underspecified' ? 'bg-yellow-900/50 text-yellow-400' :
                     a.type === 'missing_reference' ? 'bg-orange-900/50 text-orange-400' :
@@ -676,7 +644,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
                   }`}>{a.type}</span>
                   <span className="text-neutral-400">{a.description}</span>
                   {a.resolution === 'planner-resolved' && a.resolution_note && (
-                    <div className="text-[10px] text-neutral-500 mt-0.5 pl-2 border-l border-neutral-700">
+                    <div className="text-xs text-neutral-500 mt-0.5 pl-2 border-l border-neutral-700">
                       Resolved: {a.resolution_note}
                     </div>
                   )}
@@ -690,12 +658,12 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
       {/* Cross-domain dependencies */}
       {(outByDomain.length > 0 || inByDomain.length > 0) && (
         <div>
-          <div className="text-[10px] text-neutral-500 font-medium mb-1 uppercase tracking-wider">Dependencies</div>
+          <TuiSection label="DEPENDENCIES" />
           {outByDomain.length > 0 && (
             <div className="mb-1">
-              <div className="text-[10px] text-neutral-500 mb-0.5">Depends on:</div>
+              <div className="text-xs text-neutral-500 mb-0.5">Depends on:</div>
               {outByDomain.map(([dom, edges]) => (
-                <div key={dom} className="text-[11px] text-neutral-400 pl-2">
+                <div key={dom} className="text-sm text-neutral-400 pl-2">
                   <span className="text-neutral-300">{dom}</span>
                   <span className="text-neutral-600 ml-1">
                     ({edges.map(e => `${e.fromReq}\u2192${e.toReq}`).join(', ')})
@@ -706,9 +674,9 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
           )}
           {inByDomain.length > 0 && (
             <div>
-              <div className="text-[10px] text-neutral-500 mb-0.5">Depended on by:</div>
+              <div className="text-xs text-neutral-500 mb-0.5">Depended on by:</div>
               {inByDomain.map(([dom, edges]) => (
-                <div key={dom} className="text-[11px] text-neutral-400 pl-2">
+                <div key={dom} className="text-sm text-neutral-400 pl-2">
                   <span className="text-neutral-300">{dom}</span>
                   <span className="text-neutral-600 ml-1">
                     ({edges.map(e => `${e.fromReq}\u2192${e.toReq}`).join(', ')})
@@ -723,10 +691,10 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
       {/* Source files */}
       {sources.length > 0 && (
         <div>
-          <div className="text-[10px] text-neutral-500 font-medium mb-1 uppercase tracking-wider">Sources</div>
+          <TuiSection label="SOURCES" />
           {sources.map(([path, count]) => (
-            <div key={path} className="text-[11px] text-neutral-400 pl-2">
-              <span className="font-mono">{path}</span>
+            <div key={path} className="text-sm text-neutral-400 pl-2">
+              <span>{path}</span>
               <span className="text-neutral-600 ml-1">({count} reqs)</span>
             </div>
           ))}
@@ -835,15 +803,14 @@ function DepTreePanel({ project, reqs, coverage, dependencies }: {
           onClick={() => hasKids && toggle(name)}
         >
           {hasKids ? (
-            <span className="text-neutral-500 w-3 text-center text-[10px]">{isExpanded ? '\u25BE' : '\u25B8'}</span>
+            <span className="text-neutral-500 w-3 text-center text-xs">{isExpanded ? '\u25BE' : '\u25B8'}</span>
           ) : (
             <span className="w-3" />
           )}
-          <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-          <span className="font-mono text-[11px] text-neutral-300 truncate">{name}</span>
-          <span className={`text-[10px] ml-auto shrink-0 ${txtColor}`}>{info.status}</span>
-          <span className="text-[10px] text-neutral-600 shrink-0">{info.reqCount} reqs</span>
-          {hasKids && <span className="text-[10px] text-neutral-600 shrink-0">{kids.length} dep{kids.length > 1 ? 's' : ''}</span>}
+          <span className="text-sm text-neutral-300 truncate">{name}</span>
+          <span className="text-xs ml-auto shrink-0"><TuiStatus status={info.status} /></span>
+          <span className="text-xs text-neutral-600 shrink-0">{info.reqCount} reqs</span>
+          {hasKids && <span className="text-xs text-neutral-600 shrink-0">{kids.length} dep{kids.length > 1 ? 's' : ''}</span>}
         </div>
         {isExpanded && kids.map(kid => renderNode(kid, depth + 1))}
       </div>
@@ -852,7 +819,7 @@ function DepTreePanel({ project, reqs, coverage, dependencies }: {
 
   return (
     <div className="space-y-0.5 p-2">
-      <div className="text-[10px] text-neutral-500 px-2 pb-1">{changeNodes.size} changes, {edges.length} dependencies</div>
+      <div className="text-xs text-neutral-500 px-2 pb-1">{changeNodes.size} changes, {edges.length} dependencies</div>
       {roots.map(r => renderNode(r, 0))}
       {[...changeNodes.keys()].filter(c => !rendered.has(c)).map(c => renderNode(c, 0))}
     </div>
@@ -885,7 +852,7 @@ function MarkdownPanel({ content }: { content: string }) {
         i++
       }
       elements.push(
-        <table key={`tbl-${i}`} className="w-full text-[11px] my-2 border-collapse">
+        <table key={`tbl-${i}`} className="w-full text-sm my-2 border-collapse">
           <thead>
             <tr className="border-b border-neutral-700">
               {headers.map((h, hi) => (
@@ -931,7 +898,7 @@ function MarkdownPanel({ content }: { content: string }) {
   }
 
   return (
-    <div className="p-3 text-xs text-neutral-400 font-mono whitespace-pre-wrap leading-5">
+    <div className="p-3 text-xs text-neutral-400 whitespace-pre-wrap leading-5">
       {elements}
     </div>
   )
@@ -1025,7 +992,7 @@ function DigestPendingView({ project }: { project: string }) {
           <span className="text-xs text-neutral-300 font-medium">Digest generating...</span>
           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
         </div>
-        <div className="text-[10px] text-neutral-500 mt-0.5">
+        <div className="text-xs text-neutral-500 mt-0.5">
           Parsing specs into requirements, domains, and coverage map
         </div>
       </div>
@@ -1033,9 +1000,9 @@ function DigestPendingView({ project }: { project: string }) {
       {/* Orchestration log (digest-relevant lines) */}
       {logLines.length > 0 && (
         <div className="px-4 py-2 border-b border-neutral-800/50 shrink-0 max-h-32 overflow-y-auto">
-          <div className="text-[10px] text-neutral-600 mb-1">Orchestration Log</div>
+          <div className="text-xs text-neutral-600 mb-1">Orchestration Log</div>
           {logLines.map((line, i) => (
-            <div key={i} className="text-[11px] text-neutral-400 font-mono whitespace-pre-wrap break-all leading-4">
+            <div key={i} className="text-sm text-neutral-400 whitespace-pre-wrap break-all leading-4">
               {line}
             </div>
           ))}
@@ -1046,11 +1013,11 @@ function DigestPendingView({ project }: { project: string }) {
       <div className="flex-1 overflow-y-auto min-h-0 p-3">
         {digestSession ? (
           <>
-            <div className="text-[10px] text-neutral-600 mb-2">
+            <div className="text-xs text-neutral-600 mb-2">
               {digestSession.label} session · {(digestSession.size / 1024).toFixed(0)}KB
             </div>
             {sessionLines.map((line, i) => (
-              <div key={i} className={`text-[11px] font-mono whitespace-pre-wrap break-all leading-5 ${colorSessionLine(line)}`}>
+              <div key={i} className={`text-sm whitespace-pre-wrap break-all leading-5 ${colorSessionLine(line)}`}>
                 {line}
               </div>
             ))}
