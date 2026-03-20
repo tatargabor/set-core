@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react'
 import type { ChangeInfo } from '../lib/api'
 import { stopChange, skipChange } from '../lib/api'
-import { TuiStatus } from './tui'
+import { TuiStatus, statusColor as tuiStatusColor } from './tui'
 import GateBar from './GateBar'
 import GateDetail from './GateDetail'
 import ScreenshotGallery from './ScreenshotGallery'
@@ -15,21 +15,6 @@ interface Props {
   onSelect?: (name: string | null) => void
 }
 
-const statusColor: Record<string, string> = {
-  running: 'text-green-400',
-  implementing: 'text-green-400',
-  verifying: 'text-cyan-400',
-  completed: 'text-blue-400',
-  done: 'text-blue-400',
-  merged: 'text-blue-400',
-  failed: 'text-red-400',
-  'verify-failed': 'text-red-400',
-  skipped: 'text-neutral-500',
-  skip_merged: 'text-neutral-500',
-  pending: 'text-neutral-500',
-  stalled: 'text-yellow-400',
-  checkpoint: 'text-yellow-400',
-}
 
 function formatDuration(s?: number): string {
   if (!s) return '—'
@@ -241,7 +226,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               } ${isSelected ? 'bg-neutral-900/70 border-l-2 border-l-blue-500' : ''}`}
             >
               <td className="px-4 py-2 text-neutral-200">{c.name}</td>
-              <td className={`px-2 py-2 font-medium ${statusColor[c.status] ?? 'text-neutral-400'}`}>
+              <td className={`px-2 py-2 font-medium ${tuiStatusColor(c.status)}`}>
                 {c.status}
               </td>
               <td className="px-2 py-2 text-center text-neutral-400">{c.session_count ?? '—'}</td>

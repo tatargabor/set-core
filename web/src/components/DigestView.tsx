@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type SessionInfo } from '../lib/api'
-import { TuiProgress, TuiStatus, TuiSection, statusColor as tuiStatusColor } from './tui'
+import { TuiProgress, TuiStatus, TuiSection } from './tui'
 
 interface Props {
   project: string
@@ -115,12 +115,12 @@ export default function DigestView({ project }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800/50 shrink-0">
+      <div className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800/50 shrink-0 overflow-x-auto">
         {tabs.filter(t => !t.hidden).map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-2 py-0.5 text-xs rounded transition-colors ${
+            className={`px-3 py-1 min-h-[44px] md:min-h-0 md:py-0.5 text-sm whitespace-nowrap rounded transition-colors ${
               tab === t.id
                 ? 'bg-neutral-700 text-neutral-200'
                 : 'text-neutral-500 hover:text-neutral-300'
@@ -378,7 +378,6 @@ function CoverageReportPanel({ project }: { project: string }) {
   return <MarkdownPanel content={content} />
 }
 
-const statusColor = tuiStatusColor
 
 function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
   domains: Record<string, string>
@@ -466,7 +465,7 @@ function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
             <button
               key={name}
               onClick={() => setSelected(name)}
-              className={`w-full text-left px-2 py-1.5 transition-colors ${
+              className={`w-full text-left px-2 py-1.5 min-h-[44px] md:min-h-0 transition-colors ${
                 selected === name ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50'
               }`}
             >
@@ -792,8 +791,6 @@ function DepTreePanel({ project, reqs, coverage, dependencies }: {
     const hasKids = kids.length > 0
     const isExpanded = expanded.has(name)
     const isDone = DONE_STATUSES.has(info.status)
-    const dotColor = isDone ? 'bg-blue-500' : info.status === 'running' || info.status === 'implementing' ? 'bg-green-500' : info.status === 'failed' || info.status === 'verify-failed' ? 'bg-red-500' : 'bg-neutral-600'
-    const txtColor = isDone ? 'text-blue-400' : info.status === 'running' || info.status === 'implementing' ? 'text-green-400' : info.status === 'failed' || info.status === 'verify-failed' ? 'text-red-400' : 'text-neutral-500'
 
     return (
       <div key={name}>
@@ -990,7 +987,7 @@ function DigestPendingView({ project }: { project: string }) {
       <div className="px-4 py-2 border-b border-neutral-800/50 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xs text-neutral-300 font-medium">Digest generating...</span>
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          <span className="text-green-500 animate-pulse">{'\u25CF'}</span>
         </div>
         <div className="text-xs text-neutral-500 mt-0.5">
           Parsing specs into requirements, domains, and coverage map
@@ -1000,7 +997,7 @@ function DigestPendingView({ project }: { project: string }) {
       {/* Orchestration log (digest-relevant lines) */}
       {logLines.length > 0 && (
         <div className="px-4 py-2 border-b border-neutral-800/50 shrink-0 max-h-32 overflow-y-auto">
-          <div className="text-xs text-neutral-600 mb-1">Orchestration Log</div>
+          <TuiSection label="ORCHESTRATION LOG" />
           {logLines.map((line, i) => (
             <div key={i} className="text-sm text-neutral-400 whitespace-pre-wrap break-all leading-4">
               {line}

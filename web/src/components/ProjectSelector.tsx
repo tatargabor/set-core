@@ -6,14 +6,6 @@ interface Props {
   onChange: (name: string) => void
 }
 
-const statusColor: Record<string, string> = {
-  running: 'bg-green-500',
-  planning: 'bg-cyan-500',
-  checkpoint: 'bg-yellow-500',
-  idle: 'bg-neutral-600',
-  stopped: 'bg-neutral-600',
-  completed: 'bg-blue-500',
-}
 
 export default function ProjectSelector({ projects, current, onChange }: Props) {
   return (

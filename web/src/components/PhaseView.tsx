@@ -1,5 +1,5 @@
 import type { ChangeInfo, StateData } from '../lib/api'
-import { TuiStatus } from './tui'
+import { TuiStatus, statusColor as tuiStatusColor } from './tui'
 import GateBar from './GateBar'
 
 interface Props {
@@ -15,22 +15,6 @@ interface TreeNode {
 const TERMINAL_STATUSES = new Set(['merged', 'done', 'skipped', 'failed'])
 const RUNNING_STATUSES = new Set(['running', 'implementing', 'verifying'])
 
-const statusColor: Record<string, string> = {
-  running: 'text-green-400',
-  implementing: 'text-green-400',
-  verifying: 'text-cyan-400',
-  completed: 'text-blue-400',
-  done: 'text-blue-400',
-  merged: 'text-blue-400',
-  failed: 'text-red-400',
-  'verify-failed': 'text-red-400',
-  skipped: 'text-neutral-500',
-  skip_merged: 'text-neutral-500',
-  pending: 'text-neutral-500',
-  blocked: 'text-yellow-500',
-  stalled: 'text-yellow-400',
-  checkpoint: 'text-yellow-400',
-}
 
 const phaseStatusIcon: Record<string, string> = {
   completed: '✅',
@@ -131,7 +115,7 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
         </div>
 
         {/* Status */}
-        <span className={`text-sm ${statusColor[displayStatus] ?? 'text-neutral-400'}`}>
+        <span className={`text-sm ${tuiStatusColor(displayStatus)}`}>
           {displayStatus}
         </span>
 

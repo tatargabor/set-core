@@ -78,15 +78,15 @@ export default function TokenChart({ changes }: Props) {
         </span>
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-blue-500" />
+            <span className="text-blue-400">{'\u2588'}</span>
             <span className="text-neutral-400">Input {formatK(totals.input)}</span>
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-green-500" />
+            <span className="text-green-400">{'\u2588'}</span>
             <span className="text-neutral-400">Output {formatK(totals.output)}</span>
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-purple-500" />
+            <span className="text-purple-400">{'\u2588'}</span>
             <span className="text-neutral-400">Cache {formatK(totals.cache)}</span>
           </span>
         </div>
@@ -108,21 +108,21 @@ export default function TokenChart({ changes }: Props) {
               <XAxis
                 type="number"
                 tickFormatter={formatK}
-                tick={{ fill: '#525252', fontSize: 10 }}
+                tick={{ fill: '#525252', fontSize: 12 }}
                 axisLine={{ stroke: '#333' }}
                 tickLine={false}
               />
               <YAxis
                 type="category"
                 dataKey="shortName"
-                tick={{ fill: '#737373', fontSize: 10, fontFamily: 'monospace' }}
+                tick={{ fill: '#737373', fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
                 width={140}
               />
               <Tooltip
-                contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 6, fontSize: 11 }}
-                labelStyle={{ color: '#aaa', fontFamily: 'monospace' }}
+                contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 6, fontSize: 12 }}
+                labelStyle={{ color: '#aaa' }}
                 formatter={(value) => [formatK(Number(value ?? 0)), undefined]}
                 labelFormatter={(label) => {
                   const item = data.find(d => d.shortName === label)

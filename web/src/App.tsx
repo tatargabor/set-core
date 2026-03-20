@@ -10,23 +10,6 @@ import ProjectSelector from './components/ProjectSelector'
 import { useProject } from './hooks/useProject'
 import type { StateData, ChangeInfo } from './lib/api'
 
-const statusDot: Record<string, string> = {
-  running: 'bg-green-500',
-  implementing: 'bg-green-500',
-  verifying: 'bg-cyan-500',
-  done: 'bg-blue-500',
-  merged: 'bg-blue-500',
-  completed: 'bg-blue-500',
-  failed: 'bg-red-500',
-  'verify-failed': 'bg-red-500',
-  pending: 'bg-neutral-600',
-  stalled: 'bg-yellow-500',
-  skip_merged: 'bg-neutral-600',
-  skipped: 'bg-neutral-600',
-  'merge-blocked': 'bg-orange-500',
-  corrupt: 'bg-red-500',
-  error: 'bg-red-900',
-}
 
 function formatDuration(secs?: number): string {
   if (!secs) return ''
@@ -148,7 +131,6 @@ function ProjectLayout() {
 
   // Connection status from sidebar state
   const orchStatus = sidebarState?.status ?? 'idle'
-  const statusDotColor = statusDot[orchStatus] ?? 'bg-neutral-600'
 
   return (
     <div className="flex h-screen bg-neutral-950 text-neutral-200">
