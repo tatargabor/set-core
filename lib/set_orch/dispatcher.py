@@ -1247,22 +1247,22 @@ def dispatch_change(
     wt_path = f"{project_path}-{change_name}"
 
     if os.path.isdir(wt_path):
-        logger.info("worktree already exists: %s", wt_path)
-        # Clean stale loop state
-        old_loop = os.path.join(wt_path, ".set", "loop-state.json")
-        if os.path.isfile(old_loop):
-            try:
-                with open(old_loop) as f:
-                    ls = json.load(f)
-                old_pid = int(ls.get("terminal_pid") or 0)
-                if old_pid > 0:
-                    result = check_pid(old_pid, "set-loop")
-                    if not result.alive:
-                        logger.info("removing stale loop-state.json (PID %d dead) for %s", old_pid, change_name)
-                        os.remove(old_loop)
-            except (json.JSONDecodeError, OSError, ValueError):
-                pass
-    else:
+        # A pending change should never have an existing worktree (Bug #30).
+        # This happens when a change was reset to pending after a failed run
+        # but the worktree/branch wasn't cleaned up. The old branch contains
+        # [x]-checked tasks from the prior run, causing the done check to
+        # declare "done" without implementation.
+        # Always remove stale worktree + branch for a clean fresh start.
+        logger.info("stale worktree for pending change %s — removing for fresh dispatch", change_name)
+        run_command(["git", "worktree", "remove", wt_path, "--force"], timeout=30)
+        # If worktree remove failed, force-remove the directory and prune
+        if os.path.isdir(wt_path):
+            import shutil
+            shutil.rmtree(wt_path, ignore_errors=True)
+        run_git("worktree", "prune")
+        run_git("branch", "-D", f"change/{change_name}")
+
+    if not os.path.isdir(wt_path):
         # Clean stale branch
         branch_check = run_git("rev-parse", "--verify", f"change/{change_name}")
         if branch_check.exit_code == 0:

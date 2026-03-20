@@ -239,6 +239,19 @@ def _detect_for_target(wt_path: str, target_change: str) -> str:
     if unchecked > 0:
         return f"apply:{target_change}"
 
+    # All tasks checked — but is there actual implementation code?
+    # If tasks are [x] but no src/ files were added (stale branch from failed run),
+    # force re-implementation instead of declaring done.
+    from .git_utils import run_git
+    diff_result = run_git(
+        "diff", "--name-only", "main...HEAD", "--", "src/", "app/", "lib/", "components/", "pages/",
+        cwd=wt_path,
+    )
+    impl_files = [f for f in diff_result.stdout.strip().splitlines() if f]
+    if not impl_files:
+        # Tasks checked but no implementation files — stale artifact-only branch
+        return f"apply:{target_change}"
+
     return "done"
 
 
