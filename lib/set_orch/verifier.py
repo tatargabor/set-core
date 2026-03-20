@@ -489,6 +489,152 @@ def _capture_retry_diff(wt_path: str) -> str | None:
     return None
 
 
+# ─── Review Findings MD (per-change, committed to branch) ─────────
+
+
+def _review_findings_md_path(wt_path: str) -> str:
+    """Return path to the review findings MD file in the worktree."""
+    return os.path.join(wt_path, ".claude", "review-findings.md")
+
+
+def _read_existing_findings(md_path: str) -> list[dict]:
+    """Parse existing review-findings.md into a list of issue dicts.
+
+    Each item has: severity, file, line, summary, fix, status ('open'|'fixed').
+    """
+    items: list[dict] = []
+    if not os.path.isfile(md_path):
+        return items
+    try:
+        with open(md_path) as f:
+            for line in f:
+                line = line.rstrip()
+                # Match: - [ ] [CRITICAL] file:line — summary
+                # or:    - [x] [HIGH] file:line — summary
+                m = re.match(
+                    r"^- \[([ x])\] \[(\w+)\]\s+(`[^`]+`|[^\s]+?)(?::(\S+))?\s*—\s*(.+)",
+                    line,
+                )
+                if m:
+                    status = "fixed" if m.group(1) == "x" else "open"
+                    items.append({
+                        "severity": m.group(2),
+                        "file": m.group(3).strip("`"),
+                        "line": m.group(4) or "",
+                        "summary": m.group(5).strip(),
+                        "fix": "",
+                        "status": status,
+                    })
+                # Match FIX line (indented under an item)
+                elif line.startswith("  FIX:") and items:
+                    items[-1]["fix"] = line[6:].strip()
+    except OSError:
+        pass
+    return items
+
+
+def _issue_key(issue: dict) -> str:
+    """Unique key for deduplication: file + line + normalized summary prefix."""
+    summary = issue.get("summary", "")
+    # Strip severity tags and markdown bold for consistent matching
+    summary = re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM|LOW)\]\s*", "", summary)
+    summary = summary.strip().lstrip("*").rstrip("*").strip()
+    return f"{issue.get('file', '')}:{issue.get('line', '')}:{summary[:40]}"
+
+
+def _write_review_findings_md(
+    wt_path: str,
+    change_name: str,
+    new_issues: list[dict],
+    round_num: int,
+) -> str:
+    """Write/append review findings to .claude/review-findings.md.
+
+    Reads existing file, identifies NEW issues (not seen before),
+    reopens previously-fixed issues if reviewer flagged them again,
+    and appends a new round section.
+
+    Returns the path to the MD file.
+    """
+    md_path = _review_findings_md_path(wt_path)
+    existing = _read_existing_findings(md_path)
+    existing_keys = {_issue_key(i) for i in existing}
+
+    # Categorize new issues
+    truly_new: list[dict] = []
+    reopened: list[dict] = []
+    for issue in new_issues:
+        key = _issue_key(issue)
+        if key in existing_keys:
+            # Check if it was marked fixed — if so, reopen
+            for ex in existing:
+                if _issue_key(ex) == key and ex["status"] == "fixed":
+                    reopened.append(issue)
+                    break
+            # If still open, skip (already tracked)
+        else:
+            truly_new.append(issue)
+
+    # If nothing new and nothing reopened, no update needed
+    if not truly_new and not reopened:
+        return md_path
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    # Build the new round section
+    lines: list[str] = []
+
+    # Header if file doesn't exist yet
+    if not os.path.isfile(md_path) or os.path.getsize(md_path) == 0:
+        lines.append(f"# Review Findings: {change_name}\n")
+
+    lines.append(f"\n## Round {round_num} — {ts}\n")
+
+    if reopened:
+        lines.append("### Reopened (fix was insufficient)\n")
+        for issue in reopened:
+            sev = issue.get("severity", "MEDIUM")
+            f = issue.get("file", "?")
+            ln = issue.get("line", "")
+            loc = f"`{f}`:{ln}" if ln else f"`{f}`"
+            summary = re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM|LOW)\]\s*", "", issue.get("summary", "")).strip().strip("*").strip()
+            lines.append(f"- [ ] [{sev}] {loc} — {summary}")
+            if issue.get("fix"):
+                lines.append(f"  FIX: {issue['fix']}")
+
+    if truly_new:
+        if reopened:
+            lines.append("")
+        lines.append("### New issues\n")
+        for issue in truly_new:
+            sev = issue.get("severity", "MEDIUM")
+            f = issue.get("file", "?")
+            ln = issue.get("line", "")
+            loc = f"`{f}`:{ln}" if ln else f"`{f}`"
+            summary = re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM|LOW)\]\s*", "", issue.get("summary", "")).strip().strip("*").strip()
+            lines.append(f"- [ ] [{sev}] {loc} — {summary}")
+            if issue.get("fix"):
+                lines.append(f"  FIX: {issue['fix']}")
+
+    lines.append("")
+
+    # Append to file
+    os.makedirs(os.path.dirname(md_path), exist_ok=True)
+    with open(md_path, "a") as f:
+        f.write("\n".join(lines))
+
+    # Commit the findings file to the branch
+    import subprocess as _sp
+    _sp.run(["git", "-C", wt_path, "add", md_path], capture_output=True, timeout=10)
+    _sp.run(
+        ["git", "-C", wt_path, "commit", "-m",
+         f"chore: update review findings (round {round_num})"],
+        capture_output=True, timeout=10,
+    )
+
+    return md_path
+
+
 def _build_review_retry_prompt(
     state_file: str,
     change_name: str,
@@ -496,56 +642,42 @@ def _build_review_retry_prompt(
     security_guide: str,
     verify_retry_count: int,
     review_retry_limit: int,
+    findings_md_path: str = "",
 ) -> str:
-    """Build retry prompt with cumulative review history.
+    """Build retry prompt referencing the review findings MD file.
 
-    Includes a 'PREVIOUS ATTEMPTS' section showing what was tried before
-    and what the outcome was, so the agent doesn't repeat failed approaches.
+    The detailed findings are in the committed .claude/review-findings.md.
+    The prompt tells the agent to read that file and fix unchecked items.
     """
     history = _get_review_history(state_file, change_name)
-    fix_instructions = _extract_review_fixes(current_review_output)
-    flagged_reqs = ", ".join(sorted(set(re.findall(r"REQ-[A-Z0-9]+-\\d+", current_review_output))))
 
-    parts = [f'CRITICAL CODE REVIEW FAILURE for "{change_name}". You MUST fix these security/quality issues.\n']
+    parts = [f'CRITICAL CODE REVIEW FAILURE for "{change_name}". You MUST fix the review issues.\n']
 
-    # Cumulative history from all attempts so far
-    if len(history) > 1:
-        parts.append("== PREVIOUS ATTEMPTS (DO NOT REPEAT THESE APPROACHES) ==")
-        for h in history:
-            parts.append(f"Attempt {h['attempt']}:")
-            parts.append(f"  Issues found: {h.get('extracted_fixes', 'unknown')}")
-            if h.get("diff_summary"):
-                parts.append(f"  What you changed: {h['diff_summary']}")
-            parts.append(f"  Result: STILL CRITICAL\n")
+    # Reference the findings file
+    if findings_md_path:
+        rel_path = ".claude/review-findings.md"
+        parts.append(f"## Review findings are in `{rel_path}`\n")
         parts.append(
-            "The approaches above did NOT work. "
-            "Try a fundamentally different strategy.\n"
+            f"Read `{rel_path}` — it contains ALL review issues across all rounds.\n"
+            "Fix every item marked `- [ ]` (unchecked).\n"
+            "After fixing each issue, mark it `- [x]` in the file.\n"
+            "Commit the updated findings file along with your code fixes.\n"
         )
 
-    # Current fix instructions
-    if fix_instructions:
-        parts.append("=== REQUIRED FIXES (apply each one) ===")
-        parts.append(fix_instructions)
-        parts.append("=== END REQUIRED FIXES ===\n")
+    # Brief history summary (not full output — that's in the MD file)
+    if len(history) > 1:
+        parts.append("== PREVIOUS ATTEMPTS ==")
+        for h in history:
+            parts.append(f"Attempt {h['attempt']}:")
+            if h.get("diff_summary"):
+                parts.append(f"  Changed: {h['diff_summary']}")
+            parts.append(f"  Result: STILL CRITICAL\n")
 
-    # Security reference
+    # Security reference (patterns to follow)
     if security_guide:
         parts.append("=== SECURITY REFERENCE (follow these patterns) ===")
         parts.append(security_guide)
         parts.append("=== END SECURITY REFERENCE ===\n")
-
-    if flagged_reqs:
-        parts.append(f"Requirements with no implementation evidence: {flagged_reqs}\n")
-
-    # Only include raw review output as fallback when parser returned nothing
-    # but critical issues exist (unknown review format)
-    if not fix_instructions:
-        parts.append(f"Full review output:\n{current_review_output[:3000]}\n")
-
-    parts.append(
-        "Before fixing, re-read the files listed above. "
-        "Do NOT rely on your memory of the file contents.\n"
-    )
 
     # Final attempt escalation
     is_last_attempt = verify_retry_count >= review_retry_limit - 1
@@ -553,13 +685,16 @@ def _build_review_retry_prompt(
         parts.append(
             "WARNING: This is your LAST attempt. If the same approach hasn't worked, "
             "restructure the entire implementation. Consider a completely different "
-            "architecture for the problematic code."
+            "architecture for the problematic code.\n"
         )
 
     parts.append(
-        "INSTRUCTIONS: Open each FILE listed above, go to the LINE, and apply the FIX. "
-        "Use the SECURITY REFERENCE patterns above to ensure your fix is correct. "
-        "Commit after fixing. Do NOT work on new features — only fix the issues above."
+        "INSTRUCTIONS:\n"
+        "1. Read `.claude/review-findings.md`\n"
+        "2. For each unchecked `- [ ]` item: open the FILE, go to the LINE, apply the FIX\n"
+        "3. Mark fixed items as `- [x]` in the findings file\n"
+        "4. Commit all changes (code fixes + updated findings file)\n"
+        "5. Do NOT work on new features — only fix the review issues"
     )
 
     return "\n".join(parts)
@@ -1976,13 +2111,14 @@ def _execute_review_gate(
             _append_review_finding(findings_path, change_name, rr.output, verify_retry_count + 1)
         return GateResult("review", "pass", output=rr.output[:5000])
 
-    # Critical review — build retry context with cumulative history
+    # Critical review — write findings to MD file and build retry context
+    round_num = verify_retry_count + 1
     diff_summary = None
     if verify_retry_count > 0:
         diff_summary = _capture_retry_diff(wt_path)
 
     _append_review_history(state_file, change_name, {
-        "attempt": verify_retry_count + 1,
+        "attempt": round_num,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "review_output": rr.output[:1500],
         "extracted_fixes": _extract_review_fixes(rr.output),
@@ -1992,7 +2128,17 @@ def _execute_review_gate(
     # Persist findings to JSONL for post-run summary
     findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
     findings_path = os.path.join(findings_dir, "review-findings.jsonl")
-    _append_review_finding(findings_path, change_name, rr.output, verify_retry_count + 1)
+    _append_review_finding(findings_path, change_name, rr.output, round_num)
+
+    # Write/append to review-findings.md in worktree (committed to branch)
+    new_issues = _parse_review_issues(rr.output)
+    md_path = ""
+    if new_issues and wt_path:
+        try:
+            md_path = _write_review_findings_md(wt_path, change_name, new_issues, round_num)
+            logger.info("Review findings MD updated for %s round %d (%d issues)", change_name, round_num, len(new_issues))
+        except Exception:
+            logger.warning("Failed to write review findings MD for %s", change_name, exc_info=True)
 
     review_extra = getattr(gc, "review_extra_retries", 1)
     security_guide = _load_security_rules(wt_path)
@@ -2000,6 +2146,7 @@ def _execute_review_gate(
     retry_prompt = _build_review_retry_prompt(
         state_file, change_name, rr.output,
         security_guide, verify_retry_count, review_retry_limit,
+        findings_md_path=md_path,
     )
 
     return GateResult("review", "fail", output=rr.output[:5000], retry_context=retry_prompt)
