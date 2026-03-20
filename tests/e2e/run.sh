@@ -223,6 +223,8 @@ max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
+discord:
+  enabled: true
 YAML
 
     if [[ -n "$design_file_url" ]]; then

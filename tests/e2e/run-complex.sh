@@ -254,6 +254,8 @@ merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
 max_replan_cycles: 3
+discord:
+  enabled: true
 YAML
 
     if [[ -n "$design_file_url" ]]; then
