@@ -1,0 +1,4 @@
+#!/bin/bash
+# Stub openspec for integration tests.
+# No-op for archive and other subcommands.
+exit 0

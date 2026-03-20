@@ -1,0 +1,4 @@
+#!/bin/bash
+# Stub set-close for integration tests.
+# No-op — worktree cleanup tested separately.
+exit 0
