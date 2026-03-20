@@ -34,7 +34,7 @@ class GateConfig:
     # Optional overrides (None = use global)
     max_retries: Optional[int] = None
     review_model: Optional[str] = None
-    review_extra_retries: int = 1  # extra retries for review gate beyond max_retries
+    review_extra_retries: int = 3  # extra retries for review gate beyond max_retries
 
     def should_run(self, gate_name: str) -> bool:
         """Whether a gate should execute at all."""
