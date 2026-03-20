@@ -117,3 +117,7 @@ const orders = await db.order.findMany({ where: { userId: currentUser.id } })
 - State-changing requests (POST/PUT/DELETE) need CSRF tokens if using cookie-based auth
 - Most modern frameworks handle this automatically — verify it's enabled, don't disable it
 - SameSite=Lax cookies provide partial CSRF protection but are not sufficient alone for sensitive operations
+
+## 8. Transaction Safety (see transaction-patterns.md)
+
+For payment ordering, server-side price recalculation, and atomic inventory operations, see `.claude/rules/web/transaction-patterns.md`. These patterns prevent financial loss from business logic bugs — distinct from auth/authz issues covered above.
