@@ -248,7 +248,7 @@ export interface DigestData {
   coverage?: { coverage?: Record<string, { change: string; status: string }>; uncovered?: string[] }
   coverage_merged?: { coverage?: Record<string, { change: string; status: string }>; uncovered?: string[] }
   dependencies?: { dependencies?: { from: string; to: string; type: string }[] }
-  ambiguities?: { id: string; question: string; options?: string[] }[]
+  ambiguities?: { id: string; type: string; source?: string; section?: string; description: string; affects_requirements?: string[]; resolution?: string; resolution_note?: string }[]
   domains?: Record<string, string>
   triage?: string
   data_definitions?: string

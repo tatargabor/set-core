@@ -9,7 +9,6 @@ import PlanViewer from '../components/PlanViewer'
 import TokenChart from '../components/TokenChart'
 import AuditPanel from '../components/AuditPanel'
 import PhaseView from '../components/PhaseView'
-import ProgressView from '../components/ProgressView'
 import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
@@ -20,7 +19,7 @@ import { useSentinelData } from '../hooks/useSentinelData'
 import { getDigest, getPlans, getState } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'requirements' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'battle'
+type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'battle'
 
 interface Props {
   project: string | null
@@ -129,7 +128,6 @@ export default function Dashboard({ project }: Props) {
     { id: 'phases', label: 'Phases' },
     { id: 'log', label: 'Log' },
     { id: 'tokens', label: 'Tokens' },
-    { id: 'requirements', label: 'Requirements' },
     { id: 'audit', label: 'Audit', hidden: !hasAudit },
     { id: 'digest', label: 'Digest', hidden: !hasDigest },
     { id: 'sessions', label: 'Sessions' },
@@ -256,9 +254,6 @@ export default function Dashboard({ project }: Props) {
             )}
             {activeTab === 'tokens' && (
               <TokenChart changes={changes} />
-            )}
-            {activeTab === 'requirements' && (
-              <ProgressView project={project} />
             )}
             {activeTab === 'audit' && state?.phase_audit_results && (
               <AuditPanel results={state.phase_audit_results} />
