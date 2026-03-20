@@ -858,6 +858,7 @@ def _check_completion(
         cleanup_all_worktrees(state_file)
         _send_terminal_notifications(state_file, "total_failure", event_bus)
         _generate_report_safe(state_file)
+        _generate_review_findings_summary_safe(state_file)
         return True
 
     # Phase-end E2E
@@ -876,6 +877,7 @@ def _check_completion(
     run_command(["git", "tag", "-f", "orch/complete", "HEAD"], timeout=10)
     _send_terminal_notifications(state_file, "done", event_bus)
     _generate_report_safe(state_file)
+    _generate_review_findings_summary_safe(state_file)
     return True
 
 
@@ -899,6 +901,7 @@ def _handle_auto_replan(
         cleanup_all_worktrees(state_file)
         _send_terminal_notifications(state_file, "replan_limit", event_bus)
         _generate_report_safe(state_file)
+        _generate_review_findings_summary_safe(state_file)
         return True
 
     replan_attempt = state.extras.get("replan_attempt", 0)
@@ -926,6 +929,7 @@ def _handle_auto_replan(
         cleanup_all_worktrees(state_file)
         _send_terminal_notifications(state_file, "done", event_bus)
         _generate_report_safe(state_file)
+        _generate_review_findings_summary_safe(state_file)
         return True
 
     # Replan failed — retry with limit
@@ -939,6 +943,7 @@ def _handle_auto_replan(
         update_state_field(state_file, "replan_attempt", 0)
         _send_terminal_notifications(state_file, "replan_exhausted", event_bus)
         _generate_report_safe(state_file)
+        _generate_review_findings_summary_safe(state_file)
         return True
 
     logger.warning("Replan failed (cycle %d, attempt %d) — will retry", cycle, replan_attempt)
@@ -1420,6 +1425,20 @@ def _generate_report_safe(state_file: str) -> None:
     try:
         from .reporter import generate_report
         generate_report(state_path=state_file)
+    except Exception:
+        pass
+
+
+def _generate_review_findings_summary_safe(state_file: str) -> None:
+    """Generate review findings summary from JSONL log (exception-safe)."""
+    try:
+        from .verifier import generate_review_findings_summary
+        findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+        findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+        summary_path = os.path.join(findings_dir, "review-findings-summary.md")
+        result = generate_review_findings_summary(findings_path, summary_path)
+        if result:
+            logger.info("Review findings summary: %s", result)
     except Exception:
         pass
 

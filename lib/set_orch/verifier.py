@@ -145,6 +145,167 @@ def _extract_review_fixes(review_output: str) -> str:
     return "\n".join(fixes)
 
 
+def _parse_review_issues(review_output: str) -> list[dict]:
+    """Parse review output into structured issue dicts.
+
+    Reuses the same format as _extract_review_fixes but returns structured data
+    instead of a text string. Each issue has: severity, summary, file, line, fix.
+    """
+    issues = []
+    current: dict = {}
+
+    for line in review_output.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("ISSUE:") or stripped.startswith("**ISSUE:"):
+            if current.get("summary"):
+                issues.append(current)
+            text = stripped.lstrip("*").lstrip()
+            if text.startswith("ISSUE:"):
+                text = text[6:].strip()
+            severity = "MEDIUM"
+            if "[CRITICAL]" in text:
+                severity = "CRITICAL"
+            elif "[HIGH]" in text:
+                severity = "HIGH"
+            current = {"severity": severity, "summary": text, "file": "", "line": "", "fix": ""}
+        elif stripped.startswith("FILE:") or stripped.startswith("**FILE:"):
+            current["file"] = stripped.lstrip("*").lstrip()[5:].strip().strip("`")
+        elif stripped.startswith("LINE:"):
+            current["line"] = stripped[5:].strip().lstrip("~")
+        elif stripped.startswith("FIX:") or stripped.startswith("Fix:"):
+            current["fix"] = stripped[4:].strip()
+
+    if current.get("summary"):
+        issues.append(current)
+
+    return issues
+
+
+def _append_review_finding(findings_path: str, change_name: str,
+                           review_output: str, attempt: int) -> None:
+    """Append structured review findings to JSONL log.
+
+    Called when a review gate finds issues (any severity). The JSONL file
+    is read at run end to generate the review findings summary.
+    """
+    issues = _parse_review_issues(review_output)
+    if not issues:
+        return
+
+    entry = {
+        "change": change_name,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "attempt": attempt,
+        "issue_count": len(issues),
+        "critical_count": sum(1 for i in issues if i["severity"] == "CRITICAL"),
+        "high_count": sum(1 for i in issues if i["severity"] == "HIGH"),
+        "issues": issues,
+    }
+
+    try:
+        os.makedirs(os.path.dirname(findings_path), exist_ok=True)
+        with open(findings_path, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except OSError:
+        logger.warning("Failed to append review finding to %s", findings_path)
+
+
+def generate_review_findings_summary(findings_path: str, output_path: str) -> str:
+    """Generate a markdown summary of all review findings from a run.
+
+    Reads the JSONL log, groups issues by pattern, and writes a summary
+    that can be used for post-run analysis and rules improvement.
+
+    Returns the output path, or empty string if no findings.
+    """
+    if not os.path.isfile(findings_path):
+        return ""
+
+    entries = []
+    try:
+        with open(findings_path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    entries.append(json.loads(line))
+    except (OSError, json.JSONDecodeError):
+        logger.warning("Failed to read review findings from %s", findings_path)
+        return ""
+
+    if not entries:
+        return ""
+
+    # Collect all issues and group by pattern (normalized summary)
+    all_issues: list[dict] = []
+    for entry in entries:
+        for issue in entry.get("issues", []):
+            all_issues.append({**issue, "change": entry["change"], "attempt": entry["attempt"]})
+
+    # Group by severity
+    critical = [i for i in all_issues if i["severity"] == "CRITICAL"]
+    high = [i for i in all_issues if i["severity"] == "HIGH"]
+
+    # Deduplicate by (change, summary_prefix) — same issue across retries
+    seen = set()
+    unique_issues = []
+    for issue in all_issues:
+        key = (issue["change"], issue["summary"][:60])
+        if key not in seen:
+            seen.add(key)
+            unique_issues.append(issue)
+
+    # Group by change
+    by_change: dict[str, list[dict]] = {}
+    for issue in unique_issues:
+        by_change.setdefault(issue["change"], []).append(issue)
+
+    # Build summary
+    lines = ["# Review Findings Summary\n"]
+    lines.append(f"**Total findings**: {len(unique_issues)} unique issues "
+                 f"({len(critical)} CRITICAL, {len(high)} HIGH) "
+                 f"across {len(by_change)} change(s)\n")
+
+    # Recurring patterns (appear in 2+ changes)
+    pattern_counts: dict[str, int] = {}
+    for issue in unique_issues:
+        # Normalize: strip severity tag, take first 50 chars
+        norm = re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*", "", issue["summary"])[:50]
+        pattern_counts[norm] = pattern_counts.get(norm, 0) + 1
+
+    recurring = {k: v for k, v in pattern_counts.items() if v >= 2}
+    if recurring:
+        lines.append("## Recurring Patterns\n")
+        for pattern, count in sorted(recurring.items(), key=lambda x: -x[1]):
+            lines.append(f"- **{pattern}**: {count} occurrences")
+        lines.append("")
+
+    # Per-change details
+    lines.append("## Per-Change Details\n")
+    for change_name, issues in sorted(by_change.items()):
+        crits = sum(1 for i in issues if i["severity"] == "CRITICAL")
+        lines.append(f"### {change_name} ({crits} CRITICAL, {len(issues)} total)\n")
+        for issue in issues:
+            sev = issue["severity"]
+            lines.append(f"- **[{sev}]** {issue['summary']}")
+            if issue.get("file"):
+                lines.append(f"  - File: `{issue['file']}`{' L' + issue['line'] if issue.get('line') else ''}")
+            if issue.get("fix"):
+                lines.append(f"  - Fix: {issue['fix']}")
+        lines.append("")
+
+    content = "\n".join(lines)
+    try:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w") as f:
+            f.write(content)
+        logger.info("Review findings summary written: %s (%d issues)", output_path, len(unique_issues))
+    except OSError:
+        logger.warning("Failed to write review findings summary to %s", output_path)
+        return ""
+
+    return output_path
+
+
 # ─── Build Error & Test Failure Parsers ──────────────────────────────
 
 # TypeScript error: src/file.tsx(67,5): error TS2339: Property 'x' does not exist
@@ -1807,6 +1968,11 @@ def _execute_review_gate(
     )
 
     if not rr.has_critical:
+        # Still log any HIGH/MEDIUM findings for post-run analysis
+        if rr.output and re.search(r"\[HIGH\]|\[MEDIUM\]", rr.output):
+            findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+            findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+            _append_review_finding(findings_path, change_name, rr.output, verify_retry_count + 1)
         return GateResult("review", "pass", output=rr.output[:5000])
 
     # Critical review — build retry context with cumulative history
@@ -1821,6 +1987,11 @@ def _execute_review_gate(
         "extracted_fixes": _extract_review_fixes(rr.output),
         "diff_summary": diff_summary,
     })
+
+    # Persist findings to JSONL for post-run summary
+    findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+    findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+    _append_review_finding(findings_path, change_name, rr.output, verify_retry_count + 1)
 
     review_extra = getattr(gc, "review_extra_retries", 1)
     security_guide = _load_security_rules(wt_path)
