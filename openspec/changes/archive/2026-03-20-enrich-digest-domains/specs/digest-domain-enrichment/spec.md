@@ -1,17 +1,17 @@
 # Spec: Digest Domain Enrichment
 
-## ADDED Requirements
-
-## IN SCOPE
+### IN SCOPE
 - Enriched domain cards showing progress, requirements, AC coverage, ambiguities, dependencies, and sources
 - Progress mini-bars in the domain sidebar/picker
 - Dependency Tree sub-tab within Digest (migrated from Requirements tab)
 - Removal of the standalone Requirements tab
 
-## OUT OF SCOPE
+### OUT OF SCOPE
 - Backend/API changes to the digest endpoint
 - Changes to the digest generation logic or LLM prompt
 - New data fetching — all data already exists in the digest response
+
+## ADDED Requirements
 
 ### Requirement: Domain progress display
 Each domain card SHALL display a progress bar showing the ratio of merged/done requirements to total requirements in that domain. The progress bar SHALL use the same color scheme as existing progress bars (blue for done, green for in-progress, red for failed).
