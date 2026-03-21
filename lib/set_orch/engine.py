@@ -973,6 +973,96 @@ def _handle_auto_replan(
     return False  # continue monitoring
 
 
+def _detect_replan_trigger(state_file: str) -> str:
+    """Detect what triggered the replan: domain_failure, e2e_failure, spec_change, coverage_gap.
+
+    Returns one of: "domain_failure", "e2e_failure", "spec_change", "coverage_gap", "batch_complete".
+    """
+    try:
+        state = load_state(state_file)
+    except Exception:
+        return "batch_complete"
+
+    # E2E failure takes priority
+    if state.extras.get("phase_e2e_failure_context"):
+        return "e2e_failure"
+
+    # Check for failed/stalled changes
+    has_failed = any(c.status in ("failed", "stalled") for c in state.changes)
+    if has_failed:
+        return "domain_failure"
+
+    # Check for coverage gaps
+    coverage_path = os.path.join(os.getcwd(), "wt", "orchestration", "digest", "coverage.json")
+    if os.path.isfile(coverage_path):
+        try:
+            with open(coverage_path) as f:
+                cov_data = json.load(f)
+            uncovered = cov_data.get("uncovered", [])
+            if uncovered:
+                return "coverage_gap"
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return "batch_complete"
+
+
+def _get_domains_needing_replan(state_file: str, domain_data: dict, trigger: str) -> list[str]:
+    """Get list of domain names that need Phase 2 re-run."""
+    try:
+        state = load_state(state_file)
+    except Exception:
+        return [d["name"] for d in domain_data["domains"]]
+
+    if trigger == "domain_failure":
+        # Find domains of failed/stalled changes
+        failed_changes = [c for c in state.changes if c.status in ("failed", "stalled")]
+        # Map change names to domains via requirements
+        failed_domains = set()
+        plan_file = os.environ.get("PLAN_FILENAME", "orchestration-plan.json")
+        if os.path.isfile(plan_file):
+            try:
+                with open(plan_file) as f:
+                    plan = json.load(f)
+                # Build change→domain map from requirements
+                req_to_domain = {}
+                for d in domain_data["domains"]:
+                    for r in d["requirements"]:
+                        req_to_domain[r["id"]] = d["name"]
+
+                for fc in failed_changes:
+                    # Find this change in plan and get its requirements
+                    for pc in plan.get("changes", []):
+                        if pc.get("name") == fc.name:
+                            for req_id in pc.get("requirements", []):
+                                domain = req_to_domain.get(req_id)
+                                if domain:
+                                    failed_domains.add(domain)
+                            break
+            except (json.JSONDecodeError, OSError):
+                pass
+        return list(failed_domains) if failed_domains else [domain_data["domains"][0]["name"]]
+
+    if trigger == "coverage_gap":
+        # Find domains with uncovered requirements
+        coverage_path = os.path.join(os.getcwd(), "wt", "orchestration", "digest", "coverage.json")
+        gap_domains = set()
+        try:
+            with open(coverage_path) as f:
+                cov_data = json.load(f)
+            uncovered = cov_data.get("uncovered", [])
+            # Map uncovered req IDs to domains
+            for d in domain_data["domains"]:
+                domain_req_ids = {r["id"] for r in d["requirements"]}
+                if domain_req_ids & set(uncovered):
+                    gap_domains.add(d["name"])
+        except (json.JSONDecodeError, OSError):
+            pass
+        return list(gap_domains) if gap_domains else [domain_data["domains"][0]["name"]]
+
+    return [d["name"] for d in domain_data["domains"]]
+
+
 def _auto_replan_cycle(
     state_file: str, d: Directives, cycle: int, event_bus: Any
 ) -> str:
@@ -1005,46 +1095,95 @@ def _auto_replan_cycle(
     input_mode = plan_data.get("input_mode", "spec")
     input_path = plan_data.get("input_path", "")
 
-    # 4. Build decomposition context
-    context = build_decomposition_context(
-        input_mode, input_path,
-        replan_ctx=replan_ctx,
-    )
+    # 4. Determine replan trigger type and use appropriate pipeline
+    replan_trigger = _detect_replan_trigger(state_file)
 
-    # 5. Build the prompt and call Claude
-    from .templates import render_planning_prompt
-    prompt = render_planning_prompt(**context)
+    # 5. Domain-parallel selective replan (digest mode) or single-call (brief/spec)
+    domains_file = os.path.join(os.path.dirname(plan_file), "orchestration-plan-domains.json")
+    if input_mode == "digest" and os.path.isfile(domains_file):
+        # ── Selective Domain-Parallel Replan ──
+        from .planner import (
+            _load_domain_data, _phase1_planning_brief,
+            _decompose_single_domain, _phase2_parallel_decompose,
+            _phase3_merge_plans, _save_domain_plans,
+        )
 
-    claude_result = run_claude(prompt, timeout=1800, model=d.default_model or "opus")
-    if claude_result.exit_code != 0:
-        logger.error("Replan: Claude invocation failed (exit %d)", claude_result.exit_code)
-        return "error"
+        logger.info("Replan: using domain-parallel pipeline (trigger=%s)", replan_trigger)
 
-    # 6. Parse response
-    response_text = claude_result.stdout.strip()
+        # Load saved domain plans
+        with open(domains_file) as f:
+            saved = json.load(f)
+        saved_brief = saved.get("brief", {})
+        saved_domain_plans = saved.get("domain_plans", {})
 
-    # Extract JSON from response
-    plan_json = None
-    try:
-        plan_json = json.loads(response_text)
-    except json.JSONDecodeError:
-        # Try extracting JSON from markdown fences
-        import re
-        match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response_text, re.DOTALL)
-        if match:
-            try:
-                plan_json = json.loads(match.group(1))
-            except json.JSONDecodeError:
-                pass
-        # Try finding first { to last }
-        if plan_json is None:
-            first = response_text.find("{")
-            last = response_text.rfind("}")
-            if first >= 0 and last > first:
+        digest_dir = os.path.join(os.getcwd(), "wt", "orchestration", "digest")
+        domain_data = _load_domain_data(digest_dir)
+        model = d.default_model or "opus"
+
+        if replan_trigger == "spec_change":
+            # Full re-decompose
+            logger.info("Replan: full re-decompose (spec changed)")
+            saved_brief = _phase1_planning_brief(domain_data, model=model)
+            saved_domain_plans = _phase2_parallel_decompose(domain_data, saved_brief, model=model)
+        elif replan_trigger == "e2e_failure":
+            # Phase 3 only — re-merge with failure context
+            logger.info("Replan: Phase 3 only (E2E failure)")
+        elif replan_trigger in ("domain_failure", "coverage_gap"):
+            # Re-run failed/gap domains only
+            failed_domains = _get_domains_needing_replan(state_file, domain_data, replan_trigger)
+            logger.info("Replan: re-decomposing domains: %s", failed_domains)
+            for dname in failed_domains:
+                domain = next((dom for dom in domain_data["domains"] if dom["name"] == dname), None)
+                if domain:
+                    saved_domain_plans[dname] = _decompose_single_domain(
+                        domain, json.dumps(saved_brief), domain_data["conventions"], model=model,
+                    )
+        else:
+            # Default: re-run Phase 2 + 3
+            saved_domain_plans = _phase2_parallel_decompose(domain_data, saved_brief, model=model)
+
+        _save_domain_plans(saved_brief, saved_domain_plans)
+
+        plan_json = _phase3_merge_plans(
+            saved_domain_plans, saved_brief, domain_data,
+            replan_ctx=replan_ctx, model=model,
+        )
+    else:
+        # ── Single-call replan (brief/spec mode) ──
+        context = build_decomposition_context(
+            input_mode, input_path,
+            replan_ctx=replan_ctx,
+        )
+
+        from .templates import render_planning_prompt
+        prompt = render_planning_prompt(**context)
+
+        claude_result = run_claude(prompt, timeout=1800, model=d.default_model or "opus")
+        if claude_result.exit_code != 0:
+            logger.error("Replan: Claude invocation failed (exit %d)", claude_result.exit_code)
+            return "error"
+
+        response_text = claude_result.stdout.strip()
+
+        plan_json = None
+        try:
+            plan_json = json.loads(response_text)
+        except json.JSONDecodeError:
+            import re
+            match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response_text, re.DOTALL)
+            if match:
                 try:
-                    plan_json = json.loads(response_text[first:last + 1])
+                    plan_json = json.loads(match.group(1))
                 except json.JSONDecodeError:
                     pass
+            if plan_json is None:
+                first = response_text.find("{")
+                last = response_text.rfind("}")
+                if first >= 0 and last > first:
+                    try:
+                        plan_json = json.loads(response_text[first:last + 1])
+                    except json.JSONDecodeError:
+                        pass
 
     if not plan_json or "changes" not in plan_json:
         logger.error("Replan: could not parse plan JSON from Claude response")

@@ -1282,6 +1282,307 @@ def collect_replan_context(state_path: str) -> dict:
     return result
 
 
+# ─── Domain-Parallel Decompose Phases ─────────────────────────────────
+
+
+def _load_domain_data(digest_dir: str) -> dict:
+    """Load domain summaries and requirements grouped by domain from digest.
+
+    Returns dict with:
+        domains: list of {name, summary, requirements}
+        conventions: str
+        dependencies: str
+        ambiguities: str
+        domain_summaries_text: str (formatted for prompts)
+        all_requirements: list of dicts
+    """
+    d = Path(digest_dir)
+    result: dict[str, Any] = {
+        "domains": [],
+        "conventions": "",
+        "dependencies": "",
+        "ambiguities": "",
+        "domain_summaries_text": "",
+        "all_requirements": [],
+    }
+
+    # Conventions
+    conv_path = d / "conventions.json"
+    if conv_path.exists():
+        try:
+            result["conventions"] = conv_path.read_text()
+        except OSError:
+            pass
+
+    # Dependencies
+    deps_path = d / "dependencies.json"
+    if deps_path.exists():
+        try:
+            result["dependencies"] = deps_path.read_text()
+        except OSError:
+            pass
+
+    # Ambiguities (deferred only)
+    amb_path = d / "ambiguities.json"
+    if amb_path.exists():
+        try:
+            amb_data = json.loads(amb_path.read_text())
+            deferred = [
+                a for a in amb_data.get("ambiguities", [])
+                if a.get("resolution") == "deferred" or "resolution" not in a
+            ]
+            if deferred:
+                result["ambiguities"] = json.dumps({"ambiguities": deferred})
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Requirements
+    req_path = d / "requirements.json"
+    all_reqs: list[dict] = []
+    if req_path.exists():
+        try:
+            req_data = json.loads(req_path.read_text())
+            all_reqs = req_data.get("requirements", [])
+        except (json.JSONDecodeError, OSError):
+            pass
+    result["all_requirements"] = all_reqs
+
+    # Group requirements by domain
+    reqs_by_domain: dict[str, list[dict]] = {}
+    for r in all_reqs:
+        domain = r.get("domain", "misc")
+        reqs_by_domain.setdefault(domain, []).append(r)
+
+    # Domain summaries from domains/*.md
+    domains_dir = d / "domains"
+    domain_names = set(reqs_by_domain.keys())
+    if domains_dir.is_dir():
+        for f in sorted(domains_dir.glob("*.md")):
+            domain_names.add(f.stem)
+
+    summary_parts = []
+    for dname in sorted(domain_names):
+        summary = ""
+        summary_file = domains_dir / f"{dname}.md" if domains_dir.is_dir() else None
+        if summary_file and summary_file.exists():
+            try:
+                summary = summary_file.read_text()
+            except OSError:
+                pass
+
+        domain_reqs = reqs_by_domain.get(dname, [])
+        compact_reqs = [
+            {"id": r["id"], "title": r.get("title", ""), "brief": r.get("brief", "")}
+            for r in domain_reqs
+        ]
+
+        result["domains"].append({
+            "name": dname,
+            "summary": summary,
+            "requirements": compact_reqs,
+            "requirements_json": json.dumps({"requirements": compact_reqs}),
+        })
+        summary_parts.append(f"### {dname}\n{summary}\nRequirements: {len(compact_reqs)}")
+
+    result["domain_summaries_text"] = "\n\n".join(summary_parts)
+    return result
+
+
+def _phase1_planning_brief(
+    domain_data: dict,
+    *,
+    test_infra_context: str = "",
+    existing_specs: str = "",
+    active_changes: str = "",
+    memory_context: str = "",
+    model: str = "opus",
+    max_parallel: int = 3,
+) -> dict:
+    """Phase 1: Generate planning brief from domain summaries."""
+    from .subprocess_utils import run_claude
+    from .templates import render_brief_prompt
+
+    prompt = render_brief_prompt(
+        domain_summaries=domain_data["domain_summaries_text"],
+        dependencies=domain_data["dependencies"],
+        conventions=domain_data["conventions"],
+        test_infra_context=test_infra_context,
+        existing_specs=existing_specs,
+        active_changes=active_changes,
+        memory_context=memory_context,
+        max_parallel=max_parallel,
+    )
+
+    logger.info("Phase 1: generating planning brief (%d domains)", len(domain_data["domains"]))
+    result = run_claude(prompt, timeout=600, model=model, extra_args=["--max-turns", "3"])
+    if result.exit_code != 0:
+        raise RuntimeError(f"Phase 1 (planning brief) failed (exit {result.exit_code})")
+
+    brief = _parse_plan_response(result.stdout)
+    if not brief:
+        raise RuntimeError("Phase 1: could not parse planning brief JSON")
+
+    # Validate required fields
+    for field in ("domain_priorities", "resource_ownership", "cross_cutting_changes", "phasing_strategy"):
+        if field not in brief:
+            brief[field] = [] if field in ("domain_priorities", "cross_cutting_changes") else {} if field == "resource_ownership" else ""
+
+    logger.info(
+        "Phase 1 complete: %d domain priorities, %d cross-cutting changes, %d resource assignments",
+        len(brief.get("domain_priorities", [])),
+        len(brief.get("cross_cutting_changes", [])),
+        len(brief.get("resource_ownership", {})),
+    )
+    return brief
+
+
+def _decompose_single_domain(
+    domain: dict,
+    planning_brief_json: str,
+    conventions: str,
+    *,
+    test_infra_context: str = "",
+    design_context: str = "",
+    model: str = "opus",
+    max_parallel: int = 3,
+) -> dict:
+    """Decompose a single domain into changes. Called in parallel."""
+    from .subprocess_utils import run_claude
+    from .templates import render_domain_decompose_prompt
+
+    prompt = render_domain_decompose_prompt(
+        domain_name=domain["name"],
+        domain_summary=domain["summary"],
+        domain_requirements=domain["requirements_json"],
+        planning_brief=planning_brief_json,
+        conventions=conventions,
+        test_infra_context=test_infra_context,
+        design_context=design_context,
+        max_parallel=max_parallel,
+    )
+
+    logger.info("Phase 2: decomposing domain '%s' (%d reqs)", domain["name"], len(domain["requirements"]))
+    result = run_claude(prompt, timeout=900, model=model, extra_args=["--max-turns", "5"])
+    if result.exit_code != 0:
+        raise RuntimeError(f"Phase 2 domain '{domain['name']}' failed (exit {result.exit_code})")
+
+    domain_plan = _parse_plan_response(result.stdout)
+    if not domain_plan:
+        raise RuntimeError(f"Phase 2: could not parse domain '{domain['name']}' plan JSON")
+
+    changes = domain_plan.get("changes", [])
+    logger.info("Phase 2: domain '%s' → %d changes", domain["name"], len(changes))
+    return domain_plan
+
+
+def _phase2_parallel_decompose(
+    domain_data: dict,
+    planning_brief: dict,
+    *,
+    test_infra_context: str = "",
+    design_context: str = "",
+    model: str = "opus",
+    max_parallel: int = 3,
+) -> dict[str, dict]:
+    """Phase 2: Decompose all domains in parallel."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    domains = domain_data["domains"]
+    if not domains:
+        return {}
+
+    brief_json = json.dumps(planning_brief, indent=2)
+    conventions = domain_data["conventions"]
+
+    results: dict[str, dict] = {}
+    max_workers = min(len(domains), 6)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(
+                _decompose_single_domain,
+                domain,
+                brief_json,
+                conventions,
+                test_infra_context=test_infra_context,
+                design_context=design_context,
+                model=model,
+                max_parallel=max_parallel,
+            ): domain["name"]
+            for domain in domains
+        }
+
+        for future in as_completed(futures):
+            domain_name = futures[future]
+            results[domain_name] = future.result()  # raises if domain failed
+
+    logger.info("Phase 2 complete: %d domains decomposed", len(results))
+    return results
+
+
+def _phase3_merge_plans(
+    domain_plans: dict[str, dict],
+    planning_brief: dict,
+    domain_data: dict,
+    *,
+    coverage_info: str = "",
+    replan_ctx: dict | None = None,
+    model: str = "opus",
+) -> dict:
+    """Phase 3: Merge domain plans into unified orchestration plan."""
+    from .subprocess_utils import run_claude
+    from .templates import render_merge_prompt
+
+    # Format domain plans for the prompt
+    plan_parts = []
+    for domain_name, plan in sorted(domain_plans.items()):
+        changes = plan.get("changes", [])
+        plan_parts.append(f"### Domain: {domain_name} ({len(changes)} changes)\n{json.dumps(plan, indent=2)}")
+
+    # Add cross-cutting changes from brief
+    cc_changes = planning_brief.get("cross_cutting_changes", [])
+    if cc_changes:
+        plan_parts.append(f"### Cross-Cutting Changes (from planning brief)\n{json.dumps(cc_changes, indent=2)}")
+
+    prompt = render_merge_prompt(
+        domain_plans="\n\n".join(plan_parts),
+        planning_brief=json.dumps(planning_brief, indent=2),
+        dependencies=domain_data["dependencies"],
+        ambiguities=domain_data["ambiguities"],
+        coverage_info=coverage_info,
+        replan_ctx=replan_ctx,
+    )
+
+    logger.info("Phase 3: merging %d domain plans", len(domain_plans))
+    result = run_claude(prompt, timeout=900, model=model, extra_args=["--max-turns", "5"])
+    if result.exit_code != 0:
+        raise RuntimeError(f"Phase 3 (merge) failed (exit {result.exit_code})")
+
+    merged_plan = _parse_plan_response(result.stdout)
+    if not merged_plan:
+        raise RuntimeError("Phase 3: could not parse merged plan JSON")
+
+    total_changes = len(merged_plan.get("changes", []))
+    logger.info("Phase 3 complete: %d total changes in merged plan", total_changes)
+    return merged_plan
+
+
+def _save_domain_plans(
+    planning_brief: dict,
+    domain_plans: dict[str, dict],
+) -> None:
+    """Save Phase 1 brief and Phase 2 domain plans for selective replan."""
+    domains_file = os.path.join(os.getcwd(), "orchestration-plan-domains.json")
+    data = {
+        "brief": planning_brief,
+        "domain_plans": domain_plans,
+        "created_at": datetime.now().astimezone().isoformat(),
+    }
+    with open(domains_file, "w") as f:
+        json.dump(data, f, indent=2)
+    logger.info("Saved domain plans to %s", domains_file)
+
+
 # ─── Planning Pipeline ────────────────────────────────────────────────
 
 
@@ -1361,19 +1662,6 @@ def run_planning_pipeline(
     if test_infra.test_command:
         test_infra_context = f"Test command: {test_infra.test_command}"
 
-    # 5. Build decomposition context
-    context = build_decomposition_context(
-        input_mode, input_path,
-        replan_ctx=replan_ctx,
-        design_context=design_context,
-        test_infra_context=test_infra_context,
-        team_mode=team_mode,
-    )
-
-    # 6. Call Claude
-    from .templates import render_planning_prompt
-    prompt = render_planning_prompt(**context)
-
     # Compute input hash for metadata
     input_hash = ""
     try:
@@ -1384,18 +1672,101 @@ def run_planning_pipeline(
     except OSError:
         pass
 
-    result = run_claude(prompt, timeout=1800, model=model, extra_args=["--max-turns", "10"])
-    if result.exit_code != 0:
-        raise RuntimeError(f"Claude planning call failed (exit {result.exit_code})")
+    # Read max_parallel from directives
+    max_parallel = 3
+    try:
+        _sp = os.path.join(os.getcwd(), "orchestration-state.json")
+        if os.path.isfile(_sp):
+            with open(_sp) as _sf:
+                _sd = json.load(_sf)
+            max_parallel = _sd.get("extras", {}).get("directives", {}).get("max_parallel", 3)
+    except Exception:
+        pass
 
-    # 7. Parse response
-    plan_data = _parse_plan_response(result.stdout)
-    if not plan_data:
-        # Debug: dump response for diagnosis
-        debug_path = Path("/tmp/set-decompose-response.txt")
-        debug_path.write_text(result.stdout[:10000] if result.stdout else "(empty)")
-        logger.error("Decompose response dumped to %s (len=%d)", debug_path, len(result.stdout or ""))
-        raise RuntimeError("Could not parse plan JSON from Claude response")
+    # 5. Domain-parallel decompose (digest mode) or single-call (brief/spec)
+    if input_mode == "digest":
+        # ── 3-Phase Domain-Parallel Pipeline ──
+        logger.info("Using domain-parallel decompose pipeline")
+
+        # Load structured domain data from digest
+        domain_data = _load_domain_data(digest_dir)
+
+        # Gather existing specs summary
+        existing_specs = ""
+        try:
+            from .root import SET_TOOLS_ROOT
+            specs_dir = os.path.join(os.getcwd(), "openspec", "specs")
+            if os.path.isdir(specs_dir):
+                spec_names = [d.name for d in Path(specs_dir).iterdir() if d.is_dir()]
+                if spec_names:
+                    existing_specs = "Existing specs: " + ", ".join(sorted(spec_names))
+        except Exception:
+            pass
+
+        # Coverage info
+        coverage_info = ""
+        try:
+            from .digest import check_coverage_gaps
+            coverage_info = check_coverage_gaps(state_path, digest_dir) if state_path else ""
+        except Exception:
+            pass
+
+        # Phase 1: Planning Brief
+        planning_brief = _phase1_planning_brief(
+            domain_data,
+            test_infra_context=test_infra_context,
+            existing_specs=existing_specs,
+            active_changes="",
+            memory_context="",
+            model=model,
+            max_parallel=max_parallel,
+        )
+
+        # Phase 2: Domain Decompose (parallel)
+        domain_plans = _phase2_parallel_decompose(
+            domain_data,
+            planning_brief,
+            test_infra_context=test_infra_context,
+            design_context=design_context,
+            model=model,
+            max_parallel=max_parallel,
+        )
+
+        # Save domain plans for selective replan
+        _save_domain_plans(planning_brief, domain_plans)
+
+        # Phase 3: Merge & Resolve
+        plan_data = _phase3_merge_plans(
+            domain_plans,
+            planning_brief,
+            domain_data,
+            coverage_info=coverage_info,
+            replan_ctx=replan_ctx,
+            model=model,
+        )
+    else:
+        # ── Single-call flow for brief/spec mode ──
+        context = build_decomposition_context(
+            input_mode, input_path,
+            replan_ctx=replan_ctx,
+            design_context=design_context,
+            test_infra_context=test_infra_context,
+            team_mode=team_mode,
+        )
+
+        from .templates import render_planning_prompt
+        prompt = render_planning_prompt(**context)
+
+        result = run_claude(prompt, timeout=1800, model=model, extra_args=["--max-turns", "10"])
+        if result.exit_code != 0:
+            raise RuntimeError(f"Claude planning call failed (exit {result.exit_code})")
+
+        plan_data = _parse_plan_response(result.stdout)
+        if not plan_data:
+            debug_path = Path("/tmp/set-decompose-response.txt")
+            debug_path.write_text(result.stdout[:10000] if result.stdout else "(empty)")
+            logger.error("Decompose response dumped to %s (len=%d)", debug_path, len(result.stdout or ""))
+            raise RuntimeError("Could not parse plan JSON from Claude response")
 
     # 8. Validate
     plan_file_tmp = "/tmp/set-plan-validate.json"

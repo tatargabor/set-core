@@ -691,6 +691,217 @@ Output ONLY valid JSON (no markdown, no explanation):
 {output_json}"""
 
 
+# ─── Domain-Parallel Decompose Templates ─────────────────────────────
+
+_BRIEF_OUTPUT_SCHEMA = """{
+  "domain_priorities": ["domain-name-1", "domain-name-2"],
+  "resource_ownership": {
+    "file/pattern": {"owner": "domain-name", "note": "why this domain owns it"}
+  },
+  "cross_cutting_changes": [
+    {
+      "name": "change-name",
+      "scope": "Description of cross-cutting change",
+      "affects_domains": ["domain1", "domain2"],
+      "change_type": "infrastructure|schema|foundational",
+      "complexity": "S|M"
+    }
+  ],
+  "phasing_strategy": "Brief description of phase ordering strategy",
+  "domain_constraints": {
+    "domain-name": "Constraint text for this domain's decompose agent"
+  }
+}"""
+
+_DOMAIN_CHANGES_OUTPUT_SCHEMA = """{
+  "changes": [
+    {
+      "name": "change-name",
+      "scope": "Detailed description...",
+      "complexity": "S|M",
+      "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
+      "model": "opus|sonnet",
+      "has_manual_tasks": false,
+      "gate_hints": {"gate_name": "skip|warn|run"},
+      "requirements": ["REQ-DOMAIN-001"],
+      "also_affects_reqs": ["REQ-CROSS-001"],
+      "spec_files": ["path/relative/to/spec-base-dir.md"],
+      "resolved_ambiguities": [{"id": "AMB-001", "resolution_note": "rationale"}],
+      "external_dependencies": [
+        {"resource": "file/path", "owner_domain": "other-domain", "need": "what is needed"}
+      ]
+    }
+  ]
+}"""
+
+
+def render_brief_prompt(
+    domain_summaries: str,
+    dependencies: str,
+    conventions: str,
+    test_infra_context: str = "",
+    existing_specs: str = "",
+    active_changes: str = "",
+    memory_context: str = "",
+    max_parallel: int = 3,
+) -> str:
+    """Render Phase 1 planning brief prompt."""
+    optional = ""
+    if memory_context and memory_context.strip():
+        optional += f"\n## Project Memory\n{memory_context}\n"
+    if existing_specs and existing_specs.strip():
+        optional += f"\n## Existing OpenSpec Specs\n{existing_specs}\n"
+    if active_changes and active_changes.strip():
+        optional += f"\n## Active Changes (already in progress — skip these)\n{active_changes}\n"
+
+    return f"""You are a software architect creating a planning brief for domain-parallel decomposition.
+
+Multiple domain-specific agents will each plan changes for their own domain. Your job is to provide
+the shared context they all need: priorities, resource ownership, and cross-cutting concerns.
+
+## Domain Summaries
+{domain_summaries}
+
+## Cross-Domain Dependencies
+{dependencies}
+
+## Project Conventions
+{conventions}
+
+## {test_infra_context}
+{optional}
+
+## Task
+1. Determine domain priority order (infrastructure/schema first, then foundational, then features)
+2. Assign resource ownership — which domain "owns" shared files (schema, middleware, config, types)
+3. Identify cross-cutting changes that span multiple domains (these won't be planned by domain agents)
+4. Define constraints for each domain agent (what NOT to touch, what to depend on)
+5. Describe the phasing strategy
+
+Target: {max_parallel} parallel agents, aim for {max_parallel * 2} total changes.
+
+Output ONLY valid JSON (no markdown, no explanation):
+{_BRIEF_OUTPUT_SCHEMA}"""
+
+
+def render_domain_decompose_prompt(
+    domain_name: str,
+    domain_summary: str,
+    domain_requirements: str,
+    planning_brief: str,
+    conventions: str,
+    test_infra_context: str = "",
+    design_context: str = "",
+    max_parallel: int = 3,
+) -> str:
+    """Render Phase 2 per-domain decompose prompt."""
+    _PLANNING_RULES = _get_planning_rules()
+    max_change_target = max_parallel * 2
+    _PLANNING_RULES = _PLANNING_RULES.replace("{max_parallel}", str(max_parallel))
+    _PLANNING_RULES = _PLANNING_RULES.replace("{max_change_target}", str(max_change_target))
+
+    design_section = ""
+    if design_context and design_context.strip():
+        design_section = f"\n{design_context}\n"
+        if "## Design Data Model" in design_context:
+            design_section += (
+                "\nEmbed entity field names from the design into each change scope. "
+                "The implementing agent will NOT see the design — only your scope text.\n"
+            )
+
+    return f"""You are a software architect decomposing the "{domain_name}" domain into implementable changes.
+
+## Domain: {domain_name}
+{domain_summary}
+
+## Requirements for this domain
+{domain_requirements}
+
+## Planning Brief (shared context from orchestrator)
+{planning_brief}
+
+## Project Conventions
+{conventions}
+
+## {test_infra_context}
+{design_section}
+
+## Constraints
+- You are planning ONLY for the "{domain_name}" domain
+- Do NOT create changes that modify resources owned by other domains (see resource_ownership in brief)
+- If you need a resource owned by another domain, declare it in "external_dependencies"
+- Respect the domain_constraints for "{domain_name}" from the brief
+- Each change MUST include "requirements" listing the REQ-* IDs it implements
+
+{_PLANNING_RULES}
+
+Output ONLY valid JSON (no markdown, no explanation):
+{_DOMAIN_CHANGES_OUTPUT_SCHEMA}"""
+
+
+def render_merge_prompt(
+    domain_plans: str,
+    planning_brief: str,
+    dependencies: str,
+    ambiguities: str = "",
+    coverage_info: str = "",
+    replan_ctx: dict | None = None,
+) -> str:
+    """Render Phase 3 merge & resolve prompt."""
+    replan_section = ""
+    if replan_ctx and replan_ctx.get("completed"):
+        replan_section = f"""
+## Already Completed
+These changes are done — do NOT include them:
+{replan_ctx['completed']}"""
+
+    coverage_section = ""
+    if coverage_info and coverage_info.strip():
+        coverage_section = f"""
+## Coverage Status
+{coverage_info}
+Do NOT re-plan requirements that are already merged or running."""
+
+    ambiguity_section = ""
+    if ambiguities and ambiguities.strip():
+        ambiguity_section = f"""
+## Deferred Ambiguities
+{ambiguities}"""
+
+    return f"""You are a software architect merging domain-level plans into a unified orchestration plan.
+
+Multiple domain agents have each produced change lists for their domain. Your job is to:
+1. Resolve cross-domain dependencies (external_dependencies → depends_on edges)
+2. Detect conflicts (two changes modifying same file → serialize with depends_on)
+3. Add cross-cutting changes from the planning brief
+4. Assign phase numbers (topological sort of dependency graph)
+5. Validate that every requirement is covered by exactly one change
+
+## Domain Plans
+{domain_plans}
+
+## Planning Brief
+{planning_brief}
+
+## Cross-Domain Dependencies
+{dependencies}
+{ambiguity_section}
+{coverage_section}
+{replan_section}
+
+## Rules
+- Output a single unified plan with ALL changes from all domains + cross-cutting changes
+- Each change needs: name, scope, complexity, change_type, model, has_manual_tasks, depends_on, phase, requirements, also_affects_reqs, spec_files, gate_hints
+- depends_on: include both intra-domain deps AND cross-domain deps resolved from external_dependencies
+- phase: assign using topological sort — no change runs before its dependencies
+- Every REQ-* ID must appear in exactly one change's "requirements" array
+- Uncovered requirements: either assign to existing changes or create new ones
+- Keep change names from domain agents unless there's a conflict
+
+Output ONLY valid JSON (no markdown, no explanation):
+{_SPEC_OUTPUT_JSON_DIGEST}"""
+
+
 # ─── Audit Prompt Template ────────────────────────────────────────────
 
 _AUDIT_OUTPUT_JSON = """{
