@@ -237,7 +237,7 @@ Captured automatically by `set-e2e-report` from the running app after all change
 ## Reproducing This Benchmark
 
 ```bash
-# Prerequisites: set-core installed, set-project-web plugin, pnpm, node
+# Prerequisites: set-core installed (includes web module), pnpm, node
 cd /path/to/set-core
 
 # Initialize fresh project

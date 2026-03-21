@@ -48,8 +48,8 @@ Read both the source rules and the template rules. For each source rule file:
 ### 2. Classify candidates
 
 For each new candidate, analyze its content and classify:
-- **base** — Universal rule applicable to any project type (e.g., data-privacy, testing patterns, git conventions). Should go to `set-project-base` default template.
-- **web** — Web-specific rule (e.g., UI patterns, API conventions, auth flows). Should go to `set-project-web` template.
+- **base** — Universal rule applicable to any project type (e.g., data-privacy, testing patterns, git conventions). Goes to CoreProfile or a core template.
+- **web** — Web-specific rule (e.g., UI patterns, API conventions, auth flows). Goes to `modules/web/set_project_web/templates/`.
 - **skip** — Too project-specific to generalize (contains hardcoded paths, entity names, business logic specific to one project).
 
 Classification criteria:
@@ -102,8 +102,8 @@ For each approved candidate:
 
 **New module:**
 1. Write the generalized file to the template directory:
-   - base → `set-project-base/wt_project_base/templates/default/rules/<filename>`
-   - web → `set-project-web/wt_project_web/templates/<template>/rules/<filename>`
+   - base → `lib/set_orch/` (add to CoreProfile or core templates)
+   - web → `modules/web/set_project_web/templates/<template>/rules/<filename>`
 2. Update `manifest.yaml` — add the file as a new optional module:
    ```yaml
    modules:
@@ -134,7 +134,7 @@ Skipped:
   - project-settings.md (too project-specific)
 
 Next steps:
-  - Review and commit changes in set-project-base and/or set-project-web
+  - Review and commit changes in set-core (modules/web/ or lib/set_orch/)
   - Run `set-project init --project-type web --template nextjs` to verify deployment
 ```
 

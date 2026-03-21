@@ -378,9 +378,9 @@ When multiple agents work on a codebase, they need shared conventions — not co
 **Project type plugins** solve this:
 
 ```
-set-project-base          Universal rules (file size, secrets, TODOs)
-  └── set-project-web      Web domain rules (SEO, a11y, security, i18n, ...)
-        └── your-org-web   Organization-specific rules
+CoreProfile (set-core built-in)   Universal rules (file size, secrets, TODOs)
+  └── modules/web/                 Web domain rules (SEO, a11y, security, i18n, ...)
+        └── your-org-web           Organization-specific rules (external plugin)
 ```
 
 ```bash
@@ -389,11 +389,14 @@ set-project init --project-type web --template nextjs
 
 This deploys path-scoped convention files, verification rules, orchestration directives, and gate overrides into the project. Agents only see the rules relevant to the files they're editing — an agent working on `prisma/schema.prisma` gets data-model conventions, not UI rules.
 
-Available project types:
-- **[set-project-base](https://github.com/tatargabor/set-project-base)** — `ProjectType` ABC, universal rules, resolver, template deploy, feedback system
-- **[set-project-web](https://github.com/tatargabor/set-project-web)** — 13 convention rule files, 11 verification rules, 7 orchestration directives, gate overrides, Figma design integration
+Available project types (monorepo):
+- **CoreProfile** (`lib/set_orch/profile_types.py`, `profile_loader.py`) — `ProjectType` ABC, universal rules, resolver, template deploy, feedback system (absorbed from set-project-base)
+- **WebProjectType** (`modules/web/set_project_web/`) — 13 convention rule files, 11 verification rules, 7 orchestration directives, gate overrides, Figma design integration
+- **Example** (`modules/example/`) — Dungeon Builder example plugin
 
-See [Plugin Architecture](https://github.com/tatargabor/set-project-web/blob/master/docs/plugin-architecture.md) for customization and layering.
+External plugins still work via `entry_points` in separate repos. Profile resolution: entry_points → direct import → built-in modules/ → NullProfile.
+
+See [Plugin Architecture](docs/plugins.md) for customization and layering.
 
 ---
 
@@ -451,7 +454,7 @@ The installer handles everything: CLI symlinks, shell completions, MCP server co
 | **Workflow** | [OpenSpec](docs/openspec.md) · [Worktrees](docs/worktrees.md) · [Ralph Loop](docs/ralph.md) |
 | **Infrastructure** | [Memory](docs/developer-memory.md) · [MCP Server](docs/mcp-server.md) · [Team Sync](docs/team-sync.md) |
 | **UI** | [Web Dashboard / GUI](docs/gui.md) · [Architecture](docs/architecture.md) |
-| **Plugins** | [Project Setup](docs/project-setup.md) · [Plugins](docs/plugins.md) · [Plugin Architecture](https://github.com/tatargabor/set-project-web/blob/master/docs/plugin-architecture.md) |
+| **Plugins** | [Project Setup](docs/project-setup.md) · [Plugins](docs/plugins.md) |
 | **Testing** | [E2E Test Guide](tests/e2e/E2E-GUIDE.md) · [Benchmark Report](docs/benchmark-minishop-run4.md) · [E2E Findings](tests/e2e/minishop/) |
 
 ---

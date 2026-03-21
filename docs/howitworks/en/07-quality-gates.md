@@ -234,7 +234,7 @@ Gate modes:
 The final gate configuration for a change is resolved through a 4-layer chain (later layers override earlier):
 
 1. **Built-in defaults** — the table above, keyed by `change_type`
-2. **Profile plugin overrides** — project-type plugins (e.g., `set-project-web`) can override specific gates via `gate_overrides(change_type)`. For example, web projects enable E2E for foundational changes (auth cold-visit tests) and set warn-only smoke for cleanup-after
+2. **Profile plugin overrides** — project-type plugins (e.g., `modules/web/` WebProjectType) can override specific gates via `gate_overrides(change_type)`. For example, web projects enable E2E for foundational changes (auth cold-visit tests) and set warn-only smoke for cleanup-after
 3. **Per-change overrides** — `skip_test`/`skip_review` flags from the plan, plus `gate_hints` (a dict of gate overrides the planner can emit per change)
 4. **Directive overrides** — `gate_overrides` nested dict in `orchestration.yaml` for project-level policy
 

@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Date**: 2026-03-15
-> **Scope**: set-core core + set-project-base + set-project-web
+> **Scope**: set-core core + modules/web/ (WebProjectType)
 
 ## Problem Statement
 
@@ -233,12 +233,12 @@ resolve_gate_config(change: Change, profile, directives) -> GateConfig
 │  ├── lib/set_orch/profile_loader.py   ← MODIFY: gate_overrides  │
 │  └── lib/set_orch/config.py           ← MODIFY: new directives  │
 ├─────────────────────────────────────────────────────────────────┤
-│  set-project-base                                                │
-│  └── set_project_base/base.py         ← MODIFY: gate_overrides  │
-│                                         method on ProjectType   │
+│  set-core core (absorbed from set-project-base)                  │
+│  ├── lib/set_orch/profile_types.py    ← ABC: gate_overrides     │
+│  └── lib/set_orch/profile_loader.py   ← CoreProfile base class  │
 ├─────────────────────────────────────────────────────────────────┤
-│  set-project-web                                                 │
-│  └── set_project_web/project_type.py  ← MODIFY: web-specific    │
+│  modules/web/set_project_web/                                    │
+│  └── project_type.py                  ← MODIFY: web-specific    │
 │                                         gate overrides          │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -507,9 +507,9 @@ class NullProfile:
         return {}
 ```
 
-### 6. Modify: `set-project-base/set_project_base/base.py` — ProjectType
+### 6. Modify: `lib/set_orch/profile_types.py` — ProjectType ABC
 
-Add `gate_overrides` to the abstract base:
+Add `gate_overrides` to the abstract base (absorbed from set-project-base):
 
 ```python
 class ProjectType(ABC):
@@ -530,12 +530,12 @@ class ProjectType(ABC):
         return {}
 ```
 
-### 7. Modify: `set-project-web/set_project_web/project_type.py`
+### 7. Modify: `modules/web/set_project_web/project_type.py`
 
 Web-specific gate overrides:
 
 ```python
-class WebProjectType(BaseProjectType):
+class WebProjectType(CoreProfile):
     # ... existing methods ...
 
     def gate_overrides(self, change_type: str) -> dict:
@@ -655,8 +655,8 @@ if event_bus:
 | Verifier pipeline | `lib/set_orch/verifier.py` | Use GateConfig for all gates | P0 |
 | Merger smoke gate | `lib/set_orch/merger.py` | Check GateConfig for smoke | P0 |
 | NullProfile | `lib/set_orch/profile_loader.py` | Add `gate_overrides()` | P0 |
-| ProjectType ABC | `set-project-base/base.py` | Add `gate_overrides()` | P1 |
-| WebProjectType | `set-project-web/project_type.py` | Web gate overrides | P1 |
+| ProjectType ABC | `lib/set_orch/profile_types.py` | Add `gate_overrides()` | P1 |
+| WebProjectType | `modules/web/set_project_web/project_type.py` | Web gate overrides | P1 |
 | Planning rules | `lib/set_orch/templates.py` | Gate profile docs for LLM | P1 |
 | Config directives | `lib/set_orch/config.py` | `gate_overrides` directive | P2 |
 | Event logging | `lib/set_orch/verifier.py` | Gate profile in events | P2 |

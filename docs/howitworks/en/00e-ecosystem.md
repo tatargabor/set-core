@@ -88,13 +88,13 @@ OpenSpec is the structured development workflow: from proposal through design an
 | `set-openspec` | OpenSpec artifact management (proposal, design, tasks) |
 | `set-audit` | Code audit: security, quality, best practices |
 
-## Project Templates
+## Project Types and Modules
 
-The `set-project` system is template-based. Currently two templates are available, but the system is open to any technology stack:
+The `set-project` system is modular. The base profile (`CoreProfile`) is integrated into set-core's core, while project-specific types live in the `modules/` directory or as external plugins.
 
-### set-project-base
+### CoreProfile (set-core built-in)
 
-The base template usable for any project. Includes:
+The base profile usable for any project. Lives in `lib/set_orch/profile_loader.py` (`CoreProfile`) and `lib/set_orch/profile_types.py` (ABC). Includes:
 
 - Claude Code hooks (memory, activity, skill dispatch)
 - `/set:*` commands (orchestrate, decompose, help)
@@ -102,9 +102,9 @@ The base template usable for any project. Includes:
 - Sentinel rules
 - Default `.claude/` configuration
 
-### set-project-web (Next.js)
+### Web module — `modules/web/` (Next.js)
 
-The web application template, extending `set-project-base`. Includes:
+The web application module, extending `CoreProfile` (`WebProjectType`). Located at `modules/web/set_project_web/`. Includes:
 
 - Next.js specific configurations
 - Testing strategy (Jest + Playwright)
@@ -112,16 +112,20 @@ The web application template, extending `set-project-base`. Includes:
 - Pre-configured `smoke_command` and `e2e_command`
 - Dev server management
 
-### Other Directions
+### Example module — `modules/example/`
 
-The template system is intentionally open. `set-project-web` shows the Next.js direction, but any technology stack can be supported with a custom template:
+The Dungeon Builder example project, demonstrating how to create a custom project type plugin.
+
+### External Plugins
+
+The module system is intentionally open. Beyond built-in modules, any technology stack can be supported via external plugins (entry_points):
 
 - **set-project-api** — REST/GraphQL API backends
 - **set-project-mobile** — React Native, Flutter applications
 - **set-project-python** — Python/FastAPI/Django projects
 - **set-project-scraper** — Data collection and processing projects
 
-These templates would build on `set-project-base` and add project-specific configuration, testing strategy, and build pipelines.
+These plugins would build on `CoreProfile` and add project-specific configuration, testing strategy, and build pipelines. Profile resolution order: entry_points → direct import → built-in modules/ → NullProfile.
 
 ## Ecosystem Map
 
@@ -146,8 +150,8 @@ These templates would build on `set-project-base` and add project-specific confi
 │  set-config   │  set-hook-act.│  /opsx:* skills          │
 │  set-deploy   │              │                           │
 ├──────────────┴──────────────┴───────────────────────────┤
-│  Project templates                                      │
-│  set-project-base │ set-project-web │ set-project-...     │
+│  Project types (monorepo)                               │
+│  CoreProfile (built-in) │ modules/web/ │ modules/example/  │
 └─────────────────────────────────────────────────────────┘
 ```
 

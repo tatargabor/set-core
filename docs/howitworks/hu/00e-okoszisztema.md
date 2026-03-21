@@ -88,13 +88,13 @@ Az OpenSpec a strukturált fejlesztési workflow: a proposal-tól a design-on é
 | `set-openspec` | OpenSpec artifact kezelés (proposal, design, tasks) |
 | `set-audit` | Kód audit: security, minőség, best practices |
 
-## Projekt sablonok
+## Projekt típusok és modulok
 
-A `set-project` rendszer sablon-alapú. Jelenleg két sablon érhető el, de a rendszer nyitott bármilyen technológiai stack-re:
+A `set-project` rendszer moduláris. Az alap profil (`CoreProfile`) a set-core magjába integrált, a projekt-specifikus típusok pedig a `modules/` könyvtárban vagy külső plugin-ként érhetők el.
 
-### set-project-base
+### CoreProfile (set-core beépített)
 
-Az alap sablon, amely minden projekthez használható. Tartalmazza:
+Az alap profil, amely minden projekthez használható. A `lib/set_orch/profile_loader.py` (`CoreProfile`) és `lib/set_orch/profile_types.py` (ABC) tartalmazza:
 
 - Claude Code hookak (memória, activity, skill dispatch)
 - `/set:*` parancsok (orchestrate, decompose, help)
@@ -102,9 +102,9 @@ Az alap sablon, amely minden projekthez használható. Tartalmazza:
 - Sentinel szabályok
 - Alapértelmezett `.claude/` konfiguráció
 
-### set-project-web (Next.js)
+### Web modul — `modules/web/` (Next.js)
 
-A web alkalmazásokhoz készült sablon, a `set-project-base` kiterjesztése. Tartalmazza:
+A web alkalmazásokhoz készült modul, a `CoreProfile` kiterjesztése (`WebProjectType`). Helye: `modules/web/set_project_web/`. Tartalmazza:
 
 - Next.js specifikus konfigurációk
 - Tesztelési stratégia (Jest + Playwright)
@@ -112,16 +112,20 @@ A web alkalmazásokhoz készült sablon, a `set-project-base` kiterjesztése. Ta
 - `smoke_command` és `e2e_command` előkonfigurálás
 - Fejlesztési szerver kezelés
 
-### Más irányok
+### Példa modul — `modules/example/`
 
-A sablon rendszer szándékosan nyitott. A `set-project-web` a Next.js irányt mutatja, de bármilyen más technológiai stack támogatható saját sablonnal:
+A Dungeon Builder példaprojekt, amely bemutatja hogyan készíthető egyedi projekt típus plugin.
+
+### Külső plugin-ek
+
+A modul rendszer szándékosan nyitott. A beépített modulokon túl bármilyen más technológiai stack támogatható külső plugin-ként (entry_points):
 
 - **set-project-api** — REST/GraphQL API backend-ek
 - **set-project-mobile** — React Native, Flutter alkalmazások
 - **set-project-python** — Python/FastAPI/Django projektek
 - **set-project-scraper** — Adatgyűjtő és feldolgozó projektek
 
-Ezek a sablonok a `set-project-base`-re épülnének, és a projekt-specifikus konfigurációt, tesztelési stratégiát, és build pipeline-t adnák hozzá.
+Ezek a plugin-ek a `CoreProfile`-ra épülnének, és a projekt-specifikus konfigurációt, tesztelési stratégiát, és build pipeline-t adnák hozzá. A profil feloldás sorrendje: entry_points → közvetlen import → beépített modules/ → NullProfile.
 
 ## Az ökoszisztéma térképe
 
@@ -146,8 +150,8 @@ Ezek a sablonok a `set-project-base`-re épülnének, és a projekt-specifikus k
 │  set-config   │  set-hook-act.│  /opsx:* skillek        │
 │  set-deploy   │              │                          │
 ├──────────────┴──────────────┴───────────────────────────┤
-│  Projekt sablonok                                       │
-│  set-project-base │ set-project-web │ set-project-...     │
+│  Projekt típusok (monorepo)                              │
+│  CoreProfile (beépített) │ modules/web/ │ modules/example/ │
 └─────────────────────────────────────────────────────────┘
 ```
 
