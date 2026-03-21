@@ -10,7 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCAFFOLD_DIR="$SCRIPT_DIR/scaffold-micro-web"
+SCAFFOLD_DIR="$SCRIPT_DIR/../scaffolds/micro-web"
 SPEC_FILE="$SCAFFOLD_DIR/docs/spec.md"
 E2E_RUNS_DIR="${HOME}/.local/share/set-core/e2e-runs"
 mkdir -p "$E2E_RUNS_DIR"

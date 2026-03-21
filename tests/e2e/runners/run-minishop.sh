@@ -1,34 +1,29 @@
 #!/usr/bin/env bash
-# CraftBrew E2E Test Runner
-# Clones the CraftBrew spec repo, initializes it as a set-project, and prepares
-# it for orchestration. The spec is a multi-file business specification (docs/)
-# with 17+ files. The sentinel auto-triggers digest before planning, then agents
-# build from the structured digest.
+# MiniShop E2E Test Runner
+# Sets up a test project for set-core end-to-end testing.
+# The scaffold is a single file (docs/v1-minishop.md). Agents build everything from the spec.
 #
 # Usage:
-#   ./tests/e2e/run-complex.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/craftbrew-run1, ...
-#   ./tests/e2e/run-complex.sh /path/to/dir                 # Clone to specified dir
-#   ./tests/e2e/run-complex.sh --project-dir ~/other-dir    # Override base dir
-#
-# The spec source repo: https://github.com/tatargabor/craftbrew
+#   ./tests/e2e/run.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/minishop-run9, ...
+#   ./tests/e2e/run.sh /path/to/dir                 # Use specified dir
+#   ./tests/e2e/run.sh --project-dir ~/other-dir    # Override base dir
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCAFFOLD_DIR="$SCRIPT_DIR/scaffold-complex"
-CRAFTBREW_REPO="https://github.com/tatargabor/craftbrew.git"
-CRAFTBREW_BRANCH="spec-only"
+SCAFFOLD_DIR="$SCRIPT_DIR/../scaffolds/minishop"
+SPEC_FILE="$SCAFFOLD_DIR/docs/v1-minishop.md"
 E2E_RUNS_DIR="${HOME}/.local/share/set-core/e2e-runs"
 BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
 mkdir -p "$BASE_DIR"
 
-# Auto-increment run number: find highest existing craftbrew-runN, use N+1
+# Auto-increment run number: find highest existing minishop-runN, use N+1
 next_run_number() {
     local max=0
-    for d in "$BASE_DIR"/craftbrew-run*; do
+    for d in "$BASE_DIR"/minishop-run*; do
         [[ -d "$d" ]] || continue
-        local n="${d##*craftbrew-run}"
-        n="${n%%-*}"  # strip worktree suffixes like -wt-catalog-list
+        local n="${d##*minishop-run}"
+        n="${n%%-*}"  # strip worktree suffixes like -wt-cart-feature
         [[ "$n" =~ ^[0-9]+$ ]] && (( n > max )) && max=$n
     done
     echo $(( max + 1 ))
@@ -37,7 +32,7 @@ next_run_number() {
 # Parse --project-dir flag
 if [[ "${1:-}" == "--project-dir" ]]; then
     if [[ -z "${2:-}" ]]; then
-        echo "[error] --project-dir requires a directory argument" >&2
+        error "--project-dir requires a directory argument"
         exit 1
     fi
     BASE_DIR="$2"
@@ -50,8 +45,8 @@ if [[ -n "${1:-}" ]]; then
     PROJECT_NAME="$(basename "$TEST_DIR")"
 else
     RUN_NUM=$(next_run_number)
-    TEST_DIR="$BASE_DIR/craftbrew-run${RUN_NUM}"
-    PROJECT_NAME="craftbrew-run${RUN_NUM}"
+    TEST_DIR="$BASE_DIR/minishop-run${RUN_NUM}"
+    PROJECT_NAME="minishop-run${RUN_NUM}"
 fi
 
 # ── Colors ──
@@ -78,11 +73,12 @@ preflight() {
     command -v set-project &>/dev/null || die "set-project not found in PATH"
     command -v node &>/dev/null || die "node not found in PATH"
     command -v pnpm &>/dev/null || die "pnpm not found in PATH"
-    command -v git &>/dev/null || die "git not found in PATH"
 
     if ! set-project list-types 2>/dev/null | grep -q "web"; then
         die "set-project-web plugin not installed (set-project list-types does not show 'web')"
     fi
+
+    [[ -f "$SPEC_FILE" ]] || die "Spec file not found: $SPEC_FILE"
 
     success "All prerequisites met"
 }
@@ -137,7 +133,7 @@ check_existing() {
         (cd "$TEST_DIR" && git tag 2>/dev/null | sort -V) || true
         echo ""
         info "To continue with sentinel:"
-        echo "  cd $TEST_DIR && set-sentinel --spec docs/"
+        echo "  cd $TEST_DIR && set-sentinel --spec docs/v1-minishop.md"
         echo ""
         info "To reset from a checkpoint:"
         echo "  cd $TEST_DIR"
@@ -145,8 +141,7 @@ check_existing() {
         echo "  git checkout -b resume-<tag> <tag>"
         echo "  set-project init --name $PROJECT_NAME --project-type web"
         echo "  rm -f orchestration-state.json orchestration-plan.json"
-        echo "  rm -rf wt/orchestration/digest/"
-        echo "  set-sentinel --spec docs/"
+        echo "  set-sentinel --spec docs/v1-minishop.md"
         exit 0
     fi
 }
@@ -154,45 +149,21 @@ check_existing() {
 # ── Main initialization ──
 
 init_project() {
-    step "Clone CraftBrew spec repo"
-    git clone --branch "$CRAFTBREW_BRANCH" "$CRAFTBREW_REPO" "$TEST_DIR"
+    step "Copy spec and design assets"
+    mkdir -p "$TEST_DIR/docs"
+    cp -r "$SCAFFOLD_DIR/docs/"* "$TEST_DIR/docs/"
+    success "Spec + design assets copied to $TEST_DIR/docs/"
+
     cd "$TEST_DIR"
 
-    # Remove origin remote to prevent merge pipeline from pulling upstream code
-    # (the upstream repo may have full implementation on main which contaminates merges)
-    git remote remove origin 2>/dev/null || true
-
-    local file_count
-    file_count=$(find "$TEST_DIR/docs" -name '*.md' | wc -l)
-    success "Cloned CraftBrew repo ($file_count spec files in docs/)"
-
-    step "Copy scaffold extras (design snapshot, figma-raw)"
-    # The scaffold-complex dir contains pre-fetched Figma assets that aren't in the
-    # GitHub repo. Copy them over so the design bridge works without live Figma fetch.
-    if [[ -d "$SCAFFOLD_DIR" ]]; then
-        # Copy design-snapshot.md if present
-        if [[ -f "$SCAFFOLD_DIR/docs/design-snapshot.md" ]]; then
-            cp "$SCAFFOLD_DIR/docs/design-snapshot.md" "$TEST_DIR/docs/"
-        fi
-        # Copy figma-raw directory if present
-        if [[ -d "$SCAFFOLD_DIR/docs/figma-raw" ]]; then
-            cp -r "$SCAFFOLD_DIR/docs/figma-raw" "$TEST_DIR/docs/"
-        fi
-        # Copy figma.md to project root if present
-        if [[ -f "$SCAFFOLD_DIR/figma.md" ]]; then
-            cp "$SCAFFOLD_DIR/figma.md" "$TEST_DIR/"
-        fi
-        success "Scaffold extras copied (design snapshot + figma-raw)"
-    else
-        warn "No scaffold-complex directory found at $SCAFFOLD_DIR — skipping design assets"
-    fi
-
-    step "Tag spec baseline"
+    step "Git init"
+    git init
 
     # .gitattributes — prevent lockfile and runtime file conflicts at git level.
     # merge=ours: on conflict, silently keep current branch version.
     # Lockfile regeneration happens via set-merge's regenerate_lockfile() and
-    # merger.py's _post_merge_deps_install() — NOT via git hook.
+    # merger.py's _post_merge_deps_install() — NOT via git hook (hooks leave
+    # dirty working tree state that blocks subsequent merges).
     cat > .gitattributes << 'ATTRS'
 # set-core: generated/runtime files — always prefer ours on conflict
 pnpm-lock.yaml    merge=ours
@@ -205,8 +176,10 @@ wt/**             merge=ours
 ATTRS
     git config merge.ours.driver true
 
+    git add -A
+    git commit -m "initial: minishop spec"
     git tag v0-spec
-    success "Tagged v0-spec (merge drivers configured)"
+    success "Git initialized, tagged v0-spec (merge drivers + post-merge hook configured)"
 
     step "Clean stale memory"
     local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/set-core/memory}/${PROJECT_NAME}"
@@ -227,33 +200,29 @@ ATTRS
 
     # NOTE: Figma MCP registration removed — OAuth requires interactive auth
     # which blocks `claude -p` (pipe mode) used by the orchestrator.
-    # Design data is available via static design-snapshot.md + figma-raw/ files
-    # copied from scaffold-complex/. The planner reads these directly.
+    # Design data is available via static design-snapshot.md files.
 
     step "Orchestration config"
     mkdir -p wt/orchestration
-    # Read design_file from docs/design/design-system.md if it exists
+
+    # Extract Figma design URL from spec if present
     local design_file_url=""
-    local design_system="docs/design/design-system.md"
-    if [[ -f "$design_system" ]]; then
-        # Extract first figma.com URL (Design or Make)
-        design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' "$design_system" | head -1 || true)
+    if [[ -f "docs/v1-minishop.md" ]]; then
+        design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' docs/v1-minishop.md | head -1 || true)
     fi
 
     cat > wt/orchestration/config.yaml <<YAML
-# Orchestration config for CraftBrew E2E
-default_model: opus-1m
+# Orchestration config for MiniShop E2E test
+default_model: opus  # alternative: opus-1m
 test_command: pnpm test
 e2e_command: npx playwright test
-e2e_timeout: 180
-smoke_command: pnpm build && pnpm test
+e2e_timeout: 120
+smoke_command: pnpm test
 smoke_blocking: true
-post_merge_command: npx prisma generate
 max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
-max_replan_cycles: 3
 discord:
   enabled: true
 YAML
@@ -262,11 +231,9 @@ YAML
         echo "design_file: \"$design_file_url\"" >> wt/orchestration/config.yaml
         success "Design file reference: $design_file_url"
     else
-        # Check if Figma MCP is registered but no URL was extracted
         if jq -e '.mcpServers.figma' .claude/settings.json &>/dev/null 2>&1; then
-            warn "Figma MCP is registered but no design_file URL found in $design_system"
-            warn "Add a Figma URL to docs/design/design-system.md for design token injection"
-            warn "Format: **Figma Make:** https://www.figma.com/make/XXXX/Name"
+            warn "Figma MCP is registered but no design_file URL found in spec"
+            warn "Add a Figma URL to the spec for design token injection"
         fi
     fi
     success "Created wt/orchestration/config.yaml"
@@ -274,7 +241,7 @@ YAML
     git add -A
     git commit -m "chore: set-project init + orchestration config"
     git tag v1-ready
-    git branch -m spec-only main
+    git branch -m main
     success "Tagged v1-ready"
 }
 
@@ -284,35 +251,11 @@ show_completion() {
     step "Ready!"
     echo ""
     info "Test project: $TEST_DIR"
-    info "Source repo: $CRAFTBREW_REPO"
     info "Git tags: $(cd "$TEST_DIR" && git tag | tr '\n' ' ')"
-    info "Spec files: $(find "$TEST_DIR/docs" -name '*.md' | wc -l)"
     echo ""
-    info "To start the E2E test (digest pipeline):"
+    info "To start the E2E test:"
     echo "  cd $TEST_DIR"
-    echo "  set-sentinel --spec docs/"
-    echo ""
-    info "The sentinel will:"
-    echo "  1. Detect directory spec → auto-trigger digest"
-    echo "  2. Generate wt/orchestration/digest/ (requirements, domains, conventions)"
-    echo "  3. Plan changes from structured digest"
-    echo "  4. Dispatch agents with spec-context per worktree"
-    echo "  5. Track requirement coverage through execution"
-    echo ""
-    warn "IMPORTANT: Mid-run set-core fixes"
-    echo "  Symlinks are NOT enough — .claude/ files must be real copies."
-    echo "  After fixing a bug in set-core during a run:"
-    echo "    1. set-project init --name $PROJECT_NAME   # re-deploy to main worktree"
-    echo "    2. Sync to active agent worktrees:"
-    echo "       for wt in \$(git worktree list --porcelain | grep '^worktree ' | awk '{print \$2}'); do"
-    echo "         cp -r .claude/commands/ \"\$wt/.claude/commands/\""
-    echo "         cp -r .claude/skills/ \"\$wt/.claude/skills/\""
-    echo "         cp .claude/CLAUDE.md \"\$wt/.claude/CLAUDE.md\" 2>/dev/null || true"
-    echo "       done"
-    echo "  Running agents pick up the new files on their next iteration."
-    echo ""
-    info "To check requirement coverage during/after run:"
-    echo "  cd $TEST_DIR && set-orchestrate coverage"
+    echo "  set-sentinel --spec docs/v1-minishop.md"
     echo ""
     info "After sentinel completes, generate the E2E report:"
     echo "  cd $TEST_DIR"
