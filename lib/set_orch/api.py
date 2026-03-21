@@ -2370,7 +2370,23 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
             }
         elif etype == "STATE_CHANGE":
             to_state = data.get("to", "")
-            if current:
+            from_state = data.get("from", "")
+            if to_state == "running" and from_state in ("verify", "verifying", "failed"):
+                # Retry: verify/failed → running = new session
+                if current:
+                    current["ended"] = ts
+                    if not current.get("duration_ms"):
+                        current["duration_ms"] = _ts_diff_ms(current["started"], ts)
+                    sessions.append(current)
+                current = {
+                    "n": len(sessions) + 1,
+                    "started": ts,
+                    "ended": "",
+                    "state": "running",
+                    "gates": {},
+                    "merged": False,
+                }
+            elif current:
                 current["state"] = to_state
             elif to_state == "running":
                 # Running without a prior DISPATCH event (e.g. resumed)
