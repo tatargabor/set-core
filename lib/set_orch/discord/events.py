@@ -315,6 +315,17 @@ async def _handle_run_complete(
                     total_tokens=state.total_tokens,
                 )
                 await thread.send(embed=embed)
+
+                # Post screenshot gallery before archiving
+                try:
+                    from .screenshots import post_screenshots, collect_run_screenshots
+                    all_screenshots = collect_run_screenshots(state.changes)
+                    if all_screenshots:
+                        caption = f"\U0001f4ca Run #{run_id} \u2014 {len(all_screenshots)} screenshots"
+                        await post_screenshots(thread, all_screenshots, caption=caption)
+                except Exception as e:
+                    logger.debug("Screenshot gallery failed: %s", e)
+
                 await archive_thread(run_id)
 
             # Post completion confirmation embed with reactions

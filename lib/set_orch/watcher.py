@@ -328,6 +328,35 @@ class WatcherManager:
         # Forward to Discord bot
         await self._forward_to_discord(project_name, event_type, data)
 
+    async def _post_change_screenshots(
+        self, bot: Any, project_name: str, change_name: str,
+        screenshot_dir: str, spoiler: bool = True, caption_prefix: str = "\U0001f4f8 Smoke failed",
+    ):
+        """Post screenshots from a change's screenshot directory to the active Discord thread."""
+        try:
+            from .discord.screenshots import post_screenshots, get_active_thread
+
+            # Resolve absolute path from project
+            watcher = self._watchers.get(project_name)
+            if not watcher:
+                return
+            abs_dir = watcher.project_path / screenshot_dir
+            if not abs_dir.is_dir():
+                return
+
+            paths = sorted(abs_dir.rglob("*.png"))
+            if not paths:
+                return
+
+            thread = get_active_thread()
+            if not thread:
+                return
+
+            caption = f"{caption_prefix}: **{change_name}** ({len(paths)} screenshots)"
+            await post_screenshots(thread, paths, caption=caption, spoiler=spoiler)
+        except Exception as e:
+            logger.debug("Failed to post screenshots for %s: %s", change_name, e)
+
     async def _forward_to_discord(self, project_name: str, event_type: str, data):
         """Bridge watcher events to Discord bot."""
         try:
@@ -373,6 +402,9 @@ class WatcherManager:
                     }, channel=channel)
 
                 # Per-change status updates
+                if not hasattr(self, "_discord_screenshots_posted"):
+                    self._discord_screenshots_posted = set()
+
                 for c in changes:
                     change_key = f"{project_name}:{c.get('name', '')}"
                     c_status = c.get("status", "")
@@ -384,6 +416,27 @@ class WatcherManager:
                             "change": c.get("name", ""),
                             "data": {"to": c_status},
                         }, channel=channel)
+
+                        # Post smoke screenshots on verify-failed
+                        if c_status == "verify-failed" and change_key not in self._discord_screenshots_posted:
+                            sc_count = c.get("smoke_screenshot_count", 0)
+                            sc_dir = c.get("smoke_screenshot_dir", "")
+                            if sc_count and sc_dir:
+                                await self._post_change_screenshots(
+                                    bot, project_name, c.get("name", ""), sc_dir, spoiler=True
+                                )
+                                self._discord_screenshots_posted.add(change_key)
+
+                        # Post E2E screenshots when count changes from 0
+                        e2e_count = c.get("e2e_screenshot_count", 0)
+                        e2e_dir = c.get("e2e_screenshot_dir", "")
+                        e2e_key = f"{change_key}:e2e"
+                        if e2e_count and e2e_dir and e2e_key not in self._discord_screenshots_posted:
+                            await self._post_change_screenshots(
+                                bot, project_name, c.get("name", ""), e2e_dir,
+                                caption_prefix="\U0001f4f8 E2E", spoiler=False
+                            )
+                            self._discord_screenshots_posted.add(e2e_key)
 
             elif event_type == "change_complete":
                 await _handle_event(bot, config, member_name, {
