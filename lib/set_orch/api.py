@@ -87,7 +87,15 @@ def _resolve_project(project_name: str) -> Path:
 
 
 def _state_path(project_path: Path) -> Path:
-    """Find orchestration state file — shared runtime first, then legacy fallbacks."""
+    """Find orchestration state file — project-local first, then shared runtime."""
+    # Project-local paths (engine writes here from CWD)
+    new = project_path / "wt" / "orchestration" / "orchestration-state.json"
+    if new.exists():
+        return new
+    legacy = project_path / "orchestration-state.json"
+    if legacy.exists():
+        return legacy
+    # Shared runtime dir (future: engine may write here)
     try:
         from .paths import SetRuntime
         shared = Path(SetRuntime(str(project_path)).state_file)
@@ -95,13 +103,7 @@ def _state_path(project_path: Path) -> Path:
             return shared
     except Exception:
         pass
-    new = project_path / "wt" / "orchestration" / "orchestration-state.json"
-    if new.exists():
-        return new
-    legacy = project_path / "orchestration-state.json"
-    if legacy.exists():
-        return legacy
-    # Default to shared path for non-existent (will 404 cleanly)
+    # Default to legacy path for non-existent (will 404 cleanly)
     try:
         from .paths import SetRuntime
         return Path(SetRuntime(str(project_path)).state_file)
