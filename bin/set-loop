@@ -53,7 +53,7 @@ Commands:
   list                     List all active loops (global)
   history                  Show iteration history
   monitor [--interval N]   Monitor loop until complete
-  run                      Internal: run the loop (called by terminal)
+  run                      Internal: run the loop (called by background process)
 
 Start Options:
   --done <criteria>        Done detection: tasks|openspec|manual|build|merge|test (default: tasks, auto-detects openspec)
@@ -66,7 +66,7 @@ Start Options:
   --permission-mode <mode> Claude permission mode: auto-accept|allowedTools|plan (default: config)
   --model <name>           Claude model: opus|sonnet|haiku or full ID (default: opus from config)
   --token-budget <N>       Max token budget in thousands (0=unlimited, default: 0)
-  --label <text>           Label for this loop instance (shown in banner and terminal title)
+  --label <text>           Label for this loop instance (shown in banner)
   --team                   Enable Agent Teams mode (Claude spawns parallel teammates within iterations)
   --force                  Force start even with incompatible permission mode (e.g. plan)
 
@@ -115,7 +115,6 @@ cmd_start() {
     local stall_threshold="$DEFAULT_STALL_THRESHOLD"
     local max_idle_iterations=3
     local iteration_timeout=45
-    local fullscreen=false
     local permission_mode_override=""
     local model_override=""
     local force_start=false
@@ -165,10 +164,6 @@ cmd_start() {
                 ;;
             --force)
                 force_start=true
-                shift
-                ;;
-            --fullscreen)
-                fullscreen=true
                 shift
                 ;;
             --label)
@@ -307,13 +302,9 @@ cmd_start() {
         jq --argjson b "$budget_raw" '.token_budget = $b' "$state_file_init" > "$tmp_budget" && mv "$tmp_budget" "$state_file_init"
     fi
 
-    # Spawn terminal with logging
-    info "Spawning terminal for Ralph loop..."
+    # Launch loop as headless background process
+    info "Starting Ralph loop in background..."
 
-    local terminal_title="Ralph: $worktree_name"
-    if [[ -n "$label" ]]; then
-        terminal_title="Ralph: $worktree_name ($label)"
-    fi
     local log_dir
     log_dir=$(get_loop_log_dir "$wt_path")
     mkdir -p "$log_dir"
@@ -323,60 +314,23 @@ cmd_start() {
     state_file=$(get_loop_state_file "$wt_path")
     jq --arg log "$log_dir" '.log_dir = $log' "$state_file" > "$state_file.tmp" && mv "$state_file.tmp" "$state_file"
 
-    local fs_flag=""
-    if [[ "$fullscreen" == true ]]; then
-        fs_flag="--full-screen"
-    fi
-
-    # The run command: cd to worktree and run set-loop run.
+    local main_log="$log_dir/ralph-main.log"
     local run_cmd="cd \"$wt_path\" && \"$SCRIPT_DIR/set-loop\" run"
 
     if [[ "$(uname)" == "Darwin" ]]; then
-        # macOS: Use Terminal.app via osascript
-        local temp_script="/tmp/ralph-loop-$(echo "$worktree_name" | tr '/' '-').sh"
-        cat > "$temp_script" << SCRIPT
-#!/bin/bash
-cd "$wt_path"
-"$SCRIPT_DIR/set-loop" run
-SCRIPT
-        chmod +x "$temp_script"
-        # Launch in Terminal.app with auto-close
-        osascript << APPLESCRIPT &
-tell application "Terminal"
-    set theTab to do script "exec /bin/bash $temp_script"
-    set custom title of theTab to "$terminal_title"
-    repeat
-        delay 5
-        try
-            if not busy of theTab then exit repeat
-        on error
-            exit repeat
-        end try
-    end repeat
-    delay 1
-    try
-        close (first window whose selected tab is theTab) saving no
-    on error
-        try
-            repeat with w in (every window whose name contains "Ralph: $worktree_name")
-                close w saving no
-            end repeat
-        end try
-    end try
-end tell
-APPLESCRIPT
-    elif command -v gnome-terminal &>/dev/null; then
-        gnome-terminal $fs_flag --title="$terminal_title" -- bash -c "$run_cmd" &
-    elif command -v xterm &>/dev/null; then
-        [[ "$fullscreen" == true ]] && fs_flag="-fullscreen"
-        xterm $fs_flag -title "$terminal_title" -e "bash -c '$run_cmd'" &
-    elif command -v kitty &>/dev/null; then
-        [[ "$fullscreen" == true ]] && fs_flag="--start-as=fullscreen"
-        kitty $fs_flag --title "$terminal_title" bash -c "$run_cmd" &
+        # macOS: nohup + disown (setsid not available by default)
+        nohup bash -c "$run_cmd" > "$main_log" 2>&1 &
+        disown $!
     else
-        error "No supported terminal found (gnome-terminal, xterm, kitty, Terminal.app)"
-        exit 1
+        # Linux: setsid for full session detachment
+        nohup setsid bash -c "$run_cmd" > "$main_log" 2>&1 &
     fi
+
+    # Capture background PID
+    local bg_pid=$!
+    local pid_file
+    pid_file=$(get_terminal_pid_file "$wt_path")
+    echo "$bg_pid" > "$pid_file"
 
     sleep 1
 
@@ -397,6 +351,7 @@ APPLESCRIPT
     echo "  set-loop status   - Check progress"
     echo "  set-loop stop     - Stop the loop"
     echo "  set-loop history  - View iteration history"
+    echo "  tail -f $main_log  - Watch live output"
 }
 
 # Stop a running loop
@@ -417,7 +372,7 @@ cmd_stop() {
     # Update status to stopped
     update_loop_state "$state_file" "status" '"stopped"'
 
-    # Try to kill terminal process
+    # Kill loop process tree
     local pid_file
     pid_file=$(get_terminal_pid_file "$wt_path")
 
@@ -426,7 +381,6 @@ cmd_stop() {
         pid=$(cat "$pid_file")
         if kill -0 "$pid" 2>/dev/null; then
             info "Sending stop signal to loop process (PID: $pid)..."
-            # Kill the entire process tree (loop script + claude + tee)
             pkill -TERM -P "$pid" 2>/dev/null || true
             kill "$pid" 2>/dev/null || true
             sleep 2
@@ -435,18 +389,6 @@ cmd_stop() {
             kill -9 "$pid" 2>/dev/null || true
         fi
         rm -f "$pid_file"
-    fi
-
-    # Close the Terminal window on macOS
-    if [[ "$(uname)" == "Darwin" ]]; then
-        sleep 1
-        osascript <<EOF 2>/dev/null || true
-tell application "Terminal"
-    repeat with w in (every window whose name contains "Ralph: $worktree_name")
-        close w saving no
-    end repeat
-end tell
-EOF
     fi
 
     success "Loop stopped: $worktree_name"

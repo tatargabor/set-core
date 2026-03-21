@@ -249,12 +249,6 @@ The system SHALL provide CLI commands for managing autonomous Claude Code loops 
 - **THEN** the loop runs for maximum 10 iterations
 - **AND** uses tasks.md completion as done criteria
 
-#### Scenario: Start with fullscreen terminal
-
-- **GIVEN** fullscreen is enabled in config or via flag
-- **WHEN** user runs `set-loop start <change-id> "task" --fullscreen`
-- **THEN** the terminal opens in fullscreen mode
-
 #### Scenario: Check loop status
 
 - **GIVEN** a loop is running or has completed

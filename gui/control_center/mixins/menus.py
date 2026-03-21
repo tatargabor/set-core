@@ -611,10 +611,6 @@ class MenusMixin:
                 "--iteration-timeout", str(iter_timeout_spin.value()),
             ]
 
-            # Add fullscreen if configured
-            if self.config.get("ralph", "terminal_fullscreen", False):
-                cmd.append("--fullscreen")
-
             # Run in background
             subprocess.Popen(cmd, cwd=wt_path)
 
