@@ -259,9 +259,70 @@ detect_spec_change() {
     return 0
 }
 
+# Archive previous run artifacts to wt/orchestration/runs/<timestamp>/
+# Idempotent: skips if no state file or status is not terminal.
+archive_previous_run() {
+    [[ ! -f "$STATE_FILE" ]] && return 0
+
+    local status
+    status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
+
+    # Only archive terminal states
+    case "$status" in
+        done|stopped|failed|shutdown) ;;
+        *) return 0 ;;
+    esac
+
+    local ts
+    ts=$(date -u +"%Y-%m-%dT%H-%M-%S")
+    local archive_dir="wt/orchestration/runs/$ts"
+    mkdir -p "$archive_dir"
+
+    # Copy per-run artifacts
+    [[ -f "$STATE_FILE" ]] && cp "$STATE_FILE" "$archive_dir/state.json"
+    [[ -f "$EVENTS_FILE" ]] && cp "$EVENTS_FILE" "$archive_dir/events.jsonl"
+    local coverage_file="wt/orchestration/digest/coverage.json"
+    [[ -f "$coverage_file" ]] && cp "$coverage_file" "$archive_dir/coverage.json"
+    local findings_file="wt/orchestration/review-findings.jsonl"
+    [[ -f "$findings_file" ]] && cp "$findings_file" "$archive_dir/review-findings.jsonl"
+    local findings_summary="wt/orchestration/review-findings-summary.md"
+    [[ -f "$findings_summary" ]] && cp "$findings_summary" "$archive_dir/review-findings-summary.md"
+    local state_archive
+    state_archive="${STATE_FILE%.json}-archive.jsonl"
+    [[ -f "$state_archive" ]] && cp "$state_archive" "$archive_dir/state-archive.jsonl"
+
+    # Write meta.json
+    local spec_hash started_at change_count merged_count failed_count
+    spec_hash=$(jq -r '.brief_hash // ""' "$STATE_FILE" 2>/dev/null || true)
+    started_at=$(jq -r '.started_at // ""' "$STATE_FILE" 2>/dev/null || true)
+    change_count=$(jq '[.changes // [] | length] | .[0]' "$STATE_FILE" 2>/dev/null || echo 0)
+    merged_count=$(jq '[.changes[]? | select(.status == "merged" or .status == "done")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
+    failed_count=$(jq '[.changes[]? | select(.status == "failed" or .status == "integration-failed")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
+    printf '{"spec_hash":"%s","status":"%s","change_count":%s,"merged_count":%s,"failed_count":%s,"started_at":"%s","archived_at":"%s"}' \
+        "$spec_hash" "$status" "$change_count" "$merged_count" "$failed_count" "$started_at" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        | jq . > "$archive_dir/meta.json"
+
+    # Clean per-run files
+    rm -f "$STATE_FILE" "${STATE_FILE}.lock" "${STATE_FILE}.bak"
+    rm -f "$EVENTS_FILE" "${EVENTS_FILE}.bak"
+    rm -f "$state_archive"
+    rm -f "orchestrator.lock"
+    rm -f "$findings_file" "$findings_summary"
+
+    # Reset coverage (preserve other digest files — they're spec-derived)
+    if [[ -f "$coverage_file" ]]; then
+        echo '{"coverage": {}, "uncovered": []}' > "$coverage_file"
+    fi
+
+    sentinel_log "Archived previous run ($status) to $archive_dir"
+}
+
 # Reset orchestration state for spec switch. Preserves git history on main.
 reset_for_spec_switch() {
     sentinel_log "Resetting orchestration for spec switch"
+
+    # 0. Archive previous run first (before any cleanup)
+    archive_previous_run
 
     # 1. Delete orch/* tags (unblock clean_old_worktrees history guard)
     local tags
@@ -286,16 +347,12 @@ reset_for_spec_switch() {
         sentinel_log "Pruned $branch_count merged change/* branches"
     fi
 
-    # 4. Remove orchestration state files (not git!)
+    # 4. Remove remaining state files (archive_previous_run handles most, but clean leftovers)
     rm -f "$STATE_FILE" "${STATE_FILE}.lock" "${STATE_FILE}.bak"
     rm -f "$EVENTS_FILE" "${EVENTS_FILE}.bak"
     rm -f "orchestrator.lock"
-    # Also remove legacy root-level state files (Python monitor may use these)
-    rm -f "orchestration-state.json" "orchestration-state.json.lock"
-    rm -f "orchestration-state-events.jsonl"
-    rm -f "orchestration-events.jsonl"
 
-    # 5. Remove digest and plan (will be regenerated from new spec)
+    # 5. Remove ENTIRE digest (spec changed = regenerate everything including requirements)
     rm -rf "wt/orchestration/digest"
     rm -f "wt/orchestration/plan.json"
 
@@ -375,9 +432,8 @@ elif [[ -f "$STATE_FILE" ]]; then
     if [[ "$_prev_status" == "done" || "$_prev_status" == "stopped" ]]; then
         # Check if there are failed changes with worktrees — partial reset instead of nuke
         _has_failed_with_wt=$(jq -r '[.changes[]? | select(.status == "failed" and .worktree_path != null and .worktree_path != "")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
-        _has_merged=$(jq -r '[.changes[]? | select(.status == "merged")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
-        if [[ "$_has_failed_with_wt" -gt 0 || "$_has_merged" -gt 0 ]]; then
-            sentinel_log "Previous run finished (status=$_prev_status) with $_has_failed_with_wt failed (with worktrees) + $_has_merged merged — partial reset (preserving worktrees)"
+        if [[ "$_has_failed_with_wt" -gt 0 ]]; then
+            sentinel_log "Previous run (status=$_prev_status) has $_has_failed_with_wt failed changes with worktrees — partial reset (preserving worktrees)"
             # Partial reset: failed → pending, clear retry counts, keep worktrees
             _tmp=$(mktemp)
             jq '
@@ -403,17 +459,9 @@ elif [[ -f "$STATE_FILE" ]]; then
             rm -f "$EVENTS_FILE"
             sentinel_log "Partial reset complete — failed changes reset to pending, worktrees preserved"
         else
-            sentinel_log "Previous run finished (status=$_prev_status) — cleaning old state for fresh start"
+            # Full archive + cleanup for completed runs
             "$SCRIPT_DIR/set-sentinel-rotate" >/dev/null 2>&1 || true
-            # Backup state before cleaning — enables manual recovery and resume
-            if [[ -f "$STATE_FILE" ]]; then
-                cp "$STATE_FILE" "${STATE_FILE}.bak"
-                sentinel_log "Backed up state to ${STATE_FILE}.bak"
-            fi
-            if [[ -f "$EVENTS_FILE" ]]; then
-                cp "$EVENTS_FILE" "${EVENTS_FILE}.bak"
-            fi
-            rm -f "$STATE_FILE" "$EVENTS_FILE"
+            archive_previous_run
             clean_old_worktrees
         fi
     fi

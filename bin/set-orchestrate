@@ -540,9 +540,25 @@ cmd_reset() {
             return 1
         fi
 
-        # Backup
-        cp "$STATE_FILENAME" "${STATE_FILENAME%.json}.backup.json"
-        echo "Backup saved to ${STATE_FILENAME%.json}.backup.json"
+        # Archive previous run to wt/orchestration/runs/ before destructive reset
+        if command -v set-sentinel >/dev/null 2>&1; then
+            # Source sentinel functions for archive_previous_run
+            local _sentinel_script
+            _sentinel_script="$(dirname "$0")/set-sentinel"
+            if [[ -f "$_sentinel_script" ]]; then
+                # Archive by copying state+events+coverage to timestamped dir
+                local _ts _archive_dir
+                _ts=$(date -u +"%Y-%m-%dT%H-%M-%S")
+                _archive_dir="wt/orchestration/runs/$_ts"
+                mkdir -p "$_archive_dir"
+                cp "$STATE_FILENAME" "$_archive_dir/state.json" 2>/dev/null || true
+                local _events="${STATE_FILENAME%orchestration-state.json}orchestration-state-events.jsonl"
+                [[ -f "$_events" ]] && cp "$_events" "$_archive_dir/events.jsonl"
+                [[ -f "wt/orchestration/digest/coverage.json" ]] && cp "wt/orchestration/digest/coverage.json" "$_archive_dir/coverage.json"
+                [[ -f "wt/orchestration/review-findings.jsonl" ]] && cp "wt/orchestration/review-findings.jsonl" "$_archive_dir/review-findings.jsonl"
+                echo "Archived previous run to $_archive_dir"
+            fi
+        fi
 
         # Remove worktrees
         local removed_wt=0
