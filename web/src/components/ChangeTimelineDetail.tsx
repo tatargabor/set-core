@@ -1,18 +1,17 @@
 import { useState, useEffect } from 'react'
-import { getChangeTimeline, type ChangeTimelineData, type TimelineIteration } from '../lib/api'
+import { getChangeTimeline, type ChangeTimelineData, type TimelineSession } from '../lib/api'
 
 interface Props {
   project: string
   changeName: string
 }
 
-// Background color for timeline blocks
 const STATE_BG: Record<string, string> = {
-  pending: 'bg-neutral-500',
-  running: 'bg-blue-500',
   dispatched: 'bg-blue-400',
+  running: 'bg-blue-500',
   verify: 'bg-yellow-500',
   verifying: 'bg-yellow-500',
+  retry: 'bg-orange-500',
   'merge-queue': 'bg-purple-500',
   merged: 'bg-green-500',
   done: 'bg-green-500',
@@ -20,6 +19,23 @@ const STATE_BG: Record<string, string> = {
   'merge-blocked': 'bg-red-400',
   stopped: 'bg-neutral-400',
 }
+
+const GATE_ICON: Record<string, string> = {
+  pass: '\u2713',
+  fail: '\u2717',
+  skipped: '\u2013',
+  skip: '\u2013',
+}
+
+const GATE_COLOR: Record<string, string> = {
+  pass: 'text-green-400',
+  fail: 'text-red-400',
+  skipped: 'text-neutral-600',
+  skip: 'text-neutral-600',
+}
+
+// Gates we care about showing (in order)
+const MAIN_GATES = ['build', 'test', 'review', 'e2e', 'smoke']
 
 function formatTime(ts: string): string {
   try {
@@ -38,122 +54,88 @@ function formatDuration(ms: number): string {
   return `${hrs}h ${mins % 60}m`
 }
 
-function iterDurationMs(it: TimelineIteration): number {
-  try {
-    return new Date(it.ended).getTime() - new Date(it.started).getTime()
-  } catch { return 0 }
-}
+function SessionBlock({ session }: { session: TimelineSession }) {
+  const [hovered, setHovered] = useState(false)
+  const isRunning = !session.ended && !session.duration_ms
+  const gateEntries = MAIN_GATES
+    .filter(g => session.gates[g] && session.gates[g] !== 'skipped' && session.gates[g] !== 'skip')
+    .map(g => ({ gate: g, result: session.gates[g] }))
 
-const RESULT_ICON: Record<string, string> = {
-  pass: '\u2713',
-  fail: '\u2717',
-  skipped: '\u2013',
-  skip: '\u2013',
-}
-
-const RESULT_COLOR: Record<string, string> = {
-  pass: 'text-green-400',
-  fail: 'text-red-400',
-  skipped: 'text-neutral-500',
-  skip: 'text-neutral-500',
-}
-
-function IterationTimeline({ iterations }: { iterations: TimelineIteration[] }) {
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+  // Determine session outcome color
+  const hasFail = gateEntries.some(g => g.result === 'fail')
+  const allPass = gateEntries.length > 0 && gateEntries.every(g => g.result === 'pass')
+  const bgClass = isRunning ? 'bg-blue-500 animate-pulse'
+    : session.merged ? 'bg-green-600'
+    : allPass ? 'bg-green-500'
+    : hasFail ? 'bg-red-500/80'
+    : STATE_BG[session.state] ?? 'bg-neutral-500'
 
   return (
-    <div className="relative">
-      <div className="flex items-end gap-0.5 flex-wrap pb-2">
-        {iterations.map((it, i) => {
-          const prevState = i > 0 ? iterations[i - 1].state : null
-          const stateChanged = prevState !== null && prevState !== it.state
-          const showLabel = i === 0 || stateChanged
-
-          return (
-            <div key={it.n} className="flex items-end gap-0.5 shrink-0">
-              {stateChanged && <div className="w-px h-5 bg-neutral-600 mx-0.5 self-center" />}
-              <div
-                className="relative"
-                onMouseEnter={() => setHoveredIdx(i)}
-                onMouseLeave={() => setHoveredIdx(null)}
-              >
-                <div
-                  className={`w-5 h-5 rounded-sm cursor-default ${STATE_BG[it.state] ?? 'bg-neutral-500'} ${it.no_op ? 'opacity-40' : ''} ${it.timed_out ? 'ring-1 ring-red-500/60' : ''}`}
-                  title={`#${it.n}`}
+    <div className="flex items-center gap-1 shrink-0">
+      {session.n > 1 && (
+        <div className="text-neutral-600 text-xs mx-0.5">{'\u2192'}</div>
+      )}
+      <div
+        className="relative"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        {/* Session block */}
+        <div className={`px-2 py-1.5 rounded cursor-default ${bgClass} min-w-[48px]`}>
+          <div className="text-[10px] text-white/80 font-mono text-center">#{session.n}</div>
+          {/* Gate result icons inline */}
+          {gateEntries.length > 0 && (
+            <div className="flex items-center justify-center gap-0.5 mt-0.5">
+              {gateEntries.map(({ gate, result }) => (
+                <span
+                  key={gate}
+                  className={`text-[10px] font-bold ${result === 'pass' ? 'text-green-200' : result === 'fail' ? 'text-red-200' : 'text-white/40'}`}
+                  title={`${gate}: ${result}`}
                 >
-                  <span className="flex items-center justify-center h-full text-[8px] text-white/70 font-mono">
-                    {it.n}
-                  </span>
-                </div>
-                {showLabel && (
-                  <div className="text-[9px] text-neutral-500 leading-none mt-0.5 text-center">{it.state}</div>
-                )}
-                {hoveredIdx === i && (
-                  <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1.5 bg-neutral-900 border border-neutral-700 rounded shadow-lg text-xs text-neutral-200 whitespace-nowrap pointer-events-none">
-                    <div className="font-medium">Iteration {it.n}</div>
-                    <div className="text-neutral-400">State: {it.state}</div>
-                    <div className="text-neutral-400">Duration: {formatDuration(iterDurationMs(it))}</div>
-                    <div className="text-neutral-400">Tokens: {it.tokens_used.toLocaleString()}</div>
-                    <div className="text-neutral-400">Commits: {it.commits}</div>
-                    {it.timed_out && <div className="text-red-400">Timed out</div>}
-                    {it.no_op && <div className="text-neutral-500">No-op (no work done)</div>}
-                    <div className="text-[10px] text-neutral-500 mt-0.5">{formatTime(it.started)} - {formatTime(it.ended)}</div>
-                  </div>
-                )}
-              </div>
+                  {gate[0].toUpperCase()}
+                </span>
+              ))}
             </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+          )}
+          {isRunning && (
+            <div className="text-[9px] text-white/60 text-center mt-0.5">running</div>
+          )}
+        </div>
 
-function TransitionTimeline({ transitions }: { transitions: ChangeTimelineData['transitions'] }) {
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+        {/* State label below */}
+        <div className="text-[9px] text-neutral-500 leading-none mt-1 text-center">
+          {session.merged ? 'merged' : session.state}
+        </div>
 
-  return (
-    <div className="relative">
-      <div className="flex items-end gap-0.5 flex-wrap pb-2">
-        {transitions.map((t, i) => {
-          const prevState = i > 0 ? transitions[i - 1].to : null
-          const stateChanged = prevState !== null && prevState !== t.to
-          const showLabel = i === 0 || stateChanged
-
-          let stepDurationMs = 0
-          if (i < transitions.length - 1) {
-            try {
-              stepDurationMs = new Date(transitions[i + 1].ts).getTime() - new Date(t.ts).getTime()
-            } catch { /* ignore */ }
-          }
-
-          return (
-            <div key={i} className="flex items-end gap-0.5 shrink-0">
-              {stateChanged && <div className="w-px h-5 bg-neutral-600 mx-0.5 self-center" />}
-              <div
-                className="relative"
-                onMouseEnter={() => setHoveredIdx(i)}
-                onMouseLeave={() => setHoveredIdx(null)}
-              >
-                <div
-                  className={`w-5 h-5 rounded-sm cursor-default ${STATE_BG[t.to] ?? 'bg-neutral-500'} ${(t.to === 'failed' || t.to === 'merge-blocked') ? 'ring-1 ring-red-500/60' : ''}`}
-                  title={t.to}
-                />
-                {showLabel && (
-                  <div className="text-[9px] text-neutral-500 leading-none mt-0.5 text-center">{t.to}</div>
-                )}
-                {hoveredIdx === i && (
-                  <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1.5 bg-neutral-900 border border-neutral-700 rounded shadow-lg text-xs text-neutral-200 whitespace-nowrap pointer-events-none">
-                    <div className="font-medium">{t.to}</div>
-                    {t.from && <div className="text-neutral-400">From: {t.from}</div>}
-                    <div className="text-[10px] text-neutral-500 mt-0.5">{formatTime(t.ts)}</div>
-                    {stepDurationMs > 0 && <div className="text-neutral-400">Duration: {formatDuration(stepDurationMs)}</div>}
+        {/* Tooltip */}
+        {hovered && (
+          <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-4 px-2.5 py-2 bg-neutral-900 border border-neutral-700 rounded shadow-lg text-xs text-neutral-200 whitespace-nowrap pointer-events-none">
+            <div className="font-medium mb-1">Session {session.n}</div>
+            <div className="text-neutral-400">State: {session.state}{session.merged ? ' → merged' : ''}</div>
+            {session.duration_ms ? (
+              <div className="text-neutral-400">Duration: {formatDuration(session.duration_ms)}</div>
+            ) : isRunning ? (
+              <div className="text-blue-400">In progress...</div>
+            ) : null}
+            {/* Gate details */}
+            {Object.keys(session.gates).length > 0 && (
+              <div className="mt-1 pt-1 border-t border-neutral-700 space-y-0.5">
+                {MAIN_GATES.filter(g => session.gates[g]).map(g => (
+                  <div key={g} className="flex items-center gap-1.5">
+                    <span className="text-neutral-500 w-12">{g}:</span>
+                    <span className={GATE_COLOR[session.gates[g]] ?? 'text-neutral-400'}>
+                      {GATE_ICON[session.gates[g]] ?? session.gates[g]} {session.gates[g]}
+                    </span>
                   </div>
-                )}
+                ))}
               </div>
+            )}
+            <div className="text-[10px] text-neutral-500 mt-1">
+              {formatTime(session.started)}
+              {session.ended ? ` - ${formatTime(session.ended)}` : ''}
             </div>
-          )
-        })}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -173,54 +155,24 @@ export default function ChangeTimelineDetail({ project, changeName }: Props) {
 
   if (error) return <div className="text-red-400 text-sm p-2">{error}</div>
   if (!data) return <div className="text-neutral-500 text-sm p-2">Loading timeline...</div>
-  if (data.transitions.length === 0) return <div className="text-neutral-600 text-sm p-2">No state transitions recorded</div>
+  if (data.sessions.length === 0) return <div className="text-neutral-600 text-sm p-2">No sessions recorded</div>
 
-  const hasIterations = data.iterations && data.iterations.length > 0
-
-  // Count retries
-  const retryCount = data.transitions.filter(t => t.from === 'failed' || (t.from === 'verify' && t.to !== 'merge-queue' && t.to !== 'merged' && t.to !== 'done')).length
-  const verifyCount = data.transitions.filter(t => t.to === 'verify' || t.to === 'verifying').length
-
-  // Gate results
-  const gates = data.current_gate_results
-  const gateEntries = Object.entries(gates).filter(([k]) => k.endsWith('_result'))
+  const retryCount = data.sessions.filter(s => s.state === 'retry').length
 
   return (
     <div className="p-3 space-y-3">
-      {/* Timeline: iteration-based or state-transition fallback */}
-      {hasIterations ? (
-        <IterationTimeline iterations={data.iterations} />
-      ) : (
-        <TransitionTimeline transitions={data.transitions} />
-      )}
-
-      {/* Gate results */}
-      {gateEntries.length > 0 && (
-        <div className="flex gap-3 text-sm">
-          {gateEntries.map(([key, val]) => {
-            const name = key.replace('_result', '')
-            const v = String(val)
-            return (
-              <span key={key} className="flex items-center gap-1">
-                <span className="text-neutral-500">{name}:</span>
-                <span className={RESULT_COLOR[v] ?? 'text-neutral-400'}>
-                  {RESULT_ICON[v] ?? v} {v}
-                </span>
-              </span>
-            )
-          })}
-          {gates.verify_retry_count != null && Number(gates.verify_retry_count) > 0 && (
-            <span className="text-neutral-500">retries: {gates.verify_retry_count}</span>
-          )}
-        </div>
-      )}
+      {/* Session timeline */}
+      <div className="flex items-start gap-0 overflow-x-auto pb-1">
+        {data.sessions.map(s => (
+          <SessionBlock key={s.n} session={s} />
+        ))}
+      </div>
 
       {/* Summary line */}
       <div className="text-sm text-neutral-500">
         Duration: {formatDuration(data.duration_ms)}
-        {hasIterations && <span> · {data.iterations.length} iterations</span>}
+        <span> · {data.sessions.length} session{data.sessions.length !== 1 ? 's' : ''}</span>
         {retryCount > 0 && <span> · {retryCount} retries</span>}
-        {verifyCount > 0 && <span> · {verifyCount} gate runs</span>}
       </div>
     </div>
   )

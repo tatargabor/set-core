@@ -2300,12 +2300,14 @@ def _collect_reflections(project_path: Path) -> dict:
 
 
 def _build_change_timeline(project_path: Path, change_name: str) -> dict:
-    """Reconstruct per-change state transitions from events JSONL."""
+    """Reconstruct per-change sessions from events JSONL.
+
+    A session is a dispatch→verify cycle: the agent gets dispatched, runs,
+    hits the verify gate, and either passes or retries.
+    """
     import glob as _glob
 
     # Find events files (main + rotated archives)
-    # EventBus writes to "orchestration-events.jsonl" (via _make_event_bus in cli.py)
-    # Legacy files may use "orchestration-state-events.jsonl"
     events_files: list[Path] = []
     for base_dir in [project_path, project_path / "wt" / "orchestration"]:
         for name in ["orchestration-events.jsonl", "orchestration-state-events.jsonl"]:
@@ -2319,9 +2321,10 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
             break
 
     if not events_files:
-        return {"transitions": [], "duration_ms": 0, "current_gate_results": {}}
+        return {"sessions": [], "duration_ms": 0, "current_gate_results": {}}
 
-    transitions: list[dict] = []
+    # Collect all events for this change, sorted by timestamp
+    change_events: list[dict] = []
     for ef in events_files:
         try:
             with open(ef) as f:
@@ -2333,33 +2336,91 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                         ev = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if ev.get("type") != "STATE_CHANGE":
-                        continue
                     if ev.get("change") != change_name:
                         continue
-                    data = ev.get("data", {})
-                    transitions.append({
-                        "ts": ev.get("ts", ""),
-                        "from": data.get("from", ""),
-                        "to": data.get("to", ""),
-                    })
+                    if ev.get("type") in ("DISPATCH", "STATE_CHANGE", "VERIFY_GATE", "MERGE_ATTEMPT", "MERGE_PROGRESS"):
+                        change_events.append(ev)
         except OSError:
             continue
 
-    transitions.sort(key=lambda t: t["ts"])
+    change_events.sort(key=lambda e: e.get("ts", ""))
 
+    # Build sessions: each DISPATCH or STATE_CHANGE to "running" starts a new session.
+    # VERIFY_GATE, MERGE_ATTEMPT close it.  STATE_CHANGE to terminal states close it.
+    sessions: list[dict] = []
+    current: dict | None = None
+
+    for ev in change_events:
+        etype = ev["type"]
+        ts = ev.get("ts", "")
+        data = ev.get("data", {})
+
+        if etype == "DISPATCH":
+            # New session
+            if current:
+                current["ended"] = ts
+                sessions.append(current)
+            current = {
+                "n": len(sessions) + 1,
+                "started": ts,
+                "ended": "",
+                "state": "dispatched",
+                "gates": {},
+                "merged": False,
+            }
+        elif etype == "STATE_CHANGE":
+            to_state = data.get("to", "")
+            if current:
+                current["state"] = to_state
+            elif to_state == "running":
+                # Running without a prior DISPATCH event (e.g. resumed)
+                current = {
+                    "n": len(sessions) + 1,
+                    "started": ts,
+                    "ended": "",
+                    "state": to_state,
+                    "gates": {},
+                    "merged": False,
+                }
+        elif etype == "VERIFY_GATE":
+            if current:
+                # Extract gate results
+                for gate in ("build", "test", "e2e", "review", "scope_check",
+                             "spec_verify", "rules", "smoke", "test_files"):
+                    val = data.get(gate)
+                    if val is not None:
+                        current["gates"][gate] = val
+                # Check if this was a retry-triggering gate
+                if data.get("result") == "retry":
+                    current["state"] = "retry"
+                    stop_gate = data.get("stop_gate", "")
+                    if stop_gate:
+                        current["gates"][stop_gate] = "fail"
+                current["ended"] = ts
+                current["duration_ms"] = _ts_diff_ms(current["started"], ts)
+                sessions.append(current)
+                current = None
+        elif etype == "MERGE_ATTEMPT":
+            if current:
+                current["merged"] = True
+
+    # If there's still an open session (currently running), include it
+    if current:
+        current["ended"] = ""
+        sessions.append(current)
+
+    # Total duration
     duration_ms = 0
-    if len(transitions) >= 2:
+    if change_events:
         try:
-            first = datetime.fromisoformat(transitions[0]["ts"].replace("Z", "+00:00"))
-            last = datetime.fromisoformat(transitions[-1]["ts"].replace("Z", "+00:00"))
+            first = datetime.fromisoformat(change_events[0]["ts"].replace("Z", "+00:00"))
+            last = datetime.fromisoformat(change_events[-1]["ts"].replace("Z", "+00:00"))
             duration_ms = int((last - first).total_seconds() * 1000)
         except (ValueError, TypeError):
             pass
 
-    # Current gate results + worktree path from state
+    # Current gate results from state
     current_gate_results: dict = {}
-    worktree_path: str = ""
     state_file = project_path / "orchestration-state.json"
     if state_file.exists():
         try:
@@ -2371,50 +2432,25 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                         val = change.get(field)
                         if val is not None:
                             current_gate_results[field] = val
-                    worktree_path = change.get("worktree_path", "")
                     break
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Read iteration data from loop-state.json
-    iterations_out: list[dict] = []
-    if worktree_path:
-        loop_state_file = Path(worktree_path) / ".set" / "loop-state.json"
-        if loop_state_file.exists():
-            try:
-                with open(loop_state_file) as f:
-                    ls = json.load(f)
-                raw_iters = ls.get("iterations", [])
-                if isinstance(raw_iters, list):
-                    # Assign state to each iteration from transitions
-                    for it in raw_iters:
-                        it_started = it.get("started", "")
-                        state = "running"  # sensible default
-                        for t in transitions:
-                            if t["ts"] <= it_started:
-                                state = t["to"]
-                            else:
-                                break
-                        commits = it.get("commits", [])
-                        iterations_out.append({
-                            "n": it.get("n", 0),
-                            "started": it_started,
-                            "ended": it.get("ended", ""),
-                            "state": state,
-                            "commits": len(commits) if isinstance(commits, list) else 0,
-                            "tokens_used": it.get("tokens_used", 0),
-                            "timed_out": bool(it.get("timed_out", False)),
-                            "no_op": bool(it.get("no_op", False)),
-                        })
-            except (json.JSONDecodeError, OSError):
-                pass
-
     return {
-        "transitions": transitions,
-        "iterations": iterations_out,
+        "sessions": sessions,
         "duration_ms": duration_ms,
         "current_gate_results": current_gate_results,
     }
+
+
+def _ts_diff_ms(ts1: str, ts2: str) -> int:
+    """Milliseconds between two ISO timestamps."""
+    try:
+        t1 = datetime.fromisoformat(ts1.replace("Z", "+00:00"))
+        t2 = datetime.fromisoformat(ts2.replace("Z", "+00:00"))
+        return int((t2 - t1).total_seconds() * 1000)
+    except (ValueError, TypeError):
+        return 0
 
 
 @router.get("/api/{project}/review-findings")
