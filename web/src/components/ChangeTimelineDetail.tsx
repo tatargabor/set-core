@@ -81,28 +81,28 @@ function SessionBlock({ session }: { session: TimelineSession }) {
         onMouseLeave={() => setHovered(false)}
       >
         {/* Session block */}
-        <div className={`px-2 py-1.5 rounded cursor-default ${bgClass} min-w-[48px]`}>
-          <div className="text-[10px] text-white/80 font-mono text-center mb-1">#{session.n}</div>
-          {/* Gate result mini-boxes */}
+        <div className={`px-3 py-2 rounded cursor-default ${bgClass}`}>
+          <div className="text-xs text-white/90 font-mono text-center mb-1.5">#{session.n}</div>
+          {/* Gate results as text labels */}
           {gateEntries.length > 0 && (
-            <div className="flex items-center justify-center gap-0.5">
+            <div className="flex items-center justify-center gap-1">
               {gateEntries.map(({ gate, result }) => (
-                <div
+                <span
                   key={gate}
-                  className={`w-4 h-4 rounded-sm flex items-center justify-center text-[8px] font-bold ${
-                    result === 'pass' ? 'bg-green-500 text-white' :
-                    result === 'fail' ? 'bg-red-600 text-white ring-1 ring-red-400' :
-                    'bg-neutral-600 text-neutral-300'
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-mono font-medium ${
+                    result === 'pass' ? 'bg-green-600/80 text-green-100' :
+                    result === 'fail' ? 'bg-red-700 text-red-100 ring-1 ring-red-400/50' :
+                    'bg-neutral-700 text-neutral-300'
                   }`}
                   title={`${gate}: ${result}`}
                 >
-                  {gate[0].toUpperCase()}
-                </div>
+                  {gate}
+                </span>
               ))}
             </div>
           )}
           {isRunning && (
-            <div className="text-[9px] text-white/60 text-center mt-0.5">running</div>
+            <div className="text-xs text-white/60 text-center mt-1">running</div>
           )}
         </div>
 
