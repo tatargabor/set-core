@@ -145,6 +145,14 @@ class ProjectType(ABC):
     def merge_strategies(self) -> list:
         return []
 
+    def register_gates(self) -> list:
+        """Return domain-specific GateDefinitions for this project type.
+
+        Override in subclass to register gates like e2e, lint, etc.
+        Returns list of GateDefinition instances.
+        """
+        return []
+
     def gate_overrides(self, change_type: str) -> dict:
         return {}
 
@@ -161,6 +169,10 @@ class ProjectType(ABC):
         return []
 
     def post_verify_hooks(self, change_name: str, wt_path: str, gate_results: list) -> None:
+        pass
+
+    def post_merge_hooks(self, change_name: str, state_file: str) -> None:
+        """Run profile-specific post-merge operations (i18n sidecar merge, codegen, etc.)."""
         pass
 
     def decompose_hints(self) -> list:

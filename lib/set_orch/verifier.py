@@ -76,33 +76,6 @@ DEFAULT_REVIEW_MODEL = "sonnet"
 DEFAULT_E2E_TIMEOUT = 120
 E2E_HEALTH_TIMEOUT = 30  # seconds; override via config e2e_health_timeout
 
-# Runtime error indicators in E2E output — if any appear, the page has client-side errors
-# even if HTTP returned 200. Extensible list.
-E2E_RUNTIME_ERROR_INDICATORS = [
-    "Functions are not valid as a child",
-    "Hydration failed because",
-    "There was an error while hydrating",
-    "Minified React error",
-    "Error: Text content does not match",
-    "Unhandled Runtime Error",
-    "data-nextjs-error",
-    "Internal error: Error: ",
-]
-
-
-def _check_e2e_runtime_errors(output: str) -> list[str]:
-    """Scan E2E output for client-side runtime error indicators.
-
-    Returns list of matched error snippets. Empty list = no errors found.
-    """
-    found = []
-    output_lower = output.lower()
-    for indicator in E2E_RUNTIME_ERROR_INDICATORS:
-        if indicator.lower() in output_lower:
-            found.append(indicator)
-    return found
-
-
 # ─── Data Structures ────────────────────────────────────────────────
 
 @dataclass
@@ -1595,7 +1568,11 @@ def run_phase_end_e2e(
         event_bus.emit("PHASE_E2E_STARTED", data={})
 
     # Detect Playwright webServer config
-    pw_config = _parse_playwright_config(os.getcwd())
+    try:
+        from set_project_web.gates import _parse_playwright_config
+        pw_config = _parse_playwright_config(os.getcwd())
+    except ImportError:
+        pw_config = {"config_path": None, "test_dir": None, "has_web_server": False}
     if not pw_config["has_web_server"]:
         logger.warning("Phase-end E2E: no webServer in playwright.config — skipping")
         return True  # Non-blocking skip
@@ -2076,376 +2053,8 @@ def _execute_test_gate(
     return result
 
 
-def _extract_e2e_failure_ids(output: str) -> set[str]:
-    """Extract unique failure identifiers from Playwright output.
 
-    Parses numbered failure lines like:
-      1) [chromium] › e2e/equipment-catalog.spec.ts:33:18 › dropdown changes URL
-    Returns set of "file:line" strings (file path + first line number).
-    """
-    ids: set[str] = set()
-    # Match numbered failure summary lines: "  N) [browser] › file:line:col › description"
-    for m in re.finditer(r"^\s*\d+\)\s+\[.*?\]\s+[›»]\s+([^\s:]+\.spec\.\w+:\d+)", output, re.MULTILINE):
-        ids.add(m.group(1))
-    return ids
-
-
-def _get_or_create_e2e_baseline(
-    e2e_command: str, e2e_timeout: int, project_root: str,
-) -> dict | None:
-    """Run Playwright on main and cache baseline failures.
-
-    Returns dict with main_sha, failures set, total/passed counts.
-    Returns None if baseline cannot be created (infra failure).
-    """
-    try:
-        from .paths import SetRuntime
-        baseline_path = os.path.join(SetRuntime().orchestration_dir, "e2e-baseline.json")
-    except Exception:
-        baseline_path = os.path.join("wt", "orchestration", "e2e-baseline.json")
-
-    # Check cached baseline
-    main_sha = run_git("rev-parse", "HEAD", cwd=project_root).stdout.strip()
-    if os.path.isfile(baseline_path):
-        try:
-            with open(baseline_path) as f:
-                cached = json.load(f)
-            if cached.get("main_sha") == main_sha:
-                cached["failures"] = set(cached.get("failures", []))
-                return cached
-            logger.info("E2E baseline stale (main moved to %s) — regenerating", main_sha[:8])
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    # Run Playwright on project root (main branch)
-    logger.info("Creating E2E baseline on main (%s)...", main_sha[:8])
-    result = run_command(
-        ["bash", "-c", e2e_command],
-        timeout=e2e_timeout, cwd=project_root, max_output_size=8000,
-    )
-    output = result.stdout + result.stderr
-    stats = parse_test_output(output)
-    failures = _extract_e2e_failure_ids(output)
-
-    baseline = {
-        "main_sha": main_sha,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "failures": list(failures),
-        "total": stats.get("total", 0),
-        "passed": stats.get("passed", 0),
-        "failed": stats.get("failed", 0),
-    }
-
-    try:
-        os.makedirs(os.path.dirname(baseline_path), exist_ok=True)
-        with open(baseline_path, "w") as f:
-            json.dump(baseline, f, indent=2)
-        logger.info("E2E baseline cached: %d passed, %d failed on main", baseline["passed"], baseline["failed"])
-    except OSError:
-        logger.warning("Failed to cache E2E baseline")
-
-    baseline["failures"] = failures
-    return baseline
-
-
-def _auto_detect_e2e_command(wt_path: str, profile=None) -> str:
-    """Auto-detect e2e command by delegating to the project-type profile.
-
-    The profile (e.g., WebProjectType) handles all framework-specific detection
-    (package.json parsing, playwright config, etc.). The core only delegates.
-
-    Returns detected command string, or empty string if profile returns None.
-    """
-    if profile is not None and hasattr(profile, "detect_e2e_command"):
-        try:
-            cmd = profile.detect_e2e_command(wt_path)
-            if cmd:
-                logger.info("E2E command detected via profile: %s", cmd)
-                return cmd
-        except Exception:
-            pass
-    return ""
-
-
-def _execute_e2e_gate(
-    change_name: str, change: Change, wt_path: str,
-    e2e_command: str, e2e_timeout: int, e2e_health_timeout: int,
-    profile=None,
-) -> "GateResult":
-    """E2E gate: run Playwright tests with baseline comparison.
-
-    Only NEW failures (not present on main) count as gate failures.
-    Requires Playwright webServer config to manage the dev server.
-    """
-    from .gate_runner import GateResult
-
-    # Auto-detect e2e_command if not explicitly configured
-    auto_detected = False
-    if not e2e_command and wt_path:
-        e2e_command = _auto_detect_e2e_command(wt_path, profile)
-        auto_detected = bool(e2e_command)
-
-    if not e2e_command or not wt_path:
-        return GateResult("e2e", "skipped", output="e2e_command not configured")
-
-    pw_config = _parse_playwright_config(wt_path)
-    if not pw_config["config_path"]:
-        return GateResult("e2e", "skipped",
-                          output="no playwright.config.ts/js found in worktree")
-
-    e2e_test_count, searched_desc = _count_e2e_tests(wt_path, pw_config)
-    if e2e_test_count == 0:
-        if auto_detected:
-            # Playwright exists but no tests — fail for feature changes
-            scope = change.scope or ""
-            return GateResult(
-                "e2e", "fail",
-                output=f"no e2e test files found (searched: {searched_desc})",
-                retry_context=(
-                    "E2E tests required for feature changes when Playwright is configured.\n\n"
-                    f"Playwright config found but no test files in: {searched_desc}\n\n"
-                    "Write E2E tests for the implemented functionality, then commit them.\n\n"
-                    f"Original scope: {scope}"
-                ),
-            )
-        return GateResult("e2e", "skipped",
-                          output=f"no e2e test files found (searched: {searched_desc})")
-
-    if not pw_config["has_web_server"]:
-        return GateResult("e2e", "skipped",
-                          output="playwright.config has no webServer — "
-                                 "Playwright must manage the dev server via webServer config")
-
-    # Run E2E tests (Playwright manages its own dev server via webServer config)
-    # Screenshot on every run (not just failures) for visual review
-    e2e_env = {"PLAYWRIGHT_SCREENSHOT": "on"}
-    e2e_cmd_result = run_command(
-        ["bash", "-c", e2e_command],
-        timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
-        max_output_size=4000,
-    )
-    e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
-
-    # Collect screenshots
-    try:
-        from .paths import SetRuntime
-        e2e_sc_dir = os.path.join(SetRuntime().screenshots_dir, "e2e", change_name)
-    except Exception:
-        e2e_sc_dir = f"wt/orchestration/e2e-screenshots/{change_name}"
-    os.makedirs(e2e_sc_dir, exist_ok=True)
-    wt_test_results = os.path.join(wt_path, "test-results")
-    if os.path.isdir(wt_test_results):
-        for item in os.listdir(wt_test_results):
-            src = os.path.join(wt_test_results, item)
-            dst = os.path.join(e2e_sc_dir, item)
-            if os.path.isdir(src):
-                shutil.copytree(src, dst, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src, dst)
-
-    raw_status = "pass" if e2e_cmd_result.exit_code == 0 else "fail"
-
-    # Check for runtime errors even on pass (hydration errors, RSC boundary violations)
-    runtime_errors = _check_e2e_runtime_errors(e2e_output)
-    if runtime_errors:
-        logger.warning(
-            "E2E runtime errors detected for %s (even though tests may pass): %s",
-            change_name, ", ".join(runtime_errors),
-        )
-
-    if raw_status == "pass":
-        output_text = e2e_output[:4000]
-        if runtime_errors:
-            output_text = (
-                f"WARNING: {len(runtime_errors)} runtime error(s) detected in E2E output: "
-                f"{', '.join(runtime_errors)}\n\n" + output_text[:3500]
-            )
-        return GateResult(
-            "e2e", "pass", output=output_text,
-            stats=parse_test_output(e2e_output) if e2e_output else None,
-        )
-
-    # E2E failed — check baseline to filter pre-existing failures
-    wt_failures = _extract_e2e_failure_ids(e2e_output)
-    project_root = os.path.dirname(wt_path.rstrip("/"))  # worktree parent = project root
-    # Use git toplevel of main worktree for baseline
-    toplevel = run_git("rev-parse", "--show-toplevel", cwd=wt_path)
-    if toplevel.exit_code == 0:
-        # Worktree's toplevel is itself; find the main worktree
-        main_wt = run_git("worktree", "list", "--porcelain", cwd=wt_path)
-        for line in main_wt.stdout.split("\n"):
-            if line.startswith("worktree ") and not line.endswith(os.path.basename(wt_path)):
-                project_root = line.split(" ", 1)[1]
-                break
-
-    baseline = None
-    try:
-        baseline = _get_or_create_e2e_baseline(e2e_command, e2e_timeout, project_root)
-    except Exception as e:
-        logger.warning("E2E baseline creation failed (using all-failures mode): %s", e)
-
-    if baseline:
-        baseline_failures = baseline.get("failures", set())
-        if isinstance(baseline_failures, list):
-            baseline_failures = set(baseline_failures)
-        new_failures = wt_failures - baseline_failures
-        pre_existing = wt_failures & baseline_failures
-        logger.info(
-            "E2E baseline comparison: %d new failures, %d pre-existing on main",
-            len(new_failures), len(pre_existing),
-        )
-        if not new_failures:
-            # All failures are pre-existing on main — pass the gate
-            return GateResult(
-                "e2e", "pass",
-                output=f"E2E: {len(pre_existing)} pre-existing failures on main (no new regressions)\n\n"
-                       + e2e_output[:3000],
-                stats=parse_test_output(e2e_output) if e2e_output else None,
-            )
-        # Has new failures — report only those
-        e2e_output_header = (
-            f"E2E: {len(new_failures)} NEW failures (+ {len(pre_existing)} pre-existing on main)\n"
-            f"New failures: {', '.join(sorted(new_failures))}\n\n"
-        )
-        e2e_output = e2e_output_header + e2e_output[:3500]
-
-    result = GateResult(
-        "e2e", "fail", output=e2e_output[:4000],
-        stats=parse_test_output(e2e_output) if e2e_output else None,
-    )
-    scope = change.scope or ""
-    result.retry_context = (
-        f"E2E tests (Playwright) failed. Fix the failing E2E tests or the code they test.\n\n"
-        f"E2E command: {e2e_command}\nE2E output:\n{e2e_output[:2000]}\n\n"
-        f"Original scope: {scope}"
-    )
-    return result
-
-
-def _load_forbidden_patterns(wt_path: str, profile=None) -> list[dict]:
-    """Load forbidden patterns from profile plugin + project-knowledge.yaml."""
-    patterns: list[dict] = []
-
-    # 1. Profile patterns
-    if profile is not None and hasattr(profile, "get_forbidden_patterns"):
-        try:
-            patterns.extend(profile.get_forbidden_patterns())
-        except Exception:
-            logger.warning("Failed to load forbidden patterns from profile", exc_info=True)
-
-    # 2. project-knowledge.yaml patterns
-    pk_path = os.path.join(wt_path, "project-knowledge.yaml")
-    if os.path.isfile(pk_path):
-        try:
-            import yaml
-
-            with open(pk_path) as f:
-                pk = yaml.safe_load(f) or {}
-            fp = pk.get("verification", {}).get("forbidden_patterns", [])
-            if isinstance(fp, list):
-                patterns.extend(fp)
-        except Exception:
-            logger.warning("Failed to load forbidden_patterns from project-knowledge.yaml", exc_info=True)
-
-    return patterns
-
-
-def _extract_added_lines(diff_output: str) -> list[tuple[str, int, str]]:
-    """Parse unified diff, return (file_path, approx_line, content) for added lines."""
-    results: list[tuple[str, int, str]] = []
-    current_file = ""
-    current_line = 0
-
-    for line in diff_output.split("\n"):
-        if line.startswith("+++ b/"):
-            current_file = line[6:]
-            current_line = 0
-        elif line.startswith("@@ "):
-            # Parse hunk header: @@ -a,b +c,d @@
-            match = re.search(r"\+(\d+)", line)
-            if match:
-                current_line = int(match.group(1)) - 1
-        elif line.startswith("+") and not line.startswith("+++"):
-            current_line += 1
-            results.append((current_file, current_line, line[1:]))
-        elif not line.startswith("-"):
-            current_line += 1
-
-    return results
-
-
-def _execute_lint_gate(
-    change_name: str, change: Change, wt_path: str,
-    profile=None,
-) -> "GateResult":
-    """Lint gate: deterministic grep-based forbidden pattern scanning."""
-    from .gate_runner import GateResult
-
-    if not wt_path:
-        return GateResult("lint", "pass")
-
-    patterns = _load_forbidden_patterns(wt_path, profile)
-    if not patterns:
-        return GateResult("lint", "pass", output="no forbidden patterns configured")
-
-    # Get diff
-    merge_base = _get_merge_base(wt_path)
-    diff_result = run_git("diff", f"{merge_base}..HEAD", cwd=wt_path)
-    if diff_result.exit_code != 0:
-        return GateResult("lint", "pass", output="could not generate diff")
-
-    added_lines = _extract_added_lines(diff_result.stdout)
-    if not added_lines:
-        return GateResult("lint", "pass")
-
-    critical_matches: list[str] = []
-    warning_matches: list[str] = []
-
-    for pat_dict in patterns:
-        pattern = pat_dict.get("pattern", "")
-        severity = pat_dict.get("severity", "warning").lower()
-        message = pat_dict.get("message", "")
-        file_glob = pat_dict.get("file_glob", "")
-
-        if not pattern:
-            continue
-
-        try:
-            regex = re.compile(pattern)
-        except re.error:
-            logger.warning("Invalid forbidden pattern regex: %s", pattern)
-            continue
-
-        for file_path, line_num, content in added_lines:
-            # file_glob filtering
-            if file_glob and not fnmatch.fnmatch(file_path, file_glob):
-                continue
-
-            if regex.search(content):
-                match_str = f"  File: {file_path} (line {line_num})\n  Pattern: {pattern}\n  Rule: {message}"
-                if severity == "critical":
-                    critical_matches.append(match_str)
-                else:
-                    warning_matches.append(match_str)
-
-    if critical_matches:
-        retry_ctx = "FORBIDDEN PATTERN(S) DETECTED:\n\n" + "\n\n".join(critical_matches)
-        retry_ctx += "\n\nFix the root cause. Do NOT use type casts or workarounds to bypass."
-        if warning_matches:
-            retry_ctx += "\n\nWarnings (non-blocking):\n" + "\n".join(warning_matches)
-        return GateResult(
-            "lint", "fail",
-            output=f"{len(critical_matches)} critical, {len(warning_matches)} warning pattern match(es)",
-            retry_context=retry_ctx,
-        )
-
-    if warning_matches:
-        return GateResult(
-            "lint", "pass",
-            output=f"{len(warning_matches)} warning pattern match(es):\n" + "\n".join(warning_matches),
-        )
-
-    return GateResult("lint", "pass")
+# E2E and lint gate executors moved to modules/web/set_project_web/gates.py
 
 
 def _execute_scope_gate(
@@ -2727,6 +2336,51 @@ def _integrate_main_into_branch(
     return "failed"
 
 
+# ─── Universal Gate Definitions ──────────────────────────────────────
+
+def _get_universal_gates():
+    """Return UNIVERSAL_GATES list (lazy to avoid forward-reference issues)."""
+    from .gate_runner import GateDefinition
+    return [
+        GateDefinition(
+            "build", _execute_build_gate,
+            position="start",
+            own_retry_counter="build_fix_attempt_count",
+            result_fields=("build_result", "gate_build_ms"),
+            run_on_integration=True,
+        ),
+        GateDefinition(
+            "test", _execute_test_gate,
+            position="after:build",
+            result_fields=("test_result", "gate_test_ms"),
+            run_on_integration=True,
+        ),
+        GateDefinition(
+            "scope_check", _execute_scope_gate,
+            position="after:test",
+        ),
+        GateDefinition(
+            "test_files", _execute_test_files_gate,
+            position="after:scope_check",
+        ),
+        GateDefinition(
+            "review", _execute_review_gate,
+            position="before:end",
+            extra_retries=3,
+            result_fields=("review_result", "gate_review_ms"),
+        ),
+        GateDefinition(
+            "rules", _execute_rules_gate,
+            position="after:review",
+        ),
+        GateDefinition(
+            "spec_verify", _execute_spec_verify_gate,
+            position="end",
+            result_fields=("spec_coverage_result", "gate_verify_ms"),
+        ),
+    ]
+
+
 # ─── Handle Change Done / Verify Gate Pipeline ──────────────────────
 # Source: verifier.sh handle_change_done (lines 782-1453)
 
@@ -2923,10 +2577,34 @@ def handle_change_done(
         "test",
         lambda: _execute_test_gate(change_name, change, wt_path, test_command, test_timeout, findings_path=_findings_path),
     )
-    pipeline.register(
-        "e2e",
-        lambda: _execute_e2e_gate(change_name, change, wt_path, e2e_command, e2e_timeout, e2e_health_timeout, profile=profile),
-    )
+    # Register profile gates (e2e, lint from web module if available)
+    if profile is not None and hasattr(profile, "register_gates"):
+        try:
+            for gd in profile.register_gates():
+                if gd.phase != "pre-merge":
+                    continue
+                if gd.name == "e2e":
+                    pipeline.register(
+                        "e2e",
+                        lambda gd=gd: gd.executor(
+                            change_name=change_name, change=change, wt_path=wt_path,
+                            e2e_command=e2e_command, e2e_timeout=e2e_timeout,
+                            e2e_health_timeout=e2e_health_timeout, profile=profile,
+                        ),
+                        result_fields=gd.result_fields,
+                    )
+                elif gd.name == "lint":
+                    pipeline.register(
+                        "lint",
+                        lambda gd=gd: gd.executor(
+                            change_name=change_name, change=change, wt_path=wt_path,
+                            profile=profile,
+                        ),
+                        result_fields=gd.result_fields,
+                    )
+        except Exception:
+            logger.warning("Failed to register profile gates", exc_info=True)
+
     pipeline.register(
         "scope_check",
         lambda: _execute_scope_gate(change_name, change, wt_path),
@@ -2934,10 +2612,6 @@ def handle_change_done(
     pipeline.register(
         "test_files",
         lambda: _execute_test_files_gate(change_name, change, wt_path, gc),
-    )
-    pipeline.register(
-        "lint",
-        lambda: _execute_lint_gate(change_name, change, wt_path, profile=profile),
     )
     if review_before_merge:
         pipeline.register(
@@ -3063,84 +2737,6 @@ def _detect_build_command(wt_path: str) -> str:
     except (json.JSONDecodeError, OSError):
         pass
     return ""
-
-
-def _parse_playwright_config(wt_path: str) -> dict:
-    """Parse Playwright config for testDir and webServer presence.
-
-    Returns dict with:
-      config_path: str | None  — path to config file found
-      test_dir: str | None     — parsed testDir value (relative to wt_path)
-      has_web_server: bool     — whether webServer block exists
-    """
-    config_path = None
-    for name in ("playwright.config.ts", "playwright.config.js"):
-        candidate = os.path.join(wt_path, name)
-        if os.path.isfile(candidate):
-            config_path = candidate
-            break
-
-    if not config_path:
-        return {"config_path": None, "test_dir": None, "has_web_server": False}
-
-    try:
-        with open(config_path) as f:
-            content = f.read()
-    except OSError:
-        return {"config_path": config_path, "test_dir": None, "has_web_server": False}
-
-    # Extract testDir value via regex
-    test_dir = None
-    import re
-    m = re.search(r'testDir:\s*["\']([^"\']+)["\']', content)
-    if m:
-        raw = m.group(1)
-        # Normalize: strip leading ./ for consistency
-        test_dir = raw.lstrip("./") if raw.startswith("./") else raw
-
-    # Detect webServer block
-    has_web_server = "webServer" in content
-
-    return {
-        "config_path": config_path,
-        "test_dir": test_dir,
-        "has_web_server": has_web_server,
-    }
-
-
-def _count_e2e_tests(wt_path: str, pw_config: dict | None = None) -> tuple[int, str]:
-    """Count E2E test files in worktree.
-
-    Returns (count, searched_dirs_description) for diagnostic output.
-    """
-    if pw_config is None:
-        pw_config = _parse_playwright_config(wt_path)
-
-    if not pw_config["config_path"]:
-        return 0, ""
-
-    # Determine directories to search
-    test_dir = pw_config.get("test_dir")
-    if test_dir:
-        search_dirs = [test_dir]
-    else:
-        # Fallback: search common conventions
-        search_dirs = ["tests/e2e", "e2e", "test/e2e", "tests"]
-
-    count = 0
-    searched = []
-    for d in search_dirs:
-        abs_dir = os.path.join(wt_path, d)
-        if not os.path.isdir(abs_dir):
-            continue
-        searched.append(d)
-        for _root, _dirs, files in os.walk(abs_dir):
-            for f in files:
-                if f.endswith(".spec.ts") or f.endswith(".spec.js"):
-                    count += 1
-
-    searched_desc = ", ".join(searched) if searched else ", ".join(search_dirs)
-    return count, searched_desc
 
 
 def _snapshot_retry_tokens(state_file: str, change_name: str, wt_path: str) -> None:

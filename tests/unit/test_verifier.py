@@ -10,6 +10,7 @@ import time
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "modules", "web"))
 
 from set_orch.verifier import (
     ScopeCheckResult,
@@ -926,14 +927,14 @@ class TestAutoDetectE2eCommand:
 
     def test_no_profile_returns_empty(self, tmp_dir):
         """No profile → empty string."""
-        from set_orch.verifier import _auto_detect_e2e_command
+        from set_project_web.gates import _auto_detect_e2e_command
 
         cmd = _auto_detect_e2e_command(tmp_dir)
         assert cmd == ""
 
     def test_profile_returns_command(self, tmp_dir):
         """Profile.detect_e2e_command returns a command → used."""
-        from set_orch.verifier import _auto_detect_e2e_command
+        from set_project_web.gates import _auto_detect_e2e_command
 
         class FakeProfile:
             def detect_e2e_command(self, path):
@@ -944,7 +945,7 @@ class TestAutoDetectE2eCommand:
 
     def test_profile_returns_none_gives_empty(self, tmp_dir):
         """Profile.detect_e2e_command returns None → empty string."""
-        from set_orch.verifier import _auto_detect_e2e_command
+        from set_project_web.gates import _auto_detect_e2e_command
 
         class FakeProfile:
             def detect_e2e_command(self, path):
@@ -955,7 +956,7 @@ class TestAutoDetectE2eCommand:
 
     def test_profile_exception_gives_empty(self, tmp_dir):
         """Profile.detect_e2e_command raises → graceful empty string."""
-        from set_orch.verifier import _auto_detect_e2e_command
+        from set_project_web.gates import _auto_detect_e2e_command
 
         class BrokenProfile:
             def detect_e2e_command(self, path):
@@ -985,7 +986,8 @@ class TestE2eGateMandatory:
                 return "npx playwright test"
 
         change = self._make_change()
-        result = verifier._execute_e2e_gate(
+        from set_project_web.gates import execute_e2e_gate
+        result = execute_e2e_gate(
             "test-change", change, tmp_dir,
             e2e_command="",  # empty — will auto-detect via profile
             e2e_timeout=60, e2e_health_timeout=10,
@@ -1004,7 +1006,8 @@ class TestE2eGateMandatory:
             f.write("export default { webServer: { command: 'npm start' } }")
 
         change = self._make_change()
-        result = verifier._execute_e2e_gate(
+        from set_project_web.gates import execute_e2e_gate
+        result = execute_e2e_gate(
             "test-change", change, tmp_dir,
             e2e_command="npx playwright test",  # explicit
             e2e_timeout=60, e2e_health_timeout=10,
@@ -1022,7 +1025,7 @@ class TestExtractAddedLines:
     """Tests for _extract_added_lines diff parser."""
 
     def test_parses_added_lines(self):
-        from set_orch.verifier import _extract_added_lines
+        from set_project_web.gates import _extract_added_lines
 
         diff = (
             "diff --git a/src/lib.ts b/src/lib.ts\n"
@@ -1058,11 +1061,11 @@ class TestExecuteLintGate:
             "@@ -1,3 +1,5 @@\n"
             "+export async function createSession(prisma: any) {\n"
         )
-        monkeypatch.setattr(
-            verifier, "run_git",
+        import set_orch.subprocess_utils as _su
+        monkeypatch.setattr(_su, "run_git",
             lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
         )
-        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+        monkeypatch.setattr("set_orch.verifier._get_merge_base", lambda wt: "abc123")
 
         class FakeProfile:
             def get_forbidden_patterns(self):
@@ -1070,7 +1073,8 @@ class TestExecuteLintGate:
                          "message": "Never use any for database client"}]
 
         change = self._make_change()
-        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
+        from set_project_web.gates import execute_lint_gate
+        result = execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
 
         assert result.status == "fail"
         assert "src/session.ts" in result.retry_context
@@ -1086,11 +1090,11 @@ class TestExecuteLintGate:
             "@@ -1,1 +1,2 @@\n"
             "+console.log('debug')\n"
         )
-        monkeypatch.setattr(
-            verifier, "run_git",
+        import set_orch.subprocess_utils as _su
+        monkeypatch.setattr(_su, "run_git",
             lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
         )
-        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+        monkeypatch.setattr("set_orch.verifier._get_merge_base", lambda wt: "abc123")
 
         class FakeProfile:
             def get_forbidden_patterns(self):
@@ -1098,7 +1102,8 @@ class TestExecuteLintGate:
                          "message": "Remove console.log"}]
 
         change = self._make_change()
-        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
+        from set_project_web.gates import execute_lint_gate
+        result = execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
 
         assert result.status == "pass"
         assert "warning" in result.output.lower()
@@ -1113,11 +1118,11 @@ class TestExecuteLintGate:
             "@@ -1,1 +1,2 @@\n"
             "+const x = 42\n"
         )
-        monkeypatch.setattr(
-            verifier, "run_git",
+        import set_orch.subprocess_utils as _su
+        monkeypatch.setattr(_su, "run_git",
             lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
         )
-        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+        monkeypatch.setattr("set_orch.verifier._get_merge_base", lambda wt: "abc123")
 
         class FakeProfile:
             def get_forbidden_patterns(self):
@@ -1125,7 +1130,8 @@ class TestExecuteLintGate:
                          "message": "bad"}]
 
         change = self._make_change()
-        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
+        from set_project_web.gates import execute_lint_gate
+        result = execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
         assert result.status == "pass"
 
     def test_no_patterns_passes(self, tmp_dir):
@@ -1133,7 +1139,8 @@ class TestExecuteLintGate:
         from set_orch import verifier
 
         change = self._make_change()
-        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=None)
+        from set_project_web.gates import execute_lint_gate
+        result = execute_lint_gate("test", change, tmp_dir, profile=None)
         assert result.status == "pass"
         assert "no forbidden patterns" in result.output
 
@@ -1147,11 +1154,11 @@ class TestExecuteLintGate:
             "@@ -1,1 +1,2 @@\n"
             "+prisma: any = None\n"
         )
-        monkeypatch.setattr(
-            verifier, "run_git",
+        import set_orch.subprocess_utils as _su
+        monkeypatch.setattr(_su, "run_git",
             lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
         )
-        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+        monkeypatch.setattr("set_orch.verifier._get_merge_base", lambda wt: "abc123")
 
         class FakeProfile:
             def get_forbidden_patterns(self):
@@ -1159,7 +1166,8 @@ class TestExecuteLintGate:
                          "message": "bad", "file_glob": "*.ts"}]
 
         change = self._make_change()
-        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
+        from set_project_web.gates import execute_lint_gate
+        result = execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
         # .py file should NOT match *.ts glob filter
         assert result.status == "pass"
 
@@ -1173,11 +1181,11 @@ class TestExecuteLintGate:
             "@@ -1,1 +1,2 @@\n"
             "+TODO HACK workaround\n"
         )
-        monkeypatch.setattr(
-            verifier, "run_git",
+        import set_orch.subprocess_utils as _su
+        monkeypatch.setattr(_su, "run_git",
             lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
         )
-        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+        monkeypatch.setattr("set_orch.verifier._get_merge_base", lambda wt: "abc123")
 
         # Write project-knowledge.yaml with a pattern
         import yaml
@@ -1192,7 +1200,8 @@ class TestExecuteLintGate:
             }, f)
 
         change = self._make_change()
-        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=None)
+        from set_project_web.gates import execute_lint_gate
+        result = execute_lint_gate("test", change, tmp_dir, profile=None)
         assert result.status == "pass"
         assert "warning" in result.output.lower()
         assert "Unresolved hack" in result.output

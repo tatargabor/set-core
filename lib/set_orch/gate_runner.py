@@ -45,6 +45,104 @@ class GateResult:
 GateExecutor = Callable[..., GateResult]
 
 
+@dataclass
+class GateDefinition:
+    """Declaration of a gate type — used by core and profile plugins.
+
+    Universal gates are defined in verifier.py. Domain-specific gates
+    are registered by profile plugins via register_gates().
+    """
+
+    name: str
+    executor: GateExecutor
+    position: str = "end"       # "start", "after:test", "before:review", "end"
+    phase: str = "pre-merge"    # "pre-merge" or "post-merge"
+    defaults: dict = field(default_factory=dict)
+    # defaults: {change_type: mode} e.g. {"infrastructure": "skip", "feature": "run"}
+    own_retry_counter: str = ""  # e.g. "build_fix_attempt_count"
+    extra_retries: int = 0
+    # Field mapping for commit_results (result_field, timing_field) or None for extras-only
+    result_fields: Optional[tuple] = None  # e.g. ("build_result", "gate_build_ms")
+    # Re-run in merge queue after integration? (fast gates only: build, test, e2e)
+    run_on_integration: bool = False
+
+
+def _resolve_gate_order(gates: list[GateDefinition]) -> list[GateDefinition]:
+    """Merge universal + profile gates and sort by position hints.
+
+    Position hints:
+      "start"       — index 0
+      "after:X"     — immediately after gate named X
+      "before:X"    — immediately before gate named X
+      "before:end"  — before the last gate
+      "end"         — last position
+
+    Algorithm: iteratively place gates whose dependencies are already placed.
+    Gates with "start" go first, "end" goes last. Others are inserted relative
+    to already-placed gates. Unresolvable gates append before end.
+    """
+    placed: list[GateDefinition] = []
+    placed_names: set[str] = set()
+    pending = list(gates)
+
+    # Extract start and end gates first
+    start_gates = [g for g in pending if g.position == "start"]
+    end_gates = [g for g in pending if g.position == "end"]
+    before_end_gates = [g for g in pending if g.position == "before:end"]
+    pending = [g for g in pending if g.position not in ("start", "end", "before:end")]
+
+    for g in start_gates:
+        placed.append(g)
+        placed_names.add(g.name)
+
+    # Iteratively resolve — each pass places gates whose target is already placed
+    max_passes = len(pending) + 1
+    for _ in range(max_passes):
+        still_pending = []
+        progress = False
+        for g in pending:
+            pos = g.position
+            if pos.startswith("after:"):
+                target = pos[6:]
+                if target in placed_names:
+                    # Insert right after target (and any previously inserted after:target)
+                    idx = max(i for i, p in enumerate(placed) if p.name == target) + 1
+                    # Skip past any gates already inserted after this target
+                    while idx < len(placed) and placed[idx].position == f"after:{target}":
+                        idx += 1
+                    placed.insert(idx, g)
+                    placed_names.add(g.name)
+                    progress = True
+                else:
+                    still_pending.append(g)
+            elif pos.startswith("before:"):
+                target = pos[7:]
+                if target in placed_names:
+                    idx = next(i for i, p in enumerate(placed) if p.name == target)
+                    placed.insert(idx, g)
+                    placed_names.add(g.name)
+                    progress = True
+                else:
+                    still_pending.append(g)
+            else:
+                # No position hint — append in order
+                placed.append(g)
+                placed_names.add(g.name)
+                progress = True
+        pending = still_pending
+        if not pending:
+            break
+        if not progress:
+            # Unresolvable — append remaining before end
+            break
+
+    # Append any unresolved gates
+    placed.extend(pending)
+    placed.extend(before_end_gates)
+    placed.extend(end_gates)
+    return placed
+
+
 # ─── Pipeline ─────────────────────────────────────────────────────
 
 
@@ -59,6 +157,8 @@ class _GateEntry:
     own_retry_counter: str = ""
     # Extra retries beyond max_retries (e.g. review gets +1)
     extra_retries: int = 0
+    # Field mapping for commit_results: (result_field, timing_field) or None
+    result_fields: Optional[tuple] = None
 
 
 class GatePipeline:
@@ -105,6 +205,7 @@ class GatePipeline:
         *,
         own_retry_counter: str = "",
         extra_retries: int = 0,
+        result_fields: Optional[tuple] = None,
     ) -> None:
         """Register a gate to execute. Gates run in registration order."""
         self._gates.append(_GateEntry(
@@ -112,6 +213,7 @@ class GatePipeline:
             executor=executor,
             own_retry_counter=own_retry_counter,
             extra_retries=extra_retries,
+            result_fields=result_fields,
         ))
 
     def run(self) -> str:
@@ -175,7 +277,7 @@ class GatePipeline:
                     self.results.append(result)
                     logger.warning(
                         "Verify gate: %s failed for %s — non-blocking (gate=%s)",
-                        entry.name, self.change_name, getattr(self.gc, entry.name, "?"),
+                        entry.name, self.change_name, self.gc.get(entry.name, "?"),
                     )
 
             else:
@@ -251,16 +353,17 @@ class GatePipeline:
     def commit_results(self) -> dict:
         """Write all gate results to state in a single locked_state block.
 
+        Uses result_fields from _GateEntry (populated from GateDefinition)
+        to map gate results to state fields. Gates without result_fields
+        write to extras with generic naming.
+
         Returns a summary dict for event emission.
         """
-        # Build field updates
-        gate_field_map = {
-            "build": ("build_result", "gate_build_ms"),
-            "test": ("test_result", "gate_test_ms"),
-            "e2e": ("e2e_result", "gate_e2e_ms"),
-            "review": ("review_result", "gate_review_ms"),
-            "spec_verify": ("spec_coverage_result", "gate_verify_ms"),
-        }
+        # Build field map from registered gate entries
+        gate_field_map: dict[str, tuple[str, str]] = {}
+        for entry in self._gates:
+            if entry.result_fields:
+                gate_field_map[entry.name] = entry.result_fields
 
         total_ms = 0
         summary: dict[str, Any] = {}
@@ -283,19 +386,22 @@ class GatePipeline:
                             setattr(c, result_field, r.status)
                         if hasattr(c, ms_field):
                             setattr(c, ms_field, r.duration_ms)
-                    elif r.gate_name == "scope":
+                    elif r.gate_name == "scope_check":
                         c.extras["scope_check"] = r.status
                     elif r.gate_name == "test_files":
                         c.extras["has_tests"] = r.status == "pass"
-                    elif r.gate_name == "rules":
-                        c.extras["rules_result"] = r.status
+                    else:
+                        # Generic fallback for profile-registered gates
+                        c.extras[f"{r.gate_name}_result"] = r.status
+                        if r.duration_ms:
+                            c.extras[f"gate_{r.gate_name}_ms"] = r.duration_ms
 
-                    # Store output for key gates
-                    if r.output and r.gate_name in ("test", "build", "review", "e2e"):
+                    # Store output for gates that produce useful output
+                    if r.output and r.duration_ms > 0:
                         c.extras[f"{r.gate_name}_output"] = r.output[:2000]
 
-                    # Store stats — prefer dataclass field, fall back to extras
-                    if r.stats and r.gate_name in ("test", "e2e"):
+                    # Store stats
+                    if r.stats:
                         stats_field = f"{r.gate_name}_stats"
                         if hasattr(c, stats_field):
                             setattr(c, stats_field, r.stats)

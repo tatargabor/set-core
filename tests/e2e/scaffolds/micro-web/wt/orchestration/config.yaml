@@ -1,0 +1,10 @@
+# Orchestration config for Micro Web E2E scaffold
+default_model: sonnet
+test_command: pnpm test
+e2e_command: npx playwright test
+e2e_timeout: 120
+max_parallel: 2
+merge_policy: eager
+review_before_merge: true
+max_verify_retries: 2
+time_limit: 2h

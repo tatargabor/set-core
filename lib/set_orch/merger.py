@@ -46,8 +46,6 @@ logger = logging.getLogger(__name__)
 MAX_MERGE_RETRIES = 5
 DEFAULT_MERGE_TIMEOUT = 300  # 5 min (no post-merge smoke — just ff + deps + hooks)
 
-# Track conflict fingerprints within a run to avoid duplicate memory saves
-_seen_conflict_fingerprints: set[str] = set()
 
 
 # ─── Data Structures ───────────────────────────────────────────────
@@ -103,22 +101,6 @@ def archive_change(change_name: str) -> bool:
 # ─── Smoke Screenshot Collection ────────────────────────────────────
 
 # Source: merger.sh _collect_smoke_screenshots() L38-52
-def _collect_smoke_screenshots(
-    change_name: str, state_file: str
-) -> int:
-    """Collect Playwright test-results/ after a smoke run. Returns screenshot count."""
-    from .gate_runner import collect_screenshots
-
-    state = load_state(state_file)
-    change = _find_change(state, change_name)
-    attempt_num = 0
-    if change:
-        attempt_num = change.extras.get("smoke_fix_attempts", 0)
-
-    return collect_screenshots(
-        change_name, "test-results", "smoke",
-        attempt=attempt_num + 1, state_file=state_file,
-    )
 
 
 # ─── Worktree Lifecycle ─────────────────────────────────────────────
@@ -435,9 +417,15 @@ def merge_change(
         except Exception:
             logger.debug("Coverage update failed for %s (non-critical)", change_name)
 
-        # Post-merge dependency install (lockfile never conflicted with ff-only)
+        # Post-merge dependency install via profile (or legacy fallback)
         _heartbeat("deps_install")
-        _post_merge_deps_install(lockfile_conflicted=False, pre_merge_sha=pre_merge_sha)
+        try:
+            from .profile_loader import load_profile
+            _profile = load_profile()
+            if hasattr(_profile, "post_merge_install"):
+                _profile.post_merge_install(".")
+        except Exception:
+            _post_merge_deps_install(lockfile_conflicted=False, pre_merge_sha=pre_merge_sha)
 
         # Post-merge custom command
         _post_merge_custom_command(state_file)
@@ -445,18 +433,14 @@ def merge_change(
         # Post-merge plugin directives
         _run_plugin_post_merge_directives(change_name)
 
-        # Post-merge i18n sidecar merge
-        sidecar_count = merge_i18n_sidecars(".")
-        if sidecar_count > 0:
-            logger.info("Post-merge: merged %d i18n sidecar file(s)", sidecar_count)
-            run_command(["git", "add", "-A"], timeout=10)
-            run_command(
-                ["git", "commit", "-m", f"chore: merge {sidecar_count} i18n sidecar file(s) from {change_name}"],
-                timeout=10,
-            )
-
-        # Post-merge scope verify and smoke removed — ff-only merge produces
-        # bitwise identical code to the verified worktree, retesting is waste.
+        # Post-merge profile hooks (i18n sidecar merge, codegen, etc.)
+        try:
+            from .profile_loader import load_profile as _lp
+            _pm_profile = _lp()
+            if hasattr(_pm_profile, "post_merge_hooks"):
+                _pm_profile.post_merge_hooks(change_name, state_file)
+        except Exception:
+            logger.debug("Post-merge profile hooks failed (non-critical)", exc_info=True)
 
         # Post-merge hook
         _run_hook("post_merge", change_name, "merged", "")
@@ -505,125 +489,172 @@ def merge_change(
 
 # ─── Merge Queue ────────────────────────────────────────────────────
 
-# Source: merger.sh execute_merge_queue() L578-588
-def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
-    """Drain merge queue. Returns count merged.
 
-    Uses _try_merge which integrates main into branch before ff-only merge,
-    ensuring each subsequent change sees the prior merge result.
+def _integrate_for_merge(wt_path: str, change_name: str) -> str:
+    """Integrate current main into branch before ff-only merge.
+
+    Returns "ok" or "conflict". Checks exit code (unlike old _try_merge).
     """
+    main_branch = _get_main_branch()
+
+    # Best-effort fetch from origin
+    run_command(["git", "fetch", "origin", main_branch], timeout=60, cwd=wt_path)
+
+    # Check if integration is needed
+    merge_ref = f"origin/{main_branch}"
+    ref_check = run_command(["git", "rev-parse", merge_ref], timeout=10, cwd=wt_path)
+    if ref_check.exit_code != 0:
+        merge_ref = main_branch  # no remote, use local
+
+    merge_base = run_command(["git", "merge-base", "HEAD", merge_ref], timeout=10, cwd=wt_path)
+    ref_head = run_command(["git", "rev-parse", merge_ref], timeout=10, cwd=wt_path)
+    if (merge_base.exit_code == 0 and ref_head.exit_code == 0
+            and merge_base.stdout.strip() == ref_head.stdout.strip()):
+        logger.info("Integration skip for %s — branch already up-to-date", change_name)
+        return "ok"
+
+    # Merge main into branch
+    logger.info("Integrating %s into branch for %s", main_branch, change_name)
+    result = run_command(
+        ["git", "merge", merge_ref, "--no-edit",
+         "-m", f"Merge {main_branch} for pre-ff integration"],
+        timeout=120, cwd=wt_path,
+    )
+
+    if result.exit_code == 0:
+        logger.info("Integration merge succeeded for %s", change_name)
+        return "ok"
+
+    # Check for conflict
+    conflict_check = run_command(
+        ["git", "diff", "--name-only", "--diff-filter=U"], timeout=10, cwd=wt_path,
+    )
+    has_conflicts = conflict_check.exit_code == 0 and conflict_check.stdout.strip()
+
+    # Abort the failed merge
+    run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
+
+    if has_conflicts:
+        logger.warning("Integration conflict for %s: %s", change_name, conflict_check.stdout.strip()[:200])
+        return "conflict"
+
+    logger.error("Integration merge failed for %s (non-conflict): %s", change_name, result.stderr[:300])
+    return "conflict"  # treat non-conflict errors as conflict for safety
+
+
+def _run_integration_gates(
+    change_name: str, change: Change, wt_path: str,
+    state_file: str, profile: Any = None,
+) -> bool:
+    """Run integration gates (build + test + e2e) in worktree after integration.
+
+    Returns True if all gates pass, False if any blocking gate fails.
+    """
+    from .gate_profiles import resolve_gate_config
+    from .gate_runner import GateResult
+
+    gc = resolve_gate_config(change, profile)
+
+    # Collect integration gates from universal + profile
+    from .verifier import _get_universal_gates
+    all_gates = _get_universal_gates()
+    if profile and hasattr(profile, "register_gates"):
+        try:
+            all_gates.extend(profile.register_gates())
+        except Exception:
+            pass
+
+    integration_gates = [g for g in all_gates if g.run_on_integration and g.phase == "pre-merge"]
+
+    for gate in integration_gates:
+        if not gc.should_run(gate.name):
+            continue
+        try:
+            result = gate.executor(
+                change_name=change_name, change=change, wt_path=wt_path,
+            )
+        except Exception:
+            logger.warning("Integration gate %s threw exception for %s", gate.name, change_name, exc_info=True)
+            result = GateResult(gate.name, "fail", output="integration gate threw exception")
+
+        if result.status == "fail" and gc.is_blocking(gate.name):
+            logger.error(
+                "Integration gate %s FAILED for %s — blocking merge",
+                gate.name, change_name,
+            )
+            update_change_field(state_file, change_name, "integration_gate_fail", gate.name)
+            return False
+        elif result.status == "fail":
+            logger.warning("Integration gate %s failed for %s — non-blocking", gate.name, change_name)
+
+    return True
+
+
+def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
+    """Drain merge queue. Serialized: integrate → verify → ff-only per change.
+
+    Each change integrates fresh main (including prior merges in this queue drain),
+    runs integration gates (build/test/e2e), then ff-only merges.
+    """
+    from .profile_loader import load_profile
+
+    profile = load_profile()
     state = load_state(state_file)
     merged = 0
+
     for name in list(state.merge_queue):
+        change = _find_change(state, name)
+        if not change:
+            _remove_from_merge_queue(state_file, name)
+            continue
+
+        wt_path = change.worktree_path or ""
+
+        # Step 1: Integrate current main into branch
+        if wt_path and os.path.isdir(wt_path):
+            integration = _integrate_for_merge(wt_path, name)
+            if integration == "conflict":
+                # Delegate to conflict handler (agent rebase)
+                conflict_result = _handle_merge_conflict(name, state_file, wt_path)
+                if not conflict_result.success:
+                    _remove_from_merge_queue(state_file, name)
+                continue
+
+            # Step 2: Integration gates (build + test + e2e)
+            if not _run_integration_gates(name, change, wt_path, state_file, profile):
+                update_change_field(state_file, name, "status", "merge-blocked")
+                _remove_from_merge_queue(state_file, name)
+                continue
+
+        # Step 3: ff-only merge
         try:
-            if _try_merge(name, state_file, event_bus=event_bus):
+            result = merge_change(name, state_file, event_bus=event_bus)
+            if result.success:
                 merged += 1
         except Exception:
             logger.warning("Merge failed for %s", name, exc_info=True)
+
+        # Re-read state for next iteration (main may have changed)
+        state = load_state(state_file)
+
     return merged
 
 
-# Source: merger.sh _try_merge() L595-649
-def _try_merge(
-    name: str, state_file: str, *, event_bus: Any = None
-) -> bool:
-    """Single merge attempt with conflict fingerprint dedup. Returns True if merged."""
-    state = load_state(state_file)
-    change = _find_change(state, name)
-    retry_count = change.merge_retry_count if change else 0
-
-    if retry_count >= MAX_MERGE_RETRIES:
-        logger.warning(
-            "Merge retries exhausted (%d/%d) for %s — removing from queue",
-            retry_count, MAX_MERGE_RETRIES, name,
-        )
-        _remove_from_merge_queue(state_file, name)
-        update_change_field(state_file, name, "status", "merge-blocked")
-        return False
-
-    retry_count += 1
-    update_change_field(state_file, name, "merge_retry_count", retry_count)
-    logger.info("Merge attempt %d/%d for %s", retry_count, MAX_MERGE_RETRIES, name)
-
-    # Update branch with latest main before retry
-    wt_path = change.worktree_path if change else ""
-    if wt_path and os.path.isdir(wt_path):
-        main_branch = _get_main_branch()
-        logger.info("Updating %s branch with latest %s before merge retry", name, main_branch)
-        run_command(
-            ["git", "fetch", "origin", main_branch], timeout=60, cwd=wt_path,
-        )  # best-effort — origin may not exist
-        # Use local main branch ref — works with or without origin
-        run_command(
-            ["git", "merge", main_branch, "--no-edit"],
-            timeout=120, cwd=wt_path,
-        )
-
-    try:
-        result = merge_change(name, state_file, event_bus=event_bus)
-        if result.success:
-            return True
-    except Exception:
-        pass
-
-    # Conflict fingerprint dedup
-    fingerprint = _compute_conflict_fingerprint(name)
-    prev_fingerprint = ""
-    if change:
-        prev_fingerprint = change.extras.get("last_conflict_fingerprint", "")
-
-    if fingerprint:
-        update_change_field(state_file, name, "last_conflict_fingerprint", fingerprint)
-
-        # Persist conflict info to memory (new fingerprints only)
-        if fingerprint not in _seen_conflict_fingerprints:
-            _seen_conflict_fingerprints.add(fingerprint)
-            try:
-                from .orch_memory import orch_remember
-                orch_remember(
-                    f"Merge conflict for change '{name}': fingerprint {fingerprint[:12]}",
-                    mem_type="Learning",
-                    tags=f"source:orchestrator,type:merge-conflict,change:{name}",
-                )
-            except Exception:
-                pass
-
-        if fingerprint == prev_fingerprint:
-            logger.info("Same conflict fingerprint for %s — stopping retries", name)
-            update_change_field(state_file, name, "status", "merge-blocked")
-            return False
-
-    if retry_count >= MAX_MERGE_RETRIES:
-        logger.error(
-            "Merge failed after %d attempts for %s — giving up",
-            MAX_MERGE_RETRIES, name,
-        )
-    return False
-
-
-# Source: merger.sh retry_merge_queue() L651-672
 def retry_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
-    """Retry merge queue items + merge-blocked changes. Returns count merged."""
+    """Retry merge queue + merge-blocked changes with fresh integration.
+
+    Uses the same integrate → verify → ff flow as execute_merge_queue.
+    """
     state = load_state(state_file)
-    merged = 0
 
-    # Process queue items
-    queue_items = list(state.merge_queue)
-    for name in queue_items:
-        if _try_merge(name, state_file, event_bus=event_bus):
-            merged += 1
-
-    # Also find merge-blocked items not in queue (safety net)
-    state = load_state(state_file)  # re-read after mutations
+    # Re-add merge-blocked changes to queue for retry
     for change in state.changes:
-        if change.status != "merge-blocked":
-            continue
-        if change.name in queue_items:
-            continue
-        if _try_merge(change.name, state_file, event_bus=event_bus):
-            merged += 1
+        if change.status == "merge-blocked" and change.name not in state.merge_queue:
+            with locked_state(state_file) as st:
+                if change.name not in st.merge_queue:
+                    st.merge_queue.append(change.name)
 
-    return merged
+    return execute_merge_queue(state_file, event_bus=event_bus)
 
 
 # ─── Internal Helpers ───────────────────────────────────────────────
@@ -857,218 +888,6 @@ def _run_plugin_post_merge_directives(change_name: str) -> None:
         logger.debug("Plugin post-merge directives failed (non-critical)", exc_info=True)
 
 
-def _post_merge_build_check(change_name: str, state_file: str) -> bool:
-    """Verify build on main after merge. Returns True if build passes."""
-    from .profile_loader import load_profile
-
-    profile = load_profile()
-    pm = profile.detect_package_manager(".") or "npm"
-    build_cmd = profile.detect_build_command(".")
-
-    if not pm or pm == "npm":
-        # TODO(profile-cleanup): remove after profile adoption confirmed
-        # Legacy fallback for PM
-        if os.path.exists("pnpm-lock.yaml"):
-            pm = "pnpm"
-        elif os.path.exists("yarn.lock"):
-            pm = "yarn"
-
-    if build_cmd:
-        # Profile returns full command like "pnpm run build"
-        build_parts = build_cmd.split()
-    else:
-        build_parts = [pm, "run", "build"]
-
-    logger.info("Post-merge: verifying build on main after merging %s", change_name)
-    result = run_command(build_parts, timeout=600)
-
-    if result.exit_code != 0:
-        logger.error("Post-merge: build FAILED on main after merging %s", change_name)
-        # Attempt LLM fix via dispatcher
-        try:
-            from .dispatcher import fix_base_build_with_llm
-            if fix_base_build_with_llm("."):
-                logger.info("Post-merge: build fix succeeded after merging %s", change_name)
-                return True
-            else:
-                logger.warning("Post-merge: build fix failed for %s", change_name)
-        except Exception:
-            pass
-        return False
-
-    logger.info("Post-merge: build passed on main")
-    return True
-
-
-def _run_smoke_pipeline(
-    change_name: str,
-    state_file: str,
-    merge_start: float,
-    merge_timeout: int,
-) -> str:
-    """Run post-merge smoke tests. Returns smoke result string."""
-    # Source: merger.sh L226-403
-    state = load_state(state_file)
-    directives = state.extras.get("directives", {})
-
-    # Check gate profile — skip smoke if profile says so
-    change = None
-    for c in state.changes:
-        if c.name == change_name:
-            change = c
-            break
-    if change:
-        from .gate_profiles import resolve_gate_config
-        from .profile_loader import load_profile
-        profile = load_profile()
-        gc = resolve_gate_config(change, profile, directives)
-        if not gc.should_run("smoke"):
-            logger.info("Post-merge smoke SKIPPED for %s (gate_profile)", change_name)
-            return "skipped"
-
-    smoke_command = directives.get("smoke_command", "")
-    if not smoke_command:
-        return ""
-
-    smoke_blocking = directives.get("smoke_blocking", "false") == "true"
-    smoke_timeout = int(directives.get("smoke_timeout", 120))
-
-    update_change_field(state_file, change_name, "smoke_status", "pending")
-
-    if smoke_blocking:
-        return _blocking_smoke_pipeline(
-            change_name, state_file, smoke_command, smoke_timeout,
-            merge_start, merge_timeout, directives,
-        )
-    else:
-        return _nonblocking_smoke_pipeline(
-            change_name, state_file, smoke_command, smoke_timeout,
-        )
-
-
-def _blocking_smoke_pipeline(
-    change_name: str,
-    state_file: str,
-    smoke_command: str,
-    smoke_timeout: int,
-    merge_start: float,
-    merge_timeout: int,
-    directives: dict,
-) -> str:
-    """Run blocking smoke pipeline. Returns smoke result."""
-    # Source: merger.sh L239-333
-    from .verifier import extract_health_check_url, health_check, smoke_fix_scoped
-
-    # Health check
-    hc_url = directives.get("smoke_health_check_url", "")
-    if not hc_url:
-        hc_url = extract_health_check_url(smoke_command)
-
-    hc_timeout = int(directives.get("smoke_health_check_timeout", 30))
-
-    update_change_field(state_file, change_name, "smoke_status", "checking")
-    if hc_url and not health_check(hc_url, timeout_secs=hc_timeout):
-        # Try auto-starting dev server
-        dev_cmd = directives.get("smoke_dev_server_command", "")
-        if dev_cmd:
-            logger.info("Post-merge: health check failed, auto-starting dev server")
-            import subprocess
-            proc = subprocess.Popen(
-                ["bash", "-c", dev_cmd],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if health_check(hc_url, timeout_secs=60):
-                logger.info("Post-merge: dev server auto-started (PID %d)", proc.pid)
-            else:
-                logger.error("Post-merge: dev server auto-start failed")
-                proc.kill()
-                update_change_field(state_file, change_name, "smoke_result", "blocked")
-                update_change_field(state_file, change_name, "smoke_status", "blocked")
-                update_change_field(state_file, change_name, "status", "smoke_blocked")
-                return "blocked"
-        else:
-            logger.error("Post-merge: health check FAILED — no server at %s", hc_url)
-            update_change_field(state_file, change_name, "smoke_result", "blocked")
-            update_change_field(state_file, change_name, "smoke_status", "blocked")
-            update_change_field(state_file, change_name, "status", "smoke_blocked")
-            return "blocked"
-
-    # Recompile buffer
-    time.sleep(5)
-
-    # Run smoke tests
-    update_change_field(state_file, change_name, "smoke_status", "running")
-    logger.info("Post-merge: running smoke tests (blocking) for %s", change_name)
-
-    smoke_result = run_command(
-        ["bash", "-c", smoke_command], timeout=smoke_timeout,
-    )
-    _collect_smoke_screenshots(change_name, state_file)
-
-    smoke_output = (smoke_result.stdout or "")[-2000:]
-    update_change_field(state_file, change_name, "smoke_output", smoke_output)
-
-    if smoke_result.exit_code == 0:
-        logger.info("Post-merge: smoke tests passed for %s", change_name)
-        update_change_field(state_file, change_name, "smoke_result", "pass")
-        update_change_field(state_file, change_name, "smoke_status", "done")
-        return "pass"
-
-    logger.error("Post-merge: smoke tests FAILED for %s (exit %d)", change_name, smoke_result.exit_code)
-    update_change_field(state_file, change_name, "smoke_result", "fail")
-    update_change_field(state_file, change_name, "smoke_fix_attempts", 0)
-
-    # Check timeout before fix
-    if (time.time() - merge_start) >= merge_timeout:
-        update_change_field(state_file, change_name, "status", "merge_timeout")
-        update_change_field(state_file, change_name, "smoke_status", "timeout")
-        return "fail"
-
-    # Scoped fix
-    max_retries = int(directives.get("smoke_fix_max_retries", 3))
-    max_turns = int(directives.get("smoke_fix_max_turns", 15))
-    if smoke_fix_scoped(
-        change_name, smoke_command, smoke_timeout,
-        smoke_result.stdout[-2000:], state_file,
-        max_retries=max_retries, max_turns=max_turns,
-    ):
-        update_change_field(state_file, change_name, "smoke_result", "fixed")
-        update_change_field(state_file, change_name, "smoke_status", "done")
-        return "fixed"
-
-    update_change_field(state_file, change_name, "smoke_status", "failed")
-    update_change_field(state_file, change_name, "status", "smoke_failed")
-    return "fail"
-
-
-def _nonblocking_smoke_pipeline(
-    change_name: str,
-    state_file: str,
-    smoke_command: str,
-    smoke_timeout: int,
-) -> str:
-    """Run non-blocking smoke pipeline. Returns smoke result."""
-    # Source: merger.sh L335-401
-    logger.info("Post-merge: running smoke tests (non-blocking) for %s", change_name)
-
-    smoke_result = run_command(
-        ["bash", "-c", smoke_command], timeout=smoke_timeout,
-    )
-    _collect_smoke_screenshots(change_name, state_file)
-    smoke_output = (smoke_result.stdout or "")[-2000:]
-    update_change_field(state_file, change_name, "smoke_output", smoke_output)
-
-    if smoke_result.exit_code == 0:
-        logger.info("Post-merge: smoke tests passed for %s", change_name)
-        update_change_field(state_file, change_name, "smoke_result", "pass")
-        update_change_field(state_file, change_name, "smoke_status", "done")
-        return "pass"
-
-    logger.error("Post-merge: smoke tests FAILED for %s", change_name)
-    update_change_field(state_file, change_name, "smoke_result", "fail")
-    update_change_field(state_file, change_name, "smoke_status", "failed")
-    return "fail"
 
 
 def _handle_merge_conflict(
@@ -1147,27 +966,3 @@ def _handle_merge_conflict(
     return MergeResult(success=False, status="merge-blocked")
 
 
-def _compute_conflict_fingerprint(change_name: str) -> str:
-    """Compute MD5 fingerprint of conflicting files for dedup."""
-    # Source: merger.sh L623-631
-    main_branch = _get_main_branch()
-    merge_base_result = run_command(
-        ["git", "merge-base", f"change/{change_name}", main_branch],
-        timeout=30,
-    )
-    merge_base = merge_base_result.stdout.strip()
-    if not merge_base:
-        return ""
-
-    tree_result = run_command(
-        ["git", "merge-tree", merge_base, main_branch, f"change/{change_name}"],
-        timeout=30,
-    )
-    # Extract "+++ b/" lines, sort, hash
-    lines = sorted(
-        line for line in tree_result.stdout.splitlines()
-        if line.startswith("+++ b/")
-    )
-    if not lines:
-        return ""
-    return hashlib.md5("\n".join(lines).encode()).hexdigest()

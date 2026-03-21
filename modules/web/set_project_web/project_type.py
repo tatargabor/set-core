@@ -414,23 +414,48 @@ class WebProjectType(CoreProfile):
     def ignore_patterns(self) -> List[str]:
         return ["node_modules", ".next", "dist", "build", ".turbo"]
 
+    def register_gates(self) -> list:
+        """Register web-specific gates: e2e (Playwright) and lint (forbidden patterns)."""
+        from set_orch.gate_runner import GateDefinition
+        from .gates import execute_e2e_gate, execute_lint_gate
+
+        return [
+            GateDefinition(
+                "e2e",
+                execute_e2e_gate,
+                position="after:test",
+                defaults={
+                    "infrastructure": "skip", "schema": "skip",
+                    "foundational": "skip", "feature": "run",
+                    "cleanup-before": "skip", "cleanup-after": "skip",
+                },
+                result_fields=("e2e_result", "gate_e2e_ms"),
+                run_on_integration=True,
+            ),
+            GateDefinition(
+                "lint",
+                execute_lint_gate,
+                position="after:test_files",
+                defaults={
+                    "infrastructure": "skip", "schema": "warn",
+                    "foundational": "run", "feature": "run",
+                    "cleanup-before": "warn", "cleanup-after": "skip",
+                },
+            ),
+        ]
+
     def gate_overrides(self, change_type: str) -> dict:
         """Web-specific gate overrides.
 
-        - foundational (auth): needs e2e for cold-visit tests, warn-only smoke
+        - foundational: e2e run for cold-visit tests
         - schema: test_files not required (migrations may lack tests)
-        - cleanup-after: warn-only smoke for CSS regression detection
         """
         overrides = {
             "foundational": {
                 "e2e": "run",
-                "smoke": "warn",
             },
             "schema": {
                 "test_files_required": False,
-            },
-            "cleanup-after": {
-                "smoke": "warn",
             },
         }
         return overrides.get(change_type, {})
@@ -572,6 +597,23 @@ class WebProjectType(CoreProfile):
             logger.info(
                 "Post-verify hook: %d E2E screenshot(s) for %s",
                 sc_count, change_name,
+            )
+
+    def post_merge_hooks(self, change_name: str, state_file: str) -> None:
+        """Run web-specific post-merge operations: i18n sidecar merge."""
+        from .post_merge import merge_i18n_sidecars
+        import subprocess as _sp
+
+        count = merge_i18n_sidecars(".")
+        if count > 0:
+            import logging
+            logging.getLogger(__name__).info(
+                "Post-merge: merged %d i18n sidecar file(s) for %s", count, change_name,
+            )
+            _sp.run(["git", "add", "-A"], capture_output=True, timeout=10)
+            _sp.run(
+                ["git", "commit", "-m", f"chore: merge {count} i18n sidecar file(s) from {change_name}"],
+                capture_output=True, timeout=10,
             )
 
     def decompose_hints(self) -> list:
