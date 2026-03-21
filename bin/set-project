@@ -31,24 +31,25 @@ _get_set_tools_version() {
 # Find a Python 3 interpreter that has set-project-base installed.
 # Tries: miniconda, uv-managed, system python3 — returns first that works.
 _set_python() {
+    # Find a working Python 3 interpreter.
+    # Modules are loaded via PYTHONPATH=$SET_TOOLS_ROOT/lib at call sites,
+    # so we only need a working Python 3, not one with packages pre-installed.
     local candidates=(
+        "$(command -v python3 2>/dev/null)"
         "$HOME/miniconda3/bin/python"
         "$HOME/.local/share/uv/python/cpython-*/bin/python3"
-        "$(command -v python3 2>/dev/null)"
         "$(command -v python 2>/dev/null)"
     )
     for py in "${candidates[@]}"; do
         [[ -z "$py" ]] && continue
-        # Expand globs
         for resolved in $py; do
             [[ -x "$resolved" ]] || continue
-            if "$resolved" -c "import set_project_base" 2>/dev/null; then
+            if "$resolved" -c "import sys; assert sys.version_info >= (3, 9)" 2>/dev/null; then
                 echo "$resolved"
                 return 0
             fi
         done
     done
-    # Fallback to plain python3 even if package not installed
     echo "python3"
 }
 
@@ -228,31 +229,66 @@ _resolve_project_type() {
     local type_name="$1"
     local py
     py=$(_set_python)
-    "$py" -c "
-import json, sys
+    # Use profile_loader's full resolution chain (entry_points → direct import → built-in modules)
+    PYTHONPATH="$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -c "
+import json, sys, os
+sys.path.insert(0, os.path.join(os.environ.get('SET_TOOLS_ROOT', '.'), 'lib'))
 type_name = sys.argv[1]
+
+# Try profile_loader's resolution chain first (includes built-in modules/)
 try:
-    from importlib.metadata import entry_points
-except ImportError:
-    from importlib_metadata import entry_points
+    from set_orch.profile_loader import _find_project_type_class, _SET_CORE_ROOT
+    import importlib
 
-try:
-    eps = entry_points(group='set_tools.project_types')
-except TypeError:
-    eps = entry_points().get('set_tools.project_types', [])
+    # Step 1: entry_points
+    try:
+        from importlib.metadata import entry_points
+        eps = entry_points(group='set_tools.project_types')
+    except TypeError:
+        eps = entry_points().get('set_tools.project_types', [])
 
-for ep in eps:
-    if ep.name == type_name:
-        cls = ep.load()
-        pt = cls()
-        info = pt.info
-        rules = [{'id': r.id, 'description': r.description, 'check': r.check, 'severity': r.severity} for r in pt.get_verification_rules()]
-        directives = [{'id': d.id, 'description': d.description, 'trigger': d.trigger, 'action': d.action} for d in pt.get_orchestration_directives()]
-        print(json.dumps({'name': info.name, 'version': info.version, 'description': info.description, 'parent': info.parent, 'rules_count': len(rules), 'directives_count': len(directives)}))
-        sys.exit(0)
+    pt = None
+    for ep in eps:
+        if ep.name == type_name:
+            cls = ep.load()
+            pt = cls()
+            break
 
-print(json.dumps({'error': 'not_found'}), file=sys.stderr)
-sys.exit(1)
+    # Step 2: direct import
+    if pt is None:
+        try:
+            mod = importlib.import_module(f'set_project_{type_name}')
+            cls = _find_project_type_class(mod)
+            if cls:
+                pt = cls()
+        except ImportError:
+            pass
+
+    # Step 3: built-in modules/
+    if pt is None:
+        modules_dir = _SET_CORE_ROOT / 'modules' / type_name
+        module_pkg = modules_dir / f'set_project_{type_name}'
+        if module_pkg.is_dir():
+            sys.path.insert(0, str(modules_dir))
+            try:
+                mod = importlib.import_module(f'set_project_{type_name}')
+                cls = _find_project_type_class(mod)
+                if cls:
+                    pt = cls()
+            except ImportError:
+                pass
+
+    if pt is None:
+        print(json.dumps({'error': 'not_found'}), file=sys.stderr)
+        sys.exit(1)
+
+    info = pt.info
+    rules = [{'id': r.id, 'description': r.description, 'check': r.check, 'severity': r.severity} for r in pt.get_verification_rules()]
+    directives = [{'id': d.id, 'description': d.description, 'trigger': d.trigger, 'action': d.action} for d in pt.get_orchestration_directives()]
+    print(json.dumps({'name': info.name, 'version': info.version, 'description': info.description, 'parent': getattr(info, 'parent', None), 'rules_count': len(rules), 'directives_count': len(directives)}))
+except Exception as e:
+    print(json.dumps({'error': str(e)}), file=sys.stderr)
+    sys.exit(1)
 " "$type_name" 2>/dev/null
 }
 
@@ -260,14 +296,16 @@ sys.exit(1)
 _list_project_types() {
     local py
     py=$(_set_python)
-    "$py" -c "
-import sys
+    PYTHONPATH="$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -c "
+import sys, os
+sys.path.insert(0, os.path.join(os.environ.get('SET_TOOLS_ROOT', '.'), 'lib'))
+from pathlib import Path
+
+found = set()
+
+# Step 1: entry_points (external plugins)
 try:
     from importlib.metadata import entry_points
-except ImportError:
-    from importlib_metadata import entry_points
-
-try:
     eps = entry_points(group='set_tools.project_types')
 except TypeError:
     eps = entry_points().get('set_tools.project_types', [])
@@ -278,8 +316,39 @@ for ep in eps:
         pt = cls()
         info = pt.info
         print(f'  {ep.name:12s} — {info.description}')
+        found.add(ep.name)
     except Exception as e:
         print(f'  {ep.name:12s} — (failed to load: {e})', file=sys.stderr)
+
+# Step 2: built-in modules/
+set_core_root = Path(os.environ.get('SET_TOOLS_ROOT', '.')).resolve()
+modules_dir = set_core_root / 'modules'
+if modules_dir.is_dir():
+    for mod_dir in sorted(modules_dir.iterdir()):
+        if not mod_dir.is_dir():
+            continue
+        type_name = mod_dir.name
+        if type_name in found:
+            continue
+        pkg_dir = mod_dir / f'set_project_{type_name}'
+        if not (pkg_dir / '__init__.py').is_file():
+            continue
+        try:
+            sys.path.insert(0, str(mod_dir))
+            import importlib
+            mod = importlib.import_module(f'set_project_{type_name}')
+            from set_orch.profile_loader import _find_project_type_class
+            cls = _find_project_type_class(mod)
+            if cls:
+                pt = cls()
+                info = pt.info
+                print(f'  {type_name:12s} — {info.description} (built-in)')
+                found.add(type_name)
+        except Exception as e:
+            print(f'  {type_name:12s} — (failed to load: {e})', file=sys.stderr)
+
+if not found:
+    print('  (no project types found)')
 " 2>/dev/null
 }
 
@@ -621,7 +690,7 @@ _deploy_project_templates() {
     local py
     py=$(_set_python)
 
-    local cmd=("$py" -m set_project_base.cli deploy-templates --project-dir "$project_path" --type "$type_name")
+    local cmd=(env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_project_base.cli deploy-templates --project-dir "$project_path" --type "$type_name")
     if [[ -n "$template_name" ]]; then
         cmd+=(--template "$template_name")
     fi
