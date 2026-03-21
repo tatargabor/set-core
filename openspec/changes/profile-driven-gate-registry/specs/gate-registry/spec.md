@@ -5,15 +5,16 @@
 - resolve_gate_config uses universal + profile gates
 - Pipeline registration from gate registry instead of hardcoded list
 - Universal gate defaults per change_type (replaces BUILTIN_GATE_PROFILES)
-- GateContext dataclass for standardized executor parameters
+- Merge queue simplification: integrate-then-ff, serialized per change
+- commit_results dynamic field mapping via GateDefinition.result_fields
 
 ## OUT OF SCOPE
+- GateContext dataclass (separate change — too much blast radius)
 - Changing GatePipeline execution engine (register + run stays the same)
 - Dynamic gate ordering at runtime (position hints resolved at registration)
-- Post-merge smoke pipeline restructuring (stays in merger.py, uses same GateDefinition)
 
 ### Requirement: Gates shall be declared via GateDefinition
-The system SHALL provide a `GateDefinition` dataclass in `gate_runner.py` with fields: name, executor, position, phase, defaults (per change_type), own_retry_counter, extra_retries.
+The system SHALL provide a `GateDefinition` dataclass in `gate_runner.py` with fields: name, executor, position, phase, defaults (per change_type), own_retry_counter, extra_retries, result_fields.
 
 #### Scenario: Universal gate definition
 - **GIVEN** a universal gate "build" with executor and own_retry_counter
@@ -36,9 +37,9 @@ GateConfig SHALL store gate modes as a `dict[str, str]` instead of fixed datacla
 ### Requirement: Profiles shall register domain-specific gates
 ProjectType ABC SHALL define `register_gates() -> list[GateDefinition]` returning empty list by default. CoreProfile inherits this default. Domain profiles (web, python) override to provide their gates.
 
-#### Scenario: Web profile registers e2e + lint + smoke
+#### Scenario: Web profile registers e2e + lint
 - **WHEN** WebProjectType.register_gates() is called
-- **THEN** it SHALL return GateDefinitions for e2e, lint, and smoke gates
+- **THEN** it SHALL return GateDefinitions for e2e and lint gates
 - **AND** each SHALL include an executor callable and change_type defaults
 
 #### Scenario: NullProfile registers no extra gates
@@ -66,3 +67,20 @@ handle_change_done SHALL collect universal gates + profile gates, resolve orderi
 - **GIVEN** universal gates (build→test→scope→test_files→review→rules→spec_verify) and profile gates (e2e after:test, lint after:test_files)
 - **WHEN** pipeline runs
 - **THEN** execution order SHALL be: build, test, e2e, scope_check, test_files, lint, review, rules, spec_verify
+
+### Requirement: Merge queue shall serialize integration
+The merge queue SHALL process changes sequentially. For each change: (1) integrate current main into branch with checked result, (2) ff-only merge branch into main. Each subsequent change integrates against the fresh main that includes the previous merge.
+
+#### Scenario: Sequential merge — each sees fresh main
+- **GIVEN** changes A and B both in merge queue, both previously integrated with old main
+- **WHEN** merge queue processes
+- **THEN** A SHALL integrate main and ff-merge first
+- **AND** B SHALL integrate main (now including A) and ff-merge second
+- **AND** both SHALL succeed without re-running gate pipelines
+
+#### Scenario: Integration conflict blocks merge
+- **GIVEN** change C has conflicts when integrating current main
+- **WHEN** merge queue processes C
+- **THEN** C SHALL be marked merge-blocked
+- **AND** queue SHALL continue to next change
+- **AND** retry_merge_queue can retry C later (conflicts may resolve after other merges)
