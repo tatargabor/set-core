@@ -839,24 +839,33 @@ def reconcile_coverage(state_file: str, digest_dir: str = DIGEST_DIR) -> int:
     except (json.JSONDecodeError, OSError):
         return 0
 
-    # Build change_name → status lookup
+    # Build change_name → status lookup AND req_id → status lookup
     change_statuses: dict[str, str] = {}
+    req_statuses: dict[str, str] = {}
     for change in state_data.get("changes", []):
         name = change.get("name", "")
         status = change.get("status", "")
         if name:
             change_statuses[name] = status
+        # Map requirement IDs to their owning change's status
+        for req_id in change.get("requirements", []):
+            req_statuses[req_id] = status
 
     # Reconcile: find requirements whose change is merged but coverage isn't
+    # Match by change name first (digest and plan used same names),
+    # then fall back to requirement ID mapping (when names differ).
     coverage = cov_data.get("coverage", {})
     fixed_count = 0
     fixed_entries: dict[str, Any] = {}
 
     for req_id, entry in coverage.items():
         owning_change = entry.get("change", "")
-        if not owning_change:
-            continue
-        if change_statuses.get(owning_change) == "merged" and entry.get("status") != "merged":
+        # Try matching by change name
+        actual_status = change_statuses.get(owning_change, "")
+        # Fall back to requirement ID mapping (handles digest/plan name mismatch)
+        if not actual_status and req_id in req_statuses:
+            actual_status = req_statuses[req_id]
+        if actual_status == "merged" and entry.get("status") != "merged":
             entry["status"] = "merged"
             fixed_count += 1
             fixed_entries[req_id] = entry
