@@ -97,9 +97,29 @@ When orchestration starts with Discord enabled:
 | `mention_on_error` | string | none | Who to @mention on errors |
 | `member_map` | dict | `{}` | Map set-core members to Discord user IDs |
 
+## Prerequisites for Live Notifications
+
+**set-web must be running** alongside the orchestrator for Discord notifications to work. The Discord bot runs inside the set-web process and monitors state file changes written by the orchestrator.
+
+```
+set-orchestrate                    set-web (must be running!)
+  │                                  │
+  └─ writes state JSON ──────────────→ watcher detects change
+                                       ├─ WebSocket → dashboard
+                                       └─ Discord → bot posts
+```
+
+If set-web runs as a systemd service (recommended), it starts automatically:
+```bash
+systemctl --user enable set-web
+systemctl --user start set-web
+```
+
 ## Troubleshooting
 
 **Bot doesn't connect**: Check `SET_DISCORD_TOKEN` is set and valid.
+
+**No messages during orchestration**: Ensure set-web is running (`systemctl --user status set-web`). The Discord bot lives in the set-web process.
 
 **Channel not found**: Ensure `guild_id` is correct and the bot is a member of the server. Grant `Manage Channels` permission for auto-creation.
 

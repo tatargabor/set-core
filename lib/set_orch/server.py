@@ -27,26 +27,30 @@ async def lifespan(app: FastAPI):
     watcher = app.state.watcher_manager
     await watcher.start(connection_manager)
 
-    # Start Discord bot if configured
+    # Start Discord bot if configured (global auto_enable or per-project config)
     discord_bot = None
     try:
         from .config import get_discord_config, load_config_file
-        config = load_config_file(
-            _find_orch_config()
-        )
+        orch_path = _find_orch_config()
+        config = load_config_file(orch_path) if orch_path else {}
         discord_config = get_discord_config(config)
         if discord_config:
             from .discord import DiscordBot
             from .discord.events import setup_event_handler
-            project_name = config.get("project_name", "")
+            project_name = config.get("project_name", "") or "set-core"
             discord_bot = DiscordBot(discord_config, project_name=project_name)
             await discord_bot.start()
             # Setup event handler (stores config/member on bot for watcher bridge)
             if await discord_bot.wait_ready(timeout=15):
                 await setup_event_handler(discord_bot, discord_config)
+                import logging
+                logging.getLogger(__name__).info("Discord bot connected")
+            else:
+                import logging
+                logging.getLogger(__name__).warning("Discord bot failed to connect within timeout")
     except Exception as e:
         import logging
-        logging.getLogger(__name__).debug("Discord bot startup skipped: %s", e)
+        logging.getLogger(__name__).warning("Discord bot startup failed: %s", e)
 
     yield
 
