@@ -495,7 +495,7 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
 
     Returns "ok" or "conflict". Checks exit code (unlike old _try_merge).
     """
-    main_branch = _get_main_branch()
+    main_branch = _get_main_branch(cwd=wt_path)
 
     # Best-effort fetch from origin
     run_command(["git", "fetch", "origin", main_branch], timeout=60, cwd=wt_path)
@@ -691,15 +691,21 @@ def _remove_from_merge_queue(state_file: str, change_name: str) -> None:
         state.merge_queue = [n for n in state.merge_queue if n != change_name]
 
 
-def _get_main_branch() -> str:
-    """Detect the main branch name."""
+def _get_main_branch(cwd: str = "") -> str:
+    """Detect the main branch name from the given repo (or cwd)."""
+    kwargs = {"cwd": cwd} if cwd else {}
     result = run_command(
         ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
-        timeout=10,
+        timeout=10, **kwargs,
     )
     if result.exit_code == 0:
         ref = result.stdout.strip()
         return ref.replace("refs/remotes/origin/", "")
+    # No origin — check which local branch exists
+    for candidate in ("main", "master"):
+        check = run_command(["git", "rev-parse", "--verify", candidate], timeout=5, **kwargs)
+        if check.exit_code == 0:
+            return candidate
     return "main"
 
 
@@ -923,7 +929,7 @@ def _handle_merge_conflict(
         logger.info("Merge conflict for %s (retry %d)", change_name, retry_count)
 
     # Pre-validate: confirm conflict actually exists
-    main_branch = _get_main_branch()
+    main_branch = _get_main_branch(cwd=wt_path)
     # Use local branch refs — origin may not exist (e.g., E2E tests)
     run_command(["git", "fetch", "origin", main_branch], timeout=60)  # best-effort
 
