@@ -1445,38 +1445,69 @@ def _persist_run_learnings(state_file: str) -> None:
             orch_remember(summary, mem_type="Context", tags="source:orchestrator,type:gate-stats")
             logger.info("Persisted gate stats to memory")
 
-        # Recurring review patterns
+        # Recurring review patterns — try JSONL first, fall back to state review_output
+        import re as _re
+        pattern_counts: dict[str, set[str]] = {}
+
         findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
         findings_path = os.path.join(findings_dir, "review-findings.jsonl")
         if os.path.isfile(findings_path):
-            import re as _re
-            entries = []
             with open(findings_path) as f:
                 for line in f:
                     line = line.strip()
-                    if line:
-                        try:
-                            entries.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            continue
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    change = entry.get("change", "")
+                    for issue in entry.get("issues", []):
+                        norm = _re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*", "", issue.get("summary", ""))[:80]
+                        if norm:
+                            pattern_counts.setdefault(norm, set()).add(change)
 
-            # Extract patterns across changes
-            pattern_counts: dict[str, set[str]] = {}
-            for entry in entries:
-                change = entry.get("change", "")
-                for issue in entry.get("issues", []):
-                    norm = _re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*", "", issue.get("summary", ""))[:50]
-                    if norm not in pattern_counts:
-                        pattern_counts[norm] = set()
-                    pattern_counts[norm].add(change)
+        # Fallback: extract from state review_output (always available)
+        if not pattern_counts:
+            changes_list = state_dict.get("changes", [])
+            for c in changes_list:
+                review_out = c.get("review_output", "")
+                if not review_out:
+                    continue
+                change_name = c.get("name", "")
+                for match in _re.finditer(r"\[(?:CRITICAL|HIGH)\]\s*(.+?)(?:\n|$)", review_out):
+                    norm = match.group(1).strip()[:80]
+                    if norm:
+                        pattern_counts.setdefault(norm, set()).add(change_name)
 
-            recurring = {k: v for k, v in pattern_counts.items() if len(v) >= 2}
-            if recurring:
-                lines = ["Recurring review patterns across changes:"]
-                for pattern, changes in sorted(recurring.items(), key=lambda x: -len(x[1])):
-                    lines.append(f"- \"{pattern}\" in {len(changes)} changes: {', '.join(sorted(changes))}")
-                orch_remember("\n".join(lines), mem_type="Learning", tags="source:orchestrator,type:review-patterns")
-                logger.info("Persisted %d recurring review patterns to memory", len(recurring))
+        # Also cluster by keywords for fuzzy matching across variations
+        _CLUSTERS = {
+            "no-auth": ["no auth", "no authentication", "zero authentication", "without auth"],
+            "no-csrf": ["csrf", "cross-site request"],
+            "xss": ["xss", "dangerouslysetinnerhtml", "v-html"],
+            "no-rate-limit": ["rate limit", "rate-limit"],
+            "secrets-exposed": ["masking", "exposed", "leaked", "codes displayed"],
+        }
+        cluster_counts: dict[str, set[str]] = {}
+        for norm, changes_set in pattern_counts.items():
+            norm_lower = norm.lower()
+            for cid, keywords in _CLUSTERS.items():
+                if any(kw in norm_lower for kw in keywords):
+                    cluster_counts.setdefault(cid, set()).update(changes_set)
+                    break
+
+        # Merge keyword clusters into pattern_counts
+        for cid, changes_set in cluster_counts.items():
+            if len(changes_set) >= 2:
+                pattern_counts[f"[cluster:{cid}]"] = changes_set
+
+        recurring = {k: v for k, v in pattern_counts.items() if len(v) >= 2}
+        if recurring:
+            lines = ["Recurring review patterns across changes:"]
+            for pattern, changes in sorted(recurring.items(), key=lambda x: -len(x[1])):
+                lines.append(f"- \"{pattern}\" in {len(changes)} changes: {', '.join(sorted(changes))}")
+            orch_remember("\n".join(lines), mem_type="Learning", tags="source:orchestrator,type:review-patterns")
+            logger.info("Persisted %d recurring review patterns to memory", len(recurring))
 
     except Exception:
         logger.debug("Failed to persist run learnings", exc_info=True)

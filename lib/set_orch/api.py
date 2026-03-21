@@ -2038,45 +2038,100 @@ def _resolve_findings_file(project_path: Path) -> Optional[Path]:
 
 
 def _read_review_findings(project_path: Path) -> dict:
-    """Read and parse review findings JSONL + summary."""
-    findings_file = _resolve_findings_file(project_path)
-    if not findings_file:
-        return {"entries": [], "summary": "", "recurring_patterns": []}
-
+    """Read and parse review findings from JSONL or state.json review_output fallback."""
     entries = []
-    try:
-        with open(findings_file) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entries.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except OSError:
-        return {"entries": [], "summary": "", "recurring_patterns": []}
-
-    # Extract recurring patterns (same normalization as generate_review_findings_summary)
     pattern_counts: dict[str, int] = {}
+
+    # Try JSONL first
+    findings_file = _resolve_findings_file(project_path)
+    if findings_file:
+        try:
+            with open(findings_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+        for entry in entries:
+            for issue in entry.get("issues", []):
+                norm = re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*", "", issue.get("summary", ""))[:80]
+                if norm:
+                    pattern_counts[norm] = pattern_counts.get(norm, 0) + 1
+
+    # Fallback: extract from state.json review_output (always available)
+    if not entries:
+        state_file = project_path / "orchestration-state.json"
+        if state_file.exists():
+            try:
+                with open(state_file) as f:
+                    state_data = json.load(f)
+                for c in state_data.get("changes", []):
+                    review_out = c.get("review_output", "")
+                    if not review_out:
+                        continue
+                    change_name = c.get("name", "")
+                    issues = []
+                    for match in re.finditer(r"\*?\*?ISSUE:\s*\[(\w+)\]\s*(.+?)(?:\*\*|\n|$)", review_out):
+                        severity = match.group(1)
+                        summary = match.group(2).strip()[:120]
+                        issues.append({"severity": severity, "summary": summary})
+                        norm = summary[:80]
+                        pattern_counts[norm] = pattern_counts.get(norm, 0) + 1
+                    if issues:
+                        entries.append({"change": change_name, "issues": issues})
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Keyword-based clustering for fuzzy matching across variations
+    _CLUSTERS = {
+        "no-auth": ["no auth", "no authentication", "zero authentication", "without auth"],
+        "no-csrf": ["csrf", "cross-site request"],
+        "xss": ["xss", "dangerouslysetinnerhtml", "v-html"],
+        "no-rate-limit": ["rate limit", "rate-limit"],
+        "secrets-exposed": ["masking", "exposed", "leaked", "codes displayed"],
+    }
+    cluster_counts: dict[str, int] = {}
+    cluster_changes: dict[str, set] = {}
     for entry in entries:
+        change_name = entry.get("change", "")
         for issue in entry.get("issues", []):
-            norm = re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*", "", issue.get("summary", ""))[:50]
-            pattern_counts[norm] = pattern_counts.get(norm, 0) + 1
+            raw = issue.get("summary", "").lower()
+            for cid, keywords in _CLUSTERS.items():
+                if any(kw in raw for kw in keywords):
+                    cluster_counts[cid] = cluster_counts.get(cid, 0) + 1
+                    cluster_changes.setdefault(cid, set()).add(change_name)
+                    break
+
     recurring = [
         {"pattern": k, "count": v}
         for k, v in sorted(pattern_counts.items(), key=lambda x: -x[1])
         if v >= 2
     ]
+    # Add keyword clusters as recurring patterns
+    for cid, changes_set in sorted(cluster_changes.items(), key=lambda x: -len(x[1])):
+        if len(changes_set) >= 2:
+            recurring.append({
+                "pattern": f"[{cid}] ({len(changes_set)} changes)",
+                "count": cluster_counts[cid],
+                "cluster": cid,
+                "changes": sorted(changes_set),
+            })
 
     # Read summary MD if exists
     summary = ""
-    summary_file = findings_file.parent / "review-findings-summary.md"
-    if summary_file.exists():
-        try:
-            summary = summary_file.read_text(errors="replace")
-        except OSError:
-            pass
+    if findings_file:
+        summary_file = findings_file.parent / "review-findings-summary.md"
+        if summary_file.exists():
+            try:
+                summary = summary_file.read_text(errors="replace")
+            except OSError:
+                pass
 
     return {"entries": entries, "summary": summary, "recurring_patterns": recurring}
 
