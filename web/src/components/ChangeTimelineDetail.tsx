@@ -63,28 +63,15 @@ function IterationTimeline({ iterations }: { iterations: TimelineIteration[] }) 
 
   return (
     <div className="relative">
-      <div className="flex items-center gap-0.5 flex-wrap pb-2">
+      <div className="flex items-end gap-0.5 flex-wrap pb-2">
         {iterations.map((it, i) => {
           const prevState = i > 0 ? iterations[i - 1].state : null
           const stateChanged = prevState !== null && prevState !== it.state
+          const showLabel = i === 0 || stateChanged
 
           return (
-            <div key={it.n} className="flex items-center gap-0.5 shrink-0">
-              {/* State boundary separator */}
-              {stateChanged && (
-                <div className="flex flex-col items-center mx-1">
-                  <div className="text-[9px] text-neutral-500 leading-none mb-0.5">{it.state}</div>
-                  <div className="w-px h-4 bg-neutral-600" />
-                </div>
-              )}
-              {/* First block gets state label too */}
-              {i === 0 && (
-                <div className="flex flex-col items-center mr-1">
-                  <div className="text-[9px] text-neutral-500 leading-none mb-0.5">{it.state}</div>
-                  <div className="w-px h-4 bg-neutral-600" />
-                </div>
-              )}
-              {/* Iteration block */}
+            <div key={it.n} className="flex items-end gap-0.5 shrink-0">
+              {stateChanged && <div className="w-px h-5 bg-neutral-600 mx-0.5 self-center" />}
               <div
                 className="relative"
                 onMouseEnter={() => setHoveredIdx(i)}
@@ -98,9 +85,11 @@ function IterationTimeline({ iterations }: { iterations: TimelineIteration[] }) 
                     {it.n}
                   </span>
                 </div>
-                {/* Tooltip */}
+                {showLabel && (
+                  <div className="text-[9px] text-neutral-500 leading-none mt-0.5 text-center">{it.state}</div>
+                )}
                 {hoveredIdx === i && (
-                  <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1.5 bg-neutral-900 border border-neutral-700 rounded shadow-lg text-xs text-neutral-200 whitespace-nowrap pointer-events-none">
+                  <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1.5 bg-neutral-900 border border-neutral-700 rounded shadow-lg text-xs text-neutral-200 whitespace-nowrap pointer-events-none">
                     <div className="font-medium">Iteration {it.n}</div>
                     <div className="text-neutral-400">State: {it.state}</div>
                     <div className="text-neutral-400">Duration: {formatDuration(iterDurationMs(it))}</div>
@@ -125,10 +114,11 @@ function TransitionTimeline({ transitions }: { transitions: ChangeTimelineData['
 
   return (
     <div className="relative">
-      <div className="flex items-center gap-0.5 flex-wrap pb-2">
+      <div className="flex items-end gap-0.5 flex-wrap pb-2">
         {transitions.map((t, i) => {
           const prevState = i > 0 ? transitions[i - 1].to : null
           const stateChanged = prevState !== null && prevState !== t.to
+          const showLabel = i === 0 || stateChanged
 
           let stepDurationMs = 0
           if (i < transitions.length - 1) {
@@ -138,19 +128,8 @@ function TransitionTimeline({ transitions }: { transitions: ChangeTimelineData['
           }
 
           return (
-            <div key={i} className="flex items-center gap-0.5 shrink-0">
-              {stateChanged && (
-                <div className="flex flex-col items-center mx-1">
-                  <div className="text-[9px] text-neutral-500 leading-none mb-0.5">{t.to}</div>
-                  <div className="w-px h-4 bg-neutral-600" />
-                </div>
-              )}
-              {i === 0 && (
-                <div className="flex flex-col items-center mr-1">
-                  <div className="text-[9px] text-neutral-500 leading-none mb-0.5">{t.to}</div>
-                  <div className="w-px h-4 bg-neutral-600" />
-                </div>
-              )}
+            <div key={i} className="flex items-end gap-0.5 shrink-0">
+              {stateChanged && <div className="w-px h-5 bg-neutral-600 mx-0.5 self-center" />}
               <div
                 className="relative"
                 onMouseEnter={() => setHoveredIdx(i)}
@@ -160,8 +139,11 @@ function TransitionTimeline({ transitions }: { transitions: ChangeTimelineData['
                   className={`w-5 h-5 rounded-sm cursor-default ${STATE_BG[t.to] ?? 'bg-neutral-500'} ${(t.to === 'failed' || t.to === 'merge-blocked') ? 'ring-1 ring-red-500/60' : ''}`}
                   title={t.to}
                 />
+                {showLabel && (
+                  <div className="text-[9px] text-neutral-500 leading-none mt-0.5 text-center">{t.to}</div>
+                )}
                 {hoveredIdx === i && (
-                  <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1.5 bg-neutral-900 border border-neutral-700 rounded shadow-lg text-xs text-neutral-200 whitespace-nowrap pointer-events-none">
+                  <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1.5 bg-neutral-900 border border-neutral-700 rounded shadow-lg text-xs text-neutral-200 whitespace-nowrap pointer-events-none">
                     <div className="font-medium">{t.to}</div>
                     {t.from && <div className="text-neutral-400">From: {t.from}</div>}
                     <div className="text-[10px] text-neutral-500 mt-0.5">{formatTime(t.ts)}</div>
