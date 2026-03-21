@@ -68,14 +68,22 @@ else
     info "Deploying set-core..."
     set-project init --project-type web --template nextjs
 
-    # Add orchestration config
-    cat > .claude/orchestration.yaml << 'ORCH'
-max_parallel: 2
-review_before_merge: true
-e2e_mode: per_change
-time_limit: 2h
+    # Add orchestration config (engine reads from wt/orchestration/config.yaml)
+    mkdir -p wt/orchestration
+    cat > wt/orchestration/config.yaml << 'ORCH'
 default_model: sonnet
+test_command: pnpm test
+e2e_command: npx playwright test
+e2e_timeout: 120
+max_parallel: 2
+merge_policy: eager
+review_before_merge: true
+max_verify_retries: 2
+time_limit: 2h
 checkpoint_interval: 5
+discord:
+  enabled: true
+  channel_name: micro-web
 ORCH
 
     git add -A
