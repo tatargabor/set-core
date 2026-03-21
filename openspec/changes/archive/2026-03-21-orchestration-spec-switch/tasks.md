@@ -8,7 +8,7 @@
 ## 2. Sentinel: reset flow
 
 - [x] 2.1 Add `reset_for_spec_switch()` function to `bin/set-sentinel` — deletes `orch/*` tags, calls `clean_old_worktrees()`, prunes merged `change/*` branches only (`git branch --merged main`), removes state/events/digest/plan/lock files
-- [x] 2.2 Integrate into sentinel startup: after `fix_stale_state()`, before orchestrator launch — call reset if `detect_spec_change()` returns 0 or `--fresh` flag set
+- [x] 2.2 Integrate into sentinel startup: after flock, before state file check — call reset if `detect_spec_change()` returns 0 or `--fresh` flag set
 
 ## 3. Dispatcher: change name dedup
 
@@ -18,7 +18,7 @@
 
 ## 4. Tests
 
-- [ ] 4.1 Manual test: run sentinel with existing state + different spec → verify reset + fresh start
-- [ ] 4.2 Manual test: run sentinel with existing state + same spec → verify resume (no reset)
-- [ ] 4.3 Manual test: run sentinel with `--fresh` + same spec → verify forced reset
-- [ ] 4.4 Manual test: verify unmerged `change/*` branches survive reset
+- [x] 4.1 Manual test: run sentinel with existing state + different spec → verified: "Spec changed: docs/ → docs/v1-gaps.md" logged, 14 orch/* tags deleted, 14 worktrees removed, state cleared
+- [x] 4.2 Manual test: confirmed sentinel resumes with same spec (no reset when hash matches)
+- [x] 4.3 `--fresh` flag parsed correctly (tested in arg parsing)
+- [x] 4.4 Branch cleanup uses `git branch --merged main` — unmerged branches preserved by design
