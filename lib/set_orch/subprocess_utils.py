@@ -215,13 +215,10 @@ def run_git(*args: str, cwd: str | Path | None = None, timeout: int = 60) -> Git
     result = run_command(cmd, timeout=timeout, cwd=cwd)
 
     if result.exit_code != 0:
+        _stderr_snippet = (result.stderr[:200] if result.stderr else "").strip()
         logger.warning(
-            "git_failed",
-            extra={
-                "cmd": " ".join(cmd),
-                "exit_code": result.exit_code,
-                "stderr": result.stderr[:200] if result.stderr else "",
-            },
+            "git_failed: %s (exit=%d) %s",
+            " ".join(cmd), result.exit_code, _stderr_snippet,
         )
 
     return GitResult(

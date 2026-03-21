@@ -548,44 +548,62 @@ def _run_integration_gates(
 ) -> bool:
     """Run integration gates (build + test + e2e) in worktree after integration.
 
+    Uses lightweight subprocess calls (not the full gate executors which need
+    many parameters). Only checks: does it build? do tests pass?
+
     Returns True if all gates pass, False if any blocking gate fails.
     """
     from .gate_profiles import resolve_gate_config
     from .gate_runner import GateResult
+    from .subprocess_utils import run_command
 
     gc = resolve_gate_config(change, profile)
 
-    # Collect integration gates from universal + profile
-    from .verifier import _get_universal_gates
-    all_gates = _get_universal_gates()
-    if profile and hasattr(profile, "register_gates"):
-        try:
-            all_gates.extend(profile.register_gates())
-        except Exception:
-            pass
+    # Load directives for test/build commands
+    try:
+        state = load_state(state_file)
+        directives = state.extras.get("directives", {})
+    except Exception:
+        directives = {}
 
-    integration_gates = [g for g in all_gates if g.run_on_integration and g.phase == "pre-merge"]
+    # Build gate
+    if gc.should_run("build"):
+        build_cmd = directives.get("build_command", "")
+        if not build_cmd and profile and hasattr(profile, "detect_build_command"):
+            build_cmd = profile.detect_build_command(wt_path) or ""
+        if build_cmd:
+            logger.info("Integration gate: build for %s (%s)", change_name, build_cmd)
+            result = run_command(["bash", "-c", build_cmd], timeout=120, cwd=wt_path)
+            if result.exit_code != 0:
+                logger.error("Integration gate: build FAILED for %s", change_name)
+                update_change_field(state_file, change_name, "integration_gate_fail", "build")
+                return False
 
-    for gate in integration_gates:
-        if not gc.should_run(gate.name):
-            continue
-        try:
-            result = gate.executor(
-                change_name=change_name, change=change, wt_path=wt_path,
-            )
-        except Exception:
-            logger.warning("Integration gate %s threw exception for %s", gate.name, change_name, exc_info=True)
-            result = GateResult(gate.name, "fail", output="integration gate threw exception")
+    # Test gate
+    if gc.should_run("test"):
+        test_cmd = directives.get("test_command", "")
+        if not test_cmd and profile and hasattr(profile, "detect_test_command"):
+            test_cmd = profile.detect_test_command(wt_path) or ""
+        if test_cmd:
+            logger.info("Integration gate: test for %s (%s)", change_name, test_cmd)
+            result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path)
+            if result.exit_code != 0 and gc.is_blocking("test"):
+                logger.error("Integration gate: test FAILED for %s", change_name)
+                update_change_field(state_file, change_name, "integration_gate_fail", "test")
+                return False
 
-        if result.status == "fail" and gc.is_blocking(gate.name):
-            logger.error(
-                "Integration gate %s FAILED for %s — blocking merge",
-                gate.name, change_name,
-            )
-            update_change_field(state_file, change_name, "integration_gate_fail", gate.name)
-            return False
-        elif result.status == "fail":
-            logger.warning("Integration gate %s failed for %s — non-blocking", gate.name, change_name)
+    # E2E gate (from profile — web only)
+    if gc.should_run("e2e"):
+        e2e_cmd = directives.get("e2e_command", "")
+        if not e2e_cmd and profile and hasattr(profile, "detect_e2e_command"):
+            e2e_cmd = profile.detect_e2e_command(wt_path) or ""
+        if e2e_cmd:
+            logger.info("Integration gate: e2e for %s (%s)", change_name, e2e_cmd)
+            result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path)
+            if result.exit_code != 0 and gc.is_blocking("e2e"):
+                logger.error("Integration gate: e2e FAILED for %s", change_name)
+                update_change_field(state_file, change_name, "integration_gate_fail", "e2e")
+                return False
 
     return True
 
