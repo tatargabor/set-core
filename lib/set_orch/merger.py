@@ -46,6 +46,9 @@ logger = logging.getLogger(__name__)
 MAX_MERGE_RETRIES = 5
 DEFAULT_MERGE_TIMEOUT = 600  # 10 min
 
+# Track conflict fingerprints within a run to avoid duplicate memory saves
+_seen_conflict_fingerprints: set[str] = set()
+
 
 # ─── Data Structures ───────────────────────────────────────────────
 
@@ -596,6 +599,20 @@ def _try_merge(
 
     if fingerprint:
         update_change_field(state_file, name, "last_conflict_fingerprint", fingerprint)
+
+        # Persist conflict info to memory (new fingerprints only)
+        if fingerprint not in _seen_conflict_fingerprints:
+            _seen_conflict_fingerprints.add(fingerprint)
+            try:
+                from .orch_memory import orch_remember
+                orch_remember(
+                    f"Merge conflict for change '{name}': fingerprint {fingerprint[:12]}",
+                    mem_type="Learning",
+                    tags=f"source:orchestrator,type:merge-conflict,change:{name}",
+                )
+            except Exception:
+                pass
+
         if fingerprint == prev_fingerprint:
             logger.info("Same conflict fingerprint for %s — stopping retries", name)
             update_change_field(state_file, name, "status", "merge-blocked")

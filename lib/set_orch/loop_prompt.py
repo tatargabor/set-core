@@ -136,6 +136,14 @@ def build_claude_prompt(
     ):
         team_instructions = _build_team_instructions()
 
+    # Previous iteration learnings
+    prior_learnings = ""
+    prior_content = get_previous_iteration_summary(wt_path)
+    if prior_content:
+        prior_learnings = (
+            f"\n# Previous Iteration Learned\n{prior_content}\n"
+        )
+
     return (
         f"# Task\n{effective_task}\n\n"
         f"# Context\n"
@@ -150,6 +158,7 @@ def build_claude_prompt(
         f"{manual_task_instruction}"
         f"{team_instructions}"
         f"\n# Previous Work\n{prev_text}\n\n"
+        f"{prior_learnings}"
         f"# Important\n"
         f"- Do ONLY the task specified above — do NOT work on other changes\n"
         f"- CLAUDE.md is the authoritative source for your workflow — follow it\n"

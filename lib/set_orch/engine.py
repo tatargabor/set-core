@@ -213,6 +213,7 @@ def cleanup_orchestrator(state_file: str, directives: Directives | None = None) 
         # Generate final report
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
+        _persist_run_learnings(state_file)
 
     except Exception:
         logger.error("cleanup_orchestrator failed", exc_info=True)
@@ -343,6 +344,7 @@ def monitor_loop(
             _send_terminal_notifications(state_file, "time_limit", event_bus)
             _generate_report_safe(state_file)
             _generate_review_findings_summary_safe(state_file)
+            _persist_run_learnings(state_file)
             break
 
         # Check external stop
@@ -350,6 +352,7 @@ def monitor_loop(
         if state.status in ("stopped", "done"):
             _generate_report_safe(state_file)
             _generate_review_findings_summary_safe(state_file)
+            _persist_run_learnings(state_file)
             break
         if state.status == "paused":
             continue
@@ -873,6 +876,7 @@ def _check_completion(
         _send_terminal_notifications(state_file, "total_failure", event_bus)
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
+        _persist_run_learnings(state_file)
         return True
 
     # Phase-end E2E
@@ -892,6 +896,7 @@ def _check_completion(
     _send_terminal_notifications(state_file, "done", event_bus)
     _generate_report_safe(state_file)
     _generate_review_findings_summary_safe(state_file)
+    _persist_run_learnings(state_file)
     return True
 
 
@@ -916,6 +921,7 @@ def _handle_auto_replan(
         _send_terminal_notifications(state_file, "replan_limit", event_bus)
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
+        _persist_run_learnings(state_file)
         return True
 
     replan_attempt = state.extras.get("replan_attempt", 0)
@@ -944,6 +950,7 @@ def _handle_auto_replan(
         _send_terminal_notifications(state_file, "done", event_bus)
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
+        _persist_run_learnings(state_file)
         return True
 
     # Replan failed — retry with limit
@@ -958,6 +965,7 @@ def _handle_auto_replan(
         _send_terminal_notifications(state_file, "replan_exhausted", event_bus)
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
+        _persist_run_learnings(state_file)
         return True
 
     logger.warning("Replan failed (cycle %d, attempt %d) — will retry", cycle, replan_attempt)
@@ -1414,6 +1422,64 @@ def _generate_review_findings_summary_safe(state_file: str) -> None:
             logger.info("Review findings summary: %s", result)
     except Exception:
         pass
+
+
+def _persist_run_learnings(state_file: str) -> None:
+    """Persist gate stats and review patterns to memory at run end (exception-safe)."""
+    try:
+        from .orch_memory import orch_remember, orch_gate_stats
+        from .state import load_state
+
+        state = load_state(state_file)
+        state_dict = state.to_dict() if hasattr(state, "to_dict") else {}
+
+        # Gate stats summary
+        gate_stats = orch_gate_stats(state_dict)
+        if gate_stats and gate_stats.get("changes_with_gate", 0) > 0:
+            summary = (
+                f"Gate stats: {gate_stats['changes_with_gate']} changes, "
+                f"total {gate_stats.get('total_gate_secs', 0)}s gate time "
+                f"({gate_stats.get('gate_pct', 0)}% of run), "
+                f"{gate_stats.get('total_retry_count', 0)} retries"
+            )
+            orch_remember(summary, mem_type="Context", tags="source:orchestrator,type:gate-stats")
+            logger.info("Persisted gate stats to memory")
+
+        # Recurring review patterns
+        findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+        findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+        if os.path.isfile(findings_path):
+            import re as _re
+            entries = []
+            with open(findings_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            entries.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+
+            # Extract patterns across changes
+            pattern_counts: dict[str, set[str]] = {}
+            for entry in entries:
+                change = entry.get("change", "")
+                for issue in entry.get("issues", []):
+                    norm = _re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*", "", issue.get("summary", ""))[:50]
+                    if norm not in pattern_counts:
+                        pattern_counts[norm] = set()
+                    pattern_counts[norm].add(change)
+
+            recurring = {k: v for k, v in pattern_counts.items() if len(v) >= 2}
+            if recurring:
+                lines = ["Recurring review patterns across changes:"]
+                for pattern, changes in sorted(recurring.items(), key=lambda x: -len(x[1])):
+                    lines.append(f"- \"{pattern}\" in {len(changes)} changes: {', '.join(sorted(changes))}")
+                orch_remember("\n".join(lines), mem_type="Learning", tags="source:orchestrator,type:review-patterns")
+                logger.info("Persisted %d recurring review patterns to memory", len(recurring))
+
+    except Exception:
+        logger.debug("Failed to persist run learnings", exc_info=True)
 
 
 def _clear_checkpoint_state(state_file: str) -> None:

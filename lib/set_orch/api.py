@@ -1995,6 +1995,351 @@ async def send_sentinel_message(project: str, body: SentinelMessageBody):
     return {"status": "sent"}
 
 
+# ─── Learnings endpoints ─────────────────────────────────────────────
+
+
+def _resolve_findings_file(project_path: Path) -> Optional[Path]:
+    """Find review-findings.jsonl with fallback paths."""
+    for candidate in [
+        project_path / "wt" / "orchestration" / "review-findings.jsonl",
+        project_path / "orchestration" / "review-findings.jsonl",
+    ]:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _read_review_findings(project_path: Path) -> dict:
+    """Read and parse review findings JSONL + summary."""
+    findings_file = _resolve_findings_file(project_path)
+    if not findings_file:
+        return {"entries": [], "summary": "", "recurring_patterns": []}
+
+    entries = []
+    try:
+        with open(findings_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return {"entries": [], "summary": "", "recurring_patterns": []}
+
+    # Extract recurring patterns (same normalization as generate_review_findings_summary)
+    pattern_counts: dict[str, int] = {}
+    for entry in entries:
+        for issue in entry.get("issues", []):
+            norm = re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*", "", issue.get("summary", ""))[:50]
+            pattern_counts[norm] = pattern_counts.get(norm, 0) + 1
+    recurring = [
+        {"pattern": k, "count": v}
+        for k, v in sorted(pattern_counts.items(), key=lambda x: -x[1])
+        if v >= 2
+    ]
+
+    # Read summary MD if exists
+    summary = ""
+    summary_file = findings_file.parent / "review-findings-summary.md"
+    if summary_file.exists():
+        try:
+            summary = summary_file.read_text(errors="replace")
+        except OSError:
+            pass
+
+    return {"entries": entries, "summary": summary, "recurring_patterns": recurring}
+
+
+def _compute_gate_stats(project_path: Path) -> dict:
+    """Aggregate gate stats from orchestration state."""
+    state_file = project_path / "orchestration-state.json"
+    if not state_file.exists():
+        return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
+
+    try:
+        state = load_state(str(state_file))
+    except (StateCorruptionError, OSError):
+        return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
+
+    changes = state.get("changes", [])
+    if not changes:
+        return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
+
+    # Gate fields: direct fields + extras fallback
+    gate_defs = [
+        ("build", "build_result", "gate_build_ms"),
+        ("test", "test_result", "gate_test_ms"),
+        ("review", "review_result", "gate_review_ms"),
+        ("smoke", "smoke_result", "gate_verify_ms"),
+    ]
+
+    per_gate: dict[str, dict] = {}
+    total_retries = 0
+    total_retry_ms = 0
+    total_gate_ms = 0
+    most_retried_gate = ""
+    most_retried_count = 0
+    most_retried_change = ""
+    most_retried_change_count = 0
+
+    # Per change type accumulators
+    type_stats: dict[str, dict] = {}
+
+    for change in changes:
+        extras = change if isinstance(change, dict) else {}
+        change_type = extras.get("change_type", "unknown")
+        vrc = extras.get("verify_retry_count", 0) or 0
+        rdc = extras.get("redispatch_count", 0) or 0
+        change_retries = vrc + rdc
+        total_retries += change_retries
+        change_name = extras.get("name", "")
+
+        if change_retries > most_retried_change_count:
+            most_retried_change_count = change_retries
+            most_retried_change = change_name
+
+        gate_ms = extras.get("gate_total_ms", 0) or 0
+        total_gate_ms += gate_ms
+
+        if change_type not in type_stats:
+            type_stats[change_type] = {"total_gate_ms": 0, "total_retries": 0, "count": 0}
+        type_stats[change_type]["total_gate_ms"] += gate_ms
+        type_stats[change_type]["total_retries"] += change_retries
+        type_stats[change_type]["count"] += 1
+
+        for gate_name, result_field, ms_field in gate_defs:
+            result = extras.get(result_field)
+            if not result:
+                # Check extras dict for e2e
+                result = extras.get("extras", {}).get(f"{gate_name}_result") if isinstance(extras.get("extras"), dict) else None
+            if not result:
+                continue
+
+            if gate_name not in per_gate:
+                per_gate[gate_name] = {"total": 0, "pass": 0, "fail": 0, "skip": 0, "total_ms": 0}
+
+            per_gate[gate_name]["total"] += 1
+            if result == "pass":
+                per_gate[gate_name]["pass"] += 1
+            elif result in ("fail", "critical"):
+                per_gate[gate_name]["fail"] += 1
+            elif result in ("skipped", "skip"):
+                per_gate[gate_name]["skip"] += 1
+
+            ms = extras.get(ms_field, 0) or 0
+            per_gate[gate_name]["total_ms"] += ms
+
+    # Also check e2e from extras
+    for change in changes:
+        extras = change if isinstance(change, dict) else {}
+        e2e_result = extras.get("extras", {}).get("e2e_result") if isinstance(extras.get("extras"), dict) else None
+        if not e2e_result:
+            e2e_result = extras.get("e2e_result")
+        if e2e_result:
+            if "e2e" not in per_gate:
+                per_gate["e2e"] = {"total": 0, "pass": 0, "fail": 0, "skip": 0, "total_ms": 0}
+            per_gate["e2e"]["total"] += 1
+            if e2e_result == "pass":
+                per_gate["e2e"]["pass"] += 1
+            elif e2e_result in ("fail", "critical"):
+                per_gate["e2e"]["fail"] += 1
+            elif e2e_result in ("skipped", "skip"):
+                per_gate["e2e"]["skip"] += 1
+            e2e_ms = extras.get("gate_e2e_ms", 0) or extras.get("extras", {}).get("gate_e2e_ms", 0) if isinstance(extras.get("extras"), dict) else 0
+            per_gate["e2e"]["total_ms"] += (e2e_ms or 0)
+
+    # Compute derived stats
+    for gate_name, stats in per_gate.items():
+        denominator = stats["pass"] + stats["fail"]
+        stats["pass_rate"] = round(stats["pass"] / denominator, 2) if denominator > 0 else 0
+        non_skip = stats["total"] - stats["skip"]
+        stats["avg_ms"] = round(stats["total_ms"] / non_skip) if non_skip > 0 else 0
+
+    # Find most retried gate
+    for gate_name, stats in per_gate.items():
+        if stats["fail"] > most_retried_count:
+            most_retried_count = stats["fail"]
+            most_retried_gate = gate_name
+
+    retry_pct = round(total_retries * 100 / max(len(changes), 1), 1)
+
+    per_change_type = {}
+    for ct, ts in type_stats.items():
+        cnt = ts["count"]
+        per_change_type[ct] = {
+            "avg_gate_ms": round(ts["total_gate_ms"] / cnt) if cnt > 0 else 0,
+            "avg_retries": round(ts["total_retries"] / cnt, 1) if cnt > 0 else 0,
+            "count": cnt,
+        }
+
+    return {
+        "per_gate": per_gate,
+        "retry_summary": {
+            "total_retries": total_retries,
+            "total_gate_ms": total_gate_ms,
+            "retry_pct": retry_pct,
+            "most_retried_gate": most_retried_gate,
+            "most_retried_change": most_retried_change,
+        },
+        "per_change_type": per_change_type,
+    }
+
+
+def _collect_reflections(project_path: Path) -> dict:
+    """Aggregate reflections across all worktrees."""
+    worktrees = _list_worktrees(project_path)
+    reflections = []
+    for wt in worktrees:
+        if not wt.get("has_reflection"):
+            continue
+        refl_path = Path(wt["path"]) / ".claude" / "reflection.md"
+        if not refl_path.exists():
+            continue
+        try:
+            content = refl_path.read_text(errors="replace")
+        except OSError:
+            continue
+        branch = wt.get("branch", "")
+        change = branch.removeprefix("set/") if branch.startswith("set/") else branch
+        reflections.append({"change": change, "branch": branch, "content": content})
+
+    return {
+        "reflections": reflections,
+        "total": len(worktrees),
+        "with_reflection": len(reflections),
+    }
+
+
+def _build_change_timeline(project_path: Path, change_name: str) -> dict:
+    """Reconstruct per-change state transitions from events JSONL."""
+    import glob as _glob
+
+    # Find events files (main + rotated archives)
+    events_files: list[Path] = []
+    for base_dir in [project_path, project_path / "wt" / "orchestration"]:
+        main_file = base_dir / "orchestration-state-events.jsonl"
+        if main_file.exists():
+            events_files.append(main_file)
+            # Also grab rotated archives
+            for archive in sorted(_glob.glob(str(base_dir / "orchestration-state-events-*.jsonl"))):
+                events_files.append(Path(archive))
+            break
+
+    if not events_files:
+        return {"transitions": [], "duration_ms": 0, "current_gate_results": {}}
+
+    transitions: list[dict] = []
+    for ef in events_files:
+        try:
+            with open(ef) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if ev.get("type") != "STATE_CHANGE":
+                        continue
+                    if ev.get("change") != change_name:
+                        continue
+                    data = ev.get("data", {})
+                    transitions.append({
+                        "ts": ev.get("ts", ""),
+                        "from": data.get("from", ""),
+                        "to": data.get("to", ""),
+                    })
+        except OSError:
+            continue
+
+    transitions.sort(key=lambda t: t["ts"])
+
+    duration_ms = 0
+    if len(transitions) >= 2:
+        try:
+            first = datetime.fromisoformat(transitions[0]["ts"].replace("Z", "+00:00"))
+            last = datetime.fromisoformat(transitions[-1]["ts"].replace("Z", "+00:00"))
+            duration_ms = int((last - first).total_seconds() * 1000)
+        except (ValueError, TypeError):
+            pass
+
+    # Current gate results from state
+    current_gate_results: dict = {}
+    state_file = project_path / "orchestration-state.json"
+    if state_file.exists():
+        try:
+            state = load_state(str(state_file))
+            for change in state.get("changes", []):
+                if isinstance(change, dict) and change.get("name") == change_name:
+                    for field in ("build_result", "test_result", "review_result", "smoke_result", "verify_retry_count"):
+                        val = change.get(field)
+                        if val is not None:
+                            current_gate_results[field] = val
+                    break
+        except (StateCorruptionError, OSError):
+            pass
+
+    return {
+        "transitions": transitions,
+        "duration_ms": duration_ms,
+        "current_gate_results": current_gate_results,
+    }
+
+
+@router.get("/api/{project}/review-findings")
+def get_review_findings(project: str):
+    """Review findings from gate verification JSONL log."""
+    pp = _resolve_project(project)
+    return _read_review_findings(pp)
+
+
+@router.get("/api/{project}/gate-stats")
+def get_gate_stats(project: str):
+    """Aggregate gate performance stats across all changes."""
+    pp = _resolve_project(project)
+    return _compute_gate_stats(pp)
+
+
+@router.get("/api/{project}/reflections")
+def get_reflections(project: str):
+    """Aggregate agent reflections from all worktrees."""
+    pp = _resolve_project(project)
+    return _collect_reflections(pp)
+
+
+@router.get("/api/{project}/changes/{name}/timeline")
+def get_change_timeline(project: str, name: str):
+    """Per-change state transition timeline from events log."""
+    pp = _resolve_project(project)
+    return _build_change_timeline(pp, name)
+
+
+@router.get("/api/{project}/learnings")
+def get_learnings(project: str):
+    """Unified learnings endpoint: reflections + review findings + gate stats + sentinel."""
+    pp = _resolve_project(project)
+
+    # Sentinel findings
+    sentinel_data = {"findings": [], "assessments": []}
+    findings_file = _sentinel_dir(pp) / "findings.json"
+    if findings_file.exists():
+        try:
+            sentinel_data = json.loads(findings_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return {
+        "reflections": _collect_reflections(pp),
+        "review_findings": _read_review_findings(pp),
+        "gate_stats": _compute_gate_stats(pp),
+        "sentinel_findings": sentinel_data,
+    }
+
+
 # ─── Battle Scoreboard ─────────────────────────────────────────────
 
 import hashlib

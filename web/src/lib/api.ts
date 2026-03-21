@@ -444,6 +444,103 @@ export interface ScoreboardEntry {
   timestamp: string
 }
 
+// --- Learnings types ---
+
+export interface ReviewFindingIssue {
+  severity: string
+  summary: string
+  file?: string
+  line?: string
+  fix?: string
+}
+
+export interface ReviewFindingEntry {
+  change: string
+  timestamp: string
+  attempt: number
+  issue_count: number
+  critical_count: number
+  high_count: number
+  issues: ReviewFindingIssue[]
+}
+
+export interface ReviewFindingsData {
+  entries: ReviewFindingEntry[]
+  summary: string
+  recurring_patterns: { pattern: string; count: number }[]
+}
+
+export interface GateStatEntry {
+  total: number
+  pass: number
+  fail: number
+  skip: number
+  pass_rate: number
+  avg_ms: number
+  total_ms: number
+}
+
+export interface GateStatsData {
+  per_gate: Record<string, GateStatEntry>
+  retry_summary: {
+    total_retries: number
+    total_gate_ms: number
+    retry_pct: number
+    most_retried_gate: string
+    most_retried_change: string
+  }
+  per_change_type: Record<string, { avg_gate_ms: number; avg_retries: number; count: number }>
+}
+
+export interface ReflectionEntry {
+  change: string
+  branch: string
+  content: string
+}
+
+export interface ReflectionsData {
+  reflections: ReflectionEntry[]
+  total: number
+  with_reflection: number
+}
+
+export interface ChangeTimelineData {
+  transitions: { ts: string; from: string; to: string }[]
+  duration_ms: number
+  current_gate_results: Record<string, string | number>
+}
+
+export interface LearningsData {
+  reflections: ReflectionsData
+  review_findings: ReviewFindingsData
+  gate_stats: GateStatsData
+  sentinel_findings: SentinelFindingsData
+}
+
+// --- Learnings endpoints ---
+
+export function getLearnings(project: string): Promise<LearningsData> {
+  return fetchJSON(`/${project}/learnings`)
+}
+
+export function getReviewFindings(project: string): Promise<ReviewFindingsData> {
+  return fetchJSON(`/${project}/review-findings`)
+}
+
+export function getGateStats(project: string): Promise<GateStatsData> {
+  return fetchJSON(`/${project}/gate-stats`)
+}
+
+export function getReflections(project: string): Promise<ReflectionsData> {
+  return fetchJSON(`/${project}/reflections`)
+}
+
+export function getChangeTimeline(project: string, name: string): Promise<ChangeTimelineData> {
+  return fetchJSON(`/${project}/changes/${name}/timeline`)
+}
+
+// --- Scoreboard ---
+
 export function getScoreboard(limit = 20): Promise<{ entries: ScoreboardEntry[] }> {
   return fetchJSON(`/scoreboard?limit=${limit}`)
 }

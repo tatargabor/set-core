@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getWorktrees, getWorktreeLog, type WorktreeInfo } from '../lib/api'
+import { getWorktrees, getWorktreeLog, getWorktreeReflection, type WorktreeInfo } from '../lib/api'
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -81,6 +81,9 @@ export default function Worktrees({ project }: Props) {
                 {wt.activity?.broadcast && (
                   <p className="mt-1 text-sm text-neutral-400 truncate">{wt.activity.broadcast}</p>
                 )}
+                {wt.has_reflection && (
+                  <p className="mt-1 text-sm text-purple-400/70 truncate">{'💭'} has reflection</p>
+                )}
               </button>
             ))}
           </div>
@@ -106,6 +109,16 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
   const [logLines, setLogLines] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+  const [reflectionContent, setReflectionContent] = useState<string | null>(null)
+  const [reflectionExpanded, setReflectionExpanded] = useState(false)
+
+  // Load reflection if available
+  useEffect(() => {
+    if (!worktree.has_reflection) { setReflectionContent(null); return }
+    getWorktreeReflection(project, worktree.branch)
+      .then(d => setReflectionContent(d.content))
+      .catch(() => setReflectionContent(null))
+  }, [project, worktree.branch, worktree.has_reflection])
 
   // Auto-select latest log
   useEffect(() => {
@@ -170,6 +183,29 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
             <span className="ml-3 text-neutral-500">
               Skill: {worktree.activity.skill} {worktree.activity.skill_args ?? ''}
             </span>
+          )}
+        </div>
+      )}
+
+      {/* Reflection */}
+      {reflectionContent && (
+        <div className="border-b border-neutral-800">
+          <button
+            onClick={() => setReflectionExpanded(!reflectionExpanded)}
+            className="w-full px-4 py-1.5 text-sm text-left hover:bg-neutral-800/30 flex items-center gap-2"
+          >
+            <span className="text-neutral-500">{reflectionExpanded ? '\u25BE' : '\u25B8'}</span>
+            <span className="text-purple-400/80">Reflection</span>
+            {!reflectionExpanded && (
+              <span className="text-neutral-500 truncate flex-1">
+                {reflectionContent.split('\n').find(l => l.trim().startsWith('-'))?.trim() ?? reflectionContent.slice(0, 60)}
+              </span>
+            )}
+          </button>
+          {reflectionExpanded && (
+            <div className="px-4 pb-2 max-h-48 overflow-auto">
+              <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{reflectionContent}</pre>
+            </div>
           )}
         </div>
       )}

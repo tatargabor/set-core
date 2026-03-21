@@ -13,13 +13,15 @@ import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
 import SentinelPanel from '../components/SentinelPanel'
+import LearningsPanel from '../components/LearningsPanel'
+import ChangeTimelineDetail from '../components/ChangeTimelineDetail'
 import BattleView from './BattleView'
 // useIsMobile removed — no longer needed
 import { useSentinelData } from '../hooks/useSentinelData'
 import { getDigest, getPlans, getState } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'battle'
+type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle'
 
 interface Props {
   project: string | null
@@ -32,11 +34,12 @@ export default function Dashboard({ project }: Props) {
   const [checkpoint, setCheckpoint] = useState(false)
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
+  const [changeDetailView, setChangeDetailView] = useState<'log' | 'timeline'>('log')
   // URL-backed tab state: ?tab=digest&sub=domains
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const [activeTab, setActiveTabRaw] = useState<PanelTab>(() => {
     const t = params.get('tab')
-    return (t && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','battle'].includes(t)) ? t as PanelTab : 'changes'
+    return (t && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(t)) ? t as PanelTab : 'changes'
   })
   const setActiveTab = useCallback((tab: PanelTab) => {
     setActiveTabRaw(tab)
@@ -145,6 +148,7 @@ export default function Dashboard({ project }: Props) {
     { id: 'sessions', label: 'Sessions' },
     { id: 'agent', label: 'Agent' },
     { id: 'sentinel', label: 'Sentinel', hidden: !sentinelData.hasSentinel },
+    { id: 'learnings', label: 'Learnings' },
     { id: 'plan', label: 'Plan', hidden: !hasPlans },
     { id: 'battle', label: '\u{1F3AE} Battle' },
   ]
@@ -221,11 +225,30 @@ export default function Dashboard({ project }: Props) {
                 </div>
               }
               bottom={
-                <LogPanel
-                  orchLines={[]}
-                  selectedChange={selectedChangeInfo}
-                  project={project}
-                />
+                <div className="h-full flex flex-col">
+                  <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
+                    {(['log', 'timeline'] as const).map(v => (
+                      <button
+                        key={v}
+                        onClick={() => setChangeDetailView(v)}
+                        className={`px-2 py-0.5 text-sm rounded ${changeDetailView === v ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-500 hover:text-neutral-300'}`}
+                      >
+                        {v === 'log' ? 'Log' : 'Timeline'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-auto">
+                    {changeDetailView === 'log' ? (
+                      <LogPanel
+                        orchLines={[]}
+                        selectedChange={selectedChangeInfo}
+                        project={project}
+                      />
+                    ) : (
+                      selectedChange && <ChangeTimelineDetail project={project} changeName={selectedChange} />
+                    )}
+                  </div>
+                </div>
               }
               defaultRatio={0.55}
             />
@@ -259,7 +282,14 @@ export default function Dashboard({ project }: Props) {
           </div>
         )}
 
-        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'sentinel' && activeTab !== 'log' && activeTab !== 'battle' && (
+        {/* Learnings tab — full height */}
+        {activeTab === 'learnings' && (
+          <div className="h-full overflow-auto">
+            <LearningsPanel project={project} />
+          </div>
+        )}
+
+        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'sentinel' && activeTab !== 'log' && activeTab !== 'battle' && activeTab !== 'learnings' && (
           <div className="h-full overflow-auto">
             {activeTab === 'plan' && (
               <PlanViewer project={project} />

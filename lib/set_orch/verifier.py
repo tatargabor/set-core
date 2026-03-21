@@ -414,10 +414,14 @@ def _build_unified_retry_context(
     review_output: str = "",
     attempt: int = 1,
     max_attempts: int = 3,
+    change_name: str = "",
+    findings_path: str = "",
 ) -> str:
     """Build a single structured retry block combining all gate results.
 
     Replaces ad-hoc truncated raw dumps with parsed, actionable sections.
+    When findings_path and change_name are provided, includes prior review
+    findings from the JSONL log for additional context.
     """
     sections: list[str] = []
     sections.append(f"## Retry Context (Attempt {attempt}/{max_attempts})")
@@ -453,7 +457,64 @@ def _build_unified_retry_context(
             # Only include raw if there were critical issues but parser returned nothing
             sections.append(f"```\n{review_output[-3000:]}\n```")
 
+    # Include prior review findings from JSONL if available
+    if change_name and findings_path:
+        prior = _read_prior_review_findings(findings_path, change_name)
+        if prior:
+            sections.append(prior)
+
     return "\n".join(sections)
+
+
+def _read_prior_review_findings(findings_path: str, change_name: str) -> str:
+    """Read prior review findings for a change from the JSONL log.
+
+    Returns formatted section string, or empty string if no findings.
+    """
+    if not os.path.isfile(findings_path):
+        return ""
+
+    try:
+        matching_issues: list[dict] = []
+        with open(findings_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("change") != change_name:
+                    continue
+                for issue in entry.get("issues", []):
+                    matching_issues.append(issue)
+
+        if not matching_issues:
+            return ""
+
+        # Deduplicate by (summary[:60])
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for issue in matching_issues:
+            key = issue.get("summary", "")[:60]
+            if key not in seen:
+                seen.add(key)
+                unique.append(issue)
+
+        lines = ["\n### Prior Review Findings"]
+        lines.append(f"Previous reviews found {len(unique)} issue(s) for this change:")
+        for issue in unique[:10]:  # Cap at 10 to avoid prompt bloat
+            sev = issue.get("severity", "?")
+            summary = issue.get("summary", "")
+            file_path = issue.get("file", "")
+            line_num = issue.get("line", "")
+            loc = f" ({file_path}" + (f" L{line_num}" if line_num else "") + ")" if file_path else ""
+            lines.append(f"- **[{sev}]** {summary}{loc}")
+        return "\n".join(lines)
+
+    except OSError:
+        return ""
 
 
 # ─── Cumulative Review Feedback ─────────────────────────────────────
@@ -1911,6 +1972,7 @@ def poll_change(
 
 def _execute_build_gate(
     change_name: str, change: Change, wt_path: str,
+    findings_path: str = "",
 ) -> "GateResult":
     """Build gate: detect build command, clear .next cache, run build."""
     from .gate_runner import GateResult
@@ -1943,6 +2005,8 @@ def _execute_build_gate(
                 build_output=build_output,
                 attempt=build_fix_count + 1,
                 max_attempts=3,
+                change_name=change_name,
+                findings_path=findings_path,
             )
             + f"\n\nOriginal scope: {scope}"
         )
@@ -1954,6 +2018,7 @@ def _execute_build_gate(
 def _execute_test_gate(
     change_name: str, change: Change, wt_path: str,
     test_command: str, test_timeout: int,
+    findings_path: str = "",
 ) -> "GateResult":
     """Test gate: run tests in worktree."""
     from .gate_runner import GateResult
@@ -1975,7 +2040,11 @@ def _execute_test_gate(
         result.retry_context = (
             f"Tests failed after implementation. Fix the failing tests.\n\n"
             f"Test command: {test_command}\n\n"
-            + _build_unified_retry_context(test_output=tr.output)
+            + _build_unified_retry_context(
+                test_output=tr.output,
+                change_name=change_name,
+                findings_path=findings_path,
+            )
             + f"\n\nOriginal scope: {scope}"
         )
 
@@ -2495,15 +2564,19 @@ def handle_change_done(
         event_bus=event_bus,
     )
 
+    # Review findings path for prior-findings injection into retry context
+    _findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+    _findings_path = os.path.join(_findings_dir, "review-findings.jsonl")
+
     # Register gates in execution order
     pipeline.register(
         "build",
-        lambda: _execute_build_gate(change_name, change, wt_path),
+        lambda: _execute_build_gate(change_name, change, wt_path, findings_path=_findings_path),
         own_retry_counter="build_fix_attempt_count",
     )
     pipeline.register(
         "test",
-        lambda: _execute_test_gate(change_name, change, wt_path, test_command, test_timeout),
+        lambda: _execute_test_gate(change_name, change, wt_path, test_command, test_timeout, findings_path=_findings_path),
     )
     pipeline.register(
         "e2e",
