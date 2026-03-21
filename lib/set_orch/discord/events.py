@@ -121,9 +121,12 @@ async def _handle_event(
     config: dict[str, Any],
     member_name: str,
     event: dict[str, Any],
+    channel: Any = None,
 ) -> None:
     """Route an orchestration event to the appropriate Discord action."""
-    if not bot.is_connected or not bot.channel:
+    # Use provided channel (project-specific) or fall back to bot default
+    target_channel = channel or bot.channel
+    if not bot.is_connected or not target_channel:
         return
 
     event_type = event.get("type", "")
@@ -132,16 +135,16 @@ async def _handle_event(
 
     try:
         if event_type == "STATE_CHANGE":
-            await _handle_state_change(bot, config, member_name, change_name, data)
+            await _handle_state_change(bot, config, member_name, change_name, data, target_channel)
 
         elif event_type == "MERGE_ATTEMPT":
-            await _handle_merge(bot, config, member_name, change_name, data)
+            await _handle_merge(bot, config, member_name, change_name, data, target_channel)
 
         elif event_type == "SENTINEL_RESTART":
-            await _handle_crash(bot, config, member_name, change_name, data)
+            await _handle_crash(bot, config, member_name, change_name, data, target_channel)
 
         elif event_type == "ERROR":
-            await _handle_error(bot, config, member_name, change_name, data)
+            await _handle_error(bot, config, member_name, change_name, data, target_channel)
 
     except Exception as e:
         logger.debug("Discord event handler error for %s: %s", event_type, e)
@@ -153,12 +156,14 @@ async def _handle_state_change(
     member_name: str,
     change_name: str,
     data: dict[str, Any],
+    channel: Any = None,
 ) -> None:
     """Handle STATE_CHANGE events — update thread embed, post milestones to main."""
     from .embeds import build_status_embed
     from .threads import get_or_create_thread, get_thread
     from .throttle import get_throttle, create_throttle
 
+    ch = channel or bot.channel
     new_status = data.get("to", data.get("status", ""))
 
     # Orchestration-level state change (no change_name)
@@ -172,13 +177,13 @@ async def _handle_state_change(
 
             if _should_notify_main(config, "start"):
                 change_count = data.get("change_count", 0)
-                await bot.channel.send(
+                await ch.send(
                     f"[SET] \U0001f7e2 **{member_name}** started Run #{run_id} ({change_count} changes)"
                 )
 
             # Create thread with initial embed
             thread = await get_or_create_thread(
-                bot.channel, run_id, member_name, data.get("change_count", 0),
+                ch, run_id, member_name, data.get("change_count", 0),
             )
             if thread:
                 embed = await build_status_embed(
@@ -190,7 +195,7 @@ async def _handle_state_change(
                 create_throttle()
 
         elif orch_status in ("done", "failed", "stopped"):
-            await _handle_run_complete(bot, config, member_name, orch_status, data)
+            await _handle_run_complete(bot, config, member_name, orch_status, data, ch)
         return
 
     # Per-change state change — update the run's embed
@@ -224,11 +229,13 @@ async def _handle_merge(
     member_name: str,
     change_name: str,
     data: dict[str, Any],
+    channel: Any = None,
 ) -> None:
     """Handle MERGE_ATTEMPT events — post success to main channel."""
+    ch = channel or bot.channel
     result = data.get("result", "")
     if result == "success" and _should_notify_main(config, "merge"):
-        await bot.channel.send(
+        await ch.send(
             f"[SET] \u2705 **{member_name}**: {change_name} merged"
         )
 
@@ -239,10 +246,12 @@ async def _handle_crash(
     member_name: str,
     change_name: str,
     data: dict[str, Any],
+    channel: Any = None,
 ) -> None:
     """Handle crash/restart events — alert on main channel."""
     from .embeds import build_error_embed
 
+    ch = channel or bot.channel
     reason = data.get("reason", data.get("message", "Orchestrator restarted"))
     mention = _get_mention(config, member_name)
 
@@ -256,7 +265,7 @@ async def _handle_crash(
         content = f"[SET] \u274c **{member_name}**: {change_name or 'orchestrator'} — {reason[:100]}"
         if mention:
             content = f"{mention} {content}"
-        await bot.channel.send(content=content, embed=embed)
+        await ch.send(content=content, embed=embed)
 
 
 async def _handle_error(
@@ -265,8 +274,10 @@ async def _handle_error(
     member_name: str,
     change_name: str,
     data: dict[str, Any],
+    channel: Any = None,
 ) -> None:
     """Handle ERROR events — post to main if stuck-related."""
+    ch = channel or bot.channel
     message = data.get("message", "")
     if "stuck" in message.lower() or "stall" in message.lower():
         mention = _get_mention(config, member_name)
@@ -274,7 +285,7 @@ async def _handle_error(
             content = f"[SET] \u26a0\ufe0f **{member_name}**: {change_name} — {message[:200]}"
             if mention:
                 content = f"{mention} {content}"
-            await bot.channel.send(content)
+            await ch.send(content)
 
 
 async def _handle_run_complete(
@@ -283,6 +294,7 @@ async def _handle_run_complete(
     member_name: str,
     status: str,
     data: dict[str, Any],
+    channel: Any = None,
 ) -> None:
     """Handle run completion — post summary to main and thread."""
     from .embeds import build_summary_embed
@@ -306,6 +318,7 @@ async def _handle_run_complete(
                 await archive_thread(run_id)
 
             # Post one-liner to main channel
+            ch = channel or bot.channel
             if _should_notify_main(config, "complete"):
                 merged = sum(
                     1 for c in state.changes
@@ -313,7 +326,7 @@ async def _handle_run_complete(
                 )
                 total = len(state.changes)
                 icon = "\U0001f4ca" if status == "done" else "\u274c"
-                await bot.channel.send(
+                await ch.send(
                     f"[SET] {icon} **{member_name}** Run #{run_id} {status}: "
                     f"{merged}/{total} merged"
                 )

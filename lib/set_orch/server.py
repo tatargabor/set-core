@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
     try:
         from .config import get_discord_config, load_config_file
         orch_path = _find_orch_config()
+        print(f"[SET] Discord: orch_config={'found' if orch_path else 'none'}", flush=True)
         config = load_config_file(orch_path) if orch_path else {}
         discord_config = get_discord_config(config)
         if discord_config:
@@ -40,17 +41,19 @@ async def lifespan(app: FastAPI):
             project_name = config.get("project_name", "") or "set-core"
             discord_bot = DiscordBot(discord_config, project_name=project_name)
             await discord_bot.start()
-            print("[SET] Discord bot starting...")
+            print("[SET] Discord bot starting...", flush=True)
             # Setup event handler (stores config/member on bot for watcher bridge)
             if await discord_bot.wait_ready(timeout=15):
                 await setup_event_handler(discord_bot, discord_config)
-                print("[SET] Discord bot connected")
+                print("[SET] Discord bot connected", flush=True)
             else:
-                print("[SET] Discord bot timeout — not connected")
+                print("[SET] Discord bot timeout — not connected", flush=True)
         else:
-            print("[SET] Discord not configured")
+            print("[SET] Discord not configured", flush=True)
     except Exception as e:
-        print(f"[SET] Discord bot startup failed: {e}")
+        import traceback
+        print(f"[SET] Discord bot startup failed: {e}", flush=True)
+        traceback.print_exc()
 
     yield
 

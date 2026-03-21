@@ -34,7 +34,8 @@ class DiscordBot:
         self._client: Any = None  # discord.Client
         self._task: asyncio.Task | None = None
         self._ready = asyncio.Event()
-        self._channel: Any = None  # discord.TextChannel
+        self._channel: Any = None  # discord.TextChannel (default/fallback)
+        self._channel_cache: dict[str, Any] = {}  # project_name → TextChannel
         self._stopping = False
 
     @property
@@ -137,6 +138,39 @@ class DiscordBot:
 
         _bot_instance = None
         logger.info("Discord bot stopped")
+
+    async def get_channel_for_project(self, project_name: str) -> Any:
+        """Resolve the Discord channel for a project, with caching.
+
+        Falls back to the default channel if resolution fails.
+        """
+        if not project_name or project_name == self._project_name:
+            return self._channel
+
+        # Check cache
+        if project_name in self._channel_cache:
+            return self._channel_cache[project_name]
+
+        # Resolve — strip run suffixes like "craftbrew-run1" → "craftbrew"
+        import re
+        base_name = re.sub(r"-run\d+$", "", project_name)
+
+        from .channel import resolve_channel
+        channel = await resolve_channel(
+            self._client,
+            guild_id=self._config.get("guild_id", ""),
+            channel_name=base_name,
+        )
+        if channel:
+            self._channel_cache[project_name] = channel
+            logger.info("Resolved Discord channel #%s for project %s", channel.name, project_name)
+        else:
+            # Fallback to default channel
+            self._channel_cache[project_name] = self._channel
+            logger.info("Using default channel #%s for project %s",
+                       self._channel.name if self._channel else "none", project_name)
+
+        return self._channel_cache[project_name]
 
     async def wait_ready(self, timeout: float = 30.0) -> bool:
         """Wait for the bot to be ready. Returns False on timeout."""

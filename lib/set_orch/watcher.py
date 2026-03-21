@@ -336,10 +336,15 @@ class WatcherManager:
             return
 
         bot = get_bot()
-        if not bot or not bot.is_connected or not bot.channel:
+        if not bot or not bot.is_connected:
             return
 
         try:
+            # Resolve project-specific channel
+            channel = await bot.get_channel_for_project(project_name)
+            if not channel:
+                return
+
             from .discord.events import _handle_event
             config = getattr(bot, "_discord_config", {})
             member_name = getattr(bot, "_member_name", "unknown")
@@ -365,7 +370,7 @@ class WatcherManager:
                             "run_id": str(abs(hash(project_name)) % 10000),
                             "change_count": len(changes),
                         },
-                    })
+                    }, channel=channel)
 
                 # Per-change status updates
                 for c in changes:
@@ -378,21 +383,21 @@ class WatcherManager:
                             "type": "STATE_CHANGE",
                             "change": c.get("name", ""),
                             "data": {"to": c_status},
-                        })
+                        }, channel=channel)
 
             elif event_type == "change_complete":
                 await _handle_event(bot, config, member_name, {
                     "type": "MERGE_ATTEMPT",
                     "change": data.get("name", ""),
                     "data": {"result": "success"},
-                })
+                }, channel=channel)
 
             elif event_type == "error":
                 await _handle_event(bot, config, member_name, {
                     "type": "ERROR",
                     "change": data.get("change", ""),
                     "data": {"message": data.get("message", "")},
-                })
+                }, channel=channel)
 
         except Exception as e:
             logger.debug("Discord forward error: %s", e)
