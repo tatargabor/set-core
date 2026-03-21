@@ -67,6 +67,15 @@ async def get_or_create_thread(
         )
         _threads[run_id] = thread
         logger.info("Created Discord thread: %s", thread_name)
+
+        # Pin the starter message so the thread is visible in the channel
+        try:
+            starter = thread.starter_message or await thread.fetch_message(thread.id)
+            if starter:
+                await starter.pin()
+        except (discord.HTTPException, discord.NotFound):
+            pass  # Pin requires Manage Messages — non-critical
+
         return thread
     except discord.HTTPException as e:
         logger.error("Failed to create Discord thread: %s", e)
@@ -74,13 +83,21 @@ async def get_or_create_thread(
 
 
 async def archive_thread(run_id: str) -> None:
-    """Archive a run's thread (set auto-archive to 1 hour)."""
+    """Archive a run's thread — unpin starter and set short auto-archive."""
     import discord
 
     thread = _threads.get(run_id)
     if not thread:
         return
     try:
+        # Unpin the starter message (run is done, no longer active)
+        try:
+            starter = thread.starter_message or await thread.fetch_message(thread.id)
+            if starter and starter.pinned:
+                await starter.unpin()
+        except (discord.HTTPException, discord.NotFound):
+            pass
+
         await thread.edit(
             auto_archive_duration=60,  # 1 hour
             archived=False,  # let Discord auto-archive
