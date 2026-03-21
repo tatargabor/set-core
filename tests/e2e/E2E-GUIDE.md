@@ -306,12 +306,13 @@ Two E2E tests (minishop + craftbrew) can run simultaneously:
 <!-- e2e-results:minishop:end -->
 
 <!-- e2e-results:craftbrew:start -->
-### craftbrew — Run #6 (2026-03-20)
-<!-- set-core-commit: unknown -->
-- **set-core range**: first tracked run (baseline commit: `unknown`)
-- **Result**: 8/15 merged | unknown | 587K tokens | 0 retries
-- **Open regressions**: none
-- **Applied changes**: none
+### craftbrew — Run #7 (2026-03-20/21)
+<!-- set-core-commit: dac800bac -->
+- **set-core range**: `ebfc47204..dac800bac` (integrate-then-verify merge pipeline, review rules, origin/main fix, dirty files stash fix)
+- **Result**: 14/14 merged | ~7h 30m | ~1.26M tokens | ~18 verify retries | 2 framework bugs found & fixed
+- **Open regressions**: stale orchestrator.lock crash loop (Bug #33 candidate), state overwrite on restart
+- **Fixed this run**: Bug #28 `82bfe9955` (origin/main ref fallback), Bug #29 `dac800bac` (stash dirty files before integration merge)
+- **Watch for run #8**: Lock cleanup on orchestrator exit. Sentinel stuck threshold vs verify gate duration. State preservation on restart.
 <!-- e2e-results:craftbrew:end -->
 
 ## Architecture Quick Reference

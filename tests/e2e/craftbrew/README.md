@@ -12,6 +12,7 @@ Multi-file spec orchestration test using the [CraftBrew spec repo](https://githu
 | [#4](run-4.md) | 2026-03-19 | PARTIAL | 5/15 | 4 | ~998K | 4/5 autonomous merges (80%); dep cascade deadlock blocked 8 changes |
 | [#5](run-5.md) | 2026-03-19/20 | PARTIAL | 2/15 | 4 | ~177K | Origin remote contamination (Bug #24 fixed); auth context overflow; dep cascade deadlock |
 | [#6](run-6.md) | 2026-03-20 | PARTIAL | 8/15 | 4 | ~587K | opus-1m fixed context overflow; Bug #28 (merge-blocked) fixed; Bug #30 (artifact loop) recurred |
+| [#7](run-7.md) | 2026-03-20/21 | COMPLETE | 14/14 | 2 | ~1.26M | **First 100% run!** Bug #31 (origin/main ref), Bug #32 (dirty files block merge) fixed mid-run; 8 sentinel interventions |
 
 ## Bug Index
 
@@ -44,3 +45,5 @@ Multi-file spec orchestration test using the [CraftBrew spec repo](https://githu
 | 25 | Sentinel watchdog kills monitor too aggressively | noise | open | #5 |
 | 26 | Dependency cascade deadlock (recurrence of #4 pattern) | blocking | open | #5 |
 | 27 | Auth change context overflow (443K/200K) | app-bug | open | #5 |
+| 28 | `origin/main` ref fails in local-only repos (integration merge) | blocking | fixed (`82bfe9955`) | #7 |
+| 29 | Dirty files block integration merge (stash fix) | blocking | fixed (`dac800bac`) | #7 |
