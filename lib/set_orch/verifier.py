@@ -1571,7 +1571,14 @@ def run_phase_end_e2e(
     if event_bus:
         event_bus.emit("PHASE_E2E_STARTED", data={})
 
-    e2e_port = E2E_PORT_BASE + random.randint(0, 99)
+    # Detect Playwright webServer config
+    pw_config = _parse_playwright_config(os.getcwd())
+    managed_server = pw_config["has_web_server"]
+
+    e2e_port = None
+    if not managed_server:
+        e2e_port = E2E_PORT_BASE + random.randint(0, 99)
+
     start_ms = int(time.monotonic() * 1000)
 
     # Screenshot directory
@@ -1584,8 +1591,11 @@ def run_phase_end_e2e(
         screenshot_dir = f"wt/orchestration/e2e-screenshots/cycle-{cycle}"
     os.makedirs(screenshot_dir, exist_ok=True)
 
-    # Run E2E
-    env = {"PLAYWRIGHT_OUTPUT_DIR": screenshot_dir, "PW_PORT": str(e2e_port)}
+    # Run E2E — only set PW_PORT when we manage the server
+    env: dict[str, str] = {"PLAYWRIGHT_OUTPUT_DIR": screenshot_dir}
+    if e2e_port:
+        env["PW_PORT"] = str(e2e_port)
+
     test_result = run_command(
         ["bash", "-c", e2e_command],
         timeout=e2e_timeout,
@@ -1603,9 +1613,10 @@ def run_phase_end_e2e(
     else:
         logger.error("Phase-end E2E: tests failed (rc=%d)", test_result.exit_code)
 
-    # Cleanup dev server
-    run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
-    run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
+    # Cleanup dev server — only when we managed the server manually
+    if not managed_server and e2e_port:
+        run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
+        run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
 
     # Collect Playwright artifacts
     test_results_dir = "test-results"
@@ -2055,38 +2066,49 @@ def _execute_e2e_gate(
     change_name: str, change: Change, wt_path: str,
     e2e_command: str, e2e_timeout: int, e2e_health_timeout: int,
 ) -> "GateResult":
-    """E2E gate: run Playwright tests with port allocation and health check."""
+    """E2E gate: run Playwright tests, webServer-aware."""
     import random
     from .gate_runner import GateResult
 
     if not e2e_command or not wt_path:
-        return GateResult("e2e", "skipped")
+        return GateResult("e2e", "skipped", output="e2e_command not configured")
 
-    e2e_test_count = _count_e2e_tests(wt_path)
-    has_pw_config = (
-        os.path.isfile(os.path.join(wt_path, "playwright.config.ts"))
-        or os.path.isfile(os.path.join(wt_path, "playwright.config.js"))
-    )
-    if not has_pw_config or e2e_test_count == 0:
-        return GateResult("e2e", "skipped")
+    pw_config = _parse_playwright_config(wt_path)
+    if not pw_config["config_path"]:
+        return GateResult("e2e", "skipped",
+                          output="no playwright.config.ts/js found in worktree")
 
-    e2e_port = E2E_PORT_BASE + random.randint(0, 99)
+    e2e_test_count, searched_desc = _count_e2e_tests(wt_path, pw_config)
+    if e2e_test_count == 0:
+        return GateResult("e2e", "skipped",
+                          output=f"no e2e test files found (searched: {searched_desc})")
 
-    # E2E readiness probe
-    if not health_check(f"http://localhost:{e2e_port}", e2e_health_timeout):
-        return GateResult("e2e", "skipped", output=f"dev server not responding on port {e2e_port}")
+    # Two execution paths based on webServer detection
+    managed_server = pw_config["has_web_server"]
+    e2e_port = None
+    e2e_env: dict[str, str] = {}
 
-    e2e_env = {"PW_PORT": str(e2e_port)}
+    if not managed_server:
+        # Manual server path: allocate port, health check, set PW_PORT
+        e2e_port = E2E_PORT_BASE + random.randint(0, 99)
+        if not health_check(f"http://localhost:{e2e_port}", e2e_health_timeout):
+            return GateResult("e2e", "skipped",
+                              output=f"dev server not responding on port {e2e_port} "
+                                     f"(timeout {e2e_health_timeout}s)")
+        e2e_env["PW_PORT"] = str(e2e_port)
+
+    # Run E2E tests
     e2e_cmd_result = run_command(
         ["bash", "-c", e2e_command],
-        timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
+        timeout=e2e_timeout, cwd=wt_path, env=e2e_env if e2e_env else None,
         max_output_size=4000,
     )
     e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
 
-    # Cleanup dev server
-    run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
-    run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
+    # Cleanup dev server — only when we managed the server manually
+    if not managed_server and e2e_port:
+        run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
+        run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
 
     # Collect screenshots
     try:
@@ -2701,17 +2723,82 @@ def _detect_build_command(wt_path: str) -> str:
     return ""
 
 
-def _count_e2e_tests(wt_path: str) -> int:
-    """Count E2E test files in worktree."""
-    e2e_dir = os.path.join(wt_path, "tests", "e2e")
-    if not os.path.isdir(e2e_dir):
-        return 0
+def _parse_playwright_config(wt_path: str) -> dict:
+    """Parse Playwright config for testDir and webServer presence.
+
+    Returns dict with:
+      config_path: str | None  — path to config file found
+      test_dir: str | None     — parsed testDir value (relative to wt_path)
+      has_web_server: bool     — whether webServer block exists
+    """
+    config_path = None
+    for name in ("playwright.config.ts", "playwright.config.js"):
+        candidate = os.path.join(wt_path, name)
+        if os.path.isfile(candidate):
+            config_path = candidate
+            break
+
+    if not config_path:
+        return {"config_path": None, "test_dir": None, "has_web_server": False}
+
+    try:
+        with open(config_path) as f:
+            content = f.read()
+    except OSError:
+        return {"config_path": config_path, "test_dir": None, "has_web_server": False}
+
+    # Extract testDir value via regex
+    test_dir = None
+    import re
+    m = re.search(r'testDir:\s*["\']([^"\']+)["\']', content)
+    if m:
+        raw = m.group(1)
+        # Normalize: strip leading ./ for consistency
+        test_dir = raw.lstrip("./") if raw.startswith("./") else raw
+
+    # Detect webServer block
+    has_web_server = "webServer" in content
+
+    return {
+        "config_path": config_path,
+        "test_dir": test_dir,
+        "has_web_server": has_web_server,
+    }
+
+
+def _count_e2e_tests(wt_path: str, pw_config: dict | None = None) -> tuple[int, str]:
+    """Count E2E test files in worktree.
+
+    Returns (count, searched_dirs_description) for diagnostic output.
+    """
+    if pw_config is None:
+        pw_config = _parse_playwright_config(wt_path)
+
+    if not pw_config["config_path"]:
+        return 0, ""
+
+    # Determine directories to search
+    test_dir = pw_config.get("test_dir")
+    if test_dir:
+        search_dirs = [test_dir]
+    else:
+        # Fallback: search common conventions
+        search_dirs = ["tests/e2e", "e2e", "test/e2e", "tests"]
+
     count = 0
-    for _root, _dirs, files in os.walk(e2e_dir):
-        for f in files:
-            if f.endswith(".spec.ts") or f.endswith(".spec.js"):
-                count += 1
-    return count
+    searched = []
+    for d in search_dirs:
+        abs_dir = os.path.join(wt_path, d)
+        if not os.path.isdir(abs_dir):
+            continue
+        searched.append(d)
+        for _root, _dirs, files in os.walk(abs_dir):
+            for f in files:
+                if f.endswith(".spec.ts") or f.endswith(".spec.js"):
+                    count += 1
+
+    searched_desc = ", ".join(searched) if searched else ", ".join(search_dirs)
+    return count, searched_desc
 
 
 def _snapshot_retry_tokens(state_file: str, change_name: str, wt_path: str) -> None:
