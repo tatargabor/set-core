@@ -181,30 +181,15 @@ _deploy_skills() {
         fi
         if [[ "$is_self" == "false" ]]; then
             local rule_count=0
+            # Deploy only top-level generic rules (subdirs like gui/ are
+            # set-core internal; project-type rules deploy via plugin)
             while IFS= read -r -d '' src_file; do
-                local rel_path="${src_file#"$src_rules/"}"
-                local dir_part
-                dir_part=$(dirname "$rel_path")
-                [[ "$dir_part" == gui ]] && continue  # gui/ rules are for set-core' own GUI, not consumer projects
-                # web/ rules: deploy only if project type is 'web'
-                if [[ "$dir_part" == web ]]; then
-                    local pt_yaml="$project_path/wt/plugins/project-type.yaml"
-                    if [[ -f "$pt_yaml" ]]; then
-                        local pt_type
-                        pt_type=$(grep '^type:' "$pt_yaml" 2>/dev/null | awk '{print $2}')
-                        [[ "$pt_type" != "web" ]] && continue
-                    else
-                        continue  # no project type configured, skip web rules
-                    fi
-                fi
                 local base_name
-                base_name=$(basename "$rel_path")
-                local dst_dir="$dst_rules"
-                [[ "$dir_part" != "." ]] && dst_dir="$dst_rules/$dir_part"
-                mkdir -p "$dst_dir"
-                cp "$src_file" "$dst_dir/set-$base_name"
+                base_name=$(basename "$src_file")
+                mkdir -p "$dst_rules"
+                cp "$src_file" "$dst_rules/set-$base_name"
                 rule_count=$((rule_count + 1))
-            done < <(find "$src_rules" -name '*.md' -print0)
+            done < <(find "$src_rules" -maxdepth 1 -name '*.md' -print0)
             success "  Deployed $rule_count rule(s) to .claude/rules/ (set-* prefix)"
         else
             success "  Rules: self-deploy detected, skipping"

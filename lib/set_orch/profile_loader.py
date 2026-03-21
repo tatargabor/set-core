@@ -78,24 +78,29 @@ class NullProfile:
         Used by dispatcher for proactive rule injection at dispatch time.
         Override in project-type plugins to customize per-project.
         """
-        return {
-            "auth": {
-                "keywords": ["auth", "login", "session", "middleware", "cookie", "password", "token"],
-                "globs": ["web/auth-middleware.md", "web/security-patterns.md"],
-            },
-            "api": {
-                "keywords": ["api", "route", "endpoint", "handler", "REST", "mutation"],
-                "globs": ["web/api-design.md", "web/security-patterns.md"],
-            },
-            "database": {
-                "keywords": ["database", "query", "migration", "schema", "model", "prisma", "drizzle"],
-                "globs": ["web/security-patterns.md"],
-            },
-            "catalog": {
-                "keywords": ["catalog", "listing", "category", "browse", "product list", "page.tsx", "grid"],
-                "globs": ["web/route-completeness.md"],
-            },
-        }
+        return {}
+
+    def get_verification_rules(self) -> list:
+        """Return verification rules for the verify gate.
+
+        Override in project-type plugins to provide domain-specific rules.
+        """
+        return []
+
+    def get_orchestration_directives(self) -> list:
+        """Return orchestration directives for engine dispatch/post-merge.
+
+        Override in project-type plugins to provide domain-specific directives.
+        """
+        return []
+
+    def decompose_hints(self) -> list:
+        """Return natural-language hints for the decompose/planning prompt.
+
+        Each string is appended to the planning prompt as-is.
+        Override in project-type plugins to influence change decomposition.
+        """
+        return []
 
     @property
     def info(self):

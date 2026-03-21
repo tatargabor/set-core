@@ -406,15 +406,22 @@ CRITICAL — Output size constraint:
 
 
 def _get_planning_rules(project_path: str = ".") -> str:
-    """Assemble planning rules from core + profile."""
+    """Assemble planning rules from core + profile + decompose hints."""
     from .profile_loader import load_profile
 
     profile = load_profile(project_path)
+    parts = [_PLANNING_RULES_CORE]
+
     profile_rules = profile.planning_rules()
     if profile_rules:
-        return _PLANNING_RULES_CORE + "\n\n" + profile_rules
-    # No profile rules — return core only
-    return _PLANNING_RULES_CORE
+        parts.append(profile_rules)
+
+    # Plugin decompose hints — natural-language planning guidance
+    hints = profile.decompose_hints()
+    if hints:
+        parts.append("## Plugin Decomposition Hints\n\n" + "\n\n".join(hints))
+
+    return "\n\n".join(parts)
 
 
 _DIGEST_FIELDS = """Digest-mode additional requirements:

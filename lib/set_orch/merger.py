@@ -267,6 +267,49 @@ def _sync_running_worktrees(merged_change: str, state_file: str) -> int:
     return synced
 
 
+def _apply_merge_strategies() -> None:
+    """Load plugin merge strategies and write .gitattributes for merge behavior.
+
+    Strategies define file-pattern → merge-driver mappings (e.g., theirs-wins
+    for lockfiles). Written to .gitattributes before merge, cleaned up after.
+    """
+    try:
+        from .profile_loader import load_profile, NullProfile
+        profile = load_profile()
+        if isinstance(profile, NullProfile):
+            return
+        strategies = profile.merge_strategies()
+        if not strategies:
+            return
+
+        lines = []
+        for s in strategies:
+            patterns = s.get("patterns", [])
+            strategy = s.get("strategy", "")
+            if not patterns or not strategy:
+                continue
+            # Map strategy names to git merge drivers
+            if strategy == "theirs":
+                driver = "merge=ours"  # from their perspective on ff-only
+            elif strategy == "ours":
+                driver = "merge=ours"
+            else:
+                continue
+            for pat in patterns:
+                lines.append(f"{pat} {driver}")
+
+        if lines:
+            gitattrs = Path(".gitattributes")
+            existing = gitattrs.read_text() if gitattrs.exists() else ""
+            marker = "# set-merge-strategies"
+            if marker not in existing:
+                block = f"\n{marker}\n" + "\n".join(lines) + f"\n{marker}-end\n"
+                gitattrs.write_text(existing + block)
+                logger.info("Applied %d merge strategy pattern(s)", len(lines))
+    except Exception:
+        logger.debug("Failed to apply merge strategies (non-critical)", exc_info=True)
+
+
 # ─── Merge Pipeline ────────────────────────────────────────────────
 
 # Source: merger.sh merge_change() L56-476
@@ -357,6 +400,10 @@ def merge_change(
     # Case 3: Fast-forward only merge (integrate-then-verify pattern)
     # The branch already has main integrated and all gates passed.
     # ff-only ensures we only advance main to a tested commit.
+
+    # Apply plugin merge strategies (e.g., theirs-wins for lockfiles)
+    _apply_merge_strategies()
+
     pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
     merge_result = run_command(
         ["set-merge", change_name, "--no-push", "--ff-only"],

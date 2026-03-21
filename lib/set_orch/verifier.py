@@ -1264,6 +1264,30 @@ def evaluate_verification_rules(
     except Exception:
         return RuleEvalResult()
 
+    # Merge plugin verification rules (plugin rules take precedence on ID collision)
+    try:
+        from .profile_loader import load_profile, NullProfile
+        profile = load_profile()
+        if not isinstance(profile, NullProfile):
+            plugin_rules = profile.get_verification_rules()
+            if plugin_rules:
+                # Convert VerificationRule dataclass instances to dicts
+                yaml_ids = {r.get("id") or r.get("name", "") for r in rules}
+                for pr in plugin_rules:
+                    pr_dict = {
+                        "name": getattr(pr, "id", ""),
+                        "id": getattr(pr, "id", ""),
+                        "check": getattr(pr, "check", ""),
+                        "severity": getattr(pr, "severity", "warning"),
+                        "trigger": getattr(pr, "config", {}).get("trigger", "*"),
+                    }
+                    if pr_dict["id"] in yaml_ids:
+                        # Plugin overrides YAML rule with same ID
+                        rules = [r for r in rules if r.get("id", r.get("name", "")) != pr_dict["id"]]
+                    rules.append(pr_dict)
+    except Exception:
+        pass  # Plugin loading failure shouldn't break verification
+
     if not rules:
         return RuleEvalResult()
 

@@ -268,6 +268,23 @@ def monitor_loop(
 
     d = parse_directives(raw)
 
+    # Load plugin orchestration directives
+    try:
+        from .profile_loader import load_profile, NullProfile
+        profile = load_profile()
+        if not isinstance(profile, NullProfile):
+            plugin_directives = profile.get_orchestration_directives()
+            if plugin_directives:
+                logger.info(
+                    "Loaded %d plugin orchestration directive(s)", len(plugin_directives)
+                )
+                # Store on directives object for dispatch/post-merge to use
+                if not hasattr(d, "plugin_directives"):
+                    d.plugin_directives = []
+                d.plugin_directives = list(plugin_directives)
+    except Exception:
+        logger.debug("Plugin directive loading failed (non-critical)", exc_info=True)
+
     # Apply CLI overrides
     if checkpoint_auto_approve:
         d.checkpoint_auto_approve = True
