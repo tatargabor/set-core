@@ -317,20 +317,23 @@ async def _handle_run_complete(
                 await thread.send(embed=embed)
                 await archive_thread(run_id)
 
-            # Post one-liner to main channel
+            # Post completion confirmation embed with reactions
             ch = channel or bot.channel
             if _should_notify_main(config, "complete"):
-                merged = sum(
-                    1 for c in state.changes
-                    if c.get("status") in ("merged", "done", "completed", "skip_merged")
+                from .embeds import build_completion_confirmation_embed
+                confirm_embed = await build_completion_confirmation_embed(
+                    run_id, member_name, state.changes,
+                    start_time=state.start_time,
+                    total_tokens=state.total_tokens,
                 )
-                total = len(state.changes)
-                icon = "\U0001f4ca" if status == "done" else "\u274c"
-                await ch.send(
-                    f"[SET] {icon} **{member_name}** Run #{run_id} {status}: "
-                    f"{merged}/{total} merged"
-                )
+                confirm_msg = await ch.send(embed=confirm_embed)
+                # Add reaction buttons
+                for emoji in ("\u2705", "\U0001f504", "\U0001f4cb"):
+                    await confirm_msg.add_reaction(emoji)
 
-            # Cleanup
+                # Store message ID for reaction handling
+                state.completion_message_id = confirm_msg.id
+
+            # Cleanup run state (but keep completion_message_id for reaction handler)
             del _run_state[run_id]
             break

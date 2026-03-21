@@ -1995,6 +1995,34 @@ async def send_sentinel_message(project: str, body: SentinelMessageBody):
     return {"status": "sent"}
 
 
+@router.post("/api/{project}/completion")
+async def completion_action(project: str, body: dict):
+    """Send a completion action to the sentinel via inbox.
+
+    Body: {"action": "accept|rerun|newspec", "spec": "docs/v2.md"}
+    """
+    action = body.get("action", "accept")
+    if action not in ("accept", "rerun", "newspec"):
+        return JSONResponse({"error": "Invalid action"}, status_code=400)
+
+    pp = _resolve_project(project)
+    sentinel_dir = _sentinel_dir(pp)
+    sentinel_dir.mkdir(parents=True, exist_ok=True)
+
+    inbox_file = sentinel_dir / "inbox.jsonl"
+    msg = {
+        "type": "completion_action",
+        "action": action,
+        "spec": body.get("spec", ""),
+        "from": "set-web",
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    with open(inbox_file, "a") as f:
+        f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+    return {"status": "sent", "action": action}
+
+
 # ─── Learnings endpoints ─────────────────────────────────────────────
 
 

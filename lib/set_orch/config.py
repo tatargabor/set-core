@@ -72,6 +72,7 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "e2e_port_base": None,
     "gate_overrides": {},
     "discord": None,
+    "completion_timeout": 300,
 }
 
 
@@ -130,6 +131,7 @@ _VALIDATORS: dict[str, tuple[str, str | None]] = {
     "milestones_base_port": ("int", None),
     "milestones_max_worktrees": ("int", None),
     "e2e_port_base": ("int", None),
+    "completion_timeout": ("int_pos", None),
 }
 
 

@@ -4,6 +4,7 @@ import StatusHeader from '../components/StatusHeader'
 import ChangeTable from '../components/ChangeTable'
 import LogPanel from '../components/LogPanel'
 import CheckpointBanner from '../components/CheckpointBanner'
+import { CompletionCard } from '../components/CompletionCard'
 import ResizableSplit from '../components/ResizableSplit'
 import PlanViewer from '../components/PlanViewer'
 import TokenChart from '../components/TokenChart'
@@ -159,6 +160,11 @@ export default function Dashboard({ project }: Props) {
       {checkpoint && (
         <CheckpointBanner project={project} checkpointType={checkpointType} onDismiss={() => setCheckpoint(false)} />
       )}
+      {state?.status === 'done' || state?.status === 'awaiting_confirmation' ? (
+        <div className="px-3 pt-2">
+          <CompletionCard project={project} timeout={300} />
+        </div>
+      ) : null}
 
       {/* Tab bar — shrink-0 keeps it fixed at top within flex column */}
       <div

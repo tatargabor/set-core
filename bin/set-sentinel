@@ -703,7 +703,7 @@ is_transient_failure() {
 
     # Clean exits with terminal states are permanent
     case "$final_status" in
-        done|stopped|time_limit|plan_review) return 1 ;;
+        done|stopped|time_limit|plan_review|awaiting_confirmation) return 1 ;;
     esac
 
     # Clean exit with non-terminal state = unexpected but transient
@@ -891,6 +891,78 @@ while true; do
     if [[ "$final_status" == "plan_review" ]]; then
         sentinel_log "Plan awaiting approval — stopping (run 'set-orchestrate approve' then restart)"
         exit 0
+    fi
+
+    # Completion confirmation — ask user what to do next
+    if [[ "$final_status" == "done" || "$final_status" == "awaiting_confirmation" ]]; then
+        completion_action="accept"  # default
+
+        if [[ -t 0 ]]; then
+            # Interactive terminal — show prompt
+            local _ct="${COMPLETION_TIMEOUT:-300}"
+            echo ""
+            echo "╔═══════════════════════════════════════╗"
+            echo "║  Orchestration Complete               ║"
+            echo "╠═══════════════════════════════════════╣"
+            echo "║  [1] Accept & Stop (default in ${_ct}s)  ║"
+            echo "║  [2] Re-run same spec (--fresh)       ║"
+            echo "║  [3] New spec path                    ║"
+            echo "╚═══════════════════════════════════════╝"
+            local _choice=""
+            read -t "$_ct" -p "Choice [1]: " _choice || true
+            case "${_choice:-1}" in
+                2) completion_action="rerun" ;;
+                3)
+                    read -p "Spec path: " _new_spec || true
+                    if [[ -n "$_new_spec" ]]; then
+                        completion_action="newspec"
+                        SPEC_ARG="$_new_spec"
+                    fi
+                    ;;
+                *) completion_action="accept" ;;
+            esac
+        else
+            # Non-interactive — check inbox for completion action, then auto-stop
+            sentinel_log "Orchestration complete — checking inbox for completion action (${COMPLETION_TIMEOUT:-300}s timeout)"
+            local _deadline=$(( $(date +%s) + ${COMPLETION_TIMEOUT:-300} ))
+            while [[ $(date +%s) -lt $_deadline ]]; do
+                local _inbox_msg
+                _inbox_msg=$("$SCRIPT_DIR/set-sentinel-inbox" check --type completion_action 2>/dev/null) || true
+                if [[ -n "$_inbox_msg" ]]; then
+                    local _action
+                    _action=$(echo "$_inbox_msg" | jq -r '.action // "accept"' 2>/dev/null)
+                    case "$_action" in
+                        rerun) completion_action="rerun"; break ;;
+                        newspec)
+                            SPEC_ARG=$(echo "$_inbox_msg" | jq -r '.spec // ""' 2>/dev/null)
+                            completion_action="newspec"; break ;;
+                        *) completion_action="accept"; break ;;
+                    esac
+                fi
+                sleep 5
+            done
+        fi
+
+        case "$completion_action" in
+            accept)
+                sentinel_log "Completion accepted — stopping"
+                exit 0
+                ;;
+            rerun)
+                sentinel_log "Re-running same spec (--fresh)"
+                FRESH_FLAG=true
+                rapid_crashes=0
+                backoff_secs=$BACKOFF_BASE
+                continue  # restart loop
+                ;;
+            newspec)
+                sentinel_log "Switching to new spec: $SPEC_ARG"
+                set -- "${_passthrough_args[@]/#--spec*/}" --spec "$SPEC_ARG"
+                rapid_crashes=0
+                backoff_secs=$BACKOFF_BASE
+                continue  # restart loop with new spec
+                ;;
+        esac
     fi
 
     # Classify failure

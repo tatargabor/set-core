@@ -180,6 +180,50 @@ async def build_summary_embed(
     return embed
 
 
+async def build_completion_confirmation_embed(
+    run_id: str,
+    member_name: str,
+    changes: list[dict[str, Any]],
+    start_time: datetime | None = None,
+    total_tokens: int = 0,
+) -> Any:
+    """Build completion confirmation embed with reaction instructions."""
+    import discord
+
+    merged = sum(1 for c in changes if c.get("status") in ("merged", "done"))
+    failed = sum(1 for c in changes if c.get("status") in ("failed", "verify-failed"))
+    total = len(changes)
+
+    color = COLOR_SUCCESS if failed == 0 else COLOR_WARNING
+    duration_str = ""
+    if start_time:
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+        duration_str = f" | {int(elapsed // 60)}min"
+
+    token_str = ""
+    if total_tokens >= 1_000_000:
+        token_str = f" | {total_tokens / 1_000_000:.1f}M tokens"
+    elif total_tokens:
+        token_str = f" | {total_tokens:,} tokens"
+
+    embed = discord.Embed(
+        title=f"\U0001f3c1 Orchestration Complete — {member_name}",
+        description=(
+            f"**{merged}/{total}** merged"
+            f"{' | **' + str(failed) + '** failed' if failed else ''}"
+            f"{duration_str}{token_str}\n\n"
+            "React to choose:\n"
+            "\u2705 Accept & Stop\n"
+            "\U0001f504 Re-run same spec\n"
+            "\U0001f4cb New spec"
+        ),
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_footer(text="Auto-stop in 5 min if no response")
+    return embed
+
+
 async def build_error_embed(
     change_name: str,
     member_name: str,

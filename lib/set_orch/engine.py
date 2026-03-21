@@ -1306,7 +1306,7 @@ def _check_phase_completion(
     # Pending changes with failed deps are effectively terminal (will never run)
     from .state import deps_failed
     phase_changes = [c for c in state.changes if c.phase == current_phase]
-    terminal_statuses = {"merged", "done", "skipped", "failed", "merge-blocked", "integration-failed"}
+    terminal_statuses = {"merged", "done", "skipped", "failed", "merge-blocked", "integration-failed", "awaiting_confirmation"}
     all_terminal = all(
         c.status in terminal_statuses or (c.status == "pending" and deps_failed(state, c.name))
         for c in phase_changes

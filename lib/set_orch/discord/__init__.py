@@ -92,6 +92,34 @@ class DiscordBot:
             await self._client.change_presence(activity=activity)
             bot._ready.set()
 
+        @self._client.event
+        async def on_reaction_add(reaction, user):
+            """Handle completion confirmation reactions."""
+            if user.bot:
+                return
+            emoji = str(reaction.emoji)
+            if emoji not in ("\u2705", "\U0001f504", "\U0001f4cb"):
+                return
+            # Map reaction to action
+            action_map = {"\u2705": "accept", "\U0001f504": "rerun", "\U0001f4cb": "newspec"}
+            action = action_map.get(emoji, "accept")
+            # Send to sentinel inbox
+            try:
+                import subprocess
+                subprocess.run(
+                    ["set-sentinel-inbox", "send", "--type", "completion_action",
+                     "--content", f'{{"action": "{action}"}}'],
+                    timeout=5, capture_output=True,
+                )
+                logger.info("Discord completion reaction: %s → %s", emoji, action)
+                # Clear reactions
+                try:
+                    await reaction.message.clear_reactions()
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning("Failed to send completion action: %s", e)
+
         # Start in background with supervisor wrapper
         self._task = asyncio.create_task(self._supervised_run(token))
         _bot_instance = self
