@@ -631,6 +631,12 @@ _deploy_project_templates() {
     if [[ "$DRY_RUN" == "true" ]]; then
         cmd+=(--dry-run)
     fi
+    # Re-init (project already registered) → force overwrite to pick up template updates
+    local existing_path
+    existing_path=$(get_project_path "$(basename "$project_path")" 2>/dev/null || true)
+    if [[ -n "$existing_path" ]]; then
+        cmd+=(--force)
+    fi
 
     echo ""
     info "Deploying project templates..."
