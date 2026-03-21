@@ -2060,11 +2060,12 @@ def _compute_gate_stats(project_path: Path) -> dict:
         return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
 
     try:
-        state = load_state(str(state_file))
-    except (StateCorruptionError, OSError):
+        with open(state_file) as f:
+            state_data = json.load(f)
+    except (json.JSONDecodeError, OSError):
         return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
 
-    changes = state.get("changes", [])
+    changes = state_data.get("changes", [])
     if not changes:
         return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
 
@@ -2272,15 +2273,16 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
     state_file = project_path / "orchestration-state.json"
     if state_file.exists():
         try:
-            state = load_state(str(state_file))
-            for change in state.get("changes", []):
+            with open(state_file) as f:
+                state_data = json.load(f)
+            for change in state_data.get("changes", []):
                 if isinstance(change, dict) and change.get("name") == change_name:
                     for field in ("build_result", "test_result", "review_result", "smoke_result", "verify_retry_count"):
                         val = change.get(field)
                         if val is not None:
                             current_gate_results[field] = val
                     break
-        except (StateCorruptionError, OSError):
+        except (json.JSONDecodeError, OSError):
             pass
 
     return {
