@@ -42,7 +42,7 @@ _set_python() {
         # Expand globs
         for resolved in $py; do
             [[ -x "$resolved" ]] || continue
-            if "$resolved" -c "import wt_project_base" 2>/dev/null; then
+            if "$resolved" -c "import set_project_base" 2>/dev/null; then
                 echo "$resolved"
                 return 0
             fi
@@ -621,7 +621,7 @@ _deploy_project_templates() {
     local py
     py=$(_set_python)
 
-    local cmd=("$py" -m wt_project_base.cli deploy-templates --project-dir "$project_path" --type "$type_name")
+    local cmd=("$py" -m set_project_base.cli deploy-templates --project-dir "$project_path" --type "$type_name")
     if [[ -n "$template_name" ]]; then
         cmd+=(--template "$template_name")
     fi
@@ -702,7 +702,7 @@ for ep in eps:
     if ep.name == type_name:
         cls = ep.load()
         pt = cls()
-        from wt_project_base.deploy import resolve_template, get_available_modules
+        from set_project_base.deploy import resolve_template, get_available_modules
         try:
             tid, tdir = resolve_template(pt, template_name)
         except ValueError:
