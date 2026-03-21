@@ -277,20 +277,20 @@ fi
 
 echo "Test AC-9/10: --project-dir flag in E2E scripts"
 
-if grep -q 'project-dir' "$REPO_ROOT/tests/e2e/run.sh"; then
+if grep -q 'project-dir' "$REPO_ROOT/tests/e2e/runners/run-minishop.sh"; then
     pass "run.sh supports --project-dir flag"
 else
     fail "run.sh should support --project-dir"
 fi
 
-if grep -q 'project-dir' "$REPO_ROOT/tests/e2e/run-complex.sh"; then
+if grep -q 'project-dir' "$REPO_ROOT/tests/e2e/runners/run-craftbrew.sh"; then
     pass "run-complex.sh supports --project-dir flag"
 else
     fail "run-complex.sh should support --project-dir"
 fi
 
 # Verify default is /tmp
-if grep -q 'BASE_DIR=.*tmp' "$REPO_ROOT/tests/e2e/run.sh"; then
+if grep -q 'BASE_DIR=.*tmp' "$REPO_ROOT/tests/e2e/runners/run-minishop.sh"; then
     pass "run.sh defaults to /tmp"
 else
     fail "run.sh should default to /tmp"

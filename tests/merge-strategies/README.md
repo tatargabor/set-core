@@ -72,6 +72,6 @@ See latest: `results/latest.md` (symlink).
 
 Based on benchmark results, winning strategies get integrated into:
 1. `bin/set-merge` — merge conflict resolution pipeline
-2. `tests/e2e/run.sh` — scaffold setup (gitattributes, hooks)
+2. `tests/e2e/runners/run-minishop.sh` — scaffold setup (gitattributes, hooks)
 3. `lib/set_orch/dispatcher.py` — bootstrap_worktree() post-merge hooks
 4. `set-project init` (set-project-base) — project-level gitattributes

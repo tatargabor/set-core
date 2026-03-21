@@ -270,7 +270,7 @@ Based on test results:
 - **Status**: 🧪 Tested above
 - **Covers**: Prevents lockfile conflicts entirely at git level
 - **Requires**: `git config merge.ours.driver true` in each repo
-- **Integration point**: `tests/e2e/run.sh` scaffold setup
+- **Integration point**: `tests/e2e/runners/run-minishop.sh` scaffold setup
 
 ### S3: post-merge hook
 - **Status**: 🧪 Tested above

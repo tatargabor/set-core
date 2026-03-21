@@ -6,9 +6,9 @@
 # build from the structured digest.
 #
 # Usage:
-#   ./tests/e2e/run-complex.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/craftbrew-run1, ...
-#   ./tests/e2e/run-complex.sh /path/to/dir                 # Clone to specified dir
-#   ./tests/e2e/run-complex.sh --project-dir ~/other-dir    # Override base dir
+#   ./tests/e2e/runners/run-craftbrew.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/craftbrew-run1, ...
+#   ./tests/e2e/runners/run-craftbrew.sh /path/to/dir                 # Clone to specified dir
+#   ./tests/e2e/runners/run-craftbrew.sh --project-dir ~/other-dir    # Override base dir
 #
 # The spec source repo: https://github.com/tatargabor/craftbrew
 

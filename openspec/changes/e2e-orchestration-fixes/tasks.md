@@ -1,7 +1,7 @@
 ## 1. Scaffold branch rename
 
-- [ ] 1.1 In `tests/e2e/run-complex.sh`, add `git branch -m spec-only main` after the `v1-ready` tag line
-- [ ] 1.2 In `tests/e2e/run.sh`, add the same branch rename if `spec-only` branch exists
+- [ ] 1.1 In `tests/e2e/runners/run-craftbrew.sh`, add `git branch -m spec-only main` after the `v1-ready` tag line
+- [ ] 1.2 In `tests/e2e/runners/run-minishop.sh`, add the same branch rename if `spec-only` branch exists
 - [ ] 1.3 Verify: run `run-complex.sh`, confirm main branch is `main` not `spec-only`
 
 ## 2. build_broken_on_main auto-clear
@@ -22,8 +22,8 @@
 
 ## 4. Config template
 
-- [ ] 4.1 In `tests/e2e/run-complex.sh`, update the orchestration config to include `# default_model: opus-1m  # for 1M context window` as comment
-- [ ] 4.2 In `tests/e2e/run.sh`, same update
+- [ ] 4.1 In `tests/e2e/runners/run-craftbrew.sh`, update the orchestration config to include `# default_model: opus-1m  # for 1M context window` as comment
+- [ ] 4.2 In `tests/e2e/runners/run-minishop.sh`, same update
 
 ## 5. Python monitor heartbeat
 

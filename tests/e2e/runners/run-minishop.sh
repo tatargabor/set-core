@@ -4,9 +4,9 @@
 # The scaffold is a single file (docs/v1-minishop.md). Agents build everything from the spec.
 #
 # Usage:
-#   ./tests/e2e/run.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/minishop-run9, ...
-#   ./tests/e2e/run.sh /path/to/dir                 # Use specified dir
-#   ./tests/e2e/run.sh --project-dir ~/other-dir    # Override base dir
+#   ./tests/e2e/runners/run-minishop.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/minishop-run9, ...
+#   ./tests/e2e/runners/run-minishop.sh /path/to/dir                 # Use specified dir
+#   ./tests/e2e/runners/run-minishop.sh --project-dir ~/other-dir    # Override base dir
 
 set -euo pipefail
 

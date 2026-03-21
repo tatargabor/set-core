@@ -319,12 +319,12 @@ model Product {
 
 | Scaffold | Spec | Changes | Purpose |
 |----------|------|---------|---------|
-| **MiniShop** (`tests/e2e/scaffold/`) | Next.js webshop | 6-8 | Core pipeline validation — products, cart, checkout, auth, admin |
+| **MiniShop** (`tests/e2e/scaffolds/minishop/`) | Next.js webshop | 6-8 | Core pipeline validation — products, cart, checkout, auth, admin |
 | **CraftBrew** (`tests/e2e/scaffold-complex/`) | Multi-phase coffee app | 14+ | Complex spec handling — i18n, subscriptions, reviews, promotions |
 
 Each scaffold contains:
 ```
-tests/e2e/scaffold/
+tests/e2e/scaffolds/minishop/
 ├── docs/
 │   ├── v1-minishop.md          # The spec file
 │   ├── design-snapshot.md       # Pre-fetched Figma design tokens
@@ -335,10 +335,10 @@ tests/e2e/scaffold/
 
 ```bash
 # MiniShop (standard)
-./tests/e2e/run.sh /tmp/minishop-test
+./tests/e2e/runners/run-minishop.sh /tmp/minishop-test
 
 # CraftBrew (complex, multi-phase)
-./tests/e2e/run-complex.sh /tmp/craftbrew-test
+./tests/e2e/runners/run-craftbrew.sh /tmp/craftbrew-test
 
 # In the test project, start orchestration
 cd /tmp/minishop-test

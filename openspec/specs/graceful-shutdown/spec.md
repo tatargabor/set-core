@@ -72,12 +72,12 @@ The sentinel SHALL detect a previous shutdown state on startup and resume orches
 The E2E scaffold scripts SHALL support a `--project-dir` flag to create the test project in a persistent (non-volatile) directory instead of `/tmp/`.
 
 #### Scenario: E2E scaffold with custom directory
-- **WHEN** the user runs `./tests/e2e/run.sh --project-dir ~/e2e-tests`
+- **WHEN** the user runs `./tests/e2e/runners/run-minishop.sh --project-dir ~/e2e-tests`
 - **THEN** the project is created at `~/e2e-tests/minishop-runN` instead of `/tmp/minishop-runN`
 - **THEN** the project survives system reboots
 
 #### Scenario: E2E scaffold without flag
-- **WHEN** the user runs `./tests/e2e/run.sh` without `--project-dir`
+- **WHEN** the user runs `./tests/e2e/runners/run-minishop.sh` without `--project-dir`
 - **THEN** the default `/tmp/` location is used (backward compatible)
 
 ### Requirement: Shutdown API endpoint

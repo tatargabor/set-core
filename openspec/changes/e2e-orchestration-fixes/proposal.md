@@ -18,7 +18,7 @@ Fix 5 issues discovered during Run #5:
 
 ## Scope
 
-- `tests/e2e/run-complex.sh` — branch rename
+- `tests/e2e/runners/run-craftbrew.sh` — branch rename
 - `lib/set_orch/loop.py` or `merger.py` — build_broken_on_main auto-clear
 - `bin/set-hook-memory-*` — project name resolution
 - `wt/orchestration/config.yaml` template — default model

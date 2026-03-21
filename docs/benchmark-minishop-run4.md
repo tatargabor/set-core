@@ -241,7 +241,7 @@ Captured automatically by `set-e2e-report` from the running app after all change
 cd /path/to/set-core
 
 # Initialize fresh project
-./tests/e2e/run.sh /tmp/minishop-e2e
+./tests/e2e/runners/run-minishop.sh /tmp/minishop-e2e
 
 # Start autonomous execution
 cd /tmp/minishop-e2e

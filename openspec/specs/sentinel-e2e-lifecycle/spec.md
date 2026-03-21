@@ -27,15 +27,15 @@ During the prep phase, the sentinel SHALL spawn a subagent to collect run contex
 - **THEN** the prep subagent SHALL report "First run — no baseline" and skip delta/regression sections
 
 ### Requirement: Launch phase runs the E2E test scaffold and starts orchestration
-The sentinel SHALL execute the test scaffold script (`tests/e2e/run.sh` or `tests/e2e/run-complex.sh`), change to the created project directory, and start `set-sentinel --spec <spec-file>`.
+The sentinel SHALL execute the test scaffold script (`tests/e2e/runners/run-minishop.sh` or `tests/e2e/runners/run-craftbrew.sh`), change to the created project directory, and start `set-sentinel --spec <spec-file>`.
 
 #### Scenario: Sentinel launches minishop E2E
 - **WHEN** the user requests a minishop E2E run
-- **THEN** the sentinel SHALL run `tests/e2e/run.sh`, parse its output for the project directory path, cd to that directory, and start `set-sentinel --spec docs/v1-minishop.md`
+- **THEN** the sentinel SHALL run `tests/e2e/runners/run-minishop.sh`, parse its output for the project directory path, cd to that directory, and start `set-sentinel --spec docs/v1-minishop.md`
 
 #### Scenario: Sentinel launches craftbrew E2E
 - **WHEN** the user requests a craftbrew E2E run
-- **THEN** the sentinel SHALL run `tests/e2e/run-complex.sh`, parse its output for the project directory path, cd to that directory, and start `set-sentinel --spec` with the appropriate spec file
+- **THEN** the sentinel SHALL run `tests/e2e/runners/run-craftbrew.sh`, parse its output for the project directory path, cd to that directory, and start `set-sentinel --spec` with the appropriate spec file
 
 #### Scenario: Sentinel reports project directory to user
 - **WHEN** the scaffold script completes and the sentinel cds to the project directory

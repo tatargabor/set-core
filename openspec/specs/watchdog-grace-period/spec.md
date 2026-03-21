@@ -7,7 +7,7 @@
 - The checkpoint event is still logged so the run can be audited after completion
 
 ### R2: E2E Runner Unattended Config
-- `tests/e2e/scaffold/wt/orchestration/config.yaml` sets `checkpoint_auto_approve: true`
+- `tests/e2e/scaffolds/minishop/wt/orchestration/config.yaml` sets `checkpoint_auto_approve: true`
 - E2E runs should complete without manual intervention
 
 ### R3: Install Script Completeness

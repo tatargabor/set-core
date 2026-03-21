@@ -62,3 +62,7 @@ benchmark/synthetic/shodh_data/
 benchmark/synthetic/test_project/
 set/.work/
 wt/.work/
+
+set_core.egg-info/
+openspec_verify_merge_flow.png
+sys
