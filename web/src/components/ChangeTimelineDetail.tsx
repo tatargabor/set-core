@@ -106,9 +106,9 @@ function SessionBlock({ session }: { session: TimelineSession }) {
           )}
         </div>
 
-        {/* State label below */}
+        {/* Duration + state label below */}
         <div className="text-[9px] text-neutral-500 leading-none mt-1 text-center">
-          {session.merged ? 'merged' : session.state}
+          {session.duration_ms ? formatDuration(session.duration_ms) : isRunning ? '...' : ''}
         </div>
 
         {/* Tooltip */}
