@@ -2254,6 +2254,10 @@ def _integrate_main_into_branch(
         logger.info("Integration skip for %s — branch already up-to-date with %s", change_name, main_branch)
         return "ok"
 
+    # Stash any dirty files before merge (agents may leave uncommitted changes)
+    stash_result = run_git("stash", "--include-untracked", cwd=wt_path, timeout=30)
+    did_stash = stash_result.exit_code == 0 and "No local changes" not in stash_result.stdout
+
     # Merge main into branch
     logger.info("Integrating %s into %s for %s", main_branch, "branch", change_name)
     merge_result = run_git(
@@ -2264,6 +2268,8 @@ def _integrate_main_into_branch(
 
     if merge_result.exit_code == 0:
         logger.info("Integration merge succeeded for %s", change_name)
+        if did_stash:
+            run_git("stash", "pop", cwd=wt_path, timeout=30)
         if event_bus:
             event_bus.emit("INTEGRATION", change=change_name, data={"result": "ok"})
         return "ok"
@@ -2275,6 +2281,8 @@ def _integrate_main_into_branch(
     if has_conflicts:
         # Abort the failed merge so worktree is clean for agent
         run_git("merge", "--abort", cwd=wt_path, timeout=10)
+        if did_stash:
+            run_git("stash", "pop", cwd=wt_path, timeout=30)
         conflicted_files = conflict_check.stdout.strip()
         logger.warning("Integration merge conflict for %s: %s", change_name, conflicted_files[:200])
         if event_bus:
@@ -2284,6 +2292,8 @@ def _integrate_main_into_branch(
     # Non-conflict git error
     logger.error("Integration merge failed for %s: %s", change_name, merge_result.stderr[:300])
     run_git("merge", "--abort", cwd=wt_path, timeout=10)
+    if did_stash:
+        run_git("stash", "pop", cwd=wt_path, timeout=30)
     return "failed"
 
 
