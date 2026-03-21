@@ -1751,16 +1751,32 @@ def run_planning_pipeline(
         pass
 
     # 5. Domain-parallel decompose (digest mode) or single-call (brief/spec)
+    # Threshold: domain-parallel only for large specs (30+ requirements)
+    DOMAIN_PARALLEL_MIN_REQS = 30
+
     if input_mode == "digest":
-        # Try domain-parallel pipeline, fall back to single-call on failure
-        plan_data = None
+        # Count requirements to decide decompose strategy
+        req_count = 0
         try:
-            plan_data = _try_domain_parallel_decompose(
-                digest_dir, state_path, test_infra_context, design_context,
-                model, max_parallel, replan_ctx, team_mode,
-            )
-        except Exception as e:
-            logger.warning("Domain-parallel decompose failed (%s) — falling back to single-call", e)
+            req_path = os.path.join(digest_dir, "requirements.json")
+            if os.path.isfile(req_path):
+                with open(req_path) as _rf:
+                    req_count = len(json.load(_rf).get("requirements", []))
+        except Exception:
+            pass
+
+        plan_data = None
+        if req_count >= DOMAIN_PARALLEL_MIN_REQS:
+            # Large spec: try domain-parallel pipeline
+            try:
+                plan_data = _try_domain_parallel_decompose(
+                    digest_dir, state_path, test_infra_context, design_context,
+                    model, max_parallel, replan_ctx, team_mode,
+                )
+            except Exception as e:
+                logger.warning("Domain-parallel decompose failed (%s) — falling back to single-call", e)
+        else:
+            logger.info("Small spec (%d reqs < %d threshold) — using single-call decompose", req_count, DOMAIN_PARALLEL_MIN_REQS)
 
         if plan_data is None:
             # Fallback: single-call decompose (same path as brief/spec mode)
