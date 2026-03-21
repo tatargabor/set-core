@@ -158,6 +158,7 @@ init_project() {
 
     step "Git init"
     git init
+    git checkout -b main 2>/dev/null || true
 
     # .gitattributes — prevent lockfile and runtime file conflicts at git level.
     # merge=ours: on conflict, silently keep current branch version.
