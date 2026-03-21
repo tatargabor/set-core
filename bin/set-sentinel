@@ -71,8 +71,11 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/set-paths"
 
-STATE_FILE="$WT_STATE_FILE"
-EVENTS_FILE="$WT_EVENTS_FILE"
+# State/events file paths must match set-orchestrate conventions.
+# set-orchestrate uses $PWD/orchestration-state.json (resolved to absolute in cmd_start).
+# The sentinel runs from the same project directory, so use the same paths.
+STATE_FILE="$(pwd)/orchestration-state.json"
+EVENTS_FILE="$(pwd)/orchestration-state-events.jsonl"
 LOG_FILE="$WT_ORCHESTRATION_LOG"
 PID_FILE="$WT_SENTINEL_DIR/sentinel.pid"
 
@@ -869,12 +872,6 @@ while true; do
         final_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
     fi
 
-    # Clean exit + done = orchestration complete
-    if [[ $exit_code -eq 0 && "$final_status" == "done" ]]; then
-        sentinel_log "Orchestration complete (status=done)"
-        exit 0
-    fi
-
     # Clean exit + stopped = user stopped it
     if [[ $exit_code -eq 0 && "$final_status" == "stopped" ]]; then
         sentinel_log "Orchestrator stopped cleanly"
@@ -894,6 +891,7 @@ while true; do
     fi
 
     # Completion confirmation — ask user what to do next
+    # This handles both clean exits (code=0, status=done) and awaiting_confirmation
     if [[ "$final_status" == "done" || "$final_status" == "awaiting_confirmation" ]]; then
         completion_action="accept"  # default
 
