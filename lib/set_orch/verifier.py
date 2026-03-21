@@ -2560,7 +2560,15 @@ def handle_change_done(
 
     # ── Context window metrics — capture end tokens at loop completion ──
     if wt_path:
-        _capture_context_tokens_end(state_file, change_name, _read_loop_state(wt_path), model=change.model or "")
+        # Use change-level model, fall back to directives default_model
+        _ctx_model = change.model or ""
+        if not _ctx_model:
+            try:
+                _st = load_state(state_file)
+                _ctx_model = _st.extras.get("directives", {}).get("default_model", "")
+            except Exception:
+                pass
+        _capture_context_tokens_end(state_file, change_name, _read_loop_state(wt_path), model=_ctx_model)
 
     # ── Retry token tracking ──
     retry_tokens_start = change.extras.get("retry_tokens_start", 0)
