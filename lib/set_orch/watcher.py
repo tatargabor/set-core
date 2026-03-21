@@ -318,12 +318,84 @@ class WatcherManager:
         logger.info(f"Started watcher for project: {name}")
 
     async def _on_event(self, project_name: str, event_type: str, data):
-        """Forward watcher events to WebSocket clients."""
+        """Forward watcher events to WebSocket clients and Discord bot."""
         if self._connection_manager:
             await self._connection_manager.broadcast(
                 project_name,
                 {"event": event_type, "data": data},
             )
+
+        # Forward to Discord bot
+        await self._forward_to_discord(project_name, event_type, data)
+
+    async def _forward_to_discord(self, project_name: str, event_type: str, data):
+        """Bridge watcher events to Discord bot."""
+        try:
+            from .discord import get_bot
+        except ImportError:
+            return
+
+        bot = get_bot()
+        if not bot or not bot.is_connected or not bot.channel:
+            return
+
+        try:
+            from .discord.events import _handle_event
+            config = getattr(bot, "_discord_config", {})
+            member_name = getattr(bot, "_member_name", "unknown")
+
+            # Map watcher events to orchestration event bus format
+            if event_type == "state_update":
+                # Full state — detect orchestration-level status
+                status = data.get("status", "")
+                changes = data.get("changes", [])
+
+                # Check for run start/complete
+                if not hasattr(self, "_discord_last_status"):
+                    self._discord_last_status = {}
+                last = self._discord_last_status.get(project_name)
+
+                if last != status:
+                    self._discord_last_status[project_name] = status
+                    await _handle_event(bot, config, member_name, {
+                        "type": "STATE_CHANGE",
+                        "change": "",
+                        "data": {
+                            "to": status,
+                            "run_id": str(abs(hash(project_name)) % 10000),
+                            "change_count": len(changes),
+                        },
+                    })
+
+                # Per-change status updates
+                for c in changes:
+                    change_key = f"{project_name}:{c.get('name', '')}"
+                    c_status = c.get("status", "")
+                    last_c = self._discord_last_status.get(change_key)
+                    if last_c != c_status:
+                        self._discord_last_status[change_key] = c_status
+                        await _handle_event(bot, config, member_name, {
+                            "type": "STATE_CHANGE",
+                            "change": c.get("name", ""),
+                            "data": {"to": c_status},
+                        })
+
+            elif event_type == "change_complete":
+                await _handle_event(bot, config, member_name, {
+                    "type": "MERGE_ATTEMPT",
+                    "change": data.get("name", ""),
+                    "data": {"result": "success"},
+                })
+
+            elif event_type == "error":
+                await _handle_event(bot, config, member_name, {
+                    "type": "ERROR",
+                    "change": data.get("change", ""),
+                    "data": {"message": data.get("message", "")},
+                })
+
+        except Exception as e:
+            logger.debug("Discord forward error: %s", e)
 
     async def stop(self):
         """Stop all watchers."""

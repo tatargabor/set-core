@@ -37,9 +37,13 @@ async def lifespan(app: FastAPI):
         discord_config = get_discord_config(config)
         if discord_config:
             from .discord import DiscordBot
+            from .discord.events import setup_event_handler
             project_name = config.get("project_name", "")
             discord_bot = DiscordBot(discord_config, project_name=project_name)
             await discord_bot.start()
+            # Setup event handler (stores config/member on bot for watcher bridge)
+            if await discord_bot.wait_ready(timeout=15):
+                await setup_event_handler(discord_bot, discord_config)
     except Exception as e:
         import logging
         logging.getLogger(__name__).debug("Discord bot startup skipped: %s", e)
