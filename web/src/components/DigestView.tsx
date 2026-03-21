@@ -142,7 +142,7 @@ export default function DigestView({ project }: Props) {
         {tab === 'ac' && <ACPanel reqs={reqs} coverage={coverage} />}
         {tab === 'domains' && <DomainsPanel domains={domains} reqs={reqs} coverage={coverage} dependencies={dependencies} ambiguities={ambiguities} />}
         {tab === 'coverage' && <CoverageReportPanel project={project} />}
-        {tab === 'deptree' && <DepTreePanel project={project} reqs={reqs} coverage={coverage} dependencies={dependencies} />}
+        {tab === 'deptree' && <DepTreePanel coverage={coverage} dependencies={dependencies} />}
         {tab === 'triage' && data.triage && <MarkdownPanel content={data.triage} />}
       </div>
     </div>
@@ -162,7 +162,6 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
     if (next.has(idx)) next.delete(idx); else next.add(idx)
     return next
   })
-  const coveredCount = Object.keys(coverage).length
   const totalReqs = reqs.length
   const doneCount = Object.values(coverage).filter(c => DONE_STATUSES.has(c.status)).length
 
@@ -288,7 +287,6 @@ function ACPanel({ reqs, coverage }: {
     if (!isReqDone(r.id, coverage)) return sum
     return sum + (r.acceptance_criteria?.length ?? 0)
   }, 0)
-  const pct = totalAC > 0 ? Math.round((checkedAC / totalAC) * 100) : 0
 
   // Group by domain
   const byDomain = useMemo(() => {
@@ -466,8 +464,6 @@ function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
       <div className="hidden md:block w-44 shrink-0 border-r border-neutral-800 overflow-y-auto">
         {sortedDomains.map(name => {
           const s = domainStats[name]
-          const pct = s && s.total > 0 ? (s.done / s.total) * 100 : 0
-          const allDone = s && s.total > 0 && s.done === s.total
           return (
             <button
               key={name}
@@ -516,7 +512,6 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
 
   const done = domReqs.filter(r => isReqDone(r.id, coverage)).length
   const total = domReqs.length
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   // AC stats
   const totalAC = domReqs.reduce((s, r) => s + (r.acceptance_criteria?.length ?? 0), 0)
@@ -524,7 +519,6 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
     if (!isReqDone(r.id, coverage)) return s
     return s + (r.acceptance_criteria?.length ?? 0)
   }, 0)
-  const acPct = totalAC > 0 ? Math.round((doneAC / totalAC) * 100) : 0
 
   // Source files
   const sources = useMemo(() => {
@@ -711,9 +705,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
 }
 
 /** Dep Tree — builds change-level dependency graph from digest requirement-level dependencies */
-function DepTreePanel({ project, reqs, coverage, dependencies }: {
-  project: string
-  reqs: DigestReq[]
+function DepTreePanel({ coverage, dependencies }: {
   coverage: Record<string, { change: string; status: string }>
   dependencies: Dependency[]
 }) {
@@ -727,7 +719,7 @@ function DepTreePanel({ project, reqs, coverage, dependencies }: {
 
     // Unique changes with status + req count
     const changeMap = new Map<string, { status: string; reqCount: number }>()
-    for (const [reqId, info] of Object.entries(coverage)) {
+    for (const [, info] of Object.entries(coverage)) {
       const existing = changeMap.get(info.change)
       if (!existing) {
         changeMap.set(info.change, { status: info.status, reqCount: 1 })

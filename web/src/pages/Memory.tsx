@@ -129,10 +129,10 @@ export default function Memory({ project }: Props) {
           <div className="bg-neutral-900/50 border border-neutral-800 px-4 py-3 space-y-1">
             {Object.entries(types).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
               const pct = total > 0 ? Math.round((count / total) * 100) : 0
-              const color = type === 'Decision' ? 'text-purple-400' : type === 'Learning' ? 'text-blue-400' : 'text-cyan-400'
+              const typeColor = type === 'Decision' ? 'text-purple-400' : type === 'Learning' ? 'text-blue-400' : 'text-cyan-400'
               return (
                 <div key={type} className="flex items-center gap-3 text-sm">
-                  <span className="text-neutral-400 w-20">{type}</span>
+                  <span className={`w-20 ${typeColor}`}>{type}</span>
                   <TuiProgress done={count} total={maxType} className="text-sm" />
                   <span className="text-neutral-500 w-10 text-right">{pct}%</span>
                 </div>
