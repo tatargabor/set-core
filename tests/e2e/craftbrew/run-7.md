@@ -59,6 +59,14 @@
 
 5. **Token counter not updating** — Several changes showed tokens=0 throughout their lifecycle despite active implementation. The monitor's token tracking relies on the agent loop completion event, which doesn't fire during artifact creation phase.
 
+### Functional Gap Analysis (post-run audit)
+
+6. **Decomposer narrows scope to one example** — The `product-catalog-list` change scope correctly states "browse products across categories (coffees, equipment, merch, bundles)" but the artifact creation agent generated tasks only for `/coffees/page.tsx`. The other 3 category listing pages were never tasked. The agent treats the first category as representative and considers the scope done. **Fix:** `web-route-completeness-rules` change — Pattern A (Category Listing Completeness) review rule.
+
+7. **Phantom task completion (returns flow)** — The `cart-checkout` change has return-request tasks (8.1–8.3, 9.2, 10.6) marked `[x]` done in tasks.md, but `src/app/api/returns/route.ts` and the return request UI don't exist. The agent marked tasks complete without creating the referenced files. The verify gate checks task checkboxes, not file existence. **Fix:** `web-route-completeness-rules` change — Pattern C (Task-File Correlation) review rule + verification rule in set-project-web.
+
+8. **Admin page gaps** — Spec mentions admin management for returns but no `/admin/returns/page.tsx` exists. Same pattern as storefront category gaps but in the admin subtree. **Fix:** `web-route-completeness-rules` change — Pattern D (Admin Resource Completeness).
+
 ### Conclusions
 1. **14/14 merged — massive improvement over Run #6 (8/15).** The verify/merge pipeline fixes (review rules, merge heartbeats, review diff prioritization) from the 11 commits since Run #6 made a huge difference.
 2. **Bug #31 and #32 were the key blockers.** Both were integration merge issues — the new integrate-then-verify pipeline exposed git edge cases (no remote, dirty files) that the old merge-on-main path didn't hit.

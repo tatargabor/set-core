@@ -91,6 +91,10 @@ class NullProfile:
                 "keywords": ["database", "query", "migration", "schema", "model", "prisma", "drizzle"],
                 "globs": ["web/security-patterns.md"],
             },
+            "catalog": {
+                "keywords": ["catalog", "listing", "category", "browse", "product list", "page.tsx", "grid"],
+                "globs": ["web/route-completeness.md"],
+            },
         }
 
     @property
