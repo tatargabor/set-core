@@ -504,8 +504,20 @@ export interface ReflectionsData {
   with_reflection: number
 }
 
+export interface TimelineIteration {
+  n: number
+  started: string
+  ended: string
+  state: string
+  commits: number
+  tokens_used: number
+  timed_out: boolean
+  no_op: boolean
+}
+
 export interface ChangeTimelineData {
   transitions: { ts: string; from: string; to: string }[]
+  iterations: TimelineIteration[]
   duration_ms: number
   current_gate_results: Record<string, string | number>
 }

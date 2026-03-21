@@ -2357,8 +2357,9 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
         except (ValueError, TypeError):
             pass
 
-    # Current gate results from state
+    # Current gate results + worktree path from state
     current_gate_results: dict = {}
+    worktree_path: str = ""
     state_file = project_path / "orchestration-state.json"
     if state_file.exists():
         try:
@@ -2370,12 +2371,47 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                         val = change.get(field)
                         if val is not None:
                             current_gate_results[field] = val
+                    worktree_path = change.get("worktree_path", "")
                     break
         except (json.JSONDecodeError, OSError):
             pass
 
+    # Read iteration data from loop-state.json
+    iterations_out: list[dict] = []
+    if worktree_path:
+        loop_state_file = Path(worktree_path) / ".set" / "loop-state.json"
+        if loop_state_file.exists():
+            try:
+                with open(loop_state_file) as f:
+                    ls = json.load(f)
+                raw_iters = ls.get("iterations", [])
+                if isinstance(raw_iters, list):
+                    # Assign state to each iteration from transitions
+                    for it in raw_iters:
+                        it_started = it.get("started", "")
+                        state = "running"  # sensible default
+                        for t in transitions:
+                            if t["ts"] <= it_started:
+                                state = t["to"]
+                            else:
+                                break
+                        commits = it.get("commits", [])
+                        iterations_out.append({
+                            "n": it.get("n", 0),
+                            "started": it_started,
+                            "ended": it.get("ended", ""),
+                            "state": state,
+                            "commits": len(commits) if isinstance(commits, list) else 0,
+                            "tokens_used": it.get("tokens_used", 0),
+                            "timed_out": bool(it.get("timed_out", False)),
+                            "no_op": bool(it.get("no_op", False)),
+                        })
+            except (json.JSONDecodeError, OSError):
+                pass
+
     return {
         "transitions": transitions,
+        "iterations": iterations_out,
         "duration_ms": duration_ms,
         "current_gate_results": current_gate_results,
     }
