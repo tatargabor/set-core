@@ -6,21 +6,7 @@ interface Props {
   changeName: string
 }
 
-const STATE_COLORS: Record<string, string> = {
-  pending: 'bg-neutral-700 text-neutral-300',
-  running: 'bg-blue-800 text-blue-200',
-  dispatched: 'bg-blue-700 text-blue-200',
-  verify: 'bg-yellow-800 text-yellow-200',
-  verifying: 'bg-yellow-800 text-yellow-200',
-  'merge-queue': 'bg-purple-800 text-purple-200',
-  merged: 'bg-green-800 text-green-200',
-  done: 'bg-green-800 text-green-200',
-  failed: 'bg-red-800 text-red-200',
-  'merge-blocked': 'bg-red-700 text-red-200',
-  stopped: 'bg-neutral-600 text-neutral-300',
-}
-
-// Just the bg class for iteration blocks (no text color needed for small dots)
+// Background color for timeline blocks
 const STATE_BG: Record<string, string> = {
   pending: 'bg-neutral-500',
   running: 'bg-blue-500',
@@ -135,32 +121,58 @@ function IterationTimeline({ iterations }: { iterations: TimelineIteration[] }) 
 }
 
 function TransitionTimeline({ transitions }: { transitions: ChangeTimelineData['transitions'] }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+
   return (
-    <div className="flex items-center gap-1 overflow-x-auto pb-2">
-      {transitions.map((t, i) => {
-        const isFail = t.to === 'failed' || t.to === 'merge-blocked'
-        let stepDuration = ''
-        if (i < transitions.length - 1) {
-          try {
-            const curr = new Date(t.ts).getTime()
-            const next = new Date(transitions[i + 1].ts).getTime()
-            const diffMs = next - curr
-            if (diffMs > 0) stepDuration = formatDuration(diffMs)
-          } catch { /* ignore */ }
-        }
-        return (
-          <div key={i} className="flex items-center gap-1 shrink-0">
-            {i > 0 && (
-              <span className={`text-sm ${isFail ? 'text-red-500' : 'text-neutral-600'}`}>{'\u2192'}</span>
-            )}
-            <div className={`px-2 py-1 rounded text-xs ${STATE_COLORS[t.to] ?? 'bg-neutral-800 text-neutral-400'} ${isFail ? 'ring-1 ring-red-500/50' : ''}`}>
-              <div className="font-medium">{t.to}</div>
-              <div className="text-[10px] opacity-70">{formatTime(t.ts)}</div>
-              {stepDuration && <div className="text-[10px] opacity-50">{stepDuration}</div>}
+    <div className="relative">
+      <div className="flex items-center gap-0.5 flex-wrap pb-2">
+        {transitions.map((t, i) => {
+          const prevState = i > 0 ? transitions[i - 1].to : null
+          const stateChanged = prevState !== null && prevState !== t.to
+
+          let stepDurationMs = 0
+          if (i < transitions.length - 1) {
+            try {
+              stepDurationMs = new Date(transitions[i + 1].ts).getTime() - new Date(t.ts).getTime()
+            } catch { /* ignore */ }
+          }
+
+          return (
+            <div key={i} className="flex items-center gap-0.5 shrink-0">
+              {stateChanged && (
+                <div className="flex flex-col items-center mx-1">
+                  <div className="text-[9px] text-neutral-500 leading-none mb-0.5">{t.to}</div>
+                  <div className="w-px h-4 bg-neutral-600" />
+                </div>
+              )}
+              {i === 0 && (
+                <div className="flex flex-col items-center mr-1">
+                  <div className="text-[9px] text-neutral-500 leading-none mb-0.5">{t.to}</div>
+                  <div className="w-px h-4 bg-neutral-600" />
+                </div>
+              )}
+              <div
+                className="relative"
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
+              >
+                <div
+                  className={`w-5 h-5 rounded-sm cursor-default ${STATE_BG[t.to] ?? 'bg-neutral-500'} ${(t.to === 'failed' || t.to === 'merge-blocked') ? 'ring-1 ring-red-500/60' : ''}`}
+                  title={t.to}
+                />
+                {hoveredIdx === i && (
+                  <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1.5 bg-neutral-900 border border-neutral-700 rounded shadow-lg text-xs text-neutral-200 whitespace-nowrap pointer-events-none">
+                    <div className="font-medium">{t.to}</div>
+                    {t.from && <div className="text-neutral-400">From: {t.from}</div>}
+                    <div className="text-[10px] text-neutral-500 mt-0.5">{formatTime(t.ts)}</div>
+                    {stepDurationMs > 0 && <div className="text-neutral-400">Duration: {formatDuration(stepDurationMs)}</div>}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }
