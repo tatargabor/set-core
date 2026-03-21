@@ -1583,6 +1583,73 @@ def _save_domain_plans(
     logger.info("Saved domain plans to %s", domains_file)
 
 
+def _try_domain_parallel_decompose(
+    digest_dir: str,
+    state_path: str,
+    test_infra_context: str,
+    design_context: str,
+    model: str,
+    max_parallel: int,
+    replan_ctx: dict | None,
+    team_mode: bool,
+) -> dict | None:
+    """Try the 3-phase domain-parallel decompose. Returns plan_data or raises."""
+    logger.info("Using domain-parallel decompose pipeline")
+
+    domain_data = _load_domain_data(digest_dir)
+
+    # Gather existing specs summary
+    existing_specs = ""
+    try:
+        specs_dir = os.path.join(os.getcwd(), "openspec", "specs")
+        if os.path.isdir(specs_dir):
+            spec_names = [d.name for d in Path(specs_dir).iterdir() if d.is_dir()]
+            if spec_names:
+                existing_specs = "Existing specs: " + ", ".join(sorted(spec_names))
+    except Exception:
+        pass
+
+    # Coverage info
+    coverage_info = ""
+    try:
+        from .digest import check_coverage_gaps
+        coverage_info = check_coverage_gaps(state_path, digest_dir) if state_path else ""
+    except Exception:
+        pass
+
+    # Phase 1: Planning Brief
+    planning_brief = _phase1_planning_brief(
+        domain_data,
+        test_infra_context=test_infra_context,
+        existing_specs=existing_specs,
+        model=model,
+        max_parallel=max_parallel,
+    )
+
+    # Phase 2: Domain Decompose (parallel)
+    domain_plans = _phase2_parallel_decompose(
+        domain_data,
+        planning_brief,
+        test_infra_context=test_infra_context,
+        design_context=design_context,
+        model=model,
+        max_parallel=max_parallel,
+    )
+
+    # Save domain plans for selective replan
+    _save_domain_plans(planning_brief, domain_plans)
+
+    # Phase 3: Merge & Resolve
+    return _phase3_merge_plans(
+        domain_plans,
+        planning_brief,
+        domain_data,
+        coverage_info=coverage_info,
+        replan_ctx=replan_ctx,
+        model=model,
+    )
+
+
 # ─── Planning Pipeline ────────────────────────────────────────────────
 
 
@@ -1685,65 +1752,34 @@ def run_planning_pipeline(
 
     # 5. Domain-parallel decompose (digest mode) or single-call (brief/spec)
     if input_mode == "digest":
-        # ── 3-Phase Domain-Parallel Pipeline ──
-        logger.info("Using domain-parallel decompose pipeline")
-
-        # Load structured domain data from digest
-        domain_data = _load_domain_data(digest_dir)
-
-        # Gather existing specs summary
-        existing_specs = ""
+        # Try domain-parallel pipeline, fall back to single-call on failure
+        plan_data = None
         try:
-            from .root import SET_TOOLS_ROOT
-            specs_dir = os.path.join(os.getcwd(), "openspec", "specs")
-            if os.path.isdir(specs_dir):
-                spec_names = [d.name for d in Path(specs_dir).iterdir() if d.is_dir()]
-                if spec_names:
-                    existing_specs = "Existing specs: " + ", ".join(sorted(spec_names))
-        except Exception:
-            pass
+            plan_data = _try_domain_parallel_decompose(
+                digest_dir, state_path, test_infra_context, design_context,
+                model, max_parallel, replan_ctx, team_mode,
+            )
+        except Exception as e:
+            logger.warning("Domain-parallel decompose failed (%s) — falling back to single-call", e)
 
-        # Coverage info
-        coverage_info = ""
-        try:
-            from .digest import check_coverage_gaps
-            coverage_info = check_coverage_gaps(state_path, digest_dir) if state_path else ""
-        except Exception:
-            pass
-
-        # Phase 1: Planning Brief
-        planning_brief = _phase1_planning_brief(
-            domain_data,
-            test_infra_context=test_infra_context,
-            existing_specs=existing_specs,
-            active_changes="",
-            memory_context="",
-            model=model,
-            max_parallel=max_parallel,
-        )
-
-        # Phase 2: Domain Decompose (parallel)
-        domain_plans = _phase2_parallel_decompose(
-            domain_data,
-            planning_brief,
-            test_infra_context=test_infra_context,
-            design_context=design_context,
-            model=model,
-            max_parallel=max_parallel,
-        )
-
-        # Save domain plans for selective replan
-        _save_domain_plans(planning_brief, domain_plans)
-
-        # Phase 3: Merge & Resolve
-        plan_data = _phase3_merge_plans(
-            domain_plans,
-            planning_brief,
-            domain_data,
-            coverage_info=coverage_info,
-            replan_ctx=replan_ctx,
-            model=model,
-        )
+        if plan_data is None:
+            # Fallback: single-call decompose (same path as brief/spec mode)
+            logger.info("Using single-call decompose fallback for digest mode")
+            context = build_decomposition_context(
+                input_mode, input_path,
+                replan_ctx=replan_ctx,
+                design_context=design_context,
+                test_infra_context=test_infra_context,
+                team_mode=team_mode,
+            )
+            from .templates import render_planning_prompt
+            prompt = render_planning_prompt(**context)
+            result = run_claude(prompt, timeout=1800, model=model, extra_args=["--max-turns", "10"])
+            if result.exit_code != 0:
+                raise RuntimeError(f"Claude decomposition failed (exit {result.exit_code})")
+            plan_data = _parse_plan_response(result.stdout)
+            if not plan_data:
+                raise RuntimeError("Could not parse decomposition response")
     else:
         # ── Single-call flow for brief/spec mode ──
         context = build_decomposition_context(
