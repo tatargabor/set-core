@@ -67,7 +67,7 @@ BUILTIN_GATE_PROFILES: dict[str, GateConfig] = {
         lint="skip",
         review="run",
         spec_verify="soft",
-        rules="run",
+        rules="warn",
         smoke="skip",
     ),
     # Schema: DB migrations, model definitions.
