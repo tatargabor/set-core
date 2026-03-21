@@ -439,6 +439,9 @@ def merge_change(
         # Post-merge custom command
         _post_merge_custom_command(state_file)
 
+        # Post-merge plugin directives
+        _run_plugin_post_merge_directives(change_name)
+
         # Post-merge i18n sidecar merge
         sidecar_count = merge_i18n_sidecars(".")
         if sidecar_count > 0:
@@ -834,6 +837,32 @@ def _post_merge_custom_command(state_file: str) -> None:
         logger.info("Post-merge: custom command succeeded")
     else:
         logger.warning("Post-merge: custom command failed (rc=%d)", result.exit_code)
+
+
+def _run_plugin_post_merge_directives(change_name: str) -> None:
+    """Run post-merge commands from plugin orchestration directives."""
+    try:
+        from .profile_loader import load_profile, NullProfile
+        profile = load_profile()
+        if isinstance(profile, NullProfile):
+            return
+        directives = profile.get_orchestration_directives()
+        for d in directives:
+            if getattr(d, "action", "") != "post-merge":
+                continue
+            trigger = getattr(d, "trigger", "")
+            if trigger and trigger.lower() not in change_name.lower():
+                continue
+            config = getattr(d, "config", {}) or {}
+            cmd = config.get("command", "")
+            if not cmd:
+                continue
+            logger.info("Plugin post-merge directive: running '%s' for %s", cmd, change_name)
+            result = run_command(["bash", "-c", cmd], timeout=300)
+            if result.exit_code != 0:
+                logger.warning("Plugin post-merge command failed (rc=%d): %s", result.exit_code, cmd)
+    except Exception:
+        logger.debug("Plugin post-merge directives failed (non-critical)", exc_info=True)
 
 
 def _post_merge_build_check(change_name: str, state_file: str) -> bool:

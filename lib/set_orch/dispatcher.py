@@ -1605,6 +1605,51 @@ def dispatch_via_wt_loop(
     return True
 
 
+def _load_serialize_triggers() -> list[str]:
+    """Load serialize trigger patterns from plugin orchestration directives."""
+    try:
+        from .profile_loader import load_profile, NullProfile
+        profile = load_profile()
+        if isinstance(profile, NullProfile):
+            return []
+        directives = profile.get_orchestration_directives()
+        return [
+            getattr(d, "trigger", "")
+            for d in directives
+            if getattr(d, "action", "") == "serialize" and getattr(d, "trigger", "")
+        ]
+    except Exception:
+        return []
+
+
+def _is_serialized(name: str, state: Any, triggers: list[str]) -> bool:
+    """Check if a change matches a serialize trigger and another match is running."""
+    from .loop_state import Change
+    change = None
+    for c in state.changes:
+        if c.name == name:
+            change = c
+            break
+    if not change:
+        return False
+
+    scope = (change.scope or "").lower()
+    change_matches = any(t.lower() in scope or t.lower() in name.lower() for t in triggers)
+    if not change_matches:
+        return False
+
+    # Check if any running change also matches
+    for c in state.changes:
+        if c.name == name:
+            continue
+        if c.status not in ("running", "dispatched"):
+            continue
+        c_scope = (c.scope or "").lower()
+        if any(t.lower() in c_scope or t.lower() in c.name.lower() for t in triggers):
+            return True
+    return False
+
+
 def dispatch_ready_changes(
     state_path: str,
     max_parallel: int,
@@ -1654,11 +1699,20 @@ def dispatch_ready_changes(
             (_find_change(state, n) or Change()).complexity, 1
         ))
 
+    # Load plugin serialize directives
+    serialize_triggers = _load_serialize_triggers()
+
     # Dispatch in priority order
     dispatched = 0
     for name in ready_names:
         if running >= max_parallel:
             break
+
+        # Check serialize directives — skip if a matching change is already running
+        if serialize_triggers and _is_serialized(name, state, serialize_triggers):
+            logger.info("Serialize directive: deferring %s (matching change already running)", name)
+            continue
+
         dispatch_change(
             state_path, name,
             default_model=default_model,
