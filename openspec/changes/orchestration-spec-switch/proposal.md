@@ -48,7 +48,24 @@ git branch --merged main | grep 'change/' | xargs git branch -d
 
 Unmerged branches (from partial runs) are preserved — the user may want to salvage work from them.
 
-### 5. `--fresh` flag
+### 5. Change name dedup on dispatch
+
+When dispatching new changes, check for existing `change/<name>` branches and worktrees:
+
+```
+Dispatcher creates worktree for "product-catalog-list":
+  1. Check: does branch change/product-catalog-list exist?
+  2. If YES: append suffix → change/product-catalog-list-2
+  3. Check: does worktree path -wt-product-catalog-list exist?
+  4. If YES: append suffix → -wt-product-catalog-list-2
+  5. Update state with the actual branch/worktree name used
+```
+
+This handles the common case where the old run had a change with the same name (e.g., `product-catalog-list` in v1 run, and a gap-fix spec also generates `product-catalog-list`). The dedup ensures no branch or worktree collisions.
+
+**Where**: `lib/set_orch/dispatcher.py` — worktree creation logic.
+
+### 6. `--fresh` flag
 
 For re-running the same spec with identical content:
 ```bash
@@ -67,6 +84,7 @@ All spec-switch logic lives in `set-sentinel` (bash layer):
 | Sentinel | `bin/set-sentinel` | `clean_old_worktrees()`: handle `orch/*` tag deletion on spec-switch |
 | State init | `lib/orchestration/state.sh` | Ensure `brief_hash` + `input_path` written on fresh start |
 | Python state | `lib/set_orch/state.py` | Ensure `brief_hash` preserved on Python state writes |
+| Dispatcher | `lib/set_orch/dispatcher.py` | Change name dedup: suffix if branch/worktree already exists |
 
 **NOT in Python engine** — the engine doesn't need spec-switch awareness. It receives a clean state from the sentinel.
 
