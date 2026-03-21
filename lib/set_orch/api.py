@@ -2414,6 +2414,13 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                     stop_gate = data.get("stop_gate", "")
                     if stop_gate:
                         current["gates"][stop_gate] = "fail"
+                        # Infer gates that passed before the stop gate
+                        gate_order = ["build", "test", "e2e", "review", "smoke"]
+                        for g in gate_order:
+                            if g == stop_gate:
+                                break
+                            if g not in current["gates"]:
+                                current["gates"][g] = "pass"
                     current["state"] = "retry"
                     sessions.append(current)
                     # New session starts from the retry point
