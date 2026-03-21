@@ -549,13 +549,13 @@ cmd_reset() {
                 # Archive by copying state+events+coverage to timestamped dir
                 local _ts _archive_dir
                 _ts=$(date -u +"%Y-%m-%dT%H-%M-%S")
-                _archive_dir="wt/orchestration/runs/$_ts"
+                _archive_dir="${WT_RUNS_DIR:-wt/orchestration/runs}/$_ts"
                 mkdir -p "$_archive_dir"
                 cp "$STATE_FILENAME" "$_archive_dir/state.json" 2>/dev/null || true
                 local _events="${STATE_FILENAME%orchestration-state.json}orchestration-state-events.jsonl"
                 [[ -f "$_events" ]] && cp "$_events" "$_archive_dir/events.jsonl"
-                [[ -f "wt/orchestration/digest/coverage.json" ]] && cp "wt/orchestration/digest/coverage.json" "$_archive_dir/coverage.json"
-                [[ -f "wt/orchestration/review-findings.jsonl" ]] && cp "wt/orchestration/review-findings.jsonl" "$_archive_dir/review-findings.jsonl"
+                [[ -f "${WT_DIGEST_DIR:-wt/orchestration/digest}/coverage.json" ]] && cp "${WT_DIGEST_DIR:-wt/orchestration/digest}/coverage.json" "$_archive_dir/coverage.json"
+                [[ -f "${WT_ORCHESTRATION_DIR:-wt/orchestration}/review-findings.jsonl" ]] && cp "${WT_ORCHESTRATION_DIR:-wt/orchestration}/review-findings.jsonl" "$_archive_dir/review-findings.jsonl"
                 echo "Archived previous run to $_archive_dir"
             fi
         fi

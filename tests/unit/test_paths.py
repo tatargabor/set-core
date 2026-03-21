@@ -19,7 +19,7 @@ class TestWtRuntimePaths:
         self.rt = SetRuntime(project_name="test-project")
 
     def test_root_path(self):
-        assert self.rt.root.endswith("set-core/test-project")
+        assert self.rt.root.endswith("set-core/runtime/test-project")
 
     def test_project_name(self):
         assert self.rt.project_name == "test-project"
@@ -122,7 +122,7 @@ class TestWtRuntimeAgentPaths:
 
     def test_agent_dir(self):
         path = SetRuntime.agent_dir("/tmp/my-worktree")
-        assert path == "/tmp/my-worktree/.wt"
+        assert path == "/tmp/my-worktree/.set"
 
     def test_agent_loop_state(self):
         path = SetRuntime.agent_loop_state("/tmp/wt")
@@ -160,7 +160,7 @@ class TestXDGOverride:
         reload(paths_mod)
 
         rt = paths_mod.SetRuntime(project_name="proj")
-        assert rt.root == "/custom/data/set-core/proj"
+        assert rt.root == "/custom/data/set-core/runtime/proj"
 
         # Restore
         monkeypatch.delenv("XDG_DATA_HOME", raising=False)

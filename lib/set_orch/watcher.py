@@ -85,6 +85,16 @@ class ProjectWatcher:
         self.log_tailer = LogTailer(self.log_path)
 
     def _find_state(self) -> Path:
+        # Try shared runtime dir first (SetRuntime)
+        try:
+            from .paths import SetRuntime
+            rt = SetRuntime(str(self.project_path))
+            runtime_state = Path(rt.state_file)
+            if runtime_state.exists():
+                return runtime_state
+        except Exception:
+            pass
+        # Fallback: project-local paths
         new = self.project_path / "wt" / "orchestration" / "orchestration-state.json"
         if new.exists():
             return new
@@ -94,6 +104,16 @@ class ProjectWatcher:
         return new  # default
 
     def _find_log(self) -> Path:
+        # Try shared runtime dir first (SetRuntime)
+        try:
+            from .paths import SetRuntime
+            rt = SetRuntime(str(self.project_path))
+            runtime_log = Path(rt.orchestration_log)
+            if runtime_log.exists():
+                return runtime_log
+        except Exception:
+            pass
+        # Fallback: project-local paths
         new = self.project_path / "wt" / "orchestration" / "orchestration.log"
         if new.exists():
             return new

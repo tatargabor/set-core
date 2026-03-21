@@ -53,7 +53,7 @@ def build_audit_prompt(
     cycle: int = 1,
     input_mode: str = "spec",
     input_path: str = "",
-    digest_dir: str = "wt/orchestration/digest",
+    digest_dir: str = "",
 ) -> dict[str, Any]:
     """Collect merged changes with scopes and file lists for audit.
 
@@ -67,6 +67,12 @@ def build_audit_prompt(
     Returns:
         Dict suitable for template rendering.
     """
+    if not digest_dir:
+        try:
+            from .paths import SetRuntime
+            digest_dir = SetRuntime().digest_dir
+        except Exception:
+            digest_dir = "wt/orchestration/digest"
     changes = state.get("changes", [])
 
     # Collect merged changes

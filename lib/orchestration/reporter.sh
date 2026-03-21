@@ -6,7 +6,7 @@
 # Migrated to: lib/set_orch/reporter.py + lib/set_orch/templates/report.html.j2
 # All render_* functions replaced by Python Jinja2 template rendering.
 
-REPORT_OUTPUT_PATH="wt/orchestration/report.html"
+REPORT_OUTPUT_PATH="${WT_ORCHESTRATION_DIR:-wt/orchestration}/report.html"
 
 # ─── Entry Point ────────────────────────────────────────────────────
 

@@ -89,7 +89,17 @@ class SetRuntime:
             project_name: Explicit project name. Overrides project_path resolution.
         """
         self._project_name = project_name or resolve_project_name(project_path)
-        self.root = os.path.join(SET_TOOLS_DATA_DIR, self._project_name)
+        self.root = os.path.join(SET_TOOLS_DATA_DIR, "runtime", self._project_name)
+
+        # Auto-migrate legacy runtime dir (pre-runtime/ subdirectory)
+        old_root = os.path.join(SET_TOOLS_DATA_DIR, self._project_name)
+        if os.path.isdir(old_root) and not os.path.isdir(self.root):
+            import shutil
+            os.makedirs(os.path.dirname(self.root), exist_ok=True)
+            try:
+                shutil.move(old_root, self.root)
+            except OSError:
+                pass  # Migration best-effort; old path still works
 
     @property
     def project_name(self) -> str:

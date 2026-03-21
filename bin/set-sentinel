@@ -275,17 +275,17 @@ archive_previous_run() {
 
     local ts
     ts=$(date -u +"%Y-%m-%dT%H-%M-%S")
-    local archive_dir="wt/orchestration/runs/$ts"
+    local archive_dir="${WT_RUNS_DIR:-wt/orchestration/runs}/$ts"
     mkdir -p "$archive_dir"
 
     # Copy per-run artifacts
     [[ -f "$STATE_FILE" ]] && cp "$STATE_FILE" "$archive_dir/state.json"
     [[ -f "$EVENTS_FILE" ]] && cp "$EVENTS_FILE" "$archive_dir/events.jsonl"
-    local coverage_file="wt/orchestration/digest/coverage.json"
+    local coverage_file="${WT_DIGEST_DIR:-wt/orchestration/digest}/coverage.json"
     [[ -f "$coverage_file" ]] && cp "$coverage_file" "$archive_dir/coverage.json"
-    local findings_file="wt/orchestration/review-findings.jsonl"
+    local findings_file="${WT_ORCHESTRATION_DIR:-wt/orchestration}/review-findings.jsonl"
     [[ -f "$findings_file" ]] && cp "$findings_file" "$archive_dir/review-findings.jsonl"
-    local findings_summary="wt/orchestration/review-findings-summary.md"
+    local findings_summary="${WT_ORCHESTRATION_DIR:-wt/orchestration}/review-findings-summary.md"
     [[ -f "$findings_summary" ]] && cp "$findings_summary" "$archive_dir/review-findings-summary.md"
     local state_archive
     state_archive="${STATE_FILE%.json}-archive.jsonl"
@@ -353,8 +353,8 @@ reset_for_spec_switch() {
     rm -f "orchestrator.lock"
 
     # 5. Remove ENTIRE digest (spec changed = regenerate everything including requirements)
-    rm -rf "wt/orchestration/digest"
-    rm -f "wt/orchestration/plan.json"
+    rm -rf "${WT_DIGEST_DIR:-wt/orchestration/digest}"
+    rm -f "${WT_ORCHESTRATION_DIR:-wt/orchestration}/plan.json"
 
     # 6. Rotate log
     "$SCRIPT_DIR/set-sentinel-rotate" >/dev/null 2>&1 || true
