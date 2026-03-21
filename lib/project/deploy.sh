@@ -186,7 +186,17 @@ _deploy_skills() {
                 local dir_part
                 dir_part=$(dirname "$rel_path")
                 [[ "$dir_part" == gui ]] && continue  # gui/ rules are for set-core' own GUI, not consumer projects
-                [[ "$dir_part" == web ]] && continue  # web/ rules come from set-project-web templates, not set-core
+                # web/ rules: deploy only if project type is 'web'
+                if [[ "$dir_part" == web ]]; then
+                    local pt_yaml="$project_path/wt/plugins/project-type.yaml"
+                    if [[ -f "$pt_yaml" ]]; then
+                        local pt_type
+                        pt_type=$(grep '^type:' "$pt_yaml" 2>/dev/null | awk '{print $2}')
+                        [[ "$pt_type" != "web" ]] && continue
+                    else
+                        continue  # no project type configured, skip web rules
+                    fi
+                fi
                 local base_name
                 base_name=$(basename "$rel_path")
                 local dst_dir="$dst_rules"
