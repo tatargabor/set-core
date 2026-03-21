@@ -397,9 +397,16 @@ Manual tasks — flag changes that require human intervention:
 - Examples: "integrate Stripe payments" (needs API key), "set up Firebase auth" (needs project creation), "configure custom domain" (needs DNS records)
 - When false or omitted, all tasks are assumed automatable
 
+CHANGE GROUPING RULES:
+- Group related items (same domain, same directory, same feature area) into ONE change.
+- Small bugfixes (S-complexity) in the same area MUST be bundled into a single M-complexity change.
+- Name grouped changes by domain ("frontend-page-fixes") NOT by individual bug ("fix-product-detail-500").
+- Each change should represent 30-90 min of agent work, not 5-min micro-fixes.
+- Target: {max_parallel} × 2 changes (= {max_change_target} changes). Going over wastes merge/verify overhead; going under wastes parallelism.
+
 CRITICAL — Output size constraint:
 - Your ENTIRE JSON response MUST fit in a SINGLE message. You will NOT get a second turn.
-- MAX 15 changes. If the spec requires more, merge related changes aggressively.
+- MAX {max_change_target} changes (you have {max_parallel} parallel agents). Merge related changes aggressively.
 - Keep scope text concise (800-1500 chars). Do NOT pad with implementation details.
 - Keep reasoning to 2-3 sentences. Keep phase_detected to 1 sentence.
 - Do NOT split your response across messages."""
@@ -505,6 +512,7 @@ def render_planning_prompt(
     coverage_info: str = "",
     design_context: str = "",
     team_mode: bool = False,
+    max_parallel: int = 3,
 ) -> str:
     """Render planning prompt for Claude decomposition.
 
@@ -531,8 +539,11 @@ def render_planning_prompt(
     if replan_ctx is None:
         replan_ctx = {}
 
-    # Assemble planning rules from core + profile
+    # Assemble planning rules from core + profile, with max_parallel context
+    max_change_target = max_parallel * 2
     _PLANNING_RULES = _get_planning_rules()
+    _PLANNING_RULES = _PLANNING_RULES.replace("{max_parallel}", str(max_parallel))
+    _PLANNING_RULES = _PLANNING_RULES.replace("{max_change_target}", str(max_change_target))
 
     # Build optional sections
     sections = []

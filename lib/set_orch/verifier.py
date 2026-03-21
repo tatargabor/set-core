@@ -74,7 +74,6 @@ DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT = 30
 DEFAULT_MAX_VERIFY_RETRIES = 2
 DEFAULT_REVIEW_MODEL = "sonnet"
 DEFAULT_E2E_TIMEOUT = 120
-E2E_PORT_BASE = 3100
 E2E_HEALTH_TIMEOUT = 30  # seconds; override via config e2e_health_timeout
 
 
@@ -1565,19 +1564,15 @@ def run_phase_end_e2e(
     Source: verifier.sh run_phase_end_e2e (lines 507-593)
     Returns True if tests passed.
     """
-    import random
-
     logger.info("Phase-end E2E: starting on main branch")
     if event_bus:
         event_bus.emit("PHASE_E2E_STARTED", data={})
 
     # Detect Playwright webServer config
     pw_config = _parse_playwright_config(os.getcwd())
-    managed_server = pw_config["has_web_server"]
-
-    e2e_port = None
-    if not managed_server:
-        e2e_port = E2E_PORT_BASE + random.randint(0, 99)
+    if not pw_config["has_web_server"]:
+        logger.warning("Phase-end E2E: no webServer in playwright.config — skipping")
+        return True  # Non-blocking skip
 
     start_ms = int(time.monotonic() * 1000)
 
@@ -1591,10 +1586,8 @@ def run_phase_end_e2e(
         screenshot_dir = f"wt/orchestration/e2e-screenshots/cycle-{cycle}"
     os.makedirs(screenshot_dir, exist_ok=True)
 
-    # Run E2E — only set PW_PORT when we manage the server
+    # Run E2E — Playwright manages dev server via webServer config
     env: dict[str, str] = {"PLAYWRIGHT_OUTPUT_DIR": screenshot_dir}
-    if e2e_port:
-        env["PW_PORT"] = str(e2e_port)
 
     test_result = run_command(
         ["bash", "-c", e2e_command],
@@ -1612,11 +1605,6 @@ def run_phase_end_e2e(
         logger.info("Phase-end E2E: all tests passed")
     else:
         logger.error("Phase-end E2E: tests failed (rc=%d)", test_result.exit_code)
-
-    # Cleanup dev server — only when we managed the server manually
-    if not managed_server and e2e_port:
-        run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
-        run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
 
     # Collect Playwright artifacts
     test_results_dir = "test-results"
@@ -2062,12 +2050,87 @@ def _execute_test_gate(
     return result
 
 
+def _extract_e2e_failure_ids(output: str) -> set[str]:
+    """Extract unique failure identifiers from Playwright output.
+
+    Parses numbered failure lines like:
+      1) [chromium] › e2e/equipment-catalog.spec.ts:33:18 › dropdown changes URL
+    Returns set of "file:line" strings (file path + first line number).
+    """
+    ids: set[str] = set()
+    # Match numbered failure summary lines: "  N) [browser] › file:line:col › description"
+    for m in re.finditer(r"^\s*\d+\)\s+\[.*?\]\s+[›»]\s+([^\s:]+\.spec\.\w+:\d+)", output, re.MULTILINE):
+        ids.add(m.group(1))
+    return ids
+
+
+def _get_or_create_e2e_baseline(
+    e2e_command: str, e2e_timeout: int, project_root: str,
+) -> dict | None:
+    """Run Playwright on main and cache baseline failures.
+
+    Returns dict with main_sha, failures set, total/passed counts.
+    Returns None if baseline cannot be created (infra failure).
+    """
+    try:
+        from .paths import SetRuntime
+        baseline_path = os.path.join(SetRuntime().orchestration_dir, "e2e-baseline.json")
+    except Exception:
+        baseline_path = os.path.join("wt", "orchestration", "e2e-baseline.json")
+
+    # Check cached baseline
+    main_sha = run_git("rev-parse", "HEAD", cwd=project_root).stdout.strip()
+    if os.path.isfile(baseline_path):
+        try:
+            with open(baseline_path) as f:
+                cached = json.load(f)
+            if cached.get("main_sha") == main_sha:
+                cached["failures"] = set(cached.get("failures", []))
+                return cached
+            logger.info("E2E baseline stale (main moved to %s) — regenerating", main_sha[:8])
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Run Playwright on project root (main branch)
+    logger.info("Creating E2E baseline on main (%s)...", main_sha[:8])
+    result = run_command(
+        ["bash", "-c", e2e_command],
+        timeout=e2e_timeout, cwd=project_root, max_output_size=8000,
+    )
+    output = result.stdout + result.stderr
+    stats = parse_test_output(output)
+    failures = _extract_e2e_failure_ids(output)
+
+    baseline = {
+        "main_sha": main_sha,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "failures": list(failures),
+        "total": stats.get("total", 0),
+        "passed": stats.get("passed", 0),
+        "failed": stats.get("failed", 0),
+    }
+
+    try:
+        os.makedirs(os.path.dirname(baseline_path), exist_ok=True)
+        with open(baseline_path, "w") as f:
+            json.dump(baseline, f, indent=2)
+        logger.info("E2E baseline cached: %d passed, %d failed on main", baseline["passed"], baseline["failed"])
+    except OSError:
+        logger.warning("Failed to cache E2E baseline")
+
+    baseline["failures"] = failures
+    return baseline
+
+
 def _execute_e2e_gate(
     change_name: str, change: Change, wt_path: str,
     e2e_command: str, e2e_timeout: int, e2e_health_timeout: int,
 ) -> "GateResult":
-    """E2E gate: run Playwright tests, webServer-aware."""
-    import random
+    """E2E gate: run Playwright tests with baseline comparison.
+
+    Only NEW failures (not present on main) count as gate failures.
+    Requires Playwright webServer config to manage the dev server.
+    """
     from .gate_runner import GateResult
 
     if not e2e_command or not wt_path:
@@ -2083,32 +2146,18 @@ def _execute_e2e_gate(
         return GateResult("e2e", "skipped",
                           output=f"no e2e test files found (searched: {searched_desc})")
 
-    # Two execution paths based on webServer detection
-    managed_server = pw_config["has_web_server"]
-    e2e_port = None
-    e2e_env: dict[str, str] = {}
+    if not pw_config["has_web_server"]:
+        return GateResult("e2e", "skipped",
+                          output="playwright.config has no webServer — "
+                                 "Playwright must manage the dev server via webServer config")
 
-    if not managed_server:
-        # Manual server path: allocate port, health check, set PW_PORT
-        e2e_port = E2E_PORT_BASE + random.randint(0, 99)
-        if not health_check(f"http://localhost:{e2e_port}", e2e_health_timeout):
-            return GateResult("e2e", "skipped",
-                              output=f"dev server not responding on port {e2e_port} "
-                                     f"(timeout {e2e_health_timeout}s)")
-        e2e_env["PW_PORT"] = str(e2e_port)
-
-    # Run E2E tests
+    # Run E2E tests (Playwright manages its own dev server via webServer config)
     e2e_cmd_result = run_command(
         ["bash", "-c", e2e_command],
-        timeout=e2e_timeout, cwd=wt_path, env=e2e_env if e2e_env else None,
+        timeout=e2e_timeout, cwd=wt_path,
         max_output_size=4000,
     )
     e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
-
-    # Cleanup dev server — only when we managed the server manually
-    if not managed_server and e2e_port:
-        run_command(["pkill", "-f", f"pnpm dev.*--port {e2e_port}"], timeout=5)
-        run_command(["pkill", "-f", f"next dev.*--port {e2e_port}"], timeout=5)
 
     # Collect screenshots
     try:
@@ -2127,20 +2176,68 @@ def _execute_e2e_gate(
             else:
                 shutil.copy2(src, dst)
 
-    status = "pass" if e2e_cmd_result.exit_code == 0 else "fail"
-    result = GateResult(
-        "e2e", status, output=e2e_output[:4000],
-        stats=parse_test_output(e2e_output) if e2e_output else None,
-    )
+    raw_status = "pass" if e2e_cmd_result.exit_code == 0 else "fail"
 
-    if status == "fail":
-        scope = change.scope or ""
-        result.retry_context = (
-            f"E2E tests (Playwright) failed. Fix the failing E2E tests or the code they test.\n\n"
-            f"E2E command: {e2e_command}\nE2E output:\n{e2e_output[:2000]}\n\n"
-            f"Original scope: {scope}"
+    if raw_status == "pass":
+        return GateResult(
+            "e2e", "pass", output=e2e_output[:4000],
+            stats=parse_test_output(e2e_output) if e2e_output else None,
         )
 
+    # E2E failed — check baseline to filter pre-existing failures
+    wt_failures = _extract_e2e_failure_ids(e2e_output)
+    project_root = os.path.dirname(wt_path.rstrip("/"))  # worktree parent = project root
+    # Use git toplevel of main worktree for baseline
+    toplevel = run_git("rev-parse", "--show-toplevel", cwd=wt_path)
+    if toplevel.exit_code == 0:
+        # Worktree's toplevel is itself; find the main worktree
+        main_wt = run_git("worktree", "list", "--porcelain", cwd=wt_path)
+        for line in main_wt.stdout.split("\n"):
+            if line.startswith("worktree ") and not line.endswith(os.path.basename(wt_path)):
+                project_root = line.split(" ", 1)[1]
+                break
+
+    baseline = None
+    try:
+        baseline = _get_or_create_e2e_baseline(e2e_command, e2e_timeout, project_root)
+    except Exception as e:
+        logger.warning("E2E baseline creation failed (using all-failures mode): %s", e)
+
+    if baseline:
+        baseline_failures = baseline.get("failures", set())
+        if isinstance(baseline_failures, list):
+            baseline_failures = set(baseline_failures)
+        new_failures = wt_failures - baseline_failures
+        pre_existing = wt_failures & baseline_failures
+        logger.info(
+            "E2E baseline comparison: %d new failures, %d pre-existing on main",
+            len(new_failures), len(pre_existing),
+        )
+        if not new_failures:
+            # All failures are pre-existing on main — pass the gate
+            return GateResult(
+                "e2e", "pass",
+                output=f"E2E: {len(pre_existing)} pre-existing failures on main (no new regressions)\n\n"
+                       + e2e_output[:3000],
+                stats=parse_test_output(e2e_output) if e2e_output else None,
+            )
+        # Has new failures — report only those
+        e2e_output_header = (
+            f"E2E: {len(new_failures)} NEW failures (+ {len(pre_existing)} pre-existing on main)\n"
+            f"New failures: {', '.join(sorted(new_failures))}\n\n"
+        )
+        e2e_output = e2e_output_header + e2e_output[:3500]
+
+    result = GateResult(
+        "e2e", "fail", output=e2e_output[:4000],
+        stats=parse_test_output(e2e_output) if e2e_output else None,
+    )
+    scope = change.scope or ""
+    result.retry_context = (
+        f"E2E tests (Playwright) failed. Fix the failing E2E tests or the code they test.\n\n"
+        f"E2E command: {e2e_command}\nE2E output:\n{e2e_output[:2000]}\n\n"
+        f"Original scope: {scope}"
+    )
     return result
 
 

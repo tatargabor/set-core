@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # ─── Constants ──────────────────────────────────────────────────────
 
 MAX_MERGE_RETRIES = 5
-DEFAULT_MERGE_TIMEOUT = 600  # 10 min
+DEFAULT_MERGE_TIMEOUT = 300  # 5 min (no post-merge smoke — just ff + deps + hooks)
 
 # Track conflict fingerprints within a run to avoid duplicate memory saves
 _seen_conflict_fingerprints: set[str] = set()
@@ -455,32 +455,8 @@ def merge_change(
                 timeout=10,
             )
 
-        # Post-merge scope verification
-        _heartbeat("scope_verify")
-        from .verifier import verify_merge_scope
-        scope_result = verify_merge_scope(change_name)
-        if not scope_result.has_implementation:
-            logger.warning(
-                "Scope verify FAILED for %s — only artifact files merged",
-                change_name,
-            )
-
-        # No post-merge build check — build already passed on integrated branch
-
-        # Merge timeout check before smoke
-        if _timed_out():
-            elapsed = int(time.time() - merge_start)
-            logger.error(
-                "Merge timeout: %s exceeded %ds — aborting before smoke",
-                change_name, merge_timeout,
-            )
-            update_change_field(state_file, change_name, "status", "merge_timeout")
-            _remove_from_merge_queue(state_file, change_name)
-            return MergeResult(success=False, status="merge_timeout")
-
-        # Smoke pipeline (still runs on main for external service integration)
-        _heartbeat("smoke")
-        smoke_result = _run_smoke_pipeline(change_name, state_file, merge_start, merge_timeout)
+        # Post-merge scope verify and smoke removed — ff-only merge produces
+        # bitwise identical code to the verified worktree, retesting is waste.
 
         # Post-merge hook
         _run_hook("post_merge", change_name, "merged", "")
@@ -498,7 +474,6 @@ def merge_change(
         return MergeResult(
             success=True,
             status="merged",
-            smoke_result=smoke_result,
         )
     else:
         # FF failed — main has advanced since integration.

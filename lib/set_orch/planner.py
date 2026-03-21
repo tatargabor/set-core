@@ -943,6 +943,17 @@ def build_decomposition_context(
             "Focus decomposition on items matching this phase."
         )
 
+    # Read max_parallel from directives (state file) if available
+    max_parallel = 3  # default
+    try:
+        state_path = os.path.join(os.getcwd(), "orchestration-state.json")
+        if os.path.isfile(state_path):
+            with open(state_path) as _sf:
+                _sd = json.load(_sf)
+            max_parallel = _sd.get("extras", {}).get("directives", {}).get("max_parallel", 3)
+    except Exception:
+        pass
+
     return {
         "input_content": input_content,
         "specs": existing_specs,
@@ -958,6 +969,7 @@ def build_decomposition_context(
         "coverage_info": coverage_info,
         "design_context": design_context,
         "team_mode": team_mode,
+        "max_parallel": max_parallel,
     }
 
 
