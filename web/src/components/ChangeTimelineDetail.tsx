@@ -82,18 +82,22 @@ function SessionBlock({ session }: { session: TimelineSession }) {
       >
         {/* Session block */}
         <div className={`px-2 py-1.5 rounded cursor-default ${bgClass} min-w-[48px]`}>
-          <div className="text-[10px] text-white/80 font-mono text-center">#{session.n}</div>
-          {/* Gate result icons inline */}
+          <div className="text-[10px] text-white/80 font-mono text-center mb-1">#{session.n}</div>
+          {/* Gate result mini-boxes */}
           {gateEntries.length > 0 && (
-            <div className="flex items-center justify-center gap-0.5 mt-0.5">
+            <div className="flex items-center justify-center gap-0.5">
               {gateEntries.map(({ gate, result }) => (
-                <span
+                <div
                   key={gate}
-                  className={`text-[10px] font-bold ${result === 'pass' ? 'text-green-200' : result === 'fail' ? 'text-red-200' : 'text-white/40'}`}
+                  className={`w-4 h-4 rounded-sm flex items-center justify-center text-[8px] font-bold ${
+                    result === 'pass' ? 'bg-green-500 text-white' :
+                    result === 'fail' ? 'bg-red-600 text-white ring-1 ring-red-400' :
+                    'bg-neutral-600 text-neutral-300'
+                  }`}
                   title={`${gate}: ${result}`}
                 >
                   {gate[0].toUpperCase()}
-                </span>
+                </div>
               ))}
             </div>
           )}
