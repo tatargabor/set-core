@@ -2304,14 +2304,18 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
     import glob as _glob
 
     # Find events files (main + rotated archives)
+    # EventBus writes to "orchestration-events.jsonl" (via _make_event_bus in cli.py)
+    # Legacy files may use "orchestration-state-events.jsonl"
     events_files: list[Path] = []
     for base_dir in [project_path, project_path / "wt" / "orchestration"]:
-        main_file = base_dir / "orchestration-state-events.jsonl"
-        if main_file.exists():
-            events_files.append(main_file)
-            # Also grab rotated archives
-            for archive in sorted(_glob.glob(str(base_dir / "orchestration-state-events-*.jsonl"))):
-                events_files.append(Path(archive))
+        for name in ["orchestration-events.jsonl", "orchestration-state-events.jsonl"]:
+            candidate = base_dir / name
+            if candidate.exists():
+                events_files.append(candidate)
+                stem = name.replace(".jsonl", "")
+                for archive in sorted(_glob.glob(str(base_dir / f"{stem}-*.jsonl"))):
+                    events_files.append(Path(archive))
+        if events_files:
             break
 
     if not events_files:
