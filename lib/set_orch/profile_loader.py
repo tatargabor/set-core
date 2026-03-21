@@ -1,171 +1,171 @@
 """Load project-type profile for orchestration engine integration.
 
 Reads wt/plugins/project-type.yaml to find the active project type,
-then loads it via Python entry_points (same mechanism as set-project init).
+then loads it via:
+  1. entry_points (external plugins — highest priority)
+  2. direct import (editable install resilience)
+  3. built-in modules/ directory (monorepo fallback)
+  4. NullProfile (no-op fallback)
 
-Provides a singleton cache so profile is loaded once per engine session.
-Falls back to NullProfile when no project type is configured or the
-plugin package is not installed.
+Provides CoreProfile with universal rules (file-size, no-secrets, etc.)
+that all project types inherit from.
 """
 
 import logging
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
+
+from .profile_types import (
+    OrchestrationDirective,
+    ProjectType,
+    ProjectTypeInfo,
+    TemplateInfo,
+    VerificationRule,
+)
 
 logger = logging.getLogger(__name__)
 
 _cached_profile = None
 _cache_loaded: bool = False
 
+# set-core root (lib/set_orch/profile_loader.py → ../../)
+_SET_CORE_ROOT = Path(__file__).resolve().parents[2]
 
-class NullProfile:
+
+class NullProfile(ProjectType):
     """Fallback profile when no project type plugin is available.
 
-    All methods return empty/no-op values, so engine falls back
-    to its legacy hardcoded behavior.
+    All methods return empty/no-op values. Inherits from ProjectType ABC.
     """
 
-    def planning_rules(self) -> str:
-        return ""
+    @property
+    def info(self) -> ProjectTypeInfo:
+        return ProjectTypeInfo(
+            name="null",
+            version="0.0.0",
+            description="No project type configured",
+        )
 
-    def security_rules_paths(self, project_path: str) -> list:
+    def get_templates(self) -> List[TemplateInfo]:
         return []
 
-    def security_checklist(self) -> str:
-        return ""
 
-    def generated_file_patterns(self) -> list:
-        return []
+class CoreProfile(ProjectType):
+    """Universal project knowledge built into set-core.
 
-    def lockfile_pm_map(self) -> list:
-        return []
+    Provides rules and directives that apply to any software project
+    regardless of tech stack. All real project-type plugins should
+    inherit from CoreProfile instead of ProjectType directly.
 
-    def detect_package_manager(self, project_path: str) -> Optional[str]:
-        return None
-
-    def detect_test_command(self, project_path: str) -> Optional[str]:
-        return None
-
-    def detect_build_command(self, project_path: str) -> Optional[str]:
-        return None
-
-    def detect_e2e_command(self, project_path: str) -> Optional[str]:
-        return None
-
-    def detect_dev_server(self, project_path: str) -> Optional[str]:
-        return None
-
-    def bootstrap_worktree(self, project_path: str, wt_path: str) -> bool:
-        return True
-
-    def post_merge_install(self, project_path: str) -> bool:
-        return True
-
-    def ignore_patterns(self) -> list:
-        return []
-
-    def merge_strategies(self) -> list:
-        """Return list of merge strategy dicts for file-type-aware merge protection.
-
-        Each dict: {name, patterns, strategy, entity_pattern, validate_command, llm_hint}
-        Override in project-type plugins to provide defaults (e.g., Prisma for web projects).
-        """
-        return []
-
-    def gate_overrides(self, change_type: str) -> dict:
-        return {}
-
-    def rule_keyword_mapping(self) -> dict:
-        """Return mapping of category names to keyword lists and rule glob patterns.
-
-        Used by dispatcher for proactive rule injection at dispatch time.
-        Override in project-type plugins to customize per-project.
-        """
-        return {}
-
-    def get_forbidden_patterns(self) -> list:
-        """Return forbidden patterns for the lint gate.
-
-        Each pattern is a dict: {pattern: str (regex), severity: "critical"|"warning",
-        message: str, file_glob: str (optional — restrict to matching files)}.
-        Override in project-type plugins to provide framework-specific anti-patterns.
-        """
-        return []
-
-    def get_verification_rules(self) -> list:
-        """Return verification rules for the verify gate.
-
-        Override in project-type plugins to provide domain-specific rules.
-        """
-        return []
-
-    def get_orchestration_directives(self) -> list:
-        """Return orchestration directives for engine dispatch/post-merge.
-
-        Override in project-type plugins to provide domain-specific directives.
-        """
-        return []
-
-    def generate_smoke_e2e(self, project_path: str) -> str | None:
-        """Generate route-level smoke E2E test content.
-
-        Returns Playwright test file content as a string, or None if not applicable.
-        Override in project-type plugins (e.g., set-project-web) to auto-generate
-        tests that visit every route, check for hydration errors, and assert no
-        console errors.
-        """
-        return None
-
-    def pre_dispatch_checks(self, change_type: str, wt_path: str) -> list[str]:
-        """Return list of error messages for pre-dispatch validation.
-
-        Empty list means all checks pass. Non-empty blocks dispatch.
-        Override in project-type plugins to validate environment before agent starts.
-        """
-        return []
-
-    def post_verify_hooks(self, change_name: str, wt_path: str, gate_results: list) -> None:
-        """Run post-verify side effects (screenshots, cleanup, etc.).
-
-        Called after gate pipeline passes, before merge queue addition.
-        Exceptions are caught and logged — do not block merge.
-        Override in project-type plugins for domain-specific post-verify actions.
-        """
-        pass
-
-    def decompose_hints(self) -> list:
-        """Return natural-language hints for the decompose/planning prompt.
-
-        Each string is appended to the planning prompt as-is.
-        Override in project-type plugins to influence change decomposition.
-        """
-        return []
+    Replaces: set-project-base BaseProjectType
+    """
 
     @property
-    def info(self):
-        from dataclasses import dataclass
+    def info(self) -> ProjectTypeInfo:
+        return ProjectTypeInfo(
+            name="core",
+            version="0.3.0",
+            description="Universal project knowledge — rules and directives for any project",
+        )
 
-        @dataclass
-        class _Info:
-            name: str = "null"
-            version: str = "0.0.0"
-            description: str = "No project type configured"
+    def get_templates(self) -> List[TemplateInfo]:
+        return [
+            TemplateInfo(
+                id="default",
+                description="Minimal project knowledge scaffold",
+                template_dir="templates/default",
+            ),
+        ]
 
-        return _Info()
+    def get_verification_rules(self) -> List[VerificationRule]:
+        return [
+            VerificationRule(
+                id="file-size-limit",
+                description="Source files should not exceed 400 lines",
+                check="file-line-count",
+                severity="warning",
+                config={
+                    "pattern": "src/**/*.{py,ts,tsx,js,jsx,rs,go}",
+                    "max_lines": 400,
+                },
+            ),
+            VerificationRule(
+                id="no-secrets-in-source",
+                description="Source files should not contain hardcoded secrets",
+                check="pattern-absence",
+                severity="error",
+                config={
+                    "pattern": "**/*.{py,ts,tsx,js,jsx,yaml,yml,json}",
+                    "forbidden": [
+                        r"(?i)(api[_-]?key|secret[_-]?key|password)\s*[:=]\s*['\"][^'\"]{8,}",
+                    ],
+                    "exclude": ["*.example", "*.test.*", "*.spec.*"],
+                },
+            ),
+            VerificationRule(
+                id="todo-tracking",
+                description="TODO/FIXME/HACK comments should reference an issue or change",
+                check="pattern-audit",
+                severity="info",
+                config={
+                    "pattern": "**/*.{py,ts,tsx,js,jsx}",
+                    "match": r"(?i)\b(TODO|FIXME|HACK|XXX)\b",
+                },
+            ),
+        ]
+
+    def get_orchestration_directives(self) -> List[OrchestrationDirective]:
+        return [
+            OrchestrationDirective(
+                id="install-deps-npm",
+                description="Install npm dependencies after package.json changes",
+                trigger='change-modifies("package.json")',
+                action="post-merge",
+                config={"command": "npm install"},
+            ),
+            OrchestrationDirective(
+                id="install-deps-python",
+                description="Install Python dependencies after pyproject.toml changes",
+                trigger='change-modifies("pyproject.toml")',
+                action="post-merge",
+                config={"command": "pip install -e ."},
+            ),
+            OrchestrationDirective(
+                id="no-parallel-lockfile",
+                description="Serialize changes that modify lock files to prevent merge conflicts",
+                trigger='change-modifies-any("package-lock.json", "pnpm-lock.yaml", "yarn.lock", "poetry.lock", "uv.lock")',
+                action="serialize",
+                config={"with": 'changes-modifying-any("*lock*")'},
+            ),
+            OrchestrationDirective(
+                id="config-review",
+                description="Flag changes to CI/CD and infrastructure config for review",
+                trigger='change-modifies-any(".github/**", "Dockerfile", "docker-compose*.yml", ".gitlab-ci.yml")',
+                action="flag-for-review",
+            ),
+        ]
+
+
+def _find_project_type_class(mod) -> Optional[type]:
+    """Find a *ProjectType class in a module (excluding ProjectType itself)."""
+    for attr_name in dir(mod):
+        if attr_name.endswith("ProjectType") and attr_name != "ProjectType":
+            candidate = getattr(mod, attr_name)
+            if isinstance(candidate, type):
+                return candidate
+    return None
 
 
 def load_profile(project_path: str = "."):
     """Load the active project type profile.
 
-    Resolution:
-    1. Read wt/plugins/project-type.yaml -> get type name
-    2. Load via importlib.metadata entry_points(group='set_tools.project_types')
-    3. Instantiate and return
-    4. On any failure -> return NullProfile (engine falls back to legacy)
-
-    Default project_path="." works with the engine's CWD convention
-    (sentinel always runs from project root). Resolved to absolute path
-    for stable cache key.
+    Resolution order:
+    1. Read wt/plugins/project-type.yaml → get type name
+    2. entry_points(group='set_tools.project_types') — external plugins
+    3. direct import set_project_{type_name} — editable install resilience
+    4. built-in modules/{type_name}/ — monorepo fallback
+    5. NullProfile
     """
     global _cached_profile, _cache_loaded
 
@@ -196,7 +196,7 @@ def load_profile(project_path: str = "."):
         _cached_profile = NullProfile()
         return _cached_profile
 
-    # Load via entry_points (same mechanism as set-project init)
+    # Step 1: entry_points (external plugins take priority)
     try:
         from importlib.metadata import entry_points
 
@@ -212,48 +212,60 @@ def load_profile(project_path: str = "."):
                 cls = ep.load()
                 _cached_profile = cls()
                 logger.info(
-                    "Loaded profile: %s v%s",
+                    "Loaded profile via entry_points: %s v%s",
                     _cached_profile.info.name,
                     _cached_profile.info.version,
                 )
                 return _cached_profile
             except Exception as e:
-                logger.warning("Failed to load profile '%s': %s", type_name, e)
+                logger.warning("Failed to load profile '%s' via entry_points: %s", type_name, e)
                 break
 
-    # Fallback: direct import when entry_points lookup fails
-    # (common with editable installs where entry_points aren't registered)
+    # Step 2: direct import (editable install resilience)
     try:
         import importlib
 
         mod = importlib.import_module(f"set_project_{type_name}")
-        # Look for a class ending with "ProjectType"
-        cls = None
-        for attr_name in dir(mod):
-            if attr_name.endswith("ProjectType") and attr_name != "ProjectType":
-                candidate = getattr(mod, attr_name)
-                if isinstance(candidate, type):
-                    cls = candidate
-                    break
+        cls = _find_project_type_class(mod)
         if cls is not None:
             _cached_profile = cls()
             logger.info(
-                "Loaded profile via direct import fallback: %s v%s",
+                "Loaded profile via direct import: %s v%s",
                 _cached_profile.info.name,
                 _cached_profile.info.version,
             )
             return _cached_profile
-        logger.warning(
-            "Module set_project_%s found but no *ProjectType class", type_name
-        )
+        logger.debug("Module set_project_%s found but no *ProjectType class", type_name)
     except ImportError:
-        logger.warning(
-            "Profile '%s' not found in entry_points and set_project_%s not importable",
-            type_name, type_name,
-        )
+        logger.debug("set_project_%s not directly importable", type_name)
     except Exception as e:
-        logger.warning("Direct import fallback failed for '%s': %s", type_name, e)
+        logger.warning("Direct import failed for '%s': %s", type_name, e)
 
+    # Step 3: built-in modules/ (monorepo fallback)
+    modules_dir = _SET_CORE_ROOT / "modules" / type_name
+    module_pkg = modules_dir / f"set_project_{type_name}"
+    if module_pkg.is_dir() and (module_pkg / "__init__.py").is_file():
+        try:
+            import importlib
+
+            # Temporarily add module parent to sys.path
+            modules_str = str(modules_dir)
+            if modules_str not in sys.path:
+                sys.path.insert(0, modules_str)
+            mod = importlib.import_module(f"set_project_{type_name}")
+            cls = _find_project_type_class(mod)
+            if cls is not None:
+                _cached_profile = cls()
+                logger.info(
+                    "Loaded profile via built-in module: %s v%s",
+                    _cached_profile.info.name,
+                    _cached_profile.info.version,
+                )
+                return _cached_profile
+        except Exception as e:
+            logger.warning("Built-in module load failed for '%s': %s", type_name, e)
+
+    logger.info("Profile '%s' not found, using NullProfile", type_name)
     _cached_profile = NullProfile()
     return _cached_profile
 

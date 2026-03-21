@@ -1,0 +1,30 @@
+# Project Knowledge — Dungeon Builder (example)
+#
+# This file is deployed by `set-project init --project-type dungeon --template starter`
+# Customize it for your project.
+
+version: 1
+
+cross_cutting_files:
+  bestiary:
+    - bestiary.yaml
+  loot_table:
+    - loot-table.yaml
+
+features: {}
+
+verification_overrides: {}
+
+# Dungeon-specific conventions (documentation, not parsed by resolver)
+conventions:
+  file_naming: kebab-case
+  dungeon_extension: .dungeon
+  one_dungeon_per_file: true
+  entrance_room_required: true
+
+generated_outputs:
+  directory: output/
+  formats:
+    - "*.map"      # Dungeon maps
+    - "*.stats"    # Monster/loot/difficulty stats
+    - "index.md"   # Dungeon index

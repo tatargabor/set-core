@@ -1,0 +1,15 @@
+# Post-merge Commands — run after changes are merged.
+
+- id: db-generate
+  description: Regenerate Prisma client after schema changes
+  trigger: 'change-modifies("prisma/schema.prisma")'
+  action: post-merge
+  config:
+    command: "pnpm db:generate"
+
+- id: install-deps
+  description: Install dependencies after package.json changes
+  trigger: 'change-modifies("package.json")'
+  action: post-merge
+  config:
+    command: "pnpm install"

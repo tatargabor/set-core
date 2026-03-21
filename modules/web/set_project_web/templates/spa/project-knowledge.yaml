@@ -1,0 +1,44 @@
+version: 1
+
+# Cross-cutting files — files touched by multiple features.
+# Customize these paths for your SPA framework (React, Vue, Svelte, etc.)
+cross_cutting_files:
+  # Router configuration — where routes are defined
+  router:
+    - src/router.ts
+    # - src/routes/index.ts
+
+  # Internationalization — locale/translation files
+  # i18n:
+  #   - src/locales/*.json
+
+  # API client — shared HTTP/fetch configuration
+  api_client:
+    - src/lib/api.ts
+    # - src/lib/http.ts
+
+  # Global styles or theme configuration
+  # theme:
+  #   - src/styles/theme.ts
+
+  # Design tokens — colors, spacing, typography from design tool
+  # design_tokens:
+  #   - src/styles/tokens.*
+  #   - src/styles/variables.css
+
+# Feature registry — map features to file scopes.
+# Uncomment and customize for your project structure.
+features: {}
+  # auth:
+  #   touches:
+  #     - src/features/auth/**
+  #   description: Authentication flow
+
+  # dashboard:
+  #   touches:
+  #     - src/pages/dashboard/**
+  #   description: Dashboard pages
+
+# Verification rule overrides — customize rules from the project type.
+# See: set-project-base resolve --project-dir .
+verification_overrides: {}

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "set-project-web"
+version = "0.2.0"
+description = "Web project knowledge plugin for SET (ShipExactlyThis)"
+requires-python = ">=3.9"
+dependencies = ["pyyaml>=5.0"]
+
+[project.scripts]
+set-project-web = "set_project_web.cli:main"
+
+[project.entry-points."set_tools.project_types"]
+web = "set_project_web:WebProjectType"
+
+[tool.hatch.build.targets.wheel]
+packages = ["set_project_web"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"set_project_web/templates" = "set_project_web/templates"
+"set_project_web/directives" = "set_project_web/directives"
+"set_project_web/verification-rules" = "set_project_web/verification-rules"

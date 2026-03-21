@@ -708,7 +708,7 @@ for ep in eps:
     if ep.name == type_name:
         cls = ep.load()
         pt = cls()
-        from set_project_base.deploy import resolve_template, get_available_modules
+        from set_orch.profile_deploy import resolve_template, get_available_modules
         try:
             tid, tdir = resolve_template(pt, template_name)
         except ValueError:

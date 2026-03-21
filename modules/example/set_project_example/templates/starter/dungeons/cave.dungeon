@@ -1,0 +1,27 @@
+name: "The Goblin Cave"
+difficulty: easy
+
+rooms:
+  - id: entrance
+    description: "A narrow cave opening, barely tall enough to stand"
+    exits: [tunnel]
+    monsters: []
+    loot: [torch]
+
+  - id: tunnel
+    description: "A winding passage with dripping stalactites"
+    exits: [entrance, cavern, mushroom_grotto]
+    monsters: [goblin]
+    loot: []
+
+  - id: cavern
+    description: "A large open space with a underground stream"
+    exits: [tunnel]
+    monsters: [goblin, goblin]
+    loot: [silver_coins, health_potion]
+
+  - id: mushroom_grotto
+    description: "Glowing mushrooms illuminate a peaceful alcove"
+    exits: [tunnel]
+    monsters: []
+    loot: [magic_mushroom, fairy_dust]

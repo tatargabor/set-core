@@ -1,0 +1,4 @@
+core:
+  - project-knowledge.yaml
+  - rules/components.md
+  - rules/design-integration.md

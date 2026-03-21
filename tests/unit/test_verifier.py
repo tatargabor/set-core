@@ -922,43 +922,17 @@ class TestExecuteSpecVerifyGate:
 
 
 class TestAutoDetectE2eCommand:
-    """Tests for _auto_detect_e2e_command and _read_package_json_scripts."""
+    """Tests for _auto_detect_e2e_command — delegates to profile only."""
 
-    def test_auto_detect_from_package_json(self, tmp_dir):
-        """playwright.config.ts + package.json test:e2e → detects command."""
-        from set_orch.verifier import _auto_detect_e2e_command
-
-        # Create playwright config
-        with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
-            f.write("export default {}")
-        # Create package.json with test:e2e script
-        with open(os.path.join(tmp_dir, "package.json"), "w") as f:
-            json.dump({"scripts": {"test:e2e": "playwright test"}}, f)
-
-        cmd = _auto_detect_e2e_command(tmp_dir)
-        assert cmd == "npm run test:e2e"
-
-    def test_auto_detect_fallback_npx(self, tmp_dir):
-        """playwright.config.ts exists but no e2e script → npx playwright test."""
-        from set_orch.verifier import _auto_detect_e2e_command
-
-        with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
-            f.write("export default {}")
-        with open(os.path.join(tmp_dir, "package.json"), "w") as f:
-            json.dump({"scripts": {"build": "tsc"}}, f)
-
-        cmd = _auto_detect_e2e_command(tmp_dir)
-        assert cmd == "npx playwright test"
-
-    def test_no_playwright_config_returns_empty(self, tmp_dir):
-        """No playwright.config → empty string (no E2E framework)."""
+    def test_no_profile_returns_empty(self, tmp_dir):
+        """No profile → empty string."""
         from set_orch.verifier import _auto_detect_e2e_command
 
         cmd = _auto_detect_e2e_command(tmp_dir)
         assert cmd == ""
 
-    def test_profile_detection_preferred(self, tmp_dir):
-        """Profile.detect_e2e_command takes priority over auto-detect."""
+    def test_profile_returns_command(self, tmp_dir):
+        """Profile.detect_e2e_command returns a command → used."""
         from set_orch.verifier import _auto_detect_e2e_command
 
         class FakeProfile:
@@ -968,19 +942,27 @@ class TestAutoDetectE2eCommand:
         cmd = _auto_detect_e2e_command(tmp_dir, profile=FakeProfile())
         assert cmd == "custom-e2e-cmd"
 
-    def test_pnpm_lockfile_detected(self, tmp_dir):
-        """pnpm-lock.yaml present → uses pnpm run."""
+    def test_profile_returns_none_gives_empty(self, tmp_dir):
+        """Profile.detect_e2e_command returns None → empty string."""
         from set_orch.verifier import _auto_detect_e2e_command
 
-        with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
-            f.write("export default {}")
-        with open(os.path.join(tmp_dir, "pnpm-lock.yaml"), "w") as f:
-            f.write("")
-        with open(os.path.join(tmp_dir, "package.json"), "w") as f:
-            json.dump({"scripts": {"test:e2e": "playwright test"}}, f)
+        class FakeProfile:
+            def detect_e2e_command(self, path):
+                return None
 
-        cmd = _auto_detect_e2e_command(tmp_dir)
-        assert cmd == "pnpm run test:e2e"
+        cmd = _auto_detect_e2e_command(tmp_dir, profile=FakeProfile())
+        assert cmd == ""
+
+    def test_profile_exception_gives_empty(self, tmp_dir):
+        """Profile.detect_e2e_command raises → graceful empty string."""
+        from set_orch.verifier import _auto_detect_e2e_command
+
+        class BrokenProfile:
+            def detect_e2e_command(self, path):
+                raise RuntimeError("broken")
+
+        cmd = _auto_detect_e2e_command(tmp_dir, profile=BrokenProfile())
+        assert cmd == ""
 
 
 class TestE2eGateMandatory:
@@ -996,14 +978,18 @@ class TestE2eGateMandatory:
         # Set up worktree with playwright config but no test files
         with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
             f.write("export default { webServer: { command: 'npm start' } }")
-        with open(os.path.join(tmp_dir, "package.json"), "w") as f:
-            json.dump({"scripts": {"test:e2e": "playwright test"}}, f)
+
+        # Use a profile that detects e2e command (simulating WebProjectType)
+        class FakeWebProfile:
+            def detect_e2e_command(self, path):
+                return "npx playwright test"
 
         change = self._make_change()
         result = verifier._execute_e2e_gate(
             "test-change", change, tmp_dir,
-            e2e_command="",  # empty — will auto-detect
+            e2e_command="",  # empty — will auto-detect via profile
             e2e_timeout=60, e2e_health_timeout=10,
+            profile=FakeWebProfile(),
         )
 
         assert result.gate_name == "e2e"

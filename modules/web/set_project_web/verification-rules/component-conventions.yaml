@@ -1,0 +1,19 @@
+# Component Conventions — file size and pattern checks.
+
+# File size limit
+- id: file-size-limit
+  description: Source files should not exceed 400 lines
+  check: file-line-count
+  severity: warning
+  pattern: "src/**/*.{tsx,ts}"
+  max_lines: 400
+
+# Ghost button text policy
+- id: ghost-button-text
+  description: Ghost buttons must be icon-only (no text content)
+  check: pattern-absence
+  severity: warning
+  pattern: "src/components/**/*.tsx"
+  forbidden: 'variant="ghost".*>[^<]*<'
+  # Matches: <Button variant="ghost">Delete</Button>  ← violation
+  # Allows:  <Button variant="ghost"><TrashIcon /></Button>  ← correct

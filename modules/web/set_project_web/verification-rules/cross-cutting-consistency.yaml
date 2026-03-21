@@ -1,0 +1,20 @@
+# Cross-cutting Consistency — sidebar, route labels, and i18n must stay in sync.
+id: cross-cutting-consistency
+description: Sidebar items, route labels, and i18n keys must be in sync
+check: cross-reference
+severity: warning
+
+groups:
+  - name: navigation
+    files:
+      - role: sidebar        # from cross_cutting_files
+      - role: route_labels    # from cross_cutting_files
+      - role: i18n            # from cross_cutting_files
+    key_pattern: route-segment
+    # Extracts route segments (e.g., "dashboard", "reports") from each file
+    # and checks that every segment present in one file exists in all others.
+
+# This rule catches:
+# - Sidebar item added but missing i18n key
+# - Route label defined but missing sidebar entry
+# - i18n key added but no corresponding route

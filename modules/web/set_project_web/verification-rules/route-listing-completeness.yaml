@@ -1,0 +1,21 @@
+# Route Listing Completeness — detail pages must have sibling listing pages.
+id: route-listing-completeness
+description: Dynamic detail routes ([slug]/page.tsx) must have a sibling listing page (page.tsx) in the parent directory
+check: file-mentions
+severity: warning
+
+source:
+  # Find all dynamic detail pages
+  pattern: "src/app/**/\\[slug\\]/page.tsx"
+  exclude:
+    - "src/app/api/**"
+
+# Each [slug]/page.tsx source file should have a sibling page.tsx
+# in the parent directory (the listing/index page).
+# The file-mentions check verifies that for each matched source,
+# a corresponding file exists at the parent level.
+target: parent-sibling-page
+
+# Override in consumer project:
+# ignore:
+#   - src/app/[locale]/[...catchall]/[slug]/page.tsx

@@ -1,0 +1,35 @@
+name: "The Dark Castle"
+difficulty: hard
+
+rooms:
+  - id: entrance
+    description: "A crumbling stone archway covered in moss"
+    exits: [hallway]
+    monsters: []
+    loot: [rusty_key]
+
+  - id: hallway
+    description: "A long corridor with flickering torches"
+    exits: [entrance, throne_room, trap_room]
+    monsters: [skeleton]
+    loot: []
+
+  - id: trap_room
+    description: "The floor tiles shift ominously"
+    exits: [hallway, treasure_vault]
+    monsters: [mimic]
+    loot: [golden_key]
+
+  - id: throne_room
+    description: "A vast chamber with a cracked marble throne"
+    exits: [hallway]
+    monsters: [dragon]
+    loot: [ancient_scroll]
+    requires: rusty_key
+
+  - id: treasure_vault
+    description: "Mountains of gold coins gleam in the torchlight"
+    exits: [trap_room]
+    monsters: []
+    loot: [golden_crown, diamond_sword, enchanted_shield]
+    requires: golden_key

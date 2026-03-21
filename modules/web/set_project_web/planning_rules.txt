@@ -1,0 +1,33 @@
+Playwright E2E test planning (when e2e_command is configured):
+- The infrastructure/foundation change (first in dependency order) MUST set up Playwright alongside Jest:
+  * Create playwright.config.ts with PW_PORT env var support, webServer auto-start, headless: true, and screenshot: 'on' in the use section (headless: true prevents browser windows opening on desktop machines; screenshot: 'on' ensures PNG capture instead of text-only error-context.md)
+  * Add testPathIgnorePatterns: ["/node_modules/", "/tests/e2e/"] to jest.config (Jest crashes on Playwright .spec.ts imports in jsdom)
+  * Add @playwright/test to devDependencies + run npx playwright install chromium
+  * Create tests/e2e/global-setup.ts: prisma generate → prisma db push --force-reset → prisma db seed
+- Each subsequent feature change creating a user-facing route MUST create tests/e2e/<feature>.spec.ts as an explicit file deliverable in scope (e.g., "Create tests/e2e/cart.spec.ts")
+- Include CONCRETE test scenarios per feature:
+  * Page URL to visit
+  * User interactions: what to click, what data to type, what to select
+  * Expected outcomes: visible text, redirects, error messages
+  * Auth scenarios: verify protected routes redirect unauthenticated users
+  * Error scenarios: invalid form input, missing required fields
+  * COLD-VISIT test: navigate directly to the page as the FIRST action (no prior login, no add-to-cart, no session cookie). This catches Server Component cookie/session bugs where cookies().set() crashes outside a Server Action.
+- Example scope:
+  Create tests/e2e/orders.spec.ts:
+  - Cold visit: go to /cart directly (no prior actions) → should show empty state, NOT crash
+  - Visit /products → click "Add to Cart" on first product → cart badge shows "1"
+  - Visit /cart → verify product name and price → click "Checkout" → fill form → verify redirect to /orders/[id]
+  - Visit /admin/orders without login → verify redirect to /admin/login
+- Do NOT defer all E2E tests to a consolidation change — this overloads a single agent. Each feature change owns its tests.
+- Do NOT just list "Functional test scenarios:" as descriptions — create actual test files.
+- E2E tests run pre-merge in the worktree via e2e_command against an auto-started dev server with isolated port and DB.
+
+Application Startup guide maintenance:
+- Infrastructure/foundational changes that add new setup steps (DB, E2E tooling, env vars, build commands) MUST update the `## Application Startup` section in CLAUDE.md. This section is the canonical reference for agents entering the worktree mid-project. If you add a Prisma DB, document `npx prisma db push`. If you add Playwright, document `npx playwright install --with-deps chromium`. Keep it current.
+
+Framework-specific security patterns (Next.js / React):
+- Route protection: create middleware.ts at project root that checks auth for protected route prefixes (/admin, /dashboard, /account). Do NOT put auth checks inside individual route handlers.
+- Prisma ownership patterns: every findUnique/findFirst/update/delete on user-scoped data MUST include the owning entity in the where clause (e.g., { id: params.id, userId: session.user.id }), never just { id: params.id }.
+- Server Actions: validate all inputs with Zod schemas before database operations. Never pass raw formData fields directly to Prisma.
+- CSRF: Next.js Server Actions have built-in CSRF protection — do NOT disable it. For API routes using cookies, verify SameSite=Lax is set.
+- XSS: never use dangerouslySetInnerHTML with user-supplied content. If rich text is needed, sanitize with DOMPurify on the server before rendering.

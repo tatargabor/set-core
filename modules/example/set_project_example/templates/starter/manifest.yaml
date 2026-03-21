@@ -1,0 +1,12 @@
+core:
+  - project-knowledge.yaml
+  - rules/dungeon-integrity.md
+  - rules/contribution-guide.md
+
+modules:
+  sample-dungeons:
+    description: "Example .dungeon files and bestiary for a quick-start project"
+    files:
+      - dungeons/castle.dungeon
+      - dungeons/cave.dungeon
+      - bestiary.yaml

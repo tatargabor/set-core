@@ -1,0 +1,19 @@
+# i18n Completeness — all locale files must have the same keys.
+id: i18n-completeness
+description: All UI strings must exist in all locale files
+check: cross-file-key-parity
+severity: error
+
+files:
+  pattern: "messages/*.json"
+
+# Compares the full dot-path of every leaf key across all matching files.
+# Example: { "nav": { "dashboard": "..." } } → key "nav.dashboard"
+# Missing keys are reported as errors with the specific file and key path.
+
+# Override in consumer project:
+# verification_overrides:
+#   i18n-completeness:
+#     severity: warning
+#     files:
+#       pattern: "src/locales/*.json"

@@ -1,0 +1,23 @@
+# Context Efficiency — guidelines for Claude context window management.
+#
+# This is not an executable directive — it's a reference for project setup.
+# Follow these guidelines when organizing project knowledge files.
+
+id: context-efficiency
+description: Guidelines for CLAUDE.md vs .claude/rules/ separation
+
+guidance:
+  - "CLAUDE.md contains ONLY rules that apply to EVERY task (< 3000 tokens)"
+  - "Domain-specific rules go in .claude/rules/*.md with paths: frontmatter"
+  - "Never use @ imports in CLAUDE.md (loads full file every turn)"
+  - "Rules files reference full docs, not copy them"
+  - "Keep rules files under 100 lines of content"
+
+# Good structure:
+#   CLAUDE.md           → project identity, critical constraints, commit conventions
+#   .claude/rules/      → path-scoped domain rules (loaded on-demand)
+#   docs/design/        → full documentation (referenced, not loaded)
+#
+# Bad structure:
+#   CLAUDE.md           → 5000 tokens of domain rules (wastes context every turn)
+#   @docs/design/*.md   → imported into CLAUDE.md (loads everything)

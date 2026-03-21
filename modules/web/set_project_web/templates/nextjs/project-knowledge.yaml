@@ -1,0 +1,83 @@
+version: 1
+
+# Cross-cutting files — files touched by multiple features.
+# The orchestrator uses this to detect conflicts and enforce consistency.
+cross_cutting_files:
+  navigation:
+    - src/app/**/layout.tsx
+  db_schema:
+    - prisma/schema.prisma
+  auth:
+    - src/lib/auth.ts
+    - src/middleware.ts
+  seo:
+    - src/app/sitemap.ts
+    - src/app/robots.ts
+  env_config:
+    - .env.example
+  design_tokens:
+    - tailwind.config.ts
+    - src/styles/tokens.*
+
+# Feature registry — logical features mapped to file scopes.
+# Each feature can reference a rules file for path-scoped activation.
+# Projects should customize this with their actual features.
+features:
+  auth:
+    touches:
+      - src/lib/auth.ts
+      - src/app/**/login/**
+      - src/app/**/register/**
+      - src/middleware.ts
+    description: Authentication and authorization (NextAuth/Auth.js)
+    rules_file: .claude/rules/auth-conventions.md
+
+  data_model:
+    touches:
+      - prisma/schema.prisma
+      - prisma/migrations/**
+      - prisma/seed.ts
+    description: Database schema and migrations (Prisma)
+    rules_file: .claude/rules/data-model.md
+
+  api:
+    touches:
+      - src/app/api/**
+    description: API routes and server endpoints
+    rules_file: .claude/rules/functional-conventions.md
+
+  ui_components:
+    touches:
+      - src/components/**
+    description: Shared UI components (shadcn/ui)
+    rules_file: .claude/rules/ui-conventions.md
+
+  seo:
+    touches:
+      - src/app/sitemap.ts
+      - src/app/robots.ts
+      - src/lib/structured-data.ts
+      - src/app/**/opengraph-image*
+    description: SEO metadata, structured data, sitemap, robots
+    rules_file: .claude/rules/seo-conventions.md
+
+  error_handling:
+    touches:
+      - src/app/**/error.tsx
+      - src/app/**/not-found.tsx
+      - src/app/global-error.tsx
+      - src/app/**/loading.tsx
+    description: Error boundaries, 404 pages, loading states
+    rules_file: .claude/rules/error-handling.md
+
+  worktree_setup:
+    touches:
+      - prisma/**
+      - jest.config*
+      - playwright.config*
+    description: Worktree environment setup (DB init, port isolation, pnpm config)
+    rules_file: .claude/rules/worktree-setup.md
+
+# Verification rule overrides — customize rules from the project type.
+# See: set-project-base resolve --project-dir .
+verification_overrides: {}

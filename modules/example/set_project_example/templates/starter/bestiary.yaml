@@ -1,0 +1,35 @@
+# Bestiary — known monsters for the Dungeon Builder
+#
+# All monsters referenced in .dungeon files should be listed here.
+# The build step uses this to validate monster references and calculate stats.
+
+monsters:
+  - id: skeleton
+    name: "Skeleton Warrior"
+    health: 30
+    attack: 8
+    description: "A reanimated pile of bones wielding a rusty sword"
+
+  - id: goblin
+    name: "Cave Goblin"
+    health: 15
+    attack: 5
+    description: "A small, sneaky creature with sharp teeth"
+
+  - id: dragon
+    name: "Ancient Dragon"
+    health: 200
+    attack: 50
+    description: "A massive fire-breathing beast guarding its hoard"
+
+  - id: mimic
+    name: "Mimic"
+    health: 45
+    attack: 20
+    description: "A treasure chest that bites back"
+
+  - id: slime
+    name: "Green Slime"
+    health: 10
+    attack: 3
+    description: "A gelatinous blob that dissolves anything it touches"

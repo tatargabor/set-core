@@ -1,0 +1,23 @@
+# E2E & Smoke Test Configuration
+#
+# Two-step testing: e2e runs pre-merge per-change, smoke runs post-merge on main.
+# These values are injected into the orchestration config.
+# Customize in your project's wt/orchestration/config.yaml.
+
+# Pre-merge E2E — runs Playwright tests in each worktree before merge.
+# Each feature change runs its own tests/e2e/<feature>.spec.ts.
+# The orchestrator sets PW_PORT env var for port isolation between parallel changes.
+e2e:
+  command: "npx playwright test"
+  timeout: 120            # seconds — Playwright tests typically take 30-120s
+
+# Post-merge smoke — optional cross-feature integration tests on main.
+# Only needed when multiple features must be tested together after merge.
+# When e2e_command covers per-change testing, smoke_command is typically not needed.
+smoke:
+  command: "npx playwright test"
+  timeout: 180            # seconds to wait for smoke test completion
+  env:
+    SMOKE_BASE_URL: "http://localhost:3000"
+  fix_timeout: 300        # max seconds agent spends fixing a failed smoke
+  retry: 2                # retries before escalating to human

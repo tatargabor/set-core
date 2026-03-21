@@ -1,0 +1,8 @@
+# Cross-cutting Review — flag changes to shared files for extra attention.
+
+- id: cross-cutting-review
+  description: Flag changes to cross-cutting files for extra review
+  trigger: "change-modifies-any(cross_cutting_files.sidebar, cross_cutting_files.i18n, cross_cutting_files.route_labels)"
+  action: flag-for-review
+  # When triggered, verification runs cross-cutting consistency checks
+  # and the change is labeled for human review.

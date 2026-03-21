@@ -2148,25 +2148,14 @@ def _get_or_create_e2e_baseline(
     return baseline
 
 
-def _read_package_json_scripts(wt_path: str) -> dict:
-    """Read package.json scripts section, return empty dict on failure."""
-    pkg_path = os.path.join(wt_path, "package.json")
-    if not os.path.isfile(pkg_path):
-        return {}
-    try:
-        with open(pkg_path) as f:
-            data = json.load(f)
-        return data.get("scripts", {}) or {}
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
 def _auto_detect_e2e_command(wt_path: str, profile=None) -> str:
-    """Auto-detect e2e command from profile, package.json, or playwright config.
+    """Auto-detect e2e command by delegating to the project-type profile.
 
-    Returns detected command string, or empty string if no E2E framework found.
+    The profile (e.g., WebProjectType) handles all framework-specific detection
+    (package.json parsing, playwright config, etc.). The core only delegates.
+
+    Returns detected command string, or empty string if profile returns None.
     """
-    # 1. Try profile detection
     if profile is not None and hasattr(profile, "detect_e2e_command"):
         try:
             cmd = profile.detect_e2e_command(wt_path)
@@ -2175,33 +2164,7 @@ def _auto_detect_e2e_command(wt_path: str, profile=None) -> str:
                 return cmd
         except Exception:
             pass
-
-    # 2. Check if playwright config exists
-    has_pw = any(
-        os.path.isfile(os.path.join(wt_path, name))
-        for name in ("playwright.config.ts", "playwright.config.js")
-    )
-    if not has_pw:
-        return ""
-
-    # 3. Try package.json scripts
-    scripts = _read_package_json_scripts(wt_path)
-    for key in ("test:e2e", "e2e", "playwright"):
-        if key in scripts:
-            # Detect package manager
-            if os.path.isfile(os.path.join(wt_path, "pnpm-lock.yaml")):
-                pm = "pnpm"
-            elif os.path.isfile(os.path.join(wt_path, "yarn.lock")):
-                pm = "yarn"
-            else:
-                pm = "npm"
-            cmd = f"{pm} run {key}"
-            logger.info("E2E command auto-detected from package.json: %s", cmd)
-            return cmd
-
-    # 4. Fallback: npx playwright test
-    logger.info("E2E command fallback: npx playwright test")
-    return "npx playwright test"
+    return ""
 
 
 def _execute_e2e_gate(

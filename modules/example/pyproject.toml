@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "set-project-example"
+version = "0.1.0"
+description = "Example project type plugin for SET — Dungeon Builder domain"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = ["pyyaml>=5.0"]
+
+[project.urls]
+Homepage = "https://github.com/tatargabor/set-project-example"
+Repository = "https://github.com/tatargabor/set-project-example"
+
+[project.scripts]
+dungeon-build = "set_project_example.build:main"
+
+[project.entry-points."set_tools.project_types"]
+dungeon = "set_project_example:DungeonProjectType"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["set_project_example"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"set_project_example/templates" = "set_project_example/templates"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

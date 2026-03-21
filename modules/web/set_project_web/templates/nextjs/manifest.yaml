@@ -1,0 +1,34 @@
+core:
+  - project-knowledge.yaml
+  - rules/ui-conventions.md
+  - rules/functional-conventions.md
+  - rules/auth-conventions.md
+  - rules/data-model.md
+  - rules/deployment.md
+  - rules/testing-conventions.md
+  - rules/seo-conventions.md
+  - rules/accessibility.md
+  - rules/performance.md
+  - rules/security.md
+  - rules/error-handling.md
+  - rules/design-integration.md
+  - rules/worktree-setup.md
+  - jest.config.ts
+  - tsconfig.json
+  - tailwind.config.ts
+  - postcss.config.mjs
+  - next.config.js
+  - components.json
+  - framework-rules/web/api-design.md
+  - framework-rules/web/auth-middleware.md
+  - framework-rules/web/db-type-safety.md
+  - framework-rules/web/route-completeness.md
+  - framework-rules/web/schema-integrity.md
+  - framework-rules/web/security-patterns.md
+  - framework-rules/web/transaction-patterns.md
+
+modules:
+  integrations:
+    description: "External API patterns (webhooks, retry, rate limiting)"
+    files:
+      - rules/integrations.md

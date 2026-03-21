@@ -1,0 +1,21 @@
+# Migration Safety — schema changes must have corresponding migrations.
+id: migration-safety
+description: Schema changes must have corresponding migrations
+check: schema-migration-sync
+severity: error
+
+schema_file: prisma/schema.prisma
+migrations_dir: prisma/migrations/
+design_doc: docs/design/data-model.md
+
+# Checks:
+# 1. If schema_file is modified, at least one new migration must exist
+# 2. If a new model is added, design_doc should be updated (warning)
+# 3. Migration files should not be modified after deployment
+
+# Override in consumer project:
+# verification_overrides:
+#   migration-safety:
+#     config:
+#       schema_file: prisma/schema.prisma
+#       design_doc: docs/db-design.md

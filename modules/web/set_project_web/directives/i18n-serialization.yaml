@@ -1,0 +1,15 @@
+# i18n Serialization — prevent locale file merge conflicts.
+
+- id: no-parallel-i18n
+  description: Serialize changes that modify locale files to prevent merge conflicts
+  trigger: 'change-modifies("messages/*.json")'
+  action: serialize
+  config:
+    with: 'changes-modifying("messages/*.json")'
+
+- id: consolidate-i18n
+  description: Warn when multiple changes each modify locale files
+  trigger: 'plan-has-multiple-changes-modifying("messages/*.json")'
+  action: warn
+  config:
+    message: "Multiple changes modify locale files — consider consolidating into a single i18n change"

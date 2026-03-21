@@ -1,0 +1,24 @@
+# Route Registration — new pages should appear in navigation config.
+id: route-registered
+description: New page routes should be registered in navigation config
+check: file-mentions
+severity: warning
+
+source:
+  pattern: "src/app/**/page.tsx"
+  exclude:
+    - "src/app/api/**"
+    - "src/app/login/**"
+    - "src/app/register/**"
+    - "src/app/error/**"
+    - "src/app/not-found/**"
+
+# "target" references a role from cross_cutting_files in project-knowledge.yaml.
+# The check extracts route segments from source paths and looks for mentions
+# in the target files.
+target: cross-cutting.sidebar
+
+# Override in consumer project:
+# ignore:
+#   - src/app/(dashboard)/secret-admin/page.tsx
+#   - src/app/preview/page.tsx
