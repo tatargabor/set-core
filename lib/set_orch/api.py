@@ -2406,16 +2406,29 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                     val = data.get(gate)
                     if val is not None:
                         current["gates"][gate] = val
-                # Check if this was a retry-triggering gate
+                current["ended"] = ts
+                current["duration_ms"] = _ts_diff_ms(current["started"], ts)
+
                 if data.get("result") == "retry":
-                    current["state"] = "retry"
+                    # Retry: close this session, open a new one
                     stop_gate = data.get("stop_gate", "")
                     if stop_gate:
                         current["gates"][stop_gate] = "fail"
-                current["ended"] = ts
-                current["duration_ms"] = _ts_diff_ms(current["started"], ts)
-                sessions.append(current)
-                current = None
+                    current["state"] = "retry"
+                    sessions.append(current)
+                    # New session starts from the retry point
+                    current = {
+                        "n": len(sessions) + 1,
+                        "started": ts,
+                        "ended": "",
+                        "state": "running",
+                        "gates": {},
+                        "merged": False,
+                    }
+                else:
+                    # Final gate pass — close session
+                    sessions.append(current)
+                    current = None
         elif etype == "MERGE_ATTEMPT":
             if current:
                 current["merged"] = True
