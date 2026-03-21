@@ -1,6 +1,6 @@
 ## 1. GateDefinition dataclass
 
-- [ ] 1.1 Add `GateDefinition` dataclass to `lib/set_orch/gate_runner.py`: name, executor, position, phase, defaults, own_retry_counter, extra_retries, result_fields [REQ: gates-shall-be-declared-via-gatedefinition]
+- [ ] 1.1 Add `GateDefinition` dataclass to `lib/set_orch/gate_runner.py`: name, executor, position, phase, defaults, own_retry_counter, extra_retries, result_fields, run_on_integration [REQ: gates-shall-be-declared-via-gatedefinition]
 - [ ] 1.2 Add `register_gates() -> list[GateDefinition]` to ProjectType ABC in `lib/set_orch/profile_types.py` returning empty list [REQ: profiles-shall-register-domain-specific-gates]
 - [ ] 1.3 Add `_resolve_gate_order(gates: list[GateDefinition]) -> list[GateDefinition]` helper in `lib/set_orch/gate_runner.py` — topological sort by position hints (start, after:X, before:X, end) [REQ: pipeline-shall-register-gates-from-registry]
 
@@ -43,15 +43,18 @@
 - [ ] 7.3 Move `merge_i18n_sidecars()` from merger.py to `modules/web/set_project_web/post_merge.py`, call it from WebProjectType.post_merge_hooks() [REQ: web-post-merge-hooks-shall-live-in-web-module]
 - [ ] 7.4 Simplify merger ff-success path: replace `_post_merge_deps_install()` with `profile.post_merge_install(".")` (method already exists), call `profile.post_merge_hooks()`, keep `_post_merge_custom_command` and `_run_plugin_post_merge_directives` [REQ: web-post-merge-hooks-shall-live-in-web-module]
 
-## 8. Merge queue simplification — integrate-then-ff
+## 8. Merge queue — integrate, verify, ff-only (serialized)
 
-- [ ] 8.1 Rewrite `execute_merge_queue`: for each change in queue — integrate main into branch (checked), then ff-only merge. Each change sees fresh main from the previous merge. [REQ: merge-queue-shall-serialize-integration]
+- [ ] 8.1 Rewrite `execute_merge_queue`: for each change — integrate main, run integration gates, then ff-only. Serialized: each change sees fresh main from the previous merge. [REQ: merge-queue-shall-serialize-integration]
 - [ ] 8.2 Add `_integrate_for_merge(wt_path, change_name) -> str` helper: merge main into branch in worktree, return "ok" or "conflict". Check exit code (unlike current _try_merge). [REQ: merge-queue-shall-serialize-integration]
-- [ ] 8.3 Simplify `merge_change()`: remove ff-fail → status="done" re-queue path. ff-only is guaranteed after successful integration. On unexpected ff-fail, mark merge-blocked (not re-queue). [REQ: merge-queue-shall-serialize-integration]
-- [ ] 8.4 Delete `_try_merge()` — replaced by integrate-then-ff in queue loop [REQ: merge-queue-shall-serialize-integration]
-- [ ] 8.5 Delete `_compute_conflict_fingerprint()` and `_seen_conflict_fingerprints` — conflict = merge-blocked immediately [REQ: merge-queue-shall-serialize-integration]
-- [ ] 8.6 Remove `ff_retry_count`, `merge_retry_count` fields from merge flow — no retries needed [REQ: merge-queue-shall-serialize-integration]
-- [ ] 8.7 Keep `retry_merge_queue()` for retrying merge-blocked changes with fresh integration (after other merges may have resolved conflict source) [REQ: merge-queue-shall-serialize-integration]
+- [ ] 8.3 Run integration gates after integration, before ff-only: collect gates with `run_on_integration=True`, execute in worktree. If any blocking gate fails → merge-blocked. [REQ: merge-queue-shall-run-integration-gates]
+- [ ] 8.4 Set `run_on_integration=True` on universal gates: build, test. Set on web profile gates: e2e. Leave False on: review, rules, spec_verify, scope_check, lint. [REQ: merge-queue-shall-run-integration-gates]
+- [ ] 8.5 Simplify `merge_change()`: remove ff-fail → status="done" re-queue path. ff-only is guaranteed after successful integration. On unexpected ff-fail, mark merge-blocked (not re-queue). [REQ: merge-queue-shall-serialize-integration]
+- [ ] 8.6 Delete `_try_merge()` — replaced by integrate → verify → ff in queue loop [REQ: merge-queue-shall-serialize-integration]
+- [ ] 8.7 Delete `_compute_conflict_fingerprint()` and `_seen_conflict_fingerprints` — conflict = merge-blocked immediately [REQ: merge-queue-shall-serialize-integration]
+- [ ] 8.8 Delete `_post_merge_build_check()` — replaced by integration gates (runs BEFORE ff, not after) [REQ: merge-queue-shall-run-integration-gates]
+- [ ] 8.9 Remove `ff_retry_count`, `merge_retry_count` fields from merge flow — no retries needed [REQ: merge-queue-shall-serialize-integration]
+- [ ] 8.10 Keep `retry_merge_queue()` for retrying merge-blocked changes with fresh integration + verify (after other merges may have resolved conflict source) [REQ: merge-queue-shall-serialize-integration]
 
 ## 9. Tests
 
@@ -63,5 +66,7 @@
 - [ ] 9.6 Unit test: web gate executors work from modules/web path [REQ: e2e-gate-executor-shall-live-in-web-module, scenario: e2e-gate-works-from-web-module]
 - [ ] 9.7 Unit test: merge queue — sequential integration, each change gets fresh main [REQ: merge-queue-shall-serialize-integration]
 - [ ] 9.8 Unit test: merge queue — integration conflict → merge-blocked, queue continues [REQ: merge-queue-shall-serialize-integration]
+- [ ] 9.9a Unit test: integration gates — build fail after integration → merge-blocked [REQ: merge-queue-shall-run-integration-gates]
+- [ ] 9.9b Unit test: integration gates — build+test pass → ff-only proceeds [REQ: merge-queue-shall-run-integration-gates]
 - [ ] 9.9 Integration test: full pipeline with web profile — same gates, same order as before [REQ: pipeline-shall-register-gates-from-registry]
 - [ ] 9.10 Run existing tests: must all pass (backwards compat) [REQ: gateconfig-shall-support-arbitrary-gate-names]

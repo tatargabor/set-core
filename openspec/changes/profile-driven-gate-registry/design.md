@@ -42,6 +42,8 @@ class GateDefinition:
     extra_retries: int = 0
     # Optional: field mapping for commit_results (state field name, timing field name)
     result_fields: tuple[str, str] | None = None  # e.g. ("build_result", "gate_build_ms")
+    # Re-run in merge queue after integration? (fast gates only: build, test, e2e)
+    run_on_integration: bool = False
 ```
 
 Lives in `lib/set_orch/gate_runner.py` alongside GateResult and GatePipeline.
@@ -239,19 +241,46 @@ def post_merge_hooks(self, change_name: str, state_file: str) -> None:
         ...
 ```
 
-### D11: Merge queue simplification — integrate-then-ff
+### D11: Merge queue — integrate, verify, ff-only (serialized)
 
 The current merge flow has bugs and unnecessary complexity:
 - `_try_merge` integrates main into branch but **doesn't check** if integration succeeded
 - On ff-fail, `merge_change` sets status="done" → re-queue → retry loop
 - `merge_retry_count`, `ff_retry_count`, conflict fingerprint dedup add complexity for a case that shouldn't happen
+- **Critical gap:** when A and B pass gates in parallel (both based on M0), then A merges first — B's gates never tested M0+A. This has caused broken main in production.
 
-**Key insight:** if integration succeeds (no conflict), ff-only MUST succeed because the branch is now a descendant of main. So ff-fail retry logic is unnecessary.
+**Key insight:** if integration succeeds (no conflict), ff-only MUST succeed because the branch is now a descendant of main. So ff-fail retry logic is unnecessary. BUT the integrated code must be verified before ff — git auto-merge doesn't guarantee correctness.
+
+**Integration gates via GateDefinition:**
+```python
+@dataclass
+class GateDefinition:
+    ...
+    run_on_integration: bool = False  # re-run in merge queue after integration?
+```
+
+Gates with `run_on_integration=True` run again in the merge queue, AFTER integrating fresh main, BEFORE ff-only. These are fast, deterministic checks:
+- `build` — does it still compile? (run_on_integration=True)
+- `test` — do unit tests pass? (run_on_integration=True)
+- `e2e` — do integration tests pass? (run_on_integration=True, web profile)
+
+Gates that DON'T re-run (expensive or unchanged):
+- `review` — LLM review, expensive, scope didn't change
+- `rules` — project-knowledge rules, didn't change
+- `spec_verify` — spec coverage, didn't change
+- `scope_check` — implementation scope, didn't change
+- `lint` — only checks diff from branch, already ran
 
 **New merge queue flow:**
 ```python
 def execute_merge_queue(state_file, event_bus=None):
-    """Drain merge queue. Each change integrates fresh main before ff-only."""
+    """Drain merge queue. Serialized: integrate → verify → ff-only per change."""
+    profile = load_profile()
+    all_gates = list(UNIVERSAL_GATES)
+    if profile and hasattr(profile, "register_gates"):
+        all_gates.extend(profile.register_gates())
+    integration_gates = [g for g in all_gates if g.run_on_integration]
+
     state = load_state(state_file)
     merged = 0
     for name in list(state.merge_queue):
@@ -265,13 +294,26 @@ def execute_merge_queue(state_file, event_bus=None):
                 update_change_field(state_file, name, "status", "merge-blocked")
                 _remove_from_merge_queue(state_file, name)
                 continue
-            # integration == "ok" → branch is now ahead of main → ff will work
 
-        # Step 2: ff-only merge (guaranteed to succeed after clean integration)
+        # Step 2: Integration gates (build + test + e2e — fast verify)
+        integration_ok = True
+        for gate in integration_gates:
+            gc = resolve_gate_config(change, profile)
+            if not gc.should_run(gate.name):
+                continue
+            result = gate.executor(change_name=name, change=change, wt_path=wt_path, ...)
+            if result.status == "fail" and gc.is_blocking(gate.name):
+                update_change_field(state_file, name, "status", "merge-blocked")
+                _remove_from_merge_queue(state_file, name)
+                integration_ok = False
+                break
+        if not integration_ok:
+            continue
+
+        # Step 3: ff-only merge (guaranteed after clean integration + verify)
         result = _ff_merge(name, state_file, event_bus=event_bus)
         if result.success:
             merged += 1
-            # main has advanced — next change will integrate against fresh main
 
         # Re-read state for next iteration (main changed)
         state = load_state(state_file)
@@ -279,13 +321,14 @@ def execute_merge_queue(state_file, event_bus=None):
 ```
 
 **Removed:**
-- `_try_merge()` — replaced by integrate-then-ff in queue loop
+- `_try_merge()` — replaced by integrate → verify → ff in queue loop
 - `merge_retry_count` / `MAX_MERGE_RETRIES` — no retries needed
 - `ff_retry_count` / `max_ff_retries` — ff always works after integration
 - `_compute_conflict_fingerprint()` / fingerprint dedup — conflict = blocked immediately
 - `merge_change` ff-fail path (status="done" re-queue) — no ff-fail possible
+- `_post_merge_build_check()` — replaced by integration gates (runs BEFORE ff, not after)
 
 **Kept:**
 - `merge_change()` simplified to only handle the ff-only + post-merge steps (no integration, no ff-fail path)
-- `retry_merge_queue()` still retries merge-blocked with fresh integration
-- Conflict handling: integration conflict → `merge-blocked` → `retry_merge_queue` can retry later (after other merges may have resolved the conflict source)
+- `retry_merge_queue()` still retries merge-blocked with fresh integration + verify
+- Conflict handling: integration conflict → `merge-blocked` → `retry_merge_queue` can retry later
