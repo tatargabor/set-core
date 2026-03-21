@@ -1666,7 +1666,7 @@ def _load_serialize_triggers() -> list[str]:
 
 def _is_serialized(name: str, state: Any, triggers: list[str]) -> bool:
     """Check if a change matches a serialize trigger and another match is running."""
-    from .loop_state import Change
+    from .state import Change
     change = None
     for c in state.changes:
         if c.name == name:
