@@ -94,6 +94,16 @@ class NullProfile:
         """
         return []
 
+    def generate_smoke_e2e(self, project_path: str) -> str | None:
+        """Generate route-level smoke E2E test content.
+
+        Returns Playwright test file content as a string, or None if not applicable.
+        Override in project-type plugins (e.g., set-project-web) to auto-generate
+        tests that visit every route, check for hydration errors, and assert no
+        console errors.
+        """
+        return None
+
     def decompose_hints(self) -> list:
         """Return natural-language hints for the decompose/planning prompt.
 

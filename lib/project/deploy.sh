@@ -320,6 +320,23 @@ COMMIT_SNIPPET
         success "  Added Auto-Commit After Apply section to CLAUDE.md"
     fi
 
+    # Generate smoke E2E test from project-type plugin (if available)
+    if command -v python3 &>/dev/null; then
+        local smoke_content
+        smoke_content=$(cd "$project_path" && python3 -c "
+from set_orch.profile_loader import load_profile
+p = load_profile('.')
+content = p.generate_smoke_e2e('.')
+if content:
+    print(content)
+" 2>/dev/null) || true
+        if [[ -n "$smoke_content" ]]; then
+            mkdir -p "$project_path/e2e"
+            echo "$smoke_content" > "$project_path/e2e/smoke-routes.spec.ts"
+            success "  Generated e2e/smoke-routes.spec.ts from project-type plugin"
+        fi
+    fi
+
     # Auto-import memory seeds if memory store is empty and seed file exists
     local seed_file="$project_path/wt/knowledge/memory-seed.yaml"
     if [[ -f "$seed_file" ]] && command -v set-memory &>/dev/null; then

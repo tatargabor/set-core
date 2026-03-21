@@ -76,6 +76,32 @@ DEFAULT_REVIEW_MODEL = "sonnet"
 DEFAULT_E2E_TIMEOUT = 120
 E2E_HEALTH_TIMEOUT = 30  # seconds; override via config e2e_health_timeout
 
+# Runtime error indicators in E2E output — if any appear, the page has client-side errors
+# even if HTTP returned 200. Extensible list.
+E2E_RUNTIME_ERROR_INDICATORS = [
+    "Functions are not valid as a child",
+    "Hydration failed because",
+    "There was an error while hydrating",
+    "Minified React error",
+    "Error: Text content does not match",
+    "Unhandled Runtime Error",
+    "data-nextjs-error",
+    "Internal error: Error: ",
+]
+
+
+def _check_e2e_runtime_errors(output: str) -> list[str]:
+    """Scan E2E output for client-side runtime error indicators.
+
+    Returns list of matched error snippets. Empty list = no errors found.
+    """
+    found = []
+    output_lower = output.lower()
+    for indicator in E2E_RUNTIME_ERROR_INDICATORS:
+        if indicator.lower() in output_lower:
+            found.append(indicator)
+    return found
+
 
 # ─── Data Structures ────────────────────────────────────────────────
 
@@ -2152,9 +2178,11 @@ def _execute_e2e_gate(
                                  "Playwright must manage the dev server via webServer config")
 
     # Run E2E tests (Playwright manages its own dev server via webServer config)
+    # Screenshot on every run (not just failures) for visual review
+    e2e_env = {"PLAYWRIGHT_SCREENSHOT": "on"}
     e2e_cmd_result = run_command(
         ["bash", "-c", e2e_command],
-        timeout=e2e_timeout, cwd=wt_path,
+        timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
         max_output_size=4000,
     )
     e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
@@ -2178,9 +2206,23 @@ def _execute_e2e_gate(
 
     raw_status = "pass" if e2e_cmd_result.exit_code == 0 else "fail"
 
+    # Check for runtime errors even on pass (hydration errors, RSC boundary violations)
+    runtime_errors = _check_e2e_runtime_errors(e2e_output)
+    if runtime_errors:
+        logger.warning(
+            "E2E runtime errors detected for %s (even though tests may pass): %s",
+            change_name, ", ".join(runtime_errors),
+        )
+
     if raw_status == "pass":
+        output_text = e2e_output[:4000]
+        if runtime_errors:
+            output_text = (
+                f"WARNING: {len(runtime_errors)} runtime error(s) detected in E2E output: "
+                f"{', '.join(runtime_errors)}\n\n" + output_text[:3500]
+            )
         return GateResult(
-            "e2e", "pass", output=e2e_output[:4000],
+            "e2e", "pass", output=output_text,
             stats=parse_test_output(e2e_output) if e2e_output else None,
         )
 
