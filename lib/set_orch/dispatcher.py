@@ -805,6 +805,37 @@ def _find_change(state: OrchestratorState, name: str) -> Change | None:
     return None
 
 
+def _unique_worktree_name(project_path: str, change_name: str) -> str:
+    """Return a unique worktree name, appending -N suffix if branch or dir already exists.
+
+    Prevents collisions when a spec-switch run creates a change with the same
+    name as a prior run (e.g., 'product-catalog-list' from v1 run still has
+    an unmerged branch).
+    """
+    # Check if branch and directory are both free
+    branch = f"change/{change_name}"
+    wt_dir = f"{project_path}-{change_name}"
+    branch_exists = run_git("rev-parse", "--verify", branch).exit_code == 0
+    dir_exists = os.path.isdir(wt_dir)
+
+    if not branch_exists and not dir_exists:
+        return change_name  # no collision
+
+    # Append numeric suffix to find a free name
+    for i in range(2, 100):
+        candidate = f"{change_name}-{i}"
+        branch = f"change/{candidate}"
+        wt_dir = f"{project_path}-{candidate}"
+        branch_exists = run_git("rev-parse", "--verify", branch).exit_code == 0
+        dir_exists = os.path.isdir(wt_dir)
+        if not branch_exists and not dir_exists:
+            logger.info("change name collision: %s exists, using %s", change_name, candidate)
+            return candidate
+
+    logger.error("could not find unique name for %s after 98 attempts", change_name)
+    return change_name  # fallback to original
+
+
 def _find_existing_worktree(project_path: str, change_name: str) -> str:
     """Find existing worktree path for a change.
 
@@ -1244,39 +1275,34 @@ def dispatch_change(
 
     # Create or reuse worktree
     project_path = os.getcwd()
-    wt_path = f"{project_path}-{change_name}"
+    wt_name = _unique_worktree_name(project_path, change_name)
+    wt_path = f"{project_path}-{wt_name}"
 
     if os.path.isdir(wt_path):
         # A pending change should never have an existing worktree (Bug #30).
-        # This happens when a change was reset to pending after a failed run
-        # but the worktree/branch wasn't cleaned up. The old branch contains
-        # [x]-checked tasks from the prior run, causing the done check to
-        # declare "done" without implementation.
-        # Always remove stale worktree + branch for a clean fresh start.
         logger.info("stale worktree for pending change %s — removing for fresh dispatch", change_name)
         run_command(["git", "worktree", "remove", wt_path, "--force"], timeout=30)
-        # If worktree remove failed, force-remove the directory and prune
         if os.path.isdir(wt_path):
             import shutil
             shutil.rmtree(wt_path, ignore_errors=True)
         run_git("worktree", "prune")
-        run_git("branch", "-D", f"change/{change_name}")
+        run_git("branch", "-D", f"change/{wt_name}")
 
     if not os.path.isdir(wt_path):
         # Clean stale branch
-        branch_check = run_git("rev-parse", "--verify", f"change/{change_name}")
+        branch_check = run_git("rev-parse", "--verify", f"change/{wt_name}")
         if branch_check.exit_code == 0:
-            logger.info("removing stale branch change/%s before worktree creation", change_name)
-            run_git("branch", "-D", f"change/{change_name}")
+            logger.info("removing stale branch change/%s before worktree creation", wt_name)
+            run_git("branch", "-D", f"change/{wt_name}")
 
-        wt_new_r = run_command(["set-new", change_name, "--skip-open"], timeout=30)
+        wt_new_r = run_command(["set-new", wt_name, "--skip-open"], timeout=30)
         if wt_new_r.exit_code != 0:
             logger.error("failed to create worktree for %s: %s", change_name, wt_new_r.stderr)
             update_change_field(state_path, change_name, "status", "failed", event_bus=event_bus)
             return False
 
-    # Find actual worktree path
-    wt_path = _find_existing_worktree(project_path, change_name)
+    # Find actual worktree path (use wt_name which may have -N suffix)
+    wt_path = _find_existing_worktree(project_path, wt_name)
 
     # Bootstrap
     bootstrap_worktree(project_path, wt_path)

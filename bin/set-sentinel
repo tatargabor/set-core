@@ -82,8 +82,31 @@ MAX_RAPID_CRASHES=5
 SUSTAINED_RUN_SECS=300  # 5 minutes
 POLL_INTERVAL=10        # Check child every 10s
 SENTINEL_STUCK_TIMEOUT=600  # 10 minutes no activity = stuck (verify/merge can take 5-10 min)
+FRESH_FLAG=false            # --fresh forces orchestration reset even with same spec
 SENTINEL_STARTUP_TIMEOUT=1800  # 30 minutes for initial planning (digest + design fetch + Claude decompose)
 CHECKPOINT_MAX_WAIT=86400     # 24 hours max checkpoint wait before giving up
+
+# Parse sentinel-specific flags from args (passthrough rest to set-orchestrate)
+SPEC_ARG=""
+_passthrough_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --fresh)
+            FRESH_FLAG=true
+            shift
+            ;; # consumed, not passed through
+        --spec)
+            SPEC_ARG="${2:-}"
+            _passthrough_args+=("$1" "$2")
+            shift 2
+            ;;
+        *)
+            _passthrough_args+=("$1")
+            shift
+            ;;
+    esac
+done
+set -- "${_passthrough_args[@]}"  # restore args for passthrough
 
 # Exponential backoff: 30s → 60s → 120s → 240s (with 0-25% jitter)
 BACKOFF_BASE=30
@@ -207,6 +230,79 @@ backoff_secs=$BACKOFF_BASE
 
 # Clean slate: if no state file or state is terminal (done/stopped), reset ephemeral files
 # This prevents stale logs/events from confusing the new run.
+# Detect spec change: compare brief_hash of --spec arg against stored hash in state file.
+# Returns 0 if spec changed (or --fresh forced), 1 if same/no state.
+detect_spec_change() {
+    local spec_arg="$1"
+    [[ -z "$spec_arg" ]] && return 1  # no --spec given, can't compare
+
+    [[ ! -f "$STATE_FILE" ]] && return 1  # no state file = fresh start, not a switch
+
+    local stored_hash
+    stored_hash=$(jq -r '.brief_hash // empty' "$STATE_FILE" 2>/dev/null)
+    [[ -z "$stored_hash" ]] && return 1  # no hash stored = legacy state, treat as fresh
+
+    local current_hash
+    current_hash=$(set-orch-core config brief-hash --file "$spec_arg" 2>/dev/null)
+
+    if [[ "$stored_hash" == "$current_hash" ]]; then
+        return 1  # same spec, resume
+    fi
+
+    # Different spec detected
+    local stored_path
+    stored_path=$(jq -r '.input_path // "unknown"' "$STATE_FILE" 2>/dev/null)
+    sentinel_log "Spec changed: $stored_path → $spec_arg (hash: ${stored_hash:0:12}… → ${current_hash:0:12}…)"
+    return 0
+}
+
+# Reset orchestration state for spec switch. Preserves git history on main.
+reset_for_spec_switch() {
+    sentinel_log "Resetting orchestration for spec switch"
+
+    # 1. Delete orch/* tags (unblock clean_old_worktrees history guard)
+    local tags
+    tags=$(git tag -l 'orch/*' 2>/dev/null || true)
+    if [[ -n "$tags" ]]; then
+        local tag_count
+        tag_count=$(echo "$tags" | wc -l | tr -d ' ')
+        echo "$tags" | xargs git tag -d 2>/dev/null || true
+        sentinel_log "Removed $tag_count orch/* tags from prior run"
+    fi
+
+    # 2. Clean worktrees (now unblocked by tag removal)
+    clean_old_worktrees
+
+    # 3. Prune only merged change/* branches (preserve unmerged work)
+    local merged_branches
+    merged_branches=$(git branch --merged main 2>/dev/null | grep 'change/' | sed 's/^[ *]*//' || true)
+    if [[ -n "$merged_branches" ]]; then
+        local branch_count
+        branch_count=$(echo "$merged_branches" | wc -l | tr -d ' ')
+        echo "$merged_branches" | xargs git branch -d 2>/dev/null || true
+        sentinel_log "Pruned $branch_count merged change/* branches"
+    fi
+
+    # 4. Remove orchestration state files (not git!)
+    rm -f "$STATE_FILE" "${STATE_FILE}.lock" "${STATE_FILE}.bak"
+    rm -f "$EVENTS_FILE" "${EVENTS_FILE}.bak"
+    rm -f "orchestrator.lock"
+    # Also remove legacy root-level state files (Python monitor may use these)
+    rm -f "orchestration-state.json" "orchestration-state.json.lock"
+    rm -f "orchestration-state-events.jsonl"
+    rm -f "orchestration-events.jsonl"
+
+    # 5. Remove digest and plan (will be regenerated from new spec)
+    rm -rf "wt/orchestration/digest"
+    rm -f "wt/orchestration/plan.json"
+
+    # 6. Rotate log
+    "$SCRIPT_DIR/set-sentinel-rotate" >/dev/null 2>&1 || true
+    : > "$LOG_FILE"
+
+    sentinel_log "Orchestration reset complete — git history preserved, ready for new spec"
+}
+
 clean_old_worktrees() {
     local project_dir
     project_dir=$(pwd)
@@ -256,6 +352,15 @@ clean_old_worktrees() {
         git branch -D "$branch" 2>/dev/null || true
     done <<< "$branches"
 }
+
+# Spec switch detection: if --spec hash differs from state, reset before normal startup logic
+if [[ "$FRESH_FLAG" == "true" ]] && [[ -f "$STATE_FILE" ]]; then
+    sentinel_log "Forced fresh start (--fresh flag)"
+    reset_for_spec_switch
+    FRESH_FLAG=false
+elif detect_spec_change "$SPEC_ARG"; then
+    reset_for_spec_switch
+fi
 
 if [[ ! -f "$STATE_FILE" ]]; then
     sentinel_log "No state file — starting fresh (cleaning old logs/events/worktrees)"
