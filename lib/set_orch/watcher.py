@@ -85,7 +85,14 @@ class ProjectWatcher:
         self.log_tailer = LogTailer(self.log_path)
 
     def _find_state(self) -> Path:
-        # Try shared runtime dir first (SetRuntime)
+        # Project-local paths (engine writes here from CWD)
+        new = self.project_path / "wt" / "orchestration" / "orchestration-state.json"
+        if new.exists():
+            return new
+        legacy = self.project_path / "orchestration-state.json"
+        if legacy.exists():
+            return legacy
+        # Try shared runtime dir (future: engine may write here)
         try:
             from .paths import SetRuntime
             rt = SetRuntime(str(self.project_path))
@@ -94,17 +101,17 @@ class ProjectWatcher:
                 return runtime_state
         except Exception:
             pass
-        # Fallback: project-local paths
-        new = self.project_path / "wt" / "orchestration" / "orchestration-state.json"
-        if new.exists():
-            return new
-        legacy = self.project_path / "orchestration-state.json"
-        if legacy.exists():
-            return legacy
         return new  # default
 
     def _find_log(self) -> Path:
-        # Try shared runtime dir first (SetRuntime)
+        # Project-local paths first
+        new = self.project_path / "wt" / "orchestration" / "orchestration.log"
+        if new.exists():
+            return new
+        legacy = self.project_path / "orchestration.log"
+        if legacy.exists():
+            return legacy
+        # Try shared runtime dir
         try:
             from .paths import SetRuntime
             rt = SetRuntime(str(self.project_path))
@@ -113,13 +120,6 @@ class ProjectWatcher:
                 return runtime_log
         except Exception:
             pass
-        # Fallback: project-local paths
-        new = self.project_path / "wt" / "orchestration" / "orchestration.log"
-        if new.exists():
-            return new
-        legacy = self.project_path / "orchestration.log"
-        if legacy.exists():
-            return legacy
         return new  # default
 
     def _refresh_paths(self):
