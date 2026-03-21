@@ -101,14 +101,12 @@ function SessionBlock({ session }: { session: TimelineSession }) {
               ))}
             </div>
           )}
-          {isRunning && (
-            <div className="text-xs text-white/60 text-center mt-1">running</div>
-          )}
-        </div>
-
-        {/* Duration + state label below */}
-        <div className="text-[9px] text-neutral-500 leading-none mt-1 text-center">
-          {session.duration_ms ? formatDuration(session.duration_ms) : isRunning ? '...' : ''}
+          {/* Duration inside block */}
+          {session.duration_ms ? (
+            <div className="text-[10px] text-white/50 text-center mt-1 font-mono">{formatDuration(session.duration_ms)}</div>
+          ) : isRunning ? (
+            <div className="text-[10px] text-white/50 text-center mt-1">running...</div>
+          ) : null}
         </div>
 
         {/* Tooltip */}
