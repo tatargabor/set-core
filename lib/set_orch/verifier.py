@@ -2148,9 +2148,66 @@ def _get_or_create_e2e_baseline(
     return baseline
 
 
+def _read_package_json_scripts(wt_path: str) -> dict:
+    """Read package.json scripts section, return empty dict on failure."""
+    pkg_path = os.path.join(wt_path, "package.json")
+    if not os.path.isfile(pkg_path):
+        return {}
+    try:
+        with open(pkg_path) as f:
+            data = json.load(f)
+        return data.get("scripts", {}) or {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _auto_detect_e2e_command(wt_path: str, profile=None) -> str:
+    """Auto-detect e2e command from profile, package.json, or playwright config.
+
+    Returns detected command string, or empty string if no E2E framework found.
+    """
+    # 1. Try profile detection
+    if profile is not None and hasattr(profile, "detect_e2e_command"):
+        try:
+            cmd = profile.detect_e2e_command(wt_path)
+            if cmd:
+                logger.info("E2E command detected via profile: %s", cmd)
+                return cmd
+        except Exception:
+            pass
+
+    # 2. Check if playwright config exists
+    has_pw = any(
+        os.path.isfile(os.path.join(wt_path, name))
+        for name in ("playwright.config.ts", "playwright.config.js")
+    )
+    if not has_pw:
+        return ""
+
+    # 3. Try package.json scripts
+    scripts = _read_package_json_scripts(wt_path)
+    for key in ("test:e2e", "e2e", "playwright"):
+        if key in scripts:
+            # Detect package manager
+            if os.path.isfile(os.path.join(wt_path, "pnpm-lock.yaml")):
+                pm = "pnpm"
+            elif os.path.isfile(os.path.join(wt_path, "yarn.lock")):
+                pm = "yarn"
+            else:
+                pm = "npm"
+            cmd = f"{pm} run {key}"
+            logger.info("E2E command auto-detected from package.json: %s", cmd)
+            return cmd
+
+    # 4. Fallback: npx playwright test
+    logger.info("E2E command fallback: npx playwright test")
+    return "npx playwright test"
+
+
 def _execute_e2e_gate(
     change_name: str, change: Change, wt_path: str,
     e2e_command: str, e2e_timeout: int, e2e_health_timeout: int,
+    profile=None,
 ) -> "GateResult":
     """E2E gate: run Playwright tests with baseline comparison.
 
@@ -2158,6 +2215,12 @@ def _execute_e2e_gate(
     Requires Playwright webServer config to manage the dev server.
     """
     from .gate_runner import GateResult
+
+    # Auto-detect e2e_command if not explicitly configured
+    auto_detected = False
+    if not e2e_command and wt_path:
+        e2e_command = _auto_detect_e2e_command(wt_path, profile)
+        auto_detected = bool(e2e_command)
 
     if not e2e_command or not wt_path:
         return GateResult("e2e", "skipped", output="e2e_command not configured")
@@ -2169,6 +2232,19 @@ def _execute_e2e_gate(
 
     e2e_test_count, searched_desc = _count_e2e_tests(wt_path, pw_config)
     if e2e_test_count == 0:
+        if auto_detected:
+            # Playwright exists but no tests — fail for feature changes
+            scope = change.scope or ""
+            return GateResult(
+                "e2e", "fail",
+                output=f"no e2e test files found (searched: {searched_desc})",
+                retry_context=(
+                    "E2E tests required for feature changes when Playwright is configured.\n\n"
+                    f"Playwright config found but no test files in: {searched_desc}\n\n"
+                    "Write E2E tests for the implemented functionality, then commit them.\n\n"
+                    f"Original scope: {scope}"
+                ),
+            )
         return GateResult("e2e", "skipped",
                           output=f"no e2e test files found (searched: {searched_desc})")
 
@@ -2281,6 +2357,132 @@ def _execute_e2e_gate(
         f"Original scope: {scope}"
     )
     return result
+
+
+def _load_forbidden_patterns(wt_path: str, profile=None) -> list[dict]:
+    """Load forbidden patterns from profile plugin + project-knowledge.yaml."""
+    patterns: list[dict] = []
+
+    # 1. Profile patterns
+    if profile is not None and hasattr(profile, "get_forbidden_patterns"):
+        try:
+            patterns.extend(profile.get_forbidden_patterns())
+        except Exception:
+            logger.warning("Failed to load forbidden patterns from profile", exc_info=True)
+
+    # 2. project-knowledge.yaml patterns
+    pk_path = os.path.join(wt_path, "project-knowledge.yaml")
+    if os.path.isfile(pk_path):
+        try:
+            import yaml
+
+            with open(pk_path) as f:
+                pk = yaml.safe_load(f) or {}
+            fp = pk.get("verification", {}).get("forbidden_patterns", [])
+            if isinstance(fp, list):
+                patterns.extend(fp)
+        except Exception:
+            logger.warning("Failed to load forbidden_patterns from project-knowledge.yaml", exc_info=True)
+
+    return patterns
+
+
+def _extract_added_lines(diff_output: str) -> list[tuple[str, int, str]]:
+    """Parse unified diff, return (file_path, approx_line, content) for added lines."""
+    results: list[tuple[str, int, str]] = []
+    current_file = ""
+    current_line = 0
+
+    for line in diff_output.split("\n"):
+        if line.startswith("+++ b/"):
+            current_file = line[6:]
+            current_line = 0
+        elif line.startswith("@@ "):
+            # Parse hunk header: @@ -a,b +c,d @@
+            match = re.search(r"\+(\d+)", line)
+            if match:
+                current_line = int(match.group(1)) - 1
+        elif line.startswith("+") and not line.startswith("+++"):
+            current_line += 1
+            results.append((current_file, current_line, line[1:]))
+        elif not line.startswith("-"):
+            current_line += 1
+
+    return results
+
+
+def _execute_lint_gate(
+    change_name: str, change: Change, wt_path: str,
+    profile=None,
+) -> "GateResult":
+    """Lint gate: deterministic grep-based forbidden pattern scanning."""
+    from .gate_runner import GateResult
+
+    if not wt_path:
+        return GateResult("lint", "pass")
+
+    patterns = _load_forbidden_patterns(wt_path, profile)
+    if not patterns:
+        return GateResult("lint", "pass", output="no forbidden patterns configured")
+
+    # Get diff
+    merge_base = _get_merge_base(wt_path)
+    diff_result = run_git("diff", f"{merge_base}..HEAD", cwd=wt_path)
+    if diff_result.exit_code != 0:
+        return GateResult("lint", "pass", output="could not generate diff")
+
+    added_lines = _extract_added_lines(diff_result.stdout)
+    if not added_lines:
+        return GateResult("lint", "pass")
+
+    critical_matches: list[str] = []
+    warning_matches: list[str] = []
+
+    for pat_dict in patterns:
+        pattern = pat_dict.get("pattern", "")
+        severity = pat_dict.get("severity", "warning").lower()
+        message = pat_dict.get("message", "")
+        file_glob = pat_dict.get("file_glob", "")
+
+        if not pattern:
+            continue
+
+        try:
+            regex = re.compile(pattern)
+        except re.error:
+            logger.warning("Invalid forbidden pattern regex: %s", pattern)
+            continue
+
+        for file_path, line_num, content in added_lines:
+            # file_glob filtering
+            if file_glob and not fnmatch.fnmatch(file_path, file_glob):
+                continue
+
+            if regex.search(content):
+                match_str = f"  File: {file_path} (line {line_num})\n  Pattern: {pattern}\n  Rule: {message}"
+                if severity == "critical":
+                    critical_matches.append(match_str)
+                else:
+                    warning_matches.append(match_str)
+
+    if critical_matches:
+        retry_ctx = "FORBIDDEN PATTERN(S) DETECTED:\n\n" + "\n\n".join(critical_matches)
+        retry_ctx += "\n\nFix the root cause. Do NOT use type casts or workarounds to bypass."
+        if warning_matches:
+            retry_ctx += "\n\nWarnings (non-blocking):\n" + "\n".join(warning_matches)
+        return GateResult(
+            "lint", "fail",
+            output=f"{len(critical_matches)} critical, {len(warning_matches)} warning pattern match(es)",
+            retry_context=retry_ctx,
+        )
+
+    if warning_matches:
+        return GateResult(
+            "lint", "pass",
+            output=f"{len(warning_matches)} warning pattern match(es):\n" + "\n".join(warning_matches),
+        )
+
+    return GateResult("lint", "pass")
 
 
 def _execute_scope_gate(
@@ -2450,9 +2652,20 @@ def _execute_spec_verify_gate(
     if "VERIFY_RESULT: PASS" in verify_output:
         return GateResult("spec_verify", "pass", output=verify_output[:2000])
     elif "VERIFY_RESULT: FAIL" in verify_output:
-        # Non-blocking fail — return as pass with warning logged
-        logger.warning("Spec coverage FAIL for %s — non-blocking", change_name)
-        return GateResult("spec_verify", "pass", output=verify_output[:2000])
+        scope = change.scope or ""
+        verify_tail = verify_output[-2000:] if verify_output else ""
+        logger.warning("Spec coverage FAIL for %s — blocking", change_name)
+        return GateResult(
+            "spec_verify", "fail",
+            output=verify_output[:2000],
+            retry_context=(
+                "Spec verification FAILED — requirements not fully covered.\n\n"
+                f"Verify output (last 2000 chars):\n{verify_tail}\n\n"
+                f"Original scope: {scope}\n\n"
+                "Fix: Ensure all requirements from the scope are implemented "
+                "and acceptance criteria are satisfied."
+            ),
+        )
     else:
         # No sentinel — timeout, non-blocking
         logger.warning("Spec verify timed out for %s — non-blocking", change_name)
@@ -2749,7 +2962,7 @@ def handle_change_done(
     )
     pipeline.register(
         "e2e",
-        lambda: _execute_e2e_gate(change_name, change, wt_path, e2e_command, e2e_timeout, e2e_health_timeout),
+        lambda: _execute_e2e_gate(change_name, change, wt_path, e2e_command, e2e_timeout, e2e_health_timeout, profile=profile),
     )
     pipeline.register(
         "scope_check",
@@ -2758,6 +2971,10 @@ def handle_change_done(
     pipeline.register(
         "test_files",
         lambda: _execute_test_files_gate(change_name, change, wt_path, gc),
+    )
+    pipeline.register(
+        "lint",
+        lambda: _execute_lint_gate(change_name, change, wt_path, profile=profile),
     )
     if review_before_merge:
         pipeline.register(
@@ -2842,6 +3059,13 @@ def handle_change_done(
             "gates_warn_only": [g for g in _gate_names if gc.is_warn_only(g)],
             "gate_ms": gate_timings,
         })
+
+    # Post-verify hooks (profile — non-blocking)
+    if profile is not None and hasattr(profile, "post_verify_hooks"):
+        try:
+            profile.post_verify_hooks(change_name, wt_path, pipeline.results)
+        except Exception:
+            logger.warning("Post-verify hook failed for %s — continuing to merge", change_name, exc_info=True)
 
     # Mark done and queue merge
     update_change_field(state_file, change_name, "status", "done")

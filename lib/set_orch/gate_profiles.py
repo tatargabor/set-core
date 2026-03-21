@@ -24,6 +24,7 @@ class GateConfig:
     test_files_required: bool = True
     e2e: str = "run"
     scope_check: str = "run"
+    lint: str = "run"
     review: str = "run"
     spec_verify: str = "run"
     rules: str = "run"
@@ -63,6 +64,7 @@ BUILTIN_GATE_PROFILES: dict[str, GateConfig] = {
         test_files_required=False,
         e2e="skip",
         scope_check="run",
+        lint="skip",
         review="run",
         spec_verify="soft",
         rules="run",
@@ -76,6 +78,7 @@ BUILTIN_GATE_PROFILES: dict[str, GateConfig] = {
         test_files_required=False,
         e2e="skip",
         scope_check="run",
+        lint="warn",
         review="run",
         spec_verify="run",
         rules="run",
@@ -89,6 +92,7 @@ BUILTIN_GATE_PROFILES: dict[str, GateConfig] = {
         test_files_required=True,
         e2e="skip",
         scope_check="run",
+        lint="run",
         review="run",
         spec_verify="run",
         rules="run",
@@ -114,6 +118,7 @@ BUILTIN_GATE_PROFILES: dict[str, GateConfig] = {
         test_files_required=False,
         e2e="skip",
         scope_check="run",
+        lint="warn",
         review="run",
         spec_verify="soft",
         rules="run",
@@ -126,6 +131,7 @@ BUILTIN_GATE_PROFILES: dict[str, GateConfig] = {
         test_files_required=False,
         e2e="skip",
         scope_check="run",
+        lint="skip",
         review="skip",
         spec_verify="soft",
         rules="skip",
@@ -187,9 +193,9 @@ def resolve_gate_config(
 
     change_name = getattr(change, "name", "?")
     logger.debug(
-        "Gate config for %s (type=%s): build=%s test=%s e2e=%s review=%s smoke=%s spec_verify=%s",
+        "Gate config for %s (type=%s): build=%s test=%s e2e=%s lint=%s review=%s smoke=%s spec_verify=%s",
         change_name, change_type,
-        config.build, config.test, config.e2e, config.review, config.smoke,
+        config.build, config.test, config.e2e, config.lint, config.review, config.smoke,
         config.spec_verify,
     )
     return config

@@ -141,3 +141,67 @@ class TestLoadProfile:
         """Default project_path='.' resolves to absolute path."""
         p = load_profile()  # uses "."
         assert isinstance(p, NullProfile)  # no project-type.yaml in set-core root
+
+    def test_direct_import_fallback_when_entry_points_empty(self, tmp_path):
+        """entry_points returns empty but module is importable → loads via direct import."""
+        import types
+
+        pt_dir = tmp_path / "wt" / "plugins"
+        pt_dir.mkdir(parents=True)
+        (pt_dir / "project-type.yaml").write_text("type: testfake\n")
+
+        # Create a fake module with a FakeProjectType class
+        fake_mod = types.ModuleType("set_project_testfake")
+
+        class FakeProjectType:
+            @property
+            def info(self):
+                from dataclasses import dataclass
+
+                @dataclass
+                class _Info:
+                    name: str = "testfake"
+                    version: str = "0.1.0"
+                    description: str = "Test"
+
+                return _Info()
+
+        fake_mod.FakeProjectType = FakeProjectType
+
+        with patch("importlib.metadata.entry_points", return_value=[]):
+            with patch("importlib.import_module", return_value=fake_mod):
+                p = load_profile(str(tmp_path))
+                assert type(p).__name__ == "FakeProjectType"
+                assert p.info.name == "testfake"
+
+    def test_direct_import_fallback_import_error(self, tmp_path):
+        """entry_points empty + module not importable → NullProfile."""
+        pt_dir = tmp_path / "wt" / "plugins"
+        pt_dir.mkdir(parents=True)
+        (pt_dir / "project-type.yaml").write_text("type: nonexistent\n")
+
+        with patch("importlib.metadata.entry_points", return_value=[]):
+            with patch("importlib.import_module", side_effect=ImportError("nope")):
+                p = load_profile(str(tmp_path))
+                assert isinstance(p, NullProfile)
+
+
+class TestNullProfileE2eDetect:
+    """NullProfile.detect_e2e_command returns None."""
+
+    def test_detect_e2e_command_returns_none(self):
+        p = NullProfile()
+        assert p.detect_e2e_command(".") is None
+
+
+class TestNullProfileHooks:
+    """NullProfile hook methods are no-ops."""
+
+    def test_pre_dispatch_checks_returns_empty(self):
+        p = NullProfile()
+        assert p.pre_dispatch_checks("feature", "/any/path") == []
+
+    def test_post_verify_hooks_returns_none(self):
+        p = NullProfile()
+        result = p.post_verify_hooks("change", "/any/path", [])
+        assert result is None

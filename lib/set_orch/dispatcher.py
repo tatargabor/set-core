@@ -1398,6 +1398,22 @@ def dispatch_change(
             update_change_field(state_path, change_name, "status", "pending", event_bus=event_bus)
             return False
 
+    # Profile pre-dispatch checks (after directive hook, before Ralph loop)
+    from .profile_loader import load_profile
+    _dispatch_profile = load_profile()
+    if hasattr(_dispatch_profile, "pre_dispatch_checks"):
+        pre_errors = _dispatch_profile.pre_dispatch_checks(
+            getattr(change, "change_type", "feature"), wt_path,
+        )
+        if pre_errors:
+            for err in pre_errors:
+                logger.error("Pre-dispatch check failed for %s: %s", change_name, err)
+            update_change_field(state_path, change_name, "status", "pending", event_bus=event_bus)
+            if event_bus:
+                event_bus.emit("DISPATCH", change=change_name,
+                               data={"result": "blocked", "reason": "pre_dispatch_check", "errors": pre_errors})
+            return False
+
     # Dispatch via set-loop
     impl_model = resolve_change_model(change, default_model, model_routing)
     # Persist resolved model so verifier uses correct context window size

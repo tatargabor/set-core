@@ -848,3 +848,365 @@ class TestUnifiedRetryContext:
         assert "SQL injection" in result
         # Should use structured format, not raw fallback
         assert "```" not in result
+
+
+# ─── _execute_spec_verify_gate ────────────────────────────────────────
+
+
+class TestExecuteSpecVerifyGate:
+    """Tests for spec_verify gate FAIL/PASS/timeout behavior."""
+
+    def _make_change(self, name="test-change", scope="Test scope"):
+        return Change(
+            name=name,
+            scope=scope,
+            status="verifying",
+        )
+
+    def test_verify_result_fail_blocks(self, monkeypatch):
+        """VERIFY_RESULT: FAIL should return gate failure with retry context."""
+        from set_orch import verifier
+        from set_orch.subprocess_utils import CommandResult
+
+        monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/claude")
+        monkeypatch.setattr(
+            verifier, "run_claude",
+            lambda *a, **kw: CommandResult(0, "Some output\nVERIFY_RESULT: FAIL\nDetails here", "", 5000),
+        )
+
+        change = self._make_change(scope="Implement auth feature")
+        result = verifier._execute_spec_verify_gate("test-change", change, "/tmp/fake-wt")
+
+        assert result.gate_name == "spec_verify"
+        assert result.status == "fail"
+        assert "requirements not fully covered" in result.retry_context
+        assert "Implement auth feature" in result.retry_context
+
+    def test_verify_result_pass_unchanged(self, monkeypatch):
+        """VERIFY_RESULT: PASS should return gate pass."""
+        from set_orch import verifier
+        from set_orch.subprocess_utils import CommandResult
+
+        monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/claude")
+        monkeypatch.setattr(
+            verifier, "run_claude",
+            lambda *a, **kw: CommandResult(0, "All good\nVERIFY_RESULT: PASS\n", "", 5000),
+        )
+
+        change = self._make_change()
+        result = verifier._execute_spec_verify_gate("test-change", change, "/tmp/fake-wt")
+
+        assert result.gate_name == "spec_verify"
+        assert result.status == "pass"
+
+    def test_timeout_no_sentinel_stays_pass(self, monkeypatch):
+        """No VERIFY_RESULT sentinel (timeout) should return pass with warning."""
+        from set_orch import verifier
+        from set_orch.subprocess_utils import CommandResult
+
+        monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/claude")
+        monkeypatch.setattr(
+            verifier, "run_claude",
+            lambda *a, **kw: CommandResult(0, "Some partial output without sentinel", "", 5000),
+        )
+
+        change = self._make_change()
+        result = verifier._execute_spec_verify_gate("test-change", change, "/tmp/fake-wt")
+
+        assert result.gate_name == "spec_verify"
+        assert result.status == "pass"
+        assert "timeout" in result.output
+
+
+# ─── E2E auto-detect helpers ──────────────────────────────────────────
+
+
+class TestAutoDetectE2eCommand:
+    """Tests for _auto_detect_e2e_command and _read_package_json_scripts."""
+
+    def test_auto_detect_from_package_json(self, tmp_dir):
+        """playwright.config.ts + package.json test:e2e → detects command."""
+        from set_orch.verifier import _auto_detect_e2e_command
+
+        # Create playwright config
+        with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
+            f.write("export default {}")
+        # Create package.json with test:e2e script
+        with open(os.path.join(tmp_dir, "package.json"), "w") as f:
+            json.dump({"scripts": {"test:e2e": "playwright test"}}, f)
+
+        cmd = _auto_detect_e2e_command(tmp_dir)
+        assert cmd == "npm run test:e2e"
+
+    def test_auto_detect_fallback_npx(self, tmp_dir):
+        """playwright.config.ts exists but no e2e script → npx playwright test."""
+        from set_orch.verifier import _auto_detect_e2e_command
+
+        with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
+            f.write("export default {}")
+        with open(os.path.join(tmp_dir, "package.json"), "w") as f:
+            json.dump({"scripts": {"build": "tsc"}}, f)
+
+        cmd = _auto_detect_e2e_command(tmp_dir)
+        assert cmd == "npx playwright test"
+
+    def test_no_playwright_config_returns_empty(self, tmp_dir):
+        """No playwright.config → empty string (no E2E framework)."""
+        from set_orch.verifier import _auto_detect_e2e_command
+
+        cmd = _auto_detect_e2e_command(tmp_dir)
+        assert cmd == ""
+
+    def test_profile_detection_preferred(self, tmp_dir):
+        """Profile.detect_e2e_command takes priority over auto-detect."""
+        from set_orch.verifier import _auto_detect_e2e_command
+
+        class FakeProfile:
+            def detect_e2e_command(self, path):
+                return "custom-e2e-cmd"
+
+        cmd = _auto_detect_e2e_command(tmp_dir, profile=FakeProfile())
+        assert cmd == "custom-e2e-cmd"
+
+    def test_pnpm_lockfile_detected(self, tmp_dir):
+        """pnpm-lock.yaml present → uses pnpm run."""
+        from set_orch.verifier import _auto_detect_e2e_command
+
+        with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
+            f.write("export default {}")
+        with open(os.path.join(tmp_dir, "pnpm-lock.yaml"), "w") as f:
+            f.write("")
+        with open(os.path.join(tmp_dir, "package.json"), "w") as f:
+            json.dump({"scripts": {"test:e2e": "playwright test"}}, f)
+
+        cmd = _auto_detect_e2e_command(tmp_dir)
+        assert cmd == "pnpm run test:e2e"
+
+
+class TestE2eGateMandatory:
+    """Tests for mandatory E2E failure when auto-detected but no tests."""
+
+    def _make_change(self, name="test-change", scope="Test scope"):
+        return Change(name=name, scope=scope, status="verifying")
+
+    def test_auto_detected_no_tests_fails(self, tmp_dir, monkeypatch):
+        """Auto-detected e2e + playwright config + no test files → FAIL."""
+        from set_orch import verifier
+
+        # Set up worktree with playwright config but no test files
+        with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
+            f.write("export default { webServer: { command: 'npm start' } }")
+        with open(os.path.join(tmp_dir, "package.json"), "w") as f:
+            json.dump({"scripts": {"test:e2e": "playwright test"}}, f)
+
+        change = self._make_change()
+        result = verifier._execute_e2e_gate(
+            "test-change", change, tmp_dir,
+            e2e_command="",  # empty — will auto-detect
+            e2e_timeout=60, e2e_health_timeout=10,
+        )
+
+        assert result.gate_name == "e2e"
+        assert result.status == "fail"
+        assert "E2E tests required" in result.retry_context
+
+    def test_explicit_command_no_tests_skips(self, tmp_dir, monkeypatch):
+        """Explicit e2e_command + no test files → skipped (existing behavior)."""
+        from set_orch import verifier
+
+        with open(os.path.join(tmp_dir, "playwright.config.ts"), "w") as f:
+            f.write("export default { webServer: { command: 'npm start' } }")
+
+        change = self._make_change()
+        result = verifier._execute_e2e_gate(
+            "test-change", change, tmp_dir,
+            e2e_command="npx playwright test",  # explicit
+            e2e_timeout=60, e2e_health_timeout=10,
+        )
+
+        assert result.gate_name == "e2e"
+        assert result.status == "skipped"
+        assert "no e2e test files" in result.output
+
+
+# ─── Lint gate ────────────────────────────────────────────────────────
+
+
+class TestExtractAddedLines:
+    """Tests for _extract_added_lines diff parser."""
+
+    def test_parses_added_lines(self):
+        from set_orch.verifier import _extract_added_lines
+
+        diff = (
+            "diff --git a/src/lib.ts b/src/lib.ts\n"
+            "--- a/src/lib.ts\n"
+            "+++ b/src/lib.ts\n"
+            "@@ -10,3 +10,5 @@\n"
+            " existing line\n"
+            "+const prisma: any = {}\n"
+            "+const x = 1\n"
+            " another line\n"
+        )
+        lines = _extract_added_lines(diff)
+        assert len(lines) == 2
+        assert lines[0] == ("src/lib.ts", 11, "const prisma: any = {}")
+        assert lines[1] == ("src/lib.ts", 12, "const x = 1")
+
+
+class TestExecuteLintGate:
+    """Tests for _execute_lint_gate."""
+
+    def _make_change(self, name="test-change", scope="Test scope"):
+        return Change(name=name, scope=scope, status="verifying")
+
+    def test_critical_pattern_match_fails(self, tmp_dir, monkeypatch):
+        """CRITICAL pattern match → gate fail with retry_context."""
+        from set_orch import verifier
+
+        # Mock git diff
+        diff_output = (
+            "diff --git a/src/session.ts b/src/session.ts\n"
+            "--- a/src/session.ts\n"
+            "+++ b/src/session.ts\n"
+            "@@ -1,3 +1,5 @@\n"
+            "+export async function createSession(prisma: any) {\n"
+        )
+        monkeypatch.setattr(
+            verifier, "run_git",
+            lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
+        )
+        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+
+        class FakeProfile:
+            def get_forbidden_patterns(self):
+                return [{"pattern": r"prisma:\s*any", "severity": "critical",
+                         "message": "Never use any for database client"}]
+
+        change = self._make_change()
+        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
+
+        assert result.status == "fail"
+        assert "src/session.ts" in result.retry_context
+        assert "Never use any" in result.retry_context
+
+    def test_warning_pattern_passes(self, tmp_dir, monkeypatch):
+        """WARNING pattern match → gate pass with output."""
+        from set_orch import verifier
+
+        diff_output = (
+            "diff --git a/src/app.ts b/src/app.ts\n"
+            "+++ b/src/app.ts\n"
+            "@@ -1,1 +1,2 @@\n"
+            "+console.log('debug')\n"
+        )
+        monkeypatch.setattr(
+            verifier, "run_git",
+            lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
+        )
+        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+
+        class FakeProfile:
+            def get_forbidden_patterns(self):
+                return [{"pattern": r"console\.log\(", "severity": "warning",
+                         "message": "Remove console.log"}]
+
+        change = self._make_change()
+        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
+
+        assert result.status == "pass"
+        assert "warning" in result.output.lower()
+
+    def test_no_matches_passes(self, tmp_dir, monkeypatch):
+        """No pattern matches → pass."""
+        from set_orch import verifier
+
+        diff_output = (
+            "diff --git a/src/clean.ts b/src/clean.ts\n"
+            "+++ b/src/clean.ts\n"
+            "@@ -1,1 +1,2 @@\n"
+            "+const x = 42\n"
+        )
+        monkeypatch.setattr(
+            verifier, "run_git",
+            lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
+        )
+        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+
+        class FakeProfile:
+            def get_forbidden_patterns(self):
+                return [{"pattern": r"prisma:\s*any", "severity": "critical",
+                         "message": "bad"}]
+
+        change = self._make_change()
+        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
+        assert result.status == "pass"
+
+    def test_no_patterns_passes(self, tmp_dir):
+        """No patterns configured → pass immediately."""
+        from set_orch import verifier
+
+        change = self._make_change()
+        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=None)
+        assert result.status == "pass"
+        assert "no forbidden patterns" in result.output
+
+    def test_file_glob_filtering(self, tmp_dir, monkeypatch):
+        """file_glob restricts pattern to matching files only."""
+        from set_orch import verifier
+
+        diff_output = (
+            "diff --git a/src/app.py b/src/app.py\n"
+            "+++ b/src/app.py\n"
+            "@@ -1,1 +1,2 @@\n"
+            "+prisma: any = None\n"
+        )
+        monkeypatch.setattr(
+            verifier, "run_git",
+            lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
+        )
+        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+
+        class FakeProfile:
+            def get_forbidden_patterns(self):
+                return [{"pattern": r"prisma:\s*any", "severity": "critical",
+                         "message": "bad", "file_glob": "*.ts"}]
+
+        change = self._make_change()
+        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=FakeProfile())
+        # .py file should NOT match *.ts glob filter
+        assert result.status == "pass"
+
+    def test_pattern_source_merging(self, tmp_dir, monkeypatch):
+        """Profile + project-knowledge patterns both included."""
+        from set_orch import verifier
+
+        diff_output = (
+            "diff --git a/src/a.ts b/src/a.ts\n"
+            "+++ b/src/a.ts\n"
+            "@@ -1,1 +1,2 @@\n"
+            "+TODO HACK workaround\n"
+        )
+        monkeypatch.setattr(
+            verifier, "run_git",
+            lambda *a, **kw: type("R", (), {"exit_code": 0, "stdout": diff_output})(),
+        )
+        monkeypatch.setattr(verifier, "_get_merge_base", lambda wt: "abc123")
+
+        # Write project-knowledge.yaml with a pattern
+        import yaml
+        pk_path = os.path.join(tmp_dir, "project-knowledge.yaml")
+        with open(pk_path, "w") as f:
+            yaml.dump({
+                "verification": {
+                    "forbidden_patterns": [
+                        {"pattern": "TODO.*HACK", "severity": "warning", "message": "Unresolved hack"}
+                    ]
+                }
+            }, f)
+
+        change = self._make_change()
+        result = verifier._execute_lint_gate("test", change, tmp_dir, profile=None)
+        assert result.status == "pass"
+        assert "warning" in result.output.lower()
+        assert "Unresolved hack" in result.output

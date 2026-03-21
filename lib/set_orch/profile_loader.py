@@ -49,6 +49,9 @@ class NullProfile:
     def detect_build_command(self, project_path: str) -> Optional[str]:
         return None
 
+    def detect_e2e_command(self, project_path: str) -> Optional[str]:
+        return None
+
     def detect_dev_server(self, project_path: str) -> Optional[str]:
         return None
 
@@ -80,6 +83,15 @@ class NullProfile:
         """
         return {}
 
+    def get_forbidden_patterns(self) -> list:
+        """Return forbidden patterns for the lint gate.
+
+        Each pattern is a dict: {pattern: str (regex), severity: "critical"|"warning",
+        message: str, file_glob: str (optional — restrict to matching files)}.
+        Override in project-type plugins to provide framework-specific anti-patterns.
+        """
+        return []
+
     def get_verification_rules(self) -> list:
         """Return verification rules for the verify gate.
 
@@ -103,6 +115,23 @@ class NullProfile:
         console errors.
         """
         return None
+
+    def pre_dispatch_checks(self, change_type: str, wt_path: str) -> list[str]:
+        """Return list of error messages for pre-dispatch validation.
+
+        Empty list means all checks pass. Non-empty blocks dispatch.
+        Override in project-type plugins to validate environment before agent starts.
+        """
+        return []
+
+    def post_verify_hooks(self, change_name: str, wt_path: str, gate_results: list) -> None:
+        """Run post-verify side effects (screenshots, cleanup, etc.).
+
+        Called after gate pipeline passes, before merge queue addition.
+        Exceptions are caught and logged — do not block merge.
+        Override in project-type plugins for domain-specific post-verify actions.
+        """
+        pass
 
     def decompose_hints(self) -> list:
         """Return natural-language hints for the decompose/planning prompt.
@@ -192,9 +221,39 @@ def load_profile(project_path: str = "."):
                 logger.warning("Failed to load profile '%s': %s", type_name, e)
                 break
 
-    logger.info(
-        "Profile '%s' not found in entry_points, using NullProfile", type_name
-    )
+    # Fallback: direct import when entry_points lookup fails
+    # (common with editable installs where entry_points aren't registered)
+    try:
+        import importlib
+
+        mod = importlib.import_module(f"set_project_{type_name}")
+        # Look for a class ending with "ProjectType"
+        cls = None
+        for attr_name in dir(mod):
+            if attr_name.endswith("ProjectType") and attr_name != "ProjectType":
+                candidate = getattr(mod, attr_name)
+                if isinstance(candidate, type):
+                    cls = candidate
+                    break
+        if cls is not None:
+            _cached_profile = cls()
+            logger.info(
+                "Loaded profile via direct import fallback: %s v%s",
+                _cached_profile.info.name,
+                _cached_profile.info.version,
+            )
+            return _cached_profile
+        logger.warning(
+            "Module set_project_%s found but no *ProjectType class", type_name
+        )
+    except ImportError:
+        logger.warning(
+            "Profile '%s' not found in entry_points and set_project_%s not importable",
+            type_name, type_name,
+        )
+    except Exception as e:
+        logger.warning("Direct import fallback failed for '%s': %s", type_name, e)
+
     _cached_profile = NullProfile()
     return _cached_profile
 
