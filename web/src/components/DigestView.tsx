@@ -330,24 +330,31 @@ function ACPanel({ reqs, coverage }: {
                 <span className="text-sm font-medium text-neutral-300">{domain}</span>
                 <span className="text-sm text-neutral-500">{domCheckedAC}/{domTotalAC}</span>
               </div>
-              {domReqs.map(r => (
-                <div key={r.id} className="px-3 py-1">
-                  <div className="text-sm text-neutral-400 mb-0.5">
-                    <span className="text-neutral-500">{r.id}</span>
-                    <span className="mx-1 text-neutral-700">/</span>
-                    <span>{r.title}</span>
-                  </div>
-                  {(r.acceptance_criteria ?? []).map((ac, i) => {
-                    const done = isReqDone(r.id, coverage)
-                    return (
+              {domReqs.map(r => {
+                const cov = coverage[r.id]
+                const done = isReqDone(r.id, coverage)
+                return (
+                  <div key={r.id} className="px-3 py-1">
+                    <div className="text-sm flex items-center gap-2 mb-0.5">
+                      <span className="text-neutral-500">{r.id}</span>
+                      <span className="text-neutral-700">/</span>
+                      <span className="text-neutral-400 flex-1 truncate">{r.title}</span>
+                      {cov && (
+                        <>
+                          <span className="text-neutral-600 truncate max-w-[100px]">{cov.change}</span>
+                          <TuiStatus status={cov.status} />
+                        </>
+                      )}
+                    </div>
+                    {(r.acceptance_criteria ?? []).map((ac, i) => (
                       <div key={i} className={`text-sm flex items-start gap-1.5 pl-4 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
                         <span className="shrink-0 mt-0.5">{done ? '\u2611' : '\u2610'}</span>
                         <span>{ac}</span>
                       </div>
-                    )
-                  })}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                )
+              })}
             </div>
           )
         })}
