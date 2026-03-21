@@ -510,6 +510,7 @@ export interface TimelineSession {
   ended: string
   state: string
   gates: Record<string, string>
+  gate_ms: Record<string, number>
   merged: boolean
   duration_ms?: number
 }

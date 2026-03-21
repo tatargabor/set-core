@@ -86,19 +86,26 @@ function SessionBlock({ session }: { session: TimelineSession }) {
           {/* Gate results as text labels */}
           {gateEntries.length > 0 && (
             <div className="flex items-center justify-center gap-1">
-              {gateEntries.map(({ gate, result }) => (
-                <span
-                  key={gate}
-                  className={`px-1.5 py-0.5 rounded text-[11px] font-mono font-medium ${
-                    result === 'pass' ? 'bg-green-600/80 text-green-100' :
-                    result === 'fail' ? 'bg-red-700 text-red-100 ring-1 ring-red-400/50' :
-                    'bg-neutral-700 text-neutral-300'
-                  }`}
-                  title={`${gate}: ${result}`}
-                >
-                  {gate}
-                </span>
-              ))}
+              {gateEntries.map(({ gate, result }) => {
+                const ms = session.gate_ms?.[gate]
+                return (
+                  <div key={gate} className="flex flex-col items-center gap-0.5">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[11px] font-mono font-medium ${
+                        result === 'pass' ? 'bg-green-600/80 text-green-100' :
+                        result === 'fail' ? 'bg-red-700 text-red-100 ring-1 ring-red-400/50' :
+                        'bg-neutral-700 text-neutral-300'
+                      }`}
+                      title={`${gate}: ${result}${ms ? ` (${formatDuration(ms)})` : ''}`}
+                    >
+                      {gate}
+                    </span>
+                    {ms ? (
+                      <span className="text-[9px] text-white/40 font-mono">{formatDuration(ms)}</span>
+                    ) : null}
+                  </div>
+                )
+              })}
             </div>
           )}
           {/* Duration inside block */}

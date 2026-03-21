@@ -2745,9 +2745,12 @@ def handle_change_done(
         resume_change(state_file, change_name)
         pipeline.commit_results()
         if event_bus:
+            gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
             event_bus.emit("VERIFY_GATE", change=change_name, data={
                 "result": "retry", "stop_gate": pipeline.stop_gate,
                 "uncommitted_check": uncommitted_check_result,
+                **{r.gate_name: r.status for r in pipeline.results},
+                "gate_ms": gate_timings,
             })
         send_notification(
             "set-orchestrate",
@@ -2759,9 +2762,12 @@ def handle_change_done(
     if action == "failed":
         pipeline.commit_results()
         if event_bus:
+            gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
             event_bus.emit("VERIFY_GATE", change=change_name, data={
                 "result": "failed", "stop_gate": pipeline.stop_gate,
                 "uncommitted_check": uncommitted_check_result,
+                **{r.gate_name: r.status for r in pipeline.results},
+                "gate_ms": gate_timings,
             })
         send_notification(
             "set-orchestrate",
@@ -2783,6 +2789,7 @@ def handle_change_done(
 
     if event_bus:
         _gate_names = ["build", "test", "e2e", "review", "smoke", "rules", "spec_verify"]
+        gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
         event_bus.emit("VERIFY_GATE", change=change_name, data={
             **summary,
             "retries": gate_retry_count,
@@ -2791,6 +2798,7 @@ def handle_change_done(
             "gate_profile": change.change_type or "feature",
             "gates_skipped": [g for g in _gate_names if not gc.should_run(g)],
             "gates_warn_only": [g for g in _gate_names if gc.is_warn_only(g)],
+            "gate_ms": gate_timings,
         })
 
     # Mark done and queue merge

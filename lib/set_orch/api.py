@@ -2366,6 +2366,7 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                 "ended": "",
                 "state": "dispatched",
                 "gates": {},
+                "gate_ms": {},
                 "merged": False,
             }
         elif etype == "STATE_CHANGE":
@@ -2384,6 +2385,7 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                     "ended": "",
                     "state": "running",
                     "gates": {},
+                    "gate_ms": {},
                     "merged": False,
                 }
             elif current:
@@ -2396,6 +2398,7 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                     "ended": "",
                     "state": to_state,
                     "gates": {},
+                    "gate_ms": {},
                     "merged": False,
                 }
         elif etype == "VERIFY_GATE":
@@ -2406,6 +2409,10 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                     val = data.get(gate)
                     if val is not None:
                         current["gates"][gate] = val
+                # Gate-level timings
+                gate_ms = data.get("gate_ms", {})
+                if gate_ms and isinstance(gate_ms, dict):
+                    current.setdefault("gate_ms", {}).update(gate_ms)
                 current["ended"] = ts
                 current["duration_ms"] = _ts_diff_ms(current["started"], ts)
 
