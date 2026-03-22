@@ -87,12 +87,18 @@ tests/e2e/
 │   └── run-micro-web.sh
 ├── runs/                    ← Run logs and findings
 │   ├── minishop/            ← Run 13-19 reports
-│   ├── craftbrew/           ← Run 1-8 reports
+│   ├── craftbrew/           ← Run 1-9 reports
 │   └── craftbrew-findings.md
 └── assets/                  ← Screenshots and test utilities
     ├── screenshots/
     └── capture-screenshots.ts
 ```
+
+## Active Runs
+
+| Run | Status | Started | Bugs Found |
+|-----|--------|---------|------------|
+| **craftbrew-run9** | **running** | 2026-03-22 | Bug #33 (stall detection done check), Bug #34 (REVIEW PASS false positive), Bug #35 (max-iter done check) |
 
 ## Run Logs
 

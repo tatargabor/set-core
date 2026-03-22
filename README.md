@@ -262,6 +262,21 @@ Every change passes: **Test → Build → E2E → Code Review → Spec Coverage 
 
 Full details: **[Run #4 Benchmark Report](docs/benchmark-minishop-run4.md)** | **[E2E Findings Log](tests/e2e/minishop/)**
 
+## Stress Test: CraftBrew E2E
+
+CraftBrew is a complex specialty coffee webshop with i18n (hu/en), subscriptions, reviews, gift cards, promotions, and admin dashboard — cloned from a [spec-only GitHub repo](https://github.com/tatargabor/craftbrew) with 17+ spec files and a pre-fetched Figma design snapshot.
+
+### Run #9 (in progress)
+
+| Metric | Value |
+|--------|-------|
+| Changes planned | 6 |
+| Spec files | 17+ (multi-file digest) |
+| Figma design data | Yes (pre-fetched snapshot + raw components) |
+| Framework bugs found | 3 (stall detection done check, REVIEW PASS false positive, max-iter done check) |
+
+Run logs: **[tests/e2e/runs/craftbrew/](tests/e2e/runs/craftbrew/)**
+
 ---
 
 ## E2E Test Architecture
@@ -320,7 +335,7 @@ model Product {
 | Scaffold | Spec | Changes | Purpose |
 |----------|------|---------|---------|
 | **MiniShop** (`tests/e2e/scaffolds/minishop/`) | Next.js webshop | 6-8 | Core pipeline validation — products, cart, checkout, auth, admin |
-| **CraftBrew** (`tests/e2e/scaffold-complex/`) | Multi-phase coffee app | 14+ | Complex spec handling — i18n, subscriptions, reviews, promotions |
+| **CraftBrew** (`tests/e2e/scaffolds/craftbrew/`) | Multi-phase coffee app | 6+ | Complex spec handling — i18n, subscriptions, reviews, promotions, Figma design bridge |
 
 Each scaffold contains:
 ```
