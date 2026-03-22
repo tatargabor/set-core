@@ -600,10 +600,16 @@ def _run_integration_gates(
         if e2e_cmd:
             logger.info("Integration gate: e2e for %s (%s)", change_name, e2e_cmd)
             result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path)
-            if result.exit_code != 0 and gc.is_blocking("e2e"):
-                logger.error("Integration gate: e2e FAILED for %s", change_name)
-                update_change_field(state_file, change_name, "integration_gate_fail", "e2e")
-                return False
+            if result.exit_code != 0:
+                # Integration e2e is non-blocking (warn-only) — the verify gate
+                # already validated e2e with baseline comparison. Integration e2e
+                # catches regressions but pre-existing failures on main would
+                # cause false blocks without baseline logic here.
+                logger.warning(
+                    "Integration gate: e2e FAILED for %s (non-blocking — verify gate already passed)",
+                    change_name,
+                )
+                update_change_field(state_file, change_name, "integration_gate_fail", "e2e-warn")
 
     return True
 
