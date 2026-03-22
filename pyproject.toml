@@ -65,8 +65,12 @@ set-orch-core = "set_orch.cli:main"
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.package-dir]
+set_orch = "lib/set_orch"
+
 [tool.setuptools.packages.find]
 include = ["set_tools*", "set_orch*", "gui*"]
+where = [".", "lib"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
