@@ -13,9 +13,9 @@ core:
   - rules/error-handling.md
   - rules/design-integration.md
   - rules/worktree-setup.md
-  - jest.config.ts
+  - vitest.config.ts
+  - playwright.config.ts
   - tsconfig.json
-  - tailwind.config.ts
   - postcss.config.mjs
   - next.config.js
   - components.json
