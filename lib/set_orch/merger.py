@@ -464,7 +464,35 @@ def merge_change(
             status="merged",
         )
     else:
-        # FF failed — main has advanced since integration.
+        # FF failed — log detailed diagnostics (MERGE-001)
+        logger.error(
+            "FF merge failed for %s — cmd: set-merge %s --no-push --ff-only, "
+            "exit=%d, stdout=%s, stderr=%s",
+            change_name, change_name,
+            merge_result.exit_code,
+            merge_result.stdout[:500] if merge_result.stdout else "(empty)",
+            merge_result.stderr[:500] if merge_result.stderr else "(empty)",
+        )
+
+        # Log merge-base divergence details (MERGE-002)
+        head_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
+        mb = run_command(
+            ["git", "merge-base", "HEAD", source_branch], timeout=10,
+        )
+        if mb.exit_code == 0:
+            mb_sha = mb.stdout.strip()
+            ahead = run_command(
+                ["git", "rev-list", "--count", f"{mb_sha}..{source_branch}"], timeout=10,
+            ).stdout.strip()
+            behind = run_command(
+                ["git", "rev-list", "--count", f"{mb_sha}..HEAD"], timeout=10,
+            ).stdout.strip()
+            logger.error(
+                "FF merge diagnostics for %s: HEAD=%s, branch=%s, merge-base=%s, "
+                "branch ahead=%s, main ahead=%s",
+                change_name, head_sha[:12], source_sha[:12], mb_sha[:12], ahead, behind,
+            )
+
         # Re-integrate main into branch and re-trigger gate pipeline.
         ff_retry_count = change.extras.get("ff_retry_count", 0) if change else 0
         max_ff_retries = 3

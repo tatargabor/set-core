@@ -648,7 +648,8 @@ def recover_orphaned_changes(
         update_change_field(state_path, change.name, "status", "pending", event_bus=event_bus)
         update_change_field(state_path, change.name, "worktree_path", None, event_bus=event_bus)
         update_change_field(state_path, change.name, "ralph_pid", None, event_bus=event_bus)
-        update_change_field(state_path, change.name, "verify_retry_count", 0, event_bus=event_bus)
+        # Note: verify_retry_count intentionally NOT reset — preserves retry history
+        # across crashes for accurate E2E reporting (LOCK-003)
         if event_bus:
             event_bus.emit("CHANGE_RECOVERED", change=change.name, data={"reason": "orphaned_after_crash"})
         recovered += 1

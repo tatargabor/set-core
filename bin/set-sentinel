@@ -494,6 +494,25 @@ elif [[ -f "$STATE_FILE" ]]; then
     _prev_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
     if [[ "$_prev_status" == "stopped" || "$_prev_status" == "running" ]]; then
         sentinel_log "Resuming previous run (status=$_prev_status) — state preserved"
+        # Clean stale worktrees with numeric suffixes (-2, -3) from failed restarts (WT-001)
+        # Only remove if the base change is merged/absent; skip active changes
+        while IFS= read -r _wt_line; do
+            _wt_path=$(echo "$_wt_line" | awk '{print $1}')
+            [[ -z "$_wt_path" ]] && continue
+            _wt_base=$(basename "$_wt_path")
+            # Match pattern: *-wt-<name>-<number>
+            if [[ "$_wt_base" =~ -wt-(.+)-([0-9]+)$ ]]; then
+                _base_change="${BASH_REMATCH[1]}"
+                # Check if this change is active in state
+                _change_status=$(jq -r --arg name "$_base_change" \
+                    '.changes[]? | select(.name == $name) | .status // "absent"' \
+                    "$STATE_FILE" 2>/dev/null || echo "absent")
+                if [[ "$_change_status" == "merged" || "$_change_status" == "absent" || "$_change_status" == "skipped" ]]; then
+                    sentinel_log "Cleaning stale worktree: $_wt_base (change=$_base_change, status=$_change_status)"
+                    git worktree remove --force "$_wt_path" 2>/dev/null || true
+                fi
+            fi
+        done < <(git worktree list 2>/dev/null | grep -v " \[main\]$\| \[master\]$")
     elif [[ "$_prev_status" == "done" ]]; then
         # Check if there are failed changes with worktrees — partial reset instead of nuke
         _has_failed_with_wt=$(jq -r '[.changes[]? | select(.status == "failed" and .worktree_path != null and .worktree_path != "")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
@@ -841,6 +860,7 @@ while true; do
     fix_stale_state
 
     # Launch orchestrator
+    rm -f "orchestrator.lock"  # Clean stale lock before start (LOCK-001)
     start_epoch=$(date +%s)
     child_pid=0
     "$SCRIPT_DIR/set-orchestrate" start "$@" 9>&- &

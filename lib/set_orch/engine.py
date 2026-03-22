@@ -247,10 +247,36 @@ def monitor_loop(
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        logger.error("Another orchestrator is already running — exiting")
-        lock_fd.close()
-        return
-    logger.info("Acquired orchestrator lock: %s", lock_path)
+        # Check if the lock holder is still alive (LOCK-002)
+        stale = False
+        try:
+            with open(lock_path) as f:
+                pid_str = f.read().strip()
+            if pid_str:
+                holder_pid = int(pid_str)
+                try:
+                    os.kill(holder_pid, 0)
+                except OSError:
+                    stale = True
+                    logger.warning("Stale orchestrator lock (PID %d dead) — recovering", holder_pid)
+        except (ValueError, OSError):
+            stale = True
+            logger.warning("Unreadable orchestrator lock — recovering")
+
+        if stale:
+            lock_fd.close()
+            os.unlink(lock_path)
+            lock_fd = open(lock_path, "w")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        else:
+            logger.error("Another orchestrator is already running — exiting")
+            lock_fd.close()
+            return
+
+    # Write PID for liveness checks (LOCK-002)
+    lock_fd.write(str(os.getpid()))
+    lock_fd.flush()
+    logger.info("Acquired orchestrator lock: %s (PID %d)", lock_path, os.getpid())
 
     # Parse directives — try file path, then JSON string, then state fallback
     raw = None
