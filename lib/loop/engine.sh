@@ -610,15 +610,21 @@ except:
                     exit 0
                 fi
 
-                echo ""
-                echo "╔════════════════════════════════════════════════════════════════╗"
-                echo "║  🛑 STALLED: No commits in $stall_count iteration(s)            ║"
-                echo "║  The loop appears to have nothing left to do.                   ║"
-                echo "╚════════════════════════════════════════════════════════════════╝"
-                update_loop_state "$state_file" "status" '"stalled"'
-                update_terminal_title "Ralph: ${worktree_name}${title_suffix} [stalled]"
-                trap - EXIT SIGTERM SIGINT
-                exit 0
+                # Before declaring stall, check if work is actually done
+                if check_done "$wt_path" "$done_criteria" "$change_name"; then
+                    echo "⚠️  No commits but work is done — skipping stall"
+                    stall_count=0
+                else
+                    echo ""
+                    echo "╔════════════════════════════════════════════════════════════════╗"
+                    echo "║  🛑 STALLED: No commits in $stall_count iteration(s)            ║"
+                    echo "║  The loop appears to have nothing left to do.                   ║"
+                    echo "╚════════════════════════════════════════════════════════════════╝"
+                    update_loop_state "$state_file" "status" '"stalled"'
+                    update_terminal_title "Ralph: ${worktree_name}${title_suffix} [stalled]"
+                    trap - EXIT SIGTERM SIGINT
+                    exit 0
+                fi
             fi
         elif $has_artifact_progress; then
             stall_count=0  # Artifact creation counts as progress (ff iterations)
@@ -635,16 +641,23 @@ except:
                 repeated_msg_count=$((repeated_msg_count + 1))
                 echo "⚠️  Same commit message repeated ($repeated_msg_count/$stall_threshold): $current_commit_msg"
                 if [[ $repeated_msg_count -ge $stall_threshold ]]; then
-                    echo ""
-                    echo "╔════════════════════════════════════════════════════════════════╗"
-                    echo "║  🛑 STALLED: Same commit message $repeated_msg_count times          ║"
-                    echo "║  \"${current_commit_msg:0:50}\"                                      ║"
-                    echo "║  The agent appears stuck in a loop.                             ║"
-                    echo "╚════════════════════════════════════════════════════════════════╝"
-                    update_loop_state "$state_file" "status" '"stalled"'
-                    update_terminal_title "Ralph: ${worktree_name}${title_suffix} [stalled]"
-                    trap - EXIT SIGTERM SIGINT
-                    exit 0
+                    # Before declaring stall, check if work is actually done
+                    # The agent may commit the same cleanup message while done_check would pass
+                    if check_done "$wt_path" "$done_criteria" "$change_name"; then
+                        echo "⚠️  Repeated commit message but work is done — skipping stall"
+                        repeated_msg_count=0
+                    else
+                        echo ""
+                        echo "╔════════════════════════════════════════════════════════════════╗"
+                        echo "║  🛑 STALLED: Same commit message $repeated_msg_count times          ║"
+                        echo "║  \"${current_commit_msg:0:50}\"                                      ║"
+                        echo "║  The agent appears stuck in a loop.                             ║"
+                        echo "╚════════════════════════════════════════════════════════════════╝"
+                        update_loop_state "$state_file" "status" '"stalled"'
+                        update_terminal_title "Ralph: ${worktree_name}${title_suffix} [stalled]"
+                        trap - EXIT SIGTERM SIGINT
+                        exit 0
+                    fi
                 fi
             else
                 repeated_msg_count=0
