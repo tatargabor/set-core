@@ -1603,7 +1603,15 @@ def run_phase_end_e2e(
     os.makedirs(screenshot_dir, exist_ok=True)
 
     # Run E2E — Playwright manages dev server via webServer config
-    env: dict[str, str] = {"PLAYWRIGHT_OUTPUT_DIR": screenshot_dir}
+    # Use unique port to avoid collisions with running agent worktrees
+    import hashlib
+    port_offset = int(hashlib.md5(f"phase-e2e-{cycle}".encode()).hexdigest()[:4], 16) % 1000
+    e2e_port = 5000 + port_offset
+    env: dict[str, str] = {
+        "PLAYWRIGHT_OUTPUT_DIR": screenshot_dir,
+        "PW_PORT": str(e2e_port),
+        "PORT": str(e2e_port),
+    }
 
     test_result = run_command(
         ["bash", "-c", e2e_command],
