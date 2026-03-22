@@ -1,0 +1,35 @@
+# Orchestration config — web project defaults
+# Customize per project. Profile auto-detects test/e2e/build commands if omitted.
+
+# Model for implementation agents (sonnet|opus|opus-1m)
+default_model: sonnet
+
+# Commands — override profile auto-detection if needed
+# test_command: pnpm test
+# e2e_command: npx playwright test
+# build_command: npx next build
+
+# Parallelism & merge
+max_parallel: 2
+merge_policy: checkpoint
+checkpoint_auto_approve: true
+
+# Quality gates
+review_before_merge: true
+max_verify_retries: 2
+
+# Replanning
+auto_replan: true
+max_replan_cycles: 2
+
+# E2E
+e2e_timeout: 120
+
+# Environment variables injected into every worktree .env
+env_vars:
+  DATABASE_URL: "file:./dev.db"
+
+# Discord notifications (requires set-discord-setup first)
+# discord:
+#   enabled: true
+#   channel_name: my-project

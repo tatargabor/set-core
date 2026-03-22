@@ -19,6 +19,7 @@ core:
   - postcss.config.mjs
   - next.config.js
   - components.json
+  - wt/orchestration/config.yaml
   - framework-rules/web/api-design.md
   - framework-rules/web/auth-middleware.md
   - framework-rules/web/db-type-safety.md
