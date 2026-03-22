@@ -455,6 +455,9 @@ def monitor_loop(
         # Resume stalled changes
         _resume_stalled_safe(state_file, event_bus)
 
+        # Retry merge-blocked changes (re-add to queue for fresh integration)
+        _retry_merge_queue_safe(state_file, event_bus)
+
         # Retry failed builds
         _retry_failed_builds_safe(state_file, d, event_bus)
 
