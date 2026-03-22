@@ -56,9 +56,13 @@ def send_notification(
     if "email" in channels:
         _send_email(title, body, urgency, project_name)
 
-    # Discord channel
-    if "discord" in channels:
-        _send_discord_sync(title, body, urgency, project_name)
+    # Discord channel — auto-enable when webhook is configured
+    webhook_url = _resolve_webhook_url()
+    if "discord" in channels or webhook_url:
+        if webhook_url:
+            _send_discord_webhook(webhook_url, title, body, urgency, project_name)
+        else:
+            _send_discord_sync(title, body, urgency, project_name)
 
     logger.info("Notification [%s]: %s — %s", urgency, title, body)
 
@@ -175,10 +179,80 @@ def _send_email(
         logger.warning("Email notification failed: %s", e)
 
 
+_webhook_url_cache: str | None = None
+_webhook_url_resolved: bool = False
+
+
+def _resolve_webhook_url() -> str:
+    """Resolve Discord webhook URL from config sources (cached per process).
+
+    Priority: DISCORD_WEBHOOK_URL env var → ~/.config/set-core/discord.json → empty.
+    Project-level config (directives) is checked separately in send_notification().
+    """
+    global _webhook_url_cache, _webhook_url_resolved
+    if _webhook_url_resolved:
+        return _webhook_url_cache or ""
+    _webhook_url_resolved = True
+
+    # 1. Environment variable
+    url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    if url:
+        _webhook_url_cache = url
+        return url
+
+    # 2. Global discord.json
+    try:
+        config_path = Path.home() / ".config" / "set-core" / "discord.json"
+        if config_path.is_file():
+            data = json.loads(config_path.read_text())
+            url = data.get("webhook_url", "")
+            if url:
+                _webhook_url_cache = url
+                return url
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    _webhook_url_cache = ""
+    return ""
+
+
+def _send_discord_webhook(
+    url: str, title: str, body: str, urgency: str, project_name: str,
+) -> None:
+    """Send Discord notification via webhook POST with embed."""
+    colors = {"normal": 0x2ECC71, "critical": 0xE74C3C, "info": 0x3498DB}
+    color = colors.get(urgency, 0x2ECC71)
+
+    payload = json.dumps({
+        "embeds": [{
+            "title": title[:256],
+            "description": body[:2000],
+            "color": color,
+            "footer": {"text": project_name},
+        }],
+    })
+
+    try:
+        subprocess.run(
+            [
+                "curl", "-s", "-X", "POST", url,
+                "-H", "Content-Type: application/json",
+                "-d", payload,
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        logger.warning("Discord webhook failed: %s", e)
+
+
 def _send_discord_sync(
     title: str, body: str, urgency: str, project_name: str,
 ) -> None:
-    """Send notification via Discord bot. Bridges sync caller to async bot."""
+    """Send notification via Discord bot (legacy fallback).
+
+    Used when no webhook URL is configured but set-web bot is running.
+    """
     try:
         from .discord import get_bot
     except ImportError:
@@ -202,14 +276,7 @@ def _send_discord_sync(
                 color=color,
             )
             embed.set_footer(text=project_name)
-
-            mention = ""
-            if urgency == "critical" and hasattr(bot, "_discord_config"):
-                from .discord.events import _get_mention
-                mention = _get_mention(bot._discord_config, getattr(bot, "_member_name", ""))
-
-            content = f"{mention} " if mention else None
-            await bot.channel.send(content=content, embed=embed)
+            await bot.channel.send(embed=embed)
         except Exception as e:
             logger.debug("Discord notification failed: %s", e)
 
@@ -217,5 +284,4 @@ def _send_discord_sync(
         loop = asyncio.get_running_loop()
         asyncio.run_coroutine_threadsafe(_send(), loop)
     except RuntimeError:
-        # No running loop — can't send
         logger.debug("No asyncio loop — Discord notification skipped")

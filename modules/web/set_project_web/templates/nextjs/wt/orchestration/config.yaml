@@ -29,7 +29,8 @@ e2e_timeout: 120
 env_vars:
   DATABASE_URL: "file:./dev.db"
 
-# Discord notifications (requires set-discord-setup first)
+# Discord notifications — webhook (no set-web needed)
+# Get webhook URL: Discord server → channel settings → Integrations → Webhooks → New
 # discord:
-#   enabled: true
+#   webhook_url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
 #   channel_name: my-project
