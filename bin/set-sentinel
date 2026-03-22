@@ -86,6 +86,7 @@ SUSTAINED_RUN_SECS=300  # 5 minutes
 POLL_INTERVAL=10        # Check child every 10s
 SENTINEL_STUCK_TIMEOUT=600  # 10 minutes no activity = stuck (verify/merge can take 5-10 min)
 FRESH_FLAG=false            # --fresh forces orchestration reset even with same spec
+AUTO_APPROVE_RESET=false    # --auto-approve-reset skips approval gate for spec changes
 SENTINEL_STARTUP_TIMEOUT=1800  # 30 minutes for initial planning (digest + design fetch + Claude decompose)
 CHECKPOINT_MAX_WAIT=86400     # 24 hours max checkpoint wait before giving up
 
@@ -96,6 +97,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --fresh)
             FRESH_FLAG=true
+            shift
+            ;; # consumed, not passed through
+        --auto-approve-reset)
+            AUTO_APPROVE_RESET=true
             shift
             ;; # consumed, not passed through
         --spec)
@@ -233,20 +238,42 @@ backoff_secs=$BACKOFF_BASE
 
 # Clean slate: if no state file or state is terminal (done/stopped), reset ephemeral files
 # This prevents stale logs/events from confusing the new run.
-# Detect spec change: compare brief_hash of --spec arg against stored hash in state file.
+# Persist spec hash to survive sentinel restarts (separate from state file which may be deleted)
+SENTINEL_STATE_FILE="${WT_SENTINEL_DIR}/sentinel-state.json"
+
+_persist_spec_hash() {
+    local hash="$1"
+    printf '{"spec_hash":"%s","updated_at":"%s"}\n' "$hash" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "$SENTINEL_STATE_FILE"
+}
+
+_read_persisted_hash() {
+    if [[ -f "$SENTINEL_STATE_FILE" ]]; then
+        jq -r '.spec_hash // empty' "$SENTINEL_STATE_FILE" 2>/dev/null
+    fi
+}
+
+# Detect spec change: compare brief_hash of --spec arg against stored hash.
+# Uses sentinel-state.json (persistent) first, falls back to state file.
 # Returns 0 if spec changed (or --fresh forced), 1 if same/no state.
 detect_spec_change() {
     local spec_arg="$1"
     [[ -z "$spec_arg" ]] && return 1  # no --spec given, can't compare
 
-    [[ ! -f "$STATE_FILE" ]] && return 1  # no state file = fresh start, not a switch
-
+    # Try persistent sentinel-state.json first, then state file
     local stored_hash
-    stored_hash=$(jq -r '.brief_hash // empty' "$STATE_FILE" 2>/dev/null)
-    [[ -z "$stored_hash" ]] && return 1  # no hash stored = legacy state, treat as fresh
+    stored_hash=$(_read_persisted_hash)
+    if [[ -z "$stored_hash" ]] && [[ -f "$STATE_FILE" ]]; then
+        stored_hash=$(jq -r '.brief_hash // empty' "$STATE_FILE" 2>/dev/null)
+    fi
+    [[ -z "$stored_hash" ]] && return 1  # no hash anywhere = first run ever, not a switch
 
     local current_hash
     current_hash=$(set-orch-core config brief-hash --file "$spec_arg" 2>/dev/null)
+
+    # Always persist current hash for future restarts
+    if [[ -n "$current_hash" ]]; then
+        _persist_spec_hash "$current_hash"
+    fi
 
     if [[ "$stored_hash" == "$current_hash" ]]; then
         return 1  # same spec, resume
@@ -257,6 +284,38 @@ detect_spec_change() {
     stored_path=$(jq -r '.input_path // "unknown"' "$STATE_FILE" 2>/dev/null)
     sentinel_log "Spec changed: $stored_path → $spec_arg (hash: ${stored_hash:0:12}… → ${current_hash:0:12}…)"
     return 0
+}
+
+# Wait for operator approval before resetting orchestration.
+# Writes .sentinel-reset-pending, waits for .sentinel-approve-reset.
+# Returns 0 if approved, 1 if timeout (skip reset).
+wait_for_reset_approval() {
+    if [[ "$AUTO_APPROVE_RESET" == "true" ]]; then
+        sentinel_log "Auto-approving reset (--auto-approve-reset flag)"
+        return 0
+    fi
+
+    local pending_file="${WT_SENTINEL_DIR}/.sentinel-reset-pending"
+    local approve_file="${WT_SENTINEL_DIR}/.sentinel-approve-reset"
+    local timeout=300  # 5 minutes
+
+    sentinel_log "Reset pending — create '$approve_file' to approve, or wait ${timeout}s to skip"
+    printf '{"reason":"spec_hash_changed","requested_at":"%s"}\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "$pending_file"
+
+    local elapsed=0
+    while [[ $elapsed -lt $timeout ]]; do
+        if [[ -f "$approve_file" ]]; then
+            sentinel_log "Reset approved by operator"
+            rm -f "$pending_file" "$approve_file"
+            return 0
+        fi
+        sleep 10
+        elapsed=$((elapsed + 10))
+    done
+
+    sentinel_log "Reset not approved within ${timeout}s — continuing with existing state (no reset)"
+    rm -f "$pending_file"
+    return 1
 }
 
 # Archive previous run artifacts to wt/orchestration/runs/<timestamp>/
@@ -419,7 +478,11 @@ if [[ "$FRESH_FLAG" == "true" ]] && [[ -f "$STATE_FILE" ]]; then
     reset_for_spec_switch
     FRESH_FLAG=false
 elif detect_spec_change "$SPEC_ARG"; then
-    reset_for_spec_switch
+    if wait_for_reset_approval; then
+        reset_for_spec_switch
+    else
+        sentinel_log "Skipping reset — continuing with existing orchestration state"
+    fi
 fi
 
 if [[ ! -f "$STATE_FILE" ]]; then
