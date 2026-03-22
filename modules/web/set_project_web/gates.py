@@ -332,9 +332,25 @@ def execute_e2e_gate(
         stats=parse_test_output(e2e_output) if e2e_output else None,
     )
     scope = change.scope or ""
+    # Point agent to failure screenshots in worktree
+    screenshot_hint = ""
+    wt_test_results = os.path.join(wt_path, "test-results")
+    if os.path.isdir(wt_test_results):
+        png_files = []
+        for root, _dirs, files in os.walk(wt_test_results):
+            for f in files:
+                if f.endswith(".png"):
+                    png_files.append(os.path.relpath(os.path.join(root, f), wt_path))
+        if png_files:
+            screenshot_hint = (
+                f"\n\nFailure screenshots (READ these for visual context):\n"
+                + "\n".join(f"- {p}" for p in png_files[:10])
+            )
+
     result.retry_context = (
         f"E2E tests (Playwright) failed. Fix the failing E2E tests or the code they test.\n\n"
-        f"E2E command: {e2e_command}\nE2E output:\n{e2e_output[:2000]}\n\n"
+        f"E2E command: {e2e_command}\nE2E output:\n{e2e_output[:2000]}\n"
+        f"{screenshot_hint}\n\n"
         f"Original scope: {scope}"
     )
     return result
