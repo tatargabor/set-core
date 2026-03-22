@@ -139,6 +139,28 @@ class ProjectType(ABC):
         """
         return {}
 
+    def worktree_port(self, change_name: str) -> int:
+        """Return a deterministic port for a worktree, or 0 for no port injection.
+
+        Override in project-type modules to assign unique ports per worktree.
+        Called during bootstrap to write PORT/PW_PORT to .env.
+        """
+        return 0
+
+    def e2e_pre_gate(self, wt_path: str, env: Dict[str, str]) -> bool:
+        """Run setup before e2e tests (e.g. DB migration, seed data).
+
+        Called by the e2e gate runner before executing the test command.
+        Returns True if setup succeeded, False to skip e2e.
+        """
+        return True
+
+    def e2e_post_gate(self, wt_path: str) -> None:
+        """Cleanup after e2e tests complete (pass or fail).
+
+        Called in a finally block by the e2e gate runner.
+        """
+
     def detect_dev_server(self, project_path: str) -> Optional[str]:
         return None
 

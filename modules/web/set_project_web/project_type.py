@@ -639,12 +639,69 @@ class WebProjectType(CoreProfile):
                 items.append(line[2:])
         return items
 
+    def worktree_port(self, change_name: str) -> int:
+        """Deterministic port per worktree: hash-based, range 3100-4099."""
+        import hashlib
+        return int(hashlib.md5(change_name.encode()).hexdigest()[:4], 16) % 1000 + 3100
+
     def e2e_gate_env(self, port: int) -> dict[str, str]:
         """Map isolated port to Playwright/Next.js env vars."""
         return {
             "PW_PORT": str(port),
             "PORT": str(port),
+            "PLAYWRIGHT_SCREENSHOT": "on",
         }
+
+    def e2e_pre_gate(self, wt_path: str, env: dict[str, str]) -> bool:
+        """Run Prisma db push + seed before e2e tests if schema exists."""
+        prisma_schema = Path(wt_path) / "prisma" / "schema.prisma"
+        if not prisma_schema.is_file():
+            return True
+
+        # Check if SQLite (file: prefix) — skip for Postgres (future)
+        env_file = Path(wt_path) / ".env"
+        if env_file.is_file():
+            try:
+                content = env_file.read_text()
+                if "DATABASE_URL=" in content:
+                    for line in content.splitlines():
+                        if line.startswith("DATABASE_URL="):
+                            db_url = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            if not db_url.startswith("file:"):
+                                return True  # Not SQLite — skip for now
+            except OSError:
+                pass
+
+        # Prisma db push (schema → DB sync, no migration history)
+        try:
+            subprocess.run(
+                ["npx", "prisma", "db", "push", "--skip-generate", "--accept-data-loss"],
+                cwd=wt_path, capture_output=True, timeout=60,
+                env={**subprocess.os.environ, **env},
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            pass  # non-fatal
+
+        # Prisma seed (if seed file exists)
+        seed_ts = Path(wt_path) / "prisma" / "seed.ts"
+        seed_js = Path(wt_path) / "prisma" / "seed.js"
+        if seed_ts.is_file() or seed_js.is_file():
+            try:
+                subprocess.run(
+                    ["npx", "prisma", "db", "seed"],
+                    cwd=wt_path, capture_output=True, timeout=60,
+                    env={**subprocess.os.environ, **env},
+                )
+            except (subprocess.TimeoutExpired, OSError):
+                pass  # non-fatal
+
+        return True
+
+    def e2e_post_gate(self, wt_path: str) -> None:
+        """Post-e2e cleanup. No-op for now — Playwright webServer handles server lifecycle.
+
+        Future: kill orphan dev servers, clean test DB, etc.
+        """
 
     def decompose_hints(self) -> list:
         """Return web-specific decomposition hints for the planner."""

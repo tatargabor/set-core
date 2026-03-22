@@ -239,13 +239,44 @@ def execute_e2e_gate(
                           output="playwright.config has no webServer — "
                                  "Playwright must manage the dev server via webServer config")
 
+    # Build env with port isolation from profile
+    e2e_env: dict[str, str] = {}
+    if profile and hasattr(profile, "worktree_port"):
+        port = profile.worktree_port(change_name)
+        if port > 0 and hasattr(profile, "e2e_gate_env"):
+            e2e_env.update(profile.e2e_gate_env(port))
+    # Fallback: read PORT from worktree .env if profile didn't set it
+    if "PW_PORT" not in e2e_env:
+        env_file = os.path.join(wt_path, ".env")
+        if os.path.isfile(env_file):
+            try:
+                for line in open(env_file):
+                    if line.startswith("PW_PORT="):
+                        e2e_env["PW_PORT"] = line.strip().split("=", 1)[1]
+                    elif line.startswith("PORT=") and "PORT" not in e2e_env:
+                        e2e_env["PORT"] = line.strip().split("=", 1)[1]
+            except OSError:
+                pass
+
+    # Pre-gate hook (DB setup, migrations, seed)
+    if profile and hasattr(profile, "e2e_pre_gate"):
+        if not profile.e2e_pre_gate(wt_path, e2e_env):
+            return GateResult("e2e", "skipped", output="e2e_pre_gate returned False")
+
     # Run E2E tests
-    e2e_env = {"PLAYWRIGHT_SCREENSHOT": "on"}
-    e2e_cmd_result = run_command(
-        ["bash", "-c", e2e_command],
-        timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
-        max_output_size=4000,
-    )
+    try:
+        e2e_cmd_result = run_command(
+            ["bash", "-c", e2e_command],
+            timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
+            max_output_size=4000,
+        )
+    finally:
+        # Post-gate hook (cleanup) — always runs
+        if profile and hasattr(profile, "e2e_post_gate"):
+            try:
+                profile.e2e_post_gate(wt_path)
+            except Exception:
+                pass  # non-fatal cleanup
     e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
 
     # Collect screenshots

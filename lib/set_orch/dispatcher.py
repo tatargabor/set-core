@@ -341,8 +341,8 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
     return SyncResult(ok=False, message="merge conflicts", behind_count=behind_count)
 
 
-def bootstrap_worktree(project_path: str, wt_path: str) -> int:
-    """Copy .env files and install deps in a worktree.
+def bootstrap_worktree(project_path: str, wt_path: str, change_name: str = "") -> int:
+    """Copy .env files, inject port, and install deps in a worktree.
 
     Migrated from: dispatcher.sh bootstrap_worktree() L86-116
 
@@ -387,6 +387,22 @@ def bootstrap_worktree(project_path: str, wt_path: str) -> int:
                     r = run_command([pm, "install"], cwd=wt_path, timeout=120)
                     if r.exit_code != 0:
                         logger.warning("bootstrap: dep install failed in %s (non-fatal)", wt_path)
+
+    # Inject worktree-specific port into .env (idempotent)
+    if change_name and not isinstance(profile, NullProfile):
+        port = profile.worktree_port(change_name)
+        if port > 0:
+            env_path = os.path.join(wt_path, ".env")
+            # Check idempotency — skip if PORT= already present
+            existing = ""
+            if os.path.isfile(env_path):
+                existing = open(env_path).read()
+            if "PORT=" not in existing:
+                port_vars = profile.e2e_gate_env(port)
+                with open(env_path, "a") as f:
+                    for k, v in port_vars.items():
+                        f.write(f"{k}={v}\n")
+                logger.info("bootstrap: injected port %d into %s/.env", port, wt_path)
 
     return copied
 
@@ -1401,7 +1417,7 @@ def dispatch_change(
     wt_path = _find_existing_worktree(project_path, wt_name)
 
     # Bootstrap
-    bootstrap_worktree(project_path, wt_path)
+    bootstrap_worktree(project_path, wt_path, change_name=change_name)
 
     # Config-driven env_vars → .env (after profile bootstrap, overrides profile defaults)
     try:
