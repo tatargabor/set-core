@@ -27,7 +27,7 @@ class GateConfig:
         self.test_files_required: bool = kwargs.get("test_files_required", True)
         self.max_retries: Optional[int] = kwargs.get("max_retries")
         self.review_model: Optional[str] = kwargs.get("review_model")
-        self.review_extra_retries: int = kwargs.get("review_extra_retries", 3)
+        self.review_extra_retries: int = kwargs.get("review_extra_retries", 1)
 
     def should_run(self, gate_name: str) -> bool:
         """Whether a gate should execute at all."""

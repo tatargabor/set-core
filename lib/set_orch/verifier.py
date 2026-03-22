@@ -1192,6 +1192,7 @@ def review_change(
     state_file: str = "",
     digest_dir: str = "",
     design_snapshot_dir: str = "",
+    prompt_prefix: str = "",
 ) -> ReviewResult:
     """LLM code review of a change branch. Returns ReviewResult.
 
@@ -1249,6 +1250,10 @@ def review_change(
         return ReviewResult(has_critical=False, output="")
 
     review_prompt = template_result.stdout
+
+    # Prepend fix-verification instructions on retry rounds
+    if prompt_prefix:
+        review_prompt = prompt_prefix + review_prompt
 
     # Run review via Claude
     claude_result = run_claude(review_prompt, model=review_model)
@@ -2126,9 +2131,33 @@ def _execute_review_gate(
     scope = change.scope or ""
     effective_review_model = gc.review_model if gc.review_model else review_model
 
+    # On retry rounds, use fix-verification mode:
+    # Only verify previous findings were fixed, don't scan for new issues
+    fix_verification_prefix = ""
+    if verify_retry_count > 0:
+        prior_findings = _read_prior_review_findings(
+            os.path.join(os.path.dirname(state_file), "wt", "orchestration", "review-findings.jsonl"),
+            change_name,
+        ) if state_file else ""
+        if prior_findings:
+            fix_verification_prefix = (
+                "IMPORTANT: This is a RETRY review (attempt {attempt}). "
+                "Previous review found specific issues listed below.\n\n"
+                "Your task is to verify ONLY whether these specific issues were fixed. "
+                "Do NOT scan for new issues. For each previous finding, report:\n"
+                "- FIXED: if the issue was resolved → no severity tag needed\n"
+                "- NOT_FIXED: if the issue is still present → mark as [CRITICAL]\n\n"
+                "Only NOT_FIXED items should appear as [CRITICAL]. "
+                "Do NOT add new findings that weren't in the previous review.\n\n"
+                "=== PREVIOUS FINDINGS TO VERIFY ===\n{findings}\n"
+                "=== END PREVIOUS FINDINGS ===\n\n"
+                "Now review the diff and verify each finding above:\n\n"
+            ).format(attempt=verify_retry_count + 1, findings=prior_findings)
+
     rr = review_change(
         change_name, wt_path, scope, effective_review_model,
         state_file=state_file, design_snapshot_dir=design_snapshot_dir,
+        prompt_prefix=fix_verification_prefix,
     )
 
     if not rr.has_critical:

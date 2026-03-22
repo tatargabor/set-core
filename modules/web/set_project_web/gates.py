@@ -368,8 +368,27 @@ def _load_forbidden_patterns(wt_path: str, profile=None) -> list[dict]:
     return patterns
 
 
-def _extract_added_lines(diff_output: str) -> list[tuple[str, int, str]]:
-    """Parse unified diff, return (file_path, approx_line, content) for added lines."""
+def _is_comment_line(content: str) -> bool:
+    """Check if a line is a code comment (should be skipped by lint)."""
+    stripped = content.strip()
+    # Single-line comments (JS/TS/Python/Shell)
+    if stripped.startswith("//") or stripped.startswith("#"):
+        return True
+    # Block comment lines (JSDoc, multi-line comments)
+    if stripped.startswith("*") or stripped.startswith("/**") or stripped.startswith("*/"):
+        return True
+    # Markdown-style documentation in code
+    if stripped.startswith("- ") and "**" in stripped:
+        return True
+    return False
+
+
+def _extract_added_lines(diff_output: str, skip_comments: bool = True) -> list[tuple[str, int, str]]:
+    """Parse unified diff, return (file_path, approx_line, content) for added lines.
+
+    When skip_comments=True (default), comment lines are excluded from results
+    to prevent false positives when agents mention forbidden patterns in fix comments.
+    """
     results: list[tuple[str, int, str]] = []
     current_file = ""
     current_line = 0
@@ -384,7 +403,10 @@ def _extract_added_lines(diff_output: str) -> list[tuple[str, int, str]]:
                 current_line = int(match.group(1)) - 1
         elif line.startswith("+") and not line.startswith("+++"):
             current_line += 1
-            results.append((current_file, current_line, line[1:]))
+            content = line[1:]
+            if skip_comments and _is_comment_line(content):
+                continue
+            results.append((current_file, current_line, content))
         elif not line.startswith("-"):
             current_line += 1
 
