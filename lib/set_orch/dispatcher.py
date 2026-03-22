@@ -1797,6 +1797,11 @@ def dispatch_via_wt_loop(
     update_change_field(state_path, change_name, "ralph_pid", terminal_pid, event_bus=event_bus)
     update_change_field(state_path, change_name, "status", "running", event_bus=event_bus)
     logger.info("ralph started for %s in %s (terminal PID %s)", change_name, wt_path, terminal_pid or "unknown")
+
+    send_notification(
+        "Change dispatched",
+        f"'{change_name}' started in {wt_path}",
+    )
     return True
 
 
