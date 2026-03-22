@@ -652,23 +652,38 @@ def _run_memory_via_daemon(method: str, **params) -> str | None:
 
 
 def _run_memory(args: list[str], input_text: str | None = None, timeout: int = 30) -> str:
-    """Run a set-memory CLI command with project-scoped CWD (fallback path)."""
+    """Run a set-memory CLI command with project-scoped CWD (fallback path).
+
+    Uses start_new_session=True so that on timeout the entire process group
+    (including grandchild python processes) can be killed, preventing orphans.
+    """
+    proc = None
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             ["set-memory"] + args,
-            input=input_text,
-            capture_output=True,
+            stdin=subprocess.PIPE if input_text else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
             cwd=MEMORY_PROJECT_DIR,
+            start_new_session=True,
         )
-        output = result.stdout.strip()
-        if result.returncode != 0 and result.stderr:
-            return f"Error: {result.stderr.strip()}"
+        stdout, stderr = proc.communicate(input=input_text, timeout=timeout)
+        output = stdout.strip()
+        if proc.returncode != 0 and stderr:
+            return f"Error: {stderr.strip()}"
         return output or "(no output)"
     except FileNotFoundError:
         return "Error: set-memory not found in PATH"
     except subprocess.TimeoutExpired:
+        if proc is not None:
+            import os
+            import signal
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                proc.kill()
+            proc.wait()
         return f"Error: command timed out after {timeout}s"
 
 

@@ -415,13 +415,23 @@ cmd_audit() {
     fi
 
     local raw_json
+    local rc=0
     raw_json=$(_SHODH_STORAGE="$storage_path" \
         _SHODH_THRESHOLD="$threshold" \
         _SHODH_MODE="audit" \
-        run_with_lock run_shodh_python -c "$_DEDUP_PYTHON") || {
+        run_with_lock timeout --kill-after=5 25 run_shodh_python -c "$_DEDUP_PYTHON") || rc=$?
+
+    if [[ $rc -eq 124 ]]; then
+        if [[ "$json_mode" == "true" ]]; then
+            echo '{"error": "timeout", "total": 0, "clusters": 0, "redundant": 0, "unique": 0, "dedup_ratio": 0.0, "top_clusters": []}'
+        else
+            echo "Memory audit timed out (>25s). Store may be too large for pairwise comparison."
+        fi
+        return 0
+    elif [[ $rc -ne 0 ]]; then
         [[ "$json_mode" == "true" ]] && echo '{"total": 0, "clusters": 0, "redundant": 0, "unique": 0, "dedup_ratio": 0.0, "top_clusters": []}'
         return 0
-    }
+    fi
 
     if [[ "$json_mode" == "true" ]]; then
         echo "$raw_json"
@@ -493,11 +503,18 @@ cmd_dedup() {
         shodh_dry_run="true"
     fi
 
+    local rc=0
     _SHODH_STORAGE="$storage_path" \
     _SHODH_THRESHOLD="$threshold" \
     _SHODH_MODE="$mode" \
     _SHODH_DRY_RUN="$shodh_dry_run" \
-    run_with_lock run_shodh_python -c "$_DEDUP_PYTHON" || echo '{"deleted_count": 0, "merged_count": 0}'
+    run_with_lock timeout --kill-after=5 25 run_shodh_python -c "$_DEDUP_PYTHON" || rc=$?
+
+    if [[ $rc -eq 124 ]]; then
+        echo '{"error": "timeout", "deleted_count": 0, "merged_count": 0}'
+    elif [[ $rc -ne 0 ]]; then
+        echo '{"deleted_count": 0, "merged_count": 0}'
+    fi
 
     return 0
 }
