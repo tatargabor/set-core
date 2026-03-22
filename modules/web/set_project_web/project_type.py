@@ -333,6 +333,24 @@ class WebProjectType(CoreProfile):
             pass
         return None
 
+    def detect_dep_install_command(self, project_path: str) -> Optional[str]:
+        """Detect package manager install command for dependency sync."""
+        lockfiles = {
+            "pnpm-lock.yaml": "pnpm install --frozen-lockfile",
+            "yarn.lock": "yarn install --frozen-lockfile",
+            "bun.lockb": "bun install --frozen-lockfile",
+            "bun.lock": "bun install --frozen-lockfile",
+            "package-lock.json": "npm ci",
+        }
+        for lockfile, cmd in lockfiles.items():
+            if (Path(project_path) / lockfile).is_file():
+                return cmd
+        pkg_json = Path(project_path) / "package.json"
+        if pkg_json.is_file():
+            pm = self.detect_package_manager(project_path) or "npm"
+            return f"{pm} install"
+        return None
+
     def detect_build_command(self, project_path: str) -> Optional[str]:
         pkg_json = Path(project_path) / "package.json"
         if not pkg_json.is_file():

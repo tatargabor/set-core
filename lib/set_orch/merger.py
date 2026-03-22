@@ -585,6 +585,13 @@ def _run_integration_gates(
     except Exception:
         directives = {}
 
+    # Dep install after integration merge (new deps from other changes)
+    if profile and hasattr(profile, "detect_dep_install_command"):
+        dep_cmd = profile.detect_dep_install_command(wt_path)
+        if dep_cmd:
+            logger.info("Integration gate: dep install for %s (%s)", change_name, dep_cmd)
+            run_command(["bash", "-c", dep_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
+
     # Build gate
     if gc.should_run("build"):
         build_cmd = directives.get("build_command", "")
