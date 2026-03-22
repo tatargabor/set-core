@@ -191,7 +191,7 @@ cmd_start() {
 
     # ── Auto-resume: if state file has active changes, skip planning entirely ──
     if [[ -f "$STATE_FILENAME" ]] && [[ "${FORCE_REPLAN:-}" != "true" ]]; then
-        local _active_statuses='["running","pending","verifying","stalled","dispatched","verify-failed","done"]'
+        local _active_statuses='["running","pending","verifying","stalled","dispatched","verify-failed","done","merge-blocked"]'
         local _active_count
         _active_count=$(jq --argjson s "$_active_statuses" \
             '[.changes[] | select(.status as $st | $s | index($st))] | length' \

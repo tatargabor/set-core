@@ -334,22 +334,16 @@ class WebProjectType(CoreProfile):
         return None
 
     def detect_dep_install_command(self, project_path: str) -> Optional[str]:
-        """Detect package manager install command for dependency sync."""
-        lockfiles = {
-            "pnpm-lock.yaml": "pnpm install --frozen-lockfile",
-            "yarn.lock": "yarn install --frozen-lockfile",
-            "bun.lockb": "bun install --frozen-lockfile",
-            "bun.lock": "bun install --frozen-lockfile",
-            "package-lock.json": "npm ci",
-        }
-        for lockfile, cmd in lockfiles.items():
-            if (Path(project_path) / lockfile).is_file():
-                return cmd
+        """Detect package manager install command for dependency sync.
+
+        Uses non-frozen install because after integration merge the lockfile
+        may be outdated (new deps from other changes in package.json).
+        """
         pkg_json = Path(project_path) / "package.json"
-        if pkg_json.is_file():
-            pm = self.detect_package_manager(project_path) or "npm"
-            return f"{pm} install"
-        return None
+        if not pkg_json.is_file():
+            return None
+        pm = self.detect_package_manager(project_path) or "npm"
+        return f"{pm} install"
 
     def detect_build_command(self, project_path: str) -> Optional[str]:
         pkg_json = Path(project_path) / "package.json"
