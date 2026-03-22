@@ -323,7 +323,11 @@ class WebProjectType(CoreProfile):
             data = json.loads(pkg_json.read_text())
             scripts = data.get("scripts", {})
             for candidate in ("test", "test:unit", "test:ci"):
-                if scripts.get(candidate):
+                script_val = scripts.get(candidate, "")
+                if script_val:
+                    # vitest exits 1 when no test files found — use npx to pass flag directly
+                    if "vitest" in script_val:
+                        return "npx vitest run --passWithNoTests"
                     return f"{pm} run {candidate}"
         except (json.JSONDecodeError, OSError):
             pass
