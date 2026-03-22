@@ -1607,11 +1607,14 @@ def run_phase_end_e2e(
     import hashlib
     port_offset = int(hashlib.md5(f"phase-e2e-{cycle}".encode()).hexdigest()[:4], 16) % 1000
     e2e_port = 5000 + port_offset
-    env: dict[str, str] = {
-        "PLAYWRIGHT_OUTPUT_DIR": screenshot_dir,
-        "PW_PORT": str(e2e_port),
-        "PORT": str(e2e_port),
-    }
+    env: dict[str, str] = {"PLAYWRIGHT_OUTPUT_DIR": screenshot_dir}
+    try:
+        from .profile_loader import load_profile
+        profile = load_profile()
+        if hasattr(profile, "e2e_gate_env"):
+            env.update(profile.e2e_gate_env(e2e_port))
+    except Exception:
+        pass
 
     test_result = run_command(
         ["bash", "-c", e2e_command],

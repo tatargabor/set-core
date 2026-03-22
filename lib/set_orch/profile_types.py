@@ -130,6 +130,15 @@ class ProjectType(ABC):
     def detect_e2e_command(self, project_path: str) -> Optional[str]:
         return None
 
+    def e2e_gate_env(self, port: int) -> Dict[str, str]:
+        """Return env vars for e2e gate with isolated port.
+
+        Override in project-type modules to map the port to framework-specific
+        env vars (e.g. PW_PORT for Playwright, PORT for Next.js).
+        Core only generates the unique port number.
+        """
+        return {}
+
     def detect_dev_server(self, project_path: str) -> Optional[str]:
         return None
 

@@ -617,13 +617,13 @@ def _run_integration_gates(
         if not e2e_cmd and profile and hasattr(profile, "detect_e2e_command"):
             e2e_cmd = profile.detect_e2e_command(wt_path) or ""
         if e2e_cmd:
-            # Assign unique port per worktree to avoid collisions with parallel agents
+            # Assign unique port to avoid collisions with parallel agents
             import hashlib
             port_offset = int(hashlib.md5(change_name.encode()).hexdigest()[:4], 16) % 1000
             e2e_port = 4000 + port_offset
             e2e_env = dict(gate_env) if gate_env else {}
-            e2e_env["PW_PORT"] = str(e2e_port)
-            e2e_env["PORT"] = str(e2e_port)  # common convention
+            if profile and hasattr(profile, "e2e_gate_env"):
+                e2e_env.update(profile.e2e_gate_env(e2e_port))
             logger.info("Integration gate: e2e for %s (%s, port=%d)", change_name, e2e_cmd, e2e_port)
             result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env)
             if result.exit_code != 0:

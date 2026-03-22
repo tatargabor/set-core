@@ -639,6 +639,13 @@ class WebProjectType(CoreProfile):
                 items.append(line[2:])
         return items
 
+    def e2e_gate_env(self, port: int) -> dict[str, str]:
+        """Map isolated port to Playwright/Next.js env vars."""
+        return {
+            "PW_PORT": str(port),
+            "PORT": str(port),
+        }
+
     def decompose_hints(self) -> list:
         """Return web-specific decomposition hints for the planner."""
         return [
