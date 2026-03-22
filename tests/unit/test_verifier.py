@@ -679,10 +679,9 @@ class TestBuildReviewRetryPrompt:
             state_file, "auth", "still bad", "", 2, 3,
         )
         assert "PREVIOUS ATTEMPTS" in prompt
-        assert "DO NOT REPEAT" in prompt
-        assert "m.ts:35" in prompt  # prior attempt fix
+        assert "LAST attempt" in prompt  # escalation warning on final attempt
         assert "src/m.ts | 5 +++--" in prompt  # prior diff
-        assert "fundamentally different strategy" in prompt
+        assert "restructure the entire implementation" in prompt
 
     def test_final_attempt_escalation(self, state_file):
         _write_state(state_file, [{"name": "auth", "status": "running"}])

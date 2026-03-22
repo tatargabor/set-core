@@ -1272,10 +1272,10 @@ def review_change(
     review_output = claude_result.stdout
     logger.info("Code review complete for %s (%d chars)", change_name, len(review_output))
 
-    # Check for CRITICAL severity
-    has_critical = bool(re.search(
-        r"\[CRITICAL\]|severity.*critical|CRITICAL:", review_output, re.IGNORECASE,
-    ))
+    # Check for CRITICAL severity using structured parser (not regex on raw text)
+    # Raw regex would false-positive on phrases like "not escalating to [CRITICAL]"
+    parsed_issues = _parse_review_issues(review_output)
+    has_critical = any(i["severity"] == "CRITICAL" for i in parsed_issues)
 
     return ReviewResult(has_critical=has_critical, output=review_output)
 
