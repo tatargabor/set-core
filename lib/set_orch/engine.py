@@ -1620,13 +1620,8 @@ def _persist_run_learnings(state_file: str) -> None:
                         pattern_counts.setdefault(norm, set()).add(change_name)
 
         # Also cluster by keywords for fuzzy matching across variations
-        _CLUSTERS = {
-            "no-auth": ["no auth", "no authentication", "zero authentication", "without auth"],
-            "no-csrf": ["csrf", "cross-site request"],
-            "xss": ["xss", "dangerouslysetinnerhtml", "v-html"],
-            "no-rate-limit": ["rate limit", "rate-limit"],
-            "secrets-exposed": ["masking", "exposed", "leaked", "codes displayed"],
-        }
+        from .review_clusters import REVIEW_PATTERN_CLUSTERS
+        _CLUSTERS = REVIEW_PATTERN_CLUSTERS
         cluster_counts: dict[str, set[str]] = {}
         for norm, changes_set in pattern_counts.items():
             norm_lower = norm.lower()

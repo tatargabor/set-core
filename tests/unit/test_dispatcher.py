@@ -16,6 +16,7 @@ from set_orch.dispatcher import (
     DispatchContext,
     SyncResult,
     _build_input_content,
+    _build_review_learnings,
     _build_sibling_context,
     _detect_package_manager,
     _detect_read_first_directives,
@@ -908,3 +909,84 @@ class TestConventionsSummary:
         ctx = DispatchContext()
         content = _build_input_content("test", "Scope", "", ctx)
         assert "## Project Conventions" not in content
+
+
+# ─── Cross-change review learnings ──────────────────────────────────
+
+
+class TestBuildReviewLearnings:
+    """Tests for _build_review_learnings cross-change findings injection."""
+
+    @pytest.fixture
+    def findings_dir(self, tmp_path):
+        return tmp_path / "wt" / "orchestration"
+
+    def _write_jsonl(self, findings_dir, entries):
+        findings_dir.mkdir(parents=True, exist_ok=True)
+        path = findings_dir / "review-findings.jsonl"
+        with open(path, "w") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+        return str(path)
+
+    def test_sibling_findings_included_own_excluded(self, findings_dir):
+        """JSONL with findings from A, B, C — dispatching D → only A, B, C appear."""
+        path = self._write_jsonl(findings_dir, [
+            {"change": "auth", "issues": [{"severity": "CRITICAL", "summary": "No auth on /api/orders"}]},
+            {"change": "catalog", "issues": [{"severity": "HIGH", "summary": "Missing input validation"}]},
+            {"change": "content", "issues": [{"severity": "CRITICAL", "summary": "XSS via innerHTML"}]},
+            {"change": "my-change", "issues": [{"severity": "CRITICAL", "summary": "Should not appear"}]},
+        ])
+        result = _build_review_learnings(path, "my-change")
+        assert "No auth" in result
+        assert "input validation" in result
+        assert "XSS" in result or "innerHTML" in result
+        assert "Should not appear" not in result
+
+    def test_empty_jsonl_returns_empty(self, findings_dir):
+        """Empty JSONL → no section generated."""
+        path = self._write_jsonl(findings_dir, [])
+        result = _build_review_learnings(path, "my-change")
+        assert result == ""
+
+    def test_nonexistent_file_returns_empty(self):
+        """Missing file → no section generated."""
+        result = _build_review_learnings("/nonexistent/path.jsonl", "my-change")
+        assert result == ""
+
+    def test_clustering_same_pattern(self, findings_dir):
+        """Multiple changes with 'no auth' pattern → clustered into one line."""
+        path = self._write_jsonl(findings_dir, [
+            {"change": "auth", "issues": [{"severity": "CRITICAL", "summary": "No authentication on API routes"}]},
+            {"change": "catalog", "issues": [{"severity": "CRITICAL", "summary": "No auth middleware on /api/products"}]},
+            {"change": "orders", "issues": [{"severity": "HIGH", "summary": "Zero authentication check on checkout"}]},
+        ])
+        result = _build_review_learnings(path, "my-change")
+        assert "No authentication" in result
+        assert "auth" in result
+        assert "catalog" in result
+
+    def test_medium_findings_filtered_out(self, findings_dir):
+        """MEDIUM findings excluded, only CRITICAL+HIGH remain."""
+        path = self._write_jsonl(findings_dir, [
+            {"change": "auth", "issues": [
+                {"severity": "CRITICAL", "summary": "No auth on /api/orders"},
+                {"severity": "MEDIUM", "summary": "Consider adding logging"},
+                {"severity": "LOW", "summary": "Typo in comment"},
+            ]},
+        ])
+        result = _build_review_learnings(path, "my-change")
+        assert "No auth" in result
+        assert "logging" not in result
+        assert "Typo" not in result
+
+    def test_rendered_in_input_md(self, findings_dir):
+        """Review learnings appear in input.md under Lessons section."""
+        path = self._write_jsonl(findings_dir, [
+            {"change": "auth", "issues": [{"severity": "CRITICAL", "summary": "No auth on routes"}]},
+        ])
+        learnings = _build_review_learnings(path, "my-change")
+        ctx = DispatchContext(review_learnings=learnings)
+        content = _build_input_content("my-change", "Build checkout", "", ctx)
+        assert "## Lessons from Prior Changes" in content
+        assert "No auth" in content

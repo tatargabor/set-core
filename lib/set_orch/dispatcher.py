@@ -179,6 +179,7 @@ class DispatchContext:
     conventions_summary: str = ""
     i18n_sidecar_instructions: str = ""
     cross_cutting_restrictions: list[str] = field(default_factory=list)
+    review_learnings: str = ""
 
 
 # ─── Worktree Preparation ────────────────────────────────────────────
@@ -1048,6 +1049,9 @@ def _build_input_content(
         for restriction in ctx.cross_cutting_restrictions:
             lines.append(f"- {restriction}")
 
+    if ctx.review_learnings:
+        lines.append(f"\n## Lessons from Prior Changes\n{ctx.review_learnings}")
+
     if retry_ctx:
         lines.append(f"\n## Retry Context\n{retry_ctx}")
 
@@ -1071,6 +1075,94 @@ def _load_requirements_lookup(digest_dir: str) -> dict[str, dict]:
         }
     except (json.JSONDecodeError, OSError, KeyError):
         return {}
+
+
+def _build_review_learnings(findings_path: str, exclude_change: str) -> str:
+    """Build compact cross-change review learnings from JSONL.
+
+    Reads review-findings.jsonl, excludes the current change's own findings,
+    keeps only CRITICAL+HIGH, clusters by keyword, and returns a compact
+    markdown section (max ~15 lines).
+    """
+    if not os.path.isfile(findings_path):
+        return ""
+
+    import re as _re
+    from .review_clusters import REVIEW_PATTERN_CLUSTERS
+
+    # Read and filter findings
+    pattern_counts: dict[str, set[str]] = {}
+    try:
+        with open(findings_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                change = entry.get("change", "")
+                if change == exclude_change:
+                    continue  # skip own findings
+                for issue in entry.get("issues", []):
+                    sev = issue.get("severity", "")
+                    if sev not in ("CRITICAL", "HIGH"):
+                        continue
+                    norm = _re.sub(r"\[(?:CRITICAL|HIGH)\]\s*", "", issue.get("summary", ""))[:80]
+                    if norm:
+                        pattern_counts.setdefault(norm, set()).add(change)
+    except OSError:
+        return ""
+
+    if not pattern_counts:
+        return ""
+
+    # Cluster by keywords
+    cluster_results: dict[str, set[str]] = {}
+    clustered_norms: set[str] = set()
+    for norm, changes_set in pattern_counts.items():
+        norm_lower = norm.lower()
+        for cid, keywords in REVIEW_PATTERN_CLUSTERS.items():
+            if any(kw in norm_lower for kw in keywords):
+                cluster_results.setdefault(cid, set()).update(changes_set)
+                clustered_norms.add(norm)
+                break
+
+    # Build output lines
+    lines: list[str] = []
+
+    # Clustered patterns first (high signal)
+    _CLUSTER_LABELS = {
+        "no-auth": "No authentication",
+        "no-csrf": "Missing CSRF protection",
+        "xss": "XSS risk",
+        "no-rate-limit": "Missing rate limiting",
+        "secrets-exposed": "Secrets/credentials exposed",
+    }
+    for cid, changes_set in sorted(cluster_results.items(), key=lambda x: -len(x[1])):
+        label = _CLUSTER_LABELS.get(cid, cid)
+        names = ", ".join(sorted(changes_set)[:3])
+        suffix = f" +{len(changes_set)-3} more" if len(changes_set) > 3 else ""
+        lines.append(f"- **{label}** ({names}{suffix})")
+
+    # Unclustered individual patterns (deduplicated, top 5)
+    unclustered = {k: v for k, v in pattern_counts.items() if k not in clustered_norms}
+    for norm, changes_set in sorted(unclustered.items(), key=lambda x: -len(x[1]))[:5]:
+        names = ", ".join(sorted(changes_set)[:2])
+        lines.append(f"- {norm.strip('*').strip()} ({names})")
+
+    if not lines:
+        return ""
+
+    # Cap at 12 finding lines
+    lines = lines[:12]
+
+    return (
+        "These patterns caused CRITICAL/HIGH failures in other changes during this run:\n"
+        + "\n".join(lines)
+        + f"\n\nFull details: `wt/orchestration/review-findings.jsonl`"
+    )
 
 
 def _build_pk_context(scope: str, project_path: str) -> str:
@@ -1324,11 +1416,16 @@ def dispatch_change(
     if context_pruning:
         prune_worktree_context(wt_path)
 
+    # Cross-change review learnings
+    findings_path = os.path.join(os.path.dirname(state_path), "wt", "orchestration", "review-findings.jsonl")
+    review_learnings = _build_review_learnings(findings_path, change_name)
+
     # Gather enrichment context
     ctx = DispatchContext(
         memory_ctx=_recall_dispatch_memory(scope),
         pk_context=_build_pk_context(scope, project_path),
         sibling_context=_build_sibling_context(state),
+        review_learnings=review_learnings,
     )
 
     # Cross-cutting file restrictions from planner ownership assignment
