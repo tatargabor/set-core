@@ -204,25 +204,17 @@ ATTRS
     # Design data is available via static design-snapshot.md files.
 
     step "Orchestration config"
-    mkdir -p wt/orchestration
-
-    # Extract Figma design URL from spec if present
-    local design_file_url=""
-    if [[ -f "docs/v1-minishop.md" ]]; then
-        design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' docs/v1-minishop.md | head -1 || true)
-    fi
-
+    # Overwrite template config.yaml with E2E-specific values
     cat > wt/orchestration/config.yaml <<YAML
 # Orchestration config for MiniShop E2E test
 default_model: opus
-test_command: pnpm test
-e2e_command: npx playwright test
-e2e_timeout: 120
 max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
 review_before_merge: true
+max_verify_retries: 2
+e2e_timeout: 120
 env_vars:
   DATABASE_URL: "file:./dev.db"
 discord:
@@ -230,21 +222,20 @@ discord:
   channel_name: minishop
 YAML
 
+    # Extract Figma design URL from spec if present
+    local design_file_url=""
+    if [[ -f "docs/v1-minishop.md" ]]; then
+        design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' docs/v1-minishop.md | head -1 || true)
+    fi
     if [[ -n "$design_file_url" ]]; then
         echo "design_file: \"$design_file_url\"" >> wt/orchestration/config.yaml
         success "Design file reference: $design_file_url"
-    else
-        if jq -e '.mcpServers.figma' .claude/settings.json &>/dev/null 2>&1; then
-            warn "Figma MCP is registered but no design_file URL found in spec"
-            warn "Add a Figma URL to the spec for design token injection"
-        fi
     fi
     success "Created wt/orchestration/config.yaml"
 
     git add -A
     git commit -m "chore: set-project init + orchestration config"
     git tag v1-ready
-    git branch -m main
     success "Tagged v1-ready"
 }
 
