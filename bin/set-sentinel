@@ -492,7 +492,9 @@ if [[ ! -f "$STATE_FILE" ]]; then
     : > "$LOG_FILE"  # truncate but keep the file (our log lines above are already there)
 elif [[ -f "$STATE_FILE" ]]; then
     _prev_status=$(jq -r '.status // ""' "$STATE_FILE" 2>/dev/null || true)
-    if [[ "$_prev_status" == "done" || "$_prev_status" == "stopped" ]]; then
+    if [[ "$_prev_status" == "stopped" || "$_prev_status" == "running" ]]; then
+        sentinel_log "Resuming previous run (status=$_prev_status) — state preserved"
+    elif [[ "$_prev_status" == "done" ]]; then
         # Check if there are failed changes with worktrees — partial reset instead of nuke
         _has_failed_with_wt=$(jq -r '[.changes[]? | select(.status == "failed" and .worktree_path != null and .worktree_path != "")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
         if [[ "$_has_failed_with_wt" -gt 0 ]]; then
