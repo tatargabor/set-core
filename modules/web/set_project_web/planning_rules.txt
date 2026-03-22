@@ -22,6 +22,13 @@ Playwright E2E test planning (when e2e_command is configured):
 - Do NOT just list "Functional test scenarios:" as descriptions — create actual test files.
 - E2E tests run pre-merge in the worktree via e2e_command against an auto-started dev server with isolated port and DB.
 
+Parallel agent coordination (multi-worktree builds):
+- When a foundational change creates a shared layout structure (route groups, layout components, providers), the planner MUST specify the exact path in downstream change scopes. Example: if auth-navigation creates `src/app/(shop)/layout.tsx` with a navigation header, product-catalog's scope must say "Create pages under `src/app/(shop)/products/`" — NOT just "Create product listing page."
+- Route group decisions belong to the foundational/navigation change. Downstream changes MUST reference the established route group by path, not invent their own placement.
+- Shared components (NavigationHeader, Footer, Sidebar) are created by one change — downstream changes use them, never recreate them.
+- Database schema changes belong to ONE change (typically the foundational). Other changes that need new models MUST list them as dependencies and specify the exact model names in scope so the planner sequences correctly.
+- When two changes both need to modify the same file (e.g., prisma/schema.prisma, middleware.ts), the planner MUST sequence them with explicit dependency, never run them in parallel.
+
 Application Startup guide maintenance:
 - Infrastructure/foundational changes that add new setup steps (DB, E2E tooling, env vars, build commands) MUST update the `## Application Startup` section in CLAUDE.md. This section is the canonical reference for agents entering the worktree mid-project. If you add a Prisma DB, document `npx prisma db push`. If you add Playwright, document `npx playwright install --with-deps chromium`. Keep it current.
 
