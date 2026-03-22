@@ -222,7 +222,7 @@ YAML
 validate_gates() {
     step "Validate gate enforcement"
 
-    PYTHONPATH="${SET_TOOLS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}/lib:${SET_TOOLS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}/modules/web:${PYTHONPATH:-}" \
+    PYTHONPATH="${SET_TOOLS_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}/lib:${SET_TOOLS_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}/modules/web:${PYTHONPATH:-}" \
     python3 -c "
 import sys, os
 wt = '$TEST_DIR'

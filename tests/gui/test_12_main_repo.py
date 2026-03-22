@@ -49,7 +49,7 @@ class _MenuCapture:
         return self.menus[-1]["submenus"] if self.menus else []
 
 
-def _make_main_repo_status(project_path, project_name="test-project", branch="master"):
+def _make_main_repo_status(project_path, project_name="test-project", branch="main"):
     """Create status data with a main repo entry."""
     return {
         "worktrees": [{
@@ -80,9 +80,9 @@ def _make_mixed_status(project_path, wt_path, project_name="test-project"):
             },
             {
                 "project": project_name,
-                "change_id": "master",
+                "change_id": "main",
                 "path": project_path,
-                "branch": "master",
+                "branch": "main",
                 "is_main_repo": True,
                 "agents": [],
                 "git": {"last_commit": 0, "uncommitted_changes": False},
@@ -112,7 +112,7 @@ def test_main_repo_row_has_star_prefix(control_center, git_env, qtbot):
     name_item = control_center.table.item(main_row, 0)
     assert name_item is not None
     assert name_item.text().startswith("\u2605"), f"Expected star prefix, got: {name_item.text()}"
-    assert "master" in name_item.text()
+    assert "main" in name_item.text()
 
 
 def test_main_repo_row_is_first_under_header(control_center, git_env, qtbot):

@@ -170,6 +170,6 @@ Add this to a project's CLAUDE.md to trigger seeding when memory is empty:
 ## Memory Seeding
 
 If `set-memory status` shows 0 memories and the `openspec/` directory contains
-artifacts, follow the [memory seeding guide](https://raw.githubusercontent.com/tatargabor/set-core/master/docs/memory-seeding-guide.md)
+artifacts, follow the [memory seeding guide](https://raw.githubusercontent.com/tatargabor/set-core/main/docs/memory-seeding-guide.md)
 to build initial project memory from existing documentation.
 ```

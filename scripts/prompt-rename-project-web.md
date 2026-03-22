@@ -4,7 +4,7 @@ A `set-core` (SET = ShipExactlyThis) rename része. Ez a repó a `set-project-we
 
 ## Feladat
 
-Hajtsd végre az alábbi rename-et egy commitban, direkt master-re.
+Hajtsd végre az alábbi rename-et egy commitban, direkt main-re.
 
 ### 1. Git tag
 ```

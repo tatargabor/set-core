@@ -68,11 +68,11 @@ if len(lines) > 10:
     open('pnpm-lock.yaml', 'w').writelines(lines)
     sys.exit(0)
 sys.exit(1)
-" 2>/dev/null || { git -C "$PROJECT" checkout master -q; return 1; }
+" 2>/dev/null || { git -C "$PROJECT" checkout main -q; return 1; }
     git -C "$PROJECT" add pnpm-lock.yaml
     git -C "$PROJECT" commit -qm "benchmark: branch-A lockfile change"
 
-    git -C "$PROJECT" checkout master -q
+    git -C "$PROJECT" checkout main -q
     git -C "$PROJECT" checkout -b "$branch_b" -q
 
     python3 -c "
@@ -83,12 +83,12 @@ if len(lines) > 20:
     open('pnpm-lock.yaml', 'w').writelines(lines)
     sys.exit(0)
 sys.exit(1)
-" 2>/dev/null || { git -C "$PROJECT" checkout master -q; return 1; }
+" 2>/dev/null || { git -C "$PROJECT" checkout main -q; return 1; }
     git -C "$PROJECT" add pnpm-lock.yaml
     git -C "$PROJECT" commit -qm "benchmark: branch-B lockfile change"
 
     # Merge A first
-    git -C "$PROJECT" checkout master -q
+    git -C "$PROJECT" checkout main -q
     git -C "$PROJECT" merge --no-edit -q "$branch_a" 2>/dev/null
 
     # Now try B — should conflict
@@ -104,7 +104,7 @@ cleanup_conflict() {
     git -C "$PROJECT" clean -fd 2>/dev/null || true
 }
 
-restore_master() {
+restore_main() {
     cleanup_conflict
     # Reset to last clean commit
     git -C "$PROJECT" reset --hard HEAD 2>/dev/null || true
@@ -220,7 +220,7 @@ run_scenario() {
     echo "| $sc_id | $sc_name | conflict=$conflict_happened | S1: $s1_result | S2: $s2_result | ${elapsed}s |"
 
     # Cleanup
-    restore_master
+    restore_main
 }
 
 # ─── Main ────────────────────────────────────────────────────────────

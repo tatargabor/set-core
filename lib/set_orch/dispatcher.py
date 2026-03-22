@@ -817,7 +817,7 @@ def _unique_worktree_name(project_path: str, change_name: str) -> str:
     # Check if branch and directory are both free
     branch = f"change/{change_name}"
     wt_dir = f"{project_path}-{change_name}"
-    branch_exists = run_git("rev-parse", "--verify", branch).exit_code == 0
+    branch_exists = run_git("rev-parse", "--verify", branch, cwd=project_path).exit_code == 0
     dir_exists = os.path.isdir(wt_dir)
 
     if not branch_exists and not dir_exists:
@@ -828,7 +828,7 @@ def _unique_worktree_name(project_path: str, change_name: str) -> str:
         candidate = f"{change_name}-{i}"
         branch = f"change/{candidate}"
         wt_dir = f"{project_path}-{candidate}"
-        branch_exists = run_git("rev-parse", "--verify", branch).exit_code == 0
+        branch_exists = run_git("rev-parse", "--verify", branch, cwd=project_path).exit_code == 0
         dir_exists = os.path.isdir(wt_dir)
         if not branch_exists and not dir_exists:
             logger.info("change name collision: %s exists, using %s", change_name, candidate)

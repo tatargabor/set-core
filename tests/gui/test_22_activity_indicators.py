@@ -77,9 +77,9 @@ def _inject_team_and_status(control_center, git_env, qtbot, activity=None, last_
     status_data = {
         "worktrees": [{
             "project": "test-project",
-            "change_id": "master",
+            "change_id": "main",
             "path": str(git_env["project"]),
-            "branch": "master",
+            "branch": "main",
             "remote_url": remote_url,
             "is_main_repo": True,
             "agents": [],

@@ -172,7 +172,7 @@ class TestPersistReviewLearnings:
 
         profile = TestProfile()
         # Patch the template path to use temp dir
-        profile._learnings_template_path = lambda: config_dir / "web.jsonl"
+        profile._learnings_template_path = lambda ensure_dir=False: config_dir / "web.jsonl"
         return profile
 
     def test_writes_to_both_jsonls(self, tmp_path):
@@ -286,7 +286,7 @@ class TestReviewLearningsChecklist:
                 return ["bcrypt for passwords, NEVER sha256"]
 
         profile = TestProfile()
-        profile._learnings_template_path = lambda: tmp_path / "web.jsonl"
+        profile._learnings_template_path = lambda ensure_dir=False: tmp_path / "web.jsonl"
 
         # Write template JSONL
         (tmp_path / "web.jsonl").write_text(json.dumps({
@@ -329,7 +329,7 @@ class TestReviewLearningsChecklist:
                 return [f"Baseline item {i}" for i in range(20)]
 
         profile = TestProfile()
-        profile._learnings_template_path = lambda: tmp_path / "web.jsonl"
+        profile._learnings_template_path = lambda ensure_dir=False: tmp_path / "web.jsonl"
 
         result = profile.review_learnings_checklist(str(tmp_path / "nonexistent"))
 
@@ -348,7 +348,7 @@ class TestReviewLearningsChecklist:
                 return []
 
         profile = TestProfile()
-        profile._learnings_template_path = lambda: tmp_path / "core.jsonl"
+        profile._learnings_template_path = lambda ensure_dir=False: tmp_path / "core.jsonl"
 
         result = profile.review_learnings_checklist(str(tmp_path))
         assert result == ""
@@ -373,7 +373,7 @@ class TestRoundTrip:
         profile = TestProfile()
         config_dir = tmp_path / "config"
         config_dir.mkdir()
-        profile._learnings_template_path = lambda: config_dir / "web.jsonl"
+        profile._learnings_template_path = lambda ensure_dir=False: config_dir / "web.jsonl"
 
         project_dir = tmp_path / "project"
         (project_dir / "wt" / "orchestration").mkdir(parents=True)

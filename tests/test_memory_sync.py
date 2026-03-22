@@ -108,7 +108,7 @@ def git_env(tmp_path):
     subprocess.run(["git", "-C", repo_a, "add", "."], capture_output=True, timeout=10)
     subprocess.run(["git", "-C", repo_a, "commit", "-m", "init"], capture_output=True, timeout=10)
     subprocess.run(["git", "-C", repo_a, "remote", "add", "origin", remote], capture_output=True, timeout=10)
-    subprocess.run(["git", "-C", repo_a, "push", "-u", "origin", "master"], capture_output=True, timeout=10)
+    subprocess.run(["git", "-C", repo_a, "push", "-u", "origin", "main"], capture_output=True, timeout=10)
 
     # Create working repo B by cloning
     subprocess.run(["git", "clone", remote, repo_b], capture_output=True, timeout=10)

@@ -180,18 +180,19 @@ class ProjectType(ABC):
 
     # --- Review learnings persistence ---
 
-    def _learnings_template_path(self) -> Path:
+    def _learnings_template_path(self, ensure_dir: bool = False) -> Path:
         """Return path to template-level learnings JSONL for this profile type.
 
         Stored at ~/.config/set-core/review-learnings/<profile-name>.jsonl.
-        Creates the directory if it doesn't exist.
+        Only creates the directory when ensure_dir=True.
         """
         import os
-        config_dir = Path(
-            os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
-        ) / "set-core" / "review-learnings"
-        config_dir.mkdir(parents=True, exist_ok=True)
-        name = self.info.name if hasattr(self, "info") and self.info else "core"
+        xdg = os.environ.get("XDG_CONFIG_HOME", "")
+        config_base = Path(xdg) if xdg else Path.home() / ".config"
+        config_dir = config_base / "set-core" / "review-learnings"
+        if ensure_dir:
+            config_dir.mkdir(parents=True, exist_ok=True)
+        name = self.info.name
         return config_dir / f"{name}.jsonl"
 
     def _classify_patterns(self, patterns: list[dict]) -> list[dict]:
@@ -204,10 +205,13 @@ class ProjectType(ABC):
         if not patterns:
             return patterns
 
+        import copy
         import json
         from .subprocess_utils import run_claude_logged
 
-        profile_name = self.info.name if hasattr(self, "info") and self.info else "core"
+        # Work on copies to avoid mutating caller's data
+        patterns = [copy.copy(p) for p in patterns]
+        profile_name = self.info.name
 
         items = [{"pattern": p["pattern"], "fix_hint": p.get("fix_hint", "")} for p in patterns]
         prompt = (
@@ -276,9 +280,9 @@ class ProjectType(ABC):
 
         # --- Template JSONL (flock for concurrency) ---
         if template_patterns:
-            tpl_path = self._learnings_template_path()
+            tpl_path = self._learnings_template_path(ensure_dir=True)
             lock_path = str(tpl_path) + ".lock"
-            lock_fd = open(lock_path, "w")
+            lock_fd = open(lock_path, "a")
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_EX)
                 existing = []

@@ -179,7 +179,7 @@ Every memory is automatically tagged with the git branch it was created on. This
 
 ### How it works
 
-- `set-memory remember` auto-appends `branch:<current-branch>` tag (e.g., `branch:master`, `branch:change/add-auth`)
+- `set-memory remember` auto-appends `branch:<current-branch>` tag (e.g., `branch:main`, `branch:change/add-auth`)
 - `set-memory recall` boosts results from the current branch (they appear first), but still returns cross-branch results
 - If not in a git repo or on a detached HEAD, the branch tag is silently skipped
 
@@ -187,8 +187,8 @@ Every memory is automatically tagged with the git branch it was created on. This
 
 | Scenario | Remember | Recall |
 |---|---|---|
-| Working on `master` | Tagged `branch:master` | Boost master memories |
-| Feature branch `change/xyz` | Tagged `branch:change/xyz` | Boost change/xyz, master results also returned |
+| Working on `main` | Tagged `branch:main` | Boost main memories |
+| Feature branch `change/xyz` | Tagged `branch:change/xyz` | Boost change/xyz, main results also returned |
 | Parallel worktrees | Each tags with its own branch | Cross-branch memories visible (lower priority) |
 | After branch merge | Memories keep original branch tag | Findable from any branch |
 | Branch dropped | Memories persist with branch tag | Learnings not lost |

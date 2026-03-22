@@ -24,6 +24,22 @@ from .state import load_state, save_state, StateCorruptionError
 
 router = APIRouter()
 
+_PURPOSE_LABELS = {
+    "review": "Review",
+    "smoke_fix": "Smoke Fix",
+    "spec_verify": "Spec Verify",
+    "classify": "Classify",
+    "replan": "Replan",
+    "decompose": "Decompose",
+    "decompose_summary": "Summarize",
+    "decompose_brief": "Planning Brief",
+    "decompose_domain": "Domain Decompose",
+    "decompose_merge": "Merge Plans",
+    "digest": "Digest",
+    "audit": "Audit",
+    "build_fix": "Build Fix",
+}
+
 # ─── Soniox API key ───────────────────────────────────────────────────
 
 
@@ -841,22 +857,7 @@ def _derive_session_label(session_path: Path) -> tuple[str, str]:
 
                 # PURPOSE tag from run_claude_logged() (highest priority)
                 if first_line.startswith("[PURPOSE:"):
-                    _PURPOSE_LABELS = {
-                        "review": "Review",
-                        "smoke_fix": "Smoke Fix",
-                        "spec_verify": "Spec Verify",
-                        "classify": "Classify",
-                        "replan": "Replan",
-                        "decompose": "Decompose",
-                        "decompose_summary": "Summarize",
-                        "decompose_brief": "Planning Brief",
-                        "decompose_domain": "Domain Decompose",
-                        "decompose_merge": "Merge Plans",
-                        "digest": "Digest",
-                        "audit": "Audit",
-                        "build_fix": "Build Fix",
-                    }
-                    tag = first_line.split("]")[0].lstrip("[PURPOSE:")
+                    tag = first_line.split("]")[0].removeprefix("[PURPOSE:")
                     parts = tag.split(":", 1)
                     purpose = parts[0] if parts else ""
                     change = parts[1] if len(parts) > 1 else ""

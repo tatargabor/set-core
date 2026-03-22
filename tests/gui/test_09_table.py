@@ -86,9 +86,9 @@ def test_multi_agent_rows(control_center, git_env, qtbot):
     status_data = {
         "worktrees": [{
             "project": "test-project",
-            "change_id": "master",
+            "change_id": "main",
             "path": str(git_env["project"]),
-            "branch": "master",
+            "branch": "main",
             "is_main_repo": True,
             "agents": [
                 {"pid": 1001, "status": "running", "skill": "apply"},
@@ -107,7 +107,7 @@ def test_multi_agent_rows(control_center, git_env, qtbot):
     # Row 1 (first agent): Name should have the branch label
     name_item = control_center.table.item(1, 0)
     assert name_item is not None
-    assert "master" in name_item.text()
+    assert "main" in name_item.text()
 
     # Row 1: PID should be "1001"
     pid_item = control_center.table.item(1, 1)

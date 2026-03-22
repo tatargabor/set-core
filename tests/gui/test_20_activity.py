@@ -43,7 +43,7 @@ def team_data_with_activity():
                 "status": "idle",
                 "changes": [
                     {
-                        "id": "master",
+                        "id": "main",
                         "remote_url": "git@github.com:org/test-project",
                         "agent_status": None,
                         "last_activity": "2026-02-07T20:00:00Z",
@@ -156,7 +156,7 @@ def test_render_team_tooltip_without_activity(control_center):
         "member_user": "idle",
         "member_hostname": "remote",
         "member_status": "idle",
-        "change_id": "master",
+        "change_id": "main",
         "agent_status": "idle",
         "last_seen": "2026-02-07T20:00:00Z",
         "last_activity": "",

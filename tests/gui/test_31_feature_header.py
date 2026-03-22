@@ -11,9 +11,9 @@ def _make_status_data(git_env, agents=None):
     return {
         "worktrees": [{
             "project": "test-project",
-            "change_id": "master",
+            "change_id": "main",
             "path": str(git_env["project"]),
-            "branch": "master",
+            "branch": "main",
             "is_main_repo": True,
             "agents": agents or [],
             "git": {"last_commit": 0, "uncommitted_changes": False},
@@ -89,9 +89,9 @@ def test_all_row_backgrounds_opaque(control_center, git_env, qtbot):
         "worktrees": [
             {
                 "project": "test-project",
-                "change_id": "master",
+                "change_id": "main",
                 "path": str(git_env["project"]),
-                "branch": "master",
+                "branch": "main",
                 "is_main_repo": True,
                 "agents": [{"pid": 1001, "status": "running"}],
                 "git": {"last_commit": 0, "uncommitted_changes": False},

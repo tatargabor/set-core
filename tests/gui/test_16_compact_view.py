@@ -71,7 +71,7 @@ def test_filter_hides_idle_main_repo(control_center, qapp):
 
     try:
         control_center.worktrees = [
-            _make_worktree("master", status="idle", is_main_repo=True),
+            _make_worktree("main", status="idle", is_main_repo=True),
             _make_worktree("active-one", status="running"),
         ]
 
@@ -81,7 +81,7 @@ def test_filter_hides_idle_main_repo(control_center, qapp):
 
         visible = [wt["change_id"] for wt in control_center.row_to_worktree.values()]
 
-        assert "master" not in visible
+        assert "main" not in visible
         assert "active-one" in visible
     finally:
         control_center.worktrees = original_wts
@@ -97,7 +97,7 @@ def test_filter_shows_active_main_repo(control_center, qapp):
 
     try:
         control_center.worktrees = [
-            _make_worktree("master", status="running", is_main_repo=True),
+            _make_worktree("main", status="running", is_main_repo=True),
             _make_worktree("feature", status="running"),
         ]
 
@@ -107,7 +107,7 @@ def test_filter_shows_active_main_repo(control_center, qapp):
 
         visible = [wt["change_id"] for wt in control_center.row_to_worktree.values()]
 
-        assert "master" in visible
+        assert "main" in visible
         assert "feature" in visible
     finally:
         control_center.worktrees = original_wts
@@ -123,7 +123,7 @@ def test_filter_off_shows_all(control_center, qapp):
 
     try:
         control_center.worktrees = [
-            _make_worktree("master", status="idle", is_main_repo=True),
+            _make_worktree("main", status="idle", is_main_repo=True),
             _make_worktree("idle-one", status="idle"),
             _make_worktree("running-one", status="running"),
         ]
@@ -134,7 +134,7 @@ def test_filter_off_shows_all(control_center, qapp):
 
         visible = [wt["change_id"] for wt in control_center.row_to_worktree.values()]
 
-        assert "master" in visible
+        assert "main" in visible
         assert "idle-one" in visible
         assert "running-one" in visible
     finally:

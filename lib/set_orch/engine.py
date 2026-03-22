@@ -609,7 +609,7 @@ def _poll_active_changes(
             update_change_field(state_file, change.name, "status", "merged")
             if event_bus:
                 event_bus.emit("CHANGE_AUTO_MERGED", change=change.name,
-                               reason="worktree_missing")
+                               data={"reason": "worktree_missing"})
             continue
 
         # --- Dead verify agent detection ---
