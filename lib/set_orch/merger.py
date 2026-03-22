@@ -559,6 +559,21 @@ def _run_integration_gates(
 
     gc = resolve_gate_config(change, profile)
 
+    # Load .env from worktree if exists (agents create .env during impl
+    # but it's not committed — integration gates need it for e.g. DATABASE_URL)
+    gate_env: dict[str, str] = {}
+    env_path = os.path.join(wt_path, ".env")
+    if os.path.isfile(env_path):
+        try:
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, _, val = line.partition("=")
+                        gate_env[key.strip()] = val.strip().strip('"').strip("'")
+        except OSError:
+            pass
+
     # Load directives for test/build commands
     try:
         state = load_state(state_file)
@@ -573,7 +588,7 @@ def _run_integration_gates(
             build_cmd = profile.detect_build_command(wt_path) or ""
         if build_cmd:
             logger.info("Integration gate: build for %s (%s)", change_name, build_cmd)
-            result = run_command(["bash", "-c", build_cmd], timeout=120, cwd=wt_path)
+            result = run_command(["bash", "-c", build_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
             if result.exit_code != 0:
                 logger.error("Integration gate: build FAILED for %s", change_name)
                 update_change_field(state_file, change_name, "integration_gate_fail", "build")
@@ -586,7 +601,7 @@ def _run_integration_gates(
             test_cmd = profile.detect_test_command(wt_path) or ""
         if test_cmd:
             logger.info("Integration gate: test for %s (%s)", change_name, test_cmd)
-            result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path)
+            result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
             if result.exit_code != 0 and gc.is_blocking("test"):
                 logger.error("Integration gate: test FAILED for %s", change_name)
                 update_change_field(state_file, change_name, "integration_gate_fail", "test")
@@ -599,7 +614,7 @@ def _run_integration_gates(
             e2e_cmd = profile.detect_e2e_command(wt_path) or ""
         if e2e_cmd:
             logger.info("Integration gate: e2e for %s (%s)", change_name, e2e_cmd)
-            result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path)
+            result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=gate_env or None)
             if result.exit_code != 0:
                 # Integration e2e is non-blocking (warn-only) — the verify gate
                 # already validated e2e with baseline comparison. Integration e2e
