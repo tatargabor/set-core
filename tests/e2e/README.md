@@ -35,7 +35,43 @@ Each runner:
 1. Creates a project at `~/.local/share/set-core/e2e-runs/<name>-runN/`
 2. Copies the spec from `scaffolds/<name>/docs/`
 3. Runs `set-project init --project-type web --template nextjs`
-4. Starts the sentinel
+4. Generates `wt/orchestration/config.yaml` with env_vars, discord, gate config
+5. Starts the sentinel (or prints instructions)
+
+## What the Pipeline Does
+
+```
+Sentinel start
+  → Digest generation (spec → structured requirements/domains)
+  → Decompose (requirements → change plan with dependencies)
+  → Dispatch agents (parallel worktrees, max_parallel from config)
+      → Agent: ff (create artifacts) → apply (implement tasks)
+      → Verify gates: build → test → e2e → lint → review → rules
+      → If gate fails: retry with context (screenshot paths, review findings)
+  → Merge queue (integrate main → branch → ff-only merge)
+      → Integration gates: build + test + e2e (warn-only)
+  → Next change dispatched
+```
+
+## Key Config Options (config.yaml)
+
+| Key | Description |
+|-----|-------------|
+| `env_vars` | Key-value pairs written to `.env` in every worktree (e.g., `DATABASE_URL`) |
+| `e2e_command` | Playwright command — auto-detected from profile if not set |
+| `e2e_timeout` | Seconds before e2e gate times out |
+| `review_before_merge` | Run LLM code review gate (default: true) |
+| `discord.channel_name` | Discord notifications channel |
+
+## Sentinel Flags
+
+| Flag | Description |
+|------|-------------|
+| `--spec <path>` | Spec file or directory for digest |
+| `--fresh` | Force fresh start (re-plan from scratch) |
+| `--auto-approve-reset` | Skip approval gate on spec hash change (for CI) |
+
+Without `--auto-approve-reset`, the sentinel will pause and wait for approval before resetting orchestration state when it detects a spec change. Create `.set/.sentinel-approve-reset` to approve.
 
 ## Directory Structure
 
@@ -51,7 +87,7 @@ tests/e2e/
 │   └── run-micro-web.sh
 ├── runs/                    ← Run logs and findings
 │   ├── minishop/            ← Run 13-19 reports
-│   ├── craftbrew/           ← Run 1-7 reports
+│   ├── craftbrew/           ← Run 1-8 reports
 │   └── craftbrew-findings.md
 └── assets/                  ← Screenshots and test utilities
     ├── screenshots/
@@ -65,10 +101,17 @@ Run logs live in `runs/<project>/run-N.md` and document bugs found, metrics, and
 ## Cleanup
 
 ```bash
-# Kill running agents
+# Kill running agents and sentinel
 pkill -f "set-sentinel.*<name>" 2>/dev/null || true
+pkill -f "set-loop.*<name>" 2>/dev/null || true
+
+# Remove worktrees
+cd ~/.local/share/set-core/e2e-runs/<name>-runN
+git worktree list --porcelain | grep "^worktree " | awk '{print $2}' | \
+  xargs -I{} git worktree remove {} --force 2>/dev/null || true
 
 # Remove project
 rm -rf ~/.local/share/set-core/e2e-runs/<name>-runN
+rm -rf ~/.local/share/set-core/memory/<name>-runN
 set-project remove <name>-runN 2>/dev/null || true
 ```

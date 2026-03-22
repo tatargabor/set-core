@@ -214,18 +214,20 @@ ATTRS
 
     cat > wt/orchestration/config.yaml <<YAML
 # Orchestration config for MiniShop E2E test
-default_model: opus  # alternative: opus-1m
+default_model: opus
 test_command: pnpm test
 e2e_command: npx playwright test
 e2e_timeout: 120
-smoke_command: pnpm test
-smoke_blocking: true
 max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
+review_before_merge: true
+env_vars:
+  DATABASE_URL: "file:./dev.db"
 discord:
   enabled: true
+  channel_name: minishop
 YAML
 
     if [[ -n "$design_file_url" ]]; then

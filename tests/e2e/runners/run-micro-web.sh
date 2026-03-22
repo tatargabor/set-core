@@ -78,9 +78,8 @@ e2e_timeout: 120
 max_parallel: 2
 merge_policy: eager
 review_before_merge: true
-max_verify_retries: 2
-time_limit: 2h
-checkpoint_interval: 5
+env_vars:
+  DATABASE_URL: "file:./dev.db"
 discord:
   enabled: true
   channel_name: micro-web
