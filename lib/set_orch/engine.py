@@ -236,6 +236,10 @@ def monitor_loop(
     This is the Python equivalent of monitor.sh monitor_loop().
     Parses directives, then loops: poll → dispatch → merge → replan → watchdog.
     """
+    # Set up file logging for the monitor process
+    from .logging_config import setup_logging
+    setup_logging()
+
     # Single-instance guard: flock on orchestrator lock file
     import fcntl
     lock_path = os.path.join(os.path.dirname(state_file) or ".", "orchestrator.lock")
