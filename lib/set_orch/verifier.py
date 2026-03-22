@@ -2572,10 +2572,12 @@ def handle_change_done(
         "build",
         lambda: _execute_build_gate(change_name, change, wt_path, findings_path=_findings_path),
         own_retry_counter="build_fix_attempt_count",
+        result_fields=("build_result", "gate_build_ms"),
     )
     pipeline.register(
         "test",
         lambda: _execute_test_gate(change_name, change, wt_path, test_command, test_timeout, findings_path=_findings_path),
+        result_fields=("test_result", "gate_test_ms"),
     )
     # Register profile gates (e2e, lint from web module if available)
     if profile is not None and hasattr(profile, "register_gates"):
@@ -2621,6 +2623,7 @@ def handle_change_done(
                 state_file, design_snapshot_dir, gc, change.verify_retry_count,
             ),
             extra_retries=getattr(gc, "review_extra_retries", 1),
+            result_fields=("review_result", "gate_review_ms"),
         )
     pipeline.register(
         "rules",
@@ -2629,6 +2632,7 @@ def handle_change_done(
     pipeline.register(
         "spec_verify",
         lambda: _execute_spec_verify_gate(change_name, change, wt_path),
+        result_fields=("spec_coverage_result", "gate_verify_ms"),
     )
 
     # Execute pipeline
