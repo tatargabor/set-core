@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .subprocess_utils import run_claude
+from .subprocess_utils import run_claude_logged
 
 logger = logging.getLogger(__name__)
 
@@ -228,8 +228,9 @@ def call_digest_api(prompt: str, model: str = "opus", max_retries: int = 3) -> s
         RuntimeError: If all retries fail.
     """
     for attempt in range(1, max_retries + 1):
-        result = run_claude(
+        result = run_claude_logged(
             prompt,
+            purpose="digest",
             timeout=600,
             model=model,
             extra_args=["--max-turns", "3"],

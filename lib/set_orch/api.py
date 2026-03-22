@@ -837,7 +837,34 @@ def _derive_session_label(session_path: Path) -> tuple[str, str]:
                 if entry.get("type") != "queue-operation":
                     continue
                 content = entry.get("content", "")
-                first_line = content.split("\n")[0].strip().lower()
+                first_line = content.split("\n")[0].strip()
+
+                # PURPOSE tag from run_claude_logged() (highest priority)
+                if first_line.startswith("[PURPOSE:"):
+                    _PURPOSE_LABELS = {
+                        "review": "Review",
+                        "smoke_fix": "Smoke Fix",
+                        "spec_verify": "Spec Verify",
+                        "classify": "Classify",
+                        "replan": "Replan",
+                        "decompose": "Decompose",
+                        "decompose_summary": "Summarize",
+                        "decompose_brief": "Planning Brief",
+                        "decompose_domain": "Domain Decompose",
+                        "decompose_merge": "Merge Plans",
+                        "digest": "Digest",
+                        "audit": "Audit",
+                        "build_fix": "Build Fix",
+                    }
+                    tag = first_line.split("]")[0].lstrip("[PURPOSE:")
+                    parts = tag.split(":", 1)
+                    purpose = parts[0] if parts else ""
+                    change = parts[1] if len(parts) > 1 else ""
+                    label = _PURPOSE_LABELS.get(purpose, purpose.replace("_", " ").title())
+                    full = f"{change}: {label}" if change else label
+                    return label, full
+
+                first_line = first_line.lower()
 
                 # Orchestration role patterns (match before generic fallback)
                 if "software architect" in first_line and "plan" in first_line:

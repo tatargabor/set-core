@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .subprocess_utils import run_claude, run_command
+from .subprocess_utils import run_claude_logged, run_command
 
 logger = logging.getLogger(__name__)
 
@@ -214,8 +214,9 @@ def run_audit(
     audit_prompt = template_result.stdout
 
     # Call LLM with timeout
-    result = run_claude(
+    result = run_claude_logged(
         audit_prompt,
+        purpose="audit",
         timeout=1800,
         model=review_model,
     )

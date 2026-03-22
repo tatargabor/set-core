@@ -180,6 +180,7 @@ class DispatchContext:
     i18n_sidecar_instructions: str = ""
     cross_cutting_restrictions: list[str] = field(default_factory=list)
     review_learnings: str = ""
+    review_learnings_checklist: str = ""
 
 
 # ─── Worktree Preparation ────────────────────────────────────────────
@@ -1052,6 +1053,9 @@ def _build_input_content(
     if ctx.review_learnings:
         lines.append(f"\n## Lessons from Prior Changes\n{ctx.review_learnings}")
 
+    if ctx.review_learnings_checklist:
+        lines.append(f"\n{ctx.review_learnings_checklist}")
+
     if retry_ctx:
         lines.append(f"\n## Retry Context\n{retry_ctx}")
 
@@ -1446,12 +1450,22 @@ def dispatch_change(
     findings_path = os.path.join(os.path.dirname(state_path), "wt", "orchestration", "review-findings.jsonl")
     review_learnings = _build_review_learnings(findings_path, change_name)
 
+    # Profile-based persistent review checklist (cross-run)
+    review_checklist = ""
+    try:
+        from .profile_loader import load_profile
+        _profile = load_profile()
+        review_checklist = _profile.review_learnings_checklist(project_path)
+    except Exception:
+        logger.debug("Failed to load review learnings checklist", exc_info=True)
+
     # Gather enrichment context
     ctx = DispatchContext(
         memory_ctx=_recall_dispatch_memory(scope),
         pk_context=_build_pk_context(scope, project_path),
         sibling_context=_build_sibling_context(state),
         review_learnings=review_learnings,
+        review_learnings_checklist=review_checklist,
     )
 
     # Cross-cutting file restrictions from planner ownership assignment

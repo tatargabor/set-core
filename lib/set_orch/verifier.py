@@ -34,7 +34,7 @@ from .state import (
     update_change_field,
     update_state_field,
 )
-from .subprocess_utils import CommandResult, run_claude, run_command, run_git
+from .subprocess_utils import CommandResult, run_claude, run_claude_logged, run_command, run_git
 
 logger = logging.getLogger(__name__)
 
@@ -1256,12 +1256,12 @@ def review_change(
         review_prompt = prompt_prefix + review_prompt
 
     # Run review via Claude
-    claude_result = run_claude(review_prompt, model=review_model)
+    claude_result = run_claude_logged(review_prompt, purpose="review", change=change_name, model=review_model)
     if claude_result.exit_code != 0:
         # Escalate to opus if not already
         if review_model != "opus":
             logger.warning("Code review failed with %s for %s, escalating to opus", review_model, change_name)
-            claude_result = run_claude(review_prompt, model="opus")
+            claude_result = run_claude_logged(review_prompt, purpose="review", change=change_name, model="opus")
             if claude_result.exit_code != 0:
                 logger.warning("Code review failed with opus for %s — skipping", change_name)
                 return ReviewResult(has_critical=False, output="")
@@ -1527,8 +1527,9 @@ def smoke_fix_scoped(
             continue
 
         fix_prompt = template_result.stdout
-        fix_result = run_claude(
-            fix_prompt, model="sonnet",
+        fix_result = run_claude_logged(
+            fix_prompt, purpose="smoke_fix", change=change_name,
+            model="sonnet",
             extra_args=["--max-turns", str(max_turns)],
         )
         if fix_result.exit_code != 0:
@@ -2241,8 +2242,9 @@ def _execute_spec_verify_gate(
     if not wt_path or not shutil.which("claude"):
         return GateResult("spec_verify", "skipped")
 
-    verify_cmd_result = run_claude(
+    verify_cmd_result = run_claude_logged(
         f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\nRun /opsx:verify {change_name}",
+        purpose="spec_verify", change=change_name,
         extra_args=["--max-turns", "40"],
         cwd=wt_path,
     )

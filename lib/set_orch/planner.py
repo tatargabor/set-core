@@ -115,7 +115,7 @@ def summarize_spec(
     Returns:
         Summary text, or truncated content on failure.
     """
-    from .subprocess_utils import run_claude
+    from .subprocess_utils import run_claude_logged
 
     spec_content = Path(spec_path).read_text(errors="replace")
 
@@ -145,7 +145,7 @@ def summarize_spec(
     )
 
     try:
-        result = run_claude(summary_prompt, model=model)
+        result = run_claude_logged(summary_prompt, purpose="decompose_summary", model=model)
         if result.exit_code == 0 and result.stdout:
             logger.info("Spec summarization complete (%d chars)", len(result.stdout))
             return result.stdout
@@ -1399,7 +1399,7 @@ def _phase1_planning_brief(
     max_parallel: int = 3,
 ) -> dict:
     """Phase 1: Generate planning brief from domain summaries."""
-    from .subprocess_utils import run_claude
+    from .subprocess_utils import run_claude_logged
     from .templates import render_brief_prompt
 
     prompt = render_brief_prompt(
@@ -1414,7 +1414,7 @@ def _phase1_planning_brief(
     )
 
     logger.info("Phase 1: generating planning brief (%d domains)", len(domain_data["domains"]))
-    result = run_claude(prompt, timeout=600, model=model, extra_args=["--max-turns", "3"])
+    result = run_claude_logged(prompt, purpose="decompose_brief", timeout=600, model=model, extra_args=["--max-turns", "3"])
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 1 (planning brief) failed (exit {result.exit_code})")
 
@@ -1447,7 +1447,7 @@ def _decompose_single_domain(
     max_parallel: int = 3,
 ) -> dict:
     """Decompose a single domain into changes. Called in parallel."""
-    from .subprocess_utils import run_claude
+    from .subprocess_utils import run_claude_logged
     from .templates import render_domain_decompose_prompt
 
     prompt = render_domain_decompose_prompt(
@@ -1462,7 +1462,7 @@ def _decompose_single_domain(
     )
 
     logger.info("Phase 2: decomposing domain '%s' (%d reqs)", domain["name"], len(domain["requirements"]))
-    result = run_claude(prompt, timeout=900, model=model, extra_args=["--max-turns", "5"])
+    result = run_claude_logged(prompt, purpose="decompose_domain", timeout=900, model=model, extra_args=["--max-turns", "5"])
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 2 domain '{domain['name']}' failed (exit {result.exit_code})")
 
@@ -1530,7 +1530,7 @@ def _phase3_merge_plans(
     model: str = "opus",
 ) -> dict:
     """Phase 3: Merge domain plans into unified orchestration plan."""
-    from .subprocess_utils import run_claude
+    from .subprocess_utils import run_claude_logged
     from .templates import render_merge_prompt
 
     # Format domain plans for the prompt
@@ -1554,7 +1554,7 @@ def _phase3_merge_plans(
     )
 
     logger.info("Phase 3: merging %d domain plans", len(domain_plans))
-    result = run_claude(prompt, timeout=900, model=model, extra_args=["--max-turns", "5"])
+    result = run_claude_logged(prompt, purpose="decompose_merge", timeout=900, model=model, extra_args=["--max-turns", "5"])
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 3 (merge) failed (exit {result.exit_code})")
 
@@ -1683,7 +1683,7 @@ def run_planning_pipeline(
     Raises:
         RuntimeError: If planning fails.
     """
-    from .subprocess_utils import run_claude
+    from .subprocess_utils import run_claude_logged
 
     # 1. Freshness check for digest mode
     if input_mode == "digest":
@@ -1790,7 +1790,7 @@ def run_planning_pipeline(
             )
             from .templates import render_planning_prompt
             prompt = render_planning_prompt(**context)
-            result = run_claude(prompt, timeout=1800, model=model, extra_args=["--max-turns", "10"])
+            result = run_claude_logged(prompt, purpose="decompose", timeout=1800, model=model, extra_args=["--max-turns", "10"])
             if result.exit_code != 0:
                 raise RuntimeError(f"Claude decomposition failed (exit {result.exit_code})")
             plan_data = _parse_plan_response(result.stdout)
@@ -1809,7 +1809,7 @@ def run_planning_pipeline(
         from .templates import render_planning_prompt
         prompt = render_planning_prompt(**context)
 
-        result = run_claude(prompt, timeout=1800, model=model, extra_args=["--max-turns", "10"])
+        result = run_claude_logged(prompt, purpose="decompose", timeout=1800, model=model, extra_args=["--max-turns", "10"])
         if result.exit_code != 0:
             raise RuntimeError(f"Claude planning call failed (exit {result.exit_code})")
 

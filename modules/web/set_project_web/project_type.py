@@ -627,6 +627,18 @@ class WebProjectType(CoreProfile):
                 capture_output=True, timeout=10,
             )
 
+    def _review_baseline_items(self) -> list[str]:
+        """Return static web security baseline items from review_baseline.md."""
+        baseline_file = Path(__file__).parent / "review_baseline.md"
+        if not baseline_file.is_file():
+            return []
+        items = []
+        for line in baseline_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("- "):
+                items.append(line[2:])
+        return items
+
     def decompose_hints(self) -> list:
         """Return web-specific decomposition hints for the planner."""
         return [

@@ -445,6 +445,10 @@ def merge_change(
         # Post-merge hook
         _run_hook("post_merge", change_name, "merged", "")
 
+        # Persist review learnings (template + project split)
+        _heartbeat("review_learnings")
+        _persist_change_review_learnings(change_name, state_file)
+
         _heartbeat("archive")
         cleanup_worktree(change_name, wt_path or "")
         archive_change(change_name)
@@ -889,6 +893,91 @@ def _post_merge_deps_install(lockfile_conflicted: bool = False, pre_merge_sha: s
             logger.info("Post-merge: %s succeeded", " ".join(install_cmd))
         else:
             logger.warning("Post-merge: %s failed (merge not reverted)", " ".join(install_cmd))
+
+
+def _extract_change_review_patterns(
+    findings_path: str, change_name: str
+) -> list[dict]:
+    """Extract CRITICAL/HIGH patterns from review-findings.jsonl for a change."""
+    import re
+
+    if not os.path.isfile(findings_path):
+        return []
+
+    patterns: list[dict] = []
+    seen: set[str] = set()
+    try:
+        with open(findings_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("change") != change_name:
+                    continue
+                for issue in entry.get("issues", []):
+                    sev = issue.get("severity", "")
+                    if sev not in ("CRITICAL", "HIGH"):
+                        continue
+                    summary = re.sub(
+                        r"\[(?:CRITICAL|HIGH)\]\s*", "", issue.get("summary", "")
+                    ).strip()
+                    norm = summary.lower()[:60]
+                    if norm and norm not in seen:
+                        seen.add(norm)
+                        patterns.append({
+                            "pattern": summary,
+                            "severity": sev,
+                            "fix_hint": issue.get("fix", ""),
+                            "source_changes": [change_name],
+                        })
+    except OSError:
+        logger.debug("Failed to read review findings from %s", findings_path)
+
+    return patterns
+
+
+def _persist_change_review_learnings(change_name: str, state_file: str) -> None:
+    """Extract review patterns for a merged change and persist to profile learnings."""
+    try:
+        from .profile_loader import load_profile
+
+        findings_dir = os.path.join(
+            os.path.dirname(state_file), "wt", "orchestration"
+        )
+        findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+
+        patterns = _extract_change_review_patterns(findings_path, change_name)
+        if not patterns:
+            return
+
+        profile = load_profile()
+        project_path = os.path.dirname(state_file)
+        profile.persist_review_learnings(patterns, project_path)
+        logger.info(
+            "Persisted %d review learnings for %s", len(patterns), change_name
+        )
+
+        # Auto-commit project JSONL to main if it was written
+        proj_jsonl = os.path.join(
+            project_path, "wt", "orchestration", "review-learnings.jsonl"
+        )
+        if os.path.isfile(proj_jsonl):
+            from .subprocess_utils import run_git
+            run_git("add", proj_jsonl)
+            run_git(
+                "commit", "-m",
+                "chore: update review learnings [skip ci]",
+                "--no-verify",
+            )
+    except Exception:
+        logger.debug(
+            "Failed to persist review learnings for %s (non-critical)",
+            change_name, exc_info=True,
+        )
 
 
 def _post_merge_custom_command(state_file: str) -> None:

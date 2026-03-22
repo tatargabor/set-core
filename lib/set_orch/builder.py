@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .subprocess_utils import CommandResult, run_claude, run_command
+from .subprocess_utils import CommandResult, run_claude_logged, run_command
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +153,9 @@ Do NOT create a worktree — fix directly in the current directory."""
 
     logger.info("Base build fix: attempting LLM-assisted fix (model=%s)", model)
 
-    fix_result = run_claude(
+    fix_result = run_claude_logged(
         fix_prompt,
+        purpose="build_fix",
         timeout=600,
         model=model,
         extra_args=["--max-turns", "20"],

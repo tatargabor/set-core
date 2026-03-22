@@ -177,3 +177,254 @@ class ProjectType(ABC):
 
     def decompose_hints(self) -> list:
         return []
+
+    # --- Review learnings persistence ---
+
+    def _learnings_template_path(self) -> Path:
+        """Return path to template-level learnings JSONL for this profile type.
+
+        Stored at ~/.config/set-core/review-learnings/<profile-name>.jsonl.
+        Creates the directory if it doesn't exist.
+        """
+        import os
+        config_dir = Path(
+            os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
+        ) / "set-core" / "review-learnings"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        name = self.info.name if hasattr(self, "info") and self.info else "core"
+        return config_dir / f"{name}.jsonl"
+
+    def _classify_patterns(self, patterns: list[dict]) -> list[dict]:
+        """Classify review patterns as 'template' or 'project' via Sonnet.
+
+        Each pattern dict must have 'pattern' and optionally 'fix_hint'.
+        Returns the same dicts with 'scope' field added.
+        Falls back to all 'project' if the LLM call fails.
+        """
+        if not patterns:
+            return patterns
+
+        import json
+        from .subprocess_utils import run_claude_logged
+
+        profile_name = self.info.name if hasattr(self, "info") and self.info else "core"
+
+        items = [{"pattern": p["pattern"], "fix_hint": p.get("fix_hint", "")} for p in patterns]
+        prompt = (
+            f"Classify each review finding as \"template\" (generic framework/security pattern "
+            f"applicable to any {profile_name} project) or \"project\" (business logic, "
+            f"domain-specific, or app-specific pattern).\n\n"
+            f"Findings:\n{json.dumps(items, indent=2)}\n\n"
+            f"Return ONLY a JSON array: [{{\"pattern\": \"...\", \"scope\": \"template|project\"}}]"
+        )
+
+        result = run_claude_logged(
+            prompt,
+            purpose="classify",
+            model="sonnet",
+            timeout=60,
+            extra_args=["--max-turns", "1"],
+        )
+
+        if result.exit_code != 0:
+            # Fallback: all project (safe — no template pollution)
+            for p in patterns:
+                p["scope"] = "project"
+            return patterns
+
+        # Parse LLM response
+        try:
+            import re
+            # Extract JSON array from response
+            match = re.search(r"\[.*\]", result.stdout, re.DOTALL)
+            if match:
+                classified = json.loads(match.group())
+                scope_map = {c["pattern"]: c["scope"] for c in classified}
+                for p in patterns:
+                    p["scope"] = scope_map.get(p["pattern"], "project")
+            else:
+                for p in patterns:
+                    p["scope"] = "project"
+        except (json.JSONDecodeError, KeyError):
+            for p in patterns:
+                p["scope"] = "project"
+
+        return patterns
+
+    def persist_review_learnings(self, patterns: list[dict], project_path: str) -> None:
+        """Persist classified review learnings to template and project JSONLs.
+
+        Called after each change merge. Classifies patterns via Sonnet,
+        writes template-scoped patterns to ~/.config JSONL (with flock),
+        writes project-scoped patterns to project JSONL.
+        """
+        import fcntl
+        import json
+        import os
+        from datetime import datetime, timezone
+
+        if not patterns:
+            return
+
+        # Classify
+        classified = self._classify_patterns(patterns)
+
+        template_patterns = [p for p in classified if p.get("scope") == "template"]
+        project_patterns = [p for p in classified if p.get("scope") == "project"]
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # --- Template JSONL (flock for concurrency) ---
+        if template_patterns:
+            tpl_path = self._learnings_template_path()
+            lock_path = str(tpl_path) + ".lock"
+            lock_fd = open(lock_path, "w")
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                existing = []
+                if tpl_path.is_file():
+                    with open(tpl_path) as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                try:
+                                    existing.append(json.loads(line))
+                                except json.JSONDecodeError:
+                                    pass
+                existing = self._merge_learnings(existing, template_patterns, now)
+                with open(tpl_path, "w") as f:
+                    for entry in existing:
+                        f.write(json.dumps(entry) + "\n")
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
+
+        # --- Project JSONL ---
+        if project_patterns:
+            proj_path = os.path.join(project_path, "wt", "orchestration", "review-learnings.jsonl")
+            os.makedirs(os.path.dirname(proj_path), exist_ok=True)
+            existing = []
+            if os.path.isfile(proj_path):
+                with open(proj_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                existing.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                pass
+            existing = self._merge_learnings(existing, project_patterns, now)
+            with open(proj_path, "w") as f:
+                for entry in existing:
+                    f.write(json.dumps(entry) + "\n")
+
+    @staticmethod
+    def _merge_learnings(
+        existing: list[dict], new_patterns: list[dict], now: str, cap: int = 50
+    ) -> list[dict]:
+        """Merge new patterns into existing, dedup by normalized pattern, cap at N."""
+        import re
+        by_key: dict[str, dict] = {}
+        for e in existing:
+            key = re.sub(r"\[(?:CRITICAL|HIGH)\]\s*", "", e.get("pattern", "")).strip().lower()[:60]
+            by_key[key] = e
+
+        for p in new_patterns:
+            key = re.sub(r"\[(?:CRITICAL|HIGH)\]\s*", "", p.get("pattern", "")).strip().lower()[:60]
+            if key in by_key:
+                by_key[key]["count"] = by_key[key].get("count", 1) + 1
+                by_key[key]["last_seen"] = now
+                changes = by_key[key].get("source_changes", [])
+                for c in p.get("source_changes", []):
+                    if c not in changes:
+                        changes.append(c)
+                by_key[key]["source_changes"] = changes[-10:]  # keep last 10
+            else:
+                by_key[key] = {
+                    "pattern": p["pattern"],
+                    "severity": p.get("severity", "HIGH"),
+                    "scope": p.get("scope", "project"),
+                    "count": 1,
+                    "last_seen": now,
+                    "source_changes": p.get("source_changes", []),
+                    "fix_hint": p.get("fix_hint", ""),
+                }
+
+        # Cap: remove oldest by last_seen
+        entries = list(by_key.values())
+        if len(entries) > cap:
+            entries.sort(key=lambda e: e.get("last_seen", ""), reverse=True)
+            entries = entries[:cap]
+
+        return entries
+
+    def review_learnings_checklist(self, project_path: str) -> str:
+        """Return compact markdown checklist from 3 sources.
+
+        Combines: static baseline [baseline] + template JSONL [template, seen Nx]
+        + project JSONL [project, seen Nx]. Max 15 lines.
+        """
+        import json
+        import os
+
+        items: list[tuple[str, str, int]] = []  # (pattern, tag, sort_key)
+
+        # 1. Project JSONL (highest priority)
+        proj_path = os.path.join(project_path, "wt", "orchestration", "review-learnings.jsonl")
+        if os.path.isfile(proj_path):
+            try:
+                with open(proj_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            e = json.loads(line)
+                            count = e.get("count", 1)
+                            items.append((e["pattern"], f"project, seen {count}x", 1000 + count))
+            except (json.JSONDecodeError, OSError, KeyError):
+                pass
+
+        # 2. Template JSONL
+        tpl_path = self._learnings_template_path()
+        if tpl_path.is_file():
+            try:
+                with open(tpl_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            e = json.loads(line)
+                            count = e.get("count", 1)
+                            items.append((e["pattern"], f"template, seen {count}x", 500 + count))
+            except (json.JSONDecodeError, OSError, KeyError):
+                pass
+
+        # 3. Static baseline (lowest priority) — subclass overrides to provide
+        baseline = self._review_baseline_items()
+        for pattern in baseline:
+            items.append((pattern, "baseline", 0))
+
+        if not items:
+            return ""
+
+        # Deduplicate by normalized pattern (first occurrence wins = highest priority)
+        import re
+        seen: set[str] = set()
+        unique: list[tuple[str, str, int]] = []
+        for pattern, tag, sort_key in items:
+            norm = re.sub(r"\[(?:CRITICAL|HIGH)\]\s*", "", pattern).strip().lower()[:60]
+            if norm not in seen:
+                seen.add(norm)
+                unique.append((pattern, tag, sort_key))
+
+        # Sort by priority descending, cap at 15
+        unique.sort(key=lambda x: -x[2])
+        unique = unique[:15]
+
+        lines = ["## Review Learnings Checklist (review will BLOCK if violated)"]
+        for pattern, tag, _ in unique:
+            lines.append(f"- {pattern} [{tag}]")
+
+        return "\n".join(lines)
+
+    def _review_baseline_items(self) -> list[str]:
+        """Return static baseline checklist items. Override in subclass."""
+        return []

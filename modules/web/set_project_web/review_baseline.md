@@ -1,0 +1,10 @@
+- ALL /api/* routes MUST have authentication middleware — never expose unprotected endpoints
+- NO `as any` type assertions — extend NextAuth/framework types properly via module augmentation
+- NO user-controlled regex — use string prefix/includes matching for postal codes, search, filters
+- bcrypt (or argon2) for password hashing, NEVER sha256/md5/plaintext
+- Rate limiting on auth endpoints (login, register, password reset) — prevent brute force
+- CSRF protection on all state-changing endpoints — use framework-provided tokens
+- `<html lang="...">` attribute MUST be set — required for accessibility and SEO
+- Server Components: no `useTranslations` or client hooks — use `getTranslations` for RSC
+- Prisma: never use `prisma: any` — import and type PrismaClient properly
+- Input validation with Zod on ALL server actions and API routes — never trust client data

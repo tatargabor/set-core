@@ -1071,7 +1071,7 @@ def _auto_replan_cycle(
     Returns: "dispatched", "no_new_work", or "error".
     """
     from .planner import collect_replan_context, build_decomposition_context, validate_plan, enrich_plan_metadata
-    from .subprocess_utils import run_claude
+    from .subprocess_utils import run_claude_logged
     from .dispatcher import dispatch_ready_changes
 
     # 1. Archive completed changes to state-archive.jsonl
@@ -1158,7 +1158,7 @@ def _auto_replan_cycle(
         from .templates import render_planning_prompt
         prompt = render_planning_prompt(**context)
 
-        claude_result = run_claude(prompt, timeout=1800, model=d.default_model or "opus")
+        claude_result = run_claude_logged(prompt, purpose="replan", timeout=1800, model=d.default_model or "opus")
         if claude_result.exit_code != 0:
             logger.error("Replan: Claude invocation failed (exit %d)", claude_result.exit_code)
             return "error"

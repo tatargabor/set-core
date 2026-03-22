@@ -199,6 +199,60 @@ def run_claude(
     )
 
 
+def run_claude_logged(
+    prompt: str,
+    *,
+    purpose: str,
+    change: str = "",
+    timeout: int = 300,
+    model: str | None = None,
+    extra_args: list[str] | None = None,
+    cwd: str | Path | None = None,
+) -> ClaudeResult:
+    """Execute Claude CLI and emit an LLM_CALL event for tracking.
+
+    Thin wrapper around run_claude() that logs every invocation to the
+    orchestration event bus so calls are visible in set-web and persist
+    across sessions.
+
+    Args:
+        prompt: The prompt text to send via stdin.
+        purpose: Why this call is made (review, smoke_fix, spec_verify,
+                 classify, replan, decompose, digest, audit, build_fix, …).
+        change: Change name if call is change-scoped, empty for global calls.
+        timeout: Timeout in seconds (default 300 = 5 min).
+        model: Model short name or full ID.
+        extra_args: Additional CLI arguments.
+        cwd: Working directory.
+    """
+    # Prepend PURPOSE header so _derive_session_label() can identify the call
+    tagged_prompt = f"[PURPOSE:{purpose}:{change}]\n{prompt}"
+
+    result = run_claude(
+        tagged_prompt,
+        timeout=timeout,
+        model=model,
+        extra_args=extra_args,
+        cwd=cwd,
+    )
+
+    # Emit event (best-effort — never fail the call because of logging)
+    try:
+        from .events import event_bus
+        event_bus.emit("LLM_CALL", change=change, data={
+            "purpose": purpose,
+            "model": model or "default",
+            "duration_ms": result.duration_ms,
+            "output_size": len(result.stdout),
+            "exit_code": result.exit_code,
+            "timed_out": result.timed_out,
+        })
+    except Exception:
+        logger.debug("Failed to emit LLM_CALL event", exc_info=True)
+
+    return result
+
+
 def run_git(*args: str, cwd: str | Path | None = None, timeout: int = 60) -> GitResult:
     """Execute a git command.
 
