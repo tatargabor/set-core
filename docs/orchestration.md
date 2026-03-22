@@ -518,4 +518,61 @@ Commands:
 
 ---
 
+## Review Learnings
+
+The orchestrator accumulates review findings across changes and runs, building a persistent checklist that prevents recurring mistakes.
+
+### How it works
+
+1. **During merge** — after a change merges, `_persist_change_review_learnings()` extracts CRITICAL/HIGH patterns from `review-findings.jsonl`, classifies them via Sonnet as `template` (cross-project) or `project` scope, and writes to the appropriate JSONL
+2. **During dispatch** — `review_learnings_checklist()` reads from 3 sources and injects into the agent's input.md as `## Review Learnings Checklist`
+3. **During review** — the verify gate blocks if checklist items are violated
+
+### Three sources (priority order)
+
+| Source | Path | Scope | Tag |
+|--------|------|-------|-----|
+| Project JSONL | `{project}/wt/orchestration/review-learnings.jsonl` | This project only | `[project, seen Nx]` |
+| Template JSONL | `~/.config/set-core/review-learnings/{profile}.jsonl` | All projects of same type | `[template, seen Nx]` |
+| Static baseline | `modules/{type}/review_baseline.md` | Hardcoded per profile | `[baseline]` |
+
+### Seeding from past runs
+
+New installations or new profile types start with an empty template JSONL. To seed it from existing E2E run findings:
+
+```bash
+# Dry run — see what patterns would be extracted
+python scripts/migrate-review-learnings.py --dry-run
+
+# Run migration (auto-discovers all runs under ~/.local/share/set-core/e2e-runs/)
+python scripts/migrate-review-learnings.py
+
+# Specify profile name (when not running from a project directory)
+python scripts/migrate-review-learnings.py --profile web
+
+# Migrate specific runs only
+python scripts/migrate-review-learnings.py --run-dir ~/.local/share/set-core/e2e-runs/craftbrew-run8
+```
+
+The script reads `review-findings.jsonl` from each run, extracts CRITICAL/HIGH issues, deduplicates across runs, and writes to `~/.config/set-core/review-learnings/{profile}.jsonl`.
+
+After migration, verify the checklist output:
+```bash
+python -c "
+import sys; sys.path.insert(0, 'lib')
+from set_orch.profile_loader import load_profile
+profile = load_profile()
+print(profile.review_learnings_checklist('.'))
+"
+```
+
+### Storage details
+
+- Both JSONLs are capped at 50 entries (oldest pruned by `last_seen`)
+- Template JSONL uses `flock` for concurrent write safety
+- Patterns are deduplicated by normalized text (first 60 chars, case-insensitive)
+- Each entry tracks `count`, `last_seen`, and `source_changes` for prioritization
+
+---
+
 *See also: [Sentinel](sentinel.md) · [Configuration](configuration.md) · [Ralph Loop](ralph.md) · [Architecture](architecture.md)*
