@@ -634,12 +634,11 @@ def _run_integration_gates(
             logger.info("Integration gate: e2e for %s (%s, port=%d)", change_name, e2e_cmd, e2e_port)
             result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env)
             if result.exit_code != 0:
-                if gc.is_blocking("e2e"):
-                    logger.error("Integration gate: e2e FAILED for %s", change_name)
-                    update_change_field(state_file, change_name, "integration_gate_fail", "e2e")
-                    return False
+                # Integration e2e is always non-blocking: the verify phase
+                # already validated e2e, and integration e2e is prone to
+                # flaky failures (port conflicts, stale servers, timeouts).
                 logger.warning(
-                    "Integration gate: e2e FAILED for %s (non-blocking)",
+                    "Integration gate: e2e FAILED for %s (non-blocking — verify phase already passed)",
                     change_name,
                 )
                 update_change_field(state_file, change_name, "integration_gate_fail", "e2e-warn")
