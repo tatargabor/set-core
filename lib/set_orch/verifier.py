@@ -1272,6 +1272,13 @@ def review_change(
     review_output = claude_result.stdout
     logger.info("Code review complete for %s (%d chars)", change_name, len(review_output))
 
+    # Explicit REVIEW PASS takes precedence — the LLM confirmed all issues are fixed.
+    # Without this, the structured parser can false-positive on quoted/referenced
+    # [CRITICAL] tags from prior findings that the LLM is reporting as resolved.
+    if re.search(r"REVIEW\s+PASS", review_output):
+        logger.info("Review explicitly passed for %s (REVIEW PASS found)", change_name)
+        return ReviewResult(has_critical=False, output=review_output)
+
     # Check for CRITICAL severity using structured parser (not regex on raw text)
     # Raw regex would false-positive on phrases like "not escalating to [CRITICAL]"
     parsed_issues = _parse_review_issues(review_output)
