@@ -36,6 +36,14 @@ activity.json
 .claude/scheduled_tasks.lock
 .claude/settings.json.bak
 orchestration-events.jsonl
+orchestration-events-*.jsonl
+orchestration-state.json
+orchestration-state.json.lock
+orchestration-state-events.jsonl
+orchestration-plan.json
+orchestrator.lock
+sentinel.lock
+.claude/digest-last-response.txt
 
 # Environment and credentials
 .env
