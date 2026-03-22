@@ -375,8 +375,9 @@ class WebProjectType(CoreProfile):
                 cwd=wt_path, capture_output=True, timeout=120,
             )
 
-        # Post-install: generate Prisma client if schema exists
-        if (Path(wt_path) / "prisma" / "schema.prisma").is_file():
+        # Post-install: generate Prisma client and .env if schema exists
+        prisma_schema = Path(wt_path) / "prisma" / "schema.prisma"
+        if prisma_schema.is_file():
             try:
                 subprocess.run(
                     ["npx", "prisma", "generate"],
@@ -384,6 +385,16 @@ class WebProjectType(CoreProfile):
                 )
             except (subprocess.TimeoutExpired, OSError):
                 pass  # non-fatal
+
+            # Generate .env with DATABASE_URL if missing (Prisma needs it)
+            env_file = Path(wt_path) / ".env"
+            if not env_file.is_file():
+                try:
+                    schema_text = prisma_schema.read_text()
+                    if 'env("DATABASE_URL")' in schema_text:
+                        env_file.write_text('DATABASE_URL="file:./dev.db"\n')
+                except OSError:
+                    pass  # non-fatal
 
         # Post-install: install Playwright browsers if @playwright/test in devDeps
         try:

@@ -1399,6 +1399,32 @@ def dispatch_change(
     # Bootstrap
     bootstrap_worktree(project_path, wt_path)
 
+    # Config-driven env_vars → .env (after profile bootstrap, overrides profile defaults)
+    try:
+        _state = load_state(state_path)
+        _directives = _state.extras.get("directives", {})
+        env_vars = _directives.get("env_vars", {})
+        if env_vars and isinstance(env_vars, dict):
+            env_file = os.path.join(wt_path, ".env")
+            # Read existing .env (may have been created by profile bootstrap)
+            existing: dict[str, str] = {}
+            if os.path.isfile(env_file):
+                with open(env_file) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, _, v = line.partition("=")
+                            existing[k.strip()] = v.strip()
+            # Merge: config overrides profile
+            existing.update(env_vars)
+            with open(env_file, "w") as f:
+                for k, v in existing.items():
+                    val = v if v.startswith('"') else f'"{v}"'
+                    f.write(f"{k}={val}\n")
+            logger.info("bootstrap: wrote %d env var(s) to .env in %s", len(existing), wt_path)
+    except Exception:
+        pass  # non-fatal — env_vars is optional
+
     # Sync with main immediately after bootstrap — ensures archive commits (openspec/specs/,
     # openspec/changes/ deletions) from recently merged changes are present before agent starts.
     # Without this, worktrees created right after a merge miss archive commits (Bug #38).
