@@ -74,7 +74,7 @@ UNIVERSAL_DEFAULTS: dict[str, dict[str, str]] = {
         "scope_check": "run",
         "test_files": "run",
         "review": "run",
-        "rules": "run",
+        "rules": "warn",
         "spec_verify": "run",
     },
     "foundational": {
@@ -83,7 +83,7 @@ UNIVERSAL_DEFAULTS: dict[str, dict[str, str]] = {
         "scope_check": "run",
         "test_files": "run",
         "review": "run",
-        "rules": "run",
+        "rules": "warn",
         "spec_verify": "run",
     },
     "feature": {
@@ -92,7 +92,7 @@ UNIVERSAL_DEFAULTS: dict[str, dict[str, str]] = {
         "scope_check": "run",
         "test_files": "run",
         "review": "run",
-        "rules": "run",
+        "rules": "warn",
         "spec_verify": "run",
     },
     "cleanup-before": {
@@ -101,7 +101,7 @@ UNIVERSAL_DEFAULTS: dict[str, dict[str, str]] = {
         "scope_check": "run",
         "test_files": "run",
         "review": "run",
-        "rules": "run",
+        "rules": "warn",
         "spec_verify": "soft",
     },
     "cleanup-after": {

@@ -94,8 +94,9 @@ class TestUniversalDefaults:
 
     def test_feature_runs_everything(self):
         d = UNIVERSAL_DEFAULTS["feature"]
-        for gate in ("build", "test", "scope_check", "review", "spec_verify", "rules"):
+        for gate in ("build", "test", "scope_check", "review", "spec_verify"):
             assert d[gate] == "run", f"{gate} should be 'run'"
+        assert d["rules"] == "warn", "rules should be 'warn' (non-blocking)"
 
 
 # ── Resolution chain ────────────────────────────────────────────────
