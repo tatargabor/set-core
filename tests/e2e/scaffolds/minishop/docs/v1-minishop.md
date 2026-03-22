@@ -12,7 +12,7 @@
 
 There is NO application code in the scaffold. Agents create everything from scratch.
 
-Platform configs (tsconfig, tailwind, next.config, postcss, components.json, `.claude/rules/`) are deployed by `set-project init --project-type web --template nextjs` before orchestration starts. Those rules already cover: Server Actions patterns, shadcn/ui usage, Prisma singleton, "use client" rules, form validation with zod + react-hook-form, auth conventions, DataTable patterns. **Do not duplicate those conventions here.**
+Platform configs are deployed by `set-project init --project-type web --template nextjs` before orchestration starts. This includes: `playwright.config.ts` (with `PW_PORT` env var for port isolation), `vitest.config.ts`, `tsconfig.json`, `postcss.config.mjs`, `next.config.js`, `components.json`, `wt/orchestration/config.yaml`, and `.claude/rules/` covering Server Actions, shadcn/ui, Prisma singleton, "use client" rules, form validation, auth conventions, DataTable patterns. **Do not duplicate those conventions here.**
 
 **Setup (done by `run.sh` before orchestration):**
 1. Copy this spec to `docs/v1-minishop.md`
@@ -30,7 +30,7 @@ Agents must create `package.json` with these dependencies:
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "jest",
+    "test": "vitest run",
     "test:e2e": "playwright test"
   },
   "prisma": {
@@ -62,16 +62,14 @@ Agents must create `package.json` with these dependencies:
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@types/bcryptjs": "^2.4.6",
-    "jest": "^29.7.0",
-    "@jest/types": "^29.6.0",
-    "ts-jest": "^29.2.0",
+    "vitest": "^3.0.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/jest-dom": "^6.6.0",
-    "jest-environment-jsdom": "^29.7.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "jsdom": "^25.0.0",
     "@playwright/test": "^1.48.0",
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.0",
-    "autoprefixer": "^10.4.0"
+    "tailwindcss": "^4.0.0",
+    "postcss": "^8.4.0"
   }
 }
 ```
@@ -299,7 +297,7 @@ Only conventions NOT covered by `.claude/rules/`:
 - **Install shadcn components:** `pnpm dlx shadcn@latest add <component>`
 - **Currency:** Euro (EUR). Prices stored as integer cents. Format: `new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" }).format(price / 100)` yielding `€1,299.99`. Simpler alternative: `` `€${(price / 100).toFixed(2)}` ``.
 - **Session:** Anonymous cart uses a `session_id` httpOnly cookie (UUID via `crypto.randomUUID()`).
-- **Tests:** Jest + `@testing-library/react` for unit tests (`pnpm test`). Playwright for E2E (`pnpm test:e2e`).
+- **Tests:** Vitest + `@testing-library/react` for unit tests (`pnpm test`). Playwright for E2E (`pnpm test:e2e`). `playwright.config.ts` and `vitest.config.ts` are deployed by the template — do not recreate them.
 
 ## Feature Roadmap
 
@@ -340,7 +338,7 @@ Build the product catalog -- the storefront landing page.
 - Price displayed as `€1,299.99` format
 - Responsive layout matching Figma design (desktop + mobile)
 - Navigation header on all pages matching Figma design
-- `pnpm test` passes
+- `pnpm test` passes (vitest)
 
 ---
 
@@ -376,7 +374,7 @@ Server-side shopping cart with anonymous sessions (no auth required). Cart items
 - Cart total = sum(effective_price * quantity)
 - Cannot add out-of-stock variant to cart
 - Session persists across navigations
-- `pnpm test` passes
+- `pnpm test` passes (vitest)
 
 ---
 
@@ -407,7 +405,7 @@ Convert cart to order, manage stock, show order history. Stock is managed per **
 - Insufficient variant stock -> error (no partial order)
 - Orders page shows history with totals
 - Order detail shows line items with variant labels
-- `pnpm test` passes
+- `pnpm test` passes (vitest)
 
 ---
 
@@ -437,7 +435,7 @@ Admin authentication. **Only admin routes are protected** -- storefront remains 
 - `/admin/login` and `/admin/register` publicly accessible
 - `/products`, `/cart`, `/orders` remain public -- NO auth
 - Middleware ONLY protects admin routes
-- `pnpm test` passes
+- `pnpm test` passes (vitest)
 
 ---
 
@@ -468,44 +466,11 @@ Admin CRUD for products with DataTable. Includes variant management.
 - Delete product: with confirmation, cascades to variants, removes from storefront
 - All admin actions require auth
 - Validation: SKU unique, stock >= 0, attribute values required for each product attribute type
-- `pnpm test` passes
+- `pnpm test` passes (vitest)
 
 ---
 
-### Change 6: `playwright-e2e`
-
-> depends_on: products-page, cart-feature, orders-checkout, admin-auth, admin-products
-
-Playwright E2E tests covering the full user journey.
-
-**Create these files:**
-
-- `playwright.config.ts` -- Headless Chromium, baseURL `http://localhost:3000`, webServer `pnpm dev`, retries 0.
-- `tests/e2e/storefront.spec.ts` -- Products render with images, prices, stock badges. Navigation.
-- `tests/e2e/cart.spec.ts` -- Add to cart, quantity update, remove, total.
-- `tests/e2e/checkout.spec.ts` -- Full checkout: add items -> place order -> stock decremented -> order in history.
-- `tests/e2e/admin.spec.ts` -- Register -> login -> add product -> edit -> delete.
-- `tests/e2e/responsive.spec.ts` -- Mobile viewport (375px): cards stack, nav works.
-- `tests/e2e/capture-screenshots.ts` -- Visit each main page, save PNG to `e2e-screenshots/`.
-
-**Acceptance criteria:**
-- All E2E tests pass: `pnpm test:e2e`
-- Full journey: browse -> cart -> checkout -> admin
-- Mobile responsive verified
-- Screenshots captured for all main pages
-- Tests use fresh database state
-
-## Orchestrator Directives
-
-```
-max_parallel: 2
-smoke_command: pnpm test
-smoke_blocking: true
-test_command: pnpm test
-merge_policy: checkpoint
-checkpoint_auto_approve: true
-auto_replan: true
-```
+**Note:** E2E tests (Playwright) should be included within each feature change, not as a separate change. The decompose/planning phase decides how to distribute e2e coverage across changes. `playwright.config.ts` is provided by the template with `PW_PORT` env var for port isolation across parallel worktrees.
 
 ## Reszletes Ellenorzesi Lista (Verification Checklist)
 
@@ -566,7 +531,6 @@ Post-run verification. Each item must be manually checkable:
 - [ ] All admin actions fail if not authenticated
 
 ### Tests & Quality
-- [ ] `pnpm test` passes (Jest unit tests)
+- [ ] `pnpm test` passes (Vitest unit tests)
 - [ ] `pnpm test:e2e` passes (Playwright E2E)
 - [ ] `pnpm build` succeeds without errors
-- [ ] Screenshots captured in `e2e-screenshots/` for: products grid, product detail (with variant selector), cart with items, orders list, admin login, admin dashboard, admin products table
