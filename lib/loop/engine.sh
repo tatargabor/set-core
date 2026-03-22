@@ -629,6 +629,11 @@ except:
         elif $has_artifact_progress; then
             stall_count=0  # Artifact creation counts as progress (ff iterations)
             echo "📝 No commits but new artifact files detected (ff iteration)"
+            # Even with artifact progress, check if work is done — the agent may
+            # have completed all tasks but artifact files trigger false progress
+            if check_done "$wt_path" "$done_criteria" "$change_name"; then
+                echo "✅ Work is done despite artifact-only progress — will exit on done check"
+            fi
         else
             stall_count=0  # Reset on progress
             echo "✅ Commits this iteration: $(echo "$new_commits" | jq -r 'length') new"
@@ -906,7 +911,34 @@ except:
         sleep 3
     done
 
-    # Max iterations reached - calculate total time
+    # Max iterations reached — but first check if work is actually done
+    # The agent may have completed everything but the done_check wasn't reached
+    # (e.g., artifact file detection masked the no-commits path)
+    if check_done "$wt_path" "$done_criteria" "$change_name"; then
+        local done_time done_epoch start_epoch_done total_secs_done total_hours_done total_mins_done
+        done_time=$(date '+%Y-%m-%d %H:%M:%S')
+        done_epoch=$(date +%s)
+        start_epoch_done=$(parse_date_to_epoch "$start_time")
+        [[ "$start_epoch_done" -eq 0 ]] && start_epoch_done="$done_epoch"
+        total_secs_done=$((done_epoch - start_epoch_done))
+        total_hours_done=$((total_secs_done / 3600))
+        total_mins_done=$(((total_secs_done % 3600) / 60))
+
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════════╗"
+        echo "║  ✅ TASK COMPLETE (caught at max-iterations boundary)           ║"
+        echo "║  Finished: $done_time                              ║"
+        echo "║  Iterations: $iteration | Runtime: ${total_hours_done}h ${total_mins_done}m                            ║"
+        echo "╚════════════════════════════════════════════════════════════════╝"
+
+        update_loop_state "$state_file" "status" '"done"'
+        update_terminal_title "Ralph: ${worktree_name}${title_suffix} [done]"
+        trap - EXIT SIGTERM SIGINT
+        notify-send "Ralph Loop Complete" "$worktree_name finished after $iteration iterations" 2>/dev/null || true
+        exit 0
+    fi
+
+    # Calculate total time
     local end_time end_epoch start_epoch total_secs total_hours total_mins
     end_time=$(date '+%Y-%m-%d %H:%M:%S')
     end_epoch=$(date +%s)
