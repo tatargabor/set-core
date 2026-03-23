@@ -450,9 +450,8 @@ class ProjectType(ABC):
                 seen.add(norm)
                 unique.append((pattern, tag, sort_key))
 
-        # Sort by priority descending, cap at 15
+        # Sort by priority descending (no cap — full checklist fits in context)
         unique.sort(key=lambda x: -x[2])
-        unique = unique[:15]
 
         lines = ["## Review Learnings Checklist (review will BLOCK if violated)"]
         for pattern, tag, _ in unique:
