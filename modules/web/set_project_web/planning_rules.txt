@@ -29,6 +29,12 @@ Parallel agent coordination (multi-worktree builds):
 - Database schema changes belong to ONE change (typically the foundational). Other changes that need new models MUST list them as dependencies and specify the exact model names in scope so the planner sequences correctly.
 - When two changes both need to modify the same file (e.g., prisma/schema.prisma, middleware.ts), the planner MUST sequence them with explicit dependency, never run them in parallel.
 
+Design fidelity — concrete UI elements in scope (when design-snapshot.md exists):
+- When a design snapshot or Figma source is available, the planner MUST extract concrete UI elements from the design and list them explicitly in each change's scope. Do NOT write abstract scope like "Create product listing page" — instead write "Product card: product image, name, price range (formatted as '$X.XX – $Y.YY'), 'View Details' button linking to /products/[id]."
+- Navigation elements, back-links, and breadcrumbs visible in the design MUST be listed as explicit deliverables. Example: "Product detail page includes 'Back to Products' link at top, linking to /products."
+- Button labels, empty states, error messages, and badge text from the design MUST appear verbatim in the scope. Agents cannot implement what they don't know exists.
+- If the design shows a component (e.g., cart badge with item count in the header), specify which change owns it and which change consumes it.
+
 Application Startup guide maintenance:
 - Infrastructure/foundational changes that add new setup steps (DB, E2E tooling, env vars, build commands) MUST update the `## Application Startup` section in CLAUDE.md. This section is the canonical reference for agents entering the worktree mid-project. If you add a Prisma DB, document `npx prisma db push`. If you add Playwright, document `npx playwright install --with-deps chromium`. Keep it current.
 
