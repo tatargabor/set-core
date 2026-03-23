@@ -661,6 +661,18 @@ def _poll_active_changes(
                         ls_status = ls.get("status", "")
                 except (json.JSONDecodeError, OSError):
                     pass
+
+                if ls_status == "done":
+                    # Agent completed successfully — transition to done, not stalled
+                    logger.info(
+                        "Change %s: agent finished (loop_status=done) — marking done",
+                        change.name,
+                    )
+                    update_change_field(state_file, change.name, "status", "done")
+                    if event_bus:
+                        event_bus.emit("CHANGE_DONE", change=change.name)
+                    continue
+
                 logger.warning(
                     "Change %s running but agent dead (pid=%d, loop_status=%s) — marking stalled",
                     change.name, ralph_pid, ls_status or "unknown",
@@ -669,7 +681,7 @@ def _poll_active_changes(
                 update_change_field(state_file, change.name, "stalled_at", int(time.time()))
                 if event_bus:
                     event_bus.emit("CHANGE_STALLED", change=change.name,
-                                   reason=f"dead_running_agent_{ls_status or 'unknown'}")
+                                   data={"reason": f"dead_running_agent_{ls_status or 'unknown'}"})
                 continue
 
         if change.status == "verifying":
@@ -686,7 +698,7 @@ def _poll_active_changes(
                     update_change_field(state_file, change.name, "stalled_at", int(time.time()))
                     if event_bus:
                         event_bus.emit("CHANGE_STALLED", change=change.name,
-                                       reason="verify_timeout")
+                                       data={"reason": "verify_timeout"})
                     continue
 
             # Check 2: dead agent (PID dead or alive with no children)
@@ -703,7 +715,7 @@ def _poll_active_changes(
                     update_change_field(state_file, change.name, "stalled_at", int(time.time()))
                     if event_bus:
                         event_bus.emit("CHANGE_STALLED", change=change.name,
-                                       reason=reason)
+                                       data={"reason": reason})
                     continue
 
         # Fast-merge path: if change is "verifying" and all gates already passed,

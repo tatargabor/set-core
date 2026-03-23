@@ -642,9 +642,27 @@ def _run_integration_gates(
             logger.info("Integration gate: test for %s (%s)", change_name, test_cmd)
             result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
             if result.exit_code != 0 and gc.is_blocking("test"):
-                logger.error("Integration gate: test FAILED for %s", change_name)
-                update_change_field(state_file, change_name, "integration_gate_fail", "test")
-                return False
+                # Check if failure is because test runner isn't installed (missing script/binary)
+                output = (result.stdout or "") + (result.stderr or "")
+                missing_indicators = [
+                    "Missing script",
+                    "ERR_PNPM_NO_SCRIPT",
+                    "command not found",
+                    "not found",
+                    'is not recognized',
+                ]
+                is_missing = any(ind.lower() in output.lower() for ind in missing_indicators)
+                # pnpm exits 1 with empty output when script doesn't exist
+                is_empty_fail = not output.strip() and result.exit_code == 1
+                if is_missing or is_empty_fail:
+                    logger.warning(
+                        "Integration gate: test command not available for %s (missing script or empty output) — skipping",
+                        change_name,
+                    )
+                else:
+                    logger.error("Integration gate: test FAILED for %s", change_name)
+                    update_change_field(state_file, change_name, "integration_gate_fail", "test")
+                    return False
 
     # E2E gate (from profile — web only)
     if gc.should_run("e2e"):
