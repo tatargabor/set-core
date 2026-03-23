@@ -252,6 +252,7 @@ checkpoint_auto_approve: true
 auto_replan: true
 max_replan_cycles: 3
 review_before_merge: true
+max_verify_retries: 2
 env_vars:
   DATABASE_URL: "file:./dev.db"
 discord:
