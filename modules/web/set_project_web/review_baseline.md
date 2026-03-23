@@ -8,3 +8,17 @@
 - Server Components: no `useTranslations` or client hooks — use `getTranslations` for RSC
 - Prisma: never use `prisma: any` — import and type PrismaClient properly
 - Input validation with Zod on ALL server actions and API routes — never trust client data
+- No ownership/authorization check (IDOR) — every query on user-scoped data MUST include owning entity in where clause
+- Non-atomic balance/stock/usage check — race condition allows double-spend or oversell, use transactions
+- Payment failure does not rollback side effects (stock, coupon, gift card, subscription) — use atomic transactions
+- Admin actions missing role check — non-admin users can access admin operations
+- Sensitive endpoint leaks information via distinct error messages (enumeration risk) — use generic errors
+- Hardcoded values (reason, password) instead of user input or env var
+- Component prop mismatch — caller passes props the component does not accept
+- Server action called from client useEffect — should be fetched at server component level or via API route
+- Seed data creates invalid state (reviews without orders, overlapping zones) — validate referential integrity
+- Payment charged before order record created — charge succeeds but order lost on crash, create order first
+- Destructive operation (delete) instead of soft-delete — loses audit trail
+- Open redirect via query parameter (e.g. `from`, `redirect`) in login/auth pages — validate redirect URL is relative
+- Missing implementation files referenced in imports — build/runtime crash
+- Coupon/promo validation inconsistent between cart and checkout — apply same rules in both
