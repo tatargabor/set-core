@@ -289,11 +289,12 @@ cmd_run() {
             is_resumed=true
         fi
 
-        # Build effective prompt: short for resumed sessions
+        # Build effective prompt: use full prompt always (even on resume)
+        # Previously, resumed sessions got a generic "continue" prompt which caused
+        # agents to repeat their prior conclusion instead of reading the new action.
+        # The full prompt includes critical instructions like /opsx:apply that the
+        # agent needs to see even when resuming a session.
         local effective_prompt="$prompt"
-        if $is_resumed; then
-            effective_prompt="Continue where you left off. Check the task status and complete remaining work."
-        fi
 
         while [[ $retry_count -lt $max_retries ]]; do
             # Pipe prompt via stdin to run in interactive mode (not -p print mode).
