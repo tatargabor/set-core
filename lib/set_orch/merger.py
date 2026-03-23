@@ -620,6 +620,14 @@ def _run_integration_gates(
             logger.info("Integration gate: dep install for %s (%s)", change_name, dep_cmd)
             run_command(["bash", "-c", dep_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
 
+    # Pre-build setup (Prisma DB push for Next.js + Prisma projects)
+    # next build executes server components which query the DB — needs schema synced
+    if profile and hasattr(profile, "e2e_pre_gate"):
+        try:
+            profile.e2e_pre_gate(wt_path, gate_env or {})
+        except Exception:
+            logger.warning("Pre-build setup failed (non-fatal)", exc_info=True)
+
     # Build gate
     if gc.should_run("build"):
         build_cmd = directives.get("build_command", "")
