@@ -303,11 +303,23 @@ Only conventions NOT covered by `.claude/rules/`:
 
 ### Product Catalog (Storefront)
 
-Product grid at `/products` showing all 6 seeded products (one card per product, NOT per variant). Each card: product name, image, price range (e.g. "€129.99 – €134.99" when variants differ, single price when uniform), aggregate stock status ("Out of Stock" only when ALL variants are stock=0).
+Product grid at `/products` showing all 6 seeded products (one card per product, NOT per variant). Each card:
+- Product image
+- Product name
+- Price range (e.g. "€129.99 – €134.99" when variants differ, single price when uniform)
+- Stock badge: "In Stock" (green) or "Out of Stock" (red, only when ALL variants are stock=0)
+- **"View Details" button** linking to `/products/[id]`
 
-Product detail at `/products/[id]` with variant selectors — one selector per attribute type (e.g. Color picker, Switch Type picker). Selecting a variant updates displayed price and stock. Products without attributes show no selectors. Out-of-stock variants disable "Add to Cart".
+Product detail at `/products/[id]`:
+- **"← Back to Products" link** at top, linking back to `/products`
+- Product image, name, full description
+- Price display for selected variant
+- Stock badge: "In Stock" / "Out of Stock" per selected variant
+- Variant selectors — one selector per attribute type (e.g. Color picker, Switch Type picker). Selecting a variant updates displayed price and stock
+- **"Add to Cart" button** (disabled with "Out of Stock" text when variant stock=0)
+- Products without attributes show no selectors
 
-Navigation header on all pages. Root `/` redirects to `/products`. Health endpoint at `/api/health`.
+Navigation header on all storefront pages (use a `(shop)` route group with shared layout). Header contains: MiniShop logo/brand, Products link, Cart link with item count badge, Orders link. Root `/` redirects to `/products`. Health endpoint at `/api/health`.
 
 Price format: EUR cents → `€1,299.99`. Responsive layout following Figma design.
 
@@ -318,11 +330,13 @@ Server-side cart with anonymous sessions (httpOnly cookie, UUID). Cart items ref
 - Add to cart from product detail (must select variant first)
 - Same variant added twice → increments quantity
 - Different variants of same product → separate cart lines
-- Quantity controls (+/-), remove
-- Cart total = sum(effective_price * quantity)
+- Quantity controls: **"+" and "−" buttons** per line item, **"Remove" button**
+- Cart total = sum(effective_price * quantity), displayed as order summary
 - Cannot add out-of-stock variant
 - Session persists across navigations
-- Cart item count badge in nav
+- Cart item count badge in navigation header
+- **"Place Order" button** (blue, full-width) at bottom of cart summary
+- Empty cart state: message indicating cart is empty
 
 ### Checkout & Orders
 
@@ -330,7 +344,8 @@ Convert cart to order via `placeOrder()` — **transactional**: verify variant s
 
 - Empty cart → error
 - Insufficient variant stock → error (no partial order)
-- Order history at `/orders`, detail at `/orders/[id]` with line items
+- Order history at `/orders`: list of orders with status, date, total, **"View Details" link** per order
+- Order detail at `/orders/[id]`: **"← Back to Orders" link** at top, line items with variant label + quantity + price, order total
 
 ### Admin Authentication
 
