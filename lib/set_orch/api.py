@@ -2366,7 +2366,7 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                         continue
                     if ev.get("change") != change_name:
                         continue
-                    if ev.get("type") in ("DISPATCH", "STATE_CHANGE", "VERIFY_GATE", "MERGE_ATTEMPT", "MERGE_PROGRESS"):
+                    if ev.get("type") in ("DISPATCH", "STATE_CHANGE", "VERIFY_GATE", "MERGE_ATTEMPT", "MERGE_PROGRESS", "CHANGE_DONE"):
                         change_events.append(ev)
         except OSError:
             continue
@@ -2471,9 +2471,21 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                     # Final gate pass — close session
                     sessions.append(current)
                     current = None
+        elif etype == "CHANGE_DONE":
+            # Close session when change is done (checkpoint_auto_approve skips VERIFY_GATE)
+            if current:
+                current["state"] = "done"
+                current["ended"] = ts
+                current["duration_ms"] = _ts_diff_ms(current["started"], ts)
         elif etype == "MERGE_ATTEMPT":
             if current:
                 current["merged"] = True
+                current["state"] = "merged"
+                current["ended"] = current.get("ended") or ts
+                if not current.get("duration_ms"):
+                    current["duration_ms"] = _ts_diff_ms(current["started"], ts)
+                sessions.append(current)
+                current = None
 
     # If there's still an open session (currently running), include it
     if current:
