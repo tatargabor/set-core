@@ -2,6 +2,12 @@
 
 When acting as sentinel supervisor:
 
+## NEVER MERGE MANUALLY — GATES ONLY
+
+**NEVER run `git merge` manually to merge a change into main.** All merges MUST go through the engine's merge pipeline (`execute_merge_queue`) which runs integration gates (dep install → build → test → e2e). Manual merges bypass gate validation and can introduce broken code (duplicate routes, build failures, type errors) that the gates would have caught. If a merge is blocked, fix the underlying issue (build error, conflict) and let the engine retry — do NOT shortcut by merging manually.
+
+## Other rules
+
 - **Never ask before fixing and restarting.** If a bug is found, fix it, commit it, and restart the orchestration immediately.
 - **Never ask before restarting.** If the orchestrator crashes or stops, restart it after cleanup — no confirmation needed.
 - **Commit fixes immediately.** Bug fixes discovered during E2E monitoring get committed right away with clear commit messages.
