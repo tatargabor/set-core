@@ -545,6 +545,15 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
         logger.info("Integration skip for %s — branch already up-to-date", change_name)
         return "ok"
 
+    # Stash dirty files before merge — agents leave uncommitted changes
+    # (playwright-report/, .claude/reflection.md, messages/*.json) that block git merge.
+    stashed = False
+    dirty = run_command(["git", "status", "--porcelain"], timeout=10, cwd=wt_path)
+    if dirty.exit_code == 0 and dirty.stdout.strip():
+        logger.info("Stashing dirty files before integration merge for %s", change_name)
+        stash_r = run_command(["git", "stash", "push", "-u", "-m", "pre-integration-stash"], timeout=30, cwd=wt_path)
+        stashed = stash_r.exit_code == 0 and "No local changes" not in (stash_r.stdout or "")
+
     # Merge main into branch
     logger.info("Integrating %s into branch for %s", main_branch, change_name)
     result = run_command(
@@ -555,6 +564,8 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
 
     if result.exit_code == 0:
         logger.info("Integration merge succeeded for %s", change_name)
+        if stashed:
+            run_command(["git", "stash", "pop"], timeout=30, cwd=wt_path)
         return "ok"
 
     # Check for conflict
@@ -565,6 +576,10 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
 
     # Abort the failed merge
     run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
+
+    # Restore stashed files
+    if stashed:
+        run_command(["git", "stash", "pop"], timeout=30, cwd=wt_path)
 
     if has_conflicts:
         logger.warning("Integration conflict for %s: %s", change_name, conflict_check.stdout.strip()[:200])
