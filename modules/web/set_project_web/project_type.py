@@ -668,6 +668,38 @@ class WebProjectType(CoreProfile):
             "PLAYWRIGHT_SCREENSHOT": "on",
         }
 
+    def integration_pre_build(self, wt_path: str) -> bool:
+        """Run minimal DB schema sync before integration build gate.
+
+        Only runs prisma db push (no seed, no generate) — just enough for
+        next build to succeed when server components query the DB.
+        """
+        prisma_schema = Path(wt_path) / "prisma" / "schema.prisma"
+        if not prisma_schema.is_file():
+            return True
+
+        # Load .env for DATABASE_URL
+        env: dict[str, str] = {}
+        env_file = Path(wt_path) / ".env"
+        if env_file.is_file():
+            try:
+                for line in env_file.read_text().splitlines():
+                    if line.strip() and not line.startswith("#") and "=" in line:
+                        k, _, v = line.partition("=")
+                        env[k.strip()] = v.strip().strip('"').strip("'")
+            except OSError:
+                pass
+
+        try:
+            result = subprocess.run(
+                ["npx", "prisma", "db", "push", "--skip-generate", "--accept-data-loss"],
+                cwd=wt_path, capture_output=True, timeout=60,
+                env={**subprocess.os.environ, **env},
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, OSError):
+            return False
+
     def e2e_pre_gate(self, wt_path: str, env: dict[str, str]) -> bool:
         """Run Prisma db push + seed before e2e tests if schema exists."""
         prisma_schema = Path(wt_path) / "prisma" / "schema.prisma"

@@ -1363,12 +1363,21 @@ def dispatch_change(
 
     Returns True on success, False on failure.
     """
+    # Atomic status guard: verify change is "pending" and mark "dispatched"
+    # inside locked_state to prevent duplicate dispatch from concurrent monitor cycles.
+    with locked_state(state_path) as st:
+        change = _find_change(st, change_name)
+        if not change:
+            logger.error("dispatch: change not found: %s", change_name)
+            return False
+        if change.status != "pending":
+            logger.info("dispatch: change %s already dispatched (status=%s), skipping", change_name, change.status)
+            return False
+        change.status = "dispatched"  # Mark immediately to prevent race
+
+    # Re-read for scope/roadmap (outside lock — non-critical reads)
     state = load_state(state_path)
     change = _find_change(state, change_name)
-    if not change:
-        logger.error("dispatch: change not found: %s", change_name)
-        return False
-
     scope = change.scope
     roadmap_item = change.roadmap_item
 
@@ -1391,8 +1400,10 @@ def dispatch_change(
     wt_name = _unique_worktree_name(project_path, change_name)
     wt_path = f"{project_path}-{wt_name}"
 
+    # Handle existing worktree gracefully — if change is already dispatched/running
+    # with an active worktree, skip instead of creating a -2 suffix duplicate.
     if os.path.isdir(wt_path):
-        # A pending change should never have an existing worktree (Bug #30).
+        # A pending→dispatched change should never have an existing worktree (Bug #30).
         logger.info("stale worktree for pending change %s — removing for fresh dispatch", change_name)
         run_command(["git", "worktree", "remove", wt_path, "--force"], timeout=30)
         if os.path.isdir(wt_path):
@@ -1929,6 +1940,9 @@ def dispatch_ready_changes(
         running += 1
         dispatched += 1
 
+        # Re-read state after each dispatch to catch concurrent changes
+        state = load_state(state_path)
+
     return dispatched
 
 
@@ -2011,6 +2025,12 @@ def resume_change(
             logger.info("set watchdog progress_baseline=%d for %s", iter_count, change_name)
         except (json.JSONDecodeError, OSError):
             pass
+
+    # Reset merge retry counter — agent redispatch gets fresh retry budget
+    with locked_state(state_path) as st:
+        ch = _find_change(st, change_name)
+        if ch and ch.extras.get("merge_retry_count"):
+            ch.extras["merge_retry_count"] = 0
 
     # Snapshot cumulative tokens
     update_change_field(state_path, change_name, "tokens_used_prev", change.tokens_used, event_bus=event_bus)

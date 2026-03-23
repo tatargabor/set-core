@@ -4,7 +4,7 @@ When acting as sentinel supervisor:
 
 ## NEVER MERGE MANUALLY — GATES ONLY
 
-**NEVER run `git merge` manually to merge a change into main.** All merges MUST go through the engine's merge pipeline (`execute_merge_queue`) which runs integration gates (dep install → build → test → e2e). Manual merges bypass gate validation and can introduce broken code (duplicate routes, build failures, type errors) that the gates would have caught. If a merge is blocked, fix the underlying issue (build error, conflict) and let the engine retry — do NOT shortcut by merging manually.
+**NEVER run `git merge` manually to merge a change into main.** This includes `git merge --ff-only` — even fast-forward merges bypass integration gates. All merges MUST go through the engine's merge pipeline (`execute_merge_queue`) which runs integration gates (dep install → build → test → e2e). Manual merges bypass gate validation and can introduce broken code (duplicate routes, build failures, type errors) that the gates would have caught. If a merge is blocked, fix the underlying issue (build error, conflict) and let the engine retry — do NOT shortcut by merging manually.
 
 ## Other rules
 

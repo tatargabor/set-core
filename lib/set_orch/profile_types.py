@@ -147,6 +147,15 @@ class ProjectType(ABC):
         """
         return 0
 
+    def integration_pre_build(self, wt_path: str) -> bool:
+        """Run minimal setup before integration build gate (e.g. DB schema sync).
+
+        Unlike e2e_pre_gate which runs full setup (seed, generate), this does
+        only what's needed for the build to succeed (schema push, no seed).
+        Returns True if setup succeeded, False on failure (non-blocking).
+        """
+        return True
+
     def e2e_pre_gate(self, wt_path: str, env: Dict[str, str]) -> bool:
         """Run setup before e2e tests (e.g. DB migration, seed data).
 

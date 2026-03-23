@@ -620,13 +620,15 @@ def _run_integration_gates(
             logger.info("Integration gate: dep install for %s (%s)", change_name, dep_cmd)
             run_command(["bash", "-c", dep_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
 
-    # Pre-build setup (Prisma DB push for Next.js + Prisma projects)
+    # Pre-build setup (e.g. Prisma DB schema sync for Next.js + Prisma projects)
     # next build executes server components which query the DB — needs schema synced
-    if profile and hasattr(profile, "e2e_pre_gate"):
+    if profile and hasattr(profile, "integration_pre_build"):
         try:
-            profile.e2e_pre_gate(wt_path, gate_env or {})
+            ok = profile.integration_pre_build(wt_path)
+            if not ok:
+                logger.warning("integration_pre_build returned False for %s (non-blocking)", change_name)
         except Exception:
-            logger.warning("Pre-build setup failed (non-fatal)", exc_info=True)
+            logger.warning("integration_pre_build failed for %s (non-blocking)", change_name, exc_info=True)
 
     # Build gate
     if gc.should_run("build"):
@@ -660,8 +662,12 @@ def _run_integration_gates(
                     'is not recognized',
                 ]
                 is_missing = any(ind.lower() in output.lower() for ind in missing_indicators)
-                # pnpm exits 1 with empty output when script doesn't exist
-                is_empty_fail = not output.strip() and result.exit_code == 1
+                # pnpm/npm exit 1 with empty output when script doesn't exist — only apply this heuristic for npm/pnpm
+                is_empty_fail = (
+                    not output.strip()
+                    and result.exit_code == 1
+                    and any(pm in test_cmd for pm in ("pnpm", "npm"))
+                )
                 if is_missing or is_empty_fail:
                     logger.warning(
                         "Integration gate: test command not available for %s (missing script or empty output) — skipping",
@@ -754,13 +760,28 @@ def retry_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
     """Retry merge queue + merge-blocked changes with fresh integration.
 
     Uses the same integrate → verify → ff flow as execute_merge_queue.
+    Tracks merge_retry_count per change — max 3 retries before integration-failed.
     """
     state = load_state(state_file)
 
-    # Re-add merge-blocked changes to queue for retry
+    MAX_MERGE_RETRIES = 3
+
+    # Re-add merge-blocked changes to queue for retry (with retry counter)
     for change in state.changes:
         if change.status == "merge-blocked" and change.name not in state.merge_queue:
+            retry_count = change.extras.get("merge_retry_count", 0)
+            if retry_count >= MAX_MERGE_RETRIES:
+                logger.warning(
+                    "Merge retry limit reached for %s (%d/%d) — marking integration-failed",
+                    change.name, retry_count, MAX_MERGE_RETRIES,
+                )
+                update_change_field(state_file, change.name, "status", "integration-failed", event_bus=event_bus)
+                continue
+            # Increment retry counter
             with locked_state(state_file) as st:
+                ch = _find_change(st, change.name)
+                if ch:
+                    ch.extras["merge_retry_count"] = retry_count + 1
                 if change.name not in st.merge_queue:
                     st.merge_queue.append(change.name)
 

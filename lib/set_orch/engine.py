@@ -803,7 +803,7 @@ def _poll_suspended_changes(
                     design_snapshot_dir=os.getcwd(),
                 )
         except Exception:
-            pass
+            logger.debug("Failed to parse loop-state for %s", change.name, exc_info=True)
 
 
 # ─── Recovery ──────────────────────────────────────────────────────

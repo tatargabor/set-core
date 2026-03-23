@@ -567,6 +567,21 @@ except:
             update_loop_state "$state_file" "last_output_hash" "\"$current_hash\""
         fi
 
+        # Early done check BEFORE stall detection — never stall a completed change (STALL-001)
+        local early_done=false
+        if check_done "$wt_path" "$done_criteria" "$change_name"; then
+            early_done=true
+            stall_count=0  # Reset stall counter (STALL-002)
+        fi
+        # Fallback: if primary done criteria says not done, check tasks.md
+        if ! $early_done && [[ "$done_criteria" != "tasks" && "$done_criteria" != "test" && "$done_criteria" != "build" && "$done_criteria" != "merge" ]]; then
+            if find_tasks_file "$wt_path" &>/dev/null && check_tasks_done "$wt_path" 2>/dev/null; then
+                early_done=true
+                stall_count=0
+                warn "Early done by tasks.md fallback (primary criteria '$done_criteria' said not done)"
+            fi
+        fi
+
         # Stall detection: no commits = no progress
         # Exception: ff iterations create artifacts without committing — check for new/modified files
         local has_artifact_progress=false
@@ -578,7 +593,7 @@ except:
             fi
         fi
 
-        if { [[ "$new_commits" == "[]" ]] || [[ -z "$new_commits" ]]; } && ! $has_artifact_progress; then
+        if { [[ "$new_commits" == "[]" ]] || [[ -z "$new_commits" ]]; } && ! $has_artifact_progress && ! $early_done; then
             stall_count=$((stall_count + 1))
             echo "⚠️  No commits or new files this iteration (stall count: $stall_count/$stall_threshold)"
 
