@@ -645,10 +645,34 @@ def _poll_active_changes(
                                data={"reason": "worktree_missing"})
             continue
 
-        # --- Dead verify agent detection ---
-        if change.status == "verifying":
-            ralph_pid = change.ralph_pid or 0
+        # --- Dead agent detection (running + verifying) ---
+        ralph_pid = change.ralph_pid or 0
 
+        # For "running" changes: check if agent loop died (idle/crashed)
+        if change.status == "running" and wt_path:
+            loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
+            if ralph_pid > 0 and not _is_pid_alive(ralph_pid):
+                # Agent process is dead — check loop-state for why
+                ls_status = ""
+                try:
+                    if os.path.isfile(loop_state_path):
+                        with open(loop_state_path) as f:
+                            ls = json.load(f)
+                        ls_status = ls.get("status", "")
+                except (json.JSONDecodeError, OSError):
+                    pass
+                logger.warning(
+                    "Change %s running but agent dead (pid=%d, loop_status=%s) — marking stalled",
+                    change.name, ralph_pid, ls_status or "unknown",
+                )
+                update_change_field(state_file, change.name, "status", "stalled")
+                update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                if event_bus:
+                    event_bus.emit("CHANGE_STALLED", change=change.name,
+                                   reason=f"dead_running_agent_{ls_status or 'unknown'}")
+                continue
+
+        if change.status == "verifying":
             # Check 1: verify timeout
             verifying_since = change.extras.get("verifying_since", 0) if change.extras else 0
             if verifying_since:
