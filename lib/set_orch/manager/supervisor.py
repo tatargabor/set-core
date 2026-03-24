@@ -133,7 +133,7 @@ class ProjectSupervisor:
         stderr_file = open(sentinel_log / "stderr.log", "w")
 
         cmd = ["claude", "-p", "--max-turns", "500", "--dangerously-skip-permissions",
-               "--output-format", "stream-json"]
+               "--verbose", "--output-format", "stream-json"]
 
         try:
             proc = subprocess.Popen(
