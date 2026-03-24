@@ -9,6 +9,7 @@ import Home from './pages/Home'
 import Manager from './pages/Manager'
 import ManagerIssues from './pages/ManagerIssues'
 import ManagerMutes from './pages/ManagerMutes'
+import ProjectDetail from './pages/ProjectDetail'
 import UnifiedSidebar from './components/UnifiedSidebar'
 import { useProject } from './hooks/useProject'
 import type { StateData } from './lib/api'
@@ -65,6 +66,7 @@ function SharedLayout() {
   const isManagerOverview = path === '/manager'
   const isManagerIssues = path.match(/^\/manager\/[^/]+\/issues/) || path === '/manager/issues'
   const isManagerMutes = path.match(/^\/manager\/[^/]+\/mutes/)
+  const isManagerDetail = managerProjectMatch && !isManagerIssues && !isManagerMutes
   const isHome = path === '/set'
   const isProjectRoute = path.match(/^\/set\/[^/]+/)
 
@@ -119,6 +121,7 @@ function SharedLayout() {
 
         {/* Manager pages */}
         {isManagerOverview && <Manager />}
+        {isManagerDetail && <ProjectDetail />}
         {isManagerIssues && <ManagerIssues />}
         {isManagerMutes && <ManagerMutes />}
       </main>

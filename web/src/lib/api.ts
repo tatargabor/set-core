@@ -692,20 +692,28 @@ export function getManagerProjects(): Promise<ManagerProjectStatus[]> {
 export function getManagerProjectStatus(name: string): Promise<ManagerProjectStatus> {
   return fetchJSON(`${MGR}/projects/${name}/status`)
 }
-export function startSentinel(project: string): Promise<{ status: string; pid: number }> {
-  return fetchJSON(`${MGR}/projects/${project}/sentinel/start`, { method: 'POST' })
+export function startSentinel(project: string, spec?: string): Promise<{ status: string; pid: number }> {
+  const body = spec ? JSON.stringify({ spec }) : undefined
+  const headers = spec ? { 'Content-Type': 'application/json' } : undefined
+  return fetchJSON(`${MGR}/projects/${project}/sentinel/start`, { method: 'POST', body, headers })
 }
 export function stopSentinel(project: string): Promise<{ status: string }> {
   return fetchJSON(`${MGR}/projects/${project}/sentinel/stop`, { method: 'POST' })
 }
-export function restartSentinel(project: string): Promise<{ status: string; pid: number }> {
-  return fetchJSON(`${MGR}/projects/${project}/sentinel/restart`, { method: 'POST' })
+export function restartSentinel(project: string, spec?: string): Promise<{ status: string; pid: number }> {
+  const body = spec ? JSON.stringify({ spec }) : undefined
+  const headers = spec ? { 'Content-Type': 'application/json' } : undefined
+  return fetchJSON(`${MGR}/projects/${project}/sentinel/restart`, { method: 'POST', body, headers })
 }
-export function startOrchestration(project: string): Promise<{ status: string; pid: number }> {
-  return fetchJSON(`${MGR}/projects/${project}/orchestration/start`, { method: 'POST' })
+
+// Docs listing
+export interface DocsEntry {
+  path: string
+  type: 'file' | 'dir'
 }
-export function stopOrchestration(project: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/orchestration/stop`, { method: 'POST' })
+
+export function getProjectDocs(project: string): Promise<{ docs: DocsEntry[] }> {
+  return fetchJSON(`${MGR}/projects/${project}/docs`)
 }
 
 // Issues

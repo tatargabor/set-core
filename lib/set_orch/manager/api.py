@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -34,9 +35,8 @@ def create_api(service: ServiceManager) -> web.Application:
     app.router.add_post("/api/projects/{name}/sentinel/stop", handle_sentinel_stop)
     app.router.add_post("/api/projects/{name}/sentinel/restart", handle_sentinel_restart)
 
-    # Orchestration control
-    app.router.add_post("/api/projects/{name}/orchestration/start", handle_orch_start)
-    app.router.add_post("/api/projects/{name}/orchestration/stop", handle_orch_stop)
+    # Project docs
+    app.router.add_get("/api/projects/{name}/docs", handle_list_docs)
 
     # Issues
     app.router.add_get("/api/projects/{name}/issues", handle_list_issues)
@@ -143,7 +143,8 @@ async def handle_sentinel_start(request: web.Request):
     sup = _get_service(request).supervisors.get(name)
     if not sup:
         raise web.HTTPNotFound()
-    pid = sup.start_sentinel()
+    data = await request.json() if request.can_read_body else {}
+    pid = sup.start_sentinel(spec=data.get("spec"))
     return _json({"status": "ok", "pid": pid})
 
 
@@ -161,28 +162,33 @@ async def handle_sentinel_restart(request: web.Request):
     sup = _get_service(request).supervisors.get(name)
     if not sup:
         raise web.HTTPNotFound()
-    sup.stop_sentinel()
-    pid = sup.start_sentinel()
-    return _json({"status": "ok", "pid": pid})
-
-
-async def handle_orch_start(request: web.Request):
-    name = request.match_info["name"]
-    sup = _get_service(request).supervisors.get(name)
-    if not sup:
-        raise web.HTTPNotFound()
     data = await request.json() if request.can_read_body else {}
-    pid = sup.start_orchestration(plan_file=data.get("plan_file"))
+    sup.stop_sentinel()
+    pid = sup.start_sentinel(spec=data.get("spec"))
     return _json({"status": "ok", "pid": pid})
 
 
-async def handle_orch_stop(request: web.Request):
+# --- Docs ---
+
+async def handle_list_docs(request: web.Request):
     name = request.match_info["name"]
     sup = _get_service(request).supervisors.get(name)
     if not sup:
         raise web.HTTPNotFound()
-    sup.stop_orchestration()
-    return _json({"status": "ok"})
+    docs_dir = sup.config.path / "docs"
+    entries: list[dict] = []
+    if docs_dir.is_dir():
+        for root, dirs, files in os.walk(docs_dir):
+            depth = len(Path(root).relative_to(docs_dir).parts)
+            if depth >= 2:
+                dirs.clear()
+                continue
+            rel = Path(root).relative_to(sup.config.path)
+            for d in sorted(dirs):
+                entries.append({"path": str(rel / d) + "/", "type": "dir"})
+            for f in sorted(files):
+                entries.append({"path": str(rel / f), "type": "file"})
+    return _json({"docs": entries})
 
 
 # --- Issues ---

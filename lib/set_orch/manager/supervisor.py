@@ -14,12 +14,14 @@ from ..issues.models import now_iso
 
 logger = logging.getLogger(__name__)
 
-SENTINEL_PROMPT = (
+SENTINEL_PROMPT_FALLBACK = (
     "You are the sentinel monitoring project '{project}' at {path}. "
     "Run the sentinel polling loop: monitor orchestration state, detect errors, "
     "write findings to .set/sentinel/findings.json. "
     "Poll every 15 seconds. Never stop on your own."
 )
+
+SENTINEL_SKILL_PATH = ".claude/commands/set/sentinel.md"
 
 MAX_CRASH_RESTARTS = 5
 
@@ -83,13 +85,31 @@ class ProjectSupervisor:
         self._sentinel_proc: Optional[subprocess.Popen] = None
         self._orch_proc: Optional[subprocess.Popen] = None
 
-    def start_sentinel(self) -> int:
+    def _load_sentinel_prompt(self, spec: Optional[str] = None) -> str:
+        """Load sentinel skill file as prompt, with fallback to hardcoded prompt."""
+        skill_file = self.config.path / SENTINEL_SKILL_PATH
+        if skill_file.is_file():
+            prompt = skill_file.read_text(encoding="utf-8")
+            logger.info(f"[{self.config.name}] Loaded sentinel skill from {skill_file}")
+        else:
+            logger.warning(
+                f"[{self.config.name}] Sentinel skill not found at {skill_file}, "
+                "using fallback prompt"
+            )
+            prompt = SENTINEL_PROMPT_FALLBACK.format(
+                project=self.config.name,
+                path=self.config.path,
+            )
+
+        if spec:
+            prompt += f"\n\nArguments: --spec {spec}"
+
+        return prompt
+
+    def start_sentinel(self, spec: Optional[str] = None) -> int:
         """Spawn sentinel as a dedicated claude agent process."""
-        prompt = SENTINEL_PROMPT.format(
-            project=self.config.name,
-            path=self.config.path,
-        )
-        cmd = ["claude", "-p", "--max-turns", "200", prompt]
+        prompt = self._load_sentinel_prompt(spec=spec)
+        cmd = ["claude", "-p", "--max-turns", "500", prompt]
 
         try:
             proc = subprocess.Popen(
