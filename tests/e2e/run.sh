@@ -97,8 +97,19 @@ git commit -q -m "E2E scaffold: $SCAFFOLD"
 
 # --- set-project init ---
 
-echo "  Running set-project init..."
-"$SET_CORE_ROOT/bin/set-project" init --name "$RUN_NAME" --project-type web 2>&1 | sed 's/^/    /'
+# Read project type and template from scaffold config
+PROJECT_TYPE="web"
+TEMPLATE=""
+if [[ -f "$SCAFFOLDS_DIR/$SCAFFOLD/scaffold.yaml" ]]; then
+    PROJECT_TYPE=$(grep '^project_type:' "$SCAFFOLDS_DIR/$SCAFFOLD/scaffold.yaml" | sed 's/^project_type: *//')
+    TEMPLATE=$(grep '^template:' "$SCAFFOLDS_DIR/$SCAFFOLD/scaffold.yaml" | sed 's/^template: *//')
+fi
+
+INIT_ARGS=(init --name "$RUN_NAME" --project-type "$PROJECT_TYPE")
+[[ -n "$TEMPLATE" ]] && INIT_ARGS+=(--template "$TEMPLATE")
+
+echo "  Running set-project init (type=$PROJECT_TYPE, template=${TEMPLATE:-auto})..."
+"$SET_CORE_ROOT/bin/set-project" "${INIT_ARGS[@]}" 2>&1 | sed 's/^/    /'
 
 # --- Register with manager ---
 

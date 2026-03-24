@@ -13,6 +13,7 @@ core:
   - rules/security.md
   - rules/error-handling.md
   - rules/design-integration.md
+  - rules/web-frontend.md
   - rules/worktree-setup.md
   - vitest.config.ts
   - playwright.config.ts

@@ -109,16 +109,20 @@ class ProjectSupervisor:
     def start_sentinel(self, spec: Optional[str] = None) -> int:
         """Spawn sentinel as a dedicated claude agent process."""
         prompt = self._load_sentinel_prompt(spec=spec)
-        cmd = ["claude", "-p", "--max-turns", "500", prompt]
+        cmd = ["claude", "-p", "--max-turns", "500", "--permission-mode", "auto"]
 
         try:
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(self.config.path),
+                stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
             )
+            # Send prompt via stdin — avoids command-line length limits
+            proc.stdin.write(prompt.encode("utf-8"))
+            proc.stdin.close()
             self._sentinel_proc = proc
             self.sentinel_pid = proc.pid
             self.sentinel_started_at = now_iso()

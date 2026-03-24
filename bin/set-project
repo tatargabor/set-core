@@ -973,6 +973,17 @@ cmd_init() {
         success "set-core deployment complete for '$name'"
     fi
 
+    # Initialize OpenSpec if available and not already initialized
+    if command -v openspec &>/dev/null; then
+        if [[ ! -d "$git_root/openspec" ]]; then
+            if (cd "$git_root" && openspec init --tools claude 2>&1 | sed 's/^/    /'); then
+                success "  Initialized OpenSpec"
+            else
+                warn "  OpenSpec init failed (non-fatal)"
+            fi
+        fi
+    fi
+
     # Run health audit if set-audit is available
     if command -v set-audit &>/dev/null; then
         echo ""
