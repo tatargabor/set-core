@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from .models import now_iso
+from ..paths import SetRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,8 @@ class DetectionBridge:
 
     def _scan_project(self, project_name: str, project_path: Path):
         """Read findings.json from a project and register new ones as issues."""
-        findings_path = project_path / ".set" / "sentinel" / "findings.json"
+        rt = SetRuntime(str(project_path))
+        findings_path = Path(rt.sentinel_dir) / "findings.json"
         if not findings_path.exists():
             return
 
