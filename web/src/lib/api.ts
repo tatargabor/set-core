@@ -506,6 +506,7 @@ export interface ReflectionsData {
 
 export interface TimelineSession {
   n: number
+  id?: string
   started: string
   ended: string
   state: string
@@ -513,6 +514,12 @@ export interface TimelineSession {
   gate_ms: Record<string, number>
   merged: boolean
   duration_ms?: number
+  model?: string
+  label?: string
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_tokens?: number
+  cache_create_tokens?: number
 }
 
 export interface ChangeTimelineData {
