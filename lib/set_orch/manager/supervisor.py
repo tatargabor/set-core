@@ -122,8 +122,6 @@ class ProjectSupervisor:
     def start_sentinel(self, spec: Optional[str] = None) -> int:
         """Spawn sentinel as a dedicated claude agent process."""
         prompt = self._load_sentinel_prompt(spec=spec)
-        cmd = ["claude", "-p", "--max-turns", "500", "--dangerously-skip-permissions"]
-
         # Log stdout and stderr to files for debugging
         try:
             from ..paths import SetRuntime
@@ -131,15 +129,23 @@ class ProjectSupervisor:
         except Exception:
             sentinel_log = self.config.path / ".set" / "sentinel"
         sentinel_log.mkdir(parents=True, exist_ok=True)
-        stdout_file = open(sentinel_log / "stdout.log", "w")
+        stdout_path = sentinel_log / "stdout.log"
         stderr_file = open(sentinel_log / "stderr.log", "w")
+
+        # Use 'script' to force line-buffered output from claude CLI
+        # script -qfc "cmd" file — runs cmd in a pty, writes to file
+        cmd = [
+            "script", "-qfc",
+            "claude -p --max-turns 500 --dangerously-skip-permissions",
+            str(stdout_path),
+        ]
 
         try:
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(self.config.path),
                 stdin=subprocess.PIPE,
-                stdout=stdout_file,
+                stdout=subprocess.DEVNULL,
                 stderr=stderr_file,
                 start_new_session=True,
             )
