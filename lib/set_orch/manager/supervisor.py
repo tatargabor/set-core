@@ -154,14 +154,36 @@ class ProjectSupervisor:
             raise
 
     def stop_sentinel(self):
-        """Gracefully stop sentinel agent."""
+        """Gracefully stop sentinel agent and its child processes (orchestrator etc.)."""
         if self.sentinel_pid and _is_alive(self.sentinel_pid):
             _kill_gracefully(self.sentinel_pid)
             logger.info(f"[{self.config.name}] Sentinel stopped (PID={self.sentinel_pid})")
+        # Also stop orchestrator if it was spawned by the sentinel
+        self._kill_orphan_orchestrator()
         self.sentinel_pid = None
         self.sentinel_started_at = None
         self.sentinel_spec = None
         self._sentinel_proc = None
+
+    def _kill_orphan_orchestrator(self):
+        """Find and kill orchestrator processes for this project that may outlive the sentinel."""
+        import subprocess as _sp
+        state_path = str(self.config.path)
+        for pattern in [f"engine monitor.*{state_path}", f"set-orchestrate.*{state_path}"]:
+            try:
+                result = _sp.run(
+                    ["pgrep", "-f", pattern],
+                    capture_output=True, text=True, timeout=5,
+                )
+                for line in result.stdout.strip().splitlines():
+                    if not line.strip():
+                        continue
+                    pid = int(line.strip())
+                    if pid and _is_alive(pid):
+                        _kill_gracefully(pid)
+                        logger.info(f"[{self.config.name}] Killed orphan orchestrator PID={pid}")
+            except (ValueError, OSError, _sp.TimeoutExpired):
+                pass
 
     def start_orchestration(self, plan_file: Optional[str] = None) -> int:
         """Start orchestration via set-orchestrate command."""

@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 # ─── Constants ──────────────────────────────────────────────────────
 
 MAX_MERGE_RETRIES = 3
+MAX_TOTAL_MERGE_ATTEMPTS = 10  # hard cap — never retry beyond this regardless of counter resets
 DEFAULT_MERGE_TIMEOUT = 300  # 5 min (no post-merge smoke — just ff + deps + hooks)
 
 
@@ -556,6 +557,8 @@ def merge_change(
             change_name, ff_retry_count + 1, max_ff_retries,
         )
         update_change_field(state_file, change_name, "ff_retry_count", ff_retry_count + 1)
+        total = change.extras.get("total_merge_attempts", 0) if change else 0
+        update_change_field(state_file, change_name, "total_merge_attempts", total + 1)
 
         # Re-integrate: the verifier will merge main into branch and re-run gates
         # Set status back so the monitor dispatches the change through handle_change_done again
@@ -803,8 +806,16 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
 
         wt_path = change.worktree_path or ""
 
+        # Skip integration+gates if ff_retry already exhausted — would be instant merge-blocked
+        ff_exhausted = change.extras.get("ff_retry_count", 0) >= 3
+        if ff_exhausted:
+            logger.info(
+                "Skipping integration gates for %s — ff_retry exhausted, will fail immediately",
+                name,
+            )
+
         # Step 1: Integrate current main into branch
-        if wt_path and os.path.isdir(wt_path):
+        if wt_path and os.path.isdir(wt_path) and not ff_exhausted:
             integration = _integrate_for_merge(wt_path, name)
             if integration == "conflict":
                 # Delegate to conflict handler (agent rebase)
@@ -844,6 +855,16 @@ def retry_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
     # Re-add merge-blocked changes to queue for retry (with retry counter)
     for change in state.changes:
         if change.status == "merge-blocked" and change.name not in state.merge_queue:
+            # Hard cap — total attempts across all retry cycles
+            total = change.extras.get("total_merge_attempts", 0)
+            if total >= MAX_TOTAL_MERGE_ATTEMPTS:
+                logger.error(
+                    "Hard merge attempt cap reached for %s (%d/%d) — marking integration-failed",
+                    change.name, total, MAX_TOTAL_MERGE_ATTEMPTS,
+                )
+                update_change_field(state_file, change.name, "status", "integration-failed", event_bus=event_bus)
+                continue
+
             retry_count = change.extras.get("merge_retry_count", 0)
             if retry_count >= MAX_MERGE_RETRIES:
                 logger.warning(
@@ -852,11 +873,12 @@ def retry_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 )
                 update_change_field(state_file, change.name, "status", "integration-failed", event_bus=event_bus)
                 continue
-            # Increment retry counter
+            # Increment retry counter + total attempts
             with locked_state(state_file) as st:
                 ch = _find_change(st, change.name)
                 if ch:
                     ch.extras["merge_retry_count"] = retry_count + 1
+                    ch.extras["total_merge_attempts"] = total + 1
                 if change.name not in st.merge_queue:
                     st.merge_queue.append(change.name)
 
