@@ -1,4 +1,5 @@
 core:
+  - .gitignore
   - project-knowledge.yaml
   - rules/ui-conventions.md
   - rules/functional-conventions.md

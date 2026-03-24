@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Build
+dist/
+build/
+tsconfig.tsbuildinfo
+
+# Database
+*.db
+*.db-journal
+prisma/generated/
+
+# Test output
+playwright-report/
+test-results/
+coverage/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Claude CLI cache
+.claude/logs/
+.claude/digest-last-response.txt
+
+# Orchestration runtime (managed by set-core)
+/.set/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

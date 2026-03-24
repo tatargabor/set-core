@@ -1206,16 +1206,34 @@ main() {
 
     # Fast-forward only mode — skip all conflict resolution
     if $ff_only; then
+        # Verify source branch exists before attempting merge
+        if ! git show-ref --verify --quiet "refs/heads/$source_branch" 2>/dev/null; then
+            error "Source branch '$source_branch' not found in repo"
+            error "  Available branches matching: $(git branch --list '*'"${source_branch##*/}"'*' 2>/dev/null | tr '\n' ' ')"
+            git checkout "$target_branch" 2>/dev/null || true
+            exit 1
+        fi
+
         local ff_result=0
-        git merge --ff-only "$source_branch" 2>/dev/null || ff_result=$?
+        local ff_stderr
+        ff_stderr=$(mktemp)
+        git merge --ff-only "$source_branch" 2>"$ff_stderr" || ff_result=$?
         if [[ $ff_result -eq 0 ]]; then
+            rm -f "$ff_stderr"
             success "Fast-forward merge of '$source_branch' into '$target_branch'"
             if $push_after; then
                 git push origin "$target_branch" 2>/dev/null || true
             fi
             exit 0
         else
+            local merge_base head_sha source_sha
+            merge_base=$(git merge-base HEAD "$source_branch" 2>/dev/null || echo "unknown")
+            head_sha=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+            source_sha=$(git rev-parse --short "$source_branch" 2>/dev/null || echo "unknown")
             error "Fast-forward merge failed — branch has diverged from '$target_branch'"
+            error "  Diagnostics: HEAD=$head_sha, source=$source_sha, merge-base=${merge_base:0:12}"
+            error "  Git error: $(cat "$ff_stderr" 2>/dev/null)"
+            rm -f "$ff_stderr"
             # Checkout back to target to leave repo in clean state
             git checkout "$target_branch" 2>/dev/null || true
             exit 1

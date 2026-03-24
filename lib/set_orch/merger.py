@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # ─── Constants ──────────────────────────────────────────────────────
 
-MAX_MERGE_RETRIES = 5
+MAX_MERGE_RETRIES = 3
 DEFAULT_MERGE_TIMEOUT = 300  # 5 min (no post-merge smoke — just ff + deps + hooks)
 
 
@@ -739,6 +739,20 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
             _remove_from_merge_queue(state_file, name)
             continue
 
+        # Check retry counter — skip changes that exhausted merge retries
+        retry_count = change.extras.get("merge_retry_count", 0)
+        if retry_count >= MAX_MERGE_RETRIES:
+            logger.warning(
+                "Merge retry limit reached for %s (%d/%d) — marking integration-failed",
+                name, retry_count, MAX_MERGE_RETRIES,
+            )
+            update_change_field(state_file, name, "status", "integration-failed", event_bus=event_bus)
+            if event_bus:
+                event_bus.emit("CHANGE_INTEGRATION_FAILED", change=name,
+                               data={"retry_count": retry_count, "max_retries": MAX_MERGE_RETRIES})
+            _remove_from_merge_queue(state_file, name)
+            continue
+
         wt_path = change.worktree_path or ""
 
         # Step 1: Integrate current main into branch
@@ -778,8 +792,6 @@ def retry_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
     Tracks merge_retry_count per change — max 3 retries before integration-failed.
     """
     state = load_state(state_file)
-
-    MAX_MERGE_RETRIES = 3
 
     # Re-add merge-blocked changes to queue for retry (with retry counter)
     for change in state.changes:

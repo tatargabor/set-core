@@ -760,18 +760,50 @@ def _poll_suspended_changes(
 
     state = load_state(state_file)
     for change in state.changes:
-        if change.status not in ("paused", "waiting:budget", "budget_exceeded", "done"):
+        if change.status not in ("paused", "waiting:budget", "budget_exceeded", "done", "stalled"):
             continue
 
         wt_path = change.worktree_path or ""
 
         # For "done" changes: check merge queue
         if change.status == "done":
+            # Check retry limit before re-adding — don't infinitely re-queue exhausted changes
+            retry_count = change.extras.get("merge_retry_count", 0)
+            if retry_count >= 3:  # MAX_MERGE_RETRIES
+                logger.warning(
+                    "Monitor: orphaned 'done' change %s has exhausted merge retries (%d) — marking integration-failed",
+                    change.name, retry_count,
+                )
+                update_change_field(state_file, change.name, "status", "integration-failed", event_bus=event_bus)
+                if event_bus:
+                    event_bus.emit("CHANGE_INTEGRATION_FAILED", change=change.name,
+                                   data={"retry_count": retry_count, "reason": "orphaned_done_retry_exhausted"})
+                continue
             if change.name not in state.merge_queue:
                 logger.warning("Monitor: orphaned 'done' change %s — adding to merge queue", change.name)
                 with locked_state(state_file) as st:
                     if change.name not in st.merge_queue:
                         st.merge_queue.append(change.name)
+            continue
+
+        # For "stalled" changes: check if loop-state shows done — recover if so
+        if change.status == "stalled":
+            if not wt_path:
+                continue
+            loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
+            if os.path.isfile(loop_state_path):
+                try:
+                    with open(loop_state_path) as f:
+                        ls = json.load(f)
+                    if ls.get("status") == "done":
+                        logger.info("Monitor: stalled change %s has loop-state=done — recovering to done", change.name)
+                        update_change_field(state_file, change.name, "status", "done", event_bus=event_bus)
+                        with locked_state(state_file) as st:
+                            if change.name not in st.merge_queue:
+                                st.merge_queue.append(change.name)
+                    # else: genuinely stalled — leave for manual intervention
+                except Exception:
+                    logger.debug("Failed to read loop-state for stalled change %s", change.name, exc_info=True)
             continue
 
         # Check loop-state for suspended changes
