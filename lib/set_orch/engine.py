@@ -477,6 +477,11 @@ def monitor_loop(
         post_merged = _count_by_status(state_file, "merged")
         if post_running > pre_running or post_merged > pre_merged:
             last_progress_ts = int(time.time())
+        elif post_running > 0:
+            # Agents are actively running — treat as progress to prevent
+            # self-watchdog from killing the orchestrator while agents are
+            # still in artifact creation / initial setup (no commits yet).
+            last_progress_ts = int(time.time())
 
         # Phase advancement (always) + optional milestone check
         _check_phase_completion(state_file, d, event_bus)
