@@ -779,19 +779,24 @@ def _run_integration_gates(
             logger.info("Integration gate: e2e for %s (%s, port=%d)", change_name, e2e_cmd, e2e_port)
             result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env)
             e2e_pass = result.exit_code == 0
-            update_change_field(state_file, change_name, "smoke_result", "pass" if e2e_pass else "warn")
+            update_change_field(state_file, change_name, "smoke_result", "pass" if e2e_pass else "fail")
             if event_bus:
                 event_bus.emit("VERIFY_GATE", change=change_name, data={
-                    "gate": "e2e", "result": "pass" if e2e_pass else "warn", "phase": "integration"})
+                    "gate": "e2e", "result": "pass" if e2e_pass else "fail", "phase": "integration"})
             if not e2e_pass:
-                # Integration e2e is always non-blocking: the verify phase
-                # already validated e2e, and integration e2e is prone to
-                # flaky failures (port conflicts, stale servers, timeouts).
-                logger.warning(
-                    "Integration gate: e2e FAILED for %s (non-blocking — verify phase already passed)",
-                    change_name,
-                )
-                update_change_field(state_file, change_name, "integration_gate_fail", "e2e-warn")
+                if gc.is_blocking("e2e"):
+                    logger.error("Integration gate: e2e FAILED for %s", change_name)
+                    update_change_field(state_file, change_name, "integration_gate_fail", "e2e")
+                    if event_bus:
+                        event_bus.emit("VERIFY_GATE", change=change_name, data={
+                            "gate": "e2e", "result": "fail", "phase": "integration"})
+                    return False
+                else:
+                    logger.warning(
+                        "Integration gate: e2e FAILED for %s (non-blocking per gate config)",
+                        change_name,
+                    )
+                    update_change_field(state_file, change_name, "integration_gate_fail", "e2e-warn")
 
     return True
 
