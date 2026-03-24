@@ -23,7 +23,8 @@ Before acting on any event, classify it into one of two tiers:
 **When uncertain, default to Tier 1 (defer).** The orchestrator has built-in recovery for:
 - **merge-blocked** → `retry_merge_queue` with jq deep-merge resolves package.json conflicts, agent rebase handles others
 - **verify/test failures** → `max_verify_retries` and scoped fix cycles retry automatically
-- **individual change failed** → orchestrator marks it failed and continues with remaining changes
+- **individual change failed with tokens > 0** → orchestrator marks it failed and continues (app-level failure, Tier 1)
+- **individual change failed with 0 tokens** → dispatch bug, NOT app-level failure → **log a finding** with `set-sentinel-finding add --severity bug --summary "change X failed with 0 tokens — dispatch failure"`
 - **replan cycles** → built-in auto-replan logic re-decomposes when needed
 - **waiting:api** → set-loop detects API errors (429, 503) and enters exponential backoff automatically
 
