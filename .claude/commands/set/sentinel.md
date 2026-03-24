@@ -218,9 +218,23 @@ Just say something brief like: `Orchestration running (3/7 changes, 1.2M tokens)
 
 **If WARNING:token_stuck is present**: escalate to user on first detection only. Say: "Warning: N change(s) have used >500K tokens with no commit in 30 min — may be stuck." Then read the state to list which changes are stuck. Track this so you don't repeat the warning every poll.
 
-**If WARNING:deadlocked is present**: escalate to user on first detection only. Read the state to identify the specific changes and their failed dependencies. Say: "Deadlock: N pending change(s) blocked by failed dependencies — manual intervention needed. Run `set-orchestrate reset --partial` or clear deps manually."
+**If WARNING:deadlocked is present** OR **all remaining changes are blocked by a failed change**: Don't just report — fix it. Check the failed change:
+- If 0 tokens (dispatch failure): reset it to `pending` so the orchestrator retries:
+  ```bash
+  python3 -c "
+  import json; f='orchestration-state.json'; s=json.load(open(f))
+  for c in s['changes']:
+      if c['name']=='CHANGE_NAME' and c['status']=='failed' and c.get('input_tokens',0)==0:
+          c['status']='pending'; c['worktree_path']=None; c['ralph_pid']=None
+  json.dump(s, open(f,'w'), indent=2)
+  "
+  ```
+  Log a finding: `set-sentinel-finding add --severity bug --change CHANGE_NAME --summary "Reset failed change (0 tokens dispatch failure) to pending for retry"`
+- If tokens > 0 (app-level failure): the agent tried and failed. Log finding and move on.
 
 **If any change has status `integration-failed`**: this means the orchestrator exhausted its merge retries. Apply **Tier 3** — read the merge log, diagnose the root cause, fix it on main, and reset the change to `done`. Don't defer this — the orchestrator already gave up.
+
+**CRITICAL: Don't just recommend actions — DO them.** You are the sentinel, not a reporter. If a simple reset or restart can unblock the pipeline, execute it immediately.
 
 Then **immediately go back to Step 2** (start another background poll).
 
