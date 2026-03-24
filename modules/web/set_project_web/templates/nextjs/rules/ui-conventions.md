@@ -15,6 +15,8 @@ paths:
 - Page layout: consistent header/content structure
 - Use responsive containers — never hardcode pixel widths
 - Mobile-first: design for small screens, enhance for larger
+- All pages within a route group MUST use the shared layout — never create page-level wrappers that replace the route group layout sidebar/nav
+- Admin pages must always render within the admin layout (`app/admin/layout.tsx`) — if the sidebar disappears on a sub-page, the layout nesting is broken
 
 ## Button Variant Policy
 - `variant="ghost"` → icon-only, NO text content

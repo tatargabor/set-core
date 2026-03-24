@@ -21,6 +21,14 @@ Playwright E2E test planning (when e2e_command is configured):
 - Do NOT defer all E2E tests to a consolidation change — this overloads a single agent. Each feature change owns its tests.
 - Do NOT just list "Functional test scenarios:" as descriptions — create actual test files.
 - E2E tests run pre-merge in the worktree via e2e_command against an auto-started dev server with isolated port and DB.
+- CRUD E2E test completeness (REQUIRED for feature changes with data mutations):
+  * CREATE: fill form with valid data → submit → verify new item appears in list
+  * READ: navigate to list → verify items render with correct data
+  * UPDATE: click edit → change a field → submit → verify change reflected
+  * DELETE: click delete → confirm dialog → verify item removed from list
+  * VALIDATION: submit with invalid/empty data → verify error messages shown
+  * LAYOUT: verify sidebar/nav present on every page in the route group (catches layout bugs where child pages override the shared layout)
+  Tests that only verify "page loads without error" are INSUFFICIENT — they miss runtime bugs in Server Actions, form submissions, and data mutations.
 
 Parallel agent coordination (multi-worktree builds):
 - When a foundational change creates a shared layout structure (route groups, layout components, providers), the planner MUST specify the exact path in downstream change scopes. Example: if auth-navigation creates `src/app/(shop)/layout.tsx` with a navigation header, product-catalog's scope must say "Create pages under `src/app/(shop)/products/`" — NOT just "Create product listing page."

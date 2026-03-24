@@ -758,4 +758,6 @@ class WebProjectType(CoreProfile):
             "Every new user-facing route must have a corresponding i18n key task if the project uses internationalization.",
             "If a detail page ([slug]/page.tsx) exists, ensure the parent listing page also exists.",
             "Admin pages for all spec-mentioned resources must be created — not just the primary ones.",
+            "Every feature change with CRUD operations (create/edit/delete) MUST include e2e tests that exercise each operation end-to-end: form fill → submit → verify result appears in list. Do NOT write tests that only verify page loads — test the actual data mutations.",
+            "Admin e2e tests MUST verify sidebar/nav is visible on every admin page to catch layout consistency bugs.",
         ]

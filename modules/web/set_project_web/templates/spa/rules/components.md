@@ -33,3 +33,8 @@ paths:
 - Use TypeScript interfaces for props
 - Destructure props in function signature
 - Provide sensible defaults for optional props
+
+## Layout Consistency
+- All pages within a route group MUST use the shared layout — never create page-level wrappers that replace the route group layout sidebar/nav
+- Admin pages must always render within the admin layout (`app/admin/layout.tsx`) — if the sidebar disappears on a sub-page, the layout nesting is broken
+- E2e tests for admin features must verify sidebar/nav is visible on every admin page

@@ -2136,6 +2136,81 @@ def _execute_test_files_gate(
     return GateResult("test_files", "pass", stats={"test_files_count": test_files_count})
 
 
+def _execute_e2e_coverage_gate(
+    change_name: str, change: Change, wt_path: str, state_file: str,
+) -> "GateResult":
+    """Check e2e test coverage against scope requirements.
+
+    Scans *.spec.ts files in the diff for assertion patterns matching
+    scope keywords. Produces a coverage report for the review gate.
+    Non-blocking (warn) — the review gate decides whether to fail.
+    """
+    from .gate_runner import GateResult
+
+    if not wt_path:
+        return GateResult("e2e_coverage", "pass")
+
+    scope = (change.scope or "").lower()
+    if not scope:
+        return GateResult("e2e_coverage", "pass")
+
+    # Extract required operations from scope keywords
+    required = []
+    crud_keywords = {
+        "create": ["create", "add new", "new product", "new item", "form.*submit"],
+        "update": ["edit", "update", "modify", "change.*name"],
+        "delete": ["delete", "remove", "confirmation.*dialog"],
+    }
+    for op, keywords in crud_keywords.items():
+        if any(re.search(kw, scope) for kw in keywords):
+            required.append(op)
+
+    if not required:
+        return GateResult("e2e_coverage", "pass")
+
+    # Scan spec.ts files in diff for assertion patterns
+    merge_base = _get_merge_base(wt_path)
+    diff_result = run_git("diff", f"{merge_base}..HEAD", "--", "*.spec.ts", cwd=wt_path)
+    diff_content = (diff_result.stdout or "").lower() if diff_result.exit_code == 0 else ""
+
+    assertion_patterns = {
+        "create": [r"fill\(", r"getbyrole\(['\"]button['\"].*(?:create|add|submit)", r"\.click\("],
+        "update": [r"fill\(", r"getbyrole\(['\"]button['\"].*(?:save|update|edit)", r"\.click\("],
+        "delete": [r"getbyrole\(['\"](?:button|dialog)['\"].*(?:delete|remove|confirm)", r"\.click\("],
+    }
+
+    tested = []
+    missing = []
+    for op in required:
+        patterns = assertion_patterns.get(op, [])
+        found = any(re.search(p, diff_content) for p in patterns)
+        if found:
+            tested.append(op)
+        else:
+            missing.append(op)
+
+    # Store report in extras for review gate
+    report = {
+        "scope_requires": required,
+        "tested": tested,
+        "missing": missing,
+    }
+    try:
+        update_change_field(state_file, change_name, "e2e_coverage_report", report)
+    except Exception:
+        pass  # non-critical
+
+    if missing:
+        gap_text = ", ".join(f"{op}: NOT TESTED" for op in missing)
+        logger.warning("E2E coverage gaps for %s: %s", change_name, gap_text)
+        return GateResult(
+            "e2e_coverage", "warn",
+            output=f"E2E coverage gaps: {gap_text}. Tested: {', '.join(tested) or 'none'}.",
+        )
+
+    return GateResult("e2e_coverage", "pass", stats={"tested": tested})
+
+
 def _execute_review_gate(
     change_name: str, change: Change, wt_path: str,
     review_model: str, state_file: str, design_snapshot_dir: str,
@@ -2173,10 +2248,29 @@ def _execute_review_gate(
                 "Now review the diff and verify each finding above:\n\n"
             ).format(attempt=verify_retry_count + 1, findings=prior_findings)
 
+    # Inject e2e coverage gaps into review prompt if available
+    e2e_coverage_prefix = ""
+    coverage_report = change.extras.get("e2e_coverage_report")
+    if coverage_report and coverage_report.get("missing"):
+        missing = coverage_report["missing"]
+        tested = coverage_report.get("tested", [])
+        gap_lines = "\n".join(f"  - {op}: NOT TESTED" for op in missing)
+        ok_lines = "\n".join(f"  - {op}: tested" for op in tested) if tested else "  (none)"
+        e2e_coverage_prefix = (
+            "⚠ E2E COVERAGE GAPS (from automated scan):\n"
+            f"{gap_lines}\n"
+            f"Tested operations:\n{ok_lines}\n\n"
+            "Treat missing CRUD/mutation coverage as [CRITICAL] — "
+            "the agent must add e2e tests that exercise these operations "
+            "(form fill → submit → verify result), not just page-load tests.\n\n"
+        )
+
+    combined_prefix = e2e_coverage_prefix + fix_verification_prefix
+
     rr = review_change(
         change_name, wt_path, scope, effective_review_model,
         state_file=state_file, design_snapshot_dir=design_snapshot_dir,
-        prompt_prefix=fix_verification_prefix,
+        prompt_prefix=combined_prefix,
     )
 
     if not rr.has_critical:
@@ -2663,6 +2757,10 @@ def handle_change_done(
     pipeline.register(
         "test_files",
         lambda: _execute_test_files_gate(change_name, change, wt_path, gc),
+    )
+    pipeline.register(
+        "e2e_coverage",
+        lambda: _execute_e2e_coverage_gate(change_name, change, wt_path, state_file),
     )
     if review_before_merge:
         pipeline.register(
