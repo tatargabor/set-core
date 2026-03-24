@@ -19,7 +19,7 @@ import ChangeTimelineDetail from '../components/ChangeTimelineDetail'
 import BattleView from './BattleView'
 // useIsMobile removed — no longer needed
 import { useSentinelData } from '../hooks/useSentinelData'
-import { getDigest, getPlans, getState } from '../lib/api'
+import { getDigest, getPlans, getState, getLog } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
 type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle'
@@ -101,6 +101,33 @@ export default function Dashboard({ project, initialTab }: Props) {
     const t = setTimeout(poll, 2000)
     // Then poll every 5s
     const iv = setInterval(poll, 5000)
+    return () => { cancelled = true; clearTimeout(t); clearInterval(iv) }
+  }, [project])
+
+  // REST log fallback — fetch log via REST if WS doesn't provide it
+  useEffect(() => {
+    if (!project) return
+    let cancelled = false
+    const fetchLog = () => {
+      getLog(project)
+        .then(d => {
+          if (cancelled) return
+          const lines = d.lines ?? []
+          if (lines.length > 0) {
+            setLogLines(prev => prev.length > 0 ? prev : lines)
+          }
+        })
+        .catch(() => {})
+    }
+    // Fetch after 3s (give WS a chance first)
+    const t = setTimeout(fetchLog, 3000)
+    // Re-fetch every 10s if still empty
+    const iv = setInterval(() => {
+      setLogLines(prev => {
+        if (prev.length === 0) fetchLog()
+        return prev
+      })
+    }, 10000)
     return () => { cancelled = true; clearTimeout(t); clearInterval(iv) }
   }, [project])
 
