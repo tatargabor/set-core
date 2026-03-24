@@ -60,10 +60,14 @@ fi
 # --- Auto-increment run name ---
 
 mkdir -p "$E2E_RUNS_DIR"
-RUN_NUM=1
-while [[ -d "$E2E_RUNS_DIR/${SCAFFOLD}-run${RUN_NUM}" ]]; do
-    RUN_NUM=$((RUN_NUM + 1))
+# Find highest existing run number and increment
+RUN_NUM=0
+for d in "$E2E_RUNS_DIR/${SCAFFOLD}-run"*; do
+    [[ -d "$d" ]] || continue
+    n="${d##*-run}"
+    [[ "$n" =~ ^[0-9]+$ ]] && (( n > RUN_NUM )) && RUN_NUM=$n
 done
+RUN_NUM=$((RUN_NUM + 1))
 RUN_NAME="${SCAFFOLD}-run${RUN_NUM}"
 RUN_DIR="$E2E_RUNS_DIR/$RUN_NAME"
 
@@ -141,6 +145,6 @@ fi
 
 echo ""
 echo "=== $RUN_NAME ready ==="
-echo "  Monitor: ${MANAGER_URL/3112/7400}/manager/$RUN_NAME"
+echo "  Monitor: ${MANAGER_URL/3112/7400}/p/$RUN_NAME/orch"
 echo "  Dir:     $RUN_DIR"
 echo "  Report:  set-e2e-report --project-dir $RUN_DIR"
