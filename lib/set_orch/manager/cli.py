@@ -45,16 +45,19 @@ def serve(config, port):
     # Create API app
     app = create_api(service)
 
-    # Run tick loop in background + API server
+    # Run tick loop in background thread + API server in main thread
     import threading
 
     def tick_loop():
-        service.serve()
+        service.serve(skip_sentinels=True)
 
     tick_thread = threading.Thread(target=tick_loop, daemon=True)
     tick_thread.start()
 
-    click.echo(f"set-manager serving on port {cfg.port}")
+    click.echo(f"set-manager serving on http://localhost:{cfg.port}")
+    click.echo(f"  Projects: {len(cfg.projects)}")
+    click.echo(f"  Tick interval: {cfg.tick_interval_seconds}s")
+    click.echo(f"  Console: http://localhost:3111/manager (requires set-web)")
     web.run_app(app, port=cfg.port, print=None)
 
 

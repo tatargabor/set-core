@@ -85,24 +85,28 @@ class ServiceManager:
         )
         mgr._detector = detector  # Store for tick access
 
-    def serve(self):
-        """Run the service in foreground (blocking)."""
+    def serve(self, skip_sentinels: bool = False):
+        """Run the service in foreground (blocking). Called from main thread or background thread."""
         self._write_pid_file()
-        self._setup_signal_handlers()
         self._running = True
 
+        # Only register signal handlers if we're in the main thread
+        import threading
+        if threading.current_thread() is threading.main_thread():
+            self._setup_signal_handlers()
+
         logger.info(f"set-manager starting (PID={os.getpid()}, "
-                     f"port={self.config.port}, "
                      f"tick={self.config.tick_interval_seconds}s, "
                      f"projects={len(self.config.projects)})")
 
-        # Auto-start sentinels for enabled projects
-        for name, supervisor in self.supervisors.items():
-            if supervisor.config.sentinel_enabled:
-                try:
-                    supervisor.start_sentinel()
-                except Exception as e:
-                    logger.error(f"Failed to start sentinel for {name}: {e}")
+        # Auto-start sentinels for enabled projects (skip in test/thread mode)
+        if not skip_sentinels:
+            for name, supervisor in self.supervisors.items():
+                if supervisor.config.sentinel_enabled:
+                    try:
+                        supervisor.start_sentinel()
+                    except Exception as e:
+                        logger.error(f"Failed to start sentinel for {name}: {e}")
 
         try:
             while self._running:
