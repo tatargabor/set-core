@@ -1940,6 +1940,202 @@ def skip_change(project: str, name: str):
     return _with_state_lock(sp, do_skip)
 
 
+# ─── Process Management ──────────────────────────────────────────────
+
+
+def _process_info(pid: int) -> dict | None:
+    """Get process info (pid, command, uptime, cpu, mem) via ps. Returns None if dead."""
+    try:
+        os.kill(pid, 0)  # check alive
+    except (ProcessLookupError, PermissionError):
+        return None
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "pid,etime,%cpu,rss,args", "--no-headers"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        parts = result.stdout.strip().split(None, 4)
+        if len(parts) < 5:
+            return None
+        etime = parts[1]  # e.g. "1:23:45" or "02:15" or "45"
+        # Parse etime to seconds
+        segs = etime.replace("-", ":").split(":")
+        segs = [int(s) for s in segs]
+        if len(segs) == 1:
+            uptime = segs[0]
+        elif len(segs) == 2:
+            uptime = segs[0] * 60 + segs[1]
+        elif len(segs) == 3:
+            uptime = segs[0] * 3600 + segs[1] * 60 + segs[2]
+        elif len(segs) == 4:
+            uptime = segs[0] * 86400 + segs[1] * 3600 + segs[2] * 60 + segs[3]
+        else:
+            uptime = 0
+        return {
+            "pid": pid,
+            "command": parts[4][:120],
+            "uptime_seconds": uptime,
+            "cpu_percent": float(parts[2]),
+            "memory_mb": round(int(parts[3]) / 1024, 1),
+            "children": [],
+        }
+    except Exception:
+        return None
+
+
+def _get_process_children(pid: int) -> list[int]:
+    """Get direct child PIDs using ps --ppid."""
+    try:
+        result = subprocess.run(
+            ["ps", "--ppid", str(pid), "-o", "pid", "--no-headers"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return []
+        return [int(p.strip()) for p in result.stdout.strip().split("\n") if p.strip()]
+    except Exception:
+        return []
+
+
+def _build_process_tree_node(pid: int) -> dict | None:
+    """Recursively build process tree from a root PID."""
+    info = _process_info(pid)
+    if not info:
+        return None
+    children_pids = _get_process_children(pid)
+    for cpid in children_pids:
+        child = _build_process_tree_node(cpid)
+        if child:
+            info["children"].append(child)
+    return info
+
+
+def _build_project_process_tree(project_path: Path) -> list[dict]:
+    """Build full process tree for a project from PID files."""
+    trees: list[dict] = []
+    # Sentinel PID
+    sentinel_pid_file = _sentinel_dir(project_path) / "sentinel.pid"
+    if sentinel_pid_file.exists():
+        try:
+            pid = int(sentinel_pid_file.read_text().strip())
+            node = _build_process_tree_node(pid)
+            if node:
+                node["role"] = "sentinel"
+                trees.append(node)
+        except (ValueError, OSError):
+            pass
+
+    # Orchestrator PID from state
+    sp = _state_path(project_path)
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            orch_pid = state.extras.get("orchestrator_pid") or state.extras.get("pid")
+            if orch_pid:
+                pid = int(orch_pid)
+                # Skip if already in sentinel tree
+                already_in_tree = any(_find_pid_in_tree(t, pid) for t in trees)
+                if not already_in_tree:
+                    node = _build_process_tree_node(pid)
+                    if node:
+                        node["role"] = "orchestrator"
+                        trees.append(node)
+        except Exception:
+            pass
+
+    return trees
+
+
+def _find_pid_in_tree(node: dict, pid: int) -> bool:
+    """Check if a PID exists anywhere in a process tree."""
+    if node.get("pid") == pid:
+        return True
+    return any(_find_pid_in_tree(c, pid) for c in node.get("children", []))
+
+
+def _collect_all_pids(node: dict) -> list[int]:
+    """Collect all PIDs from a tree, leaves first (bottom-up)."""
+    pids: list[int] = []
+    for child in node.get("children", []):
+        pids.extend(_collect_all_pids(child))
+    pids.append(node["pid"])
+    return pids
+
+
+@router.get("/api/{project}/processes")
+def get_processes(project: str):
+    """Get process tree for a project."""
+    project_path = _resolve_project(project)
+    trees = _build_project_process_tree(Path(project_path))
+    return {"processes": trees}
+
+
+@router.post("/api/{project}/processes/{pid}/stop")
+def stop_process(project: str, pid: int):
+    """Stop a specific process by PID."""
+    _resolve_project(project)  # validate project exists
+    try:
+        os.kill(pid, 0)  # check alive
+    except ProcessLookupError:
+        return {"ok": True, "result": "already_dead"}
+    except PermissionError:
+        raise HTTPException(403, "Permission denied")
+
+    import signal
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return {"ok": True, "result": "died_before_signal"}
+    return {"ok": True, "result": "sigterm_sent", "pid": pid}
+
+
+@router.post("/api/{project}/processes/stop-all")
+def stop_all_processes(project: str):
+    """Stop all processes bottom-up: agents → orchestrator → sentinel."""
+    project_path = _resolve_project(project)
+    trees = _build_project_process_tree(Path(project_path))
+
+    # Collect all PIDs bottom-up
+    all_pids: list[int] = []
+    for tree in trees:
+        all_pids.extend(_collect_all_pids(tree))
+
+    import signal
+    killed: list[int] = []
+    for pid in all_pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed.append(pid)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+    # Wait up to 3s for graceful shutdown, then SIGKILL survivors
+    if killed:
+        time.sleep(3)
+        for pid in killed:
+            try:
+                os.kill(pid, 0)  # still alive?
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+    # Set orchestration state to stopped
+    sp = _state_path(Path(project_path))
+    if sp.exists():
+        try:
+            def do_stop():
+                s = load_state(str(sp))
+                s.status = "stopped"
+                save_state(s, str(sp))
+            _with_state_lock(sp, do_stop)
+        except Exception:
+            pass
+
+    return {"ok": True, "killed": killed, "total": len(killed)}
+
+
 # ─── Sentinel endpoints ──────────────────────────────────────────────
 
 

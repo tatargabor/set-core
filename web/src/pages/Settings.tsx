@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { shutdownOrchestration, stopOrchestrator } from '../lib/api'
 import { TuiSection } from '../components/tui'
+import ProcessTree from '../components/ProcessTree'
 
 interface Props {
   project: string | null
@@ -186,6 +187,14 @@ export default function Settings({ project }: Props) {
           <ConfigValue label="Plan version" value={data.plan_version != null ? `v${data.plan_version}` : null} />
           <ConfigValue label="CLAUDE.md" value={data.has_claude_md ? 'Present' : 'Not found'} />
           <ConfigValue label="Project knowledge" value={data.has_project_knowledge ? 'Present' : 'Not found'} />
+        </div>
+      </section>
+
+      {/* Processes */}
+      <section>
+        <TuiSection label="Processes" />
+        <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3">
+          <ProcessTree project={project} />
         </div>
       </section>
 

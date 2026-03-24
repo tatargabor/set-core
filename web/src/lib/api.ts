@@ -207,6 +207,29 @@ export function getLog(project: string): Promise<{ lines: string[] }> {
   return fetchJSON(`/${project}/log`)
 }
 
+// Process management
+export interface ProcessNode {
+  pid: number
+  command: string
+  uptime_seconds: number
+  cpu_percent: number
+  memory_mb: number
+  role?: string
+  children: ProcessNode[]
+}
+
+export function getProcesses(project: string): Promise<{ processes: ProcessNode[] }> {
+  return fetchJSON(`/${project}/processes`)
+}
+
+export function stopProcess(project: string, pid: number): Promise<{ ok: boolean }> {
+  return fetchJSON(`/${project}/processes/${pid}/stop`, { method: 'POST' })
+}
+
+export function stopAllProcesses(project: string): Promise<{ ok: boolean; killed: number[]; total: number }> {
+  return fetchJSON(`/${project}/processes/stop-all`, { method: 'POST' })
+}
+
 // --- Screenshots ---
 
 export interface ScreenshotFile {
