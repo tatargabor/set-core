@@ -135,6 +135,12 @@ class ProjectSupervisor:
         cmd = ["claude", "-p", "--max-turns", "500", "--dangerously-skip-permissions",
                "--verbose", "--output-format", "stream-json"]
 
+        # Ensure set-core bin/ is on PATH so sentinel can call set-sentinel-finding etc.
+        env = os.environ.copy()
+        set_core_bin = Path(__file__).resolve().parent.parent.parent.parent / "bin"
+        if set_core_bin.is_dir():
+            env["PATH"] = f"{set_core_bin}:{env.get('PATH', '')}"
+
         try:
             proc = subprocess.Popen(
                 cmd,
@@ -143,6 +149,7 @@ class ProjectSupervisor:
                 stdout=stdout_file,
                 stderr=stderr_file,
                 start_new_session=True,
+                env=env,
             )
             # Send prompt via stdin — avoids command-line length limits
             proc.stdin.write(prompt.encode("utf-8"))
