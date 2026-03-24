@@ -450,6 +450,9 @@ def monitor_loop(
         # Verify-failed recovery
         _recover_verify_failed(state_file, d, event_bus)
 
+        # Integration e2e failed recovery (redispatch agent to fix)
+        _recover_integration_e2e_failed(state_file, d, event_bus)
+
         # Note: no cascade_failed_deps() — pending changes with failed deps
         # simply stay pending (never dispatched because deps_met() returns False).
         # _check_all_done() and _check_phase_milestone() treat them as terminal.
@@ -887,6 +890,50 @@ def _recover_verify_failed(
             update_change_field(state_file, change.name, "status", "failed")
             if reason:
                 update_change_field(state_file, change.name, "failure_reason", reason)
+
+
+def _recover_integration_e2e_failed(
+    state_file: str, d: Directives, event_bus: Any
+) -> None:
+    """Redispatch agent to fix integration e2e failures."""
+    from .dispatcher import resume_change
+
+    state = load_state(state_file)
+    for change in state.changes:
+        if change.status != "integration-e2e-failed":
+            continue
+
+        wt_path = change.worktree_path or ""
+        if not wt_path or not os.path.isdir(wt_path):
+            logger.warning(
+                "Integration e2e redispatch: worktree missing for %s — marking merge-blocked",
+                change.name,
+            )
+            update_change_field(state_file, change.name, "status", "merge-blocked")
+            continue
+
+        # Build retry_context from stored e2e output if not already set
+        retry_ctx = change.extras.get("retry_context", "")
+        if not retry_ctx:
+            e2e_output = change.extras.get("integration_e2e_output", "")
+            retry_ctx = (
+                f"Integration e2e tests failed after merging main into your branch. "
+                f"Fix the failing tests so they pass.\n\n"
+                f"E2E test output:\n{e2e_output}\n\n"
+                f"Original scope: {change.scope}"
+            )
+            update_change_field(state_file, change.name, "retry_context", retry_ctx)
+
+        e2e_retry = change.extras.get("integration_e2e_retry_count", 0)
+        logger.info(
+            "Redispatching %s to fix integration e2e failures (attempt %d/2)",
+            change.name, e2e_retry,
+        )
+        if event_bus:
+            event_bus.emit("CHANGE_REDISPATCH", change=change.name,
+                           data={"reason": "integration_e2e_failed", "retry": e2e_retry})
+
+        resume_change(state_file, change.name, event_bus=event_bus)
 
 
 # ─── Completion Detection ──────────────────────────────────────────

@@ -785,12 +785,40 @@ def _run_integration_gates(
                     "gate": "e2e", "result": "pass" if e2e_pass else "fail", "phase": "integration"})
             if not e2e_pass:
                 if gc.is_blocking("e2e"):
-                    logger.error("Integration gate: e2e FAILED for %s", change_name)
-                    update_change_field(state_file, change_name, "integration_gate_fail", "e2e")
-                    if event_bus:
-                        event_bus.emit("VERIFY_GATE", change=change_name, data={
-                            "gate": "e2e", "result": "fail", "phase": "integration"})
-                    return False
+                    e2e_output = (result.stdout or "")[-2000:] + "\n" + (result.stderr or "")[-1000:]
+                    e2e_retry = change.extras.get("integration_e2e_retry_count", 0)
+
+                    if e2e_retry < 2:
+                        # Redispatch agent to fix e2e failures (same pattern as verify-failed)
+                        logger.warning(
+                            "Integration gate: e2e FAILED for %s — redispatching agent (attempt %d/2)",
+                            change_name, e2e_retry + 1,
+                        )
+                        update_change_field(state_file, change_name, "integration_e2e_retry_count", e2e_retry + 1)
+                        update_change_field(state_file, change_name, "integration_e2e_output", e2e_output)
+                        retry_ctx = (
+                            f"Integration e2e tests failed after merging main into your branch. "
+                            f"Fix the failing tests so they pass.\n\n"
+                            f"E2E test output (last 2000 chars):\n{e2e_output}\n\n"
+                            f"Original scope: {change.scope}"
+                        )
+                        update_change_field(state_file, change_name, "retry_context", retry_ctx)
+                        update_change_field(state_file, change_name, "status", "integration-e2e-failed")
+                        update_change_field(state_file, change_name, "integration_gate_fail", "e2e-redispatch")
+                        if event_bus:
+                            event_bus.emit("VERIFY_GATE", change=change_name, data={
+                                "gate": "e2e", "result": "redispatch", "phase": "integration",
+                                "retry": e2e_retry + 1})
+                        return False
+                    else:
+                        # Exhausted redispatch retries — fall through to merge-blocked
+                        logger.error("Integration gate: e2e FAILED for %s — redispatch retries exhausted (%d/2)",
+                                     change_name, e2e_retry)
+                        update_change_field(state_file, change_name, "integration_gate_fail", "e2e")
+                        if event_bus:
+                            event_bus.emit("VERIFY_GATE", change=change_name, data={
+                                "gate": "e2e", "result": "fail", "phase": "integration"})
+                        return False
                 else:
                     logger.warning(
                         "Integration gate: e2e FAILED for %s (non-blocking per gate config)",
@@ -855,7 +883,14 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
 
             # Step 2: Integration gates (build + test + e2e)
             if not _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus):
-                update_change_field(state_file, name, "status", "merge-blocked")
+                # Check if the gate set integration-e2e-failed (redispatch path)
+                refreshed = load_state(state_file)
+                refreshed_change = _find_change(refreshed, name)
+                if refreshed_change and refreshed_change.status == "integration-e2e-failed":
+                    # Agent will be redispatched by monitor loop — don't set merge-blocked
+                    logger.info("Integration gate: %s queued for e2e redispatch", name)
+                else:
+                    update_change_field(state_file, name, "status", "merge-blocked")
                 _remove_from_merge_queue(state_file, name)
                 continue
 
