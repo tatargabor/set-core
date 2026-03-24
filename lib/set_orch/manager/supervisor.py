@@ -123,9 +123,10 @@ class ProjectSupervisor:
         prompt = self._load_sentinel_prompt(spec=spec)
         cmd = ["claude", "-p", "--max-turns", "500", "--dangerously-skip-permissions"]
 
-        # Log stderr to file for debugging
+        # Log stdout and stderr to files for debugging
         sentinel_log = self.config.path / ".wt" / "sentinel"
         sentinel_log.mkdir(parents=True, exist_ok=True)
+        stdout_file = open(sentinel_log / "stdout.log", "w")
         stderr_file = open(sentinel_log / "stderr.log", "w")
 
         try:
@@ -133,7 +134,7 @@ class ProjectSupervisor:
                 cmd,
                 cwd=str(self.config.path),
                 stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
+                stdout=stdout_file,
                 stderr=stderr_file,
                 start_new_session=True,
             )
