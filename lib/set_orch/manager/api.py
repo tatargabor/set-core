@@ -106,13 +106,13 @@ async def handle_manager_restart(request: web.Request):
     import sys
     import os
     logger.info("Manager restart requested via API")
-    # Respond first, then restart
-    resp = _json({"status": "restarting"})
-    await resp.prepare(request)
-    await resp.write_eof()
-    # Re-exec the same command
+    # Remove PID file before re-exec so the new process doesn't see "already running"
+    service = _get_service(request)
+    pid_file = service._pid_file
+    if pid_file.exists():
+        pid_file.unlink()
+    # Re-exec the same command (replaces this process)
     os.execv(sys.executable, [sys.executable] + sys.argv)
-    return resp  # unreachable
 
 
 # --- Projects ---
