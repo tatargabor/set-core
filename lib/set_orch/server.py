@@ -146,6 +146,35 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
                 media_type="application/json",
             )
 
+    @app.post("/api/manager-start")
+    async def start_manager():
+        """Start set-manager if not running. Called from web UI when manager is offline."""
+        import asyncio
+        import shutil
+        # Check if already running
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{MANAGER_URL}/api/manager/status", timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                    if resp.status == 200:
+                        return {"status": "already_running"}
+        except Exception:
+            pass
+        # Remove stale PID file
+        pid_file = Path.home() / ".local" / "share" / "set-core" / "manager" / "manager.pid"
+        pid_file.unlink(missing_ok=True)
+        # Start manager in background
+        manager_bin = shutil.which("set-manager")
+        if not manager_bin:
+            return Response(content='{"error": "set-manager not found in PATH"}', status_code=500, media_type="application/json")
+        proc = await asyncio.create_subprocess_exec(
+            manager_bin, "serve",
+            stdout=open("/tmp/set-manager.log", "a"),
+            stderr=open("/tmp/set-manager.log", "a"),
+            start_new_session=True,
+        )
+        return {"status": "started", "pid": proc.pid}
+
     # API, WebSocket, and chat routes
     app.include_router(api_router)
     app.include_router(ws_router)
