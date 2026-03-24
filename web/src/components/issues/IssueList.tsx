@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import type { Issue, IssueGroup, IssueState } from '../../lib/api'
+import type { Issue, IssueGroup } from '../../lib/api'
 import { IssueRow } from './IssueRow'
 import { ATTENTION_STATES, IN_PROGRESS_STATES, DONE_STATES } from './styles'
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { getIssue, getIssueAudit, type Issue, type IssueAuditEntry, type TimelineEntry } from '../lib/api'
 
 const AUDIT_ICONS: Record<string, string> = {

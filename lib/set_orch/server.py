@@ -15,10 +15,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from fastapi.responses import Response
+
 from .api import router as api_router
 from .chat import router as chat_router, session_manager
 from .watcher import WatcherManager
 from .websocket import router as ws_router, connection_manager
+
+# Manager proxy config
+MANAGER_URL = os.environ.get("SET_MANAGER_URL", "http://localhost:3112")
 
 
 @asynccontextmanager
@@ -102,6 +107,44 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
 
     # State
     app.state.watcher_manager = WatcherManager()
+
+    # Manager API proxy — forward /api/manager/* to set-manager service
+    @app.api_route("/api/manager/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    async def manager_proxy(request: Request, path: str):
+        """Reverse proxy to set-manager API. Strips /api/manager prefix."""
+        import aiohttp
+        target_url = f"{MANAGER_URL}/api/{path}"
+        qs = str(request.query_params)
+        if qs:
+            target_url += f"?{qs}"
+
+        body = await request.body() if request.method in ("POST", "PUT", "PATCH") else None
+        headers = {
+            k: v for k, v in request.headers.items()
+            if k.lower() not in ("host", "content-length", "transfer-encoding")
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.request(
+                    method=request.method,
+                    url=target_url,
+                    headers=headers,
+                    data=body,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    resp_body = await resp.read()
+                    return Response(
+                        content=resp_body,
+                        status_code=resp.status,
+                        media_type=resp.content_type,
+                    )
+        except aiohttp.ClientError:
+            return Response(
+                content='{"error": "set-manager is not running"}',
+                status_code=502,
+                media_type="application/json",
+            )
 
     # API, WebSocket, and chat routes
     app.include_router(api_router)

@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
 import { TuiStatus } from './components/tui'
 import Dashboard from './pages/Dashboard'
 import Worktrees from './pages/Worktrees'
@@ -11,50 +11,9 @@ import ManagerIssues from './pages/ManagerIssues'
 import ManagerMutes from './pages/ManagerMutes'
 import UnifiedSidebar from './components/UnifiedSidebar'
 import { useProject } from './hooks/useProject'
-import type { StateData, ChangeInfo } from './lib/api'
+import type { StateData } from './lib/api'
 // Import registry to ensure built-in items are registered
 import './lib/sidebarRegistry'
-
-
-function SidebarQuickStatus({ state }: { state: StateData | null }) {
-  if (!state) return null
-  const changes = state.changes ?? []
-  const done = changes.filter(c => ['done', 'merged', 'completed', 'skip_merged'].includes(c.status)).length
-  const failed = changes.filter(c => ['failed', 'verify-failed'].includes(c.status)).length
-  return (
-    <div className="px-3 py-2 space-y-1 text-sm">
-      <div className="flex items-center justify-between text-neutral-400">
-        <span>{done}/{changes.length} done</span>
-        {failed > 0 && <span className="text-red-400">{failed} failed</span>}
-      </div>
-      {state.plan_version && (
-        <div className="text-neutral-600">Plan v{state.plan_version}</div>
-      )}
-    </div>
-  )
-}
-
-function SidebarChanges({ changes, onSelect }: {
-  changes: ChangeInfo[]
-  onSelect?: (name: string) => void
-}) {
-  if (changes.length === 0) return null
-  return (
-    <div className="px-2 py-1 space-y-0.5">
-      <div className="px-1 py-1 text-sm text-neutral-600 uppercase tracking-wider font-medium">Changes</div>
-      {changes.map(c => (
-        <button
-          key={c.name}
-          onClick={() => onSelect?.(c.name)}
-          className="w-full flex items-center gap-1.5 px-2 py-1 rounded text-left transition-colors text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
-        >
-          <TuiStatus status={c.status} label={false} />
-          <span className="text-sm truncate">{c.name}</span>
-        </button>
-      ))}
-    </div>
-  )
-}
 
 /**
  * SharedLayout — unified layout for ALL routes (both /set/* and /manager/*).
@@ -62,11 +21,10 @@ function SidebarChanges({ changes, onSelect }: {
  */
 function SharedLayout() {
   const { project: urlProject } = useParams<{ project: string }>()
-  const { project: hookProject, setProject, projects } = useProject()
+  const { project: hookProject, projects } = useProject()
   const location = useLocation()
-  const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarState, setSidebarState] = useState<StateData | null>(null)
+  const [_sidebarState, setSidebarState] = useState<StateData | null>(null)
   const sidebarJsonRef = useRef('')
 
   // Determine project from URL — works for both /set/:project and /manager/:project
@@ -81,7 +39,7 @@ function SharedLayout() {
     setSidebarOpen(false)
   }, [location.pathname])
 
-  // Fetch orchestration state for quick status (only when on /set routes)
+  // Fetch orchestration state for quick status
   useEffect(() => {
     if (!effectiveProject) return
     const load = () => {
@@ -102,15 +60,6 @@ function SharedLayout() {
     return () => clearInterval(interval)
   }, [effectiveProject])
 
-  const handleProjectChange = (name: string) => {
-    setProject(name)
-  }
-
-  const handleSelectChange = useCallback((name: string) => {
-    window.dispatchEvent(new CustomEvent('set-select-change', { detail: name }))
-    setSidebarOpen(false)
-  }, [])
-
   // Determine what page we're on
   const path = location.pathname
   const isManagerOverview = path === '/manager'
@@ -120,7 +69,7 @@ function SharedLayout() {
   const isProjectRoute = path.match(/^\/set\/[^/]+/)
 
   // Orchestration status for mobile top bar
-  const orchStatus = sidebarState?.status ?? 'idle'
+  const orchStatus = _sidebarState?.status ?? 'idle'
 
   return (
     <div className="flex h-screen bg-neutral-950 text-neutral-200">
@@ -145,7 +94,7 @@ function SharedLayout() {
       <UnifiedSidebar
         project={effectiveProject}
         projects={projects}
-        onProjectChange={handleProjectChange}
+        onProjectChange={() => {}}
         sidebarOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
