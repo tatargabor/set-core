@@ -142,37 +142,52 @@ export default function SentinelPage({ project }: Props) {
   const [activeTab, setActiveTab] = useState<'overview' | 'log'>('overview')
   const stateJsonRef = useRef('')
 
-  // Poll orchestration state
+  // Poll orchestration state (with backoff on failure)
   useEffect(() => {
     if (!project) return
     let cancelled = false
+    let fails = 0
+    let timer: ReturnType<typeof setTimeout>
     const poll = () => {
       getState(project).then(d => {
         if (cancelled) return
+        fails = 0
         const json = JSON.stringify(d)
         if (json !== stateJsonRef.current) {
           stateJsonRef.current = json
           setState(d)
         }
-      }).catch(() => {})
+        timer = setTimeout(poll, 5000)
+      }).catch(() => {
+        if (cancelled) return
+        fails++
+        timer = setTimeout(poll, Math.min(5000 * Math.pow(2, fails - 1), 30000))
+      })
     }
     poll()
-    const iv = setInterval(poll, 5000)
-    return () => { cancelled = true; clearInterval(iv) }
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [project])
 
-  // Fetch log
+  // Fetch log (with backoff on failure)
   useEffect(() => {
     if (!project) return
     let cancelled = false
+    let fails = 0
+    let timer: ReturnType<typeof setTimeout>
     const fetchLog = () => {
       getLog(project).then(d => {
-        if (!cancelled && d.lines?.length) setLogLines(d.lines)
-      }).catch(() => {})
+        if (cancelled) return
+        fails = 0
+        if (d.lines?.length) setLogLines(d.lines)
+        timer = setTimeout(fetchLog, 10000)
+      }).catch(() => {
+        if (cancelled) return
+        fails++
+        timer = setTimeout(fetchLog, Math.min(10000 * Math.pow(2, fails - 1), 60000))
+      })
     }
     fetchLog()
-    const iv = setInterval(fetchLog, 10000)
-    return () => { cancelled = true; clearInterval(iv) }
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [project])
 
   if (!project) {

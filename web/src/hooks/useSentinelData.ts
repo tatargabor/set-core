@@ -23,8 +23,10 @@ export function useSentinelData(project: string | null): SentinelData {
   const [status, setStatus] = useState<SentinelStatusData>({ active: false, is_active: false })
   const lastEpochRef = useRef<number>(0)
 
+  const failsRef = useRef(0)
+
   const poll = useCallback(async () => {
-    if (!project) return
+    if (!project) return false
 
     try {
       const [newEvents, newFindings, newStatus] = await Promise.all([
@@ -44,8 +46,11 @@ export function useSentinelData(project: string | null): SentinelData {
 
       setFindings(newFindings)
       setStatus(newStatus)
+      failsRef.current = 0
+      return true
     } catch {
-      // Silently fail — endpoint may not exist yet
+      failsRef.current++
+      return false
     }
   }, [project])
 
@@ -56,10 +61,18 @@ export function useSentinelData(project: string | null): SentinelData {
     setFindings({ findings: [], assessments: [] })
     setStatus({ active: false, is_active: false })
     lastEpochRef.current = 0
+    failsRef.current = 0
 
-    poll()
-    const iv = setInterval(poll, POLL_INTERVAL)
-    return () => clearInterval(iv)
+    let timer: ReturnType<typeof setTimeout>
+    let cancelled = false
+    const loop = async () => {
+      const ok = await poll()
+      if (cancelled) return
+      const delay = ok ? POLL_INTERVAL : Math.min(POLL_INTERVAL * Math.pow(2, failsRef.current), 30000)
+      timer = setTimeout(loop, delay)
+    }
+    loop()
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [project, poll])
 
   const hasSentinel = status.active || status.member != null || events.length > 0

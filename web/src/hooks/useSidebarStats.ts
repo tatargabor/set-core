@@ -16,6 +16,8 @@ export function useSidebarStats(): SidebarStats {
   const jsonRef = useRef('')
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    let fails = 0
     const poll = () => {
       Promise.all([
         getAllIssueStats().catch(() => null),
@@ -28,12 +30,14 @@ export function useSidebarStats(): SidebarStats {
             setIssueStats(stats)
           }
         }
-        setManagerOnline(status !== null)
+        const online = status !== null
+        setManagerOnline(online)
+        fails = online ? 0 : fails + 1
+        timer = setTimeout(poll, online ? 5000 : Math.min(5000 * Math.pow(2, fails - 1), 30000))
       })
     }
     poll()
-    const interval = setInterval(poll, 5000)
-    return () => clearInterval(interval)
+    return () => clearTimeout(timer)
   }, [])
 
   const totalOpen = Object.values(issueStats).reduce((sum, s) => sum + (s.total_open || 0), 0)

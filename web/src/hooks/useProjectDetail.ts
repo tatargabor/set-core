@@ -7,13 +7,18 @@ export function useProjectDetail(projectName: string | undefined) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const jsonRef = useRef('')
+  const failCountRef = useRef(0)
 
   useEffect(() => {
     if (!projectName) return
+    let timer: ReturnType<typeof setTimeout>
+    let cancelled = false
 
     const poll = () => {
       getManagerProjectStatus(projectName)
         .then(data => {
+          if (cancelled) return
+          failCountRef.current = 0
           const json = JSON.stringify(data)
           if (json !== jsonRef.current) {
             jsonRef.current = json
@@ -21,15 +26,20 @@ export function useProjectDetail(projectName: string | undefined) {
           }
           setError(null)
           setLoading(false)
+          timer = setTimeout(poll, 5000)
         })
         .catch(e => {
+          if (cancelled) return
+          failCountRef.current++
           setError(e.message?.includes('404') ? 'Project not found' : e.message)
           setLoading(false)
+          // Back off: 5s, 10s, 20s, max 30s
+          const delay = Math.min(5000 * Math.pow(2, failCountRef.current - 1), 30000)
+          timer = setTimeout(poll, delay)
         })
     }
     poll()
-    const interval = setInterval(poll, 5000)
-    return () => clearInterval(interval)
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [projectName])
 
   // Docs — fetch once (not polled)

@@ -88,9 +88,9 @@ export function SentinelControl({ project, alive, startedAt, crashCount, activeS
                 : 'bg-neutral-800 border-neutral-700 focus:border-blue-500'
             }`}
           />
-          {!alive && showDropdown && filtered.length > 0 && (
+          {!alive && showDropdown && (
             <div className="absolute z-10 mt-1 w-full bg-neutral-800 border border-neutral-700 rounded shadow-lg max-h-40 overflow-y-auto">
-              {filtered.map(p => (
+              {filtered.length > 0 ? filtered.map(p => (
                 <button
                   key={p}
                   onClick={() => { setSpec(p); setShowDropdown(false) }}
@@ -98,7 +98,11 @@ export function SentinelControl({ project, alive, startedAt, crashCount, activeS
                 >
                   {p}
                 </button>
-              ))}
+              )) : (
+                <div className="px-2 py-1.5 text-xs text-neutral-500">
+                  {specPaths.length === 0 ? 'Manager offline — type path manually' : 'No matching paths'}
+                </div>
+              )}
             </div>
           )}
         </div>
