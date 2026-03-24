@@ -1015,8 +1015,8 @@ def cmd_engine(args):
         except Exception:
             pass
 
-        # Register cleanup via atexit
-        atexit.register(cleanup_orchestrator, args.state, directives)
+        # NOTE: atexit cleanup is registered INSIDE monitor_loop after lock acquisition.
+        # Registering it here would cause duplicate monitors to set status=stopped on exit.
 
         # Signal handlers: SIGTERM, SIGINT, SIGHUP → sys.exit(0) → triggers atexit
         def _signal_handler(signum, frame):

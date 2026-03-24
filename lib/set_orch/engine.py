@@ -314,6 +314,11 @@ def monitor_loop(
 
     d = parse_directives(raw)
 
+    # Register atexit cleanup AFTER lock + directives parsed — prevents duplicate
+    # monitors (that fail lock acquisition) from setting status=stopped on exit
+    import atexit
+    atexit.register(cleanup_orchestrator, state_file, d)
+
     # Load plugin orchestration directives
     try:
         from .profile_loader import load_profile, NullProfile
