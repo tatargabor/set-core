@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { TuiStatus } from './components/tui'
 import Dashboard from './pages/Dashboard'
@@ -9,18 +9,12 @@ import Home from './pages/Home'
 import Manager from './pages/Manager'
 import ManagerIssues from './pages/ManagerIssues'
 import ManagerMutes from './pages/ManagerMutes'
-import ProjectSelector from './components/ProjectSelector'
+import UnifiedSidebar from './components/UnifiedSidebar'
 import { useProject } from './hooks/useProject'
 import type { StateData, ChangeInfo } from './lib/api'
+// Import registry to ensure built-in items are registered
+import './lib/sidebarRegistry'
 
-
-function formatDuration(secs?: number): string {
-  if (!secs) return ''
-  const m = Math.floor(secs / 60)
-  if (m < 60) return `${m}m`
-  const h = Math.floor(m / 60)
-  return `${h}h${m % 60}m`
-}
 
 function SidebarQuickStatus({ state }: { state: StateData | null }) {
   if (!state) return null
@@ -33,9 +27,6 @@ function SidebarQuickStatus({ state }: { state: StateData | null }) {
         <span>{done}/{changes.length} done</span>
         {failed > 0 && <span className="text-red-400">{failed} failed</span>}
       </div>
-      <div className="text-neutral-500">
-        {formatDuration(state.active_seconds)}
-      </div>
       {state.plan_version && (
         <div className="text-neutral-600">Plan v{state.plan_version}</div>
       )}
@@ -43,74 +34,59 @@ function SidebarQuickStatus({ state }: { state: StateData | null }) {
   )
 }
 
-function SidebarChanges({ changes, selected, onSelect }: {
+function SidebarChanges({ changes, onSelect }: {
   changes: ChangeInfo[]
-  selected?: string | null
   onSelect?: (name: string) => void
 }) {
   if (changes.length === 0) return null
-
   return (
     <div className="px-2 py-1 space-y-0.5">
       <div className="px-1 py-1 text-sm text-neutral-600 uppercase tracking-wider font-medium">Changes</div>
-      {changes.map(c => {
-        const isActive = selected === c.name
-        return (
-          <button
-            key={c.name}
-            onClick={() => onSelect?.(c.name)}
-            className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left transition-colors ${
-              isActive ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
-            }`}
-          >
-            <TuiStatus status={c.status} label={false} />
-            <span className="text-sm truncate">{c.name}</span>
-          </button>
-        )
-      })}
+      {changes.map(c => (
+        <button
+          key={c.name}
+          onClick={() => onSelect?.(c.name)}
+          className="w-full flex items-center gap-1.5 px-2 py-1 rounded text-left transition-colors text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+        >
+          <TuiStatus status={c.status} label={false} />
+          <span className="text-sm truncate">{c.name}</span>
+        </button>
+      ))}
     </div>
   )
 }
 
-function ProjectLayout() {
-  const { project, setProject, projects } = useProject()
+/**
+ * SharedLayout — unified layout for ALL routes (both /set/* and /manager/*).
+ * Uses UnifiedSidebar for cross-navigation. Sidebar stays stable across route changes.
+ */
+function SharedLayout() {
+  const { project: urlProject } = useParams<{ project: string }>()
+  const { project: hookProject, setProject, projects } = useProject()
   const location = useLocation()
-  const [sidebarState, setSidebarState] = useState<StateData | null>(null)
-  const sidebarJsonRef = useRef<string>('')
-  const [stateError, setStateError] = useState<string | null>(null)
+  const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarState, setSidebarState] = useState<StateData | null>(null)
+  const sidebarJsonRef = useRef('')
 
-  // Reset sidebar state on project change
-  useEffect(() => {
-    setSidebarState(null)
-    sidebarJsonRef.current = ''
-    setStateError(null)
-  }, [project])
+  // Determine project from URL — works for both /set/:project and /manager/:project
+  const project = urlProject || hookProject
 
-  const pathAfterProject = location.pathname.split('/').slice(3).join('/')
-  const activeTab = pathAfterProject || 'dashboard'
+  // Extract project from /manager/:project/* routes too
+  const managerProjectMatch = location.pathname.match(/^\/manager\/([^/]+)/)
+  const effectiveProject = project || (managerProjectMatch ? managerProjectMatch[1] : null)
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
     setSidebarOpen(false)
   }, [location.pathname])
 
-  // Fetch state for sidebar (lightweight poll)
+  // Fetch orchestration state for quick status (only when on /set routes)
   useEffect(() => {
-    if (!project) return
+    if (!effectiveProject) return
     const load = () => {
-      fetch(`/api/${project}/state`)
-        .then(async r => {
-          if (r.ok) {
-            setStateError(null)
-            return r.json()
-          }
-          const text = await r.text()
-          if (text.includes('Corrupt')) setStateError('State file corrupt (merge conflict?)')
-          else if (r.status === 404) setStateError(null) // no orchestration — not an error
-          else setStateError(`Error: ${r.status}`)
-          return null
-        })
+      fetch(`/api/${effectiveProject}/state`)
+        .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d) return
           const json = JSON.stringify(d)
@@ -119,20 +95,31 @@ function ProjectLayout() {
             setSidebarState(d)
           }
         })
-        .catch(() => setStateError('Server unreachable'))
+        .catch(() => {})
     }
     load()
     const interval = setInterval(load, 5000)
     return () => clearInterval(interval)
-  }, [project])
+  }, [effectiveProject])
 
-  // Navigate to change on dashboard when clicking sidebar changes
-  const navigate = useCallback((name: string) => {
+  const handleProjectChange = (name: string) => {
+    setProject(name)
+  }
+
+  const handleSelectChange = useCallback((name: string) => {
     window.dispatchEvent(new CustomEvent('set-select-change', { detail: name }))
     setSidebarOpen(false)
   }, [])
 
-  // Connection status from sidebar state
+  // Determine what page we're on
+  const path = location.pathname
+  const isManagerOverview = path === '/manager'
+  const isManagerIssues = path.match(/^\/manager\/[^/]+\/issues/) || path === '/manager/issues'
+  const isManagerMutes = path.match(/^\/manager\/[^/]+\/mutes/)
+  const isHome = path === '/set'
+  const isProjectRoute = path.match(/^\/set\/[^/]+/)
+
+  // Orchestration status for mobile top bar
   const orchStatus = sidebarState?.status ?? 'idle'
 
   return (
@@ -148,157 +135,43 @@ function ProjectLayout() {
             <path d="M3 5h14M3 10h14M3 15h14" />
           </svg>
         </button>
-        <span className="text-sm font-semibold text-neutral-100 truncate">{project}</span>
-        <TuiStatus status={orchStatus} label={false} />
+        <span className="text-sm font-semibold text-neutral-100 truncate">
+          {effectiveProject || 'SET'}
+        </span>
+        {isProjectRoute && <TuiStatus status={orchStatus} label={false} />}
       </div>
 
-      {/* Backdrop overlay (mobile) */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {/* Unified Sidebar */}
+      <UnifiedSidebar
+        project={effectiveProject}
+        projects={projects}
+        onProjectChange={handleProjectChange}
+        sidebarOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
 
-      {/* Sidebar — drawer on mobile, static on desktop */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-neutral-950 border-r border-neutral-800 flex flex-col
-        transform transition-transform duration-200 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:relative md:translate-x-0 md:w-56 md:transition-none
-      `}>
-        <Link to="/set" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
-          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
-          <p className="text-sm text-neutral-500 tracking-wide">Ship Exactly This!</p>
-        </Link>
-        <div className="p-3">
-          <ProjectSelector
-            projects={projects}
-            current={project}
-            onChange={setProject}
-          />
-        </div>
-        <nav className="p-3 space-y-1">
-          <Link
-            to={project ? `/set/${project}` : '/set'}
-            className={`block px-3 py-2 rounded text-sm ${activeTab === 'dashboard' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
-          >
-            Dashboard
-          </Link>
-          <Link
-            to={project ? `/set/${project}/worktrees` : '/set'}
-            className={`block px-3 py-2 rounded text-sm ${activeTab === 'worktrees' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
-          >
-            Worktrees
-          </Link>
-          <Link
-            to={project ? `/set/${project}/memory` : '/set'}
-            className={`block px-3 py-2 rounded text-sm ${activeTab === 'memory' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
-          >
-            Memory
-          </Link>
-          <Link
-            to={project ? `/set/${project}/settings` : '/set'}
-            className={`block px-3 py-2 rounded text-sm ${activeTab === 'settings' ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}
-          >
-            Settings
-          </Link>
-          <Link
-            to="/manager"
-            className="block px-3 py-2 rounded text-sm text-neutral-400 hover:bg-neutral-800 hover:text-neutral-300 border-t border-neutral-800 mt-2 pt-2"
-          >
-            Manager Console
-          </Link>
-        </nav>
+      {/* Quick status + changes (only visible on desktop, below sidebar) */}
+      {/* This is handled inside UnifiedSidebar now */}
 
-        {/* Quick status */}
-        <div className="border-t border-neutral-800">
-          {stateError ? (
-            <div className="px-3 py-2 text-sm text-red-400 bg-red-950/30">
-              {stateError}
-            </div>
-          ) : (
-            <SidebarQuickStatus state={sidebarState} />
-          )}
-        </div>
+      {/* Main content */}
+      <main key={effectiveProject} className="flex-1 overflow-hidden pt-11 md:pt-0">
+        {/* Home */}
+        {isHome && <Home />}
 
-        {/* Changes mini-list */}
-        <div className="flex-1 overflow-y-auto border-t border-neutral-800">
-          <SidebarChanges changes={sidebarState?.changes ?? []} onSelect={navigate} />
-        </div>
+        {/* Project pages (/set/:project/*) */}
+        {isProjectRoute && (
+          <Routes>
+            <Route index element={<Dashboard project={effectiveProject} />} />
+            <Route path="worktrees" element={<Worktrees project={effectiveProject} />} />
+            <Route path="memory" element={<Memory project={effectiveProject} />} />
+            <Route path="settings" element={<Settings project={effectiveProject} />} />
+          </Routes>
+        )}
 
-        {/* Footer */}
-        <div className="border-t border-neutral-800 px-3 py-2">
-          <div className="text-sm text-neutral-600 truncate">{project}</div>
-          <div className="text-sm text-neutral-700">:8765</div>
-        </div>
-      </aside>
-
-      {/* Main content — add top padding on mobile for the top bar */}
-      <main key={project} className="flex-1 overflow-hidden pt-11 md:pt-0">
-        <Routes>
-          <Route index element={<Dashboard project={project} />} />
-          <Route path="worktrees" element={<Worktrees project={project} />} />
-          <Route path="memory" element={<Memory project={project} />} />
-          <Route path="settings" element={<Settings project={project} />} />
-        </Routes>
-      </main>
-    </div>
-  )
-}
-
-function HomeLayout() {
-  return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-200">
-      <aside className="hidden md:flex w-56 shrink-0 border-r border-neutral-800 flex-col">
-        <div className="p-4 border-b border-neutral-800">
-          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
-          <p className="text-sm text-neutral-500 tracking-wide">Ship Exactly This!</p>
-        </div>
-      </aside>
-      <main className="flex-1 overflow-auto">
-        <Home />
-      </main>
-    </div>
-  )
-}
-
-function ManagerLayout() {
-  const location = useLocation()
-  const path = location.pathname
-
-  // Determine which page to show
-  const isMutesPage = path.match(/^\/manager\/[^/]+\/mutes/)
-  const isIssuesPage = path.match(/^\/manager\/[^/]+\/issues/) || path === '/manager/issues'
-  const isOverview = path === '/manager'
-
-  return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-200">
-      <aside className="hidden md:flex w-56 shrink-0 border-r border-neutral-800 flex-col">
-        <Link to="/manager" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
-          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET Manager</h1>
-          <p className="text-sm text-neutral-500 tracking-wide">Control Plane</p>
-        </Link>
-        <nav className="p-3 space-y-1">
-          <Link to="/manager"
-            className={`block px-3 py-2 rounded text-sm ${isOverview ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}>
-            Projects
-          </Link>
-          <Link to="/manager/issues"
-            className={`block px-3 py-2 rounded text-sm ${isIssuesPage ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}>
-            All Issues
-          </Link>
-        </nav>
-        <div className="mt-auto border-t border-neutral-800 p-3">
-          <Link to="/set" className="block px-3 py-2 rounded text-sm text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300">
-            Back to Dashboard
-          </Link>
-        </div>
-      </aside>
-      <main className="flex-1 overflow-hidden">
-        {isOverview && <Manager />}
-        {isIssuesPage && <ManagerIssues />}
-        {isMutesPage && <ManagerMutes />}
+        {/* Manager pages */}
+        {isManagerOverview && <Manager />}
+        {isManagerIssues && <ManagerIssues />}
+        {isManagerMutes && <ManagerMutes />}
       </main>
     </div>
   )
@@ -309,13 +182,11 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Navigate to="/set" replace />} />
-        <Route path="/set" element={<HomeLayout />} />
-        <Route path="/set/:project/*" element={<ProjectLayout />} />
-        <Route path="/manager" element={<ManagerLayout />} />
-        <Route path="/manager/issues" element={<ManagerLayout />} />
-        <Route path="/manager/:project/issues" element={<ManagerLayout />} />
-        <Route path="/manager/:project/issues/:issueId" element={<ManagerLayout />} />
-        <Route path="/manager/:project/mutes" element={<ManagerLayout />} />
+        <Route path="/set" element={<SharedLayout />} />
+        <Route path="/set/:project/*" element={<SharedLayout />} />
+        <Route path="/manager" element={<SharedLayout />} />
+        <Route path="/manager/issues" element={<SharedLayout />} />
+        <Route path="/manager/:project/*" element={<SharedLayout />} />
       </Routes>
     </BrowserRouter>
   )
