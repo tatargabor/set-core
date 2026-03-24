@@ -530,10 +530,10 @@ cmd_start() {
 
             # Apply dispatch-critical globals from directives BEFORE first dispatch
             DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
-            TEAM_MODE=$(echo "$directives" | jq -r '.team_mode // false')
+            TEAM_MODE=$(echo "$directives" | jq -r 'if .team_mode == true then "yes" else "" end')
             CONTEXT_PRUNING=$(echo "$directives" | jq -r '.context_pruning // true')
             MODEL_ROUTING=$(echo "$directives" | jq -r '.model_routing // "off"')
-            CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r '.checkpoint_auto_approve // false')
+            CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r 'if .checkpoint_auto_approve == true then "yes" else "" end')
 
             # Recover orphaned changes (running/verifying with no worktree/PID)
             recover_orphaned_changes
@@ -657,10 +657,10 @@ cmd_start() {
     # Apply dispatch-critical globals from directives BEFORE first dispatch
     # (monitor_loop sets these too, but dispatch_ready_changes runs first)
     DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
-    TEAM_MODE=$(echo "$directives" | jq -r '.team_mode // false')
+    TEAM_MODE=$(echo "$directives" | jq -r 'if .team_mode == true then "yes" else "" end')
     CONTEXT_PRUNING=$(echo "$directives" | jq -r '.context_pruning // true')
     MODEL_ROUTING=$(echo "$directives" | jq -r '.model_routing // "off"')
-    CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r '.checkpoint_auto_approve // false')
+    CHECKPOINT_AUTO_APPROVE=$(echo "$directives" | jq -r 'if .checkpoint_auto_approve == true then "yes" else "" end')
 
     # Resume any stopped changes from a previous interrupted run
     resume_stopped_changes
