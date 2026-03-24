@@ -26,9 +26,11 @@ type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 
 
 interface Props {
   project: string | null
+  /** When set from route, forces this tab active on mount */
+  initialTab?: string
 }
 
-export default function Dashboard({ project }: Props) {
+export default function Dashboard({ project, initialTab }: Props) {
   const [state, setState] = useState<StateData | null>(null)
   const stateJsonRef = useRef<string>('')
   const [logLines, setLogLines] = useState<string[]>([])
@@ -39,6 +41,10 @@ export default function Dashboard({ project }: Props) {
   // URL-backed tab state: ?tab=digest&sub=domains
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const [activeTab, setActiveTabRaw] = useState<PanelTab>(() => {
+    // Route-driven tab takes priority over query param
+    if (initialTab && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(initialTab)) {
+      return initialTab as PanelTab
+    }
     const t = params.get('tab')
     return (t && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(t)) ? t as PanelTab : 'changes'
   })
