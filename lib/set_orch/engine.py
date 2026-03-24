@@ -176,6 +176,10 @@ def parse_directives(raw: dict) -> Directives:
 
 # ─── Cleanup / Shutdown ────────────────────────────────────────────
 
+# Guard: only the monitor that acquired the lock should modify state on exit.
+# Set to True inside monitor_loop() after lock acquisition succeeds.
+_orchestrator_lock_held = False
+
 
 def cleanup_orchestrator(state_file: str, directives: Directives | None = None) -> None:
     """Cleanup on orchestrator exit: update state, kill dev servers, pause if needed.
@@ -186,6 +190,13 @@ def cleanup_orchestrator(state_file: str, directives: Directives | None = None) 
         state_file: Path to orchestration state file.
         directives: Parsed directives (optional, for pause_on_exit check).
     """
+    # If this process never acquired the orchestrator lock, don't touch state.
+    # This prevents duplicate monitors (that failed lock acquisition) from
+    # poisoning state with "stopped" when they exit.
+    if not _orchestrator_lock_held:
+        logger.info("Cleanup skipped — this process does not hold the orchestrator lock")
+        return
+
     try:
         state = load_state(state_file)
 
@@ -277,6 +288,10 @@ def monitor_loop(
     lock_fd.write(str(os.getpid()))
     lock_fd.flush()
     logger.info("Acquired orchestrator lock: %s (PID %d)", lock_path, os.getpid())
+
+    # Mark that this process holds the lock — enables cleanup_orchestrator
+    global _orchestrator_lock_held
+    _orchestrator_lock_held = True
 
     # Parse directives — try file path, then JSON string, then state fallback
     raw = None
