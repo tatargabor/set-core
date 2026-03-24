@@ -129,23 +129,18 @@ class ProjectSupervisor:
         except Exception:
             sentinel_log = self.config.path / ".set" / "sentinel"
         sentinel_log.mkdir(parents=True, exist_ok=True)
-        stdout_path = sentinel_log / "stdout.log"
+        stdout_file = open(sentinel_log / "stdout.log", "w")
         stderr_file = open(sentinel_log / "stderr.log", "w")
 
-        # Use 'script' to force line-buffered output from claude CLI
-        # script -qfc "cmd" file — runs cmd in a pty, writes to file
-        cmd = [
-            "script", "-qfc",
-            "claude -p --max-turns 500 --dangerously-skip-permissions",
-            str(stdout_path),
-        ]
+        cmd = ["claude", "-p", "--max-turns", "500", "--dangerously-skip-permissions",
+               "--output-format", "stream-json"]
 
         try:
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(self.config.path),
                 stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
+                stdout=stdout_file,
                 stderr=stderr_file,
                 start_new_session=True,
             )

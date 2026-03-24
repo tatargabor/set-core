@@ -187,20 +187,50 @@ async def handle_sentinel_restart(request: web.Request):
 
 
 async def handle_sentinel_log(request: web.Request):
-    """Return last N lines of sentinel stdout.log."""
+    """Return last N lines of sentinel stdout.log, parsing stream-json format."""
     name = request.match_info["name"]
     sup = _get_service(request).supervisors.get(name)
     if not sup:
         raise web.HTTPNotFound()
     tail = int(request.query.get("tail", "200"))
+    raw = request.query.get("raw", "")
     try:
         from ..paths import SetRuntime
         rt = SetRuntime(str(sup.config.path))
         log_path = Path(rt.sentinel_dir) / "stdout.log"
         if not log_path.exists():
             return _json({"lines": []})
-        lines = log_path.read_text().splitlines()
-        return _json({"lines": lines[-tail:]})
+        content = log_path.read_text()
+        if raw:
+            lines = content.splitlines()[-tail:]
+            return _json({"lines": lines})
+        # Parse stream-json: extract assistant text content
+        output_lines: list[str] = []
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+                etype = event.get("type", "")
+                if etype == "assistant" and "message" in event:
+                    # Full assistant message with content blocks
+                    for block in event["message"].get("content", []):
+                        if block.get("type") == "text":
+                            output_lines.extend(block["text"].splitlines())
+                elif etype == "content_block_delta":
+                    delta = event.get("delta", {})
+                    if delta.get("type") == "text_delta":
+                        output_lines.append(delta.get("text", ""))
+                elif etype == "result":
+                    # Final result message
+                    for block in event.get("content", []):
+                        if block.get("type") == "text":
+                            output_lines.extend(block["text"].splitlines())
+            except (json.JSONDecodeError, KeyError, TypeError):
+                # Not JSON or unexpected format — show raw
+                output_lines.append(line)
+        return _json({"lines": output_lines[-tail:]})
     except Exception:
         return _json({"lines": []})
 
