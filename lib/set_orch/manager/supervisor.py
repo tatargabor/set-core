@@ -229,12 +229,15 @@ class ProjectSupervisor:
             self.sentinel_crash_count += 1
 
             if (self.config.auto_restart_sentinel
-                    and self.sentinel_crash_count <= MAX_CRASH_RESTARTS):
+                    and self.sentinel_crash_count <= MAX_CRASH_RESTARTS
+                    and not self._is_orchestration_done()):
                 try:
-                    self.start_sentinel()
+                    self.start_sentinel(spec=self.sentinel_spec)
                     actions.append(f"sentinel auto-restarted (crash #{self.sentinel_crash_count})")
                 except Exception as e:
                     actions.append(f"sentinel restart failed: {e}")
+            elif self._is_orchestration_done():
+                actions.append("sentinel exited — orchestration done, not restarting")
             elif self.sentinel_crash_count > MAX_CRASH_RESTARTS:
                 actions.append(
                     f"sentinel restart limit reached ({MAX_CRASH_RESTARTS}), "
@@ -248,6 +251,18 @@ class ProjectSupervisor:
             self._orch_proc = None
 
         return actions
+
+    def _is_orchestration_done(self) -> bool:
+        """Check if the orchestration state file shows status=done."""
+        import json
+        state_file = self.config.path / "orchestration-state.json"
+        if not state_file.is_file():
+            return False
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            return state.get("status") == "done"
+        except (json.JSONDecodeError, OSError):
+            return False
 
     def status(self) -> dict:
         return {
