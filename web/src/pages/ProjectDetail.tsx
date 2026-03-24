@@ -27,10 +27,6 @@ export default function ProjectDetail() {
     )
   }
 
-  // Group docs by directory
-  const docDirs = docs.filter(d => d.type === 'dir')
-  const docFiles = docs.filter(d => d.type === 'file')
-
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
       {/* Header */}
@@ -69,25 +65,6 @@ export default function ProjectDetail() {
           crashCount={project.sentinel.crash_count}
           specPaths={specPaths}
         />
-      </div>
-
-      {/* Docs listing */}
-      <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-900/50">
-        <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-3">
-          Docs {docs.length > 0 && <span className="text-neutral-600">({docFiles.length} files)</span>}
-        </h2>
-        {docs.length === 0 ? (
-          <p className="text-sm text-neutral-500">No docs found</p>
-        ) : (
-          <div className="space-y-1 max-h-60 overflow-y-auto text-sm">
-            {docDirs.map(d => (
-              <div key={d.path} className="text-neutral-400 font-medium">{d.path}</div>
-            ))}
-            {docFiles.map(f => (
-              <div key={f.path} className="text-neutral-500 pl-2">{f.path}</div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Issues summary */}

@@ -40,10 +40,11 @@ export function useProjectDetail(projectName: string | undefined) {
       .catch(() => setDocs([]))
   }, [projectName])
 
-  // Top-level dirs for spec autocomplete
-  const specPaths = [...new Set(
-    docs.filter(d => d.type === 'dir').map(d => d.path)
-  )]
+  // All docs paths for spec autocomplete (dirs first, then files)
+  const specPaths = [...new Set([
+    ...docs.filter(d => d.type === 'dir').map(d => d.path),
+    ...docs.filter(d => d.type === 'file').map(d => d.path),
+  ])]
   // Always include "docs/" as an option if there are any docs
   if (docs.length > 0 && !specPaths.includes('docs/')) {
     specPaths.unshift('docs/')
