@@ -231,7 +231,7 @@ ATTRS
     # copied from scaffold-complex/. The planner reads these directly.
 
     step "Orchestration config"
-    mkdir -p wt/orchestration
+    mkdir -p set/orchestration
     # Read design_file from docs/design/design-system.md if it exists
     local design_file_url=""
     local design_system="docs/design/design-system.md"

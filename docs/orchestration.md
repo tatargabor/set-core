@@ -532,7 +532,7 @@ The orchestrator accumulates review findings across changes and runs, building a
 
 | Source | Path | Scope | Tag |
 |--------|------|-------|-----|
-| Project JSONL | `{project}/wt/orchestration/review-learnings.jsonl` | This project only | `[project, seen Nx]` |
+| Project JSONL | `{project}/set/orchestration/review-learnings.jsonl` | This project only | `[project, seen Nx]` |
 | Template JSONL | `~/.config/set-core/review-learnings/{profile}.jsonl` | All projects of same type | `[template, seen Nx]` |
 | Static baseline | `modules/{type}/review_baseline.md` | Hardcoded per profile | `[baseline]` |
 

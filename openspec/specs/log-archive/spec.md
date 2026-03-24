@@ -5,7 +5,7 @@ Worktree agent iteration logs (`.claude/logs/*.log`) are copied to a persistent 
 
 #### Scenario: Successful merge triggers log archive
 - **WHEN** a change is merged and the worktree is about to be removed
-- **THEN** all files from `<worktree>/.claude/logs/` are copied to `wt/orchestration/logs/<change-name>/`
+- **THEN** all files from `<worktree>/.claude/logs/` are copied to `set/orchestration/logs/<change-name>/`
 - **THEN** the worktree removal proceeds normally
 
 #### Scenario: Worktree has no logs
@@ -22,7 +22,7 @@ The log API falls back to the archive when the worktree is gone.
 
 #### Scenario: Request logs for a merged change
 - **WHEN** `GET /api/{project}/changes/{name}/logs` is called for a merged change
-- **THEN** if the worktree is gone, the API checks `wt/orchestration/logs/<change-name>/`
+- **THEN** if the worktree is gone, the API checks `set/orchestration/logs/<change-name>/`
 - **THEN** returns the archived log file list
 
 #### Scenario: Read an archived log file

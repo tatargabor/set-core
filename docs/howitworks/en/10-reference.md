@@ -201,7 +201,7 @@ Hooks allow project-specific logic to be injected into the pipeline. The `pre_me
 ├── orchestration.yaml          ← configuration
 └── orchestration.log           ← runtime log
 
-wt/orchestration/
+set/orchestration/
 ├── digest/
 │   ├── requirements.json       ← REQ-XXX identifiers
 │   ├── phases.json             ← phase structure

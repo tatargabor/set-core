@@ -20,9 +20,6 @@ __pycache__/
 
 # Per-worktree agent ephemeral directory
 /.set/
-# Legacy
-/.wt/
-
 # Runtime state files (legacy — shared runtime now in ~/.local/share/set-core/)
 .set-core/
 .wt-tools/
@@ -60,7 +57,6 @@ test-results/
 
 # Runtime worktree state
 /set/
-/wt/
 
 # Benchmark temp data
 benchmark/synthetic/.set-core/
@@ -69,7 +65,6 @@ benchmark/synthetic/default/
 benchmark/synthetic/shodh_data/
 benchmark/synthetic/test_project/
 set/.work/
-wt/.work/
 
 set_core.egg-info/
 openspec_verify_merge_flow.png

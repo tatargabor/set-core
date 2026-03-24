@@ -6,7 +6,7 @@ After post-merge smoke tests run on main, the orchestrator SHALL collect Playwri
 #### Scenario: Successful artifact collection
 - **WHEN** the smoke pipeline completes (pass or fail) for change `{name}`
 - **THEN** the orchestrator SHALL check for a `test-results/` directory in the project root (hardcoded Playwright default — conscious decision, see design)
-- **AND** if found, copy its contents to `wt/orchestration/smoke-screenshots/{name}/attempt-{N}/` where N is the attempt number (1 for initial run, incrementing for fix retries)
+- **AND** if found, copy its contents to `set/orchestration/smoke-screenshots/{name}/attempt-{N}/` where N is the attempt number (1 for initial run, incrementing for fix retries)
 - **AND** count `.png` files across ALL attempt subdirectories for the change
 - **AND** update the change state with `smoke_screenshot_dir` (parent dir, without attempt suffix) and `smoke_screenshot_count` (total across all attempts)
 
@@ -19,7 +19,7 @@ After post-merge smoke tests run on main, the orchestrator SHALL collect Playwri
 
 #### Scenario: Artifact directory creation
 - **WHEN** collecting smoke artifacts for change `{name}` at attempt `{N}`
-- **THEN** the directory `wt/orchestration/smoke-screenshots/{name}/attempt-{N}/` SHALL be created via `mkdir -p`
+- **THEN** the directory `set/orchestration/smoke-screenshots/{name}/attempt-{N}/` SHALL be created via `mkdir -p`
 - **AND** previous attempt subdirectories SHALL be preserved (NOT overwritten) — failure screenshots are the most diagnostic artifacts
 
 ### Requirement: Per-change E2E artifact collection
@@ -28,7 +28,7 @@ After pre-merge E2E tests run in a worktree, the orchestrator SHALL collect Play
 #### Scenario: Successful artifact collection from worktree
 - **WHEN** the per-change E2E gate completes (pass or fail) for change `{name}`
 - **THEN** the orchestrator SHALL check for `test-results/` in the worktree path
-- **AND** if found, copy its contents to `wt/orchestration/e2e-screenshots/{name}/` in the main project
+- **AND** if found, copy its contents to `set/orchestration/e2e-screenshots/{name}/` in the main project
 - **AND** count `.png` files in the directory
 - **AND** update the change state with `e2e_screenshot_dir` and `e2e_screenshot_count`
 

@@ -28,7 +28,7 @@ Health checks, scoped smoke fix agent, and phase-end E2E orchestration.
 #### VS-PHASE-E2E — Phase-end E2E tests
 - Run Playwright E2E on main branch after phase completion
 - Random port allocation (base + random offset)
-- Screenshot collection to wt/orchestration/e2e-screenshots/cycle-N/
+- Screenshot collection to set/orchestration/e2e-screenshots/cycle-N/
 - Store results in state.phase_e2e_results array
 - Cleanup dev server processes after run
 - Copy Playwright test-results/ artifacts

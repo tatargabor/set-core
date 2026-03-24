@@ -9,12 +9,12 @@ The system SHALL accept an arbitrary markdown specification document as the prim
 #### Scenario: Explicit spec file path
 - **WHEN** the user runs `set-orchestrate --spec docs/v1-minishop.md`
 - **THEN** the system SHALL set `INPUT_MODE="digest"` and `INPUT_PATH` to the absolute file path
-- **AND** auto-trigger `cmd_digest` to produce `wt/orchestration/digest/` output before decomposition
+- **AND** auto-trigger `cmd_digest` to produce `set/orchestration/digest/` output before decomposition
 
 #### Scenario: Explicit spec directory path
 - **WHEN** the user runs `set-orchestrate --spec docs/`
 - **THEN** the system SHALL set `INPUT_MODE="digest"` and `INPUT_PATH` to the absolute directory path
-- **AND** auto-trigger `cmd_digest` to produce `wt/orchestration/digest/` output before decomposition
+- **AND** auto-trigger `cmd_digest` to produce `set/orchestration/digest/` output before decomposition
 
 #### Scenario: Spec file not found
 - **WHEN** the user provides `--spec <path>` and the file does not exist

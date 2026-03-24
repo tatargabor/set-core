@@ -7,7 +7,7 @@ Short-name spec resolution for the `--spec` flag, enabling `set-orchestrate --sp
 ### Requirement: Short-name resolution in find_input()
 
 When `--spec <value>` is provided and the literal path doesn't exist as a file:
-1. Try `wt/orchestration/specs/<value>.md`
+1. Try `set/orchestration/specs/<value>.md`
 2. If found, use it as the spec path
 3. If not found, error with both paths checked
 
@@ -15,7 +15,7 @@ The resolved absolute path (not the short name) must be stored in `INPUT_PATH` s
 
 ### Requirement: Subdirectory resolution
 
-Short names support subdirectories: `--spec archive/v6` resolves to `wt/orchestration/specs/archive/v6.md`. This allows referencing archived specs without typing the full path.
+Short names support subdirectories: `--spec archive/v6` resolves to `set/orchestration/specs/archive/v6.md`. This allows referencing archived specs without typing the full path.
 
 ### Requirement: Literal path priority
 

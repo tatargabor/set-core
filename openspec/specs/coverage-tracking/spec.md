@@ -9,7 +9,7 @@ The planner SHALL include `spec_files[]` and `requirements[]` arrays in each cha
 
 #### Scenario: Coverage file populated after planning
 - **WHEN** plan generation completes
-- **THEN** `wt/orchestration/digest/coverage.json` is updated with every requirement mapped to its change, status `planned`
+- **THEN** `set/orchestration/digest/coverage.json` is updated with every requirement mapped to its change, status `planned`
 - **AND** cross-cutting requirements include `also_affects` listing other changes that must incorporate them
 
 #### Scenario: Plan validation checks new fields

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Migrate review-findings.jsonl from past E2E runs into template learnings JSONL.
 
-Scans ~/.local/share/set-core/e2e-runs/*/wt/orchestration/review-findings.jsonl,
+Scans ~/.local/share/set-core/e2e-runs/*/set/orchestration/review-findings.jsonl,
 extracts CRITICAL/HIGH patterns, deduplicates, classifies via profile, and writes
 to ~/.config/set-core/review-learnings/<profile>.jsonl.
 

@@ -12,7 +12,7 @@ Most projects work with specification documents:
 
 ```bash
 set-orchestrate --spec docs/v3.md plan
-set-orchestrate --spec v12 plan          # shortname: wt/orchestration/specs/v12.md
+set-orchestrate --spec v12 plan          # shortname: set/orchestration/specs/v12.md
 set-orchestrate --spec docs/ plan         # entire directory
 ```
 

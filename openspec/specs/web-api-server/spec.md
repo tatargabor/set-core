@@ -57,10 +57,10 @@ The server SHALL parse the claude subprocess stdout as newline-delimited JSON (s
 - **THEN** the server sends `{ "type": "assistant_done" }` to the client
 
 ### Requirement: Coverage report endpoint
-The server SHALL expose `GET /api/{project}/coverage-report` which reads and returns the content of `wt/orchestration/spec-coverage-report.md` from the project directory.
+The server SHALL expose `GET /api/{project}/coverage-report` which reads and returns the content of `set/orchestration/spec-coverage-report.md` from the project directory.
 
 #### Scenario: Report file exists
-- **WHEN** the file `wt/orchestration/spec-coverage-report.md` exists in the resolved project path
+- **WHEN** the file `set/orchestration/spec-coverage-report.md` exists in the resolved project path
 - **THEN** the endpoint returns `{"exists": true, "content": "<file content>"}` with HTTP 200
 
 #### Scenario: Report file missing

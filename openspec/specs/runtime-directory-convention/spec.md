@@ -14,8 +14,8 @@
 ## OUT OF SCOPE
 - Changing the behavior of any runtime file (only paths change)
 - Removing the `.claude/` directory (it keeps config: settings, commands, skills, rules, hooks, agents)
-- Changing `wt/orchestration/orchestration.yaml` location (config stays in `wt/`)
-- Changing `wt/orchestration/specs/` location (specs are artifacts, not runtime)
+- Changing `set/orchestration/orchestration.yaml` location (config stays in `wt/`)
+- Changing `set/orchestration/specs/` location (specs are artifacts, not runtime)
 - Moving memory or metrics (already in `~/.local/share/set-core/`)
 - Moving daemon PID/socket from `/tmp/` (OS convention)
 
@@ -183,7 +183,7 @@ When `SetRuntime` initializes and the old-style directory exists (`~/.local/shar
 - **THEN** no migration occurs
 
 ### Requirement: Watcher discovers paths via SetRuntime
-The watcher SHALL use `SetRuntime` to discover state and log file paths instead of hardcoding `wt/orchestration/` or project-root relative paths. Legacy fallback paths SHALL remain for backward compatibility.
+The watcher SHALL use `SetRuntime` to discover state and log file paths instead of hardcoding `set/orchestration/` or project-root relative paths. Legacy fallback paths SHALL remain for backward compatibility.
 
 #### Scenario: State file discovery
 - **WHEN** the watcher looks for a project's state file

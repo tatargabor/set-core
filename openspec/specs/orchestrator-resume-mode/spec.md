@@ -15,7 +15,7 @@ When sentinel detects `done`/`stopped` and decides to clean state, backup the st
 Add `set-orchestrate resume` as an alias for `start` with auto-resume forced (skip planning even if plan file is stale).
 
 ### REQ-ORM-05: Directives file preservation
-On resume, read directives from `wt/orchestration/directives.json` (written by previous start). Error if missing.
+On resume, read directives from `set/orchestration/directives.json` (written by previous start). Error if missing.
 
 ## Scenarios
 

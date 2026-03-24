@@ -13,7 +13,7 @@ When a change passes all verify gates and reaches "done" status, it SHALL always
 The default `merge_policy` in Directives SHALL be "eager". The config validator SHALL accept "eager" and "checkpoint" as valid values. "manual" is removed.
 
 #### Scenario: No merge_policy in config uses eager
-- **WHEN** `wt/orchestration/config.yaml` does not specify `merge_policy`
+- **WHEN** `set/orchestration/config.yaml` does not specify `merge_policy`
 - **THEN** the orchestrator uses "eager" (merge immediately when gates pass)
 
 #### Scenario: Manual policy rejected
@@ -25,4 +25,4 @@ The web template `config.yaml` SHALL NOT include `merge_policy`, `checkpoint_aut
 
 #### Scenario: Fresh project has no checkpoint config
 - **WHEN** `set-project init --project-type web --template nextjs` creates a project
-- **THEN** `wt/orchestration/config.yaml` does not contain checkpoint-related keys
+- **THEN** `set/orchestration/config.yaml` does not contain checkpoint-related keys

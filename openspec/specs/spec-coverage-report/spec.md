@@ -18,7 +18,7 @@
 #### Scenario: Report regenerated at terminal state
 - **WHEN** the orchestration reaches a terminal state (done, time_limit, total_failure, dep_blocked, replan_limit, replan_exhausted)
 - **THEN** `_send_terminal_notifications()` SHALL call report regeneration before sending the summary email
-- **AND** the regenerated report SHALL overwrite the initial plan-time report at `wt/orchestration/spec-coverage-report.md`
+- **AND** the regenerated report SHALL overwrite the initial plan-time report at `set/orchestration/spec-coverage-report.md`
 
 #### Scenario: Backward compatibility when state_file is not provided
 - **WHEN** `generate_coverage_report()` is called without `state_file` (e.g., during plan validation)

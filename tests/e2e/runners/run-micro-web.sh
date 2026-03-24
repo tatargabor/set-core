@@ -189,7 +189,7 @@ ATTRS
     success "set-core deployed (configs, rules, CLAUDE.md)"
 
     step "Orchestration config"
-    mkdir -p wt/orchestration
+    mkdir -p set/orchestration
     cat > set/orchestration/config.yaml << 'YAML'
 # Orchestration config for Micro-Web E2E
 default_model: sonnet

@@ -17,8 +17,8 @@ When a spec change is detected, the sentinel MUST reset all orchestration state 
 
 **Acceptance Criteria:**
 - [ ] Removes `orchestration-state.json`, events file, lock files
-- [ ] Removes `wt/orchestration/digest/` directory
-- [ ] Removes `wt/orchestration/plan.json`
+- [ ] Removes `set/orchestration/digest/` directory
+- [ ] Removes `set/orchestration/plan.json`
 - [ ] Does NOT modify main branch or git commits
 - [ ] Logs clear message with old and new spec paths
 

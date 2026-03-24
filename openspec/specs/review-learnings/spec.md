@@ -9,7 +9,7 @@ Cross-run review findings persistence with two-layer storage (template vs projec
 - Normalize patterns: strip severity tags, first 60 chars
 - Classify via Sonnet into `template` or `project` scope (single batch call)
 - Template patterns → `~/.config/set-core/review-learnings/<profile-name>.jsonl` (with flock)
-- Project patterns → `<project>/wt/orchestration/review-learnings.jsonl` (committed to main)
+- Project patterns → `<project>/set/orchestration/review-learnings.jsonl` (committed to main)
 - Deduplicate against existing entries by normalized pattern text
 - Increment `count` and update `last_seen` for existing patterns
 - JSONL entry: `{"pattern", "severity", "scope", "count", "last_seen", "source_changes": [], "fix_hint"}`
@@ -44,7 +44,7 @@ Cross-run review findings persistence with two-layer storage (template vs projec
 
 #### RL-SCOPE — Two-layer storage isolation
 - Template JSONL: `~/.config/set-core/review-learnings/<profile-name>.jsonl` — shared across projects
-- Project JSONL: `<project>/wt/orchestration/review-learnings.jsonl` — committed to main
+- Project JSONL: `<project>/set/orchestration/review-learnings.jsonl` — committed to main
 - Profile name derived from `profile.info.name`; NullProfile uses "core"
 - Web template patterns never appear in non-web dispatches
 - Template JSONL uses `fcntl.flock(LOCK_EX)` for concurrent access from multiple projects

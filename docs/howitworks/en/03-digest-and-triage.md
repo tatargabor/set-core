@@ -59,7 +59,7 @@ If a previous digest exists, the system preserves existing REQ-XXX identifiers s
 
 ## Digest Output Files
 
-The digest writes to the `wt/orchestration/digest/` directory:
+The digest writes to the `set/orchestration/digest/` directory:
 
 | File | Contents |
 |------|---------|

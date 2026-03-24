@@ -21,7 +21,7 @@
 - **AND** never use the caller session's project name
 
 ### REQ-4: Config template default model
-- **GIVEN** `run-complex.sh` generates `wt/orchestration/config.yaml`
+- **GIVEN** `run-complex.sh` generates `set/orchestration/config.yaml`
 - **WHEN** a new E2E project is scaffolded
 - **THEN** config SHALL include `default_model: opus` with a comment showing `opus-1m` as alternative
 

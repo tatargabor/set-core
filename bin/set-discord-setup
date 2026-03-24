@@ -60,7 +60,7 @@ _get_field() {
 _find_orch_config() {
     local project_path="${1:-.}"
     for candidate in \
-        "$project_path/wt/orchestration/config.yaml" \
+        "$project_path/set/orchestration/config.yaml" \
         "$project_path/.claude/orchestration.yaml"; do
         if [[ -f "$candidate" ]]; then
             echo "$candidate"

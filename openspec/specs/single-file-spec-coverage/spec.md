@@ -11,7 +11,7 @@ When the decompose agent processes a single-file spec (no digest directory), the
 - **AND** entries intentionally excluded SHALL have `change: null`
 
 #### Scenario: Source items absent in digest mode
-- **WHEN** the decompose agent processes a spec with an existing digest (`wt/orchestration/digest/`)
+- **WHEN** the decompose agent processes a spec with an existing digest (`set/orchestration/digest/`)
 - **THEN** `source_items` SHALL be omitted from the plan (digest mode uses `requirements.json` instead)
 
 #### Scenario: Validate source items in non-digest mode

@@ -101,7 +101,7 @@ echo "--- set_find_config ---"
 test_start "set_find_config orchestration — new location wins"
 (
     cd "$TMPDIR"
-    mkdir -p wt/orchestration .claude
+    mkdir -p set/orchestration .claude
     echo "test: true" > set/orchestration/config.yaml
     echo "test: false" > .claude/orchestration.yaml
     result=$(set_find_config orchestration)

@@ -28,4 +28,4 @@ Backend serves screenshot file listings and images.
 #### Scenario: Serve screenshot image
 - **WHEN** a screenshot image path is requested via the static mount
 - **THEN** the PNG file is served with correct content-type
-- **THEN** paths outside the project's `wt/orchestration/` directory are rejected
+- **THEN** paths outside the project's `set/orchestration/` directory are rejected

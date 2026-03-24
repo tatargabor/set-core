@@ -4,8 +4,8 @@
 The dispatcher SHALL resolve the spec base directory from `index.json`'s `spec_base_dir` field. This absolute path is used to locate raw spec files for copying.
 
 #### Scenario: Spec base dir read from index.json
-- **WHEN** `dispatch_change()` runs and `wt/orchestration/digest/index.json` exists
-- **THEN** `spec_base_dir` is read via `jq -r '.spec_base_dir' wt/orchestration/digest/index.json`
+- **WHEN** `dispatch_change()` runs and `set/orchestration/digest/index.json` exists
+- **THEN** `spec_base_dir` is read via `jq -r '.spec_base_dir' set/orchestration/digest/index.json`
 - **AND** it is used as the root for resolving `spec_files[]` relative paths
 
 #### Scenario: Missing spec file at dispatch time
@@ -46,12 +46,12 @@ The `.claude/spec-context/` directory SHALL be treated as read-only reference ma
 The dispatcher SHALL copy `conventions.json` and `data-definitions.md` from the digest directory to `.claude/spec-context/` in **every** dispatched worktree, regardless of the change's `spec_files[]` contents.
 
 #### Scenario: Conventions available in all worktrees
-- **WHEN** `dispatch_change()` runs for any change and `wt/orchestration/digest/conventions.json` exists
+- **WHEN** `dispatch_change()` runs for any change and `set/orchestration/digest/conventions.json` exists
 - **THEN** `.claude/spec-context/conventions.json` exists in the worktree
 - **AND** `.claude/spec-context/data-definitions.md` exists in the worktree (if present in digest)
 
 #### Scenario: No conventions in digest (simple spec)
-- **WHEN** `dispatch_change()` runs and `wt/orchestration/digest/conventions.json` does not exist
+- **WHEN** `dispatch_change()` runs and `set/orchestration/digest/conventions.json` does not exist
 - **THEN** dispatch proceeds without copying conventions (no error)
 
 ### Requirement: Cross-cutting requirements in proposal

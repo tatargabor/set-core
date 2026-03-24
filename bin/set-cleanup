@@ -66,7 +66,7 @@ fi
 STATE_FILE="${WT_STATE_FILE:-}"
 if [[ -z "$STATE_FILE" || ! -f "$STATE_FILE" ]]; then
     # Try legacy locations
-    for candidate in "wt/orchestration/orchestration-state.json" "orchestration-state.json"; do
+    for candidate in "set/orchestration/orchestration-state.json" "wt/orchestration/orchestration-state.json" "orchestration-state.json"; do
         if [[ -f "$candidate" ]]; then
             STATE_FILE="$candidate"
             break

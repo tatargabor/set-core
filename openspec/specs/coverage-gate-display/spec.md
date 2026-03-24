@@ -47,7 +47,7 @@ GateDetail SHALL include a "Spec Coverage" expandable section when `spec_coverag
 - **AND** if coverage report content is available, it renders as formatted text
 
 ### Requirement: Coverage report API endpoint
-The API SHALL expose `GET /api/{project}/coverage-report` which returns the content of `wt/orchestration/spec-coverage-report.md`. If the file does not exist, return `{"exists": false}`.
+The API SHALL expose `GET /api/{project}/coverage-report` which returns the content of `set/orchestration/spec-coverage-report.md`. If the file does not exist, return `{"exists": false}`.
 
 #### Scenario: Report exists
 - **WHEN** `spec-coverage-report.md` exists in the project's orchestration directory

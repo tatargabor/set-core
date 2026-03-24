@@ -61,7 +61,7 @@ globs:
 
 ### D3: Rule candidates stored as JSON file, not in memory
 
-Candidates are written to `wt/orchestration/rule-candidates.json` after analysis. The web UI reads them via API. Accepted/dismissed status is tracked in this file.
+Candidates are written to `set/orchestration/rule-candidates.json` after analysis. The web UI reads them via API. Accepted/dismissed status is tracked in this file.
 
 **Why:** Memory is good for cross-run recall but not for structured state with accept/dismiss workflows. A JSON file is simpler, inspectable, and doesn't pollute the memory system.
 

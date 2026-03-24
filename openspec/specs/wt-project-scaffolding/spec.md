@@ -6,16 +6,16 @@
 #### Scenario: Fresh project init
 - **WHEN** `set-project init` runs in a project with no `wt/` directory
 - **THEN** the following directories are created:
-  - `wt/orchestration/`
-  - `wt/orchestration/runs/`
-  - `wt/orchestration/plans/`
-  - `wt/knowledge/`
-  - `wt/knowledge/patterns/`
-  - `wt/knowledge/lessons/`
+  - `set/orchestration/`
+  - `set/orchestration/runs/`
+  - `set/orchestration/plans/`
+  - `set/knowledge/`
+  - `set/knowledge/patterns/`
+  - `set/knowledge/lessons/`
   - `wt/requirements/`
-  - `wt/plugins/`
-  - `wt/.work/`
-- **AND** `wt/.work/` is added to the project's `.gitignore` if not already present
+  - `set/plugins/`
+  - `set/.work/`
+- **AND** `set/.work/` is added to the project's `.gitignore` if not already present
 
 #### Scenario: Idempotent scaffolding
 - **WHEN** `set-project init` runs in a project that already has `wt/` with some subdirectories
@@ -25,20 +25,20 @@
 `set-project init` SHALL detect set-core files in legacy locations and inform the user about migration.
 
 #### Scenario: Legacy orchestration config detected
-- **WHEN** `.claude/orchestration.yaml` exists but `wt/orchestration/config.yaml` does not
+- **WHEN** `.claude/orchestration.yaml` exists but `set/orchestration/config.yaml` does not
 - **THEN** the init output displays a migration suggestion:
   ```
   Found legacy files:
-    .claude/orchestration.yaml → wt/orchestration/config.yaml
+    .claude/orchestration.yaml → set/orchestration/config.yaml
   Run 'set-project migrate' to move them.
   ```
 
 #### Scenario: Legacy project-knowledge detected
-- **WHEN** `project-knowledge.yaml` exists at project root but `wt/knowledge/project-knowledge.yaml` does not
+- **WHEN** `project-knowledge.yaml` exists at project root but `set/knowledge/project-knowledge.yaml` does not
 - **THEN** the init output includes it in the migration suggestion list
 
 #### Scenario: Legacy run logs detected
-- **WHEN** `docs/orchestration-runs/` exists but `wt/orchestration/runs/` is empty or missing
+- **WHEN** `docs/orchestration-runs/` exists but `set/orchestration/runs/` is empty or missing
 - **THEN** the init output includes run logs in the migration suggestion list
 
 #### Scenario: No legacy files
@@ -51,17 +51,17 @@
 #### Scenario: Migrate orchestration config
 - **WHEN** user runs `set-project migrate`
 - **AND** `.claude/orchestration.yaml` exists
-- **THEN** the file is moved to `wt/orchestration/config.yaml` via `git mv`
+- **THEN** the file is moved to `set/orchestration/config.yaml` via `git mv`
 
 #### Scenario: Migrate project-knowledge
 - **WHEN** user runs `set-project migrate`
 - **AND** `project-knowledge.yaml` exists at project root
-- **THEN** the file is moved to `wt/knowledge/project-knowledge.yaml` via `git mv`
+- **THEN** the file is moved to `set/knowledge/project-knowledge.yaml` via `git mv`
 
 #### Scenario: Migrate run logs
 - **WHEN** user runs `set-project migrate`
 - **AND** `docs/orchestration-runs/` contains files
-- **THEN** all files are moved to `wt/orchestration/runs/` via `git mv`
+- **THEN** all files are moved to `set/orchestration/runs/` via `git mv`
 - **AND** the empty `docs/orchestration-runs/` directory is removed
 
 #### Scenario: Already migrated

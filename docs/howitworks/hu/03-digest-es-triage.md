@@ -59,7 +59,7 @@ Ha már létezik korábbi digest, a rendszer megtartja a meglévő REQ-XXX azono
 
 ## A digest kimeneti fájljai
 
-A digest a `wt/orchestration/digest/` könyvtárba ír:
+A digest a `set/orchestration/digest/` könyvtárba ír:
 
 | Fájl | Tartalom |
 |------|---------|

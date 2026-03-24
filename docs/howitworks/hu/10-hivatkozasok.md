@@ -201,7 +201,7 @@ A hookak lehetővé teszik, hogy a projekt-specifikus logika beépüljön a pipe
 ├── orchestration.yaml          ← konfiguráció
 └── orchestration.log           ← futási napló
 
-wt/orchestration/
+set/orchestration/
 ├── digest/
 │   ├── requirements.json       ← REQ-XXX azonosítók
 │   ├── phases.json             ← fázis struktúra

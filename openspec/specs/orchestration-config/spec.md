@@ -4,20 +4,20 @@
 Configuration system for orchestration directives. Supports YAML config files with directive precedence chain (CLI flags > config file > document directives > defaults).
 ## Requirements
 ### Requirement: Standalone orchestration config file
-The system SHALL support orchestration directives in `wt/orchestration/config.yaml` as the primary location, with backward-compatible fallback to `.claude/orchestration.yaml`.
+The system SHALL support orchestration directives in `set/orchestration/config.yaml` as the primary location, with backward-compatible fallback to `.claude/orchestration.yaml`.
 
 #### Scenario: New location config loading
-- **WHEN** `wt/orchestration/config.yaml` exists in the project root
+- **WHEN** `set/orchestration/config.yaml` exists in the project root
 - **THEN** the system SHALL parse it as YAML and extract directive values
 
 #### Scenario: Fallback to legacy location
-- **WHEN** `wt/orchestration/config.yaml` does not exist
+- **WHEN** `set/orchestration/config.yaml` does not exist
 - **AND** `.claude/orchestration.yaml` exists
 - **THEN** the system SHALL use `.claude/orchestration.yaml`
 
 #### Scenario: New location takes precedence
-- **WHEN** both `wt/orchestration/config.yaml` and `.claude/orchestration.yaml` exist
-- **THEN** the system SHALL use `wt/orchestration/config.yaml`
+- **WHEN** both `set/orchestration/config.yaml` and `.claude/orchestration.yaml` exist
+- **THEN** the system SHALL use `set/orchestration/config.yaml`
 
 #### Scenario: Config file format
 - **WHEN** the config file is parsed
@@ -214,7 +214,7 @@ The system SHALL provide a `find_input()` function that resolves the orchestrati
 - **THEN** mode is `"brief"` and path is the brief file path
 
 #### Scenario: Short-name spec resolution
-- **WHEN** `--spec v6-smoke` is given and `wt/orchestration/specs/v6-smoke.md` exists
+- **WHEN** `--spec v6-smoke` is given and `set/orchestration/specs/v6-smoke.md` exists
 - **THEN** mode is `"digest"` and path resolves to that file
 
 ### Requirement: Test command auto-detection

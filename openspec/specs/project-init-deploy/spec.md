@@ -70,16 +70,16 @@ When `set-project init` runs, it SHALL create the `wt/` directory structure in t
 #### Scenario: Scaffold on first init
 - **WHEN** `set-project init` runs in a project without a `wt/` directory
 - **THEN** the following directories are created:
-  - `wt/orchestration/`
-  - `wt/orchestration/runs/`
-  - `wt/orchestration/plans/`
-  - `wt/knowledge/`
-  - `wt/knowledge/patterns/`
-  - `wt/knowledge/lessons/`
+  - `set/orchestration/`
+  - `set/orchestration/runs/`
+  - `set/orchestration/plans/`
+  - `set/knowledge/`
+  - `set/knowledge/patterns/`
+  - `set/knowledge/lessons/`
   - `wt/requirements/`
-  - `wt/plugins/`
-  - `wt/.work/`
-- **AND** `wt/.work/` is added to `.gitignore` if not already present
+  - `set/plugins/`
+  - `set/.work/`
+- **AND** `set/.work/` is added to `.gitignore` if not already present
 
 #### Scenario: Scaffold on re-init
 - **WHEN** `set-project init` runs in a project that already has a `wt/` directory

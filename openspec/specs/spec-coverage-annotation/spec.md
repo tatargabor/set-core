@@ -6,7 +6,7 @@ After `validate_plan()` succeeds, the planner SHALL generate a spec coverage ann
 #### Scenario: All requirements covered by changes
 - **WHEN** every digest requirement appears in at least one change's `requirements[]` or `also_affects_reqs[]`
 - **THEN** the coverage report SHALL mark each requirement as `[COVERED by <change-name>]`
-- **AND** the report SHALL be written to `wt/orchestration/spec-coverage-report.md`
+- **AND** the report SHALL be written to `set/orchestration/spec-coverage-report.md`
 
 #### Scenario: Some requirements deferred
 - **WHEN** a requirement is not assigned to any change but appears in `deferred_requirements[]`

@@ -107,7 +107,7 @@ The audit SHALL produce structured logs at multiple levels.
 
 #### Scenario: Debug log
 - **WHEN** audit completes
-- **THEN** write full audit prompt and raw LLM response to `wt/orchestration/audit-cycle-N.log`
+- **THEN** write full audit prompt and raw LLM response to `set/orchestration/audit-cycle-N.log`
 
 ### Requirement: HTML report section
 The orchestration HTML report SHALL include an audit results section.

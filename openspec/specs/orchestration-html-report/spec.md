@@ -15,7 +15,7 @@ The report SHALL display real-time execution progress.
 #### Scenario: Smoke column with screenshot indicator
 - **WHEN** a change has `smoke_screenshot_count > 0` in state.json
 - **THEN** the smoke column SHALL display the pass/fail icon followed by a camera icon linking to the screenshot directory
-- **AND** the link SHALL point to `../../wt/orchestration/smoke-screenshots/{change-name}/`
+- **AND** the link SHALL point to `../../set/orchestration/smoke-screenshots/{change-name}/`
 
 #### Scenario: Smoke skip_merged display
 - **WHEN** a change has `smoke_result: "skip_merged"`
@@ -28,7 +28,7 @@ The report SHALL display real-time execution progress.
 #### Scenario: E2E column with screenshot indicator
 - **WHEN** a change has `e2e_screenshot_count > 0` in state.json
 - **THEN** the E2E column SHALL display the pass/fail icon followed by a camera icon linking to the screenshot directory
-- **AND** the link SHALL point to `../../wt/orchestration/e2e-screenshots/{change-name}/`
+- **AND** the link SHALL point to `../../set/orchestration/e2e-screenshots/{change-name}/`
 
 #### Scenario: Active issues listing
 - **WHEN** changes have non-success states (verify-failed, stalled, merge-blocked, failed)

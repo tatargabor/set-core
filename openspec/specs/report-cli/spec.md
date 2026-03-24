@@ -7,7 +7,7 @@ CLI bridge subcommands for report generation, enabling bash wrapper to call Pyth
 ### CLI Subcommand
 
 - `set-orch-core report generate` subcommand
-- Flags: `--state FILE` (state JSON path), `--plan FILE` (plan JSON path), `--digest-dir DIR` (digest directory), `--output FILE` (output HTML path, default: `wt/orchestration/report.html`)
+- Flags: `--state FILE` (state JSON path), `--plan FILE` (plan JSON path), `--digest-dir DIR` (digest directory), `--output FILE` (output HTML path, default: `set/orchestration/report.html`)
 - Calls `reporter.generate_report()` with provided paths
 - Exit code 0 on success, 1 on error
 - Prints output path to stdout on success

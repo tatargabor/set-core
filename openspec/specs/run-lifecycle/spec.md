@@ -3,7 +3,7 @@
 ## Requirements
 
 ### REQ-RLC-001: Archive previous run on new startup
-When the sentinel starts and finds a terminal state (done/stopped), it must archive the previous run's artifacts to `wt/orchestration/runs/<timestamp>/` before cleaning up.
+When the sentinel starts and finds a terminal state (done/stopped), it must archive the previous run's artifacts to `set/orchestration/runs/<timestamp>/` before cleaning up.
 
 **Acceptance Criteria:**
 - [ ] AC1: State file, events, coverage, review findings are copied to timestamped archive dir
@@ -40,6 +40,6 @@ Review findings must not accumulate across runs.
 Previous runs are preserved in a structured directory for post-mortem analysis.
 
 **Acceptance Criteria:**
-- [ ] AC1: `wt/orchestration/runs/` contains one dir per archived run
+- [ ] AC1: `set/orchestration/runs/` contains one dir per archived run
 - [ ] AC2: Each run dir has state.json, events.jsonl, coverage.json, meta.json
 - [ ] AC3: Timestamp format is ISO-8601 safe for filenames (colons replaced)

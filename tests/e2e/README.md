@@ -35,7 +35,7 @@ Each runner:
 1. Creates a project at `~/.local/share/set-core/e2e-runs/<name>-runN/`
 2. Copies the spec from `scaffolds/<name>/docs/`
 3. Runs `set-project init --project-type web --template nextjs`
-4. Generates `wt/orchestration/config.yaml` with env_vars, discord, gate config
+4. Generates `set/orchestration/config.yaml` with env_vars, discord, gate config
 5. Starts the sentinel (or prints instructions)
 
 ## What the Pipeline Does

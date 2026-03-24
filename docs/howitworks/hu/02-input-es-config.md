@@ -12,7 +12,7 @@ A legtöbb projekt specifikációs dokumentumokkal dolgozik:
 
 ```bash
 set-orchestrate --spec docs/v3.md plan
-set-orchestrate --spec v12 plan          # rövidnév: wt/orchestration/specs/v12.md
+set-orchestrate --spec v12 plan          # rövidnév: set/orchestration/specs/v12.md
 set-orchestrate --spec docs/ plan         # egész könyvtár
 ```
 

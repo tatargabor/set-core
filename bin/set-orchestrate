@@ -379,7 +379,7 @@ TESTEOF
 # ─── Spec Management ─────────────────────────────────────────────────
 
 cmd_specs() {
-    local specs_dir="wt/orchestration/specs"
+    local specs_dir="set/orchestration/specs"
     local subcmd="${1:-list}"
     shift 2>/dev/null || true
 
@@ -540,7 +540,7 @@ cmd_reset() {
             return 1
         fi
 
-        # Archive previous run to wt/orchestration/runs/ before destructive reset
+        # Archive previous run to set/orchestration/runs/ before destructive reset
         if command -v set-sentinel >/dev/null 2>&1; then
             # Source sentinel functions for archive_previous_run
             local _sentinel_script
@@ -549,13 +549,13 @@ cmd_reset() {
                 # Archive by copying state+events+coverage to timestamped dir
                 local _ts _archive_dir
                 _ts=$(date -u +"%Y-%m-%dT%H-%M-%S")
-                _archive_dir="${WT_RUNS_DIR:-wt/orchestration/runs}/$_ts"
+                _archive_dir="${WT_RUNS_DIR:-set/orchestration/runs}/$_ts"
                 mkdir -p "$_archive_dir"
                 cp "$STATE_FILENAME" "$_archive_dir/state.json" 2>/dev/null || true
                 local _events="${STATE_FILENAME%orchestration-state.json}orchestration-state-events.jsonl"
                 [[ -f "$_events" ]] && cp "$_events" "$_archive_dir/events.jsonl"
-                [[ -f "${WT_DIGEST_DIR:-wt/orchestration/digest}/coverage.json" ]] && cp "${WT_DIGEST_DIR:-wt/orchestration/digest}/coverage.json" "$_archive_dir/coverage.json"
-                [[ -f "${WT_ORCHESTRATION_DIR:-wt/orchestration}/review-findings.jsonl" ]] && cp "${WT_ORCHESTRATION_DIR:-wt/orchestration}/review-findings.jsonl" "$_archive_dir/review-findings.jsonl"
+                [[ -f "${WT_DIGEST_DIR:-set/orchestration/digest}/coverage.json" ]] && cp "${WT_DIGEST_DIR:-set/orchestration/digest}/coverage.json" "$_archive_dir/coverage.json"
+                [[ -f "${WT_ORCHESTRATION_DIR:-set/orchestration}/review-findings.jsonl" ]] && cp "${WT_ORCHESTRATION_DIR:-set/orchestration}/review-findings.jsonl" "$_archive_dir/review-findings.jsonl"
                 echo "Archived previous run to $_archive_dir"
             fi
         fi
@@ -619,7 +619,7 @@ Commands:
   approve [--merge]      Approve a checkpoint (--merge: also flush merge queue)
   digest --spec <path>   Generate structured digest from multi-file spec directory
   coverage               Show requirement coverage report
-  specs [list|show|archive] Manage spec documents in wt/orchestration/specs/
+  specs [list|show|archive] Manage spec documents in set/orchestration/specs/
   events                 Query event log (--type, --change, --since, --last N, --json)
   tui                    Launch live terminal dashboard (requires textual)
   reset [--partial|--full] Reset orchestration state (--partial: failed→pending, --full: all)
@@ -632,12 +632,12 @@ Input Resolution (when no --spec or --brief given):
 
 Spec Resolution (--spec <name>):
   1. Literal path (e.g., docs/v3.md)
-  2. wt/orchestration/specs/<name>.md (short-name, e.g., --spec v12)
+  2. set/orchestration/specs/<name>.md (short-name, e.g., --spec v12)
 
 Config: .claude/orchestration.yaml (optional, overrides in-document directives)
 
 Examples:
-  set-orchestrate --spec v12 plan                       # Plan from wt/orchestration/specs/v12.md
+  set-orchestrate --spec v12 plan                       # Plan from set/orchestration/specs/v12.md
   set-orchestrate --spec docs/v3.md plan                # Plan from spec
   set-orchestrate --spec docs/v3.md --phase 1 plan      # Plan phase 1 only
   set-orchestrate plan                                   # Plan from project-brief.md
