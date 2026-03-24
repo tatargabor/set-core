@@ -384,13 +384,14 @@ class IssueManager:
 
     def register(self, **kwargs) -> Optional[Issue]:
         """Register a new issue. Returns None if muted or duplicate."""
+        severity_hint = kwargs.pop("severity_hint", "unknown")
         mute = self.registry.matches_mute(
             kwargs.get("error_summary", ""),
             kwargs.get("error_detail", ""),
         )
         if not self.policy.should_register(
             source=kwargs.get("source", ""),
-            severity_hint="unknown",
+            severity_hint=severity_hint,
             error_summary=kwargs.get("error_summary", ""),
             mute_match=mute,
         ):
