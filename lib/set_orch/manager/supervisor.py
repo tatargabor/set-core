@@ -91,6 +91,7 @@ class ProjectSupervisor:
         self.config = config
         self.sentinel_pid: Optional[int] = None
         self.sentinel_started_at: Optional[str] = None
+        self.sentinel_spec: Optional[str] = None
         self.sentinel_crash_count: int = 0
         self.orchestrator_pid: Optional[int] = None
         self.orchestrator_started_at: Optional[str] = None
@@ -144,6 +145,7 @@ class ProjectSupervisor:
             self._sentinel_proc = proc
             self.sentinel_pid = proc.pid
             self.sentinel_started_at = now_iso()
+            self.sentinel_spec = spec
             self.sentinel_crash_count = 0
             logger.info(f"[{self.config.name}] Sentinel started, PID={proc.pid}")
             return proc.pid
@@ -158,6 +160,7 @@ class ProjectSupervisor:
             logger.info(f"[{self.config.name}] Sentinel stopped (PID={self.sentinel_pid})")
         self.sentinel_pid = None
         self.sentinel_started_at = None
+        self.sentinel_spec = None
         self._sentinel_proc = None
 
     def start_orchestration(self, plan_file: Optional[str] = None) -> int:
@@ -233,6 +236,7 @@ class ProjectSupervisor:
                 "pid": self.sentinel_pid,
                 "alive": _is_alive(self.sentinel_pid),
                 "started_at": self.sentinel_started_at,
+                "spec": self.sentinel_spec,
                 "crash_count": self.sentinel_crash_count,
             },
             "orchestrator": {

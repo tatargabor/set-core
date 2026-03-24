@@ -28,6 +28,7 @@ export default function SentinelPage({ project }: Props) {
           alive={status?.sentinel.alive ?? false}
           startedAt={status?.sentinel.started_at}
           crashCount={status?.sentinel.crash_count}
+          activeSpec={status?.sentinel.spec}
           specPaths={specPaths}
         />
       </div>

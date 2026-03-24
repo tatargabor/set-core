@@ -63,6 +63,7 @@ export default function ProjectDetail() {
           alive={project.sentinel.alive}
           startedAt={project.sentinel.started_at}
           crashCount={project.sentinel.crash_count}
+          activeSpec={project.sentinel.spec}
           specPaths={specPaths}
         />
       </div>

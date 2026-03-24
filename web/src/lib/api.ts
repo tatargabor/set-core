@@ -657,7 +657,7 @@ export interface ManagerProjectStatus {
   name: string
   mode: string
   path: string
-  sentinel: { pid: number | null; alive: boolean; started_at: string | null; crash_count: number }
+  sentinel: { pid: number | null; alive: boolean; started_at: string | null; spec: string | null; crash_count: number }
   orchestrator: { pid: number | null; alive: boolean; started_at: string | null }
   issue_stats?: IssueStats
 }

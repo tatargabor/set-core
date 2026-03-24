@@ -6,6 +6,7 @@ interface Props {
   alive: boolean
   startedAt?: string | null
   crashCount?: number
+  activeSpec?: string | null  // spec the sentinel was started with (from API)
   specPaths: string[]
   onAction?: () => void
 }
@@ -21,19 +22,11 @@ function formatUptime(startedAt: string): string {
   return `${Math.floor(h / 24)}d`
 }
 
-export function SentinelControl({ project, alive, startedAt, crashCount, specPaths, onAction }: Props) {
+export function SentinelControl({ project, alive, startedAt, crashCount, activeSpec, specPaths, onAction }: Props) {
   const [busy, setBusy] = useState(false)
   const [spec, setSpec] = useState(specPaths[0] ?? 'docs/')
-  const [activeSpec, setActiveSpec] = useState<string | null>(null)  // spec the sentinel was started with
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // If sentinel is already alive on mount, lock the current spec value
-  useEffect(() => {
-    if (alive && activeSpec == null) {
-      setActiveSpec(spec)
-    }
-  }, [alive])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -59,6 +52,8 @@ export function SentinelControl({ project, alive, startedAt, crashCount, specPat
     p.toLowerCase().includes(spec.toLowerCase())
   )
 
+  const displaySpec = alive && activeSpec ? activeSpec : spec
+
   return (
     <div className="space-y-3">
       {/* Status */}
@@ -82,7 +77,7 @@ export function SentinelControl({ project, alive, startedAt, crashCount, specPat
           <label className="text-xs text-neutral-500 block mb-1">Spec path</label>
           <input
             type="text"
-            value={alive && activeSpec != null ? activeSpec : spec}
+            value={displaySpec}
             onChange={e => { setSpec(e.target.value); setShowDropdown(true) }}
             onFocus={() => !alive && setShowDropdown(true)}
             disabled={alive}
@@ -113,7 +108,7 @@ export function SentinelControl({ project, alive, startedAt, crashCount, specPat
             <>
               <button
                 disabled={busy}
-                onClick={() => { setActiveSpec(null); return act(() => stopSentinel(project)) }}
+                onClick={() => act(() => stopSentinel(project))}
                 className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy ? 'Stopping…' : 'Stop'}
@@ -129,7 +124,7 @@ export function SentinelControl({ project, alive, startedAt, crashCount, specPat
           ) : (
             <button
               disabled={busy}
-              onClick={() => { setActiveSpec(spec); return act(() => startSentinel(project, spec || undefined)) }}
+              onClick={() => act(() => startSentinel(project, spec || undefined))}
               className="px-3 py-1.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy ? 'Starting…' : 'Start Sentinel'}
