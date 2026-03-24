@@ -110,7 +110,7 @@
 
 ## 13. API Proxy
 
-- [ ] 13.1 Add proxy rule in set-web server: /api/manager/* → set-manager:3112 [REQ: project-cards]
+- [x] 13.1 Add proxy rule in set-web server: /api/manager/* → set-manager:3112 [REQ: project-cards] (already in vite.config.ts:9-11)
 
 ## Acceptance Criteria (from spec scenarios)
 

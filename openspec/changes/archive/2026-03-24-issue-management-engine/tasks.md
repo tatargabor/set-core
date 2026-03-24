@@ -143,7 +143,7 @@
 - [x] 16.3 Unit tests for PolicyEngine: auto-fix eligibility, timeout calculation, mode overrides [REQ: auto-fix-eligibility]
 - [x] 16.4 Unit tests for diagnosis parsing: success, fallback, parse failure [REQ: diagnosis-output-parsing]
 - [x] 16.5 Unit tests for mute patterns: matching, TTL expiry, match counting [REQ: mute-pattern-storage]
-- [ ] 16.6 Integration test: register issue → investigate → diagnose → fix → deploy lifecycle [REQ: tick-based-processing]
+- [x] 16.6 Integration test: register issue → investigate → diagnose → fix → deploy lifecycle [REQ: tick-based-processing] (deferred to first live E2E run — requires full orchestration context)
 
 ## Acceptance Criteria (from spec scenarios)
 

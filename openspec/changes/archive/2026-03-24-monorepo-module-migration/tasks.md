@@ -42,8 +42,8 @@
 
 ## 6. bin/set-project update
 
-- [ ] 6.1 Change `from set_project_base.deploy import ...` → `from set_orch.profile_deploy import ...`
-- [ ] 6.2 Add modules/ template path fallback in deploy.sh
+- [x] 6.1 Change `from set_project_base.deploy import ...` → `from set_orch.profile_deploy import ...` (done — cli.py delegates to set_orch.profile_deploy)
+- [x] 6.2 Add modules/ template path fallback in deploy.sh (done — ProjectType.get_template_dir() resolves to modules/)
 
 ## 7. Branch rename master → main
 
