@@ -1,0 +1,13 @@
+[Unit]
+Description=Set-Core Web UI
+After=set-manager.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/set-web serve
+Restart=always
+RestartSec=5
+WorkingDirectory=%h
+
+[Install]
+WantedBy=default.target

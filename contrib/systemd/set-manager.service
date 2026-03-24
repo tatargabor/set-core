@@ -1,0 +1,13 @@
+[Unit]
+Description=Set-Core Management Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/set-manager serve
+Restart=always
+RestartSec=5
+WorkingDirectory=%h
+
+[Install]
+WantedBy=default.target

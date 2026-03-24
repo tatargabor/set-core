@@ -56,6 +56,7 @@ Issues = "https://github.com/tatargabor/set-core/issues"
 [project.scripts]
 set-control = "gui.main:main"
 set-orch-core = "set_orch.cli:main"
+set-manager = "set_orch.manager.cli:main"
 
 [project.entry-points."set_tools.plugins"]
 # Plugins register themselves here
