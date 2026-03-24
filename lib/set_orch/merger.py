@@ -295,6 +295,48 @@ def _apply_merge_strategies() -> None:
         logger.debug("Failed to apply merge strategies (non-critical)", exc_info=True)
 
 
+def _clean_untracked_merge_conflicts(change_name: str) -> None:
+    """Remove untracked files that would block ff-only merge.
+
+    set-project init deploys files (CLAUDE.md, .gitignore, etc.) to the main
+    worktree without committing them. When the branch has these files committed,
+    git merge --ff-only refuses: 'untracked working tree files would be overwritten'.
+    We detect and remove only the conflicting untracked files.
+    """
+    branch_ref = f"change/{change_name}"
+    # List files the branch adds that don't exist in current HEAD
+    diff_result = run_command(
+        ["git", "diff", "--name-only", "--diff-filter=A", "HEAD", branch_ref],
+        timeout=10,
+    )
+    if diff_result.exit_code != 0 or not diff_result.stdout.strip():
+        return
+
+    added_files = diff_result.stdout.strip().splitlines()
+
+    # Check which of those are untracked in the working tree
+    status_result = run_command(["git", "status", "--porcelain"], timeout=10)
+    untracked = set()
+    for line in status_result.stdout.splitlines():
+        if line.startswith("?? "):
+            untracked.add(line[3:].strip())
+
+    removed = []
+    for f in added_files:
+        if f in untracked:
+            try:
+                Path(f).unlink()
+                removed.append(f)
+            except OSError:
+                pass
+
+    if removed:
+        logger.info(
+            "Removed %d untracked file(s) conflicting with %s merge: %s",
+            len(removed), change_name, ", ".join(removed),
+        )
+
+
 # ─── Merge Pipeline ────────────────────────────────────────────────
 
 # Source: merger.sh merge_change() L56-476
@@ -388,6 +430,12 @@ def merge_change(
 
     # Apply plugin merge strategies (e.g., theirs-wins for lockfiles)
     _apply_merge_strategies()
+
+    # Remove untracked files that would conflict with the merge.
+    # set-project init deploys files (CLAUDE.md, .gitignore, etc.) to the main
+    # worktree without committing them. When the branch has these files committed,
+    # git merge --ff-only refuses because it would overwrite untracked files.
+    _clean_untracked_merge_conflicts(change_name)
 
     pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
     merge_result = run_command(
