@@ -65,7 +65,7 @@ DEFAULT_POST_MERGE_COMMAND=""       # project-specific command to run after merg
 DEFAULT_TOKEN_HARD_LIMIT=20000000  # 20M tokens — checkpoint to ask human before spending more
 DEFAULT_CHECKPOINT_AUTO_APPROVE="false"  # auto-approve checkpoints (for unattended/E2E runs)
 DEFAULT_POST_PHASE_AUDIT="true"         # LLM spec-vs-implementation audit at phase boundaries
-DEFAULT_MONITOR_IDLE_TIMEOUT=300        # seconds without progress before self-watchdog triggers recovery
+DEFAULT_MONITOR_IDLE_TIMEOUT=1800       # seconds without progress before self-watchdog triggers recovery
 DEFAULT_MERGE_TIMEOUT=1800              # seconds max for a single merge_change() call
 DEFAULT_SMOKE_DEV_SERVER_COMMAND=""     # command to start dev server for smoke tests (e.g. "npx next dev --port 3002")
 

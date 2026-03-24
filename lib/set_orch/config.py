@@ -44,7 +44,7 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "smoke_health_check_url": "",
     "smoke_health_check_timeout": 30,
     "smoke_dev_server_command": "",
-    "monitor_idle_timeout": 300,
+    "monitor_idle_timeout": 1800,
     "merge_timeout": 1800,
     "post_merge_command": "",
     "token_hard_limit": 20000000,
