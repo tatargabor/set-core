@@ -59,10 +59,11 @@ class DetectionBridge:
 
             self._processed_findings.add(key)
 
-            severity_hint = finding.get("severity", "info")
+            severity_hint = finding.get("severity", "unknown")
 
             self.issue_manager.register(
                 source="sentinel",
+                severity_hint=severity_hint,
                 error_summary=finding.get("summary", ""),
                 error_detail=finding.get("detail", ""),
                 affected_change=finding.get("change"),

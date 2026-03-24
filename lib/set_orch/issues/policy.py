@@ -198,7 +198,7 @@ class PolicyEngine:
 
         match source:
             case "sentinel":
-                return severity_hint in ("critical", "warning")
+                return True  # All sentinel findings become issues
             case "gate":
                 return True
             case "watchdog":
