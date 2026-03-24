@@ -991,6 +991,38 @@ def _session_outcome(session_path: Path) -> str:
     return "unknown"
 
 
+def _extract_session_tokens(path: Path) -> dict:
+    """Extract token usage from a JSONL session file."""
+    input_tokens = 0
+    output_tokens = 0
+    cache_read = 0
+    cache_create = 0
+    try:
+        with open(path) as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("type") != "assistant":
+                    continue
+                usage = entry.get("message", {}).get("usage", {})
+                if not usage:
+                    continue
+                input_tokens += usage.get("input_tokens", 0)
+                output_tokens += usage.get("output_tokens", 0)
+                cache_read += usage.get("cache_read_input_tokens", 0)
+                cache_create += usage.get("cache_creation_input_tokens", 0)
+    except OSError:
+        pass
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read,
+        "cache_create_tokens": cache_create,
+    }
+
+
 def _list_session_files(sessions_dir: Path) -> list[dict]:
     """List JSONL session files sorted by mtime desc."""
     files = []
@@ -1003,6 +1035,7 @@ def _list_session_files(sessions_dir: Path) -> list[dict]:
                 age_s = time.time() - st.st_mtime
                 is_active = age_s < 60
                 model = _extract_session_model(f)
+                tokens = _extract_session_tokens(f)
                 files.append({
                     "id": f.stem,
                     "size": st.st_size,
@@ -1011,6 +1044,7 @@ def _list_session_files(sessions_dir: Path) -> list[dict]:
                     "full_label": full_label,
                     "model": model,
                     "outcome": "active" if is_active else _session_outcome(f),
+                    **tokens,
                 })
             except OSError:
                 pass
