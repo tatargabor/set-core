@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { getApps, getGlobalItems, type SidebarApp, type SidebarSubItem, type GlobalItem } from '../lib/sidebarRegistry'
 import { useSidebarStats } from '../hooks/useSidebarStats'
+import { restartManager } from '../lib/api'
 
 interface Props {
   project: string | null
@@ -41,6 +43,7 @@ function detectActiveApp(apps: SidebarApp[], pathname: string, project: string |
 export default function UnifiedSidebar({ project, sidebarOpen, onClose }: Props) {
   const location = useLocation()
   const { issueStats, totalOpen, managerOnline } = useSidebarStats()
+  const [restarting, setRestarting] = useState(false)
 
   const apps = getApps()
   const globalItems = getGlobalItems()
@@ -147,10 +150,27 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose }: Props)
 
         {/* Footer: manager health */}
         <div className="border-t border-neutral-800 px-3 py-2 mt-auto">
-          <Link to="/" className="flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-300">
-            <span className={`w-2 h-2 rounded-full ${managerOnline ? 'bg-green-400' : 'bg-red-400'}`} />
-            <span>Manager: {managerOnline ? 'running' : 'offline'}</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/" className="flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-300 flex-1">
+              <span className={`w-2 h-2 rounded-full ${managerOnline ? 'bg-green-400' : 'bg-red-400'}`} />
+              <span>Manager: {restarting ? 'restarting...' : managerOnline ? 'running' : 'offline'}</span>
+            </Link>
+            {managerOnline && (
+              <button
+                disabled={restarting}
+                onClick={async () => {
+                  setRestarting(true)
+                  try { await restartManager() } catch {}
+                  // Manager will restart, poll will reconnect
+                  setTimeout(() => setRestarting(false), 5000)
+                }}
+                className="px-1.5 py-0.5 text-xs rounded text-neutral-600 hover:text-neutral-400 hover:bg-neutral-800 disabled:opacity-50"
+                title="Restart manager"
+              >
+                ↻
+              </button>
+            )}
+          </div>
         </div>
       </aside>
     </>

@@ -23,6 +23,7 @@ def create_api(service: ServiceManager) -> web.Application:
 
     # Service health
     app.router.add_get("/api/manager/status", handle_manager_status)
+    app.router.add_post("/api/manager/restart", handle_manager_restart)
 
     # Projects
     app.router.add_get("/api/projects", handle_list_projects)
@@ -95,6 +96,20 @@ def _json(data, status=200):
 
 async def handle_manager_status(request: web.Request):
     return _json(_get_service(request).status())
+
+
+async def handle_manager_restart(request: web.Request):
+    """Restart the manager process via os.execv (replaces current process)."""
+    import sys
+    import os
+    logger.info("Manager restart requested via API")
+    # Respond first, then restart
+    resp = _json({"status": "restarting"})
+    await resp.prepare(request)
+    await resp.write_eof()
+    # Re-exec the same command
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+    return resp  # unreachable
 
 
 # --- Projects ---

@@ -850,6 +850,10 @@ export function getManagerStatus(): Promise<ManagerStatus> {
   return fetchJSON(`${MGR}/manager/status`)
 }
 
+export function restartManager(): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/manager/restart`, { method: 'POST' })
+}
+
 // =====================================================
 
 export async function signScore(project: string, score: number, changesDone: number, totalTokens: number): Promise<string> {
