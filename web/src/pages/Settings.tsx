@@ -123,7 +123,7 @@ export default function Settings({ project }: Props) {
                 <button
                   onClick={handleResume}
                   disabled={actionLoading === 'resume'}
-                  className="px-3 py-1 text-sm bg-green-900/50 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 font-medium"
+                  className="px-3 py-1 text-sm bg-green-900/50 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                 >
                   {actionLoading === 'resume' ? 'Resuming...' : 'Resume'}
                 </button>
@@ -132,7 +132,7 @@ export default function Settings({ project }: Props) {
                   <button
                     onClick={() => setShowConfirm(true)}
                     disabled={actionLoading === 'shutdown'}
-                    className="px-3 py-1 text-sm bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 font-medium"
+                    className="px-3 py-1 text-sm bg-red-900/50 text-red-300 rounded hover:bg-red-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                   >
                     {actionLoading === 'shutdown' ? 'Shutting down...' : 'Shutdown'}
                   </button>

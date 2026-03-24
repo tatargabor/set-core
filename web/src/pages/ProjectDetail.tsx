@@ -6,7 +6,7 @@ import { IssueCountBadge } from '../components/issues/IssueCountBadge'
 
 export default function ProjectDetail() {
   const { project: projectName } = useParams<{ project: string }>()
-  const { project, docs, specPaths, loading, error } = useProjectDetail(projectName)
+  const { project, specPaths, loading, error } = useProjectDetail(projectName)
 
   if (loading) {
     return (

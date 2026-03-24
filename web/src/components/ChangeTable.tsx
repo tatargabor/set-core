@@ -165,7 +165,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                       <button
                         onClick={(e) => handleAction(e, c.name, 'stop')}
                         disabled={actionLoading === `${c.name}:stop`}
-                        className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 ${
+                        className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
                           confirmAction === `${c.name}:stop`
                             ? 'bg-red-700 text-white hover:bg-red-600'
                             : 'bg-red-900/50 text-red-300 hover:bg-red-900'
@@ -178,7 +178,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                       <button
                         onClick={(e) => handleAction(e, c.name, 'skip')}
                         disabled={actionLoading === `${c.name}:skip`}
-                        className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 ${
+                        className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
                           confirmAction === `${c.name}:skip`
                             ? 'bg-amber-700 text-white hover:bg-amber-600'
                             : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
@@ -262,7 +262,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     <button
                       onClick={(e) => handleAction(e, c.name, 'stop')}
                       disabled={actionLoading === `${c.name}:stop`}
-                      className={`px-2 py-0.5 text-sm rounded disabled:opacity-50 ${
+                      className={`px-2 py-0.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
                         confirmAction === `${c.name}:stop`
                           ? 'bg-red-700 text-white hover:bg-red-600'
                           : 'bg-red-900/50 text-red-300 hover:bg-red-900'
@@ -275,7 +275,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     <button
                       onClick={(e) => handleAction(e, c.name, 'skip')}
                       disabled={actionLoading === `${c.name}:skip`}
-                      className={`px-2 py-0.5 text-sm rounded disabled:opacity-50 ${
+                      className={`px-2 py-0.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
                         confirmAction === `${c.name}:skip`
                           ? 'bg-amber-700 text-white hover:bg-amber-600'
                           : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'

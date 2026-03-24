@@ -71,7 +71,7 @@ export default function CheckpointBanner({ project, checkpointType, onDismiss }:
       <button
         onClick={handleApprove}
         disabled={loading !== null}
-        className={`px-3 py-1.5 text-sm rounded font-medium disabled:opacity-50 ${
+        className={`px-3 py-1.5 text-sm rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
           confirmApprove
             ? 'bg-green-600 text-white hover:bg-green-500'
             : 'bg-green-700 text-white hover:bg-green-600'
@@ -82,7 +82,7 @@ export default function CheckpointBanner({ project, checkpointType, onDismiss }:
       <button
         onClick={handleStop}
         disabled={loading !== null}
-        className={`px-3 py-1.5 text-sm rounded font-medium disabled:opacity-50 ${
+        className={`px-3 py-1.5 text-sm rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
           confirmStop
             ? 'bg-red-700 text-white hover:bg-red-600'
             : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600'

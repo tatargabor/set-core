@@ -77,9 +77,9 @@ export function IssueActions({ issue, project, onAction }: Props) {
               key={action}
               disabled={busy}
               onClick={() => handleAction(action)}
-              className={`px-2.5 py-1 text-xs rounded font-medium disabled:opacity-50 ${cfg.className}`}
+              className={`px-2.5 py-1 text-xs rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed ${cfg.className}`}
             >
-              {cfg.label}
+              {busy ? '…' : cfg.label}
             </button>
           )
         })}

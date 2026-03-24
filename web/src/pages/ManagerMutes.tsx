@@ -1,13 +1,19 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { getMutePatterns, addMutePattern, deleteMutePattern, type MutePattern } from '../lib/api'
 
-export default function ManagerMutes() {
-  const { project } = useParams<{ project: string }>()
+interface Props {
+  project?: string | null
+}
+
+export default function ManagerMutes({ project: projectProp }: Props) {
+  const project = projectProp ?? undefined
   const [mutes, setMutes] = useState<MutePattern[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [newPattern, setNewPattern] = useState('')
   const [newReason, setNewReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   const load = () => {
     if (project) getMutePatterns(project).then(setMutes).catch(() => {})
@@ -16,16 +22,22 @@ export default function ManagerMutes() {
   useEffect(load, [project])
 
   const handleAdd = async () => {
-    if (!project || !newPattern.trim()) return
-    await addMutePattern(project, newPattern.trim(), newReason.trim())
-    setNewPattern(''); setNewReason(''); setShowAdd(false)
-    load()
+    if (!project || !newPattern.trim() || busy) return
+    setBusy(true)
+    try {
+      await addMutePattern(project, newPattern.trim(), newReason.trim())
+      setNewPattern(''); setNewReason(''); setShowAdd(false)
+      load()
+    } finally { setBusy(false) }
   }
 
   const handleDelete = async (id: string) => {
-    if (!project || !window.confirm('Delete this mute pattern?')) return
-    await deleteMutePattern(project, id)
-    load()
+    if (!project || deleting || !window.confirm('Delete this mute pattern?')) return
+    setDeleting(id)
+    try {
+      await deleteMutePattern(project, id)
+      load()
+    } finally { setDeleting(null) }
   }
 
   return (
@@ -51,8 +63,8 @@ export default function ManagerMutes() {
           <input value={newReason} onChange={e => setNewReason(e.target.value)} placeholder="Reason"
             className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600" />
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="px-3 py-1.5 text-xs rounded bg-blue-600/20 text-blue-400">Add</button>
-            <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-xs rounded bg-neutral-700 text-neutral-400">Cancel</button>
+            <button onClick={handleAdd} disabled={busy || !newPattern.trim()} className="px-3 py-1.5 text-xs rounded bg-blue-600/20 text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Adding…' : 'Add'}</button>
+            <button onClick={() => setShowAdd(false)} disabled={busy} className="px-3 py-1.5 text-xs rounded bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
           </div>
         </div>
       )}
@@ -72,8 +84,9 @@ export default function ManagerMutes() {
                 </div>
               </div>
               <button onClick={() => handleDelete(m.id)}
-                className="text-xs px-2 py-1 rounded bg-red-950/30 text-red-400 hover:bg-red-950/50 shrink-0">
-                Delete
+                disabled={deleting === m.id}
+                className="text-xs px-2 py-1 rounded bg-red-950/30 text-red-400 hover:bg-red-950/50 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed">
+                {deleting === m.id ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>

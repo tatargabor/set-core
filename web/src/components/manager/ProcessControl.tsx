@@ -45,11 +45,11 @@ export function ProcessControl({ label, alive, startedAt, crashCount, onStart, o
       <div className="flex items-center gap-1">
         {alive ? (
           <>
-            <button disabled={busy} onClick={() => act(onStop)} className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50">Stop</button>
-            <button disabled={busy} onClick={() => act(onRestart)} className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50">Restart</button>
+            <button disabled={busy} onClick={() => act(onStop)} className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Stopping…' : 'Stop'}</button>
+            <button disabled={busy} onClick={() => act(onRestart)} className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Restarting…' : 'Restart'}</button>
           </>
         ) : (
-          <button disabled={busy} onClick={() => act(onStart)} className="px-2 py-0.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50">Start</button>
+          <button disabled={busy} onClick={() => act(onStart)} className="px-2 py-0.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Starting…' : 'Start'}</button>
         )}
       </div>
     </div>

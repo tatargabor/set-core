@@ -101,25 +101,25 @@ export function SentinelControl({ project, alive, startedAt, crashCount, specPat
               <button
                 disabled={busy}
                 onClick={() => act(() => stopSentinel(project))}
-                className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50"
+                className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Stop
+                {busy ? 'Stopping…' : 'Stop'}
               </button>
               <button
                 disabled={busy}
                 onClick={() => act(() => restartSentinel(project, spec || undefined))}
-                className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50"
+                className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Restart
+                {busy ? 'Restarting…' : 'Restart'}
               </button>
             </>
           ) : (
             <button
               disabled={busy}
               onClick={() => act(() => startSentinel(project, spec || undefined))}
-              className="px-3 py-1.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50"
+              className="px-3 py-1.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Start Sentinel
+              {busy ? 'Starting…' : 'Start Sentinel'}
             </button>
           )}
         </div>

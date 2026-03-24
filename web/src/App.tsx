@@ -32,8 +32,13 @@ function SharedLayout() {
   const project = urlProject || hookProject
 
   // Extract project from /manager/:project/* routes too
+  // Exclude known non-project routes (issues, settings) from matching as project names
   const managerProjectMatch = location.pathname.match(/^\/manager\/([^/]+)/)
-  const effectiveProject = project || (managerProjectMatch ? managerProjectMatch[1] : null)
+  const managerProject = managerProjectMatch
+    && !['issues', 'settings'].includes(managerProjectMatch[1])
+    ? managerProjectMatch[1]
+    : null
+  const effectiveProject = project || managerProject
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
@@ -122,8 +127,8 @@ function SharedLayout() {
         {/* Manager pages */}
         {isManagerOverview && <Manager />}
         {isManagerDetail && <ProjectDetail />}
-        {isManagerIssues && <ManagerIssues />}
-        {isManagerMutes && <ManagerMutes />}
+        {isManagerIssues && <ManagerIssues project={effectiveProject} />}
+        {isManagerMutes && <ManagerMutes project={effectiveProject} />}
       </main>
     </div>
   )

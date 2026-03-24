@@ -10,6 +10,7 @@ export function IssueTimeline({ entries, onSendMessage }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -24,11 +25,13 @@ export function IssueTimeline({ entries, onSendMessage }: Props) {
     setAutoScroll(scrollHeight - scrollTop - clientHeight < 50)
   }
 
-  const handleSend = () => {
-    if (input.trim() && onSendMessage) {
+  const handleSend = async () => {
+    if (!input.trim() || !onSendMessage || sending) return
+    setSending(true)
+    try {
       onSendMessage(input.trim())
       setInput('')
-    }
+    } finally { setSending(false) }
   }
 
   return (
@@ -53,9 +56,9 @@ export function IssueTimeline({ entries, onSendMessage }: Props) {
             placeholder="Message investigation agent..."
             className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 outline-none focus:border-neutral-600"
           />
-          <button onClick={handleSend} disabled={!input.trim()}
-            className="px-3 py-1.5 text-sm rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-30">
-            Send
+          <button onClick={handleSend} disabled={!input.trim() || sending}
+            className="px-3 py-1.5 text-sm rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-30 disabled:cursor-not-allowed">
+            {sending ? 'Sending…' : 'Send'}
           </button>
         </div>
       )}

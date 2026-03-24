@@ -301,7 +301,8 @@ export default function OrchestrationChat({ project }: Props) {
         </div>
         <button
           onClick={handleNewSession}
-          className="px-2 py-1 min-h-[44px] md:min-h-0 text-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+          disabled={!connected || isProcessing}
+          className="px-2 py-1 min-h-[44px] md:min-h-0 text-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           New Session
         </button>
@@ -427,7 +428,7 @@ export default function OrchestrationChat({ project }: Props) {
           <button
             onClick={handleSend}
             disabled={!isInputEnabled || !input.trim()}
-            className="px-3 min-h-[44px] bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-sm font-medium rounded-lg transition-colors"
+            className="px-3 min-h-[44px] bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
           >
             Send
           </button>

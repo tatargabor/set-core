@@ -1,11 +1,14 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useIssueData } from '../hooks/useIssueData'
 import { IssueList } from '../components/issues/IssueList'
 import { IssueDetail } from '../components/issues/IssueDetail'
 
-export default function ManagerIssues() {
-  const { project } = useParams<{ project: string }>()
+interface Props {
+  project?: string | null
+}
+
+export default function ManagerIssues({ project }: Props) {
   const { issues, groups, stats, loading } = useIssueData(project || null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
