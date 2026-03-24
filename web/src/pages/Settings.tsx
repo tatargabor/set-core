@@ -94,7 +94,7 @@ export default function Settings({ project }: Props) {
   const isRunning = orchStatus === 'running' || orchStatus === 'checkpoint'
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
+    <div className="p-6 max-w-3xl space-y-6 h-full overflow-y-auto">
       <h1 className="text-lg font-semibold text-neutral-100">Settings</h1>
 
       {/* Orchestration Control */}
