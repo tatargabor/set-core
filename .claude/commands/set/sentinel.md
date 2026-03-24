@@ -29,22 +29,34 @@ Before acting on any event, classify it into one of two tiers:
 
 The sentinel MUST NOT try to fix routine orchestration-level issues (merge-blocked, verify retries). But when the orchestrator has **exhausted its retries** and a change is `integration-failed`, the sentinel takes over.
 
-**Tier 3 — integration-failed recovery:**
-When you see a change in `integration-failed` status during a poll:
-1. Read the orchestration log (`tail -100` of the log file) to find the merge error
-2. Diagnose: what's blocking the merge? (untracked files, conflicts, build errors, etc.)
-3. Fix it on the main branch (cd to project root, resolve the issue, commit if needed)
-4. Reset the change status back to `done` so the merge queue retries:
+**Tier 3 — diagnose, log finding, and fix (or delegate):**
+When you encounter an issue the orchestrator can't handle:
+1. **Log a finding FIRST** — before any investigation:
+   ```bash
+   set-sentinel-finding add --severity bug --summary "Brief description of what you observed"
+   ```
+2. **Quick diagnosis** — read relevant logs (tail -50), identify the pattern
+3. **If simple fix** (untracked files, stale state, config issue) → fix it directly, then log the resolution:
+   ```bash
+   set-sentinel-finding update FINDING_ID --status fixed --commit "what you did"
+   ```
+4. **If complex fix** (code bug, architecture issue) → don't attempt to fix. Log detailed diagnosis and escalate:
+   ```bash
+   set-sentinel-finding add --severity bug --detail "Root cause: watchdog has no grace period for fresh dispatch. The PID dies within 16s because gnome-terminal exits after spawning the child."
+   ```
+   The issue management system will pick this up and spawn a dedicated investigation agent.
+5. **Reset if applicable** — if you fixed the immediate blocker, reset the change:
    ```bash
    python3 -c "
    import json; f='orchestration-state.json'; s=json.load(open(f))
    for c in s['changes']:
-       if c['name']=='CHANGE_NAME' and c['status']=='integration-failed':
+       if c['name']=='CHANGE_NAME' and c['status'] in ('integration-failed','stalled'):
            c['status']='done'; c['total_merge_attempts']=0
    json.dump(s, open(f,'w'), indent=2)
    "
    ```
-5. The orchestrator will pick it up on the next monitor cycle and retry the merge
+
+**Key principle: the sentinel detects and logs, it doesn't spend turns debugging code.** Log the finding, do a quick fix if obvious, otherwise move on and keep monitoring.
 
 **Expected patterns (NOT bugs)** — these look like failures but auto-resolve. Do NOT escalate:
 
@@ -170,17 +182,28 @@ If `set-sentinel-inbox check` returns messages, read and respond to them before 
 - "status" → respond with current state summary
 - Any other message → acknowledge and log
 
-**When discovering issues during monitoring**, log findings:
+**IMPORTANT: Always log findings when discovering issues.** Every non-trivial issue you detect MUST be recorded as a finding — this feeds the issue management system. Don't just investigate silently.
+
 ```bash
-# Example: IDOR vulnerability found
+# Framework bug — agent dispatch failure, watchdog issue, merge blocker
+set-sentinel-finding add --severity bug --summary "Watchdog kills agent within 16s of dispatch — no grace period"
+
+# App-level bug found during monitoring
 set-sentinel-finding add --severity bug --change "add-cart" --summary "IDOR: cart delete not scoped by sessionId"
 
-# Example: agent stuck in a loop
+# Agent stuck in a loop
 set-sentinel-finding add --severity pattern --change "add-products" --summary "Agent type error loop (3 iterations)"
 
-# Example: phase assessment
+# Phase assessment
 set-sentinel-finding assess --scope "phase-2" --summary "2/4 merged, 1 critical IDOR" --recommendation "Fix IDOR before proceeding"
 ```
+
+**When to log findings:**
+- `integration-failed` change → log what blocked the merge
+- Agent dispatch fails repeatedly → log the dispatch failure pattern
+- Orchestrator crashes → log the crash reason
+- Framework bug discovered → log with `--severity bug`
+- Any Tier 3 diagnosis → log BEFORE attempting the fix
 
 ### Step 3: Handle the poll result
 
