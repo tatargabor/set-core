@@ -57,9 +57,21 @@ def _is_alive(pid: Optional[int]) -> bool:
         return False
     try:
         os.kill(pid, 0)
-        return True
     except (ProcessLookupError, PermissionError):
         return False
+    # Check for zombie (defunct) — os.kill succeeds but process is dead
+    try:
+        stat = Path(f"/proc/{pid}/status").read_text()
+        if "zombie" in stat.lower():
+            # Reap the zombie
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
+            return False
+    except (FileNotFoundError, PermissionError):
+        pass
+    return True
 
 
 def _kill_gracefully(pid: int, timeout: int = 5):
@@ -109,7 +121,12 @@ class ProjectSupervisor:
     def start_sentinel(self, spec: Optional[str] = None) -> int:
         """Spawn sentinel as a dedicated claude agent process."""
         prompt = self._load_sentinel_prompt(spec=spec)
-        cmd = ["claude", "-p", "--max-turns", "500", "--permission-mode", "auto"]
+        cmd = ["claude", "-p", "--max-turns", "500", "--dangerously-skip-permissions"]
+
+        # Log stderr to file for debugging
+        sentinel_log = self.config.path / ".wt" / "sentinel"
+        sentinel_log.mkdir(parents=True, exist_ok=True)
+        stderr_file = open(sentinel_log / "stderr.log", "w")
 
         try:
             proc = subprocess.Popen(
@@ -117,7 +134,7 @@ class ProjectSupervisor:
                 cwd=str(self.config.path),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
+                stderr=stderr_file,
                 start_new_session=True,
             )
             # Send prompt via stdin — avoids command-line length limits
