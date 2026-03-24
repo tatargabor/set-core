@@ -83,7 +83,7 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
 _VALIDATORS: dict[str, tuple[str, str | None]] = {
     # key: (type, regex_pattern_or_None)
     "max_parallel": ("int_pos", None),
-    "merge_policy": ("enum", r"^(eager|checkpoint|manual)$"),
+    "merge_policy": ("enum", r"^(eager|checkpoint)$"),
     "checkpoint_every": ("int_pos", None),
     "test_command": ("str", None),
     "notification": ("enum", r"^(desktop|email|desktop\+email|gui|none)$"),

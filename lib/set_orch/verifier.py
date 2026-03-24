@@ -2764,11 +2764,10 @@ def handle_change_done(
     with locked_state(state_file) as state:
         state.changes_since_checkpoint += 1
 
-    if merge_policy in ("eager", "checkpoint"):
-        with locked_state(state_file) as state:
-            if change_name not in state.merge_queue:
-                state.merge_queue.append(change_name)
-        logger.info("%s added to merge queue (policy: %s)", change_name, merge_policy)
+    with locked_state(state_file) as state:
+        if change_name not in state.merge_queue:
+            state.merge_queue.append(change_name)
+    logger.info("%s added to merge queue", change_name)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────

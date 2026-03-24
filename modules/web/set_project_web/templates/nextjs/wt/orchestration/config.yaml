@@ -9,10 +9,8 @@ default_model: sonnet
 # e2e_command: npx playwright test
 # build_command: npx next build
 
-# Parallelism & merge
+# Parallelism
 max_parallel: 2
-merge_policy: checkpoint
-checkpoint_auto_approve: true
 
 # Quality gates
 review_before_merge: true

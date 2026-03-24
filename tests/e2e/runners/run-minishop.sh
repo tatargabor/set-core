@@ -209,8 +209,6 @@ ATTRS
 # Orchestration config for MiniShop E2E test
 default_model: opus
 max_parallel: 2
-merge_policy: checkpoint
-checkpoint_auto_approve: true
 auto_replan: true
 review_before_merge: true
 max_verify_retries: 2
