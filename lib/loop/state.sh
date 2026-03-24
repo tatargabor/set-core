@@ -60,8 +60,8 @@ init_loop_state() {
     local state_file
     state_file=$(get_loop_state_file "$wt_path")
 
-    # Ensure .wt agent directory exists
-    mkdir -p "$wt_path/.wt" "$wt_path/.set/logs"
+    # Ensure .set agent directory exists
+    mkdir -p "$wt_path/.set" "$wt_path/.set/logs"
 
     # Create initial state
     cat > "$state_file" <<EOF

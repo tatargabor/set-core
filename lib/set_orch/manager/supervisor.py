@@ -125,7 +125,11 @@ class ProjectSupervisor:
         cmd = ["claude", "-p", "--max-turns", "500", "--dangerously-skip-permissions"]
 
         # Log stdout and stderr to files for debugging
-        sentinel_log = self.config.path / ".wt" / "sentinel"
+        try:
+            from ..paths import SetRuntime
+            sentinel_log = Path(SetRuntime(str(self.config.path)).sentinel_dir)
+        except Exception:
+            sentinel_log = self.config.path / ".set" / "sentinel"
         sentinel_log.mkdir(parents=True, exist_ok=True)
         stdout_file = open(sentinel_log / "stdout.log", "w")
         stderr_file = open(sentinel_log / "stderr.log", "w")
