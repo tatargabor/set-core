@@ -146,11 +146,37 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
                 media_type="application/json",
             )
 
-    @app.post("/api/manager-start")
-    async def start_manager():
-        """Start set-manager if not running. Called from web UI when manager is offline."""
+    async def _kill_and_start_manager():
+        """Kill existing manager (if any), clean PID file, start fresh."""
         import asyncio
         import shutil
+        import signal
+        pid_file = Path.home() / ".local" / "share" / "set-core" / "manager" / "manager.pid"
+        # Kill existing manager by PID file or by probing API
+        if pid_file.exists():
+            try:
+                old_pid = int(pid_file.read_text().strip())
+                os.kill(old_pid, signal.SIGTERM)
+                await asyncio.sleep(1)
+            except (ValueError, ProcessLookupError, PermissionError):
+                pass
+        pid_file.unlink(missing_ok=True)
+        await asyncio.sleep(0.5)
+        # Start fresh
+        manager_bin = shutil.which("set-manager")
+        if not manager_bin:
+            return None, "set-manager not found in PATH"
+        proc = await asyncio.create_subprocess_exec(
+            manager_bin, "serve",
+            stdout=open("/tmp/set-manager.log", "a"),
+            stderr=open("/tmp/set-manager.log", "a"),
+            start_new_session=True,
+        )
+        return proc.pid, None
+
+    @app.post("/api/manager-start")
+    async def start_manager():
+        """Start set-manager if not running."""
         # Check if already running
         try:
             import aiohttp
@@ -160,20 +186,18 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
                         return {"status": "already_running"}
         except Exception:
             pass
-        # Remove stale PID file
-        pid_file = Path.home() / ".local" / "share" / "set-core" / "manager" / "manager.pid"
-        pid_file.unlink(missing_ok=True)
-        # Start manager in background
-        manager_bin = shutil.which("set-manager")
-        if not manager_bin:
-            return Response(content='{"error": "set-manager not found in PATH"}', status_code=500, media_type="application/json")
-        proc = await asyncio.create_subprocess_exec(
-            manager_bin, "serve",
-            stdout=open("/tmp/set-manager.log", "a"),
-            stderr=open("/tmp/set-manager.log", "a"),
-            start_new_session=True,
-        )
-        return {"status": "started", "pid": proc.pid}
+        pid, err = await _kill_and_start_manager()
+        if err:
+            return Response(content=f'{{"error": "{err}"}}', status_code=500, media_type="application/json")
+        return {"status": "started", "pid": pid}
+
+    @app.post("/api/manager-restart")
+    async def restart_manager_via_orch():
+        """Kill and restart set-manager. Always works regardless of manager code version."""
+        pid, err = await _kill_and_start_manager()
+        if err:
+            return Response(content=f'{{"error": "{err}"}}', status_code=500, media_type="application/json")
+        return {"status": "restarted", "pid": pid}
 
     # API, WebSocket, and chat routes
     app.include_router(api_router)

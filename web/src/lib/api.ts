@@ -851,7 +851,8 @@ export function getManagerStatus(): Promise<ManagerStatus> {
 }
 
 export function restartManager(): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/manager/restart`, { method: 'POST' })
+  // Use set-orch-core endpoint (always works, doesn't depend on manager code version)
+  return fetchJSON('/api/manager-restart', { method: 'POST' })
 }
 
 export function startManager(): Promise<{ status: string; pid?: number }> {
