@@ -643,6 +643,7 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
 def _run_integration_gates(
     change_name: str, change: Change, wt_path: str,
     state_file: str, profile: Any = None,
+    event_bus: Any = None,
 ) -> bool:
     """Run integration gates (build + test + e2e) in worktree after integration.
 
@@ -704,7 +705,12 @@ def _run_integration_gates(
         if build_cmd:
             logger.info("Integration gate: build for %s (%s)", change_name, build_cmd)
             result = run_command(["bash", "-c", build_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
-            if result.exit_code != 0:
+            gate_pass = result.exit_code == 0
+            update_change_field(state_file, change_name, "build_result", "pass" if gate_pass else "fail")
+            if event_bus:
+                event_bus.emit("VERIFY_GATE", change=change_name, data={
+                    "gate": "build", "result": "pass" if gate_pass else "fail", "phase": "integration"})
+            if not gate_pass:
                 logger.error("Integration gate: build FAILED for %s", change_name)
                 update_change_field(state_file, change_name, "integration_gate_fail", "build")
                 return False
@@ -717,7 +723,12 @@ def _run_integration_gates(
         if test_cmd:
             logger.info("Integration gate: test for %s (%s)", change_name, test_cmd)
             result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
-            if result.exit_code != 0 and gc.is_blocking("test"):
+            if result.exit_code == 0:
+                update_change_field(state_file, change_name, "test_result", "pass")
+                if event_bus:
+                    event_bus.emit("VERIFY_GATE", change=change_name, data={
+                        "gate": "test", "result": "pass", "phase": "integration"})
+            elif gc.is_blocking("test"):
                 # Check if failure is because test runner isn't installed (missing script/binary)
                 output = (result.stdout or "") + (result.stderr or "")
                 missing_indicators = [
@@ -739,9 +750,17 @@ def _run_integration_gates(
                         "Integration gate: test command not available for %s (missing script or empty output) — skipping",
                         change_name,
                     )
+                    update_change_field(state_file, change_name, "test_result", "skip")
+                    if event_bus:
+                        event_bus.emit("VERIFY_GATE", change=change_name, data={
+                            "gate": "test", "result": "skip", "phase": "integration"})
                 else:
                     logger.error("Integration gate: test FAILED for %s", change_name)
+                    update_change_field(state_file, change_name, "test_result", "fail")
                     update_change_field(state_file, change_name, "integration_gate_fail", "test")
+                    if event_bus:
+                        event_bus.emit("VERIFY_GATE", change=change_name, data={
+                            "gate": "test", "result": "fail", "phase": "integration"})
                     return False
 
     # E2E gate (from profile — web only)
@@ -759,7 +778,12 @@ def _run_integration_gates(
                 e2e_env.update(profile.e2e_gate_env(e2e_port))
             logger.info("Integration gate: e2e for %s (%s, port=%d)", change_name, e2e_cmd, e2e_port)
             result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env)
-            if result.exit_code != 0:
+            e2e_pass = result.exit_code == 0
+            update_change_field(state_file, change_name, "smoke_result", "pass" if e2e_pass else "warn")
+            if event_bus:
+                event_bus.emit("VERIFY_GATE", change=change_name, data={
+                    "gate": "e2e", "result": "pass" if e2e_pass else "warn", "phase": "integration"})
+            if not e2e_pass:
                 # Integration e2e is always non-blocking: the verify phase
                 # already validated e2e, and integration e2e is prone to
                 # flaky failures (port conflicts, stale servers, timeouts).
@@ -825,7 +849,7 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 continue
 
             # Step 2: Integration gates (build + test + e2e)
-            if not _run_integration_gates(name, change, wt_path, state_file, profile):
+            if not _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus):
                 update_change_field(state_file, name, "status", "merge-blocked")
                 _remove_from_merge_queue(state_file, name)
                 continue
@@ -835,6 +859,8 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
             result = merge_change(name, state_file, event_bus=event_bus)
             if result.success:
                 merged += 1
+                if event_bus:
+                    event_bus.emit("MERGE_SUCCESS", change=name, data={})
         except Exception:
             logger.warning("Merge failed for %s", name, exc_info=True)
 
