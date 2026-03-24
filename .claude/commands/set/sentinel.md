@@ -18,6 +18,7 @@ Before acting on any event, classify it into one of two tiers:
 |------|--------|----------|
 | **Tier 1 — Defer** | Do nothing. The orchestrator handles this automatically. | merge-blocked changes, verify/test failures, individual change failures, replan cycles, `waiting:api` loop status |
 | **Tier 2 — Act** | Sentinel intervenes (restart, report, or ask user). | Process crash (SIGKILL, OOM, broken pipe), process hang (stale >120s), non-periodic checkpoint, terminal state (done/stopped/time_limit) |
+| **Tier 3 — Diagnose & Fix** | Sentinel investigates and fixes. | `integration-failed` changes (orchestrator gave up), stuck pipeline (all changes blocked/failed) |
 
 **When uncertain, default to Tier 1 (defer).** The orchestrator has built-in recovery for:
 - **merge-blocked** → `retry_merge_queue` with jq deep-merge resolves package.json conflicts, agent rebase handles others
@@ -26,7 +27,24 @@ Before acting on any event, classify it into one of two tiers:
 - **replan cycles** → built-in auto-replan logic re-decomposes when needed
 - **waiting:api** → set-loop detects API errors (429, 503) and enters exponential backoff automatically
 
-The sentinel MUST NOT try to fix orchestration-level issues. It should only act on process-level problems.
+The sentinel MUST NOT try to fix routine orchestration-level issues (merge-blocked, verify retries). But when the orchestrator has **exhausted its retries** and a change is `integration-failed`, the sentinel takes over.
+
+**Tier 3 — integration-failed recovery:**
+When you see a change in `integration-failed` status during a poll:
+1. Read the orchestration log (`tail -100` of the log file) to find the merge error
+2. Diagnose: what's blocking the merge? (untracked files, conflicts, build errors, etc.)
+3. Fix it on the main branch (cd to project root, resolve the issue, commit if needed)
+4. Reset the change status back to `done` so the merge queue retries:
+   ```bash
+   python3 -c "
+   import json; f='orchestration-state.json'; s=json.load(open(f))
+   for c in s['changes']:
+       if c['name']=='CHANGE_NAME' and c['status']=='integration-failed':
+           c['status']='done'; c['total_merge_attempts']=0
+   json.dump(s, open(f,'w'), indent=2)
+   "
+   ```
+5. The orchestrator will pick it up on the next monitor cycle and retry the merge
 
 **Expected patterns (NOT bugs)** — these look like failures but auto-resolve. Do NOT escalate:
 
@@ -177,6 +195,8 @@ Just say something brief like: `Orchestration running (3/7 changes, 1.2M tokens)
 **If WARNING:token_stuck is present**: escalate to user on first detection only. Say: "Warning: N change(s) have used >500K tokens with no commit in 30 min — may be stuck." Then read the state to list which changes are stuck. Track this so you don't repeat the warning every poll.
 
 **If WARNING:deadlocked is present**: escalate to user on first detection only. Read the state to identify the specific changes and their failed dependencies. Say: "Deadlock: N pending change(s) blocked by failed dependencies — manual intervention needed. Run `set-orchestrate reset --partial` or clear deps manually."
+
+**If any change has status `integration-failed`**: this means the orchestrator exhausted its merge retries. Apply **Tier 3** — read the merge log, diagnose the root cause, fix it on main, and reset the change to `done`. Don't defer this — the orchestrator already gave up.
 
 Then **immediately go back to Step 2** (start another background poll).
 
