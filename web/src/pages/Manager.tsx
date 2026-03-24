@@ -1,44 +1,69 @@
-import { useProjectOverview } from '../hooks/useProjectOverview'
-import { ProjectCard } from '../components/manager/ProjectCard'
+import { useEffect, useState, useRef } from 'react'
+import { Link } from 'react-router-dom'
+import { getProjects, type ProjectInfo } from '../lib/api'
 
 export default function Manager() {
-  const { projects, loading, error } = useProjectOverview()
+  const [projects, setProjects] = useState<ProjectInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  const jsonRef = useRef('')
+
+  useEffect(() => {
+    const poll = () => {
+      getProjects()
+        .then(data => {
+          const json = JSON.stringify(data)
+          if (json !== jsonRef.current) {
+            jsonRef.current = json
+            setProjects(data)
+          }
+          setLoading(false)
+        })
+        .catch(() => setLoading(false))
+    }
+    poll()
+    const iv = setInterval(poll, 5000)
+    return () => clearInterval(iv)
+  }, [])
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-neutral-100">Management Console</h1>
-      </div>
+    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+      <h1 className="text-lg font-semibold text-neutral-100">Projects</h1>
 
-      {error && (
-        <div className="p-4 rounded-lg bg-red-950/30 border border-red-800 text-sm">
-          <p className="text-red-400 font-medium">set-manager is not running</p>
-          <p className="text-red-400/70 mt-1">Start it with: <code className="px-1 py-0.5 bg-neutral-800 rounded text-xs">set-manager serve</code></p>
-        </div>
+      {loading && projects.length === 0 && (
+        <div className="text-sm text-neutral-500">Loading...</div>
       )}
 
-      {loading && !error && (
-        <div className="text-sm text-neutral-500">Loading projects...</div>
-      )}
-
-      {!loading && !error && projects.length === 0 && (
+      {!loading && projects.length === 0 && (
         <div className="p-4 rounded-lg bg-neutral-900 border border-neutral-800 text-sm text-neutral-400">
-          No projects registered. Add one with: <code className="px-1 py-0.5 bg-neutral-800 rounded text-xs">set-manager project add &lt;name&gt; &lt;path&gt;</code>
+          No projects found. Register one with: <code className="px-1 py-0.5 bg-neutral-800 rounded text-xs">set-project init</code>
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         {projects.map(p => (
-          <ProjectCard key={p.name} project={p} />
+          <Link
+            key={p.name}
+            to={`/p/${p.name}/orch`}
+            className="block p-4 rounded-lg border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-neutral-200">{p.name}</span>
+              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                p.status === 'running' ? 'bg-green-900/50 text-green-300' :
+                p.status === 'done' ? 'bg-blue-900/50 text-blue-300' :
+                p.status === 'stopped' ? 'bg-amber-900/50 text-amber-300' :
+                'bg-neutral-800 text-neutral-400'
+              }`}>
+                {p.status || 'idle'}
+              </span>
+            </div>
+            <div className="text-xs text-neutral-500 font-mono truncate">{p.path}</div>
+            {p.has_orchestration && (
+              <div className="mt-1 text-xs text-neutral-600">Orchestration configured</div>
+            )}
+          </Link>
         ))}
       </div>
-
-      {/* Service status bar */}
-      {!error && (
-        <div className="text-xs text-neutral-600 border-t border-neutral-800 pt-3">
-          Manager: running | {projects.length} project{projects.length !== 1 ? 's' : ''}
-        </div>
-      )}
     </div>
   )
 }

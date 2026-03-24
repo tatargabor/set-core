@@ -17,6 +17,7 @@ export interface ProjectInfo {
   name: string
   path: string
   status?: string
+  has_orchestration?: boolean
   last_updated?: string | null
 }
 
