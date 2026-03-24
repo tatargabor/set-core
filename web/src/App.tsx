@@ -6,6 +6,9 @@ import Worktrees from './pages/Worktrees'
 import Settings from './pages/Settings'
 import Memory from './pages/Memory'
 import Home from './pages/Home'
+import Manager from './pages/Manager'
+import ManagerIssues from './pages/ManagerIssues'
+import ManagerMutes from './pages/ManagerMutes'
 import ProjectSelector from './components/ProjectSelector'
 import { useProject } from './hooks/useProject'
 import type { StateData, ChangeInfo } from './lib/api'
@@ -200,6 +203,12 @@ function ProjectLayout() {
           >
             Settings
           </Link>
+          <Link
+            to="/manager"
+            className="block px-3 py-2 rounded text-sm text-neutral-400 hover:bg-neutral-800 hover:text-neutral-300 border-t border-neutral-800 mt-2 pt-2"
+          >
+            Manager Console
+          </Link>
         </nav>
 
         {/* Quick status */}
@@ -254,6 +263,47 @@ function HomeLayout() {
   )
 }
 
+function ManagerLayout() {
+  const location = useLocation()
+  const path = location.pathname
+
+  // Determine which page to show
+  const isMutesPage = path.match(/^\/manager\/[^/]+\/mutes/)
+  const isIssuesPage = path.match(/^\/manager\/[^/]+\/issues/) || path === '/manager/issues'
+  const isOverview = path === '/manager'
+
+  return (
+    <div className="flex h-screen bg-neutral-950 text-neutral-200">
+      <aside className="hidden md:flex w-56 shrink-0 border-r border-neutral-800 flex-col">
+        <Link to="/manager" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
+          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET Manager</h1>
+          <p className="text-sm text-neutral-500 tracking-wide">Control Plane</p>
+        </Link>
+        <nav className="p-3 space-y-1">
+          <Link to="/manager"
+            className={`block px-3 py-2 rounded text-sm ${isOverview ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}>
+            Projects
+          </Link>
+          <Link to="/manager/issues"
+            className={`block px-3 py-2 rounded text-sm ${isIssuesPage ? 'bg-neutral-800 text-neutral-100' : 'hover:bg-neutral-800 text-neutral-300'}`}>
+            All Issues
+          </Link>
+        </nav>
+        <div className="mt-auto border-t border-neutral-800 p-3">
+          <Link to="/set" className="block px-3 py-2 rounded text-sm text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300">
+            Back to Dashboard
+          </Link>
+        </div>
+      </aside>
+      <main className="flex-1 overflow-hidden">
+        {isOverview && <Manager />}
+        {isIssuesPage && <ManagerIssues />}
+        {isMutesPage && <ManagerMutes />}
+      </main>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -261,6 +311,11 @@ export default function App() {
         <Route path="/" element={<Navigate to="/set" replace />} />
         <Route path="/set" element={<HomeLayout />} />
         <Route path="/set/:project/*" element={<ProjectLayout />} />
+        <Route path="/manager" element={<ManagerLayout />} />
+        <Route path="/manager/issues" element={<ManagerLayout />} />
+        <Route path="/manager/:project/issues" element={<ManagerLayout />} />
+        <Route path="/manager/:project/issues/:issueId" element={<ManagerLayout />} />
+        <Route path="/manager/:project/mutes" element={<ManagerLayout />} />
       </Routes>
     </BrowserRouter>
   )

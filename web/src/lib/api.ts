@@ -556,6 +556,263 @@ export function getScoreboard(limit = 20): Promise<{ entries: ScoreboardEntry[] 
   return fetchJSON(`/scoreboard?limit=${limit}`)
 }
 
+// =====================================================
+// Issue Management Console — Manager API types & functions
+// =====================================================
+
+// --- Manager Types ---
+
+export type IssueState =
+  | 'new' | 'investigating' | 'diagnosed'
+  | 'awaiting_approval' | 'fixing' | 'verifying' | 'deploying'
+  | 'resolved' | 'dismissed' | 'muted' | 'failed'
+  | 'skipped' | 'cancelled'
+
+export interface IssueDiagnosis {
+  root_cause: string
+  impact: 'low' | 'medium' | 'high' | 'critical'
+  confidence: number
+  fix_scope: 'single_file' | 'multi_file' | 'cross_module' | 'unknown'
+  suggested_fix: string
+  affected_files: string[]
+  related_issues: string[]
+  suggested_group: string | null
+  group_reason: string | null
+  tags: string[]
+  raw_output: string
+}
+
+export interface Issue {
+  id: string
+  environment: string
+  environment_path: string
+  source: 'sentinel' | 'gate' | 'watchdog' | 'user'
+  state: IssueState
+  severity: 'unknown' | 'low' | 'medium' | 'high' | 'critical'
+  group_id: string | null
+  error_summary: string
+  error_detail: string
+  fingerprint: string
+  affected_files: string[]
+  affected_change: string | null
+  detected_at: string
+  source_finding_id: string | null
+  occurrence_count: number
+  diagnosis: IssueDiagnosis | null
+  investigation_session: string | null
+  change_name: string | null
+  fix_agent_pid: number | null
+  timeout_deadline: string | null
+  timeout_started_at: string | null
+  policy_matched: string | null
+  auto_fix: boolean
+  mute_pattern: string | null
+  retry_count: number
+  max_retries: number
+  updated_at: string
+  resolved_at: string | null
+}
+
+export interface IssueGroup {
+  id: string
+  name: string
+  issue_ids: string[]
+  primary_issue: string
+  state: IssueState
+  change_name: string | null
+  created_at: string
+  reason: string
+  created_by: 'user' | 'agent'
+}
+
+export interface MutePattern {
+  id: string
+  pattern: string
+  reason: string
+  created_by: string
+  created_at: string
+  expires_at: string | null
+  match_count: number
+  last_matched_at: string | null
+  source_issue_id: string | null
+}
+
+export interface IssueAuditEntry {
+  ts: string
+  issue_id?: string
+  group_id?: string
+  action: string
+  [key: string]: unknown
+}
+
+export interface IssueStats {
+  by_state: Partial<Record<IssueState, number>>
+  by_severity: Record<string, number>
+  total_open: number
+  total_resolved: number
+  nearest_timeout: string | null
+}
+
+export interface ManagerProjectStatus {
+  name: string
+  mode: string
+  path: string
+  sentinel: { pid: number | null; alive: boolean; started_at: string | null; crash_count: number }
+  orchestrator: { pid: number | null; alive: boolean; started_at: string | null }
+  issue_stats?: IssueStats
+}
+
+export interface ManagerStatus {
+  pid: number
+  running: boolean
+  tick_interval: number
+  port: number
+  projects: Record<string, ManagerProjectStatus>
+  issues: Record<string, IssueStats>
+}
+
+export interface TimelineEntry {
+  id: string
+  timestamp: string
+  type: 'system' | 'user' | 'agent'
+  content: string
+  action?: string
+  icon?: string
+  author?: string
+}
+
+// --- Manager API Functions ---
+
+const MGR = '/manager'
+
+// Projects & processes
+export function getManagerProjects(): Promise<ManagerProjectStatus[]> {
+  return fetchJSON(`${MGR}/projects`)
+}
+export function getManagerProjectStatus(name: string): Promise<ManagerProjectStatus> {
+  return fetchJSON(`${MGR}/projects/${name}/status`)
+}
+export function startSentinel(project: string): Promise<{ status: string; pid: number }> {
+  return fetchJSON(`${MGR}/projects/${project}/sentinel/start`, { method: 'POST' })
+}
+export function stopSentinel(project: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/sentinel/stop`, { method: 'POST' })
+}
+export function restartSentinel(project: string): Promise<{ status: string; pid: number }> {
+  return fetchJSON(`${MGR}/projects/${project}/sentinel/restart`, { method: 'POST' })
+}
+export function startOrchestration(project: string): Promise<{ status: string; pid: number }> {
+  return fetchJSON(`${MGR}/projects/${project}/orchestration/start`, { method: 'POST' })
+}
+export function stopOrchestration(project: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/orchestration/stop`, { method: 'POST' })
+}
+
+// Issues
+export function getIssues(project: string, filters?: { state?: string; severity?: string }): Promise<Issue[]> {
+  const params = new URLSearchParams()
+  if (filters?.state) params.set('state', filters.state)
+  if (filters?.severity) params.set('severity', filters.severity)
+  const qs = params.toString()
+  return fetchJSON(`${MGR}/projects/${project}/issues${qs ? '?' + qs : ''}`)
+}
+export function getIssue(project: string, id: string): Promise<Issue> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}`)
+}
+export function createIssue(project: string, data: { error_summary: string; error_detail?: string }): Promise<Issue> {
+  return fetchJSON(`${MGR}/projects/${project}/issues`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  })
+}
+export function getAllIssues(): Promise<Issue[]> {
+  return fetchJSON(`${MGR}/issues`)
+}
+export function getIssueStats(project: string): Promise<IssueStats> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/stats`)
+}
+export function getAllIssueStats(): Promise<Record<string, IssueStats>> {
+  return fetchJSON(`${MGR}/issues/stats`)
+}
+
+// Issue actions
+export function investigateIssue(project: string, id: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/investigate`, { method: 'POST' })
+}
+export function fixIssue(project: string, id: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/fix`, { method: 'POST' })
+}
+export function dismissIssue(project: string, id: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/dismiss`, { method: 'POST' })
+}
+export function cancelIssue(project: string, id: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/cancel`, { method: 'POST' })
+}
+export function skipIssue(project: string, id: string, reason?: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/skip`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason || '' }),
+  })
+}
+export function muteIssue(project: string, id: string, pattern?: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/mute`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pattern }),
+  })
+}
+export function extendIssueTimeout(project: string, id: string, seconds: number): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/extend-timeout`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seconds }),
+  })
+}
+export function sendIssueMessage(project: string, id: string, message: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/message`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }),
+  })
+}
+
+// Groups
+export function getIssueGroups(project: string): Promise<IssueGroup[]> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/groups`)
+}
+export function createIssueGroup(project: string, ids: string[], name: string, reason: string): Promise<IssueGroup> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/groups`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ issue_ids: ids, name, reason }),
+  })
+}
+export function fixGroup(project: string, groupId: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/groups/${groupId}/fix`, { method: 'POST' })
+}
+
+// Mutes
+export function getMutePatterns(project: string): Promise<MutePattern[]> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/mutes`)
+}
+export function addMutePattern(project: string, pattern: string, reason: string, expires_at?: string): Promise<MutePattern> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/mutes`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pattern, reason, expires_at }),
+  })
+}
+export function deleteMutePattern(project: string, id: string): Promise<{ status: string }> {
+  return fetchJSON(`${MGR}/projects/${project}/issues/mutes/${id}`, { method: 'DELETE' })
+}
+
+// Audit
+export function getIssueAudit(project: string, opts?: { since?: number; limit?: number; issue_id?: string }): Promise<IssueAuditEntry[]> {
+  const params = new URLSearchParams()
+  if (opts?.since) params.set('since', String(opts.since))
+  if (opts?.limit) params.set('limit', String(opts.limit))
+  if (opts?.issue_id) params.set('issue_id', opts.issue_id)
+  const qs = params.toString()
+  return fetchJSON(`${MGR}/projects/${project}/issues/audit${qs ? '?' + qs : ''}`)
+}
+
+// Manager service
+export function getManagerStatus(): Promise<ManagerStatus> {
+  return fetchJSON(`${MGR}/manager/status`)
+}
+
+// =====================================================
+
 export async function signScore(project: string, score: number, changesDone: number, totalTokens: number): Promise<string> {
   const data = await fetchJSON<{ signature: string }>(
     `/scoreboard/sign?project=${encodeURIComponent(project)}&score=${score}&changes_done=${changesDone}&total_tokens=${totalTokens}`
