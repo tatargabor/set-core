@@ -150,17 +150,6 @@ registerApp({
   children: [],  // tabs live in Dashboard content, not sidebar
 })
 
-// Sentinel — control + chat + issues management
-registerApp({
-  id: 'sentinel',
-  label: 'Sentinel',
-  icon: '🛡',
-  order: 20,
-  defaultRoute: '/p/:name/sentinel',
-  matchPatterns: ['/p/:name/sentinel'],
-  children: [],  // sentinel tabs live in SentinelPage content
-})
-
 registerApp({
   id: 'issues',
   label: 'Issues',

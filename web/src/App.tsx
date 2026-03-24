@@ -8,9 +8,8 @@ import Memory from './pages/Memory'
 import Manager from './pages/Manager'
 import ManagerIssues from './pages/ManagerIssues'
 import ManagerMutes from './pages/ManagerMutes'
-import SentinelPage from './pages/SentinelPage'
+// SentinelPage removed — controls now in StatusHeader, /sentinel redirects to /orch
 import UnifiedSidebar from './components/UnifiedSidebar'
-import { useProject } from './hooks/useProject'
 import type { StateData } from './lib/api'
 // Import registry to ensure built-in apps are registered
 import './lib/sidebarRegistry'
@@ -21,7 +20,6 @@ import './lib/sidebarRegistry'
  */
 function ProjectLayout() {
   const { name } = useParams<{ name: string }>()
-  const { projects } = useProject()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [_sidebarState, setSidebarState] = useState<StateData | null>(null)
@@ -78,8 +76,6 @@ function ProjectLayout() {
 
       <UnifiedSidebar
         project={project}
-        projects={projects}
-        onProjectChange={() => {}}
         sidebarOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
@@ -95,7 +91,6 @@ function ProjectLayout() {
  * GlobalLayout — layout for non-project routes (/, /issues).
  */
 function GlobalLayout() {
-  const { projects } = useProject()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -120,8 +115,6 @@ function GlobalLayout() {
 
       <UnifiedSidebar
         project={null}
-        projects={projects}
-        onProjectChange={() => {}}
         sidebarOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
@@ -165,11 +158,6 @@ function MutesPage() {
 function WorktreesPage() {
   const { name } = useParams<{ name: string }>()
   return <Worktrees project={name || null} />
-}
-
-function SentinelPageWrapper() {
-  const { name } = useParams<{ name: string }>()
-  return <SentinelPage project={name || null} />
 }
 
 function SentinelChatPage() {
@@ -223,8 +211,8 @@ export default function App() {
           <Route path="orch/tokens" element={<OrchPage tab="tokens" />} />
           <Route path="orch/learnings" element={<OrchPage tab="learnings" />} />
           <Route path="orch/battle" element={<OrchPage tab="battle" />} />
-          {/* Sentinel */}
-          <Route path="sentinel" element={<SentinelPageWrapper />} />
+          {/* Sentinel — redirects to orch (controls now in StatusHeader) */}
+          <Route path="sentinel" element={<Navigate to="../orch" replace />} />
           <Route path="sentinel/chat" element={<SentinelChatPage />} />
           {/* Issues */}
           <Route path="issues" element={<IssuesPage />} />

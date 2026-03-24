@@ -1,13 +1,9 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { getApps, getGlobalItems, type SidebarApp, type SidebarSubItem, type GlobalItem } from '../lib/sidebarRegistry'
 import { useSidebarStats } from '../hooks/useSidebarStats'
-import ProjectSelector from './ProjectSelector'
-import type { ProjectInfo } from '../lib/api'
 
 interface Props {
   project: string | null
-  projects: ProjectInfo[]
-  onProjectChange: (name: string) => void
   sidebarOpen: boolean
   onClose: () => void
 }
@@ -42,20 +38,14 @@ function detectActiveApp(apps: SidebarApp[], pathname: string, project: string |
   return apps[0]?.id ?? null
 }
 
-export default function UnifiedSidebar({ project, projects, onProjectChange, sidebarOpen, onClose }: Props) {
+export default function UnifiedSidebar({ project, sidebarOpen, onClose }: Props) {
   const location = useLocation()
-  const navigate = useNavigate()
   const { issueStats, totalOpen, managerOnline } = useSidebarStats()
 
   const apps = getApps()
   const globalItems = getGlobalItems()
   const activeAppId = project ? detectActiveApp(apps, location.pathname, project) : null
   const activeApp = apps.find(a => a.id === activeAppId)
-
-  const handleProjectChange = (name: string) => {
-    onProjectChange(name)
-    navigate(`/p/${name}/orch`)
-  }
 
   return (
     <>
@@ -76,16 +66,13 @@ export default function UnifiedSidebar({ project, projects, onProjectChange, sid
           <p className="text-sm text-neutral-500 tracking-wide">Ship Exactly This!</p>
         </Link>
 
-        {/* Project Selector */}
-        <div className="p-3">
-          <ProjectSelector
-            projects={projects}
-            current={project}
-            onChange={handleProjectChange}
-          />
-        </div>
-
-        <div className="border-t border-neutral-800" />
+        {/* Project name (when inside a project) */}
+        {project && (
+          <div className="px-4 py-2 border-b border-neutral-800">
+            <span className="text-xs text-neutral-500">Project</span>
+            <div className="text-sm font-medium text-neutral-200 truncate">{project}</div>
+          </div>
+        )}
 
         {project ? (
           <>
@@ -143,7 +130,6 @@ export default function UnifiedSidebar({ project, projects, onProjectChange, sid
         ) : (
           /* Global items (no project selected) */
           <div className="p-3 space-y-0.5">
-            <div className="px-1 py-1 text-xs text-neutral-600 uppercase tracking-wider font-medium">Control Plane</div>
             {globalItems.map(item => (
               <GlobalLink
                 key={item.id}

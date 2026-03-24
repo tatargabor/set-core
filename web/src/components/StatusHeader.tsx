@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { StateData } from '../lib/api'
-import { stopOrchestrator, approve } from '../lib/api'
+import { stopOrchestrator, approve, getManagerProjectStatus, startSentinel, stopSentinel, restartSentinel, getProjectDocs, type ManagerProjectStatus } from '../lib/api'
 
 interface Props {
   state: StateData | null
@@ -26,6 +26,60 @@ function formatDuration(secs?: number): string {
 export default function StatusHeader({ state, connected, project }: Props) {
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<string | null>(null)
+  const [mgrStatus, setMgrStatus] = useState<ManagerProjectStatus | null>(null)
+  const [sentinelBusy, setSentinelBusy] = useState(false)
+  const [specPaths, setSpecPaths] = useState<string[]>([])
+  const [spec, setSpec] = useState('docs/')
+  const [showSpecInput, setShowSpecInput] = useState(false)
+  const mgrJsonRef = useRef('')
+
+  // Poll manager status for sentinel state
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    let fails = 0
+    const poll = () => {
+      getManagerProjectStatus(project)
+        .then(d => {
+          fails = 0
+          const json = JSON.stringify(d)
+          if (json !== mgrJsonRef.current) {
+            mgrJsonRef.current = json
+            setMgrStatus(d)
+          }
+          timer = setTimeout(poll, 5000)
+        })
+        .catch(() => {
+          fails++
+          timer = setTimeout(poll, Math.min(5000 * Math.pow(2, fails), 30000))
+        })
+    }
+    poll()
+    return () => clearTimeout(timer)
+  }, [project])
+
+  // Fetch spec paths once
+  useEffect(() => {
+    getProjectDocs(project)
+      .then(d => {
+        const paths = [
+          ...d.docs.filter(e => e.type === 'dir').map(e => e.path),
+          ...d.docs.filter(e => e.type === 'file').map(e => e.path),
+        ]
+        if (paths.length > 0 && !paths.includes('docs/')) paths.unshift('docs/')
+        setSpecPaths(paths)
+      })
+      .catch(() => {})
+  }, [project])
+
+  const sentinelAlive = mgrStatus?.sentinel.alive ?? false
+  const activeSpec = mgrStatus?.sentinel.spec
+
+  const sentinelAct = async (fn: () => Promise<unknown>) => {
+    setSentinelBusy(true)
+    try { await fn() } catch {}
+    finally { setSentinelBusy(false) }
+  }
+
   const statusBadge = state?.status ?? 'idle'
   const isActive = ['running', 'planning', 'checkpoint'].includes(statusBadge)
   const badgeColor: Record<string, string> = {
@@ -135,6 +189,66 @@ export default function StatusHeader({ state, connected, project }: Props) {
 
       {!state && (
         <span className="ml-auto text-sm text-neutral-500">Waiting for data...</span>
+      )}
+
+      {/* Sentinel controls — right side */}
+      {mgrStatus && (
+        <div className="flex items-center gap-2 ml-auto md:ml-2 border-l border-neutral-800 pl-3">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${sentinelAlive ? 'bg-green-400' : 'bg-neutral-600'}`} />
+          <span className="text-xs text-neutral-500 hidden md:inline">
+            {sentinelAlive ? 'Sentinel' : 'Sentinel idle'}
+          </span>
+          {sentinelAlive ? (
+            <>
+              <button
+                disabled={sentinelBusy}
+                onClick={() => sentinelAct(() => stopSentinel(project))}
+                className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50"
+              >
+                Stop
+              </button>
+              <button
+                disabled={sentinelBusy}
+                onClick={() => sentinelAct(() => restartSentinel(project, (activeSpec ?? spec) || undefined))}
+                className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50"
+              >
+                Restart
+              </button>
+            </>
+          ) : (
+            <>
+              {showSpecInput ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={spec}
+                    onChange={e => setSpec(e.target.value)}
+                    list="spec-paths"
+                    placeholder="docs/"
+                    className="w-32 px-1.5 py-0.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-200 focus:outline-none focus:border-blue-500"
+                  />
+                  <datalist id="spec-paths">
+                    {specPaths.map(p => <option key={p} value={p} />)}
+                  </datalist>
+                  <button
+                    disabled={sentinelBusy}
+                    onClick={() => sentinelAct(() => startSentinel(project, spec || undefined))}
+                    className="px-2 py-0.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50"
+                  >
+                    {sentinelBusy ? 'Starting...' : 'Go'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowSpecInput(true)}
+                  className="px-2 py-0.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400"
+                >
+                  Start
+                </button>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   )

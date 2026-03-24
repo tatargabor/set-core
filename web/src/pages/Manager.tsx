@@ -1,28 +1,35 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { getProjects, type ProjectInfo } from '../lib/api'
+import { getManagerProjects, type ManagerProjectStatus } from '../lib/api'
 
 export default function Manager() {
-  const [projects, setProjects] = useState<ProjectInfo[]>([])
+  const [projects, setProjects] = useState<ManagerProjectStatus[]>([])
   const [loading, setLoading] = useState(true)
   const jsonRef = useRef('')
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    let fails = 0
     const poll = () => {
-      getProjects()
+      getManagerProjects()
         .then(data => {
+          fails = 0
           const json = JSON.stringify(data)
           if (json !== jsonRef.current) {
             jsonRef.current = json
             setProjects(data)
           }
           setLoading(false)
+          timer = setTimeout(poll, 5000)
         })
-        .catch(() => setLoading(false))
+        .catch(() => {
+          fails++
+          setLoading(false)
+          timer = setTimeout(poll, Math.min(5000 * Math.pow(2, fails), 30000))
+        })
     }
     poll()
-    const iv = setInterval(poll, 5000)
-    return () => clearInterval(iv)
+    return () => clearTimeout(timer)
   }, [])
 
   return (
@@ -40,29 +47,33 @@ export default function Manager() {
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
-        {projects.map(p => (
-          <Link
-            key={p.name}
-            to={`/p/${p.name}/orch`}
-            className="block p-4 rounded-lg border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-neutral-200">{p.name}</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded ${
-                p.status === 'running' ? 'bg-green-900/50 text-green-300' :
-                p.status === 'done' ? 'bg-blue-900/50 text-blue-300' :
-                p.status === 'stopped' ? 'bg-amber-900/50 text-amber-300' :
-                'bg-neutral-800 text-neutral-400'
-              }`}>
-                {p.status || 'idle'}
-              </span>
-            </div>
-            <div className="text-xs text-neutral-500 font-mono truncate">{p.path}</div>
-            {p.has_orchestration && (
-              <div className="mt-1 text-xs text-neutral-600">Orchestration configured</div>
-            )}
-          </Link>
-        ))}
+        {projects.map(p => {
+          const sentinelAlive = p.sentinel?.alive
+          const orchAlive = p.orchestrator?.alive
+          const status = sentinelAlive ? 'running' : orchAlive ? 'running' : 'idle'
+          return (
+            <Link
+              key={p.name}
+              to={`/p/${p.name}/orch`}
+              className="block p-4 rounded-lg border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-neutral-200">{p.name}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  status === 'running' ? 'bg-green-900/50 text-green-300' :
+                  'bg-neutral-800 text-neutral-400'
+                }`}>
+                  {status}
+                </span>
+              </div>
+              <div className="text-xs text-neutral-500 font-mono truncate">{p.path}</div>
+              <div className="flex gap-2 mt-1.5 text-xs text-neutral-600">
+                {sentinelAlive && <span className="text-green-500/70">Sentinel active</span>}
+                {p.mode && <span>{p.mode}</span>}
+              </div>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )
