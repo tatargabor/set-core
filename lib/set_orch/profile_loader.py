@@ -1,6 +1,6 @@
 """Load project-type profile for orchestration engine integration.
 
-Reads wt/plugins/project-type.yaml to find the active project type,
+Reads set/plugins/project-type.yaml to find the active project type,
 then loads it via:
   1. entry_points (external plugins — highest priority)
   2. direct import (editable install resilience)
@@ -161,7 +161,7 @@ def load_profile(project_path: str = "."):
     """Load the active project type profile.
 
     Resolution order:
-    1. Read wt/plugins/project-type.yaml → get type name
+    1. Read set/plugins/project-type.yaml → get type name
     2. entry_points(group='set_tools.project_types') — external plugins
     3. direct import set_project_{type_name} — editable install resilience
     4. built-in modules/{type_name}/ — monorepo fallback

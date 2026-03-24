@@ -132,11 +132,11 @@ def _commands_section() -> str:
     return """## Elérhető parancsok
 
 ### Lekérdezés
-- `cat wt/orchestration/orchestration-state.json | python3 -m json.tool` — teljes state
-- `set-orch-core state query --file wt/orchestration/orchestration-state.json --status running` — futó change-ek
-- `set-orch-core state get --file wt/orchestration/orchestration-state.json --change <name> --field status` — egy mező
+- `cat set/orchestration/orchestration-state.json | python3 -m json.tool` — teljes state
+- `set-orch-core state query --file set/orchestration/orchestration-state.json --status running` — futó change-ek
+- `set-orch-core state get --file set/orchestration/orchestration-state.json --change <name> --field status` — egy mező
 - `tail -50 .claude/orchestration.log` — utolsó log sorok
-- `tail -20 wt/orchestration/orchestration-events.jsonl` — utolsó események
+- `tail -20 set/orchestration/orchestration-events.jsonl` — utolsó események
 - `git worktree list` — aktív worktree-k
 - `set-loop monitor <change-id>` — Ralph loop státusz
 
@@ -162,7 +162,7 @@ def _commands_section() -> str:
 def _read_state(project_path: Path) -> dict[str, Any] | str | None:
     """Read orchestration state. Returns dict, error string, or None."""
     # Try new location first, then legacy
-    for rel in ["wt/orchestration/orchestration-state.json", "orchestration-state.json"]:
+    for rel in ["set/orchestration/orchestration-state.json", "orchestration-state.json"]:
         path = project_path / rel
         if path.is_file():
             try:

@@ -14,6 +14,11 @@ from pathlib import Path
 logger = logging.getLogger("set-web.watcher")
 
 
+def _claude_mangle(path: str) -> str:
+    """Mangle a path the same way Claude CLI does for ~/.claude/projects/ dirs."""
+    return path.lstrip("/").replace("/", "-").replace(".", "-")
+
+
 class LogTailer:
     """Track file offset and yield only new lines (tail -f semantics)."""
 
@@ -225,12 +230,12 @@ class ProjectWatcher:
             # Count Claude JSONL sessions for this change (only with worktree)
             sessions_dir = None
             if wt_path:
-                mangled = wt_path.lstrip("/").replace("/", "-")
+                mangled = _claude_mangle(wt_path)
                 d = Path.home() / ".claude" / "projects" / f"-{mangled}"
                 if d.is_dir():
                     sessions_dir = d
                 elif c.get("status") in ("done", "merged", "failed", "verify-failed"):
-                    mangled = str(self.project_path).lstrip("/").replace("/", "-")
+                    mangled = _claude_mangle(str(self.project_path))
                     d = Path.home() / ".claude" / "projects" / f"-{mangled}"
                     if d.is_dir():
                         sessions_dir = d

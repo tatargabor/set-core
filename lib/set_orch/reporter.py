@@ -918,7 +918,7 @@ def generate_report(
             from .paths import SetRuntime
             output_path = SetRuntime().report_html
         except Exception:
-            output_path = "wt/orchestration/report.html"
+            output_path = "set/orchestration/report.html"
 
     data = extract_report_data(state_path, plan_path, digest_dir)
 

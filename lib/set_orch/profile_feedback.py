@@ -1,6 +1,6 @@
 """Feedback system — structured anonymized lesson collection and export.
 
-Lessons are stored in wt/knowledge/lessons/rule-feedback.yaml with a fixed
+Lessons are stored in set/knowledge/lessons/rule-feedback.yaml with a fixed
 schema that forces anonymization by design (rule_id-based, no project names).
 """
 

@@ -1648,8 +1648,8 @@ def _send_terminal_notifications(
                 _default_digest = _rt.digest_dir
                 _default_coverage = _rt.spec_coverage_report
             except Exception:
-                _default_digest = "wt/orchestration/digest"
-                _default_coverage = "wt/orchestration/spec-coverage-report.md"
+                _default_digest = "set/orchestration/digest"
+                _default_coverage = "set/orchestration/spec-coverage-report.md"
             digest_dir = state.extras.get("digest_dir", _default_digest)
             if not os.path.isdir(digest_dir):
                 digest_dir = ""

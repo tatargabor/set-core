@@ -2,7 +2,7 @@
 #
 # Two-step testing: e2e runs pre-merge per-change, smoke runs post-merge on main.
 # These values are injected into the orchestration config.
-# Customize in your project's wt/orchestration/config.yaml.
+# Customize in your project's set/orchestration/config.yaml.
 
 # Pre-merge E2E — runs Playwright tests in each worktree before merge.
 # Each feature change runs its own tests/e2e/<feature>.spec.ts.

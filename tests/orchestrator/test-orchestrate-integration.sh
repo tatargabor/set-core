@@ -671,9 +671,9 @@ echo "--- Spec Lifecycle ---"
 test_start "spec resolution: literal path takes priority"
 REPO_SPEC=$(setup_test_repo)
 cd "$REPO_SPEC"
-mkdir -p wt/orchestration/specs
+mkdir -p set/orchestration/specs
 echo "literal spec" > myspec.md
-echo "short-name spec" > wt/orchestration/specs/myspec.md
+echo "short-name spec" > set/orchestration/specs/myspec.md
 # Simulate find_input logic
 SPEC_OVERRIDE="myspec.md"
 INPUT_MODE="" INPUT_PATH=""
@@ -682,33 +682,33 @@ if [[ -f "$SPEC_OVERRIDE" ]]; then
     INPUT_PATH="$(cd "$(dirname "$SPEC_OVERRIDE")" && pwd)/$(basename "$SPEC_OVERRIDE")"
 fi
 assert_contains "$INPUT_PATH" "myspec.md"
-# Verify it resolved to the literal (repo root), not wt/orchestration/specs/
-test_start "spec resolution: literal path not from wt/orchestration/specs"
-if [[ "$INPUT_PATH" == *"wt/orchestration/specs"* ]]; then
-    test_fail "not wt/orchestration/specs path" "$INPUT_PATH"
+# Verify it resolved to the literal (repo root), not set/orchestration/specs/
+test_start "spec resolution: literal path not from set/orchestration/specs"
+if [[ "$INPUT_PATH" == *"set/orchestration/specs"* ]]; then
+    test_fail "not set/orchestration/specs path" "$INPUT_PATH"
 else
     test_pass
 fi
 
-# Test 14.1b: Short name resolves to wt/orchestration/specs/
-test_start "spec resolution: short name resolves to wt/orchestration/specs/"
+# Test 14.1b: Short name resolves to set/orchestration/specs/
+test_start "spec resolution: short name resolves to set/orchestration/specs/"
 cd "$REPO_SPEC"
 SPEC_OVERRIDE="v12"
 INPUT_MODE="" INPUT_PATH=""
-echo "v12 content" > wt/orchestration/specs/v12.md
+echo "v12 content" > set/orchestration/specs/v12.md
 if [[ -f "$SPEC_OVERRIDE" ]]; then
     INPUT_MODE="spec"
     INPUT_PATH="$(cd "$(dirname "$SPEC_OVERRIDE")" && pwd)/$(basename "$SPEC_OVERRIDE")"
 else
-    local_wt_spec="wt/orchestration/specs/${SPEC_OVERRIDE}.md"
+    local_wt_spec="set/orchestration/specs/${SPEC_OVERRIDE}.md"
     if [[ -f "$local_wt_spec" ]]; then
         INPUT_MODE="spec"
         INPUT_PATH="$(cd "$(dirname "$local_wt_spec")" && pwd)/$(basename "$local_wt_spec")"
     fi
 fi
 assert_contains "$INPUT_PATH" "v12.md"
-test_start "spec resolution: short name path includes wt/orchestration/specs"
-assert_contains "$INPUT_PATH" "wt/orchestration/specs"
+test_start "spec resolution: short name path includes set/orchestration/specs"
+assert_contains "$INPUT_PATH" "set/orchestration/specs"
 
 # Test 14.1c: Missing spec errors with both paths
 test_start "spec resolution: missing spec shows both checked paths"
@@ -716,23 +716,23 @@ cd "$REPO_SPEC"
 SPEC_OVERRIDE="nonexistent"
 error_output=""
 if [[ ! -f "$SPEC_OVERRIDE" ]]; then
-    local_wt_spec="wt/orchestration/specs/${SPEC_OVERRIDE}.md"
-    local_wt_spec_sub="wt/orchestration/specs/${SPEC_OVERRIDE}"
+    local_wt_spec="set/orchestration/specs/${SPEC_OVERRIDE}.md"
+    local_wt_spec_sub="set/orchestration/specs/${SPEC_OVERRIDE}"
     if [[ ! -f "$local_wt_spec" && ! -f "$local_wt_spec_sub" ]]; then
         error_output="Spec file not found: $SPEC_OVERRIDE | Checked: $SPEC_OVERRIDE, $local_wt_spec"
     fi
 fi
 assert_contains "$error_output" "nonexistent"
 test_start "spec resolution: error mentions wt/ path"
-assert_contains "$error_output" "wt/orchestration/specs/nonexistent.md"
+assert_contains "$error_output" "set/orchestration/specs/nonexistent.md"
 
 # Test 14.2: specs list output format (active + archived)
 test_start "specs list: shows active and archived specs"
 REPO_SLIST=$(setup_test_repo)
 cd "$REPO_SLIST"
-mkdir -p wt/orchestration/specs/archive
-echo "# Active spec" > wt/orchestration/specs/v9.md
-echo "# Archived spec" > wt/orchestration/specs/archive/v7.md
+mkdir -p set/orchestration/specs/archive
+echo "# Active spec" > set/orchestration/specs/v9.md
+echo "# Archived spec" > set/orchestration/specs/archive/v7.md
 list_output=$("$PROJECT_DIR/bin/set-orchestrate" specs list 2>&1 || true)
 assert_contains "$list_output" "v9"
 
@@ -746,21 +746,21 @@ assert_contains "$list_output" "v7"
 test_start "specs archive: moves spec to archive/"
 REPO_SARCH=$(setup_test_repo)
 cd "$REPO_SARCH"
-mkdir -p wt/orchestration/specs/archive
-echo "# Spec to archive" > wt/orchestration/specs/v8.md
-git add wt/orchestration/specs/v8.md && git commit -m "add v8 spec" --quiet
+mkdir -p set/orchestration/specs/archive
+echo "# Spec to archive" > set/orchestration/specs/v8.md
+git add set/orchestration/specs/v8.md && git commit -m "add v8 spec" --quiet
 "$PROJECT_DIR/bin/set-orchestrate" specs archive v8 2>&1 || true
-if [[ -f "wt/orchestration/specs/archive/v8.md" && ! -f "wt/orchestration/specs/v8.md" ]]; then
+if [[ -f "set/orchestration/specs/archive/v8.md" && ! -f "set/orchestration/specs/v8.md" ]]; then
     test_pass
 else
-    test_fail "v8.md in archive/ and not in specs/" "$(ls wt/orchestration/specs/ wt/orchestration/specs/archive/ 2>/dev/null)"
+    test_fail "v8.md in archive/ and not in specs/" "$(ls set/orchestration/specs/ set/orchestration/specs/archive/ 2>/dev/null)"
 fi
 
 # Test 14.4: Legacy spec migration detects docs/v*.md pattern
 test_start "legacy migration: detects docs/v*.md files"
 REPO_SMIG=$(setup_test_repo)
 cd "$REPO_SMIG"
-mkdir -p docs wt/orchestration/specs/archive
+mkdir -p docs set/orchestration/specs/archive
 echo "# v1 spec" > docs/v1.md
 echo "# v2 spec" > docs/v2_minicrm.md
 echo "# not a spec" > docs/readme.md
@@ -768,17 +768,17 @@ git add . && git commit -m "add legacy specs" --quiet
 # Run migrate
 "$PROJECT_DIR/bin/set-project" migrate 2>&1 || true
 # Check that v1.md and v2_minicrm.md moved to archive, readme.md stayed
-if [[ -f "wt/orchestration/specs/archive/v1.md" ]]; then
+if [[ -f "set/orchestration/specs/archive/v1.md" ]]; then
     test_pass
 else
-    test_fail "v1.md in archive/" "$(ls wt/orchestration/specs/archive/ 2>/dev/null)"
+    test_fail "v1.md in archive/" "$(ls set/orchestration/specs/archive/ 2>/dev/null)"
 fi
 
 test_start "legacy migration: v2_minicrm.md also migrated"
-if [[ -f "wt/orchestration/specs/archive/v2_minicrm.md" ]]; then
+if [[ -f "set/orchestration/specs/archive/v2_minicrm.md" ]]; then
     test_pass
 else
-    test_fail "v2_minicrm.md in archive/" "$(ls wt/orchestration/specs/archive/ 2>/dev/null)"
+    test_fail "v2_minicrm.md in archive/" "$(ls set/orchestration/specs/archive/ 2>/dev/null)"
 fi
 
 test_start "legacy migration: non-spec docs/readme.md not moved"
@@ -796,7 +796,7 @@ echo ""
 echo "--- Requirement-Aware Review ---"
 
 # Need DIGEST_DIR for build_req_review_section
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 
 # Test 5.7: build_req_review_section with valid requirements + digest
 test_start "build_req_review_section returns REQ-IDs and titles"
@@ -1019,7 +1019,7 @@ LOG_FILE="$COV_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$COV_REPO"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 # 6 requirements: 3 merged, 2 uncovered, 1 failed
@@ -1073,7 +1073,7 @@ LOG_FILE="$NOCOV_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$NOCOV_REPO"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 # No digest dir at all
 
 cat > "$STATE_FILENAME" <<'STATE_EOF'
@@ -1095,7 +1095,7 @@ LOG_FILE="$ALLMERGE_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$ALLMERGE_REPO"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
@@ -1146,7 +1146,7 @@ LOG_FILE="$BLOCKED_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$BLOCKED_REPO"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
@@ -1196,11 +1196,11 @@ RPT_REPO=$(setup_test_repo)
 STATE_FILENAME="$RPT_REPO/orchestration-state.json"
 PLAN_FILENAME="$RPT_REPO/orchestration-plan.json"
 LOG_FILE="$RPT_REPO/orchestrate.log"
-REPORT_OUTPUT_PATH="$RPT_REPO/wt/orchestration/report.html"
+REPORT_OUTPUT_PATH="$RPT_REPO/set/orchestration/report.html"
 touch "$LOG_FILE"
 cd "$RPT_REPO"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR/domains"
 
 # index.json
@@ -1290,11 +1290,11 @@ NORPT_REPO=$(setup_test_repo)
 STATE_FILENAME="$NORPT_REPO/orchestration-state.json"
 PLAN_FILENAME="$NORPT_REPO/orchestration-plan.json"
 LOG_FILE="$NORPT_REPO/orchestrate.log"
-REPORT_OUTPUT_PATH="$NORPT_REPO/wt/orchestration/report.html"
+REPORT_OUTPUT_PATH="$NORPT_REPO/set/orchestration/report.html"
 touch "$LOG_FILE"
 cd "$NORPT_REPO"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 # No digest dir
 
 # plan
@@ -1378,7 +1378,7 @@ LOG_FILE="$INT_REPO1/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO1"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
@@ -1435,7 +1435,7 @@ LOG_FILE="$INT_REPO2/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO2"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 # 10 requirements, 8 assigned, 2 unassigned
@@ -1494,7 +1494,7 @@ LOG_FILE="$INT_REPO3/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO3"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
@@ -1544,11 +1544,11 @@ INT_REPO4=$(setup_test_repo)
 STATE_FILENAME="$INT_REPO4/orchestration-state.json"
 PLAN_FILENAME="$INT_REPO4/orchestration-plan.json"
 LOG_FILE="$INT_REPO4/orchestrate.log"
-REPORT_OUTPUT_PATH="$INT_REPO4/wt/orchestration/report.html"
+REPORT_OUTPUT_PATH="$INT_REPO4/set/orchestration/report.html"
 touch "$LOG_FILE"
 cd "$INT_REPO4"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR/domains"
 
 cat > "$DIGEST_DIR/index.json" <<'IDX_EOF'
@@ -1628,11 +1628,11 @@ INT_REPO5=$(setup_test_repo)
 STATE_FILENAME="$INT_REPO5/orchestration-state.json"
 PLAN_FILENAME="$INT_REPO5/orchestration-plan.json"
 LOG_FILE="$INT_REPO5/orchestrate.log"
-REPORT_OUTPUT_PATH="$INT_REPO5/wt/orchestration/report.html"
+REPORT_OUTPUT_PATH="$INT_REPO5/set/orchestration/report.html"
 touch "$LOG_FILE"
 cd "$INT_REPO5"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 # No digest
 
 cat > "$PLAN_FILENAME" <<'PLAN_EOF'
@@ -1662,7 +1662,7 @@ LOG_FILE="$INT_REPO6/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO6"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
@@ -1696,7 +1696,7 @@ LOG_FILE="$INT_REPO7/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO7"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
@@ -1726,7 +1726,7 @@ LOG_FILE="$INT_REPO8/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO8"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
@@ -1762,7 +1762,7 @@ LOG_FILE="$INT_REPO9/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO9"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
@@ -1790,11 +1790,11 @@ INT_REPO10=$(setup_test_repo)
 STATE_FILENAME="$INT_REPO10/orchestration-state.json"
 PLAN_FILENAME="$INT_REPO10/orchestration-plan.json"
 LOG_FILE="$INT_REPO10/orchestrate.log"
-REPORT_OUTPUT_PATH="$INT_REPO10/wt/orchestration/report.html"
+REPORT_OUTPUT_PATH="$INT_REPO10/set/orchestration/report.html"
 touch "$LOG_FILE"
 cd "$INT_REPO10"
 
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 
 cat > "$PLAN_FILENAME" <<'PLAN_EOF'
 {"changes": [{"name": "atomic-test", "scope": "Test", "depends_on": []}]}
@@ -1851,10 +1851,10 @@ _collect_smoke_screenshots "test-sc-collect"
 sc_dir=$(jq -r '.changes[0].smoke_screenshot_dir' "$STATE_FILE")
 sc_count=$(jq -r '.changes[0].smoke_screenshot_count' "$STATE_FILE")
 # Verify attempt-1 dir exists
-if [[ -d "wt/orchestration/smoke-screenshots/test-sc-collect/attempt-1" && "$sc_count" -eq 2 && "$sc_dir" == *"smoke-screenshots/test-sc-collect" ]]; then
+if [[ -d "set/orchestration/smoke-screenshots/test-sc-collect/attempt-1" && "$sc_count" -eq 2 && "$sc_dir" == *"smoke-screenshots/test-sc-collect" ]]; then
     test_pass
 else
-    test_fail "attempt-1/ exists, count=2, dir set" "dir_exists=$(test -d wt/orchestration/smoke-screenshots/test-sc-collect/attempt-1 && echo y || echo n), count=$sc_count, dir=$sc_dir"
+    test_fail "attempt-1/ exists, count=2, dir set" "dir_exists=$(test -d set/orchestration/smoke-screenshots/test-sc-collect/attempt-1 && echo y || echo n), count=$sc_count, dir=$sc_dir"
 fi
 
 # Test: Versioned attempt directories preserve both fail and pass screenshots
@@ -1869,12 +1869,12 @@ echo "PASS_PNG" > test-results/fixed.png
 _collect_smoke_screenshots "test-sc-collect"
 
 sc_count=$(jq -r '.changes[0].smoke_screenshot_count' "$STATE_FILE")
-if [[ -d "wt/orchestration/smoke-screenshots/test-sc-collect/attempt-1" && \
-      -d "wt/orchestration/smoke-screenshots/test-sc-collect/attempt-2" && \
+if [[ -d "set/orchestration/smoke-screenshots/test-sc-collect/attempt-1" && \
+      -d "set/orchestration/smoke-screenshots/test-sc-collect/attempt-2" && \
       "$sc_count" -eq 3 ]]; then
     test_pass
 else
-    test_fail "both attempt dirs exist, total count=3" "attempt-1=$(test -d wt/orchestration/smoke-screenshots/test-sc-collect/attempt-1 && echo y || echo n), attempt-2=$(test -d wt/orchestration/smoke-screenshots/test-sc-collect/attempt-2 && echo y || echo n), count=$sc_count"
+    test_fail "both attempt dirs exist, total count=3" "attempt-1=$(test -d set/orchestration/smoke-screenshots/test-sc-collect/attempt-1 && echo y || echo n), attempt-2=$(test -d set/orchestration/smoke-screenshots/test-sc-collect/attempt-2 && echo y || echo n), count=$sc_count"
 fi
 
 # Test: Already-merged sets smoke_result=skip_merged

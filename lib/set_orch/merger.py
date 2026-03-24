@@ -183,7 +183,10 @@ def _resolve_retention() -> str:
     """Read worktree_retention from orchestration.yaml, default 'keep'."""
     try:
         from .config import load_config_file
-        config = load_config_file("wt/orchestration/orchestration.yaml")
+        path = "set/orchestration/config.yaml"
+        if not os.path.isfile(path):
+            path = "wt/orchestration/config.yaml"  # legacy fallback
+        config = load_config_file(path)
         return config.get("worktree_retention", "keep")
     except Exception:
         return "keep"

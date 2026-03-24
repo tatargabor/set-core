@@ -1599,7 +1599,7 @@ def run_phase_end_e2e(
         from .paths import SetRuntime
         screenshot_dir = SetRuntime().e2e_screenshots_dir(cycle)
     except Exception:
-        screenshot_dir = f"wt/orchestration/e2e-screenshots/cycle-{cycle}"
+        screenshot_dir = f"set/orchestration/e2e-screenshots/cycle-{cycle}"
     os.makedirs(screenshot_dir, exist_ok=True)
 
     # Run E2E — Playwright manages dev server via webServer config

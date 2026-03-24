@@ -10,7 +10,7 @@ Determine the source project's project type and template:
 
 ```bash
 # Read source project's project-type.yaml
-cat <source-project>/wt/plugins/project-type.yaml
+cat <source-project>/set/plugins/project-type.yaml
 ```
 
 Extract `type` and `template` fields. These determine which template package to compare against.

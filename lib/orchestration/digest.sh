@@ -4,7 +4,7 @@
 # Sourced by bin/set-orchestrate after planner.sh.
 # Python implementation: lib/set_orch/digest.py, cli.py:cmd_digest()
 
-DIGEST_DIR="${WT_DIGEST_DIR:-wt/orchestration/digest}"
+DIGEST_DIR="${WT_DIGEST_DIR:-set/orchestration/digest}"
 
 # ─── Digest Entry Point ──────────────────────────────────────────────
 

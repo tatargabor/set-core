@@ -26,7 +26,7 @@ send_notification() { :; }
 
 # Source modules
 LIB_DIR="$PROJECT_DIR/lib/orchestration"
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 EVENTS_ENABLED="false"
 source "$LIB_DIR/events.sh" 2>/dev/null || true
 source "$LIB_DIR/digest.sh"

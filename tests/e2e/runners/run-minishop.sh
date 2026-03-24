@@ -205,7 +205,7 @@ ATTRS
 
     step "Orchestration config"
     # Overwrite template config.yaml with E2E-specific values
-    cat > wt/orchestration/config.yaml <<YAML
+    cat > set/orchestration/config.yaml <<YAML
 # Orchestration config for MiniShop E2E test
 default_model: opus
 max_parallel: 2
@@ -226,10 +226,10 @@ YAML
         design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' docs/v1-minishop.md | head -1 || true)
     fi
     if [[ -n "$design_file_url" ]]; then
-        echo "design_file: \"$design_file_url\"" >> wt/orchestration/config.yaml
+        echo "design_file: \"$design_file_url\"" >> set/orchestration/config.yaml
         success "Design file reference: $design_file_url"
     fi
-    success "Created wt/orchestration/config.yaml"
+    success "Created set/orchestration/config.yaml"
 
     git add -A
     git commit -m "chore: set-project init + orchestration config"

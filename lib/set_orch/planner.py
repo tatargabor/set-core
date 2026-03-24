@@ -482,7 +482,7 @@ def _default_coverage_path() -> str:
         from .paths import SetRuntime
         return SetRuntime().spec_coverage_report
     except Exception:
-        return "wt/orchestration/spec-coverage-report.md"
+        return "set/orchestration/spec-coverage-report.md"
 
 
 def generate_coverage_report(
@@ -925,7 +925,7 @@ def build_decomposition_context(
 
     if input_mode == "digest":
         # input_path is the original spec dir (e.g. "docs/"), but digest
-        # output lives in wt/orchestration/digest/. Use that instead.
+        # output lives in set/orchestration/digest/. Use that instead.
         digest_dir = os.path.join(os.getcwd(), "wt", "orchestration", "digest")
         input_content = _build_digest_content(digest_dir)
     else:

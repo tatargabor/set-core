@@ -79,7 +79,7 @@ class TestLoadProfile:
     """load_profile() resolution and caching."""
 
     def test_no_project_type_yaml_returns_null(self, tmp_path):
-        """No wt/plugins/project-type.yaml → NullProfile."""
+        """No set/plugins/project-type.yaml → NullProfile."""
         p = load_profile(str(tmp_path))
         assert isinstance(p, NullProfile)
 

@@ -65,8 +65,8 @@ _migrate_consumer() {
     local added_directives=0
     local created_files=0
 
-    # 1. Additive directive merge for orchestration.yaml (check wt/ first)
-    local orch_yaml="$project_path/wt/orchestration/config.yaml"
+    # 1. Additive directive merge for orchestration.yaml (check set/ first)
+    local orch_yaml="$project_path/set/orchestration/config.yaml"
     if [[ ! -f "$orch_yaml" ]]; then
         orch_yaml="$project_path/.claude/orchestration.yaml"
     fi
@@ -146,14 +146,14 @@ _migrate_consumer() {
 # Deploy set-core hooks, commands, and skills to a project's .claude/ directory.
 # Usage: deploy_set_tools <project-path> [<extra-mcp-path> ...]
 # extra-mcp-path: additional paths to register MCP for (e.g. current worktree)
-# Write wt/plugins/.generated-file-patterns from profile for bash consumption (set-merge).
+# Write set/plugins/.generated-file-patterns from profile for bash consumption (set-merge).
 # One pattern per line. No-op if no profile or profile returns empty list.
 _write_generated_file_patterns() {
     local project_path="$1"
-    local patterns_file="$project_path/wt/plugins/.generated-file-patterns"
+    local patterns_file="$project_path/set/plugins/.generated-file-patterns"
 
-    # wt/plugins/ must exist (scaffold_wt_directory creates it)
-    [[ -d "$project_path/wt/plugins" ]] || return 0
+    # set/plugins/ must exist (scaffold_set_directory creates it)
+    [[ -d "$project_path/set/plugins" ]] || return 0
 
     local py
     py=$(_set_python) 2>/dev/null || return 0
@@ -213,7 +213,7 @@ deploy_set_tools() {
     _deploy_commands "$project_path"
     _deploy_skills "$project_path"
     _deploy_memory "$project_path"
-    scaffold_wt_directory "$project_path"
+    scaffold_set_directory "$project_path"
     _deploy_mcp "$project_path" "$@" || ((_warnings++)) || true
 
     return $(( _warnings > 0 ? 1 : 0 ))
@@ -352,13 +352,13 @@ if not found:
 " 2>/dev/null
 }
 
-# Save project type to wt/plugins/project-type.yaml
+# Save project type to set/plugins/project-type.yaml
 _save_project_type() {
     local project_path="$1"
     local type_name="$2"
     local init_template="${3:-}"
     local init_modules="${4:-}"
-    local pt_file="$project_path/wt/plugins/project-type.yaml"
+    local pt_file="$project_path/set/plugins/project-type.yaml"
 
     # Validate project type exists
     local pt_info
@@ -494,7 +494,7 @@ _migrate_runtime_to_shared() {
     local migrated=0
 
     # Migrate orchestration state
-    for old_state in "$project_path/wt/orchestration/orchestration-state.json" "$project_path/orchestration-state.json"; do
+    for old_state in "$project_path/set/orchestration/orchestration-state.json" "$project_path/wt/orchestration/orchestration-state.json" "$project_path/orchestration-state.json"; do
         if [[ -f "$old_state" && ! -f "$runtime_dir/orchestration/state.json" ]]; then
             mkdir -p "$runtime_dir/orchestration"
             cp "$old_state" "$runtime_dir/orchestration/state.json"
@@ -503,7 +503,7 @@ _migrate_runtime_to_shared() {
     done
 
     # Migrate events
-    for old_events in "$project_path/wt/orchestration/orchestration-state-events.jsonl" "$project_path/orchestration-events.jsonl"; do
+    for old_events in "$project_path/set/orchestration/orchestration-state-events.jsonl" "$project_path/wt/orchestration/orchestration-state-events.jsonl" "$project_path/orchestration-events.jsonl"; do
         if [[ -f "$old_events" && ! -f "$runtime_dir/orchestration/events.jsonl" ]]; then
             mkdir -p "$runtime_dir/orchestration"
             cp "$old_events" "$runtime_dir/orchestration/events.jsonl"
@@ -512,7 +512,7 @@ _migrate_runtime_to_shared() {
     done
 
     # Migrate orchestration log
-    for old_log in "$project_path/wt/orchestration/orchestration.log" "$project_path/.claude/orchestration.log" "$project_path/orchestration.log"; do
+    for old_log in "$project_path/set/orchestration/orchestration.log" "$project_path/wt/orchestration/orchestration.log" "$project_path/.claude/orchestration.log" "$project_path/orchestration.log"; do
         if [[ -f "$old_log" && ! -f "$runtime_dir/logs/orchestration.log" ]]; then
             mkdir -p "$runtime_dir/logs"
             cp "$old_log" "$runtime_dir/logs/orchestration.log"
@@ -547,19 +547,33 @@ _migrate_runtime_to_shared() {
     fi
 }
 
-# Scaffold wt/ directory structure in a project.
-# Creates all standard subdirectories. Idempotent — safe to re-run.
-scaffold_wt_directory() {
+# Migrate legacy wt/ directory to set/ (one-time rename).
+_migrate_wt_to_set() {
     local project_path="$1"
-    local wt_dir="$project_path/wt"
+    if [[ -d "$project_path/wt" && ! -d "$project_path/set" ]]; then
+        mv "$project_path/wt" "$project_path/set"
+        success "  Migrated wt/ → set/"
+        # Update .gitignore
+        if [[ -f "$project_path/.gitignore" ]]; then
+            sed -i 's|^wt/\.work/$|set/.work/|' "$project_path/.gitignore"
+        fi
+    fi
+}
+
+# Scaffold set/ directory structure in a project.
+# Creates all standard subdirectories. Idempotent — safe to re-run.
+scaffold_set_directory() {
+    local project_path="$1"
+    _migrate_wt_to_set "$project_path"
+    local set_dir="$project_path/set"
 
     mkdir -p \
-        "$wt_dir/orchestration/specs/archive" \
-        "$wt_dir/knowledge/patterns" \
-        "$wt_dir/knowledge/lessons" \
-        "$wt_dir/requirements" \
-        "$wt_dir/plugins" \
-        "$wt_dir/.work"
+        "$set_dir/orchestration/specs/archive" \
+        "$set_dir/knowledge/patterns" \
+        "$set_dir/knowledge/lessons" \
+        "$set_dir/requirements" \
+        "$set_dir/plugins" \
+        "$set_dir/.work"
 
     # Create shared runtime directory (~/.local/share/set-core/<project>/)
     local script_dir
@@ -568,14 +582,14 @@ scaffold_wt_directory() {
         (cd "$project_path" && source "$script_dir/set-paths" 2>/dev/null && wt_ensure_runtime_dirs) || true
     fi
 
-    # Add wt/.work/ to .gitignore if not already present
+    # Add set/.work/ to .gitignore if not already present
     local gitignore="$project_path/.gitignore"
     if [[ -f "$gitignore" ]]; then
-        if ! grep -qx 'wt/.work/' "$gitignore" 2>/dev/null; then
-            echo 'wt/.work/' >> "$gitignore"
+        if ! grep -qx 'set/.work/' "$gitignore" 2>/dev/null; then
+            echo 'set/.work/' >> "$gitignore"
         fi
     else
-        echo 'wt/.work/' > "$gitignore"
+        echo 'set/.work/' > "$gitignore"
     fi
 
     # Auto-migrate old runtime files to shared location
@@ -601,21 +615,21 @@ ENVEOF
         fi
     fi
 
-    success "  Scaffolded wt/ directory structure"
+    success "  Scaffolded set/ directory structure"
 
     # Detect legacy files and print migration suggestions
     local found_legacy=false
     local legacy_msgs=()
     if [[ -f "$project_path/.claude/orchestration.yaml" ]]; then
-        legacy_msgs+=("    .claude/orchestration.yaml → wt/orchestration/config.yaml")
+        legacy_msgs+=("    .claude/orchestration.yaml → set/orchestration/config.yaml")
         found_legacy=true
     fi
     if [[ -f "$project_path/project-knowledge.yaml" ]]; then
-        legacy_msgs+=("    project-knowledge.yaml → wt/knowledge/project-knowledge.yaml")
+        legacy_msgs+=("    project-knowledge.yaml → set/knowledge/project-knowledge.yaml")
         found_legacy=true
     fi
     if [[ -d "$project_path/docs/orchestration-runs" ]]; then
-        legacy_msgs+=("    docs/orchestration-runs/ → wt/orchestration/runs/")
+        legacy_msgs+=("    docs/orchestration-runs/ → set/orchestration/runs/")
         found_legacy=true
     fi
     # Check for legacy spec files (docs/v1.md, docs/v2.md, etc.)
@@ -630,7 +644,7 @@ ENVEOF
         has_legacy_specs=true && break
     done
     if $has_legacy_specs; then
-        legacy_msgs+=("    docs/v*.md → wt/orchestration/specs/archive/")
+        legacy_msgs+=("    docs/v*.md → set/orchestration/specs/archive/")
         found_legacy=true
     fi
 
@@ -652,7 +666,7 @@ Usage: set-project <command> [options]
 Commands:
   init [--name <name>]    Register current git repo as a project
   init-knowledge          Scaffold project-knowledge.yaml from project scan
-  migrate                 Migrate legacy files to wt/ directory structure
+  migrate                 Migrate legacy files to set/ directory structure
   list                    List all registered projects
   list-types              List available project types
   remove <name>           Remove a project from registry
@@ -718,7 +732,7 @@ _deploy_project_templates() {
 # Prints comma-separated module list or empty string
 _read_tracked_modules() {
     local project_path="$1"
-    local pt_file="$project_path/wt/plugins/project-type.yaml"
+    local pt_file="$project_path/set/plugins/project-type.yaml"
     [[ -f "$pt_file" ]] || return 0
     grep '^modules:' "$pt_file" &>/dev/null || return 0
     # Extract module list (YAML array to comma-separated; handles "- x" or "  - x")
@@ -731,7 +745,7 @@ _save_template_modules() {
     local project_path="$1"
     local template_name="$2"
     local modules_csv="$3"
-    local pt_file="$project_path/wt/plugins/project-type.yaml"
+    local pt_file="$project_path/set/plugins/project-type.yaml"
     [[ -f "$pt_file" ]] || return 0
 
     # Use Python for safe YAML update (avoids grep -v destroying other arrays)
@@ -930,7 +944,7 @@ cmd_init() {
         # Read tracked template too, for re-init without --template
         local deploy_template="$template"
         if [[ -z "$deploy_template" ]]; then
-            local pt_file="$git_root/wt/plugins/project-type.yaml"
+            local pt_file="$git_root/set/plugins/project-type.yaml"
             if [[ -f "$pt_file" ]]; then
                 deploy_template=$(grep '^template:' "$pt_file" 2>/dev/null | sed 's/^template: *//' || true)
             fi
@@ -1126,7 +1140,7 @@ cmd_default() {
     success "Default project set to '$name'"
 }
 
-# Migrate legacy files to wt/ directory structure.
+# Migrate legacy files to set/ directory structure.
 # Uses git mv when in a git repo, plain mv otherwise.
 cmd_migrate() {
     if ! is_git_repo; then
@@ -1151,27 +1165,27 @@ cmd_migrate() {
         fi
     }
 
-    # 1. orchestration.yaml → wt/orchestration/config.yaml
+    # 1. orchestration.yaml → set/orchestration/config.yaml
     local orch_src="$git_root/.claude/orchestration.yaml"
-    local orch_dst="$git_root/wt/orchestration/config.yaml"
+    local orch_dst="$git_root/set/orchestration/config.yaml"
     if [[ -f "$orch_src" && ! -f "$orch_dst" ]]; then
         _migrate_move "$orch_src" "$orch_dst"
-        success "  Migrated .claude/orchestration.yaml → wt/orchestration/config.yaml"
+        success "  Migrated .claude/orchestration.yaml → set/orchestration/config.yaml"
         migrated=$((migrated + 1))
     fi
 
-    # 2. project-knowledge.yaml → wt/knowledge/project-knowledge.yaml
+    # 2. project-knowledge.yaml → set/knowledge/project-knowledge.yaml
     local pk_src="$git_root/project-knowledge.yaml"
-    local pk_dst="$git_root/wt/knowledge/project-knowledge.yaml"
+    local pk_dst="$git_root/set/knowledge/project-knowledge.yaml"
     if [[ -f "$pk_src" && ! -f "$pk_dst" ]]; then
         _migrate_move "$pk_src" "$pk_dst"
-        success "  Migrated project-knowledge.yaml → wt/knowledge/project-knowledge.yaml"
+        success "  Migrated project-knowledge.yaml → set/knowledge/project-knowledge.yaml"
         migrated=$((migrated + 1))
     fi
 
-    # 3. docs/orchestration-runs/* → wt/orchestration/runs/
+    # 3. docs/orchestration-runs/* → set/orchestration/runs/
     local runs_src="$git_root/docs/orchestration-runs"
-    local runs_dst="$git_root/wt/orchestration/runs"
+    local runs_dst="$git_root/set/orchestration/runs"
     if [[ -d "$runs_src" ]] && ls "$runs_src"/*.md &>/dev/null; then
         mkdir -p "$runs_dst"
         for f in "$runs_src"/*.md; do
@@ -1183,12 +1197,12 @@ cmd_migrate() {
         done
         # Remove empty source dir
         rmdir "$runs_src" 2>/dev/null || true
-        success "  Migrated docs/orchestration-runs/ → wt/orchestration/runs/"
+        success "  Migrated docs/orchestration-runs/ → set/orchestration/runs/"
         migrated=$((migrated + 1))
     fi
 
-    # 4. docs/v[0-9]*.md (legacy spec files) → wt/orchestration/specs/archive/
-    local specs_dst="$git_root/wt/orchestration/specs/archive"
+    # 4. docs/v[0-9]*.md (legacy spec files) → set/orchestration/specs/archive/
+    local specs_dst="$git_root/set/orchestration/specs/archive"
     local found_specs=false
     for f in "$git_root"/docs/v[0-9]*.md; do
         [[ -f "$f" ]] || continue
@@ -1200,7 +1214,7 @@ cmd_migrate() {
         fi
     done
     if $found_specs; then
-        success "  Migrated docs/v*.md spec files → wt/orchestration/specs/archive/"
+        success "  Migrated docs/v*.md spec files → set/orchestration/specs/archive/"
         migrated=$((migrated + 1))
     fi
 
@@ -1219,10 +1233,10 @@ cmd_init_knowledge() {
 
     local git_root
     git_root=$(get_git_root)
-    # Prefer wt/knowledge/ when wt/ exists, fallback to project root
+    # Prefer set/knowledge/ when set/ exists, fallback to project root
     local pk_file="$git_root/project-knowledge.yaml"
-    if [[ -d "$git_root/wt/knowledge" ]]; then
-        pk_file="$git_root/wt/knowledge/project-knowledge.yaml"
+    if [[ -d "$git_root/set/knowledge" ]]; then
+        pk_file="$git_root/set/knowledge/project-knowledge.yaml"
     fi
     local template="$SET_TOOLS_ROOT/templates/project-knowledge.yaml"
 
@@ -1232,13 +1246,13 @@ cmd_init_knowledge() {
         return 0
     fi
     # Also check legacy location if targeting wt/
-    if [[ "$pk_file" == *"/wt/knowledge/"* && -f "$git_root/project-knowledge.yaml" ]]; then
+    if [[ "$pk_file" == *"/set/knowledge/"* && -f "$git_root/project-knowledge.yaml" ]]; then
         info "project-knowledge.yaml exists at project root. Run 'set-project migrate' to move it."
         return 0
     fi
 
     # Check if a project type is configured — use its templates instead of generic
-    local pt_yaml="$git_root/wt/plugins/project-type.yaml"
+    local pt_yaml="$git_root/set/plugins/project-type.yaml"
     if [[ -f "$pt_yaml" ]]; then
         local pt_name
         pt_name=$(grep '^type:' "$pt_yaml" 2>/dev/null | awk '{print $2}' || true)

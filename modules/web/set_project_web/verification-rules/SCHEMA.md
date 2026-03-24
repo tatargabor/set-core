@@ -58,7 +58,7 @@ Checks that a forbidden pattern does NOT appear in matching files.
 
 ## Consumer Overrides
 
-Rules can be customized in `wt/plugins/project-type.yaml`:
+Rules can be customized in `set/plugins/project-type.yaml`:
 
 ```yaml
 # Disable a rule

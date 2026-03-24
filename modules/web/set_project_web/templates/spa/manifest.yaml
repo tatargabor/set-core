@@ -1,6 +1,6 @@
 core:
   - project-knowledge.yaml
-  - wt/orchestration/config.yaml
+  - set/orchestration/config.yaml
   - rules/components.md
   - rules/design-integration.md
   - rules/web-frontend.md

@@ -51,7 +51,7 @@ def _resolve_log_path(log_path: str | Path | None = None) -> Path:
     Priority:
     1. Explicit log_path argument
     2. SetRuntime resolution (shared runtime dir)
-    3. Legacy fallback: wt/orchestration/orchestration.log
+    3. Legacy fallback: set/orchestration/orchestration.log
     """
     if log_path is not None:
         return Path(log_path)
@@ -68,7 +68,7 @@ def _resolve_log_path(log_path: str | Path | None = None) -> Path:
     if state_file:
         return Path(state_file).parent / "orchestration.log"
 
-    return Path("wt/orchestration/orchestration.log")
+    return Path("set/orchestration/orchestration.log")
 
 
 def setup_logging(

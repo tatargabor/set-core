@@ -102,11 +102,11 @@ test_start "set_find_config orchestration — new location wins"
 (
     cd "$TMPDIR"
     mkdir -p wt/orchestration .claude
-    echo "test: true" > wt/orchestration/config.yaml
+    echo "test: true" > set/orchestration/config.yaml
     echo "test: false" > .claude/orchestration.yaml
     result=$(set_find_config orchestration)
-    [[ "$result" == "wt/orchestration/config.yaml" ]]
-) && test_pass || test_fail "wt/orchestration/config.yaml" "other"
+    [[ "$result" == "set/orchestration/config.yaml" ]]
+) && test_pass || test_fail "set/orchestration/config.yaml" "other"
 
 # Test: legacy fallback works
 test_start "set_find_config orchestration — legacy fallback"
@@ -131,17 +131,17 @@ test_start "set_find_config project-knowledge — new location"
 (
     cd "$TMPDIR"
     mkdir -p wt/knowledge
-    echo "features: {}" > wt/knowledge/project-knowledge.yaml
+    echo "features: {}" > set/knowledge/project-knowledge.yaml
     echo "features: {}" > project-knowledge.yaml
     result=$(set_find_config project-knowledge)
-    [[ "$result" == "wt/knowledge/project-knowledge.yaml" ]]
-) && test_pass || test_fail "wt/knowledge/project-knowledge.yaml" "other"
+    [[ "$result" == "set/knowledge/project-knowledge.yaml" ]]
+) && test_pass || test_fail "set/knowledge/project-knowledge.yaml" "other"
 
 # Test: project-knowledge legacy fallback
 test_start "set_find_config project-knowledge — legacy fallback"
 (
     cd "$TMPDIR"
-    rm -rf wt/knowledge/project-knowledge.yaml
+    rm -rf set/knowledge/project-knowledge.yaml
     result=$(set_find_config project-knowledge)
     [[ "$result" == "project-knowledge.yaml" ]]
 ) && test_pass || test_fail "project-knowledge.yaml" "other"
@@ -157,10 +157,10 @@ echo "--- set_find_runs_dir ---"
 test_start "set_find_runs_dir — new location"
 (
     cd "$TMPDIR"
-    mkdir -p wt/orchestration/runs docs/orchestration-runs
+    mkdir -p set/orchestration/runs docs/orchestration-runs
     result=$(set_find_runs_dir)
-    [[ "$result" == "wt/orchestration/runs" ]]
-) && test_pass || test_fail "wt/orchestration/runs" "other"
+    [[ "$result" == "set/orchestration/runs" ]]
+) && test_pass || test_fail "set/orchestration/runs" "other"
 
 test_start "set_find_runs_dir — legacy fallback"
 (
@@ -190,8 +190,8 @@ test_start "set_find_requirements_dir — exists"
     cd "$TMPDIR"
     mkdir -p wt/requirements
     result=$(set_find_requirements_dir)
-    [[ "$result" == "wt/requirements" ]]
-) && test_pass || test_fail "wt/requirements" "other"
+    [[ "$result" == "set/requirements" ]]
+) && test_pass || test_fail "set/requirements" "other"
 
 test_start "set_find_requirements_dir — missing returns empty"
 (
@@ -203,12 +203,12 @@ test_start "set_find_requirements_dir — missing returns empty"
 
 rm -rf "$TMPDIR"/*
 
-# ─── scaffold_wt_directory tests ─────────────────────────────────
+# ─── scaffold_set_directory tests ─────────────────────────────────
 
 echo ""
-echo "--- scaffold_wt_directory ---"
+echo "--- scaffold_set_directory ---"
 
-# Source set-project for scaffold_wt_directory
+# Source set-project for scaffold_set_directory
 source "$PROJECT_DIR/bin/set-common.sh"
 
 # We can't source set-project directly (it has a main dispatch),
@@ -218,37 +218,37 @@ source "$PROJECT_DIR/bin/set-common.sh"
 test_start "scaffold creates all subdirectories"
 (
     cd "$TMPDIR"
-    mkdir -p wt/orchestration/runs wt/orchestration/plans \
-             wt/knowledge/patterns wt/knowledge/lessons \
+    mkdir -p set/orchestration/runs set/orchestration/plans \
+             set/knowledge/patterns set/knowledge/lessons \
              wt/requirements wt/plugins wt/.work
     # Verify all exist
-    [[ -d wt/orchestration/runs ]] && \
-    [[ -d wt/orchestration/plans ]] && \
-    [[ -d wt/knowledge/patterns ]] && \
-    [[ -d wt/knowledge/lessons ]] && \
+    [[ -d set/orchestration/runs ]] && \
+    [[ -d set/orchestration/plans ]] && \
+    [[ -d set/knowledge/patterns ]] && \
+    [[ -d set/knowledge/lessons ]] && \
     [[ -d wt/requirements ]] && \
     [[ -d wt/plugins ]] && \
     [[ -d wt/.work ]]
 ) && test_pass || test_fail "all dirs exist" "some missing"
 
-test_start "scaffold adds wt/.work/ to .gitignore"
+test_start "scaffold adds set/.work/ to .gitignore"
 (
     cd "$TMPDIR"
     echo "node_modules/" > .gitignore
-    if ! grep -qx 'wt/.work/' .gitignore 2>/dev/null; then
-        echo 'wt/.work/' >> .gitignore
+    if ! grep -qx 'set/.work/' .gitignore 2>/dev/null; then
+        echo 'set/.work/' >> .gitignore
     fi
-    grep -qx 'wt/.work/' .gitignore
-) && test_pass || test_fail "wt/.work/ in .gitignore" "missing"
+    grep -qx 'set/.work/' .gitignore
+) && test_pass || test_fail "set/.work/ in .gitignore" "missing"
 
 test_start "scaffold is idempotent — no duplicate .gitignore entries"
 (
     cd "$TMPDIR"
-    # Already has wt/.work/ from previous test
-    if ! grep -qx 'wt/.work/' .gitignore 2>/dev/null; then
-        echo 'wt/.work/' >> .gitignore
+    # Already has set/.work/ from previous test
+    if ! grep -qx 'set/.work/' .gitignore 2>/dev/null; then
+        echo 'set/.work/' >> .gitignore
     fi
-    count=$(grep -cx 'wt/.work/' .gitignore)
+    count=$(grep -cx 'set/.work/' .gitignore)
     [[ "$count" -eq 1 ]]
 ) && test_pass || test_fail "1 entry" "multiple"
 
@@ -266,7 +266,7 @@ test_start "migrate detects legacy orchestration.yaml"
     mkdir -p .claude wt/orchestration
     echo "max_parallel: 3" > .claude/orchestration.yaml
     # Simulate migration
-    [[ -f .claude/orchestration.yaml && ! -f wt/orchestration/config.yaml ]]
+    [[ -f .claude/orchestration.yaml && ! -f set/orchestration/config.yaml ]]
 ) && test_pass || test_fail "detected" "not detected"
 
 test_start "migrate detects legacy project-knowledge.yaml"
@@ -274,13 +274,13 @@ test_start "migrate detects legacy project-knowledge.yaml"
     cd "$TMPDIR"
     mkdir -p wt/knowledge
     echo "features: {}" > project-knowledge.yaml
-    [[ -f project-knowledge.yaml && ! -f wt/knowledge/project-knowledge.yaml ]]
+    [[ -f project-knowledge.yaml && ! -f set/knowledge/project-knowledge.yaml ]]
 ) && test_pass || test_fail "detected" "not detected"
 
 test_start "migrate detects legacy run logs"
 (
     cd "$TMPDIR"
-    mkdir -p docs/orchestration-runs wt/orchestration/runs
+    mkdir -p docs/orchestration-runs set/orchestration/runs
     echo "# Run 1" > docs/orchestration-runs/run-001.md
     [[ -d docs/orchestration-runs ]]
 ) && test_pass || test_fail "detected" "not detected"
@@ -311,7 +311,7 @@ priority: should
 description: Already done
 EOF
     dir=$(set_find_requirements_dir)
-    [[ "$dir" == "wt/requirements" ]]
+    [[ "$dir" == "set/requirements" ]]
     # Only captured/planned should be picked up (logic tested via yq)
     if command -v yq &>/dev/null; then
         status=$(yq -r '.status' wt/requirements/REQ-001-test.yaml)

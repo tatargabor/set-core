@@ -17,11 +17,11 @@ sync_resolve_identity() {
     echo "${user}/${machine}"
 }
 
-# Resolve sync working directory: wt/.work/memory/ if wt/ exists, else storage_path
+# Resolve sync working directory: set/.work/memory/ if set/ exists, else storage_path
 _sync_work_dir() {
     local storage_path="$1"
-    if [[ -d "wt/.work" ]]; then
-        local work_dir="wt/.work/memory"
+    if [[ -d "set/.work" ]]; then
+        local work_dir="set/.work/memory"
         mkdir -p "$work_dir"
         # Legacy migration: copy .sync-state from storage_path on first use
         if [[ ! -f "$work_dir/.sync-state" && -f "$storage_path/.sync-state" ]]; then

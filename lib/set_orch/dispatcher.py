@@ -1182,7 +1182,7 @@ def _build_review_learnings(findings_path: str, exclude_change: str) -> str:
     return (
         "These patterns caused CRITICAL/HIGH failures in other changes during this run:\n"
         + "\n".join(lines)
-        + f"\n\nFull details: `wt/orchestration/review-findings.jsonl`"
+        + f"\n\nFull details: `set/orchestration/review-findings.jsonl`"
     )
 
 

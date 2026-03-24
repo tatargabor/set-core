@@ -338,13 +338,13 @@ if content:
     fi
 
     # Auto-import memory seeds if memory store is empty and seed file exists
-    local seed_file="$project_path/wt/knowledge/memory-seed.yaml"
+    local seed_file="$project_path/set/knowledge/memory-seed.yaml"
     if [[ -f "$seed_file" ]] && command -v set-memory &>/dev/null; then
         local mem_count
         mem_count=$(cd "$project_path" && set-memory list --limit 1 2>/dev/null | grep -c "^[0-9a-f]" || true)
         if [[ "$mem_count" -eq 0 ]]; then
             (cd "$project_path" && set-memory seed 2>/dev/null) && \
-                success "  Auto-imported memory seeds from wt/knowledge/memory-seed.yaml" || \
+                success "  Auto-imported memory seeds from set/knowledge/memory-seed.yaml" || \
                 warn "  Failed to import memory seeds"
         fi
     fi

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Legacy default — callers should use SetRuntime().digest_dir when available.
 # Many functions accept digest_dir as a parameter; engine.py passes the resolved path.
-DIGEST_DIR = "wt/orchestration/digest"
+DIGEST_DIR = "set/orchestration/digest"
 
 # Core ignore patterns for spec scanning
 _CORE_IGNORE_PATTERNS = {"archive", ".git", "__pycache__", ".venv"}

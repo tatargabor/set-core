@@ -12,6 +12,6 @@ This runs the decomposition skill which:
 If no spec path is provided, it will look for the spec configured in orchestration config.
 
 Arguments:
-- spec-path: Path to the spec file (e.g., `wt/orchestration/specs/v12.md`)
+- spec-path: Path to the spec file (e.g., `set/orchestration/specs/v12.md`)
 
-Example: `/set:decompose wt/orchestration/specs/v12-minicrm.md`
+Example: `/set:decompose set/orchestration/specs/v12-minicrm.md`

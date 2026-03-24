@@ -47,14 +47,14 @@ class TestResolveLogPath:
         assert result == Path("/custom/path.log")
 
     def test_from_state_filename(self, monkeypatch):
-        monkeypatch.setenv("STATE_FILENAME", "/project/wt/orchestration/orchestration-state.json")
+        monkeypatch.setenv("STATE_FILENAME", "/project/set/orchestration/orchestration-state.json")
         result = _resolve_log_path()
-        assert result == Path("/project/wt/orchestration/orchestration.log")
+        assert result == Path("/project/set/orchestration/orchestration.log")
 
     def test_default_path(self, monkeypatch):
         monkeypatch.delenv("STATE_FILENAME", raising=False)
         result = _resolve_log_path()
-        assert result == Path("wt/orchestration/orchestration.log")
+        assert result == Path("set/orchestration/orchestration.log")
 
     def test_explicit_overrides_env(self, monkeypatch):
         monkeypatch.setenv("STATE_FILENAME", "/env/state.json")

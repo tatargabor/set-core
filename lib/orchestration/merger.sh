@@ -27,7 +27,7 @@ _archive_worktree_logs() {
     local logs_src="$wt_path/.claude/logs"
     [[ -d "$logs_src" ]] || return 0
 
-    local archive_dir="wt/orchestration/logs/$change_name"
+    local archive_dir="set/orchestration/logs/$change_name"
     mkdir -p "$archive_dir"
     cp -n "$logs_src"/*.log "$archive_dir/" 2>/dev/null || true
     local count

@@ -284,7 +284,7 @@ def execute_e2e_gate(
         from set_orch.paths import SetRuntime
         e2e_sc_dir = os.path.join(SetRuntime().screenshots_dir, "e2e", change_name)
     except Exception:
-        e2e_sc_dir = f"wt/orchestration/e2e-screenshots/{change_name}"
+        e2e_sc_dir = f"set/orchestration/e2e-screenshots/{change_name}"
     os.makedirs(e2e_sc_dir, exist_ok=True)
     wt_test_results = os.path.join(wt_path, "test-results")
     if os.path.isdir(wt_test_results):

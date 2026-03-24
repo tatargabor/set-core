@@ -26,7 +26,7 @@ model_id()  { echo "test-model"; }
 
 # Source digest module and its dependency (events.sh for emit_event)
 LIB_DIR="$PROJECT_DIR/lib/orchestration"
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 EVENTS_ENABLED="false"
 source "$LIB_DIR/events.sh"
 source "$LIB_DIR/digest.sh"
@@ -578,7 +578,7 @@ COV_WORK=$(mktemp -d)
 CLEANUP_DIRS+=("$COV_WORK")
 _ORIG_DIR=$(pwd)
 cd "$COV_WORK"
-DIGEST_DIR="wt/orchestration/digest"
+DIGEST_DIR="set/orchestration/digest"
 mkdir -p "$DIGEST_DIR"
 
 # Create requirements.json with 4 REQs

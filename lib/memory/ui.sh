@@ -768,10 +768,10 @@ print(f'Dashboard written to: $html_file')
     fi
 }
 
-# Import memory seeds from wt/knowledge/memory-seed.yaml.
+# Import memory seeds from set/knowledge/memory-seed.yaml.
 # Uses content-hash duplicate detection to avoid re-importing existing memories.
 cmd_seed() {
-    local seed_file="wt/knowledge/memory-seed.yaml"
+    local seed_file="set/knowledge/memory-seed.yaml"
     local dry_run=false
 
     while [[ $# -gt 0 ]]; do
@@ -780,7 +780,7 @@ cmd_seed() {
             --dry-run) dry_run=true; shift ;;
             -h|--help)
                 echo "Usage: set-memory seed [--file <path>] [--dry-run]"
-                echo "Import memory seeds from wt/knowledge/memory-seed.yaml"
+                echo "Import memory seeds from set/knowledge/memory-seed.yaml"
                 return 0
                 ;;
             *) shift ;;

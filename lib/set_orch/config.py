@@ -605,8 +605,8 @@ def find_input(
             return ("digest", str(p.resolve()))
         # Short-name resolution
         for candidate in [
-            Path(f"wt/orchestration/specs/{spec_override}.md"),
-            Path(f"wt/orchestration/specs/{spec_override}"),
+            Path(f"set/orchestration/specs/{spec_override}.md"),
+            Path(f"set/orchestration/specs/{spec_override}"),
         ]:
             if candidate.exists():
                 return ("digest", str(candidate.resolve()))

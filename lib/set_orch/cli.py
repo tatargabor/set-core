@@ -1059,7 +1059,7 @@ def cmd_digest(args):
             args.spec,
             model=args.model,
             dry_run=args.dry_run,
-            digest_dir=getattr(args, "dir", "wt/orchestration/digest"),
+            digest_dir=getattr(args, "dir", "set/orchestration/digest"),
         )
         if result.validation_warnings:
             for w in result.validation_warnings:
@@ -1525,7 +1525,7 @@ def main():
     r_gen.add_argument("--state", default=None, help="State JSON file path")
     r_gen.add_argument("--plan", default=None, help="Plan JSON file path")
     r_gen.add_argument("--digest-dir", default=None, help="Digest directory path")
-    r_gen.add_argument("--output", default="wt/orchestration/report.html", help="Output HTML path")
+    r_gen.add_argument("--output", default="set/orchestration/report.html", help="Output HTML path")
 
     # --- events ---
     evt_parser = subparsers.add_parser("events", help="Query orchestration events log")
@@ -1745,17 +1745,17 @@ def main():
     dig_run.add_argument("--spec", required=True, help="Spec directory or file path")
     dig_run.add_argument("--dry-run", action="store_true", help="Print without writing")
     dig_run.add_argument("--model", default="opus", help="Model for digest")
-    dig_run.add_argument("--dir", default="wt/orchestration/digest", help="Digest directory")
+    dig_run.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
 
     dig_val = dig_sub.add_parser("validate", help="Validate existing digest")
-    dig_val.add_argument("--dir", default="wt/orchestration/digest", help="Digest directory")
+    dig_val.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
 
     dig_cov = dig_sub.add_parser("coverage", help="Show coverage report")
-    dig_cov.add_argument("--dir", default="wt/orchestration/digest", help="Digest directory")
+    dig_cov.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
 
     dig_fresh = dig_sub.add_parser("freshness", help="Check digest freshness")
     dig_fresh.add_argument("--spec", required=True, help="Spec directory or file path")
-    dig_fresh.add_argument("--dir", default="wt/orchestration/digest", help="Digest directory")
+    dig_fresh.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
 
     dig_scan = dig_sub.add_parser("scan", help="Scan spec directory")
     dig_scan.add_argument("--spec", required=True, help="Spec directory or file path")
@@ -1765,15 +1765,15 @@ def main():
 
     dig_pcov = dig_sub.add_parser("populate-coverage", help="Map requirements to plan changes")
     dig_pcov.add_argument("--plan-file", required=True, help="Plan file path")
-    dig_pcov.add_argument("--dir", default="wt/orchestration/digest", help="Digest directory")
+    dig_pcov.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
 
     dig_ucov = dig_sub.add_parser("update-coverage", help="Update coverage status for a change")
     dig_ucov.add_argument("--change", required=True, help="Change name")
     dig_ucov.add_argument("--status", required=True, help="New status")
-    dig_ucov.add_argument("--dir", default="wt/orchestration/digest", help="Digest directory")
+    dig_ucov.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
 
     dig_fcov = dig_sub.add_parser("final-coverage", help="Final coverage check summary")
-    dig_fcov.add_argument("--dir", default="wt/orchestration/digest", help="Digest directory")
+    dig_fcov.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
 
     dig_gtriage = dig_sub.add_parser("generate-triage", help="Generate triage.md from ambiguities")
     dig_gtriage.add_argument("--amb-file", required=True, help="Ambiguities JSON file")

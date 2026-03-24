@@ -62,7 +62,7 @@ get_design_mcp_config() {
 load_design_file_ref() {
     local project_root="${PROJECT_ROOT:-.}"
     # Check both possible config locations
-    local config="$project_root/wt/orchestration/config.yaml"
+    local config="$project_root/set/orchestration/config.yaml"
     [[ -f "$config" ]] || config="$project_root/.claude/orchestration.yaml"
     [[ -f "$config" ]] || return 1
 

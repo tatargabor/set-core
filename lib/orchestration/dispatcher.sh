@@ -212,7 +212,7 @@ cmd_start() {
             done <<< "$_zombie_pids"
 
             # Verify directives file exists
-            local _directives_file="wt/orchestration/directives.json"
+            local _directives_file="set/orchestration/directives.json"
             if [[ ! -f "$_directives_file" ]]; then
                 # Try to regenerate from state or input
                 if [[ -n "${INPUT_PATH:-}" ]] && [[ -e "${INPUT_PATH:-}" ]]; then
@@ -299,7 +299,7 @@ cmd_start() {
         [[ -n "$SPEC_OVERRIDE" ]] && cli_input="$SPEC_OVERRIDE"
         [[ -n "$BRIEF_OVERRIDE" ]] && cli_input="$BRIEF_OVERRIDE"
         # Resolve cli_input to absolute path using the same logic as find_input():
-        # short names like "v12" → wt/orchestration/specs/v12.md, relative paths → absolute
+        # short names like "v12" → set/orchestration/specs/v12.md, relative paths → absolute
         local resolved_cli="$cli_input"
         if [[ -n "$SPEC_OVERRIDE" ]]; then
             if [[ -d "$cli_input" ]]; then
@@ -308,9 +308,9 @@ cmd_start() {
             elif [[ -f "$cli_input" ]]; then
                 resolved_cli="$(cd "$(dirname "$cli_input")" && pwd)/$(basename "$cli_input")"
             else
-                # Try short-name resolution: wt/orchestration/specs/<name>.md
-                local wt_spec="wt/orchestration/specs/${cli_input}.md"
-                local wt_spec_sub="wt/orchestration/specs/${cli_input}"
+                # Try short-name resolution: set/orchestration/specs/<name>.md
+                local wt_spec="set/orchestration/specs/${cli_input}.md"
+                local wt_spec_sub="set/orchestration/specs/${cli_input}"
                 if [[ -f "$wt_spec" ]]; then
                     resolved_cli="$(cd "$(dirname "$wt_spec")" && pwd)/$(basename "$wt_spec")"
                 elif [[ -f "$wt_spec_sub" ]]; then
@@ -549,7 +549,7 @@ cmd_start() {
             # trap would write status=stopped before Python starts
             trap - EXIT
             update_state_field "status" '"running"'
-            local _directives_file="wt/orchestration/directives.json"
+            local _directives_file="set/orchestration/directives.json"
             echo "$directives" > "$_directives_file"
             exec set-orch-core engine monitor \
                 --directives "$_directives_file" \
@@ -673,7 +673,7 @@ cmd_start() {
     # trap would write status=stopped before Python starts
     trap - EXIT
     update_state_field "status" '"running"'
-    local _directives_file="wt/orchestration/directives.json"
+    local _directives_file="set/orchestration/directives.json"
     echo "$directives" > "$_directives_file"
     exec set-orch-core engine monitor \
         --directives "$_directives_file" \

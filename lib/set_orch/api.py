@@ -1343,7 +1343,7 @@ def serve_screenshot(project: str, file_path: str):
     full_path = project_path / file_path
     if not full_path.exists() or not full_path.suffix == ".png":
         raise HTTPException(404, "Screenshot not found")
-    # Ensure path is within project's wt/orchestration/
+    # Ensure path is within project's set/orchestration/
     orch_dir = project_path / "wt" / "orchestration"
     try:
         full_path.resolve().relative_to(orch_dir.resolve())

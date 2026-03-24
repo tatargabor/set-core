@@ -72,7 +72,7 @@ def build_audit_prompt(
             from .paths import SetRuntime
             digest_dir = SetRuntime().digest_dir
         except Exception:
-            digest_dir = "wt/orchestration/digest"
+            digest_dir = "set/orchestration/digest"
     changes = state.get("changes", [])
 
     # Collect merged changes
@@ -157,7 +157,7 @@ def run_audit(
     cycle: int = 1,
     input_mode: str = "spec",
     input_path: str = "",
-    digest_dir: str = "wt/orchestration/digest",
+    digest_dir: str = "set/orchestration/digest",
     review_model: str = "sonnet",
 ) -> AuditResult:
     """Run post-phase audit: build prompt, call LLM, parse result.
@@ -228,7 +228,7 @@ def run_audit(
         from .paths import SetRuntime
         debug_log = Path(SetRuntime().audit_log(cycle))
     except Exception:
-        debug_log = Path(f"wt/orchestration/audit-cycle-{cycle}.log")
+        debug_log = Path(f"set/orchestration/audit-cycle-{cycle}.log")
     debug_log.parent.mkdir(parents=True, exist_ok=True)
     try:
         debug_log.write_text(

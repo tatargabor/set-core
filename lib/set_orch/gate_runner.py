@@ -456,7 +456,7 @@ def collect_screenshots(
         else:
             base_dir = os.path.join(rt.screenshots_dir, category, change_name)
     except Exception:
-        base_dir = f"wt/orchestration/{category}-screenshots/{change_name}"
+        base_dir = f"set/orchestration/{category}-screenshots/{change_name}"
 
     if attempt is not None:
         dest_dir = os.path.join(base_dir, f"attempt-{attempt}")

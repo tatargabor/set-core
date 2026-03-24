@@ -18,10 +18,10 @@ Decompose a specification document into an orchestration execution plan.
    - Identify completed items (checkboxes, "done" markers) and focus on incomplete work
 
 2. **Read project context** (if files exist, skip gracefully if not)
-   - `wt/plugins/project-type.yaml` — verification rules, conventions, project type
-   - `wt/knowledge/project-knowledge.yaml` — cross-cutting files, feature registry
-   - `wt/requirements/*.yaml` — active requirements (status: captured or planned)
-   - `wt/orchestration/config.yaml` or `.claude/orchestration.yaml` — directives
+   - `set/plugins/project-type.yaml` — verification rules, conventions, project type
+   - `set/knowledge/project-knowledge.yaml` — cross-cutting files, feature registry
+   - `set/requirements/*.yaml` — active requirements (status: captured or planned)
+   - `set/orchestration/config.yaml` or `.claude/orchestration.yaml` — directives
 
 3. **Explore the codebase**
    - Use the Agent tool (Explore) to scan for existing implementations matching spec topics
@@ -87,11 +87,11 @@ Decompose a specification document into an orchestration execution plan.
      ]
    }
 
-   **Note:** `spec_files`, `requirements`, and `also_affects_reqs` are only required when working with a multi-file spec that has been digested (`wt/orchestration/digest/` exists). For single-file specs, omit these fields.
+   **Note:** `spec_files`, `requirements`, and `also_affects_reqs` are only required when working with a multi-file spec that has been digested (`set/orchestration/digest/` exists). For single-file specs, omit these fields.
 
    **Source items (single-file mode only):** When there is NO digest directory, generate a `source_items` array listing every identifiable spec item (feature, requirement, task, checkbox) with an assigned change name or `null` if intentionally excluded. Omit `source_items` entirely in digest mode (digest uses `requirements.json` instead).
 
-   **Requirement accounting (digest mode only):** When a digest exists, every requirement in `wt/orchestration/digest/requirements.json` MUST be accounted for. Either:
+   **Requirement accounting (digest mode only):** When a digest exists, every requirement in `set/orchestration/digest/requirements.json` MUST be accounted for. Either:
    - Assign it to a change via `requirements[]` or `also_affects_reqs[]`, OR
    - List it in `deferred_requirements[]` with a reason explaining why it is deferred (e.g., dependency on another phase, out of scope for this sprint, intentionally excluded)
 
@@ -127,7 +127,7 @@ Decompose a specification document into an orchestration execution plan.
 - Changes with design gaps can still proceed but the gap is recorded for user resolution
 
 **Project type integration:**
-- If `wt/plugins/project-type.yaml` exists, use its verification rules to inform change_type and dependency ordering
+- If `set/plugins/project-type.yaml` exists, use its verification rules to inform change_type and dependency ordering
 - Project-type-specific patterns (e.g., "DB migration must be sequential") MUST be reflected
 
 ## Context Size Management

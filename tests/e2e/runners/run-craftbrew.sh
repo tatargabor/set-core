@@ -145,7 +145,7 @@ check_existing() {
         echo "  git checkout -b resume-<tag> <tag>"
         echo "  set-project init --name $PROJECT_NAME --project-type web"
         echo "  rm -f orchestration-state.json orchestration-plan.json"
-        echo "  rm -rf wt/orchestration/digest/"
+        echo "  rm -rf set/orchestration/digest/"
         echo "  set-sentinel --spec docs/"
         exit 0
     fi
@@ -240,7 +240,7 @@ ATTRS
         design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' "$design_system" | head -1 || true)
     fi
 
-    cat > wt/orchestration/config.yaml <<YAML
+    cat > set/orchestration/config.yaml <<YAML
 # Orchestration config for CraftBrew E2E
 default_model: opus-1m
 test_command: pnpm test
@@ -259,7 +259,7 @@ discord:
 YAML
 
     if [[ -n "$design_file_url" ]]; then
-        echo "design_file: \"$design_file_url\"" >> wt/orchestration/config.yaml
+        echo "design_file: \"$design_file_url\"" >> set/orchestration/config.yaml
         success "Design file reference: $design_file_url"
     else
         # Check if Figma MCP is registered but no URL was extracted
@@ -269,7 +269,7 @@ YAML
             warn "Format: **Figma Make:** https://www.figma.com/make/XXXX/Name"
         fi
     fi
-    success "Created wt/orchestration/config.yaml"
+    success "Created set/orchestration/config.yaml"
 
     git add -A
     git commit -m "chore: set-project init + orchestration config"
@@ -294,7 +294,7 @@ show_completion() {
     echo ""
     info "The sentinel will:"
     echo "  1. Detect directory spec → auto-trigger digest"
-    echo "  2. Generate wt/orchestration/digest/ (requirements, domains, conventions)"
+    echo "  2. Generate set/orchestration/digest/ (requirements, domains, conventions)"
     echo "  3. Plan changes from structured digest"
     echo "  4. Dispatch agents with spec-context per worktree"
     echo "  5. Track requirement coverage through execution"
