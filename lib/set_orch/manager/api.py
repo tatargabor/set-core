@@ -36,6 +36,9 @@ def create_api(service: ServiceManager) -> web.Application:
     app.router.add_post("/api/projects/{name}/sentinel/stop", handle_sentinel_stop)
     app.router.add_post("/api/projects/{name}/sentinel/restart", handle_sentinel_restart)
 
+    # Sentinel log
+    app.router.add_get("/api/projects/{name}/sentinel/log", handle_sentinel_log)
+
     # Project docs
     app.router.add_get("/api/projects/{name}/docs", handle_list_docs)
 
@@ -181,6 +184,25 @@ async def handle_sentinel_restart(request: web.Request):
     sup.stop_sentinel()
     pid = sup.start_sentinel(spec=data.get("spec"))
     return _json({"status": "ok", "pid": pid})
+
+
+async def handle_sentinel_log(request: web.Request):
+    """Return last N lines of sentinel stdout.log."""
+    name = request.match_info["name"]
+    sup = _get_service(request).supervisors.get(name)
+    if not sup:
+        raise web.HTTPNotFound()
+    tail = int(request.query.get("tail", "200"))
+    try:
+        from ..paths import SetRuntime
+        rt = SetRuntime(str(sup.config.path))
+        log_path = Path(rt.sentinel_dir) / "stdout.log"
+        if not log_path.exists():
+            return _json({"lines": []})
+        lines = log_path.read_text().splitlines()
+        return _json({"lines": lines[-tail:]})
+    except Exception:
+        return _json({"lines": []})
 
 
 # --- Docs ---

@@ -854,6 +854,10 @@ export function restartManager(): Promise<{ status: string }> {
   return fetchJSON(`${MGR}/manager/restart`, { method: 'POST' })
 }
 
+export function getSentinelLog(project: string, tail = 200): Promise<{ lines: string[] }> {
+  return fetchJSON(`${MGR}/projects/${project}/sentinel/log?tail=${tail}`)
+}
+
 // =====================================================
 
 export async function signScore(project: string, score: number, changesDone: number, totalTokens: number): Promise<string> {

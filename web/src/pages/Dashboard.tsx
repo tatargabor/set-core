@@ -13,13 +13,13 @@ import PhaseView from '../components/PhaseView'
 import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
-import SentinelPanel from '../components/SentinelPanel'
+// SentinelPanel replaced by raw log view
 import LearningsPanel from '../components/LearningsPanel'
 import ChangeTimelineDetail from '../components/ChangeTimelineDetail'
 import BattleView from './BattleView'
 // useIsMobile removed — no longer needed
-import { useSentinelData } from '../hooks/useSentinelData'
-import { getDigest, getPlans, getState, getLog } from '../lib/api'
+// useSentinelData removed — sentinel tab now shows raw log
+import { getDigest, getPlans, getState, getLog, getSentinelLog } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
 type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle'
@@ -59,7 +59,7 @@ export default function Dashboard({ project, initialTab }: Props) {
   const [hasDigest, setHasDigest] = useState(false)
   const [hasPlans, setHasPlans] = useState(false)
   // isMobile removed — log panel no longer uses mobile bottom sheet
-  const sentinelData = useSentinelData(project)
+  const [sentinelLogLines, setSentinelLogLines] = useState<string[]>([])
   const tabBarRef = useRef<HTMLDivElement>(null)
 
   const onEvent = useCallback((event: WSEvent) => {
@@ -159,6 +159,23 @@ export default function Dashboard({ project, initialTab }: Props) {
     return () => { cancelled = true; clearInterval(iv) }
   }, [project])
 
+  // Poll sentinel log when sentinel tab is active
+  useEffect(() => {
+    if (!project || activeTab !== 'sentinel') return
+    let timer: ReturnType<typeof setTimeout>
+    let cancelled = false
+    const poll = () => {
+      getSentinelLog(project, 500)
+        .then(d => {
+          if (!cancelled && d.lines) setSentinelLogLines(d.lines)
+          timer = setTimeout(poll, 3000)
+        })
+        .catch(() => { timer = setTimeout(poll, 10000) })
+    }
+    poll()
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [project, activeTab])
+
   if (!project) {
     return (
       <div className="flex items-center justify-center h-full text-neutral-500">
@@ -181,7 +198,7 @@ export default function Dashboard({ project, initialTab }: Props) {
     { id: 'digest', label: 'Digest', hidden: !hasDigest },
     { id: 'sessions', label: 'Sessions' },
     { id: 'agent', label: 'Agent' },
-    { id: 'sentinel', label: 'Sentinel', hidden: !sentinelData.hasSentinel },
+    { id: 'sentinel', label: 'Sentinel' },
     { id: 'learnings', label: 'Learnings' },
     { id: 'plan', label: 'Plan', hidden: !hasPlans },
     { id: 'battle', label: '\u{1F3AE} Battle' },
@@ -239,14 +256,25 @@ export default function Dashboard({ project, initialTab }: Props) {
           <BattleView project={project} changes={changes} isVisible={activeTab === 'battle'} />
         </div>
 
-        {/* Sentinel tab — full height */}
+        {/* Sentinel tab — raw stdout log */}
         {activeTab === 'sentinel' && (
-          <SentinelPanel
-            project={project}
-            events={sentinelData.events}
-            findings={sentinelData.findings}
-            status={sentinelData.status}
-          />
+          <div className="h-full overflow-y-auto p-3 font-mono text-xs">
+            {sentinelLogLines.length === 0 ? (
+              <div className="text-neutral-600">No sentinel log yet</div>
+            ) : (
+              sentinelLogLines.map((line, i) => (
+                <div key={i} className={`py-0.5 whitespace-pre-wrap ${
+                  line.includes('ERROR') || line.includes('FAIL') ? 'text-red-400' :
+                  line.includes('WARNING') || line.includes('WARN') ? 'text-amber-400' :
+                  line.includes('merged') || line.includes('SUCCESS') || line.includes('fixed') ? 'text-green-400' :
+                  line.startsWith('#') || line.startsWith('|') ? 'text-neutral-300' :
+                  'text-neutral-500'
+                }`}>
+                  {line}
+                </div>
+              ))
+            )}
+          </div>
         )}
 
         {/* Changes tab — with change detail panel when selected */}
