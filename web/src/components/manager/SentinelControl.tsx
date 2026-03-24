@@ -24,8 +24,16 @@ function formatUptime(startedAt: string): string {
 export function SentinelControl({ project, alive, startedAt, crashCount, specPaths, onAction }: Props) {
   const [busy, setBusy] = useState(false)
   const [spec, setSpec] = useState(specPaths[0] ?? 'docs/')
+  const [activeSpec, setActiveSpec] = useState<string | null>(null)  // spec the sentinel was started with
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // If sentinel is already alive on mount, lock the current spec value
+  useEffect(() => {
+    if (alive && activeSpec == null) {
+      setActiveSpec(spec)
+    }
+  }, [alive])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -74,13 +82,18 @@ export function SentinelControl({ project, alive, startedAt, crashCount, specPat
           <label className="text-xs text-neutral-500 block mb-1">Spec path</label>
           <input
             type="text"
-            value={spec}
+            value={alive && activeSpec != null ? activeSpec : spec}
             onChange={e => { setSpec(e.target.value); setShowDropdown(true) }}
-            onFocus={() => setShowDropdown(true)}
+            onFocus={() => !alive && setShowDropdown(true)}
+            disabled={alive}
             placeholder="docs/"
-            className="w-full px-2 py-1.5 text-sm bg-neutral-800 border border-neutral-700 rounded text-neutral-200 placeholder:text-neutral-600 focus:border-blue-500 focus:outline-none"
+            className={`w-full px-2 py-1.5 text-sm border rounded text-neutral-200 placeholder:text-neutral-600 focus:outline-none ${
+              alive
+                ? 'bg-neutral-900 border-neutral-800 text-neutral-400 cursor-not-allowed'
+                : 'bg-neutral-800 border-neutral-700 focus:border-blue-500'
+            }`}
           />
-          {showDropdown && filtered.length > 0 && (
+          {!alive && showDropdown && filtered.length > 0 && (
             <div className="absolute z-10 mt-1 w-full bg-neutral-800 border border-neutral-700 rounded shadow-lg max-h-40 overflow-y-auto">
               {filtered.map(p => (
                 <button
@@ -100,14 +113,14 @@ export function SentinelControl({ project, alive, startedAt, crashCount, specPat
             <>
               <button
                 disabled={busy}
-                onClick={() => act(() => stopSentinel(project))}
+                onClick={() => { setActiveSpec(null); return act(() => stopSentinel(project)) }}
                 className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy ? 'Stopping…' : 'Stop'}
               </button>
               <button
                 disabled={busy}
-                onClick={() => act(() => restartSentinel(project, spec || undefined))}
+                onClick={() => act(() => restartSentinel(project, (activeSpec ?? spec) || undefined))}
                 className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy ? 'Restarting…' : 'Restart'}
@@ -116,7 +129,7 @@ export function SentinelControl({ project, alive, startedAt, crashCount, specPat
           ) : (
             <button
               disabled={busy}
-              onClick={() => act(() => startSentinel(project, spec || undefined))}
+              onClick={() => { setActiveSpec(spec); return act(() => startSentinel(project, spec || undefined)) }}
               className="px-3 py-1.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy ? 'Starting…' : 'Start Sentinel'}
