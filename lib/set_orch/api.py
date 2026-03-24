@@ -2362,14 +2362,69 @@ def _collect_reflections(project_path: Path) -> dict:
 
 
 def _build_change_timeline(project_path: Path, change_name: str) -> dict:
-    """Reconstruct per-change sessions from events JSONL.
+    """Build change timeline from Claude session files enriched with gate/merge events.
 
-    A session is a dispatch→verify cycle: the agent gets dispatched, runs,
-    hits the verify gate, and either passes or retries.
+    Primary source: Claude .jsonl session files (tokens, model, timing).
+    Overlay: orchestration events (gates, merge status).
     """
     import glob as _glob
 
-    # Find events files (main + rotated archives)
+    # --- Step 1: Find Claude session files for this change ---
+    state_file = project_path / "orchestration-state.json"
+    claude_sessions: list[dict] = []
+
+    if state_file.exists():
+        try:
+            state = load_state(str(state_file))
+            _change, session_dirs = _sessions_dirs_for_change(state, change_name, project_path)
+            # Only use worktree-specific dirs (first), skip project-level dir (last)
+            # The project dir contains sentinel/orchestrator sessions, not change-specific
+            wt_dirs = [d for d in session_dirs if "wt-" in str(d)]
+            for sdir in (wt_dirs or session_dirs[:1]):
+                if not sdir.exists():
+                    continue
+                for f in sdir.iterdir():
+                    if not f.is_file() or f.suffix != ".jsonl":
+                        continue
+                    try:
+                        st = f.stat()
+                        tokens = _extract_session_tokens(f)
+                        model = _extract_session_model(f)
+                        label, full_label = _derive_session_label(f)
+                        # Extract start timestamp from first entry
+                        started = ""
+                        with open(f) as fh:
+                            for line in fh:
+                                try:
+                                    entry = json.loads(line)
+                                    ts = entry.get("timestamp", "")
+                                    if ts:
+                                        started = ts
+                                        break
+                                except json.JSONDecodeError:
+                                    continue
+                        ended = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat()
+                        age_s = time.time() - st.st_mtime
+                        is_active = age_s < 60
+                        claude_sessions.append({
+                            "id": f.stem,
+                            "started": started,
+                            "ended": ended,
+                            "mtime": st.st_mtime,
+                            "model": model,
+                            "label": label,
+                            "outcome": "active" if is_active else _session_outcome(f),
+                            **tokens,
+                        })
+                    except OSError:
+                        continue
+        except Exception:
+            pass
+
+    # Sort by start time
+    claude_sessions.sort(key=lambda s: s.get("started", ""))
+
+    # --- Step 2: Collect orchestration events for this change ---
     events_files: list[Path] = []
     for base_dir in [project_path, project_path / "wt" / "orchestration"]:
         for name in ["orchestration-events.jsonl", "orchestration-state-events.jsonl"]:
@@ -2382,11 +2437,9 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
         if events_files:
             break
 
-    if not events_files:
-        return {"sessions": [], "duration_ms": 0, "current_gate_results": {}}
-
-    # Collect all events for this change, sorted by timestamp
-    change_events: list[dict] = []
+    gate_events: list[dict] = []
+    merge_ts: str | None = None
+    change_status: str = "unknown"
     for ef in events_files:
         try:
             with open(ef) as f:
@@ -2400,160 +2453,100 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
                         continue
                     if ev.get("change") != change_name:
                         continue
-                    if ev.get("type") in ("DISPATCH", "STATE_CHANGE", "VERIFY_GATE", "MERGE_ATTEMPT", "MERGE_PROGRESS", "MERGE_SUCCESS", "CHANGE_DONE"):
-                        change_events.append(ev)
+                    etype = ev.get("type", "")
+                    if etype == "VERIFY_GATE":
+                        gate_events.append(ev)
+                    elif etype == "MERGE_SUCCESS":
+                        merge_ts = ev.get("ts", "")
+                    elif etype == "MERGE_ATTEMPT" and not merge_ts:
+                        merge_ts = ev.get("ts", "")
+                    elif etype == "CHANGE_DONE":
+                        change_status = "done"
+                    elif etype == "STATE_CHANGE":
+                        to_state = ev.get("data", {}).get("to", "")
+                        if to_state:
+                            change_status = to_state
         except OSError:
             continue
 
-    change_events.sort(key=lambda e: e.get("ts", ""))
-
-    # Build sessions: each DISPATCH or STATE_CHANGE to "running" starts a new session.
-    # VERIFY_GATE, MERGE_ATTEMPT close it.  STATE_CHANGE to terminal states close it.
+    # --- Step 3: Build enriched sessions ---
     sessions: list[dict] = []
-    current: dict | None = None
+    for i, cs in enumerate(claude_sessions):
+        session_start = cs.get("started", "")
+        session_end = cs.get("ended", "")
 
-    for ev in change_events:
-        etype = ev["type"]
-        ts = ev.get("ts", "")
-        data = ev.get("data", {})
-
-        if etype == "DISPATCH":
-            # New session
-            if current:
-                current["ended"] = ts
-                sessions.append(current)
-            current = {
-                "n": len(sessions) + 1,
-                "started": ts,
-                "ended": "",
-                "state": "dispatched",
-                "gates": {},
-                "gate_ms": {},
-                "merged": False,
-            }
-        elif etype == "STATE_CHANGE":
-            to_state = data.get("to", "")
-            from_state = data.get("from", "")
-            if to_state == "running" and from_state in ("verify", "verifying", "failed"):
-                # Retry: verify/failed → running = new session
-                if current:
-                    current["ended"] = ts
-                    if not current.get("duration_ms"):
-                        current["duration_ms"] = _ts_diff_ms(current["started"], ts)
-                    sessions.append(current)
-                current = {
-                    "n": len(sessions) + 1,
-                    "started": ts,
-                    "ended": "",
-                    "state": "running",
-                    "gates": {},
-                    "gate_ms": {},
-                    "merged": False,
-                }
-            elif current:
-                current["state"] = to_state
-            elif to_state == "running":
-                # Running without a prior DISPATCH event (e.g. resumed)
-                current = {
-                    "n": len(sessions) + 1,
-                    "started": ts,
-                    "ended": "",
-                    "state": to_state,
-                    "gates": {},
-                    "gate_ms": {},
-                    "merged": False,
-                }
-        elif etype == "VERIFY_GATE":
-            if current:
-                # New format: {"gate": "build", "result": "pass", "phase": "integration"}
+        # Assign gate events to the last session (gates run after agent finishes)
+        is_last = i == len(claude_sessions) - 1
+        gates: dict = {}
+        gate_ms: dict = {}
+        if is_last:
+            for ge in gate_events:
+                data = ge.get("data", {})
+                # New per-gate format
                 gate_name = data.get("gate")
                 gate_result = data.get("result")
                 if gate_name and gate_result:
-                    current["gates"][gate_name] = gate_result
-                # Legacy format: {"build": "pass", "test": "pass", ...}
-                for gate in ("build", "test", "e2e", "review", "scope_check",
-                             "spec_verify", "rules", "smoke", "test_files"):
-                    val = data.get(gate)
+                    gates[gate_name] = gate_result
+                # Legacy summary format
+                for g in ("build", "test", "e2e", "review", "smoke", "scope_check", "spec_verify", "rules", "test_files"):
+                    val = data.get(g)
                     if val is not None:
-                        current["gates"][gate] = val
-                # Gate-level timings
-                gate_ms = data.get("gate_ms", {})
-                if gate_ms and isinstance(gate_ms, dict):
-                    current.setdefault("gate_ms", {}).update(gate_ms)
-                current["ended"] = ts
-                current["duration_ms"] = _ts_diff_ms(current["started"], ts)
+                        gates[g] = val
+                gms = data.get("gate_ms", {})
+                if gms and isinstance(gms, dict):
+                    gate_ms.update(gms)
 
-                if data.get("result") == "retry":
-                    # Retry: close this session, open a new one
-                    stop_gate = data.get("stop_gate", "")
-                    if stop_gate:
-                        current["gates"][stop_gate] = "fail"
-                        # Infer gates that passed before the stop gate
-                        gate_order = ["build", "test", "e2e", "review", "smoke"]
-                        for g in gate_order:
-                            if g == stop_gate:
-                                break
-                            if g not in current["gates"]:
-                                current["gates"][g] = "pass"
-                    current["state"] = "retry"
-                    sessions.append(current)
-                    # New session starts from the retry point
-                    current = {
-                        "n": len(sessions) + 1,
-                        "started": ts,
-                        "ended": "",
-                        "state": "running",
-                        "gates": {},
-                        "merged": False,
-                    }
-                else:
-                    # Final gate pass — close session
-                    sessions.append(current)
-                    current = None
-        elif etype == "CHANGE_DONE":
-            # Close session when change is done (checkpoint_auto_approve skips VERIFY_GATE)
-            if current:
-                current["state"] = "done"
-                current["ended"] = ts
-                current["duration_ms"] = _ts_diff_ms(current["started"], ts)
-        elif etype == "MERGE_SUCCESS":
-            if current:
-                current["merged"] = True
-                current["state"] = "merged"
-                current["ended"] = current.get("ended") or ts
-                if not current.get("duration_ms"):
-                    current["duration_ms"] = _ts_diff_ms(current["started"], ts)
-                sessions.append(current)
-                current = None
-        elif etype == "MERGE_ATTEMPT":
-            # Legacy: close session on attempt if no MERGE_SUCCESS follows
-            if current and not current.get("merged"):
-                current["merged"] = True
-                current["state"] = "merged"
-                current["ended"] = current.get("ended") or ts
-                if not current.get("duration_ms"):
-                    current["duration_ms"] = _ts_diff_ms(current["started"], ts)
-                sessions.append(current)
-                current = None
+        # Determine session state
+        state = cs.get("outcome", "unknown")
+        merged = False
+        if merge_ts and is_last:
+            state = "merged"
+            merged = True
+        elif cs.get("outcome") == "active":
+            state = "running"
+        elif is_last and change_status == "done":
+            state = "done"
+        elif cs.get("outcome") == "error":
+            state = "retry"
 
-    # If there's still an open session (currently running), include it
-    if current:
-        current["ended"] = ""
-        sessions.append(current)
+        # Duration
+        duration_ms = 0
+        if session_start and session_end:
+            duration_ms = _ts_diff_ms(session_start, session_end)
+
+        sessions.append({
+            "n": i + 1,
+            "id": cs.get("id", ""),
+            "started": session_start,
+            "ended": session_end,
+            "state": state,
+            "merged": merged,
+            "gates": gates,
+            "gate_ms": gate_ms,
+            "duration_ms": duration_ms,
+            "model": cs.get("model", ""),
+            "label": cs.get("label", ""),
+            "input_tokens": cs.get("input_tokens", 0),
+            "output_tokens": cs.get("output_tokens", 0),
+            "cache_read_tokens": cs.get("cache_read_tokens", 0),
+            "cache_create_tokens": cs.get("cache_create_tokens", 0),
+        })
 
     # Total duration
     duration_ms = 0
-    if change_events:
+    if sessions:
         try:
-            first = datetime.fromisoformat(change_events[0]["ts"].replace("Z", "+00:00"))
-            last = datetime.fromisoformat(change_events[-1]["ts"].replace("Z", "+00:00"))
-            duration_ms = int((last - first).total_seconds() * 1000)
+            first_ts = sessions[0].get("started", "")
+            last_ts = sessions[-1].get("ended", "") or sessions[-1].get("started", "")
+            if first_ts and last_ts:
+                first = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
+                last = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+                duration_ms = int((last - first).total_seconds() * 1000)
         except (ValueError, TypeError):
             pass
 
     # Current gate results from state
     current_gate_results: dict = {}
-    state_file = project_path / "orchestration-state.json"
     if state_file.exists():
         try:
             with open(state_file) as f:
