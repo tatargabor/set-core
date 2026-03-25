@@ -179,7 +179,7 @@ class TestPersistReviewLearnings:
         config_dir = tmp_path / "config"
         config_dir.mkdir()
         project_dir = tmp_path / "project"
-        (project_dir / "wt" / "orchestration").mkdir(parents=True)
+        (project_dir / "set" / "orchestration").mkdir(parents=True)
 
         profile = self._make_profile(config_dir)
 
@@ -203,7 +203,7 @@ class TestPersistReviewLearnings:
         assert tpl_entries[0]["pattern"] == "No auth"
 
         # Check project JSONL
-        proj_path = project_dir / "wt" / "orchestration" / "review-learnings.jsonl"
+        proj_path = project_dir / "set" / "orchestration" / "review-learnings.jsonl"
         proj_entries = []
         with open(proj_path) as f:
             for line in f:
@@ -296,7 +296,7 @@ class TestReviewLearningsChecklist:
         }) + "\n")
 
         # Write project JSONL
-        proj_dir = tmp_path / "project" / "wt" / "orchestration"
+        proj_dir = tmp_path / "project" / "set" / "orchestration"
         proj_dir.mkdir(parents=True)
         (proj_dir / "review-learnings.jsonl").write_text(json.dumps({
             "pattern": "Budapest postal code regex",
@@ -376,7 +376,7 @@ class TestRoundTrip:
         profile._learnings_template_path = lambda ensure_dir=False: config_dir / "web.jsonl"
 
         project_dir = tmp_path / "project"
-        (project_dir / "wt" / "orchestration").mkdir(parents=True)
+        (project_dir / "set" / "orchestration").mkdir(parents=True)
 
         patterns = [
             {"pattern": "XSS via innerHTML", "severity": "CRITICAL", "scope": "template",

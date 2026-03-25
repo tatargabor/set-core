@@ -85,7 +85,7 @@ class TestLoadProfile:
 
     def test_invalid_yaml_returns_null(self, tmp_path):
         """Invalid YAML → NullProfile (graceful)."""
-        pt_dir = tmp_path / "wt" / "plugins"
+        pt_dir = tmp_path / "set" / "plugins"
         pt_dir.mkdir(parents=True)
         (pt_dir / "project-type.yaml").write_text(": : : bad yaml {{{}}")
         p = load_profile(str(tmp_path))
@@ -93,7 +93,7 @@ class TestLoadProfile:
 
     def test_empty_type_returns_null(self, tmp_path):
         """YAML with empty type → NullProfile."""
-        pt_dir = tmp_path / "wt" / "plugins"
+        pt_dir = tmp_path / "set" / "plugins"
         pt_dir.mkdir(parents=True)
         (pt_dir / "project-type.yaml").write_text("type: ''\n")
         p = load_profile(str(tmp_path))
@@ -101,7 +101,7 @@ class TestLoadProfile:
 
     def test_missing_plugin_returns_null(self, tmp_path):
         """Valid YAML but plugin not installed → NullProfile."""
-        pt_dir = tmp_path / "wt" / "plugins"
+        pt_dir = tmp_path / "set" / "plugins"
         pt_dir.mkdir(parents=True)
         (pt_dir / "project-type.yaml").write_text("type: nonexistent-plugin\n")
         p = load_profile(str(tmp_path))
@@ -123,7 +123,7 @@ class TestLoadProfile:
 
     def test_loads_web_profile_via_entry_points(self, tmp_path):
         """Valid yaml + installed entry_point → loads real profile."""
-        pt_dir = tmp_path / "wt" / "plugins"
+        pt_dir = tmp_path / "set" / "plugins"
         pt_dir.mkdir(parents=True)
         (pt_dir / "project-type.yaml").write_text("type: web\n")
 
@@ -146,7 +146,7 @@ class TestLoadProfile:
         """entry_points returns empty but module is importable → loads via direct import."""
         import types
 
-        pt_dir = tmp_path / "wt" / "plugins"
+        pt_dir = tmp_path / "set" / "plugins"
         pt_dir.mkdir(parents=True)
         (pt_dir / "project-type.yaml").write_text("type: testfake\n")
 
@@ -176,7 +176,7 @@ class TestLoadProfile:
 
     def test_direct_import_fallback_import_error(self, tmp_path):
         """entry_points empty + module not importable → NullProfile."""
-        pt_dir = tmp_path / "wt" / "plugins"
+        pt_dir = tmp_path / "set" / "plugins"
         pt_dir.mkdir(parents=True)
         (pt_dir / "project-type.yaml").write_text("type: nonexistent\n")
 

@@ -129,7 +129,7 @@ def _get_or_create_e2e_baseline(
         from set_orch.paths import SetRuntime
         baseline_path = os.path.join(SetRuntime().orchestration_dir, "e2e-baseline.json")
     except Exception:
-        baseline_path = os.path.join("wt", "orchestration", "e2e-baseline.json")
+        baseline_path = os.path.join("set", "orchestration", "e2e-baseline.json")
 
     main_sha = run_git("rev-parse", "HEAD", cwd=project_root).stdout.strip()
     if os.path.isfile(baseline_path):

@@ -17,7 +17,7 @@ from set_orch import api as api_module
 @pytest.fixture
 def tmp_project(tmp_path):
     """Create a temp project with checkpoint state."""
-    orch_dir = tmp_path / "wt" / "orchestration"
+    orch_dir = tmp_path / "set" / "orchestration"
     orch_dir.mkdir(parents=True)
     return tmp_path, orch_dir
 

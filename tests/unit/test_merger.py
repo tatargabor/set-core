@@ -137,7 +137,7 @@ class TestCleanupWorktree:
             cleanup_worktree("test-change", wt_path)
 
             # Check archived logs
-            archive_dir = os.path.join("wt", "orchestration", "logs", "test-change")
+            archive_dir = os.path.join("set", "orchestration", "logs", "test-change")
             if os.path.isdir(archive_dir):
                 assert os.path.exists(os.path.join(archive_dir, "agent.log"))
         finally:

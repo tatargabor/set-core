@@ -56,7 +56,7 @@ CLI flag  >  orchestration.yaml  >  dokumentum direktívák  >  alapértelmezés
 
 ### orchestration.yaml
 
-A fő konfigurációs fájl a `.claude/orchestration.yaml` (vagy `wt/orchestration.yaml`):
+A fő konfigurációs fájl a `.claude/orchestration.yaml` (vagy `set/orchestration.yaml`):
 
 ```yaml
 # Végrehajtás

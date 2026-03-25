@@ -1884,7 +1884,7 @@ def start_orchestration(project: str):
         except Exception:
             pass
     if not spec_path:
-        config_yaml = project_path / "wt" / "orchestration" / "config.yaml"
+        config_yaml = project_path / "set" / "orchestration" / "config.yaml"
         if config_yaml.exists():
             try:
                 import yaml
@@ -1901,7 +1901,7 @@ def start_orchestration(project: str):
                 spec_path = str(Path(matches[0]).relative_to(project_path))
                 break
     if not spec_path:
-        raise HTTPException(400, "Cannot determine spec path — set 'spec' in wt/orchestration/config.yaml")
+        raise HTTPException(400, "Cannot determine spec path — set 'spec' in set/orchestration/config.yaml")
 
     # Resolve set-sentinel binary
     sentinel_bin = shutil.which("set-sentinel")

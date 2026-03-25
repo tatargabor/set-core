@@ -30,7 +30,7 @@ def find_run_dirs() -> list[Path]:
         return []
     results = []
     for d in sorted(base.iterdir()):
-        f = d / "wt" / "orchestration" / "review-findings.jsonl"
+        f = d / "set" / "orchestration" / "review-findings.jsonl"
         if f.is_file():
             results.append(f)
     return results
@@ -85,7 +85,7 @@ def main():
     if args.run_dir:
         findings_files = []
         for d in args.run_dir:
-            f = Path(d) / "wt" / "orchestration" / "review-findings.jsonl"
+            f = Path(d) / "set" / "orchestration" / "review-findings.jsonl"
             if f.is_file():
                 findings_files.append(f)
             else:

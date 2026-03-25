@@ -130,7 +130,7 @@ test_start "set_find_config orchestration — missing returns empty"
 test_start "set_find_config project-knowledge — new location"
 (
     cd "$TMPDIR"
-    mkdir -p wt/knowledge
+    mkdir -p set/knowledge
     echo "features: {}" > set/knowledge/project-knowledge.yaml
     echo "features: {}" > project-knowledge.yaml
     result=$(set_find_config project-knowledge)
@@ -188,7 +188,7 @@ echo "--- set_find_requirements_dir ---"
 test_start "set_find_requirements_dir — exists"
 (
     cd "$TMPDIR"
-    mkdir -p wt/requirements
+    mkdir -p set/requirements
     result=$(set_find_requirements_dir)
     [[ "$result" == "set/requirements" ]]
 ) && test_pass || test_fail "set/requirements" "other"
@@ -220,15 +220,15 @@ test_start "scaffold creates all subdirectories"
     cd "$TMPDIR"
     mkdir -p set/orchestration/runs set/orchestration/plans \
              set/knowledge/patterns set/knowledge/lessons \
-             wt/requirements wt/plugins wt/.work
+             set/requirements set/plugins set/.work
     # Verify all exist
     [[ -d set/orchestration/runs ]] && \
     [[ -d set/orchestration/plans ]] && \
     [[ -d set/knowledge/patterns ]] && \
     [[ -d set/knowledge/lessons ]] && \
-    [[ -d wt/requirements ]] && \
-    [[ -d wt/plugins ]] && \
-    [[ -d wt/.work ]]
+    [[ -d set/requirements ]] && \
+    [[ -d set/plugins ]] && \
+    [[ -d set/.work ]]
 ) && test_pass || test_fail "all dirs exist" "some missing"
 
 test_start "scaffold adds set/.work/ to .gitignore"
@@ -263,7 +263,7 @@ test_start "migrate detects legacy orchestration.yaml"
 (
     cd "$TMPDIR"
     git init -q .
-    mkdir -p .claude wt/orchestration
+    mkdir -p .claude set/orchestration
     echo "max_parallel: 3" > .claude/orchestration.yaml
     # Simulate migration
     [[ -f .claude/orchestration.yaml && ! -f set/orchestration/config.yaml ]]
@@ -272,7 +272,7 @@ test_start "migrate detects legacy orchestration.yaml"
 test_start "migrate detects legacy project-knowledge.yaml"
 (
     cd "$TMPDIR"
-    mkdir -p wt/knowledge
+    mkdir -p set/knowledge
     echo "features: {}" > project-knowledge.yaml
     [[ -f project-knowledge.yaml && ! -f set/knowledge/project-knowledge.yaml ]]
 ) && test_pass || test_fail "detected" "not detected"
@@ -295,15 +295,15 @@ echo "--- requirements planner input ---"
 test_start "requirements dir scan finds captured/planned requirements"
 (
     cd "$TMPDIR"
-    mkdir -p wt/requirements
-    cat > wt/requirements/REQ-001-test.yaml << 'EOF'
+    mkdir -p set/requirements
+    cat > set/requirements/REQ-001-test.yaml << 'EOF'
 id: REQ-001
 title: Test Requirement
 status: captured
 priority: must
 description: A test requirement
 EOF
-    cat > wt/requirements/REQ-002-done.yaml << 'EOF'
+    cat > set/requirements/REQ-002-done.yaml << 'EOF'
 id: REQ-002
 title: Done Requirement
 status: implemented
@@ -314,12 +314,12 @@ EOF
     [[ "$dir" == "set/requirements" ]]
     # Only captured/planned should be picked up (logic tested via yq)
     if command -v yq &>/dev/null; then
-        status=$(yq -r '.status' wt/requirements/REQ-001-test.yaml)
+        status=$(yq -r '.status' set/requirements/REQ-001-test.yaml)
         [[ "$status" == "captured" ]]
     fi
 ) && test_pass || test_fail "found" "not found"
 
-test_start "requirements graceful degradation — no wt/requirements/"
+test_start "requirements graceful degradation — no set/requirements/"
 (
     cd "$TMPDIR"
     rm -rf wt

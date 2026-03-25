@@ -12,7 +12,7 @@
 
 There is NO application code in the scaffold. Agents create everything from scratch.
 
-Platform configs are deployed by `set-project init --project-type web --template nextjs` before orchestration starts. This includes: `playwright.config.ts` (with `PW_PORT` env var for port isolation), `vitest.config.ts`, `tsconfig.json`, `postcss.config.mjs`, `next.config.js`, `components.json`, `wt/orchestration/config.yaml`, and `.claude/rules/` covering Server Actions, shadcn/ui, Prisma singleton, "use client" rules, form validation, auth conventions, DataTable patterns. **Do not duplicate those conventions here.**
+Platform configs are deployed by `set-project init --project-type web --template nextjs` before orchestration starts. This includes: `playwright.config.ts` (with `PW_PORT` env var for port isolation), `vitest.config.ts`, `tsconfig.json`, `postcss.config.mjs`, `next.config.js`, `components.json`, `set/orchestration/config.yaml`, and `.claude/rules/` covering Server Actions, shadcn/ui, Prisma singleton, "use client" rules, form validation, auth conventions, DataTable patterns. **Do not duplicate those conventions here.**
 
 **Setup (done by `run.sh` before orchestration):**
 1. Copy this spec to `docs/v1-minishop.md`

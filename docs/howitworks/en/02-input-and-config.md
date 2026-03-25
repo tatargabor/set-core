@@ -56,7 +56,7 @@ CLI flag  >  orchestration.yaml  >  document directives  >  defaults
 
 ### orchestration.yaml
 
-The main configuration file is `.claude/orchestration.yaml` (or `wt/orchestration.yaml`):
+The main configuration file is `.claude/orchestration.yaml` (or `set/orchestration.yaml`):
 
 ```yaml
 # Execution

@@ -919,7 +919,7 @@ class TestBuildReviewLearnings:
 
     @pytest.fixture
     def findings_dir(self, tmp_path):
-        return tmp_path / "wt" / "orchestration"
+        return tmp_path / "set" / "orchestration"
 
     def _write_jsonl(self, findings_dir, entries):
         findings_dir.mkdir(parents=True, exist_ok=True)
