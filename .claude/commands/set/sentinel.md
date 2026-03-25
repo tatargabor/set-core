@@ -421,10 +421,13 @@ Never "clean up" before restarting. Never delete files to "fix" a stuck state. I
 
 Specifically, the sentinel MUST NEVER remove, disable, or modify:
 - `smoke_command` — even if smoke tests fail repeatedly (port mismatch failures are expected pre-merge, retries handle them)
-- `test_command` — or any other test directive
+- `test_command` — or any other test directive in `set/orchestration/config.yaml`
 - `merge_policy`, `review_before_merge`, `max_verify_retries`
 
 If tests fail persistently → **stop and report to the user**, do NOT weaken the gates.
+
+**Exception — fixing test infrastructure (not weakening):**
+Modifying `vitest.config.ts`, `playwright.config.ts`, or `package.json` test scripts to fix deterministic failures caused by misconfiguration (e.g., adding `passWithNoTests: true` when there are no unit tests yet) is NOT gate weakening — it's fixing broken infrastructure. The test command still runs; it just doesn't fail on empty test suites. The sentinel MAY apply these fixes directly or delegate to the fix agent via the IssueManager.
 
 ## E2E Mode (Tier 3)
 
