@@ -108,19 +108,7 @@ _migrate_consumer() {
         created_files=$((created_files + 1))
     fi
 
-    # 3. Deploy cross-cutting checklist if missing
-    local checklist_dst="$project_path/.claude/rules/cross-cutting-checklist.md"
-    if [[ ! -f "$checklist_dst" && -f "$SET_TOOLS_ROOT/templates/cross-cutting-checklist.md" ]]; then
-        if [[ "$DRY_RUN" == "true" ]]; then
-            info "  Would deploy cross-cutting-checklist.md"
-        else
-            mkdir -p "$(dirname "$checklist_dst")"
-            cp "$SET_TOOLS_ROOT/templates/cross-cutting-checklist.md" "$checklist_dst"
-        fi
-        created_files=$((created_files + 1))
-    fi
-
-    # 4. Warn about unknown or deprecated directives
+    # 3. Warn about unknown or deprecated directives
     if [[ -f "$orch_yaml" ]]; then
         local consumer_keys
         consumer_keys=$(grep -E '^[a-z_]+:' "$orch_yaml" 2>/dev/null | sed 's/:.*//' || true)
@@ -1259,14 +1247,7 @@ cmd_init_knowledge() {
         if [[ -n "$pt_name" && "$pt_name" != "base" ]]; then
             info "Project type '$pt_name' configured — deploying type-specific templates"
             _deploy_project_templates "$git_root" "$pt_name" "" || true
-            # Deploy cross-cutting checklist if not exists
-            local checklist_src="$SET_TOOLS_ROOT/templates/cross-cutting-checklist.md"
-            local checklist_dst="$git_root/.claude/rules/cross-cutting-checklist.md"
-            if [[ -f "$checklist_src" && ! -f "$checklist_dst" ]]; then
-                mkdir -p "$(dirname "$checklist_dst")"
-                cp "$checklist_src" "$checklist_dst"
-                success "Deployed cross-cutting-checklist.md to .claude/rules/"
-            fi
+            # Cross-cutting checklist deploys via templates/core/rules/ in _deploy_skills
             return 0
         fi
     fi
@@ -1353,14 +1334,7 @@ cmd_init_knowledge() {
         info "No cross-cutting files auto-detected — edit manually to add entries"
     fi
 
-    # Deploy cross-cutting checklist if not exists
-    local checklist_src="$SET_TOOLS_ROOT/templates/cross-cutting-checklist.md"
-    local checklist_dst="$git_root/.claude/rules/cross-cutting-checklist.md"
-    if [[ -f "$checklist_src" && ! -f "$checklist_dst" ]]; then
-        mkdir -p "$(dirname "$checklist_dst")"
-        cp "$checklist_src" "$checklist_dst"
-        success "Deployed cross-cutting-checklist.md to .claude/rules/"
-    fi
+    # Cross-cutting checklist deploys via templates/core/rules/ in _deploy_skills
 }
 
 # Main

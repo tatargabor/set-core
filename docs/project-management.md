@@ -26,7 +26,7 @@ Each `set-project init` stores the set-core version (git short hash or tag) in `
 
 When a version change is detected, automatic migration runs:
 - **Additive directive merge** — new `orchestration.yaml` directives are appended as comments (never overwrites existing values)
-- **Template scaffolding** — deploys `cross-cutting-checklist.md` to `.claude/rules/` if missing
+- **Core rules** — deploys `set-cross-cutting-checklist.md`, `set-design-bridge.md`, `set-sentinel-autonomy.md` to `.claude/rules/` from `templates/core/rules/`
 - **Schema validation** — warns about unknown or deprecated directives in `orchestration.yaml`
 
 ## Dry Run
