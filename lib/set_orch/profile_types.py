@@ -24,7 +24,7 @@ class ProjectTypeInfo:
 @dataclass
 class TemplateInfo:
     """A template variant provided by a project type."""
-    id: str  # e.g., "nextjs", "spa"
+    id: str  # e.g., "nextjs"
     description: str
     template_dir: str  # relative to plugin package
 

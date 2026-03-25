@@ -145,7 +145,7 @@ def main() -> None:
         "--type",
         required=True,
         dest="template_type",
-        help="Template type (e.g., nextjs, spa)",
+        help="Template type (e.g., nextjs)",
     )
     init_parser.add_argument(
         "--target",

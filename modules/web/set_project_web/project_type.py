@@ -37,11 +37,6 @@ class WebProjectType(CoreProfile):
                 description="Next.js App Router with Prisma, next-intl, shadcn/ui",
                 template_dir="templates/nextjs",
             ),
-            TemplateInfo(
-                id="spa",
-                description="Generic single-page application (minimal starting point)",
-                template_dir="templates/spa",
-            ),
         ]
 
     def get_verification_rules(self) -> List[VerificationRule]:

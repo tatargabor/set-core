@@ -1,9 +1,0 @@
-core:
-  - project-knowledge.yaml
-  - set/orchestration/config.yaml
-  - rules/components.md
-  - rules/design-integration.md
-  - rules/web-frontend.md
-  - reflection.md
-  - playwright.config.ts
-  - vitest.config.ts

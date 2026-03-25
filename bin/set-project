@@ -663,7 +663,7 @@ Commands:
 Options:
   --name <name>           Custom project name (default: directory name)
   --project-type <type>   Set project type (e.g., base, web)
-  --template <name>       Template variant to deploy (e.g., nextjs, spa)
+  --template <name>       Template variant to deploy (e.g., nextjs)
   --modules <list>        Comma-separated optional modules (e.g., gdpr,integrations)
   --dry-run               Show what would change without modifying files
   -h, --help              Show this help
