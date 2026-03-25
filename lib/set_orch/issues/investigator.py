@@ -36,6 +36,7 @@ class InvestigationRunner:
         self.profile = profile
         self._processes: dict[str, subprocess.Popen] = {}
         self._started_at: dict[str, datetime] = {}
+        self._stdout_files: dict[str, object] = {}
 
     def spawn(self, issue: Issue):
         """Start investigation agent as a claude CLI subprocess."""
@@ -47,18 +48,27 @@ class InvestigationRunner:
         cmd = [
             "claude", "-p",
             "--max-turns", "20",
-            "--output-file", str(output_file),
+            "--verbose", "--output-format", "stream-json",
+            "--dangerously-skip-permissions",
             prompt,
         ]
+
+        # Run in the consumer project directory so the agent can read
+        # config.yaml, package.json, etc. Falls back to set-core path.
+        project_cwd = issue.environment_path or str(self.set_core_path)
+
+        # Write stdout to file for collect() to parse later
+        stdout_file = open(output_file, "w")
 
         try:
             proc = subprocess.Popen(
                 cmd,
-                cwd=str(self.set_core_path),
-                stdout=subprocess.DEVNULL,
+                cwd=project_cwd,
+                stdout=stdout_file,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
             )
+            self._stdout_files[issue.id] = stdout_file
             self._processes[issue.id] = proc
             self._started_at[issue.id] = datetime.now(timezone.utc)
             issue.fix_agent_pid = proc.pid
@@ -91,18 +101,45 @@ class InvestigationRunner:
             except (ProcessLookupError, PermissionError):
                 pass
         self._started_at.pop(issue.id, None)
+        fh = self._stdout_files.pop(issue.id, None)
+        if fh:
+            try:
+                fh.close()
+            except OSError:
+                pass
         issue.fix_agent_pid = None
 
     def collect(self, issue: Issue) -> Optional[Diagnosis]:
         """Parse investigation output into Diagnosis."""
         self._processes.pop(issue.id, None)
         self._started_at.pop(issue.id, None)
+        fh = self._stdout_files.pop(issue.id, None)
+        if fh:
+            try:
+                fh.close()
+            except OSError:
+                pass
 
         output_file = self._investigation_path(issue)
         if not output_file.exists():
             raw_output = ""
         else:
-            raw_output = output_file.read_text()
+            # Output is stream-json — extract assistant text blocks
+            raw_stream = output_file.read_text()
+            texts = []
+            for line in raw_stream.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") == "assistant":
+                    for block in obj.get("message", {}).get("content", []):
+                        if block.get("type") == "text" and block.get("text"):
+                            texts.append(block["text"])
+            raw_output = "\n".join(texts)
 
         if not raw_output:
             self.audit.log(issue.id, "investigation_no_output")
@@ -181,6 +218,8 @@ class InvestigationRunner:
         """Render template with issue context."""
         # Build open issues summary
         open_summary = "No other open issues."
+        # Use error_detail if available, fall back to error_summary
+        error_text = issue.error_detail or issue.error_summary or "No error details available"
         return template.format(
             issue_id=issue.id,
             environment=issue.environment,
@@ -189,7 +228,7 @@ class InvestigationRunner:
             severity=issue.severity,
             detected_at=issue.detected_at,
             occurrence_count=issue.occurrence_count,
-            error_detail=issue.error_detail,
+            error_detail=error_text,
             open_issues_summary=open_summary,
         )
 
@@ -212,17 +251,30 @@ DEFAULT_TEMPLATE = """# Issue Investigation: {issue_id}
 ## Other Open Issues
 {open_issues_summary}
 
+## Framework Knowledge
+
+This project runs on the **set-core orchestration framework**. Key facts for investigation:
+
+- **Orchestration config:** `set/orchestration/config.yaml` — overrides for test_command, e2e_command, build_command. These take priority over auto-detected commands.
+- **Integration gates:** The merger runs build → test → e2e gates before merging. Gate commands come from: 1) config.yaml directives, 2) profile auto-detection (WebProjectType).
+- **Profile:** `set/plugins/project-type.yaml` defines the project type (web, base). The web profile auto-detects test/build/e2e commands from package.json.
+- **Common gate failures:**
+  - `test=fail` with vitest: vitest exits 1 when no test files found. Fix: set `test_command: "npx vitest run --passWithNoTests"` in config.yaml
+  - `build=fail`: usually missing deps or type errors. Check if `pnpm install` ran before build.
+  - `e2e=fail`: playwright needs `pnpm exec playwright install` and a dev server.
+- **Config override pattern:** To fix a gate command, edit `set/orchestration/config.yaml` and set the specific command. The orchestrator will pick it up on next merge attempt.
+
 ## Instructions
 
-Investigate this issue thoroughly. **Do NOT fix anything** — only diagnose.
+Investigate this issue thoroughly. You may read files in both the project directory AND the set-core framework code to understand the root cause.
 
 1. **Read the error output** — identify the exact failure point (file, line, function)
 2. **Read the affected code** — understand the context around the failure
-3. **Check git history** — `git log --oneline -20 -- <affected_files>` to see recent changes
-4. **Check for patterns** — search for similar past issues in .set/issues/registry.json
+3. **Check the config** — read `set/orchestration/config.yaml` and `set/plugins/project-type.yaml`
+4. **Check git history** — `git log --oneline -20 -- <affected_files>` to see recent changes
 5. **Trace the root cause** — follow the chain from symptom to underlying bug
-6. **Assess impact** — what breaks if this isn't fixed? Is it blocking?
-7. **Check for related open issues** — could this be the same root cause as another issue?
+6. **Propose a fix** — either a config change (config.yaml override) or a code change
+7. **Assess impact** — what breaks if this isn't fixed? Is it blocking?
 
 ## Output Format
 
@@ -233,8 +285,8 @@ DIAGNOSIS_START
   "root_cause": "Clear description of the actual underlying bug",
   "impact": "low|medium|high|critical",
   "confidence": 0.85,
-  "fix_scope": "single_file|multi_file|cross_module",
-  "suggested_fix": "What needs to change and why",
+  "fix_scope": "config_override|single_file|multi_file|cross_module",
+  "suggested_fix": "What needs to change and why — include exact file path and content if config_override",
   "affected_files": ["path/to/file.py:42"],
   "related_issues": [],
   "suggested_group": null,
