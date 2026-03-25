@@ -144,6 +144,48 @@ def resolve_model_id(name: str) -> str:
     return _MODEL_MAP.get(name, name)
 
 
+def _extract_text_from_json_output(raw: str) -> str:
+    """Extract assistant text from Claude CLI ``--verbose --output-format json``.
+
+    Workaround for Claude Code >=2.1.83 bug where the ``result`` field in the
+    final JSON object is empty when extended thinking is enabled, even though
+    the assistant DID produce text in earlier streaming messages.
+
+    The verbose JSON output is a JSON array of event objects.  We look for
+    assistant messages with text content blocks.  Falls back to the ``result``
+    field if non-empty.
+    """
+    import json as _json
+
+    texts: list[str] = []
+    result_text = ""
+
+    # Try parsing as JSON array first (--verbose --output-format json)
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError:
+        return ""
+
+    items = data if isinstance(data, list) else [data]
+
+    for obj in items:
+        if not isinstance(obj, dict):
+            continue
+
+        # Final result object — use if non-empty
+        if obj.get("type") == "result" and obj.get("result"):
+            result_text = obj["result"]
+
+        # Assistant message with content blocks
+        if obj.get("type") == "assistant":
+            msg = obj.get("message", {})
+            for block in msg.get("content", []):
+                if block.get("type") == "text" and block.get("text"):
+                    texts.append(block["text"])
+
+    return result_text if result_text else "\n".join(texts)
+
+
 def run_claude(
     prompt: str,
     *,
@@ -156,6 +198,10 @@ def run_claude(
 
     Migrated from: run_claude() in set-common.sh
 
+    Uses ``--output-format json`` and parses the streaming JSON to extract
+    assistant text.  This works around a Claude Code >=2.1.83 bug where
+    ``-p`` text mode returns an empty string when extended thinking is active.
+
     Args:
         prompt: The prompt text to send via stdin.
         timeout: Timeout in seconds (default 300 = 5 min).
@@ -166,7 +212,7 @@ def run_claude(
     Returns:
         ClaudeResult with exit_code, stdout, stderr, duration_ms, timed_out.
     """
-    cmd = ["claude", "-p"]
+    cmd = ["claude", "-p", "--verbose", "--output-format", "stream-json"]
 
     if model:
         cmd.extend(["--model", resolve_model_id(model)])
@@ -190,9 +236,16 @@ def run_claude(
         stdin_data=prompt,
     )
 
+    # Extract text from JSON stream (workaround for empty result field)
+    stdout = result.stdout
+    if result.exit_code == 0 and stdout.strip():
+        extracted = _extract_text_from_json_output(stdout)
+        if extracted:
+            stdout = extracted
+
     return ClaudeResult(
         exit_code=result.exit_code,
-        stdout=result.stdout,
+        stdout=stdout,
         stderr=result.stderr,
         duration_ms=result.duration_ms,
         timed_out=result.timed_out,
