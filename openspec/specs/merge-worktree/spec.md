@@ -11,7 +11,7 @@ The `set-merge` command SHALL merge a worktree's branch into a target branch wit
 - **WHEN** user runs `set-merge <change-id>`
 - **THEN** the system SHALL resolve the project and worktree path
 - **AND** determine the source branch from the worktree HEAD
-- **AND** auto-detect the target branch (main or master)
+- **AND** auto-detect the target branch (main)
 - **AND** fetch, checkout target, pull latest, then merge the source branch
 
 #### Scenario: Squash merge
@@ -20,7 +20,7 @@ The `set-merge` command SHALL merge a worktree's branch into a target branch wit
 
 #### Scenario: Custom target branch
 - **WHEN** user runs `set-merge <change-id> --to develop`
-- **THEN** the system SHALL merge into the `develop` branch instead of main/master
+- **THEN** the system SHALL merge into the `develop` branch instead of main
 
 #### Scenario: No push after merge
 - **WHEN** user runs `set-merge <change-id> --no-push`

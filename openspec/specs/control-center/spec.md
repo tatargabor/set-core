@@ -394,7 +394,7 @@ The GUI SHALL provide an improved dialog for creating new worktrees with project
 #### Scenario: Base branch selection
 - **GIVEN** the new worktree dialog is open
 - **WHEN** the user views the base branch dropdown
-- **THEN** available branches (master, main, existing change branches) are listed
+- **THEN** available branches (main, existing change branches) are listed
 
 #### Scenario: Preview update
 - **GIVEN** the new worktree dialog is open

@@ -1041,7 +1041,7 @@ def _get_merge_base(wt_path: str) -> str:
     review diffs only contain files modified by the change branch. Falls back
     to HEAD~10 if merge-base resolution fails (orphan branch, shallow clone).
     """
-    for ref in ("main", "master", "origin/main", "origin/master"):
+    for ref in ("main", "origin/main"):
         result = run_git("merge-base", "HEAD", ref, cwd=wt_path)
         if result.exit_code == 0 and result.stdout.strip():
             logger.debug("merge-base resolved via %s for %s", ref, wt_path)

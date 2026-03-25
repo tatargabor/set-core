@@ -50,4 +50,4 @@ WebProjectType SHALL change its parent class from `BaseProjectType` to `CoreProf
 `_read_package_json_scripts()` SHALL be removed. `_auto_detect_e2e_command()` SHALL only call `profile.detect_e2e_command()` and return its result (or empty string).
 
 ### Requirement: Default branch shall be renamed to main
-The repository default branch SHALL be renamed from `master` to `main`. All references to `master` in code, configs, and documentation SHALL be updated.
+The repository default branch is `main`. All code and documentation SHALL reference `main` as the default branch.

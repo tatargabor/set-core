@@ -110,7 +110,7 @@ class TestAutoTag:
     def test_remember_on_branch_adds_tag(self, git_env):
         """5.1: remember on a branch → verify branch:* tag present"""
         repo, storage = git_env
-        # We're on the default branch (main or master)
+        # We're on the default branch (main)
         branch, _ = git(repo, "branch", "--show-current")
 
         remember(storage, repo, "test insight on branch")

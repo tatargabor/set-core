@@ -220,14 +220,11 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
     """
     # Determine main branch
     main_branch = ""
-    for branch in ("main", "master"):
-        r = run_git("show-ref", "--verify", "--quiet", f"refs/heads/{branch}", cwd=wt_path)
-        if r.exit_code == 0:
-            main_branch = branch
-            break
-
-    if not main_branch:
-        logger.warning("sync: could not find main/master branch for %s", change_name)
+    r = run_git("show-ref", "--verify", "--quiet", "refs/heads/main", cwd=wt_path)
+    if r.exit_code == 0:
+        main_branch = "main"
+    else:
+        logger.warning("sync: could not find main branch for %s", change_name)
         return SyncResult(ok=False, message="no main branch found")
 
     # Check if already up to date

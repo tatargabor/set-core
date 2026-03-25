@@ -53,7 +53,7 @@ The first migration SHALL add a `branch:unknown` tag to every existing memory th
 
 #### Scenario: Memory already has branch tag
 - **WHEN** migration 001 runs
-- **AND** a memory has tags `["source:user", "branch:master"]`
+- **AND** a memory has tags `["source:user", "branch:main"]`
 - **THEN** the memory's tags are unchanged
 
 #### Scenario: Memory with no tags

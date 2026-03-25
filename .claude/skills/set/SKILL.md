@@ -94,7 +94,7 @@ set-close <change-id> --delete-remote    # Delete both local and remote
 set-merge <change-id>
 ```
 
-Merges the worktree branch into the target branch (default: main/master).
+Merges the worktree branch into the target branch (default: main).
 
 Options:
 ```bash

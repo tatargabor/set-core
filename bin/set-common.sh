@@ -305,7 +305,7 @@ get_worktree_path() {
     echo "$parent_dir/${repo_name}-wt-${change_id}"
 }
 
-# Get the main branch name for a project (master, main, etc.)
+# Get the main branch name for a project
 # Returns the currently checked-out branch of the main repo
 # Falls back to short commit hash if in detached HEAD state
 get_main_branch() {

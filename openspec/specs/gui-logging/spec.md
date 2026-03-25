@@ -112,5 +112,5 @@ Log messages SHALL use the format: `YYYY-MM-DD HH:MM:SS LEVEL module:function me
 
 #### Scenario: Log format example
 - **WHEN** any log message is written
-- **THEN** it SHALL follow the format `2026-02-13 08:15:32 INFO handlers:on_double_click project=mediapipe change=master action=open_editor`
+- **THEN** it SHALL follow the format `2026-02-13 08:15:32 INFO handlers:on_double_click project=mediapipe change=main action=open_editor`
 

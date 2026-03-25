@@ -68,7 +68,7 @@ def archive_change(change_name: str) -> bool:
 
     The openspec CLI moves the change dir to archive/ and syncs delta specs
     into openspec/specs/, but does NOT run git add/commit.  We must commit
-    so that subsequent worktrees (forked from master) see the updated specs.
+    so that subsequent worktrees (forked from main) see the updated specs.
     """
     change_dir = f"openspec/changes/{change_name}"
     if not os.path.isdir(change_dir):
@@ -1004,10 +1004,6 @@ def _get_main_branch(cwd: str = "") -> str:
         ref = result.stdout.strip()
         return ref.replace("refs/remotes/origin/", "")
     # No origin — check which local branch exists
-    for candidate in ("main", "master"):
-        check = run_command(["git", "rev-parse", "--verify", candidate], timeout=5, **kwargs)
-        if check.exit_code == 0:
-            return candidate
     return "main"
 
 

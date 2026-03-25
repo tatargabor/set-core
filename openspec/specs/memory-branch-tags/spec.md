@@ -7,9 +7,9 @@
 - **WHEN** user runs `echo "insight" | set-memory remember --type Learning --tags source:user` on branch `change/feature-xyz`
 - **THEN** the memory is stored with tags `["source:user", "branch:change/feature-xyz"]`
 
-#### Scenario: Remember on master
-- **WHEN** user runs `echo "insight" | set-memory remember --type Decision` on branch `master`
-- **THEN** the memory is stored with tags `["branch:master"]`
+#### Scenario: Remember on main
+- **WHEN** user runs `echo "insight" | set-memory remember --type Decision` on branch `main`
+- **THEN** the memory is stored with tags `["branch:main"]`
 
 #### Scenario: Remember in detached HEAD state
 - **WHEN** user runs `echo "insight" | set-memory remember --type Learning` in detached HEAD state (no current branch)

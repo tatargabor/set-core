@@ -69,7 +69,7 @@ class HandlersMixin:
         """Merge worktree branch - ask for target branch"""
         logger.info("git_merge: project=%s change=%s path=%s", project, change_id, path)
         # Get available branches
-        branches = ["master", "main"]
+        branches = ["main"]
         try:
             result = subprocess.run(
                 ["git", "-C", path, "branch", "-r", "--format=%(refname:short)"],

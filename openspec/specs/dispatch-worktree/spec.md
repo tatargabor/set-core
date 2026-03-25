@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Sync worktree with main branch
-The system SHALL merge the main branch (main or master) into a worktree branch before dispatch. If the worktree is already up-to-date, no merge SHALL occur. Generated file conflicts (lockfiles, .tsbuildinfo) SHALL be auto-resolved with `--ours` strategy. Real conflicts SHALL cause merge abort and return failure.
+The system SHALL merge the main branch (main) into a worktree branch before dispatch. If the worktree is already up-to-date, no merge SHALL occur. Generated file conflicts (lockfiles, .tsbuildinfo) SHALL be auto-resolved with `--ours` strategy. Real conflicts SHALL cause merge abort and return failure.
 
 #### Scenario: Worktree already up to date
 - **WHEN** the worktree branch merge-base equals main branch HEAD

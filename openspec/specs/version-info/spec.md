@@ -11,7 +11,7 @@ Given set-core is installed via symlinks
 When the user runs `set-version`
 Then the output shows:
   - set-core version header
-  - Branch name (e.g., "master")
+  - Branch name (e.g., "main")
   - Commit hash (short, 7 chars)
   - Commit date (ISO format)
   - Source directory path
