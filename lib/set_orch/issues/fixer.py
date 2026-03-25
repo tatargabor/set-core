@@ -192,7 +192,31 @@ Use the OpenSpec workflow to create a structured fix:
 
 3. After apply completes, verify the fix works by running the command that was failing.
 
-4. Run `/opsx:archive {change_name}` — archive the completed change.
+4. **Deploy the fix to all active worktrees** — the orchestrator runs gates in worktrees, so the fix must be there too:
+   ```bash
+   # Deploy updated configs/rules to all worktrees
+   for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{{print $2}}' | tail -n +2); do
+     cp vitest.config.ts "$wt/vitest.config.ts" 2>/dev/null
+     cp playwright.config.ts "$wt/playwright.config.ts" 2>/dev/null
+     cp set/orchestration/config.yaml "$wt/set/orchestration/config.yaml" 2>/dev/null
+   done
+   ```
+
+5. **Reset blocked changes** so the orchestrator retries with the fix:
+   ```bash
+   python3 -c "
+   import json; f='orchestration-state.json'; s=json.load(open(f))
+   for c in s['changes']:
+       if c['status'] in ('integration-failed', 'merge-blocked'):
+           c['status']='done'
+           c.setdefault('extras',{{}})['merge_retry_count']=0
+           c.setdefault('extras',{{}})['total_merge_attempts']=0
+           print(f'Reset {{c[\"name\"]}} → done')
+   json.dump(s, open(f,'w'), indent=2)
+   "
+   ```
+
+6. Run `/opsx:archive {change_name}` — archive the completed change.
 
 Focus on a minimal, correct fix — do not refactor unrelated code.
 """
