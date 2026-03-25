@@ -242,34 +242,47 @@ Then **immediately go back to Step 2** (start another background poll).
 
 | Status | Action |
 |--------|--------|
-| `done` | Produce final report (see Step 5), stop |
-| `stopped` | Report "User stopped orchestration", stop |
-| `time_limit` | Summarize progress (changes done/total, tokens, time elapsed), stop |
+| `done` with ALL changes merged | Produce final report (see Step 5), stop |
+| `done` with non-merged changes | Some changes failed — log findings for failures, report, stop |
+| `stopped` but orchestrator process still alive | NOT terminal — just a stale state write. Keep polling. |
+| `stopped` and orchestrator process dead | Restart orchestrator: `set-orchestrate start $ARGUMENTS &` |
+| `time_limit` | Summarize progress, stop |
+
+**IMPORTANT:** `stopped` is NOT always terminal. The orchestrator may write "stopped" transiently (bash EXIT trap, duplicate monitor cleanup). Always check if the orchestrator process is alive before treating "stopped" as terminal. If the process died, restart it — don't produce a final report.
 
 #### EVENT: process_exit (crash)
 
-The orchestrator process exited. Handle with simple restart logic — do NOT read logs or diagnose errors unless rapid crash threshold is hit.
+The orchestrator process exited. Handle with simple restart — **NEVER clean up files before restarting**.
 
 1. Check state.json status:
    ```bash
    STATUS=$(jq -r '.status // "unknown"' orchestration-state.json 2>/dev/null || echo "unknown")
    ```
-   If `done`, `stopped`, or `time_limit` → treat as normal exit, produce completion report (Step 5).
+   If `done` → produce completion report (Step 5), check if all changes actually merged (see below).
+   If `time_limit` → summarize progress, stop.
 
 2. Track rapid crashes: if the orchestrator ran less than 5 minutes since `last_start_time`, increment `rapid_crashes`.
 
-3. If `rapid_crashes >= 5` → **stop and report**:
-   - Read the last 50 lines of orchestration.log
+3. If `rapid_crashes >= 3` → **stop and report**:
+   - Read the last 50 lines of the orchestration log
+   - Log a finding: `set-sentinel-finding add --severity bug --summary "Orchestrator rapid crash 3x"`
    - Report the error pattern to the user
-   - Do NOT restart
+   - Do NOT restart, do NOT "clean up", do NOT delete any files
 
-4. Otherwise → restart (no diagnosis needed — the orchestrator saves state and resumes):
+4. Otherwise → **simple restart** (the orchestrator auto-resumes from saved state):
    ```bash
    sleep 30
    set-orchestrate start $ARGUMENTS &
    ORCH_PID=$!
    ```
    Update `restart_count`, `last_start_time`, then go back to Step 2.
+
+**RESTART RULES:**
+- ONLY action: `set-orchestrate start $ARGUMENTS &` — nothing else
+- Do NOT delete state files, lock files, worktrees, or branches before restarting
+- Do NOT run `set-orchestrate reset` unless the user explicitly asks
+- Do NOT "clean start" — the auto-resume path handles stale states
+- The orchestrator resolves its own lock conflicts, orphaned changes, and stale state
 
 #### EVENT: checkpoint
 
@@ -382,13 +395,27 @@ The sentinel MUST NOT:
 - Modify `.claude/orchestration.yaml` or any orchestration directives
 - Run build/generate/install commands that change project state
 - Merge branches or resolve conflicts
-- **NEVER delete worktrees** — worktrees contain gate results, agent work, and are needed for integration gates. Even "stale" worktrees must be preserved. Only the user can manually delete worktrees. The orchestrator handles worktree lifecycle.
-- Create or edit worktrees beyond what `set-orchestrate` manages
 - Make architectural or quality decisions on behalf of the user
 - Diagnose orchestration-level issues (merge conflicts, test failures, change failures) — these are the orchestrator's responsibility
-- Reset orchestration state from running to stopped — the orchestrator handles stale state on resume
 
-**If the sentinel cannot fix a problem with a simple process restart, it MUST stop and report.** Another agent (or the user) will make the fix, then the sentinel can be restarted to continue.
+**CRITICAL — Files the sentinel MUST NEVER touch:**
+
+| File/Dir | Why | What happens if deleted |
+|----------|-----|----------------------|
+| `orchestration-state.json` | Entire run memory (statuses, retries, tokens) | Re-decompose with DIFFERENT plan, all progress lost |
+| `orchestration.lock` | flock-based mutex | Duplicate orchestrators → state corruption |
+| Worktree dirs (`*-wt-*`) | Agent work + gate execution environment | Gates bypass → merge without verify/review/test |
+| Git branches (`change/*`) | Agent commits | Code loss, worktrees become invalid |
+| `orchestration-plan.json` | Decomposition output | Re-decompose with different change names |
+
+**The orchestrator handles ALL recovery internally.** When you restart it with `set-orchestrate start`, it:
+- Detects stale locks via flock (OS releases dead process locks automatically)
+- Detects orphaned "running" changes via watchdog → stalled → redispatch
+- Auto-resumes from any state (running, stopped, checkpoint)
+- Handles stale state files without deletion
+
+**The sentinel's ONLY restart action is: `set-orchestrate start $ARGUMENTS &`**
+Never "clean up" before restarting. Never delete files to "fix" a stuck state. If `set-orchestrate start` itself fails repeatedly (rapid crash ≥3), STOP and report to user.
 
 ### NEVER weaken quality gates
 
