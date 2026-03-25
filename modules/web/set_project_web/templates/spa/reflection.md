@@ -3,3 +3,4 @@
 - The database needs `prisma db push` + `prisma db seed` before E2E tests can run in a new worktree — the dev.db starts empty.
 - Prisma client needs `prisma generate` after a worktree is created, otherwise the build fails with "PrismaClient has no exported member".
 - When running all Playwright tests together, tests that modify shared state (e.g., depleting stock) can cause other tests to fail. Each test file should be independently runnable. Use DB reset fixtures or test isolation to prevent cross-contamination.
+- Playwright config MUST include: `reporter: "html"`, `screenshot: "on"` (or `"only-on-failure"`), `trace: "on-first-retry"`, and `retries: process.env.CI ? 2 : 0`. Without these, test failures produce no artifacts for debugging and the orchestrator cannot collect screenshots or reports.
