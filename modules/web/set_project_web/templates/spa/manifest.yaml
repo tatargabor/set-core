@@ -4,3 +4,4 @@ core:
   - rules/components.md
   - rules/design-integration.md
   - rules/web-frontend.md
+  - reflection.md

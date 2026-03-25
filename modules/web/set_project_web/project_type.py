@@ -669,10 +669,11 @@ class WebProjectType(CoreProfile):
         }
 
     def integration_pre_build(self, wt_path: str) -> bool:
-        """Run minimal DB schema sync before integration build gate.
+        """Run Prisma generate + DB schema sync before integration build gate.
 
-        Only runs prisma db push (no seed, no generate) — just enough for
-        next build to succeed when server components query the DB.
+        Worktrees start with stale/missing Prisma client — generate is required
+        for builds that import @prisma/client. DB push syncs schema for server
+        components that query the DB at build time.
         """
         prisma_schema = Path(wt_path) / "prisma" / "schema.prisma"
         if not prisma_schema.is_file():
@@ -690,11 +691,24 @@ class WebProjectType(CoreProfile):
             except OSError:
                 pass
 
+        merged_env = {**subprocess.os.environ, **env}
+
+        # Step 1: prisma generate (required — worktree node_modules may lack generated client)
+        try:
+            subprocess.run(
+                ["npx", "prisma", "generate"],
+                cwd=wt_path, capture_output=True, timeout=60,
+                env=merged_env,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            pass  # non-fatal — build will fail with clear error if client missing
+
+        # Step 2: prisma db push (schema → DB sync)
         try:
             result = subprocess.run(
                 ["npx", "prisma", "db", "push", "--skip-generate", "--accept-data-loss"],
                 cwd=wt_path, capture_output=True, timeout=60,
-                env={**subprocess.os.environ, **env},
+                env=merged_env,
             )
             return result.returncode == 0
         except (subprocess.TimeoutExpired, OSError):

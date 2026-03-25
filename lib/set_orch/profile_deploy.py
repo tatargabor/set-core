@@ -32,6 +32,10 @@ def _target_path(template_rel: str, target_dir: Path) -> Path:
             return set_knowledge / template_rel
         return target_dir / template_rel
 
+    # reflection.md → .claude/reflection.md (agent learning file)
+    if template_rel == "reflection.md":
+        return target_dir / ".claude" / "reflection.md"
+
     # Apply path mappings (e.g., rules/ → .claude/rules/)
     for prefix, target_prefix in _PATH_MAPPINGS.items():
         if template_rel.startswith(prefix):

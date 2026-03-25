@@ -1,0 +1,5 @@
+- `useActionState` is React 19 only; for React 18 projects use `useFormState` from `react-dom`. `useFormStatus` must be in a child component of the form.
+- Server actions called from Client Components must be in a separate file with `"use server"` at the top. Server Components can import actions directly from files without the directive.
+- The database needs `prisma db push` + `prisma db seed` before E2E tests can run in a new worktree — the dev.db starts empty.
+- Prisma client needs `prisma generate` after a worktree is created, otherwise the build fails with "PrismaClient has no exported member".
+- When running all Playwright tests together, tests that modify shared state (e.g., depleting stock) can cause other tests to fail. Each test file should be independently runnable. Use DB reset fixtures or test isolation to prevent cross-contamination.
