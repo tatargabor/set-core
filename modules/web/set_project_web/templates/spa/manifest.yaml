@@ -5,3 +5,5 @@ core:
   - rules/design-integration.md
   - rules/web-frontend.md
   - reflection.md
+  - playwright.config.ts
+  - vitest.config.ts
