@@ -233,17 +233,17 @@ class InvestigationRunner:
         )
 
 
-DEFAULT_TEMPLATE = """# Issue Investigation: {issue_id}
+DEFAULT_TEMPLATE = """/opsx:explore Investigate issue {issue_id}
 
-## Context
+## Issue Context
 - **Environment:** {environment}
 - **Source:** {source}
 - **Affected change:** {affected_change}
-- **Severity (initial):** {severity}
+- **Severity:** {severity}
 - **Detected at:** {detected_at}
-- **Occurrence count:** {occurrence_count}
+- **Occurrences:** {occurrence_count}
 
-## Error Details
+## Error
 ```
 {error_detail}
 ```
@@ -253,45 +253,32 @@ DEFAULT_TEMPLATE = """# Issue Investigation: {issue_id}
 
 ## Framework Knowledge
 
-This project runs on the **set-core orchestration framework**. Key facts for investigation:
+This project uses the **set-core orchestration framework**:
 
-- **Orchestration config:** `set/orchestration/config.yaml` — overrides for test_command, e2e_command, build_command. These take priority over auto-detected commands.
-- **Integration gates:** The merger runs build → test → e2e gates before merging. Gate commands come from: 1) config.yaml directives, 2) profile auto-detection (WebProjectType).
-- **Profile:** `set/plugins/project-type.yaml` defines the project type (web, base). The web profile auto-detects test/build/e2e commands from package.json.
-- **Common gate failures:**
-  - `test=fail` with vitest: vitest exits 1 when no test files found. Fix: set `test_command: "npx vitest run --passWithNoTests"` in config.yaml
-  - `build=fail`: usually missing deps or type errors. Check if `pnpm install` ran before build.
-  - `e2e=fail`: playwright needs `pnpm exec playwright install` and a dev server.
-- **Config override pattern:** To fix a gate command, edit `set/orchestration/config.yaml` and set the specific command. The orchestrator will pick it up on next merge attempt.
+- **Config:** `set/orchestration/config.yaml` — overrides for test_command, e2e_command, build_command (priority over auto-detect)
+- **Gates:** merger runs build → test → e2e before merging. Commands from: 1) config.yaml, 2) web profile auto-detection
+- **Profile:** `set/plugins/project-type.yaml` → web profile detects commands from package.json
+- **Common fixes:**
+  - vitest "no test files" exit 1 → `test_command: "npx vitest run --passWithNoTests"` in config.yaml
+  - build fail → check `pnpm install` ran, check type errors
+  - e2e fail → playwright needs install + dev server
 
-## Instructions
+## Task
 
-Investigate this issue thoroughly. You may read files in both the project directory AND the set-core framework code to understand the root cause.
-
-1. **Read the error output** — identify the exact failure point (file, line, function)
-2. **Read the affected code** — understand the context around the failure
-3. **Check the config** — read `set/orchestration/config.yaml` and `set/plugins/project-type.yaml`
-4. **Check git history** — `git log --oneline -20 -- <affected_files>` to see recent changes
-5. **Trace the root cause** — follow the chain from symptom to underlying bug
-6. **Propose a fix** — either a config change (config.yaml override) or a code change
-7. **Assess impact** — what breaks if this isn't fixed? Is it blocking?
-
-## Output Format
-
-End your response with a JSON diagnosis block:
+Use `/opsx:explore` to investigate. Read files, check configs, trace the root cause. When done, output a JSON diagnosis:
 
 DIAGNOSIS_START
 {{
-  "root_cause": "Clear description of the actual underlying bug",
+  "root_cause": "Clear description of the underlying bug",
   "impact": "low|medium|high|critical",
   "confidence": 0.85,
   "fix_scope": "config_override|single_file|multi_file|cross_module",
-  "suggested_fix": "What needs to change and why — include exact file path and content if config_override",
-  "affected_files": ["path/to/file.py:42"],
+  "suggested_fix": "Exact change needed — file path + content for config fixes",
+  "affected_files": ["path/to/file"],
   "related_issues": [],
   "suggested_group": null,
   "group_reason": null,
-  "tags": ["relevant", "tags"]
+  "tags": []
 }}
 DIAGNOSIS_END
 """

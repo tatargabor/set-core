@@ -104,8 +104,9 @@ class FixRunner:
             return {"success": False, "error": "no process"}
 
         returncode = proc.returncode
-        # Check if opsx change was archived
-        change_dir = self.set_core_path / "openspec" / "changes" / (issue.change_name or "")
+        # Check if opsx change was archived (in the consumer project, not set-core)
+        project_path = Path(issue.environment_path) if issue.environment_path else self.set_core_path
+        change_dir = project_path / "openspec" / "changes" / (issue.change_name or "")
         archived = not change_dir.exists()  # archived = moved to archive/
 
         success = returncode == 0 or archived
@@ -170,7 +171,7 @@ class FixRunner:
         return {iid: success for iid in group.issue_ids}
 
 
-FIX_PROMPT = """You are fixing issue {issue_id} in this project.
+FIX_PROMPT = """Fix issue {issue_id} using the OpenSpec workflow.
 
 ## Issue
 **Summary:** {error_summary}
@@ -181,20 +182,17 @@ FIX_PROMPT = """You are fixing issue {issue_id} in this project.
 
 ## Instructions
 
-Apply the fix described in the diagnosis. This is a consumer project — you can modify config files, source code, and test files.
+Use the OpenSpec workflow to create a structured fix:
 
-**For config overrides** (fix_scope=config_override):
-- Edit `set/orchestration/config.yaml` to override the failing command
-- OR edit the relevant config file (vitest.config.ts, playwright.config.ts, etc.)
+1. Run `/opsx:ff {change_name}` — this creates the change with proposal, design, specs, and tasks based on the diagnosis above. The scope should be the exact fix described in the diagnosis.
 
-**For code fixes** (fix_scope=single_file or multi_file):
-- Edit the affected files directly
-- Run the failing command to verify the fix works
+2. Run `/opsx:apply {change_name}` — implement the fix tasks. Focus on:
+   - **config_override scope**: edit `set/orchestration/config.yaml` or relevant config files (vitest.config.ts, playwright.config.ts)
+   - **single_file/multi_file scope**: edit the affected source files directly
 
-After making changes:
-1. `git add` the changed files
-2. `git commit -m "fix: {issue_id} — <description>"`
-3. Verify the fix by running the command that was failing
+3. After apply completes, verify the fix works by running the command that was failing.
+
+4. Run `/opsx:archive {change_name}` — archive the completed change.
 
 Focus on a minimal, correct fix — do not refactor unrelated code.
 """
