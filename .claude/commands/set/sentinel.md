@@ -382,7 +382,8 @@ The sentinel MUST NOT:
 - Modify `.claude/orchestration.yaml` or any orchestration directives
 - Run build/generate/install commands that change project state
 - Merge branches or resolve conflicts
-- Create, edit, or delete worktrees beyond what `set-orchestrate` manages
+- **NEVER delete worktrees** — worktrees contain gate results, agent work, and are needed for integration gates. Even "stale" worktrees must be preserved. Only the user can manually delete worktrees. The orchestrator handles worktree lifecycle.
+- Create or edit worktrees beyond what `set-orchestrate` manages
 - Make architectural or quality decisions on behalf of the user
 - Diagnose orchestration-level issues (merge conflicts, test failures, change failures) — these are the orchestrator's responsibility
 - Reset orchestration state from running to stopped — the orchestrator handles stale state on resume
