@@ -161,12 +161,22 @@ def _extract_text_from_json_output(raw: str) -> str:
     result_text = ""
 
     # Try parsing as JSON array first (--verbose --output-format json)
+    items: list[dict] = []
     try:
         data = _json.loads(raw)
+        items = data if isinstance(data, list) else [data]
     except _json.JSONDecodeError:
+        # Fallback: try JSONL (one JSON object per line)
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                items.append(_json.loads(line))
+            except _json.JSONDecodeError:
+                continue
+    if not items:
         return ""
-
-    items = data if isinstance(data, list) else [data]
 
     for obj in items:
         if not isinstance(obj, dict):
@@ -212,7 +222,7 @@ def run_claude(
     Returns:
         ClaudeResult with exit_code, stdout, stderr, duration_ms, timed_out.
     """
-    cmd = ["claude", "-p", "--verbose", "--output-format", "stream-json"]
+    cmd = ["claude", "-p", "--verbose", "--output-format", "json"]
 
     if model:
         cmd.extend(["--model", resolve_model_id(model)])
