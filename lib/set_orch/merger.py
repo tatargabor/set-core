@@ -494,6 +494,13 @@ def merge_change(
         except Exception:
             logger.debug("Post-merge profile hooks failed (non-critical)", exc_info=True)
 
+        # Regenerate START.md on main from current project state
+        try:
+            from .dispatcher import _write_startup_file
+            _write_startup_file(".")
+        except Exception:
+            logger.debug("Post-merge START.md regeneration failed (non-critical)", exc_info=True)
+
         # Post-merge hook
         _run_hook("post_merge", change_name, "merged", "")
 

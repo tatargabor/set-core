@@ -202,6 +202,15 @@ class ProjectType(ABC):
     def get_forbidden_patterns(self) -> list:
         return []
 
+    def generate_startup_file(self, project_path: str) -> str:
+        """Generate START.md content for a project.
+
+        Returns full markdown content for the startup file, or empty string
+        if the project type doesn't support startup file generation.
+        Override in subclass to provide project-type-specific detection.
+        """
+        return ""
+
     def generate_smoke_e2e(self, project_path: str) -> Optional[str]:
         return None
 

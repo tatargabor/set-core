@@ -455,85 +455,29 @@ def prune_worktree_context(wt_path: str) -> int:
     return pruned
 
 
-# ─── Startup Guide ───────────────────────────────────────────────────
+# ─── Startup File ────────────────────────────────────────────────────
 
 
-def generate_startup_guide(wt_path: str) -> str:
-    """Detect project stack and generate an Application Startup guide section.
+def _write_startup_file(project_path: str) -> bool:
+    """Generate START.md via profile and write to project root.
 
-    Detects: package manager, framework dev command, DB tool (Prisma/Drizzle),
-    Playwright config existence.  Returns markdown content (without the heading).
+    Delegates to profile.generate_startup_file(). Always overwrites
+    (content is auto-generated). Returns True if written, False if skipped.
     """
-    d = Path(wt_path)
-    pm = _detect_package_manager(wt_path) or "npm"
-    lines: list[str] = []
-
-    lines.append(f"```bash\n{pm} install\n```\n")
-
-    # Detect framework dev command from package.json scripts
-    pkg_json = d / "package.json"
-    pkg_data: dict = {}
-    if pkg_json.is_file():
-        try:
-            pkg_data = json.loads(pkg_json.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    scripts = pkg_data.get("scripts", {})
-    if scripts.get("dev"):
-        lines.append(f"**Dev server:** `{pm} run dev`\n")
-
-    # Detect DB tool
-    all_deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
-    if "prisma" in all_deps or "@prisma/client" in all_deps:
-        lines.append(f"**Database:** `npx prisma db push` (or `npx prisma migrate dev`) then `npx prisma db seed` if seed script exists\n")
-    elif "drizzle-orm" in all_deps:
-        lines.append(f"**Database:** `npx drizzle-kit push` (or check drizzle config for migration command)\n")
-
-    # Detect Playwright
-    pw_config = any((d / name).is_file() for name in ("playwright.config.ts", "playwright.config.js"))
-    if pw_config or "playwright" in all_deps or "@playwright/test" in all_deps:
-        lines.append(f"**E2E tests:** `npx playwright install --with-deps chromium` then `npx playwright test`\n")
-
-    # Test command
-    for candidate in ("test", "test:unit", "test:ci"):
-        if scripts.get(candidate):
-            lines.append(f"**Unit tests:** `{pm} run {candidate}`\n")
-            break
-
-    return "\n".join(lines)
-
-
-def append_startup_guide_to_claudemd(wt_path: str) -> bool:
-    """Append ``## Application Startup`` section to worktree CLAUDE.md.
-
-    Idempotent: if section already exists, does nothing.
-    Creates CLAUDE.md if missing.
-
-    Returns True if section was appended, False if skipped/already present.
-    """
-    claude_md = os.path.join(wt_path, "CLAUDE.md")
-
-    existing = ""
-    if os.path.isfile(claude_md):
-        try:
-            existing = Path(claude_md).read_text(encoding="utf-8")
-        except OSError:
-            pass
-
-    if "## Application Startup" in existing:
-        return False
-
-    guide_content = generate_startup_guide(wt_path)
-    section = f"\n\n## Application Startup\n\n{guide_content}\n"
-
     try:
-        with open(claude_md, "a") as f:
-            f.write(section)
-        logger.info("Appended Application Startup guide to %s", claude_md)
+        from .profile_loader import load_profile, NullProfile
+        profile = load_profile()
+        if isinstance(profile, NullProfile):
+            return False
+        content = profile.generate_startup_file(project_path)
+        if not content:
+            return False
+        start_md = os.path.join(project_path, "START.md")
+        Path(start_md).write_text(content, encoding="utf-8")
+        logger.info("Generated START.md in %s", project_path)
         return True
-    except OSError:
-        logger.warning("Failed to write startup guide to %s", claude_md)
+    except Exception:
+        logger.debug("Failed to generate START.md (non-critical)", exc_info=True)
         return False
 
 
@@ -1539,8 +1483,8 @@ def dispatch_change(
         state_path, input_mode, input_path, digest_dir,
     )
 
-    # Append startup guide to worktree CLAUDE.md (idempotent)
-    append_startup_guide_to_claudemd(wt_path)
+    # Generate START.md via profile (replaces old inline CLAUDE.md startup guide)
+    _write_startup_file(wt_path)
 
     # Append schema digest to worktree CLAUDE.md (replaces data-definitions.md)
     from set_orch.dispatcher_schema import append_schema_digest_to_claudemd
