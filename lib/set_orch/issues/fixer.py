@@ -34,6 +34,7 @@ class FixRunner:
         self.audit = audit
         self._processes: dict[str, subprocess.Popen] = {}
         self._verify_processes: dict[str, subprocess.Popen] = {}
+        self._stdout_files: dict[str, object] = {}
 
     def spawn(self, issue: Issue):
         """Start opsx fix agent in set-core directory."""
@@ -52,16 +53,31 @@ class FixRunner:
             error_summary=issue.error_summary,
         )
 
-        cmd = ["claude", "-p", "--max-turns", "50", prompt]
+        cmd = [
+            "claude", "-p", "--max-turns", "50",
+            "--dangerously-skip-permissions",
+            "--verbose", "--output-format", "stream-json",
+            prompt,
+        ]
+
+        # Run in the consumer project so the agent can modify config/code
+        project_cwd = issue.environment_path or str(self.set_core_path)
+
+        # Capture output to file for debugging
+        fix_output_dir = Path(project_cwd) / ".set" / "issues" / "fixes"
+        fix_output_dir.mkdir(parents=True, exist_ok=True)
+        fix_output_file = fix_output_dir / f"{issue.id}.md"
+        stdout_fh = open(fix_output_file, "w")
 
         try:
             proc = subprocess.Popen(
                 cmd,
-                cwd=str(self.set_core_path),
-                stdout=subprocess.DEVNULL,
+                cwd=project_cwd,
+                stdout=stdout_fh,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
             )
+            self._stdout_files[issue.id] = stdout_fh
             self._processes[issue.id] = proc
             issue.fix_agent_pid = proc.pid
             logger.info(f"Fix agent spawned for {issue.id}, PID={proc.pid}, change={change_name}")
@@ -78,6 +94,12 @@ class FixRunner:
     def collect(self, issue: Issue) -> dict:
         """Collect fix result. Returns dict with 'success' key."""
         proc = self._processes.pop(issue.id, None)
+        fh = self._stdout_files.pop(issue.id, None)
+        if fh:
+            try:
+                fh.close()
+            except OSError:
+                pass
         if proc is None:
             return {"success": False, "error": "no process"}
 
@@ -124,6 +146,12 @@ class FixRunner:
                     os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
                 except (ProcessLookupError, PermissionError):
                     pass
+        fh = self._stdout_files.pop(issue.id, None)
+        if fh:
+            try:
+                fh.close()
+            except OSError:
+                pass
         issue.fix_agent_pid = None
 
     # --- Group support ---
@@ -142,7 +170,7 @@ class FixRunner:
         return {iid: success for iid in group.issue_ids}
 
 
-FIX_PROMPT = """You are fixing issue {issue_id} in set-core.
+FIX_PROMPT = """You are fixing issue {issue_id} in this project.
 
 ## Issue
 **Summary:** {error_summary}
@@ -152,12 +180,21 @@ FIX_PROMPT = """You are fixing issue {issue_id} in set-core.
 {diagnosis}
 
 ## Instructions
-1. Run `/opsx:ff {change_name}` — create the change with scope based on the diagnosis
-2. Run `/opsx:apply` — implement the fix
-3. Run `/opsx:verify` — validate the fix
-4. Run `/opsx:archive` — complete the change
 
-Work in the set-core directory. Do NOT create worktrees.
-Commit your changes after each step.
+Apply the fix described in the diagnosis. This is a consumer project — you can modify config files, source code, and test files.
+
+**For config overrides** (fix_scope=config_override):
+- Edit `set/orchestration/config.yaml` to override the failing command
+- OR edit the relevant config file (vitest.config.ts, playwright.config.ts, etc.)
+
+**For code fixes** (fix_scope=single_file or multi_file):
+- Edit the affected files directly
+- Run the failing command to verify the fix works
+
+After making changes:
+1. `git add` the changed files
+2. `git commit -m "fix: {issue_id} — <description>"`
+3. Verify the fix by running the command that was failing
+
 Focus on a minimal, correct fix — do not refactor unrelated code.
 """
