@@ -354,7 +354,7 @@ class ProjectType(ABC):
 
         # --- Project JSONL ---
         if project_patterns:
-            proj_path = os.path.join(project_path, "wt", "orchestration", "review-learnings.jsonl")
+            proj_path = os.path.join(project_path, "set", "orchestration", "review-learnings.jsonl")
             os.makedirs(os.path.dirname(proj_path), exist_ok=True)
             existing = []
             if os.path.isfile(proj_path):
@@ -423,7 +423,7 @@ class ProjectType(ABC):
         items: list[tuple[str, str, int]] = []  # (pattern, tag, sort_key)
 
         # 1. Project JSONL (highest priority)
-        proj_path = os.path.join(project_path, "wt", "orchestration", "review-learnings.jsonl")
+        proj_path = os.path.join(project_path, "set", "orchestration", "review-learnings.jsonl")
         if os.path.isfile(proj_path):
             try:
                 with open(proj_path) as f:

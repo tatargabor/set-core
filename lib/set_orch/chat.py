@@ -282,7 +282,7 @@ class ChatSession:
     async def _watch_state(self) -> None:
         """Poll orchestration-state.json for changes, push updates to clients."""
         state_paths = [
-            self.project_path / "wt" / "orchestration" / "orchestration-state.json",
+            self.project_path / "set" / "orchestration" / "orchestration-state.json",
             self.project_path / "orchestration-state.json",
         ]
         try:

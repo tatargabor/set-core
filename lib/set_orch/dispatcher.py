@@ -1419,7 +1419,7 @@ def dispatch_change(
         prune_worktree_context(wt_path)
 
     # Cross-change review learnings
-    findings_path = os.path.join(os.path.dirname(state_path), "wt", "orchestration", "review-findings.jsonl")
+    findings_path = os.path.join(os.path.dirname(state_path), "set", "orchestration", "review-findings.jsonl")
     review_learnings = _build_review_learnings(findings_path, change_name)
 
     # Profile-based persistent review checklist (cross-run)

@@ -175,7 +175,7 @@ def load_profile(project_path: str = "."):
     _cache_loaded = True
     project_path = str(Path(project_path).resolve())
 
-    pt_file = Path(project_path) / "wt" / "plugins" / "project-type.yaml"
+    pt_file = Path(project_path) / "set" / "plugins" / "project-type.yaml"
     if not pt_file.is_file():
         logger.debug("No project-type.yaml found, using NullProfile")
         _cached_profile = NullProfile()

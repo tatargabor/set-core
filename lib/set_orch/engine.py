@@ -1176,7 +1176,7 @@ def _detect_replan_trigger(state_file: str) -> str:
         return "domain_failure"
 
     # Check for coverage gaps
-    coverage_path = os.path.join(os.getcwd(), "wt", "orchestration", "digest", "coverage.json")
+    coverage_path = os.path.join(os.getcwd(), "set", "orchestration", "digest", "coverage.json")
     if os.path.isfile(coverage_path):
         try:
             with open(coverage_path) as f:
@@ -1228,7 +1228,7 @@ def _get_domains_needing_replan(state_file: str, domain_data: dict, trigger: str
 
     if trigger == "coverage_gap":
         # Find domains with uncovered requirements
-        coverage_path = os.path.join(os.getcwd(), "wt", "orchestration", "digest", "coverage.json")
+        coverage_path = os.path.join(os.getcwd(), "set", "orchestration", "digest", "coverage.json")
         gap_domains = set()
         try:
             with open(coverage_path) as f:
@@ -1299,7 +1299,7 @@ def _auto_replan_cycle(
         saved_brief = saved.get("brief", {})
         saved_domain_plans = saved.get("domain_plans", {})
 
-        digest_dir = os.path.join(os.getcwd(), "wt", "orchestration", "digest")
+        digest_dir = os.path.join(os.getcwd(), "set", "orchestration", "digest")
         domain_data = _load_domain_data(digest_dir)
         model = d.default_model or "opus"
 
@@ -1736,7 +1736,7 @@ def _generate_review_findings_summary_safe(state_file: str) -> None:
     """Generate review findings summary from JSONL log (exception-safe)."""
     try:
         from .verifier import generate_review_findings_summary
-        findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+        findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
         findings_path = os.path.join(findings_dir, "review-findings.jsonl")
         summary_path = os.path.join(findings_dir, "review-findings-summary.md")
         result = generate_review_findings_summary(findings_path, summary_path)
@@ -1771,7 +1771,7 @@ def _persist_run_learnings(state_file: str) -> None:
         import re as _re
         pattern_counts: dict[str, set[str]] = {}
 
-        findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+        findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
         findings_path = os.path.join(findings_dir, "review-findings.jsonl")
         if os.path.isfile(findings_path):
             with open(findings_path) as f:

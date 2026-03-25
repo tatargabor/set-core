@@ -2230,7 +2230,7 @@ def _execute_review_gate(
     fix_verification_prefix = ""
     if verify_retry_count > 0:
         prior_findings = _read_prior_review_findings(
-            os.path.join(os.path.dirname(state_file), "wt", "orchestration", "review-findings.jsonl"),
+            os.path.join(os.path.dirname(state_file), "set", "orchestration", "review-findings.jsonl"),
             change_name,
         ) if state_file else ""
         if prior_findings:
@@ -2276,7 +2276,7 @@ def _execute_review_gate(
     if not rr.has_critical:
         # Still log any HIGH/MEDIUM findings for post-run analysis
         if rr.output and re.search(r"\[HIGH\]|\[MEDIUM\]", rr.output):
-            findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+            findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
             findings_path = os.path.join(findings_dir, "review-findings.jsonl")
             _append_review_finding(findings_path, change_name, rr.output, verify_retry_count + 1)
         return GateResult("review", "pass", output=rr.output[:5000])
@@ -2296,7 +2296,7 @@ def _execute_review_gate(
     })
 
     # Persist findings to JSONL for post-run summary
-    findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+    findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
     findings_path = os.path.join(findings_dir, "review-findings.jsonl")
     _append_review_finding(findings_path, change_name, rr.output, round_num)
 
@@ -2707,7 +2707,7 @@ def handle_change_done(
     )
 
     # Review findings path for prior-findings injection into retry context
-    _findings_dir = os.path.join(os.path.dirname(state_file), "wt", "orchestration")
+    _findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
     _findings_path = os.path.join(_findings_dir, "review-findings.jsonl")
 
     # Register gates in execution order

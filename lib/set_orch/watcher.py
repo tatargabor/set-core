@@ -91,7 +91,7 @@ class ProjectWatcher:
 
     def _find_state(self) -> Path:
         # Project-local paths (engine writes here from CWD)
-        new = self.project_path / "wt" / "orchestration" / "orchestration-state.json"
+        new = self.project_path / "set" / "orchestration" / "orchestration-state.json"
         if new.exists():
             return new
         legacy = self.project_path / "orchestration-state.json"
@@ -110,7 +110,7 @@ class ProjectWatcher:
 
     def _find_log(self) -> Path:
         # Project-local paths first
-        new = self.project_path / "wt" / "orchestration" / "orchestration.log"
+        new = self.project_path / "set" / "orchestration" / "orchestration.log"
         if new.exists():
             return new
         legacy = self.project_path / "orchestration.log"

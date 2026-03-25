@@ -77,7 +77,7 @@ def _find_orch_config() -> str | None:
     from pathlib import Path
     for candidate in [
         Path.cwd() / ".claude" / "orchestration.yaml",
-        Path.cwd() / "wt" / "orchestration" / "config.yaml",
+        Path.cwd() / "set" / "orchestration" / "config.yaml",
     ]:
         if candidate.is_file():
             return str(candidate)

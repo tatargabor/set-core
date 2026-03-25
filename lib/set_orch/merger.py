@@ -185,7 +185,7 @@ def _resolve_retention() -> str:
         from .config import load_config_file
         path = "set/orchestration/config.yaml"
         if not os.path.isfile(path):
-            path = "wt/orchestration/config.yaml"  # legacy fallback
+            path = "set/orchestration/config.yaml"  # legacy fallback
         config = load_config_file(path)
         return config.get("worktree_retention", "keep")
     except Exception:
@@ -1223,7 +1223,7 @@ def _persist_change_review_learnings(change_name: str, state_file: str) -> None:
         from .profile_loader import load_profile
 
         findings_dir = os.path.join(
-            os.path.dirname(state_file), "wt", "orchestration"
+            os.path.dirname(state_file), "set", "orchestration"
         )
         findings_path = os.path.join(findings_dir, "review-findings.jsonl")
 
@@ -1240,7 +1240,7 @@ def _persist_change_review_learnings(change_name: str, state_file: str) -> None:
 
         # Auto-commit project JSONL to main if it was written
         proj_jsonl = os.path.join(
-            project_path, "wt", "orchestration", "review-learnings.jsonl"
+            project_path, "set", "orchestration", "review-learnings.jsonl"
         )
         if os.path.isfile(proj_jsonl):
             from .subprocess_utils import run_git

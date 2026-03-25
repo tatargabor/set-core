@@ -105,7 +105,7 @@ def _resolve_project(project_name: str) -> Path:
 def _state_path(project_path: Path) -> Path:
     """Find orchestration state file — project-local first, then shared runtime."""
     # Project-local paths (engine writes here from CWD)
-    new = project_path / "wt" / "orchestration" / "orchestration-state.json"
+    new = project_path / "set" / "orchestration" / "orchestration-state.json"
     if new.exists():
         return new
     legacy = project_path / "orchestration-state.json"
@@ -133,7 +133,7 @@ def _load_archived_changes(project_path: Path) -> list[dict]:
     Returns deduplicated list of archived change dicts. Later archive entries
     for the same change name win (they have more complete token data).
     """
-    archive = project_path / "wt" / "orchestration" / "state-archive.jsonl"
+    archive = project_path / "set" / "orchestration" / "state-archive.jsonl"
     if not archive.exists():
         return []
     seen: dict[str, dict] = {}  # name -> change dict
@@ -164,7 +164,7 @@ def _log_path(project_path: Path) -> Path:
             return shared
     except Exception:
         pass
-    new = project_path / "wt" / "orchestration" / "orchestration.log"
+    new = project_path / "set" / "orchestration" / "orchestration.log"
     if new.exists():
         return new
     legacy = project_path / "orchestration.log"
@@ -598,7 +598,7 @@ def get_change_logs(project: str, name: str):
                     )
             # Fallback: archived logs
             if not logs:
-                archive_dir = project_path / "wt" / "orchestration" / "logs" / name
+                archive_dir = project_path / "set" / "orchestration" / "logs" / name
                 if archive_dir.is_dir():
                     logs = sorted(
                         f.name for f in archive_dir.iterdir()
@@ -646,7 +646,7 @@ def get_change_log(project: str, name: str, filename: str):
                     log_file = candidate
             # Fallback: archived logs
             if not log_file:
-                candidate = project_path / "wt" / "orchestration" / "logs" / name / filename
+                candidate = project_path / "set" / "orchestration" / "logs" / name / filename
                 if candidate.exists():
                     log_file = candidate
             if not log_file:
@@ -1344,7 +1344,7 @@ def serve_screenshot(project: str, file_path: str):
     if not full_path.exists() or not full_path.suffix == ".png":
         raise HTTPException(404, "Screenshot not found")
     # Ensure path is within project's set/orchestration/
-    orch_dir = project_path / "wt" / "orchestration"
+    orch_dir = project_path / "set" / "orchestration"
     try:
         full_path.resolve().relative_to(orch_dir.resolve())
     except ValueError:
@@ -1356,7 +1356,7 @@ def serve_screenshot(project: str, file_path: str):
 def list_plans(project: str):
     """List decompose plan files."""
     project_path = _resolve_project(project)
-    plans_dir = project_path / "wt" / "orchestration" / "plans"
+    plans_dir = project_path / "set" / "orchestration" / "plans"
     if not plans_dir.is_dir():
         return {"plans": []}
     plans = []
@@ -1376,7 +1376,7 @@ def get_plan(project: str, filename: str):
     if ".." in filename or "/" in filename or not filename.endswith(".json"):
         raise HTTPException(400, "Invalid filename")
     project_path = _resolve_project(project)
-    plan_file = project_path / "wt" / "orchestration" / "plans" / filename
+    plan_file = project_path / "set" / "orchestration" / "plans" / filename
     if not plan_file.exists():
         raise HTTPException(404, f"Plan not found: {filename}")
     try:
@@ -1390,7 +1390,7 @@ def get_plan(project: str, filename: str):
 def get_digest(project: str):
     """Return digest data: index, requirements, coverage, domains, dependencies, ambiguities."""
     project_path = _resolve_project(project)
-    digest_dir = project_path / "wt" / "orchestration" / "digest"
+    digest_dir = project_path / "set" / "orchestration" / "digest"
     if not digest_dir.is_dir():
         return {"exists": False}
 
@@ -1441,7 +1441,7 @@ def get_digest(project: str):
 def get_coverage_report(project: str):
     """Return spec coverage report markdown if it exists."""
     project_path = _resolve_project(project)
-    report = project_path / "wt" / "orchestration" / "spec-coverage-report.md"
+    report = project_path / "set" / "orchestration" / "spec-coverage-report.md"
     if not report.exists():
         return {"exists": False}
     try:
@@ -1458,7 +1458,7 @@ def get_requirements(project: str):
     then overlays current change status from orchestration state.
     """
     project_path = _resolve_project(project)
-    plans_dir = project_path / "wt" / "orchestration" / "plans"
+    plans_dir = project_path / "set" / "orchestration" / "plans"
     has_plans_dir = plans_dir.is_dir()
 
     # Load all plans in order
@@ -1612,7 +1612,7 @@ def get_events(project: str, type: Optional[str] = Query(None), limit: int = Que
     events_file = project_path / "orchestration-state-events.jsonl"
     if not events_file.exists():
         # Try new location
-        events_file = project_path / "wt" / "orchestration" / "orchestration-state-events.jsonl"
+        events_file = project_path / "set" / "orchestration" / "orchestration-state-events.jsonl"
     if not events_file.exists():
         return {"events": []}
     events = []
@@ -1673,7 +1673,7 @@ def get_project_settings(project: str):
 
     # Orchestration config (YAML)
     for cfg_path in [
-        project_path / "wt" / "orchestration" / "config.yaml",
+        project_path / "set" / "orchestration" / "config.yaml",
         project_path / ".claude" / "orchestration.yaml",
     ]:
         if cfg_path.exists():
@@ -1698,7 +1698,7 @@ def get_project_settings(project: str):
 
     # Project knowledge
     for pk in [
-        project_path / "wt" / "knowledge" / "project-knowledge.yaml",
+        project_path / "set" / "knowledge" / "project-knowledge.yaml",
         project_path / "project-knowledge.yaml",
     ]:
         if pk.exists():
@@ -1706,7 +1706,7 @@ def get_project_settings(project: str):
             break
 
     # Runs dir
-    for rd in [project_path / "wt" / "orchestration" / "runs", project_path / "docs" / "orchestration-runs"]:
+    for rd in [project_path / "set" / "orchestration" / "runs", project_path / "docs" / "orchestration-runs"]:
         if rd.is_dir():
             result["runs_dir"] = str(rd)
             try:
@@ -1716,12 +1716,12 @@ def get_project_settings(project: str):
             break
 
     # Data sources: which tabs have data
-    plans_dir = project_path / "wt" / "orchestration" / "plans"
+    plans_dir = project_path / "set" / "orchestration" / "plans"
     plan_count = 0
     if plans_dir.is_dir():
         plan_count = sum(1 for f in plans_dir.iterdir() if f.is_file() and f.suffix == ".json")
 
-    digest_path = project_path / "wt" / "orchestration" / "digest.json"
+    digest_path = project_path / "set" / "orchestration" / "digest.json"
     change_count = 0
     if sp.exists():
         try:
@@ -2289,7 +2289,7 @@ async def completion_action(project: str, body: dict):
 def _resolve_findings_file(project_path: Path) -> Optional[Path]:
     """Find review-findings.jsonl with fallback paths."""
     for candidate in [
-        project_path / "wt" / "orchestration" / "review-findings.jsonl",
+        project_path / "set" / "orchestration" / "review-findings.jsonl",
         project_path / "orchestration" / "review-findings.jsonl",
     ]:
         if candidate.exists():
@@ -2622,7 +2622,7 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
 
     # --- Step 2: Collect orchestration events for this change ---
     events_files: list[Path] = []
-    for base_dir in [project_path, project_path / "wt" / "orchestration"]:
+    for base_dir in [project_path, project_path / "set" / "orchestration"]:
         for name in ["orchestration-events.jsonl", "orchestration-state-events.jsonl"]:
             candidate = base_dir / name
             if candidate.exists():
