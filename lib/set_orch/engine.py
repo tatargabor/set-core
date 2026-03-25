@@ -660,16 +660,26 @@ def _poll_active_changes(
         if change.status not in ("running", "verifying", "integrating"):
             continue
 
-        # --- Worktree existence check (removed-worktree-resilience) ---
+        # --- Worktree existence check ---
         wt_path = change.worktree_path or ""
         if wt_path and not os.path.isdir(wt_path):
-            logger.warning(
-                "Worktree missing for %s (status=%s, path=%s) — auto-transitioning to merged",
-                change.name, change.status, wt_path,
-            )
-            update_change_field(state_file, change.name, "status", "merged")
+            # Worktree was deleted (sentinel cleanup or manual).
+            # Mark as done so it goes through merge queue WITH gates, not auto-merged.
+            if change.status == "running":
+                logger.warning(
+                    "Worktree missing for %s (status=%s, path=%s) — marking done for merge queue (with gates)",
+                    change.name, change.status, wt_path,
+                )
+                update_change_field(state_file, change.name, "status", "done")
+            elif change.status in ("verifying", "integrating"):
+                logger.warning(
+                    "Worktree missing for %s (status=%s) — marking stalled",
+                    change.name, change.status,
+                )
+                update_change_field(state_file, change.name, "status", "stalled")
+            # Don't auto-merge — let merge queue handle with gates
             if event_bus:
-                event_bus.emit("CHANGE_AUTO_MERGED", change=change.name,
+                event_bus.emit("WORKTREE_MISSING", change=change.name,
                                data={"reason": "worktree_missing"})
             continue
 

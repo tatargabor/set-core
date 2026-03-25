@@ -875,6 +875,22 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
             )
 
         # Step 1: Integrate current main into branch
+        if wt_path and not os.path.isdir(wt_path) and not ff_exhausted:
+            # Worktree was cleaned up but change is done — cannot run gates without worktree
+            logger.error(
+                "Worktree missing for %s (%s) — cannot run integration gates. "
+                "Recreating worktree for gate execution.",
+                name, wt_path,
+            )
+            # Try to recreate worktree from branch
+            branch_name = f"change/{name}"
+            try:
+                from .subprocess_utils import run_command
+                run_command(["git", "worktree", "add", wt_path, branch_name], timeout=30)
+                logger.info("Recreated worktree for %s at %s", name, wt_path)
+            except Exception as e:
+                logger.error("Failed to recreate worktree for %s: %s — merging without gates", name, e)
+
         if wt_path and os.path.isdir(wt_path) and not ff_exhausted:
             integration = _integrate_for_merge(wt_path, name)
             if integration == "conflict":
