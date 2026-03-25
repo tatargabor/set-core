@@ -197,8 +197,8 @@ ATTRS
     success "set-core deployed (configs, rules, CLAUDE.md)"
 
     step "Orchestration config"
-    mkdir -p wt/orchestration
-    cat > wt/orchestration/config.yaml << 'YAML'
+    mkdir -p set/orchestration
+    cat > set/orchestration/config.yaml << 'YAML'
 # Orchestration config for Micro-Blog E2E
 default_model: sonnet
 test_command: pnpm test
@@ -217,7 +217,7 @@ discord:
   enabled: true
   channel_name: micro-blog
 YAML
-    success "Created wt/orchestration/config.yaml"
+    success "Created set/orchestration/config.yaml"
 
     git add -A
     git commit -m "chore: set-project init + orchestration config"
