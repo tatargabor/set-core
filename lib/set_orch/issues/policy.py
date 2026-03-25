@@ -60,7 +60,7 @@ class IssuesPolicyConfig:
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
 
     # Auto-fix severity lists per mode
-    auto_fix_severity: list[str] = field(default_factory=lambda: ["low", "medium"])
+    auto_fix_severity: list[str] = field(default_factory=lambda: ["low", "medium", "high"])
 
     @classmethod
     def from_dict(cls, data: dict) -> IssuesPolicyConfig:
@@ -140,13 +140,14 @@ class PolicyEngine:
 
         diag = issue.diagnosis
 
-        # Unknown severity = never auto-fix
-        if issue.severity == "unknown":
-            return False
+        # If severity is still "unknown" but diagnosis has impact, use that
+        effective_severity = issue.severity
+        if effective_severity == "unknown" and diag.impact and diag.impact != "unknown":
+            effective_severity = diag.impact
 
         # Check always_manual rules
         for rule in self.config.always_manual:
-            if "severity" in rule and issue.severity == rule["severity"]:
+            if "severity" in rule and effective_severity == rule["severity"]:
                 return False
             if "scope" in rule and diag.fix_scope == rule["scope"]:
                 return False
@@ -157,7 +158,7 @@ class PolicyEngine:
         # Check severity is in auto-fix list for this mode
         overrides = self._effective_config()
         allowed_severities = overrides.get("auto_fix_severity", self.config.auto_fix_severity)
-        if issue.severity not in allowed_severities:
+        if effective_severity not in allowed_severities:
             return False
 
         # Check conditions
