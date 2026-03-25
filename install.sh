@@ -28,9 +28,13 @@ check_wt_migration() {
     if [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/wt-tools" ]]; then
         needs_migration=true
     fi
-    # Check for old symlinks
+    # Check for old symlinks (ignore compat wrappers that point to set-core)
     if [[ -L "$HOME/.local/bin/wt-new" ]]; then
-        needs_migration=true
+        local wt_target
+        wt_target=$(readlink "$HOME/.local/bin/wt-new" 2>/dev/null || true)
+        if [[ "$wt_target" != *"/set-core/bin/compat/"* ]]; then
+            needs_migration=true
+        fi
     fi
 
     if $needs_migration; then

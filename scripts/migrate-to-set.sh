@@ -142,16 +142,15 @@ migrate_global() {
         info "Cleaning old wt-* symlinks from $bin_dir..."
         local count=0
         for f in "$bin_dir"/wt-*; do
-            [[ -e "$f" ]] || continue
-            # Only remove if it's a symlink pointing to our old bin/
-            if [[ -L "$f" ]]; then
-                local target
-                target=$(readlink "$f" 2>/dev/null)
-                if [[ "$target" == *"/wt-tools/bin/"* ]] || [[ "$target" == *"/set-core/bin/"* ]]; then
-                    rm "$f"
-                    ((count++))
-                fi
+            [[ -L "$f" ]] || continue
+            local target
+            target=$(readlink "$f" 2>/dev/null)
+            # Keep compat wrappers (point to set-core/bin/compat/), remove everything else
+            if [[ "$target" == *"/set-core/bin/compat/"* ]]; then
+                continue
             fi
+            rm "$f"
+            count=$((count + 1))
         done
         [[ $count -gt 0 ]] && success "Removed $count old wt-* symlinks"
 
