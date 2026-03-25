@@ -1849,6 +1849,77 @@ def stop_orchestration(project: str):
     return {"ok": True, "kill_result": kill_result}
 
 
+@router.post("/api/{project}/start")
+def start_orchestration(project: str):
+    """Start or resume orchestration by spawning a detached set-sentinel process."""
+    import shutil
+    import subprocess as _sp
+
+    project_path = _resolve_project(project)
+
+    # Check if sentinel is already running
+    pid_file = _sentinel_dir(project_path) / "sentinel.pid"
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, 0)
+            raise HTTPException(409, "Sentinel already running")
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass  # Stale PID, safe to start
+
+    # Check for corrupt state
+    sp = _state_path(project_path)
+    if sp.exists():
+        try:
+            load_state(str(sp))
+        except StateCorruptionError as e:
+            raise HTTPException(500, f"Corrupt state file: {e.detail}")
+
+    # Resolve spec path: state extras → config.yaml → fallback patterns
+    spec_path = None
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            spec_path = (state.extras or {}).get("spec_path")
+        except Exception:
+            pass
+    if not spec_path:
+        config_yaml = project_path / "wt" / "orchestration" / "config.yaml"
+        if config_yaml.exists():
+            try:
+                import yaml
+                with open(config_yaml) as f:
+                    cfg = yaml.safe_load(f) or {}
+                spec_path = cfg.get("spec") or cfg.get("spec_path")
+            except Exception:
+                pass
+    if not spec_path:
+        for candidate in ["docs/spec.md", "docs/v1-*.md", "project-brief.md"]:
+            import glob as _glob
+            matches = _glob.glob(str(project_path / candidate))
+            if matches:
+                spec_path = str(Path(matches[0]).relative_to(project_path))
+                break
+    if not spec_path:
+        raise HTTPException(400, "Cannot determine spec path — set 'spec' in wt/orchestration/config.yaml")
+
+    # Resolve set-sentinel binary
+    sentinel_bin = shutil.which("set-sentinel")
+    if not sentinel_bin:
+        raise HTTPException(500, "set-sentinel not found in PATH")
+
+    # Spawn detached sentinel
+    proc = _sp.Popen(
+        [sentinel_bin, "--spec", spec_path],
+        cwd=str(project_path),
+        start_new_session=True,
+        stdout=open(os.devnull, "w"),
+        stderr=open(os.devnull, "w"),
+    )
+
+    return {"ok": True, "pid": proc.pid, "spec": spec_path}
+
+
 @router.post("/api/{project}/shutdown")
 def shutdown_orchestration(project: str):
     """Graceful shutdown: signals sentinel to stop agents cleanly and preserve state."""
@@ -1876,6 +1947,90 @@ def shutdown_orchestration(project: str):
         raise HTTPException(409, "Sentinel died before shutdown signal")
 
     return {"ok": True, "message": "Shutdown initiated", "sentinel_pid": pid}
+
+
+@router.post("/api/{project}/changes/{name}/pause")
+def pause_change(project: str, name: str):
+    """Pause a running change: SIGTERM its Ralph process and set status to paused."""
+    project_path = _resolve_project(project)
+    sp = _state_path(project_path)
+    if not sp.exists():
+        raise HTTPException(404, "No orchestration state found")
+
+    try:
+        state = load_state(str(sp))
+    except StateCorruptionError as e:
+        raise HTTPException(500, f"Corrupt state: {e.detail}")
+
+    target = None
+    for c in state.changes:
+        if c.name == name:
+            target = c
+            break
+    if target is None:
+        raise HTTPException(404, f"Change not found: {name}")
+
+    # Idempotent: already paused
+    if target.status == "paused":
+        return {"ok": True, "message": "Already paused", "status": "paused"}
+
+    # Only running changes can be paused
+    if target.status not in ("running", "dispatched", "verifying"):
+        raise HTTPException(409, f"Change is not in a pausable state (status: {target.status})")
+
+    # Send SIGTERM to Ralph for graceful iteration stop
+    if target.ralph_pid:
+        import signal as sig
+        try:
+            os.kill(target.ralph_pid, sig.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass
+
+    from .state import update_change_field
+    update_change_field(str(sp), name, "status", "paused")
+
+    return {"ok": True, "message": f"Change '{name}' paused", "status": "paused"}
+
+
+@router.post("/api/{project}/changes/{name}/resume")
+def resume_change(project: str, name: str):
+    """Resume a paused change: set status to dispatched so the monitor re-dispatches Ralph."""
+    project_path = _resolve_project(project)
+    sp = _state_path(project_path)
+    if not sp.exists():
+        raise HTTPException(404, "No orchestration state found")
+
+    try:
+        state = load_state(str(sp))
+    except StateCorruptionError as e:
+        raise HTTPException(500, f"Corrupt state: {e.detail}")
+
+    target = None
+    for c in state.changes:
+        if c.name == name:
+            target = c
+            break
+    if target is None:
+        raise HTTPException(404, f"Change not found: {name}")
+
+    # Idempotent: already running
+    if target.status in ("running", "dispatched"):
+        return {"ok": True, "message": "Already running", "status": target.status}
+
+    if target.status != "paused":
+        raise HTTPException(409, f"Change is not paused (status: {target.status})")
+
+    # Check max_parallel
+    running_count = sum(1 for c in state.changes if c.status in ("running", "dispatched", "verifying"))
+    # Read max_parallel from directives in extras
+    max_parallel = (state.extras or {}).get("directives", {}).get("max_parallel", 3)
+    if running_count >= max_parallel:
+        raise HTTPException(429, f"Max parallel changes reached ({max_parallel}), try again later")
+
+    from .state import update_change_field
+    update_change_field(str(sp), name, "status", "dispatched")
+
+    return {"ok": True, "message": f"Change '{name}' resumed (will be dispatched)", "status": "dispatched"}
 
 
 @router.post("/api/{project}/changes/{name}/stop")

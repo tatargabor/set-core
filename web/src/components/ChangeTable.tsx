@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import type { ChangeInfo } from '../lib/api'
-import { stopChange, skipChange } from '../lib/api'
+import { stopChange, skipChange, pauseChange, resumeChange } from '../lib/api'
 import { TuiStatus, statusColor as tuiStatusColor } from './tui'
 import GateBar from './GateBar'
 import GateDetail from './GateDetail'
@@ -61,8 +61,28 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
     setScreenshotChange(prev => prev === name ? null : name)
   }
 
-  const handleAction = async (e: React.MouseEvent, name: string, action: 'stop' | 'skip') => {
+  const handleAction = async (e: React.MouseEvent, name: string, action: 'stop' | 'skip' | 'pause' | 'resume') => {
     e.stopPropagation()
+    // Pause and resume don't need confirmation
+    if (action === 'pause' || action === 'resume') {
+      const key = `${name}:${action}`
+      setActionLoading(key)
+      try {
+        if (action === 'pause') await pauseChange(project, name)
+        if (action === 'resume') {
+          const res = await resumeChange(project, name)
+          if ('message' in res && /max parallel/i.test(String(res.message))) {
+            alert(res.message)
+          }
+        }
+      } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 429) {
+          alert('Max parallel changes reached, try again later')
+        }
+      }
+      setActionLoading(null)
+      return
+    }
     const key = `${name}:${action}`
     if (confirmAction !== key) {
       setConfirmAction(key)
@@ -168,6 +188,24 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                   <div className="flex gap-2">
                     {['running', 'verifying', 'implementing'].includes(c.status) && (
                       <button
+                        onClick={(e) => handleAction(e, c.name, 'pause')}
+                        disabled={actionLoading === `${c.name}:pause`}
+                        className="px-3 py-1.5 text-sm rounded disabled:opacity-50 bg-amber-900/50 text-amber-300 hover:bg-amber-900"
+                      >
+                        {actionLoading === `${c.name}:pause` ? 'Pausing...' : 'Pause'}
+                      </button>
+                    )}
+                    {c.status === 'paused' && (
+                      <button
+                        onClick={(e) => handleAction(e, c.name, 'resume')}
+                        disabled={actionLoading === `${c.name}:resume`}
+                        className="px-3 py-1.5 text-sm rounded disabled:opacity-50 bg-green-900/50 text-green-300 hover:bg-green-900"
+                      >
+                        {actionLoading === `${c.name}:resume` ? 'Resuming...' : 'Resume'}
+                      </button>
+                    )}
+                    {['running', 'verifying', 'implementing'].includes(c.status) && (
+                      <button
                         onClick={(e) => handleAction(e, c.name, 'stop')}
                         disabled={actionLoading === `${c.name}:stop`}
                         className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -263,6 +301,24 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               </td>
               <td className="px-4 py-2 text-right">
                 <div className="flex gap-1 justify-end">
+                  {['running', 'verifying', 'implementing'].includes(c.status) && (
+                    <button
+                      onClick={(e) => handleAction(e, c.name, 'pause')}
+                      disabled={actionLoading === `${c.name}:pause`}
+                      className="px-2 py-0.5 text-sm rounded disabled:opacity-50 bg-amber-900/50 text-amber-300 hover:bg-amber-900"
+                    >
+                      {actionLoading === `${c.name}:pause` ? '...' : 'Pause'}
+                    </button>
+                  )}
+                  {c.status === 'paused' && (
+                    <button
+                      onClick={(e) => handleAction(e, c.name, 'resume')}
+                      disabled={actionLoading === `${c.name}:resume`}
+                      className="px-2 py-0.5 text-sm rounded disabled:opacity-50 bg-green-900/50 text-green-300 hover:bg-green-900"
+                    >
+                      {actionLoading === `${c.name}:resume` ? '...' : 'Resume'}
+                    </button>
+                  )}
                   {['running', 'verifying', 'implementing'].includes(c.status) && (
                     <button
                       onClick={(e) => handleAction(e, c.name, 'stop')}

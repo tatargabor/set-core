@@ -383,12 +383,24 @@ export function shutdownOrchestration(project: string): Promise<{ ok: boolean; m
   return fetchJSON(`/${project}/shutdown`, { method: 'POST' })
 }
 
+export function startOrchestration(project: string): Promise<{ ok: boolean; pid: number; spec: string }> {
+  return fetchJSON(`/${project}/start`, { method: 'POST' })
+}
+
 export function stopChange(project: string, name: string): Promise<{ ok: boolean }> {
   return fetchJSON(`/${project}/changes/${name}/stop`, { method: 'POST' })
 }
 
 export function skipChange(project: string, name: string): Promise<{ ok: boolean }> {
   return fetchJSON(`/${project}/changes/${name}/skip`, { method: 'POST' })
+}
+
+export function pauseChange(project: string, name: string): Promise<{ ok: boolean; message: string }> {
+  return fetchJSON(`/${project}/changes/${name}/pause`, { method: 'POST' })
+}
+
+export function resumeChange(project: string, name: string): Promise<{ ok: boolean; message: string }> {
+  return fetchJSON(`/${project}/changes/${name}/resume`, { method: 'POST' })
 }
 
 // --- Sentinel endpoints ---

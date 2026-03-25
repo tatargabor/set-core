@@ -181,6 +181,85 @@ def parse_directives(raw: dict) -> Directives:
 _orchestrator_lock_held = False
 
 
+def _emit_event(state_file: str, event_type: str, change: str = "", data: dict | None = None) -> None:
+    """Append a JSONL event to the orchestration events log."""
+    events_path = state_file.replace(".json", "-events.jsonl")
+    line = json.dumps({
+        "ts": datetime.now().astimezone().isoformat(),
+        "type": event_type,
+        **({"change": change} if change else {}),
+        "data": data or {},
+    })
+    try:
+        with open(events_path, "a") as f:
+            f.write(line + "\n")
+    except OSError:
+        logger.warning("Failed to write event %s", event_type)
+
+
+def _graceful_shutdown_ralph_pids(state_file: str, state: OrchestratorState, timeout: int = 90) -> None:
+    """Send SIGTERM to all active Ralph PIDs, wait with progress events, SIGKILL stragglers."""
+    import signal as sig
+
+    active_changes = [c for c in state.changes if c.status in ("running", "dispatched", "verifying") and c.ralph_pid]
+    if not active_changes:
+        return
+
+    _emit_event(state_file, "SHUTDOWN_STARTED", data={
+        "changes": [c.name for c in active_changes],
+    })
+
+    # Send SIGTERM to each Ralph PID
+    live_pids: dict[int, str] = {}  # pid -> change_name
+    for c in active_changes:
+        pid = c.ralph_pid
+        _emit_event(state_file, "CHANGE_STOPPING", change=c.name, data={"ralph_pid": pid})
+        try:
+            os.kill(pid, sig.SIGTERM)
+            live_pids[pid] = c.name
+            logger.info("Sent SIGTERM to Ralph PID %d (%s)", pid, c.name)
+        except (OSError, ProcessLookupError):
+            # Already dead
+            _emit_event(state_file, "CHANGE_STOPPED", change=c.name, data={"ralph_pid": pid, "exit_code": -1, "duration_ms": 0})
+            logger.info("Ralph PID %d (%s) already dead", pid, c.name)
+
+    # Wait for PIDs to exit (up to timeout)
+    start_wait = time.time()
+    stop_times: dict[str, float] = {}
+    while live_pids and (time.time() - start_wait) < timeout:
+        for pid in list(live_pids):
+            try:
+                os.kill(pid, 0)  # Check if alive
+            except (OSError, ProcessLookupError):
+                name = live_pids.pop(pid)
+                elapsed_ms = int((time.time() - start_wait) * 1000)
+                stop_times[name] = elapsed_ms
+                _emit_event(state_file, "CHANGE_STOPPED", change=name, data={"ralph_pid": pid, "exit_code": 0, "duration_ms": elapsed_ms})
+                logger.info("Ralph PID %d (%s) stopped after %dms", pid, name, elapsed_ms)
+        if live_pids:
+            time.sleep(1)
+
+    # SIGKILL stragglers
+    for pid, name in live_pids.items():
+        try:
+            os.kill(pid, sig.SIGKILL)
+            elapsed_ms = int((time.time() - start_wait) * 1000)
+            _emit_event(state_file, "CHANGE_STOPPED", change=name, data={"ralph_pid": pid, "exit_code": -9, "duration_ms": elapsed_ms, "forced": True})
+            logger.warning("Force-killed Ralph PID %d (%s) after %ds timeout", pid, name, timeout)
+        except (OSError, ProcessLookupError):
+            pass
+
+    # Set stopped changes to "paused" so they resume on restart
+    for c in active_changes:
+        try:
+            update_change_field(state_file, c.name, "status", "paused")
+        except Exception:
+            logger.warning("Failed to set %s to paused", c.name)
+
+    total_ms = int((time.time() - start_wait) * 1000)
+    _emit_event(state_file, "SHUTDOWN_COMPLETE", data={"total_duration_ms": total_ms})
+
+
 def cleanup_orchestrator(state_file: str, directives: Directives | None = None) -> None:
     """Cleanup on orchestrator exit: update state, kill dev servers, pause if needed.
 
@@ -205,6 +284,9 @@ def cleanup_orchestrator(state_file: str, directives: Directives | None = None) 
             update_state_field(state_file, "status", "stopped")
             logger.info("Orchestrator state set to 'stopped'")
 
+        # Graceful shutdown: SIGTERM all active Ralph PIDs, wait, then SIGKILL
+        _graceful_shutdown_ralph_pids(state_file, state)
+
         # Kill auto-started dev server PIDs
         dev_pids = state.extras.get("dev_server_pids", [])
         if dev_pids:
@@ -215,11 +297,6 @@ def cleanup_orchestrator(state_file: str, directives: Directives | None = None) 
                     logger.info("Killed dev server PID %d", pid)
                 except (OSError, ProcessLookupError):
                     pass
-
-        # Pause running changes if directive set
-        if directives and getattr(directives, 'hook_on_fail', ''):
-            # Check for pause_on_exit in raw directives
-            pass  # Handled by individual change cleanup
 
         # Generate final report
         _generate_report_safe(state_file)

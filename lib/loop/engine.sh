@@ -81,6 +81,7 @@ cmd_run() {
     local current_iter_started=""
     local current_iter_num=0
     local cleanup_done=false
+    local SHUTDOWN_REQUESTED=0
 
     cleanup_on_exit() {
         # Guard against double-trap (EXIT + SIGTERM)
@@ -92,8 +93,21 @@ cmd_run() {
         echo ""
         echo "⚠️  Loop interrupted, recording state..."
 
-        # Kill child processes (claude, tee, etc.) but not ourselves
+        # Kill child processes (claude, tee, dev servers, etc.) with grace period
         pkill -TERM -P $$ 2>/dev/null || true
+        # Wait up to 10s for children to exit, then force kill
+        local _grace=0
+        while [[ $_grace -lt 10 ]]; do
+            if ! pgrep -P $$ &>/dev/null; then
+                break
+            fi
+            sleep 1
+            _grace=$((_grace + 1))
+        done
+        if pgrep -P $$ &>/dev/null; then
+            echo "⚠️  Force-killing remaining child processes after 10s grace period"
+            pkill -9 -P $$ 2>/dev/null || true
+        fi
 
         # Commit any uncommitted work (graceful shutdown WIP preservation)
         if [[ -d "$wt_path" ]]; then
@@ -125,7 +139,8 @@ cmd_run() {
         fi
     }
 
-    trap 'cleanup_on_exit' EXIT SIGTERM SIGINT SIGHUP
+    trap 'SHUTDOWN_REQUESTED=1; cleanup_on_exit' SIGTERM SIGHUP
+    trap 'cleanup_on_exit' EXIT SIGINT
 
     # Update status
     update_loop_state "$state_file" "status" '"running"'
@@ -199,6 +214,19 @@ cmd_run() {
     start_time=$(date -Iseconds)
 
     while [[ $iteration -lt $max_iter ]]; do
+        # Check shutdown flag before starting new iteration
+        if [[ $SHUTDOWN_REQUESTED -eq 1 ]]; then
+            echo ""
+            echo "╔════════════════════════════════════════════════════════════════╗"
+            echo "║  🛑 SHUTDOWN: Graceful stop requested, exiting after iteration ║"
+            echo "╚════════════════════════════════════════════════════════════════╝"
+            update_loop_state "$state_file" "status" '"shutdown"'
+            update_terminal_title "Ralph: ${worktree_name}${title_suffix} [shutdown]"
+            trap - EXIT SIGTERM SIGINT
+            cleanup_on_exit
+            exit 0
+        fi
+
         iteration=$((iteration + 1))
 
         # Update terminal title with progress

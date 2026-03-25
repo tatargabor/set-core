@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { shutdownOrchestration, stopOrchestrator } from '../lib/api'
+import { shutdownOrchestration, stopOrchestrator, startOrchestration } from '../lib/api'
 import { TuiSection } from '../components/tui'
 import ProcessTree from '../components/ProcessTree'
 
@@ -71,7 +71,7 @@ export default function Settings({ project }: Props) {
     if (!project) return
     setActionLoading('resume')
     try {
-      await fetch(`/api/${project}/start`, { method: 'POST' })
+      await startOrchestration(project)
     } catch {}
     setActionLoading(null)
     fetch(`/api/${project}/settings`).then(r => r.json()).then(setData).catch(() => {})
@@ -91,6 +91,8 @@ export default function Settings({ project }: Props) {
 
   const orchStatus = (data.config as Record<string, unknown>)?.status as string | undefined
   const isShutdown = orchStatus === 'shutdown'
+  const isStopped = orchStatus === 'stopped'
+  const isResumable = isShutdown || isStopped
   const isRunning = orchStatus === 'running' || orchStatus === 'checkpoint'
 
   return (
@@ -106,25 +108,29 @@ export default function Settings({ project }: Props) {
               <span className="text-sm text-neutral-500">Status</span>
               <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-sm font-medium ${
                 isRunning ? 'bg-green-900/50 text-green-300' :
-                isShutdown ? 'bg-amber-900/50 text-amber-300' :
+                isShutdown ? 'bg-green-900/50 text-green-300' :
+                isStopped ? 'bg-amber-900/50 text-amber-300' :
                 orchStatus === 'done' ? 'bg-blue-900/50 text-blue-300' :
                 'bg-neutral-800 text-neutral-400'
               }`}>
                 <span className={
                   isRunning ? 'text-green-400' :
-                  isShutdown ? 'text-amber-400' :
+                  isShutdown ? 'text-green-400' :
+                  isStopped ? 'text-amber-400' :
                   orchStatus === 'done' ? 'text-blue-400' :
                   'text-neutral-500'
                 }>{isRunning ? '\u25C9' : orchStatus === 'done' ? '\u25CF' : '\u25CB'}</span>
-                {orchStatus ?? 'unknown'}
+                {isShutdown ? 'Paused (clean shutdown)' : isStopped ? 'Stopped (unexpected)' : orchStatus ?? 'unknown'}
               </span>
             </div>
             <div className="flex gap-2">
-              {isShutdown ? (
+              {isResumable ? (
                 <button
                   onClick={handleResume}
                   disabled={actionLoading === 'resume'}
-                  className="px-3 py-1 text-sm bg-green-900/50 text-green-300 rounded hover:bg-green-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  className={`px-3 py-1 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed font-medium ${
+                    isShutdown ? 'bg-green-900/50 text-green-300 hover:bg-green-900' : 'bg-amber-900/50 text-amber-300 hover:bg-amber-900'
+                  }`}
                 >
                   {actionLoading === 'resume' ? 'Resuming...' : 'Resume'}
                 </button>

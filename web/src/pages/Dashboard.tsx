@@ -14,6 +14,7 @@ import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
 import OrchestrationChat from '../components/OrchestrationChat'
 // SentinelPanel replaced by raw log view
+import ShutdownProgress from '../components/ShutdownProgress'
 import LearningsPanel from '../components/LearningsPanel'
 import ChangeTimelineDetail from '../components/ChangeTimelineDetail'
 import BattleView from './BattleView'
@@ -283,6 +284,7 @@ export default function Dashboard({ project, initialTab }: Props) {
             <ResizableSplit
               top={
                 <div className="h-full overflow-auto">
+                  <ShutdownProgress project={project} />
                   <ChangeTable
                     changes={changes}
                     project={project}
@@ -321,6 +323,7 @@ export default function Dashboard({ project, initialTab }: Props) {
             />
           ) : (
             <div className="h-full overflow-auto">
+              <ShutdownProgress project={project} />
               <ChangeTable
                 changes={changes}
                 project={project}
