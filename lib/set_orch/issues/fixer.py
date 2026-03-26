@@ -171,30 +171,23 @@ class FixRunner:
         return {iid: success for iid in group.issue_ids}
 
 
-FIX_PROMPT = """Fix issue {issue_id} using the OpenSpec workflow.
+FIX_PROMPT = """Implement the fix for issue {issue_id}.
+
+The investigation agent already created the change artifacts with /opsx:ff.
+The proposal, design, specs, and tasks are in `openspec/changes/{change_name}/`.
 
 ## Issue
 **Summary:** {error_summary}
 **Environment:** {environment}
 
-## Diagnosis
-{diagnosis}
-
 ## Instructions
 
-Use the OpenSpec workflow to create a structured fix:
+1. Run `/opsx:apply {change_name}` — implement the tasks defined in tasks.md.
 
-1. Run `/opsx:ff {change_name}` — this creates the change with proposal, design, specs, and tasks based on the diagnosis above. The scope should be the exact fix described in the diagnosis.
+2. After apply completes, verify the fix works by running the command that was failing.
 
-2. Run `/opsx:apply {change_name}` — implement the fix tasks. Focus on:
-   - **config_override scope**: edit `set/orchestration/config.yaml` or relevant config files (vitest.config.ts, playwright.config.ts)
-   - **single_file/multi_file scope**: edit the affected source files directly
-
-3. After apply completes, verify the fix works by running the command that was failing.
-
-4. **Deploy the fix to all active worktrees** — the orchestrator runs gates in worktrees, so the fix must be there too:
+3. **Deploy the fix to all active worktrees:**
    ```bash
-   # Deploy updated configs/rules to all worktrees
    for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{{print $2}}' | tail -n +2); do
      cp vitest.config.ts "$wt/vitest.config.ts" 2>/dev/null
      cp playwright.config.ts "$wt/playwright.config.ts" 2>/dev/null
@@ -202,7 +195,7 @@ Use the OpenSpec workflow to create a structured fix:
    done
    ```
 
-5. **Reset blocked changes** so the orchestrator retries with the fix:
+4. **Reset blocked changes** so the orchestrator retries:
    ```bash
    python3 -c "
    import json; f='orchestration-state.json'; s=json.load(open(f))
@@ -216,7 +209,7 @@ Use the OpenSpec workflow to create a structured fix:
    "
    ```
 
-6. Run `/opsx:archive {change_name}` — archive the completed change.
+5. Run `/opsx:archive {change_name}` — archive the completed change.
 
 Focus on a minimal, correct fix — do not refactor unrelated code.
 """
