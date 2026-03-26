@@ -87,7 +87,16 @@ class IssueManager:
                 elif self.investigator and self.investigator.is_timed_out(issue):
                     self.audit.log(issue.id, "investigation_timeout")
                     self.investigator.kill(issue)
-                    self._transition(issue, IssueState.DIAGNOSED)
+                    # Try to collect partial results — proposal.md may exist even after timeout
+                    diagnosis = self.investigator.collect(issue)
+                    if diagnosis:
+                        issue.diagnosis = diagnosis
+                        if diagnosis.impact and diagnosis.impact != "unknown":
+                            issue.severity = diagnosis.impact
+                        self._transition(issue, IssueState.DIAGNOSED)
+                        self._apply_post_diagnosis_policy(issue)
+                    else:
+                        self._transition(issue, IssueState.DIAGNOSED)
 
             case IssueState.DIAGNOSED:
                 pass  # Waiting state — routed by _apply_post_diagnosis_policy or user action
