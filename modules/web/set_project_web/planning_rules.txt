@@ -43,6 +43,15 @@ Design fidelity — concrete UI elements in scope (when design-snapshot.md exist
 - Button labels, empty states, error messages, and badge text from the design MUST appear verbatim in the scope. Agents cannot implement what they don't know exists.
 - If the design shows a component (e.g., cart badge with item count in the header), specify which change owns it and which change consumes it.
 
+Placeholder images and static assets:
+- When seed data or components reference product/content images, use placeholder URLs — NEVER reference local files like `/images/product.jpg` that don't exist in the repo.
+- Preferred approaches (in order):
+  1. Placeholder service: `https://placehold.co/400x300/EEE/999?text=Product+Name` — works immediately, customizable text/color
+  2. Inline SVG data URI: `data:image/svg+xml,...` — no external dependency, works offline
+  3. Next.js Image with `unoptimized` prop + placeholder URL — for when using next/image component
+- The foundation/seed change MUST ensure all imageUrl fields in seed data use working URLs, not paths to non-existent local files.
+- If the project has a `public/images/` directory with actual files, reference those. Otherwise use placeholder URLs.
+
 Test runner setup (vitest / jest):
 - The infrastructure/foundation change MUST ensure package.json includes a `test` script (e.g., `"test": "vitest run"`) and vitest (or jest) in devDependencies. Do NOT defer test runner setup to later changes — the foundation change owns all tooling.
 - If the project uses vitest, the foundation change MUST install vitest and create a vitest.config.ts (or vite.config.ts with test config). This is a blocking requirement — integration gates will fail if the test script is missing.
