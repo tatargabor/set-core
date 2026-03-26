@@ -57,12 +57,9 @@ class FixRunner:
         if issue.diagnosis:
             diag_json = json.dumps(issue.diagnosis.to_dict(), indent=2, ensure_ascii=False)
 
-        is_framework = (
-            issue.diagnosis
-            and getattr(issue.diagnosis, "fix_target", "consumer") == "framework"
-        )
+        fix_target = getattr(issue.diagnosis, "fix_target", "consumer") if issue.diagnosis else "consumer"
 
-        if is_framework:
+        if fix_target in ("framework", "both"):
             cwd = str(self.set_core_path)
             prompt = FRAMEWORK_FIX_PROMPT.format(
                 issue_id=issue.id,
@@ -131,12 +128,9 @@ class FixRunner:
 
     def _check_archived(self, issue: Issue) -> bool:
         """Check if the fix change was archived on disk."""
-        # Framework fixes are in set-core, consumer fixes in the consumer project
-        is_framework = (
-            issue.diagnosis
-            and getattr(issue.diagnosis, "fix_target", "consumer") == "framework"
-        )
-        project_path = self.set_core_path if is_framework else (
+        # Framework/both fixes check set-core, consumer fixes check the consumer project
+        fix_target = getattr(issue.diagnosis, "fix_target", "consumer") if issue.diagnosis else "consumer"
+        project_path = self.set_core_path if fix_target in ("framework", "both") else (
             Path(issue.environment_path) if issue.environment_path else self.set_core_path
         )
         change_name = issue.change_name or ""

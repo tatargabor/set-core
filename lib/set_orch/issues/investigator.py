@@ -211,16 +211,21 @@ class InvestigationRunner:
         if has_tasks:
             confidence = 0.95  # /opsx:ff completed fully
 
-        # Detect fix target: framework bug vs consumer issue
-        framework_indicators = [
-            "merger", "dispatcher", "gate", "profile", "orchestrat",
-            "set-core", "set_orch", "ff-only", "fast-forward",
-            "integration gate", "merge strategy", "worktree",
-            "lib/set_orch", "framework",
-        ]
-        fix_target = "consumer"
-        if any(ind in lines for ind in framework_indicators):
-            fix_target = "framework"
+        # Detect fix target from explicit "## Fix Target" section (LLM classification)
+        target_match = re.search(r'\*\*Target:\*\*\s*(framework|consumer|both)', proposal, re.IGNORECASE)
+        if target_match:
+            fix_target = target_match.group(1).lower()
+        else:
+            # Fallback: keyword heuristic
+            framework_indicators = [
+                "merger", "dispatcher", "gate", "profile", "orchestrat",
+                "set-core", "set_orch", "ff-only", "fast-forward",
+                "integration gate", "merge strategy",
+                "lib/set_orch", "framework bug",
+            ]
+            fix_target = "consumer"
+            if any(ind in lines for ind in framework_indicators):
+                fix_target = "framework"
 
         return Diagnosis(
             root_cause=root_cause or "See proposal.md for details",
@@ -267,6 +272,21 @@ Run `/opsx:ff {change_name}` to create a structured fix plan. The proposal shoul
 - What is broken and why (root cause)
 - What needs to change (exact files and content)
 - Impact if not fixed
+
+## Fix Target Classification
+
+**IMPORTANT:** Add a "## Fix Target" section to your proposal with this format:
+
+```
+## Fix Target
+- **Target:** framework | consumer | both
+- **Reasoning:** [your analysis]
+```
+
+How to decide:
+- **framework** — This bug would affect ANY project using set-core (merger bug, gate bug, template defect, planning rule missing). The fix goes in set-core's codebase.
+- **consumer** — This bug is specific to THIS project (merge conflict between two changes, missing file, wrong config value). The fix goes in the local repo.
+- **both** — Root cause is in set-core (template or rule defect) BUT this project also needs a local fix for the already-deployed broken state.
 
 The /opsx:ff command will create proposal.md, design.md, specs, and tasks.md — everything needed for the fix agent to implement with /opsx:apply.
 """
