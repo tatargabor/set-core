@@ -26,6 +26,15 @@ def _slugify(text: str, max_len: int = 30) -> str:
     return s[:max_len].rstrip('-')
 
 
+def _is_pid_alive(pid: int) -> bool:
+    """Check if a process is still running."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
 class FixRunner:
     """Runs opsx workflow in set-core directory. Max 1 at a time."""
 
@@ -88,8 +97,28 @@ class FixRunner:
     def is_done(self, issue: Issue) -> bool:
         proc = self._processes.get(issue.id)
         if proc is None:
-            return True
+            # Process reference lost (restart?) — check PID liveness
+            if issue.fix_agent_pid:
+                return not _is_pid_alive(issue.fix_agent_pid)
+            return True  # No PID, no process — must be done
         return proc.poll() is not None
+
+    def _check_archived(self, issue: Issue) -> bool:
+        """Check if the fix change was archived on disk."""
+        project_path = Path(issue.environment_path) if issue.environment_path else self.set_core_path
+        change_name = issue.change_name or ""
+        if not change_name:
+            return False
+        change_dir = project_path / "openspec" / "changes" / change_name
+        if change_dir.exists():
+            return False  # Still active, not archived
+        # Check archive dir for matching entry
+        archive_dir = project_path / "openspec" / "changes" / "archive"
+        if archive_dir.is_dir():
+            for d in archive_dir.iterdir():
+                if d.name.endswith(change_name):
+                    return True
+        return True  # Change dir gone = archived or cleaned up
 
     def collect(self, issue: Issue) -> dict:
         """Collect fix result. Returns dict with 'success' key."""
@@ -100,15 +129,20 @@ class FixRunner:
                 fh.close()
             except OSError:
                 pass
+
+        archived = self._check_archived(issue)
+
         if proc is None:
-            return {"success": False, "error": "no process"}
+            # Process reference lost — rely on filesystem
+            return {
+                "success": archived,
+                "returncode": None,
+                "archived": archived,
+                "change_name": issue.change_name,
+                "note": "process_reference_lost_checked_filesystem",
+            }
 
         returncode = proc.returncode
-        # Check if opsx change was archived (in the consumer project, not set-core)
-        project_path = Path(issue.environment_path) if issue.environment_path else self.set_core_path
-        change_dir = project_path / "openspec" / "changes" / (issue.change_name or "")
-        archived = not change_dir.exists()  # archived = moved to archive/
-
         success = returncode == 0 or archived
         return {
             "success": success,

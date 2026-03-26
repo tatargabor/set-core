@@ -32,6 +32,13 @@ The sentinel MUST NOT try to fix routine orchestration-level issues (merge-block
 
 **Tier 3 — diagnose, log finding, and fix (or delegate):**
 When you encounter an issue the orchestrator can't handle:
+
+**IMPORTANT: Check pipeline ownership first.** Before attempting any Tier 3 fix, check if the issue pipeline is already handling this finding:
+```bash
+cat $(python3 -c "from set_orch.paths import SetRuntime; print(SetRuntime('.').sentinel_dir)")/findings.json 2>/dev/null | python3 -c "import sys,json; [print(f'{f[\"id\"]}: {f[\"status\"]}') for f in json.load(sys.stdin).get('findings',[])]"
+```
+If a finding shows status `"pipeline"`, the issue management system is handling it — do NOT attempt to fix it. Only act on findings with status `"open"`.
+
 1. **Log a finding FIRST** — before any investigation:
    ```bash
    set-sentinel-finding add --severity bug --summary "Brief description of what you observed"

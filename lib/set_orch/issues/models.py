@@ -44,10 +44,10 @@ VALID_TRANSITIONS: dict[IssueState, set[IssueState]] = {
         IssueState.INVESTIGATING, IssueState.CANCELLED,
     },
     IssueState.FIXING: {
-        IssueState.VERIFYING, IssueState.FAILED, IssueState.CANCELLED,
+        IssueState.VERIFYING, IssueState.RESOLVED, IssueState.FAILED, IssueState.CANCELLED,
     },
     IssueState.VERIFYING: {
-        IssueState.DEPLOYING, IssueState.FAILED, IssueState.CANCELLED,
+        IssueState.DEPLOYING, IssueState.RESOLVED, IssueState.FAILED, IssueState.CANCELLED,
     },
     IssueState.DEPLOYING: {
         IssueState.RESOLVED, IssueState.FAILED,

@@ -78,10 +78,12 @@ class ServiceManager:
         )
         self.issue_managers[project_name] = mgr
 
-        # Detection bridge
+        # Detection bridge (state_dir persists processed findings across restarts)
+        issues_state_dir = project_path / ".set" / "issues"
         detector = DetectionBridge(
             issue_manager=mgr,
             projects={project_name: {"path": project_path}},
+            state_dir=issues_state_dir,
         )
         mgr._detector = detector  # Store for tick access
 

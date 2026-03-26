@@ -95,7 +95,14 @@ class InvestigationRunner:
     def is_done(self, issue: Issue) -> bool:
         proc = self._processes.get(issue.id)
         if proc is None:
-            return True
+            # Process reference lost (restart?) — check PID liveness
+            if issue.fix_agent_pid:
+                try:
+                    os.kill(issue.fix_agent_pid, 0)
+                    return False  # PID still alive
+                except (ProcessLookupError, PermissionError):
+                    return True  # PID dead — done
+            return True  # No PID, no process — must be done
         return proc.poll() is not None
 
     def is_timed_out(self, issue: Issue) -> bool:
@@ -135,10 +142,11 @@ class InvestigationRunner:
         change_name = self._change_names.pop(issue.id, issue.change_name or "")
         project_path = Path(issue.environment_path) if issue.environment_path else self.set_core_path
 
-        # Read proposal.md — this IS the diagnosis
+        # Read proposal.md — this IS the diagnosis (works even after restart)
         proposal_path = project_path / "openspec" / "changes" / change_name / "proposal.md"
         if not proposal_path.exists():
             self.audit.log(issue.id, "investigation_no_proposal", change=change_name)
+            logger.warning("No proposal.md found at %s for %s", proposal_path, issue.id)
             return None
 
         proposal = proposal_path.read_text()

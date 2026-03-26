@@ -633,21 +633,46 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
     conflict_check = run_command(
         ["git", "diff", "--name-only", "--diff-filter=U"], timeout=10, cwd=wt_path,
     )
-    has_conflicts = conflict_check.exit_code == 0 and conflict_check.stdout.strip()
+    conflicted_files = [f.strip() for f in (conflict_check.stdout or "").strip().splitlines() if f.strip()]
 
-    # Abort the failed merge
-    run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
+    if conflicted_files:
+        # Auto-resolve .claude/** and other generated files — accept branch version ("ours")
+        auto_resolve_prefixes = (".claude/", "set/", ".gitattributes")
+        auto_resolvable = [f for f in conflicted_files if any(f.startswith(p) for p in auto_resolve_prefixes)]
+        real_conflicts = [f for f in conflicted_files if f not in auto_resolvable]
+
+        if auto_resolvable and not real_conflicts:
+            # All conflicts are in auto-resolvable paths — resolve with "ours" and complete merge
+            logger.info("Auto-resolving %d generated file conflict(s) for %s: %s",
+                        len(auto_resolvable), change_name, ", ".join(auto_resolvable))
+            for f in auto_resolvable:
+                run_command(["git", "checkout", "--ours", f], timeout=10, cwd=wt_path)
+                run_command(["git", "add", f], timeout=10, cwd=wt_path)
+            # Complete the merge
+            commit_result = run_command(
+                ["git", "commit", "--no-edit"], timeout=30, cwd=wt_path,
+            )
+            if commit_result.exit_code == 0:
+                logger.info("Integration merge completed after auto-resolve for %s", change_name)
+                if stashed:
+                    run_command(["git", "stash", "pop"], timeout=30, cwd=wt_path)
+                return "ok"
+            else:
+                logger.error("Commit after auto-resolve failed for %s", change_name)
+                run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
+        else:
+            logger.warning("Integration conflict for %s: %s (auto-resolved: %s)",
+                           change_name, ", ".join(real_conflicts), ", ".join(auto_resolvable) or "none")
+            run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
+    else:
+        logger.error("Integration merge failed for %s (non-conflict): %s", change_name, result.stderr[:300])
+        run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
 
     # Restore stashed files
     if stashed:
         run_command(["git", "stash", "pop"], timeout=30, cwd=wt_path)
 
-    if has_conflicts:
-        logger.warning("Integration conflict for %s: %s", change_name, conflict_check.stdout.strip()[:200])
-        return "conflict"
-
-    logger.error("Integration merge failed for %s (non-conflict): %s", change_name, result.stderr[:300])
-    return "conflict"  # treat non-conflict errors as conflict for safety
+    return "conflict"
 
 
 def _run_integration_gates(
@@ -908,7 +933,12 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 continue
 
             # Step 2: Integration gates (build + test + e2e)
-            if not _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus):
+            import time as _time
+            _gate_start = _time.monotonic()
+            _gates_passed = _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus)
+            _gate_elapsed_ms = int((_time.monotonic() - _gate_start) * 1000)
+            update_change_field(state_file, name, "gate_total_ms", _gate_elapsed_ms)
+            if not _gates_passed:
                 # Check if the gate set integration-e2e-failed (redispatch path)
                 refreshed = load_state(state_file)
                 refreshed_change = _find_change(refreshed, name)

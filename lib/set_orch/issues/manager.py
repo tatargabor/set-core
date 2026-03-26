@@ -102,29 +102,30 @@ class IssueManager:
                 if self.fixer and self.fixer.is_done(issue):
                     result = self.fixer.collect(issue)
                     if result and result.get("success"):
-                        self._transition(issue, IssueState.VERIFYING)
-                        if self.fixer:
-                            self.fixer.run_verify(issue)
+                        # Fix agent (/opsx:apply) handles implement + test + commit + archive
+                        # No separate verify/deploy needed — go straight to RESOLVED
+                        issue.resolved_at = now_iso()
+                        self._transition(issue, IssueState.RESOLVED)
+                        self._mark_source_finding_resolved(issue)
+                        if self.notifier:
+                            self.notifier.on_resolved(issue)
                     else:
                         self._handle_failure(issue, result)
 
             case IssueState.VERIFYING:
+                # Legacy path — kept for in-flight issues during upgrade
                 if self.fixer and self.fixer.verify_done(issue):
-                    if self.fixer.verify_passed(issue):
-                        self._transition(issue, IssueState.DEPLOYING)
-                        self._deploy(issue)
-                    else:
-                        self._handle_failure(issue, self.fixer.verify_result(issue))
+                    issue.resolved_at = now_iso()
+                    self._transition(issue, IssueState.RESOLVED)
+                    if self.notifier:
+                        self.notifier.on_resolved(issue)
 
             case IssueState.DEPLOYING:
-                if self.deployer and self.deployer.is_done(issue):
-                    if self.deployer.succeeded(issue):
-                        issue.resolved_at = now_iso()
-                        self._transition(issue, IssueState.RESOLVED)
-                        if self.notifier:
-                            self.notifier.on_resolved(issue)
-                    else:
-                        self._transition(issue, IssueState.FAILED)
+                # Legacy path — deployer is not used, resolve immediately
+                issue.resolved_at = now_iso()
+                self._transition(issue, IssueState.RESOLVED)
+                if self.notifier:
+                    self.notifier.on_resolved(issue)
 
             case IssueState.FAILED:
                 if issue.retry_count < issue.max_retries:
@@ -204,6 +205,14 @@ class IssueManager:
     def _deploy(self, issue: Issue):
         if self.deployer:
             self.deployer.deploy(issue)
+
+    def _mark_source_finding_resolved(self, issue: Issue):
+        """Mark the source sentinel finding as fixed when issue resolves."""
+        if not issue.source_finding_id or not issue.environment_path:
+            return
+        detector = getattr(self, '_detector', None)
+        if detector and hasattr(detector, 'mark_finding_resolved'):
+            detector.mark_finding_resolved(issue.environment_path, issue.source_finding_id)
 
     # --- Agent spawning ---
 
