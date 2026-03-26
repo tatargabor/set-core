@@ -55,6 +55,9 @@ class IssueManager:
     def tick(self):
         """Called every N seconds. Pure state machine — no LLM calls."""
         for issue in self.registry.active():
+            # Auto-resolve if orchestrator already merged the affected change
+            if self._check_affected_change_merged(issue):
+                continue
             self._process(issue)
         for group in self.registry.active_groups():
             self._process_group(group)
@@ -214,6 +217,41 @@ class IssueManager:
     def _deploy(self, issue: Issue):
         if self.deployer:
             self.deployer.deploy(issue)
+
+    def _check_affected_change_merged(self, issue: Issue) -> bool:
+        """Check if the affected change was merged by the orchestrator.
+
+        If so, auto-resolve the issue — the orchestrator already fixed the problem.
+        Returns True if issue was auto-resolved (caller should skip _process).
+        """
+        if not issue.affected_change or not issue.environment_path:
+            return False
+        if issue.state in (IssueState.RESOLVED, IssueState.DISMISSED,
+                           IssueState.MUTED, IssueState.CANCELLED, IssueState.SKIPPED):
+            return False
+
+        import json, os
+        state_path = os.path.join(issue.environment_path, "orchestration-state.json")
+        if not os.path.isfile(state_path):
+            return False
+        try:
+            with open(state_path) as f:
+                state = json.load(f)
+            for change in state.get("changes", []):
+                if change.get("name") == issue.affected_change and change.get("status") == "merged":
+                    logger.info("%s: affected change '%s' merged by orchestrator — auto-resolving",
+                                issue.id, issue.affected_change)
+                    self.audit.log(issue.id, "auto_resolved_by_orchestrator",
+                                   affected_change=issue.affected_change)
+                    issue.resolved_at = now_iso()
+                    self._transition(issue, IssueState.RESOLVED)
+                    self._mark_source_finding_resolved(issue)
+                    if self.notifier:
+                        self.notifier.on_resolved(issue)
+                    return True
+        except (json.JSONDecodeError, OSError):
+            pass
+        return False
 
     def _mark_source_finding_resolved(self, issue: Issue):
         """Mark the source sentinel finding as fixed when issue resolves."""

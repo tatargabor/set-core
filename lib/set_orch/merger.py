@@ -945,10 +945,18 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
     state = load_state(state_file)
     merged = 0
 
+    # Check which changes are owned by the issue pipeline
+    from .engine import _get_issue_owned_changes
+    issue_owned = _get_issue_owned_changes()
+
     for name in list(state.merge_queue):
         change = _find_change(state, name)
         if not change:
             _remove_from_merge_queue(state_file, name)
+            continue
+
+        if name in issue_owned:
+            logger.info("skipping merge for %s — owned by issue pipeline", name)
             continue
 
         # Check retry counter — skip changes that exhausted merge retries

@@ -2111,8 +2111,15 @@ def resume_stalled_changes(
     state = load_state(state_path)
     resumed = 0
 
+    # Check which changes are owned by the issue pipeline
+    from .engine import _get_issue_owned_changes
+    issue_owned = _get_issue_owned_changes()
+
     for change in state.changes:
         if change.status != "stalled":
+            continue
+        if change.name in issue_owned:
+            logger.info("skipping stalled %s — owned by issue pipeline", change.name)
             continue
         stalled_at = change.extras.get("stalled_at", 0)
         cooldown = now - stalled_at

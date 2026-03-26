@@ -1236,6 +1236,29 @@ def _handle_auto_replan(
     return False  # continue monitoring
 
 
+def _get_issue_owned_changes() -> set[str]:
+    """Return change names actively owned by the issue pipeline.
+
+    Reads .set/issues/registry.json. Changes with active issues
+    (investigating/fixing/awaiting_approval) should not be retried
+    or redispatched by the orchestrator — the issue pipeline handles them.
+    """
+    registry_path = os.path.join(os.getcwd(), ".set", "issues", "registry.json")
+    if not os.path.isfile(registry_path):
+        return set()
+    try:
+        with open(registry_path) as f:
+            data = json.load(f)
+        active_states = {"investigating", "fixing", "awaiting_approval", "diagnosed"}
+        owned = set()
+        for issue in data.get("issues", []):
+            if issue.get("state") in active_states and issue.get("affected_change"):
+                owned.add(issue["affected_change"])
+        return owned
+    except (json.JSONDecodeError, OSError):
+        return set()
+
+
 def _all_coverage_merged() -> bool:
     """Check if all requirements in coverage.json have status 'merged'.
 
