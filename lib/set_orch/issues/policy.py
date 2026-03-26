@@ -23,7 +23,7 @@ class RetryConfig:
 @dataclass
 class InvestigationConfig:
     token_budget: int = 50000
-    timeout_seconds: int = 300
+    timeout_seconds: int = 0  # 0 = no timeout — let agent finish, PID check detects death
     template: str = "default"
     auto_investigate: bool = True
 
@@ -33,12 +33,13 @@ class IssuesPolicyConfig:
     enabled: bool = True
 
     # Timeout by severity (seconds). None = never auto-approve. 0 = instant.
+    # Approval timeout by severity (seconds). 0 = instant auto-approve. None = never auto-approve.
     timeout_by_severity: dict[str, Optional[int]] = field(default_factory=lambda: {
         "unknown": None,
-        "low": 120,
-        "medium": 300,
-        "high": 900,
-        "critical": None,
+        "low": 0,        # instant — low risk, just fix it
+        "medium": 0,     # instant — policy already validated confidence + scope
+        "high": 120,     # 2 min — user can intervene if watching
+        "critical": None, # never auto — always manual
     })
 
     # Mode overrides

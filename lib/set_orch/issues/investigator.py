@@ -109,8 +109,11 @@ class InvestigationRunner:
         started = self._started_at.get(issue.id)
         if not started:
             return False
+        timeout = self.config.investigation.timeout_seconds
+        if timeout <= 0:
+            return False  # 0 = no timeout, let agent finish
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
-        return elapsed > self.config.investigation.timeout_seconds
+        return elapsed > timeout
 
     def kill(self, issue: Issue):
         proc = self._processes.pop(issue.id, None)
