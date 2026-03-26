@@ -374,6 +374,20 @@ def list_projects():
                     entry["last_updated"] = datetime.fromtimestamp(
                         sp.stat().st_mtime, tz=timezone.utc
                     ).isoformat()
+                    # Read summary stats from state
+                    try:
+                        state_data = json.loads(sp.read_text())
+                        changes = state_data.get("changes", [])
+                        total = len(changes)
+                        merged = sum(1 for c in changes if c.get("status") == "merged")
+                        total_tokens = sum(c.get("tokens_used", 0) or 0 for c in changes)
+                        active_secs = state_data.get("active_seconds", 0) or 0
+                        entry["changes_merged"] = merged
+                        entry["changes_total"] = total
+                        entry["total_tokens"] = total_tokens
+                        entry["active_seconds"] = active_secs
+                    except (json.JSONDecodeError, OSError):
+                        pass
                 else:
                     entry["last_updated"] = datetime.fromtimestamp(
                         path.stat().st_mtime, tz=timezone.utc

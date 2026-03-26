@@ -31,17 +31,13 @@ function formatTokens(n?: number): string {
   return String(n)
 }
 
-const TERMINAL_STATUSES = ['merged', 'done', 'failed', 'skipped', 'integration-failed']
 
 function changeDuration(c: ChangeInfo): number | undefined {
   if (!c.started_at) return undefined
   const start = new Date(c.started_at).getTime()
   if (isNaN(start)) return undefined
-  if (c.completed_at) return (new Date(c.completed_at).getTime() - start) / 1000
-  // For terminal statuses without completed_at, don't show live counter — return undefined
-  if (TERMINAL_STATUSES.includes(c.status)) return undefined
-  // Only count up for actively running changes
-  return (Date.now() - start) / 1000
+  const end = c.completed_at ? new Date(c.completed_at).getTime() : Date.now()
+  return (end - start) / 1000
 }
 
 export default function ChangeTable({ changes, project, selected, onSelect }: Props) {

@@ -39,7 +39,46 @@ from .state import (
 )
 from .subprocess_utils import CommandResult, run_command
 
+from datetime import datetime, timezone
+
 logger = logging.getLogger(__name__)
+
+
+def _set_completed_at_if_missing(state_file: str, change_name: str) -> None:
+    """Set completed_at if not already set (verifier may have set it on 'done')."""
+    state = load_state(state_file)
+    change = _find_change(state, change_name)
+    if change and not change.completed_at:
+        update_change_field(state_file, change_name, "completed_at", datetime.now(timezone.utc).isoformat())
+
+def _final_token_collect(state_file: str, change_name: str, wt_path: str) -> None:
+    """Read loop-state.json tokens one last time before worktree cleanup."""
+    if not wt_path or not os.path.isdir(wt_path):
+        return
+    loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
+    if not os.path.isfile(loop_state_path):
+        return
+    try:
+        with open(loop_state_path) as f:
+            ls = json.load(f)
+        tokens = ls.get("total_tokens", 0) or 0
+        in_tok = ls.get("total_input_tokens", 0) or 0
+        out_tok = ls.get("total_output_tokens", 0) or 0
+        cr_tok = ls.get("total_cache_read", 0) or 0
+        cc_tok = ls.get("total_cache_create", 0) or 0
+        if tokens > 0 or in_tok > 0:
+            from .verifier import _accumulate_tokens
+            _accumulate_tokens(state_file, change_name, {
+                "total": tokens,
+                "input": in_tok,
+                "output": out_tok,
+                "cache_read": cr_tok,
+                "cache_create": cc_tok,
+            })
+            logger.info("Final token collect for %s: total=%d in=%d out=%d", change_name, tokens, in_tok, out_tok)
+    except (json.JSONDecodeError, OSError):
+        logger.debug("Failed to read loop-state for final token collect: %s", change_name)
+
 
 # ─── Constants ──────────────────────────────────────────────────────
 
@@ -391,6 +430,7 @@ def merge_change(
     if not branch_exists:
         logger.info("Skipping merge for %s — branch deleted (assumed merged)", change_name)
         update_change_field(state_file, change_name, "status", "merged")
+        _set_completed_at_if_missing(state_file, change_name)
         update_change_field(state_file, change_name, "smoke_result", "skip_merged")
         update_change_field(state_file, change_name, "smoke_status", "skipped")
         cleanup_worktree(change_name, wt_path or "")
@@ -416,6 +456,7 @@ def merge_change(
         if ancestor_check.exit_code == 0:
             logger.info("Skipping merge for %s — already merged", change_name)
             update_change_field(state_file, change_name, "status", "merged")
+            _set_completed_at_if_missing(state_file, change_name)
             update_change_field(state_file, change_name, "smoke_result", "skip_merged")
             update_change_field(state_file, change_name, "smoke_status", "skipped")
             cleanup_worktree(change_name, wt_path or "")
@@ -450,6 +491,7 @@ def merge_change(
     if merge_result.exit_code == 0:
         # FF merge succeeded — main advanced to a tested commit
         update_change_field(state_file, change_name, "status", "merged")
+        _set_completed_at_if_missing(state_file, change_name)
         logger.info("Merged %s (ff-only)", change_name)
 
         # Heartbeat helper for post-merge steps
@@ -507,6 +549,10 @@ def merge_change(
         # Persist review learnings (template + project split)
         _heartbeat("review_learnings")
         _persist_change_review_learnings(change_name, state_file)
+
+        # Final token collection before worktree cleanup destroys loop-state
+        _heartbeat("final_tokens")
+        _final_token_collect(state_file, change_name, wt_path or "")
 
         _heartbeat("archive")
         cleanup_worktree(change_name, wt_path or "")
@@ -864,6 +910,29 @@ def _run_integration_gates(
     return True
 
 
+def _is_no_op_change(wt_path: str, change_name: str) -> bool:
+    """Check if a change has 0 new commits beyond the merge base.
+
+    Returns True if the worktree branch has no commits that aren't already on main.
+    This happens when a replan dispatches a change for work that's already been merged.
+    """
+    main_branch = _get_main_branch(cwd=wt_path)
+    result = run_command(
+        ["git", "rev-list", "--count", f"{main_branch}..HEAD"],
+        timeout=10, cwd=wt_path,
+    )
+    if result.exit_code != 0:
+        return False  # Can't determine — assume it has commits
+    try:
+        count = int(result.stdout.strip())
+    except ValueError:
+        return False
+    if count == 0:
+        logger.warning("No-op change %s — 0 new commits beyond %s, skipping gates", change_name, main_branch)
+        return True
+    return False
+
+
 def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
     """Drain merge queue. Serialized: integrate → verify → ff-only per change.
 
@@ -932,12 +1001,18 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                     _remove_from_merge_queue(state_file, name)
                 continue
 
-            # Step 2: Integration gates (build + test + e2e)
-            import time as _time
-            _gate_start = _time.monotonic()
-            _gates_passed = _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus)
-            _gate_elapsed_ms = int((_time.monotonic() - _gate_start) * 1000)
-            update_change_field(state_file, name, "gate_total_ms", _gate_elapsed_ms)
+            # Step 2: No-op detection — skip gates if 0 new commits
+            _no_op = _is_no_op_change(wt_path, name)
+            _gates_passed = True
+            if _no_op:
+                update_change_field(state_file, name, "gate_total_ms", 0)
+            else:
+                # Integration gates (build + test + e2e)
+                import time as _time
+                _gate_start = _time.monotonic()
+                _gates_passed = _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus)
+                _gate_elapsed_ms = int((_time.monotonic() - _gate_start) * 1000)
+                update_change_field(state_file, name, "gate_total_ms", _gate_elapsed_ms)
             if not _gates_passed:
                 # Check if the gate set integration-e2e-failed (redispatch path)
                 refreshed = load_state(state_file)
@@ -1374,6 +1449,7 @@ def _handle_merge_conflict(
         )
         if retry_result.exit_code == 0:
             update_change_field(state_file, change_name, "status", "merged")
+            _set_completed_at_if_missing(state_file, change_name)
             return MergeResult(success=True, status="merged")
 
         logger.warning("set-merge failed for %s but no conflict markers — trying agent rebase", change_name)

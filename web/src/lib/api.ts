@@ -19,6 +19,10 @@ export interface ProjectInfo {
   status?: string
   has_orchestration?: boolean
   last_updated?: string | null
+  changes_merged?: number
+  changes_total?: number
+  total_tokens?: number
+  active_seconds?: number
 }
 
 export interface ChangeInfo {

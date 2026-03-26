@@ -83,9 +83,25 @@ function timeAgo(iso: string | null | undefined): string {
   return `${days}d ago`
 }
 
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
+  return String(n)
+}
+
+function formatDuration(secs: number): string {
+  if (secs < 60) return `${secs}s`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m`
+  const hours = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return remMins > 0 ? `${hours}h${remMins}m` : `${hours}h`
+}
+
 function ProjectCard({ project, compact }: { project: ProjectInfo; compact?: boolean }) {
   const s = statusStyle[project.status ?? 'idle'] ?? statusStyle.idle
   const ago = timeAgo(project.last_updated)
+  const hasStats = project.changes_total != null && project.changes_total > 0
 
   return (
     <Link
@@ -102,7 +118,18 @@ function ProjectCard({ project, compact }: { project: ProjectInfo; compact?: boo
           <span className="text-sm text-neutral-500 shrink-0">{s.label}</span>
         )}
       </div>
-      {!compact && (
+      {hasStats && (
+        <div className="mt-1.5 flex items-center gap-3 text-xs text-neutral-500">
+          <span>{project.changes_merged}/{project.changes_total} merged</span>
+          {(project.total_tokens ?? 0) > 0 && (
+            <span>{formatTokens(project.total_tokens!)} tokens</span>
+          )}
+          {(project.active_seconds ?? 0) > 0 && (
+            <span>{formatDuration(project.active_seconds!)}</span>
+          )}
+        </div>
+      )}
+      {!compact && !hasStats && (
         <div className="mt-1 text-sm text-neutral-500 truncate">{project.path}</div>
       )}
     </Link>

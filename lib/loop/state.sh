@@ -175,7 +175,13 @@ add_iteration() {
          "team_spawned": $t_spawned,
          "teammates_count": $t_count,
          "team_tasks_parallel": $t_parallel
-       }]' "$state_file" > "$tmp" && mv "$tmp" "$state_file"
+       }]
+       | .total_tokens = ([.iterations[].tokens_used // 0] | add)
+       | .total_input_tokens = ([.iterations[].input_tokens // 0] | add)
+       | .total_output_tokens = ([.iterations[].output_tokens // 0] | add)
+       | .total_cache_read = ([.iterations[].cache_read_tokens // 0] | add)
+       | .total_cache_create = ([.iterations[].cache_create_tokens // 0] | add)
+       ' "$state_file" > "$tmp" && mv "$tmp" "$state_file"
 }
 
 # Get current token usage from set-usage

@@ -1144,9 +1144,12 @@ def _check_completion(
         from .verifier import run_phase_end_e2e
         run_phase_end_e2e(d.e2e_command, state_file, e2e_timeout=d.e2e_timeout, event_bus=event_bus)
 
-    # Auto-replan
+    # Auto-replan gate: skip if all succeeded and coverage is 100%
     if d.auto_replan:
-        return _handle_auto_replan(state_file, d, event_bus)
+        if failed_count == 0 and _all_coverage_merged():
+            logger.info("All %d changes succeeded and coverage is 100%% — skipping replan", total)
+        else:
+            return _handle_auto_replan(state_file, d, event_bus)
 
     # Non-replan completion
     update_state_field(state_file, "status", "done")
@@ -1231,6 +1234,46 @@ def _handle_auto_replan(
     logger.warning("Replan failed (cycle %d, attempt %d) — will retry", cycle, replan_attempt)
     time.sleep(30)
     return False  # continue monitoring
+
+
+def _all_coverage_merged() -> bool:
+    """Check if all requirements in coverage.json have status 'merged'.
+
+    Returns True if there are no uncovered requirements — meaning replan is unnecessary.
+    Returns True (skip replan) if no coverage data exists (can't determine gaps).
+    """
+    digest_dir = os.path.join(os.getcwd(), "set", "orchestration", "digest")
+    reqs_path = os.path.join(digest_dir, "requirements.json")
+    cov_path = os.path.join(digest_dir, "coverage.json")
+
+    if not os.path.isfile(reqs_path):
+        return True  # No requirements data — nothing to gap-check
+
+    try:
+        with open(reqs_path) as f:
+            reqs_data = json.load(f)
+        all_reqs = [r for r in reqs_data.get("requirements", []) if r.get("status") != "removed"]
+        if not all_reqs:
+            return True  # No active requirements
+    except (json.JSONDecodeError, OSError):
+        return True
+
+    coverage: dict = {}
+    if os.path.isfile(cov_path):
+        try:
+            with open(cov_path) as f:
+                cov_data = json.load(f)
+            coverage = cov_data.get("coverage", {})
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    uncovered = [r["id"] for r in all_reqs if r["id"] not in coverage or coverage[r["id"]].get("status") != "merged"]
+    if uncovered:
+        logger.info("Coverage gaps: %d/%d requirements uncovered: %s", len(uncovered), len(all_reqs), uncovered[:5])
+        return False
+
+    logger.info("All %d requirements covered — no replan needed", len(all_reqs))
+    return True
 
 
 def _detect_replan_trigger(state_file: str) -> str:
@@ -1399,8 +1442,21 @@ def _auto_replan_cycle(
                         domain, json.dumps(saved_brief), domain_data["conventions"], model=model,
                     )
         else:
-            # Default: re-run Phase 2 + 3
-            saved_domain_plans = _phase2_parallel_decompose(domain_data, saved_brief, model=model)
+            # "batch_complete" — check coverage before full re-decompose
+            if _all_coverage_merged():
+                logger.info("Replan: batch_complete but coverage is 100%% — no new work needed")
+                return "no_new_work"
+            # Coverage gaps exist — treat as coverage_gap (selective, not full re-decompose)
+            logger.info("Replan: batch_complete with coverage gaps — using selective re-decompose")
+            failed_domains = _get_domains_needing_replan(state_file, domain_data, "coverage_gap")
+            if not failed_domains:
+                return "no_new_work"
+            for dname in failed_domains:
+                domain = next((dom for dom in domain_data["domains"] if dom["name"] == dname), None)
+                if domain:
+                    saved_domain_plans[dname] = _decompose_single_domain(
+                        domain, json.dumps(saved_brief), domain_data["conventions"], model=model,
+                    )
 
         _save_domain_plans(saved_brief, saved_domain_plans)
 
@@ -1750,7 +1806,9 @@ def _send_terminal_notifications(
         try:
             from .planner import generate_coverage_report
             import json as _json
-            plan_path = "orchestration-plan.json"
+            # Use absolute paths based on state_file location
+            _project_dir = os.path.dirname(os.path.abspath(state_file))
+            plan_path = os.path.join(_project_dir, "orchestration-plan.json")
             plan_data = {}
             if os.path.isfile(plan_path):
                 plan_data = _json.loads(open(plan_path).read())
@@ -1760,11 +1818,15 @@ def _send_terminal_notifications(
                 _default_digest = _rt.digest_dir
                 _default_coverage = _rt.spec_coverage_report
             except Exception:
-                _default_digest = "set/orchestration/digest"
-                _default_coverage = "set/orchestration/spec-coverage-report.md"
+                _default_digest = os.path.join(_project_dir, "set", "orchestration", "digest")
+                _default_coverage = os.path.join(_project_dir, "set", "orchestration", "spec-coverage-report.md")
             digest_dir = state.extras.get("digest_dir", _default_digest)
+            if not os.path.isabs(digest_dir):
+                digest_dir = os.path.join(_project_dir, digest_dir)
             if not os.path.isdir(digest_dir):
                 digest_dir = ""
+            if not os.path.isabs(_default_coverage):
+                _default_coverage = os.path.join(_project_dir, _default_coverage)
             generate_coverage_report(
                 plan=plan_data,
                 digest_dir=digest_dir,

@@ -33,7 +33,7 @@ function formatDuration(s?: number): string {
 function formatTokens(n?: number): string {
   if (!n) return '—'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
 }
 
