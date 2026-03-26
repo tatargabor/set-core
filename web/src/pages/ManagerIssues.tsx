@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useIssueData } from '../hooks/useIssueData'
 import { IssueList } from '../components/issues/IssueList'
@@ -11,6 +11,15 @@ interface Props {
 export default function ManagerIssues({ project }: Props) {
   const { issues, groups, stats, loading } = useIssueData(project || null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  // Auto-select first issue on initial load only
+  const hasAutoSelected = useRef(false)
+  useEffect(() => {
+    if (!hasAutoSelected.current && issues.length > 0) {
+      hasAutoSelected.current = true
+      setSelectedId(issues[0].id)
+    }
+  }, [issues])
 
   return (
     <div className="h-full flex flex-col">

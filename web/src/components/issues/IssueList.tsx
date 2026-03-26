@@ -15,7 +15,7 @@ export function IssueList({ issues, groups, selectedId, onSelect, showEnv }: Pro
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [stateFilter, setStateFilter] = useState<string>('')
   const [severityFilter, setSeverityFilter] = useState<string>('')
-  const [doneExpanded, setDoneExpanded] = useState(false)
+  const [doneExpanded, setDoneExpanded] = useState(true)
 
   const filtered = useMemo(() => {
     return issues.filter(i => {

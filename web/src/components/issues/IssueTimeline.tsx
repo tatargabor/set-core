@@ -66,45 +66,41 @@ export function IssueTimeline({ entries, onSendMessage }: Props) {
   )
 }
 
+function typeLabel(type: string): string {
+  if (type === 'user') return 'you'
+  if (type === 'agent') return 'agent'
+  return 'sys'
+}
+
+function actionColor(action?: string): string {
+  if (!action) return 'text-neutral-500'
+  if (action === 'transition:resolved' || action === 'deploy_complete') return 'text-green-400'
+  if (action === 'transition:failed' || action === 'fix_failed') return 'text-red-400'
+  if (action === 'transition:cancelled' || action === 'transition:dismissed') return 'text-neutral-500'
+  if (action === 'transition:investigating' || action === 'investigation_spawned') return 'text-yellow-400'
+  if (action === 'transition:diagnosed') return 'text-orange-400'
+  if (action === 'transition:fixing' || action === 'fix_spawned') return 'text-purple-400'
+  if (action === 'transition:verifying') return 'text-indigo-400'
+  if (action === 'transition:deploying' || action === 'deploy_started') return 'text-cyan-400'
+  if (action === 'transition:awaiting_approval' || action.startsWith('timeout')) return 'text-amber-400'
+  if (action === 'transition:muted' || action === 'transition:skipped') return 'text-neutral-500'
+  if (action === 'auto_retry') return 'text-yellow-300'
+  if (action === 'registered' || action === 'transition:new') return 'text-blue-400'
+  return 'text-neutral-500'
+}
+
 function TimelineEntryView({ entry }: { entry: TimelineEntry }) {
   const time = new Date(entry.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const icon = entry.icon || '●'
+  const label = typeLabel(entry.type)
+  const color = entry.type === 'user' ? 'text-blue-300' : entry.type === 'agent' ? 'text-green-300' : actionColor(entry.action)
 
-  if (entry.type === 'system') {
-    return (
-      <div className="text-center text-xs text-neutral-600 py-0.5">
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5">
-          <span>{entry.icon || '●'}</span>
-          <span>{time}</span>
-          <span className="text-neutral-500">{entry.content}</span>
-        </span>
-      </div>
-    )
-  }
-
-  if (entry.type === 'user') {
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%]">
-          <div className="text-xs text-neutral-600 text-right mb-0.5">{time}</div>
-          <div className="bg-blue-600/20 text-blue-200 rounded-lg rounded-br-sm px-3 py-2 text-sm">
-            {entry.content}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // agent
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[80%]">
-        <div className="text-xs text-neutral-600 mb-0.5 flex items-center gap-1">
-          <span>🤖</span> <span>{time}</span>
-        </div>
-        <div className="bg-neutral-800 text-neutral-300 rounded-lg rounded-bl-sm px-3 py-2 text-sm">
-          {entry.content}
-        </div>
-      </div>
+    <div className="flex items-start gap-0 text-xs font-mono leading-relaxed">
+      <span className="text-neutral-600 shrink-0 w-[60px]">{time}</span>
+      <span className={`shrink-0 w-[14px] text-center ${color}`}>{icon}</span>
+      <span className="text-neutral-600 shrink-0 w-[46px] text-right pr-2">{label}</span>
+      <span className={color}>{entry.content}</span>
     </div>
   )
 }

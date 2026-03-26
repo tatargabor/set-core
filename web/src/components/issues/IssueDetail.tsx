@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Issue } from '../../lib/api'
+import { getProjectSession } from '../../lib/api'
 import { useIssueDetail } from '../../hooks/useIssueDetail'
 import { useIssueChat } from '../../hooks/useIssueChat'
 import { SeverityBadge } from './SeverityBadge'
@@ -13,7 +14,7 @@ interface Props {
   onClose: () => void
 }
 
-type Tab = 'timeline' | 'diagnosis' | 'error' | 'related'
+type Tab = 'timeline' | 'diagnosis' | 'error' | 'session' | 'related'
 
 export function IssueDetail({ project, issueId, onClose }: Props) {
   const { issue, timeline, loading } = useIssueDetail(project, issueId)
@@ -73,7 +74,7 @@ export function IssueDetail({ project, issueId, onClose }: Props) {
 
         {/* Tabs */}
         <div className="flex border-b border-neutral-800">
-          {(['timeline', 'diagnosis', 'error', 'related'] as Tab[]).map(t => (
+          {(['timeline', 'diagnosis', 'error', 'session', 'related'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -91,6 +92,7 @@ export function IssueDetail({ project, issueId, onClose }: Props) {
           )}
           {tab === 'diagnosis' && <DiagnosisTab issue={issue} />}
           {tab === 'error' && <ErrorTab issue={issue} />}
+          {tab === 'session' && <SessionTab issue={issue} project={project} />}
           {tab === 'related' && <RelatedTab issue={issue} />}
         </div>
       </div>
@@ -98,14 +100,11 @@ export function IssueDetail({ project, issueId, onClose }: Props) {
   )
 }
 
-function SlideOut({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+function SlideOut({ children }: { onClose?: () => void; children: React.ReactNode }) {
   return (
-    <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 w-full md:w-[55%] bg-neutral-950 border-l border-neutral-800 shadow-2xl">
-        {children}
-      </div>
-    </>
+    <div className="fixed inset-y-0 right-0 z-50 w-full md:w-[55%] bg-neutral-950 border-l border-neutral-800 shadow-2xl">
+      {children}
+    </div>
   )
 }
 
@@ -159,6 +158,46 @@ function ErrorTab({ issue }: { issue: Issue }) {
         <span>First: {new Date(issue.detected_at).toLocaleString()}</span>
         <span>Last: {new Date(issue.updated_at).toLocaleString()}</span>
       </div>
+    </div>
+  )
+}
+
+function SessionTab({ issue, project }: { issue: Issue; project: string }) {
+  const [lines, setLines] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const sessionId = issue.investigation_session
+  useEffect(() => {
+    if (!sessionId) return
+    setLoading(true)
+    const load = () => {
+      getProjectSession(project, sessionId, 500)
+        .then(r => setLines(r.lines))
+        .catch(() => {})
+        .finally(() => setLoading(false))
+    }
+    load()
+    const interval = setInterval(load, 3000)
+    return () => clearInterval(interval)
+  }, [project, sessionId])
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [lines.length])
+
+  if (!sessionId) {
+    return <div className="p-4 text-sm text-neutral-500">No investigation session yet.</div>
+  }
+
+  return (
+    <div ref={scrollRef} className="h-full overflow-y-auto p-4">
+      {loading && lines.length === 0 && <div className="text-sm text-neutral-500">Loading session log...</div>}
+      <pre className="text-xs text-neutral-400 font-mono whitespace-pre-wrap leading-relaxed">
+        {lines.join('\n')}
+      </pre>
     </div>
   )
 }
