@@ -32,15 +32,15 @@ VALID_TRANSITIONS: dict[IssueState, set[IssueState]] = {
         IssueState.DISMISSED, IssueState.MUTED, IssueState.SKIPPED,
     },
     IssueState.INVESTIGATING: {
-        IssueState.DIAGNOSED, IssueState.FAILED, IssueState.CANCELLED,
+        IssueState.DIAGNOSED, IssueState.RESOLVED, IssueState.FAILED, IssueState.CANCELLED,
     },
     IssueState.DIAGNOSED: {
-        IssueState.AWAITING_APPROVAL, IssueState.FIXING,
+        IssueState.AWAITING_APPROVAL, IssueState.FIXING, IssueState.RESOLVED,
         IssueState.DISMISSED, IssueState.MUTED,
         IssueState.INVESTIGATING, IssueState.SKIPPED,
     },
     IssueState.AWAITING_APPROVAL: {
-        IssueState.FIXING, IssueState.DISMISSED,
+        IssueState.FIXING, IssueState.RESOLVED, IssueState.DISMISSED,
         IssueState.INVESTIGATING, IssueState.CANCELLED,
     },
     IssueState.FIXING: {
