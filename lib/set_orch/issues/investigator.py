@@ -233,7 +233,7 @@ class InvestigationRunner:
         )
 
 
-DEFAULT_TEMPLATE = """/opsx:explore Investigate issue {issue_id}
+DEFAULT_TEMPLATE = """Investigate issue {issue_id}. Read files, check configs, trace root cause.
 
 ## Issue Context
 - **Environment:** {environment}
@@ -265,7 +265,7 @@ This project uses the **set-core orchestration framework**:
 
 ## Task
 
-Use `/opsx:explore` to investigate. Read files, check configs, trace the root cause. When done, output a JSON diagnosis:
+Read files, check configs, trace the root cause. When done, you MUST output a JSON diagnosis block in this exact format:
 
 DIAGNOSIS_START
 {{
