@@ -88,9 +88,32 @@ class InvestigationRunner:
             self._started_at[issue.id] = datetime.now(timezone.utc)
             issue.fix_agent_pid = proc.pid
             logger.info(f"Investigation /opsx:ff spawned for {issue.id}, PID={proc.pid}, change={change_name}")
+
+            # Extract session_id from stream-json output (first line has it)
+            self._extract_session_id(issue, output_file)
         except FileNotFoundError:
             logger.error("claude CLI not found — cannot spawn investigation")
             self.audit.log(issue.id, "investigation_spawn_failed", error="claude not found")
+
+    def _extract_session_id(self, issue: Issue, output_file: Path, max_wait: float = 5.0):
+        """Read session_id from stream-json output. Waits briefly for first line."""
+        import time
+        deadline = time.monotonic() + max_wait
+        while time.monotonic() < deadline:
+            try:
+                with open(output_file) as f:
+                    line = f.readline()
+                    if line.strip():
+                        data = json.loads(line)
+                        sid = data.get("session_id")
+                        if sid:
+                            issue.investigation_session = sid
+                            logger.info("Investigation session for %s: %s", issue.id, sid)
+                            return
+            except (json.JSONDecodeError, OSError):
+                pass
+            time.sleep(0.5)
+        logger.debug("Could not extract session_id for %s within %.1fs", issue.id, max_wait)
 
     def is_done(self, issue: Issue) -> bool:
         proc = self._processes.get(issue.id)
