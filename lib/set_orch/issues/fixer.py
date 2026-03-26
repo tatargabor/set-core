@@ -45,22 +45,51 @@ class FixRunner:
         self._verify_processes: dict[str, subprocess.Popen] = {}
         self._stdout_files: dict[str, object] = {}
 
-    def spawn(self, issue: Issue):
-        """Start opsx fix agent in set-core directory."""
-        change_name = f"fix-{issue.id.lower()}-{_slugify(issue.error_summary)}"
-        issue.change_name = change_name
+    def _resolve_fix_target(self, issue: Issue) -> tuple[str, str]:
+        """Determine where to run the fix and which prompt to use.
 
+        Returns (cwd, prompt) tuple.
+        Framework bugs → set-core (openspec + redeploy).
+        Consumer issues → consumer project.
+        """
+        change_name = issue.change_name or ""
         diag_json = ""
         if issue.diagnosis:
             diag_json = json.dumps(issue.diagnosis.to_dict(), indent=2, ensure_ascii=False)
 
-        prompt = FIX_PROMPT.format(
-            issue_id=issue.id,
-            change_name=change_name,
-            diagnosis=diag_json,
-            environment=issue.environment,
-            error_summary=issue.error_summary,
+        is_framework = (
+            issue.diagnosis
+            and getattr(issue.diagnosis, "fix_target", "consumer") == "framework"
         )
+
+        if is_framework:
+            cwd = str(self.set_core_path)
+            prompt = FRAMEWORK_FIX_PROMPT.format(
+                issue_id=issue.id,
+                change_name=change_name,
+                diagnosis=diag_json,
+                environment=issue.environment,
+                error_summary=issue.error_summary,
+                consumer_project=issue.environment_path or "unknown",
+            )
+        else:
+            cwd = issue.environment_path or str(self.set_core_path)
+            prompt = FIX_PROMPT.format(
+                issue_id=issue.id,
+                change_name=change_name,
+                diagnosis=diag_json,
+                environment=issue.environment,
+                error_summary=issue.error_summary,
+            )
+
+        return cwd, prompt
+
+    def spawn(self, issue: Issue):
+        """Start opsx fix agent — in set-core for framework bugs, consumer for app issues."""
+        change_name = f"fix-{issue.id.lower()}-{_slugify(issue.error_summary)}"
+        issue.change_name = change_name
+
+        project_cwd, prompt = self._resolve_fix_target(issue)
 
         cmd = [
             "claude", "-p", "--max-turns", "50",
@@ -68,9 +97,6 @@ class FixRunner:
             "--verbose", "--output-format", "stream-json",
             prompt,
         ]
-
-        # Run in the consumer project so the agent can modify config/code
-        project_cwd = issue.environment_path or str(self.set_core_path)
 
         # Capture output to file for debugging
         fix_output_dir = Path(project_cwd) / ".set" / "issues" / "fixes"
@@ -105,7 +131,14 @@ class FixRunner:
 
     def _check_archived(self, issue: Issue) -> bool:
         """Check if the fix change was archived on disk."""
-        project_path = Path(issue.environment_path) if issue.environment_path else self.set_core_path
+        # Framework fixes are in set-core, consumer fixes in the consumer project
+        is_framework = (
+            issue.diagnosis
+            and getattr(issue.diagnosis, "fix_target", "consumer") == "framework"
+        )
+        project_path = self.set_core_path if is_framework else (
+            Path(issue.environment_path) if issue.environment_path else self.set_core_path
+        )
         change_name = issue.change_name or ""
         if not change_name:
             return False
@@ -246,4 +279,56 @@ The proposal, design, specs, and tasks are in `openspec/changes/{change_name}/`.
 5. Run `/opsx:archive {change_name}` — archive the completed change.
 
 Focus on a minimal, correct fix — do not refactor unrelated code.
+"""
+
+
+FRAMEWORK_FIX_PROMPT = """Fix framework bug for issue {issue_id}.
+
+You are working in the **set-core** repository (the framework), NOT the consumer project.
+The bug was detected in consumer project: {consumer_project}
+
+## Issue
+**Summary:** {error_summary}
+**Environment:** {environment}
+
+## Diagnosis
+```json
+{diagnosis}
+```
+
+## Instructions
+
+1. Run `/opsx:ff {change_name}` — create a structured fix plan in set-core's openspec.
+   The proposal should describe the framework bug and the fix.
+
+2. Run `/opsx:apply {change_name}` — implement the fix in set-core's codebase.
+   Fix files under `lib/set_orch/`, `modules/`, or other framework code as needed.
+
+3. Commit the fix on set-core's main branch.
+
+4. **Redeploy to the consumer project** so the fix takes effect:
+   ```bash
+   set-project init --name {environment}
+   ```
+
+5. **Reset blocked changes** in the consumer project so the orchestrator retries:
+   ```bash
+   python3 -c "
+   import json, os
+   f = os.path.join('{consumer_project}', 'orchestration-state.json')
+   if os.path.exists(f):
+       s = json.load(open(f))
+       for c in s['changes']:
+           if c['status'] in ('integration-failed', 'merge-blocked'):
+               c['status'] = 'done'
+               c.setdefault('extras', {{}})['merge_retry_count'] = 0
+               c.setdefault('extras', {{}})['total_merge_attempts'] = 0
+               print(f'Reset {{c[\"name\"]}} → done')
+       json.dump(s, open(f, 'w'), indent=2)
+   "
+   ```
+
+6. Run `/opsx:archive {change_name}` — archive the completed change in set-core.
+
+Focus on a minimal, correct framework fix — do not modify consumer project code directly.
 """

@@ -208,6 +208,17 @@ class InvestigationRunner:
         if has_tasks:
             confidence = 0.95  # /opsx:ff completed fully
 
+        # Detect fix target: framework bug vs consumer issue
+        framework_indicators = [
+            "merger", "dispatcher", "gate", "profile", "orchestrat",
+            "set-core", "set_orch", "ff-only", "fast-forward",
+            "integration gate", "merge strategy", "worktree",
+            "lib/set_orch", "framework",
+        ]
+        fix_target = "consumer"
+        if any(ind in lines for ind in framework_indicators):
+            fix_target = "framework"
+
         return Diagnosis(
             root_cause=root_cause or "See proposal.md for details",
             impact=impact,
@@ -217,6 +228,7 @@ class InvestigationRunner:
             affected_files=[],
             related_issues=[],
             tags=[],
+            fix_target=fix_target,
         )
 
     def _investigation_path(self, issue: Issue) -> Path:

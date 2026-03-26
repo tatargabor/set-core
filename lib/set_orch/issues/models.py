@@ -123,6 +123,7 @@ class Diagnosis:
     group_reason: Optional[str] = None
     tags: list[str] = field(default_factory=list)
     raw_output: str = ""
+    fix_target: str = "consumer"  # "consumer" = fix in consumer project, "framework" = fix in set-core
 
     def to_dict(self) -> dict:
         return {
