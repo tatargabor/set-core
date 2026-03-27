@@ -732,27 +732,27 @@ export interface TimelineEntry {
 
 // --- Manager API Functions ---
 
-const MGR = ''  // unified server — no proxy prefix needed
+// Manager API functions — unified server, no proxy prefix
 
 // Projects & processes
 export function getManagerProjects(): Promise<ManagerProjectStatus[]> {
-  return fetchJSON(`${MGR}/projects`)
+  return fetchJSON(`/projects`)
 }
 export function getManagerProjectStatus(name: string): Promise<ManagerProjectStatus> {
-  return fetchJSON(`${MGR}/projects/${name}/status`)
+  return fetchJSON(`/projects/${name}/status`)
 }
 export function startSentinel(project: string, spec?: string): Promise<{ status: string; pid: number }> {
   const body = spec ? JSON.stringify({ spec }) : undefined
   const headers = spec ? { 'Content-Type': 'application/json' } : undefined
-  return fetchJSON(`${MGR}/projects/${project}/sentinel/start`, { method: 'POST', body, headers })
+  return fetchJSON(`/${project}/sentinel/start`, { method: 'POST', body, headers })
 }
 export function stopSentinel(project: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/sentinel/stop`, { method: 'POST' })
+  return fetchJSON(`/${project}/sentinel/stop`, { method: 'POST' })
 }
 export function restartSentinel(project: string, spec?: string): Promise<{ status: string; pid: number }> {
   const body = spec ? JSON.stringify({ spec }) : undefined
   const headers = spec ? { 'Content-Type': 'application/json' } : undefined
-  return fetchJSON(`${MGR}/projects/${project}/sentinel/restart`, { method: 'POST', body, headers })
+  return fetchJSON(`/${project}/sentinel/restart`, { method: 'POST', body, headers })
 }
 
 // Docs listing
@@ -762,7 +762,7 @@ export interface DocsEntry {
 }
 
 export function getProjectDocs(project: string): Promise<{ docs: DocsEntry[] }> {
-  return fetchJSON(`${MGR}/projects/${project}/docs`)
+  return fetchJSON(`/${project}/docs`)
 }
 
 // Issues
@@ -771,86 +771,86 @@ export function getIssues(project: string, filters?: { state?: string; severity?
   if (filters?.state) params.set('state', filters.state)
   if (filters?.severity) params.set('severity', filters.severity)
   const qs = params.toString()
-  return fetchJSON(`${MGR}/projects/${project}/issues${qs ? '?' + qs : ''}`)
+  return fetchJSON(`/${project}/issues${qs ? '?' + qs : ''}`)
 }
 export function getIssue(project: string, id: string): Promise<Issue> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}`)
+  return fetchJSON(`/${project}/issues/${id}`)
 }
 export function createIssue(project: string, data: { error_summary: string; error_detail?: string }): Promise<Issue> {
-  return fetchJSON(`${MGR}/projects/${project}/issues`, {
+  return fetchJSON(`/${project}/issues`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   })
 }
 export function getAllIssues(): Promise<Issue[]> {
-  return fetchJSON(`${MGR}/issues`)
+  return fetchJSON(`/issues`)
 }
 export function getIssueStats(project: string): Promise<IssueStats> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/stats`)
+  return fetchJSON(`/${project}/issues/stats`)
 }
 export function getAllIssueStats(): Promise<Record<string, IssueStats>> {
-  return fetchJSON(`${MGR}/issues/stats`)
+  return fetchJSON(`/issues/stats`)
 }
 
 // Issue actions
 export function investigateIssue(project: string, id: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/investigate`, { method: 'POST' })
+  return fetchJSON(`/${project}/issues/${id}/investigate`, { method: 'POST' })
 }
 export function fixIssue(project: string, id: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/fix`, { method: 'POST' })
+  return fetchJSON(`/${project}/issues/${id}/fix`, { method: 'POST' })
 }
 export function dismissIssue(project: string, id: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/dismiss`, { method: 'POST' })
+  return fetchJSON(`/${project}/issues/${id}/dismiss`, { method: 'POST' })
 }
 export function cancelIssue(project: string, id: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/cancel`, { method: 'POST' })
+  return fetchJSON(`/${project}/issues/${id}/cancel`, { method: 'POST' })
 }
 export function skipIssue(project: string, id: string, reason?: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/skip`, {
+  return fetchJSON(`/${project}/issues/${id}/skip`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason || '' }),
   })
 }
 export function muteIssue(project: string, id: string, pattern?: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/mute`, {
+  return fetchJSON(`/${project}/issues/${id}/mute`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pattern }),
   })
 }
 export function extendIssueTimeout(project: string, id: string, seconds: number): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/extend-timeout`, {
+  return fetchJSON(`/${project}/issues/${id}/extend-timeout`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seconds }),
   })
 }
 export function sendIssueMessage(project: string, id: string, message: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/${id}/message`, {
+  return fetchJSON(`/${project}/issues/${id}/message`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }),
   })
 }
 
 // Groups
 export function getIssueGroups(project: string): Promise<IssueGroup[]> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/groups`)
+  return fetchJSON(`/${project}/issues/groups`)
 }
 export function createIssueGroup(project: string, ids: string[], name: string, reason: string): Promise<IssueGroup> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/groups`, {
+  return fetchJSON(`/${project}/issues/groups`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ issue_ids: ids, name, reason }),
   })
 }
 export function fixGroup(project: string, groupId: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/groups/${groupId}/fix`, { method: 'POST' })
+  return fetchJSON(`/${project}/issues/groups/${groupId}/fix`, { method: 'POST' })
 }
 
 // Mutes
 export function getMutePatterns(project: string): Promise<MutePattern[]> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/mutes`)
+  return fetchJSON(`/${project}/issues/mutes`)
 }
 export function addMutePattern(project: string, pattern: string, reason: string, expires_at?: string): Promise<MutePattern> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/mutes`, {
+  return fetchJSON(`/${project}/issues/mutes`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pattern, reason, expires_at }),
   })
 }
 export function deleteMutePattern(project: string, id: string): Promise<{ status: string }> {
-  return fetchJSON(`${MGR}/projects/${project}/issues/mutes/${id}`, { method: 'DELETE' })
+  return fetchJSON(`/${project}/issues/mutes/${id}`, { method: 'DELETE' })
 }
 
 // Audit
@@ -860,7 +860,7 @@ export function getIssueAudit(project: string, opts?: { since?: number; limit?: 
   if (opts?.limit) params.set('limit', String(opts.limit))
   if (opts?.issue_id) params.set('issue_id', opts.issue_id)
   const qs = params.toString()
-  return fetchJSON(`${MGR}/projects/${project}/issues/audit${qs ? '?' + qs : ''}`)
+  return fetchJSON(`/${project}/issues/audit${qs ? '?' + qs : ''}`)
 }
 
 // Manager service
@@ -878,7 +878,7 @@ export function startManager(): Promise<{ status: string; pid?: number }> {
 }
 
 export function getSentinelLog(project: string, tail = 200): Promise<{ lines: string[] }> {
-  return fetchJSON(`${MGR}/projects/${project}/sentinel/log?tail=${tail}`)
+  return fetchJSON(`/${project}/sentinel/log?tail=${tail}`)
 }
 
 // =====================================================
