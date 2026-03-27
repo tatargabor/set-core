@@ -1,5 +1,8 @@
 # set-core
 
+> [!IMPORTANT]
+> **Major update in progress.** We're preparing a new release with complete end-to-end orchestration examples, updated documentation, and production run recordings. The current docs may not reflect the latest capabilities. Star/watch the repo to get notified when the new version drops.
+
 **Autonomous multi-agent orchestration for Claude Code** — give it a spec, get merged features.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
