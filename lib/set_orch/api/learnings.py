@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..state import load_state, StateCorruptionError
+from .helpers import _resolve_project, _state_path, _sentinel_dir, _list_worktrees
 from .helpers import _resolve_project, _state_path, _sentinel_dir
 
 router = APIRouter()
