@@ -730,7 +730,7 @@ export interface TimelineEntry {
 
 // --- Manager API Functions ---
 
-const MGR = '/manager'
+const MGR = ''  // unified server — no proxy prefix needed
 
 // Projects & processes
 export function getManagerProjects(): Promise<ManagerProjectStatus[]> {
@@ -863,7 +863,7 @@ export function getIssueAudit(project: string, opts?: { since?: number; limit?: 
 
 // Manager service
 export function getManagerStatus(): Promise<ManagerStatus> {
-  return fetchJSON(`${MGR}/manager/status`)
+  return fetchJSON('/service/status')
 }
 
 export function restartManager(): Promise<{ status: string }> {
