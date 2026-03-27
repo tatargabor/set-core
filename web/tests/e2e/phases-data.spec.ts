@@ -45,7 +45,11 @@ test('child changes have indent', async ({ page }) => {
   const withDeps = changes.find(c => c.depends_on && c.depends_on.length > 0)
   if (!withDeps) return test.skip()
   // The ChangeRow uses paddingLeft for depth > 0 and renders "└" connector
-  // Check the DOM for the connector character
-  const content = await page.content()
-  expect(content).toContain('└')
+  // Wait for the phases content to render, then check for the connector
+  await page.waitForSelector('text=Phase 1', { timeout: 5000 })
+  await expect(page.locator(`text=${withDeps.name}`)).toBeVisible()
+  // Now check for indent connector in the rendered phases area
+  const phasesArea = page.locator('text=└')
+  const count = await phasesArea.count()
+  expect(count).toBeGreaterThanOrEqual(1)
 })
