@@ -85,6 +85,12 @@ def add_project(body: dict):
         "project_type": body.get("project_type", body.get("mode", "")),
     })
     _save_projects(projects)
+    # Register with lifecycle service (supervisor + issue manager)
+    from .lifecycle import get_service
+    svc = get_service()
+    if svc:
+        from pathlib import Path as _P
+        svc.add_project(name, _P(path), mode=body.get("mode", "e2e"))
     return {"status": "ok", "name": name}
 
 
@@ -94,6 +100,10 @@ def remove_project(name: str):
     projects = _load_projects()
     projects = [p for p in projects if p["name"] != name]
     _save_projects(projects)
+    from .lifecycle import get_service
+    svc = get_service()
+    if svc:
+        svc.remove_project(name)
     return {"status": "ok"}
 
 

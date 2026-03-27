@@ -5,7 +5,7 @@
 #   ./tests/e2e/run.sh <scaffold>           # e.g. craftbrew, minishop
 #   ./tests/e2e/run.sh <scaffold> --no-start  # register only, don't start sentinel
 #
-# Requires: set-manager running on port 3112
+# Requires: set-core serve running on port 7400
 
 set -euo pipefail
 
@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SET_CORE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SCAFFOLDS_DIR="$SCRIPT_DIR/scaffolds"
 E2E_RUNS_DIR="${E2E_RUNS_DIR:-$HOME/.local/share/set-core/e2e-runs}"
-MANAGER_URL="${SET_MANAGER_URL:-http://localhost:3112}"
+MANAGER_URL="${SET_MANAGER_URL:-http://localhost:7400}"
 START_SENTINEL=true
 
 # --- Args ---
@@ -51,9 +51,9 @@ fi
 
 # --- Manager health check ---
 
-if ! curl -sf "$MANAGER_URL/api/manager/status" >/dev/null 2>&1; then
-    echo "Error: set-manager not running at $MANAGER_URL" >&2
-    echo "Start it with: set-manager serve" >&2
+if ! curl -sf "$MANAGER_URL/api/projects" >/dev/null 2>&1; then
+    echo "Error: set-core service not running at $MANAGER_URL" >&2
+    echo "Start it with: set-core serve" >&2
     exit 1
 fi
 
@@ -145,6 +145,6 @@ fi
 
 echo ""
 echo "=== $RUN_NAME ready ==="
-echo "  Monitor: ${MANAGER_URL/3112/7400}/p/$RUN_NAME/orch"
+echo "  Monitor: $MANAGER_URL/p/$RUN_NAME/orch"
 echo "  Dir:     $RUN_DIR"
 echo "  Report:  set-e2e-report --project-dir $RUN_DIR"
