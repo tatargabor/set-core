@@ -92,21 +92,40 @@ test.use({
 })
 
 test.describe('Consumer app screenshots', () => {
-  let loggedIn = false
+  async function doLogin(page: any) {
+    // Register first (idempotent — may fail if user already exists)
+    await page.goto('/admin/register', { waitUntil: 'networkidle', timeout: 10_000 }).catch(() => {})
+    const regName = page.locator('input[name="name"]')
+    if (await regName.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await regName.fill('Admin User')
+    }
+    const regEmail = page.locator('input[type="email"], input[name="email"]')
+    if (await regEmail.isVisible({ timeout: 500 }).catch(() => false)) {
+      await regEmail.fill('admin@test.com')
+      const pwFields = page.locator('input[type="password"]')
+      const count = await pwFields.count()
+      for (let i = 0; i < count; i++) await pwFields.nth(i).fill('admin123')
+      await page.locator('button[type="submit"]').click()
+      await page.waitForTimeout(2000)
+    }
+    // If register redirected to admin dashboard, we're done
+    if (!page.url().includes('/login') && !page.url().includes('/register')) return
+    // Otherwise login explicitly
+    await page.goto('/admin/login', { waitUntil: 'networkidle', timeout: 10_000 })
+    const email = page.locator('input[type="email"], input[name="email"]')
+    if (await email.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await email.fill('admin@test.com')
+      await page.locator('input[type="password"]').fill('admin123')
+      await page.locator('button[type="submit"]').click()
+      await page.waitForTimeout(2000)
+    }
+  }
 
   for (const pageDef of pages) {
     test(`app — ${pageDef.name}`, async ({ page }) => {
-      // Admin pages need login first
-      if (pageDef.requiresAuth && !loggedIn) {
-        await page.goto('/admin/login', { waitUntil: 'networkidle', timeout: 10_000 })
-        const email = page.locator('input[type="email"], input[name="email"]')
-        if (await email.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await email.fill('admin@test.com')
-          await page.locator('input[type="password"]').fill('admin123')
-          await page.locator('button[type="submit"]').click()
-          await page.waitForTimeout(1000)
-          loggedIn = true
-        }
+      // Admin pages: register + login in same browser context so cookies persist
+      if (pageDef.requiresAuth) {
+        await doLogin(page)
       }
 
       if (pageDef.clickFirstLink) {

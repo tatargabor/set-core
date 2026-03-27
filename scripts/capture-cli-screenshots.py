@@ -33,11 +33,28 @@ OUT_DIR = ROOT_DIR / "docs" / "images" / "auto" / "cli"
 
 # Commands to capture. Each entry: (output_filename, shell_command, description)
 COMMANDS = [
+    # ── Worktree & project management ──
     ("set-list", "set-list", "Worktree listing"),
-    ("set-status", "set-status", "Orchestration status"),
+    ("set-status", "set-status", "Orchestration & agent status"),
+    ("set-version", "set-version", "Version info"),
+    ("set-config-editor-list", "set-config editor list 2>/dev/null || echo 'No editors detected'", "Editor configuration"),
+
+    # ── OpenSpec ──
     ("openspec-status", "openspec status", "OpenSpec change status"),
+    ("openspec-list", "openspec list 2>/dev/null || echo 'No active changes'", "OpenSpec change list"),
+
+    # ── Memory ──
     ("set-memory-stats", "set-memory stats 2>/dev/null || echo 'Memory system not initialized'", "Memory statistics"),
+    ("set-memory-health", "set-memory health 2>/dev/null || echo 'Memory not available'", "Memory health check"),
+
+    # ── Project health ──
     ("set-audit-scan", "set-audit scan 2>/dev/null || echo 'No project context'", "Project health audit"),
+
+    # ── Usage & reporting ──
+    ("set-usage", "set-usage 2>/dev/null || echo 'No usage data'", "Token usage statistics"),
+
+    # ── Sentinel findings ──
+    ("set-sentinel-finding-list", "set-sentinel-finding list --open-only 2>/dev/null || echo 'No findings'", "Sentinel findings"),
 ]
 
 # ── HTML template (dark terminal theme) ──
@@ -198,9 +215,10 @@ def main():
         # 2. Convert ANSI → HTML
         html_content = ansi_to_html(output)
 
-        # 3. Wrap in styled template
+        # 3. Wrap in styled template — clean title (strip fallback/redirect noise)
+        clean_cmd = cmd.split(' 2>/dev/null')[0].split(' ||')[0].strip()
         full_html = HTML_TEMPLATE.format(
-            title=f"$ {cmd}",
+            title=f"$ {clean_cmd}",
             content=html_content,
         )
 
