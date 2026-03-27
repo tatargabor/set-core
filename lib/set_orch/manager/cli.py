@@ -22,7 +22,18 @@ def cli():
 @click.option("--config", type=click.Path(exists=True), default=None, help="Config file path")
 @click.option("--port", type=int, default=None, help="API port (default: 3112)")
 def serve(config, port):
-    """Run set-manager in foreground."""
+    """Run set-manager in foreground. (DEPRECATED — use 'set-core serve' instead)"""
+    import warnings
+    warnings.warn(
+        "set-manager serve is deprecated. Use 'set-core serve' instead, "
+        "which runs a unified server with orchestration API, sentinel, and issues.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    click.echo("⚠️  DEPRECATED: Use 'set-core serve' for the unified server.", err=True)
+    click.echo("   set-manager serve will be removed in a future release.", err=True)
+    click.echo("", err=True)
+
     from .service import ServiceManager
     from .api import create_api
     from aiohttp import web

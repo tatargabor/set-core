@@ -1,70 +1,37 @@
 #!/usr/bin/env bash
-# Restart set-core services (manager + web server).
-# Usage: set-restart-services [--manager] [--web] [--all]
+# Restart set-core unified service.
+# Usage: set-restart-services
 set -euo pipefail
 
 SET_CORE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PID_FILE="$HOME/.local/share/set-core/manager/manager.pid"
 
-restart_manager() {
-    echo "Restarting manager..."
-    # Kill by PID file
-    if [[ -f "$PID_FILE" ]]; then
-        local pid
-        pid=$(cat "$PID_FILE" 2>/dev/null || true)
-        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
-            sleep 1
-        fi
-    fi
-    rm -f "$PID_FILE"
-    # Also kill by port
-    local port_pid
-    port_pid=$(lsof -ti:3112 2>/dev/null || true)
-    if [[ -n "$port_pid" ]]; then
-        kill "$port_pid" 2>/dev/null || true
-        sleep 1
-    fi
-    cd "$SET_CORE_ROOT" && pip install -e . -q 2>/dev/null
-    nohup set-manager serve > /tmp/set-manager.log 2>&1 &
-    sleep 2
-    if curl -sf http://localhost:3112/api/manager/status > /dev/null 2>&1; then
-        echo "  Manager running (PID $(cat "$PID_FILE" 2>/dev/null || echo '?'))"
-    else
-        echo "  WARNING: Manager may not have started. Check /tmp/set-manager.log"
-    fi
-}
+restart_unified() {
+    echo "Restarting set-core unified service (port 7400)..."
 
-restart_web() {
-    echo "Restarting web server (port 7400)..."
+    # Kill any existing service on port 7400
     local port_pid
     port_pid=$(lsof -ti:7400 2>/dev/null || true)
     if [[ -n "$port_pid" ]]; then
         kill "$port_pid" 2>/dev/null || true
         sleep 1
     fi
+
+    # Also kill legacy manager on 3112 if running
+    local mgr_pid
+    mgr_pid=$(lsof -ti:3112 2>/dev/null || true)
+    if [[ -n "$mgr_pid" ]]; then
+        kill "$mgr_pid" 2>/dev/null || true
+        sleep 1
+    fi
+
     cd "$SET_CORE_ROOT" && pip install -e . -q 2>/dev/null
     nohup set-orch-core serve --port 7400 > /tmp/set-orch-core.log 2>&1 &
     sleep 2
     if curl -sf http://localhost:7400/ > /dev/null 2>&1; then
-        echo "  Web server running on :7400"
+        echo "  Unified service running on :7400"
     else
-        echo "  WARNING: Web server may not have started. Check /tmp/set-orch-core.log"
+        echo "  WARNING: Service may not have started. Check /tmp/set-orch-core.log"
     fi
 }
 
-case "${1:-all}" in
-    --manager|-m) restart_manager ;;
-    --web|-w) restart_web ;;
-    --all|-a|all)
-        restart_web
-        restart_manager
-        ;;
-    -h|--help)
-        echo "Usage: set-restart-services [--manager|-m] [--web|-w] [--all|-a]"
-        echo "  --manager  Restart set-manager (port 3112)"
-        echo "  --web      Restart set-orch-core web server (port 7400)"
-        echo "  --all      Restart both (default)"
-        ;;
-    *) echo "Unknown option: $1. Use --help"; exit 1 ;;
-esac
+restart_unified

@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""set-core — unified CLI for the SET orchestration platform.
+
+Usage:
+    set-core serve [--port PORT] [--host HOST]    Start the unified web service
+    set-core <other subcommands>                  Delegates to set-orch-core
+
+The 'serve' subcommand starts a single service that combines:
+  - Web dashboard (SPA)
+  - Orchestration API
+  - Sentinel supervisor
+  - Issue management engine
+  - Plugin route registry
+"""
+
+import sys
+import os
+
+# Add lib/ to path for symlink-based installs
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+
+from set_orch.cli import main
+
+if __name__ == "__main__":
+    main()

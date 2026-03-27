@@ -62,17 +62,17 @@ lib/set_orch/api/
 
 ## 7. CLI Unification
 
-- [ ] 7.1 Add `serve` subcommand to `bin/set-core` — `set-core serve --port 7400` starts unified server [REQ: single-cli-entry-point]
-- [ ] 7.2 Deprecation warnings in `bin/set-orch-core` and `bin/set-manager` → `set-core serve` [REQ: single-cli-entry-point]
-- [ ] 7.3 Update `bin/set-restart-services` to use new entry point [REQ: single-cli-entry-point]
+- [x] 7.1 Add `serve` subcommand to `bin/set-core` — `set-core serve --port 7400` starts unified server [REQ: single-cli-entry-point]
+- [x] 7.2 Deprecation warnings in `bin/set-orch-core` and `bin/set-manager` → `set-core serve` [REQ: single-cli-entry-point]
+- [x] 7.3 Update `bin/set-restart-services` to use new entry point [REQ: single-cli-entry-point]
 
 ## 8. Cleanup and Verify
 
-- [ ] 8.1 Delete old `lib/set_orch/api.py` (replaced by `api/` package) [REQ: api-module-package-structure]
+- [x] 8.1 Delete old `lib/set_orch/api.py` (replaced by `api/` package) [REQ: api-module-package-structure]
 - [ ] 8.2 Delete `lib/set_orch/manager/api.py` (routes moved to FastAPI) [REQ: api-module-package-structure]
-- [ ] 8.3 Update remaining imports (web.py, CLI, tests) to use `api/` package [REQ: api-module-package-structure]
-- [ ] 8.4 Build web dist + verify SPA loads on unified server [REQ: api-module-package-structure]
-- [ ] 8.5 Verify all API endpoints respond identically to pre-refactor [REQ: api-route-organization]
+- [x] 8.3 Update remaining imports (web.py, CLI, tests) to use `api/` package [REQ: api-module-package-structure]
+- [x] 8.4 Build web dist + verify SPA loads on unified server [REQ: api-module-package-structure]
+- [x] 8.5 Verify all API endpoints respond identically to pre-refactor [REQ: api-route-organization]
 
 ## Acceptance Criteria (from spec scenarios)
 
