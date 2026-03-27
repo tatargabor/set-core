@@ -1,9 +1,51 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { getManagerProjects, type ManagerProjectStatus } from '../lib/api'
+import { getProjects, type ProjectInfo } from '../lib/api'
+import { sortByLastUpdated } from '../lib/sort'
+
+const statusStyle: Record<string, { char: string; color: string; label: string }> = {
+  running: { char: '\u25C9', color: 'text-green-400', label: 'Running' },
+  planning: { char: '\u25C9', color: 'text-cyan-400', label: 'Planning' },
+  checkpoint: { char: '\u25C9', color: 'text-yellow-400', label: 'Checkpoint' },
+  completed: { char: '\u25CF', color: 'text-blue-400', label: 'Completed' },
+  done: { char: '\u25CF', color: 'text-blue-400', label: 'Done' },
+  stopped: { char: '\u25CB', color: 'text-neutral-500', label: 'Stopped' },
+  failed: { char: '\u2715', color: 'text-red-400', label: 'Failed' },
+  idle: { char: '\u25CB', color: 'text-neutral-600', label: 'Idle' },
+  error: { char: '\u2715', color: 'text-red-400', label: 'Error' },
+  corrupt: { char: '\u2715', color: 'text-red-400', label: 'Corrupt' },
+}
+
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function formatTokens(n?: number): string {
+  if (!n) return '—'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
+  return String(n)
+}
+
+function formatDuration(secs?: number): string {
+  if (!secs) return '—'
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m`
+  const hours = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return remMins > 0 ? `${hours}h${remMins}m` : `${hours}h`
+}
 
 export default function Manager() {
-  const [projects, setProjects] = useState<ManagerProjectStatus[]>([])
+  const [projects, setProjects] = useState<ProjectInfo[]>([])
   const [loading, setLoading] = useState(true)
   const jsonRef = useRef('')
 
@@ -11,7 +53,7 @@ export default function Manager() {
     let timer: ReturnType<typeof setTimeout>
     let fails = 0
     const poll = () => {
-      getManagerProjects()
+      getProjects()
         .then(data => {
           fails = 0
           const json = JSON.stringify(data)
@@ -32,49 +74,69 @@ export default function Manager() {
     return () => clearTimeout(timer)
   }, [])
 
+  const sorted = sortByLastUpdated(projects)
+
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
-      <h1 className="text-lg font-semibold text-neutral-100">Projects</h1>
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+      <h1 className="text-lg md:text-xl font-semibold text-neutral-100 mb-4 md:mb-6">Projects</h1>
 
       {loading && projects.length === 0 && (
         <div className="text-sm text-neutral-500">Loading...</div>
       )}
 
-      {!loading && projects.length === 0 && (
-        <div className="p-4 rounded-lg bg-neutral-900 border border-neutral-800 text-sm text-neutral-400">
-          No projects found. Register one with: <code className="px-1 py-0.5 bg-neutral-800 rounded text-xs">set-project init</code>
+      {!loading && sorted.length === 0 && (
+        <div className="text-sm text-neutral-500 bg-neutral-900 rounded-lg p-4">
+          No projects found. Register one with: <code className="text-neutral-300">set-project init</code>
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {projects.map(p => {
-          const sentinelAlive = p.sentinel?.alive
-          const orchAlive = p.orchestrator?.alive
-          const status = sentinelAlive ? 'running' : orchAlive ? 'running' : 'idle'
-          return (
-            <Link
-              key={p.name}
-              to={`/p/${p.name}/orch`}
-              className="block p-4 rounded-lg border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-neutral-200">{p.name}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded ${
-                  status === 'running' ? 'bg-green-900/50 text-green-300' :
-                  'bg-neutral-800 text-neutral-400'
-                }`}>
-                  {status}
-                </span>
-              </div>
-              <div className="text-xs text-neutral-500 font-mono truncate">{p.path}</div>
-              <div className="flex gap-2 mt-1.5 text-xs text-neutral-600">
-                {sentinelAlive && <span className="text-green-500/70">Sentinel active</span>}
-                {p.mode && <span>{p.mode}</span>}
-              </div>
-            </Link>
-          )
-        })}
-      </div>
+      {sorted.length > 0 && (
+        <div className="border border-neutral-800 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-neutral-800 text-xs text-neutral-500 uppercase tracking-wider">
+                <th className="text-left px-4 py-2 font-medium">Name</th>
+                <th className="text-left px-4 py-2 font-medium">Status</th>
+                <th className="text-right px-4 py-2 font-medium">Changes</th>
+                <th className="text-right px-4 py-2 font-medium">Tokens</th>
+                <th className="text-right px-4 py-2 font-medium">Duration</th>
+                <th className="text-right px-4 py-2 font-medium">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((p) => {
+                const s = statusStyle[p.status ?? 'idle'] ?? statusStyle.idle
+                const hasChanges = (p.changes_total ?? 0) > 0
+                return (
+                  <tr key={p.name} className="border-b border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+                    <td className="px-4 py-2.5">
+                      <Link to={`/p/${p.name}/orch`} className="flex items-center gap-2 hover:text-neutral-100">
+                        <span className={`shrink-0 ${s.color}`}>{s.char}</span>
+                        <span className="text-neutral-200 font-medium">{p.name}</span>
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-xs ${s.color}`}>{s.label}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-neutral-400">
+                      {hasChanges ? `${p.changes_merged}/${p.changes_total}` : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-neutral-400">
+                      {formatTokens(p.total_tokens)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-neutral-400">
+                      {formatDuration(p.active_seconds)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-neutral-500">
+                      {timeAgo(p.last_updated)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
