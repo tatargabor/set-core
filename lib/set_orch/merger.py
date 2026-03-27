@@ -738,6 +738,7 @@ def _run_integration_gates(
     from .subprocess_utils import run_command
 
     gc = resolve_gate_config(change, profile)
+    gates_executed = 0  # Track how many gates actually ran a subprocess
 
     # Load .env from worktree if exists (agents create .env during impl
     # but it's not committed — integration gates need it for e.g. DATABASE_URL)
@@ -784,6 +785,7 @@ def _run_integration_gates(
         if not build_cmd and profile and hasattr(profile, "detect_build_command"):
             build_cmd = profile.detect_build_command(wt_path) or ""
         if build_cmd:
+            gates_executed += 1
             logger.info("Integration gate: build for %s (%s)", change_name, build_cmd)
             result = run_command(["bash", "-c", build_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
             gate_pass = result.exit_code == 0
@@ -802,6 +804,7 @@ def _run_integration_gates(
         if not test_cmd and profile and hasattr(profile, "detect_test_command"):
             test_cmd = profile.detect_test_command(wt_path) or ""
         if test_cmd:
+            gates_executed += 1
             logger.info("Integration gate: test for %s (%s)", change_name, test_cmd)
             result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
             if result.exit_code == 0:
@@ -850,6 +853,7 @@ def _run_integration_gates(
         if not e2e_cmd and profile and hasattr(profile, "detect_e2e_command"):
             e2e_cmd = profile.detect_e2e_command(wt_path) or ""
         if e2e_cmd:
+            gates_executed += 1
             # Assign unique port to avoid collisions with parallel agents
             import hashlib
             port_offset = int(hashlib.md5(change_name.encode()).hexdigest()[:4], 16) % 1000
@@ -906,6 +910,22 @@ def _run_integration_gates(
                         change_name,
                     )
                     update_change_field(state_file, change_name, "integration_gate_fail", "e2e-warn")
+
+    # Guard: warn if no gates actually executed for non-infrastructure changes
+    if gates_executed == 0:
+        change_type = getattr(change, 'change_type', '') or 'feature'
+        if change_type not in ('infrastructure', 'config', 'docs'):
+            logger.warning(
+                "Integration gate: NO gates executed for %s (type=%s) — "
+                "check project-type.yaml and profile detection. "
+                "Changes may be merging without quality validation.",
+                change_name, change_type,
+            )
+            if event_bus:
+                event_bus.emit("GATE_SKIP_WARNING", change=change_name, data={
+                    "reason": "no_gates_executed", "change_type": change_type,
+                    "gates_executed": 0,
+                })
 
     return True
 
@@ -1021,6 +1041,7 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 _gates_passed = _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus)
                 _gate_elapsed_ms = int((_time.monotonic() - _gate_start) * 1000)
                 update_change_field(state_file, name, "gate_total_ms", _gate_elapsed_ms)
+                # gates_executed count is logged inside _run_integration_gates
             if not _gates_passed:
                 # Check if the gate set integration-e2e-failed (redispatch path)
                 refreshed = load_state(state_file)
