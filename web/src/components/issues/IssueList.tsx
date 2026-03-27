@@ -6,12 +6,13 @@ import { ATTENTION_STATES, IN_PROGRESS_STATES, DONE_STATES } from './styles'
 interface Props {
   issues: Issue[]
   groups: IssueGroup[]
-  selectedId: string | null
-  onSelect: (id: string) => void
+  selectedKey: string | null
+  onSelect: (key: string) => void
+  issueKeyFn: (issue: Issue) => string
   showEnv?: boolean
 }
 
-export function IssueList({ issues, groups, selectedId, onSelect, showEnv }: Props) {
+export function IssueList({ issues, groups, selectedKey, onSelect, issueKeyFn, showEnv }: Props) {
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [stateFilter, setStateFilter] = useState<string>('')
   const [severityFilter, setSeverityFilter] = useState<string>('')
@@ -29,12 +30,21 @@ export function IssueList({ issues, groups, selectedId, onSelect, showEnv }: Pro
   const inProgress = filtered.filter(i => (IN_PROGRESS_STATES as string[]).includes(i.state))
   const done = filtered.filter(i => (DONE_STATES as string[]).includes(i.state))
 
-  const handleCheck = (id: string, isChecked: boolean) => {
+  const handleCheck = (key: string, isChecked: boolean) => {
     setChecked(prev => {
       const next = new Set(prev)
-      isChecked ? next.add(id) : next.delete(id)
+      isChecked ? next.add(key) : next.delete(key)
       return next
     })
+  }
+
+  const renderRow = (i: Issue) => {
+    const key = issueKeyFn(i)
+    return (
+      <IssueRow key={key} issue={i} selected={selectedKey === key}
+        onSelect={() => onSelect(key)}
+        checked={checked.has(key)} onCheck={(_, c) => handleCheck(key, c)} showEnv={showEnv} />
+    )
   }
 
   return (
@@ -60,31 +70,22 @@ export function IssueList({ issues, groups, selectedId, onSelect, showEnv }: Pro
       {/* Needs Attention */}
       {attention.length > 0 && (
         <Section title="Needs Attention" count={attention.length} color="text-amber-400">
-          {attention.map(i => (
-            <IssueRow key={i.id} issue={i} selected={selectedId === i.id} onSelect={onSelect}
-              checked={checked.has(i.id)} onCheck={handleCheck} showEnv={showEnv} />
-          ))}
+          {attention.map(renderRow)}
         </Section>
       )}
 
       {/* In Progress */}
       {inProgress.length > 0 && (
         <Section title="In Progress" count={inProgress.length} color="text-purple-400">
-          {inProgress.map(i => (
-            <IssueRow key={i.id} issue={i} selected={selectedId === i.id} onSelect={onSelect}
-              checked={checked.has(i.id)} onCheck={handleCheck} showEnv={showEnv} />
-          ))}
+          {inProgress.map(renderRow)}
         </Section>
       )}
 
-      {/* Done (collapsed) */}
+      {/* Done */}
       {done.length > 0 && (
         <Section title="Done" count={done.length} color="text-neutral-500"
           collapsed={!doneExpanded} onToggle={() => setDoneExpanded(!doneExpanded)}>
-          {doneExpanded && done.map(i => (
-            <IssueRow key={i.id} issue={i} selected={selectedId === i.id} onSelect={onSelect}
-              checked={checked.has(i.id)} onCheck={handleCheck} showEnv={showEnv} />
-          ))}
+          {doneExpanded && done.map(renderRow)}
         </Section>
       )}
 

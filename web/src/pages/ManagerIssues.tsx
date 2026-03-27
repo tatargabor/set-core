@@ -3,6 +3,12 @@ import { Link } from 'react-router-dom'
 import { useIssueData } from '../hooks/useIssueData'
 import { IssueList } from '../components/issues/IssueList'
 import { IssueDetail } from '../components/issues/IssueDetail'
+import type { Issue } from '../lib/api'
+
+/** Unique key for cross-project issue selection: "environment:id" or just "id" if single project */
+function issueKey(issue: Issue, project?: string | null): string {
+  return project ? issue.id : `${issue.environment}:${issue.id}`
+}
 
 interface Props {
   project?: string | null
@@ -10,22 +16,28 @@ interface Props {
 
 export default function ManagerIssues({ project }: Props) {
   const { issues, groups, stats, loading } = useIssueData(project || null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   // Auto-select first issue on initial load only
   const hasAutoSelected = useRef(false)
   useEffect(() => {
     if (!hasAutoSelected.current && issues.length > 0) {
       hasAutoSelected.current = true
-      setSelectedId(issues[0].id)
+      setSelectedKey(issueKey(issues[0], project))
     }
-  }, [issues])
+  }, [issues, project])
+
+  // Find selected issue by composite key
+  const selectedIssue = selectedKey
+    ? issues.find(i => issueKey(i, project) === selectedKey)
+    : null
+  const detailProject = project || selectedIssue?.environment
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-neutral-800">
-        <Link to="/manager" className="text-neutral-500 hover:text-neutral-300 text-sm">Manager</Link>
+        <Link to="/" className="text-neutral-500 hover:text-neutral-300 text-sm">Overview</Link>
         <span className="text-neutral-700">/</span>
         <span className="text-sm text-neutral-200">{project || 'All Projects'}</span>
         <span className="text-neutral-700">/</span>
@@ -44,24 +56,22 @@ export default function ManagerIssues({ project }: Props) {
           <IssueList
             issues={issues}
             groups={groups}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
+            selectedKey={selectedKey}
+            onSelect={(key) => setSelectedKey(key)}
+            issueKeyFn={(i) => issueKey(i, project)}
             showEnv={!project}
           />
         )}
       </div>
 
-      {/* Detail panel — derive project from issue.environment when in All Projects mode */}
-      {selectedId && (() => {
-        const detailProject = project || issues.find(i => i.id === selectedId)?.environment
-        return detailProject ? (
-          <IssueDetail
-            project={detailProject}
-            issueId={selectedId}
-            onClose={() => setSelectedId(null)}
-          />
-        ) : null
-      })()}
+      {/* Detail panel */}
+      {selectedIssue && detailProject && (
+        <IssueDetail
+          project={detailProject}
+          issueId={selectedIssue.id}
+          onClose={() => setSelectedKey(null)}
+        />
+      )}
     </div>
   )
 }

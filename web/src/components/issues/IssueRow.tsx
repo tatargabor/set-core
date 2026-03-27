@@ -17,7 +17,7 @@ function timeAgo(iso: string): string {
 interface Props {
   issue: Issue
   selected: boolean
-  onSelect: (id: string) => void
+  onSelect: () => void
   checked: boolean
   onCheck: (id: string, checked: boolean) => void
   showEnv?: boolean
@@ -29,7 +29,7 @@ export function IssueRow({ issue, selected, onSelect, checked, onCheck, showEnv 
       className={`flex items-center gap-2 px-3 py-2 cursor-pointer rounded transition-colors ${
         selected ? 'bg-neutral-800' : 'hover:bg-neutral-800/50'
       }`}
-      onClick={() => onSelect(issue.id)}
+      onClick={onSelect}
     >
       <input
         type="checkbox"
@@ -39,10 +39,10 @@ export function IssueRow({ issue, selected, onSelect, checked, onCheck, showEnv 
         className="w-3.5 h-3.5 rounded border-neutral-600"
       />
       <span className="text-xs text-neutral-500 font-mono w-16 shrink-0">{issue.id}</span>
+      {showEnv && <span className="text-xs text-cyan-600 shrink-0 w-28 truncate">{issue.environment}</span>}
       <SeverityBadge severity={issue.severity} />
       <StateBadge state={issue.state} />
       <span className="text-sm text-neutral-300 truncate flex-1">{issue.error_summary}</span>
-      {showEnv && <span className="text-xs text-neutral-600 shrink-0">{issue.environment}</span>}
       {issue.group_id && <span className="text-xs text-neutral-600 shrink-0">{issue.group_id}</span>}
       {issue.state === 'awaiting_approval' && issue.timeout_deadline && (
         <TimeoutCountdown deadline={issue.timeout_deadline} startedAt={issue.timeout_started_at} />
