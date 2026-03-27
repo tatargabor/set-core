@@ -100,6 +100,7 @@ export default function Manager() {
                 <th className="text-right px-4 py-2 font-medium">Changes</th>
                 <th className="text-right px-4 py-2 font-medium">Tokens</th>
                 <th className="text-right px-4 py-2 font-medium">Duration</th>
+                <th className="text-right px-4 py-2 font-medium">Issues</th>
                 <th className="text-right px-4 py-2 font-medium">Updated</th>
               </tr>
             </thead>
@@ -126,6 +127,14 @@ export default function Manager() {
                     </td>
                     <td className="px-4 py-2.5 text-right text-neutral-400">
                       {formatDuration(p.active_seconds)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {(p.issues_open ?? 0) > 0
+                        ? <span className="text-amber-400">{p.issues_open} open</span>
+                        : (p.issues_total ?? 0) > 0
+                          ? <span className="text-neutral-500">{p.issues_total} closed</span>
+                          : <span className="text-neutral-600">—</span>
+                      }
                     </td>
                     <td className="px-4 py-2.5 text-right text-neutral-500">
                       {timeAgo(p.last_updated)}

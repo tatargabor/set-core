@@ -62,6 +62,18 @@ def list_projects():
                     ).isoformat()
             except OSError:
                 pass
+            # Issue stats from registry
+            registry_file = path / ".set" / "issues" / "registry.json"
+            if registry_file.exists():
+                try:
+                    reg = json.loads(registry_file.read_text())
+                    issues = reg.get("issues", [])
+                    open_states = {"new", "investigating", "diagnosed", "awaiting_approval", "fixing", "verifying", "deploying"}
+                    open_count = sum(1 for i in issues if i.get("state") in open_states)
+                    entry["issues_open"] = open_count
+                    entry["issues_total"] = len(issues)
+                except (json.JSONDecodeError, OSError):
+                    pass
         result.append(entry)
     return result
 

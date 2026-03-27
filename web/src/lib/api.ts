@@ -23,6 +23,8 @@ export interface ProjectInfo {
   changes_total?: number
   total_tokens?: number
   active_seconds?: number
+  issues_open?: number
+  issues_total?: number
 }
 
 export interface ChangeInfo {
