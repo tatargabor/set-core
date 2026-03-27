@@ -109,11 +109,11 @@ def remove_project(name: str):
 
 @router.get("/api/projects/{name}/status")
 def get_project_status(name: str):
-    """Get detailed status for a single project."""
+    """Get detailed status for a single project including sentinel/orchestrator info."""
     pp = _resolve_project(name)
     sp = _state_path(pp)
     status = _quick_status(pp)
-    result: dict = {"name": name, "path": str(pp), "status": status}
+    result: dict = {"name": name, "path": str(pp), "status": status, "mode": "e2e"}
     if sp.exists():
         try:
             state_data = json.loads(sp.read_text())
@@ -121,6 +121,40 @@ def get_project_status(name: str):
             result["changes_merged"] = sum(1 for c in changes if c.get("status") == "merged")
             result["changes_total"] = len(changes)
             result["active_seconds"] = state_data.get("active_seconds", 0) or 0
+            result["orchestrator"] = {
+                "pid": state_data.get("orchestrator_pid"),
+                "alive": _is_pid_alive(state_data.get("orchestrator_pid")),
+            }
         except (json.JSONDecodeError, OSError):
             pass
+
+    # Sentinel info from lifecycle service
+    from .lifecycle import get_service
+    svc = get_service()
+    sup = svc.supervisors.get(name) if svc else None
+    if sup:
+        sup_status = sup.status()
+        result["sentinel"] = sup_status.get("sentinel", {"pid": None, "alive": False, "started_at": None, "spec": None, "crash_count": 0})
+    else:
+        result["sentinel"] = {"pid": None, "alive": False, "started_at": None, "spec": None, "crash_count": 0}
+
+    if "orchestrator" not in result:
+        result["orchestrator"] = {"pid": None, "alive": False}
+
+    # Issue stats
+    mgr = svc.issue_managers.get(name) if svc else None
+    if mgr:
+        result["issue_stats"] = mgr.registry.stats()
+
     return result
+
+
+def _is_pid_alive(pid) -> bool:
+    if not pid:
+        return False
+    try:
+        import os
+        os.kill(int(pid), 0)
+        return True
+    except (ProcessLookupError, PermissionError, TypeError, ValueError):
+        return False

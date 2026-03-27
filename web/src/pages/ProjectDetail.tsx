@@ -44,8 +44,8 @@ export default function ProjectDetail() {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <span className="text-neutral-500">Orchestrator: </span>
-            <span className={project.orchestrator.alive ? 'text-green-400' : 'text-neutral-400'}>
-              {project.orchestrator.alive ? `running (PID ${project.orchestrator.pid})` : 'idle'}
+            <span className={project.orchestrator?.alive ? 'text-green-400' : 'text-neutral-400'}>
+              {project.orchestrator?.alive ? `running (PID ${project.orchestrator?.pid})` : 'idle'}
             </span>
           </div>
           <div>
@@ -60,10 +60,10 @@ export default function ProjectDetail() {
         <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-3">Sentinel Control</h2>
         <SentinelControl
           project={project.name}
-          alive={project.sentinel.alive}
-          startedAt={project.sentinel.started_at}
-          crashCount={project.sentinel.crash_count}
-          activeSpec={project.sentinel.spec}
+          alive={project.sentinel?.alive ?? false}
+          startedAt={project.sentinel?.started_at ?? null}
+          crashCount={project.sentinel?.crash_count ?? 0}
+          activeSpec={project.sentinel?.spec ?? null}
           specPaths={specPaths}
         />
       </div>

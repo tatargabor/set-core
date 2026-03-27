@@ -4,7 +4,7 @@ import { ModeBadge } from './ModeBadge'
 import { IssueCountBadge } from '../issues/IssueCountBadge'
 
 export function ProjectCard({ project }: { project: ManagerProjectStatus }) {
-  const sentinelAlive = project.sentinel.alive
+  const sentinelAlive = project.sentinel?.alive
 
   return (
     <Link
@@ -23,8 +23,8 @@ export function ProjectCard({ project }: { project: ManagerProjectStatus }) {
         <span className="text-xs text-neutral-400">
           {sentinelAlive ? 'Sentinel running' : 'Idle'}
         </span>
-        {sentinelAlive && project.sentinel.crash_count > 0 && (
-          <span className="text-xs text-red-400/60">({project.sentinel.crash_count} crashes)</span>
+        {sentinelAlive && (project.sentinel?.crash_count ?? 0) > 0 && (
+          <span className="text-xs text-red-400/60">({project.sentinel?.crash_count} crashes)</span>
         )}
       </div>
 

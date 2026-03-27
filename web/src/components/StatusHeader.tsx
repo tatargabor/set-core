@@ -71,8 +71,8 @@ export default function StatusHeader({ state, connected, project }: Props) {
       .catch(() => {})
   }, [project])
 
-  const sentinelAlive = mgrStatus?.sentinel.alive ?? false
-  const activeSpec = mgrStatus?.sentinel.spec
+  const sentinelAlive = mgrStatus?.sentinel?.alive ?? false
+  const activeSpec = mgrStatus?.sentinel?.spec
 
   const sentinelAct = async (fn: () => Promise<unknown>) => {
     setSentinelBusy(true)
