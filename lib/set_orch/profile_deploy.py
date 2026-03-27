@@ -220,4 +220,44 @@ def deploy_templates(
                 messages.append(f"    - {mid}: {desc}")
             messages.append("  Use --modules <name,...> to deploy optional modules")
 
+    # Project-level template override: .claude/project-templates/
+    project_templates = target_dir / ".claude" / "project-templates"
+    if project_templates.is_dir():
+        pt_messages = _merge_project_templates(project_templates, target_dir, force, dry_run)
+        if pt_messages:
+            messages.append("")
+            messages.append("  Project-level template overrides:")
+            messages.extend(pt_messages)
+
+    return messages
+
+
+def _merge_project_templates(
+    templates_dir: Path,
+    target_dir: Path,
+    force: bool = False,
+    dry_run: bool = False,
+) -> List[str]:
+    """Merge project-level template overrides on top of module templates.
+
+    Files in .claude/project-templates/ are mapped through _target_path()
+    and deployed to the target directory, overwriting module template files.
+    """
+    messages: List[str] = []
+    for src in sorted(templates_dir.rglob("*")):
+        if src.is_dir():
+            continue
+        rel = str(src.relative_to(templates_dir))
+        dst = _target_path(rel, target_dir)
+
+        verb = "Would deploy" if dry_run else "Deployed"
+        if dst.exists():
+            verb = "Would overwrite" if dry_run else "Overwritten"
+
+        if not dry_run:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+
+        messages.append(f"    [project-template] {verb}: {dst.relative_to(target_dir)}")
+
     return messages

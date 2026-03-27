@@ -199,6 +199,13 @@ ATTRS
     fi
     success "set-project initialized (configs, rules, CLAUDE.md deployed)"
 
+    # Deploy scaffold-specific templates (rules, overrides)
+    if [[ -d "$SCAFFOLD_DIR/templates/rules" ]]; then
+        info "Deploying scaffold templates..."
+        cp "$SCAFFOLD_DIR/templates/rules/"*.md "$TEST_DIR/.claude/rules/" 2>/dev/null && \
+            success "Scaffold rules deployed" || true
+    fi
+
     # NOTE: Figma MCP registration removed — OAuth requires interactive auth
     # which blocks `claude -p` (pipe mode) used by the orchestrator.
     # Design data is available via static design-snapshot.md files.

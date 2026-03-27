@@ -59,6 +59,72 @@ Follow the same conventions as set-core core:
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for code style and conventions.
 
+## Project Templates
+
+Projects can provide their own template files that override or extend what the web module deploys. This is useful for project-specific conventions that don't belong in the generic web module.
+
+### Setup
+
+Create a `.claude/project-templates/` directory in your project root:
+
+```
+my-project/
+├── .claude/
+│   └── project-templates/        ← your overrides
+│       ├── rules/
+│       │   └── pci-compliance.md  ← project-specific rule
+│       └── src/lib/prisma.ts      ← custom PrismaClient with audit logging
+└── ...
+```
+
+### How it works
+
+When `set-project init` runs, templates are applied in this order:
+
+1. **Core rules** — universal rules from `templates/core/rules/`
+2. **Web module templates** — Next.js boilerplate from `modules/web/templates/nextjs/`
+3. **Project templates** — files from `.claude/project-templates/` override anything above
+
+Files use the same path mapping as module templates:
+- `rules/my-rule.md` → `.claude/rules/my-rule.md`
+- `src/lib/prisma.ts` → `src/lib/prisma.ts` (project root)
+- `framework-rules/web/custom.md` → `.claude/rules/web/set-custom.md`
+
+### Example: custom Prisma client
+
+The web module deploys a standard `src/lib/prisma.ts` with a globalThis singleton. If your project needs audit logging:
+
+```typescript
+// .claude/project-templates/src/lib/prisma.ts
+import { PrismaClient } from "@prisma/client";
+
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+
+export const prisma = globalForPrisma.prisma || new PrismaClient({
+  log: [{ emit: "event", level: "query" }],
+});
+
+// Audit logging
+prisma.$on("query", (e) => {
+  console.log(`[DB] ${e.query} — ${e.duration}ms`);
+});
+
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+```
+
+On `set-project init`, this replaces the standard version. The output shows:
+```
+  [project-template] Overwritten: src/lib/prisma.ts
+```
+
+### When to use project templates vs module templates
+
+| Use case | Where |
+|----------|-------|
+| Applies to ALL Next.js projects | Web module template |
+| Applies to YOUR project only | `.claude/project-templates/` |
+| E2E test scaffold conventions | `tests/e2e/scaffolds/<name>/templates/` |
+
 ---
 
 *See also: [Getting Started](getting-started.md) · [Architecture](architecture.md) · [CLI Reference](cli-reference.md)*

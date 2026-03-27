@@ -22,6 +22,11 @@ core:
   - next.config.js
   - components.json
   - reflection.md
+  - src/app/globals.css
+  - src/lib/utils.ts
+  - src/lib/prisma.ts
+  - .env.example
+  - tests/e2e/global-setup.ts
   - set/orchestration/config.yaml
   - framework-rules/web/api-design.md
   - framework-rules/web/auth-middleware.md

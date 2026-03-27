@@ -188,6 +188,13 @@ ATTRS
     fi
     success "set-core deployed (configs, rules, CLAUDE.md)"
 
+    # Deploy scaffold-specific templates (rules, overrides)
+    if [[ -d "$SCAFFOLD_DIR/templates/rules" ]]; then
+        info "Deploying scaffold templates..."
+        cp "$SCAFFOLD_DIR/templates/rules/"*.md "$TEST_DIR/.claude/rules/" 2>/dev/null && \
+            success "Scaffold rules deployed" || true
+    fi
+
     step "Orchestration config"
     mkdir -p set/orchestration
     cat > set/orchestration/config.yaml << 'YAML'
