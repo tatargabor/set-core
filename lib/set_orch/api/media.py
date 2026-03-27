@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
+from ..state import load_state, StateCorruptionError
 from .helpers import _resolve_project, _state_path, _list_worktrees
 
 router = APIRouter()
