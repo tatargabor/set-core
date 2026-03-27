@@ -125,6 +125,109 @@ https://<your-hostname>.tailXXXXXX.ts.net/
 sudo tailscale serve --https 443 off
 ```
 
+## Dashboard Views
+
+### Manager — Project List
+
+The landing page shows all registered projects with status, change progress, and token usage at a glance.
+
+![Manager project list](images/auto/web/manager-project-list.png)
+
+### Orchestration Overview
+
+Selecting a project opens the orchestration dashboard with status banner, action buttons, and tabbed views.
+
+![Dashboard overview](images/auto/web/dashboard-overview.png)
+
+### Changes Tab
+
+Shows all changes with status, session count, duration, token usage, and gate badges (B=build, T=test, S=smoke, R=review, V=spec verify).
+
+![Changes tab](images/auto/web/tab-changes.png)
+
+### Phases Tab
+
+Groups changes by execution phase. Completed phases show a check icon; intra-phase dependencies are shown with `└` connectors.
+
+![Phases tab](images/auto/web/tab-phases.png)
+
+### Tokens Tab
+
+Horizontal bar chart of token usage per change, broken down by input, output, and cache tokens.
+
+![Tokens tab](images/auto/web/tab-tokens.png)
+
+### Sessions Tab
+
+Lists all agent sessions with their commands, working directories, and outputs.
+
+![Sessions tab](images/auto/web/tab-sessions.png)
+
+### Log Tab
+
+Real-time orchestration log showing engine events, gate results, merge operations, and memory saves.
+
+![Log tab](images/auto/web/tab-log.png)
+
+### Learnings Tab
+
+Agent reflections, review findings, and gate performance statistics extracted during the run.
+
+![Learnings tab](images/auto/web/tab-learnings.png)
+
+### Agent Chat Tab
+
+Interactive chat interface for communicating with the orchestration agent or sentinel.
+
+![Agent chat tab](images/auto/web/tab-agent.png)
+
+### Sentinel Tab
+
+Raw sentinel log output showing supervisor events and decisions.
+
+![Sentinel tab](images/auto/web/tab-sentinel.png)
+
+### Memory Page
+
+Memory system statistics — health status, type distribution, importance histogram, and top tags.
+
+![Memory page](images/auto/web/page-memory.png)
+
+### Settings Page
+
+Project configuration, paths, runtime status, process tree, and orchestration control buttons.
+
+![Settings page](images/auto/web/page-settings.png)
+
+### Issues Page
+
+Global issue browser showing issues across all projects, grouped by environment with severity badges.
+
+![Global issues](images/auto/web/global-issues.png)
+
+### Worktrees Page
+
+Active worktrees with agent logs, iteration progress, and activity broadcasts.
+
+![Worktrees page](images/auto/web/page-worktrees.png)
+
+### Consumer App (Built by Orchestration)
+
+Screenshots of the actual application built during an orchestration run — storefront, product pages, admin panel.
+
+![Products storefront](images/auto/app/products.png)
+
+![Product detail](images/auto/app/product-detail.png)
+
+![Admin login](images/auto/app/admin-login.png)
+
+> **Regenerating screenshots:** Run `make screenshots` from the repo root, or individual commands:
+> - `make screenshots-web` — dashboard (requires set-web on :7400)
+> - `make screenshots-cli` — CLI output (requires set-core tools in PATH)
+> - `make screenshots-app` — consumer app (auto-detects latest done project)
+>
+> See `docs/screenshot-pipeline.md` for full setup and dependency details.
+
 ## Configuration
 
 ### Environment Variables

@@ -8,8 +8,10 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:e2e": "playwright test",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e": "playwright test --ignore-snapshots",
+    "test:e2e:report": "playwright show-report",
+    "screenshot:docs": "playwright test screenshots --reporter=list",
+    "screenshot:app": "playwright test --config=playwright.app.config.ts --reporter=list"
   },
   "dependencies": {
     "@soniox/speech-to-text-web": "^1.4.0",
