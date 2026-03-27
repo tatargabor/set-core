@@ -384,8 +384,8 @@ Each event has: `ts` (ISO timestamp), `type`, optional `change` (change name), a
 | `WATCHDOG_FAILED` | `_watchdog_escalate` | `level` | Watchdog failure (level 4+) |
 | `WATCHDOG_TOKEN_BUDGET` | `_watchdog_check_token_budget` | `tokens_used`, `limit`, `pct`, `action` | Token budget enforcement |
 | `WATCHDOG_SALVAGE` | `_watchdog_salvage_partial_work` | `files`, `patch` | Partial work salvaged before failure |
-| `SENTINEL_RESTART` | `set-sentinel` | `exit_code`, `runtime`, `reason` | Sentinel restarted orchestrator |
-| `SENTINEL_FAILED` | `set-sentinel` | `rapid_crashes` | Sentinel gave up |
+| `SENTINEL_RESTART` | `/set:sentinel` skill | `exit_code`, `runtime`, `reason` | Sentinel restarted orchestrator |
+| `SENTINEL_FAILED` | `/set:sentinel` skill | `rapid_crashes` | Sentinel gave up |
 | `STATE_RECONSTRUCTED` | `reconstruct_state_from_events` | `event_count`, `status` | State rebuilt from events |
 
 ### Querying Events

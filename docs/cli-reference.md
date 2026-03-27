@@ -54,11 +54,17 @@ Options: `--spec <path>`, `--brief <path>`, `--phase <hint>`, `--max-parallel <N
 
 ## Sentinel
 
+The sentinel is launched via the web UI "Start Sentinel" button or the `/set:sentinel` Claude skill.
+For non-interactive orchestration, use `set-orchestrate start` directly.
+
+Sentinel helper tools (used by the `/set:sentinel` skill):
+
 | Command | Description |
 |---------|-------------|
-| `set-sentinel` | Bash supervisor — monitors orchestrator, restarts on crash |
-
-Agent mode: `/set:sentinel` (recommended) — AI agent with crash diagnosis, checkpoint auto-approve, and completion reports.
+| `set-sentinel-finding` | Log bugs, patterns, and assessments during sentinel runs |
+| `set-sentinel-inbox` | Check for messages from the user or other agents |
+| `set-sentinel-log` | Structured sentinel event logging |
+| `set-sentinel-status` | Register/heartbeat sentinel status for web UI |
 
 ## Team & Sync
 

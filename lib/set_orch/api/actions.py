@@ -78,21 +78,11 @@ def stop_orchestration(project: str):
 
 @router.post("/api/{project}/start")
 def start_orchestration(project: str):
-    """Start or resume orchestration by spawning a detached set-sentinel process."""
+    """Start or resume orchestration by spawning a detached set-orchestrate process."""
     import shutil
     import subprocess as _sp
 
     project_path = _resolve_project(project)
-
-    # Check if sentinel is already running
-    pid_file = _sentinel_dir(project_path) / "sentinel.pid"
-    if pid_file.exists():
-        try:
-            pid = int(pid_file.read_text().strip())
-            os.kill(pid, 0)
-            raise HTTPException(409, "Sentinel already running")
-        except (ValueError, ProcessLookupError, PermissionError):
-            pass  # Stale PID, safe to start
 
     # Check for corrupt state
     sp = _state_path(project_path)
@@ -101,6 +91,18 @@ def start_orchestration(project: str):
             load_state(str(sp))
         except StateCorruptionError as e:
             raise HTTPException(500, f"Corrupt state file: {e.detail}")
+
+    # Check if orchestrator is already running
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            orch_pid = state.extras.get("orchestrator_pid") or state.extras.get("pid")
+            if orch_pid and check_pid(int(orch_pid)):
+                raise HTTPException(409, "Orchestrator already running")
+        except (HTTPException,):
+            raise
+        except Exception:
+            pass
 
     # Resolve spec path: state extras → config.yaml → fallback patterns
     spec_path = None
@@ -130,14 +132,14 @@ def start_orchestration(project: str):
     if not spec_path:
         raise HTTPException(400, "Cannot determine spec path — set 'spec' in set/orchestration/config.yaml")
 
-    # Resolve set-sentinel binary
-    sentinel_bin = shutil.which("set-sentinel")
-    if not sentinel_bin:
-        raise HTTPException(500, "set-sentinel not found in PATH")
+    # Resolve set-orchestrate binary
+    orch_bin = shutil.which("set-orchestrate")
+    if not orch_bin:
+        raise HTTPException(500, "set-orchestrate not found in PATH")
 
-    # Spawn detached sentinel
+    # Spawn detached orchestrator
     proc = _sp.Popen(
-        [sentinel_bin, "--spec", spec_path],
+        [orch_bin, "start", "--spec", spec_path],
         cwd=str(project_path),
         start_new_session=True,
         stdout=open(os.devnull, "w"),
@@ -149,31 +151,27 @@ def start_orchestration(project: str):
 
 @router.post("/api/{project}/shutdown")
 def shutdown_orchestration(project: str):
-    """Graceful shutdown: signals sentinel to stop agents cleanly and preserve state."""
+    """Graceful shutdown: signals orchestrator to stop agents cleanly and preserve state."""
     project_path = _resolve_project(project)
-    pid_file = _sentinel_dir(Path(project_path)) / "sentinel.pid"
-    if not pid_file.exists():
-        raise HTTPException(409, "No sentinel running")
-
-    sentinel_pid = pid_file.read_text().strip()
-    if not sentinel_pid:
-        raise HTTPException(409, "No sentinel running")
+    sp = _state_path(Path(project_path))
+    if not sp.exists():
+        raise HTTPException(404, "No orchestration state found")
 
     try:
-        pid = int(sentinel_pid)
-        import os
-        os.kill(pid, 0)  # check if alive
-    except (ValueError, ProcessLookupError, PermissionError):
-        raise HTTPException(409, "No sentinel running (stale PID file)")
+        state = load_state(str(sp))
+    except StateCorruptionError as e:
+        raise HTTPException(500, f"Corrupt state: {e.detail}")
 
-    import signal
-    try:
-        import os
-        os.kill(pid, signal.SIGUSR1)
-    except ProcessLookupError:
-        raise HTTPException(409, "Sentinel died before shutdown signal")
+    orch_pid = state.extras.get("orchestrator_pid") or state.extras.get("pid")
+    if not orch_pid:
+        raise HTTPException(409, "No orchestrator PID found in state")
 
-    return {"ok": True, "message": "Shutdown initiated", "sentinel_pid": pid}
+    pid = int(orch_pid)
+    if not check_pid(pid):
+        raise HTTPException(409, "Orchestrator not running (stale PID)")
+
+    result = safe_kill(pid, "set-orchestrate")
+    return {"ok": True, "message": "Shutdown initiated", "orchestrator_pid": pid, "result": result.outcome}
 
 
 @router.post("/api/{project}/changes/{name}/pause")

@@ -65,7 +65,8 @@ Read run logs → fix set-core bugs → `set-project init` to redeploy
 | `set-merge <id>` | Merge with integration gates |
 | `set-close <id>` | Remove worktree |
 | `set-orchestrate` | Core orchestration engine |
-| `set-sentinel` | Supervised orchestration |
+| `set-sentinel-finding` | Log sentinel findings |
+| `set-sentinel-status` | Sentinel status registration |
 | `set-project init` | Deploy set-core to a project |
 | `set-memory` | Memory CLI (remember/recall/forget) |
 | `set-status` | Show orchestration status |

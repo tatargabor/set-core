@@ -4,67 +4,13 @@
 
 The orchestrator itself is a process — and processes sometimes die. OOM kill, API timeout, unexpected exception, broken pipe. If the orchestrator runs overnight without supervision and stops, the developer finds a half-finished state in the morning.
 
-`set-sentinel` answers this problem: a supervisor that watches the orchestrator, and if it stops, tries to restart it. It operates in two modes: **bash mode** (cost-free, deterministic) and **agent mode** (LLM-based, intelligent decision-making).
+The sentinel answers this problem: a Claude agent that watches the orchestrator, and if it stops, analyzes the situation and decides how to proceed. It is launched from the **web UI** ("Start Sentinel" button) or via the `/set:sentinel` skill.
 
-## Bash Sentinel
+For non-interactive use (CI, scripts), `set-orchestrate start` runs the orchestrator directly without sentinel supervision.
 
-The bash sentinel is a standalone script that wraps the `set-orchestrate start` command:
+## How It Works
 
-```bash
-set-sentinel --spec docs/v3.md --time-limit 5h
-# ↑ all options are passed through to the orchestrator
-```
-
-### Crash Recovery with Exponential Backoff
-
-When the orchestrator stops, the sentinel doesn't restart immediately — it waits with exponential backoff:
-
-```
-Crash 1: wait 30s  (+ 0-25% jitter)
-Crash 2: wait 60s
-Crash 3: wait 120s
-Crash 4: wait 240s (maximum)
-Crash 5: give up → SENTINEL_FAILED event
-```
-
-If the orchestrator ran for at least 5 minutes (sustained run), the counter and backoff reset. This distinguishes startup errors (configuration problem that always kills immediately) from runtime crashes (API timeout that happens once and then runs fine).
-
-### Liveness Detection
-
-The sentinel doesn't parse logs — it watches the events file modification time (mtime):
-
-```
-Orchestrator → WATCHDOG_HEARTBEAT (every 15s) → events.jsonl mtime updates
-Sentinel → polls mtime (every 10s)
-  → If >180s since last change → orchestrator is stuck
-  → SIGTERM → 30s wait → SIGKILL if needed → restart
-```
-
-The `WATCHDOG_HEARTBEAT` event is emitted by the monitor loop every cycle. If it's missing for more than 3 minutes, the sentinel intervenes.
-
-### State Recovery
-
-Before every restart, the sentinel attempts to repair the state:
-
-1. **Event-based reconstruction**: If `orchestration-state.json` is older than the events log, the sentinel reconstructs state from event replay — which change was where, how many tokens were used
-2. **Dead PID detection**: Checks PIDs of `running` changes. If the process is no longer alive, the change moves to `stalled` status (the watchdog will handle it)
-3. **State normalization**: If orchestrator status is `running` but no process exists, sets it to `stopped`
-
-### Exit Classification
-
-The sentinel distinguishes between **terminal** and **transient** exits:
-
-| State | Category | Sentinel Action |
-|-------|----------|----------------|
-| `done` | Terminal | Stops, no restart |
-| `stopped` | Terminal | Stops |
-| `time_limit` | Terminal | Stops |
-| `plan_review` | Terminal | Stops (human decision needed) |
-| Any crash | Transient | Restart with backoff |
-
-## Agent Sentinel
-
-The `/set:sentinel` skill runs as a Claude Code session and makes intelligent decisions:
+The sentinel runs as a Claude Code session (via `supervisor.py`) that polls orchestration state every 30 seconds and makes intelligent decisions:
 
 ### Tiered Intervention
 
@@ -91,16 +37,27 @@ The sentinel operates with special rules:
 - **Never ask before restarting** — after a crash, cleanup and restart without confirmation
 - **Polling must never stop on its own** — after a fix, continue; after a restart, continue; after context compact, continue
 
+### Helper Tools
+
+The sentinel uses CLI helpers to interact with the system:
+
+| Tool | Purpose |
+|------|---------|
+| `set-sentinel-finding` | Log bugs, patterns, and assessments during the run |
+| `set-sentinel-inbox` | Check for messages from the user or other agents |
+| `set-sentinel-log` | Structured event logging |
+| `set-sentinel-status` | Register/heartbeat sentinel status for web UI |
+
 \begin{keypoint}
-The sentinel provides dual protection: the bash sentinel watches the process cost-free and restarts automatically, while the agent sentinel analyzes the situation with LLM and makes intelligent decisions. For production runs, the bash sentinel is the baseline; the agent sentinel is optional, useful for E2E testing and development.
+The sentinel provides intelligent supervision: it analyzes orchestrator state with LLM and makes decisions about crashes, hangs, and checkpoints. For simple non-interactive runs, `set-orchestrate start` is sufficient — the orchestrator has built-in crash recovery for individual changes.
 \end{keypoint}
 
 ## Sentinel Events
 
-The sentinel writes directly to the events JSONL (no dependency on the `events.sh` module):
+The sentinel writes to the events JSONL:
 
 | Event | Meaning |
 |-------|---------|
-| `SENTINEL_RESTART` | Orchestrator stopped, restarting (exit code, backoff, crash count) |
-| `SENTINEL_FAILED` | 5 rapid crashes, sentinel gave up |
+| `SENTINEL_RESTART` | Orchestrator stopped, restarting (exit code, reason) |
+| `SENTINEL_FAILED` | Multiple rapid crashes, sentinel gave up |
 | `STATE_RECONSTRUCTED` | State reconstructed from events |

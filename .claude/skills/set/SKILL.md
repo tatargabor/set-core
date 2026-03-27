@@ -234,9 +234,7 @@ Use `/set:sentinel` to start and supervise a `set-orchestrate` run with intellig
 
 For environments without Claude agent access:
 
-```bash
-set-sentinel                                      # basic crash recovery
-set-sentinel --spec docs/v5.md --max-parallel 3   # with options
-```
+The sentinel is launched via the web UI "Start Sentinel" button or the `/set:sentinel` skill.
+For non-interactive orchestration, use `set-orchestrate start --spec docs/v5.md` directly.
 
 See `docs/sentinel.md` for full documentation.

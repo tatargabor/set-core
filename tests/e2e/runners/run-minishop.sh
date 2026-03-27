@@ -132,8 +132,8 @@ check_existing() {
         info "Git tags:"
         (cd "$TEST_DIR" && git tag 2>/dev/null | sort -V) || true
         echo ""
-        info "To continue with sentinel:"
-        echo "  cd $TEST_DIR && set-sentinel --spec docs/v1-minishop.md"
+        info "To continue with orchestrator:"
+        echo "  cd $TEST_DIR && set-orchestrate start --spec docs/v1-minishop.md"
         echo ""
         info "To reset from a checkpoint:"
         echo "  cd $TEST_DIR"
@@ -141,7 +141,7 @@ check_existing() {
         echo "  git checkout -b resume-<tag> <tag>"
         echo "  set-project init --name $PROJECT_NAME --project-type web"
         echo "  rm -f orchestration-state.json orchestration-plan.json"
-        echo "  set-sentinel --spec docs/v1-minishop.md"
+        echo "  set-orchestrate start --spec docs/v1-minishop.md"
         exit 0
     fi
 }
@@ -247,9 +247,9 @@ show_completion() {
     echo ""
     info "To start the E2E test:"
     echo "  cd $TEST_DIR"
-    echo "  set-sentinel --spec docs/v1-minishop.md"
+    echo "  set-orchestrate start --spec docs/v1-minishop.md"
     echo ""
-    info "After sentinel completes, generate the E2E report:"
+    info "After orchestration completes, generate the E2E report:"
     echo "  cd $TEST_DIR"
     echo "  set-e2e-report --project-dir $TEST_DIR"
     echo ""

@@ -2,7 +2,7 @@
 # CraftBrew E2E Test Runner
 # Clones the CraftBrew spec repo, initializes it as a set-project, and prepares
 # it for orchestration. The spec is a multi-file business specification (docs/)
-# with 17+ files. The sentinel auto-triggers digest before planning, then agents
+# with 17+ files. The orchestrator auto-triggers digest before planning, then agents
 # build from the structured digest.
 #
 # Usage:
@@ -136,8 +136,8 @@ check_existing() {
         info "Git tags:"
         (cd "$TEST_DIR" && git tag 2>/dev/null | sort -V) || true
         echo ""
-        info "To continue with sentinel:"
-        echo "  cd $TEST_DIR && set-sentinel --spec docs/"
+        info "To continue with orchestrator:"
+        echo "  cd $TEST_DIR && set-orchestrate start --spec docs/"
         echo ""
         info "To reset from a checkpoint:"
         echo "  cd $TEST_DIR"
@@ -146,7 +146,7 @@ check_existing() {
         echo "  set-project init --name $PROJECT_NAME --project-type web"
         echo "  rm -f orchestration-state.json orchestration-plan.json"
         echo "  rm -rf set/orchestration/digest/"
-        echo "  set-sentinel --spec docs/"
+        echo "  set-orchestrate start --spec docs/"
         exit 0
     fi
 }
@@ -290,9 +290,9 @@ show_completion() {
     echo ""
     info "To start the E2E test (digest pipeline):"
     echo "  cd $TEST_DIR"
-    echo "  set-sentinel --spec docs/"
+    echo "  set-orchestrate start --spec docs/"
     echo ""
-    info "The sentinel will:"
+    info "The orchestrator will:"
     echo "  1. Detect directory spec → auto-trigger digest"
     echo "  2. Generate set/orchestration/digest/ (requirements, domains, conventions)"
     echo "  3. Plan changes from structured digest"
@@ -314,7 +314,7 @@ show_completion() {
     info "To check requirement coverage during/after run:"
     echo "  cd $TEST_DIR && set-orchestrate coverage"
     echo ""
-    info "After sentinel completes, generate the E2E report:"
+    info "After orchestration completes, generate the E2E report:"
     echo "  cd $TEST_DIR"
     echo "  set-e2e-report --project-dir $TEST_DIR"
     echo ""

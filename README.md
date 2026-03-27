@@ -360,7 +360,7 @@ tests/e2e/scaffolds/minishop/
 
 # In the test project, start orchestration
 cd /tmp/minishop-test
-set-sentinel --spec docs/v1-minishop.md
+set-orchestrate start --spec docs/v1-minishop.md
 ```
 
 See [E2E Test Guide](tests/e2e/E2E-GUIDE.md) for sentinel monitoring, partial reset, deploy workflow, and run history.

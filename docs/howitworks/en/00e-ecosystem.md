@@ -37,7 +37,7 @@ The orchestration layer coordinates the entire pipeline — from specification p
 | Tool | Function |
 |------|----------|
 | `set-orchestrate` | Full orchestration pipeline (the subject of this document) |
-| `set-sentinel` | Orchestrator supervisor: crash recovery, checkpoint handling |
+| `/set:sentinel` | Orchestrator supervisor (Claude skill): crash recovery, checkpoint handling |
 | `set-manual` | Manual orchestration intervention (debug, state editing) |
 | `set-e2e-report` | E2E test result aggregation and reporting |
 
@@ -137,7 +137,7 @@ These plugins would build on `CoreProfile` and add project-specific configuratio
 │  lifecycle   │ & supervision│                           │
 │              │              │                           │
 │  set-new      │ set-orchestr. │  set-memory               │
-│  set-list     │ set-sentinel  │  set-hook-memory-*        │
+│  set-list     │ /set:sentinel │  set-hook-memory-*        │
 │  set-status   │ set-manual    │                           │
 │  set-merge    │ set-e2e-rep.  │                           │
 │  set-close    │              │                           │

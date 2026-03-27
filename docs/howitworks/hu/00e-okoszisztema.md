@@ -37,7 +37,7 @@ Az orchestrációs réteg felelős a teljes pipeline koordinálásáért — a s
 | Eszköz | Funkció |
 |--------|---------|
 | `set-orchestrate` | Teljes orchestrációs pipeline (ez a dokumentum tárgya) |
-| `set-sentinel` | Orchestrátor felügyelő: crash recovery, checkpoint kezelés |
+| `/set:sentinel` | Orchestrátor felügyelő (Claude skill): crash recovery, checkpoint kezelés |
 | `set-manual` | Kézi orchestrációs beavatkozás (debug, state edit) |
 | `set-e2e-report` | E2E teszt eredmények összesítése és riportálás |
 
@@ -137,7 +137,7 @@ Ezek a plugin-ek a `CoreProfile`-ra épülnének, és a projekt-specifikus konfi
 │  lifecycle   │  & felügyelet │                          │
 │              │              │                           │
 │  set-new      │  set-orchestr.│  set-memory               │
-│  set-list     │  set-sentinel │  set-hook-memory-*        │
+│  set-list     │ /set:sentinel │  set-hook-memory-*        │
 │  set-status   │  set-manual   │                          │
 │  set-merge    │  set-e2e-rep. │                          │
 │  set-close    │              │                          │

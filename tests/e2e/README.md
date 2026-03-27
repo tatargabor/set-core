@@ -14,7 +14,7 @@ End-to-end tests for set-core orchestration. Each scaffold is a spec — agents 
 
 ```bash
 command -v set-project    # set-core project manager
-command -v set-sentinel   # set-core orchestration sentinel
+command -v set-orchestrate  # set-core orchestration engine
 set-project list-types    # should show "web (built-in)"
 ```
 
@@ -108,7 +108,7 @@ Run logs live in `runs/<project>/run-N.md` and document bugs found, metrics, and
 
 ```bash
 # Kill running agents and sentinel
-pkill -f "set-sentinel.*<name>" 2>/dev/null || true
+pkill -f "set-orchestrate.*<name>" 2>/dev/null || true
 pkill -f "set-loop.*<name>" 2>/dev/null || true
 
 # Remove worktrees

@@ -1865,21 +1865,11 @@ def stop_orchestration(project: str):
 
 @router.post("/api/{project}/start")
 def start_orchestration(project: str):
-    """Start or resume orchestration by spawning a detached set-sentinel process."""
+    """Start or resume orchestration by spawning a detached set-orchestrate process."""
     import shutil
     import subprocess as _sp
 
     project_path = _resolve_project(project)
-
-    # Check if sentinel is already running
-    pid_file = _sentinel_dir(project_path) / "sentinel.pid"
-    if pid_file.exists():
-        try:
-            pid = int(pid_file.read_text().strip())
-            os.kill(pid, 0)
-            raise HTTPException(409, "Sentinel already running")
-        except (ValueError, ProcessLookupError, PermissionError):
-            pass  # Stale PID, safe to start
 
     # Check for corrupt state
     sp = _state_path(project_path)
@@ -1888,6 +1878,22 @@ def start_orchestration(project: str):
             load_state(str(sp))
         except StateCorruptionError as e:
             raise HTTPException(500, f"Corrupt state file: {e.detail}")
+
+    # Check if orchestrator is already running
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            orch_pid = state.extras.get("orchestrator_pid") or state.extras.get("pid")
+            if orch_pid:
+                try:
+                    os.kill(int(orch_pid), 0)
+                    raise HTTPException(409, "Orchestrator already running")
+                except (ProcessLookupError, PermissionError):
+                    pass
+        except (HTTPException,):
+            raise
+        except Exception:
+            pass
 
     # Resolve spec path: state extras → config.yaml → fallback patterns
     spec_path = None
@@ -1917,14 +1923,14 @@ def start_orchestration(project: str):
     if not spec_path:
         raise HTTPException(400, "Cannot determine spec path — set 'spec' in set/orchestration/config.yaml")
 
-    # Resolve set-sentinel binary
-    sentinel_bin = shutil.which("set-sentinel")
-    if not sentinel_bin:
-        raise HTTPException(500, "set-sentinel not found in PATH")
+    # Resolve set-orchestrate binary
+    orch_bin = shutil.which("set-orchestrate")
+    if not orch_bin:
+        raise HTTPException(500, "set-orchestrate not found in PATH")
 
-    # Spawn detached sentinel
+    # Spawn detached orchestrator
     proc = _sp.Popen(
-        [sentinel_bin, "--spec", spec_path],
+        [orch_bin, "start", "--spec", spec_path],
         cwd=str(project_path),
         start_new_session=True,
         stdout=open(os.devnull, "w"),

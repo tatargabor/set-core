@@ -81,7 +81,7 @@ migrate_project() {
         if grep -q 'wt-' "$orch_yaml"; then
             sed -i \
                 -e 's/wt-orchestrate/set-orchestrate/g' \
-                -e 's/wt-sentinel/set-sentinel/g' \
+                -e 's/wt-sentinel/set-orchestrate/g' \
                 -e 's/wt-orch-core/set-orch-core/g' \
                 -e 's/wt-memory/set-memory/g' \
                 -e 's/wt-project/set-project/g' \
