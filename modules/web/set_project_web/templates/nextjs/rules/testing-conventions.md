@@ -96,7 +96,7 @@ Test files that import Prisma client **must** declare the `node` environment —
 /**
  * @jest-environment node
  */
-import { prisma } from '@/lib/prisma'
+import { prisma } from "@/lib/prisma"
 // ...
 ```
 

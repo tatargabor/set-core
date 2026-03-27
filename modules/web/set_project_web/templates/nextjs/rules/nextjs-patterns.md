@@ -89,3 +89,35 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
 ```
 
 **The rule:** Data fetching belongs in server components whenever possible. If a server action must be called from `useEffect`: (1) wrap in try/catch with error state, (2) show loading indicator, (3) ensure the server action internally scopes by userId — the ID comes from URL params the user controls.
+
+## 3. Route Group Structure
+
+Separate public and admin areas using Next.js route groups for layout isolation:
+
+```
+src/app/
+├── (shop)/              ← public storefront layout
+│   ├── layout.tsx       ← header, nav, footer for shoppers
+│   ├── page.tsx         ← homepage
+│   ├── products/
+│   ├── cart/
+│   └── orders/
+├── admin/
+│   ├── login/page.tsx   ← outside dashboard layout (no sidebar)
+│   ├── register/page.tsx
+│   └── (dashboard)/     ← admin layout with sidebar
+│       ├── layout.tsx
+│       ├── page.tsx     ← admin homepage
+│       └── products/
+├── api/                 ← API routes (no route group needed)
+├── layout.tsx           ← root layout (html, body, providers)
+└── globals.css
+```
+
+**Rules:**
+- Public pages go under `(shop)/` — never directly under `src/app/`
+  (except `layout.tsx`, `globals.css`, and `api/`)
+- The homepage is `src/app/(shop)/page.tsx` — `src/app/page.tsx` should NOT exist
+- Admin auth pages (login, register) sit under `admin/` directly — outside the dashboard layout so they render full-screen without sidebar
+- Admin feature pages go under `admin/(dashboard)/` — inside the sidebar layout
+- This separation prevents layout bugs where admin sub-pages lose the sidebar or storefront pages render without the shop nav

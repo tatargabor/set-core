@@ -1,7 +1,7 @@
 ---
 paths:
   - "prisma/**"
-  - "src/lib/prisma*"
+  - "src/lib/prisma.ts"
 ---
 # Data Model Conventions
 

@@ -2,7 +2,6 @@
 paths:
   - "src/app/**"
   - "src/lib/**"
-  - "src/actions/**"
 ---
 # Functional Conventions
 
@@ -10,13 +9,23 @@ paths:
 - Return `{ success, error? }` — never throw from actions
 - Call `revalidatePath()` after mutations
 - Protected actions: check auth at the top before any logic
-- Place in `src/actions/` or co-locate in feature directories
+- Co-locate actions with their route segment as `actions.ts` (e.g., `src/app/admin/(dashboard)/products/actions.ts`)
+- NEVER create a top-level `src/actions/` directory — actions belong next to the routes that use them
+- Shared actions used by 3+ route segments go in `src/lib/actions/`
+- Naming: verb-noun functions (`createProduct`, `deleteOrder`)
 
 ## Database Patterns (Prisma)
-- Use singleton PrismaClient — import from `src/lib/prisma.ts`
+- Use singleton PrismaClient — export from `src/lib/prisma.ts`
+- NEVER name it `db.ts`, `database.ts`, or `client.ts`
+- Import as: `import { prisma } from "@/lib/prisma"`
 - globalThis pattern for dev hot reload (prevent connection exhaustion)
 - Use transactions (`prisma.$transaction`) for multi-table mutations
 - Never use `deleteMany` without a WHERE clause
+
+## Utility Files
+- `src/lib/format.ts` — formatting helpers (price, date, number). Not `format-price.ts`, not `formatters.ts`
+- `src/lib/queries/<entity>.ts` — reusable data access queries (when a query is used by 3+ components)
+- `src/lib/validations.ts` — shared Zod schemas (single file until it exceeds 400 lines, not a `validations/` directory)
 
 ## Form Patterns
 - **Pattern A (Dialog)**: Form in dialog → server action → close dialog → revalidate

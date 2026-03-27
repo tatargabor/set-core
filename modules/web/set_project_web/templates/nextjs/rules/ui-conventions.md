@@ -8,8 +8,17 @@ paths:
 ## Component Stack
 - Use shadcn/ui components as the base layer
 - Import from `@/components/ui/` — never use raw Radix primitives directly
+- Install shadcn components ON DEMAND — only add a component when first needed. Do NOT pre-install unused primitives
+- Base set (always available after foundation change): Button, AlertDialog
 - Icons: use `lucide-react` exclusively
 - When design source files (`docs/figma-raw/*/sources/`) specify particular icons (e.g., `ShoppingBag` for cart, `Package` for products), use those exact icons — design source files override generic icon choices
+
+## Feature Component Location
+- Co-locate feature-specific components with their route segment (e.g., `src/app/admin/(dashboard)/products/ProductsTable.tsx`)
+- NEVER create `src/components/admin/`, `src/components/shop/`, or other domain directories
+- `src/components/` is ONLY for:
+  - `ui/` — shadcn primitives
+  - Truly shared components used across both storefront and admin (e.g., `ImageWithFallback.tsx`)
 
 ## Layout Patterns
 - Page layout: consistent header/content structure
