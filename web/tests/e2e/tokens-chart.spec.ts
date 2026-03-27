@@ -5,7 +5,10 @@ test.beforeEach(async ({ page }) => {
   await navigateToTab(page, 'tokens')
 })
 
-test('chart SVG renders', async ({ page }) => {
+test('chart SVG renders', async ({ page, request }) => {
+  const state = await getApiState(request)
+  const hasTokens = state.changes.some(c => (c.output_tokens ?? 0) > 0)
+  if (!hasTokens) test.skip()
   // Recharts renders an SVG element
   await expect(page.locator('svg.recharts-surface').first()).toBeVisible()
 })

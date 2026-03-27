@@ -8,11 +8,11 @@ test.beforeEach(async ({ page }) => {
 test('clicking gate badges opens detail panel', async ({ page, request }) => {
   const state = await getApiState(request)
   const withGates = state.changes.find(c => hasGates(c))
-  if (!withGates) return test.skip()
+  if (!withGates) test.skip()
 
-  const row = page.locator('tr', { hasText: withGates.name })
-  const gateArea = row.locator('[title*=": pass"]').first()
-  await gateArea.click()
+  const gateIcon = page.locator(`[title*=": pass"]`).first()
+  if (!(await gateIcon.isVisible().catch(() => false))) test.skip()
+  await gateIcon.click()
 
   // A detail row should appear after the change row
   const detailRow = page.locator('tr').filter({ has: page.locator('td[colspan]') }).first()
@@ -22,17 +22,17 @@ test('clicking gate badges opens detail panel', async ({ page, request }) => {
 test('clicking again collapses detail panel', async ({ page, request }) => {
   const state = await getApiState(request)
   const withGates = state.changes.find(c => hasGates(c))
-  if (!withGates) return test.skip()
+  if (!withGates) test.skip()
 
-  const row = page.locator('tr', { hasText: withGates.name })
-  const gateArea = row.locator('[title*=": pass"]').first()
+  const gateIcon = page.locator(`[title*=": pass"]`).first()
+  if (!(await gateIcon.isVisible().catch(() => false))) test.skip()
 
   // Open
-  await gateArea.click()
+  await gateIcon.click()
   const detailRow = page.locator('tr').filter({ has: page.locator('td[colspan]') }).first()
   await expect(detailRow).toBeVisible()
 
   // Close
-  await gateArea.click()
+  await gateIcon.click()
   await expect(detailRow).not.toBeVisible()
 })

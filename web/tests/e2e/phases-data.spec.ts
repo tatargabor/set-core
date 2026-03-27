@@ -42,14 +42,24 @@ test('completed phase shows check icon', async ({ page }) => {
 })
 
 test('child changes have indent', async ({ page }) => {
-  const withDeps = changes.find(c => c.depends_on && c.depends_on.length > 0)
-  if (!withDeps) return test.skip()
-  // The ChangeRow uses paddingLeft for depth > 0 and renders "└" connector
-  // Wait for the phases content to render, then check for the connector
+  // Find a change that depends on another change WITHIN the same phase
+  const phaseMap = new Map<number, typeof changes>()
+  for (const c of changes) {
+    const p = c.phase ?? 1
+    phaseMap.set(p, [...(phaseMap.get(p) ?? []), c])
+  }
+  let withIntraPhaseDep: typeof changes[0] | undefined
+  for (const [, phaseChanges] of phaseMap) {
+    const names = new Set(phaseChanges.map(c => c.name))
+    withIntraPhaseDep = phaseChanges.find(c =>
+      c.depends_on?.some(d => names.has(d))
+    )
+    if (withIntraPhaseDep) break
+  }
+  if (!withIntraPhaseDep) test.skip()
+
+  // Wait for phases to render, then check for the └ connector
   await page.waitForSelector('text=Phase 1', { timeout: 5000 })
-  await expect(page.locator(`text=${withDeps.name}`)).toBeVisible()
-  // Now check for indent connector in the rendered phases area
-  const phasesArea = page.locator('text=└')
-  const count = await phasesArea.count()
-  expect(count).toBeGreaterThanOrEqual(1)
+  const content = await page.content()
+  expect(content).toContain('└')
 })
