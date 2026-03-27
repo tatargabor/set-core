@@ -83,6 +83,36 @@ set-project init --name minishop-runN --project-type web --template nextjs
 ```
 Without `--project-type web`, no `project-type.yaml` is created → NullProfile loads → integration gates silently skip (no build/test/e2e detection).
 
+## Web Dashboard E2E Tests
+
+The web dashboard (`web/`) has Playwright E2E tests that verify the UI renders API data correctly. Tests run against a **live server** with a **real project** — no mocks.
+
+### Running
+
+```bash
+cd web/
+
+# Prerequisites: set-orch-core running, project with completed orchestration
+E2E_PROJECT=minishop-run10 pnpm test:e2e
+
+# View HTML report (screenshots on failure, step-by-step trace)
+pnpm test:e2e:report
+
+# Single test file
+E2E_PROJECT=minishop-run10 npx playwright test changes-data
+
+# Debug with visible browser
+E2E_PROJECT=minishop-run10 npx playwright test --headed
+```
+
+### What they test
+
+Gate icons, token values, status colors, session counts, duration calculation, phase grouping, chart rendering, log display, tab navigation, action buttons — every tab of the dashboard. Tests fetch API data first, then assert the UI matches. See `web/tests/e2e/README.md` for details.
+
+### After refactoring the web UI
+
+Always run the E2E suite to verify nothing broke. The HTML report (`pnpm test:e2e:report`) shows exactly which assertions failed with screenshots.
+
 ## Compact Instructions
 
 When compacting context, always preserve:
