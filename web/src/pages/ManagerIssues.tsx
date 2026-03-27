@@ -51,14 +51,17 @@ export default function ManagerIssues({ project }: Props) {
         )}
       </div>
 
-      {/* Detail slide-out */}
-      {selectedId && project && (
-        <IssueDetail
-          project={project}
-          issueId={selectedId}
-          onClose={() => setSelectedId(null)}
-        />
-      )}
+      {/* Detail panel — derive project from issue.environment when in All Projects mode */}
+      {selectedId && (() => {
+        const detailProject = project || issues.find(i => i.id === selectedId)?.environment
+        return detailProject ? (
+          <IssueDetail
+            project={detailProject}
+            issueId={selectedId}
+            onClose={() => setSelectedId(null)}
+          />
+        ) : null
+      })()}
     </div>
   )
 }
