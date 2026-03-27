@@ -128,6 +128,26 @@ setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
 setupFilesAfterSetup: ['<rootDir>/jest.setup.ts'],
 ```
 
+## Vitest/Playwright Coexistence
+
+Vitest's default include pattern matches `.spec.ts` files. When Playwright tests exist in `tests/e2e/`, Vitest picks them up, tries to import `@playwright/test` in node — and hangs or crashes.
+
+**Fix:** Add to `vitest.config.ts`:
+```typescript
+export default defineConfig({
+  test: {
+    exclude: ["**/node_modules/**", "**/tests/e2e/**"],
+  },
+})
+```
+
+Also: the `test` script in `package.json` MUST use `vitest run` (single-run), NOT `vitest` (watch mode). Watch mode hangs indefinitely in CI/gate pipelines:
+```json
+"test": "vitest run"
+```
+
+This MUST be set up in the infrastructure/foundation change alongside `playwright.config.ts`.
+
 ## Jest/Playwright Coexistence
 
 Jest's default `testRegex` matches `.spec.ts` files. When Playwright tests exist in `tests/e2e/`, Jest picks them up and crashes on Playwright imports in jsdom:
