@@ -8,11 +8,12 @@ const statusStyle: Record<string, { char: string; color: string; label: string }
   planning: { char: '\u25C9', color: 'text-cyan-400', label: 'Planning' },
   checkpoint: { char: '\u25C9', color: 'text-yellow-400', label: 'Checkpoint' },
   completed: { char: '\u25CF', color: 'text-blue-400', label: 'Completed' },
+  done: { char: '\u25CF', color: 'text-blue-400', label: 'Done' },
   stopped: { char: '\u25CB', color: 'text-neutral-500', label: 'Stopped' },
   failed: { char: '\u2715', color: 'text-red-400', label: 'Failed' },
   idle: { char: '\u25CB', color: 'text-neutral-600', label: 'Idle' },
   error: { char: '\u2715', color: 'text-red-400', label: 'Error' },
-  corrupt: { char: '\u2715', color: 'text-red-400', label: 'Corrupt State' },
+  corrupt: { char: '\u2715', color: 'text-red-400', label: 'Corrupt' },
 }
 
 export default function Home() {
@@ -25,54 +26,43 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [])
 
-  const active = sortByLastUpdated(projects.filter((p) => p.status && !['idle', 'error'].includes(p.status)))
-  const idle = sortByLastUpdated(projects.filter((p) => !p.status || p.status === 'idle'))
-  const errored = sortByLastUpdated(projects.filter((p) => p.status === 'error'))
+  const sorted = sortByLastUpdated(projects)
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <h1 className="text-lg md:text-xl font-semibold text-neutral-100 mb-4 md:mb-6">Projects</h1>
 
-      {active.length > 0 && (
-        <section className="mb-8">
-          <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-3">Active Orchestrations</h2>
-          <div className="space-y-2">
-            {active.map((p) => (
-              <ProjectCard key={p.name} project={p} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="mb-8">
-        <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-3">
-          Projects ({idle.length})
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {idle.map((p) => (
-            <ProjectCard key={p.name} project={p} compact />
-          ))}
+      {sorted.length === 0 ? (
+        <div className="text-sm text-neutral-500 bg-neutral-900 rounded-lg p-4">
+          No projects found. Register one with: <code className="text-neutral-300">set-project init</code>
         </div>
-      </section>
-
-      {errored.length > 0 && (
-        <section>
-          <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-3">
-            Unavailable ({errored.length})
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {errored.map((p) => (
-              <ProjectCard key={p.name} project={p} compact />
-            ))}
-          </div>
-        </section>
+      ) : (
+        <div className="border border-neutral-800 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-neutral-800 text-xs text-neutral-500 uppercase tracking-wider">
+                <th className="text-left px-4 py-2 font-medium">Name</th>
+                <th className="text-left px-4 py-2 font-medium">Status</th>
+                <th className="text-right px-4 py-2 font-medium">Changes</th>
+                <th className="text-right px-4 py-2 font-medium">Tokens</th>
+                <th className="text-right px-4 py-2 font-medium">Duration</th>
+                <th className="text-right px-4 py-2 font-medium">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((p) => (
+                <ProjectRow key={p.name} project={p} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
 }
 
 function timeAgo(iso: string | null | undefined): string {
-  if (!iso) return ''
+  if (!iso) return '—'
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'just now'
@@ -83,14 +73,15 @@ function timeAgo(iso: string | null | undefined): string {
   return `${days}d ago`
 }
 
-function formatTokens(n: number): string {
+function formatTokens(n?: number): string {
+  if (!n) return '—'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
   return String(n)
 }
 
-function formatDuration(secs: number): string {
-  if (secs < 60) return `${secs}s`
+function formatDuration(secs?: number): string {
+  if (!secs) return '—'
   const mins = Math.floor(secs / 60)
   if (mins < 60) return `${mins}m`
   const hours = Math.floor(mins / 60)
@@ -98,40 +89,33 @@ function formatDuration(secs: number): string {
   return remMins > 0 ? `${hours}h${remMins}m` : `${hours}h`
 }
 
-function ProjectCard({ project, compact }: { project: ProjectInfo; compact?: boolean }) {
+function ProjectRow({ project }: { project: ProjectInfo }) {
   const s = statusStyle[project.status ?? 'idle'] ?? statusStyle.idle
-  const ago = timeAgo(project.last_updated)
-  const hasStats = project.changes_total != null && project.changes_total > 0
+  const hasChanges = (project.changes_total ?? 0) > 0
 
   return (
-    <Link
-      to={`/set/${project.name}`}
-      className={`block rounded-lg border border-neutral-800 hover:border-neutral-700 transition-colors ${
-        compact ? 'p-3' : 'p-4 bg-neutral-900/50'
-      }`}
-    >
-      <div className="flex items-center gap-2">
-        <span className={`shrink-0 ${s.color}`}>{s.char}</span>
-        <span className="text-sm text-neutral-200 truncate">{project.name}</span>
-        <span className="ml-auto text-sm text-neutral-600 shrink-0">{ago}</span>
-        {!compact && (
-          <span className="text-sm text-neutral-500 shrink-0">{s.label}</span>
-        )}
-      </div>
-      {hasStats && (
-        <div className="mt-1.5 flex items-center gap-3 text-xs text-neutral-500">
-          <span>{project.changes_merged}/{project.changes_total} merged</span>
-          {(project.total_tokens ?? 0) > 0 && (
-            <span>{formatTokens(project.total_tokens!)} tokens</span>
-          )}
-          {(project.active_seconds ?? 0) > 0 && (
-            <span>{formatDuration(project.active_seconds!)}</span>
-          )}
-        </div>
-      )}
-      {!compact && !hasStats && (
-        <div className="mt-1 text-sm text-neutral-500 truncate">{project.path}</div>
-      )}
-    </Link>
+    <tr className="border-b border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+      <td className="px-4 py-2.5">
+        <Link to={`/set/${project.name}`} className="flex items-center gap-2 hover:text-neutral-100">
+          <span className={`shrink-0 ${s.color}`}>{s.char}</span>
+          <span className="text-neutral-200 font-medium">{project.name}</span>
+        </Link>
+      </td>
+      <td className="px-4 py-2.5">
+        <span className={`text-xs ${s.color}`}>{s.label}</span>
+      </td>
+      <td className="px-4 py-2.5 text-right text-neutral-400">
+        {hasChanges ? `${project.changes_merged}/${project.changes_total}` : '—'}
+      </td>
+      <td className="px-4 py-2.5 text-right text-neutral-400">
+        {formatTokens(project.total_tokens)}
+      </td>
+      <td className="px-4 py-2.5 text-right text-neutral-400">
+        {formatDuration(project.active_seconds)}
+      </td>
+      <td className="px-4 py-2.5 text-right text-neutral-500">
+        {timeAgo(project.last_updated)}
+      </td>
+    </tr>
   )
 }
