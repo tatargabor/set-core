@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,7 @@ from .helpers import (
     _resolve_project,
     _state_path,
     _log_path,
+    _sentinel_dir,
     _load_archived_changes,
     _list_worktrees,
     _enrich_changes,

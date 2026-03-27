@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import os
 import signal
+import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from ..state import load_state, save_state, StateCorruptionError
 from ..process import check_pid, safe_kill
-from .helpers import _resolve_project, _state_path, _with_state_lock
+from .helpers import _resolve_project, _state_path, _sentinel_dir, _with_state_lock
 
 router = APIRouter()
 
