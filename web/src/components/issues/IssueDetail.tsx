@@ -12,11 +12,12 @@ interface Props {
   project: string
   issueId: string
   onClose: () => void
+  inline?: boolean
 }
 
 type Tab = 'timeline' | 'diagnosis' | 'error' | 'session' | 'related'
 
-export function IssueDetail({ project, issueId, onClose }: Props) {
+export function IssueDetail({ project, issueId, onClose, inline }: Props) {
   const { issue, timeline, loading } = useIssueDetail(project, issueId)
   const { messages, send } = useIssueChat(project, issueId)
   const [tab, setTab] = useState<Tab>('timeline')
@@ -28,11 +29,13 @@ export function IssueDetail({ project, issueId, onClose }: Props) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
+  const LoadWrapper = inline ? InlinePanel : SlideOut
+
   if (loading || !issue) {
     return (
-      <SlideOut onClose={onClose}>
+      <LoadWrapper onClose={onClose}>
         <div className="p-6 text-sm text-neutral-500">Loading...</div>
-      </SlideOut>
+      </LoadWrapper>
     )
   }
 
@@ -46,9 +49,11 @@ export function IssueDetail({ project, issueId, onClose }: Props) {
   }))
   const merged = [...timeline, ...chatEntries].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
 
+  const Wrapper = inline ? InlinePanel : SlideOut
+
   return (
-    <SlideOut onClose={onClose}>
-      <div className="flex flex-col h-full">
+    <Wrapper onClose={onClose}>
+      <div className={`flex flex-col ${inline ? 'max-h-[500px]' : 'h-full'}`}>
         {/* Header */}
         <div className="p-4 border-b border-neutral-800 space-y-2">
           <div className="flex items-center justify-between">
@@ -96,7 +101,7 @@ export function IssueDetail({ project, issueId, onClose }: Props) {
           {tab === 'related' && <RelatedTab issue={issue} />}
         </div>
       </div>
-    </SlideOut>
+    </Wrapper>
   )
 }
 
@@ -106,6 +111,10 @@ function SlideOut({ children }: { onClose?: () => void; children: React.ReactNod
       {children}
     </div>
   )
+}
+
+function InlinePanel({ children }: { onClose?: () => void; children: React.ReactNode }) {
+  return <div className="bg-neutral-950 border-t border-neutral-800">{children}</div>
 }
 
 function DiagnosisTab({ issue }: { issue: Issue }) {

@@ -5,7 +5,7 @@ import { IssueList } from '../components/issues/IssueList'
 import { IssueDetail } from '../components/issues/IssueDetail'
 import type { Issue } from '../lib/api'
 
-/** Unique key for cross-project issue selection: "environment:id" or just "id" if single project */
+/** Unique key for cross-project issue selection */
 function issueKey(issue: Issue, project?: string | null): string {
   return project ? issue.id : `${issue.environment}:${issue.id}`
 }
@@ -27,11 +27,14 @@ export default function ManagerIssues({ project }: Props) {
     }
   }, [issues, project])
 
-  // Find selected issue by composite key
   const selectedIssue = selectedKey
     ? issues.find(i => issueKey(i, project) === selectedKey)
     : null
   const detailProject = project || selectedIssue?.environment
+
+  // Cross-project mode: detail inline below list
+  // Single project mode: detail as slide-out panel
+  const isAllProjects = !project
 
   return (
     <div className="h-full flex flex-col">
@@ -53,19 +56,33 @@ export default function ManagerIssues({ project }: Props) {
       <div className="flex-1 overflow-y-auto p-4">
         {loading && <div className="text-sm text-neutral-500">Loading issues...</div>}
         {!loading && (
-          <IssueList
-            issues={issues}
-            groups={groups}
-            selectedKey={selectedKey}
-            onSelect={(key) => setSelectedKey(key)}
-            issueKeyFn={(i) => issueKey(i, project)}
-            showEnv={!project}
-          />
+          <>
+            <IssueList
+              issues={issues}
+              groups={groups}
+              selectedKey={selectedKey}
+              onSelect={(key) => setSelectedKey(prev => prev === key ? null : key)}
+              issueKeyFn={(i) => issueKey(i, project)}
+              showEnv={isAllProjects}
+            />
+
+            {/* Inline detail below list — cross-project mode */}
+            {isAllProjects && selectedIssue && detailProject && (
+              <div className="mt-4 border border-neutral-800 rounded-lg overflow-hidden">
+                <IssueDetail
+                  project={detailProject}
+                  issueId={selectedIssue.id}
+                  onClose={() => setSelectedKey(null)}
+                  inline
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Detail panel */}
-      {selectedIssue && detailProject && (
+      {/* Slide-out detail — single project mode */}
+      {!isAllProjects && selectedIssue && detailProject && (
         <IssueDetail
           project={detailProject}
           issueId={selectedIssue.id}
