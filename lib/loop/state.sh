@@ -209,9 +209,11 @@ get_current_tokens() {
         usage_json=$("$SCRIPT_DIR/set-usage" $project_dir_flag --format json 2>/dev/null || echo "$zero_json")
     fi
 
-    # Extract all token types; total = input + output (excludes cache which inflates counts)
+    # Extract all token types
+    # input_tokens includes cache_read — this is the true prompt size the model sees
+    # total_tokens = input + output (API billing tokens, excludes cache)
     echo "$usage_json" | jq -c '{
-        input_tokens: (.input_tokens // 0),
+        input_tokens: ((.input_tokens // 0) + (.cache_read_tokens // 0)),
         output_tokens: (.output_tokens // 0),
         cache_read_tokens: (.cache_read_tokens // 0),
         cache_create_tokens: (.cache_creation_tokens // 0),

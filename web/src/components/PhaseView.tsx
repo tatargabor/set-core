@@ -154,6 +154,7 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
             smoke_result={c.smoke_result}
             review_result={c.review_result}
             build_result={c.build_result}
+            spec_coverage_result={c.spec_coverage_result}
           />
         </div>
       </div>
