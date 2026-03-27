@@ -1,0 +1,114 @@
+"""Media routes: screenshots, worktree logs, reflections, soniox key."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
+
+from .helpers import _resolve_project, _state_path, _list_worktrees
+
+router = APIRouter()
+
+@router.get("/api/soniox-key")
+async def get_soniox_key():
+    """Return Soniox API key from environment for voice input."""
+    key = os.environ.get("SONIOX_API_KEY")
+    if not key:
+        raise HTTPException(404, "Soniox API key not configured")
+    return {"api_key": key}
+
+@router.get("/api/{project}/worktrees/{branch:path}/log/{filename}")
+def get_worktree_log(project: str, branch: str, filename: str):
+    """Read a specific log file from a worktree."""
+    project_path = _resolve_project(project)
+
+    # Validate filename — only allow ralph-iter-*.log pattern
+    if not filename.endswith(".log") or ".." in filename or "/" in filename:
+        raise HTTPException(400, "Invalid filename")
+
+    # Find the worktree by branch name
+    for wt in _list_worktrees(project_path):
+        if wt.get("branch") == branch:
+            log_file = Path(wt["path"]) / ".claude" / "logs" / filename
+            if not log_file.exists():
+                raise HTTPException(404, f"Log file not found: {filename}")
+            try:
+                content = log_file.read_text(errors="replace")
+                return {"filename": filename, "lines": content.splitlines()[-2000:]}
+            except OSError:
+                raise HTTPException(500, "Failed to read log")
+    raise HTTPException(404, f"Worktree not found: {branch}")
+
+
+@router.get("/api/{project}/worktrees/{branch:path}/reflection")
+def get_worktree_reflection(project: str, branch: str):
+    """Read the reflection.md from a worktree."""
+    project_path = _resolve_project(project)
+    for wt in _list_worktrees(project_path):
+        if wt.get("branch") == branch:
+            refl = Path(wt["path"]) / ".claude" / "reflection.md"
+            if not refl.exists():
+                raise HTTPException(404, "No reflection found")
+            return {"content": refl.read_text(errors="replace")}
+    raise HTTPException(404, f"Worktree not found: {branch}")
+
+@router.get("/api/{project}/changes/{name}/screenshots")
+def get_change_screenshots(project: str, name: str):
+    """List screenshot files for a change (smoke and E2E)."""
+    project_path = _resolve_project(project)
+    sp = _state_path(project_path)
+    if not sp.exists():
+        raise HTTPException(404, "No orchestration state found")
+    try:
+        state = load_state(str(sp))
+    except StateCorruptionError as e:
+        raise HTTPException(500, f"Corrupt state: {e.detail}")
+
+    for c in state.changes:
+        if c.name == name:
+            result: dict = {"smoke": [], "e2e": []}
+            smoke_dir = getattr(c, "smoke_screenshot_dir", None) or c.extras.get("smoke_screenshot_dir")
+            if smoke_dir:
+                sd = project_path / smoke_dir
+                if sd.is_dir():
+                    result["smoke"] = sorted(
+                        ({"path": f"{smoke_dir}/{f.relative_to(sd)}", "name": f.name}
+                         for f in sd.rglob("*.png")),
+                        key=lambda x: x["name"],
+                    )
+            e2e_dir = getattr(c, "e2e_screenshot_dir", None) or c.extras.get("e2e_screenshot_dir")
+            if e2e_dir:
+                ed = project_path / e2e_dir
+                if ed.is_dir():
+                    result["e2e"] = sorted(
+                        ({"path": f"{e2e_dir}/{f.relative_to(ed)}", "name": f.name}
+                         for f in ed.rglob("*.png")),
+                        key=lambda x: x["name"],
+                    )
+            return result
+    raise HTTPException(404, f"Change not found: {name}")
+
+
+@router.get("/api/{project}/screenshots/{file_path:path}")
+def serve_screenshot(project: str, file_path: str):
+    """Serve a screenshot image file."""
+    from fastapi.responses import FileResponse as FR
+
+    if ".." in file_path:
+        raise HTTPException(400, "Invalid path")
+    project_path = _resolve_project(project)
+    full_path = project_path / file_path
+    if not full_path.exists() or not full_path.suffix == ".png":
+        raise HTTPException(404, "Screenshot not found")
+    # Ensure path is within project's set/orchestration/
+    orch_dir = project_path / "set" / "orchestration"
+    try:
+        full_path.resolve().relative_to(orch_dir.resolve())
+    except ValueError:
+        raise HTTPException(403, "Access denied")
+    return FR(str(full_path), media_type="image/png")
+

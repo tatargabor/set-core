@@ -1,7 +1,9 @@
-"""FastAPI application factory for the set-web dashboard.
+"""FastAPI application factory for the set-core unified web service.
 
-Creates the app with CORS, lifespan management (watcher start/stop),
-API routes, WebSocket endpoints, and static SPA file serving.
+Creates the app with CORS, lifespan management (watcher, Discord, supervisor,
+issue engine), API routes, WebSocket endpoints, and static SPA file serving.
+
+This is the SINGLE entry point — replaces both set-orch-core and set-manager.
 """
 
 from __future__ import annotations
@@ -15,24 +17,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from fastapi.responses import Response
-
-from .api import router as api_router
+from .api import router as api_router, include_optional_routers
 from .chat import router as chat_router, session_manager
 from .watcher import WatcherManager
 from .websocket import router as ws_router, connection_manager
 
-# Manager proxy config
-MANAGER_URL = os.environ.get("SET_MANAGER_URL", "http://localhost:3112")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start file watchers and Discord bot on startup, stop on shutdown."""
+    """Start watchers, Discord, supervisor, and issue engine on startup."""
     watcher = app.state.watcher_manager
     await watcher.start(connection_manager)
 
-    # Start Discord bot if configured (global auto_enable or per-project config)
+    # Start unified service (supervisor + issue engine)
+    try:
+        from .api.lifecycle import startup as service_startup, shutdown as service_shutdown
+        await service_startup(app)
+    except Exception as e:
+        import traceback
+        print(f"[SET] Service startup failed: {e}", flush=True)
+        traceback.print_exc()
+
+    # Start Discord bot if configured
     discord_bot = None
     try:
         from .config import get_discord_config, load_config_file
@@ -47,7 +53,6 @@ async def lifespan(app: FastAPI):
             discord_bot = DiscordBot(discord_config, project_name=project_name)
             await discord_bot.start()
             print("[SET] Discord bot starting...", flush=True)
-            # Setup event handler (stores config/member on bot for watcher bridge)
             if await discord_bot.wait_ready(timeout=15):
                 await setup_event_handler(discord_bot, discord_config)
                 print("[SET] Discord bot connected", flush=True)
@@ -62,19 +67,23 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown: Discord first (flush pending), then sessions, then watchers
+    # Shutdown: Discord → service → sessions → watchers
     if discord_bot:
         try:
             await discord_bot.stop()
         except Exception:
             pass
+    try:
+        from .api.lifecycle import shutdown as service_shutdown
+        await service_shutdown()
+    except Exception:
+        pass
     await session_manager.stop_all()
     await watcher.stop()
 
 
 def _find_orch_config() -> str | None:
     """Find orchestration config file for Discord settings."""
-    from pathlib import Path
     for candidate in [
         Path.cwd() / ".claude" / "orchestration.yaml",
         Path.cwd() / "set" / "orchestration" / "config.yaml",
@@ -85,15 +94,15 @@ def _find_orch_config() -> str | None:
 
 
 def create_app(web_dist_dir: str | None = None) -> FastAPI:
-    """Create and configure the FastAPI application.
+    """Create and configure the unified FastAPI application.
 
     Args:
         web_dist_dir: Path to the built SPA directory (web/dist/).
                       If None, tries to find it relative to the package.
     """
     app = FastAPI(
-        title="set-core Web Dashboard",
-        version="0.1.0",
+        title="set-core",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
@@ -108,99 +117,20 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
     # State
     app.state.watcher_manager = WatcherManager()
 
-    # Manager API proxy — forward /api/manager/* to set-manager service
-    @app.api_route("/api/manager/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-    async def manager_proxy(request: Request, path: str):
-        """Reverse proxy to set-manager API. Strips /api/manager prefix."""
-        import aiohttp
-        target_url = f"{MANAGER_URL}/api/{path}"
-        qs = str(request.query_params)
-        if qs:
-            target_url += f"?{qs}"
+    # Service status endpoint
+    @app.get("/api/service/status")
+    async def service_status():
+        from .api.lifecycle import get_service
+        svc = get_service()
+        if not svc:
+            return {"status": "not_initialized"}
+        return svc.status()
 
-        body = await request.body() if request.method in ("POST", "PUT", "PATCH") else None
-        headers = {
-            k: v for k, v in request.headers.items()
-            if k.lower() not in ("host", "content-length", "transfer-encoding")
-        }
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.request(
-                    method=request.method,
-                    url=target_url,
-                    headers=headers,
-                    data=body,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                ) as resp:
-                    resp_body = await resp.read()
-                    return Response(
-                        content=resp_body,
-                        status_code=resp.status,
-                        media_type=resp.content_type,
-                    )
-        except aiohttp.ClientError:
-            return Response(
-                content='{"error": "set-manager is not running"}',
-                status_code=502,
-                media_type="application/json",
-            )
-
-    async def _kill_and_start_manager():
-        """Kill existing manager (if any), clean PID file, start fresh."""
-        import asyncio
-        import shutil
-        import signal
-        pid_file = Path.home() / ".local" / "share" / "set-core" / "manager" / "manager.pid"
-        # Kill existing manager by PID file or by probing API
-        if pid_file.exists():
-            try:
-                old_pid = int(pid_file.read_text().strip())
-                os.kill(old_pid, signal.SIGTERM)
-                await asyncio.sleep(1)
-            except (ValueError, ProcessLookupError, PermissionError):
-                pass
-        pid_file.unlink(missing_ok=True)
-        await asyncio.sleep(0.5)
-        # Start fresh
-        manager_bin = shutil.which("set-manager")
-        if not manager_bin:
-            return None, "set-manager not found in PATH"
-        proc = await asyncio.create_subprocess_exec(
-            manager_bin, "serve",
-            stdout=open("/tmp/set-manager.log", "a"),
-            stderr=open("/tmp/set-manager.log", "a"),
-            start_new_session=True,
-        )
-        return proc.pid, None
-
-    @app.post("/api/manager-start")
-    async def start_manager():
-        """Start set-manager if not running."""
-        # Check if already running
-        try:
-            import aiohttp
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{MANAGER_URL}/api/manager/status", timeout=aiohttp.ClientTimeout(total=2)) as resp:
-                    if resp.status == 200:
-                        return {"status": "already_running"}
-        except Exception:
-            pass
-        pid, err = await _kill_and_start_manager()
-        if err:
-            return Response(content=f'{{"error": "{err}"}}', status_code=500, media_type="application/json")
-        return {"status": "started", "pid": pid}
-
-    @app.post("/api/manager-restart")
-    async def restart_manager_via_orch():
-        """Kill and restart set-manager. Always works regardless of manager code version."""
-        pid, err = await _kill_and_start_manager()
-        if err:
-            return Response(content=f'{{"error": "{err}"}}', status_code=500, media_type="application/json")
-        return {"status": "restarted", "pid": pid}
-
-    # API, WebSocket, and chat routes
+    # Core API routes (orchestration, sessions, media, actions, learnings, sentinel events)
     app.include_router(api_router)
+    # Optional routes (sentinel control, issues, plugins) — depend on lifecycle
+    include_optional_routers(app.router)
+    # WebSocket and chat routes
     app.include_router(ws_router)
     app.include_router(chat_router)
 
@@ -214,19 +144,15 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
         dist_path = Path(web_dist_dir)
         index_html = dist_path / "index.html"
 
-        # Serve static assets (js, css, images) from /assets/
         assets_dir = dist_path / "assets"
         if assets_dir.is_dir():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-        # Serve other static files at root (favicon.svg, icons.svg, etc.)
         @app.get("/{file_path:path}")
         async def spa_catchall(request: Request, file_path: str):
-            # Try serving as a real file first
             real_file = dist_path / file_path
             if file_path and real_file.is_file() and ".." not in file_path:
                 return FileResponse(str(real_file))
-            # Otherwise return index.html for client-side routing
             return FileResponse(str(index_html))
 
     return app
