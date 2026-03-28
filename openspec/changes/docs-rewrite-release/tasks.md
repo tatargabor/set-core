@@ -64,6 +64,19 @@
 - [ ] 9.3 Verify screenshots display in all doc pages [REQ: screenshot-integration]
 - [ ] 9.4 Run `make screenshots` to ensure all referenced images exist [REQ: screenshot-integration]
 
+## 10. Landing page (setcode.dev)
+
+- [x] 10.1 Redesign landing page — terminal/monospace style, dark theme, JetBrains Mono [REQ: readme-orchestration-first-narrative]
+- [x] 10.2 Fix carousel layout jump — aspect-ratio + opacity transition [REQ: readme-orchestration-first-narrative]
+- [x] 10.3 Add "Ship Exactly This" branding and acronym [REQ: readme-orchestration-first-narrative]
+- [x] 10.4 Add iterative development section — not just full specs, any size change [REQ: readme-orchestration-first-narrative]
+- [x] 10.5 Add self-healing issue pipeline section with terminal log visualization [REQ: readme-orchestration-first-narrative]
+- [x] 10.6 Add OpenSpec hallucination minimization section [REQ: readme-orchestration-first-narrative]
+- [x] 10.7 Add ecosystem modules — web project type + voice agent delivery [REQ: readme-orchestration-first-narrative]
+- [x] 10.8 Add tech stack badges (Claude Code, Playwright, Soniox, etc.) [REQ: readme-orchestration-first-narrative]
+- [x] 10.9 Add "Why now" manifesto — community, future vision, early adopter CTA [REQ: readme-orchestration-first-narrative]
+- [x] 10.10 Add battle game screenshot + footer links + email [REQ: readme-orchestration-first-narrative]
+
 ## Acceptance Criteria (from spec scenarios)
 
 - [ ] AC-1: WHEN developer opens README THEN understands purpose in 3 paragraphs with screenshots [REQ: readme-orchestration-first-narrative, scenario: first-time-visitor-understands-purpose-in-30-seconds]
