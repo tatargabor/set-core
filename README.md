@@ -153,18 +153,29 @@ See [docs/guide/quick-start.md](docs/guide/quick-start.md) for detailed setup an
 
 ---
 
-## Technology Stack
+## Technology
 
-| Layer | Technologies |
-|-------|-------------|
-| **Orchestration engine** | Python, FastAPI, uvicorn |
-| **Web dashboard** | React, TypeScript, Tailwind CSS, Recharts |
-| **Agent runtime** | Claude Code (Anthropic), git worktrees |
-| **Quality gates** | Vitest, Playwright, ESLint |
-| **Design bridge** | Figma API → design-snapshot.md → Tailwind tokens |
+**Core orchestration:**
+
+| Component | Technology |
+|-----------|-----------|
+| **Agent runtime** | [Claude Code](https://claude.ai/code) (Anthropic) |
+| **Workflow** | [OpenSpec](https://github.com/fission-ai/openspec) — spec-driven artifact pipeline |
+| **Isolation** | Git worktrees — real branches, real merges |
+| **Engine** | Python, FastAPI, uvicorn |
+| **Dashboard** | React, TypeScript, Tailwind CSS |
 | **Memory** | shodh-memory (RocksDB + vector embeddings) |
-| **Voice notifications** | Soniox Speech-to-Text/Text-to-Speech (experimental) |
-| **Workflow** | OpenSpec CLI (@fission-ai/openspec) |
+| **Design bridge** | Figma MCP → design-snapshot.md → Tailwind tokens |
+
+**Tooling ecosystem:**
+
+| Tool | Purpose |
+|------|---------|
+| [set-spec-capture](https://github.com/tatargabor/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
+| set-figma-fetch | Fetch Figma designs as Tailwind token snapshots |
+| set-e2e-report | Generate benchmark reports from orchestration runs |
+
+**Built-in modules** add domain-specific technology (Next.js, Prisma, Playwright for web; Soniox STT, Google TTS for voice). See [Plugins](docs/reference/plugins.md).
 
 ---
 
@@ -178,27 +189,44 @@ The **web project type** (Next.js, Prisma, Playwright) ships built-in and is val
 
 | Metric | Value |
 |--------|-------|
-| Commits | 1,287 |
+| Development | 950+ hours across 79 days |
+| Commits | 1,294 (~16/day) |
 | Capability specs | 363 |
-| Python LOC (engine + API) | 44,000 |
-| TypeScript LOC (dashboard) | 12,000 |
-| E2E validation runs | 30+ across 4 scaffolds |
+| Codebase | 134K LOC (59K Python, 15K Shell, 14K TypeScript, 23K specs, 22K docs+templates) |
+| Autonomous agent runtime | 720+ hours continuous operation |
 | MiniShop benchmark | 6/6 merged, 0 interventions, 1h 45m |
 
-**2+ months of development. Worth every hour.** Full journey, benchmarks, and lessons: [docs/learn/journey.md](docs/learn/journey.md)
+**3 months. 950+ hours. Worth every one.** Full journey, benchmarks, and lessons: [docs/learn/journey.md](docs/learn/journey.md)
 
 ---
 
-## The Vision
+## Why This Matters
 
-Systems like set-core are the next step beyond single-agent coding tools. Model providers will eventually build orchestration into their platforms — and we welcome that. But we're not waiting.
+**Systems like SET can do the work of a full development team** — given the right specification and properly developed project types. Period.
 
-By building and using these systems now, we:
-- **Shape the tools to our needs** — not wait for a vendor's roadmap
-- **Accumulate domain-specific knowledge** — in project types, templates, and memory
-- **Share what works** — the core improves for everyone, custom types stay private
+This is not the future. This is the present. The sooner we move in this direction, the sooner we'll see what software development actually becomes — instead of clinging to the assumption that manual development or even manual code review should remain the default.
 
-**This needs a community.** The web project type is public and battle-tested. We need more project types, more scaffolds, more E2E runs, more divergence research. If you build with Claude Code and want structured orchestration — [join us](https://github.com/tatargabor/set-core/issues).
+### Don't blame the model
+
+Claude Code is extraordinarily capable. But we can't expect it to guess what we haven't specified. When the model fills in gaps we left empty, we call it "hallucination" — but most of the time, it's **underspecification on our side**. The frustration of repeated errors, unexpected behavior, inconsistent output — 90% of this comes from insufficient context, not model limitation.
+
+And even with detailed, multi-hundred-page specifications, we cannot guarantee that the model treats every character with equal priority during implementation. This is precisely why systems like SET exist: to **enforce, verify, and check** that the model understood and executed what we intended. OpenSpec structures the work. Quality gates verify the output. The sentinel investigates before it fixes. No guessing.
+
+### Enterprise is next
+
+Banks, government, defense, regulated industries — they can't use cloud-hosted models today. But this will change. On-premise models, secure multi-tenant systems, hybrid architectures — the infrastructure is coming. Some organizations are already preparing.
+
+**The responsible thing for every enterprise is to prepare now** — before the models arrive on their infrastructure. Learn orchestration patterns. Build project types for your domain. Develop the muscle memory for spec-driven development. Don't wait for the infrastructure to be ready; be ready when it arrives.
+
+### This needs a community
+
+We built set-core to solve our own problems. The web project type is public and battle-tested. But the real power comes from **domain-specific project types** — fintech with IDOR rules, healthcare with HIPAA compliance, e-commerce with payment flow gates.
+
+Model providers (Anthropic included) will build orchestration into their platforms — we welcome that. These middleware layers are destined to become first-party features. But that doesn't mean we shouldn't build them ourselves: this is how we **shape the tools to our needs** and accumulate knowledge that vendor-generic solutions can't provide.
+
+**Start now.** There will be bugs. But this is a self-healing system — the sentinel detects, investigates, and fixes. The more people use it, the faster it improves.
+
+[Join us →](https://github.com/tatargabor/set-core/issues) · [Email](mailto:gabor@setcode.dev)
 
 ---
 
