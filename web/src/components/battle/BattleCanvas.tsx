@@ -881,8 +881,27 @@ export default function BattleCanvas({ changes, gameOver, announcements, newsShi
     return () => cancelAnimationFrame(rafRef.current)
   }, [draw])
 
+  // Auto-focus container when battle tab becomes visible
+  useEffect(() => {
+    if (isVisible && containerRef.current) {
+      containerRef.current.focus()
+    }
+  }, [isVisible])
+
   return (
-    <div ref={containerRef} className="flex-1 min-h-0 relative" tabIndex={0}>
+    <div
+      ref={containerRef}
+      className="flex-1 min-h-0 relative outline-none"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) {
+          e.preventDefault()
+          e.stopPropagation()
+          keysRef.current.add(e.key)
+        }
+      }}
+      onKeyUp={(e) => keysRef.current.delete(e.key)}
+    >
       <canvas
         ref={canvasRef}
         onClick={gameOver ? onContinue : undefined}
