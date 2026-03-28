@@ -1,3 +1,5 @@
+> **Note:** This is the consumer project management reference. For getting started quickly, see [docs/guide/quick-start.md](guide/quick-start.md).
+
 [< Back to README](../README.md)
 
 # Consumer Project Management

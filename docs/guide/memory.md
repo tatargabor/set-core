@@ -1,4 +1,4 @@
-[< Back to Index](../INDEX.md)
+[< Back to Guides](README.md)
 
 # Persistent Memory
 
@@ -61,12 +61,42 @@ set-memory health   # verify
 
 Memory degrades gracefully — if not installed, all memory commands silently no-op. Agents work fine without it, they just don't have cross-session recall.
 
+## Memory Types
+
+Memories are categorized by type, which affects retrieval priority and display:
+
+| Type | Purpose | Example |
+|------|---------|---------|
+| **Decision** | Architectural or design choices | "Chose eager merge policy for this project" |
+| **Learning** | Patterns discovered during development | "vitest needs --passWithNoTests flag" |
+| **Context** | Project state and configuration | "Project uses Prisma with PostgreSQL" |
+| **Bug** | Known issues and their fixes | "Playwright flaky on CI without --retries=2" |
+| **Feedback** | User preferences and corrections | "Never modify consumer project code" |
+
+## Emphasis and Forgetting
+
+Most memories are saved automatically by the session-end hook. For important insights you want to ensure are captured with high priority:
+
+```bash
+echo "Always use --project-type web for web projects" | set-memory remember --type Decision --tags source:user,init
+```
+
+To correct a wrong memory or suppress a false positive:
+
+```bash
+set-memory forget <memory-id>
+```
+
+## Cross-Agent Sharing
+
+Memories are shared across all agents in the same project. When agent A discovers that a test requires a specific flag, agent B will receive that context in its next session through the warmstart hook. This eliminates redundant investigation across parallel worktrees.
+
 ## Key Insight
 
-> Agents don't save memories voluntarily — across 15+ sessions in benchmarks, zero voluntary saves were observed. The hook-driven infrastructure is essential.
+> Agents do not save memories voluntarily -- across 15+ sessions in benchmarks, zero voluntary saves were observed. The hook-driven infrastructure is essential for building useful cross-session recall.
 
 ---
 
-*Next: [Dashboard](dashboard.md) · [Team Sync](team-sync.md) · [Worktrees](worktrees.md)*
+*Next: [Dashboard](dashboard.md) | [Team Sync](team-sync.md) | [Worktrees](worktrees.md)*
 
 <!-- specs: developer-memory-docs, ambient-memory, hook-driven-memory, memory-cli, mcp-memory-tools -->

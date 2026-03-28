@@ -1,4 +1,4 @@
-[< Back to Index](../INDEX.md)
+[< Back to Guides](README.md)
 
 # Worktree Management
 
@@ -88,8 +88,37 @@ set-status    # show agent status for all worktrees
 
 ![set-status output](../images/auto/cli/set-status.png)
 
+## Cleanup
+
+When a worktree is no longer needed:
+
+```bash
+set-close fix-login
+```
+
+This removes the worktree directory, deletes the local branch, and cleans up any associated state files. The orchestrator calls this automatically after a successful merge.
+
+To see what would be cleaned up without actually doing it:
+
+```bash
+set-close fix-login --dry-run
+```
+
+## Version and Usage
+
+Check your set-core installation:
+
+```bash
+set-version    # show installed version
+set-usage      # show token and run statistics
+```
+
+![set-version output](../images/auto/cli/set-version.png)
+
+![set-usage output](../images/auto/cli/set-usage.png)
+
 ---
 
-*Next: [Orchestration](orchestration.md) · [OpenSpec](openspec.md) · [Quick Start](quick-start.md)*
+*Next: [Orchestration](orchestration.md) | [OpenSpec](openspec.md) | [Quick Start](quick-start.md)*
 
 <!-- specs: worktree-tools, ralph-loop, dispatch-worktree, merge-strategy-integration -->

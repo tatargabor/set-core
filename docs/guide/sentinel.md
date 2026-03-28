@@ -1,4 +1,4 @@
-[< Back to Index](../INDEX.md)
+[< Back to Guides](README.md)
 
 # Sentinel — Orchestration Supervisor
 
@@ -77,18 +77,51 @@ Findings (bugs, patterns, observations) are logged during the run and visible in
 | `set-sentinel-log` | Structured event logging |
 | `set-sentinel-status` | Register/heartbeat for web UI |
 
+## Findings
+
+During a run, the sentinel logs bugs, patterns, and observations as **findings**. These appear in the learnings tab and are saved to `.set/sentinel/findings.json`. Use the CLI to manage them:
+
+```bash
+set-sentinel-finding list           # show all findings
+set-sentinel-finding add --type bug --summary "Agent loops on type error"
+```
+
+![Sentinel findings](../images/auto/cli/set-sentinel-finding-list.png)
+
+Findings from previous runs feed into the **review learnings** system, which prevents agents from repeating the same mistakes in future orchestrations.
+
+## Run Summary
+
+When the orchestration completes (or is stopped), the sentinel produces a summary report covering:
+
+- Total changes planned, merged, and failed
+- Token consumption (input, output, cache) and estimated cost
+- Wall-clock time and per-change durations
+- Issues encountered and how they were resolved
+- Recommendations for the next run
+
+The summary is written to `.set/sentinel/summary.md` and displayed in the sentinel tab.
+
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `orchestration-state.json` | Orchestration state (read by sentinel) |
-| `orchestration.log` | Orchestration log (for diagnosis) |
+| `orchestration.log` | Orchestration log (for crash diagnosis) |
 | `.set/sentinel/stdout.log` | Sentinel agent output |
-| `.set/sentinel/events.jsonl` | Sentinel events |
+| `.set/sentinel/events.jsonl` | Sentinel decision events |
 | `.set/sentinel/findings.json` | Bugs and observations |
+| `.set/sentinel/summary.md` | End-of-run summary report |
+
+## Tips
+
+- **Start with `--time-limit`** -- prevents runaway runs. A 4-hour limit is typical for medium specs.
+- **Watch the learnings tab** -- if agents keep hitting the same issue, the sentinel will log it as a finding. Address the root cause between runs.
+- **Use the dashboard for approvals** -- when `merge_policy: checkpoint` is set, the sentinel pauses for approval. The dashboard provides a one-click approve button.
+- **Check findings between runs** -- run `set-sentinel-finding list` to review what the sentinel discovered. Feed high-value findings into your spec or orchestration config.
 
 ---
 
-*Next: [Orchestration Guide](orchestration.md) · [Dashboard](dashboard.md) · [Quick Start](quick-start.md)*
+*Next: [Orchestration](orchestration.md) | [Dashboard](dashboard.md) | [Quick Start](quick-start.md)*
 
 <!-- specs: sentinel-dashboard, sentinel-polling, sentinel-findings, sentinel-events -->

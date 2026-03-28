@@ -1,4 +1,4 @@
-[< Back to Index](../INDEX.md)
+[< Back to Guides](README.md)
 
 # OpenSpec — Structured Development Workflow
 
@@ -71,6 +71,28 @@ openspec new change <name>       # create a new change
 
 ![OpenSpec list](../images/auto/cli/openspec-list.png)
 
+## Spec Preview
+
+Use `openspec status` to see a visual preview of a change's artifact progress:
+
+![Spec preview](../images/auto/cli/spec-preview.png)
+
+## Bulk Operations
+
+When you have completed multiple changes, archive them in batch:
+
+```
+/opsx:bulk-archive
+```
+
+This archives all changes whose tasks are 100% complete and whose specs have been synced.
+
+To sync spec changes to main without archiving (useful for mid-flight updates):
+
+```
+/opsx:sync
+```
+
 ## Spec-Doc Cross-References
 
 Each documentation page references the openspec specs it covers via HTML comments:
@@ -81,8 +103,19 @@ Each documentation page references the openspec specs it covers via HTML comment
 
 When a spec changes, `grep -r "specs:.*verify-gate" docs/` finds all docs that need updating.
 
+## Design Integration
+
+When a design tool (Figma, Penpot) is connected via MCP, the orchestration pipeline integrates design specs automatically:
+
+1. **Preflight** -- fetches `design-snapshot.md` with tokens, colors, typography
+2. **Decompose** -- injects design tokens into each change's scope
+3. **Dispatch** -- appends relevant design context to the agent's proposal
+4. **Verify** -- checks design compliance (token mismatches reported as warnings)
+
+![Design snapshot preview](../images/auto/cli/design-snapshot-preview.png)
+
 ---
 
-*Next: [Orchestration](orchestration.md) · [Worktrees](worktrees.md) · [Quick Start](quick-start.md)*
+*Next: [Orchestration](orchestration.md) | [Worktrees](worktrees.md) | [Quick Start](quick-start.md)*
 
-<!-- specs: openspec-cli, spec-management, spec-coverage-report, task-traceability -->
+<!-- specs: openspec-cli, spec-management, spec-coverage-report, task-traceability, design-pipeline -->

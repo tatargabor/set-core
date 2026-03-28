@@ -1,3 +1,5 @@
+> **Note:** This is the MCP server reference. For memory-specific MCP tools, see [docs/guide/memory.md](guide/memory.md). For team sync MCP tools, see [docs/guide/team-sync.md](guide/team-sync.md).
+
 [< Back to README](../README.md)
 
 # MCP Server

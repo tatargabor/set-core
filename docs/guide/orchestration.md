@@ -1,4 +1,4 @@
-[< Back to Guide](../README.md)
+[< Back to Guides](README.md)
 
 # Orchestration
 
@@ -123,25 +123,13 @@ Gate failures produce structured output in `review-findings.jsonl`, which feeds 
 
 ## Dashboard
 
-The web dashboard (port 7400) provides real-time visibility into orchestration runs. Select a project from the manager, then explore these tabs:
-
-### Changes
-
-Shows every change with its status, complexity badge, gate results, and token usage. Gate icons (green check, red X, yellow warning) give immediate pass/fail visibility.
+The web dashboard (port 7400) provides real-time visibility into orchestration runs. Select a project from the manager, then explore tabs for changes, phases, tokens, digest, log, sessions, and more.
 
 ![Changes tab with gate badges and status](../images/auto/web/tab-changes.png)
 
-### Phases
-
-Groups changes by orchestration phase. Shows phase-level progress, token totals, and timing. Useful for understanding how the engine sequences work across replan cycles.
-
 ![Phases tab showing phase grouping](../images/auto/web/tab-phases.png)
 
-### Tokens
-
-Tracks token consumption per change and cumulative totals. Breaks down input vs. output tokens, cache hit rates, and cost estimates. Helps identify expensive changes and tune budgets.
-
-![Tokens tab with per-change breakdown](../images/auto/web/tab-tokens.png)
+For a full tour of all dashboard tabs and features, see the [Dashboard guide](dashboard.md).
 
 ---
 
@@ -259,6 +247,8 @@ set-orchestrate events --type ERROR
 
 ---
 
-*See also: [Sentinel](../sentinel.md) | [Ralph Loop](../ralph.md) | [Configuration](../configuration.md) | [Architecture](../architecture.md)*
+*See also: [Sentinel](sentinel.md) | [Worktrees](worktrees.md) | [Configuration](../reference/configuration.md) | [Architecture](../reference/architecture.md)*
+
+*Next: [Sentinel](sentinel.md) | [Worktrees](worktrees.md) | [Quick Start](quick-start.md)*
 
 <!-- specs: orchestration-engine, dispatch-core, verify-gate, merger, gate-profiles, orchestration-watchdog -->

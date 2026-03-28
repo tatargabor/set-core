@@ -1,3 +1,5 @@
+> **Note:** This is the Discord integration reference. For general orchestration docs, see [docs/guide/orchestration.md](guide/orchestration.md).
+
 # Discord Integration
 
 Real-time orchestration status updates in Discord with thread-per-run organization.

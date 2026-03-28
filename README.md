@@ -8,7 +8,7 @@
 
 set-core takes a markdown spec, decomposes it into independent changes, dispatches parallel Claude Code agents in git worktrees, runs quality gates on each, and merges the results. You provide the spec — it builds the app.
 
-**Built with set-core, using set-core.** This project was developed using its own orchestration pipeline — every feature was planned through [OpenSpec](docs/guide/openspec.md), implemented by agents, and validated through quality gates. 363 capability specifications, 1,287 commits.
+**Built with set-core, using set-core.** This project was developed using its own orchestration pipeline — every feature was planned through [OpenSpec](docs/guide/openspec.md), implemented by agents, and validated through quality gates. 363 capability specifications, 1,295 commits.
 
 > Don't wait for perfection — start using it now. There will be bugs. But this is a self-healing system: the sentinel detects issues, investigates root causes, and dispatches fixes automatically. The more people use it, the faster it improves.
 
@@ -190,7 +190,7 @@ The **web project type** (Next.js, Prisma, Playwright) ships built-in and is val
 | Metric | Value |
 |--------|-------|
 | Development | 950+ hours across 79 days |
-| Commits | 1,294 (~16/day) |
+| Commits | 1,295 (~16/day) |
 | Capability specs | 363 |
 | Codebase | 134K LOC (59K Python, 15K Shell, 14K TypeScript, 23K specs, 22K docs+templates) |
 | Autonomous agent runtime | 720+ hours continuous operation |
@@ -239,6 +239,7 @@ Model providers (Anthropic included) will build orchestration into their platfor
 | **[Learn](docs/learn/)** | How it works, development journey, benchmarks, lessons learned |
 | **[Examples](docs/examples/)** | MiniShop walkthrough, first project setup |
 | **[Deep Dive](docs/howitworks/)** | 18-chapter technical reference covering every pipeline stage |
+| **[Contributing](CONTRIBUTING.md)** | Dev setup, testing, plugin development, code style |
 
 ---
 

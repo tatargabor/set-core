@@ -1,3 +1,5 @@
+> **Note:** This is the plugin and project template reference. For the modular architecture overview, see [docs/learn/how-it-works.md](learn/how-it-works.md).
+
 [< Back to README](../README.md)
 
 # Plugins

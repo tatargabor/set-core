@@ -8,7 +8,7 @@ Navigation map for finding the right doc based on your role and goal.
 |------|-------------|
 | **Solo Developer** | [quick-start](guide/quick-start.md) → [worktrees](guide/worktrees.md) → [openspec](guide/openspec.md) → [memory](guide/memory.md) |
 | **Team Lead / Orchestration** | [quick-start](guide/quick-start.md) → [orchestration](guide/orchestration.md) → [sentinel](guide/sentinel.md) → [dashboard](guide/dashboard.md) → [team-sync](guide/team-sync.md) |
-| **Contributor** | [architecture](reference/architecture.md) → [plugins](reference/plugins.md) → [how-it-works](learn/how-it-works.md) |
+| **Contributor** | [architecture](reference/architecture.md) → [plugins](reference/plugins.md) → [how-it-works](learn/how-it-works.md) → [CONTRIBUTING](../CONTRIBUTING.md) |
 
 ## Guide (How-To)
 

@@ -1,3 +1,5 @@
+> **Note:** For a concise overview of the memory system, see [docs/guide/memory.md](guide/memory.md). This document is the comprehensive deep-dive covering hook internals, CLI reference, architecture, and advanced topics.
+
 [< Back to README](../README.md)
 
 # Developer Memory

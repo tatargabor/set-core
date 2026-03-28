@@ -1,3 +1,5 @@
+> **Note:** This is the comprehensive CLI reference. For a quick overview of available commands and skills, see the [Capability Guide](../.claude/rules/capability-guide.md). For topic-specific guides, see [docs/guide/](guide/README.md).
+
 [< Back to README](../README.md)
 
 # CLI Reference

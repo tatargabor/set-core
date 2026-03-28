@@ -1,4 +1,4 @@
-[< Back to README](../README.md)
+[< Back to Index](../INDEX.md)
 
 # Screenshot Pipeline
 
@@ -37,9 +37,9 @@ docs/images/auto/
 │   ├── tab-learnings.png         # Reflections + gate stats
 │   ├── tab-agent.png             # Agent chat interface
 │   ├── tab-sentinel.png          # Sentinel log
-│   ├── tab-plan.png              # Plan viewer (if data exists)
+│   ├── tab-plan.png              # Plan viewer (conditional — only generated when data exists)
 │   ├── tab-digest.png            # Spec digest (if data exists)
-│   ├── tab-audit.png             # Audit results (if data exists)
+│   ├── tab-audit.png             # Audit results (conditional — only generated when data exists)
 │   ├── global-issues.png         # Global issues browser
 │   ├── page-memory.png           # Memory stats page
 │   ├── page-settings.png         # Project settings
@@ -48,7 +48,7 @@ docs/images/auto/
 ├── cli/                          # CLI terminal screenshots
 │   ├── set-list.png              # Worktree listing
 │   ├── set-status.png            # Orchestration status
-│   ├── openspec-status.png       # OpenSpec changes
+│   ├── openspec-status.png       # OpenSpec changes (conditional — only generated when data exists)
 │   ├── set-memory-stats.png      # Memory statistics
 │   └── set-audit-scan.png        # Project health audit
 └── app/                          # Consumer app screenshots
@@ -137,13 +137,16 @@ The script scans `src/app/` for `page.tsx` files and builds a route list:
 
 ## Referencing Screenshots in Docs
 
-Use relative paths from the docs file:
+Use relative paths from the doc file's location. Since most docs live in subdirectories of `docs/` (e.g., `docs/guide/`, `docs/examples/`), paths typically start with `../images/auto/`:
 
 ```markdown
-![Description](images/auto/web/tab-changes.png)
-![CLI output](images/auto/cli/set-list.png)
-![App page](images/auto/app/products.png)
+<!-- From docs/guide/*.md or docs/examples/*.md -->
+![Description](../images/auto/web/tab-changes.png)
+![CLI output](../images/auto/cli/set-list.png)
+![App page](../images/auto/app/products.png)
 ```
+
+> **Note:** Paths are relative to the doc file's location, not to the `docs/` root. A file in `docs/reference/` uses `../images/auto/...`, while a file in `docs/` itself would use `images/auto/...`. Always verify with your file's depth.
 
 ## Troubleshooting
 
@@ -166,3 +169,5 @@ Ensure set-core tools are in PATH: `which set-list set-status openspec`
 ```bash
 pip install ansi2html
 ```
+
+<!-- specs: docs-screenshot-pipeline -->

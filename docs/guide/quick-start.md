@@ -1,4 +1,4 @@
-[< Back to README](../../README.md)
+[< Back to Guides](README.md)
 
 # Quick Start
 
@@ -125,14 +125,20 @@ The sentinel supervised the entire process, restarting crashed agents, resolving
 
 Now that you have seen the full loop, explore these guides to go deeper:
 
-- **[Orchestration & Sentinel](../sentinel.md)** -- Configuration, parallelism, conflict resolution, and monitoring
-- **[Worktree Management](../cli-reference.md)** -- Manual worktree commands (`set-new`, `set-work`, `set-merge`, `set-close`)
-- **[OpenSpec Workflow](../openspec.md)** -- Writing specs, the change lifecycle, and `/opsx:` skills
-- **[Configuration](../configuration.md)** -- `orchestration.yaml`, profiles, and project-type plugins
-- **[Developer Memory](../developer-memory.md)** -- Cross-session agent recall with `set-memory`
+- **[Orchestration](orchestration.md)** -- The full pipeline: digest, decompose, dispatch, verify, merge, replan
+- **[Sentinel](sentinel.md)** -- Supervisor setup, crash recovery, and checkpoint handling
+- **[Worktrees](worktrees.md)** -- Manual worktree commands (`set-new`, `set-work`, `set-merge`, `set-close`)
+- **[OpenSpec](openspec.md)** -- Writing specs, the change lifecycle, and `/opsx:` skills
+- **[Dashboard](dashboard.md)** -- Every tab of the web monitoring UI
+- **[Memory](memory.md)** -- Cross-session agent recall with `set-memory`
+- **[Configuration](../reference/configuration.md)** -- `orchestration.yaml`, profiles, and project-type plugins
 
 ---
 
 *Having trouble? Run `set-audit scan` in your project to diagnose common setup issues.*
+
+![Audit scan output](../images/auto/cli/set-audit-scan.png)
+
+*Next: [Orchestration](orchestration.md) | [Sentinel](sentinel.md) | [Dashboard](dashboard.md)*
 
 <!-- specs: orchestration-engine, dispatch-core, sentinel-dashboard -->

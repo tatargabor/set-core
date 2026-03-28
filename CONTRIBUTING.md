@@ -1,134 +1,262 @@
 # Contributing to set-core
 
-Thank you for your interest in contributing to set-core! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing. This document covers setup, testing, architecture, and how to create plugins.
+
+## Prerequisites
+
+| Requirement | Version | Purpose |
+|-------------|---------|---------|
+| Python | 3.10+ | Core engine, API server, MCP server |
+| Git | 2.30+ | Worktree management, merge pipeline |
+| Node.js | 18+ | Claude Code CLI, web dashboard |
+| pnpm | 9+ | Web dashboard package manager |
+| jq | Any | JSON processing in shell scripts |
+| Claude Code | Latest | Agent runtime (for E2E testing) |
 
 ## Development Setup
 
-### Prerequisites
+### 1. Clone and install
 
-- Python 3.10 or higher
-- Git
-- Node.js (for Claude Code CLI)
-- jq (JSON processing)
+```bash
+git clone https://github.com/tatargabor/set-core.git
+cd set-core
+./install.sh
+```
 
-### Installation
+The installer:
+- Symlinks `set-*` CLI tools to `~/.local/bin/`
+- Installs the Python package in editable mode
+- Sets up shell completions (bash/zsh)
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/tatargabor/set-core.git
-   cd set-core
-   ```
+### 2. Install the web module (for web project type development)
 
-2. Run the installer:
-   ```bash
-   ./install.sh
-   ```
+```bash
+pip install -e modules/web
+```
 
-3. Install development dependencies:
-   ```bash
-   pip install -e ".[dev]"
-   ```
+### 3. Install the web dashboard dependencies
+
+```bash
+cd web && pnpm install
+```
+
+### 4. Start the API server and dashboard
+
+```bash
+# API server (from project root)
+set-core server
+
+# Web dashboard (from web/)
+cd web && pnpm dev
+```
+
+Dashboard runs at `http://localhost:7400`, API at `http://localhost:7300`.
 
 ## Project Structure
 
 ```
 set-core/
-├── bin/                    # Shell scripts (CLI tools)
-│   ├── set-new             # Create new worktree
-│   ├── set-work            # Open worktree
-│   ├── set-list            # List worktrees
-│   ├── set-close           # Close worktree
-│   ├── set-merge           # Merge branch
-│   ├── set-status          # JSON status output
-│   └── set-common.sh       # Shared functions
-├── gui/                    # Python GUI (PySide6)
-│   ├── control_center/    # Main window and mixins
-│   ├── dialogs/           # Dialog windows
-│   ├── workers/           # Background workers
-│   └── widgets/           # Custom widgets
-├── set_tools/              # Python package
-│   └── plugins/           # Plugin system
-├── docs/                  # Documentation
-└── tests/                 # Test suite
+├── lib/set_orch/              # Layer 1: Core engine (abstract)
+│   ├── engine.py              #   Orchestration state machine
+│   ├── dispatcher.py          #   Agent dispatch to worktrees
+│   ├── merger.py              #   Integration gate pipeline
+│   ├── gate_runner.py         #   Quality gate execution
+│   ├── gate_profiles.py       #   Per-change gate configuration
+│   ├── profile_types.py       #   ProjectType ABC + dataclasses
+│   ├── profile_loader.py      #   NullProfile, CoreProfile, resolution
+│   ├── digest.py              #   Spec → requirements extraction
+│   ├── api/                   #   FastAPI endpoints
+│   └── issues/                #   Issue pipeline (detect → investigate → fix)
+├── modules/                   # Layer 2: Project-type plugins
+│   ├── web/                   #   WebProjectType — Next.js, Prisma, Playwright
+│   │   ├── set_project_web/   #     Python package
+│   │   └── pyproject.toml     #     Standalone installable
+│   └── example/               #   DungeonProjectType — reference implementation
+├── bin/                       # CLI tools (set-new, set-merge, set-status, etc.)
+├── web/                       # Web dashboard (React + TypeScript + Tailwind)
+├── mcp-server/                # MCP server (FastMCP — memory, worktrees, team)
+├── .claude/                   # Claude Code integration
+│   ├── rules/                 #   Development rules (NOT deployed to consumers)
+│   ├── skills/                #   Slash command implementations
+│   └── commands/              #   Command definitions
+├── templates/core/rules/      # Rules deployed to consumer projects
+├── openspec/                  # Capability specifications
+│   ├── specs/                 #   Feature specs
+│   └── changes/               #   Active changes
+├── tests/                     # Test suite
+│   ├── unit/                  #   Unit tests
+│   ├── integration/           #   Integration tests
+│   ├── orchestrator/          #   Orchestrator-specific tests
+│   ├── merge/                 #   Merge pipeline tests
+│   └── e2e/                   #   End-to-end orchestration runs
+└── docs/                      # Documentation
 ```
+
+## Running Tests
+
+### Unit and integration tests
+
+```bash
+# All tests (excludes e2e/)
+cd /path/to/set-core
+python -m pytest tests/ --ignore=tests/e2e
+
+# Specific test file
+python -m pytest tests/test_gate_profiles.py
+
+# Specific test directory
+python -m pytest tests/unit/
+python -m pytest tests/merge/
+```
+
+### Web dashboard E2E tests
+
+```bash
+cd web/
+
+# Requires: running API server + a project with completed orchestration
+E2E_PROJECT=minishop-run10 pnpm test:e2e
+
+# View HTML report with screenshots
+pnpm test:e2e:report
+
+# Single test file
+E2E_PROJECT=minishop-run10 npx playwright test changes-data
+```
+
+### Full orchestration E2E
+
+```bash
+# Scaffold + init + register + start sentinel
+./tests/e2e/run.sh minishop
+
+# Register only (start from manager UI)
+./tests/e2e/run.sh minishop --no-start
+```
+
+## Architecture Rules
+
+1. **Layer 1 (`lib/set_orch/`) is abstract** — never put project-specific logic (web patterns, framework detection) here. It belongs in `modules/`.
+
+2. **Profile system is the extension point** — new project-aware behavior goes through `ProjectType` ABC in `profile_types.py`, then gets implemented in the appropriate module.
+
+3. **CoreProfile provides universal rules only** — file-size limits, no-secrets check, todo-tracking. Framework-specific rules go in modules.
+
+4. **Modules inherit from CoreProfile** — `WebProjectType(CoreProfile)`, not `ProjectType` directly.
+
+5. **All merges go through integration gates** — never `git merge` manually. The engine's `execute_merge_queue` runs dep install, build, test, and E2E before merging.
+
+6. **OpenSpec lives only in set-core root** — modules do not have their own `openspec/` directory.
+
+## Creating a Plugin
+
+Project-type plugins add domain-specific rules, gates, templates, and conventions.
+
+### Built-in module (in this repo)
+
+1. Create `modules/your-type/` with a `pyproject.toml`
+2. Create a class inheriting from `CoreProfile`:
+
+```python
+from set_orch.profile_loader import CoreProfile
+
+class YourProjectType(CoreProfile):
+    """Domain-specific project type."""
+
+    def detect_test_command(self, project_dir: str) -> str | None:
+        # Return the test command for this project type
+        return "pytest"
+
+    def detect_e2e_command(self, project_dir: str) -> str | None:
+        return None
+
+    def get_forbidden_patterns(self) -> list:
+        # Domain-specific forbidden patterns
+        return super().get_forbidden_patterns() + [
+            {"pattern": "your_pattern", "severity": "CRITICAL", "message": "..."}
+        ]
+```
+
+3. Register via entry point in `modules/your-type/pyproject.toml`:
+
+```toml
+[project.entry-points."set_core.project_types"]
+your-type = "your_package:YourProjectType"
+```
+
+### External plugin (separate repo)
+
+Same pattern, but in its own repository. Install with `pip install -e /path/to/plugin`. Entry points take priority over built-in modules.
+
+See [`modules/example/`](modules/example/) for a complete reference implementation (DungeonProjectType).
+
+## Code Style
+
+- **Python:** PEP 8, type hints where practical. No formatter is enforced but consistency with existing code is expected.
+- **Shell:** ShellCheck-clean. Use `set -euo pipefail`. Source `bin/set-common.sh` for shared functions.
+- **TypeScript (web/):** ESLint config in `web/eslint.config.js`. Tailwind CSS for styling.
+- **Markdown:** ATX headers, consistent table formatting, no trailing whitespace.
 
 ## Making Changes
 
-### Branching Strategy
+### Using set-core itself
 
-1. Create a feature branch from `main`:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. Or use set-core itself:
-   ```bash
-   set-new your-feature-name
-   ```
-
-### Code Style
-
-- **Python**: Follow PEP 8, use Black for formatting
-- **Shell**: Use ShellCheck, follow Google Shell Style Guide
-- **Markdown**: Use consistent headers and formatting
-
-### Testing
-
-Run tests before submitting:
 ```bash
-pytest
+# Create a worktree for your change
+set-new my-feature
+
+# Work on it
+set-work my-feature
+
+# Merge through integration gates
+set-merge my-feature
 ```
 
-### Commit Messages
+### Traditional git workflow
 
-Use clear, descriptive commit messages:
-```
-Add feature X for doing Y
-
-- Implemented Z functionality
-- Updated tests for new behavior
-
-Co-Authored-By: Your Name <email@example.com>
+```bash
+git checkout -b feature/my-feature
+# ... make changes, write tests ...
+git push origin feature/my-feature
+# Open a pull request
 ```
 
-## Plugin Development
+## Commit Messages
 
-set-core supports plugins via entry points. To create a plugin:
+Use conventional-style prefixes:
 
-1. Create a Python package with a class inheriting from `set_tools.Plugin`
-2. Implement required methods (`info`, etc.)
-3. Register via entry point in `pyproject.toml`:
-   ```toml
-   [project.entry-points."set_tools.plugins"]
-   your-plugin = "your_package:YourPlugin"
-   ```
-
-See `set_tools/plugins/base.py` for the plugin interface.
+```
+feat: add new gate type for HIPAA compliance
+fix: merger retries on transient git lock
+refactor: extract digest parsing into separate module
+docs: add plugin development walkthrough
+test: cover edge case in merge conflict resolution
+```
 
 ## Reporting Issues
 
-When reporting issues, please include:
+Include:
 - Operating system and version
-- Python version
+- Python version (`python3 --version`)
 - Steps to reproduce
 - Expected vs actual behavior
-- Relevant log output
+- Relevant log output (check `~/.local/share/set-core/logs/`)
 
 ## Pull Requests
 
 1. Fork the repository
-2. Create your feature branch
-3. Make your changes
-4. Run tests
+2. Create a feature branch
+3. Make focused, minimal changes
+4. Ensure tests pass
 5. Submit a pull request
 
 ### PR Checklist
 
-- [ ] Tests pass
-- [ ] Code follows style guidelines
-- [ ] Documentation updated (if needed)
-- [ ] Commit messages are clear
-- [ ] Changes are focused and minimal
+- [ ] Tests pass (`python -m pytest tests/ --ignore=tests/e2e`)
+- [ ] No project-specific logic in `lib/set_orch/`
+- [ ] New features have tests
+- [ ] Documentation updated if user-facing behavior changed
+- [ ] Commit messages are clear and use conventional prefixes
 
 ## License
 
