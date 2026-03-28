@@ -55,6 +55,10 @@ COMMANDS = [
 
     # ── Sentinel findings ──
     ("set-sentinel-finding-list", "set-sentinel-finding list --open-only 2>/dev/null || echo 'No findings'", "Sentinel findings"),
+
+    # ── Spec & design showcase ──
+    ("spec-preview", "head -35 tests/e2e/scaffolds/minishop/docs/v1-minishop.md", "Spec file preview"),
+    ("design-snapshot-preview", "head -40 tests/e2e/scaffolds/minishop/docs/design-snapshot.md", "Design snapshot preview"),
 ]
 
 # ── HTML template (dark terminal theme) ──

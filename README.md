@@ -4,8 +4,48 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux & macOS](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
+[![Website](https://img.shields.io/badge/Website-setcode.dev-22c55e)](https://setcode.dev)
 
 set-core takes a markdown spec, decomposes it into independent changes, dispatches parallel Claude Code agents in git worktrees, runs quality gates on each, and merges the results. You provide the spec — it builds the app.
+
+**Built with set-core, using set-core.** This project was developed using its own orchestration pipeline — every feature was planned through [OpenSpec](docs/guide/openspec.md), implemented by agents, and validated through quality gates. 363 capability specifications, 1,287 commits.
+
+> Don't wait for perfection — start using it now. There will be bugs. But this is a self-healing system: the sentinel detects issues, investigates root causes, and dispatches fixes automatically. The more people use it, the faster it improves.
+
+---
+
+## See It In Action
+
+**An agent working on a change — debugging, testing, fixing:**
+
+<p align="center">
+  <img src="docs/images/auto/web/agent-session-scroll.gif" width="90%" alt="Claude agent session — debugging, testing, and fixing code autonomously" />
+</p>
+
+**Input:** A markdown spec + Figma design
+
+<p align="center">
+  <img src="docs/images/auto/cli/spec-preview.png" width="48%" alt="Markdown spec — the input" />
+  &nbsp;
+  <img src="docs/images/auto/figma/storefront-design.png" width="48%" alt="Figma Make design — page structure and navigation" />
+</p>
+
+**Orchestration:** Phased execution, dependency DAG, quality gates on every change
+
+<p align="center">
+  <img src="docs/images/auto/web/tab-phases.png" width="48%" alt="Phases — dependency tree, gate badges, all merged" />
+  &nbsp;
+  <img src="docs/images/auto/web/tab-digest.png" width="48%" alt="Digest — 7 domains, 32 requirements, 84 acceptance criteria" />
+</p>
+
+**Output:** Running application — built entirely from the spec
+
+<p align="center">
+  <img src="docs/images/auto/app/products.png" width="48%" alt="MiniShop storefront" />
+  &nbsp;
+  <img src="docs/images/auto/figma/product-detail-design.png" width="48%" alt="Product detail — Figma design realized" />
+</p>
+<p align="center"><em>Spec + Figma → parallel agents → quality gates → working app. Zero intervention.</em></p>
 
 ---
 
@@ -64,27 +104,35 @@ merged, tested, done
 
 ---
 
-## See It In Action
-
-<p align="center">
-  <img src="docs/images/auto/web/dashboard-overview.png" width="48%" alt="set-core web dashboard showing orchestration status, agent progress, and quality gates" />
-  &nbsp;
-  <img src="docs/images/auto/app/products.png" width="48%" alt="MiniShop products page built autonomously from spec" />
-</p>
-<p align="center"><em>From spec to working app — autonomously.</em></p>
-
----
-
 ## Key Features
 
 | | Feature | Description |
 |---|---|---|
 | :gear: | **Full Pipeline** | Spec to merged code — digest, decompose, dispatch, verify, merge — hands-off. [Guide](docs/guide/orchestration.md) |
-| :shield: | **Quality Gates** | Test, build, E2E, code review, spec coverage, and smoke gates run before every merge. [Reference](docs/guide/quality-gates.md) |
-| :brain: | **Persistent Memory** | Cross-session semantic recall — agents learn from each other and remember conventions. [Docs](docs/guide/memory.md) |
-| :bar_chart: | **Web Dashboard** | Browser-based monitoring for orchestration state, agent status, tokens, and logs. [Setup](docs/guide/dashboard.md) |
-| :clipboard: | **OpenSpec Workflow** | Structured artifact flow (proposal, design, spec, tasks, code) keeps agents on track. [Workflow](docs/guide/openspec.md) |
-| :jigsaw: | **Plugin System** | Project-type plugins (web, custom) add domain rules, gates, and conventions. [Architecture](docs/guide/plugins.md) |
+| :shield: | **Quality Gates** | Test, build, E2E, code review, spec coverage, and smoke — deterministic, not LLM-judged. [Guide](docs/guide/orchestration.md) |
+| :brain: | **Persistent Memory** | Hook-driven cross-session recall — agents learn from each other. Infrastructure saves, not voluntary. [Guide](docs/guide/memory.md) |
+| :bar_chart: | **Web Dashboard** | Real-time monitoring — orchestration state, agents, tokens, issues, learnings. [Guide](docs/guide/dashboard.md) |
+| :clipboard: | **OpenSpec Workflow** | Structured artifact flow (proposal → design → spec → tasks → code) minimizes hallucination. [Guide](docs/guide/openspec.md) |
+| :wrench: | **Self-Healing** | Issue pipeline: detect → investigate → fix → verify. The sentinel diagnoses before it acts. [Guide](docs/guide/sentinel.md) |
+| :jigsaw: | **Plugin System** | Project-type plugins add domain rules, gates, templates, and conventions. [Docs](docs/reference/plugins.md) |
+
+---
+
+## What We're Solving
+
+Most AI coding tools are nondeterministic — run the same prompt twice, get different results. set-core treats **reproducibility as an engineering problem**, not a hope.
+
+| Challenge | Our Approach | Result |
+|-----------|-------------|--------|
+| **Output divergence** | [3-layer template system](docs/learn/journey.md) — templates lock structure, agents focus on logic | File structure divergence: 63% → 0% across paired runs |
+| **Hallucination** | [OpenSpec workflow](docs/guide/openspec.md) — structured artifacts with requirements + acceptance criteria | Agents implement against spec, not imagination |
+| **Quality roulette** | [Programmatic gates](docs/guide/orchestration.md) — exit codes, not LLM judgment. 7 gate types | Deterministic pass/fail |
+| **Spec drift** | [Coverage tracking](docs/guide/openspec.md) — verifies "does it satisfy the spec?" not just "do tests pass?" | Auto-replan when coverage < 100% |
+| **Failure recovery** | [Issue pipeline](docs/guide/sentinel.md) — detailed investigation before any fix. No guessing. | 30-second recovery, not hours |
+| **Agent amnesia** | [Hook-driven memory](docs/guide/memory.md) — shared across worktrees, survives sessions | Zero voluntary saves → 100% capture via hooks |
+| **Framework reliability** | [E2E scaffold testing](docs/learn/benchmarks.md) — the orchestrator tests itself | 30+ runs across 4 project scaffolds |
+
+We're actively reducing nondeterminism through template optimization, divergence measurement, and configuration distribution across the core → module → scaffold → project layers. [Divergence research →](docs/learn/journey.md)
 
 ---
 
@@ -101,39 +149,56 @@ set-project init --project-type web --template nextjs
 /set:sentinel --spec docs/my-spec.md --max-parallel 2
 ```
 
-See [docs/guide/quick-start.md](docs/guide/quick-start.md) for detailed setup, configuration, and first-run walkthrough.
+See [docs/guide/quick-start.md](docs/guide/quick-start.md) for detailed setup and first-run walkthrough.
 
 ---
 
-## How It Works
+## Technology Stack
 
-The orchestration engine reads a markdown spec and produces a structured digest — domain summaries, requirement IDs, and a dependency graph. An LLM decomposes that digest into independent changes organized in a DAG with phases, injecting relevant design tokens from Figma when available.
-
-Each change is dispatched to its own git worktree where a Ralph Loop runs Claude Code autonomously: creating OpenSpec artifacts, implementing iteratively, and tracking progress with trend detection. The sentinel supervisor monitors all agents, handles crashes, and restarts stalled work.
-
-Before any change merges to main, it passes through configurable quality gates — unit tests, build, Playwright E2E, LLM code review, spec coverage check, and post-merge smoke test. Gate profiles adjust requirements per change type. After merge, auto-replan checks remaining spec coverage and dispatches new changes if needed.
-
-Full architecture walkthrough: [docs/learn/how-it-works.md](docs/learn/how-it-works.md) | [docs/howitworks/](docs/howitworks/)
+| Layer | Technologies |
+|-------|-------------|
+| **Orchestration engine** | Python, FastAPI, uvicorn |
+| **Web dashboard** | React, TypeScript, Tailwind CSS, Recharts |
+| **Agent runtime** | Claude Code (Anthropic), git worktrees |
+| **Quality gates** | Vitest, Playwright, ESLint |
+| **Design bridge** | Figma API → design-snapshot.md → Tailwind tokens |
+| **Memory** | shodh-memory (RocksDB + vector embeddings) |
+| **Voice notifications** | Soniox Speech-to-Text/Text-to-Speech (experimental) |
+| **Workflow** | OpenSpec CLI (@fission-ai/openspec) |
 
 ---
 
 ## Built & Battle-Tested
 
-set-core is developed through continuous E2E orchestration runs against real projects.
+set-core is a **framework with a plugin system**. The core orchestration engine is open source. Project types — domain-specific rules, templates, and conventions — can be public or private.
+
+The **web project type** (Next.js, Prisma, Playwright) ships built-in and is validated through synthetic E2E orchestration runs that simulate real development environments — reproducible, measurable, tracked.
+
+**Custom project types in development** include voice agent delivery (Soniox TTS/STT with spec-driven customer interaction), and others not yet public. The plugin architecture lets anyone create their own domain-specific type with custom gates, templates, and conventions.
 
 | Metric | Value |
 |--------|-------|
 | Commits | 1,287 |
 | Capability specs | 363 |
-| Python LOC | 44,000 |
-| TypeScript LOC | 12,000 |
-| Benchmark: MiniShop run #4 | 6/6 changes merged, 0 human interventions, 1h 45m |
-| Benchmark: MiniShop run #15 | 8/8 changes merged, Figma design bridge, gate profiles |
-| Stress test: CraftBrew | 17+ spec files, i18n, subscriptions, multi-phase |
+| Python LOC (engine + API) | 44,000 |
+| TypeScript LOC (dashboard) | 12,000 |
+| E2E validation runs | 30+ across 4 scaffolds |
+| MiniShop benchmark | 6/6 merged, 0 interventions, 1h 45m |
 
-Every change passes: **Test, Build, E2E, Code Review, Spec Coverage, Merge, Post-merge Smoke.**
+**2+ months of development. Worth every hour.** Full journey, benchmarks, and lessons: [docs/learn/journey.md](docs/learn/journey.md)
 
-Full run history and findings: [docs/learn/journey.md](docs/learn/journey.md)
+---
+
+## The Vision
+
+Systems like set-core are the next step beyond single-agent coding tools. Model providers will eventually build orchestration into their platforms — and we welcome that. But we're not waiting.
+
+By building and using these systems now, we:
+- **Shape the tools to our needs** — not wait for a vendor's roadmap
+- **Accumulate domain-specific knowledge** — in project types, templates, and memory
+- **Share what works** — the core improves for everyone, custom types stay private
+
+**This needs a community.** The web project type is public and battle-tested. We need more project types, more scaffolds, more E2E runs, more divergence research. If you build with Claude Code and want structured orchestration — [join us](https://github.com/tatargabor/set-core/issues).
 
 ---
 
@@ -141,14 +206,16 @@ Full run history and findings: [docs/learn/journey.md](docs/learn/journey.md)
 
 | Section | Contents |
 |---------|----------|
-| **[Guide](docs/guide/)** | Quick start, configuration, orchestration setup, dashboard, memory |
-| **[Reference](docs/reference/)** | CLI tools, MCP server, gate profiles, orchestration.yaml schema |
-| **[Learn](docs/learn/)** | How it works, architecture deep-dives, journey and benchmarks |
-| **[Examples](docs/examples/)** | MiniShop walkthrough, CraftBrew stress test, plugin creation |
-| **[How It Works (chapters)](docs/howitworks/)** | 10-chapter guide: overview through merge, replan, and lessons learned |
+| **[Guide](docs/guide/)** | Quick start, orchestration, sentinel, worktrees, OpenSpec, memory, dashboard |
+| **[Reference](docs/reference/)** | CLI tools, configuration, architecture, plugins |
+| **[Learn](docs/learn/)** | How it works, development journey, benchmarks, lessons learned |
+| **[Examples](docs/examples/)** | MiniShop walkthrough, first project setup |
+| **[Deep Dive](docs/howitworks/)** | 18-chapter technical reference covering every pipeline stage |
 
 ---
 
 ## License
 
 MIT — See [LICENSE](LICENSE) for details.
+
+**Website:** [setcode.dev](https://setcode.dev) · **GitHub:** [tatargabor/set-core](https://github.com/tatargabor/set-core)
