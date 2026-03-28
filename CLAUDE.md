@@ -71,10 +71,11 @@ set-core (source)                     consumer project
 
 ## E2E Run Setup
 
-**NEVER** initialize E2E runs manually. Always use `tests/e2e/run.sh`:
+**NEVER** initialize E2E runs manually. Always use `tests/e2e/runners/`:
 ```bash
-./tests/e2e/run.sh minishop          # full auto: scaffold + init + register + start
-./tests/e2e/run.sh minishop --no-start  # register only, start from manager UI
+./tests/e2e/runners/run-micro-web.sh     # scaffold + init + register
+./tests/e2e/runners/run-minishop.sh      # scaffold + init + register
+./tests/e2e/runners/run-craftbrew.sh     # scaffold + init + register
 ```
 
 If you MUST init manually, **always** include `--project-type web --template nextjs`:
@@ -82,6 +83,20 @@ If you MUST init manually, **always** include `--project-type web --template nex
 set-project init --name minishop-runN --project-type web --template nextjs
 ```
 Without `--project-type web`, no `project-type.yaml` is created → NullProfile loads → integration gates silently skip (no build/test/e2e detection).
+
+### Starting the sentinel
+
+After the runner script finishes, start the sentinel via the **manager API** (not CLI):
+```bash
+# Restart set-web first if the project was just registered (picks up new projects)
+systemctl --user restart set-web && sleep 5
+
+# Start sentinel via API
+curl -X POST http://localhost:7400/api/<project>/sentinel/start \
+  -H 'Content-Type: application/json' -d '{"spec":"docs/spec.md"}'
+```
+
+**NEVER** use `nohup set-sentinel` from CLI — that only starts the orchestrator without the sentinel poll loop.
 
 ## Web Dashboard E2E Tests
 

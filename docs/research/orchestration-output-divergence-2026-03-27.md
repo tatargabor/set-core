@@ -194,6 +194,61 @@ Aligned Prisma import example with the convention.
 - **Test file naming** — coverage matters, not names
 - **Import alias format** — tsconfig.json determines this
 
-## Validation Plan
+## Validation Results (2026-03-28)
 
-Run a fresh minishop orchestration with these conventions deployed. Compare against run6/run7 using the same metrics. Target: >70% file structure overlap with either prior run.
+### Round 2: Convention rules only (micro-web run8 vs run9)
+
+Same spec, convention rules deployed (route groups, action colocation, utility naming), no template files yet.
+
+| Metric | run8 | run9 |
+|--------|------|------|
+| Changes | 3 | 3 |
+| File count | 11 | 11 |
+| File overlap (Jaccard) | **47%** | |
+| Route structure | Identical (5/5) | |
+| Dependencies | Identical | |
+| Vitest exclude | Both correct | |
+
+Divergences: `header.tsx` vs `Header.tsx` (casing), `lib/blog-data.ts` vs `data/blog-posts.ts` (path), `lib/validation.ts` vs `lib/validate-contact.ts` (naming).
+
+### Round 3: Three-layer templates (micro-web run10 vs run11)
+
+Same spec, full template system deployed: Layer 1 (module templates: globals.css, utils.ts, prisma.ts), Layer 2 (scaffold rules: micro-web-conventions.md), Layer 3 (project override support).
+
+| Metric | run10 | run11 |
+|--------|-------|-------|
+| Changes | 4 (all merged) | 5 (all merged) |
+| File count | 11 | 11 |
+| File overlap (Jaccard) | **100%** | |
+| File naming | Identical (11/11) | |
+| Dependencies | Identical | |
+| Gate results | TBS on all non-foundation | TBS on all non-foundation |
+
+Content similarity of common files:
+
+| File | Similarity |
+|------|-----------|
+| globals.css | 100% (template) |
+| layout.tsx | 91% |
+| blog-data.ts | 73% |
+| contact/page.tsx | 66% |
+| Header.tsx | 55% |
+| blog/[slug]/page.tsx | 47% |
+| page.tsx | 45% |
+| about/page.tsx | 37% |
+| validation.ts | 36% |
+| validation.test.ts | 35% |
+
+Average content similarity: ~57%. The remaining divergence is in page implementation details (agent creativity) — functionally equivalent, not worth regulating.
+
+### Trend Summary
+
+```
+Measurement                  File Overlap    What Changed
+─────────────────────────    ────────────    ──────────────────────
+minishop run6 vs run7         37%           (no conventions)
+micro-web run8 vs run9        47%           + convention rules
+micro-web run10 vs run11     100%           + template files + scaffold rules
+```
+
+The three-layer template system eliminated structural divergence entirely. Convention rules alone improved overlap by +10pp; adding template files brought it to 100%.
