@@ -184,15 +184,22 @@ export default function BattleCanvas({ changes, gameOver, announcements, newsShi
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (['ArrowLeft', 'ArrowRight', ' ', 'Space'].includes(e.key)) {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Space'].includes(e.key)) {
         e.preventDefault()
+        e.stopPropagation()
         keysRef.current.add(e.key)
       }
     }
-    const onKeyUp = (e: KeyboardEvent) => keysRef.current.delete(e.key)
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
-    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp) }
+    const onKeyUp = (e: KeyboardEvent) => {
+      keysRef.current.delete(e.key)
+    }
+    // Use capture phase to intercept before any other handler
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    window.addEventListener('keyup', onKeyUp, { capture: true })
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, { capture: true })
+      window.removeEventListener('keyup', onKeyUp, { capture: true })
+    }
   }, [])
 
   useEffect(() => {
