@@ -107,6 +107,8 @@ if [[ ! -f "$PROJECT_DIR/package.json" ]]; then
     exit 1
 fi
 
+# Clean previous screenshots to avoid stale files from different projects
+rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
 # ── Prisma setup (if applicable) ──
