@@ -223,14 +223,100 @@ Round   Convention Level              Jaccard    Improvement
 Total improvement: 37% → 100% (+63pp)
 ```
 
+## Round 4: Minishop Validation (run12 vs run13)
+
+To verify the template system works on complex projects too, we ran minishop (Prisma, auth, admin CRUD, cart, checkout) — same spec, two runs.
+
+### Decomposition Divergence
+
+| run12 (6 changes, 3 phases) | run13 (6 changes, 4 phases) |
+|-----------------------------|-----------------------------|
+| foundation-setup | foundation-and-auth |
+| auth-navigation | storefront-catalog |
+| product-catalog | product-detail-and-cart-session |
+| shopping-cart | cart-management |
+| checkout-order-history | order-management |
+| admin-products | admin-products |
+
+run13 combined foundation+auth into one larger change (122k tokens) and used 4 phases instead of 3.
+
+### Results
+
+| Metric | Value |
+|--------|-------|
+| run12 files | 47 |
+| run13 files | 44 |
+| Common files | 33 |
+| **Jaccard overlap** | **57%** (up from 37% baseline) |
+
+### What Converged (template + convention effect)
+
+| File | Similarity | Why |
+|------|-----------|-----|
+| `prisma.ts` | 100% | Template |
+| `utils.ts` | 100% | Template |
+| `layout.tsx` | 94% | Convention |
+| `page.tsx` | 100% | Convention (redirect to /products) |
+| `health/route.ts` | 100% | Standard |
+| `button.tsx` | 100% | shadcn |
+| `alert-dialog.tsx` | 100% | shadcn |
+| `table.tsx` | 100% | shadcn |
+| `register/page.tsx` | 81% | Convention (auth pattern) |
+| `admin products/new` | 72% | Convention |
+
+### Route Structure
+
+Both runs use identical route group structure (convention effect):
+```
+src/app/
+├── admin/(auth)/login, register     ✅ identical structure
+├── admin/(dashboard)/products       ✅ identical structure
+├── (shop)/products, cart, orders    ✅ identical structure
+└── api/auth, cart, orders, health   ✅ identical structure
+```
+
+### Remaining Divergence (25 files differ)
+
+The 14 only-run12 + 11 only-run13 files are **component granularity** differences:
+- run12: `VariantFormDialog.tsx`, `DeleteVariantDialog.tsx` (modal-per-action)
+- run13: `VariantSection.tsx`, `DeleteProductButton.tsx` (section-per-entity)
+- run12: `cart-client.tsx` (client component) vs run13: `actions.ts` (server actions)
+
+This is **implementation creativity** — functionally equivalent, not worth regulating.
+
+### Comparison with Baseline
+
+| Metric | run6/7 (no rules) | run12/13 (templates) |
+|--------|-------------------|---------------------|
+| Jaccard overlap | 37% | **57%** (+20pp) |
+| Route structure | Divergent | **Identical** |
+| File naming | `prisma.ts` vs `db.ts` | **Identical** |
+| Template files | 0% deterministic | **100%** (8 files) |
+
+## Full Trend Summary
+
+```
+Project      Round   Convention Level              Jaccard
+─────────    ─────   ────────────────────          ───────
+micro-web      1     None                            37%
+micro-web      2     Convention rules                47%
+micro-web      3     Templates + scaffold rules     100%
+minishop       1     None                            37%
+minishop       4     Templates + scaffold rules      57%
+```
+
+The simpler the project, the higher the convergence. Micro-web (static site, no DB) reaches 100%. Minishop (Prisma, auth, CRUD) reaches 57% — the remaining gap is component-level implementation decisions.
+
 ## Cost Analysis
 
-| Run | Changes | Total Output Tokens | Duration |
-|-----|---------|-------------------|----------|
-| run8 | 3 | ~216K | ~15 min |
-| run9 | 3 | ~215K | ~15 min |
-| run10 | 4 | ~238K | ~30 min |
-| run11 | 5 | ~254K | ~35 min |
+| Run | Project | Changes | Total Output Tokens | Duration |
+|-----|---------|---------|-------------------|----------|
+| run8 | micro-web | 3 | ~216K | ~15 min |
+| run9 | micro-web | 3 | ~215K | ~15 min |
+| run10 | micro-web | 4 | ~238K | ~30 min |
+| run11 | micro-web | 5 | ~254K | ~35 min |
+| run12 | minishop | 6 | ~264K | ~90 min |
+| run13 | minishop | 6 | ~389K | ~120 min |
 
 Templates did NOT increase token usage — they reduced it slightly because agents skip generating boilerplate files that already exist.
 
