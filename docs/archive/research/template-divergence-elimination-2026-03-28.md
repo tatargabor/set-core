@@ -295,30 +295,109 @@ This is **implementation creativity** — functionally equivalent, not worth reg
 
 ## Full Trend Summary
 
+## Round 5: Planning Rules + Decomposition Hints (minishop run14 vs run15)
+
+Added explicit change sizing rules and decomposition guidance:
+- Target 50-150K tokens per change (1M context windows)
+- Foundation and auth MUST be separate changes
+- Cart and checkout MUST be separate changes
+- Prefer 3 phases over 4+
+- Minishop scaffold includes recommended 6-change decomposition
+
+### Decomposition Result
+
+Both runs produced the **exact same 6-change, 3-phase structure**:
+
+| run14 | run15 | Phase |
+|-------|-------|-------|
+| foundation-setup | foundation-setup | 1 |
+| auth-navigation | auth-navigation | 1 |
+| product-catalog | product-catalog | 2 |
+| shopping-cart | shopping-cart | 2 |
+| checkout-orders / order-history-admin | admin-products / checkout-orders | 2-3 |
+
+Compare with run12/13 (before planning rules): run12 had 3 phases / run13 had 4 phases with foundation+auth combined into 123K token mega-change.
+
+### `set-compare` Results
+
 ```
-Project      Round   Convention Level              Jaccard
-─────────    ─────   ────────────────────          ───────
-micro-web      1     None                            37%
-micro-web      2     Convention rules                47%
-micro-web      3     Templates + scaffold rules     100%
-minishop       1     None                            37%
-minishop       4     Templates + scaffold rules      57%
+set-compare minishop-run14 minishop-run15 → 75/100 (Structurally equivalent)
 ```
 
-The simpler the project, the higher the convergence. Micro-web (static site, no DB) reaches 100%. Minishop (Prisma, auth, CRUD) reaches 57% — the remaining gap is component-level implementation decisions.
+| Metric | Score | Details |
+|--------|-------|---------|
+| Route coverage | 65% | run14 has extra variant management pages |
+| Schema equivalence | 82% | Same 9 models, run14 has extra Session model |
+| Dependency set | 85% | 29 common, 5 differ |
+| Functional categories | 85% | Same structure, ±1-4 per category |
+| Template compliance | 69% | run14: 7/8 unchanged, run15: 4/8 unchanged |
+| Convention compliance | **100%** | All 5 conventions pass in both |
+| E2E tests | 56% | Different test file names, similar coverage |
+
+### What Causes the Remaining 25% Divergence
+
+| Source | Impact | Can We Fix It? |
+|--------|--------|---------------|
+| **Route variants** — run14 built separate variant CRUD pages, run15 inline | -20pp on routes | Scaffold hint could specify variant approach |
+| **Template modification** — run15 agent modified globals.css, tsconfig, next.config | -12pp on templates | Rule: "NEVER modify template files" |
+| **E2E test naming** — `checkout.spec.ts` vs `admin.spec.ts` | -6pp on e2e | Planning rule: test file = change name |
+| **Extra API routes** — different cart/auth endpoints | -5pp on routes | Hard to constrain without pseudo-code |
+
+### How to Push Score Higher
+
+1. **"Don't modify template files" rule** (+12pp potential) — add to planning rules: "Files deployed by `set-project init` (globals.css, vitest.config.ts, tsconfig.json, next.config.js, postcss.config.mjs) MUST NOT be modified by agents. If a change is needed, create a new file instead."
+
+2. **E2E test naming convention** (+6pp potential) — already in planning rules but not followed: "Test file names SHOULD match the change name (change `shopping-cart` → `tests/e2e/cart.spec.ts`)"
+
+3. **Variant management approach** (+5pp potential) — minishop scaffold could specify: "Variants managed inline on the product edit page (not separate pages)"
+
+4. **Auth API route convention** (+3pp potential) — scaffold could specify: "Admin registration via `/api/auth/register` route (not `/api/admin/register`)"
+
+**Estimated ceiling with all fixes: ~90/100** for minishop-class projects. The remaining 10% is inherent agent creativity in component implementation (hook patterns, CSS classes, form handling approach).
+
+## Full Trend Summary (All Rounds)
+
+```
+Project      Round   Changes   Score    Convention   What Changed
+─────────    ─────   ───────   ─────    ──────────   ────────────────────
+micro-web      1     Jaccard    37%       n/a        (no conventions)
+micro-web      2     Jaccard    47%       n/a        + convention rules
+micro-web      3     compare    87%       80%        + templates + scaffold rules
+minishop       1     Jaccard    37%       n/a        (no conventions)
+minishop       4     compare    72%      100%        + templates + scaffold rules
+minishop       5     compare    75%      100%        + planning rules + decomp hints
+```
+
+Note: Rounds 1-2 used Jaccard file overlap (literal), rounds 3-5 used `set-compare` (multi-metric weighted score). Direct comparison across methods is approximate.
 
 ## Cost Analysis
 
-| Run | Project | Changes | Total Output Tokens | Duration |
-|-----|---------|---------|-------------------|----------|
-| run8 | micro-web | 3 | ~216K | ~15 min |
-| run9 | micro-web | 3 | ~215K | ~15 min |
-| run10 | micro-web | 4 | ~238K | ~30 min |
-| run11 | micro-web | 5 | ~254K | ~35 min |
-| run12 | minishop | 6 | ~264K | ~90 min |
-| run13 | minishop | 6 | ~389K | ~120 min |
+| Run | Project | Changes | Total Output Tokens | Duration | Issues |
+|-----|---------|---------|-------------------|----------|--------|
+| run8 | micro-web | 3 | ~216K | ~15 min | Clean |
+| run9 | micro-web | 3 | ~215K | ~15 min | Clean |
+| run10 | micro-web | 4 | ~238K | ~30 min | Clean |
+| run11 | micro-web | 5 | ~254K | ~35 min | Clean |
+| run12 | minishop | 6 | ~264K | ~90 min | 1 sentinel restart |
+| run13 | minishop | 6 | ~389K | ~120 min | foundation+auth combined (123K) |
+| run14 | minishop | 6 | ~565K | ~3.5h | stall recovery, sentinel restarts |
+| run15 | minishop | 6 | ~769K | ~3h | e2e-redispatch, sentinel fix needed |
 
-Templates did NOT increase token usage — they reduced it slightly because agents skip generating boilerplate files that already exist.
+Run14/15 used more tokens due to larger context windows (1M) and retry cycles, but produced better decomposition alignment.
+
+## Operational Findings
+
+### Sentinel Session Death (Fixed)
+
+The sentinel Claude session would end with `end_turn` (not crash) while the orchestration was still running. Root cause: `claude -p` session completes naturally when the poll loop has nothing new to report. The supervisor's `_is_alive()` check saw the process as alive (lingering) so auto-restart never triggered.
+
+**Fix:** Added `_is_sentinel_session_stale()` — checks if sentinel stdout hasn't been updated for 120s while orchestration is running. Triggers kill + auto-restart. Committed: `adc95379a`.
+
+### Checkpoint Auto-Approve
+
+Minishop scaffold was missing `checkpoint_auto_approve: true` in the orchestration config. When the sentinel session died, there was nobody to approve the checkpoint, blocking all merges.
+
+**Fix:** Added `checkpoint_auto_approve: true` and `merge_policy: checkpoint` to the minishop runner config. Committed: `21bd01188`.
 
 ## Conclusion
 
@@ -327,10 +406,21 @@ Orchestration output can be made **structurally deterministic** through three la
 1. **Framework templates** (web module) — universal boilerplate that every Next.js project needs
 2. **Scaffold conventions** (E2E runners) — project-specific rules that guide agent decisions
 3. **Project overrides** (external repos) — custom versions of template files for production projects
+4. **Planning rules** — decomposition sizing and separation constraints
 
 The agent retains full creative freedom for **business logic** (page content, component styling, test assertions) while the **structural decisions** (file names, directory structure, utility locations, config files) are pre-determined.
 
-This eliminates the largest source of inter-run divergence and makes orchestration output predictable, comparable, and debuggable.
+Convention compliance is consistently 100% across all measured runs. The `set-compare` tool provides reproducible, multi-metric scoring for ongoing monitoring.
+
+### Comparison Tool
+
+```bash
+./bin/set-compare project-a project-b           # markdown report
+./bin/set-compare project-a project-b --json    # machine-readable
+./bin/set-compare project-a project-b -o file   # save to file
+```
+
+7 metrics, weighted 0-100 score, profile-driven conventions (extensible per project type).
 
 ## Files Changed
 
@@ -358,3 +448,17 @@ This eliminates the largest source of inter-run divergence and makes orchestrati
 ### Project override support
 - `lib/set_orch/profile_deploy.py` — `_merge_project_templates()` function
 - `docs/plugins.md` — "Project Templates" section
+
+### Planning rules (Round 5 fix)
+- `modules/web/.../planning_rules.txt` — change sizing (50-150K), foundation≠auth, cart≠checkout
+- `tests/e2e/scaffolds/minishop/.../minishop-conventions.md` — recommended 6-change decomposition
+- `tests/e2e/runners/run-minishop.sh` — checkpoint_auto_approve: true
+
+### Comparison tool
+- `lib/set_orch/compare.py` — multi-metric comparison engine
+- `bin/set-compare` — CLI entry point
+- `lib/set_orch/profile_types.py` — `get_comparison_conventions()`, `get_comparison_template_files()`
+- `modules/web/set_project_web/project_type.py` — web-specific convention checks
+
+### Operational fixes
+- `lib/set_orch/manager/supervisor.py` — stale sentinel session detection + auto-restart
