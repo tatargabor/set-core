@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Compare two orchestration runs for structural divergence.
+# Usage: set-compare project-a project-b [--json] [--output file]
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}/../lib:${SCRIPT_DIR}/../modules/web:${PYTHONPATH:-}"
+exec python3 -m set_orch.compare "$@"
