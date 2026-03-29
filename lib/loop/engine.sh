@@ -566,7 +566,7 @@ except:
         # Output-level idle detection: stop if same output repeats N times
         if [[ -s "$iter_log_file" ]]; then
             local current_hash
-            current_hash=$(tail -200 "$iter_log_file" | md5sum | cut -d' ' -f1)
+            current_hash=$(tail -200 "$iter_log_file" | shasum -a 256 | cut -d' ' -f1)
             if [[ -n "$last_output_hash" && "$current_hash" == "$last_output_hash" ]]; then
                 idle_count=$((idle_count + 1))
                 echo "⚠️  Identical output detected ($idle_count/$max_idle_iters)"

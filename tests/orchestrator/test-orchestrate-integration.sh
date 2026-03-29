@@ -517,7 +517,7 @@ idle_count=0
 last_hash=""
 for i in 1 2 3; do
     log_file="$REPO10/.claude/logs/ralph-iter-$(printf '%03d' "$i").log"
-    current_hash=$(tail -200 "$log_file" | md5sum | cut -d' ' -f1)
+    current_hash=$(tail -200 "$log_file" | shasum -a 256 | cut -d' ' -f1)
     if [[ -n "$last_hash" && "$current_hash" == "$last_hash" ]]; then
         idle_count=$((idle_count + 1))
     else
@@ -534,7 +534,7 @@ idle_count=0
 last_hash=""
 for i in 1 2 3; do
     log_file="$REPO10/.claude/logs/ralph-iter-$(printf '%03d' "$i").log"
-    current_hash=$(tail -200 "$log_file" | md5sum | cut -d' ' -f1)
+    current_hash=$(tail -200 "$log_file" | shasum -a 256 | cut -d' ' -f1)
     if [[ -n "$last_hash" && "$current_hash" == "$last_hash" ]]; then
         idle_count=$((idle_count + 1))
     else
