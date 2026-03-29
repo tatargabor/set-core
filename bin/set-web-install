@@ -149,8 +149,9 @@ if [[ -f "$SERVICE_FILE" ]]; then
     fi
 fi
 
-# Copy template and apply port
+# Copy template and apply runtime paths
 cp "$SERVICE_TEMPLATE" "$SERVICE_FILE"
+sed -i "s|__SET_TOOLS_ROOT__|$SET_TOOLS_ROOT|g" "$SERVICE_FILE"
 
 if [[ "$PORT" != "$DEFAULT_PORT" ]]; then
     sed -i "s/--port $DEFAULT_PORT/--port $PORT/" "$SERVICE_FILE"
