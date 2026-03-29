@@ -225,6 +225,8 @@ The **web project type** (Next.js, Prisma, Playwright) ships built-in and is val
 
 ## Why This Matters
 
+> **Single-agent was the start. Orchestration is the present. Enterprise is preparing.**
+
 **Systems like SET can do the work of a full development team** — given the right specification and properly developed project types. Period.
 
 This is not the future. This is the present. The sooner we move in this direction, the sooner we'll see what software development actually becomes — instead of clinging to the assumption that manual development or even manual code review should remain the default.
