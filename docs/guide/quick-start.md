@@ -29,72 +29,63 @@ cd set-core
 ./install.sh
 ```
 
-The installer symlinks all `set-*` CLI commands to `~/.local/bin`, configures the MCP server for Claude Code, installs Python dependencies, and sets up shell completions. It will also ask about optional components like Developer Memory.
+The installer symlinks all `set-*` CLI commands to `~/.local/bin`, configures the MCP server for Claude Code, installs Python dependencies, sets up shell completions, and **starts the web dashboard** as a systemd service.
 
-Verify the install:
+After install, open http://localhost:7400 — you should see the manager page. If the dashboard doesn't start automatically, run:
 
 ```bash
-set-list --help
+set-orch-core serve --port 7400
 ```
 
-## Register a Project
+## Try an E2E Test First
 
-Point set-core at your existing project:
+Before setting up your own project, see the full pipeline in action. Open a Claude Code session **from the set-core directory**:
+
+```bash
+cd set-core
+claude
+```
+
+Then type:
+
+```
+run a micro-web E2E test
+```
+
+Claude will scaffold a simple 5-page website project, register it with the manager at http://localhost:7400, and start the sentinel. **The orchestration is started through the manager dashboard** — the sentinel uses the web UI to manage the run.
+
+Watch the dashboard as the sentinel decomposes the spec, dispatches agents, runs quality gates, and merges results. A micro-web test typically completes in ~20 minutes.
+
+For a more complex test, try:
+
+```
+run a minishop E2E test
+```
+
+This builds a full e-commerce app (products, cart, admin panel, auth) from a [detailed spec](../../tests/e2e/scaffolds/minishop/docs/v1-minishop.md) with [Figma design](../../tests/e2e/scaffolds/minishop/docs/design-snapshot.md). Expect ~1-2 hours.
+
+![Manager project list](../images/auto/web/manager-project-list.png)
+
+## Set Up Your Own Project
+
+Once you've seen how it works:
 
 ```bash
 cd ~/my-project
 set-project init --project-type web --template nextjs
 ```
 
-This deploys hooks, commands, skills, and agents into your project's `.claude/` directory. The `--project-type` flag ensures the correct profile loads (web, example, or a custom plugin). Re-run anytime to update after upgrading set-core.
+This deploys hooks, commands, skills, and agents into your project's `.claude/` directory. The `--project-type` flag ensures the correct profile loads. Re-run anytime to update.
 
-> **Tip:** Use `--dry-run` to preview what changes before committing.
+> **Tip:** Use `--dry-run` to preview changes before committing.
 
-## Your First Orchestration
+## Start an Orchestration
 
-This is the main event. You will write a short spec, start the orchestration engine, and let the sentinel decompose and execute it autonomously.
+Open the dashboard at http://localhost:7400, select your project, enter your spec path in the input field, and click **Start**.
 
-### Step 1: Write a spec
+![Dashboard overview](../images/auto/web/dashboard-overview.png)
 
-Create a spec file in your project. It does not need to be long -- three sentences is enough for the engine to decompose into concrete changes:
-
-```bash
-cat > docs/specs/landing-page.md << 'EOF'
-# Landing Page
-
-Build a responsive landing page with a hero section, feature grid (3 columns),
-and a call-to-action button. Use the project's existing design system and colors.
-Include a mobile-friendly hamburger menu in the header.
-EOF
-```
-
-### Step 2: Start the dashboard
-
-From the set-core directory, start the orchestration server:
-
-```bash
-set-orch-core serve
-```
-
-This launches the API server and web dashboard on port 7400.
-
-### Step 3: Open the browser
-
-Navigate to [http://localhost:7400](http://localhost:7400). You will see the manager view listing your registered projects:
-
-![Manager project list](../images/auto/web/manager-project-list.png)
-
-### Step 4: Start the sentinel
-
-Click your project in the list, then use the **Start Sentinel** button to launch an orchestration run. The dashboard lets you pick the spec file and set parallelism (start with 2 for your first run).
-
-Behind the scenes, this is equivalent to running:
-
-```bash
-/set:sentinel --spec docs/specs/landing-page.md --max-parallel 2
-```
-
-### Step 5: Watch it work
+### Watch it work
 
 The dashboard overview shows real-time progress -- active worktrees, agent status, gate results, and token usage:
 

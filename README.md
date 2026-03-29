@@ -3,7 +3,7 @@
 **Autonomous multi-agent orchestration for Claude Code** — give it a spec, get merged features.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform: Linux & macOS](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
+[![Platform: Linux & macOS (Apple Silicon)](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20(Apple%20Silicon)-lightgrey.svg)]()
 [![Website](https://img.shields.io/badge/Website-setcode.dev-22c55e)](https://setcode.dev)
 
 set-core takes a markdown spec, decomposes it into independent changes, dispatches parallel Claude Code agents in git worktrees, runs quality gates on each, and merges the results. You provide the spec — it builds the app.
@@ -185,21 +185,25 @@ git clone https://github.com/tatargabor/set-core.git
 cd set-core && ./install.sh
 ```
 
-### Step 2: Try the MiniShop demo first
+After install, the **web dashboard** starts automatically as a systemd service. Open http://localhost:7400 — you should see the manager page.
 
-Before setting up your own project, run the built-in MiniShop benchmark — a complete e-commerce app built autonomously from spec. This lets you see the full pipeline in action and understand what happens at each stage.
+### Step 2: Try an E2E test first
 
-```bash
-# This scaffolds a project, initializes it, registers it, and starts the sentinel
-./tests/e2e/run.sh minishop
+Before setting up your own project, see the full pipeline in action. Open a Claude Code session **from the set-core directory** and type:
 
-# Open the dashboard to watch it work
-open http://localhost:7400
+```
+run a micro-web E2E test
 ```
 
-The sentinel will decompose the spec into 6 changes, dispatch agents to parallel worktrees, run quality gates on each, and merge them to main. Watch the [dashboard](docs/guide/dashboard.md) as it progresses — you'll see phases, gate results, token usage, and the final application.
+Claude will scaffold a project, register it with the manager at http://localhost:7400, and start the sentinel. **Important:** the orchestration must be started through the manager dashboard (not CLI) — the sentinel uses the web UI to manage the run.
 
-When it's done, you'll have a working Next.js webshop with products, cart, admin panel — all built from a [markdown spec](tests/e2e/scaffolds/minishop/docs/v1-minishop.md) and [Figma design](tests/e2e/scaffolds/minishop/docs/design-snapshot.md).
+Watch the [dashboard](docs/guide/dashboard.md) as it progresses — you'll see phases, gate results, token usage, and the final application. The micro-web test builds a simple 5-page site (home, about, blog, contact) in ~20 minutes.
+
+For a more complex test, try the **MiniShop** — a full e-commerce app (products, cart, admin panel, auth) built from a [detailed spec](tests/e2e/scaffolds/minishop/docs/v1-minishop.md) with [Figma design](tests/e2e/scaffolds/minishop/docs/design-snapshot.md):
+
+```
+run a minishop E2E test
+```
 
 ### Step 3: Set up your own project
 
@@ -208,12 +212,11 @@ Now that you've seen how it works, set up orchestration for your own project:
 ```bash
 cd ~/my-project
 set-project init --project-type web --template nextjs
-
-# In a Claude Code session:
-/set:sentinel --spec docs/my-spec.md --max-parallel 2
 ```
 
-**Study the scaffolds** in [`tests/e2e/scaffolds/`](tests/e2e/scaffolds/) when writing your own spec — they show how to structure specs, configure `orchestration.yaml`, list dependencies, and set expectations for the decomposer.
+Then open the dashboard at http://localhost:7400, select your project, enter your spec path, and click **Start**.
+
+**Study the scaffolds** in [`tests/e2e/scaffolds/`](tests/e2e/scaffolds/) when writing your own spec — they show how to structure specs, list dependencies, and set expectations for the decomposer.
 
 See [docs/guide/quick-start.md](docs/guide/quick-start.md) for the full walkthrough.
 
