@@ -185,7 +185,7 @@ git clone https://github.com/tatargabor/set-core.git
 cd set-core && ./install.sh
 ```
 
-After install, the **web dashboard** starts automatically as a systemd service. Open http://localhost:7400 — you should see the manager page.
+After install, the **web dashboard** starts automatically as a background service (launchd on macOS, systemd on Linux). Open http://localhost:7400 — you should see the manager page.
 
 ### Step 2: Try an E2E test first
 
@@ -195,7 +195,7 @@ Before setting up your own project, see the full pipeline in action. Open a Clau
 run a micro-web E2E test
 ```
 
-Claude will scaffold a project, register it with the manager at http://localhost:7400, and start the sentinel. **Important:** the orchestration must be started through the manager dashboard (not CLI) — the sentinel uses the web UI to manage the run.
+Claude will scaffold a project, register it with the manager, and validate the gate pipeline. Then tell Claude to start the sentinel — the orchestration runs through the manager API at http://localhost:7400.
 
 Watch the [dashboard](docs/guide/dashboard.md) as it progresses — you'll see phases, gate results, token usage, and the final application. The micro-web test builds a simple 5-page site (home, about, blog, contact) in ~20 minutes.
 

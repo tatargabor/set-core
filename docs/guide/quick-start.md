@@ -31,7 +31,7 @@ cd set-core
 ./install.sh
 ```
 
-The installer symlinks all `set-*` CLI commands to `~/.local/bin`, configures the MCP server for Claude Code, installs Python dependencies, sets up shell completions, and **starts the web dashboard** as a systemd service.
+The installer symlinks all `set-*` CLI commands to `~/.local/bin`, configures the MCP server for Claude Code, installs Python dependencies, sets up shell completions, and **starts the web dashboard** as a background service (launchd on macOS, systemd on Linux).
 
 After install, open http://localhost:7400 — you should see the manager page. If the dashboard doesn't start automatically, run:
 
@@ -54,7 +54,7 @@ Then type:
 run a micro-web E2E test
 ```
 
-Claude will scaffold a simple 5-page website project, register it with the manager at http://localhost:7400, and start the sentinel. **The orchestration is started through the manager dashboard** — the sentinel uses the web UI to manage the run.
+Claude will scaffold a simple 5-page website project, register it with the manager, and validate the gate pipeline. Then tell Claude to start the sentinel — the orchestration runs through the manager API at http://localhost:7400.
 
 Watch the dashboard as the sentinel decomposes the spec, dispatches agents, runs quality gates, and merges results. A micro-web test typically completes in ~20 minutes.
 
