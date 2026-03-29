@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <rect x="8" y="8" width="240" height="240" rx="40" ry="40" fill="#2D3748"/>
-  <text x="128" y="185" font-family="Helvetica" font-size="140" font-weight="bold" fill="white" text-anchor="middle">WT</text>
+  <rect x="0" y="0" width="256" height="256" rx="32" ry="32" fill="#0a0a0a"/>
+  <rect x="4" y="4" width="248" height="248" rx="28" ry="28" fill="none" stroke="#22c55e" stroke-width="2" opacity="0.3"/>
+  <text x="128" y="172" font-family="'JetBrains Mono', 'SF Mono', 'Fira Code', monospace" font-size="120" font-weight="700" fill="#22c55e" text-anchor="middle" letter-spacing="-4">SET</text>
+  <text x="128" y="210" font-family="'JetBrains Mono', 'SF Mono', 'Fira Code', monospace" font-size="20" fill="#52525b" text-anchor="middle">ship exactly this</text>
 </svg>

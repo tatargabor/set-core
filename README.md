@@ -199,6 +199,14 @@ Claude will scaffold a project, register it with the manager at http://localhost
 
 Watch the [dashboard](docs/guide/dashboard.md) as it progresses — you'll see phases, gate results, token usage, and the final application. The micro-web test builds a simple 5-page site (home, about, blog, contact) in ~20 minutes.
 
+When the orchestration completes, tell Claude:
+
+```
+start the application that was just built
+```
+
+Claude will install dependencies, start the dev server, and open the app in your browser.
+
 For a more complex test, try the **MiniShop** — a full e-commerce app (products, cart, admin panel, auth) built from a [detailed spec](tests/e2e/scaffolds/minishop/docs/v1-minishop.md) with [Figma design](tests/e2e/scaffolds/minishop/docs/design-snapshot.md):
 
 ```
