@@ -37,20 +37,46 @@ A systemd user service file SHALL be provided that runs `set-orch-core serve` as
 - **WHEN** user runs `systemctl --user status set-web`
 - **THEN** the service status, PID, and recent log lines are displayed
 
+### Requirement: macOS launchd user service
+A launchd user agent plist SHALL be provided at `templates/launchd/com.set-core.web.plist` that runs `set-orch-core serve` as an always-on background service with auto-restart on failure. The plist SHALL use `KeepAlive: true` and set PYTHONPATH and PATH dynamically based on the set-core install location.
+
+#### Scenario: Service auto-start on login
+- **WHEN** user logs in to their macOS session and the plist is loaded
+- **THEN** the set-web service starts automatically and `localhost:7400` becomes available
+
+#### Scenario: Service crash recovery
+- **WHEN** the server process crashes on macOS
+- **THEN** launchd restarts it automatically
+
+#### Scenario: Service status check
+- **WHEN** user runs `launchctl list | grep set-core`
+- **THEN** the service PID and status are displayed
+
+### Requirement: launchd plist dynamic PYTHONPATH
+The plist template SHALL contain placeholder tokens (`__SET_TOOLS_ROOT__`) that `install.sh` resolves at install time, matching the pattern used by the systemd service template.
+
+#### Scenario: PYTHONPATH resolution
+- **WHEN** install.sh installs the plist
+- **THEN** `__SET_TOOLS_ROOT__` is replaced with the actual set-core directory path in the installed plist
+
 ### Requirement: install.sh integration
-The `install.sh` script SHALL deploy the systemd service file and enable it. It SHALL handle both fresh install and update scenarios.
+The install script (`install.sh`) SHALL detect the platform and install the appropriate service manager integration — systemd on Linux, launchd on macOS. It SHALL resolve `__SET_TOOLS_ROOT__` dynamically and enable the service on first install.
+
+#### Scenario: Service install on Linux
+- **WHEN** install.sh runs on a Linux system with systemd
+- **THEN** the systemd user service is installed and enabled (existing behavior)
+
+#### Scenario: Service install on macOS
+- **WHEN** install.sh runs on macOS
+- **THEN** the launchd user agent plist is installed to `~/Library/LaunchAgents/` and loaded
 
 #### Scenario: Fresh install
 - **WHEN** `install.sh` runs and no set-web service exists
-- **THEN** the service file is copied to `~/.config/systemd/user/`, `daemon-reload` is run, and the service is enabled and started
+- **THEN** the service file is copied to the appropriate location, and the service is enabled and started
 
 #### Scenario: Update install
 - **WHEN** `install.sh` runs and the service file has changed
-- **THEN** the service file is updated, `daemon-reload` is run, and the service is restarted
-
-#### Scenario: No systemd
-- **WHEN** the system does not have systemd (macOS, minimal containers)
-- **THEN** `install.sh` skips service deployment and prints instructions for manual startup
+- **THEN** the old service is stopped, the file is updated, and the service is restarted
 
 ### Requirement: Graceful shutdown
 The server SHALL handle SIGTERM gracefully: close all WebSocket connections, stop file watchers, then exit.
