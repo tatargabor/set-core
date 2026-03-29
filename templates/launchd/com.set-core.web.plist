@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>__PYTHON__</string>
-        <string>__INSTALL_DIR__/set-orch-core</string>
+        <string>__SET_TOOLS_ROOT__/lib/set_orch/cli_entry.py</string>
         <string>serve</string>
         <string>--port</string>
         <string>7400</string>
