@@ -115,6 +115,25 @@ merged, tested, done
 | :clipboard: | **OpenSpec Workflow** | Structured artifact flow (proposal → design → spec → tasks → code) minimizes hallucination. [Guide](docs/guide/openspec.md) |
 | :wrench: | **Self-Healing** | Issue pipeline: detect → investigate → fix → verify. The sentinel diagnoses before it acts. [Guide](docs/guide/sentinel.md) |
 | :jigsaw: | **Plugin System** | Project-type plugins add domain rules, gates, templates, and conventions. [Docs](docs/reference/plugins.md) |
+| :art: | **Design Bridge** | Figma MCP → design-snapshot.md → Tailwind tokens injected into every agent's context. [Guide](docs/guide/openspec.md) |
+| :chart_with_upwards_trend: | **Cross-Run Learnings** | Review findings and gate failures become rules for the next run. The system gets better with use. [Dashboard](docs/guide/dashboard.md) |
+
+---
+
+## Where We're Heading
+
+Active development priorities:
+
+| Direction | Goal | Status |
+|-----------|------|--------|
+| **Divergence reduction** | Eliminate remaining nondeterminism through template optimization, scaffold testing, and configuration distribution across core → module → scaffold → project layers | File structure divergence: 63% → 0% achieved for simple projects; complex projects at ~43% — actively improving |
+| **Build time optimization** | Reduce gate pipeline wall clock time — parallel gate execution, incremental builds, cached test results between changes | Currently sequential (Jest → Build → E2E → Review); exploring parallel gates where safe |
+| **Session context reuse** | Reuse conversation context across Ralph Loop iterations and between related changes — reduce cold-start token overhead | Currently each iteration starts fresh; investigating warm-start from previous iteration's state |
+| **Memory optimization** | Smarter recall — relevance scoring, dedup, consolidation. Convert recurring learnings into deterministic rules automatically | Learnings-to-rules pipeline in development; dedup and consolidation operational |
+| **Gate intelligence** | Per-change-type gate profiles that adapt based on historical pass rates and failure patterns | Gate profiles operational; adaptive thresholds planned |
+| **Merge conflict prevention** | Proactive detection of cross-cutting file conflicts before they happen — schedule conflicting changes sequentially | Phase ordering works; file-level conflict prediction in research |
+
+See [docs/learn/journey.md](docs/learn/journey.md) for the full development history and [docs/learn/lessons-learned.md](docs/learn/lessons-learned.md) for production insights driving these priorities.
 
 ---
 
