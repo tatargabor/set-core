@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Loop prompt building: detect next change action, build Claude prompts.
 
 1:1 migration of lib/loop/prompt.sh.

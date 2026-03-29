@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 #!/usr/bin/env python3
 """Fetch Figma design data via direct MCP protocol calls.
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Deploy template files from a project type package into a target project."""
 
 import shutil

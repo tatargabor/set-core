@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Structured findings storage in shared sentinel directory."""
 
 import json

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Issue Management Engine — detect, investigate, and fix issues."""
 
 from .models import (

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Resolve set-core installation root directory."""
 
 from pathlib import Path

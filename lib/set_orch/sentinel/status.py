@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Sentinel status/identity management in shared sentinel directory."""
 
 import json

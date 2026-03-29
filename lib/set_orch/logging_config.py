@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Structured logging configuration for orchestration modules.
 
 Migrated from: bin/set-orchestrate log(), log_info(), log_warn(), log_error(), log_debug()

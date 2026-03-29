@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Loop engine: API error classification, backoff, iteration lifecycle, completion.
 
 1:1 migration of lib/loop/engine.sh — the core iteration loop.

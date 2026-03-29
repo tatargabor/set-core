@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Unified API package — modular FastAPI routers for the set-core web dashboard.
 
 Modules:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Bilingual (EN/HU) emotion detection for user prompts.
 
 Detects emotionally charged prompts using simple trigger-group logic:

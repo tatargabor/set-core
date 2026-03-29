@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Lightweight inbox for sentinel — local file-based, no git operations.
 
 Messages are written to the shared sentinel directory by set-web or MCP tools.

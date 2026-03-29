@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Load project-type profile for orchestration engine integration.
 
 Reads set/plugins/project-type.yaml to find the active project type,

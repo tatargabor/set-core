@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """set-manager — control plane service for set-core."""
 
 from .supervisor import ProjectSupervisor, ProjectConfig

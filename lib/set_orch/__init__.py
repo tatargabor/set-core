@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """set_orch — Python core for set-core orchestration engine.
 
 Provides reliable implementations of fragile bash internals:

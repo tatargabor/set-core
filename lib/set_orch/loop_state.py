@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Loop state management: state file I/O, token tracking, date parsing, activity.
 
 1:1 migration of lib/loop/state.sh.

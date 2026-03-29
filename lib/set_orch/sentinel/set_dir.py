@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Sentinel runtime directory management.
 
 Sentinel files live in the shared runtime directory:

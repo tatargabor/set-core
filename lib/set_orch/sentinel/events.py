@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Structured event logging to shared sentinel directory."""
 
 import json

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Feedback system — structured anonymized lesson collection and export.
 
 Lessons are stored in set/knowledge/lessons/rule-feedback.yaml with a fixed

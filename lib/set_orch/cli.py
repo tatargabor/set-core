@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """CLI entry point for set-orch-core.
 
 This module is the canonical implementation. bin/set-orch-core delegates here.

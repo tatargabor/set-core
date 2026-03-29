@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Run rotation — archive old events and findings for a new run."""
 
 import os

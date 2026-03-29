@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Loop task detection: find tasks, check completion, manual tasks, done criteria.
 
 1:1 migration of lib/loop/tasks.sh.

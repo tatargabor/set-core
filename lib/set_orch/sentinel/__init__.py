@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Sentinel structured event logging, findings, status, and inbox.
 
 Usage:

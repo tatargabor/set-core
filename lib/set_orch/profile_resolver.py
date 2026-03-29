@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """ProjectTypeResolver — merges package rules with local YAML overlay.
 
 Resolution order:
