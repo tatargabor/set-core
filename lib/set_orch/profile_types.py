@@ -214,6 +214,24 @@ class ProjectType(ABC):
     def generate_smoke_e2e(self, project_path: str) -> Optional[str]:
         return None
 
+    def get_comparison_conventions(self) -> List[Dict[str, Any]]:
+        """Return convention checks for the divergence comparison tool.
+
+        Each check is a dict with:
+        - id: short identifier
+        - description: human-readable description
+        - check: callable(project_dir: Path) -> bool
+        """
+        return []
+
+    def get_comparison_template_files(self) -> List[str]:
+        """Return list of template-relative file paths to check for compliance.
+
+        The compare tool will diff these against the deployed versions.
+        Override to specify which template files matter for this project type.
+        """
+        return []
+
     def pre_dispatch_checks(self, change_type: str, wt_path: str) -> list:
         return []
 

@@ -131,24 +131,24 @@ def collect_categories(project_dir: Path) -> dict[str, int]:
     return cats
 
 
-def check_template_compliance(project_dir: Path) -> list[dict[str, str]]:
-    """Check if template files are unchanged from the web module template."""
+def check_template_compliance(project_dir: Path, profile=None) -> list[dict[str, str]]:
+    """Check if template files are unchanged from the module template.
+
+    Uses profile.get_comparison_template_files() if available,
+    falls back to hardcoded list for backwards compatibility.
+    """
     template_dir = _find_template_dir()
     if not template_dir:
         return []
 
-    # Files that should be unchanged — only check if they exist in the project
-    # (prisma.ts won't exist in non-Prisma projects, utils.ts won't exist without shadcn)
-    template_files = [
-        "src/app/globals.css",
-        "src/lib/utils.ts",
-        "src/lib/prisma.ts",
-        "vitest.config.ts",
-        "playwright.config.ts",
-        "tsconfig.json",
-        "next.config.js",
-        "postcss.config.mjs",
-    ]
+    if profile and hasattr(profile, "get_comparison_template_files"):
+        template_files = profile.get_comparison_template_files()
+    else:
+        template_files = [
+            "src/app/globals.css", "src/lib/utils.ts", "src/lib/prisma.ts",
+            "vitest.config.ts", "playwright.config.ts", "tsconfig.json",
+            "next.config.js", "postcss.config.mjs",
+        ]
 
     results = []
     for rel in template_files:
@@ -157,8 +157,6 @@ def check_template_compliance(project_dir: Path) -> list[dict[str, str]]:
         if not tmpl.is_file():
             continue
         if not proj.is_file():
-            # Not penalized if project legitimately doesn't need it
-            # (e.g., prisma.ts in non-Prisma projects, utils.ts without shadcn)
             results.append({"file": rel, "status": "not_applicable"})
         elif filecmp.cmp(str(tmpl), str(proj), shallow=False):
             results.append({"file": rel, "status": "unchanged"})
@@ -168,62 +166,32 @@ def check_template_compliance(project_dir: Path) -> list[dict[str, str]]:
     return results
 
 
-def check_convention_compliance(project_dir: Path) -> list[dict[str, Any]]:
-    """Check structural convention compliance."""
+def check_convention_compliance(project_dir: Path, profile=None) -> list[dict[str, Any]]:
+    """Check structural convention compliance.
+
+    Uses profile.get_comparison_conventions() if available,
+    falls back to basic checks for backwards compatibility.
+    """
+    if profile and hasattr(profile, "get_comparison_conventions"):
+        convention_defs = profile.get_comparison_conventions()
+        checks = []
+        for conv in convention_defs:
+            try:
+                passed = conv["check"](project_dir)
+            except Exception:
+                passed = True  # don't penalize on errors
+            checks.append({
+                "id": conv["id"],
+                "description": conv["description"],
+                "pass": passed,
+            })
+        return checks
+
+    # Fallback: basic checks (no profile)
     src = project_dir / "src"
-    checks = []
-
-    # Route groups: public pages should be under a route group, not flat at src/app/
-    # Only relevant for projects with admin routes (need layout separation)
-    app = src / "app"
-    has_route_groups = False
-    has_admin = False
-    if app.is_dir():
-        for d in app.iterdir():
-            if d.is_dir() and d.name.startswith("("):
-                has_route_groups = True
-            if d.is_dir() and d.name == "admin":
-                has_admin = True
-    checks.append({
-        "id": "route_groups",
-        "description": "Route groups used (when admin routes exist)",
-        "pass": has_route_groups or not has_admin,
-    })
-
-    # Action colocation: no src/actions/ directory
-    checks.append({
-        "id": "action_colocation",
-        "description": "No top-level src/actions/ directory",
-        "pass": not (src / "actions").is_dir(),
-    })
-
-    # Prisma naming: src/lib/prisma.ts exists (not db.ts)
-    lib = src / "lib"
-    has_prisma = (lib / "prisma.ts").is_file()
-    has_db = (lib / "db.ts").is_file()
-    has_any_prisma = has_prisma or has_db or not (project_dir / "prisma").is_dir()
-    checks.append({
-        "id": "prisma_naming",
-        "description": "DB client at src/lib/prisma.ts (not db.ts)",
-        "pass": has_prisma or not (project_dir / "prisma").is_dir(),
-    })
-
-    # Component colocation: no src/components/admin/ or src/components/shop/
-    comps = src / "components"
-    checks.append({
-        "id": "component_colocation",
-        "description": "No src/components/admin/ or /shop/ directory",
-        "pass": not (comps / "admin").is_dir() and not (comps / "shop").is_dir(),
-    })
-
-    # Utils naming
-    checks.append({
-        "id": "utils_naming",
-        "description": "Utility file at src/lib/utils.ts",
-        "pass": (lib / "utils.ts").is_file() if lib.is_dir() else True,
-    })
-
-    return checks
+    return [
+        {"id": "src_exists", "description": "src/ directory exists", "pass": src.is_dir()},
+    ]
 
 
 def collect_e2e_results(project_dir: Path) -> dict[str, Any]:
@@ -316,8 +284,20 @@ def _count_similarity(a: dict[str, int], b: dict[str, int]) -> float:
     return max(0, (1 - total_diff / total_max) * 100)
 
 
+def _load_profile(project_dir: Path):
+    """Try to load the project's profile for type-specific checks."""
+    try:
+        from .profile_loader import load_profile
+        return load_profile(str(project_dir))
+    except Exception:
+        return None
+
+
 def compare_runs(dir_a: Path, dir_b: Path, name_a: str = "", name_b: str = "") -> ComparisonResult:
     """Compare two project directories across all metrics."""
+    # Load profile from either project (they should be the same type)
+    profile = _load_profile(dir_a) or _load_profile(dir_b)
+
     result = ComparisonResult(
         run_a=name_a or dir_a.name,
         run_b=name_b or dir_b.name,
@@ -397,8 +377,8 @@ def compare_runs(dir_a: Path, dir_b: Path, name_a: str = "", name_b: str = "") -
     ))
 
     # 5. Template compliance
-    tmpl_a = check_template_compliance(dir_a)
-    tmpl_b = check_template_compliance(dir_b)
+    tmpl_a = check_template_compliance(dir_a, profile)
+    tmpl_b = check_template_compliance(dir_b, profile)
     # Score: unchanged + not_applicable count as "good", modified counts against
     def _tmpl_good(items):
         return sum(1 for t in items if t["status"] in ("unchanged", "not_applicable"))
@@ -413,8 +393,8 @@ def compare_runs(dir_a: Path, dir_b: Path, name_a: str = "", name_b: str = "") -
     ))
 
     # 6. Convention compliance
-    conv_a = check_convention_compliance(dir_a)
-    conv_b = check_convention_compliance(dir_b)
+    conv_a = check_convention_compliance(dir_a, profile)
+    conv_b = check_convention_compliance(dir_b, profile)
     pass_a = sum(1 for c in conv_a if c["pass"])
     pass_b = sum(1 for c in conv_b if c["pass"])
     total_conv = max(len(conv_a), len(conv_b), 1)

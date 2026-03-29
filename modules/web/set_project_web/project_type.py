@@ -760,6 +760,63 @@ class WebProjectType(CoreProfile):
         Future: kill orphan dev servers, clean test DB, etc.
         """
 
+    def get_comparison_conventions(self) -> list[dict]:
+        """Web-specific convention checks for the divergence comparison tool."""
+        return [
+            {
+                "id": "route_groups",
+                "description": "Route groups used (when admin routes exist)",
+                "check": lambda d: (
+                    any(p.name.startswith("(") for p in (d / "src" / "app").iterdir() if p.is_dir())
+                    if (d / "src" / "app").is_dir()
+                    else True
+                ) or not (d / "src" / "app" / "admin").is_dir(),
+            },
+            {
+                "id": "action_colocation",
+                "description": "No top-level src/actions/ directory",
+                "check": lambda d: not (d / "src" / "actions").is_dir(),
+            },
+            {
+                "id": "prisma_naming",
+                "description": "DB client at src/lib/prisma.ts (not db.ts)",
+                "check": lambda d: (
+                    (d / "src" / "lib" / "prisma.ts").is_file()
+                    or not (d / "prisma").is_dir()
+                ),
+            },
+            {
+                "id": "component_colocation",
+                "description": "No src/components/admin/ or /shop/ directory",
+                "check": lambda d: (
+                    not (d / "src" / "components" / "admin").is_dir()
+                    and not (d / "src" / "components" / "shop").is_dir()
+                ),
+            },
+            {
+                "id": "utils_naming",
+                "description": "Utility file at src/lib/utils.ts",
+                "check": lambda d: (
+                    (d / "src" / "lib" / "utils.ts").is_file()
+                    if (d / "src" / "lib").is_dir()
+                    else True
+                ),
+            },
+        ]
+
+    def get_comparison_template_files(self) -> list[str]:
+        """Web template files to check for compliance in divergence comparison."""
+        return [
+            "src/app/globals.css",
+            "src/lib/utils.ts",
+            "src/lib/prisma.ts",
+            "vitest.config.ts",
+            "playwright.config.ts",
+            "tsconfig.json",
+            "next.config.js",
+            "postcss.config.mjs",
+        ]
+
     def generate_startup_file(self, project_path: str) -> str:
         """Detect web project stack and generate START.md content."""
         d = Path(project_path)
