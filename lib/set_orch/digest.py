@@ -105,7 +105,26 @@ def scan_spec_directory(spec_path: str | Path) -> ScanResult:
     files: list[Path] = []
 
     if path.is_file():
-        files = [path]
+        # If the file looks like a master file, scan its parent directory
+        # to pick up sub-files (catalog/, features/, design/, etc.)
+        parent = path.parent
+        is_master = path.name in _MASTER_NAMES or bool(
+            re.match(r"^v\d+-.*\.md$", path.name)
+        )
+        if is_master and parent.is_dir():
+            sibling_files = _find_spec_files(parent)
+            if len(sibling_files) > 1:
+                # Found sub-files — scan the whole directory instead
+                path = parent
+                files = sibling_files
+                logger.info(
+                    "Master file detected (%s), scanning parent dir: %s (%d files)",
+                    spec_path, parent, len(files),
+                )
+            else:
+                files = [Path(spec_path)]
+        else:
+            files = [Path(spec_path)]
     else:
         files = _find_spec_files(path)
 
