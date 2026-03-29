@@ -229,8 +229,18 @@ YAML
 validate_gates() {
     step "Validate gate enforcement"
 
+    # Find a Python that can import set_orch (prefer python3.12, then python3)
+    local _py=""
+    for _candidate in python3.12 python3.11 python3.10 python3; do
+        if command -v "$_candidate" &>/dev/null && "$_candidate" -c "import set_orch" 2>/dev/null; then
+            _py="$_candidate"
+            break
+        fi
+    done
+    [[ -n "$_py" ]] || die "No Python with set_orch found"
+
     PYTHONPATH="${SET_TOOLS_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}/lib:${SET_TOOLS_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}/modules/web:${PYTHONPATH:-}" \
-    python3 -c "
+    "$_py" -c "
 import sys, os
 wt = '$TEST_DIR'
 

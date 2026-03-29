@@ -31,10 +31,14 @@ _get_set_tools_version() {
 # Find a Python 3 interpreter that has set-project-base installed.
 # Tries: miniconda, uv-managed, system python3 — returns first that works.
 _set_python() {
-    # Find a working Python 3 interpreter.
-    # Modules are loaded via PYTHONPATH=$SET_TOOLS_ROOT/lib at call sites,
-    # so we only need a working Python 3, not one with packages pre-installed.
+    # Find a working Python 3 interpreter with yaml support.
+    # Prefers brew python (has yaml) over system python (often lacks it).
     local candidates=(
+        "/opt/homebrew/bin/python3.12"
+        "/opt/homebrew/bin/python3"
+        "$(command -v python3.12 2>/dev/null)"
+        "$(command -v python3.11 2>/dev/null)"
+        "$(command -v python3.10 2>/dev/null)"
         "$(command -v python3 2>/dev/null)"
         "$HOME/miniconda3/bin/python"
         "$HOME/.local/share/uv/python/cpython-*/bin/python3"
@@ -44,11 +48,19 @@ _set_python() {
         [[ -z "$py" ]] && continue
         for resolved in $py; do
             [[ -x "$resolved" ]] || continue
-            if "$resolved" -c "import sys; assert sys.version_info >= (3, 9)" 2>/dev/null; then
+            if "$resolved" -c "import sys, yaml; assert sys.version_info >= (3, 10)" 2>/dev/null; then
                 echo "$resolved"
                 return 0
             fi
         done
+    done
+    # Fallback: any python3 >= 3.9 (yaml may be missing)
+    for py in "$(command -v python3 2>/dev/null)" "$(command -v python 2>/dev/null)"; do
+        [[ -z "$py" || ! -x "$py" ]] && continue
+        if "$py" -c "import sys; assert sys.version_info >= (3, 9)" 2>/dev/null; then
+            echo "$py"
+            return 0
+        fi
     done
     echo "python3"
 }
@@ -357,17 +369,17 @@ _save_project_type() {
         return 1
     fi
 
-    local version description parent rules_count directives_count
-    version=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))")
-    description=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('description',''))")
-    parent=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('parent','') or '')")
-    rules_count=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('rules_count',0))")
-    directives_count=$(echo "$pt_info" | python3 -c "import json,sys; print(json.load(sys.stdin).get('directives_count',0))")
-
-    mkdir -p "$(dirname "$pt_file")"
-
     local py
     py=$(_set_python)
+
+    local version description parent rules_count directives_count
+    version=$(echo "$pt_info" | "$py" -c "import json,sys; print(json.load(sys.stdin).get('version',''))")
+    description=$(echo "$pt_info" | "$py" -c "import json,sys; print(json.load(sys.stdin).get('description',''))")
+    parent=$(echo "$pt_info" | "$py" -c "import json,sys; print(json.load(sys.stdin).get('parent','') or '')")
+    rules_count=$(echo "$pt_info" | "$py" -c "import json,sys; print(json.load(sys.stdin).get('rules_count',0))")
+    directives_count=$(echo "$pt_info" | "$py" -c "import json,sys; print(json.load(sys.stdin).get('directives_count',0))")
+
+    mkdir -p "$(dirname "$pt_file")"
 
     # Merge managed fields into existing YAML (preserves user customizations)
     "$py" -c "

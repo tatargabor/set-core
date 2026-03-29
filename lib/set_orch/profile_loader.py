@@ -185,7 +185,7 @@ def load_profile(project_path: str = "."):
         import yaml
 
         with open(pt_file) as f:
-            config = yaml.safe_load(f)
+            config = yaml.safe_load(f) or {}
         type_name = config.get("type", "")
     except Exception as e:
         logger.warning("Failed to read project-type.yaml: %s", e)

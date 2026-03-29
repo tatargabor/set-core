@@ -415,7 +415,7 @@ find_worktree_across_projects() {
 # Resolve lib dir: source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/editor.sh"
 
 # Resolve lib directory for sourcing by other scripts
-_SET_TOOLS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
+_SET_TOOLS_LIB="$SET_TOOLS_ROOT/lib"
 
 # Auto-source editor.sh for backward compatibility
 # Scripts that source set-common.sh expect editor functions to be available.
