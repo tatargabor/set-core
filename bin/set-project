@@ -922,7 +922,18 @@ cmd_init() {
     info "Deploying set-core to $git_root..."
     deploy_set_tools "$git_root" || ((_deploy_warnings++))
 
-    # Save project type if specified
+    # Resolve project type: CLI flag > saved project-type.yaml
+    if [[ -z "$project_type" ]]; then
+        local pt_file="$git_root/set/plugins/project-type.yaml"
+        if [[ -f "$pt_file" ]]; then
+            project_type=$(grep '^type:' "$pt_file" 2>/dev/null | sed 's/^type: *//' || true)
+            if [[ -n "$project_type" ]]; then
+                info "Using saved project type: $project_type"
+            fi
+        fi
+    fi
+
+    # Save project type and deploy templates if known
     if [[ -n "$project_type" ]]; then
         # Resolve modules: CLI flag > tracked (before overwrite) > interactive prompt
         local deploy_modules="$modules"
