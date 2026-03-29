@@ -15,6 +15,8 @@ This guide walks you from zero to your first autonomous orchestration run. By th
 | **OpenSpec CLI** | `openspec --version` | Spec-driven workflow |
 | **Claude Code** | `claude --version` | AI agent runtime |
 
+**Platform support:** Linux and macOS (Apple Silicon). Intel Macs are not tested.
+
 Install OpenSpec if you do not have it yet:
 
 ```bash
