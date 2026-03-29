@@ -1,3 +1,11 @@
+Change sizing and decomposition granularity:
+- Each change SHOULD target 30-70K output tokens. Changes over 100K tokens are too large and risk integration failures.
+- NEVER combine infrastructure/foundation with authentication in one change. Foundation sets up: Prisma schema, seed data, Tailwind, layout, tooling. Auth sets up: NextAuth, middleware, login/register pages. These are separate concerns with separate test surfaces.
+- NEVER combine cart and checkout in one change. Cart (session, add/remove/update) and checkout (order placement, payment, order history) are separate features.
+- Admin CRUD can be one change if it covers a single entity (products). If it covers multiple entities (products + orders + users), split by entity.
+- Prefer 3 phases over 4+. More phases = more sequential bottlenecks. Ideal: Phase 1 (foundation + auth parallel), Phase 2 (catalog + cart + admin parallel), Phase 3 (checkout + polish).
+- Each change MUST have its own E2E test file. Test file names SHOULD match the change name (e.g., change `shopping-cart` → `tests/e2e/cart.spec.ts`).
+
 Playwright E2E test planning (when e2e_command is configured):
 - The infrastructure/foundation change (first in dependency order) MUST set up Playwright alongside the test runner (Jest or Vitest):
   * Create playwright.config.ts with PW_PORT env var support, webServer auto-start, headless: true, and screenshot: 'on' in the use section (headless: true prevents browser windows opening on desktop machines; screenshot: 'on' ensures PNG capture instead of text-only error-context.md)

@@ -7,6 +7,19 @@ globs:
 
 # MiniShop Conventions
 
+## Recommended Change Decomposition
+
+The minishop spec covers 6 functional areas. Ideal decomposition:
+
+1. **foundation-setup** (Phase 1) — Prisma schema, seed data, package.json deps, Playwright/Vitest config, globals.css, layout
+2. **auth-navigation** (Phase 1, parallel with foundation or Phase 1 sequential) — NextAuth, middleware, login/register pages, storefront navigation header
+3. **product-catalog** (Phase 2) — Product grid, detail page, variant selector, catalog E2E tests
+4. **shopping-cart** (Phase 2) — Cart session, add/remove/update, cart page, cart E2E tests
+5. **admin-products** (Phase 2) — Admin CRUD for products/variants, DataTable, admin E2E tests
+6. **checkout-orders** (Phase 3) — Order placement, order history, order detail page, checkout E2E tests
+
+Keep foundation and auth SEPARATE. Keep cart and checkout SEPARATE. This prevents 100K+ token changes that are prone to integration failures.
+
 ## Product Data
 
 - 6 seed products with variants (e.g., Mechanical Keyboard, Wireless Mouse, 4K Webcam)
