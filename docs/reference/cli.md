@@ -177,6 +177,7 @@ set-memory sync push
 | `set-paths` | Show set-core directory paths |
 | `set-restart-services` | Restart background services |
 | `set-e2e-report` | Generate E2E run report |
+| `set-compare` | Compare two orchestration runs for structural divergence |
 | `set-discord-setup` | Configure Discord integration |
 
 ![set-version output](../images/auto/cli/set-version.png)

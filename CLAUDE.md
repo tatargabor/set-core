@@ -98,6 +98,17 @@ curl -X POST http://localhost:7400/api/<project>/sentinel/start \
 
 **NEVER** use `nohup set-sentinel` from CLI — that only starts the orchestrator without the sentinel poll loop.
 
+### Comparing runs for divergence
+
+After two runs of the same spec, compare their structural similarity:
+```bash
+./bin/set-compare minishop-run12 minishop-run13          # markdown report
+./bin/set-compare micro-web-run10 micro-web-run11 --json # JSON output
+./bin/set-compare run-a run-b --output docs/comparison.md # save to file
+```
+
+Metrics: route coverage, schema equivalence, dependencies, functional categories, template compliance, convention compliance, E2E test results. Score 0-100 with verdict.
+
 ## Web Dashboard E2E Tests
 
 The web dashboard (`web/`) has Playwright E2E tests that verify the UI renders API data correctly. Tests run against a **live server** with a **real project** — no mocks.
