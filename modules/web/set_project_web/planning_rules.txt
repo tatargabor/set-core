@@ -1,5 +1,5 @@
 Change sizing and decomposition granularity:
-- Each change SHOULD target 30-70K output tokens. Changes over 100K tokens are too large and risk integration failures.
+- Each change SHOULD target 50-150K output tokens. With 1M context windows, changes up to 200K are acceptable but larger changes have more merge conflict risk.
 - NEVER combine infrastructure/foundation with authentication in one change. Foundation sets up: Prisma schema, seed data, Tailwind, layout, tooling. Auth sets up: NextAuth, middleware, login/register pages. These are separate concerns with separate test surfaces.
 - NEVER combine cart and checkout in one change. Cart (session, add/remove/update) and checkout (order placement, payment, order history) are separate features.
 - Admin CRUD can be one change if it covers a single entity (products). If it covers multiple entities (products + orders + users), split by entity.
