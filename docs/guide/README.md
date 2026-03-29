@@ -12,6 +12,7 @@ How-to workflows for common tasks. Start with [Quick Start](quick-start.md) if t
 | [Worktrees](worktrees.md) | Parallel development with git worktrees and the Ralph loop |
 | [OpenSpec](openspec.md) | Artifact-driven development: proposal, specs, design, tasks |
 | [Memory](memory.md) | Persistent cross-session memory with automatic hooks |
+| [Issues](issues.md) | Self-healing issue pipeline: detect, investigate, fix, verify |
 | [Dashboard](dashboard.md) | Web dashboard for real-time orchestration monitoring |
 | [Team Sync](team-sync.md) | Multi-agent communication and cross-machine coordination |
 
