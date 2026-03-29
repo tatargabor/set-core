@@ -146,6 +146,94 @@ install_system_packages() {
     fi
 }
 
+# Install Homebrew on macOS if not present
+install_homebrew() {
+    if [[ "$PLATFORM" != "macos" ]]; then return 0; fi
+
+    # Check known brew locations first (may not be in PATH yet)
+    if [[ -x "/opt/homebrew/bin/brew" ]]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+        success "Homebrew found at /opt/homebrew (added to PATH)"
+        return 0
+    elif [[ -x "/usr/local/bin/brew" ]]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+        success "Homebrew found at /usr/local (added to PATH)"
+        return 0
+    fi
+
+    if check_command brew; then return 0; fi
+
+    echo ""
+    info "Homebrew not found — required for macOS dependency management"
+    read -p "Install Homebrew? [Y/n] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        warn "Skipping Homebrew — you'll need to install python3.10+, node, pnpm manually"
+        return 1
+    fi
+
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    # Add brew to current session PATH (Apple Silicon vs Intel)
+    if [[ -x "/opt/homebrew/bin/brew" ]]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [[ -x "/usr/local/bin/brew" ]]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+    fi
+
+    if check_command brew; then
+        success "Homebrew installed"
+    else
+        error "Homebrew installation failed"
+        return 1
+    fi
+}
+
+# Install macOS dependencies via Homebrew
+install_macos_deps() {
+    if [[ "$PLATFORM" != "macos" ]]; then return 0; fi
+    if ! check_command brew; then return 0; fi
+
+    local brew_install=()
+
+    # Python 3.12 (system python is 3.9 which is too old for set-core)
+    if ! check_command python3.12 && ! check_command python3.13; then
+        # Check if any python3 meets version requirement
+        local sys_py
+        sys_py=$(command -v python3 2>/dev/null || true)
+        if [[ -z "$sys_py" ]] || ! "$sys_py" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null; then
+            brew_install+=("python@3.12")
+        fi
+    fi
+
+    # Node.js
+    if ! check_command node; then
+        brew_install+=("node")
+    fi
+
+    # jq
+    if ! check_command jq; then
+        brew_install+=("jq")
+    fi
+
+    if [[ ${#brew_install[@]} -gt 0 ]]; then
+        info "Installing via Homebrew: ${brew_install[*]}"
+        brew install "${brew_install[@]}"
+        success "Homebrew packages installed"
+    fi
+
+    # pnpm (needs npm from node)
+    if ! check_command pnpm; then
+        if check_command npm; then
+            info "Installing pnpm..."
+            run_npm_global pnpm
+            success "pnpm installed"
+        else
+            warn "npm not found — cannot install pnpm"
+        fi
+    fi
+}
+
 # Check prerequisites
 check_prerequisites() {
     info "Checking prerequisites..."
@@ -281,8 +369,14 @@ install_zed() {
         zed_found=true
     elif [[ -x "$HOME/.local/bin/zed" ]]; then
         zed_found=true
-    elif [[ "$PLATFORM" == "macos" && -x "/Applications/Zed.app/Contents/MacOS/zed" ]]; then
-        zed_found=true
+    elif [[ "$PLATFORM" == "macos" ]]; then
+        # Check both system and user Applications
+        for app_dir in "/Applications" "$HOME/Applications"; do
+            if [[ -d "$app_dir/Zed.app" ]]; then
+                zed_found=true
+                break
+            fi
+        done
     fi
 
     if $zed_found; then
@@ -387,6 +481,54 @@ install_shodh_memory() {
         echo "  Check status with: set-memory status"
     else
         warn "Shodh-Memory installed but import verification failed"
+    fi
+}
+
+# Install set-core Python package + web module (editable)
+install_set_core_python() {
+    info "Installing set-core Python package..."
+
+    local PYTHON=""
+    if ! PYTHON=$(find_python); then
+        warn "No Python 3.10+ found. Skipping set-core Python package."
+        echo "  set-project, set-orchestrate, and profile system require Python 3.10+"
+        return 1
+    fi
+
+    local py_version
+    py_version=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    info "Using Python $py_version ($PYTHON)"
+
+    # Install set-core in editable mode with memory extra
+    if "$PYTHON" -m pip install -e "$SCRIPT_DIR[memory]" 2>/dev/null || \
+       "$PYTHON" -m pip install --user -e "$SCRIPT_DIR[memory]" 2>/dev/null || \
+       "$PYTHON" -m pip install --break-system-packages -e "$SCRIPT_DIR[memory]" 2>/dev/null; then
+        success "set-core installed (editable)"
+    else
+        warn "set-core pip install failed"
+        echo "  Try manually: $PYTHON -m pip install -e '$SCRIPT_DIR[memory]'"
+        return 1
+    fi
+
+    # Install web module
+    local web_module="$SCRIPT_DIR/modules/web"
+    if [[ -d "$web_module" ]]; then
+        if "$PYTHON" -m pip install -e "$web_module" 2>/dev/null || \
+           "$PYTHON" -m pip install --user -e "$web_module" 2>/dev/null || \
+           "$PYTHON" -m pip install --break-system-packages -e "$web_module" 2>/dev/null; then
+            success "set-project-web module installed"
+        else
+            warn "Web module pip install failed"
+            echo "  Try manually: $PYTHON -m pip install -e '$web_module'"
+        fi
+    fi
+
+    # Verify
+    if PYTHONPATH="$SCRIPT_DIR/lib${PYTHONPATH:+:$PYTHONPATH}" \
+       "$PYTHON" -c "from set_orch.profile_loader import load_profile; print('  Profile system OK')" 2>/dev/null; then
+        success "set-core Python package verified"
+    else
+        warn "set-core import verification failed — check PYTHONPATH"
     fi
 }
 
@@ -932,11 +1074,9 @@ EOF
     success "Created Zed keymap.json (Ctrl+Shift+L for Claude)"
 }
 
-# Install set-web systemd user service
-install_web_service() {
-    info "Setting up set-web dashboard service..."
-
-    # Skip on non-systemd systems (macOS, containers, WSL1)
+# Install set-web systemd user service (Linux)
+install_systemd_service() {
+    # Skip on non-systemd systems
     if ! command -v systemctl &>/dev/null; then
         info "  systemctl not found, skipping systemd service setup"
         return 0
@@ -958,7 +1098,9 @@ install_web_service() {
     fi
 
     mkdir -p "$service_dir"
-    cp "$service_src" "$service_dst"
+
+    # Resolve __SET_TOOLS_ROOT__ placeholder
+    sed "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" "$service_src" > "$service_dst"
     success "  Installed: $service_dst"
 
     # Reload systemd, enable and start
@@ -973,6 +1115,63 @@ install_web_service() {
     fi
 }
 
+# Install set-web launchd user agent (macOS)
+install_launchd_service() {
+    local plist_src="$SCRIPT_DIR/templates/launchd/com.set-core.web.plist"
+    local plist_dir="$HOME/Library/LaunchAgents"
+    local plist_dst="$plist_dir/com.set-core.web.plist"
+    local log_dir="$HOME/Library/Logs/set-core"
+
+    if [[ ! -f "$plist_src" ]]; then
+        warn "  Plist template not found: $plist_src"
+        return 0
+    fi
+
+    mkdir -p "$plist_dir" "$log_dir"
+
+    # Find the correct Python (3.10+)
+    local PYTHON=""
+    if ! PYTHON=$(find_python); then
+        warn "  No Python 3.10+ found — cannot install launchd service"
+        return 1
+    fi
+
+    # Unload existing service if present
+    if launchctl list 2>/dev/null | grep -q "com.set-core.web"; then
+        launchctl unload "$plist_dst" 2>/dev/null || true
+        info "  Unloaded existing service"
+    fi
+
+    # Resolve placeholders and install
+    sed -e "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" \
+        -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+        -e "s|__LOG_DIR__|$log_dir|g" \
+        -e "s|__PYTHON__|$PYTHON|g" \
+        "$plist_src" > "$plist_dst"
+
+    # Load the service
+    launchctl load "$plist_dst" 2>/dev/null || true
+
+    if launchctl list 2>/dev/null | grep -q "com.set-core.web"; then
+        success "  set-web service running at http://127.0.0.1:7400"
+    else
+        warn "  set-web service installed but not running"
+        echo "    Check: launchctl list | grep set-core"
+        echo "    Logs: $log_dir/set-web.log"
+    fi
+}
+
+# Platform dispatcher for set-web service installation
+install_web_service() {
+    info "Setting up set-web dashboard service..."
+
+    case "$PLATFORM" in
+        linux)  install_systemd_service ;;
+        macos)  install_launchd_service ;;
+        *)      info "  No service manager support for $PLATFORM, skipping" ;;
+    esac
+}
+
 # Main
 main() {
     echo ""
@@ -982,6 +1181,13 @@ main() {
     echo ""
 
     check_wt_migration
+
+    # macOS: ensure brew + python + node + pnpm
+    install_homebrew
+    echo ""
+
+    install_macos_deps
+    echo ""
 
     check_prerequisites
     echo ""
@@ -1027,6 +1233,9 @@ main() {
     echo ""
 
     install_shodh_memory
+    echo ""
+
+    install_set_core_python
     echo ""
 
     install_web_service

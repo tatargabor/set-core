@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.set-core.web</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PYTHON__</string>
+        <string>__INSTALL_DIR__/set-orch-core</string>
+        <string>serve</string>
+        <string>--port</string>
+        <string>7400</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>__SET_TOOLS_ROOT__/lib:__SET_TOOLS_ROOT__/modules/web</string>
+        <key>PATH</key>
+        <string>__INSTALL_DIR__:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__LOG_DIR__/set-web.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__LOG_DIR__/set-web.err</string>
+</dict>
+</plist>

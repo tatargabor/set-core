@@ -36,6 +36,11 @@ set_find_python() {
         return 0
     fi
     local candidates=(
+        "/opt/homebrew/bin/python3.13"
+        "/opt/homebrew/bin/python3.12"
+        "/opt/homebrew/bin/python3.11"
+        "/opt/homebrew/bin/python3"
+        "/usr/local/bin/python3"
         "$HOME/miniconda3/bin/python"
         "$HOME/.local/share/uv/python/cpython-*/bin/python3"
         "$(command -v python3 2>/dev/null)"
@@ -415,27 +420,45 @@ fi
 # =============================================================================
 
 # Well-known python3 locations to probe (after PATH)
+# Homebrew python first (macOS — versioned binaries), then common managed installations
 _PYTHON_PROBE_PATHS=(
+    "/opt/homebrew/bin/python3.13"
+    "/opt/homebrew/bin/python3.12"
+    "/opt/homebrew/bin/python3.11"
+    "/opt/homebrew/bin/python3"
+    "/usr/local/bin/python3.13"
+    "/usr/local/bin/python3.12"
+    "/usr/local/bin/python3.11"
+    "/usr/local/bin/python3"
     "$HOME/miniconda3/bin/python3"
     "$HOME/anaconda3/bin/python3"
     "$HOME/.pyenv/shims/python3"
     "/usr/bin/python3"
 )
 
-# Find a working python3 binary.
-# Checks PATH first, then well-known locations.
+# Check if a python binary meets minimum version (3.10+)
+# Usage: _python_version_ok /usr/bin/python3
+_python_version_ok() {
+    local py="$1"
+    "$py" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null
+}
+
+# Find a working python3 binary (>= 3.10).
+# Checks well-known locations first (prefer managed installs), then PATH.
 # Returns: absolute path to python3 (stdout), exit 1 if not found
 find_python() {
-    if command -v python3 &>/dev/null; then
-        command -v python3
-        return 0
-    fi
+    # Check well-known locations first (prefer brew/managed over system)
     for p in "${_PYTHON_PROBE_PATHS[@]}"; do
-        if [[ -x "$p" ]]; then
+        if [[ -x "$p" ]] && _python_version_ok "$p"; then
             echo "$p"
             return 0
         fi
     done
+    # Fallback to PATH
+    if command -v python3 &>/dev/null && _python_version_ok "$(command -v python3)"; then
+        command -v python3
+        return 0
+    fi
     return 1
 }
 
