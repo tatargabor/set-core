@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# set-web-install — Install/uninstall the set-web systemd service
+# set-web-install — Install/uninstall the set-web service
+# Supports systemd (Linux) and launchd (macOS).
 # with optional Tailscale HTTPS remote access.
 #
 # Usage:
@@ -16,10 +17,20 @@ SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/set-common.sh"
 
 SERVICE_NAME="set-web"
-SERVICE_TEMPLATE="$SET_TOOLS_ROOT/templates/systemd/set-web.service"
-SERVICE_DIR="$HOME/.config/systemd/user"
-SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
 DEFAULT_PORT=7400
+
+# Platform-specific paths
+if [[ "$PLATFORM" == "macos" ]]; then
+    PLIST_LABEL="com.set-core.web"
+    SERVICE_TEMPLATE="$SET_TOOLS_ROOT/templates/launchd/${PLIST_LABEL}.plist"
+    SERVICE_DIR="$HOME/Library/LaunchAgents"
+    SERVICE_FILE="$SERVICE_DIR/${PLIST_LABEL}.plist"
+    LOG_DIR="$HOME/Library/Logs/set-core"
+else
+    SERVICE_TEMPLATE="$SET_TOOLS_ROOT/templates/systemd/set-web.service"
+    SERVICE_DIR="$HOME/.config/systemd/user"
+    SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
+fi
 
 # --- Argument parsing ---
 PORT=""
@@ -56,8 +67,9 @@ done
 PORT="${PORT:-$DEFAULT_PORT}"
 
 if [[ -n "$SHOW_HELP" ]]; then
-    cat <<'EOF'
-set-web-install — Install the set-web dashboard as a systemd user service.
+    cat <<EOF
+set-web-install — Install the set-web dashboard as a system service.
+Uses systemd on Linux and launchd on macOS.
 
 USAGE
   set-web-install [OPTIONS]
@@ -75,7 +87,7 @@ EXAMPLES
   set-web-install --uninstall        # Remove everything
 
 WHAT IT DOES
-  1. Copies the systemd service template to ~/.config/systemd/user/
+  1. Installs the service template (systemd unit / launchd plist)
   2. Applies custom port if specified
   3. Enables and starts the service
   4. Verifies set-web is responding
@@ -84,29 +96,115 @@ EOF
     exit 0
 fi
 
+# --- Platform service helpers ---
+
+service_stop() {
+    if [[ "$PLATFORM" == "macos" ]]; then
+        if launchctl list 2>/dev/null | grep -q "$PLIST_LABEL"; then
+            launchctl unload "$SERVICE_FILE" 2>/dev/null || true
+            success "Service stopped"
+        fi
+    else
+        if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
+            systemctl --user stop "$SERVICE_NAME"
+            success "Service stopped"
+        fi
+    fi
+}
+
+service_disable() {
+    if [[ "$PLATFORM" == "macos" ]]; then
+        # launchd: unload already disables; just remove the plist
+        :
+    else
+        if systemctl --user is-enabled "$SERVICE_NAME" &>/dev/null; then
+            systemctl --user disable "$SERVICE_NAME"
+            success "Service disabled"
+        fi
+    fi
+}
+
+service_remove() {
+    if [[ -f "$SERVICE_FILE" ]]; then
+        rm -f "$SERVICE_FILE"
+        if [[ "$PLATFORM" != "macos" ]]; then
+            systemctl --user daemon-reload
+        fi
+        success "Service file removed"
+    else
+        info "No service file found at $SERVICE_FILE"
+    fi
+}
+
+service_install_and_start() {
+    if [[ "$PLATFORM" == "macos" ]]; then
+        # Find Python 3.10+ for the plist
+        local PYTHON=""
+        if ! PYTHON=$(find_python); then
+            error "No Python 3.10+ found — cannot install launchd service"
+            exit 1
+        fi
+
+        mkdir -p "$SERVICE_DIR" "$LOG_DIR"
+
+        # Unload existing
+        if launchctl list 2>/dev/null | grep -q "$PLIST_LABEL"; then
+            launchctl unload "$SERVICE_FILE" 2>/dev/null || true
+        fi
+
+        # Resolve placeholders
+        sed -e "s|__SET_TOOLS_ROOT__|$SET_TOOLS_ROOT|g" \
+            -e "s|__INSTALL_DIR__|${HOME}/.local/bin|g" \
+            -e "s|__LOG_DIR__|$LOG_DIR|g" \
+            -e "s|__PYTHON__|$PYTHON|g" \
+            "$SERVICE_TEMPLATE" > "$SERVICE_FILE"
+
+        # Apply custom port
+        if [[ "$PORT" != "$DEFAULT_PORT" ]]; then
+            sed_i "s/--port $DEFAULT_PORT/--port $PORT/" "$SERVICE_FILE"
+            info "Port set to $PORT"
+        fi
+
+        launchctl load "$SERVICE_FILE" 2>/dev/null || true
+        success "Service installed and started"
+    else
+        mkdir -p "$SERVICE_DIR"
+
+        cp "$SERVICE_TEMPLATE" "$SERVICE_FILE"
+        sed_i "s|__SET_TOOLS_ROOT__|$SET_TOOLS_ROOT|g" "$SERVICE_FILE"
+
+        if [[ "$PORT" != "$DEFAULT_PORT" ]]; then
+            sed_i "s/--port $DEFAULT_PORT/--port $PORT/" "$SERVICE_FILE"
+            info "Port set to $PORT"
+        fi
+
+        systemctl --user daemon-reload
+        systemctl --user enable "$SERVICE_NAME" 2>/dev/null
+        systemctl --user restart "$SERVICE_NAME"
+        success "Service installed and started"
+    fi
+}
+
+restart_tailscaled() {
+    if [[ "$PLATFORM" == "macos" ]]; then
+        # macOS Tailscale is a .app — restart via killall (it auto-relaunches)
+        killall Tailscale 2>/dev/null || true
+        sleep 3
+        open -a Tailscale 2>/dev/null || true
+    else
+        sudo systemctl restart tailscaled 2>/dev/null
+    fi
+}
+
 # --- Uninstall ---
 if [[ -n "$DO_UNINSTALL" ]]; then
     echo ""
     info "Uninstalling set-web service..."
     echo ""
 
-    if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
-        systemctl --user stop "$SERVICE_NAME"
-        success "Service stopped"
-    fi
-
-    if systemctl --user is-enabled "$SERVICE_NAME" &>/dev/null; then
-        systemctl --user disable "$SERVICE_NAME"
-        success "Service disabled"
-    fi
-
-    if [[ -f "$SERVICE_FILE" ]]; then
-        rm -f "$SERVICE_FILE"
-        systemctl --user daemon-reload
-        success "Service file removed"
-    else
-        info "No service file found at $SERVICE_FILE"
-    fi
+    service_stop
+    service_disable
+    service_remove
 
     # Reset Tailscale serve if configured
     if command -v tailscale &>/dev/null; then
@@ -133,12 +231,8 @@ if [[ ! -f "$SERVICE_TEMPLATE" ]]; then
     exit 1
 fi
 
-# Create service directory
-mkdir -p "$SERVICE_DIR"
-
 # Check if service already exists
 if [[ -f "$SERVICE_FILE" ]]; then
-    # Compare template with installed version (ignoring port differences)
     TEMPLATE_MTIME=$(get_file_mtime "$SERVICE_TEMPLATE")
     SERVICE_MTIME=$(get_file_mtime "$SERVICE_FILE")
 
@@ -149,21 +243,7 @@ if [[ -f "$SERVICE_FILE" ]]; then
     fi
 fi
 
-# Copy template and apply runtime paths
-cp "$SERVICE_TEMPLATE" "$SERVICE_FILE"
-sed -i "s|__SET_TOOLS_ROOT__|$SET_TOOLS_ROOT|g" "$SERVICE_FILE"
-
-if [[ "$PORT" != "$DEFAULT_PORT" ]]; then
-    sed -i "s/--port $DEFAULT_PORT/--port $PORT/" "$SERVICE_FILE"
-    info "Port set to $PORT"
-fi
-
-# Reload and start
-systemctl --user daemon-reload
-systemctl --user enable "$SERVICE_NAME" 2>/dev/null
-systemctl --user restart "$SERVICE_NAME"
-
-success "Service installed and started"
+service_install_and_start
 
 # Health check with retry
 info "Checking set-web health..."
@@ -180,7 +260,11 @@ if [[ -n "$HEALTH_OK" ]]; then
     success "http://localhost:$PORT/ is responding"
 else
     warn "set-web not responding on port $PORT after 5s"
-    info "Check logs: journalctl --user -u $SERVICE_NAME -f"
+    if [[ "$PLATFORM" == "macos" ]]; then
+        info "Check logs: $LOG_DIR/set-web.log"
+    else
+        info "Check logs: journalctl --user -u $SERVICE_NAME -f"
+    fi
 fi
 
 # --- Tailscale HTTPS ---
@@ -216,7 +300,7 @@ setup_tailscale() {
         info "Provisioning TLS certificate for $ts_hostname..."
         if ! tailscale cert "$ts_hostname" 2>/dev/null; then
             warn "Cert provisioning failed — restarting tailscaled and retrying..."
-            if sudo systemctl restart tailscaled 2>/dev/null; then
+            if restart_tailscaled; then
                 sleep 5
                 if tailscale cert "$ts_hostname" 2>/dev/null; then
                     success "TLS certificate provisioned (after tailscaled restart)"
@@ -226,8 +310,7 @@ setup_tailscale() {
                     info "Try later: tailscale cert $ts_hostname"
                 fi
             else
-                warn "Could not restart tailscaled (sudo required)"
-                info "Run manually: sudo systemctl restart tailscaled && tailscale cert $ts_hostname"
+                warn "Could not restart tailscaled"
             fi
         else
             success "TLS certificate provisioned"
@@ -270,6 +353,11 @@ echo ""
 success "set-web install complete!"
 echo ""
 echo "  Local:   http://localhost:$PORT/"
-echo "  Manage:  systemctl --user {start|stop|status|restart} $SERVICE_NAME"
-echo "  Logs:    journalctl --user -u $SERVICE_NAME -f"
+if [[ "$PLATFORM" == "macos" ]]; then
+    echo "  Manage:  launchctl {load|unload} $SERVICE_FILE"
+    echo "  Logs:    $LOG_DIR/set-web.log"
+else
+    echo "  Manage:  systemctl --user {start|stop|status|restart} $SERVICE_NAME"
+    echo "  Logs:    journalctl --user -u $SERVICE_NAME -f"
+fi
 echo ""

@@ -543,7 +543,7 @@ _migrate_wt_to_set() {
         success "  Migrated wt/ → set/"
         # Update .gitignore
         if [[ -f "$project_path/.gitignore" ]]; then
-            sed -i 's|^wt/\.work/$|set/.work/|' "$project_path/.gitignore"
+            sed_i 's|^wt/\.work/$|set/.work/|' "$project_path/.gitignore"
         fi
     fi
 }

@@ -91,7 +91,7 @@ YAML
 
     # Update existing config
     if grep -q "^discord:" "$config_file" 2>/dev/null; then
-        sed -i "s/^\(  enabled:\).*/\1 $enabled/" "$config_file"
+        sed_i "s/^\(  enabled:\).*/\1 $enabled/" "$config_file"
     else
         cat >> "$config_file" <<YAML
 
@@ -308,7 +308,7 @@ cmd_enable() {
 
     # Inject guild_id if not present
     if ! grep -q "guild_id:" "$orch_config" 2>/dev/null; then
-        sed -i "/^discord:/a\\  guild_id: \"$guild_id\"" "$orch_config"
+        sed_i "/^discord:/a\\  guild_id: \"$guild_id\"" "$orch_config"
     fi
 
     echo ""

@@ -302,7 +302,7 @@ cmd_input() {
     # Write or update key in .env.local
     if [[ -f "$env_file" ]] && grep -q "^${key}=" "$env_file" 2>/dev/null; then
         # Update existing key
-        sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+        sed_i "s|^${key}=.*|${key}=${value}|" "$env_file"
         success "Updated $key in $env_file"
     else
         # Append new key

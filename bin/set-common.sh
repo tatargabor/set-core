@@ -81,6 +81,15 @@ detect_platform() {
 
 PLATFORM=$(detect_platform)
 
+# Cross-platform sed -i (BSD sed requires '' after -i, GNU sed does not)
+sed_i() {
+    if [[ "$PLATFORM" == "macos" ]]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
 # Config paths
 get_config_dir() {
     # Support SET_CONFIG_DIR override for testing
