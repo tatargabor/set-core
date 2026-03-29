@@ -159,10 +159,34 @@ We're actively reducing nondeterminism through template optimization, divergence
 
 ## Quick Start
 
+### Step 1: Install
+
 ```bash
 git clone https://github.com/tatargabor/set-core.git
 cd set-core && ./install.sh
+```
 
+### Step 2: Try the MiniShop demo first
+
+Before setting up your own project, run the built-in MiniShop benchmark — a complete e-commerce app built autonomously from spec. This lets you see the full pipeline in action and understand what happens at each stage.
+
+```bash
+# This scaffolds a project, initializes it, registers it, and starts the sentinel
+./tests/e2e/run.sh minishop
+
+# Open the dashboard to watch it work
+open http://localhost:7400
+```
+
+The sentinel will decompose the spec into 6 changes, dispatch agents to parallel worktrees, run quality gates on each, and merge them to main. Watch the [dashboard](docs/guide/dashboard.md) as it progresses — you'll see phases, gate results, token usage, and the final application.
+
+When it's done, you'll have a working Next.js webshop with products, cart, admin panel — all built from a [markdown spec](tests/e2e/scaffolds/minishop/docs/v1-minishop.md) and [Figma design](tests/e2e/scaffolds/minishop/docs/design-snapshot.md).
+
+### Step 3: Set up your own project
+
+Now that you've seen how it works, set up orchestration for your own project:
+
+```bash
 cd ~/my-project
 set-project init --project-type web --template nextjs
 
@@ -170,9 +194,9 @@ set-project init --project-type web --template nextjs
 /set:sentinel --spec docs/my-spec.md --max-parallel 2
 ```
 
-See [docs/guide/quick-start.md](docs/guide/quick-start.md) for detailed setup and first-run walkthrough.
+**Study the scaffolds** in [`tests/e2e/scaffolds/`](tests/e2e/scaffolds/) when writing your own spec — they show how to structure specs, configure `orchestration.yaml`, list dependencies, and set expectations for the decomposer.
 
-**Setting up your own project for orchestration?** Study the E2E test scaffolds in [`tests/e2e/scaffolds/`](tests/e2e/scaffolds/) — they show exactly how to structure specs, configure `orchestration.yaml`, set up templates, and prepare a project for decomposition. The [minishop scaffold](tests/e2e/scaffolds/minishop/) is the most complete reference: spec with Figma design, dependency listing, seed data conventions, and E2E test expectations.
+See [docs/guide/quick-start.md](docs/guide/quick-start.md) for the full walkthrough.
 
 ---
 
