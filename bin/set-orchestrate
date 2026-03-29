@@ -764,7 +764,7 @@ main() {
                 ;;
         esac
     done
-    set -- "${cmd_args[@]}"
+    set -- ${cmd_args[@]+"${cmd_args[@]}"}
 
     # Validate: --phase requires --spec
     if [[ -n "$PHASE_HINT" && -z "$SPEC_OVERRIDE" ]]; then
