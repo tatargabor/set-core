@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Spec digest engine: scan, classify, extract requirements, validate, track coverage.
 
 Migrated from: lib/orchestration/digest.sh (1,311 LOC)

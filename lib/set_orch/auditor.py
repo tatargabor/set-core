@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Post-phase LLM audit: spec-vs-implementation gap detection.
 
 Migrated from: lib/orchestration/auditor.sh (298 LOC)

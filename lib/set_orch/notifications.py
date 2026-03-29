@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Multi-channel notification dispatch for orchestration engine.
 
 Migrated from: lib/orchestration/state.sh send_notification() L365-399

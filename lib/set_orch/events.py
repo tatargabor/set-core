@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Event bus with JSONL persistence for orchestration audit trail.
 
 Migrated from: lib/orchestration/events.sh (emit_event, rotate_events_log, query_events)

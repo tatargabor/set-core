@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Git utilities shared across orchestration modules."""
 
 import subprocess

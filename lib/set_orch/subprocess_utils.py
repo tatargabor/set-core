@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Type-safe subprocess wrappers for claude, git, and generic commands.
 
 All invocations are logged with: cmd, duration_ms, exit_code, output_size.

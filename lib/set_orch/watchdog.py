@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Orchestration watchdog: per-change health monitoring, timeout, loop detection, escalation.
 
 Migrated from: lib/orchestration/watchdog.sh (424 LOC)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Orchestrator memory helpers: remember, recall, gate stats.
 
 Migrated from: lib/orchestration/orch-memory.sh (145 LOC)

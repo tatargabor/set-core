@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Orchestration configuration: directives, duration, hashing, input resolution.
 
 Migrated from: lib/orchestration/utils.sh (parse_directives, resolve_directives,

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Project type plugin interface — ABC and dataclasses.
 
 Defines the ProjectType interface that all project knowledge plugins

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Build health check and LLM-assisted fixing.
 
 Migrated from: lib/orchestration/builder.sh (151 LOC)

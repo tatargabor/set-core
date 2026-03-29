@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Gate profiles — per-change-type verification gate configuration.
 
 Resolves which gates run for each change based on:

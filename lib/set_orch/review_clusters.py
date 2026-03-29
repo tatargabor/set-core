@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Shared keyword clusters for review findings pattern matching.
 
 Used by engine._persist_run_learnings() and dispatcher._build_review_learnings().
