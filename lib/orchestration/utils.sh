@@ -34,13 +34,36 @@ safe_jq_update() {
 # Returns the exit code of the wrapped command, or 1 on lock timeout.
 with_state_lock() {
     local lock_file="${STATE_FILENAME}.lock"
-    (
-        flock --timeout 10 200 || {
-            log_error "with_state_lock: timeout acquiring lock on $STATE_FILENAME"
-            return 1
-        }
-        "$@"
-    ) 200>"$lock_file"
+    if command -v flock >/dev/null 2>&1; then
+        # Linux: use flock (fd-based)
+        (
+            flock --timeout 10 200 || {
+                log_error "with_state_lock: timeout acquiring lock on $STATE_FILENAME"
+                return 1
+            }
+            "$@"
+        ) 200>"$lock_file"
+    else
+        # macOS fallback: mkdir-based lock (atomic on all filesystems)
+        local lock_dir="${lock_file}.d"
+        local deadline=$(( $(date +%s) + 10 ))
+        while true; do
+            if mkdir "$lock_dir" 2>/dev/null; then
+                # Got the lock — ensure cleanup on exit
+                trap 'rmdir "'"$lock_dir"'" 2>/dev/null' EXIT
+                "$@"
+                local rc=$?
+                rmdir "$lock_dir" 2>/dev/null
+                trap - EXIT
+                return $rc
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+                log_error "with_state_lock: timeout acquiring lock on $STATE_FILENAME"
+                return 1
+            fi
+            sleep 0.1
+        done
+    fi
 }
 
 # Delegated to Python: wt_orch.config.parse_duration()
