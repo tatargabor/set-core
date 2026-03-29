@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Fetch Figma design data via MCP or REST API into a figma/ directory.
 
 Everything goes into one directory: design-snapshot.md + screenshots/*.png.

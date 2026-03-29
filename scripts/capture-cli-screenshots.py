@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Capture CLI command output as styled PNG screenshots for documentation.
 

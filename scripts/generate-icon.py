@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Generate app icon files from SVG source.
 
 Dev tool — run manually when the icon changes.

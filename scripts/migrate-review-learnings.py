@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Migrate review-findings.jsonl from past E2E runs into template learnings JSONL.
 
 Scans ~/.local/share/set-core/e2e-runs/*/set/orchestration/review-findings.jsonl,
