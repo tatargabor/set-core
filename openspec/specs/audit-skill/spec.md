@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: Skill invocation
-The system SHALL provide a `/wt:audit` skill invocable from Claude Code.
+The system SHALL provide a `/set:audit` skill invocable from Claude Code.
 
 #### Scenario: User runs audit skill
-- **WHEN** user invokes `/wt:audit` in a Claude Code session
+- **WHEN** user invokes `/set:audit` in a Claude Code session
 - **THEN** the skill runs `set-audit scan --json`, parses the output, and presents findings grouped by dimension
 
 #### Scenario: Skill with focus argument
-- **WHEN** user invokes `/wt:audit design-docs`
+- **WHEN** user invokes `/set:audit design-docs`
 - **THEN** the skill runs full scan but highlights the specified dimension and offers to address its gaps first
 
 ### Requirement: Interactive gap remediation
@@ -42,7 +42,7 @@ The skill SHALL be deployable to projects via `set-project init`.
 
 #### Scenario: Command file exists
 - **WHEN** `set-project init` runs on a project
-- **THEN** `.claude/commands/wt/audit.md` exists in the project, enabling `/wt:audit` invocation
+- **THEN** `.claude/commands/set/audit.md` exists in the project, enabling `/set:audit` invocation
 
 #### Scenario: SKILL.md updated
 - **WHEN** the audit skill is created

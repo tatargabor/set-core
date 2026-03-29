@@ -120,7 +120,7 @@ print_condensed_summary() {
     if [[ $fail -eq 0 && $warn -eq 0 ]]; then
         echo "  Health: ${icon_pass} all checks passed"
     else
-        echo "  Health: ${icon_pass} ${pass}  ${icon_warn} ${warn}  ${icon_fail} ${fail} — run /wt:audit for details"
+        echo "  Health: ${icon_pass} ${pass}  ${icon_warn} ${warn}  ${icon_fail} ${fail} — run /set:audit for details"
     fi
 }
 

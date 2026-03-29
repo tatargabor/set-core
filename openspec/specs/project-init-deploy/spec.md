@@ -54,7 +54,7 @@ After deploying hooks, commands, and skills, `set-project init` SHALL run `set-a
 
 #### Scenario: Init with gaps
 - **WHEN** `set-project init` completes and audit finds ❌ or ⚠️ items
-- **THEN** output shows the summary line (e.g., `Health: ✅ 10  ⚠️ 3  ❌ 2`) and suggests running `/wt:audit` to address gaps
+- **THEN** output shows the summary line (e.g., `Health: ✅ 10  ⚠️ 3  ❌ 2`) and suggests running `/set:audit` to address gaps
 
 #### Scenario: Init with clean health
 - **WHEN** `set-project init` completes and audit finds all ✅
