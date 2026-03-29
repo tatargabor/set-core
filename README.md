@@ -128,7 +128,7 @@ Active development priorities:
 
 | Direction | Goal | Status |
 |-----------|------|--------|
-| **Divergence reduction** | Eliminate remaining nondeterminism through template optimization, scaffold testing, and configuration distribution across core → module → scaffold → project layers | File structure divergence: 63% → 0% achieved for simple projects; complex projects at ~43% — actively improving |
+| **Divergence reduction** | Eliminate remaining nondeterminism through template optimization, scaffold testing, and configuration distribution across core → module → scaffold → project layers | Measurably reduced for simple projects; complex projects still improving — tracked across paired E2E runs |
 | **Build time optimization** | Reduce gate pipeline wall clock time — parallel gate execution, incremental builds, cached test results between changes | Currently sequential (Jest → Build → E2E → Review); exploring parallel gates where safe |
 | **Session context reuse** | Reuse conversation context across Ralph Loop iterations and between related changes — reduce cold-start token overhead | Currently each iteration starts fresh; investigating warm-start from previous iteration's state |
 | **Memory optimization** | Smarter recall — relevance scoring, dedup, consolidation. Convert recurring learnings into deterministic rules automatically | Learnings-to-rules pipeline in development; dedup and consolidation operational |
@@ -145,7 +145,7 @@ Most AI coding tools are nondeterministic — run the same prompt twice, get dif
 
 | Challenge | Our Approach | Result |
 |-----------|-------------|--------|
-| **Output divergence** | [3-layer template system](docs/learn/journey.md) — templates lock structure, agents focus on logic | File structure divergence: 63% → 0% across paired runs |
+| **Output divergence** | [3-layer template system](docs/learn/journey.md) — templates lock structure, agents focus on logic | Measurably reduced — actively improving through scaffold testing |
 | **Hallucination** | [OpenSpec workflow](docs/guide/openspec.md) — structured artifacts with requirements + acceptance criteria | Agents implement against spec, not imagination |
 | **Quality roulette** | [Programmatic gates](docs/guide/orchestration.md) — exit codes, not LLM judgment. 7 gate types | Deterministic pass/fail |
 | **Spec drift** | [Coverage tracking](docs/guide/openspec.md) — verifies "does it satisfy the spec?" not just "do tests pass?" | Auto-replan when coverage < 100% |
