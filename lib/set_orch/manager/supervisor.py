@@ -233,19 +233,43 @@ class ProjectSupervisor:
         """Check process health. Returns list of actions taken."""
         actions = []
 
-        # Sentinel health
+        # Sentinel health — check both process death AND session end
+        sentinel_needs_restart = False
+
         if self.sentinel_pid and not _is_alive(self.sentinel_pid):
+            # Process died (crash or normal exit)
             actions.append(f"sentinel died (pid={self.sentinel_pid})")
             self.sentinel_pid = None
             self._sentinel_proc = None
             self.sentinel_crash_count += 1
+            sentinel_needs_restart = True
 
+        elif self.sentinel_pid and self._sentinel_proc:
+            # Process alive — but check if session ended (claude -p may linger)
+            poll_result = self._sentinel_proc.poll()
+            if poll_result is not None:
+                # Process actually exited
+                actions.append(f"sentinel session ended (exit_code={poll_result}, pid={self.sentinel_pid})")
+                self.sentinel_pid = None
+                self._sentinel_proc = None
+                self.sentinel_crash_count += 1
+                sentinel_needs_restart = True
+            elif self._is_sentinel_session_stale():
+                # Process alive but session idle — stdout not updated for >120s
+                actions.append(f"sentinel session stale (pid={self.sentinel_pid})")
+                _kill_gracefully(self.sentinel_pid)
+                self.sentinel_pid = None
+                self._sentinel_proc = None
+                self.sentinel_crash_count += 1
+                sentinel_needs_restart = True
+
+        if sentinel_needs_restart:
             if (self.config.auto_restart_sentinel
                     and self.sentinel_crash_count <= MAX_CRASH_RESTARTS
                     and not self._is_orchestration_done()):
                 try:
                     self.start_sentinel(spec=self.sentinel_spec)
-                    actions.append(f"sentinel auto-restarted (crash #{self.sentinel_crash_count})")
+                    actions.append(f"sentinel auto-restarted (#{self.sentinel_crash_count})")
                 except Exception as e:
                     actions.append(f"sentinel restart failed: {e}")
             elif self._is_orchestration_done():
@@ -263,6 +287,29 @@ class ProjectSupervisor:
             self._orch_proc = None
 
         return actions
+
+    def _is_sentinel_session_stale(self) -> bool:
+        """Check if sentinel stdout log hasn't been updated in >120s.
+
+        When a claude -p session ends with end_turn, it stops writing to stdout
+        but the process may linger. If stdout hasn't been updated and the
+        orchestration is still running, the session is effectively dead.
+        """
+        try:
+            from ..paths import SetRuntime
+            sentinel_dir = Path(SetRuntime(str(self.config.path)).sentinel_dir)
+        except Exception:
+            sentinel_dir = self.config.path / ".set" / "sentinel"
+
+        stdout_log = sentinel_dir / "stdout.log"
+        if not stdout_log.is_file():
+            return False
+
+        import time
+        mtime = stdout_log.stat().st_mtime
+        age = time.time() - mtime
+        # Stale if no output for 120s AND orchestration is still running
+        return age > 120 and not self._is_orchestration_done()
 
     def _is_orchestration_done(self) -> bool:
         """Check if the orchestration state file shows status=done."""
