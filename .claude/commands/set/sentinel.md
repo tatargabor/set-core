@@ -248,7 +248,37 @@ Do NOT just keep saying "Orchestration running, polling..." when nothing has cha
   Log a finding: `set-sentinel-finding add --severity bug --change CHANGE_NAME --summary "Reset failed change (0 tokens dispatch failure) to pending for retry"`
 - If tokens > 0 (app-level failure): the agent tried and failed. Log finding and move on.
 
-**If any change has status `integration-failed`**: this means the orchestrator exhausted its merge retries. Apply **Tier 3** — read the merge log, diagnose the root cause, fix it on main, and reset the change to `done`. Don't defer this — the orchestrator already gave up.
+**If any change has status `integration-failed`**: this means the orchestrator exhausted its merge retries. Apply the **escalation ladder**:
+
+**Step 1 — Quick fix attempt (1 try):** Read the integration gate output (e2e failure, build error). If it's a simple conflict (e.g., one failing e2e test), try to fix it on the worktree branch and reset to `done`.
+
+**Step 2 — Branch drop + fresh redispatch (guaranteed fix):** If Step 1 fails or the conflict is complex (merge conflicts, middleware clashes, i18n routing broken):
+```bash
+# 1. Delete the failed worktree and branch
+CHANGE_NAME="the-failed-change"
+WT_PATH=$(python3 -c "import json; s=json.load(open('orchestration-state.json')); print(next(c['worktree_path'] for c in s['changes'] if c['name']=='$CHANGE_NAME'))")
+git worktree remove "$WT_PATH" --force 2>/dev/null || true
+git branch -D "change/$CHANGE_NAME" 2>/dev/null || true
+
+# 2. Reset change to pending (fresh start from current main)
+python3 -c "
+import json; f='orchestration-state.json'; s=json.load(open(f))
+for c in s['changes']:
+    if c['name']=='$CHANGE_NAME':
+        c['status']='pending'; c['worktree_path']=None; c['ralph_pid']=None
+        c['test_result']=None; c['build_result']=None; c['smoke_result']=None
+        c['verify_retry_count']=0; c['merge_retry_count']=0
+        c['tokens_used']=0; c['output_tokens']=0; c['input_tokens']=0
+json.dump(s, open(f,'w'), indent=2)
+"
+
+# 3. Log finding
+set-sentinel-finding add --severity bug --change "$CHANGE_NAME" --summary "Branch dropped and reset to pending — integration-failed after merge conflict. Fresh redispatch from current main."
+```
+
+This is expensive (re-implements the change) but **guaranteed to work** because it starts from a clean main with all prior changes already merged — no conflict possible.
+
+Do NOT defer `integration-failed` — the orchestrator already gave up. The sentinel MUST act.
 
 **CRITICAL: Don't just recommend actions — DO them.** You are the sentinel, not a reporter. If a simple reset or restart can unblock the pipeline, execute it immediately.
 
