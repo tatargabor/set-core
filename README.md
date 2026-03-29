@@ -172,6 +172,8 @@ set-project init --project-type web --template nextjs
 
 See [docs/guide/quick-start.md](docs/guide/quick-start.md) for detailed setup and first-run walkthrough.
 
+**Setting up your own project for orchestration?** Study the E2E test scaffolds in [`tests/e2e/scaffolds/`](tests/e2e/scaffolds/) — they show exactly how to structure specs, configure `orchestration.yaml`, set up templates, and prepare a project for decomposition. The [minishop scaffold](tests/e2e/scaffolds/minishop/) is the most complete reference: spec with Figma design, dependency listing, seed data conventions, and E2E test expectations.
+
 ---
 
 ## Technology
