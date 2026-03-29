@@ -254,6 +254,8 @@ test_command: pnpm test
 e2e_command: npx playwright test
 e2e_timeout: 180
 max_parallel: 2
+merge_policy: checkpoint
+checkpoint_auto_approve: true
 auto_replan: true
 max_replan_cycles: 3
 review_before_merge: true

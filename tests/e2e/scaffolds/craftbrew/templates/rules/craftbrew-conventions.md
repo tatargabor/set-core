@@ -7,6 +7,19 @@ globs:
 
 # CraftBrew Conventions
 
+## Recommended Change Decomposition
+
+CraftBrew is a complex e-commerce spec. Keep changes focused:
+
+1. **foundation-setup** (Phase 1) — Prisma schema (all models), seed data, package.json deps, i18n setup, Tailwind config, layout structure
+2. **auth-and-accounts** (Phase 1) — NextAuth, login/register, user dashboard, middleware
+3. **product-catalog** (Phase 2) — Coffee/equipment/merch listing, detail pages, filters, search
+4. **cart-and-session** (Phase 2) — Cart session, add/remove/update, cart page (NO checkout)
+5. **admin-panel** (Phase 2) — Admin CRUD for products, orders, coupons, reviews
+6. **checkout-and-orders** (Phase 3) — Checkout flow, payment, order history, cancellation, returns
+
+CRITICAL: NEVER combine cart and checkout in one change. The cart-and-checkout mega-change caused integration-failed in previous runs. Cart session management and checkout/order processing are separate concerns.
+
 ## Product Types
 
 - Coffee: Single Origin, Blend, Espresso — each with origin, roast level, tasting notes
