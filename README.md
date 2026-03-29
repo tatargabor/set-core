@@ -157,6 +157,25 @@ We're actively reducing nondeterminism through template optimization, divergence
 
 ---
 
+## The Spec Is Everything
+
+In traditional development, a detailed spec meant 8 months of waterfall. Now it means 8 hours of orchestrated agents. But the principle is the same: **the quality of the output depends on the quality of the input.**
+
+A good spec for SET includes:
+- **Business requirements** — what the user should be able to do, not how to implement it
+- **Acceptance criteria** — WHEN/THEN scenarios that become verifiable test cases
+- **Technical constraints** — framework, database, auth provider, API conventions
+- **Dependency listing** — exact packages and versions the agents should use
+- **Seed data** — what the demo/test data should look like
+
+The [project type templates](docs/reference/plugins.md) handle the rest — framework boilerplate, build config, test setup, linting rules. You focus on _what_ to build. The templates ensure _how_ it gets built is consistent and deterministic.
+
+Think of it this way: **you are the product owner, the agents are the dev team, and the spec is the sprint backlog.** The better the backlog, the better the sprint. The difference is that this sprint takes hours, not weeks — and the team never gets tired, never forgets conventions, and never skips tests.
+
+See the [MiniShop spec](tests/e2e/scaffolds/minishop/docs/v1-minishop.md) for a complete example of a production-quality spec.
+
+---
+
 ## Quick Start
 
 ### Step 1: Install
