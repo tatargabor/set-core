@@ -225,6 +225,15 @@ Just say something brief like: `Orchestration running (3/7 changes, 1.2M tokens)
 
 **If WARNING:token_stuck is present**: escalate to user on first detection only. Say: "Warning: N change(s) have used >500K tokens with no commit in 30 min — may be stuck." Then read the state to list which changes are stuck. Track this so you don't repeat the warning every poll.
 
+**Stall escalation rule**: Track how many consecutive polls each non-merged change stays in the same status without token progress. If a change has been in the same status (running, done, stalled, dispatched) for **5+ consecutive polls** with no token increase:
+1. This is NO LONGER Tier 1 — escalate to Tier 2
+2. Read the change's worktree loop-state and last 20 log lines
+3. Diagnose: is the agent dead? is the merge gate stuck? is the orchestrator ignoring the merge queue?
+4. Act: kill stuck agent, reset change status, or restart orchestrator — whatever unblocks the pipeline
+5. Log a finding with the diagnosis
+
+Do NOT just keep saying "Orchestration running, polling..." when nothing has changed for 5+ polls. That's a monitoring failure.
+
 **If WARNING:deadlocked is present** OR **all remaining changes are blocked by a failed change**: Don't just report — fix it. Check the failed change:
 - If 0 tokens (dispatch failure): reset it to `pending` so the orchestrator retries:
   ```bash
