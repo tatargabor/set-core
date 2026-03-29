@@ -6,6 +6,10 @@ Change sizing and decomposition granularity:
 - Prefer 3 phases over 4+. More phases = more sequential bottlenecks. Ideal: Phase 1 (foundation + auth parallel), Phase 2 (catalog + cart + admin parallel), Phase 3 (checkout + polish).
 - Each change MUST have its own E2E test file. Test file names SHOULD match the change name (e.g., change `shopping-cart` → `tests/e2e/cart.spec.ts`).
 
+Template file protection:
+- Files deployed by `set-project init` (globals.css, vitest.config.ts, playwright.config.ts, tsconfig.json, next.config.js, postcss.config.mjs) SHOULD NOT be modified unless the change specifically requires it. If a config change is needed, document WHY in the commit message.
+- `src/lib/prisma.ts` and `src/lib/utils.ts` are template files — use them as-is, do not recreate or rename.
+
 Playwright E2E test planning (when e2e_command is configured):
 - The infrastructure/foundation change (first in dependency order) MUST set up Playwright alongside the test runner (Jest or Vitest):
   * Create playwright.config.ts with PW_PORT env var support, webServer auto-start, headless: true, and screenshot: 'on' in the use section (headless: true prevents browser windows opening on desktop machines; screenshot: 'on' ensures PNG capture instead of text-only error-context.md)
