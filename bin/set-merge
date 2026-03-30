@@ -70,40 +70,39 @@ if [[ -f "$_PROFILE_PATTERNS_FILE" ]]; then
     done < "$_PROFILE_PATTERNS_FILE"
 fi
 
-# Hardcoded JS lockfile-to-PM map (fallback when no profile is loaded).
-declare -A _FALLBACK_LOCKFILE_PM_MAP=(
-    ["pnpm-lock.yaml"]="pnpm"
-    ["yarn.lock"]="yarn"
-    ["package-lock.json"]="npm"
-)
-
 # Read profile lockfile-PM map if available (written by set-project init).
 _LOCKFILE_PM_MAP_FILE="${PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}/wt/plugins/.lockfile-pm-map"
-declare -A _PROFILE_LOCKFILE_PM_MAP=()
+_PROFILE_LOCKFILE_PM_ENTRIES=""
 if [[ -f "$_LOCKFILE_PM_MAP_FILE" ]]; then
-    while IFS='=' read -r lockfile pm; do
-        [[ -n "$lockfile" && -n "$pm" ]] && _PROFILE_LOCKFILE_PM_MAP["$lockfile"]="$pm"
-    done < "$_LOCKFILE_PM_MAP_FILE"
+    _PROFILE_LOCKFILE_PM_ENTRIES=$(cat "$_LOCKFILE_PM_MAP_FILE")
 fi
 
 # Check if a file is a lock file (using profile map then hardcoded fallback).
 # Returns 0 if lock file, 1 otherwise. Sets LOCKFILE_PM to the package manager.
+# Compatible with bash 3.2 (no associative arrays).
 is_lockfile() {
     local file="$1"
     local basename
     basename=$(basename "$file")
 
-    # Profile map first
-    if [[ ${#_PROFILE_LOCKFILE_PM_MAP[@]} -gt 0 && -n "${_PROFILE_LOCKFILE_PM_MAP[$basename]+x}" ]]; then
-        LOCKFILE_PM="${_PROFILE_LOCKFILE_PM_MAP[$basename]}"
-        return 0
+    # Profile map first (line format: lockfile=pm)
+    if [[ -n "$_PROFILE_LOCKFILE_PM_ENTRIES" ]]; then
+        local pm
+        pm=$(echo "$_PROFILE_LOCKFILE_PM_ENTRIES" | while IFS='=' read -r lf p; do
+            [[ "$lf" == "$basename" ]] && echo "$p" && break
+        done)
+        if [[ -n "$pm" ]]; then
+            LOCKFILE_PM="$pm"
+            return 0
+        fi
     fi
 
-    # Hardcoded JS fallback
-    if [[ -n "${_FALLBACK_LOCKFILE_PM_MAP[$basename]+x}" ]]; then
-        LOCKFILE_PM="${_FALLBACK_LOCKFILE_PM_MAP[$basename]}"
-        return 0
-    fi
+    # Hardcoded JS fallback (bash 3.2 compatible)
+    case "$basename" in
+        pnpm-lock.yaml) LOCKFILE_PM="pnpm"; return 0 ;;
+        yarn.lock)      LOCKFILE_PM="yarn";  return 0 ;;
+        package-lock.json) LOCKFILE_PM="npm"; return 0 ;;
+    esac
 
     LOCKFILE_PM=""
     return 1
