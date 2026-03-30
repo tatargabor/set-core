@@ -250,7 +250,6 @@ ATTRS
     cat > set/orchestration/config.yaml <<YAML
 # Orchestration config for CraftBrew E2E
 default_model: opus-1m
-test_command: pnpm test
 e2e_command: npx playwright test
 e2e_timeout: 180
 max_parallel: 2
