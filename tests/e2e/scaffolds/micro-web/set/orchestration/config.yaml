@@ -1,6 +1,6 @@
 # Orchestration config for Micro Web E2E scaffold
 # test_command and e2e_command auto-detected by web profile
-default_model: sonnet
+default_model: opus
 e2e_timeout: 120
 max_parallel: 2
 merge_policy: eager

@@ -2,7 +2,7 @@
 # Customize per project. Profile auto-detects test/e2e/build commands if omitted.
 
 # Model for implementation agents (sonnet|opus|opus-1m)
-default_model: sonnet
+default_model: opus
 
 # Commands — override profile auto-detection if needed
 # test_command: pnpm test
