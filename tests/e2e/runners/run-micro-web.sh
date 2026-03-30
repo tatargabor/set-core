@@ -200,7 +200,6 @@ ATTRS
     cat > set/orchestration/config.yaml << 'YAML'
 # Orchestration config for Micro-Web E2E
 default_model: sonnet
-test_command: pnpm test
 e2e_command: npx playwright test
 e2e_timeout: 120
 max_parallel: 2
