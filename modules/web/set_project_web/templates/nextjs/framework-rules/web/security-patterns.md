@@ -145,3 +145,25 @@ if (!gc || gc.balance <= 0 || (gc.expiresAt && gc.expiresAt < new Date())) {
 ```
 
 **The rule:** Endpoints accepting secret codes MUST return the same generic error message and HTTP status for "not found," "expired," "already used," and "no balance." Log the specific failure reason server-side for debugging. This prevents attackers from probing for valid codes.
+
+## 10. Secret Environment Variables
+
+**NEVER** use fallback or default values for secret environment variables:
+
+```
+// ✗ FORBIDDEN — allows stale cookies to bypass auth via known fallback
+const secret = process.env.JWT_SECRET || "fallback-secret"
+const secret = process.env.NEXTAUTH_SECRET ?? "dev-secret"
+
+// ✓ CORRECT — fail loudly if secret is missing
+const secret = process.env.JWT_SECRET
+if (!secret) throw new Error("JWT_SECRET environment variable is required")
+```
+
+This applies to:
+- `JWT_SECRET` / `NEXTAUTH_SECRET` — auth token signing
+- `DATABASE_URL` with credentials — database access
+- API keys for external services (payment, email, AI)
+- Any value that, if known, grants access to protected resources
+
+**Why this matters:** A hardcoded fallback means production can silently run with a weak secret if the env var is misconfigured. Attackers who know the fallback value (from source code) can forge valid tokens. Stale cookies from development sessions bypass auth when the fallback matches.

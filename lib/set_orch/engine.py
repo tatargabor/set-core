@@ -1259,6 +1259,39 @@ def _get_issue_owned_changes() -> set[str]:
         return set()
 
 
+def _get_issue_owned_changes_with_ts() -> dict[str, int]:
+    """Return change names actively owned by the issue pipeline with ownership start time.
+
+    Returns dict of {change_name: ownership_start_epoch}.
+    Uses issue detected_at as ownership start timestamp.
+    """
+    registry_path = os.path.join(os.getcwd(), ".set", "issues", "registry.json")
+    if not os.path.isfile(registry_path):
+        return {}
+    try:
+        with open(registry_path) as f:
+            data = json.load(f)
+        active_states = {"investigating", "fixing", "awaiting_approval", "diagnosed"}
+        owned: dict[str, int] = {}
+        for issue in data.get("issues", []):
+            if issue.get("state") in active_states and issue.get("affected_change"):
+                # Parse ISO timestamp to epoch
+                detected = issue.get("detected_at", "")
+                try:
+                    from datetime import datetime, timezone
+                    dt = datetime.fromisoformat(detected)
+                    epoch = int(dt.timestamp())
+                except (ValueError, TypeError):
+                    epoch = 0
+                change_name = issue["affected_change"]
+                # Keep earliest ownership start if multiple issues
+                if change_name not in owned or epoch < owned[change_name]:
+                    owned[change_name] = epoch
+        return owned
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def _all_coverage_merged() -> bool:
     """Check if all requirements in coverage.json have status 'merged'.
 

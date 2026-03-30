@@ -74,15 +74,24 @@ The infrastructure/foundation change (first in dependency order) MUST set up Pla
 3. Run `npx playwright install chromium` (browser cache at `~/.cache/ms-playwright/`, shared across worktrees)
 4. Create `tests/e2e/global-setup.ts`:
    ```typescript
+   import 'dotenv/config';
    import { execSync } from 'child_process';
+   import { existsSync, rmSync } from 'fs';
+   import { join } from 'path';
+
    async function globalSetup() {
+     // Clean stale .next cache — prevents clientReferenceManifest errors after merges
+     const nextDir = join(__dirname, '../../.next');
+     if (existsSync(nextDir)) rmSync(nextDir, { recursive: true });
+
      execSync('npx prisma generate', { stdio: 'inherit' });
      execSync('npx prisma db push --force-reset', { stdio: 'inherit' });
      execSync('npx prisma db seed', { stdio: 'inherit' });
    }
    export default globalSetup;
    ```
-5. Add `testPathIgnorePatterns` to jest config (see Jest/Playwright Coexistence below)
+5. Seed data MUST include a test user with known credentials (e.g., `test@example.com` / `password123`) for E2E login tests. E2E spec files must document which seed user they log in as.
+6. Add `testPathIgnorePatterns` to jest config (see Jest/Playwright Coexistence below)
 
 Feature changes only create their own `tests/e2e/<feature>.spec.ts` files, not infrastructure.
 
@@ -210,3 +219,45 @@ For each feature change, the planner scope MUST include:
 - Error scenarios to cover
 
 Do NOT just list scenario descriptions — create actual test files.
+
+## Post-Merge E2E Stability
+
+After merging other changes into main, E2E tests commonly break due to stale cache or missing env vars. The following patterns MUST be applied:
+
+1. **`.next` cache cleanup in global-setup** — the `clientReferenceManifest` error occurs when `.next/` contains stale build artifacts from a previous branch. Global setup MUST delete `.next/` before running Prisma commands.
+2. **dotenv loading** — `global-setup.ts` and `playwright.config.ts` MUST import `dotenv/config` at the top so `DATABASE_URL`, `NEXTAUTH_SECRET`, and other env vars are available from `.env` without explicit env var passing.
+3. **NEXTAUTH_SECRET in webServer env** — Playwright's `webServer` spawns a child process that does NOT inherit the parent's dotenv. The config MUST spread `...process.env` into `webServer.env` and explicitly set `NEXTAUTH_SECRET` and `NEXTAUTH_URL` (derived from port). Without this, login silently fails due to unsigned JWTs.
+
+## Selector Best Practices
+
+- **Use `data-testid` for interactive elements** — text-based selectors (`getByText('Submit')`) break on i18n changes, merge-induced label changes, and locale variations. All buttons, inputs, and navigation elements that E2E tests target MUST have `data-testid` attributes.
+- **Heading selectors MUST specify level** — `getByRole('heading')` without `{ level: N }` causes strict mode violations when the page has multiple headings (e.g., h1 in content + h3/h4 in footer). Always use `getByRole('heading', { level: 1 })`.
+- **Scope selectors to containers** — when multiple elements match a selector, scope to a parent: `page.getByRole('banner').getByText('Home')` instead of `page.getByText('Home')`.
+- **Password fields** — `getByLabel('Password')` may match both the input and a show/hide toggle button. Use `page.locator('#password')` or `data-testid` instead.
+
+## Hydration Race Conditions
+
+Next.js dev server has known race conditions during E2E tests:
+
+- **Route compilation returns HTML for API calls** — when a route is first accessed, the dev server compiles it. During compilation, API calls may receive an HTML response instead of JSON. Tests MUST retry API calls that receive non-JSON responses:
+  ```typescript
+  await expect(async () => {
+    const res = await page.request.get('/api/data');
+    expect(res.headers()['content-type']).toContain('json');
+  }).toPass({ timeout: 10_000 });
+  ```
+- **Navigation to hydration-dependent pages** — use `waitUntil: 'networkidle'` when navigating to pages where the test immediately interacts with client-side elements (e.g., language switcher, add-to-cart button). Without this, the click fires before React hydration attaches the handler.
+- **Language/locale switchers** — these MUST use `<Link>` with locale prop (renders `<a>` tag that works without JS), NOT `<button onClick>` with `router.replace()`. Under load, hydration delays leave buttons inert.
+- **Playwright retries** — set `retries: 1` for local runs (not just CI) to handle transient hydration flakes. The template default is `process.env.CI ? 2 : 1`.
+
+## Test-Only Endpoints
+
+Test-only API routes (e.g., `/api/test-email-log` to inspect sent emails) need environment guards:
+
+```typescript
+// ✗ WRONG — Next.js dev server sets NODE_ENV=development, never "test"
+if (process.env.NODE_ENV !== 'test') return NextResponse.json({ error: 'Not available' }, { status: 404 });
+
+// ✓ CORRECT
+if (process.env.NODE_ENV === 'production') return NextResponse.json({ error: 'Not available' }, { status: 404 });
+```

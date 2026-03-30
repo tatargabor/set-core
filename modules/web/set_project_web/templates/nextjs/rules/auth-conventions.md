@@ -12,6 +12,7 @@ paths:
 - Use NextAuth.js v5 (Auth.js) — `next-auth@5`
 - Use `auth()` for server-side session, NOT `getServerSession()`
 - Use `useSession()` for client-side session access
+- After successful registration, auto-login the user via `signIn("credentials", ...)` — do not redirect to login page
 
 ## Role Checking
 - Define project roles in auth config (e.g., USER, ADMIN)
@@ -35,6 +36,21 @@ paths:
 - Passwords hashed with `bcrypt` (bcryptjs)
 - Never log or expose password hashes
 - JWT session strategy for stateless auth
+- **NEVER** use hardcoded fallback secrets: `process.env.JWT_SECRET || "fallback"` is FORBIDDEN. If the secret env var is missing, the app MUST crash at startup. Hardcoded fallbacks allow stale cookies to bypass auth and risk production running with dev secrets. See security-patterns.md § 10.
+
+## Layout-Level Session Validation
+
+Middleware alone is NOT sufficient for auth validation. Next.js Router Cache can serve pages on client-side navigation without hitting middleware.
+
+- **Protected layout** (`app/(protected)/layout.tsx`) MUST call `getSession()` or `verifyToken()` — NOT just `cookies().has('token')`
+- **Root layout** (`app/layout.tsx`) that conditionally renders navigation (e.g., BottomNav) MUST also validate the JWT, not just check cookie presence
+- Cookie presence ≠ valid session: expired tokens, rotated secrets, and pre-deployment tokens all have cookies but invalid JWTs
+- Pattern:
+  ```typescript
+  // app/(protected)/layout.tsx
+  const session = await getSession();
+  if (!session) redirect('/login');
+  ```
 
 ## Edge Runtime Compatibility
 - bcryptjs uses Node.js APIs (process.nextTick, setImmediate) — it CANNOT run in Edge Runtime

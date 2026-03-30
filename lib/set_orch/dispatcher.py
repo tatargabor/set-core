@@ -1351,16 +1351,46 @@ def dispatch_change(
             import shutil
             shutil.rmtree(wt_path, ignore_errors=True)
         run_git("worktree", "prune")
-        run_git("branch", "-D", f"change/{wt_name}")
+        # Don't delete the branch yet — it may have committed artifacts worth preserving
 
     if not os.path.isdir(wt_path):
-        # Clean stale branch
-        branch_check = run_git("rev-parse", "--verify", f"change/{wt_name}")
-        if branch_check.exit_code == 0:
-            logger.info("removing stale branch change/%s before worktree creation", wt_name)
-            run_git("branch", "-D", f"change/{wt_name}")
+        branch_name = f"change/{wt_name}"
+        branch_check = run_git("rev-parse", "--verify", branch_name)
 
-        wt_new_r = run_command(["set-new", wt_name, "--skip-open"], timeout=30)
+        if branch_check.exit_code == 0:
+            # Branch exists — check if it has commits ahead of main worth preserving
+            main_r = run_git("show-ref", "--verify", "--quiet", "refs/heads/main")
+            main_branch = "main" if main_r.exit_code == 0 else "master"
+            ahead_r = run_git("rev-list", "--count", f"{main_branch}..{branch_name}")
+            ahead_count = int(ahead_r.stdout.strip()) if ahead_r.exit_code == 0 else 0
+
+            if ahead_count > 0:
+                # Branch has committed work — create worktree from existing branch
+                logger.info(
+                    "redispatch: preserving branch %s with %d commits ahead of %s",
+                    branch_name, ahead_count, main_branch,
+                )
+                wt_new_r = run_command(
+                    ["git", "worktree", "add", wt_path, branch_name],
+                    timeout=30,
+                )
+                if wt_new_r.exit_code != 0:
+                    # Fallback: branch may have conflicts, create fresh
+                    logger.warning(
+                        "redispatch: failed to reuse branch %s, falling back to fresh: %s",
+                        branch_name, wt_new_r.stderr,
+                    )
+                    run_git("branch", "-D", branch_name)
+                    wt_new_r = run_command(["set-new", wt_name, "--skip-open"], timeout=30)
+            else:
+                # Branch has no unique commits — safe to delete and recreate
+                logger.info("removing stale branch %s (0 commits ahead) before fresh dispatch", branch_name)
+                run_git("branch", "-D", branch_name)
+                wt_new_r = run_command(["set-new", wt_name, "--skip-open"], timeout=30)
+        else:
+            # No existing branch — normal fresh dispatch
+            wt_new_r = run_command(["set-new", wt_name, "--skip-open"], timeout=30)
+
         if wt_new_r.exit_code != 0:
             logger.error("failed to create worktree for %s: %s", change_name, wt_new_r.stderr)
             update_change_field(state_path, change_name, "status", "failed", event_bus=event_bus)
@@ -2111,16 +2141,29 @@ def resume_stalled_changes(
     state = load_state(state_path)
     resumed = 0
 
-    # Check which changes are owned by the issue pipeline
-    from .engine import _get_issue_owned_changes
-    issue_owned = _get_issue_owned_changes()
+    # Check which changes are owned by the issue pipeline (with timestamps)
+    from .engine import _get_issue_owned_changes_with_ts
+    issue_owned = _get_issue_owned_changes_with_ts()
+
+    ISSUE_OWNERSHIP_TIMEOUT = 1800  # 30 minutes
 
     for change in state.changes:
         if change.status != "stalled":
             continue
         if change.name in issue_owned:
-            logger.info("skipping stalled %s — owned by issue pipeline", change.name)
-            continue
+            ownership_start = issue_owned[change.name]
+            ownership_duration = now - ownership_start
+            if ownership_duration < ISSUE_OWNERSHIP_TIMEOUT:
+                logger.info(
+                    "skipping stalled %s — owned by issue pipeline (%ds/%ds)",
+                    change.name, ownership_duration, ISSUE_OWNERSHIP_TIMEOUT,
+                )
+                continue
+            else:
+                logger.warning(
+                    "releasing issue ownership for %s — timed out after %ds (limit %ds)",
+                    change.name, ownership_duration, ISSUE_OWNERSHIP_TIMEOUT,
+                )
         stalled_at = change.extras.get("stalled_at", 0)
         cooldown = now - stalled_at
         if cooldown >= STALL_COOLDOWN_SECONDS:

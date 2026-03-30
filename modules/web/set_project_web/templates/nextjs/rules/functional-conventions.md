@@ -55,3 +55,30 @@ paths:
 - Server actions return `{ success: false, error: string }` — never throw
 - API routes return proper HTTP status codes with JSON error bodies
 - Use `try/catch` at the action boundary, not inside utility functions
+
+## Slug Generation
+- Slugs MUST be ASCII-safe — strip or transliterate accented characters before storing
+- Accented characters in URLs cause 404 errors because URL encoding doesn't match DB lookup
+- Pattern:
+  ```typescript
+  function slugify(str: string): string {
+    return str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')  // strip diacritics
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+  ```
+- Apply during seed data generation AND any user-generated slug creation
+- Test slug generation with non-ASCII input (é, á, ö, ü, ñ, ß, etc.)
+
+## URL Filter Encoding
+- When filter values may contain commas (e.g., "Ethiopia, Yirgacheffe"), the delimiter between filter values MUST be pipe (`|`) not comma (`,`)
+- Alternative: URL-encode individual values before joining with comma
+- This applies to query parameters like `?origin=Ethiopia|Kenya` or `?tags=dark-roast|single-origin`
+
+## Rendering Consistency
+- Saved/cached data views MUST reuse the same components as live views — never render raw JSON or use different formatting for the same data shape
+- Example: if a live adaptation result uses `DeviceCard`, `StepTimeline`, `CollapsibleSection`, the saved adaptation detail page MUST use those same components — not a raw JSON dump or a simplified flat list
+- When adding a "saved" or "history" view, import and reuse the existing result components

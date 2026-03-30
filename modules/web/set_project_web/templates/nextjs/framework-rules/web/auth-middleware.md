@@ -79,12 +79,32 @@ function AdminLayout({ children }) {
 
 **The rule:** admin navigation links (Dashboard, Products, Users, etc.) must NOT be visible on login/register pages. Showing them to unauthenticated users is confusing — they can see the menu but can't access any page.
 
+## Middleware Matcher — Exclude ALL API Routes
+
+The middleware matcher MUST exclude **all** `/api` routes, not just specific sub-paths:
+
+```typescript
+// ✗ WRONG — only excludes /api/auth, other API routes get middleware treatment
+export const config = { matcher: ['/((?!api/auth|_next|.*\\..*).*)'] };
+
+// ✓ CORRECT — excludes all API routes
+export const config = { matcher: ['/((?!api|_next|.*\\..*).*)'] };
+```
+
+When auth or i18n middleware runs on API routes, it can:
+- Redirect JSON responses to login pages (returns HTML instead of JSON)
+- Add locale prefixes to API paths (`/api/cart` → `/hu/api/cart`)
+- Break client-side fetch calls silently (profile/address saves fail)
+
+This applies to both auth middleware AND i18n middleware (next-intl). Both must exclude `/api`.
+
 ## Common mistakes:
 
 - Creating login/register pages but no middleware → direct URL access bypasses auth
 - Auth check only in layout/component → server-side rendering still processes the full page
 - Redirecting to `/login` without preserving the original URL → bad UX
 - Forgetting to handle `/api/*` routes under the same middleware → API endpoints unprotected
+- **Partial API exclusion** — excluding only `/api/auth` but letting middleware run on `/api/cart`, `/api/user/*`, etc.
 - **Rendering admin sidebar/nav on login page** — layout wraps all `/admin/*` routes including login, showing nav items the user can't access
 
 ## E2E test requirement:

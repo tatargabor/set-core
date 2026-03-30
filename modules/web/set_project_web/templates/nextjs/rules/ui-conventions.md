@@ -69,6 +69,18 @@ paths:
 - Use `loading.tsx` for route-level streaming — shows shell immediately
 - Disable submit buttons during form submission — show spinner icon
 
+## No Placeholder Content
+- Components MUST render real data using real sub-components — never placeholder `<div>`s with "coming soon" text
+- Product grids MUST use `ProductCard`, featured sections MUST use actual components — not hardcoded divs with dummy content
+- If seed data exists for an entity, use it. If data doesn't exist yet, show a proper empty state (icon + message + action)
+- "Coming soon" or "full content placeholder" text is not acceptable in delivered code — either implement the feature or show an empty state
+
+## Navigation Integrity
+- Every navigation link (header, footer, sidebar, CTA buttons) MUST point to an existing route
+- Broken links (404) are gate failures — verify all links resolve to real pages
+- When adding footer/header links, check that the target page exists in the app router
+- CTA buttons ("Go to checkout", "View subscription") must use correct localized paths if i18n is enabled
+
 ## File Size
 - Components should stay under 400 lines
 - Split large components: extract hooks, sub-components, or utilities

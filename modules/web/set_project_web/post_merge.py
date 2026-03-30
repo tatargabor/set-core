@@ -78,4 +78,59 @@ def merge_i18n_sidecars(project_root: str = ".") -> int:
         except OSError:
             logger.warning("i18n sidecar: failed to write %s", canonical_path)
 
+    # After merging sidecars, warn about bare imports that will crash
+    if merged_count > 0:
+        _warn_bare_sidecar_imports(project_root, msg_dir)
+
     return merged_count
+
+
+def _warn_bare_sidecar_imports(project_root: str, msg_dir: str) -> None:
+    """Warn if i18n request.ts has bare sidecar imports without try/catch.
+
+    After sidecars are merged into canonical files and deleted, any bare
+    import of the sidecar file will crash the Next.js dev server with
+    'Cannot find module'. This check catches that before E2E tests run.
+    """
+    import re
+
+    request_paths = [
+        os.path.join(project_root, "src", "i18n", "request.ts"),
+        os.path.join(project_root, "src", "i18n", "request.tsx"),
+    ]
+    request_file = ""
+    for p in request_paths:
+        if os.path.isfile(p):
+            request_file = p
+            break
+    if not request_file:
+        return
+
+    try:
+        content = Path(request_file).read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    # Look for sidecar-style imports (files with 2+ dots like "hu.feature.json")
+    # that are NOT inside a try block
+    sidecar_import_pattern = re.compile(
+        r"""import\s+.*from\s+['"].*\.\w+\.json['"]"""
+    )
+    lines = content.split("\n")
+    in_try = False
+    bare_imports = []
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped.startswith("try"):
+            in_try = True
+        if stripped.startswith("} catch") or stripped.startswith("catch"):
+            in_try = False
+        if sidecar_import_pattern.search(line) and not in_try:
+            bare_imports.append((i, stripped))
+
+    for lineno, line in bare_imports:
+        logger.warning(
+            "i18n sidecar: BARE IMPORT at %s:%d — will crash after archive. "
+            "Wrap in try/catch: %s",
+            request_file, lineno, line,
+        )
