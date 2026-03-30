@@ -15,6 +15,7 @@ core:
   - rules/design-integration.md
   - rules/web-frontend.md
   - rules/worktree-setup.md
+  - rules/i18n-conventions.md
   - vitest.config.ts
   - playwright.config.ts
   - tsconfig.json
