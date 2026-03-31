@@ -1774,12 +1774,22 @@ def dispatch_via_wt_loop(
         with open(loop_state_path) as f:
             ls = json.load(f)
         terminal_pid = int(ls.get("terminal_pid") or 0)
-    except (json.JSONDecodeError, OSError, ValueError, TypeError):
-        pass
+    except (json.JSONDecodeError, OSError, ValueError, TypeError) as exc:
+        logger.error("Failed to parse loop-state.json for %s: %s", change_name, exc)
+
+    if terminal_pid <= 0:
+        logger.error(
+            "dispatch_via_wt_loop: invalid terminal_pid=%s for %s — failing dispatch",
+            terminal_pid, change_name,
+        )
+        if event_bus:
+            event_bus.emit("ERROR", change=change_name, data={"error": f"invalid terminal_pid={terminal_pid}"})
+        update_change_field(state_path, change_name, "status", "failed", event_bus=event_bus)
+        return False
 
     update_change_field(state_path, change_name, "ralph_pid", terminal_pid, event_bus=event_bus)
     update_change_field(state_path, change_name, "status", "running", event_bus=event_bus)
-    logger.info("ralph started for %s in %s (terminal PID %s)", change_name, wt_path, terminal_pid or "unknown")
+    logger.info("ralph started for %s in %s (terminal PID %d)", change_name, wt_path, terminal_pid)
 
     send_notification(
         "Change dispatched",

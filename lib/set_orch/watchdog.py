@@ -131,6 +131,22 @@ def watchdog_check(
 
     should_escalate = False
 
+    # Fast-path: running change with null/zero PID → immediate escalation
+    if status == "running" and not change.get("ralph_pid"):
+        logger.warning(
+            "Watchdog: %s running with invalid ralph_pid=%s — immediate escalation",
+            change_name,
+            change.get("ralph_pid"),
+        )
+        escalation_level += 1
+        _update_watchdog_state(wd, now, escalation_level, consecutive_same)
+        action = _escalation_action(escalation_level)
+        return WatchdogResult(
+            action=action,
+            reason=f"running with null/zero PID (ralph_pid={change.get('ralph_pid')})",
+            escalation_level=escalation_level,
+        )
+
     # Loop detection triggers escalation (but only if Ralph PID is dead)
     if consecutive_same >= loop_threshold:
         ralph_pid = change.get("ralph_pid", 0)
