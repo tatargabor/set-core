@@ -7,6 +7,8 @@ How-to workflows for common tasks. Start with [Quick Start](quick-start.md) if t
 | Guide | Description |
 |-------|-------------|
 | [Quick Start](quick-start.md) | Install set-core and run your first autonomous orchestration |
+| **[Writing Specs](writing-specs.md)** | **How to write specs that produce apps matching your vision** |
+| [Design Integration](design-integration.md) | Bridge Figma designs to agents via `set-design-sync` |
 | [Orchestration](orchestration.md) | The full pipeline: digest, decompose, dispatch, verify, merge |
 | [Sentinel](sentinel.md) | Supervisor setup, crash recovery, and checkpoint handling |
 | [Worktrees](worktrees.md) | Parallel development with git worktrees and the Ralph loop |
@@ -21,8 +23,10 @@ How-to workflows for common tasks. Start with [Quick Start](quick-start.md) if t
 If you are new to set-core, read the guides in this order:
 
 1. **[Quick Start](quick-start.md)** -- Install and see it work end to end
-2. **[OpenSpec](openspec.md)** -- Understand the artifact workflow agents follow
-3. **[Orchestration](orchestration.md)** -- Deep dive into the autonomous pipeline
+2. **[Writing Specs](writing-specs.md)** -- The most important guide — spec quality = output quality
+3. **[Design Integration](design-integration.md)** -- Figma Make → design tokens → agents
+4. **[OpenSpec](openspec.md)** -- Understand the artifact workflow agents follow
+5. **[Orchestration](orchestration.md)** -- Deep dive into the autonomous pipeline
 4. **[Sentinel](sentinel.md)** -- How the supervisor keeps runs on track
 5. **[Worktrees](worktrees.md)** -- Manual worktree commands for hands-on work
 6. **[Dashboard](dashboard.md)** -- Monitor everything from your browser
