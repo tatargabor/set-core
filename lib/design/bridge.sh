@@ -426,7 +426,14 @@ _dispatch_from_design_system() {
         [[ -z "$page_name" ]] && continue
         local page_lower
         page_lower=$(echo "$page_name" | tr '[:upper:]' '[:lower:]')
+        # Match bidirectionally: scope contains page name OR page name contains scope word
+        local _matched=false
         if echo "$scope_lower" | grep -qi "$page_lower"; then
+            _matched=true
+        elif echo "$page_lower" | grep -qiE "$(echo "$scope_lower" | tr ' ' '|')"; then
+            _matched=true
+        fi
+        if [[ "$_matched" == "true" ]]; then
             local block
             block=$(awk -v pname="$page_name" '
                 /^## Page Layouts$/,/^## [^P]/ {
