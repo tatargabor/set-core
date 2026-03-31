@@ -115,3 +115,16 @@ Every story has HU and EN content. Each seed must contain at least 2-3 paragraph
 ### 10. "Coffee Gifts Under 5, 10, and 20 Thousand" (Gift Ideas)
 - **Related products:** B4 Gift for Coffee Lovers, B1 Starter Pack, B3 Pro Barista, M4 Gift Card
 - **Content outline:** Budget-based gift ideas, bundle and gift card combos, what to consider when buying coffee as a gift.
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Catalog**: see design-system.md § Page Layouts
+- **Stories**: Uses: figma
+- **Search**: see design-system.md § Page Layouts
+

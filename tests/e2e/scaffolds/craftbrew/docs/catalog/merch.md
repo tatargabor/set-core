@@ -60,3 +60,17 @@
 - **Description:** "90-minute online workshop where you'll learn pour-over, AeroPress and French Press brewing techniques. Follow along with your own equipment. Led by CraftBrew's master roaster. Max 12 people, interactive, Q&A included."
 - **Image:** `https://placehold.co/400x400?text=Barista+Workshop`
 - **Note:** If the date is full (12/12), a "Sold out" badge appears and it cannot be ordered. Past dates are not displayed.
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+

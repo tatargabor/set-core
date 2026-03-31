@@ -146,3 +146,17 @@ The seed script must also create an admin user:
 - **Password:** admin123 (bcryptjs hash)
 - **Name:** CraftBrew Admin
 - **Role:** ADMIN
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Catalog**: see design-system.md § Page Layouts
+- **Admin**: see design-system.md § Page Layouts
+- **Profile**: see design-system.md § Page Layouts
+- **Search**: see design-system.md § Page Layouts
+

@@ -6,6 +6,17 @@ set-core's orchestration engine transforms a specification document into merged,
 
 ---
 
+## Pre-Run Checklist
+
+Before starting orchestration, verify these items. Spec quality directly determines output quality — a vague spec produces a generic app.
+
+- [ ] **Spec review** — Does the spec have concrete details (page layouts, component names, data models)? Not just "add a cart page" but "cart page with item table, quantity controls, coupon input, and order summary sidebar."
+- [ ] **Design sync** — If you have a Figma design, run `set-design-sync --input docs/design.make --spec-dir docs/` to inject design tokens into specs. Without this, agents use framework defaults. See [Design Integration](design-integration.md).
+- [ ] **Config review** — Check `set/orchestration/config.yaml` for correct `test_command`, `e2e_command`, `merge_policy`, and `env_vars`.
+- [ ] **Project health** — Run `/set:audit` to catch missing dependencies, broken configs, or stale state from previous runs.
+
+---
+
 ## The Pipeline
 
 Orchestration proceeds through seven stages. Each stage is automatic; the only required human input is the initial spec.

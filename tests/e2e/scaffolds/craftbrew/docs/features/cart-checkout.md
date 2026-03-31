@@ -278,3 +278,21 @@ Daily delivery restriction: if the user's address zone is +40km, the "Daily" fre
 3. If cart value >= free shipping threshold → shipping fee = 0 Ft
 4. If no free shipping threshold (+40km) → always charged
 5. On the cart page: "Only X Ft more for free shipping!" message (if relevant)
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Product Detail**: see design-system.md § Page Layouts
+- **Cart**: Uses: Button, figma
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+- **Auth**: see design-system.md § Page Layouts
+- **Subscription**: see design-system.md § Page Layouts
+

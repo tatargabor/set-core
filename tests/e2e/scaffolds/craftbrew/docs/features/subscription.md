@@ -169,3 +169,17 @@ If the subscribed coffee goes out of stock, the system should handle it graceful
 
 - Coupons are not applicable to subscriptions (subscriptions already have frequency-based discounts)
 - Promo day automatic discounts do not apply to subscription deliveries
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+- **Auth**: see design-system.md § Page Layouts
+- **Subscription**: see design-system.md § Page Layouts
+

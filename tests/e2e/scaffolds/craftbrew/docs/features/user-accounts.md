@@ -141,3 +141,22 @@ The following static pages must exist (linked from the footer):
 - Cart: session-based, works without login
 - Checkout: login required → redirect to login → after successful login, return to cart
 - Cart merge: anonymous cart transfers to the user's cart on login
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Cart**: Uses: Button, figma
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+- **Auth**: see design-system.md § Page Layouts
+- **Stories**: Uses: figma
+- **Profile**: see design-system.md § Page Layouts
+- **Search**: see design-system.md § Page Layouts
+

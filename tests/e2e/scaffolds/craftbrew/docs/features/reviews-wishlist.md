@@ -117,3 +117,21 @@ When a product/variant stock is 0:
 - On click: the product is added to the favorites list with a "back in stock notification" flag
 - When admin restocks (stock > 0): email sent to all users who requested notification
 - After sending, the flag is removed (one-time notification)
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Product Detail**: see design-system.md § Page Layouts
+- **Cart**: Uses: Button, figma
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+- **Auth**: see design-system.md § Page Layouts
+- **Profile**: see design-system.md § Page Layouts
+

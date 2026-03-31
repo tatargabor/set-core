@@ -60,3 +60,16 @@
   - Handwritten greeting card (not a separate product — bonus)
 - **Description:** "The perfect gift for coffee lovers. Premium Guatemalan coffee, iconic CraftBrew mug, and stylish canvas tote — all in a gift box with a handwritten greeting card."
 - **Image:** `https://placehold.co/400x400?text=Gift+Bundle`
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Search**: see design-system.md § Page Layouts
+

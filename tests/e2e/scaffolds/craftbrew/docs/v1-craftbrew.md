@@ -32,9 +32,23 @@ docs/
 
 ## Design Reference
 
-Visual design is defined in a [Figma Make project](https://www.figma.com/make/DDCs2kpcLYw6E3Q1EcDjCK/wt-CraftBrew). The orchestrator auto-injects the design snapshot into the planning prompt — see [design-system.md](design/design-system.md) for frame mapping and mobile rules, and `design-snapshot.md` (auto-generated) for inline tokens and component hierarchy.
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
 
-> The spec is authoritative for business logic. The Figma design is authoritative for visual appearance. Where they conflict on functional behavior, the spec wins.
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Product Detail**: see design-system.md § Page Layouts
+- **Cart**: Uses: Button, figma
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+- **Auth**: see design-system.md § Page Layouts
+- **Subscription**: see design-system.md § Page Layouts
+- **Stories**: Uses: figma
+- **Profile**: see design-system.md § Page Layouts
+- **Search**: see design-system.md § Page Layouts
 
 ## Business Conventions
 

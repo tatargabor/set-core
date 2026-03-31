@@ -15,6 +15,17 @@ Without the sentinel, a crash in the orchestrator process means your run stops a
 
 **Cost is minimal** — the LLM is only invoked for decisions (typically 5-10 calls per entire run).
 
+## Spec Quality Prerequisites
+
+The sentinel runs your spec through the full pipeline — but **spec quality determines output quality**. Before starting:
+
+1. **Be specific** — "Add a product catalog with filter sidebar, 3-column grid, and sorting dropdown" not "Add products page"
+2. **Include design tokens** — If you have a Figma design, run `set-design-sync` first (see [Design Integration](design-integration.md)). Without explicit colors/fonts/spacing, agents use generic shadcn defaults.
+3. **Define data models** — Name your entities, fields, and relationships. "User has Orders, Order has OrderItems with Product reference" gives agents a concrete schema to implement.
+4. **Specify i18n** — If your app is multilingual, state it. Without this, agents hardcode English strings.
+
+**Warning**: Running the sentinel with a vague spec and no design context produces a *working* but *visually generic* app. You'll spend time post-run fixing what the agents couldn't know.
+
 ## Starting the Sentinel
 
 ### From the Web Dashboard (recommended)

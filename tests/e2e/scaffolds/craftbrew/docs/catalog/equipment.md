@@ -72,3 +72,15 @@
 - **Description:** "Premium gooseneck kettle with precision temperature display and hold function. 900ml capacity. The thin spout gives perfect control for pour-over brewing. Adjustable target temperature (60-100°C), 60-minute hold."
 - **Image:** `https://placehold.co/400x400?text=Fellow+EKG`
 - **Note:** Limited stock — "Only 8 available" badge is displayed
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Catalog**: see design-system.md § Page Layouts
+- **Search**: see design-system.md § Page Layouts
+

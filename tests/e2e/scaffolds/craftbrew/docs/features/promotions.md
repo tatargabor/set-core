@@ -84,3 +84,20 @@ At checkout (on the cart page):
 - Admin panel: card list, balances, transaction log
 - Expiry: 1 year from purchase — expired cards cannot be redeemed
 - Gift cards cannot be used to purchase other gift cards
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Cart**: Uses: Button, figma
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+- **Auth**: see design-system.md § Page Layouts
+- **Search**: see design-system.md § Page Layouts
+

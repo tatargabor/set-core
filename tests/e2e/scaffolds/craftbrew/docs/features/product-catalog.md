@@ -167,3 +167,24 @@ Bundle product card extra info:
 - "Separate price" crossed out + "Bundle price" highlighted
 - Savings % badge (e.g., "-28%")
 - Bundle stock = minimum stock among components
+
+## Design Reference
+
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
+
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
+
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Product Detail**: see design-system.md § Page Layouts
+- **Cart**: Uses: Button, figma
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+- **Auth**: see design-system.md § Page Layouts
+- **Subscription**: see design-system.md § Page Layouts
+- **Stories**: Uses: figma
+- **Profile**: see design-system.md § Page Layouts
+- **Search**: see design-system.md § Page Layouts
+
