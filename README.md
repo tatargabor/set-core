@@ -162,17 +162,21 @@ We're actively reducing nondeterminism through template optimization, divergence
 In traditional development, a detailed spec meant 8 months of waterfall. Now it means 8 hours of orchestrated agents. But the principle is the same: **the quality of the output depends on the quality of the input.**
 
 A good spec for SET includes:
-- **Business requirements** — what the user should be able to do, not how to implement it
-- **Acceptance criteria** — WHEN/THEN scenarios that become verifiable test cases
-- **Technical constraints** — framework, database, auth provider, API conventions
-- **Dependency listing** — exact packages and versions the agents should use
-- **Seed data** — what the demo/test data should look like
+- **Data model** — entities, fields, relationships, enums (becomes the Prisma schema)
+- **Page layouts** — sections, column counts, component names (not vague descriptions)
+- **Design tokens** — exact hex colors, font families, spacing values (or use [Figma Make](https://www.figma.com/make) + `set-design-sync`)
+- **Auth & roles** — protected routes, user roles, registration flow
+- **Seed data** — realistic names and content, not "Product 1"
+- **i18n** — locales, framework, URL structure (if multilingual)
+- **Business requirements** — what the user should be able to do, with acceptance criteria
+
+Use **`/set:write-spec`** in Claude Code to generate a structured spec interactively — it detects your project type, asks targeted questions per section, and integrates with your Figma design. Works for web apps, APIs, CLI tools, and any project type.
 
 The [project type templates](docs/reference/plugins.md) handle the rest — framework boilerplate, build config, test setup, linting rules. You focus on _what_ to build. The templates ensure _how_ it gets built is consistent and deterministic.
 
 Think of it this way: **you are the product owner, the agents are the dev team, and the spec is the sprint backlog.** The better the backlog, the better the sprint. The difference is that this sprint takes hours, not weeks — and the team never gets tired, never forgets conventions, and never skips tests.
 
-See the [MiniShop spec](tests/e2e/scaffolds/minishop/docs/v1-minishop.md) for a complete example of a production-quality spec.
+See the [Writing Specs guide](docs/guide/writing-specs.md) for the full methodology, the [CraftBrew scaffold](tests/e2e/scaffolds/craftbrew/docs/) for a production-quality example with Figma design integration, and the [MiniShop spec](tests/e2e/scaffolds/minishop/docs/v1-minishop.md) for a minimal but complete example.
 
 ---
 
@@ -222,11 +226,26 @@ cd ~/my-project
 set-project init --project-type web --template nextjs
 ```
 
-Then open the dashboard at http://localhost:7400, select your project, enter your spec path, and click **Start**.
+**Write your spec** — use `/set:write-spec` in Claude Code for an interactive guide that detects your project and asks the right questions:
 
-**Study the scaffolds** in [`tests/e2e/scaffolds/`](tests/e2e/scaffolds/) when writing your own spec — they show how to structure specs, list dependencies, and set expectations for the decomposer.
+```
+/set:write-spec
+```
 
-See [docs/guide/quick-start.md](docs/guide/quick-start.md) for the full walkthrough.
+**Sync your Figma design** (optional but recommended) — export your Figma Make design and extract tokens:
+
+```bash
+cp ~/Downloads/my-design.make docs/design.make
+set-design-sync --input docs/design.make --spec-dir docs/
+```
+
+**Start the orchestration** — use `/set:start` in Claude Code, or start from the dashboard:
+
+```
+/set:start docs/spec.md
+```
+
+See [docs/guide/writing-specs.md](docs/guide/writing-specs.md) for the complete spec-writing methodology, [docs/guide/design-integration.md](docs/guide/design-integration.md) for the Figma → agent pipeline, and [docs/guide/quick-start.md](docs/guide/quick-start.md) for the full setup walkthrough.
 
 ---
 
@@ -242,14 +261,14 @@ See [docs/guide/quick-start.md](docs/guide/quick-start.md) for the full walkthro
 | **Engine** | Python, FastAPI, uvicorn |
 | **Dashboard** | React, TypeScript, Tailwind CSS |
 | **Memory** | shodh-memory (RocksDB + vector embeddings) |
-| **Design bridge** | Figma MCP → design-snapshot.md → Tailwind tokens |
+| **Design bridge** | Figma Make → `set-design-sync` → structured design tokens → agent context |
 
 **Tooling ecosystem:**
 
 | Tool | Purpose |
 |------|---------|
 | [set-spec-capture](https://github.com/tatargabor/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
-| set-figma-fetch | Fetch Figma designs as Tailwind token snapshots |
+| set-design-sync | Parse Figma Make `.make` exports → structured `design-system.md` + spec sync |
 | set-e2e-report | Generate benchmark reports from orchestration runs |
 
 **Built-in modules** add domain-specific technology (Next.js, Prisma, Playwright for web; Soniox STT, Google TTS for voice). See [Plugins](docs/reference/plugins.md).
@@ -313,7 +332,7 @@ Model providers (Anthropic included) will build orchestration into their platfor
 
 | Section | Contents |
 |---------|----------|
-| **[Guide](docs/guide/)** | Quick start, orchestration, sentinel, worktrees, OpenSpec, memory, dashboard |
+| **[Guide](docs/guide/)** | Quick start, **writing specs**, design integration, orchestration, sentinel, worktrees, OpenSpec, memory, dashboard |
 | **[Reference](docs/reference/)** | CLI tools, configuration, architecture, plugins |
 | **[Learn](docs/learn/)** | How it works, development journey, benchmarks, lessons learned |
 | **[Examples](docs/examples/)** | MiniShop walkthrough, first project setup |
