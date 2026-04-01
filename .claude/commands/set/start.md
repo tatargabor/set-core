@@ -58,7 +58,16 @@ systemctl --user restart set-web
 sleep 3
 ```
 
-### Step 5: Start sentinel
+### Step 5: Restart manager to pick up project
+
+The manager loads supervisors at startup. After `set-project init` or if the project was recently registered, the manager needs a restart to create the supervisor for it.
+
+```bash
+systemctl --user restart set-web
+sleep 5
+```
+
+### Step 6: Start sentinel
 
 ```bash
 curl -X POST http://localhost:7400/api/$PROJECT_NAME/sentinel/start \
@@ -68,9 +77,10 @@ curl -X POST http://localhost:7400/api/$PROJECT_NAME/sentinel/start \
 
 Parse the response:
 - `{"status": "ok", "pid": 12345}` → Success, show PID and dashboard link
-- Error → Show error message
+- `{"detail": "Project '...' not found"}` → Manager didn't pick up the project. Restart again: `systemctl --user restart set-web && sleep 5` then retry
+- Other error → Show error message
 
-### Step 6: Show status
+### Step 7: Show status
 
 ```
 Sentinel started for $PROJECT_NAME
