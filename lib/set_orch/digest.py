@@ -832,6 +832,30 @@ def update_coverage_status(
     logger.info("Coverage status updated: %s → %s", change_name, new_status)
 
 
+def _is_branch_merged_in_git(change_name: str) -> bool:
+    """Check if a change branch is an ancestor of main in git.
+
+    Returns True if the branch doesn't exist (already cleaned up after merge)
+    or if it's an ancestor of main. Returns False only if the branch exists
+    but is NOT in main's history.
+    """
+    from .subprocess_utils import run_command
+    # Detect main branch
+    main_r = run_command(["git", "show-ref", "--verify", "--quiet", "refs/heads/main"], timeout=5)
+    main_branch = "main" if main_r.exit_code == 0 else "master"
+
+    branch_name = f"change/{change_name}"
+    # Check if branch exists
+    exists_r = run_command(["git", "rev-parse", "--verify", branch_name], timeout=5)
+    if exists_r.exit_code != 0:
+        # Branch doesn't exist — likely cleaned up after successful merge
+        return True
+
+    # Check if branch is ancestor of main
+    r = run_command(["git", "merge-base", "--is-ancestor", branch_name, main_branch], timeout=10)
+    return r.exit_code == 0
+
+
 def reconcile_coverage(state_file: str, digest_dir: str = DIGEST_DIR) -> int:
     """Sync coverage.json with actual change statuses from state.
 
@@ -888,6 +912,13 @@ def reconcile_coverage(state_file: str, digest_dir: str = DIGEST_DIR) -> int:
         if not actual_status and req_id in req_statuses:
             actual_status = req_statuses[req_id]
         if actual_status == "merged" and entry.get("status") != "merged":
+            # Git-verify: ensure the change branch is actually in main's history
+            if not _is_branch_merged_in_git(owning_change):
+                logger.warning(
+                    "Coverage reconcile: state says %s is merged but git disagrees — skipping",
+                    owning_change,
+                )
+                continue
             entry["status"] = "merged"
             fixed_count += 1
             fixed_entries[req_id] = entry

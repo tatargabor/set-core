@@ -489,10 +489,26 @@ def merge_change(
     )
 
     if merge_result.exit_code == 0:
-        # FF merge succeeded — main advanced to a tested commit
+        # FF merge succeeded — verify the branch is actually in main's history
+        main_branch = _get_main_branch()
+        branch_name = f"change/{change_name}"
+        verify_r = run_command(
+            ["git", "merge-base", "--is-ancestor", branch_name, main_branch],
+            timeout=10,
+        )
+        if verify_r.exit_code != 0:
+            # Git merge reported success but branch not in main — something went wrong
+            logger.error(
+                "Post-merge verification FAILED for %s: branch %s not ancestor of %s. "
+                "Setting status to merge-failed.",
+                change_name, branch_name, main_branch,
+            )
+            update_change_field(state_file, change_name, "status", "merge-failed")
+            return MergeResult(success=False, message="post-merge verification failed")
+
         update_change_field(state_file, change_name, "status", "merged")
         _set_completed_at_if_missing(state_file, change_name)
-        logger.info("Merged %s (ff-only)", change_name)
+        logger.info("Merged %s (ff-only, git-verified)", change_name)
 
         # Heartbeat helper for post-merge steps
         def _heartbeat(step: str) -> None:
@@ -504,7 +520,7 @@ def merge_change(
         # Git tags for recovery
         run_command(["git", "tag", "-f", f"orch/{change_name}", "HEAD"], timeout=10)
 
-        # Update coverage status
+        # Update coverage status (only after git-verified merge)
         try:
             from .digest import update_coverage_status
             update_coverage_status(change_name, "merged")
@@ -775,9 +791,11 @@ def _run_integration_gates(
         try:
             ok = profile.integration_pre_build(wt_path)
             if not ok:
-                logger.warning("integration_pre_build returned False for %s (non-blocking)", change_name)
+                logger.error("integration_pre_build FAILED for %s — blocking gate pipeline", change_name)
+                return False
         except Exception:
-            logger.warning("integration_pre_build failed for %s (non-blocking)", change_name, exc_info=True)
+            logger.error("integration_pre_build threw for %s — blocking gate pipeline", change_name, exc_info=True)
+            return False
 
     # Build gate
     if gc.should_run("build"):
@@ -1029,12 +1047,19 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                     _remove_from_merge_queue(state_file, name)
                 continue
 
-            # Step 2: No-op detection — skip gates if 0 new commits
+            # Step 2: No-op detection — skip entirely if 0 new commits
             _no_op = _is_no_op_change(wt_path, name)
-            _gates_passed = True
             if _no_op:
-                update_change_field(state_file, name, "gate_total_ms", 0)
-            else:
+                # No commits = never implemented. Mark as skipped, NOT merged.
+                update_change_field(state_file, name, "status", "skipped", event_bus=event_bus)
+                update_change_field(state_file, name, "gate_total_ms", 0, event_bus=event_bus)
+                update_change_field(state_file, name, "test_result", "skip_noop", event_bus=event_bus)
+                logger.warning("No-op change %s marked as 'skipped' — 0 commits, never implemented", name)
+                _remove_from_merge_queue(state_file, name)
+                continue
+
+            _gates_passed = True
+            if not _no_op:  # always run gates for non-no-op changes
                 # Integration gates (build + test + e2e)
                 import time as _time
                 _gate_start = _time.monotonic()
