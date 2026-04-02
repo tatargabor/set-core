@@ -123,6 +123,7 @@ class Change:
     # Context window metrics (optional — absent on old state files)
     context_tokens_start: Optional[int] = None  # cache_create_tokens after iteration 1
     context_tokens_end: Optional[int] = None    # total_cache_create at loop completion
+    context_breakdown_start: Optional[dict] = None  # {base_context, memory_injection, prompt_overhead, tool_output} from iter 1
 
     # Gate timings (ms)
     gate_test_ms: int = 0

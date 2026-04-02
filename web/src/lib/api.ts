@@ -72,11 +72,42 @@ export interface ChangeInfo {
   // Context window metrics (optional — absent on old state files)
   context_tokens_start?: number
   context_tokens_end?: number
+  context_breakdown_start?: ContextBreakdown | null
   // Misc
   model?: string
   session_count?: number
   logs?: string[]
   extras?: Record<string, unknown>
+}
+
+export interface ContextBreakdown {
+  base_context: number
+  memory_injection: number
+  prompt_overhead: number
+  tool_output: number
+}
+
+export interface ContextChangeEntry {
+  name: string
+  status: string
+  iterations: number
+  base_context_tokens: number | null
+  total_input_tokens: number
+  total_output_tokens: number
+  context_breakdown_avg: ContextBreakdown | null
+  efficiency_ratio: number
+}
+
+export interface ContextAnalysis {
+  project: string
+  context_window: number
+  changes: ContextChangeEntry[]
+  summary: {
+    total_input: number
+    avg_base_ratio: number | null
+    most_expensive: string | null
+    avg_efficiency: number | null
+  }
 }
 
 export interface GateResult {
@@ -597,6 +628,12 @@ export function getReflections(project: string): Promise<ReflectionsData> {
 
 export function getChangeTimeline(project: string, name: string): Promise<ChangeTimelineData> {
   return fetchJSON(`/${project}/changes/${name}/timeline`)
+}
+
+// --- Context Analysis ---
+
+export function getContextAnalysis(project: string): Promise<ContextAnalysis> {
+  return fetchJSON(`/${project}/context-analysis`)
 }
 
 // --- Scoreboard ---

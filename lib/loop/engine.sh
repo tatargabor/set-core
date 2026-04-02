@@ -266,6 +266,12 @@ cmd_run() {
         local prompt
         prompt=$(build_prompt "$task" "$iteration" "$max_iter" "$wt_path" "$done_criteria" "$change_name")
 
+        # Measure prompt size for context breakdown (chars/4 ≈ tokens)
+        local prompt_tokens_est=0
+        if [[ -n "$prompt" ]]; then
+            prompt_tokens_est=$(( ${#prompt} / 4 ))
+        fi
+
         # Per-iteration log file
         local iter_log_file
         iter_log_file=$(get_iter_log_file "$wt_path" "$iteration")
@@ -563,6 +569,43 @@ except:
             echo "📋 No log output captured"
         fi
 
+        # ─── Context breakdown estimation ────────────────────────────────────
+        # base_context: iteration 1 cache_create = fixed context (system prompt + CLAUDE.md + rules)
+        # memory_injection: sum of <system-reminder> block sizes in iter log (chars/4)
+        # prompt_overhead: measured from build_prompt() output size (chars/4)
+        # tool_output: residual (input_tokens - base - memory - prompt), clamped to 0
+        local ctx_base=0 ctx_memory=0 ctx_prompt=0 ctx_tools=0
+
+        # Base context: use cc_used for iteration 1, carry forward for subsequent
+        if [[ $iteration -eq 1 ]]; then
+            ctx_base=$cc_used
+            if [[ $ctx_base -gt 0 ]]; then
+                update_loop_state "$state_file" "base_context_tokens" "$ctx_base"
+            fi
+        else
+            ctx_base=$(jq -r '.base_context_tokens // 0' "$state_file" 2>/dev/null)
+        fi
+
+        # Memory injection: scan iter log for <system-reminder> blocks
+        if [[ -s "$iter_log_file" ]]; then
+            local reminder_chars=0
+            reminder_chars=$(grep -oP '<system-reminder>.*?</system-reminder>' "$iter_log_file" 2>/dev/null | wc -c || echo 0)
+            if [[ $reminder_chars -eq 0 ]]; then
+                # Try multiline extraction for multi-line reminders
+                reminder_chars=$(sed -n '/<system-reminder>/,/<\/system-reminder>/p' "$iter_log_file" 2>/dev/null | wc -c || echo 0)
+            fi
+            ctx_memory=$(( reminder_chars / 4 ))
+        fi
+
+        # Prompt overhead: from measured prompt size
+        ctx_prompt=$prompt_tokens_est
+
+        # Tool output: residual
+        ctx_tools=$(( in_used - ctx_base - ctx_memory - ctx_prompt ))
+        [[ $ctx_tools -lt 0 ]] && ctx_tools=0
+
+        echo "📐 Context breakdown: base=$ctx_base mem=$ctx_memory prompt=$ctx_prompt tools=$ctx_tools"
+
         # Output-level idle detection: stop if same output repeats N times
         if [[ -s "$iter_log_file" ]]; then
             local current_hash
@@ -584,7 +627,7 @@ except:
                     # Record this iteration before exiting
                     local idle_iter_end
                     idle_iter_end=$(date -Iseconds)
-                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel"
+                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel" "$ctx_base" "$ctx_memory" "$ctx_prompt" "$ctx_tools"
                     exit 0
                 fi
             else
@@ -844,8 +887,8 @@ except:
             fi
         fi
 
-        # Add iteration to state with token tracking
-        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed" "$iter_ff_recovered" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel"
+        # Add iteration to state with token tracking + context breakdown
+        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed" "$iter_ff_recovered" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel" "$ctx_base" "$ctx_memory" "$ctx_prompt" "$ctx_tools"
 
         # Handle ff exhaustion (after recording iteration)
         if $iter_ff_exhausted; then

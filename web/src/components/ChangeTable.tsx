@@ -133,7 +133,12 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     <span>In: {formatTokens(c.input_tokens)}</span>
                     <span>Out: {formatTokens(c.output_tokens)}</span>
                     {c.context_tokens_end != null && (
-                      <span className={c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-400'}>
+                      <span
+                        className={c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-400'}
+                        title={c.context_breakdown_start
+                          ? `Base: ${Math.round(c.context_breakdown_start.base_context / 1000)}K | Memory: ${Math.round(c.context_breakdown_start.memory_injection / 1000)}K | Prompt: ${Math.round(c.context_breakdown_start.prompt_overhead / 1000)}K | Tools: ${Math.round(c.context_breakdown_start.tool_output / 1000)}K`
+                          : undefined}
+                      >
                         ctx: {c.context_tokens_start != null
                           ? `${Math.round(c.context_tokens_start / 1000)}K→`
                           : ''}{Math.round(c.context_tokens_end / 1000)}K ({Math.round(c.context_tokens_end / 200_000 * 100)}%)
@@ -273,7 +278,12 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
               <td className="px-2 py-2 text-right text-neutral-400 text-sm">
                 {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
                 {c.context_tokens_end != null && (
-                  <span className={`ml-1 ${c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-500'}`}>
+                  <span
+                    className={`ml-1 ${c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-500'}`}
+                    title={c.context_breakdown_start
+                      ? `Base: ${Math.round(c.context_breakdown_start.base_context / 1000)}K | Memory: ${Math.round(c.context_breakdown_start.memory_injection / 1000)}K | Prompt: ${Math.round(c.context_breakdown_start.prompt_overhead / 1000)}K | Tools: ${Math.round(c.context_breakdown_start.tool_output / 1000)}K`
+                      : undefined}
+                  >
                     {' '}ctx:{Math.round(c.context_tokens_end / 1000)}K
                   </span>
                 )}

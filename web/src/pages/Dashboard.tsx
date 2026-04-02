@@ -17,13 +17,14 @@ import OrchestrationChat from '../components/OrchestrationChat'
 import ShutdownProgress from '../components/ShutdownProgress'
 import LearningsPanel from '../components/LearningsPanel'
 import ChangeTimelineDetail from '../components/ChangeTimelineDetail'
+import ContextPanel from '../components/ContextPanel'
 import BattleView from './BattleView'
 // useIsMobile removed — no longer needed
 // useSentinelData removed — sentinel tab now shows raw log
 import { getDigest, getPlans, getState, getLog, getSentinelLog } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle'
+type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'context' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle'
 
 interface Props {
   project: string | null
@@ -43,11 +44,11 @@ export default function Dashboard({ project, initialTab }: Props) {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const [activeTab, setActiveTabRaw] = useState<PanelTab>(() => {
     // Route-driven tab takes priority over query param
-    if (initialTab && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(initialTab)) {
+    if (initialTab && ['changes','phases','plan','tokens','context','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(initialTab)) {
       return initialTab as PanelTab
     }
     const t = params.get('tab')
-    return (t && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(t)) ? t as PanelTab : 'changes'
+    return (t && ['changes','phases','plan','tokens','context','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(t)) ? t as PanelTab : 'changes'
   })
   const setActiveTab = useCallback((tab: PanelTab) => {
     setActiveTabRaw(tab)
@@ -195,6 +196,7 @@ export default function Dashboard({ project, initialTab }: Props) {
     { id: 'phases', label: 'Phases' },
     { id: 'log', label: 'Log' },
     { id: 'tokens', label: 'Tokens' },
+    { id: 'context', label: 'Context' },
     { id: 'audit', label: 'Audit', hidden: !hasAudit },
     { id: 'digest', label: 'Digest', hidden: !hasDigest },
     { id: 'sessions', label: 'Sessions' },
@@ -375,6 +377,9 @@ export default function Dashboard({ project, initialTab }: Props) {
             )}
             {activeTab === 'sessions' && (
               <SessionPanel project={project} change={selectedChange} />
+            )}
+            {activeTab === 'context' && (
+              <ContextPanel project={project} />
             )}
           </div>
         )}

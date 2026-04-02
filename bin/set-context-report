@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# Context analysis report — shows per-iteration context breakdown from loop-state data.
+# Usage:
+#   set-context-report                    # from inside a worktree
+#   set-context-report --project <name>   # aggregate across all changes
+set -euo pipefail
+
+usage() {
+    echo "Usage: set-context-report [--project <name>] [--help]"
+    echo ""
+    echo "  (no args)          Report for current worktree's loop-state.json"
+    echo "  --project <name>   Aggregate report across all change worktrees"
+    echo ""
+    echo "Reads .set/loop-state.json and shows context breakdown per iteration."
+    exit 0
+}
+
+fmt_k() {
+    local n=$1
+    if [[ $n -ge 1000000 ]]; then
+        echo "$(( n / 1000000 )).$(( (n % 1000000) / 100000 ))M"
+    elif [[ $n -ge 1000 ]]; then
+        echo "$(( n / 1000 ))K"
+    else
+        echo "$n"
+    fi
+}
+
+# Print per-iteration table for a single loop-state file
+report_single() {
+    local state_file="$1"
+    local label="${2:-}"
+
+    if [[ ! -f "$state_file" ]]; then
+        echo "No loop-state.json found at: $state_file" >&2
+        return 1
+    fi
+
+    if [[ -n "$label" ]]; then
+        echo ""
+        echo "=== $label ==="
+    fi
+
+    # Header
+    printf "%-5s %8s %8s %8s %8s %10s %6s\n" "Iter" "Base" "Memory" "Prompt" "Tools" "Total" "Base%"
+    printf "%-5s %8s %8s %8s %8s %10s %6s\n" "----" "--------" "--------" "--------" "--------" "----------" "------"
+
+    # Iterations
+    jq -r '.iterations[] |
+        .n as $n |
+        (.context_breakdown // {base_context:0, memory_injection:0, prompt_overhead:0, tool_output:0}) as $cb |
+        .input_tokens as $in |
+        [
+            ($n // 0),
+            ($cb.base_context // 0),
+            ($cb.memory_injection // 0),
+            ($cb.prompt_overhead // 0),
+            ($cb.tool_output // 0),
+            ($in // 0),
+            (if ($in // 0) > 0 and ($cb.base_context // 0) > 0
+             then (($cb.base_context // 0) * 100 / ($in // 1))
+             else 0 end)
+        ] | @tsv' "$state_file" 2>/dev/null | while IFS=$'\t' read -r iter base mem prompt tools total base_pct; do
+        printf "%-5s %8s %8s %8s %8s %10s %5s%%\n" \
+            "$iter" \
+            "$(fmt_k "${base:-0}")" \
+            "$(fmt_k "${mem:-0}")" \
+            "$(fmt_k "${prompt:-0}")" \
+            "$(fmt_k "${tools:-0}")" \
+            "$(fmt_k "${total:-0}")" \
+            "${base_pct:-0}"
+    done
+
+    # Summary
+    local base_ctx
+    base_ctx=$(jq -r '.base_context_tokens // 0' "$state_file" 2>/dev/null)
+    local total_in
+    total_in=$(jq -r '.total_input_tokens // 0' "$state_file" 2>/dev/null)
+    local total_out
+    total_out=$(jq -r '.total_output_tokens // 0' "$state_file" 2>/dev/null)
+    local iters
+    iters=$(jq -r '.iterations | length' "$state_file" 2>/dev/null)
+
+    echo ""
+    echo "Base context: $(fmt_k "$base_ctx") | Total in: $(fmt_k "$total_in") | Total out: $(fmt_k "$total_out") | Iterations: $iters"
+
+    if [[ $total_in -gt 0 ]]; then
+        local eff=$(( total_out * 10000 / total_in ))
+        echo "Efficiency: $(( eff / 100 )).$(( eff % 100 ))%"
+    fi
+}
+
+# Aggregate report across all change worktrees
+report_project() {
+    local project_name="$1"
+
+    # Find project directory
+    local project_dir=""
+    local search_dirs=("$HOME/code2" "$HOME/.local/share/set-core/e2e-runs")
+    for dir in "${search_dirs[@]}"; do
+        if [[ -d "$dir/$project_name" ]]; then
+            project_dir="$dir/$project_name"
+            break
+        fi
+    done
+
+    if [[ -z "$project_dir" ]]; then
+        echo "Project '$project_name' not found" >&2
+        exit 1
+    fi
+
+    echo "Context Analysis: $project_name"
+    echo "Path: $project_dir"
+    echo ""
+
+    # Header for summary table
+    printf "%-30s %5s %8s %10s %10s %6s\n" "Change" "Iters" "Base" "Total In" "Total Out" "Eff%"
+    printf "%-30s %5s %8s %10s %10s %6s\n" "------------------------------" "-----" "--------" "----------" "----------" "------"
+
+    local total_in_all=0
+    local base_over_30=()
+    local mem_over_20=()
+    local low_eff=()
+
+    # Find all worktree loop-states
+    for state_file in "$project_dir"-wt-*/.set/loop-state.json "$project_dir"/worktrees/*/. set/loop-state.json; do
+        [[ -f "$state_file" ]] || continue
+
+        local wt_dir
+        wt_dir=$(dirname "$(dirname "$state_file")")
+        local change_name
+        change_name=$(basename "$wt_dir" | sed "s/^${project_name}-wt-//")
+
+        local iters base total_in total_out
+        iters=$(jq -r '.iterations | length' "$state_file" 2>/dev/null || echo 0)
+        base=$(jq -r '.base_context_tokens // 0' "$state_file" 2>/dev/null || echo 0)
+        total_in=$(jq -r '.total_input_tokens // 0' "$state_file" 2>/dev/null || echo 0)
+        total_out=$(jq -r '.total_output_tokens // 0' "$state_file" 2>/dev/null || echo 0)
+
+        local eff_pct="0.0"
+        if [[ $total_in -gt 0 ]]; then
+            local eff=$(( total_out * 10000 / total_in ))
+            eff_pct="$(( eff / 100 )).$(( eff % 100 ))"
+        fi
+
+        # Truncate name
+        local display_name="$change_name"
+        [[ ${#display_name} -gt 28 ]] && display_name="${display_name:0:26}.."
+
+        printf "%-30s %5s %8s %10s %10s %6s\n" \
+            "$display_name" "$iters" "$(fmt_k "$base")" "$(fmt_k "$total_in")" "$(fmt_k "$total_out")" "$eff_pct"
+
+        total_in_all=$(( total_in_all + total_in ))
+
+        # Track recommendations
+        if [[ $total_in -gt 0 && $base -gt 0 ]]; then
+            local base_ratio=$(( base * 100 / total_in ))
+            [[ $base_ratio -gt 30 ]] && base_over_30+=("$change_name (${base_ratio}%)")
+        fi
+
+        # Check memory injection from first iteration
+        local mem_inj
+        mem_inj=$(jq -r '.iterations[0].context_breakdown.memory_injection // 0' "$state_file" 2>/dev/null || echo 0)
+        if [[ $total_in -gt 0 && $mem_inj -gt 0 ]]; then
+            local mem_ratio=$(( mem_inj * 100 / total_in ))
+            [[ $mem_ratio -gt 20 ]] && mem_over_20+=("$change_name (${mem_ratio}%)")
+        fi
+
+        if [[ $total_in -gt 0 ]]; then
+            local eff_check=$(( total_out * 10000 / total_in ))
+            [[ $eff_check -lt 500 ]] && low_eff+=("$change_name (${eff_pct}%)")
+        fi
+    done
+
+    echo ""
+    echo "Total input across all changes: $(fmt_k $total_in_all)"
+
+    # Recommendations
+    echo ""
+    echo "=== Recommendations ==="
+
+    if [[ ${#base_over_30[@]} -gt 0 ]]; then
+        echo ""
+        echo "Base context > 30% of total (context diet candidate):"
+        for item in "${base_over_30[@]}"; do
+            echo "  - $item"
+        done
+    fi
+
+    if [[ ${#mem_over_20[@]} -gt 0 ]]; then
+        echo ""
+        echo "Memory injection > 20% of total (over-injection):"
+        for item in "${mem_over_20[@]}"; do
+            echo "  - $item"
+        done
+    fi
+
+    if [[ ${#low_eff[@]} -gt 0 ]]; then
+        echo ""
+        echo "Efficiency < 5% (very low output per input):"
+        for item in "${low_eff[@]}"; do
+            echo "  - $item"
+        done
+    fi
+
+    if [[ ${#base_over_30[@]} -eq 0 && ${#mem_over_20[@]} -eq 0 && ${#low_eff[@]} -eq 0 ]]; then
+        echo "No optimization targets identified."
+    fi
+}
+
+# Parse args
+project=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --project)
+            project="$2"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage
+            ;;
+    esac
+done
+
+if [[ -n "$project" ]]; then
+    report_project "$project"
+else
+    # Find loop-state in current directory or parent worktree
+    state_file=""
+    if [[ -f ".set/loop-state.json" ]]; then
+        state_file=".set/loop-state.json"
+    elif [[ -f ".claude/loop-state.json" ]]; then
+        state_file=".claude/loop-state.json"
+    else
+        echo "No loop-state.json found in current directory." >&2
+        echo "Run from inside a worktree or use --project <name>" >&2
+        exit 1
+    fi
+    report_single "$state_file"
+fi

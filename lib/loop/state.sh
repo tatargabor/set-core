@@ -90,6 +90,7 @@ init_loop_state() {
   "last_output_hash": null,
   "session_id": null,
   "resume_failures": 0,
+  "base_context_tokens": 0,
   "team_mode": false,
   "label": $(if [[ -n "$label" ]]; then printf '%s' "$label" | jq -Rs .; else echo "null"; fi),
   "change": $(if [[ -n "$change" ]]; then printf '%s' "$change" | jq -Rs .; else echo "null"; fi)
@@ -131,6 +132,10 @@ add_iteration() {
     local team_spawned="${19:-false}"
     local teammates_count="${20:-0}"
     local team_tasks_parallel="${21:-0}"
+    local ctx_base="${22:-0}"
+    local ctx_memory="${23:-0}"
+    local ctx_prompt="${24:-0}"
+    local ctx_tools="${25:-0}"
 
     local tmp
     tmp=$(mktemp)
@@ -154,6 +159,10 @@ add_iteration() {
        --argjson t_spawned "$team_spawned" \
        --argjson t_count "$teammates_count" \
        --argjson t_parallel "$team_tasks_parallel" \
+       --argjson cb_base "$ctx_base" \
+       --argjson cb_mem "$ctx_memory" \
+       --argjson cb_prompt "$ctx_prompt" \
+       --argjson cb_tools "$ctx_tools" \
        '.iterations += [{
          "n": $n,
          "started": $started,
@@ -174,7 +183,13 @@ add_iteration() {
          "ff_recovered": $ff_recovered,
          "team_spawned": $t_spawned,
          "teammates_count": $t_count,
-         "team_tasks_parallel": $t_parallel
+         "team_tasks_parallel": $t_parallel,
+         "context_breakdown": {
+           "base_context": $cb_base,
+           "memory_injection": $cb_mem,
+           "prompt_overhead": $cb_prompt,
+           "tool_output": $cb_tools
+         }
        }]
        | .total_tokens = ([.iterations[].tokens_used // 0] | add)
        | .total_input_tokens = ([.iterations[].input_tokens // 0] | add)

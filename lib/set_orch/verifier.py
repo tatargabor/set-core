@@ -1744,6 +1744,10 @@ def _capture_context_tokens_start(
         update_change_field(state_file, change_name, "context_tokens_start", cc)
         cw = _context_window_for_model(change.model or "")
         logger.debug("context_tokens_start for %s: %d (%.0f%%)", change_name, cc, cc / cw * 100)
+    # Store context breakdown from iteration 1 if available
+    breakdown = iter1.get("context_breakdown")
+    if breakdown and isinstance(breakdown, dict):
+        update_change_field(state_file, change_name, "context_breakdown_start", breakdown)
 
 
 def _capture_context_tokens_end(

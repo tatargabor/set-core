@@ -3151,3 +3151,100 @@ async def sign_score(project: str, score: int, changes_done: int, total_tokens: 
 
     sig = _sign_score(project, score, changes_done, total_tokens)
     return {"signature": sig}
+
+
+# ─── Context Analysis ────────────────────────────────────────────────────────
+
+@router.get("/api/{project}/context-analysis")
+def context_analysis(project: str):
+    """Aggregate context breakdown data across all changes for a project."""
+    project_path = _resolve_project(project)
+    sp = _state_path(project_path)
+    if not sp.exists():
+        raise HTTPException(404, "No orchestration state found")
+    try:
+        state = load_state(str(sp))
+    except StateCorruptionError as e:
+        raise HTTPException(500, f"Corrupt state: {e.detail}")
+
+    CONTEXT_WINDOW = 200_000
+    changes_out = []
+
+    for c in state.changes:
+        entry: dict = {
+            "name": c.name,
+            "status": c.status,
+            "iterations": 0,
+            "base_context_tokens": None,
+            "total_input_tokens": c.input_tokens or 0,
+            "total_output_tokens": c.output_tokens or 0,
+            "context_breakdown_avg": None,
+            "efficiency_ratio": 0.0,
+        }
+
+        # Try reading loop-state for breakdown data
+        if c.worktree_path:
+            loop_file = Path(c.worktree_path) / ".set" / "loop-state.json"
+            if loop_file.exists():
+                try:
+                    with open(loop_file) as f:
+                        ls = json.load(f)
+                    iters = ls.get("iterations", [])
+                    entry["iterations"] = len(iters)
+                    entry["base_context_tokens"] = ls.get("base_context_tokens") or None
+
+                    # Aggregate context_breakdown across iterations
+                    breakdowns = [
+                        it.get("context_breakdown")
+                        for it in iters
+                        if it.get("context_breakdown")
+                    ]
+                    if breakdowns:
+                        n = len(breakdowns)
+                        entry["context_breakdown_avg"] = {
+                            "base_context": sum(b.get("base_context", 0) for b in breakdowns) // n,
+                            "memory_injection": sum(b.get("memory_injection", 0) for b in breakdowns) // n,
+                            "prompt_overhead": sum(b.get("prompt_overhead", 0) for b in breakdowns) // n,
+                            "tool_output": sum(b.get("tool_output", 0) for b in breakdowns) // n,
+                        }
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+        # Also use orchestration state breakdown if loop-state unavailable
+        if entry["base_context_tokens"] is None and c.context_tokens_start:
+            entry["base_context_tokens"] = c.context_tokens_start
+        if entry["context_breakdown_avg"] is None and c.context_breakdown_start:
+            entry["context_breakdown_avg"] = c.context_breakdown_start
+
+        # Efficiency ratio
+        total_in = entry["total_input_tokens"]
+        total_out = entry["total_output_tokens"]
+        if total_in > 0:
+            entry["efficiency_ratio"] = round(total_out / total_in, 4)
+
+        changes_out.append(entry)
+
+    # Sort by total input tokens descending
+    changes_out.sort(key=lambda x: x["total_input_tokens"], reverse=True)
+
+    # Summary statistics
+    total_input_all = sum(e["total_input_tokens"] for e in changes_out)
+    base_ratios = []
+    for e in changes_out:
+        if e["base_context_tokens"] and e["total_input_tokens"] > 0:
+            base_ratios.append(e["base_context_tokens"] / e["total_input_tokens"])
+    efficiencies = [e["efficiency_ratio"] for e in changes_out if e["efficiency_ratio"] > 0]
+
+    most_expensive = changes_out[0]["name"] if changes_out else None
+
+    return {
+        "project": project,
+        "context_window": CONTEXT_WINDOW,
+        "changes": changes_out,
+        "summary": {
+            "total_input": total_input_all,
+            "avg_base_ratio": round(sum(base_ratios) / len(base_ratios), 4) if base_ratios else None,
+            "most_expensive": most_expensive,
+            "avg_efficiency": round(sum(efficiencies) / len(efficiencies), 4) if efficiencies else None,
+        },
+    }
