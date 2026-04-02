@@ -629,7 +629,7 @@ def merge_change(
             change_name, ff_retry_count + 1, max_ff_retries,
         )
         update_change_field(state_file, change_name, "ff_retry_count", ff_retry_count + 1)
-        total = change.extras.get("total_merge_attempts", 0) if change else 0
+        total = int(change.extras.get("total_merge_attempts") or 0) if change else 0
         update_change_field(state_file, change_name, "total_merge_attempts", total + 1)
 
         # Re-integrate: the verifier will merge main into branch and re-run gates
@@ -753,6 +753,15 @@ def _run_integration_gates(
     from .gate_runner import GateResult
     from .subprocess_utils import run_command
 
+    def _record_gate_output_hash(output: str) -> None:
+        """Store SHA256 of gate output for identical-output retry detection."""
+        h = hashlib.sha256(output[:2000].encode(errors="replace")).hexdigest()[:16]
+        hashes = (change.extras.get("gate_output_hashes") or []) if change else []
+        if hashes and hashes[-1] != h:
+            hashes = []  # Different output — reset
+        hashes.append(h)
+        update_change_field(state_file, change_name, "gate_output_hashes", hashes[-5:])
+
     gc = resolve_gate_config(change, profile)
     gates_executed = 0  # Track how many gates actually ran a subprocess
 
@@ -814,6 +823,7 @@ def _run_integration_gates(
             if not gate_pass:
                 logger.error("Integration gate: build FAILED for %s", change_name)
                 update_change_field(state_file, change_name, "integration_gate_fail", "build")
+                _record_gate_output_hash((result.stdout or "") + (result.stderr or ""))
                 return False
 
     # Test gate
@@ -847,9 +857,26 @@ def _run_integration_gates(
                     and result.exit_code == 1
                     and any(pm in test_cmd for pm in ("pnpm", "npm"))
                 )
+                # Check if failure is because no test files exist (vitest/jest exit non-zero)
+                no_tests_indicators = [
+                    "no test suite found",
+                    "no test files found",
+                    "no tests found, exiting with code",
+                    "no tests found",
+                ]
+                is_no_tests = any(ind in output.lower() for ind in no_tests_indicators)
                 if is_missing or is_empty_fail:
                     logger.warning(
                         "Integration gate: test command not available for %s (missing script or empty output) — skipping",
+                        change_name,
+                    )
+                    update_change_field(state_file, change_name, "test_result", "skip")
+                    if event_bus:
+                        event_bus.emit("VERIFY_GATE", change=change_name, data={
+                            "gate": "test", "result": "skip", "phase": "integration"})
+                elif is_no_tests:
+                    logger.warning(
+                        "Integration gate: test skipped for %s (no test files found)",
                         change_name,
                     )
                     update_change_field(state_file, change_name, "test_result", "skip")
@@ -860,6 +887,7 @@ def _run_integration_gates(
                     logger.error("Integration gate: test FAILED for %s", change_name)
                     update_change_field(state_file, change_name, "test_result", "fail")
                     update_change_field(state_file, change_name, "integration_gate_fail", "test")
+                    _record_gate_output_hash(output)
                     if event_bus:
                         event_bus.emit("VERIFY_GATE", change=change_name, data={
                             "gate": "test", "result": "fail", "phase": "integration"})
@@ -1011,6 +1039,25 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
             _remove_from_merge_queue(state_file, name)
             continue
 
+        # Pre-merge dependency validation — all deps must be in terminal status
+        TERMINAL_STATUSES = {"merged", "done", "skip_merged", "completed", "skipped"}
+        deps = change.depends_on or []
+        if deps:
+            dep_statuses = {}
+            for dep_name in deps:
+                dep_change = _find_change(state, dep_name)
+                dep_statuses[dep_name] = dep_change.status if dep_change else "unknown"
+            unmerged = {d: s for d, s in dep_statuses.items() if s not in TERMINAL_STATUSES}
+            if unmerged:
+                deps_str = ", ".join(f"{d} ({s})" for d, s in unmerged.items())
+                logger.warning(
+                    "Pre-merge dep check: %s blocked — waiting for %s",
+                    name, deps_str,
+                )
+                update_change_field(state_file, name, "status", "dep-blocked", event_bus=event_bus)
+                _remove_from_merge_queue(state_file, name)
+                continue
+
         wt_path = change.worktree_path or ""
 
         # Skip integration+gates if ff_retry already exhausted — would be instant merge-blocked
@@ -1106,8 +1153,20 @@ def retry_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
     # Re-add merge-blocked changes to queue for retry (with retry counter)
     for change in state.changes:
         if change.status == "merge-blocked" and change.name not in state.merge_queue:
+            # Identical output detection — if last 3 gate outputs are the same, stop retrying
+            gate_hashes = change.extras.get("gate_output_hashes") or []
+            if len(gate_hashes) >= 3 and len(set(gate_hashes[-3:])) == 1:
+                gate_fail = change.extras.get("integration_gate_fail", "unknown")
+                logger.error(
+                    "Identical gate output for %s across 3 retry cycles (%s) — marking integration-failed",
+                    change.name, gate_fail,
+                )
+                update_change_field(state_file, change.name, "integration_gate_fail", f"{gate_fail}_identical_output")
+                update_change_field(state_file, change.name, "status", "integration-failed", event_bus=event_bus)
+                continue
+
             # Hard cap — total attempts across all retry cycles
-            total = change.extras.get("total_merge_attempts", 0)
+            total = int(change.extras.get("total_merge_attempts") or 0)
             if total >= MAX_TOTAL_MERGE_ATTEMPTS:
                 logger.error(
                     "Hard merge attempt cap reached for %s (%d/%d) — marking integration-failed",

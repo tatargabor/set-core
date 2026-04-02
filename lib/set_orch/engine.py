@@ -583,6 +583,12 @@ def monitor_loop(
         # Phase advancement (always) + optional milestone check
         _check_phase_completion(state_file, d, event_bus)
 
+        # Recover dep-blocked changes whose deps are now merged
+        _recover_dep_blocked_safe(state_file, event_bus)
+
+        # Recover merge-blocked changes whose blocking issues are resolved
+        _recover_merge_blocked_safe(state_file, event_bus)
+
         # Resume stalled changes
         _resume_stalled_safe(state_file, event_bus)
 
@@ -1680,6 +1686,69 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
         )
     except Exception:
         logger.warning("Dispatch failed", exc_info=True)
+
+
+def _recover_dep_blocked_safe(state_file: str, event_bus: Any) -> None:
+    """Recover dep-blocked changes whose dependencies are now in terminal status."""
+    try:
+        state = load_state(state_file)
+        terminal = {"merged", "done", "skip_merged", "completed", "skipped"}
+        for change in state.changes:
+            if change.status != "dep-blocked":
+                continue
+            deps = change.depends_on or []
+            if not deps:
+                # No deps but dep-blocked — recover
+                update_change_field(state_file, change.name, "status", "done", event_bus=event_bus)
+                logger.info("Recovered dep-blocked %s — no dependencies listed", change.name)
+                continue
+            all_met = True
+            for dep_name in deps:
+                dep = next((c for c in state.changes if c.name == dep_name), None)
+                if not dep or dep.status not in terminal:
+                    all_met = False
+                    break
+            if all_met:
+                update_change_field(state_file, change.name, "status", "done", event_bus=event_bus)
+                logger.info("Recovered dep-blocked %s — all dependencies now merged", change.name)
+    except Exception:
+        logger.warning("dep-blocked recovery failed", exc_info=True)
+
+
+def _recover_merge_blocked_safe(state_file: str, event_bus: Any) -> None:
+    """Recover merge-blocked changes whose blocking issues are resolved."""
+    try:
+        state = load_state(state_file)
+        blocked = [c for c in state.changes if c.status == "merge-blocked"]
+        if not blocked:
+            return
+        # Read issue registry
+        registry_path = os.path.join(os.getcwd(), ".set", "issues", "registry.json")
+        issues = []
+        if os.path.isfile(registry_path):
+            try:
+                with open(registry_path) as f:
+                    issues = json.load(f).get("issues", [])
+            except (json.JSONDecodeError, OSError):
+                pass
+        active_issue_states = {"open", "investigating", "diagnosed", "fixing", "awaiting_approval"}
+        for change in blocked:
+            # Find issues referencing this change
+            change_issues = [
+                i for i in issues
+                if i.get("affected_change") == change.name
+            ]
+            has_active = any(i.get("state") in active_issue_states for i in change_issues)
+            if not has_active:
+                # No active blockers — recover
+                update_change_field(state_file, change.name, "status", "done", event_bus=event_bus)
+                logger.info(
+                    "Recovered merge-blocked %s — %s",
+                    change.name,
+                    "blocking issues resolved" if change_issues else "no blocking issues found",
+                )
+    except Exception:
+        logger.warning("merge-blocked recovery failed", exc_info=True)
 
 
 def _retry_merge_queue_safe(state_file: str, event_bus: Any) -> None:
