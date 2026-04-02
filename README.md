@@ -22,7 +22,7 @@ set-core takes a markdown spec, decomposes it into independent changes, dispatch
 |------------|-------------|
 | **[set-core](https://git.setcode.dev/root/set-core)** | Core orchestration engine, web module, dashboard, CLI tools |
 | [set-spec-capture](https://git.setcode.dev/root/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
-| [setcode-www](https://git.setcode.dev/root/setcode-www) | Landing page — [setcode.dev](https://setcode.dev) |
+| [set-voice-agent-delivery](https://git.setcode.dev/root/set-voice-agent-delivery) | Voice agent project type — Soniox STT, Google TTS, spec-driven customer interaction |
 
 ---
 
