@@ -16,6 +16,16 @@ set-core takes a markdown spec, decomposes it into independent changes, dispatch
 
 ---
 
+## Repositories
+
+| Repository | Description |
+|------------|-------------|
+| **[set-core](https://git.setcode.dev/root/set-core)** | Core orchestration engine, web module, dashboard, CLI tools |
+| [set-spec-capture](https://git.setcode.dev/root/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
+| [setcode-www](https://git.setcode.dev/root/setcode-www) | Landing page — [setcode.dev](https://setcode.dev) |
+
+---
+
 ## See It In Action
 
 **An agent working on a change — debugging, testing, fixing:**
@@ -185,7 +195,7 @@ See the [Writing Specs guide](docs/guide/writing-specs.md) for the full methodol
 ### Step 1: Install
 
 ```bash
-git clone https://github.com/tatargabor/set-core.git
+git clone ssh://git@git.setcode.dev:2222/root/set-core.git
 cd set-core && ./install.sh
 ```
 
@@ -267,7 +277,7 @@ See [docs/guide/writing-specs.md](docs/guide/writing-specs.md) for the complete 
 
 | Tool | Purpose |
 |------|---------|
-| [set-spec-capture](https://github.com/tatargabor/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
+| [set-spec-capture](https://git.setcode.dev/root/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
 | set-design-sync | Parse Figma Make `.make` exports → structured `design-system.md` + spec sync |
 | set-e2e-report | Generate benchmark reports from orchestration runs |
 
@@ -324,7 +334,7 @@ Model providers (Anthropic included) will build orchestration into their platfor
 
 **Start now.** There will be bugs. But this is a self-healing system — the sentinel detects, investigates, and fixes. The more people use it, the faster it improves.
 
-[Join us →](https://github.com/tatargabor/set-core/issues) · [Email](mailto:gabor@setcode.dev)
+[Join us →](https://git.setcode.dev/root/set-core/-/issues) · [Email](mailto:gabor@setcode.dev)
 
 ---
 
@@ -345,4 +355,4 @@ Model providers (Anthropic included) will build orchestration into their platfor
 
 MIT — See [LICENSE](LICENSE) for details.
 
-**Website:** [setcode.dev](https://setcode.dev) · **GitHub:** [tatargabor/set-core](https://github.com/tatargabor/set-core)
+**Website:** [setcode.dev](https://setcode.dev) · **Source:** [git.setcode.dev/root/set-core](https://git.setcode.dev/root/set-core)
