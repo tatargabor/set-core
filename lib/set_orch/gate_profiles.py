@@ -64,6 +64,7 @@ UNIVERSAL_DEFAULTS: dict[str, dict[str, str]] = {
     "infrastructure": {
         "build": "skip",
         "test": "skip",
+        "e2e": "skip",
         "scope_check": "run",
         "test_files": "skip",
         "review": "run",
