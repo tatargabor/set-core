@@ -1569,7 +1569,7 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         except Exception:
             logger.debug("Test result parsing failed (non-critical)", exc_info=True)
 
-        # Get all digest REQ IDs
+        # Get all digest REQ IDs — also use change.requirements as fallback
         digest_req_ids: list[str] = []
         try:
             digest_dir = project_root / "set" / "orchestration" / "digest"
@@ -1578,8 +1578,12 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
                 import json
                 with open(req_file) as f:
                     req_data = json.load(f)
-                if isinstance(req_data, list):
-                    for r in req_data:
+                # Handle all formats: dict with "requirements" key, list of dicts, list of req objects
+                req_list = req_data
+                if isinstance(req_data, dict) and "requirements" in req_data:
+                    req_list = req_data["requirements"]
+                if isinstance(req_list, list):
+                    for r in req_list:
                         if isinstance(r, dict):
                             if "requirements" in r:
                                 digest_req_ids.extend(
@@ -1589,6 +1593,16 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
                                 digest_req_ids.append(r["id"])
         except Exception:
             logger.debug("Failed to read digest requirements", exc_info=True)
+
+        # Fallback: collect REQ IDs from all changes in state
+        if not digest_req_ids:
+            try:
+                for ch in state.changes:
+                    if ch.requirements:
+                        digest_req_ids.extend(ch.requirements)
+            except Exception:
+                pass
+            digest_req_ids = list(set(digest_req_ids))
 
         # Build coverage
         coverage = build_test_coverage(

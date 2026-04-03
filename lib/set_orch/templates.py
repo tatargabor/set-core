@@ -371,6 +371,7 @@ Test-per-change requirement:
 Acceptance test change (REQUIRED):
 - Always include a FINAL change named "acceptance-tests" with type "test" and model "opus".
 - This change depends_on ALL other changes and is assigned to the LAST phase.
+- The "requirements" array for this change MUST include ALL REQ-* IDs from the digest (it validates them all). The "also_affects_reqs" should be empty.
 - Purpose: write cross-feature journey E2E tests that validate end-to-end user workflows spanning multiple domains.
 - To define the scope, analyze the spec for:
   1. Cross-domain data flows — where one domain's output is another's input (e.g., items created in one domain are consumed/processed in another)
