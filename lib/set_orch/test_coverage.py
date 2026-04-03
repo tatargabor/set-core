@@ -176,20 +176,32 @@ class TestCoverage:
         )
 
 
+# Format A: strict — ## REQ-XXX: Title [HIGH]
 _REQ_HEADER_RE = re.compile(
     r"^##\s+(REQ-[A-Z0-9_-]+):\s*(.+?)\s*\[(HIGH|MEDIUM|LOW|NON[_-]?TESTABLE)\]\s*$",
     re.IGNORECASE,
 )
+# Format B: journey-style — ## Journey N: Title (RISK risk)
+_JOURNEY_HEADER_RE = re.compile(
+    r"^##\s+(?:Journey\s+\d+:\s*)?(.+?)\s*\((HIGH|MEDIUM|LOW|NON[_-]?TESTABLE)\s*(?:risk)?\)\s*$",
+    re.IGNORECASE,
+)
 _CHECKBOX_RE = re.compile(r"^-\s*\[([ xX])\]\s*(.*)")
 _TEST_REF_RE = re.compile(r"^→\s*([^:]+\.(?:spec|test)\.\w+):\s*[\"'](.+?)[\"']")
+_FILE_REF_RE = re.compile(r"\*\*File:\*\*\s*`([^`]+\.(?:spec|test)\.\w+)`")
 _CATEGORY_RE = re.compile(r"^(Happy|Negative|Boundary|Edge)\b", re.IGNORECASE)
+_RISK_INLINE_RE = re.compile(r"\b(HIGH|MEDIUM|LOW)\b", re.IGNORECASE)
 
 
 def parse_test_plan(plan_path: Path) -> tuple[list[TestCase], list[str]]:
     """Parse JOURNEY-TEST-PLAN.md into test cases and non-testable REQ IDs.
 
+    Supports two formats:
+    - Format A (strict): ## REQ-XXX: Title [HIGH] + - [x] checkboxes
+    - Format B (journey): ## Journey N: Title (LOW risk) + **File:** `name.spec.ts`
+      + ### Scenario: lines with GIVEN/WHEN/THEN
+
     Returns (test_cases, non_testable_req_ids).
-    Returns empty results if file doesn't exist or can't be parsed.
     """
     if not plan_path.is_file():
         logger.warning("Test plan not found: %s", plan_path)
@@ -204,40 +216,99 @@ def parse_test_plan(plan_path: Path) -> tuple[list[TestCase], list[str]]:
     test_cases: list[TestCase] = []
     non_testable: list[str] = []
 
-    current_req: str = ""
+    current_id: str = ""
     current_risk: str = ""
+    current_file: str = ""
     current_case: dict[str, Any] | None = None
+    scenario_count: int = 0
 
     for line in content.split("\n"):
         stripped = line.strip()
 
-        # Check for REQ header
+        # Format A: ## REQ-XXX: Title [HIGH]
         m = _REQ_HEADER_RE.match(stripped)
         if m:
-            # Flush previous case
             if current_case:
-                test_cases.append(_build_test_case(current_case, current_req, current_risk))
+                test_cases.append(_build_test_case(current_case, current_id, current_risk))
                 current_case = None
+            # Flush journey-based entry
+            if current_id and current_file and scenario_count > 0 and not any(
+                tc.req_id == current_id for tc in test_cases
+            ):
+                test_cases.append(_build_test_case(
+                    {"slug": _slugify(current_id), "category": "happy",
+                     "test_file": current_file, "test_name": current_id},
+                    current_id, current_risk,
+                ))
 
-            current_req = m.group(1)
+            current_id = m.group(1)
             risk_raw = m.group(3).upper().replace("-", "_")
             if "NON" in risk_raw and "TESTABLE" in risk_raw:
-                non_testable.append(current_req)
-                current_req = ""
+                non_testable.append(current_id)
+                current_id = ""
                 current_risk = ""
             else:
                 current_risk = risk_raw
+            current_file = ""
+            scenario_count = 0
             continue
 
-        if not current_req:
+        # Format B: ## Journey N: Title (LOW risk)
+        jm = _JOURNEY_HEADER_RE.match(stripped)
+        if jm:
+            # Flush previous journey entry
+            if current_case:
+                test_cases.append(_build_test_case(current_case, current_id, current_risk))
+                current_case = None
+            if current_id and current_file and scenario_count > 0 and not any(
+                tc.req_id == current_id for tc in test_cases
+            ):
+                test_cases.append(_build_test_case(
+                    {"slug": _slugify(current_id), "category": "happy",
+                     "test_file": current_file, "test_name": current_id},
+                    current_id, current_risk,
+                ))
+
+            title = jm.group(1).strip()
+            current_id = _slugify(title) or title
+            risk_raw = jm.group(2).upper()
+            if "NON" in risk_raw and "TESTABLE" in risk_raw:
+                non_testable.append(current_id)
+                current_id = ""
+                current_risk = ""
+            else:
+                current_risk = risk_raw
+            current_file = ""
+            scenario_count = 0
             continue
 
-        # Check for checkbox line
+        if not current_id:
+            continue
+
+        # **File:** `journey-xxx.spec.ts`
+        fm = _FILE_REF_RE.search(stripped)
+        if fm:
+            current_file = fm.group(1).strip()
+            continue
+
+        # ### Scenario: lines (format B)
+        if stripped.startswith("### Scenario:"):
+            scenario_count += 1
+            scenario_name = stripped.replace("### Scenario:", "").strip()
+            # Each scenario = one test case for the journey
+            if current_file:
+                test_cases.append(_build_test_case(
+                    {"slug": _slugify(scenario_name), "category": "happy",
+                     "test_file": current_file, "test_name": scenario_name},
+                    current_id, current_risk,
+                ))
+            continue
+
+        # Format A: checkbox lines
         cm = _CHECKBOX_RE.match(stripped)
         if cm:
-            # Flush previous case
             if current_case:
-                test_cases.append(_build_test_case(current_case, current_req, current_risk))
+                test_cases.append(_build_test_case(current_case, current_id, current_risk))
 
             text = cm.group(2).strip()
             cat_m = _CATEGORY_RE.match(text)
@@ -248,21 +319,29 @@ def parse_test_plan(plan_path: Path) -> tuple[list[TestCase], list[str]]:
                 "slug": slug,
                 "category": category,
                 "text": text,
-                "test_file": "",
+                "test_file": current_file,
                 "test_name": "",
             }
             continue
 
-        # Check for test reference line
+        # → file.spec.ts: "test name"
         tm = _TEST_REF_RE.match(stripped)
         if tm and current_case:
             current_case["test_file"] = tm.group(1).strip()
             current_case["test_name"] = tm.group(2).strip()
             continue
 
-    # Flush last case
-    if current_case and current_req:
-        test_cases.append(_build_test_case(current_case, current_req, current_risk))
+    # Flush last entries
+    if current_case and current_id:
+        test_cases.append(_build_test_case(current_case, current_id, current_risk))
+    elif current_id and current_file and scenario_count > 0 and not any(
+        tc.req_id == current_id for tc in test_cases
+    ):
+        test_cases.append(_build_test_case(
+            {"slug": _slugify(current_id), "category": "happy",
+             "test_file": current_file, "test_name": current_id},
+            current_id, current_risk,
+        ))
 
     return test_cases, non_testable
 
