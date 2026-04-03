@@ -228,12 +228,21 @@ def get_digest(project: str):
 
 
 def _enrich_requirements_with_scenarios(result: dict, project_path: Path):
-    """Parse BDD scenarios from spec source files and attach to requirements."""
+    """Parse BDD scenarios from OpenSpec specs and attach to digest requirements.
+
+    The connection: digest REQ → change (via state) → OpenSpec spec (via archive).
+    OpenSpec specs live in openspec/specs/<capability>/spec.md and contain
+    #### Scenario: blocks with WHEN/THEN format.
+
+    Strategy:
+    1. Read all OpenSpec specs from openspec/specs/
+    2. Parse all scenarios from all specs
+    3. Match to digest REQs by fuzzy title matching (REQ title ↔ OpenSpec requirement name)
+    """
     reqs = result.get("requirements")
     if not reqs:
         return
 
-    # Handle flexible format: [{requirements: [...]}] or [req, req, ...]
     req_list = reqs
     if isinstance(reqs, list) and len(reqs) == 1 and isinstance(reqs[0], dict) and "requirements" in reqs[0]:
         req_list = reqs[0]["requirements"]
@@ -243,85 +252,67 @@ def _enrich_requirements_with_scenarios(result: dict, project_path: Path):
     if not isinstance(req_list, list):
         return
 
-    # Cache spec file contents to avoid re-reading
-    spec_cache: dict[str, str] = {}
-    index = result.get("index", {})
-    spec_base = index.get("spec_base_dir", "")
-
     try:
         from ..test_coverage import parse_scenarios
     except ImportError:
         return
 
+    # Read all OpenSpec specs and collect scenarios keyed by requirement name (lowercased)
+    openspec_dir = project_path / "openspec" / "specs"
+    scenario_map: dict[str, list] = {}  # lowercase req name → scenarios
+
+    if openspec_dir.is_dir():
+        for spec_dir in sorted(openspec_dir.iterdir()):
+            spec_file = spec_dir / "spec.md"
+            if not spec_file.is_file():
+                continue
+            try:
+                content = spec_file.read_text()
+            except OSError:
+                continue
+
+            # Parse scenarios from each ### Requirement: section
+            import re
+            req_sections = re.split(r"(?=^### Requirement:\s*)", content, flags=re.MULTILINE)
+            for section in req_sections:
+                if not section.startswith("### Requirement:"):
+                    continue
+                # Extract requirement name from first line
+                first_line = section.split("\n")[0]
+                req_name = first_line.replace("### Requirement:", "").strip()
+                scenarios = parse_scenarios(section)
+                if scenarios:
+                    key = req_name.lower().strip()
+                    scenario_map[key] = [s.to_dict() for s in scenarios]
+
+    # Match digest REQs to OpenSpec scenarios by fuzzy title match
     for req in req_list:
         if not isinstance(req, dict):
             continue
-        source = req.get("source", "")
-        if not source:
-            req["scenarios"] = []
+        title = req.get("title", "").lower().strip()
+        req["scenarios"] = []
+
+        if not title:
             continue
 
-        # Read spec file
-        if source not in spec_cache:
-            spec_path = project_path / source
-            if not spec_path.is_file() and spec_base:
-                spec_path = project_path / spec_base / source
-            try:
-                spec_cache[source] = spec_path.read_text() if spec_path.is_file() else ""
-            except OSError:
-                spec_cache[source] = ""
-
-        content = spec_cache[source]
-        if not content:
-            req["scenarios"] = []
+        # Try exact match first
+        if title in scenario_map:
+            req["scenarios"] = scenario_map[title]
             continue
 
-        # Find the requirement section in the spec
-        section = req.get("source_section", req.get("title", ""))
-        section_text = _extract_section(content, section)
-        req["scenarios"] = [s.to_dict() for s in parse_scenarios(section_text)]
-
-
-def _extract_section(content: str, heading: str) -> str:
-    """Extract a section from markdown content by heading text."""
-    import re
-    # Find the heading (any level)
-    pattern = re.compile(
-        r"^(#{1,4})\s+" + re.escape(heading.strip().lstrip("#").strip()),
-        re.MULTILINE | re.IGNORECASE,
-    )
-    m = pattern.search(content)
-    if not m:
-        # Try fuzzy: match if heading text appears in a markdown header
-        for line_idx, line in enumerate(content.split("\n")):
-            if line.startswith("#") and heading.lower().strip() in line.lower():
-                m_start = sum(len(l) + 1 for l in content.split("\n")[:line_idx])
-                # Find end: next heading of same or higher level
-                level = len(line) - len(line.lstrip("#"))
-                rest = content[m_start:]
-                lines = rest.split("\n")
-                end_idx = len(rest)
-                for i, l in enumerate(lines[1:], 1):
-                    if l.startswith("#"):
-                        l_level = len(l) - len(l.lstrip("#"))
-                        if l_level <= level:
-                            end_idx = sum(len(ll) + 1 for ll in lines[:i])
-                            break
-                return rest[:end_idx]
-        return content  # Fallback: parse entire file
-
-    start = m.start()
-    level = len(m.group(1))
-    rest = content[start:]
-    lines = rest.split("\n")
-    end_idx = len(rest)
-    for i, line in enumerate(lines[1:], 1):
-        if line.startswith("#"):
-            line_level = len(line) - len(line.lstrip("#"))
-            if line_level <= level:
-                end_idx = sum(len(l) + 1 for l in lines[:i])
+        # Fuzzy: check if any openspec req name is contained in digest title or vice versa
+        for os_name, scenarios in scenario_map.items():
+            if os_name in title or title in os_name:
+                req["scenarios"] = scenarios
                 break
-    return rest[:end_idx]
+            # Word overlap: if 60%+ of words match
+            title_words = set(title.split())
+            os_words = set(os_name.split())
+            if title_words and os_words:
+                overlap = len(title_words & os_words) / min(len(title_words), len(os_words))
+                if overlap >= 0.6:
+                    req["scenarios"] = scenarios
+                    break
 
 
 @router.get("/api/{project}/coverage-report")
