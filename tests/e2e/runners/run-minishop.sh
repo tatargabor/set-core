@@ -40,7 +40,7 @@ next_run_number() {
 # Parse --project-dir flag
 if [[ "${1:-}" == "--project-dir" ]]; then
     if [[ -z "${2:-}" ]]; then
-        error "--project-dir requires a directory argument"
+        echo "[error] --project-dir requires a directory argument" >&2
         exit 1
     fi
     BASE_DIR="$2"
@@ -81,6 +81,7 @@ preflight() {
     command -v set-project &>/dev/null || die "set-project not found in PATH"
     command -v node &>/dev/null || die "node not found in PATH"
     command -v pnpm &>/dev/null || die "pnpm not found in PATH"
+    command -v git &>/dev/null || die "git not found in PATH"
 
     if ! set-project list-types 2>/dev/null | grep -q "web"; then
         die "set-project-web plugin not installed (set-project list-types does not show 'web')"
@@ -223,13 +224,15 @@ ATTRS
     cat > set/orchestration/config.yaml <<YAML
 # Orchestration config for MiniShop E2E test
 default_model: opus
+e2e_command: npx playwright test
+e2e_timeout: 120
 max_parallel: 2
 merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
+max_replan_cycles: 2
 review_before_merge: true
 max_verify_retries: 2
-e2e_timeout: 120
 env_vars:
   DATABASE_URL: "file:./dev.db"
 discord:
