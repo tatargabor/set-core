@@ -45,18 +45,43 @@ The planner SHALL analyze the spec's domain structure and identify cross-domain 
 - **WHEN** the spec has multiple user roles that interact with the same entities (e.g., one role creates/manages, another role consumes)
 - **THEN** the planner SHALL generate journeys that cross actor boundaries
 
+### Requirement: Test planning phase before implementation
+The directive SHALL include a mandatory test planning phase (Phase 0) that the agent executes before writing any test code. This phase decomposes ACs into concrete test cases using risk-based classification and Given/When/Then structure.
+
+#### Scenario: Risk-based AC classification
+- **WHEN** the agent reads spec acceptance criteria
+- **THEN** it SHALL classify each AC by risk level:
+  - HIGH (auth, payment, data mutation/CRUD) → 1 happy path + 2 negative/boundary tests
+  - MEDIUM (forms, state, filtering) → 1 happy path + 1 negative test
+  - LOW (display, navigation, static content) → 1 happy path only
+
+#### Scenario: Given/When/Then decomposition
+- **WHEN** the agent creates test cases from ACs
+- **THEN** each test case SHALL be written as a Given/When/Then scenario before being coded
+- **AND** Given = precondition, When = user action, Then = observable outcome with specific values
+
+#### Scenario: Assertion depth rules
+- **WHEN** the agent defines test assertions
+- **THEN** it SHALL verify CONTENT not just visibility (check text values, counts, amounts)
+- **AND** verify SIDE-EFFECTS not just responses (record created, list updated, balance changed)
+- **AND** verify NEGATIVE PATHS for HIGH and MEDIUM risk ACs
+
+#### Scenario: E2E scope guard
+- **WHEN** the agent considers whether to write an E2E test for an AC
+- **THEN** it SHALL skip ACs that don't cross a page boundary or involve server interaction
+- **AND** document skipped ACs as "unit/integration test territory"
+
+#### Scenario: Written test plan
+- **WHEN** the agent completes Phase 0
+- **THEN** it SHALL write the plan to `tests/e2e/JOURNEY-TEST-PLAN.md` before writing test code
+- **AND** every testable AC SHALL appear in the plan with its risk level and test case count
+
 ### Requirement: Journey test methodology rules in directive
 The directive SHALL include generic methodology rules that guide the agent to write robust, self-contained journey tests regardless of project type.
 
-#### Scenario: Shared browser context for serial steps
-- **WHEN** the directive instructs the agent about serial test patterns
-- **THEN** it SHALL specify: use `test.describe.serial()` with a shared `Page` created in `test.beforeAll` via `browser.newContext()` + `newPage()`
-- **AND** explain why: each test step builds on the previous step's state (login, cart, checkout are sequential)
-
-#### Scenario: Self-contained journey files
+#### Scenario: Self-contained test files
 - **WHEN** the directive instructs about test file structure
-- **THEN** it SHALL specify: each journey spec file MUST be self-contained — set up its own preconditions in `beforeAll` via API calls, never depend on state from another spec file
-- **AND** explain why: Playwright runs spec files in separate workers, cross-file state sharing is unreliable
+- **THEN** it SHALL specify: each test file MUST be self-contained — set up its own preconditions in setup/beforeAll via API calls, never depend on state from another test file
 
 #### Scenario: Idempotent test design
 - **WHEN** the directive instructs about test reliability
@@ -81,10 +106,17 @@ The directive SHALL include generic methodology rules that guide the agent to wr
   3. If no, test the flow up to the external call, then verify via API side-effects (e.g., order created with status pending-payment)
   4. Never skip the journey entirely — test what can be tested
 
-#### Scenario: Cart and session state cleanup
-- **WHEN** the directive instructs about browser state management
-- **THEN** it SHALL specify: each journey MUST start with a fresh browser context (`browser.newContext()`) to ensure clean cookies/sessions
-- **AND** if mid-journey cleanup is needed, use API calls (e.g., clear cart endpoint) rather than relying on UI actions
+### Requirement: Locator and granularity rules
+The directive SHALL specify test code quality rules for assertions and element selection.
+
+#### Scenario: Semantic locator priority
+- **WHEN** the directive instructs about element selection
+- **THEN** it SHALL specify the priority order: getByRole > getByLabel > getByText > getByTestId > CSS selectors (last resort)
+
+#### Scenario: Assertion granularity
+- **WHEN** the directive instructs about test structure
+- **THEN** it SHALL specify: 2-5 assertions per test, one user behavior per test
+- **AND** use Given/When/Then from the test plan as the test's doc comment
 
 ### Requirement: Fix-until-pass execution loop
 The directive SHALL instruct the acceptance-tests agent to iteratively fix and re-run failing tests until all pass.

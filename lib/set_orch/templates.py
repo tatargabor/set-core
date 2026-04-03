@@ -380,12 +380,36 @@ Acceptance test change (REQUIRED):
 - The scope MUST also include these generic methodology rules for the implementing agent:
 
   JOURNEY TEST METHODOLOGY:
+
+  PHASE 0 — TEST PLANNING (before writing any code):
+  a) Read ALL acceptance criteria from the spec.
+  b) Classify each AC by risk:
+     - HIGH (auth, payment, data mutation/CRUD) → 1 happy path + 2 negative/boundary tests
+     - MEDIUM (forms, state, filtering) → 1 happy path + 1 negative test
+     - LOW (display, navigation, static content) → 1 happy path only
+  c) For each test case, write a Given/When/Then scenario:
+     - Given = precondition (logged in, cart has items, on product page)
+     - When = user action (clicks button, submits form, navigates)
+     - Then = observable outcome (content visible, record created, state changed)
+  d) Assign each test case to either a journey-step (sequential, shares state) or standalone test (isolated).
+  e) SCOPE GUARD: If a test doesn't cross a page boundary or involve server interaction, it is NOT an E2E test — skip it.
+  f) ASSERTION DEPTH — for every test:
+     - Verify CONTENT not just visibility (check text values, counts, amounts)
+     - Verify SIDE-EFFECTS not just responses (record created? list updated? balance changed?)
+     - Verify NEGATIVE PATHS not just happy paths (wrong input → correct error message)
+  g) Write the plan to tests/e2e/JOURNEY-TEST-PLAN.md before writing test code.
+
+  PHASE 1 — IMPLEMENTATION:
   1. ISOLATION: Each journey test file is self-contained. Set up preconditions via API calls in beforeAll/setup, never depend on state from another test file.
   2. DATA STRATEGY: Read existing seed data (discover by reading the seed file) for read operations. For write operations that mutate state (creating records, using one-time resources), create a fresh test user via the registration API to avoid coupling between journeys.
   3. THIRD-PARTY SERVICES: If a journey requires an external service (payment provider, email), check for test-mode keys in .env. If available, use test mode. If not, test the flow up to the external call and verify via API side-effects. Never skip the journey entirely.
   4. IDEMPOTENCY: Tests must survive re-runs. Use unique identifiers (timestamps, random suffixes), clean up in afterAll, or design assertions that tolerate pre-existing data.
-  5. FIX-UNTIL-PASS: Run tests, fix failures (app code or test code), re-run only failed tests. Repeat until all pass or token budget is exhausted. If budget exhausted with remaining failures, document what failed and why.
-  6. COVERAGE: After writing all journeys, verify every testable spec acceptance criterion has at least one journey test step covering it. Add tests for gaps. Document non-testable ACs (email delivery, background jobs) as exempt.
+  5. LOCATORS: Prefer semantic locators in this order: getByRole > getByLabel > getByText > getByTestId. CSS selectors and XPath are last resort.
+  6. GRANULARITY: 2-5 assertions per test. One test = one user action and its observable consequences. Use Given/When/Then from the plan as the test's doc comment.
+
+  PHASE 2 — VALIDATION:
+  7. FIX-UNTIL-PASS: Run tests, fix failures (app code or test code), re-run only failed tests. Repeat until all pass or token budget is exhausted. If budget exhausted with remaining failures, document what failed and why.
+  8. COVERAGE CHECK: Verify every testable spec AC has at least one test covering it. Add tests for gaps. Document non-testable ACs (email delivery, background jobs) as exempt.
 {acceptance_test_extra_rules}
 Phase assignment — group changes into execution phases for milestone checkpoints:
 - Assign a phase integer (1..N, max 5) to each change
