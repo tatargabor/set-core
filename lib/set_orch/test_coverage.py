@@ -188,6 +188,10 @@ _JOURNEY_HEADER_RE = re.compile(
 )
 _CHECKBOX_RE = re.compile(r"^-\s*\[([ xX])\]\s*(.*)")
 _TEST_REF_RE = re.compile(r"^→\s*([^:]+\.(?:spec|test)\.\w+):\s*[\"'](.+?)[\"']")
+# Inline test ref: `-> file.spec.ts:test name` or `→ file.spec.ts:test name` inside backticks
+_INLINE_TEST_REF_RE = re.compile(
+    r"`\s*(?:->|→)\s*([^:]+\.(?:spec|test)\.\w+)\s*:\s*(.+?)\s*`"
+)
 _FILE_REF_RE = re.compile(r"\*\*File:\*\*\s*`([^`]+\.(?:spec|test)\.\w+)`")
 _CATEGORY_RE = re.compile(r"^(Happy|Negative|Boundary|Edge)\b", re.IGNORECASE)
 _RISK_INLINE_RE = re.compile(r"\b(HIGH|MEDIUM|LOW)\b", re.IGNORECASE)
@@ -315,12 +319,20 @@ def parse_test_plan(plan_path: Path) -> tuple[list[TestCase], list[str]]:
             category = cat_m.group(1).lower() if cat_m else "happy"
             slug = _slugify(text[:60])
 
+            # Check for inline test ref: `-> file.spec.ts:test name`
+            inline_file = current_file
+            inline_name = ""
+            itm = _INLINE_TEST_REF_RE.search(text)
+            if itm:
+                inline_file = itm.group(1).strip()
+                inline_name = itm.group(2).strip()
+
             current_case = {
                 "slug": slug,
                 "category": category,
                 "text": text,
-                "test_file": current_file,
-                "test_name": "",
+                "test_file": inline_file,
+                "test_name": inline_name,
             }
             continue
 
