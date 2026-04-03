@@ -1560,9 +1560,10 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
             from .profile_loader import load_profile
             profile = load_profile()
             # Get E2E output from the change's gate run
-            e2e_output = change.extras.get("e2e_output", "")
+            e2e_output = change.extras.get("integration_e2e_output", "")
             if not e2e_output:
-                # Try smoke output as fallback
+                e2e_output = change.extras.get("e2e_output", "")
+            if not e2e_output:
                 e2e_output = change.extras.get("smoke_output", "")
             if e2e_output:
                 test_results = profile.parse_test_results(e2e_output)
