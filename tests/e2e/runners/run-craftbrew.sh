@@ -1,23 +1,19 @@
 #!/usr/bin/env bash
 # CraftBrew E2E Test Runner
-# Clones the CraftBrew spec repo, initializes it as a set-project, and prepares
-# it for orchestration. The spec is a multi-file business specification (docs/)
-# with 17+ files. The orchestrator auto-triggers digest before planning, then agents
-# build from the structured digest.
+# Sets up a test project for set-core end-to-end testing.
+# The scaffold is a multi-file business specification (docs/) with 17+ files.
+# The orchestrator auto-triggers digest before planning, then agents build from
+# the structured digest.
 #
 # Usage:
 #   ./tests/e2e/runners/run-craftbrew.sh                              # Auto-increment: ~/.local/share/set-core/e2e-runs/craftbrew-run1, ...
-#   ./tests/e2e/runners/run-craftbrew.sh /path/to/dir                 # Clone to specified dir
+#   ./tests/e2e/runners/run-craftbrew.sh /path/to/dir                 # Use specified dir
 #   ./tests/e2e/runners/run-craftbrew.sh --project-dir ~/other-dir    # Override base dir
-#
-# The spec source repo: https://github.com/tatargabor/craftbrew
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCAFFOLD_DIR="$SCRIPT_DIR/../scaffolds/craftbrew"
-CRAFTBREW_REPO="https://github.com/tatargabor/craftbrew.git"
-CRAFTBREW_BRANCH="spec-only"
 E2E_RUNS_DIR="${HOME}/.local/share/set-core/e2e-runs"
 BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
 mkdir -p "$BASE_DIR"
@@ -87,6 +83,8 @@ preflight() {
     command -v pnpm &>/dev/null || die "pnpm not found in PATH"
     command -v git &>/dev/null || die "git not found in PATH"
 
+    [[ -d "$SCAFFOLD_DIR/docs" ]] || die "Scaffold docs not found: $SCAFFOLD_DIR/docs"
+
     if ! set-project list-types 2>/dev/null | grep -q "web"; then
         die "set-project-web plugin not installed (set-project list-types does not show 'web')"
     fi
@@ -146,14 +144,10 @@ check_existing() {
         info "To continue with orchestrator:"
         echo "  cd $TEST_DIR && set-orchestrate start --spec docs/"
         echo ""
-        info "To reset from a checkpoint:"
-        echo "  cd $TEST_DIR"
-        echo "  git worktree list  # remove any worktrees"
-        echo "  git checkout -b resume-<tag> <tag>"
-        echo "  set-project init --name $PROJECT_NAME --project-type web"
-        echo "  rm -f orchestration-state.json orchestration-plan.json"
-        echo "  rm -rf set/orchestration/digest/"
-        echo "  set-orchestrate start --spec docs/"
+        info "To force fresh start:"
+        echo "  rm -rf $TEST_DIR"
+        echo "  set-project remove $PROJECT_NAME 2>/dev/null || true"
+        echo "  $0"
         exit 0
     fi
 }
@@ -161,40 +155,24 @@ check_existing() {
 # ── Main initialization ──
 
 init_project() {
-    step "Clone CraftBrew spec repo"
-    git clone --branch "$CRAFTBREW_BRANCH" "$CRAFTBREW_REPO" "$TEST_DIR"
-    cd "$TEST_DIR"
+    step "Copy spec and design assets"
+    mkdir -p "$TEST_DIR/docs"
+    cp -r "$SCAFFOLD_DIR/docs/"* "$TEST_DIR/docs/"
 
-    # Remove origin remote to prevent merge pipeline from pulling upstream code
-    # (the upstream repo may have full implementation on main which contaminates merges)
-    git remote remove origin 2>/dev/null || true
-
-    local file_count
-    file_count=$(find "$TEST_DIR/docs" -name '*.md' | wc -l)
-    success "Cloned CraftBrew repo ($file_count spec files in docs/)"
-
-    step "Copy scaffold extras (design snapshot, figma-raw)"
-    # The scaffold-complex dir contains pre-fetched Figma assets that aren't in the
-    # GitHub repo. Copy them over so the design bridge works without live Figma fetch.
-    if [[ -d "$SCAFFOLD_DIR" ]]; then
-        # Copy design-snapshot.md if present
-        if [[ -f "$SCAFFOLD_DIR/docs/design-snapshot.md" ]]; then
-            cp "$SCAFFOLD_DIR/docs/design-snapshot.md" "$TEST_DIR/docs/"
-        fi
-        # Copy figma-raw directory if present
-        if [[ -d "$SCAFFOLD_DIR/docs/figma-raw" ]]; then
-            cp -r "$SCAFFOLD_DIR/docs/figma-raw" "$TEST_DIR/docs/"
-        fi
-        # Copy figma.md to project root if present
-        if [[ -f "$SCAFFOLD_DIR/figma.md" ]]; then
-            cp "$SCAFFOLD_DIR/figma.md" "$TEST_DIR/"
-        fi
-        success "Scaffold extras copied (design snapshot + figma-raw)"
-    else
-        warn "No scaffold-complex directory found at $SCAFFOLD_DIR — skipping design assets"
+    # Copy figma.md to project root if present
+    if [[ -f "$SCAFFOLD_DIR/figma.md" ]]; then
+        cp "$SCAFFOLD_DIR/figma.md" "$TEST_DIR/"
     fi
 
-    step "Tag spec baseline"
+    local file_count
+    file_count=$(find "$TEST_DIR/docs" -name '*.md' -o -name '*.make' | wc -l)
+    success "Spec + design assets copied ($file_count files in docs/)"
+
+    cd "$TEST_DIR"
+
+    step "Git init"
+    git init
+    git checkout -b main 2>/dev/null || true
 
     # .gitattributes — prevent lockfile and runtime file conflicts at git level.
     # merge=ours: on conflict, silently keep current branch version.
@@ -212,8 +190,10 @@ wt/**             merge=ours
 ATTRS
     git config merge.ours.driver true
 
+    git add -A
+    git commit -m "initial: craftbrew spec"
     git tag v0-spec
-    success "Tagged v0-spec (merge drivers configured)"
+    success "Git initialized, tagged v0-spec (merge drivers configured)"
 
     step "Clean stale memory"
     local mem_storage="${SHODH_STORAGE:-${HOME}/.local/share/set-core/memory}/${PROJECT_NAME}"
@@ -242,13 +222,13 @@ ATTRS
     # NOTE: Figma MCP registration removed — OAuth requires interactive auth
     # which blocks `claude -p` (pipe mode) used by the orchestrator.
     # Design data is available via static design-snapshot.md + figma-raw/ files
-    # copied from scaffold-complex/. The planner reads these directly.
+    # copied from scaffold. The planner reads these directly.
 
     step "Orchestration config"
     mkdir -p set/orchestration
-    # Read design_file from docs/design/design-system.md if it exists
+    # Read design_file from docs/design-system.md if it exists
     local design_file_url=""
-    local design_system="docs/design/design-system.md"
+    local design_system="docs/design-system.md"
     if [[ -f "$design_system" ]]; then
         # Extract first figma.com URL (Design or Make)
         design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' "$design_system" | head -1 || true)
@@ -276,20 +256,12 @@ YAML
     if [[ -n "$design_file_url" ]]; then
         echo "design_file: \"$design_file_url\"" >> set/orchestration/config.yaml
         success "Design file reference: $design_file_url"
-    else
-        # Check if Figma MCP is registered but no URL was extracted
-        if jq -e '.mcpServers.figma' .claude/settings.json &>/dev/null 2>&1; then
-            warn "Figma MCP is registered but no design_file URL found in $design_system"
-            warn "Add a Figma URL to docs/design/design-system.md for design token injection"
-            warn "Format: **Figma Make:** https://www.figma.com/make/XXXX/Name"
-        fi
     fi
     success "Created set/orchestration/config.yaml"
 
     git add -A
     git commit -m "chore: set-project init + orchestration config"
     git tag v1-ready
-    git branch -m spec-only main
     success "Tagged v1-ready"
 }
 
@@ -299,9 +271,8 @@ show_completion() {
     step "Ready!"
     echo ""
     info "Test project: $TEST_DIR"
-    info "Source repo: $CRAFTBREW_REPO"
     info "Git tags: $(cd "$TEST_DIR" && git tag | tr '\n' ' ')"
-    info "Spec files: $(find "$TEST_DIR/docs" -name '*.md' | wc -l)"
+    info "Spec files: $(find "$TEST_DIR/docs" -name '*.md' -o -name '*.make' | wc -l)"
     echo ""
     info "To start the E2E test (digest pipeline):"
     echo "  cd $TEST_DIR"
@@ -314,26 +285,16 @@ show_completion() {
     echo "  4. Dispatch agents with spec-context per worktree"
     echo "  5. Track requirement coverage through execution"
     echo ""
-    warn "IMPORTANT: Mid-run set-core fixes"
-    echo "  Symlinks are NOT enough — .claude/ files must be real copies."
-    echo "  After fixing a bug in set-core during a run:"
-    echo "    1. set-project init --name $PROJECT_NAME   # re-deploy to main worktree"
-    echo "    2. Sync to active agent worktrees:"
-    echo "       for wt in \$(git worktree list --porcelain | grep '^worktree ' | awk '{print \$2}'); do"
-    echo "         cp -r .claude/commands/ \"\$wt/.claude/commands/\""
-    echo "         cp -r .claude/skills/ \"\$wt/.claude/skills/\""
-    echo "         cp .claude/CLAUDE.md \"\$wt/.claude/CLAUDE.md\" 2>/dev/null || true"
-    echo "       done"
-    echo "  Running agents pick up the new files on their next iteration."
+    warn "Mid-run set-core fixes:"
+    echo "  1. set-project init --name $PROJECT_NAME   # re-deploy"
+    echo "  2. Sync to active worktrees:"
+    echo "     for wt in \$(git worktree list --porcelain | grep '^worktree ' | awk '{print \$2}'); do"
+    echo "       cp -r .claude/commands/ \"\$wt/.claude/commands/\""
+    echo "       cp -r .claude/skills/ \"\$wt/.claude/skills/\""
+    echo "       cp .claude/CLAUDE.md \"\$wt/.claude/CLAUDE.md\" 2>/dev/null || true"
+    echo "     done"
     echo ""
-    info "To check requirement coverage during/after run:"
-    echo "  cd $TEST_DIR && set-orchestrate coverage"
-    echo ""
-    info "After orchestration completes, generate the E2E report:"
-    echo "  cd $TEST_DIR"
-    echo "  set-e2e-report --project-dir $TEST_DIR"
-    echo ""
-    info "When done, cleanup:"
+    info "Cleanup:"
     echo "  rm -rf $TEST_DIR"
     echo "  rm -rf ~/.local/share/set-core/memory/$PROJECT_NAME"
     echo "  set-project remove $PROJECT_NAME"

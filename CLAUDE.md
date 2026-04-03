@@ -71,6 +71,8 @@ set-core (source)                     consumer project
 
 ## E2E Run Setup
 
+**Read `tests/e2e/README.md` first** — it documents scaffolds, fallback logic, and runner internals.
+
 **NEVER** initialize E2E runs manually. Always use `tests/e2e/runners/`:
 ```bash
 ./tests/e2e/runners/run-micro-web.sh     # scaffold + init + register
