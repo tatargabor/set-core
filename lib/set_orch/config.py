@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Migrated from: bin/set-orchestrate L39-70 (DEFAULT_* constants)
 
 DIRECTIVE_DEFAULTS: dict[str, Any] = {
-    "max_parallel": 3,
+    "max_parallel": 1,
     "merge_policy": "checkpoint",
     "checkpoint_every": 3,
     "test_command": "",

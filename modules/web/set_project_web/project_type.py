@@ -336,6 +336,20 @@ class WebProjectType(CoreProfile):
             return rules_file.read_text()
         return ""
 
+    def acceptance_test_methodology(self) -> str:
+        return """  FRAMEWORK-SPECIFIC (Playwright/Web):
+  7. SERIAL STEPS: Use test.describe.serial() with a shared Page. Create the page
+     in test.beforeAll via browser.newContext() + context.newPage(). Do NOT use the
+     default { page } fixture — it creates a fresh isolated page per test, losing
+     login state and cart contents between steps.
+  8. BROWSER CONTEXT: Each journey MUST start with a fresh browser context
+     (browser.newContext()) to ensure clean cookies/sessions. This prevents state
+     leaking between journey files.
+  9. FILE NAMING: Journey test files go in tests/e2e/journey-<name>.spec.ts.
+  10. RE-RUN COMMAND: To re-run only failed tests use: npx playwright test --grep "<test name>"
+  11. PLAYWRIGHT CONFIG: Tests run against real app via Playwright webServer config.
+      Do not start the dev server manually."""
+
     def security_rules_paths(self, project_path: str) -> List[Path]:
         rules_dir = Path(project_path) / ".claude" / "rules"
         paths = []

@@ -16,19 +16,27 @@ core:
   - rules/web-frontend.md
   - rules/worktree-setup.md
   - rules/i18n-conventions.md
-  - vitest.config.ts
-  - playwright.config.ts
-  - tsconfig.json
+  - path: vitest.config.ts
+    protected: true
+  - path: playwright.config.ts
+    protected: true
+  - path: tsconfig.json
+    protected: true
   - postcss.config.mjs
-  - next.config.js
+  - path: next.config.js
+    protected: true
   - components.json
   - reflection.md
-  - src/app/globals.css
-  - src/lib/utils.ts
+  - path: src/app/globals.css
+    protected: true
+  - path: src/lib/utils.ts
+    protected: true
   - src/lib/prisma.ts
-  - .env.example
+  - path: .env.example
+    protected: true
   - tests/e2e/global-setup.ts
-  - set/orchestration/config.yaml
+  - path: set/orchestration/config.yaml
+    merge: true
   - framework-rules/web/api-design.md
   - framework-rules/web/auth-middleware.md
   - framework-rules/web/db-type-safety.md

@@ -211,6 +211,15 @@ class ProjectType(ABC):
     def merge_strategies(self) -> list:
         return []
 
+    def acceptance_test_methodology(self) -> str:
+        """Return framework-specific methodology rules for acceptance journey tests.
+
+        Override in subclass to provide test framework patterns (e.g., Playwright
+        serial tests for web, pytest patterns for Python). The returned string is
+        appended to the acceptance-tests change scope in the decompose prompt.
+        """
+        return ""
+
     def register_gates(self) -> list:
         """Return domain-specific GateDefinitions for this project type.
 

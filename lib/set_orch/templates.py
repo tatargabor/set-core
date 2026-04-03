@@ -368,6 +368,25 @@ Test-per-change requirement:
 - The quality gate BLOCKS changes without test files for feature/infrastructure types.
 - Explicitly list test files in scope (e.g., "Tests: Create orders.test.ts").
 
+Acceptance test change (REQUIRED):
+- Always include a FINAL change named "acceptance-tests" with type "test" and model "opus".
+- This change depends_on ALL other changes and is assigned to the LAST phase.
+- Purpose: write cross-feature journey E2E tests that validate end-to-end user workflows spanning multiple domains.
+- To define the scope, analyze the spec for:
+  1. Cross-domain data flows — where one domain's output is another's input (e.g., items created in one domain are consumed/processed in another)
+  2. Multi-actor interactions — different user roles interacting with the same entities (e.g., one role creates, another manages, a third consumes)
+  3. Sequential workflows spanning 3+ features — user paths that touch multiple feature areas in sequence
+- List each identified journey by name and the domains it crosses in the scope field.
+- The scope MUST also include these generic methodology rules for the implementing agent:
+
+  JOURNEY TEST METHODOLOGY:
+  1. ISOLATION: Each journey test file is self-contained. Set up preconditions via API calls in beforeAll/setup, never depend on state from another test file.
+  2. DATA STRATEGY: Read existing seed data (discover by reading the seed file) for read operations. For write operations that mutate state (creating records, using one-time resources), create a fresh test user via the registration API to avoid coupling between journeys.
+  3. THIRD-PARTY SERVICES: If a journey requires an external service (payment provider, email), check for test-mode keys in .env. If available, use test mode. If not, test the flow up to the external call and verify via API side-effects. Never skip the journey entirely.
+  4. IDEMPOTENCY: Tests must survive re-runs. Use unique identifiers (timestamps, random suffixes), clean up in afterAll, or design assertions that tolerate pre-existing data.
+  5. FIX-UNTIL-PASS: Run tests, fix failures (app code or test code), re-run only failed tests. Repeat until all pass or token budget is exhausted. If budget exhausted with remaining failures, document what failed and why.
+  6. COVERAGE: After writing all journeys, verify every testable spec acceptance criterion has at least one journey test step covering it. Add tests for gaps. Document non-testable ACs (email delivery, background jobs) as exempt.
+{acceptance_test_extra_rules}
 Phase assignment — group changes into execution phases for milestone checkpoints:
 - Assign a phase integer (1..N, max 5) to each change
 - Phase 1: infrastructure, schema, foundational changes
@@ -417,7 +436,15 @@ def _get_planning_rules(project_path: str = ".") -> str:
     from .profile_loader import load_profile
 
     profile = load_profile(project_path)
-    parts = [_PLANNING_RULES_CORE]
+
+    # Inject profile-specific acceptance test methodology (e.g., Playwright patterns)
+    extra_rules = ""
+    if hasattr(profile, "acceptance_test_methodology"):
+        at_rules = profile.acceptance_test_methodology()
+        if at_rules:
+            extra_rules = "\n" + at_rules
+
+    parts = [_PLANNING_RULES_CORE.replace("{acceptance_test_extra_rules}", extra_rules)]
 
     profile_rules = profile.planning_rules()
     if profile_rules:

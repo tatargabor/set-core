@@ -2,8 +2,10 @@ from __future__ import annotations
 
 """Deploy template files from a project type package into a target project."""
 
+import hashlib
 import shutil
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -13,6 +15,14 @@ except ImportError:
     yaml = None  # type: ignore[assignment]
 
 from .profile_types import ProjectType
+
+
+@dataclass
+class FileEntry:
+    """A template file entry with optional deployment flags."""
+    path: str
+    protected: bool = False
+    merge: bool = False
 
 
 # Map template-relative paths to target-relative paths
@@ -81,31 +91,48 @@ def get_available_modules(template_dir: Path) -> Dict[str, str]:
     return {mid: mdef.get("description", "") for mid, mdef in modules.items()}
 
 
+def _parse_file_entry(raw: Any) -> FileEntry:
+    """Parse a manifest entry into a FileEntry.
+
+    Supports plain strings (backward compat) and dict objects with flags.
+    """
+    if isinstance(raw, str):
+        return FileEntry(path=raw)
+    if isinstance(raw, dict):
+        return FileEntry(
+            path=raw.get("path", ""),
+            protected=bool(raw.get("protected", False)),
+            merge=bool(raw.get("merge", False)),
+        )
+    return FileEntry(path=str(raw))
+
+
 def _resolve_file_list(
     template_dir: Path,
     manifest: Optional[Dict[str, Any]],
     modules: Optional[List[str]],
-) -> Tuple[List[str], List[str]]:
-    """Resolve the list of template-relative files to deploy.
+) -> Tuple[List[FileEntry], List[str]]:
+    """Resolve the list of template files to deploy.
 
-    Returns (files_to_deploy, warnings).
+    Returns (file_entries, warnings).
+    Supports both plain string entries and dict entries with protected/merge flags.
     """
     warns: List[str] = []
 
     if manifest is None:
         # No manifest — deploy all files (backward compat), skip manifest itself
-        files = []
+        entries: List[FileEntry] = []
         for src in sorted(template_dir.rglob("*")):
             if src.is_dir():
                 continue
             rel = str(src.relative_to(template_dir))
             if rel == "manifest.yaml":
                 continue
-            files.append(rel)
-        return files, warns
+            entries.append(FileEntry(path=rel))
+        return entries, warns
 
-    # Build file list from core + selected modules
-    files: List[str] = list(manifest.get("core", []))
+    # Build entry list from core + selected modules
+    raw_entries: List[Any] = list(manifest.get("core", []))
 
     available_modules = manifest.get("modules", {})
     if modules:
@@ -115,20 +142,21 @@ def _resolve_file_list(
                 warns.append(f"Unknown module '{mid}'. Available: {names}")
                 continue
             mod_files = available_modules[mid].get("files", [])
-            files.extend(mod_files)
+            raw_entries.extend(mod_files)
 
-    # Deduplicate (module file might already be in core) and validate
+    # Parse, deduplicate, and validate
     seen: set = set()
-    validated = []
-    for rel in files:
-        if rel in seen:
+    validated: List[FileEntry] = []
+    for raw in raw_entries:
+        entry = _parse_file_entry(raw)
+        if not entry.path or entry.path in seen:
             continue
-        seen.add(rel)
-        src = template_dir / rel
+        seen.add(entry.path)
+        src = template_dir / entry.path
         if not src.exists():
-            warns.append(f"Manifest references missing file: {rel}")
+            warns.append(f"Manifest references missing file: {entry.path}")
         else:
-            validated.append(rel)
+            validated.append(entry)
 
     return validated, warns
 
@@ -171,6 +199,50 @@ def resolve_template(
     return template_id, template_dir
 
 
+def _file_matches_template(dst: Path, src: Path) -> bool:
+    """Check if an existing file has identical content to the template (SHA256)."""
+    try:
+        dst_hash = hashlib.sha256(dst.read_bytes()).hexdigest()
+        src_hash = hashlib.sha256(src.read_bytes()).hexdigest()
+        return dst_hash == src_hash
+    except OSError:
+        return False
+
+
+def _merge_yaml_additive(existing_path: Path, template_path: Path) -> bool:
+    """Merge template YAML into existing file additively.
+
+    Adds keys from template that are missing in existing. Never overwrites
+    existing keys. Returns True if file was modified.
+    """
+    if yaml is None:
+        warnings.warn("PyYAML not installed — cannot merge YAML")
+        return False
+    try:
+        with open(existing_path) as f:
+            existing = yaml.safe_load(f) or {}
+        with open(template_path) as f:
+            template = yaml.safe_load(f) or {}
+    except (yaml.YAMLError, OSError) as e:
+        warnings.warn(f"Failed to load YAML for merge: {e}")
+        return False
+
+    if not isinstance(existing, dict) or not isinstance(template, dict):
+        return False
+
+    added = False
+    for key, value in template.items():
+        if key not in existing:
+            existing[key] = value
+            added = True
+
+    if added:
+        with open(existing_path, "w") as f:
+            yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    return added
+
+
 def deploy_templates(
     project_type: ProjectType,
     template_id: Optional[str],
@@ -182,24 +254,48 @@ def deploy_templates(
     """Deploy template files from a project type into the target directory.
 
     Returns a list of status messages for each file (deployed/skipped/overwritten).
+
+    File deployment respects manifest flags:
+    - protected: skip if file exists and differs from template (project modified it)
+    - merge: additive YAML merge (add missing keys, never overwrite existing)
     """
     resolved_id, template_dir = resolve_template(project_type, template_id)
     manifest = _load_manifest(template_dir)
     messages: List[str] = []
 
-    file_list, warns = _resolve_file_list(template_dir, manifest, modules)
+    file_entries, warns = _resolve_file_list(template_dir, manifest, modules)
 
     for w in warns:
         messages.append(f"  Warning: {w}")
 
     # Deploy files
-    for rel in file_list:
-        src_path = template_dir / rel
-        dst = _target_path(rel, target_dir)
+    for entry in file_entries:
+        src_path = template_dir / entry.path
+        dst = _target_path(entry.path, target_dir)
 
         if dst.exists() and not force:
             messages.append(f"  Skipped (exists): {dst.relative_to(target_dir)}")
             continue
+
+        # Handle merge-mode files (additive YAML merge)
+        if entry.merge and dst.exists():
+            if dry_run:
+                messages.append(f"  Would merge: {dst.relative_to(target_dir)}")
+            else:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                modified = _merge_yaml_additive(dst, src_path)
+                verb = "Merged" if modified else "Merged (no new keys)"
+                messages.append(f"  {verb}: {dst.relative_to(target_dir)}")
+            continue
+
+        # Handle protected files (skip if project has modified them)
+        if entry.protected and force and dst.exists():
+            if not _file_matches_template(dst, src_path):
+                messages.append(
+                    f"  Skipped (protected): {dst.relative_to(target_dir)}"
+                )
+                continue
+            # Content matches template — safe to overwrite
 
         verb = "Would deploy" if dry_run else "Deployed"
         if dst.exists() and force:

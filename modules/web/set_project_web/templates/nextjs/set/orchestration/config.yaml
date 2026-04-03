@@ -10,7 +10,7 @@ default_model: opus
 # build_command: npx next build
 
 # Parallelism
-max_parallel: 2
+max_parallel: 1
 
 # Quality gates
 review_before_merge: true
