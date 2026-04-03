@@ -377,28 +377,42 @@ Acceptance test change (REQUIRED):
   1. Cross-domain data flows — where one domain's output is another's input (e.g., items created in one domain are consumed/processed in another)
   2. Multi-actor interactions — different user roles interacting with the same entities (e.g., one role creates, another manages, a third consumes)
   3. Sequential workflows spanning 3+ features — user paths that touch multiple feature areas in sequence
-- List each identified journey by name and the domains it crosses in the scope field.
+- List each identified journey by name, the domains it crosses, AND the REQ-* IDs it covers.
+- Example scope: "Journey: Full purchase flow (catalog→cart→checkout) covers REQ-CAT-001, REQ-CART-001, REQ-CHK-001"
 - The scope MUST also include these generic methodology rules for the implementing agent:
 
   JOURNEY TEST METHODOLOGY:
 
   PHASE 0 — TEST PLANNING (before writing any code):
-  a) Read ALL acceptance criteria from the spec.
-  b) Classify each AC by risk:
+  a) Read ALL REQ-* IDs from the orchestration state (your change's "requirements" array has them all).
+  b) Classify each REQ by risk:
      - HIGH (auth, payment, data mutation/CRUD) → 1 happy path + 2 negative/boundary tests
      - MEDIUM (forms, state, filtering) → 1 happy path + 1 negative test
      - LOW (display, navigation, static content) → 1 happy path only
-  c) For each test case, write a Given/When/Then scenario:
-     - Given = precondition (logged in, cart has items, on product page)
-     - When = user action (clicks button, submits form, navigates)
-     - Then = observable outcome (content visible, record created, state changed)
+  c) For each test case, write a Given/When/Then scenario.
   d) Assign each test case to either a journey-step (sequential, shares state) or standalone test (isolated).
   e) SCOPE GUARD: If a test doesn't cross a page boundary or involve server interaction, it is NOT an E2E test — skip it.
   f) ASSERTION DEPTH — for every test:
      - Verify CONTENT not just visibility (check text values, counts, amounts)
      - Verify SIDE-EFFECTS not just responses (record created? list updated? balance changed?)
      - Verify NEGATIVE PATHS not just happy paths (wrong input → correct error message)
-  g) Write the plan to tests/e2e/JOURNEY-TEST-PLAN.md before writing test code.
+  g) Write the plan to tests/e2e/JOURNEY-TEST-PLAN.md using THIS EXACT FORMAT:
+
+     ## REQ-XXX-NNN: Requirement title [HIGH|MEDIUM|LOW]
+     - [x] Happy: Given <precondition> → When <action> → Then <outcome>
+       → journey-<name>.spec.ts: "<describe> › <test name>"
+     - [x] Negative: Given <precondition> → When <wrong action> → Then <error>
+       → journey-<name>.spec.ts: "<describe> › <test name>"
+
+     ## REQ-YYY-NNN: Another requirement [NON-TESTABLE]
+     Exempt: <reason why it cannot be tested via E2E>
+
+     RULES FOR THE PLAN:
+     - Each ## header MUST start with the REQ-* ID from your requirements array
+     - Risk level in brackets: [HIGH], [MEDIUM], [LOW], or [NON-TESTABLE]
+     - Each test case is a checkbox line with Given/When/Then
+     - After each checkbox, a → line references the test file and test name
+     - The test name MUST match the actual test() name in the spec file exactly
 
   PHASE 1 — IMPLEMENTATION:
   1. ISOLATION: Each journey test file is self-contained. Set up preconditions via API calls in beforeAll/setup, never depend on state from another test file.
