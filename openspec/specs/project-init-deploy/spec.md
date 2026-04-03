@@ -12,20 +12,26 @@ When `set-project init` runs, it SHALL copy all files from the set-core repo's `
 - **THEN** all files in `.claude/commands/wt/` are replaced with the current versions from the set-core repo
 
 ### Requirement: Deploy rules to project
-When `set-project init` runs, it SHALL copy all files from the set-core repo's `.claude/rules/` directory to `<project>/.claude/rules/`, preserving subdirectory structure and creating directories as needed. Files SHALL be prefixed with `set-` in target projects (unless deploying to the set-core repo itself) to avoid conflicts with project-specific rules. Existing set-prefixed files SHALL be overwritten.
+When `set-project init` runs, it SHALL copy rule files from `templates/core/rules/` in the set-core repo to `<project>/.claude/rules/`, prefixing each filename with `set-`. The source directory is `templates/core/rules/`, NOT `.claude/rules/`. All `.md` files in `templates/core/rules/` SHALL be deployed, including `project-guide.md` (deployed as `set-project-guide.md`). Existing `set-`prefixed files SHALL be overwritten. Non-prefixed project-specific rules SHALL remain untouched.
 
-#### Scenario: First init deploys rules
+The set-core repo's own `.claude/rules/` directory SHALL NOT be used as a deploy source. It is reserved for set-core's own development rules.
+
+#### Scenario: First init deploys core rules from templates
 - **WHEN** `set-project init` is run in a project that has no `.claude/rules/` directory
-- **THEN** the directory is created and all rules files are copied with `set-` prefix from the set-core repo
+- **THEN** the directory is created and all `.md` files from `templates/core/rules/` are copied with `set-` prefix
 
 #### Scenario: Re-init updates rules without touching project rules
 - **WHEN** `set-project init` is run in a project that has `.claude/rules/` with both `set-*` and custom rules
-- **THEN** only `set-*` prefixed files SHALL be overwritten
+- **THEN** only `set-*` prefixed files matching files in `templates/core/rules/` SHALL be overwritten
 - **AND** non-prefixed project-specific rules SHALL remain untouched
 
-#### Scenario: Self-deploy skips prefix
+#### Scenario: Self-deploy skips rules
 - **WHEN** `set-project init` deploys to the set-core repo itself (source == destination)
 - **THEN** rules files SHALL NOT be copied (self-deploy detected via realpath comparison)
+
+#### Scenario: Only template core rules are deployed
+- **WHEN** `set-project init` runs and `.claude/rules/` contains files not present in `templates/core/rules/`
+- **THEN** those extra files (e.g., `modular-architecture.md`, `openspec-artifacts.md`) SHALL NOT be deployed to consumer projects
 
 ### Requirement: Deploy agents to project
 When `set-project init` runs, it SHALL copy all files from the set-core repo's `.claude/agents/` directory to `<project>/.claude/agents/`, creating the directory if it does not exist. Existing files with the same name SHALL be overwritten.
@@ -53,44 +59,52 @@ When `set-project init` runs, it SHALL call `set-deploy-hooks <project-path>` to
 After deploying hooks, commands, and skills, `set-project init` SHALL run `set-audit scan` and display a summary of project health.
 
 #### Scenario: Init with gaps
-- **WHEN** `set-project init` completes and audit finds ❌ or ⚠️ items
-- **THEN** output shows the summary line (e.g., `Health: ✅ 10  ⚠️ 3  ❌ 2`) and suggests running `/set:audit` to address gaps
+- **WHEN** `set-project init` completes and audit finds items with issues
+- **THEN** output shows the summary line and suggests running `/set:audit` to address gaps
 
 #### Scenario: Init with clean health
-- **WHEN** `set-project init` completes and audit finds all ✅
-- **THEN** output shows `Health: ✅ all checks passed`
+- **WHEN** `set-project init` completes and audit finds all passing
+- **THEN** output shows all checks passed
 
 #### Scenario: Audit not available
 - **WHEN** `set-audit` is not in PATH (e.g., partial install)
 - **THEN** `set-project init` skips the audit step without error
 
-### Requirement: Scaffold wt directory structure
-When `set-project init` runs, it SHALL create the `wt/` directory structure in the target project after deploying `.claude/` files.
+### Requirement: Scaffold set directory structure
+When `set-project init` runs, it SHALL create the `set/` directory structure in the target project after deploying `.claude/` files.
 
 #### Scenario: Scaffold on first init
-- **WHEN** `set-project init` runs in a project without a `wt/` directory
+- **WHEN** `set-project init` runs in a project without a `set/` directory
 - **THEN** the following directories are created:
   - `set/orchestration/`
-  - `set/orchestration/runs/`
-  - `set/orchestration/plans/`
   - `set/knowledge/`
   - `set/knowledge/patterns/`
   - `set/knowledge/lessons/`
-  - `wt/requirements/`
   - `set/plugins/`
   - `set/.work/`
 - **AND** `set/.work/` is added to `.gitignore` if not already present
 
 #### Scenario: Scaffold on re-init
-- **WHEN** `set-project init` runs in a project that already has a `wt/` directory
+- **WHEN** `set-project init` runs in a project that already has a `set/` directory
 - **THEN** only missing subdirectories are created
-- **AND** existing files in `wt/` are not modified
+- **AND** existing files in `set/` are not modified
 
-#### Scenario: Legacy file detection
-- **WHEN** `set-project init` runs and detects files in legacy locations
-- **THEN** it prints a migration suggestion listing each legacy file and its new location
-- **AND** it suggests running `set-project migrate`
+### Requirement: Template file deployment respects protection
+When `set-project init` deploys template files during re-init, files annotated as `protected` in the manifest SHALL be skipped if modified by the project. Files annotated as `merge` SHALL use additive YAML merge.
 
-#### Scenario: Deploy output includes wt directory status
-- **WHEN** `set-project init` completes
-- **THEN** the output includes a line confirming wt/ directory status (e.g., "Scaffolded wt/ directory structure")
+#### Scenario: Re-init preserves modified scaffold files
+- **WHEN** `set-project init` re-initializes a project
+- **AND** a file is marked `protected: true` in the manifest
+- **AND** the project's file differs from the template
+- **THEN** the file SHALL NOT be overwritten
+- **AND** the output SHALL show `Skipped (protected): <path>`
+
+#### Scenario: Re-init merges config additively
+- **WHEN** `set-project init` re-initializes a project
+- **AND** a config file is marked `merge: true` in the manifest
+- **THEN** new keys from the template SHALL be added to the existing config
+- **AND** existing keys SHALL NOT be modified
+
+#### Scenario: First init deploys all files normally
+- **WHEN** `set-project init` runs on a fresh project with no existing files
+- **THEN** all template files SHALL be deployed regardless of protection or merge flags
