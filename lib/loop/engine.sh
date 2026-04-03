@@ -85,7 +85,7 @@ cmd_run() {
 
     cleanup_on_exit() {
         # Guard against double-trap (EXIT + SIGTERM)
-        if [[ "$cleanup_done" == true ]]; then
+        if [[ "${cleanup_done:-false}" == true ]]; then
             return
         fi
         cleanup_done=true
@@ -589,10 +589,12 @@ except:
         # Memory injection: scan iter log for <system-reminder> blocks
         if [[ -s "$iter_log_file" ]]; then
             local reminder_chars=0
-            reminder_chars=$(grep -oP '<system-reminder>.*?</system-reminder>' "$iter_log_file" 2>/dev/null | wc -c || echo 0)
+            reminder_chars=$( { grep -oP '<system-reminder>.*?</system-reminder>' "$iter_log_file" 2>/dev/null || true; } | wc -c)
+            reminder_chars=${reminder_chars:-0}
             if [[ $reminder_chars -eq 0 ]]; then
                 # Try multiline extraction for multi-line reminders
-                reminder_chars=$(sed -n '/<system-reminder>/,/<\/system-reminder>/p' "$iter_log_file" 2>/dev/null | wc -c || echo 0)
+                reminder_chars=$( { sed -n '/<system-reminder>/,/<\/system-reminder>/p' "$iter_log_file" 2>/dev/null || true; } | wc -c)
+                reminder_chars=${reminder_chars:-0}
             fi
             ctx_memory=$(( reminder_chars / 4 ))
         fi
