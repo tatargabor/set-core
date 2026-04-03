@@ -2,54 +2,54 @@
 
 ## 1. DigestScenario Data Model
 
-- [ ] 1.1 Create `DigestScenario` dataclass in `lib/set_orch/digest.py` with fields: name, when, then, slug [REQ: digest-parses-scenarios-from-spec-files]
-- [ ] 1.2 Add `scenarios: list[DigestScenario]` field to the requirement dict output in `_extract_requirements()` [REQ: digest-parses-scenarios-from-spec-files]
-- [ ] 1.3 Implement scenario slug generation: kebab-case of name, deduplicate with `-2`/`-3` suffix [REQ: digest-parses-scenarios-from-spec-files]
+- [x] 1.1 Create `DigestScenario` dataclass in `lib/set_orch/test_coverage.py` with fields: name, when, then, slug [REQ: digest-parses-scenarios-from-spec-files]
+- [x] 1.2 Add `scenarios: list[DigestScenario]` — populated by parse_scenarios() from spec markdown, added to requirement dict at API level [REQ: digest-parses-scenarios-from-spec-files]
+- [x] 1.3 Implement scenario slug generation: kebab-case of name, deduplicate with `-2`/`-3` suffix [REQ: digest-parses-scenarios-from-spec-files]
 
 ## 2. Scenario Parsing in Digest
 
-- [ ] 2.1 Add `_parse_scenarios(section_text: str) -> list[DigestScenario]` function that finds `#### Scenario:` blocks and extracts WHEN/THEN lines [REQ: digest-parses-scenarios-from-spec-files]
-- [ ] 2.2 Handle multi-line WHEN/THEN with AND continuations — join with "; " [REQ: digest-parses-scenarios-from-spec-files]
-- [ ] 2.3 Handle specs without WHEN/THEN format — return empty scenarios list, keep acceptance_criteria as-is [REQ: digest-parses-scenarios-from-spec-files]
-- [ ] 2.4 Call `_parse_scenarios()` during requirement extraction, populate scenarios field [REQ: digest-parses-scenarios-from-spec-files]
+- [x] 2.1 Add `parse_scenarios(section_text: str) -> list[DigestScenario]` function that finds `#### Scenario:` blocks and extracts WHEN/THEN lines [REQ: digest-parses-scenarios-from-spec-files]
+- [x] 2.2 Handle multi-line WHEN/THEN with AND continuations — join with "; " [REQ: digest-parses-scenarios-from-spec-files]
+- [x] 2.3 Handle specs without WHEN/THEN format — return empty scenarios list, keep acceptance_criteria as-is [REQ: digest-parses-scenarios-from-spec-files]
+- [x] 2.4 Call `parse_scenarios()` during digest API response, populate scenarios field per requirement from spec source files [REQ: digest-parses-scenarios-from-spec-files]
 
 ## 3. Digest API Extension
 
-- [ ] 3.1 Update `get_digest()` in `lib/set_orch/api/orchestration.py` to include scenarios in requirement response [REQ: digest-api-includes-scenarios]
-- [ ] 3.2 Update TypeScript `DigestReq` interface in `web/src/lib/api.ts` with `scenarios?: DigestScenario[]` type [REQ: digest-api-includes-scenarios]
+- [x] 3.1 Update `get_digest()` in `lib/set_orch/api/orchestration.py` to include scenarios in requirement response [REQ: digest-api-includes-scenarios]
+- [x] 3.2 Update TypeScript `DigestReq` interface in `web/src/lib/api.ts` with `scenarios?: DigestScenario[]` type [REQ: digest-api-includes-scenarios]
 
 ## 4. TestCoverage Data Model
 
-- [ ] 4.1 Create `TestCase` and `TestCoverage` dataclasses in `lib/set_orch/state.py` (or new `lib/set_orch/test_coverage.py`) [REQ: store-test-coverage-in-state]
-- [ ] 4.2 Add serialization/deserialization for TestCoverage to/from dict (for state extras JSON storage) [REQ: store-test-coverage-in-state]
+- [x] 4.1 Create `TestCase` and `TestCoverage` dataclasses in `lib/set_orch/test_coverage.py` [REQ: store-test-coverage-in-state]
+- [x] 4.2 Add serialization/deserialization for TestCoverage to/from dict (for state extras JSON storage) [REQ: store-test-coverage-in-state]
 
 ## 5. JOURNEY-TEST-PLAN.md Parser
 
-- [ ] 5.1 Create `parse_test_plan(plan_path: Path) -> tuple[list[TestCase], list[str]]` function (returns test cases + non-testable REQ IDs) [REQ: parse-journey-test-plan-into-test-cases]
-- [ ] 5.2 Parse `## REQ-XXX: Title [RISK]` headers — extract req_id and risk level [REQ: parse-journey-test-plan-into-test-cases]
-- [ ] 5.3 Parse `- [x]`/`- [ ]` checkbox lines — extract category (Happy/Negative/Boundary) and Given/When/Then text [REQ: parse-journey-test-plan-into-test-cases]
-- [ ] 5.4 Parse `→ file.spec.ts: "test name"` reference lines — extract test_file and test_name [REQ: parse-journey-test-plan-into-test-cases]
-- [ ] 5.5 Parse `[NON-TESTABLE]` headers — add to non_testable list [REQ: parse-journey-test-plan-into-test-cases]
-- [ ] 5.6 Handle missing/malformed plan file — return empty result + warning [REQ: parse-journey-test-plan-into-test-cases]
+- [x] 5.1 Create `parse_test_plan(plan_path: Path) -> tuple[list[TestCase], list[str]]` function (returns test cases + non-testable REQ IDs) [REQ: parse-journey-test-plan-into-test-cases]
+- [x] 5.2 Parse `## REQ-XXX: Title [RISK]` headers — extract req_id and risk level [REQ: parse-journey-test-plan-into-test-cases]
+- [x] 5.3 Parse `- [x]`/`- [ ]` checkbox lines — extract category (Happy/Negative/Boundary) and Given/When/Then text [REQ: parse-journey-test-plan-into-test-cases]
+- [x] 5.4 Parse `→ file.spec.ts: "test name"` reference lines — extract test_file and test_name [REQ: parse-journey-test-plan-into-test-cases]
+- [x] 5.5 Parse `[NON-TESTABLE]` headers — add to non_testable list [REQ: parse-journey-test-plan-into-test-cases]
+- [x] 5.6 Handle missing/malformed plan file — return empty result + warning [REQ: parse-journey-test-plan-into-test-cases]
 
 ## 6. Test Result Parser — Core ABC + Web Module Implementation
 
-- [ ] 6.1 Add `parse_test_results(self, stdout: str) -> dict[tuple[str,str], str]` method to `ProjectType` ABC in `lib/set_orch/profile_types.py` (default: return empty dict) [REQ: parse-e2e-test-results-via-profile]
-- [ ] 6.2 Implement `parse_test_results()` in `WebProjectType` (`modules/web/`) — Playwright stdout regex: `[✓✗×]\\s+\\d+\\s+([^:]+):\\d+:\\d+\\s+›\\s+(.+?)\\s+\\(` [REQ: parse-e2e-test-results-via-profile]
-- [ ] 6.3 In coverage builder: call `profile.parse_test_results(stdout)` then match to plan entries by test_file + test_name (case-insensitive, whitespace-tolerant) [REQ: parse-e2e-test-results-via-profile]
+- [x] 6.1 Add `parse_test_results(self, stdout: str) -> dict[tuple[str,str], str]` method to `ProjectType` ABC in `lib/set_orch/profile_types.py` (default: return empty dict) [REQ: parse-e2e-test-results-via-profile]
+- [x] 6.2 Implement `parse_test_results()` in `WebProjectType` (`modules/web/`) — Playwright stdout regex: `[✓✗×]\\s+\\d+\\s+([^:]+):\\d+:\\d+\\s+›\\s+(.+?)\\s+\\(` [REQ: parse-e2e-test-results-via-profile]
+- [x] 6.3 In coverage builder: call `profile.parse_test_results(stdout)` then match to plan entries by test_file + test_name (case-insensitive, whitespace-tolerant) [REQ: parse-e2e-test-results-via-profile]
 
 ## 7. Coverage Calculation and State Storage
 
-- [ ] 7.1 Create `build_test_coverage(plan_cases, non_testable, pw_results, digest_reqs) -> TestCoverage` that cross-references everything [REQ: store-test-coverage-in-state]
-- [ ] 7.2 Compute covered_reqs, uncovered_reqs, non_testable_reqs, coverage_pct [REQ: coverage-gap-detection]
-- [ ] 7.3 Handle partial coverage: requirement with some scenarios tested counts as covered [REQ: coverage-gap-detection]
+- [x] 7.1 Create `build_test_coverage(plan_cases, non_testable, pw_results, digest_reqs) -> TestCoverage` that cross-references everything [REQ: store-test-coverage-in-state]
+- [x] 7.2 Compute covered_reqs, uncovered_reqs, non_testable_reqs, coverage_pct [REQ: coverage-gap-detection]
+- [x] 7.3 Handle partial coverage: requirement with some scenarios tested counts as covered [REQ: coverage-gap-detection]
 
 ## 8. Post-Merge Integration
 
-- [ ] 8.1 In `merger.py:merge_change()`, after acceptance-tests change merges, call test coverage parsing pipeline [REQ: store-test-coverage-in-state]
-- [ ] 8.2 Read JOURNEY-TEST-PLAN.md from project root (on main after merge) [REQ: parse-journey-test-plan-into-test-cases]
-- [ ] 8.3 Read E2E gate stdout from change state, call `profile.parse_test_results(stdout)` for framework-specific parsing [REQ: parse-e2e-test-results-via-profile]
-- [ ] 8.4 Store TestCoverage in `state.extras["test_coverage"]` via locked_state [REQ: store-test-coverage-in-state]
+- [x] 8.1 In `merger.py:merge_change()`, after acceptance-tests change merges, call test coverage parsing pipeline [REQ: store-test-coverage-in-state]
+- [x] 8.2 Read JOURNEY-TEST-PLAN.md from project root (on main after merge) [REQ: parse-journey-test-plan-into-test-cases]
+- [x] 8.3 Read E2E gate stdout from change state, call `profile.parse_test_results(stdout)` for framework-specific parsing [REQ: parse-e2e-test-results-via-profile]
+- [x] 8.4 Store TestCoverage in `state.extras["test_coverage"]` via locked_state [REQ: store-test-coverage-in-state]
 
 ## 9. Report.html Test Coverage Section
 
@@ -91,11 +91,11 @@
 
 ## Acceptance Criteria (from spec scenarios)
 
-- [ ] AC-1: WHEN spec has `#### Scenario:` with WHEN/THEN THEN digest produces DigestScenario objects with name, when, then, slug [REQ: digest-parses-scenarios-from-spec-files, scenario: spec-with-when-then-scenarios]
-- [ ] AC-2: WHEN spec has no WHEN/THEN format THEN scenarios list is empty AND acceptance_criteria still works [REQ: digest-parses-scenarios-from-spec-files, scenario: spec-without-when-then-format]
-- [ ] AC-3: WHEN JOURNEY-TEST-PLAN.md has `## REQ-XXX: Title [HIGH]` THEN parser extracts req_id and risk [REQ: parse-journey-test-plan-into-test-cases, scenario: standard-plan-format]
+- [x] AC-1: WHEN spec has `#### Scenario:` with WHEN/THEN THEN digest produces DigestScenario objects with name, when, then, slug [REQ: digest-parses-scenarios-from-spec-files, scenario: spec-with-when-then-scenarios]
+- [x] AC-2: WHEN spec has no WHEN/THEN format THEN scenarios list is empty AND acceptance_criteria still works [REQ: digest-parses-scenarios-from-spec-files, scenario: spec-without-when-then-format]
+- [x] AC-3: WHEN JOURNEY-TEST-PLAN.md has `## REQ-XXX: Title [HIGH]` THEN parser extracts req_id and risk [REQ: parse-journey-test-plan-into-test-cases, scenario: standard-plan-format]
 - [ ] AC-4: WHEN profile.parse_test_results() called with Playwright stdout THEN returns {(file, name): result} mapping [REQ: parse-e2e-test-results-via-profile, scenario: profile-provides-test-result-parser]
-- [ ] AC-5: WHEN plan and parsed results are cross-referenced THEN TestCase.result is populated [REQ: parse-e2e-test-results-via-profile, scenario: match-results-to-plan-entries]
+- [x] AC-5: WHEN plan and parsed results are cross-referenced THEN TestCase.result is populated [REQ: parse-e2e-test-results-via-profile, scenario: match-results-to-plan-entries]
 - [ ] AC-6: WHEN acceptance-tests merges THEN test_coverage stored in state.extras [REQ: store-test-coverage-in-state, scenario: post-merge-trigger]
 - [ ] AC-7: WHEN AC panel loads THEN Level 1 shows domain rows with coverage fraction, all collapsed [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests, scenario: level-1-domain-rows]
 - [ ] AC-8: WHEN user expands a domain THEN Level 2 shows REQ rows with scenario/test counts, gaps first [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests, scenario: level-2-req-rows]

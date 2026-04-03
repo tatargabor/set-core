@@ -281,6 +281,36 @@ export function getScreenshots(project: string, name: string): Promise<{ smoke: 
 
 // --- Digest ---
 
+export interface DigestScenario {
+  name: string
+  when: string
+  then: string
+  slug: string
+}
+
+export interface TestCase {
+  scenario_slug: string
+  req_id: string
+  risk: string
+  test_file: string
+  test_name: string
+  category: string
+  result: string | null
+}
+
+export interface TestCoverage {
+  plan_file: string
+  test_cases: TestCase[]
+  covered_reqs: string[]
+  uncovered_reqs: string[]
+  non_testable_reqs: string[]
+  total_tests: number
+  passed: number
+  failed: number
+  coverage_pct: number
+  parsed_at: string
+}
+
 export interface DigestReq {
   id: string
   title: string
@@ -289,6 +319,7 @@ export interface DigestReq {
   domain: string
   brief: string
   acceptance_criteria?: string[]
+  scenarios?: DigestScenario[]
 }
 
 export interface DigestData {
@@ -313,6 +344,7 @@ export interface DigestData {
   domains?: Record<string, string>
   triage?: string
   data_definitions?: string
+  test_coverage?: TestCoverage
 }
 
 export function getDigest(project: string): Promise<DigestData> {

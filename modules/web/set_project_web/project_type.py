@@ -336,6 +336,28 @@ class WebProjectType(CoreProfile):
             return rules_file.read_text()
         return ""
 
+    def parse_test_results(self, stdout: str) -> dict[tuple[str, str], str]:
+        """Parse Playwright stdout into per-test pass/fail results."""
+        import re
+        results: dict[tuple[str, str], str] = {}
+        for line in stdout.split("\n"):
+            # Match: ✓  1 file.spec.ts:15:7 › Describe › test name (2.3s)
+            # Match: ✗  2 file.spec.ts:25:7 › Describe › test name (5.1s)
+            m = re.match(
+                r"\s*[✓✔]\s+\d+\s+([^:]+):\d+:\d+\s+›\s+(.+?)\s+\(\d",
+                line,
+            )
+            if m:
+                results[(m.group(1).strip(), m.group(2).strip())] = "pass"
+                continue
+            m = re.match(
+                r"\s*[✗✘×]\s+\d+\s+([^:]+):\d+:\d+\s+›\s+(.+?)\s+\(\d",
+                line,
+            )
+            if m:
+                results[(m.group(1).strip(), m.group(2).strip())] = "fail"
+        return results
+
     def acceptance_test_methodology(self) -> str:
         return """  FRAMEWORK-SPECIFIC (Playwright/Web):
   7. SERIAL STEPS: Use test.describe.serial() with a shared Page. Create the page

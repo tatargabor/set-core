@@ -552,6 +552,10 @@ def merge_change(
         except Exception:
             logger.debug("Post-merge profile hooks failed (non-critical)", exc_info=True)
 
+        # Parse test coverage if this is the acceptance-tests change
+        _heartbeat("test_coverage")
+        _parse_test_coverage_if_applicable(change_name, state_file)
+
         # Regenerate START.md on main from current project state
         try:
             from .dispatcher import _write_startup_file
@@ -1517,6 +1521,97 @@ def _run_plugin_post_merge_directives(change_name: str) -> None:
         logger.debug("Plugin post-merge directives failed (non-critical)", exc_info=True)
 
 
+
+
+def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> None:
+    """Parse test coverage data after acceptance-tests change merges."""
+    try:
+        state = load_state(state_file)
+        # Find the change
+        change = next((c for c in state.changes if c.name == change_name), None)
+        if not change:
+            return
+
+        # Only run for acceptance-tests type changes
+        is_acceptance = (
+            change_name == "acceptance-tests"
+            or change.change_type == "test"
+        )
+        if not is_acceptance:
+            return
+
+        logger.info("Parsing test coverage for acceptance-tests change: %s", change_name)
+
+        from pathlib import Path
+        from .test_coverage import parse_test_plan, build_test_coverage
+
+        # Read test plan
+        plan_path = Path("tests/e2e/JOURNEY-TEST-PLAN.md")
+        test_cases, non_testable = parse_test_plan(plan_path)
+
+        if not test_cases and not non_testable:
+            logger.info("No test plan found or empty — skipping coverage parsing")
+            return
+
+        # Parse test results via profile
+        test_results: dict[tuple[str, str], str] = {}
+        try:
+            from .profile_loader import load_profile
+            profile = load_profile()
+            # Get E2E output from the change's gate run
+            e2e_output = change.extras.get("e2e_output", "")
+            if not e2e_output:
+                # Try smoke output as fallback
+                e2e_output = change.extras.get("smoke_output", "")
+            if e2e_output:
+                test_results = profile.parse_test_results(e2e_output)
+        except Exception:
+            logger.debug("Test result parsing failed (non-critical)", exc_info=True)
+
+        # Get all digest REQ IDs
+        digest_req_ids: list[str] = []
+        try:
+            digest_dir = Path("set/orchestration/digest")
+            req_file = digest_dir / "requirements.json"
+            if req_file.is_file():
+                import json
+                with open(req_file) as f:
+                    req_data = json.load(f)
+                if isinstance(req_data, list):
+                    for r in req_data:
+                        if isinstance(r, dict):
+                            if "requirements" in r:
+                                digest_req_ids.extend(
+                                    rr.get("id", "") for rr in r["requirements"] if isinstance(rr, dict)
+                                )
+                            elif "id" in r:
+                                digest_req_ids.append(r["id"])
+        except Exception:
+            logger.debug("Failed to read digest requirements", exc_info=True)
+
+        # Build coverage
+        coverage = build_test_coverage(
+            test_cases=test_cases,
+            non_testable=non_testable,
+            test_results=test_results,
+            digest_req_ids=digest_req_ids,
+            plan_file=str(plan_path),
+        )
+
+        # Store in state
+        with locked_state(state_file) as st:
+            st.extras["test_coverage"] = coverage.to_dict()
+
+        logger.info(
+            "Test coverage parsed: %d tests, %d/%d reqs covered (%.1f%%), %d gaps",
+            coverage.total_tests,
+            len(coverage.covered_reqs),
+            len(coverage.covered_reqs) + len(coverage.uncovered_reqs),
+            coverage.coverage_pct,
+            len(coverage.uncovered_reqs),
+        )
+    except Exception:
+        logger.debug("Test coverage parsing failed (non-critical)", exc_info=True)
 
 
 def _handle_merge_conflict(

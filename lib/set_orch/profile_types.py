@@ -211,6 +211,17 @@ class ProjectType(ABC):
     def merge_strategies(self) -> list:
         return []
 
+    def parse_test_results(self, stdout: str) -> dict[tuple[str, str], str]:
+        """Parse E2E test output into per-test pass/fail results.
+
+        Override in subclass to parse framework-specific test output
+        (e.g., Playwright for web, pytest for Python).
+
+        Returns {(test_file, test_name): "pass"|"fail"}.
+        Default returns empty dict (binary pass/fail only).
+        """
+        return {}
+
     def acceptance_test_methodology(self) -> str:
         """Return framework-specific methodology rules for acceptance journey tests.
 
