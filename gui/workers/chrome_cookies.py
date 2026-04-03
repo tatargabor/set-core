@@ -163,8 +163,17 @@ def _extract_session_cookie(profile_dir: Path, password: str | None = None) -> s
         return None
 
 
-def _fetch_org_name(session_key: str) -> str | None:
-    """Fetch the Claude organization name using a session key."""
+def _validate_session(session_key: str) -> tuple[str, str | None]:
+    """Validate a Claude session key and fetch the organization name.
+
+    Returns:
+        ("valid", org_name) — session is active, org name resolved
+        ("expired", None) — definitive auth failure (401/403 or invalid response)
+        ("error", None) — network issue, can't determine status
+    """
+    got_auth_error = False
+
+    # Try curl-cffi first (Chrome TLS fingerprint, bypasses Cloudflare)
     try:
         from curl_cffi import requests as cffi_requests
         r = cffi_requests.get(
@@ -173,28 +182,63 @@ def _fetch_org_name(session_key: str) -> str | None:
             impersonate="chrome",
             timeout=10,
         )
-        orgs = r.json()
-    except Exception:
-        try:
-            result = subprocess.run(
-                ["curl", "-s", "-m", "10",
-                 "-b", f"sessionKey={session_key}",
-                 "https://claude.ai/api/organizations"],
-                capture_output=True, text=True, timeout=15,
-            )
-            orgs = json.loads(result.stdout)
-        except Exception:
-            return None
+        if r.status_code in (401, 403):
+            logger.debug("Session expired (HTTP %d) via curl_cffi", r.status_code)
+            return ("expired", None)
+        if r.status_code == 200:
+            try:
+                orgs = r.json()
+            except Exception:
+                logger.debug("Session expired (invalid JSON response) via curl_cffi")
+                return ("expired", None)
+            return _parse_org_response(orgs)
+        # Other HTTP errors (5xx, etc.) — try fallback
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug("curl_cffi network error: %s", e)
 
+    # Fallback: try curl subprocess with HTTP status code extraction
+    try:
+        result = subprocess.run(
+            ["curl", "-s", "-m", "10", "-w", "\n%{http_code}",
+             "-b", f"sessionKey={session_key}",
+             "https://claude.ai/api/organizations"],
+            capture_output=True, text=True, timeout=15,
+        )
+        lines = result.stdout.rsplit("\n", 1)
+        body = lines[0] if len(lines) > 1 else result.stdout
+        status_str = lines[-1].strip() if len(lines) > 1 else ""
+        status_code = int(status_str) if status_str.isdigit() else 0
+
+        if status_code in (401, 403):
+            logger.debug("Session expired (HTTP %d) via curl", status_code)
+            return ("expired", None)
+        if status_code == 200 and body.strip():
+            try:
+                orgs = json.loads(body)
+            except json.JSONDecodeError:
+                logger.debug("Session expired (invalid JSON response) via curl")
+                return ("expired", None)
+            return _parse_org_response(orgs)
+    except Exception as e:
+        logger.debug("curl subprocess error: %s", e)
+
+    return ("error", None)
+
+
+def _parse_org_response(orgs) -> tuple[str, str | None]:
+    """Parse the organizations API response into a validation result."""
     if isinstance(orgs, list) and orgs:
         name = orgs[0].get("name", "")
-        # Strip common suffixes for shorter display names
         for suffix in ("'s Organization", "'s Individual Org"):
             if name.endswith(suffix):
                 name = name[: -len(suffix)]
                 break
-        return name or None
-    return None
+        return ("valid", name or None)
+    # Empty list or non-list response (e.g. HTML login page) = expired
+    logger.debug("Session expired (empty or invalid org list)")
+    return ("expired", None)
 
 
 
@@ -243,28 +287,41 @@ def scan_chrome_sessions(force_refresh: bool = False, existing_accounts: list[di
             logger.debug("No Claude session in profile: %s", profile_dir.name)
             continue
 
-        # Use cached org name if available, otherwise fetch from API
-        org_name = cache.get(session_key)
-        if org_name:
+        # Use cached org name if available, otherwise validate via API
+        cached_org = cache.get(session_key)
+        if cached_org:
             logger.debug("Using cached org name for profile: %s", profile_dir.name)
+            status, org_name = "valid", cached_org
         else:
-            org_name = _fetch_org_name(session_key)
+            status, org_name = _validate_session(session_key)
 
-        name = org_name if org_name else _resolve_profile_name(profile_dir)
+        # Expired sessions are excluded
+        if status == "expired":
+            logger.info("Excluding expired session from profile: %s", profile_dir.name)
+            continue
+
+        entry: dict = {
+            "sessionKey": session_key,
+            "source": "chrome-scan",
+        }
+
+        if status == "valid" and org_name:
+            entry["name"] = org_name
+            entry["org_name"] = org_name
+        else:
+            # Network error — include but mark as unverified
+            entry["name"] = _resolve_profile_name(profile_dir)
+            entry["org_name"] = None
+            entry["verified"] = False
 
         # Deduplicate by name (same account from multiple Chrome profiles)
-        if name in seen_names:
-            logger.debug("Duplicate account %s in profile: %s", name, profile_dir.name)
+        if entry["name"] in seen_names:
+            logger.debug("Duplicate account %s in profile: %s", entry["name"], profile_dir.name)
             continue
-        seen_names.add(name)
+        seen_names.add(entry["name"])
 
-        results.append({
-            "name": name,
-            "sessionKey": session_key,
-            "org_name": org_name,
-            "source": "chrome-scan",
-        })
-        logger.info("Found session: %s", name)
+        results.append(entry)
+        logger.info("Found session: %s (status=%s)", entry["name"], status)
 
     return results
 
@@ -272,10 +329,11 @@ def scan_chrome_sessions(force_refresh: bool = False, existing_accounts: list[di
 def merge_scan_results(scan_results: list[dict], existing_accounts: list[dict]) -> list[dict]:
     """Merge scan results with existing accounts.
 
-    Preserves manual accounts, updates/adds chrome-scan accounts.
+    Preserves only explicitly manual accounts. Legacy accounts (no source field)
+    and chrome-scan accounts are replaced by fresh scan results.
     """
-    # Keep all manual accounts
-    merged = [a for a in existing_accounts if a.get("source") != "chrome-scan"]
+    # Keep only explicitly manual accounts
+    merged = [a for a in existing_accounts if a.get("source") == "manual"]
     # Add scan results, but skip if sessionKey already exists in manual accounts
     manual_keys = {a.get("sessionKey") for a in merged}
     for sr in scan_results:

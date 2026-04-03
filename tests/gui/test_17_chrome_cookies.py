@@ -232,6 +232,128 @@ def test_get_chrome_data_dir_missing(tmp_path, monkeypatch):
     assert result is None
 
 
+# --- Session validation tests ---
+
+
+def _make_mock_cffi(mock_resp):
+    """Helper: create a mock curl_cffi.requests module with the given response."""
+    mock_requests = MagicMock()
+    mock_requests.get.return_value = mock_resp
+    return mock_requests
+
+
+def _reload_with_cffi(mock_requests):
+    """Helper: reload chrome_cookies with a mocked curl_cffi.requests."""
+    import importlib
+    import gui.workers.chrome_cookies as mod
+    with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
+        importlib.reload(mod)
+        # _validate_session imports curl_cffi inside the function, so we need to
+        # patch the import that happens at call time
+        with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
+            yield mod
+
+
+def test_validate_session_valid():
+    """Returns ("valid", org_name) on HTTP 200 with valid org list."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = [{"name": "Alice's Organization", "uuid": "123"}]
+
+    mock_requests = _make_mock_cffi(mock_resp)
+    import importlib
+    import gui.workers.chrome_cookies as mod
+    with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
+        importlib.reload(mod)
+        status, org_name = mod._validate_session("sk-test")
+
+    assert status == "valid"
+    assert org_name == "Alice"
+
+
+def test_validate_session_expired_401():
+    """Returns ("expired", None) on HTTP 401."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+
+    mock_requests = _make_mock_cffi(mock_resp)
+    import importlib
+    import gui.workers.chrome_cookies as mod
+    with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
+        importlib.reload(mod)
+        status, org_name = mod._validate_session("sk-expired")
+
+    assert status == "expired"
+    assert org_name is None
+
+
+def test_validate_session_expired_403():
+    """Returns ("expired", None) on HTTP 403."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+
+    mock_requests = _make_mock_cffi(mock_resp)
+    import importlib
+    import gui.workers.chrome_cookies as mod
+    with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
+        importlib.reload(mod)
+        status, org_name = mod._validate_session("sk-expired")
+
+    assert status == "expired"
+    assert org_name is None
+
+
+def test_validate_session_expired_empty_list():
+    """Returns ("expired", None) on HTTP 200 with empty org list."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = []
+
+    mock_requests = _make_mock_cffi(mock_resp)
+    import importlib
+    import gui.workers.chrome_cookies as mod
+    with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
+        importlib.reload(mod)
+        status, org_name = mod._validate_session("sk-empty")
+
+    assert status == "expired"
+    assert org_name is None
+
+
+def test_validate_session_expired_html_response():
+    """Returns ("expired", None) on HTTP 200 with non-JSON (HTML login page)."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.side_effect = ValueError("not JSON")
+
+    mock_requests = _make_mock_cffi(mock_resp)
+    import importlib
+    import gui.workers.chrome_cookies as mod
+    with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
+        importlib.reload(mod)
+        status, org_name = mod._validate_session("sk-html")
+
+    assert status == "expired"
+    assert org_name is None
+
+
+def test_validate_session_network_error():
+    """Returns ("error", None) when all API attempts fail with network errors."""
+    mock_requests = MagicMock()
+    mock_requests.get.side_effect = ConnectionError("network down")
+
+    import importlib
+    import gui.workers.chrome_cookies as mod
+    with patch.dict("sys.modules", {"curl_cffi": MagicMock(requests=mock_requests), "curl_cffi.requests": mock_requests}):
+        importlib.reload(mod)
+        # Also mock subprocess to fail
+        with patch.object(mod.subprocess, "run", side_effect=OSError("no curl")):
+            status, org_name = mod._validate_session("sk-net-err")
+
+    assert status == "error"
+    assert org_name is None
+
+
 # --- Full scan tests ---
 
 
@@ -295,6 +417,8 @@ def test_scan_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
     monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
     monkeypatch.setattr(mod, "_get_chrome_password", lambda: "mock-password")
+    # Both sessions are valid
+    monkeypatch.setattr(mod, "_validate_session", lambda sk: ("valid", "Alice" if sk == "sk-alice" else "Work"))
 
     mock_module = MagicMock()
     mock_module.chrome_cookies = mock_chrome_cookies
@@ -304,11 +428,12 @@ def test_scan_end_to_end(tmp_path, monkeypatch):
         monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
         monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
         monkeypatch.setattr(mod, "_get_chrome_password", lambda: "mock-password")
+        monkeypatch.setattr(mod, "_validate_session", lambda sk: ("valid", "Alice" if sk == "sk-alice" else "Work"))
 
         result = mod.scan_chrome_sessions(force_refresh=True)
 
     assert len(result) == 2
-    assert result[0]["name"] == "Alice (Default)"
+    assert result[0]["name"] == "Alice"
     assert result[0]["sessionKey"] == "sk-alice"
     assert result[0]["source"] == "chrome-scan"
     assert result[1]["name"] == "Work"
@@ -316,11 +441,95 @@ def test_scan_end_to_end(tmp_path, monkeypatch):
     assert result[1]["source"] == "chrome-scan"
 
 
+def test_scan_excludes_expired_sessions(tmp_path, monkeypatch):
+    """Scan excludes sessions where _validate_session returns 'expired'."""
+    from gui.workers import chrome_cookies as mod
+
+    p1 = tmp_path / "Default"
+    p1.mkdir()
+    (p1 / "Preferences").write_text(json.dumps({"profile": {"name": "Active"}}))
+    (p1 / "Cookies").touch()
+
+    p2 = tmp_path / "Profile 1"
+    p2.mkdir()
+    (p2 / "Preferences").write_text(json.dumps({"profile": {"name": "Expired"}}))
+    (p2 / "Cookies").touch()
+
+    def mock_chrome_cookies(url, cookie_file=None, password=None, **kwargs):
+        cookie_file = cookie_file or ""
+        if "Default" in cookie_file:
+            return {"sessionKey": "sk-active"}
+        elif "Profile 1" in cookie_file:
+            return {"sessionKey": "sk-expired"}
+        return {}
+
+    def mock_validate(sk):
+        if sk == "sk-active":
+            return ("valid", "Active Org")
+        return ("expired", None)
+
+    monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
+    monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
+    monkeypatch.setattr(mod, "_validate_session", mock_validate)
+
+    mock_module = MagicMock()
+    mock_module.chrome_cookies = mock_chrome_cookies
+    with patch.dict("sys.modules", {"pycookiecheat": mock_module}):
+        import importlib
+        importlib.reload(mod)
+        monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
+        monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
+        monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
+        monkeypatch.setattr(mod, "_validate_session", mock_validate)
+
+        result = mod.scan_chrome_sessions(force_refresh=True)
+
+    assert len(result) == 1
+    assert result[0]["name"] == "Active Org"
+    assert result[0]["sessionKey"] == "sk-active"
+
+
+def test_scan_includes_unverified_on_error(tmp_path, monkeypatch):
+    """Scan includes sessions with verified=False when validation returns 'error'."""
+    from gui.workers import chrome_cookies as mod
+
+    p1 = tmp_path / "Default"
+    p1.mkdir()
+    (p1 / "Preferences").write_text(json.dumps({"profile": {"name": "NetError"}}))
+    (p1 / "Cookies").touch()
+
+    def mock_chrome_cookies(url, cookie_file=None, password=None, **kwargs):
+        return {"sessionKey": "sk-neterr"}
+
+    monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
+    monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
+    monkeypatch.setattr(mod, "_validate_session", lambda sk: ("error", None))
+
+    mock_module = MagicMock()
+    mock_module.chrome_cookies = mock_chrome_cookies
+    with patch.dict("sys.modules", {"pycookiecheat": mock_module}):
+        import importlib
+        importlib.reload(mod)
+        monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
+        monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
+        monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
+        monkeypatch.setattr(mod, "_validate_session", lambda sk: ("error", None))
+
+        result = mod.scan_chrome_sessions(force_refresh=True)
+
+    assert len(result) == 1
+    assert result[0]["name"] == "NetError"
+    assert result[0]["verified"] is False
+    assert result[0]["org_name"] is None
+
+
 # --- Org name caching tests ---
 
 
 def test_scan_uses_cached_org_name(tmp_path, monkeypatch):
-    """Scan skips _fetch_org_name when cache has valid org_name for same sessionKey."""
+    """Scan skips _validate_session when cache has valid org_name for same sessionKey."""
     from gui.workers import chrome_cookies as mod
 
     p1 = tmp_path / "Default"
@@ -335,12 +544,11 @@ def test_scan_uses_cached_org_name(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
     monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
 
-    fetch_calls = []
-    original_fetch = mod._fetch_org_name
-    def tracking_fetch(sk):
-        fetch_calls.append(sk)
-        return original_fetch(sk)
-    monkeypatch.setattr(mod, "_fetch_org_name", tracking_fetch)
+    validate_calls = []
+    def tracking_validate(sk):
+        validate_calls.append(sk)
+        return ("valid", "Should Not Be Called")
+    monkeypatch.setattr(mod, "_validate_session", tracking_validate)
 
     existing = [{"name": "Cached Org", "sessionKey": "sk-cached", "org_name": "Cached Org", "source": "chrome-scan"}]
 
@@ -352,18 +560,18 @@ def test_scan_uses_cached_org_name(tmp_path, monkeypatch):
         monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
         monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
         monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
-        monkeypatch.setattr(mod, "_fetch_org_name", tracking_fetch)
+        monkeypatch.setattr(mod, "_validate_session", tracking_validate)
 
         result = mod.scan_chrome_sessions(force_refresh=False, existing_accounts=existing)
 
     assert len(result) == 1
     assert result[0]["name"] == "Cached Org"
     assert result[0]["org_name"] == "Cached Org"
-    assert fetch_calls == []  # _fetch_org_name was NOT called
+    assert validate_calls == []  # _validate_session was NOT called
 
 
 def test_scan_force_refresh_ignores_cache(tmp_path, monkeypatch):
-    """force_refresh=True always calls _fetch_org_name even with valid cache."""
+    """force_refresh=True always calls _validate_session even with valid cache."""
     from gui.workers import chrome_cookies as mod
 
     p1 = tmp_path / "Default"
@@ -374,10 +582,10 @@ def test_scan_force_refresh_ignores_cache(tmp_path, monkeypatch):
     def mock_chrome_cookies(url, cookie_file=None, password=None, **kwargs):
         return {"sessionKey": "sk-cached"}
 
-    fetch_calls = []
-    def mock_fetch(sk):
-        fetch_calls.append(sk)
-        return "Fresh Org"
+    validate_calls = []
+    def mock_validate(sk):
+        validate_calls.append(sk)
+        return ("valid", "Fresh Org")
 
     monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
     monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
@@ -393,13 +601,13 @@ def test_scan_force_refresh_ignores_cache(tmp_path, monkeypatch):
         monkeypatch.setattr(mod, "is_pycookiecheat_available", lambda: True)
         monkeypatch.setattr(mod, "_get_chrome_data_dir", lambda: tmp_path)
         monkeypatch.setattr(mod, "_get_chrome_password", lambda: None)
-        monkeypatch.setattr(mod, "_fetch_org_name", mock_fetch)
+        monkeypatch.setattr(mod, "_validate_session", mock_validate)
 
         result = mod.scan_chrome_sessions(force_refresh=True, existing_accounts=existing)
 
     assert len(result) == 1
     assert result[0]["name"] == "Fresh Org"
-    assert fetch_calls == ["sk-cached"]
+    assert validate_calls == ["sk-cached"]
 
 
 # --- Merge logic tests ---

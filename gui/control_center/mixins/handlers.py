@@ -337,7 +337,7 @@ class HandlersMixin:
             return
 
         existing = load_accounts()
-        self._chrome_scan_worker = ChromeScanWorker(force_refresh=False, existing_accounts=existing)
+        self._chrome_scan_worker = ChromeScanWorker(force_refresh=True, existing_accounts=existing)
         self._chrome_scan_worker.scan_finished.connect(self._on_auto_scan_finished)
         self._chrome_scan_worker.scan_error.connect(self._on_auto_scan_error)
         self._chrome_scan_worker.start()
