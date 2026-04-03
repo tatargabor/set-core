@@ -80,6 +80,47 @@ class CoreProfile(ProjectType):
             ),
         ]
 
+    def spec_sections(self) -> List["SpecSection"]:
+        from .profile_types import SpecSection
+        return [
+            SpecSection(
+                id="overview",
+                title="Project Overview",
+                description="Project name, purpose, tech stack, target audience",
+                required=True,
+                phase=1,
+                output_path="docs/spec.md",
+                prompt_hint="Tell me about this project in 2-3 sentences. What does it do and who is it for?",
+            ),
+            SpecSection(
+                id="requirements",
+                title="Requirements",
+                description="Main features/capabilities with REQ-IDs and WHEN/THEN scenarios",
+                required=True,
+                phase=5,
+                output_path="docs/features/{name}.md",
+                prompt_hint="What are the main features/capabilities of this project?",
+            ),
+            SpecSection(
+                id="orchestrator_directives",
+                title="Orchestrator Directives",
+                description="Parallel execution hints, review gates, time limits",
+                required=False,
+                phase=10,
+                output_path="docs/spec.md",
+                prompt_hint="How many changes should run in parallel? Should code be reviewed before merge?",
+            ),
+            SpecSection(
+                id="verification_checklist",
+                title="Verification Checklist",
+                description="Post-run verification items derived from requirements",
+                required=False,
+                phase=11,
+                output_path="docs/spec.md",
+                prompt_hint="",  # Auto-generated from requirements
+            ),
+        ]
+
     def get_verification_rules(self) -> List[VerificationRule]:
         return [
             VerificationRule(

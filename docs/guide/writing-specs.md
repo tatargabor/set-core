@@ -30,6 +30,72 @@ Result: generic table              Result: matches the Figma design
 
 ---
 
+## Profile-Driven Spec Generation
+
+The `/set:write-spec` skill automatically adapts to your project type. It loads spec sections from the project profile:
+
+| Project Type | Sections |
+|-------------|----------|
+| **Core** (any project) | Overview, Requirements, Orchestrator Directives, Verification Checklist |
+| **Web** (Next.js, etc.) | Core + Data Model, Seed Catalog, Pages & Routes, Auth & Roles, i18n, Design Tokens, E2E Test Strategy |
+
+Run `/set:write-spec` and it will guide you through each section with targeted questions.
+
+### Modular Output
+
+For web projects with 3+ features, specs are split into multiple files:
+
+```
+docs/
+├── spec.md              ← Overview, conventions, directives, verification checklist
+├── features/
+│   ├── auth.md          ← REQ-AUTH-01..N with scenarios
+│   ├── catalog.md       ← REQ-CAT-01..N with scenarios
+│   └── cart.md          ← REQ-CART-01..N with scenarios
+└── catalog/             ← Structured seed data
+    ├── products.md      ← Product names, prices, descriptions
+    └── users.md         ← Admin/test user credentials
+```
+
+Small projects (1-2 features) use a single `docs/spec.md`.
+
+### REQ-IDs and Scenarios (Required)
+
+Every requirement MUST have:
+1. A **REQ-ID** in format `REQ-<DOMAIN>-<NN>` (e.g., `REQ-AUTH-01`)
+2. At least one **WHEN/THEN scenario**
+
+```markdown
+### REQ-AUTH-01: User registration
+The system SHALL provide a registration form with name, email, password fields.
+
+#### Scenario: Successful registration
+- **WHEN** a user submits valid registration data with a unique email
+- **THEN** a new account is created and the user is redirected to their profile
+
+#### Scenario: Duplicate email
+- **WHEN** a user submits an email that already exists
+- **THEN** an error message is shown: "Email already in use"
+```
+
+The decomposer uses REQ-IDs to link requirements to changes, and scenarios become test cases.
+
+### Anti-Patterns to Avoid
+
+| Pattern | Problem | Fix |
+|---------|---------|-----|
+| Code blocks in requirements | Locks implementation, agents can't deviate | Describe behavior: "password SHALL be hashed" not `bcrypt.hash(...)` |
+| File paths in requirements | Breaks if structure changes | Describe the capability, not the file location |
+| No scenarios | Agents don't know what to test | Add WHEN/THEN for every requirement |
+| "Product 1", "Test Item" | Generic seed data → generic-looking app | Use realistic names: "Ethiopia Yirgacheffe", "Colombia Supremo" |
+| Mixing requirements + implementation | Decomposer can't separate scope | Requirements = WHAT; implementation details go in design.md |
+
+### Reference Example
+
+See `tests/e2e/scaffolds/craftbrew/docs/` for a complete modular spec that consistently produces 14/14 merged changes.
+
+---
+
 ## Spec Structure
 
 A good spec has these sections. You don't need all of them — but the more detail you provide, the better the result.

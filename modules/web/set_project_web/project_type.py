@@ -260,6 +260,76 @@ class WebProjectType(CoreProfile):
 
     # --- Profile methods (engine integration) ---
 
+    def spec_sections(self) -> list:
+        from set_orch.profile_types import SpecSection
+        core = super().spec_sections()
+        web_sections = [
+            SpecSection(
+                id="data_model",
+                title="Data Model",
+                description="Prisma entities with fields, relationships, and enums",
+                required=True,
+                phase=3,
+                output_path="docs/spec.md",
+                prompt_hint="What are the main entities? For each, list key fields and relationships.",
+            ),
+            SpecSection(
+                id="seed_catalog",
+                title="Seed Data Catalog",
+                description="Structured seed data with realistic names, prices, descriptions",
+                required=False,
+                phase=4,
+                output_path="docs/catalog/{name}.md",
+                prompt_hint="What initial data should the app have? Use realistic names, not 'Product 1'.",
+            ),
+            SpecSection(
+                id="pages_routes",
+                title="Pages & Routes",
+                description="Per-page layout with sections, components, and responsive behavior",
+                required=True,
+                phase=5,
+                output_path="docs/features/{name}.md",
+                prompt_hint="List your main pages. For each, describe the layout and key components.",
+            ),
+            SpecSection(
+                id="auth_roles",
+                title="Auth & Roles",
+                description="User roles, protected routes, registration/login flow",
+                required=False,
+                phase=6,
+                output_path="docs/features/auth.md",
+                prompt_hint="What roles exist? Which routes are protected? How do users register?",
+            ),
+            SpecSection(
+                id="i18n",
+                title="Internationalization",
+                description="Supported locales, default language, URL structure",
+                required=False,
+                phase=7,
+                output_path="docs/spec.md",
+                prompt_hint="Does this app need multiple languages? Which locales?",
+            ),
+            SpecSection(
+                id="design_tokens",
+                title="Design Tokens",
+                description="Colors, fonts, spacing from design system or brand guidelines",
+                required=False,
+                phase=8,
+                output_path="docs/spec.md",
+                prompt_hint="Do you have brand colors and fonts? Or use framework defaults?",
+            ),
+            SpecSection(
+                id="test_strategy",
+                title="E2E Test Strategy",
+                description="Critical user flows, test credentials, per-feature test file mapping",
+                required=False,
+                phase=9,
+                output_path="docs/spec.md",
+                prompt_hint="Which user flows are most critical to E2E test? What test credentials?",
+            ),
+        ]
+        return core + web_sections
+
     def planning_rules(self) -> str:
         rules_file = Path(__file__).parent / "planning_rules.txt"
         if rules_file.is_file():

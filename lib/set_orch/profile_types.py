@@ -52,6 +52,22 @@ class OrchestrationDirective:
     config: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class SpecSection:
+    """A section descriptor for the write-spec skill.
+
+    Tells write-spec what to ask the user and where to write the output.
+    Core sections are project-type agnostic; modules add domain-specific ones.
+    """
+    id: str              # e.g., "data_model", "auth_roles"
+    title: str           # e.g., "Data Model"
+    description: str     # What this section covers
+    required: bool       # Block assembly if missing
+    phase: int           # Order in the write-spec flow (lower = earlier)
+    output_path: str     # Where to write (e.g., "docs/features/{name}.md")
+    prompt_hint: str     # Suggested question for the user
+
+
 class ProjectType(ABC):
     """Base class for project type plugins.
 
@@ -100,6 +116,14 @@ class ProjectType(ABC):
         return self.get_orchestration_directives()
 
     # --- Profile methods (engine integration) ---
+
+    def spec_sections(self) -> List[SpecSection]:
+        """Return spec sections for the write-spec skill.
+
+        Core sections are project-type agnostic. Modules override to add
+        domain-specific sections (e.g., web adds data_model, seed_catalog).
+        """
+        return []
 
     def planning_rules(self) -> str:
         return ""

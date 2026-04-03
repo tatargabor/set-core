@@ -1,19 +1,23 @@
 ---
 name: write-spec
-description: Interactive spec-writing assistant — guides users through creating a detailed specification for any project type (web, API, CLI, pipeline). Detects project context, asks targeted questions, generates a structured spec.md ready for orchestration.
+description: Interactive spec-writing assistant — guides users through creating a detailed, profile-driven specification. Detects project type, loads relevant sections from the profile system, enforces REQ-IDs and WHEN/THEN scenarios, generates modular output ready for orchestration.
 ---
 
-# Write Spec — Interactive Specification Generator
+# Write Spec — Profile-Driven Specification Generator
 
 Guide the user through writing a detailed project specification. The spec is the most important input to the orchestration pipeline — spec quality directly determines output quality.
 
-**IMPORTANT**: This skill works for ANY project type — web apps, APIs, CLI tools, data pipelines, hybrid systems. Adapt your questions to the detected project type. Do NOT assume web.
+**Key principles:**
+- Requirements describe WHAT, not HOW (no code blocks, no file paths)
+- Every requirement gets a REQ-ID and at least one WHEN/THEN scenario
+- Modular output for projects with 3+ features (main + per-feature files)
+- Profile-driven: web projects get data model, seed, auth sections; others get core only
 
 ## Workflow
 
-### Phase 0: Project Context Detection
+### Phase 0: Project Context Detection + Profile Loading
 
-Before asking any questions, investigate the project:
+Before asking questions, detect the project type and load spec sections:
 
 ```bash
 # Detect project type and tech stack
@@ -21,177 +25,90 @@ ls package.json pyproject.toml Cargo.toml go.mod Makefile docker-compose.yml 2>/
 cat package.json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print('Name:', d.get('name','')); deps=list(d.get('dependencies',{}).keys()); print('Deps:', ', '.join(deps[:15]))" 2>/dev/null
 ls prisma/schema.prisma 2>/dev/null && echo "Prisma detected"
 ls docs/*.make docs/design.make docs/design-system.md 2>/dev/null && echo "Design files detected"
-ls set/orchestration/config.yaml 2>/dev/null && echo "Orchestration config exists"
 ```
 
-If the tech stack is **unfamiliar or complex**, use the Agent tool (Explore subagent) to investigate:
-- Read key source files to understand architecture
-- Find entry points, main modules, config files
-- Identify patterns (MVC, microservices, monolith, etc.)
-
-Report findings to the user and confirm before proceeding.
-
-### Phase 1: Project Overview
-
-Ask the user (use AskUserQuestion):
-
-> "Tell me about this project in 2-3 sentences. What does it do and who is it for?"
-
-Then combine with detected context to write:
-
-```markdown
-# [Project Name] — [One-line description]
-
-[User's description]
-Tech stack: [detected from deps]
-Target: [ask if not obvious]
-```
-
-### Phase 2: Tech Stack & Architecture
-
-Based on detection, confirm with user:
-
-**Web (Next.js, React, Vue):**
-> "I detected Next.js with Prisma and next-intl. Is this correct? Any other key tools?"
-
-**API (Express, FastAPI, Django):**
-> "I see a FastAPI project with SQLAlchemy. What's the main purpose of this API?"
-
-**CLI (argparse, clap, cobra):**
-> "This looks like a CLI tool. What commands does it have? What's the main workflow?"
-
-**Unknown:**
-> "I'm not sure about the project type. Let me investigate..."
-→ Spawn Explore agent to read key files
-→ Report findings, ask user to confirm
-
-### Phase 3: Data Model / State
-
-**If prisma/schema.prisma exists:**
+**Load profile sections:**
 ```bash
-cat prisma/schema.prisma
-```
-Summarize existing models and ask: "Is this the complete data model, or are there entities to add?"
-
-**If no schema detected:**
-Ask: "What are the main entities/resources in this project? For each, what are the key fields?"
-
-Provide example format:
-```
-Example: For an e-commerce app:
-- Product: name, slug, description, price, category, imageUrl, inStock
-- Order: userId, status (PENDING/CONFIRMED/SHIPPED), total, items[]
-- User: email, name, role (USER/ADMIN), passwordHash
+python3 -c "
+from set_orch.profile_loader import resolve_profile
+import json
+p = resolve_profile('.')
+sections = [{'id':s.id,'title':s.title,'description':s.description,'required':s.required,'phase':s.phase,'output_path':s.output_path,'prompt_hint':s.prompt_hint} for s in p.spec_sections()]
+print(json.dumps(sections, indent=2))
+" 2>/dev/null
 ```
 
-**For APIs:** "What resources does the API manage? What are the main endpoints?"
-**For CLIs:** "What data does the tool process? What's the input/output format?"
-**For pipelines:** "What data sources, transformations, and outputs are involved?"
+If profile loading fails (set-core not installed as package), use these **fallback core sections**:
+- overview (phase 1) — Project name, purpose, tech stack
+- requirements (phase 5) — Main features with REQ-IDs and scenarios
+- orchestrator_directives (phase 10) — Parallel hints, review gates
+- verification_checklist (phase 11) — Auto-generated from requirements
 
-### Phase 4: Screens / Endpoints / Commands
+If the tech stack is unfamiliar, use the Agent tool (Explore subagent) to investigate before proceeding.
 
-Adapt to project type:
+### Phase 1-N: Iterate Through Sections
 
-**Web — Page Layouts:**
-Ask: "List your main pages. For each, describe the layout."
+For each section from the profile (sorted by `phase`):
 
-Give example:
-```
-Example: "Homepage" →
-1. Hero Banner — full-width image with overlay text
-2. Featured Products — 4-column card grid
-3. Subscription CTA — two-column: image left, text right
-4. Footer — 3 columns: brand | links | contact
-```
+1. **Ask the user** using the section's `prompt_hint`
+2. **Adapt questions** to what you detected:
+   - If Prisma schema exists → show existing models for data_model section
+   - If design files exist → offer to run `set-design-sync` for design_tokens
+   - If i18n deps detected → pre-fill locale info
+3. **Collect the answer** and draft the section content
+4. **Enforce REQ-IDs** for requirement sections:
+   - Format: `REQ-<DOMAIN>-<NN>` (e.g., `REQ-AUTH-01`, `REQ-CART-03`)
+   - Domain slug comes from the feature name
+5. **Enforce scenarios** for every requirement:
+   ```markdown
+   #### Scenario: <description>
+   - **WHEN** <condition>
+   - **THEN** <expected outcome>
+   ```
+6. If user says "skip" for a non-required section → note as skipped, move on
+7. If user says "skip" for a required section → warn and ask to confirm
 
-**For each page the user mentions**, ask follow-up:
-- "How many columns on desktop?"
-- "What components are in each section?"
-- "What happens on mobile?"
+### Anti-Pattern Detection (before assembly)
 
-**API — Endpoints:**
-Ask: "List your main API endpoints with method, path, and what they do."
+Before writing files, review all content and warn about:
 
-**CLI — Commands:**
-Ask: "List your main commands with flags and what they do."
+| Pattern | Action |
+|---------|--------|
+| Fenced code block in requirement | WARN: "Requirements describe WHAT, not HOW. Move code to design notes." Ask to keep or remove. |
+| File paths (`src/`, `lib/`, `.ts`, `.tsx`) in requirement | WARN: "File paths lock implementation. Describe the behavior instead." |
+| Requirement without WHEN/THEN scenario | BLOCK: "Every requirement needs a scenario. Add one for: [name]" |
+| Placeholder seed data ("Product 1", "Test Item") | WARN: "Use realistic names. Generic placeholders produce generic apps." |
 
-### Phase 5: Component Behavior / Business Logic
+Code blocks and file paths are **warnings** (user can override). Missing scenarios are a **block** (must add before assembly).
 
-Ask about interactive elements:
-- "What happens when a user clicks [button/link]?"
-- "What does the error state look like for [form/action]?"
-- "Are there any complex interactions (drag-drop, wizards, real-time updates)?"
+### Assembly: Generate Output Files
 
-If user says "use defaults" → note it explicitly in the spec:
-```markdown
-### Cart Behavior
-Standard e-commerce cart with quantity controls. Use shadcn defaults for UI.
-```
-
-### Phase 6: Auth & Roles
-
-Detect auth deps, then ask:
-- "What roles exist? (e.g., USER, ADMIN, MODERATOR)"
-- "Which routes/endpoints are protected?"
-- "How do users register and log in?"
-
-### Phase 7: Seed / Fixture Data
-
-Ask: "What initial data should the app have?"
-
-**IMPORTANT**: Warn against placeholder names:
-> "Don't use 'Product 1', 'Test Item'. Use realistic names like 'Ethiopia Yirgacheffe', 'Colombia Supremo'. This makes the app look real from day one."
-
-Ask for:
-- Product/entity names (realistic, in the correct language)
-- Admin credentials
-- Test user credentials (for E2E tests)
-- Sample content (stories, descriptions)
-
-### Phase 8: Design Integration
-
-Check for design files:
-
+**Check for existing spec:**
 ```bash
-ls docs/*.make docs/design.make docs/design-system.md 2>/dev/null
+ls docs/spec.md 2>/dev/null && echo "EXISTING SPEC FOUND"
+```
+If `docs/spec.md` exists, ask: "A spec already exists. Overwrite, update in-place, or create alongside as docs/spec-v2.md?"
+
+**Modular output** (web projects with 3+ features):
+```
+docs/
+├── spec.md              ← Overview, tech stack, conventions, directives, verification checklist
+├── features/
+│   ├── auth.md          ← REQ-AUTH-01..N with scenarios
+│   ├── catalog.md       ← REQ-CAT-01..N with scenarios
+│   └── cart.md          ← REQ-CART-01..N with scenarios
+└── catalog/             ← Structured seed data (web with Prisma only)
+    ├── products.md      ← Product names, prices, descriptions
+    └── users.md         ← Admin/test user credentials
 ```
 
-**If .make file found:**
-> "I found a Figma Make export at docs/design.make. Want me to run `set-design-sync` to extract design tokens? This will add exact colors, fonts, and layouts to the spec."
-
-If user agrees, run:
-```bash
-set-design-sync --input docs/design.make --spec-dir docs/ --output docs/design-system.md
+**Single-file output** (small projects, 1-2 features):
+```
+docs/
+└── spec.md              ← Everything in one file
 ```
 
-**If design-system.md exists:**
-Read it and add `## Design Reference` section with key tokens.
-
-**If nothing found:**
-Ask: "Do you have a design?"
-1. "Yes, I'll export a .make file from Figma Make" → pause, wait for file
-2. "No, but I have brand colors and fonts" → ask for hex values, font names
-3. "No design, use framework defaults" → note explicitly
-
-### Phase 9: i18n
-
-Detect i18n deps (next-intl, react-i18next, etc.):
-- If found: "I see next-intl. What locales? Which is the default?"
-- If not found: "Does this app need multiple languages?"
-
-### Phase 10: Testing Strategy
-
-Adapt to project type:
-- **Web:** "Which user flows are most critical to E2E test?"
-- **API:** "Which endpoints need integration tests?"
-- **CLI:** "What input/output scenarios should be tested?"
-
-Always add test user credentials and critical flow list.
-
-### Phase 11: Assembly
-
-Combine all sections into a single `docs/spec.md`:
-
+**spec.md structure:**
 ```markdown
 # [Project Name] — [Description]
 
@@ -199,48 +116,92 @@ Combine all sections into a single `docs/spec.md`:
 [detected + confirmed]
 
 ## Data Model
-[entities with fields]
+[entities with fields — or link to feature files]
 
-## Pages / Endpoints / Commands
-[per-page/endpoint layout descriptions]
+## Business Conventions
+[currency, language, image strategy, etc.]
 
-## Component Behavior
-[interactive element details]
-
-## Auth & Roles
-[roles, protected routes]
-
-## Seed Data
-[realistic names, credentials]
-
-## Design Tokens
-[colors, fonts, spacing — or "use defaults"]
-
-## Internationalization
-[locales, framework — or "English only"]
-
-## E2E Tests
-[test user, critical flows]
-
-## Design Reference
-[auto-generated from design-system.md if available]
+## Orchestrator Directives
+```yaml
+max_parallel: 3
+review_before_merge: true
+e2e_mode: per_change
 ```
 
-Write to `docs/spec.md` (or user-specified path).
+## Verification Checklist
+[auto-generated from requirements — one checkbox per requirement]
 
-Show summary:
+## Feature Specs
+- [Auth & Accounts](features/auth.md)
+- [Product Catalog](features/catalog.md)
+- [Shopping Cart](features/cart.md)
 ```
-Spec generated: docs/spec.md
-  Sections: 10
-  Entities: 5
-  Pages: 8
-  Design: tokens from design-system.md
-  Locales: hu, en
+
+**Feature file structure** (`docs/features/<name>.md`):
+```markdown
+# <Feature Name>
+
+## Requirements
+
+### REQ-<DOMAIN>-01: <Requirement title>
+<Description of what the system should do>
+
+#### Scenario: <Happy path>
+- **WHEN** <condition>
+- **THEN** <expected outcome>
+
+#### Scenario: <Error case>
+- **WHEN** <error condition>
+- **THEN** <error handling>
+```
+
+### Verification Checklist Generation
+
+Auto-generate from requirements:
+```markdown
+## Verification Checklist
+
+### Auth
+- [ ] REQ-AUTH-01: Registration form with email, password, name
+- [ ] REQ-AUTH-02: Login with email/password, redirect to previous page
+- [ ] REQ-AUTH-03: Protected routes redirect unauthenticated users
+
+### Catalog
+- [ ] REQ-CAT-01: Product listing with grid layout
+- [ ] REQ-CAT-02: Product detail with variant selector
+```
+
+### Orchestrator Directives
+
+Ask the user (or use defaults):
+
+**Web projects:**
+```yaml
+max_parallel: 3          # How many changes run simultaneously
+review_before_merge: true # Code review gate before merge
+e2e_mode: per_change     # Each change owns its E2E tests
+```
+
+**Other projects:**
+```yaml
+max_parallel: 2
+review_before_merge: true
+```
+
+### Final Summary
+
+After writing files, show:
+```
+Spec generated:
+  Main: docs/spec.md
+  Features: docs/features/auth.md, docs/features/catalog.md, ...
+  Seed data: docs/catalog/products.md, docs/catalog/users.md
+  Requirements: 12 (all with REQ-IDs and scenarios)
+  Verification items: 12
 
 Next steps:
-  1. Review docs/spec.md — edit anything that needs refinement
-  2. If you have a Figma design: set-design-sync --input docs/design.make --spec-dir docs/
-  3. Start orchestration: sentinel start via dashboard or API
+  1. Review the spec files — edit anything that needs refinement
+  2. Start orchestration via dashboard or: /set:sentinel --spec docs/spec.md
 ```
 
 ## Guardrails
@@ -248,7 +209,10 @@ Next steps:
 - **ALWAYS ask when uncertain** — use AskUserQuestion, never guess critical details
 - **Adapt to project type** — don't force web sections on a CLI tool
 - **Use Explore agents** — for unknown stacks, investigate before asking
-- **Warn about vague specs** — if a section is too vague, tell the user and ask for detail
-- **Reference the guide** — read `docs/guide/writing-specs.md` if you need examples or conventions
+- **Warn about anti-patterns** — code blocks, file paths, missing scenarios
+- **REQ-IDs are mandatory** — every requirement gets one, format: `REQ-<DOMAIN>-<NN>`
+- **Scenarios are mandatory** — every requirement needs at least one WHEN/THEN
 - **Never skip data model** — this is the most common source of merge conflicts
 - **Realistic seed data** — always push for real names, not "Test 1"
+- **Profile fallback** — if profile loading fails, use core sections only
+- **Don't overwrite silently** — if docs/spec.md exists, ask first
