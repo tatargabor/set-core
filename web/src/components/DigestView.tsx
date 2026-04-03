@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
-import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type SessionInfo } from '../lib/api'
+import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type TestCoverage, type TestCase, type SessionInfo } from '../lib/api'
 import { TuiProgress, TuiStatus, TuiSection } from './tui'
 
 interface Props {
@@ -139,7 +139,7 @@ export default function DigestView({ project }: Props) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {tab === 'overview' && <OverviewPanel reqs={reqs} coverage={coverage} uncovered={uncovered} domains={domains} />}
-        {tab === 'ac' && <ACPanel reqs={reqs} coverage={coverage} />}
+        {tab === 'ac' && <ACPanel reqs={reqs} coverage={coverage} testCoverage={data.test_coverage} />}
         {tab === 'domains' && <DomainsPanel domains={domains} reqs={reqs} coverage={coverage} dependencies={dependencies} ambiguities={ambiguities} />}
         {tab === 'coverage' && <CoverageReportPanel project={project} />}
         {tab === 'deptree' && <DepTreePanel coverage={coverage} dependencies={dependencies} />}
@@ -266,14 +266,37 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
   )
 }
 
-function ACPanel({ reqs, coverage }: {
+const RISK_BADGE: Record<string, string> = {
+  HIGH: 'bg-red-900/60 text-red-300',
+  MEDIUM: 'bg-yellow-900/60 text-yellow-300',
+  LOW: 'bg-neutral-800 text-neutral-400',
+}
+
+function RiskBadge({ risk }: { risk: string }) {
+  const cls = RISK_BADGE[risk.toUpperCase()] ?? RISK_BADGE.LOW
+  const label = risk ? risk.charAt(0).toUpperCase() : ''
+  if (!label) return null
+  return <span className={`${cls} text-[10px] px-1 py-0.5 rounded font-bold`}>{label}</span>
+}
+
+function TestIcon({ result }: { result: string | null | undefined }) {
+  if (result === 'pass') return <span className="text-green-400">✓</span>
+  if (result === 'fail') return <span className="text-red-400">✗</span>
+  return <span className="text-yellow-500" title="No test">⚠</span>
+}
+
+function ACPanel({ reqs, coverage, testCoverage }: {
   reqs: DigestReq[]
   coverage: Record<string, { change: string; status: string }>
+  testCoverage?: TestCoverage | null
 }) {
   const [domainFilter, setDomainFilter] = useState<string | null>(null)
+  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set())
+  const [expandedReqs, setExpandedReqs] = useState<Set<string>>(new Set())
 
-  // Filter to reqs with AC
-  const reqsWithAC = useMemo(() => reqs.filter(r => (r.acceptance_criteria?.length ?? 0) > 0), [reqs])
+  const reqsWithAC = useMemo(() => reqs.filter(r =>
+    (r.acceptance_criteria?.length ?? 0) > 0 || (r.scenarios?.length ?? 0) > 0
+  ), [reqs])
 
   if (reqsWithAC.length === 0) {
     return <div className="p-4 text-sm text-neutral-500">No acceptance criteria extracted</div>
@@ -288,7 +311,20 @@ function ACPanel({ reqs, coverage }: {
     return sum + (r.acceptance_criteria?.length ?? 0)
   }, 0)
 
-  // Group by domain
+  // Index test cases by req_id + scenario_slug for quick lookup
+  const tcByReq = useMemo(() => {
+    if (!testCoverage?.test_cases) return {} as Record<string, TestCase[]>
+    const m: Record<string, TestCase[]> = {}
+    for (const tc of testCoverage.test_cases) {
+      if (!m[tc.req_id]) m[tc.req_id] = []
+      m[tc.req_id].push(tc)
+    }
+    return m
+  }, [testCoverage])
+
+  const nonTestableSet = useMemo(() => new Set(testCoverage?.non_testable_reqs ?? []), [testCoverage])
+  const uncoveredSet = useMemo(() => new Set(testCoverage?.uncovered_reqs ?? []), [testCoverage])
+
   const byDomain = useMemo(() => {
     const groups: Record<string, DigestReq[]> = {}
     for (const r of filtered) {
@@ -298,12 +334,39 @@ function ACPanel({ reqs, coverage }: {
     return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
   }, [filtered])
 
+  const toggleDomain = (d: string) => {
+    setExpandedDomains(prev => {
+      const next = new Set(prev)
+      next.has(d) ? next.delete(d) : next.add(d)
+      return next
+    })
+  }
+
+  const toggleReq = (id: string) => {
+    setExpandedReqs(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const hasScenarios = reqsWithAC.some(r => (r.scenarios?.length ?? 0) > 0)
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header: progress + filter */}
+      {/* Header */}
       <div className="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-800/50 shrink-0">
         <span className="text-sm text-neutral-500">AC</span>
         <TuiProgress done={checkedAC} total={totalAC} className="text-sm" />
+        {testCoverage && (
+          <span className={`text-xs px-1.5 py-0.5 rounded ${
+            testCoverage.coverage_pct >= 90 ? 'bg-green-900/40 text-green-400' :
+            testCoverage.coverage_pct >= 70 ? 'bg-yellow-900/40 text-yellow-400' :
+            'bg-red-900/40 text-red-400'
+          }`}>
+            {testCoverage.coverage_pct}% covered
+          </span>
+        )}
         <select
           value={domainFilter ?? ''}
           onChange={e => setDomainFilter(e.target.value || null)}
@@ -314,38 +377,107 @@ function ACPanel({ reqs, coverage }: {
         </select>
       </div>
 
-      {/* Domain groups */}
+      {/* Coverage summary bar */}
+      {testCoverage && (
+        <div className="px-3 py-1.5 border-b border-neutral-800/50 text-xs text-neutral-500">
+          Coverage: {testCoverage.covered_reqs.length}/{testCoverage.covered_reqs.length + testCoverage.uncovered_reqs.length} reqs
+          {' | '}{testCoverage.total_tests} tests ({testCoverage.passed}✓ {testCoverage.failed}✗)
+          {testCoverage.non_testable_reqs.length > 0 && <>{' | '}{testCoverage.non_testable_reqs.length} non-testable</>}
+          {testCoverage.uncovered_reqs.length > 0 && <span className="text-red-400">{' | '}{testCoverage.uncovered_reqs.length} gaps</span>}
+        </div>
+      )}
+
+      {/* Level 1: Domain rows */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {byDomain.map(([domain, domReqs]) => {
-          const domTotalAC = domReqs.reduce((s, r) => s + (r.acceptance_criteria?.length ?? 0), 0)
-          const domCheckedAC = domReqs.reduce((s, r) => {
-            if (!isReqDone(r.id, coverage)) return s
-            return s + (r.acceptance_criteria?.length ?? 0)
-          }, 0)
+          const domTotal = domReqs.length
+          const domDone = domReqs.filter(r => isReqDone(r.id, coverage)).length
+          const domGaps = domReqs.filter(r => uncoveredSet.has(r.id)).length
+          const isExpanded = expandedDomains.has(domain)
+
           return (
             <div key={domain} className="border-b border-neutral-800/50">
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30">
+              <div
+                className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30 cursor-pointer hover:bg-neutral-800/40"
+                onClick={() => toggleDomain(domain)}
+              >
+                <span className="text-neutral-600 text-xs w-3">{isExpanded ? '▾' : '▸'}</span>
                 <span className="text-sm font-medium text-neutral-300">{domain}</span>
-                <span className="text-sm text-neutral-500">{domCheckedAC}/{domTotalAC}</span>
+                <span className="text-sm text-neutral-500">({domTotal})</span>
+                <span className="text-sm text-neutral-500 ml-auto">{domDone}/{domTotal}</span>
+                {domGaps > 0 && <span className="text-xs text-red-400">{domGaps} gap{domGaps > 1 ? 's' : ''}</span>}
+                {domDone === domTotal && domTotal > 0 && <span className="text-green-400 text-xs">✓</span>}
               </div>
-              {domReqs.map(r => {
+
+              {/* Level 2: REQ rows */}
+              {isExpanded && domReqs.map(r => {
                 const cov = coverage[r.id]
                 const done = isReqDone(r.id, coverage)
+                const cases = tcByReq[r.id] ?? []
+                const scenarioCount = r.scenarios?.length ?? 0
+                const testCount = cases.filter(c => c.test_file).length
+                const isReqExpanded = expandedReqs.has(r.id)
+                const isNonTestable = nonTestableSet.has(r.id)
+                const hasGap = uncoveredSet.has(r.id)
+                const hasDetail = hasScenarios ? scenarioCount > 0 : (r.acceptance_criteria?.length ?? 0) > 0
+
                 return (
-                  <div key={r.id} className="px-3 py-1">
-                    <div className="text-sm flex items-center gap-2 mb-0.5">
-                      <span className="text-neutral-500">{r.id}</span>
-                      <span className="text-neutral-700">/</span>
-                      <span className="text-neutral-400 flex-1 truncate">{r.title}</span>
+                  <div key={r.id}>
+                    <div
+                      className={`flex items-center gap-2 px-3 py-1 pl-6 ${hasDetail ? 'cursor-pointer hover:bg-neutral-800/30' : ''} ${hasGap ? 'bg-red-950/20' : ''}`}
+                      onClick={() => hasDetail && toggleReq(r.id)}
+                    >
+                      {hasDetail && <span className="text-neutral-600 text-xs w-3">{isReqExpanded ? '▾' : '▸'}</span>}
+                      {!hasDetail && <span className="w-3" />}
+                      <span className="text-xs text-neutral-500">{r.id}</span>
+                      <span className="text-sm text-neutral-400 flex-1 truncate">{r.title}</span>
+                      {isNonTestable && <span className="text-[10px] px-1 py-0.5 rounded bg-neutral-800 text-neutral-500">N/T</span>}
+                      {testCoverage && !isNonTestable && scenarioCount > 0 && (
+                        <span className={`text-xs ${hasGap ? 'text-red-400' : testCount === scenarioCount ? 'text-green-400' : 'text-yellow-400'}`}>
+                          {testCount}/{scenarioCount}
+                        </span>
+                      )}
                       {cov && (
                         <>
-                          <span className="text-neutral-600 truncate max-w-[100px]">{cov.change}</span>
+                          <span className="text-neutral-600 truncate max-w-[80px] text-xs">{cov.change}</span>
                           <TuiStatus status={cov.status} />
                         </>
                       )}
                     </div>
-                    {(r.acceptance_criteria ?? []).map((ac, i) => (
-                      <div key={i} className={`text-sm flex items-start gap-1.5 pl-4 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
+
+                    {/* Level 3: Scenarios or plain ACs */}
+                    {isReqExpanded && hasScenarios && scenarioCount > 0 && (
+                      r.scenarios!.map((sc, i) => {
+                        const tc = cases.find(c => c.scenario_slug === sc.slug)
+                        return (
+                          <div key={i} className="pl-12 pr-3 py-0.5">
+                            <div className="flex items-center gap-1.5 text-sm">
+                              {tc ? <TestIcon result={tc.result} /> : <span className="text-neutral-600">○</span>}
+                              <span className="text-neutral-300">{sc.name}</span>
+                              {tc && <RiskBadge risk={tc.risk} />}
+                              {/* Level 4: test file inline */}
+                              {tc?.test_file && (
+                                <span className="text-xs text-neutral-600 ml-auto truncate max-w-[200px]">
+                                  {tc.test_file}
+                                </span>
+                              )}
+                              {!tc && !isNonTestable && <span className="text-xs text-yellow-500 ml-auto">no test</span>}
+                            </div>
+                            {/* WHEN/THEN compact */}
+                            {(sc.when || sc.then) && (
+                              <div className="text-xs text-neutral-600 pl-5 space-y-0">
+                                {sc.when && <div>WHEN {sc.when}</div>}
+                                {sc.then && <div>THEN {sc.then}</div>}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })
+                    )}
+
+                    {/* Backward compat: plain AC checkboxes when no scenarios */}
+                    {isReqExpanded && (!hasScenarios || scenarioCount === 0) && (r.acceptance_criteria ?? []).map((ac, i) => (
+                      <div key={i} className={`text-sm flex items-start gap-1.5 pl-10 pr-3 py-0.5 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
                         <span className="shrink-0 mt-0.5">{done ? '\u2611' : '\u2610'}</span>
                         <span>{ac}</span>
                       </div>

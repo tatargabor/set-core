@@ -53,53 +53,53 @@
 
 ## 9. Report.html Test Coverage Section
 
-- [ ] 9.1 Add `TestCoverageData` dataclass to `reporter.py` with fields for template rendering [REQ: report-includes-test-coverage-section]
-- [ ] 9.2 Add "Test Coverage" section to report template: coverage bar, summary stats, REQ table [REQ: report-includes-test-coverage-section]
-- [ ] 9.3 Table columns: REQ ID, Name, Scenario count, Test count, Pass/Fail, Risk [REQ: report-includes-test-coverage-section]
-- [ ] 9.4 Sort: uncovered first (red bg), then failed, then passed [REQ: report-includes-test-coverage-section]
-- [ ] 9.5 Handle missing test_coverage — show "No acceptance test data available" [REQ: report-includes-test-coverage-section]
+- [x] 9.1 Add `TestCoverageData` dataclass to `reporter.py` with fields for template rendering [REQ: report-includes-test-coverage-section]
+- [x] 9.2 Add "Test Coverage" section to report template: coverage bar, summary stats, REQ table [REQ: report-includes-test-coverage-section]
+- [x] 9.3 Table columns: REQ ID, Name, Scenario count, Test count, Pass/Fail, Risk [REQ: report-includes-test-coverage-section]
+- [x] 9.4 Sort: uncovered first (red bg), then failed, then passed [REQ: report-includes-test-coverage-section]
+- [x] 9.5 Handle missing test_coverage — show "No acceptance test data available" [REQ: report-includes-test-coverage-section]
 
 ## 10. Web UI — AC Panel Progressive Disclosure Refactor
 
-- [ ] 10.1 Refactor ACPanel in `DigestView.tsx`: Level 1 = domain rows (collapsed by default), each showing domain name, REQ count, coverage fraction, status indicator [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
-- [ ] 10.2 Level 2: on domain click, expand to show REQ rows — REQ ID, title, change/status, scenario count + test fraction, pass/fail indicator. Gap REQs sort first [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
-- [ ] 10.3 Level 3: on REQ click, expand to show scenario rows — name, risk badge (H/M/L), WHEN/THEN text (compact, muted), test status icon [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
-- [ ] 10.4 Level 4: inline with scenario — test file, test name, result, duration (no extra click needed) [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
-- [ ] 10.5 Backward compat: when `scenarios` is empty, fall back to current plain checkbox rendering [REQ: ac-panel-backward-compatible-without-scenarios]
+- [x] 10.1 Refactor ACPanel in `DigestView.tsx`: Level 1 = domain rows (collapsed by default), each showing domain name, REQ count, coverage fraction, status indicator [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
+- [x] 10.2 Level 2: on domain click, expand to show REQ rows — REQ ID, title, change/status, scenario count + test fraction, pass/fail indicator. Gap REQs sort first [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
+- [x] 10.3 Level 3: on REQ click, expand to show scenario rows — name, risk badge (H/M/L), WHEN/THEN text (compact, muted), test status icon [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
+- [x] 10.4 Level 4: inline with scenario — test file, test name, result, duration (no extra click needed) [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
+- [x] 10.5 Backward compat: when `scenarios` is empty, fall back to current plain checkbox rendering [REQ: ac-panel-backward-compatible-without-scenarios]
 
 ## 11. Web UI — Coverage Data Integration
 
-- [ ] 11.1 Fetch test_coverage from state API (extend existing digest polling or add separate fetch from orchestration state endpoint) [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
-- [ ] 11.2 Match test_coverage entries to digest scenarios by scenario_slug + req_id [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
-- [ ] 11.3 TypeScript types: add `DigestScenario`, `TestCase`, `TestCoverage` interfaces to `api.ts` [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
-- [ ] 11.4 Risk badges: "H" (bg-red-900 text-red-300), "M" (bg-yellow-900 text-yellow-300), "L" (bg-neutral-800 text-neutral-400) — small rounded inline badges [REQ: risk-level-badges-on-scenarios]
-- [ ] 11.5 Non-testable REQs: gray "N/T" badge, excluded from coverage percentage [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
+- [x] 11.1 Fetch test_coverage from state API (extend existing digest polling or add separate fetch from orchestration state endpoint) [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
+- [x] 11.2 Match test_coverage entries to digest scenarios by scenario_slug + req_id [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
+- [x] 11.3 TypeScript types: add `DigestScenario`, `TestCase`, `TestCoverage` interfaces to `api.ts` [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
+- [x] 11.4 Risk badges: "H" (bg-red-900 text-red-300), "M" (bg-yellow-900 text-yellow-300), "L" (bg-neutral-800 text-neutral-400) — small rounded inline badges [REQ: risk-level-badges-on-scenarios]
+- [x] 11.5 Non-testable REQs: gray "N/T" badge, excluded from coverage percentage [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests]
 
 ## 12. Web UI — Coverage Summary Bar
 
-- [ ] 12.1 Add TuiProgress-style coverage summary bar at top of AC panel: "Coverage: 42/47 (89%)" + bar [REQ: coverage-summary-bar-at-top-of-ac-panel]
-- [ ] 12.2 Bar color: green >= 90%, yellow >= 70%, red < 70%. Show non-testable count separately [REQ: coverage-summary-bar-at-top-of-ac-panel]
-- [ ] 12.3 When no test_coverage data: hide summary bar entirely, show current AC panel unchanged [REQ: coverage-summary-bar-at-top-of-ac-panel]
+- [x] 12.1 Add TuiProgress-style coverage summary bar at top of AC panel: "Coverage: 42/47 (89%)" + bar [REQ: coverage-summary-bar-at-top-of-ac-panel]
+- [x] 12.2 Bar color: green >= 90%, yellow >= 70%, red < 70%. Show non-testable count separately [REQ: coverage-summary-bar-at-top-of-ac-panel]
+- [x] 12.3 When no test_coverage data: hide summary bar entirely, show current AC panel unchanged [REQ: coverage-summary-bar-at-top-of-ac-panel]
 
 ## 13. Report.html — Test Coverage Section
 
-- [ ] 13.1 Add `TestCoverageData` to `reporter.py` (coverage_pct, covered, total, gaps, non_testable, per_req rows) [REQ: report-includes-test-coverage-section]
-- [ ] 13.2 Add "Test Coverage" section to report template after execution table: summary bar + REQ table [REQ: report-includes-test-coverage-section]
-- [ ] 13.3 Table columns: REQ ID | Name | Domain | Scenarios | Tests (pass/fail) | Risk [REQ: report-includes-test-coverage-section]
-- [ ] 13.4 Sort: gaps first (class `gap-critical`), then failed, then passed [REQ: report-includes-test-coverage-section]
-- [ ] 13.5 When no test_coverage: show "No acceptance test data available" [REQ: report-includes-test-coverage-section]
+- [x] 13.1 Add `TestCoverageData` to `reporter.py` (coverage_pct, covered, total, gaps, non_testable, per_req rows) [REQ: report-includes-test-coverage-section]
+- [x] 13.2 Add "Test Coverage" section to report template after execution table: summary bar + REQ table [REQ: report-includes-test-coverage-section]
+- [x] 13.3 Table columns: REQ ID | Name | Domain | Scenarios | Tests (pass/fail) | Risk [REQ: report-includes-test-coverage-section]
+- [x] 13.4 Sort: gaps first (class `gap-critical`), then failed, then passed [REQ: report-includes-test-coverage-section]
+- [x] 13.5 When no test_coverage: show "No acceptance test data available" [REQ: report-includes-test-coverage-section]
 
 ## Acceptance Criteria (from spec scenarios)
 
 - [x] AC-1: WHEN spec has `#### Scenario:` with WHEN/THEN THEN digest produces DigestScenario objects with name, when, then, slug [REQ: digest-parses-scenarios-from-spec-files, scenario: spec-with-when-then-scenarios]
 - [x] AC-2: WHEN spec has no WHEN/THEN format THEN scenarios list is empty AND acceptance_criteria still works [REQ: digest-parses-scenarios-from-spec-files, scenario: spec-without-when-then-format]
 - [x] AC-3: WHEN JOURNEY-TEST-PLAN.md has `## REQ-XXX: Title [HIGH]` THEN parser extracts req_id and risk [REQ: parse-journey-test-plan-into-test-cases, scenario: standard-plan-format]
-- [ ] AC-4: WHEN profile.parse_test_results() called with Playwright stdout THEN returns {(file, name): result} mapping [REQ: parse-e2e-test-results-via-profile, scenario: profile-provides-test-result-parser]
+- [x] AC-4: WHEN profile.parse_test_results() called with Playwright stdout THEN returns {(file, name): result} mapping [REQ: parse-e2e-test-results-via-profile, scenario: profile-provides-test-result-parser]
 - [x] AC-5: WHEN plan and parsed results are cross-referenced THEN TestCase.result is populated [REQ: parse-e2e-test-results-via-profile, scenario: match-results-to-plan-entries]
-- [ ] AC-6: WHEN acceptance-tests merges THEN test_coverage stored in state.extras [REQ: store-test-coverage-in-state, scenario: post-merge-trigger]
-- [ ] AC-7: WHEN AC panel loads THEN Level 1 shows domain rows with coverage fraction, all collapsed [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests, scenario: level-1-domain-rows]
-- [ ] AC-8: WHEN user expands a domain THEN Level 2 shows REQ rows with scenario/test counts, gaps first [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests, scenario: level-2-req-rows]
-- [ ] AC-9: WHEN user expands a REQ THEN Level 3 shows scenarios with WHEN/THEN + risk badge + test status [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests, scenario: level-3-scenario-rows]
-- [ ] AC-10: WHEN no scenarios exist (old format) THEN AC panel shows plain checkboxes as before [REQ: ac-panel-backward-compatible-without-scenarios, scenario: requirements-with-acceptance-criteria-but-no-scenarios]
-- [ ] AC-11: WHEN report generated with test_coverage THEN Test Coverage section shows REQ table with pass/fail [REQ: report-includes-test-coverage-section, scenario: report-with-coverage-data]
-- [ ] AC-12: WHEN coverage < 100% THEN gaps highlighted in report (gap-critical) and UI (sort first) [REQ: coverage-gap-detection, scenario: uncovered-requirement]
+- [x] AC-6: WHEN acceptance-tests merges THEN test_coverage stored in state.extras [REQ: store-test-coverage-in-state, scenario: post-merge-trigger]
+- [x] AC-7: WHEN AC panel loads THEN Level 1 shows domain rows with coverage fraction, all collapsed [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests, scenario: level-1-domain-rows]
+- [x] AC-8: WHEN user expands a domain THEN Level 2 shows REQ rows with scenario/test counts, gaps first [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests, scenario: level-2-req-rows]
+- [x] AC-9: WHEN user expands a REQ THEN Level 3 shows scenarios with WHEN/THEN + risk badge + test status [REQ: ac-panel-uses-progressive-disclosure-for-scenarios-and-tests, scenario: level-3-scenario-rows]
+- [x] AC-10: WHEN no scenarios exist (old format) THEN AC panel shows plain checkboxes as before [REQ: ac-panel-backward-compatible-without-scenarios, scenario: requirements-with-acceptance-criteria-but-no-scenarios]
+- [x] AC-11: WHEN report generated with test_coverage THEN Test Coverage section shows REQ table with pass/fail [REQ: report-includes-test-coverage-section, scenario: report-with-coverage-data]
+- [x] AC-12: WHEN coverage < 100% THEN gaps highlighted in report (gap-critical) and UI (sort first) [REQ: coverage-gap-detection, scenario: uncovered-requirement]

@@ -163,6 +163,41 @@
 </tr>
 </table>
 
+{# Test Coverage Section #}
+{% if data.test_coverage.available %}
+<h2>Test Coverage</h2>
+<div class="coverage-summary">
+{% if data.test_coverage.coverage_pct >= 90 %}
+<p style="color:#4caf50;font-size:18px;font-weight:bold">{{ data.test_coverage.coverage_pct }}% Coverage</p>
+{% elif data.test_coverage.coverage_pct >= 70 %}
+<p style="color:#ff9800;font-size:18px;font-weight:bold">{{ data.test_coverage.coverage_pct }}% Coverage</p>
+{% else %}
+<p style="color:#f44336;font-size:18px;font-weight:bold">{{ data.test_coverage.coverage_pct }}% Coverage</p>
+{% endif %}
+<p>{{ data.test_coverage.covered }}/{{ data.test_coverage.total }} requirements covered | {{ data.test_coverage.total_tests }} tests ({{ data.test_coverage.total_passed }} passed, {{ data.test_coverage.total_failed }} failed){% if data.test_coverage.non_testable %} | {{ data.test_coverage.non_testable }} non-testable{% endif %}{% if data.test_coverage.gaps %} | <span style="color:#f44336">{{ data.test_coverage.gaps }} gaps</span>{% endif %}</p>
+<div class="coverage-bar"><div class="coverage-fill" style="width:{{ data.test_coverage.coverage_pct }}%"></div></div>
+</div>
+
+<table>
+<tr><th>REQ</th><th>Name</th><th>Domain</th><th>Tests</th><th>Pass/Fail</th><th>Risk</th></tr>
+{% for row in data.test_coverage.rows %}
+<tr{% if row.has_gap %} class="gap-critical"{% endif %}>
+<td>{{ row.req_id }}</td>
+<td>{{ row.name }}</td>
+<td>{{ row.domain }}</td>
+<td>{{ row.test_count }}/{{ row.scenario_count }}</td>
+<td>{% if row.has_gap %}<span class="gate-fail">NO TEST</span>{% elif row.failed > 0 %}<span class="gate-fail">{{ row.passed }}✓ {{ row.failed }}✗</span>{% else %}<span class="gate-pass">{{ row.passed }}✓</span>{% endif %}</td>
+<td>{{ row.risk }}</td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+{% if data.execution.available %}
+<h2>Test Coverage</h2>
+<p class="not-available">No acceptance test data available</p>
+{% endif %}
+{% endif %}
+
 {# Smoke screenshot gallery #}
 {% if data.execution.smoke_screenshots %}
 <details><summary>Smoke Screenshots</summary>

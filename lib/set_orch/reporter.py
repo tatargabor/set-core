@@ -397,6 +397,35 @@ class CoverageData:
 
 
 @dataclass
+class TestCoverageRow:
+    """A row in the test coverage report table."""
+    req_id: str = ""
+    name: str = ""
+    domain: str = ""
+    scenario_count: int = 0
+    test_count: int = 0
+    passed: int = 0
+    failed: int = 0
+    risk: str = ""
+    has_gap: bool = False
+
+
+@dataclass
+class TestCoverageData:
+    """Test coverage section for the report."""
+    available: bool = False
+    coverage_pct: float = 0.0
+    covered: int = 0
+    total: int = 0
+    gaps: int = 0
+    non_testable: int = 0
+    total_tests: int = 0
+    total_passed: int = 0
+    total_failed: int = 0
+    rows: list[TestCoverageRow] = field(default_factory=list)
+
+
+@dataclass
 class ReportData:
     """Top-level report data container."""
     digest: DigestData = field(default_factory=DigestData)
@@ -405,6 +434,7 @@ class ReportData:
     execution: ExecutionData = field(default_factory=ExecutionData)
     audit: AuditData = field(default_factory=AuditData)
     coverage: CoverageData = field(default_factory=CoverageData)
+    test_coverage: TestCoverageData = field(default_factory=TestCoverageData)
     timestamp: str = ""
 
 
@@ -885,7 +915,96 @@ def extract_report_data(
         execution=_extract_execution(state_path),
         audit=_extract_audit(state_path),
         coverage=_extract_coverage(digest_dir, state_path),
+        test_coverage=_extract_test_coverage(state_path, digest_dir),
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+
+def _extract_test_coverage(state_path: str, digest_dir: str) -> TestCoverageData:
+    """Extract test coverage data from state extras for the report."""
+    if not state_path or not os.path.isfile(state_path):
+        return TestCoverageData()
+
+    try:
+        with open(state_path) as f:
+            state_data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return TestCoverageData()
+
+    tc = state_data.get("extras", state_data).get("test_coverage")
+    if not tc:
+        tc = state_data.get("test_coverage")
+    if not tc:
+        return TestCoverageData()
+
+    # Load digest requirements for domain info
+    req_map: dict[str, dict] = {}
+    if digest_dir and os.path.isdir(digest_dir):
+        req_path = os.path.join(digest_dir, "requirements.json")
+        if os.path.isfile(req_path):
+            try:
+                with open(req_path) as f:
+                    req_data = json.load(f)
+                if isinstance(req_data, list):
+                    for r in req_data:
+                        if isinstance(r, dict) and "requirements" in r:
+                            for rr in r["requirements"]:
+                                if isinstance(rr, dict):
+                                    req_map[rr.get("id", "")] = rr
+                        elif isinstance(r, dict) and "id" in r:
+                            req_map[r["id"]] = r
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Build per-REQ rows
+    test_cases = tc.get("test_cases", [])
+    covered_set = set(tc.get("covered_reqs", []))
+    uncovered_set = set(tc.get("uncovered_reqs", []))
+    non_testable_set = set(tc.get("non_testable_reqs", []))
+
+    # Group test cases by req_id
+    cases_by_req: dict[str, list[dict]] = {}
+    for case in test_cases:
+        rid = case.get("req_id", "")
+        if rid:
+            cases_by_req.setdefault(rid, []).append(case)
+
+    rows: list[TestCoverageRow] = []
+    all_req_ids = sorted(covered_set | uncovered_set | non_testable_set)
+    for rid in all_req_ids:
+        req_info = req_map.get(rid, {})
+        cases = cases_by_req.get(rid, [])
+        passed = sum(1 for c in cases if c.get("result") == "pass")
+        failed = sum(1 for c in cases if c.get("result") == "fail")
+        risks = {c.get("risk", "") for c in cases} - {""}
+        risk = next(iter(risks), "")
+
+        rows.append(TestCoverageRow(
+            req_id=rid,
+            name=req_info.get("title", ""),
+            domain=req_info.get("domain", ""),
+            scenario_count=len(cases),
+            test_count=sum(1 for c in cases if c.get("test_file")),
+            passed=passed,
+            failed=failed,
+            risk=risk,
+            has_gap=rid in uncovered_set,
+        ))
+
+    # Sort: gaps first, then failed, then passed
+    rows.sort(key=lambda r: (0 if r.has_gap else (1 if r.failed > 0 else 2), r.req_id))
+
+    return TestCoverageData(
+        available=True,
+        coverage_pct=tc.get("coverage_pct", 0.0),
+        covered=len(covered_set),
+        total=len(covered_set) + len(uncovered_set),
+        gaps=len(uncovered_set),
+        non_testable=len(non_testable_set),
+        total_tests=tc.get("total_tests", 0),
+        total_passed=tc.get("passed", 0),
+        total_failed=tc.get("failed", 0),
+        rows=rows,
     )
 
 
