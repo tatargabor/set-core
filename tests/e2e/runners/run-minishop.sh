@@ -17,16 +17,24 @@ E2E_RUNS_DIR="${HOME}/.local/share/set-core/e2e-runs"
 BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
 mkdir -p "$BASE_DIR"
 
-# Auto-increment run number: find highest existing minishop-runN, use N+1
+# Auto-increment run number: persistent counter file (survives deletions)
 next_run_number() {
-    local max=0
+    local counter_file="$BASE_DIR/.minishop-run-counter"
+    local last=0
+    if [[ -f "$counter_file" ]]; then
+        last=$(cat "$counter_file" 2>/dev/null || echo 0)
+        [[ "$last" =~ ^[0-9]+$ ]] || last=0
+    fi
+    # Also check filesystem in case counter file was deleted
     for d in "$BASE_DIR"/minishop-run*; do
         [[ -d "$d" ]] || continue
         local n="${d##*minishop-run}"
-        n="${n%%-*}"  # strip worktree suffixes like -wt-cart-feature
-        [[ "$n" =~ ^[0-9]+$ ]] && (( n > max )) && max=$n
+        n="${n%%-*}"
+        [[ "$n" =~ ^[0-9]+$ ]] && (( n > last )) && last=$n
     done
-    echo $(( max + 1 ))
+    local next=$(( last + 1 ))
+    echo "$next" > "$counter_file"
+    echo "$next"
 }
 
 # Parse --project-dir flag
