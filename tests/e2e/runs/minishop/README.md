@@ -11,6 +11,26 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | [#17](run-17.md) | 2026-03-17 | 11/11 merged | 11 | ~4.5M | 5h17m | 11 | #42-#44 | Bug #37 root cause fixed (node_modules), Bug #38 partial fix |
 | #18 | 2026-03-17 | 1/10 interrupted | 10 | ~5M | ~3h | 6+ | #45-#48 | Bug #51 review template blocker |
 | [#19](run-19.md) | 2026-03-17 | 11/12 merged | 12 | ~5M | ~8h | 4 | #49-#53 | Bug #51+#53 fixes → 11/12 (92%) with retry |
+| #16* | 2026-04-03 | 6/6 merged | 6 | 333M | 1h10m | 1 | #54 | Divergence run A — context breakdown enabled, sentinel self-healed engine.sh crash |
+| #17* | 2026-04-03 | 6/6 merged | 6 | — | — | 2 | — | Divergence run B — API limit hit during auth-navigation, auto-recovered |
+
+\* Runs #16-#17 (April) are a new numbering series for divergence comparison. See [run-16-vs-17.md](run-16-vs-17.md).
+
+## Latest Divergence Comparison
+
+**[minishop-run16 vs minishop-run17](run-16-vs-17.md)** — Score: **83/100** (structurally equivalent)
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| Schema equivalence | 100% | All 9 models identical |
+| Route coverage | 83% | 20 common, 2 unique each (API naming) |
+| Convention compliance | 100% | Route groups, prisma.ts, utils.ts all correct |
+| Dependency set | 81% | 30 common packages |
+| Functional categories | 73% | UI primitives diverge (shadcn import vs inline) |
+| Template compliance | 75%/88% | run17 better (7/8 unchanged vs 5/8) |
+| E2E test naming | 18% overlap | Different names, similar coverage |
+
+**Key divergence drivers**: UI primitive import strategy (shadcn vs none), unit test presence (3 vs 0), e2e file naming convention.
 
 ## Bug Index
 
@@ -50,6 +70,7 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | 51 | review template f-string crash (MAJOR — blocked all verify gates) | #19 | fixed (`957d125d9`) |
 | 52 | orchestrator stuck during merge/archive — git_failed spam | #19 | fixed (`5c741058c`) |
 | 53 | review diff truncation hides src/ files (false CRITICAL reviews) | #19 | fixed (`ab018fa88`) |
+| 54 | engine.sh arithmetic crash from pipefail + grep no-match (context breakdown code) | #16* | fixed (`d8f2e7dad`) — sentinel self-healed |
 
 ## Token Efficiency Trend
 
@@ -61,6 +82,7 @@ Summary of orchestration E2E runs against the MiniShop test project.
 | #16 | 418k | Best efficiency — improved verify gate, fewer wasted iterations |
 | #17 | ~409k | 11 manual interventions all due to Bug #37 node_modules; fix deployed for #18 |
 | #19 | ~456k | 2 manual merges (Bug #52); scope check retry waste ~100K/change |
+| #16* | 55.5M | High token count due to 1M context window (Opus). Base context ~155K/iter, tools ~5.6M/iter |
 
 ## Recurring Issues
 
