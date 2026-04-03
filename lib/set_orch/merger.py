@@ -1545,8 +1545,9 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         from pathlib import Path
         from .test_coverage import parse_test_plan, build_test_coverage
 
-        # Read test plan
-        plan_path = Path("tests/e2e/JOURNEY-TEST-PLAN.md")
+        # Read test plan — use project root from state file location
+        project_root = Path(state_file).parent
+        plan_path = project_root / "tests" / "e2e" / "JOURNEY-TEST-PLAN.md"
         test_cases, non_testable = parse_test_plan(plan_path)
 
         if not test_cases and not non_testable:
@@ -1571,7 +1572,7 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         # Get all digest REQ IDs
         digest_req_ids: list[str] = []
         try:
-            digest_dir = Path("set/orchestration/digest")
+            digest_dir = project_root / "set" / "orchestration" / "digest"
             req_file = digest_dir / "requirements.json"
             if req_file.is_file():
                 import json
