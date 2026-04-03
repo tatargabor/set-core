@@ -1,5 +1,7 @@
 core:
   - .gitignore
+  - path: package.json
+    protected: true
   - project-knowledge.yaml
   - rules/ui-conventions.md
   - rules/functional-conventions.md
