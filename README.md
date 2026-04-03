@@ -155,7 +155,7 @@ Most AI coding tools are nondeterministic — run the same prompt twice, get dif
 
 | Challenge | Our Approach | Result |
 |-----------|-------------|--------|
-| **Output divergence** | [3-layer template system](docs/learn/journey.md) — templates lock structure, agents focus on logic | Measurably reduced — actively improving through scaffold testing |
+| **Output divergence** | [3-layer template system](docs/learn/journey.md) — templates lock structure, agents focus on logic | 83–87% structural convergence across paired runs ([report](tests/e2e/runs/minishop/run-16-vs-17.md)) |
 | **Hallucination** | [OpenSpec workflow](docs/guide/openspec.md) — structured artifacts with requirements + acceptance criteria | Agents implement against spec, not imagination |
 | **Quality roulette** | [Programmatic gates](docs/guide/orchestration.md) — exit codes, not LLM judgment. 7 gate types | Deterministic pass/fail |
 | **Spec drift** | [Coverage tracking](docs/guide/openspec.md) — verifies "does it satisfy the spec?" not just "do tests pass?" | Auto-replan when coverage < 100% |
@@ -163,7 +163,7 @@ Most AI coding tools are nondeterministic — run the same prompt twice, get dif
 | **Agent amnesia** | [Hook-driven memory](docs/guide/memory.md) — shared across worktrees, survives sessions | Zero voluntary saves → 100% capture via hooks |
 | **Framework reliability** | [E2E scaffold testing](docs/learn/benchmarks.md) — the orchestrator tests itself | 30+ runs across 4 project scaffolds |
 
-We're actively reducing nondeterminism through template optimization, divergence measurement, and configuration distribution across the core → module → scaffold → project layers. [Divergence research →](docs/learn/journey.md)
+We measure structural convergence across paired runs — latest: [83% minishop](tests/e2e/runs/minishop/run-16-vs-17.md), 87% micro-web. Schema equivalence at 100%, convention compliance at 100%. The remaining divergence is stylistic, not structural. [Full research →](docs/learn/journey.md)
 
 ---
 
