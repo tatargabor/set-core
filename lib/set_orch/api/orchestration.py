@@ -232,7 +232,8 @@ def get_digest(project: str):
                 passed = 0
                 failed = 0
                 for ch in state_data.get("changes", []):
-                    ch_tc = ch.get("extras", {}).get("test_coverage")
+                    # extras are flattened to top-level in JSON serialization
+                    ch_tc = ch.get("test_coverage") or ch.get("extras", {}).get("test_coverage")
                     if ch_tc:
                         all_cases.extend(ch_tc.get("test_cases", []))
                         covered.update(ch_tc.get("covered_reqs", []))
