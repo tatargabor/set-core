@@ -103,11 +103,13 @@ export default function DigestView({ project }: Props) {
   // Count total AC items
   const totalAC = reqs.reduce((sum, r) => sum + (r.acceptance_criteria?.length ?? 0), 0)
 
-  // Fetch changes for E2E tab
+  // Fetch changes for E2E tab (lazy — only when E2E tab is selected)
   const [changes, setChanges] = useState<ChangeInfo[]>([])
+  const [changesLoaded, setChangesLoaded] = useState(false)
   useEffect(() => {
-    getChanges(project).then(setChanges).catch(() => setChanges([]))
-  }, [project])
+    if (tab !== 'e2e' || changesLoaded) return
+    getChanges(project).then(c => { setChanges(c); setChangesLoaded(true) }).catch(() => { setChanges([]); setChangesLoaded(true) })
+  }, [project, tab, changesLoaded])
 
   // Parse E2E test counts
   const e2eStats = useMemo(() => {
@@ -126,7 +128,7 @@ export default function DigestView({ project }: Props) {
     { id: 'domains', label: `Domains (${Object.keys(domains).length})`, hidden: Object.keys(domains).length === 0 },
     { id: 'overview', label: `Reqs (${reqs.length})` },
     { id: 'ac', label: `AC (${totalAC})`, hidden: totalAC === 0 },
-    { id: 'e2e', label: `E2E (${e2eStats.total})`, hidden: e2eStats.total === 0 },
+    { id: 'e2e', label: changesLoaded ? `E2E (${e2eStats.total})` : 'E2E' },
     { id: 'coverage', label: 'Coverage' },
     { id: 'deptree', label: 'Dep Tree' },
     { id: 'triage', label: 'Triage', hidden: !hasTriage },
