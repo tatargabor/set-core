@@ -791,7 +791,7 @@ build_design_review_section() {
 ## Design Compliance Check
 
 Compare Tailwind classes in the diff against these design token values.
-Report mismatches as [WARNING] (not [CRITICAL]).
+Report mismatches as [CRITICAL] — design compliance is mandatory.
 
 $tokens_section
 
@@ -827,7 +827,7 @@ EOF
         if [[ -n "$icons" ]]; then
             while IFS= read -r icon; do
                 [[ -n "$icon" && $item_count -lt 20 ]] || continue
-                structure_items+="- [WARNING] Icon: \`$icon\` used in \`$decoded\`"$'\n'
+                structure_items+="- [CRITICAL] Icon: \`$icon\` used in \`$decoded\`"$'\n'
                 ((item_count++)) || true
             done <<< "$icons"
         fi
@@ -848,7 +848,7 @@ EOF
         if [[ -n "$img_patterns" ]]; then
             while IFS= read -r pat; do
                 [[ -n "$pat" && $item_count -lt 20 ]] || continue
-                structure_items+="- [WARNING] Image pattern: \`$pat\` in \`$decoded\`"$'\n'
+                structure_items+="- [CRITICAL] Image pattern: \`$pat\` in \`$decoded\`"$'\n'
                 ((item_count++)) || true
             done <<< "$img_patterns"
         fi
@@ -869,7 +869,7 @@ EOF
         if [[ -n "$layouts" ]]; then
             while IFS= read -r lay; do
                 [[ -n "$lay" && $item_count -lt 20 ]] || continue
-                structure_items+="- [WARNING] Layout: \`$lay\` in \`$decoded\`"$'\n'
+                structure_items+="- [CRITICAL] Layout: \`$lay\` in \`$decoded\`"$'\n'
                 ((item_count++)) || true
             done <<< "$layouts"
         fi
@@ -881,7 +881,7 @@ EOF
 
 ### Component Structure (from Figma sources)
 
-Verify the diff matches these design patterns. All mismatches are [WARNING] severity.
+Verify the diff matches these design patterns. All mismatches are [CRITICAL] severity.
 
 $structure_items
 EOF
@@ -905,4 +905,124 @@ setup_design_bridge() {
     export DESIGN_MCP_CONFIG="$config_file"
     export DESIGN_MCP_NAME="$server_name"
     return 0
+}
+
+# ─── Design Brief Dispatch ──────────────────────────────────────────
+
+# Default page alias map for scope matching.
+# Format: "PageName:alias1,alias2,alias3"
+# Aliases are phrase-level (multi-word) to avoid false positives.
+_DESIGN_BRIEF_ALIASES=(
+    "Home:homepage,hero banner,featured coffees,featured products,testimonial"
+    "ProductCatalog:catalog,listing page,filter sidebar,product grid,kavek"
+    "ProductDetail:product detail,variant selector,cross-sell,breadcrumb"
+    "Cart:cart,kosar,cart session"
+    "Checkout:checkout,penztar,3-step,shipping zone"
+    "SubscriptionWizard:subscription wizard,subscription setup,elofizetes"
+    "UserDashboard:user dashboard,user subscription"
+    "UserProfile:profile,adataim,cimeim,kedvenceim"
+    "AdminDashboard:admin dashboard,admin kpi,admin layout,admin sidebar"
+    "AdminProducts:admin product,product crud,product editor"
+    "AdminOrders:admin order,order management,daily deliver"
+    "AdminCoupons:admin coupon,admin promo,admin gift card,admin review,moderation"
+    "Stories:stories,sztorik,story list,category tab"
+    "StoryDetail:story detail,article content,share button"
+    "Login:login,register,belepes,regisztracio"
+    "PromoStates:promo banner,404,empty state,out of stock,toast,skeleton"
+    "EmailTemplates:email template,welcome email,shipping notification"
+)
+
+# Extract and return matched design brief page sections for a change scope.
+# Reads design-brief.md, matches "## Page: <name>" sections against scope
+# using page-name + alias matching.
+# Args: $1 = scope text, $2 = path to design-brief.md
+# Prints matched page sections to stdout. Returns 1 if no brief found.
+design_brief_for_dispatch() {
+    local scope_text="$1"
+    local brief_file="${2:-}"
+
+    # Find design-brief.md if not provided
+    if [[ -z "$brief_file" ]]; then
+        for bp in "docs/design-brief.md" "design-brief.md" "docs/design/design-brief.md"; do
+            if [[ -f "$bp" ]]; then
+                brief_file="$bp"
+                break
+            fi
+        done
+    fi
+
+    [[ -z "$brief_file" || ! -f "$brief_file" ]] && return 1
+
+    local scope_lower
+    scope_lower=$(echo "$scope_text" | tr '[:upper:]' '[:lower:]')
+
+    # Read custom aliases from file if it exists (profile override)
+    local aliases_file="${DESIGN_BRIEF_ALIASES_FILE:-}"
+    local -a alias_entries=()
+    if [[ -n "$aliases_file" && -f "$aliases_file" ]]; then
+        mapfile -t alias_entries < "$aliases_file"
+    else
+        alias_entries=("${_DESIGN_BRIEF_ALIASES[@]}")
+    fi
+
+    # Extract page names from the brief file
+    local page_names
+    page_names=$(awk '/^## Page: / { sub(/^## Page: /, ""); print }' "$brief_file")
+
+    local matched_pages=""
+
+    while IFS= read -r page_name; do
+        [[ -z "$page_name" ]] && continue
+        local page_lower
+        page_lower=$(echo "$page_name" | tr '[:upper:]' '[:lower:]')
+        local matched=false
+
+        # Check 1: page name itself appears in scope
+        if echo "$scope_lower" | grep -qi "$page_lower"; then
+            matched=true
+        fi
+
+        # Check 2: any alias for this page appears in scope
+        if [[ "$matched" == "false" ]]; then
+            for entry in "${alias_entries[@]}"; do
+                local entry_page="${entry%%:*}"
+                local entry_aliases="${entry#*:}"
+                if [[ "$entry_page" == "$page_name" ]]; then
+                    IFS=',' read -ra aliases <<< "$entry_aliases"
+                    for alias in "${aliases[@]}"; do
+                        alias=$(echo "$alias" | sed 's/^ *//;s/ *$//')
+                        if echo "$scope_lower" | grep -qi "$alias"; then
+                            matched=true
+                            break
+                        fi
+                    done
+                    break
+                fi
+            done
+        fi
+
+        if [[ "$matched" == "true" ]]; then
+            matched_pages+="$page_name"$'\n'
+        fi
+    done <<< "$page_names"
+
+    [[ -z "$matched_pages" ]] && return 1
+
+    # Extract matched page sections from brief file
+    local output=""
+    while IFS= read -r pname; do
+        [[ -z "$pname" ]] && continue
+        local block
+        block=$(awk -v pname="$pname" '
+            $0 == "## Page: " pname { found=1; next }
+            found && /^## Page: / { exit }
+            found { print }
+        ' "$brief_file")
+        if [[ -n "$block" ]]; then
+            output+="## Visual Design: ${pname}"$'\n'$'\n'
+            output+="$block"$'\n'$'\n'
+        fi
+    done <<< "$matched_pages"
+
+    echo "$output"
 }
