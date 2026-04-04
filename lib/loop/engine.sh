@@ -647,8 +647,9 @@ except:
             stall_count=0  # Reset stall counter (STALL-002)
         fi
         # Fallback: if primary done criteria says not done, check tasks.md
+        # Pass $change_name so we only find THIS change's tasks.md, not a sibling's
         if ! $early_done && [[ "$done_criteria" != "tasks" && "$done_criteria" != "test" && "$done_criteria" != "build" && "$done_criteria" != "merge" ]]; then
-            if find_tasks_file "$wt_path" &>/dev/null && check_tasks_done "$wt_path" 2>/dev/null; then
+            if find_tasks_file "$wt_path" "$change_name" &>/dev/null && check_tasks_done "$wt_path" "$change_name" 2>/dev/null; then
                 early_done=true
                 stall_count=0
                 warn "Early done by tasks.md fallback (primary criteria '$done_criteria' said not done)"
@@ -676,7 +677,7 @@ except:
                 # Auto-tasks done + manual tasks remain = waiting for human, not stalled
                 local manual_count
                 manual_count=$(count_manual_tasks "$wt_path")
-                if check_tasks_done "$wt_path" && [[ "$manual_count" -gt 0 ]]; then
+                if check_tasks_done "$wt_path" "$change_name" && [[ "$manual_count" -gt 0 ]]; then
                     local manual_tasks_json
                     manual_tasks_json=$(parse_manual_tasks "$wt_path")
                     echo ""
@@ -882,8 +883,9 @@ except:
         # Universal done detection safety net
         # If primary criteria says not done, check if tasks.md has all tasks [x]
         # Skip fallback for test/build/merge — those have objective pass/fail criteria
+        # Pass $change_name so we only find THIS change's tasks.md, not a sibling's
         if ! $is_done && [[ "$done_criteria" != "tasks" && "$done_criteria" != "test" && "$done_criteria" != "build" && "$done_criteria" != "merge" ]]; then
-            if find_tasks_file "$wt_path" &>/dev/null && check_tasks_done "$wt_path" 2>/dev/null; then
+            if find_tasks_file "$wt_path" "$change_name" &>/dev/null && check_tasks_done "$wt_path" "$change_name" 2>/dev/null; then
                 is_done=true
                 warn "Done by tasks.md fallback (primary criteria '$done_criteria' said not done)"
             fi

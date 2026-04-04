@@ -2,11 +2,29 @@
 # set-loop task detection: find tasks, check completion, manual tasks, done criteria
 # Dependencies: lib/loop/state.sh must be sourced first
 
-# Find tasks.md generically in a worktree (no openspec-specific paths)
+# Find tasks.md in a worktree.
+# When $change_name is provided, look specifically for that change's tasks.md
+# to avoid false positives from other changes' completed tasks files.
 find_tasks_file() {
     local wt_path="$1"
+    local change_name="${2:-}"
 
-    # Prefer worktree root
+    # When change-aware: look only in the specific change directory
+    if [[ -n "$change_name" ]]; then
+        local change_tasks="$wt_path/openspec/changes/$change_name/tasks.md"
+        if [[ -f "$change_tasks" ]]; then
+            echo "$change_tasks"
+            return
+        fi
+        # Also check worktree root (some workflows put tasks.md there)
+        if [[ -f "$wt_path/tasks.md" ]]; then
+            echo "$wt_path/tasks.md"
+            return
+        fi
+        return 1
+    fi
+
+    # Generic mode (no change_name): prefer worktree root
     if [[ -f "$wt_path/tasks.md" ]]; then
         echo "$wt_path/tasks.md"
         return
@@ -86,10 +104,11 @@ parse_manual_tasks() {
 # Check if tasks.md is complete (all auto-tasks checked)
 check_tasks_done() {
     local wt_path="$1"
+    local change_name="${2:-}"
 
-    # Find tasks.md generically
+    # Find tasks.md (change-aware when $change_name provided)
     local tasks_file
-    tasks_file=$(find_tasks_file "$wt_path")
+    tasks_file=$(find_tasks_file "$wt_path" "$change_name")
 
     if [[ -z "$tasks_file" ]]; then
         warn "No tasks.md found in $wt_path"
