@@ -336,6 +336,31 @@ class WebProjectType(CoreProfile):
             return rules_file.read_text()
         return ""
 
+    def collect_test_artifacts(self, wt_path: str) -> list:
+        """Collect Playwright test artifacts (screenshots, traces)."""
+        import glob as _glob
+        artifacts = []
+        tr_dir = Path(wt_path) / "test-results"
+        if not tr_dir.is_dir():
+            return []
+        # Screenshots
+        for png in sorted(tr_dir.rglob("*.png")):
+            artifacts.append({
+                "name": png.name,
+                "path": str(png),
+                "type": "image",
+                "test": png.parent.name,
+            })
+        # Traces
+        for trace in sorted(tr_dir.rglob("*.zip")):
+            artifacts.append({
+                "name": trace.name,
+                "path": str(trace),
+                "type": "trace",
+                "test": trace.parent.name,
+            })
+        return artifacts
+
     def cross_cutting_files(self) -> list:
         return [
             "layout.tsx", "middleware.ts", "middleware.js",

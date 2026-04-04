@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 
-interface ScreenshotFile {
+interface Artifact {
   path: string
   name: string
+  type: string  // "image" | "trace" | "report" | "log"
+  test?: string
 }
 
 interface Props {
@@ -11,106 +13,111 @@ interface Props {
   onClose: () => void
 }
 
-export default function ScreenshotGallery({ project, changeName }: Props) {
-  const [smoke, setSmoke] = useState<ScreenshotFile[]>([])
-  const [e2e, setE2e] = useState<ScreenshotFile[]>([])
+const TYPE_ICONS: Record<string, string> = {
+  image: '',
+  trace: '{}',
+  report: 'doc',
+  log: 'log',
+}
+
+export default function ScreenshotGallery({ project, changeName, onClose }: Props) {
+  const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [loading, setLoading] = useState(true)
-  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [modalImg, setModalImg] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
     fetch(`/api/${project}/changes/${changeName}/screenshots`)
       .then(r => r.json())
-      .then((data: { smoke: ScreenshotFile[]; e2e: ScreenshotFile[] }) => {
-        setSmoke(data.smoke ?? [])
-        setE2e(data.e2e ?? [])
+      .then((data) => {
+        // Use unified artifacts list, fallback to e2e array
+        const items = data.artifacts ?? data.e2e ?? []
+        setArtifacts(items)
       })
-      .catch(() => {
-        setSmoke([])
-        setE2e([])
-      })
+      .catch(() => setArtifacts([]))
       .finally(() => setLoading(false))
   }, [project, changeName])
 
-  const imgUrl = (s: ScreenshotFile) => `/api/${project}/screenshots/${s.path}`
+  const serveUrl = (a: Artifact) => `/api/${project}/screenshots/${encodeURIComponent(a.path)}`
 
   if (loading) {
-    return <div className="px-4 py-3 text-sm text-neutral-500">Loading screenshots...</div>
+    return <div className="px-4 py-3 text-sm text-neutral-500">Loading artifacts...</div>
   }
 
-  if (smoke.length === 0 && e2e.length === 0) {
-    return <div className="px-4 py-3 text-sm text-neutral-500">No screenshots found</div>
+  if (artifacts.length === 0) {
+    return <div className="px-4 py-3 text-sm text-neutral-500">No test artifacts found</div>
+  }
+
+  // Group by test name
+  const byTest: Record<string, Artifact[]> = {}
+  for (const a of artifacts) {
+    const key = a.test || '_ungrouped'
+    if (!byTest[key]) byTest[key] = []
+    byTest[key].push(a)
   }
 
   return (
     <>
-      <div className="px-4 py-3 space-y-3">
-        {smoke.length > 0 && (
-          <div>
-            <h4 className="text-sm font-medium text-neutral-400 mb-2">Smoke Screenshots ({smoke.length})</h4>
-            <div className="flex flex-wrap gap-2">
-              {smoke.map(s => (
-                <button
-                  key={s.path}
-                  onClick={() => setLightbox(imgUrl(s))}
-                  className="group relative w-32 h-20 rounded border border-neutral-800 overflow-hidden hover:border-neutral-600 transition-colors"
-                >
-                  <img
-                    src={imgUrl(s)}
-                    alt={s.name}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-sm text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                    {s.name}
-                  </span>
-                </button>
+      <div className="px-4 py-3 space-y-2">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm text-neutral-400">{artifacts.length} artifact(s)</span>
+          <button onClick={onClose} className="text-sm text-neutral-500 hover:text-neutral-300">Close</button>
+        </div>
+
+        {Object.entries(byTest).map(([testName, items]) => (
+          <div key={testName}>
+            {testName !== '_ungrouped' && (
+              <div className="text-xs text-neutral-500 mb-1 truncate" title={testName}>{testName}</div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {items.map(a => (
+                a.type === 'image' ? (
+                  <button
+                    key={a.path}
+                    onClick={() => setModalImg(serveUrl(a))}
+                    className="group relative w-28 h-18 rounded border border-neutral-800 overflow-hidden hover:border-neutral-500 transition-colors"
+                    title={a.test || a.name}
+                  >
+                    <img
+                      src={serveUrl(a)}
+                      alt={a.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </button>
+                ) : (
+                  <a
+                    key={a.path}
+                    href={serveUrl(a)}
+                    download={a.name}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-neutral-800 text-sm text-neutral-400 hover:border-neutral-500 hover:text-neutral-200 transition-colors"
+                    title={`Download ${a.name}`}
+                  >
+                    <span className="text-xs text-neutral-600">{TYPE_ICONS[a.type] || a.type}</span>
+                    <span className="truncate max-w-[120px]">{a.name}</span>
+                  </a>
+                )
               ))}
             </div>
           </div>
-        )}
-        {e2e.length > 0 && (
-          <div>
-            <h4 className="text-sm font-medium text-neutral-400 mb-2">E2E Screenshots ({e2e.length})</h4>
-            <div className="flex flex-wrap gap-2">
-              {e2e.map(s => (
-                <button
-                  key={s.path}
-                  onClick={() => setLightbox(imgUrl(s))}
-                  className="group relative w-32 h-20 rounded border border-neutral-800 overflow-hidden hover:border-neutral-600 transition-colors"
-                >
-                  <img
-                    src={imgUrl(s)}
-                    alt={s.name}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-sm text-neutral-400 px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                    {s.name}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        ))}
       </div>
 
-      {/* Lightbox overlay */}
-      {lightbox && (
+      {/* Modal overlay for images */}
+      {modalImg && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
-          onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center"
+          onClick={() => setModalImg(null)}
         >
-          <div className="relative max-w-[90vw] max-h-[90vh]">
+          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
             <img
-              src={lightbox}
-              alt="Screenshot"
+              src={modalImg}
+              alt="Test screenshot"
               className="max-w-full max-h-[90vh] rounded shadow-2xl"
-              onClick={e => e.stopPropagation()}
             />
             <button
-              onClick={() => setLightbox(null)}
-              className="absolute -top-3 -right-3 w-7 h-7 bg-neutral-800 text-neutral-300 rounded-full text-sm hover:bg-neutral-700 flex items-center justify-center"
+              onClick={() => setModalImg(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-neutral-800 text-neutral-300 rounded-full hover:bg-neutral-700 flex items-center justify-center"
             >
               x
             </button>

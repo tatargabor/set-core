@@ -563,19 +563,28 @@ def merge_change(
         _heartbeat("test_coverage")
         _parse_test_coverage_if_applicable(change_name, state_file)
 
-        # Collect E2E screenshot count from worktree test-results/
+        # Collect test artifacts via profile (screenshots, traces, reports)
         try:
             if wt_path and os.path.isdir(wt_path):
-                tr_dir = os.path.join(wt_path, "test-results")
-                if os.path.isdir(tr_dir):
-                    pngs = glob.glob(os.path.join(tr_dir, "**", "*.png"), recursive=True)
-                    if pngs:
-                        from .state import update_change_field
-                        update_change_field(state_file, change_name, "e2e_screenshot_count", len(pngs))
-                        update_change_field(state_file, change_name, "e2e_screenshot_dir", tr_dir)
-                        logger.info("E2E screenshots: %d PNGs for %s", len(pngs), change_name)
+                from .profile_loader import load_profile as _lp2
+                _artifact_profile = _lp2()
+                artifacts = _artifact_profile.collect_test_artifacts(wt_path)
+                if artifacts:
+                    images = [a for a in artifacts if a.get("type") == "image"]
+                    from .state import update_change_field
+                    update_change_field(state_file, change_name, "e2e_screenshot_count", len(images))
+                    if images:
+                        # Use parent dir of first image as screenshot dir
+                        first_dir = os.path.dirname(os.path.dirname(images[0]["path"]))
+                        update_change_field(state_file, change_name, "e2e_screenshot_dir", first_dir)
+                    # Store full artifact list in extras
+                    with locked_state(state_file) as _ast:
+                        _ach = next((c for c in _ast.changes if c.name == change_name), None)
+                        if _ach:
+                            _ach.extras["test_artifacts"] = artifacts
+                    logger.info("Test artifacts: %d items (%d images) for %s", len(artifacts), len(images), change_name)
         except Exception:
-            logger.debug("Screenshot collection failed (non-critical)", exc_info=True)
+            logger.debug("Artifact collection failed (non-critical)", exc_info=True)
 
         # Regenerate START.md on main from current project state
         try:

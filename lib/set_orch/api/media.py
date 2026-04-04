@@ -59,7 +59,7 @@ def get_worktree_reflection(project: str, branch: str):
 
 @router.get("/api/{project}/changes/{name}/screenshots")
 def get_change_screenshots(project: str, name: str):
-    """List screenshot files for a change (smoke and E2E)."""
+    """List test artifacts for a change (screenshots, traces, reports)."""
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
     if not sp.exists():
@@ -71,25 +71,23 @@ def get_change_screenshots(project: str, name: str):
 
     for c in state.changes:
         if c.name == name:
-            result: dict = {"smoke": [], "e2e": []}
-            smoke_dir = getattr(c, "smoke_screenshot_dir", None) or c.extras.get("smoke_screenshot_dir")
-            if smoke_dir:
-                sd = Path(smoke_dir) if os.path.isabs(smoke_dir) else project_path / smoke_dir
-                if sd.is_dir():
-                    result["smoke"] = sorted(
-                        ({"path": str(f), "name": f.name, "test": f.parent.name}
-                         for f in sd.rglob("*.png")),
-                        key=lambda x: x["name"],
-                    )
+            # Try profile-collected artifacts first
+            artifacts = c.extras.get("test_artifacts")
+            if artifacts:
+                return {"artifacts": artifacts, "smoke": [], "e2e": [
+                    a for a in artifacts if a.get("type") == "image"
+                ]}
+
+            # Fallback: legacy screenshot dirs
+            result: dict = {"artifacts": [], "smoke": [], "e2e": []}
             e2e_dir = getattr(c, "e2e_screenshot_dir", None) or c.extras.get("e2e_screenshot_dir")
             if e2e_dir:
                 ed = Path(e2e_dir) if os.path.isabs(e2e_dir) else project_path / e2e_dir
                 if ed.is_dir():
-                    result["e2e"] = sorted(
-                        ({"path": str(f), "name": f.name, "test": f.parent.name}
-                         for f in ed.rglob("*.png")),
-                        key=lambda x: x["name"],
-                    )
+                    for f in sorted(ed.rglob("*.png")):
+                        item = {"path": str(f), "name": f.name, "type": "image", "test": f.parent.name}
+                        result["e2e"].append(item)
+                        result["artifacts"].append(item)
             return result
     raise HTTPException(404, f"Change not found: {name}")
 

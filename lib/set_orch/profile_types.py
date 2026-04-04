@@ -133,6 +133,16 @@ class ProjectType(ABC):
         """File patterns needing serialization when touched by multiple changes."""
         return []
 
+    def collect_test_artifacts(self, wt_path: str) -> list:
+        """Collect test artifacts (screenshots, traces, reports) from worktree.
+
+        Returns list of dicts: [{name, path, type, test}]
+        - type: "image", "trace", "report", "log"
+        - test: parent test name (optional)
+        Override in subclass for framework-specific artifact collection.
+        """
+        return []
+
     def classify_test_risk(self, scenario: Any, requirement: dict) -> str:
         """Classify a test scenario's risk level for ISTQB risk-based testing.
 

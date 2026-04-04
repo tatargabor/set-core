@@ -56,10 +56,10 @@ export default function GateBar({ test_result, smoke_result, e2e_result, review_
       {hasScreenshots && (
         <button
           onClick={onScreenshots}
-          title="View screenshots"
-          className="ml-0.5 w-5 h-5 flex items-center justify-center rounded text-sm text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
+          title="View test artifacts"
+          className="ml-0.5 px-1 h-5 flex items-center justify-center rounded text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
         >
-          cam
+          img
         </button>
       )}
     </div>
