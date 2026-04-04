@@ -161,6 +161,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
 
   // Desktop: table layout
   return (
+    <>
     <table className="w-full text-sm">
       <thead>
         <tr className="text-sm text-neutral-500 border-b border-neutral-800">
@@ -170,7 +171,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
           <th className="text-right px-2 py-2 font-medium">Duration</th>
           <th className="text-right px-2 py-2 font-medium">Tokens</th>
           <th className="text-center px-2 py-2 font-medium">Gates</th>
-          {/* Actions column hidden */}
+          <th className="text-center px-2 py-2 font-medium">Files</th>
         </tr>
       </thead>
       <tbody>
@@ -221,37 +222,65 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     review_result={c.review_result}
                     build_result={c.build_result}
                     spec_coverage_result={c.spec_coverage_result}
-                    hasScreenshots={!!c.smoke_screenshot_count || !!c.e2e_screenshot_count}
-                    onScreenshots={(e) => toggleScreenshots(e, c.name)}
+                    hasScreenshots={false}
                   />
                   </div>
                 </div>
               </td>
-              {/* Actions column hidden — sentinel manages change lifecycle */}
+              <td className="px-2 py-2 text-center">
+                {(c.e2e_screenshot_count || c.smoke_screenshot_count) ? (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setScreenshotChange(screenshotChange === c.name ? null : c.name) }}
+                    className="px-2 py-0.5 text-xs rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors"
+                    title="View test artifacts"
+                  >
+                    {(c.e2e_screenshot_count || 0) + (c.smoke_screenshot_count || 0)} files
+                  </button>
+                ) : (
+                  <span className="text-neutral-700">—</span>
+                )}
+              </td>
             </tr>
             {isGateExpanded && hasGates && (
               <tr className="border-b border-neutral-800/50 bg-neutral-950/50">
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <ChangeTimeline change={c} />
                   <GateDetail change={c} />
                 </td>
               </tr>
             )}
-            {screenshotChange === c.name && (
-              <tr className="border-b border-neutral-800/50 bg-neutral-950/50">
-                <td colSpan={7}>
-                  <ScreenshotGallery
-                    project={project}
-                    changeName={c.name}
-                    onClose={() => setScreenshotChange(null)}
-                  />
-                </td>
-              </tr>
-            )}
+            {/* Screenshot modal rendered outside table via portal-style fixed overlay */}
             </Fragment>
           )
         })}
       </tbody>
     </table>
+
+    {/* Artifact modal overlay */}
+    {screenshotChange && (
+      <div
+        className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center"
+        onClick={() => setScreenshotChange(null)}
+      >
+        <div
+          className="bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl w-[90vw] max-w-3xl max-h-[80vh] overflow-auto"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800">
+            <span className="text-sm text-neutral-300 font-medium">Test Artifacts: {screenshotChange}</span>
+            <button
+              onClick={() => setScreenshotChange(null)}
+              className="text-neutral-500 hover:text-neutral-300"
+            >x</button>
+          </div>
+          <ScreenshotGallery
+            project={project}
+            changeName={screenshotChange}
+            onClose={() => setScreenshotChange(null)}
+          />
+        </div>
+      </div>
+    )}
+    </>
   )
 }
