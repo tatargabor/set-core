@@ -793,6 +793,7 @@ def _poll_active_changes(
                         change.name,
                     )
                     update_change_field(state_file, change.name, "status", "done")
+                    _set_step(state_file, change.name, "integrating", event_bus)
                     _resolve_issues_for_change(change.name)
                     if event_bus:
                         event_bus.emit("CHANGE_DONE", change=change.name)
@@ -1013,6 +1014,13 @@ def _recover_verify_failed(
             update_change_field(state_file, change.name, "status", "failed")
             if reason:
                 update_change_field(state_file, change.name, "failure_reason", reason)
+
+
+def _set_step(state_file: str, change_name: str, step: str, event_bus: Any = None) -> None:
+    """Set current lifecycle step and emit transition event."""
+    update_change_field(state_file, change_name, "current_step", step)
+    if event_bus:
+        event_bus.emit("STEP_TRANSITION", change=change_name, data={"to": step})
 
 
 def _parse_e2e_summary(output: str) -> dict:

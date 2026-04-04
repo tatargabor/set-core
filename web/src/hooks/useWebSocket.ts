@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 
 export interface WSEvent {
-  event: 'state_update' | 'log_lines' | 'checkpoint_pending' | 'change_complete' | 'error' | 'gate_start' | 'gate_pass' | 'gate_fail' | 'merge_start' | 'merge_complete'
+  event: 'state_update' | 'log_lines' | 'checkpoint_pending' | 'change_complete' | 'error' | 'gate_start' | 'gate_pass' | 'gate_fail' | 'merge_start' | 'merge_complete' | 'step_transition'
   data: unknown
 }
 

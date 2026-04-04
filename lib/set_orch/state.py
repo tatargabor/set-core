@@ -101,6 +101,9 @@ class Change:
     cache_read_tokens_prev: int = 0
     cache_create_tokens_prev: int = 0
 
+    # Lifecycle step tracking
+    current_step: Optional[str] = None  # planning, implementing, fixing, integrating, merging, archiving, done
+
     # Verification results
     test_result: Optional[str] = None
     test_stats: Optional[dict] = None
@@ -109,6 +112,11 @@ class Change:
     e2e_result: Optional[str] = None
     review_result: Optional[str] = None
     build_result: Optional[str] = None
+
+    # Gate output logs (last 2000 chars for display)
+    build_output: Optional[str] = None
+    test_output: Optional[str] = None
+    e2e_output: Optional[str] = None
 
     # Screenshot tracking
     smoke_screenshot_dir: str = ""
@@ -154,8 +162,10 @@ class Change:
                 d["watchdog"] = val.to_dict()
             elif val is not None or f.name in (
                 "worktree_path", "ralph_pid", "started_at", "completed_at",
+                "current_step",
                 "test_result", "test_stats", "smoke_result", "smoke_stats",
-                "e2e_result", "review_result", "build_result", "model",
+                "e2e_result", "review_result", "build_result",
+                "build_output", "test_output", "e2e_output", "model",
             ):
                 d[f.name] = val
             elif f.name not in ("requirements", "also_affects_reqs", "watchdog", "gate_hints"):

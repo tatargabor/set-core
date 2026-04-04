@@ -434,7 +434,9 @@ def merge_change(
         update_change_field(state_file, change_name, "smoke_result", "skip_merged")
         update_change_field(state_file, change_name, "smoke_status", "skipped")
         cleanup_worktree(change_name, wt_path or "")
+        update_change_field(state_file, change_name, "current_step", "archiving")
         archive_change(change_name)
+        update_change_field(state_file, change_name, "current_step", "done")
         _remove_from_merge_queue(state_file, change_name)
         try:
             from .digest import update_coverage_status
@@ -484,6 +486,7 @@ def merge_change(
 
     if event_bus:
         event_bus.emit("MERGE_START", change=change_name)
+    update_change_field(state_file, change_name, "current_step", "merging")
     pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
     merge_result = run_command(
         ["set-merge", change_name, "--no-push", "--ff-only"],
@@ -579,6 +582,7 @@ def merge_change(
         _final_token_collect(state_file, change_name, wt_path or "")
 
         _heartbeat("archive")
+        update_change_field(state_file, change_name, "current_step", "archiving")
         cleanup_worktree(change_name, wt_path or "")
         archive_change(change_name)
 
@@ -586,6 +590,7 @@ def merge_change(
         _heartbeat("worktree_sync")
         _sync_running_worktrees(change_name, state_file)
 
+        update_change_field(state_file, change_name, "current_step", "done")
         _remove_from_merge_queue(state_file, change_name)
 
         return MergeResult(
@@ -840,6 +845,7 @@ def _run_integration_gates(
             gate_pass = result.exit_code == 0
             update_change_field(state_file, change_name, "build_result", "pass" if gate_pass else "fail")
             update_change_field(state_file, change_name, "gate_build_ms", _ge)
+            update_change_field(state_file, change_name, "build_output", ((result.stdout or "") + (result.stderr or ""))[-2000:])
             if gate_pass:
                 _gates_passed_count += 1
                 logger.info("Integration gate: build PASSED for %s (%dms)", change_name, _ge)
@@ -867,6 +873,7 @@ def _run_integration_gates(
             result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
             _ge = int((_time.monotonic() - _gs) * 1000)
             update_change_field(state_file, change_name, "gate_test_ms", _ge)
+            update_change_field(state_file, change_name, "test_output", ((result.stdout or "") + (result.stderr or ""))[-2000:])
             if result.exit_code == 0:
                 _gates_passed_count += 1
                 update_change_field(state_file, change_name, "test_result", "pass")
@@ -948,6 +955,7 @@ def _run_integration_gates(
             e2e_pass = result.exit_code == 0
             update_change_field(state_file, change_name, "e2e_result", "pass" if e2e_pass else "fail")
             update_change_field(state_file, change_name, "gate_e2e_ms", _ge)
+            update_change_field(state_file, change_name, "e2e_output", ((result.stdout or "") + (result.stderr or ""))[-2000:])
             if e2e_pass:
                 _gates_passed_count += 1
                 logger.info("Integration gate: e2e PASSED for %s (%dms)", change_name, _ge)

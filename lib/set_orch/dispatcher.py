@@ -1519,6 +1519,7 @@ def dispatch_change(
 
     # Update state
     update_change_field(state_path, change_name, "status", "dispatched", event_bus=event_bus)
+    update_change_field(state_path, change_name, "current_step", "planning", event_bus=event_bus)
     update_change_field(state_path, change_name, "worktree_path", wt_path, event_bus=event_bus)
     update_change_field(state_path, change_name, "started_at", datetime.now().isoformat(), event_bus=event_bus)
 
@@ -2034,6 +2035,7 @@ def resume_change(
         task_desc = retry_ctx
         logger.info("resuming %s with retry context (%d chars)", change_name, len(retry_ctx))
         update_change_field(state_path, change_name, "retry_context", None, event_bus=event_bus)
+        update_change_field(state_path, change_name, "current_step", "fixing", event_bus=event_bus)
 
         is_merge_retry = change.extras.get("merge_rebase_pending", False)
         is_review_retry = "REVIEW FEEDBACK" in retry_ctx or "review" in retry_ctx.lower()[:50]
@@ -2050,6 +2052,7 @@ def resume_change(
         task_desc = f"Continue {change_name}: {change.scope[:200]}"
         done_criteria = "openspec"
         max_iter = 30
+        update_change_field(state_path, change_name, "current_step", "implementing", event_bus=event_bus)
 
     impl_model = resolve_change_model(change, default_model, model_routing)
     # Persist resolved model so verifier uses correct context window size

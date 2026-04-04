@@ -37,3 +37,14 @@
 
 - [x] 6.1 In `web/src/components/ChangeTimeline.tsx`, add E2E phase between Smoke and Merge using `e2e_result` field
 - [x] 6.2 Split Merge phase into Integration + Merge sub-steps when data is available
+
+## 7. Python: save gate output for display
+
+- [x] 7.1 In `lib/set_orch/merger.py` `_run_integration_gates()`, save gate output (last 2000 chars stdout) to state fields: `build_output`, `test_output`, `e2e_output` — for both pass and fail cases
+- [x] 7.2 In `lib/set_orch/state.py`, add `build_output`, `test_output`, `e2e_output` Optional[str] fields to Change dataclass
+
+## 8. Web: Gate Logs display
+
+- [x] 8.1 In `web/src/lib/api.ts`, add `build_output`, `test_output`, `e2e_output` to ChangeInfo (they may already exist — verify and add if missing)
+- [x] 8.2 In `web/src/components/GateDetail.tsx`, render gate output logs for build/test/e2e — expandable sections showing the command output with pre-wrapped monospace text
+- [x] 8.3 Wire GateDetail into ChangeTable — clicking a gate icon (B/T/E) shows its output in an expandable row or panel

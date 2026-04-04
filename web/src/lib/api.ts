@@ -51,10 +51,13 @@ export interface ChangeInfo {
   smoke_result?: string
   e2e_result?: string
   review_result?: string
+  // Lifecycle step
+  current_step?: string
   build_result?: string
   // Gate outputs (full text)
   build_output?: string
   test_output?: string
+  e2e_output?: string
   smoke_output?: string
   review_output?: string
   // Gate timing

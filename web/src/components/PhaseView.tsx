@@ -1,6 +1,7 @@
 import type { ChangeInfo, StateData } from '../lib/api'
 import { TuiStatus, statusColor as tuiStatusColor } from './tui'
 import GateBar from './GateBar'
+import StepBar from './StepBar'
 
 interface Props {
   changes: ChangeInfo[]
@@ -148,7 +149,8 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
         </span>
 
         {/* Gates */}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <StepBar current_step={c.current_step} />
           <GateBar
             test_result={c.test_result}
             smoke_result={c.smoke_result}

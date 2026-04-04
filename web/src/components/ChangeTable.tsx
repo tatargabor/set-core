@@ -3,6 +3,7 @@ import type { ChangeInfo } from '../lib/api'
 import { stopChange, skipChange, pauseChange, resumeChange } from '../lib/api'
 import { TuiStatus, statusColor as tuiStatusColor } from './tui'
 import GateBar from './GateBar'
+import StepBar from './StepBar'
 import GateDetail from './GateDetail'
 import ScreenshotGallery from './ScreenshotGallery'
 import ChangeTimeline from './ChangeTimeline'
@@ -149,6 +150,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                   </div>
 
                   {/* Gates */}
+                  <StepBar current_step={c.current_step} />
                   {hasGates && (
                     <div
                       className="cursor-pointer"
