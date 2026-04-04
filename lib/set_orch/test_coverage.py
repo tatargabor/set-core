@@ -6,9 +6,11 @@ Provides the data models and parsers for the spec-to-test chain:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -152,6 +154,7 @@ class TestCoverage:
     passed: int = 0
     failed: int = 0
     coverage_pct: float = 0.0
+    unbound_tests: list[str] = field(default_factory=list)
     parsed_at: str = ""
 
     def to_dict(self) -> dict:
@@ -172,6 +175,7 @@ class TestCoverage:
             passed=d.get("passed", 0),
             failed=d.get("failed", 0),
             coverage_pct=d.get("coverage_pct", 0.0),
+            unbound_tests=d.get("unbound_tests", []),
             parsed_at=d.get("parsed_at", ""),
         )
 
@@ -388,9 +392,22 @@ def build_test_coverage(
         digest_req_ids: All REQ IDs from the digest
         plan_file: Path to the plan file
     """
-    from datetime import datetime, timezone
+    unbound_tests: list[str] = []
 
-    # Match test results to test cases
+    # Phase 1: Try deterministic REQ-ID extraction from test result names
+    # This creates additional test cases bound by REQ-ID from the output
+    deterministic_bindings: dict[str, list[tuple[str, str]]] = {}  # req_id → [(file, result)]
+    for (file, name), result in test_results.items():
+        req_ids = extract_req_ids(name)
+        if req_ids:
+            for rid in req_ids:
+                deterministic_bindings.setdefault(rid, []).append((file, result))
+                logger.debug("Bound %s (deterministic) from test: %s", rid, name)
+        else:
+            unbound_tests.append(name)
+            logger.debug("Unbound test (no REQ-ID): %s, trying fuzzy", name)
+
+    # Phase 2: Match test results to existing test cases (from JOURNEY-TEST-PLAN.md)
     for tc in test_cases:
         if tc.test_file and tc.test_name:
             key = (tc.test_file.lower().strip(), tc.test_name.lower().strip())
@@ -403,21 +420,22 @@ def build_test_coverage(
                         break
             tc.result = result
 
-    # Compute coverage — handle both REQ-ID match and journey-name match
-    reqs_with_tests = {tc.req_id for tc in test_cases if tc.test_file}
+    # Phase 3: Compute coverage — deterministic bindings take priority
     non_testable_set = set(non_testable)
     testable_reqs = [r for r in digest_req_ids if r not in non_testable_set]
 
-    # Direct match first
-    covered = [r for r in testable_reqs if r in reqs_with_tests]
-    uncovered = [r for r in testable_reqs if r not in reqs_with_tests]
+    # Merge sources: plan-based req_ids + deterministic bindings
+    reqs_with_tests = {tc.req_id for tc in test_cases if tc.test_file}
+    reqs_with_deterministic = set(deterministic_bindings.keys())
+    all_covered_reqs = reqs_with_tests | reqs_with_deterministic
+
+    covered = [r for r in testable_reqs if r in all_covered_reqs]
+    uncovered = [r for r in testable_reqs if r not in all_covered_reqs]
 
     # If no direct match but we have test cases with files, the plan used
     # journey names instead of REQ IDs. Count test files as evidence of coverage.
     if not covered and test_cases and any(tc.test_file for tc in test_cases):
         test_files = {tc.test_file for tc in test_cases if tc.test_file}
-        # Each journey test file covers some portion of the spec.
-        # Mark all testable reqs as "journey-covered" since we can't map precisely.
         covered = list(testable_reqs)
         uncovered = []
         logger.info(
@@ -427,6 +445,13 @@ def build_test_coverage(
 
     passed = sum(1 for tc in test_cases if tc.result == "pass")
     failed = sum(1 for tc in test_cases if tc.result == "fail")
+    # Also count deterministic-only bindings
+    for rid, bindings in deterministic_bindings.items():
+        for _file, result in bindings:
+            if result == "pass":
+                passed += 1 if rid not in reqs_with_tests else 0
+            elif result == "fail":
+                failed += 1 if rid not in reqs_with_tests else 0
 
     total_testable = len(covered) + len(uncovered)
     coverage_pct = (len(covered) / total_testable * 100) if total_testable > 0 else 0.0
@@ -441,6 +466,7 @@ def build_test_coverage(
         passed=passed,
         failed=failed,
         coverage_pct=round(coverage_pct, 1),
+        unbound_tests=unbound_tests,
         parsed_at=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -448,3 +474,268 @@ def build_test_coverage(
 def _fuzzy_match(a: str, b: str) -> bool:
     """Case-insensitive, whitespace-tolerant match."""
     return re.sub(r"\s+", " ", a.lower().strip()) == re.sub(r"\s+", " ", b.lower().strip())
+
+
+# ─── REQ-ID Extraction ─────────────────────────────────────────
+
+_REQ_ID_RE = re.compile(r"REQ-[A-Z]+-\d+", re.IGNORECASE)
+
+
+def extract_req_ids(test_name: str) -> list[str]:
+    """Extract REQ-* IDs from a test name via regex.
+
+    A test may cover multiple requirements, e.g.:
+    "REQ-HOME-001: REQ-NAV-001: heading and nav visible"
+    """
+    return [m.upper() for m in _REQ_ID_RE.findall(test_name)]
+
+
+# ─── Generated Test Plan ───────────────────────────────────────
+
+RISK_MIN_TESTS = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+RISK_CATEGORIES = {
+    "HIGH": ["happy", "negative", "negative"],
+    "MEDIUM": ["happy", "negative"],
+    "LOW": ["happy"],
+}
+
+
+@dataclass
+class TestPlanEntry:
+    """A single entry in the generated test plan."""
+
+    req_id: str
+    scenario_slug: str
+    scenario_name: str
+    risk: str  # "HIGH" | "MEDIUM" | "LOW"
+    min_tests: int
+    categories: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> TestPlanEntry:
+        return cls(
+            req_id=d.get("req_id", ""),
+            scenario_slug=d.get("scenario_slug", ""),
+            scenario_name=d.get("scenario_name", ""),
+            risk=d.get("risk", "LOW"),
+            min_tests=d.get("min_tests", 1),
+            categories=d.get("categories", ["happy"]),
+        )
+
+
+@dataclass
+class TestPlan:
+    """Container for the generated test plan."""
+
+    entries: list[TestPlanEntry] = field(default_factory=list)
+    non_testable: list[str] = field(default_factory=list)
+    generated_at: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "entries": [e.to_dict() for e in self.entries],
+            "non_testable": self.non_testable,
+            "generated_at": self.generated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> TestPlan:
+        return cls(
+            entries=[TestPlanEntry.from_dict(e) for e in d.get("entries", [])],
+            non_testable=d.get("non_testable", []),
+            generated_at=d.get("generated_at", ""),
+        )
+
+
+def generate_test_plan(
+    requirements_json: Path,
+    output_path: Path,
+    profile: Any = None,
+) -> TestPlan:
+    """Generate test-plan.json from requirements.json.
+
+    Reads digest requirements, extracts scenarios via parse_scenarios(),
+    classifies risk via profile.classify_test_risk(), writes test-plan.json.
+
+    Args:
+        requirements_json: Path to requirements.json from digest.
+        output_path: Where to write test-plan.json.
+        profile: ProjectType instance for risk classification. Default: LOW for all.
+    """
+    logger.info("Generating test plan from %s", requirements_json)
+
+    data = json.loads(requirements_json.read_text(encoding="utf-8"))
+    reqs = data.get("requirements", [])
+    logger.info("Loaded %d requirements", len(reqs))
+
+    entries: list[TestPlanEntry] = []
+    non_testable: list[str] = []
+
+    for req in reqs:
+        req_id = req.get("id", "")
+        if not req_id:
+            continue
+
+        # Build scenario text from acceptance_criteria
+        ac_items = req.get("acceptance_criteria", []) or []
+        ac_text = "\n".join(f"#### Scenario: {ac}" for ac in ac_items) if ac_items else ""
+
+        # Also check for structured scenarios in the requirement
+        scenarios = parse_scenarios(ac_text) if ac_text else []
+
+        if not scenarios:
+            non_testable.append(req_id)
+            logger.debug("Requirement %s has no WHEN/THEN scenarios — non-testable", req_id)
+            continue
+
+        for scenario in scenarios:
+            risk = "LOW"
+            if profile is not None:
+                risk = profile.classify_test_risk(scenario, req)
+            min_tests = RISK_MIN_TESTS.get(risk, 1)
+            categories = list(RISK_CATEGORIES.get(risk, ["happy"]))
+
+            entry = TestPlanEntry(
+                req_id=req_id,
+                scenario_slug=scenario.slug,
+                scenario_name=scenario.name,
+                risk=risk,
+                min_tests=min_tests,
+                categories=categories,
+            )
+            entries.append(entry)
+            logger.debug(
+                "Scenario %s/%s classified as %s → %d test(s)",
+                req_id, scenario.slug, risk, min_tests,
+            )
+
+    plan = TestPlan(
+        entries=entries,
+        non_testable=non_testable,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(plan.to_dict(), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    logger.info(
+        "Test plan written: %d entries, %d non-testable → %s",
+        len(entries), len(non_testable), output_path,
+    )
+    return plan
+
+
+# ─── Coverage Validation ───────────────────────────────────────
+
+
+@dataclass
+class CoverageValidationEntry:
+    """Validation result for a single requirement."""
+
+    req_id: str
+    expected_min: int
+    actual_count: int
+    status: str  # "complete" | "partial" | "missing"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class CoverageValidation:
+    """Result of comparing test plan against actual coverage."""
+
+    entries: list[CoverageValidationEntry] = field(default_factory=list)
+    complete_count: int = 0
+    partial_count: int = 0
+    missing_count: int = 0
+    validated_at: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "entries": [e.to_dict() for e in self.entries],
+            "complete_count": self.complete_count,
+            "partial_count": self.partial_count,
+            "missing_count": self.missing_count,
+            "validated_at": self.validated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> CoverageValidation:
+        return cls(
+            entries=[CoverageValidationEntry(**e) for e in d.get("entries", [])],
+            complete_count=d.get("complete_count", 0),
+            partial_count=d.get("partial_count", 0),
+            missing_count=d.get("missing_count", 0),
+            validated_at=d.get("validated_at", ""),
+        )
+
+
+def validate_coverage(
+    test_plan: TestPlan,
+    coverage: TestCoverage,
+) -> CoverageValidation:
+    """Compare test plan expected entries against actual test results.
+
+    Non-blocking — produces warnings, not gate failures.
+    """
+    # Group actual passing tests by REQ-ID
+    req_pass_counts: dict[str, int] = {}
+    for tc in coverage.test_cases:
+        if tc.result == "pass" and tc.req_id:
+            req_pass_counts[tc.req_id] = req_pass_counts.get(tc.req_id, 0) + 1
+
+    # Also count from unbound tests that were matched deterministically
+    # (these are already in test_cases with req_id set)
+
+    # Aggregate expected min_tests per req_id from the plan
+    req_expected: dict[str, int] = {}
+    for entry in test_plan.entries:
+        req_expected[entry.req_id] = req_expected.get(entry.req_id, 0) + entry.min_tests
+
+    validation_entries: list[CoverageValidationEntry] = []
+    complete = 0
+    partial = 0
+    missing = 0
+
+    for req_id, expected_min in sorted(req_expected.items()):
+        actual = req_pass_counts.get(req_id, 0)
+        if actual == 0:
+            status = "missing"
+            missing += 1
+        elif actual < expected_min:
+            status = "partial"
+            partial += 1
+            logger.warning(
+                "Coverage partial: %s: %d/%d tests (expected %d)",
+                req_id, actual, expected_min, expected_min,
+            )
+        else:
+            status = "complete"
+            complete += 1
+
+        validation_entries.append(CoverageValidationEntry(
+            req_id=req_id,
+            expected_min=expected_min,
+            actual_count=actual,
+            status=status,
+        ))
+
+    total = complete + partial + missing
+    logger.info(
+        "Coverage validation: %d/%d complete, %d partial, %d missing",
+        complete, total, partial, missing,
+    )
+
+    return CoverageValidation(
+        entries=validation_entries,
+        complete_count=complete,
+        partial_count=partial,
+        missing_count=missing,
+        validated_at=datetime.now(timezone.utc).isoformat(),
+    )

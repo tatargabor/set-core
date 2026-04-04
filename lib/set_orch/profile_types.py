@@ -128,6 +128,16 @@ class ProjectType(ABC):
     def planning_rules(self) -> str:
         return ""
 
+    def classify_test_risk(self, scenario: Any, requirement: dict) -> str:
+        """Classify a test scenario's risk level for ISTQB risk-based testing.
+
+        Override in subclass to provide domain/keyword-specific classification.
+        Core provides risk→min_tests mapping: {"HIGH": 3, "MEDIUM": 2, "LOW": 1}.
+
+        Returns "HIGH", "MEDIUM", or "LOW". Default: "LOW".
+        """
+        return "LOW"
+
     def security_rules_paths(self, project_path: str) -> List[Path]:
         return []
 

@@ -1014,6 +1014,22 @@ def _build_input_content(
     if ctx.review_learnings_checklist:
         lines.append(f"\n{ctx.review_learnings_checklist}")
 
+    # Required Tests section (from generated test-plan.json)
+    if digest_dir and change_requirements:
+        test_plan_entries = _load_test_plan(digest_dir, change_requirements)
+        if test_plan_entries:
+            lines.append("\n## Required Tests")
+            lines.append(
+                "Name each test with the REQ-* ID prefix. "
+                "Example: `test('REQ-HOME-001: Hero heading visible', ...)`"
+            )
+            for entry in test_plan_entries:
+                cats = ", ".join(entry.categories)
+                lines.append(
+                    f"- {entry.req_id}: {entry.scenario_name} [{entry.risk}] "
+                    f"— {entry.min_tests} test(s) ({cats})"
+                )
+
     if retry_ctx:
         lines.append(f"\n## Retry Context\n{retry_ctx}")
 
@@ -1037,6 +1053,30 @@ def _load_requirements_lookup(digest_dir: str) -> dict[str, dict]:
         }
     except (json.JSONDecodeError, OSError, KeyError):
         return {}
+
+
+def _load_test_plan(digest_dir: str, change_req_ids: list[str]) -> list:
+    """Load test-plan.json and filter entries by change's requirement IDs."""
+    if not digest_dir:
+        return []
+    plan_path = os.path.join(digest_dir, "test-plan.json")
+    if not os.path.isfile(plan_path):
+        return []
+    try:
+        from .test_coverage import TestPlan
+        with open(plan_path) as f:
+            data = json.load(f)
+        plan = TestPlan.from_dict(data)
+        req_set = set(change_req_ids)
+        entries = [e for e in plan.entries if e.req_id in req_set]
+        if entries:
+            logger.info(
+                "Loaded %d test plan entries for change (%d requirements)",
+                len(entries), len(req_set),
+            )
+        return entries
+    except (json.JSONDecodeError, OSError, KeyError):
+        return []
 
 
 def _build_review_learnings(findings_path: str, exclude_change: str) -> str:

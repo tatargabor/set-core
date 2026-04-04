@@ -1597,7 +1597,7 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         logger.info("Parsing test coverage for acceptance-tests change: %s", change_name)
 
         from pathlib import Path
-        from .test_coverage import parse_test_plan, build_test_coverage
+        from .test_coverage import parse_test_plan, build_test_coverage, TestPlan, validate_coverage
 
         # Read test plan — use project root from state file location
         project_root = Path(state_file).parent
@@ -1668,9 +1668,24 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
             plan_file=str(plan_path),
         )
 
+        # Run coverage validation against test plan if available
+        validation_data = None
+        try:
+            plan_json = project_root / "set" / "orchestration" / "digest" / "test-plan.json"
+            if plan_json.is_file():
+                import json as _json
+                plan_dict = _json.loads(plan_json.read_text(encoding="utf-8"))
+                test_plan = TestPlan.from_dict(plan_dict)
+                validation = validate_coverage(test_plan, coverage)
+                validation_data = validation.to_dict()
+        except Exception:
+            logger.debug("Coverage validation failed (non-critical)", exc_info=True)
+
         # Store in state
         with locked_state(state_file) as st:
             st.extras["test_coverage"] = coverage.to_dict()
+            if validation_data:
+                st.extras["coverage_validation"] = validation_data
 
         logger.info(
             "Test coverage parsed: %d tests, %d/%d reqs covered (%.1f%%), %d gaps",

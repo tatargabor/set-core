@@ -1279,6 +1279,21 @@ def run_digest(
 
     write_digest_output(digest, scan, digest_dir)
 
+    # Generate test plan from requirements (deterministic, Python-driven)
+    try:
+        from .test_coverage import generate_test_plan
+        from .profile_loader import load_profile
+
+        req_path = Path(digest_dir) / "requirements.json"
+        plan_path = Path(digest_dir) / "test-plan.json"
+        if req_path.is_file():
+            profile = load_profile()
+            generate_test_plan(req_path, plan_path, profile=profile)
+        else:
+            logger.info("No testable scenarios found, skipping test plan generation")
+    except Exception:
+        logger.debug("Test plan generation failed (non-critical)", exc_info=True)
+
     logger.info(
         "Digest complete: %d requirements across %d domain(s)",
         len(digest.requirements),

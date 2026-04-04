@@ -358,8 +358,45 @@ class WebProjectType(CoreProfile):
                 results[(m.group(1).strip(), m.group(2).strip())] = "fail"
         return results
 
+    # ─── ISTQB Risk Classification ────────────────────────────────
+
+    _DOMAIN_RISK = {
+        "auth": "HIGH", "payment": "HIGH", "admin": "HIGH",
+        "forms": "MEDIUM", "navigation": "MEDIUM", "search": "MEDIUM",
+    }
+    _KEYWORD_HIGH = {"delete", "password", "token", "checkout", "security", "mutation"}
+    _KEYWORD_MEDIUM = {"submit", "validate", "filter", "sort", "edit", "update"}
+
+    def classify_test_risk(self, scenario, requirement: dict) -> str:
+        """Classify scenario risk: domain-first, keyword fallback."""
+        # Domain-first lookup
+        domain = (requirement.get("domain") or "").lower().strip()
+        if domain in self._DOMAIN_RISK:
+            return self._DOMAIN_RISK[domain]
+
+        # Keyword fallback from scenario text
+        text = ""
+        if hasattr(scenario, "when"):
+            text = f"{scenario.when} {scenario.then}".lower()
+        elif hasattr(scenario, "name"):
+            text = scenario.name.lower()
+
+        req_title = (requirement.get("title") or "").lower()
+        combined = f"{text} {req_title} {domain}"
+
+        if any(kw in combined for kw in self._KEYWORD_HIGH):
+            return "HIGH"
+        if any(kw in combined for kw in self._KEYWORD_MEDIUM):
+            return "MEDIUM"
+        return "LOW"
+
+    # ─── E2E Methodology ────────────────────────────────────────
+
     def e2e_test_methodology(self) -> str:
         return """  FRAMEWORK-SPECIFIC (Playwright/Web):
+  - TEST NAMING: Each test MUST include the REQ-* ID prefix.
+    Format: test('REQ-HOME-001: Hero heading visible', ...)
+    This enables deterministic AC-to-test coverage binding.
   - SERIAL STEPS: Use test.describe.serial() with a shared Page for stateful flows.
     Create the page in test.beforeAll via browser.newContext() + context.newPage().
     Do NOT use the default { page } fixture — it creates a fresh page per test.
