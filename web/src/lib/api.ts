@@ -60,12 +60,20 @@ export interface ChangeInfo {
   e2e_output?: string
   smoke_output?: string
   review_output?: string
+  // Gate results (additional)
+  scope_check_result?: string
+  rules_result?: string
+  scope_check_output?: string
+  rules_output?: string
   // Gate timing
   gate_build_ms?: number
   gate_test_ms?: number
   gate_review_ms?: number
   gate_verify_ms?: number
+  gate_smoke_ms?: number
   gate_e2e_ms?: number
+  gate_scope_check_ms?: number
+  gate_rules_ms?: number
   gate_total_ms?: number
   // Screenshot info
   smoke_screenshot_count?: number

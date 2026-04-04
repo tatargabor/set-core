@@ -129,7 +129,7 @@ function buildGateTabs(change: ChangeInfo): GateTab[] {
     { id: 'test', label: 'Test', result: change.test_result, output: change.test_output, ms: change.gate_test_ms },
     { id: 'e2e', label: 'E2E', result: change.e2e_result, output: change.e2e_output, ms: change.gate_e2e_ms },
     { id: 'review', label: 'Review', result: change.review_result, output: change.review_output, ms: change.gate_review_ms },
-    { id: 'smoke', label: 'Smoke', result: change.smoke_result, output: change.smoke_output, ms: change.gate_verify_ms },
+    { id: 'smoke', label: 'Smoke', result: change.smoke_result, output: change.smoke_output, ms: change.gate_smoke_ms },
   ]
   return gates.filter(g => g.result)
 }
