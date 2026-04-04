@@ -285,7 +285,11 @@ def detect_test_infra(project_dir: str = ".") -> TestInfra:
 _KEBAB_CASE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
-def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationResult:
+def validate_plan(
+    plan_path: str,
+    digest_dir: str | None = None,
+    max_change_target: int | None = None,
+) -> ValidationResult:
     """Validate plan JSON structure, fields, dependencies, and coverage.
 
     Migrated from: planner.sh validate_plan() L164-250
@@ -293,6 +297,7 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
     Args:
         plan_path: Path to the plan JSON file.
         digest_dir: Optional digest directory for requirement coverage validation.
+        max_change_target: Maximum allowed changes. If set, enforced as hard error.
 
     Returns:
         ValidationResult with errors and warnings.
@@ -334,6 +339,35 @@ def validate_plan(plan_path: str, digest_dir: str | None = None) -> ValidationRe
         result.errors.append(
             f"Invalid change names (must be kebab-case): {', '.join(bad_names)}"
         )
+
+    # Hard validation: change count
+    if max_change_target is not None and len(changes) > max_change_target:
+        result.errors.append(
+            f"Plan has {len(changes)} changes, max allowed is {max_change_target}. "
+            "Merge related changes."
+        )
+
+    # Hard validation: complexity, model, scope length per change
+    for c in changes:
+        cname = c.get("name", "?")
+        complexity = c.get("complexity", "")
+        if complexity and complexity not in ("S", "M"):
+            result.errors.append(
+                f"Change '{cname}' has complexity {complexity}. "
+                "Split into S or M changes."
+            )
+        model = c.get("model", "")
+        if model and model not in ("opus", "sonnet"):
+            result.errors.append(
+                f"Change '{cname}' has invalid model '{model}'. "
+                "Use 'opus' or 'sonnet'."
+            )
+        scope = c.get("scope", "")
+        if len(scope) > 2000:
+            result.errors.append(
+                f"Change '{cname}' scope is {len(scope)} chars (max 2000). "
+                "Split the change or reduce scope."
+            )
 
     # Check depends_on references exist
     all_deps = set()
@@ -1073,15 +1107,7 @@ def _build_digest_content(digest_dir: str) -> str:
 # ─── Plan Metadata Enrichment ─────────────────────────────────────────
 # Migrated from: planner.sh cmd_plan() L1049-1092
 
-# Common unsplittable files that cause merge conflicts when touched by multiple agents
-_DEFAULT_CROSS_CUTTING_FILES = [
-    "layout.tsx", "middleware.ts", "middleware.js",
-    "next.config.js", "next.config.ts", "next.config.mjs",
-    "tailwind.config.ts", "tailwind.config.js",
-]
-
-
-def _assign_cross_cutting_ownership(plan_data: dict) -> None:
+def _assign_cross_cutting_ownership(plan_data: dict, profile=None) -> None:
     """Assign ownership of cross-cutting files to changes.
 
     When multiple changes mention the same unsplittable file in their scope,
@@ -1092,9 +1118,17 @@ def _assign_cross_cutting_ownership(plan_data: dict) -> None:
     if len(changes) < 2:
         return
 
+    # Get cross-cutting files from profile (or empty if no profile)
+    cc_files: list[str] = []
+    if profile is not None:
+        cc_files = profile.cross_cutting_files()
+
+    if not cc_files:
+        return
+
     # Build a map: file_basename → [change_names that mention it]
     file_touchers: dict[str, list[str]] = {}
-    for cc_file in _DEFAULT_CROSS_CUTTING_FILES:
+    for cc_file in cc_files:
         for c in changes:
             scope_lower = c.get("scope", "").lower()
             if cc_file.lower() in scope_lower:
@@ -1179,10 +1213,15 @@ def enrich_plan_metadata(
         ns = c["name"].replace("-", "_")
         c.setdefault("i18n_namespace", ns)
 
-    # Cross-cutting file ownership: detect from project-knowledge.yaml or scope text.
+    # Cross-cutting file ownership: detect from profile or scope text.
     # When multiple changes mention the same unsplittable file, assign the first as
     # owner and add depends_on to others (serialization at dispatch).
-    _assign_cross_cutting_ownership(plan_data)
+    try:
+        from .profile_loader import load_profile
+        _profile = load_profile()
+    except Exception:
+        _profile = None
+    _assign_cross_cutting_ownership(plan_data, profile=_profile)
 
     # During replan, strip depends_on references to completed changes
     if replan_cycle is not None and state_path and os.path.exists(state_path):
@@ -1825,9 +1864,10 @@ def run_planning_pipeline(
     with open(plan_file_tmp, "w") as f:
         json.dump(plan_data, f, indent=2)
 
-    validation = validate_plan(plan_file_tmp)
+    _max_ct = max_parallel * 2
+    validation = validate_plan(plan_file_tmp, max_change_target=_max_ct)
     if not validation.ok:
-        logger.warning("Plan validation issues: %s", validation.errors)
+        logger.warning("Plan validation issues (max_change_target=%d): %s", _max_ct, validation.errors)
 
     # 9. Enrich metadata
     plan_data = enrich_plan_metadata(

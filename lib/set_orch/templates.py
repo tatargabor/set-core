@@ -364,12 +364,11 @@ Shared resource awareness:
 - Common shared resources: design/convention docs, shared type definitions, package.json, layout components
 
 Test-per-change requirement:
-- Each change that adds a user-facing route, feature, or API endpoint MUST include its own E2E tests in `tests/e2e/<change-name>.spec.ts`.
-- Do NOT defer testing to a final "acceptance-tests" or "e2e" change — each change owns its tests.
-- The integration gate runs ALL tests in `tests/e2e/` (previous changes' tests + new ones). If a previously-passing test fails, the current change broke it and must fix its own code before merging.
+- Each change that adds user-facing functionality MUST include its own tests. Do NOT defer testing to a final "acceptance-tests" or "e2e" change — each change owns its tests.
+- The integration gate runs ALL tests (previous changes' tests + new ones). If a previously-passing test fails, the current change broke it and must fix its own code before merging.
 - The quality gate BLOCKS changes without test files for feature/infrastructure types.
-- Explicitly list test files in scope (e.g., "Tests: Create tests/e2e/auth-and-admin.spec.ts").
-- Cross-domain flows (e.g., catalog→cart→checkout) go in the change that implements the LAST step, since all dependencies are merged by then.
+- Explicitly list test files in scope.
+- Cross-domain flows go in the change that implements the LAST step, since all dependencies are merged by then.
 
 Phase assignment — group changes into execution phases for milestone checkpoints:
 - Assign a phase integer (1..N, max 5) to each change
@@ -425,7 +424,7 @@ def _get_planning_rules(project_path: str = ".") -> str:
 
     profile_rules = profile.planning_rules()
     if profile_rules:
-        parts.append(profile_rules)
+        parts.append("## Project-Type Rules\n\n" + profile_rules)
 
     # Plugin decompose hints — natural-language planning guidance
     hints = profile.decompose_hints()

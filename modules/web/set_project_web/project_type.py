@@ -336,6 +336,13 @@ class WebProjectType(CoreProfile):
             return rules_file.read_text()
         return ""
 
+    def cross_cutting_files(self) -> list:
+        return [
+            "layout.tsx", "middleware.ts", "middleware.js",
+            "next.config.js", "next.config.ts", "next.config.mjs",
+            "tailwind.config.ts", "tailwind.config.js",
+        ]
+
     def parse_test_results(self, stdout: str) -> dict[tuple[str, str], str]:
         """Parse Playwright stdout into per-test pass/fail results."""
         import re

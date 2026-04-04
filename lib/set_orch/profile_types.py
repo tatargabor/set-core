@@ -126,7 +126,12 @@ class ProjectType(ABC):
         return []
 
     def planning_rules(self) -> str:
+        """Module-specific planning rules injected into planner prompt."""
         return ""
+
+    def cross_cutting_files(self) -> List[str]:
+        """File patterns needing serialization when touched by multiple changes."""
+        return []
 
     def classify_test_risk(self, scenario: Any, requirement: dict) -> str:
         """Classify a test scenario's risk level for ISTQB risk-based testing.

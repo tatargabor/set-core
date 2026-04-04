@@ -41,7 +41,7 @@ VALID_PLAN = {
         {
             "name": "add-auth",
             "scope": "Add authentication system with login registration password reset",
-            "complexity": "L",
+            "complexity": "M",
             "change_type": "feature",
             "depends_on": [],
         },
@@ -720,8 +720,18 @@ class TestEstimateTokens:
         assert estimate_tokens("/nonexistent/path.txt") == 0
 
 
+class _MockWebProfile:
+    """Minimal profile for cross-cutting tests."""
+    def cross_cutting_files(self):
+        return ["layout.tsx", "middleware.ts", "middleware.js",
+                "next.config.js", "next.config.ts", "next.config.mjs",
+                "tailwind.config.ts", "tailwind.config.js"]
+
+
 class TestCrossCuttingOwnership:
     """Tests for _assign_cross_cutting_ownership()."""
+
+    _profile = _MockWebProfile()
 
     def test_single_owner_assigned(self):
         """First change mentioning a file becomes owner, others get depends_on."""
@@ -729,7 +739,7 @@ class TestCrossCuttingOwnership:
             {"name": "auth", "scope": "Add auth middleware.ts for route protection", "depends_on": []},
             {"name": "admin", "scope": "Add admin routes, update middleware.ts", "depends_on": []},
         ]}
-        _assign_cross_cutting_ownership(plan)
+        _assign_cross_cutting_ownership(plan, profile=self._profile)
         admin = next(c for c in plan["changes"] if c["name"] == "admin")
         assert "auth" in admin["depends_on"]
         assert "middleware.ts" in admin.get("cross_cutting_no_modify", [])
@@ -740,7 +750,7 @@ class TestCrossCuttingOwnership:
             {"name": "auth", "scope": "Create middleware.ts", "depends_on": []},
             {"name": "admin", "scope": "Update middleware.ts for admin", "depends_on": []},
         ]}
-        _assign_cross_cutting_ownership(plan)
+        _assign_cross_cutting_ownership(plan, profile=self._profile)
         auth = next(c for c in plan["changes"] if c["name"] == "auth")
         assert "cross_cutting_no_modify" not in auth or "middleware.ts" not in auth.get("cross_cutting_no_modify", [])
 
@@ -750,7 +760,7 @@ class TestCrossCuttingOwnership:
             {"name": "auth", "scope": "Add login page", "depends_on": []},
             {"name": "cart", "scope": "Add cart functionality", "depends_on": []},
         ]}
-        _assign_cross_cutting_ownership(plan)
+        _assign_cross_cutting_ownership(plan, profile=self._profile)
         for c in plan["changes"]:
             assert c.get("cross_cutting_no_modify", []) == []
 
@@ -758,7 +768,7 @@ class TestCrossCuttingOwnership:
         plan = {"changes": [
             {"name": "auth", "scope": "Create middleware.ts", "depends_on": []},
         ]}
-        _assign_cross_cutting_ownership(plan)
+        _assign_cross_cutting_ownership(plan, profile=self._profile)
         assert plan["changes"][0].get("cross_cutting_no_modify", []) == []
 
     def test_depends_on_not_duplicated(self):
@@ -767,6 +777,6 @@ class TestCrossCuttingOwnership:
             {"name": "auth", "scope": "Add layout.tsx and middleware.ts", "depends_on": []},
             {"name": "admin", "scope": "Update layout.tsx and middleware.ts", "depends_on": ["auth"]},
         ]}
-        _assign_cross_cutting_ownership(plan)
+        _assign_cross_cutting_ownership(plan, profile=self._profile)
         admin = next(c for c in plan["changes"] if c["name"] == "admin")
         assert admin["depends_on"].count("auth") == 1
