@@ -187,6 +187,13 @@ export default function Dashboard({ project, initialTab }: Props) {
   }
 
   const changes = state?.changes ?? []
+
+  // Auto-select first change when none selected
+  useEffect(() => {
+    if (!selectedChange && changes.length > 0) {
+      setSelectedChange(changes[0].name)
+    }
+  }, [selectedChange, changes])
   const selectedChangeInfo: ChangeInfo | null =
     selectedChange ? changes.find((c) => c.name === selectedChange) ?? null : null
   const hasAudit = (state?.phase_audit_results?.length ?? 0) > 0

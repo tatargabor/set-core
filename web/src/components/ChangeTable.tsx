@@ -114,7 +114,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
             <div key={c.name}>
               {/* Compact row */}
               <button
-                onClick={() => onSelect?.(isExpanded ? null : c.name)}
+                onClick={() => onSelect?.(c.name)}
                 className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors active:bg-neutral-800/50 ${
                   isExpanded ? 'bg-neutral-900/70' : ''
                 }`}
@@ -267,7 +267,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
           return (
             <Fragment key={c.name}>
             <tr
-              onClick={clickable && onSelect ? () => onSelect(isSelected ? null : c.name) : undefined}
+              onClick={clickable && onSelect ? () => onSelect(c.name) : undefined}
               className={`border-b ${isGateExpanded ? 'border-b-0' : 'border-b'} border-neutral-800/50 transition-colors ${
                 clickable ? 'cursor-pointer hover:bg-neutral-900/50' : ''
               } ${isSelected ? 'bg-neutral-900/70 border-l-2 border-l-blue-500' : ''}`}
