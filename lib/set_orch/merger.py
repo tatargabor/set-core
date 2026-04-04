@@ -1606,8 +1606,10 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         try:
             from .profile_loader import load_profile
             profile = load_profile()
-            # Get E2E output from the change's gate run
-            e2e_output = change.extras.get("integration_e2e_output", "")
+            # Get E2E output — try top-level field first, then extras
+            e2e_output = getattr(change, "e2e_output", "") or ""
+            if not e2e_output:
+                e2e_output = change.extras.get("integration_e2e_output", "")
             if not e2e_output:
                 e2e_output = change.extras.get("e2e_output", "")
             if not e2e_output:
