@@ -16,7 +16,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .root import SET_TOOLS_ROOT
@@ -754,6 +754,7 @@ def _poll_active_changes(
                     change.name, change.status, wt_path,
                 )
                 update_change_field(state_file, change.name, "status", "done")
+                _resolve_issues_for_change(change.name)
             elif change.status in ("verifying", "integrating"):
                 logger.warning(
                     "Worktree missing for %s (status=%s) — marking stalled",
@@ -790,6 +791,7 @@ def _poll_active_changes(
                         change.name,
                     )
                     update_change_field(state_file, change.name, "status", "done")
+                    _resolve_issues_for_change(change.name)
                     if event_bus:
                         event_bus.emit("CHANGE_DONE", change=change.name)
                     continue
@@ -919,6 +921,7 @@ def _poll_suspended_changes(
                     if ls.get("status") == "done":
                         logger.info("Monitor: stalled change %s has loop-state=done — recovering to done", change.name)
                         update_change_field(state_file, change.name, "status", "done", event_bus=event_bus)
+                        _resolve_issues_for_change(change.name)
                         with locked_state(state_file) as st:
                             if change.name not in st.merge_queue:
                                 st.merge_queue.append(change.name)
@@ -1265,6 +1268,43 @@ def _get_issue_owned_changes() -> set[str]:
         return set()
 
 
+def _resolve_issues_for_change(change_name: str) -> int:
+    """Auto-resolve active issues for a change that completed successfully.
+
+    When an agent finishes (status=done), any active issues blocking the
+    merge queue for that change are stale — the agent already fixed whatever
+    the issue was about. Resolve them so the merger can proceed immediately.
+
+    Returns the number of issues resolved.
+    """
+    registry_path = os.path.join(os.getcwd(), ".set", "issues", "registry.json")
+    if not os.path.isfile(registry_path):
+        return 0
+    try:
+        with open(registry_path) as f:
+            data = json.load(f)
+        active_states = {"open", "investigating", "diagnosed", "fixing", "awaiting_approval"}
+        resolved_count = 0
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for issue in data.get("issues", []):
+            if issue.get("affected_change") == change_name and issue.get("state") in active_states:
+                issue["state"] = "resolved"
+                issue["resolved_at"] = now_iso
+                issue["updated_at"] = now_iso
+                resolved_count += 1
+        if resolved_count > 0:
+            with open(registry_path, "w") as f:
+                json.dump(data, f, indent=4)
+            logger.info(
+                "Auto-resolved %d active issue(s) for completed change %s",
+                resolved_count, change_name,
+            )
+        return resolved_count
+    except (json.JSONDecodeError, OSError):
+        logger.warning("Failed to auto-resolve issues for %s", change_name, exc_info=True)
+        return 0
+
+
 def _get_issue_owned_changes_with_ts() -> dict[str, int]:
     """Return change names actively owned by the issue pipeline with ownership start time.
 
@@ -1284,7 +1324,6 @@ def _get_issue_owned_changes_with_ts() -> dict[str, int]:
                 # Parse ISO timestamp to epoch
                 detected = issue.get("detected_at", "")
                 try:
-                    from datetime import datetime, timezone
                     dt = datetime.fromisoformat(detected)
                     epoch = int(dt.timestamp())
                 except (ValueError, TypeError):
