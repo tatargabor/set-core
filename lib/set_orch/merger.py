@@ -482,6 +482,8 @@ def merge_change(
     # git merge --ff-only refuses because it would overwrite untracked files.
     _clean_untracked_merge_conflicts(change_name)
 
+    if event_bus:
+        event_bus.emit("MERGE_START", change=change_name)
     pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
     merge_result = run_command(
         ["set-merge", change_name, "--no-push", "--ff-only"],
@@ -509,6 +511,8 @@ def merge_change(
         update_change_field(state_file, change_name, "status", "merged")
         _set_completed_at_if_missing(state_file, change_name)
         logger.info("Merged %s (ff-only, git-verified)", change_name)
+        if event_bus:
+            event_bus.emit("MERGE_COMPLETE", change=change_name, data={"result": "success"})
 
         # Heartbeat helper for post-merge steps
         def _heartbeat(step: str) -> None:
@@ -792,12 +796,21 @@ def _run_integration_gates(
     except Exception:
         directives = {}
 
+    import time as _time
+    _pipeline_start = _time.monotonic()
+    _gates_passed_count = 0
+
     # Dep install after integration merge (new deps from other changes)
     if profile and hasattr(profile, "detect_dep_install_command"):
         dep_cmd = profile.detect_dep_install_command(wt_path)
         if dep_cmd:
             logger.info("Integration gate: dep install for %s (%s)", change_name, dep_cmd)
+            if event_bus:
+                event_bus.emit("GATE_START", change=change_name, data={"gate": "dep_install", "phase": "integration"})
+            _gs = _time.monotonic()
             run_command(["bash", "-c", dep_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
+            _ge = int((_time.monotonic() - _gs) * 1000)
+            logger.info("Integration gate: dep install PASSED for %s (%dms)", change_name, _ge)
 
     # Pre-build setup (e.g. Prisma DB schema sync for Next.js + Prisma projects)
     # next build executes server components which query the DB — needs schema synced
@@ -819,14 +832,23 @@ def _run_integration_gates(
         if build_cmd:
             gates_executed += 1
             logger.info("Integration gate: build for %s (%s)", change_name, build_cmd)
+            if event_bus:
+                event_bus.emit("GATE_START", change=change_name, data={"gate": "build", "phase": "integration"})
+            _gs = _time.monotonic()
             result = run_command(["bash", "-c", build_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
+            _ge = int((_time.monotonic() - _gs) * 1000)
             gate_pass = result.exit_code == 0
             update_change_field(state_file, change_name, "build_result", "pass" if gate_pass else "fail")
-            if event_bus:
-                event_bus.emit("VERIFY_GATE", change=change_name, data={
-                    "gate": "build", "result": "pass" if gate_pass else "fail", "phase": "integration"})
-            if not gate_pass:
-                logger.error("Integration gate: build FAILED for %s", change_name)
+            update_change_field(state_file, change_name, "gate_build_ms", _ge)
+            if gate_pass:
+                _gates_passed_count += 1
+                logger.info("Integration gate: build PASSED for %s (%dms)", change_name, _ge)
+                if event_bus:
+                    event_bus.emit("GATE_PASS", change=change_name, data={"gate": "build", "elapsed_ms": _ge, "phase": "integration"})
+            else:
+                logger.error("Integration gate: build FAILED for %s (%dms)", change_name, _ge)
+                if event_bus:
+                    event_bus.emit("VERIFY_GATE", change=change_name, data={"gate": "build", "result": "fail", "phase": "integration"})
                 update_change_field(state_file, change_name, "integration_gate_fail", "build")
                 _record_gate_output_hash((result.stdout or "") + (result.stderr or ""))
                 return False
@@ -839,12 +861,18 @@ def _run_integration_gates(
         if test_cmd:
             gates_executed += 1
             logger.info("Integration gate: test for %s (%s)", change_name, test_cmd)
+            if event_bus:
+                event_bus.emit("GATE_START", change=change_name, data={"gate": "test", "phase": "integration"})
+            _gs = _time.monotonic()
             result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
+            _ge = int((_time.monotonic() - _gs) * 1000)
+            update_change_field(state_file, change_name, "gate_test_ms", _ge)
             if result.exit_code == 0:
+                _gates_passed_count += 1
                 update_change_field(state_file, change_name, "test_result", "pass")
+                logger.info("Integration gate: test PASSED for %s (%dms)", change_name, _ge)
                 if event_bus:
-                    event_bus.emit("VERIFY_GATE", change=change_name, data={
-                        "gate": "test", "result": "pass", "phase": "integration"})
+                    event_bus.emit("GATE_PASS", change=change_name, data={"gate": "test", "elapsed_ms": _ge, "phase": "integration"})
             elif gc.is_blocking("test"):
                 # Check if failure is because test runner isn't installed (missing script/binary)
                 output = (result.stdout or "") + (result.stderr or "")
@@ -912,12 +940,22 @@ def _run_integration_gates(
             if profile and hasattr(profile, "e2e_gate_env"):
                 e2e_env.update(profile.e2e_gate_env(e2e_port))
             logger.info("Integration gate: e2e for %s (%s, port=%d)", change_name, e2e_cmd, e2e_port)
-            result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env)
-            e2e_pass = result.exit_code == 0
-            update_change_field(state_file, change_name, "smoke_result", "pass" if e2e_pass else "fail")
             if event_bus:
-                event_bus.emit("VERIFY_GATE", change=change_name, data={
-                    "gate": "e2e", "result": "pass" if e2e_pass else "fail", "phase": "integration"})
+                event_bus.emit("GATE_START", change=change_name, data={"gate": "e2e", "phase": "integration"})
+            _gs = _time.monotonic()
+            result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env)
+            _ge = int((_time.monotonic() - _gs) * 1000)
+            e2e_pass = result.exit_code == 0
+            update_change_field(state_file, change_name, "e2e_result", "pass" if e2e_pass else "fail")
+            update_change_field(state_file, change_name, "gate_e2e_ms", _ge)
+            if e2e_pass:
+                _gates_passed_count += 1
+                logger.info("Integration gate: e2e PASSED for %s (%dms)", change_name, _ge)
+                if event_bus:
+                    event_bus.emit("GATE_PASS", change=change_name, data={"gate": "e2e", "elapsed_ms": _ge, "phase": "integration"})
+            else:
+                if event_bus:
+                    event_bus.emit("VERIFY_GATE", change=change_name, data={"gate": "e2e", "result": "fail", "phase": "integration"})
             if not e2e_pass:
                 if gc.is_blocking("e2e"):
                     e2e_output = (result.stdout or "")[-2000:] + "\n" + (result.stderr or "")[-1000:]
@@ -974,6 +1012,15 @@ def _run_integration_gates(
                     "reason": "no_gates_executed", "change_type": change_type,
                     "gates_executed": 0,
                 })
+
+    # Summary line
+    _pipeline_elapsed = int((_time.monotonic() - _pipeline_start) * 1000)
+    update_change_field(state_file, change_name, "gate_total_ms", _pipeline_elapsed)
+    if gates_executed > 0:
+        logger.info(
+            "Integration gates for %s: %d/%d passed in %.1fs",
+            change_name, _gates_passed_count, gates_executed, _pipeline_elapsed / 1000,
+        )
 
     return True
 

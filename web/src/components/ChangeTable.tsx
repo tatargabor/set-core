@@ -157,6 +157,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                       <GateBar
                         test_result={c.test_result}
                         smoke_result={c.smoke_result}
+                        e2e_result={c.e2e_result}
                         review_result={c.review_result}
                         build_result={c.build_result}
                         spec_coverage_result={c.spec_coverage_result}

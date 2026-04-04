@@ -1,6 +1,7 @@
 interface Props {
   test_result?: string
   smoke_result?: string
+  e2e_result?: string
   review_result?: string
   build_result?: string
   spec_coverage_result?: string
@@ -13,6 +14,7 @@ const gateLabels: Record<string, string> = {
   build: 'B',
   review: 'R',
   smoke: 'S',
+  e2e: 'E',
   spec_coverage: 'SC',
 }
 
@@ -20,16 +22,18 @@ const statusStyle: Record<string, string> = {
   pass: 'bg-green-900 text-green-300',
   fail: 'bg-red-900 text-red-300',
   critical: 'bg-red-800 text-red-200',
+  redispatch: 'bg-amber-900 text-amber-300',
   skip: 'bg-neutral-800 text-neutral-500',
   skip_merged: 'bg-neutral-800 text-neutral-500',
   pending: 'bg-neutral-800 text-neutral-600',
 }
 
-export default function GateBar({ test_result, smoke_result, review_result, build_result, spec_coverage_result, hasScreenshots, onScreenshots }: Props) {
+export default function GateBar({ test_result, smoke_result, e2e_result, review_result, build_result, spec_coverage_result, hasScreenshots, onScreenshots }: Props) {
   const gates = [
-    { name: 'test', status: test_result },
     { name: 'build', status: build_result },
+    { name: 'test', status: test_result },
     { name: 'review', status: review_result },
+    { name: 'e2e', status: e2e_result },
     { name: 'smoke', status: smoke_result },
     { name: 'spec_coverage', status: spec_coverage_result ? (spec_coverage_result === 'timeout' ? 'fail' : spec_coverage_result) : undefined },
   ].filter((g) => g.status)

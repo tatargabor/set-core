@@ -49,6 +49,7 @@ export interface ChangeInfo {
   // Gate results
   test_result?: string
   smoke_result?: string
+  e2e_result?: string
   review_result?: string
   build_result?: string
   // Gate outputs (full text)
@@ -61,6 +62,7 @@ export interface ChangeInfo {
   gate_test_ms?: number
   gate_review_ms?: number
   gate_verify_ms?: number
+  gate_e2e_ms?: number
   gate_total_ms?: number
   // Screenshot info
   smoke_screenshot_count?: number

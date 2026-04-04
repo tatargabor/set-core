@@ -106,6 +106,7 @@ class Change:
     test_stats: Optional[dict] = None
     smoke_result: Optional[str] = None
     smoke_stats: Optional[dict] = None
+    e2e_result: Optional[str] = None
     review_result: Optional[str] = None
     build_result: Optional[str] = None
 
@@ -130,6 +131,7 @@ class Change:
     gate_review_ms: int = 0
     gate_build_ms: int = 0
     gate_verify_ms: int = 0
+    gate_e2e_ms: int = 0
     gate_total_ms: int = 0
 
     # Optional fields from plan
@@ -153,7 +155,7 @@ class Change:
             elif val is not None or f.name in (
                 "worktree_path", "ralph_pid", "started_at", "completed_at",
                 "test_result", "test_stats", "smoke_result", "smoke_stats",
-                "review_result", "build_result", "model",
+                "e2e_result", "review_result", "build_result", "model",
             ):
                 d[f.name] = val
             elif f.name not in ("requirements", "also_affects_reqs", "watchdog", "gate_hints"):

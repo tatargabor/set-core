@@ -86,6 +86,13 @@ function derivePhases(c: ChangeInfo): Phase[] {
     phases.push({ name: 'Smoke', result: 'current' })
   }
 
+  // E2E
+  if (c.e2e_result) {
+    phases.push({ name: 'E2E', ms: c.gate_e2e_ms, result: c.e2e_result as Phase['result'] })
+  } else if ((c.smoke_result || c.review_result) && isVerifying) {
+    phases.push({ name: 'E2E', result: 'current' })
+  }
+
   // Merge
   if (isDone) {
     phases.push({ name: 'Merge', result: 'pass' })
