@@ -12,7 +12,6 @@ import AuditPanel from '../components/AuditPanel'
 import PhaseView from '../components/PhaseView'
 import DigestView from '../components/DigestView'
 import SessionPanel from '../components/SessionPanel'
-import GateDetail from '../components/GateDetail'
 import OrchestrationChat from '../components/OrchestrationChat'
 // SentinelPanel replaced by raw log view
 import ShutdownProgress from '../components/ShutdownProgress'
@@ -40,7 +39,7 @@ export default function Dashboard({ project, initialTab }: Props) {
   const [checkpoint, setCheckpoint] = useState(false)
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
-  const [changeDetailView, setChangeDetailView] = useState<'log' | 'timeline' | 'gates'>('log')
+  const [changeDetailView, setChangeDetailView] = useState<'log' | 'timeline'>('log')
   // URL-backed tab state: ?tab=digest&sub=domains
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const [activeTab, setActiveTabRaw] = useState<PanelTab>(() => {
@@ -299,13 +298,13 @@ export default function Dashboard({ project, initialTab }: Props) {
               bottom={
                 <div className="h-full flex flex-col">
                   <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
-                    {(['log', 'timeline', 'gates'] as const).map(v => (
+                    {(['log', 'timeline'] as const).map(v => (
                       <button
                         key={v}
                         onClick={() => setChangeDetailView(v)}
                         className={`px-2 py-0.5 text-sm rounded ${changeDetailView === v ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-500 hover:text-neutral-300'}`}
                       >
-                        {v === 'log' ? 'Log' : v === 'timeline' ? 'Timeline' : 'Gates'}
+                        {v === 'log' ? 'Log' : 'Timeline'}
                       </button>
                     ))}
                   </div>
@@ -316,8 +315,6 @@ export default function Dashboard({ project, initialTab }: Props) {
                         selectedChange={selectedChangeInfo}
                         project={project}
                       />
-                    ) : changeDetailView === 'gates' ? (
-                      selectedChangeInfo && <GateDetail change={selectedChangeInfo} />
                     ) : (
                       selectedChange && <ChangeTimelineDetail project={project} changeName={selectedChange} />
                     )}

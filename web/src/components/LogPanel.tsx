@@ -106,11 +106,61 @@ function LogPane({ lines, colorFn, label, lineCount, live }: {
   )
 }
 
+type SubTab = 'task' | 'build' | 'test' | 'e2e' | 'review' | 'smoke' | 'merge'
+
+interface GateTab {
+  id: SubTab
+  label: string
+  result?: string
+  output?: string
+  ms?: number
+}
+
+const gateResultStyle: Record<string, string> = {
+  pass: 'text-green-400',
+  fail: 'text-red-400',
+  critical: 'text-red-500 font-semibold',
+  skip: 'text-neutral-500',
+}
+
+function buildGateTabs(change: ChangeInfo): GateTab[] {
+  const gates: GateTab[] = [
+    { id: 'build', label: 'Build', result: change.build_result, output: change.build_output, ms: change.gate_build_ms },
+    { id: 'test', label: 'Test', result: change.test_result, output: change.test_output, ms: change.gate_test_ms },
+    { id: 'e2e', label: 'E2E', result: change.e2e_result, output: change.e2e_output, ms: change.gate_e2e_ms },
+    { id: 'review', label: 'Review', result: change.review_result, output: change.review_output, ms: change.gate_review_ms },
+    { id: 'smoke', label: 'Smoke', result: change.smoke_result, output: change.smoke_output, ms: change.gate_verify_ms },
+  ]
+  return gates.filter(g => g.result)
+}
+
+function GateOutputPane({ gate }: { gate: GateTab }) {
+  return (
+    <div className="h-full flex flex-col p-3">
+      <div className="flex items-center gap-3 mb-2 shrink-0">
+        <span className="text-sm font-medium text-neutral-300">{gate.label}</span>
+        <span className={`text-sm ${gateResultStyle[gate.result!] ?? 'text-neutral-400'}`}>{gate.result}</span>
+        {gate.ms != null && (
+          <span className="text-sm text-neutral-500">{(gate.ms / 1000).toFixed(1)}s</span>
+        )}
+      </div>
+      <div className="flex-1 overflow-auto">
+        {gate.output ? (
+          <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{gate.output}</pre>
+        ) : (
+          <span className="text-sm text-neutral-600">No output</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function LogPanel({ orchLines, selectedChange, project }: Props) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [sessionLines, setSessionLines] = useState<string[]>([])
   const [sessionLoading, setSessionLoading] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('task')
   const [splitRatio, setSplitRatio] = useState(loadSplitRatio)
   const [dragging, setDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -121,14 +171,20 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
     try { localStorage.setItem(SPLIT_RATIO_KEY, String(splitRatio)) } catch {}
   }, [splitRatio])
 
-  // When change selection changes, load sessions
+  // When change selection changes, load sessions and auto-select sub-tab
   useEffect(() => {
     if (!selectedChange) {
       setSessions([])
       setSessionLines([])
       setActiveSessionId(null)
+      setActiveSubTab('task')
       return
     }
+    // Auto-select first failing gate, otherwise default to task
+    const gates = buildGateTabs(selectedChange)
+    const firstFail = gates.find(g => g.result === 'fail' || g.result === 'critical')
+    setActiveSubTab(firstFail ? firstFail.id : 'task')
+
     setSessionLoading(true)
     getChangeSession(project, selectedChange.name, 500)
       .then((data) => {
@@ -210,48 +266,109 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
     )
   }
 
-  // Session log pane (shared between mobile and desktop)
+  // Build sub-tabs: Task + gate tabs + merge tab
+  const gateTabs = buildGateTabs(selectedChange)
+  const mergeLines = selectedChange.status === 'merged'
+    ? orchLines.filter(l => {
+        const lower = l.toLowerCase()
+        return lower.includes(selectedChange.name) && (
+          lower.includes('merge') || lower.includes('archive') || lower.includes('merge-queue')
+        )
+      })
+    : []
+  const showMerge = mergeLines.length > 0
+
+  // Right pane content (shared between mobile and desktop)
   const sessionPane = (
     <div className="h-full min-w-0 flex flex-col">
-      {/* Session tabs */}
-      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50 overflow-x-auto">
-        <span className="text-sm text-neutral-600 shrink-0 mr-1">
-          {selectedChange.name}
-        </span>
-        {sessions.map((s, i) => {
-          const isActive = activeSessionId === s.id
-          const isLatest = i === 0
-          return (
-            <button
-              key={s.id}
-              onClick={() => loadSession(s.id)}
-              className={`px-1.5 py-0.5 text-sm rounded transition-colors shrink-0 ${
-                isActive
-                  ? 'bg-blue-900/60 text-blue-300'
-                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
-              }`}
-              title={s.full_label || `Session ${s.id.slice(0, 8)}… — ${new Date(s.mtime).toLocaleString()}`}
-            >
-              {sessionLabel(s, i)}{isLatest ? ' *' : ''}
-            </button>
-          )
-        })}
-        {sessions.length === 0 && (
-          <span className="text-sm text-neutral-600">No sessions</span>
+      {/* Sub-tab bar: Task | Build | Test | E2E | ... | Merge */}
+      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50 overflow-x-auto shrink-0">
+        <button
+          onClick={() => setActiveSubTab('task')}
+          className={`px-1.5 py-0.5 text-sm rounded shrink-0 ${
+            activeSubTab === 'task' ? 'bg-blue-900/60 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'
+          }`}
+        >
+          Task
+        </button>
+        {gateTabs.map(g => (
+          <button
+            key={g.id}
+            onClick={() => setActiveSubTab(g.id)}
+            className={`px-1.5 py-0.5 text-sm rounded shrink-0 flex items-center gap-1 ${
+              activeSubTab === g.id ? 'bg-blue-900/60 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            {g.label}
+            <span className={`text-xs ${gateResultStyle[g.result!] ?? ''}`}>
+              {g.result === 'pass' ? '✓' : g.result === 'fail' ? '✗' : g.result === 'skip' ? '–' : ''}
+            </span>
+          </button>
+        ))}
+        {showMerge && (
+          <button
+            onClick={() => setActiveSubTab('merge')}
+            className={`px-1.5 py-0.5 text-sm rounded shrink-0 ${
+              activeSubTab === 'merge' ? 'bg-blue-900/60 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            Merge
+          </button>
         )}
       </div>
 
-      {/* Session content */}
+      {/* Sub-tab content */}
       <div className="flex-1 min-h-0">
-        {sessionLoading ? (
-          <div className="p-2 text-sm text-neutral-600">Loading session...</div>
-        ) : (
+        {activeSubTab === 'task' ? (
+          <>
+            {/* Session picker */}
+            <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/30 overflow-x-auto">
+              <span className="text-sm text-neutral-600 shrink-0 mr-1">{selectedChange.name}</span>
+              {sessions.map((s, i) => {
+                const isActive = activeSessionId === s.id
+                const isLatest = i === 0
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => loadSession(s.id)}
+                    className={`px-1.5 py-0.5 text-sm rounded transition-colors shrink-0 ${
+                      isActive
+                        ? 'bg-neutral-800 text-neutral-200'
+                        : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+                    }`}
+                    title={s.full_label || `Session ${s.id.slice(0, 8)}… — ${new Date(s.mtime).toLocaleString()}`}
+                  >
+                    {sessionLabel(s, i)}{isLatest ? ' *' : ''}
+                  </button>
+                )
+              })}
+              {sessions.length === 0 && (
+                <span className="text-sm text-neutral-600">No sessions</span>
+              )}
+            </div>
+            {sessionLoading ? (
+              <div className="p-2 text-sm text-neutral-600">Loading session...</div>
+            ) : (
+              <LogPane
+                lines={sessionLines}
+                colorFn={sessionLineColor}
+                label="Session Log"
+                live={selectedChange.status === 'running'}
+              />
+            )}
+          </>
+        ) : activeSubTab === 'merge' ? (
           <LogPane
-            lines={sessionLines}
-            colorFn={sessionLineColor}
-            label="Session Log"
-            live={selectedChange.status === 'running'}
+            lines={mergeLines}
+            colorFn={orchLineColor}
+            label="Merge Log"
           />
+        ) : (
+          // Gate output pane
+          (() => {
+            const gate = gateTabs.find(g => g.id === activeSubTab)
+            return gate ? <GateOutputPane gate={gate} /> : <div className="p-2 text-sm text-neutral-600">No data</div>
+          })()
         )}
       </div>
     </div>
