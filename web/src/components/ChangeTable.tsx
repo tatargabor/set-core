@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import type { ChangeInfo } from '../lib/api'
-import { stopChange, skipChange, pauseChange, resumeChange } from '../lib/api'
+// Action imports preserved for future re-enable
+// import { stopChange, skipChange, pauseChange, resumeChange } from '../lib/api'
 import { TuiStatus, statusColor as tuiStatusColor } from './tui'
 import GateBar from './GateBar'
 import StepBar from './StepBar'
@@ -42,8 +43,6 @@ function changeDuration(c: ChangeInfo): number | undefined {
 }
 
 export default function ChangeTable({ changes, project, selected, onSelect }: Props) {
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [confirmAction, setConfirmAction] = useState<string | null>(null)
   const [expandedGate, setExpandedGate] = useState<string | null>(null)
   const [screenshotChange, setScreenshotChange] = useState<string | null>(null)
   const isMobile = useIsMobile()
@@ -56,44 +55,6 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
   const toggleScreenshots = (e: React.MouseEvent, name: string) => {
     e.stopPropagation()
     setScreenshotChange(prev => prev === name ? null : name)
-  }
-
-  const handleAction = async (e: React.MouseEvent, name: string, action: 'stop' | 'skip' | 'pause' | 'resume') => {
-    e.stopPropagation()
-    // Pause and resume don't need confirmation
-    if (action === 'pause' || action === 'resume') {
-      const key = `${name}:${action}`
-      setActionLoading(key)
-      try {
-        if (action === 'pause') await pauseChange(project, name)
-        if (action === 'resume') {
-          const res = await resumeChange(project, name)
-          if ('message' in res && /max parallel/i.test(String(res.message))) {
-            alert(res.message)
-          }
-        }
-      } catch (err: unknown) {
-        if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 429) {
-          alert('Max parallel changes reached, try again later')
-        }
-      }
-      setActionLoading(null)
-      return
-    }
-    const key = `${name}:${action}`
-    if (confirmAction !== key) {
-      setConfirmAction(key)
-      return
-    }
-    setConfirmAction(null)
-    setActionLoading(key)
-    try {
-      if (action === 'stop') await stopChange(project, name)
-      if (action === 'skip') await skipChange(project, name)
-    } catch {
-      // will be reflected in next state update
-    }
-    setActionLoading(null)
   }
 
   if (changes.length === 0) {
@@ -188,53 +149,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                     </div>
                   )}
 
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    {['running', 'verifying', 'implementing'].includes(c.status) && (
-                      <button
-                        onClick={(e) => handleAction(e, c.name, 'pause')}
-                        disabled={actionLoading === `${c.name}:pause`}
-                        className="px-3 py-1.5 text-sm rounded disabled:opacity-50 bg-amber-900/50 text-amber-300 hover:bg-amber-900"
-                      >
-                        {actionLoading === `${c.name}:pause` ? 'Pausing...' : 'Pause'}
-                      </button>
-                    )}
-                    {c.status === 'paused' && (
-                      <button
-                        onClick={(e) => handleAction(e, c.name, 'resume')}
-                        disabled={actionLoading === `${c.name}:resume`}
-                        className="px-3 py-1.5 text-sm rounded disabled:opacity-50 bg-green-900/50 text-green-300 hover:bg-green-900"
-                      >
-                        {actionLoading === `${c.name}:resume` ? 'Resuming...' : 'Resume'}
-                      </button>
-                    )}
-                    {['running', 'verifying', 'implementing'].includes(c.status) && (
-                      <button
-                        onClick={(e) => handleAction(e, c.name, 'stop')}
-                        disabled={actionLoading === `${c.name}:stop`}
-                        className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
-                          confirmAction === `${c.name}:stop`
-                            ? 'bg-red-700 text-white hover:bg-red-600'
-                            : 'bg-red-900/50 text-red-300 hover:bg-red-900'
-                        }`}
-                      >
-                        {confirmAction === `${c.name}:stop` ? 'Are you sure?' : 'Stop'}
-                      </button>
-                    )}
-                    {(c.status === 'pending' || c.status === 'failed' || c.status === 'verify-failed' || c.status === 'stalled') && (
-                      <button
-                        onClick={(e) => handleAction(e, c.name, 'skip')}
-                        disabled={actionLoading === `${c.name}:skip`}
-                        className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
-                          confirmAction === `${c.name}:skip`
-                            ? 'bg-amber-700 text-white hover:bg-amber-600'
-                            : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-                        }`}
-                      >
-                        {confirmAction === `${c.name}:skip` ? 'Are you sure?' : 'Skip'}
-                      </button>
-                    )}
-                  </div>
+                  {/* Actions hidden — sentinel manages change lifecycle */}
                 </div>
               )}
             </div>
@@ -255,7 +170,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
           <th className="text-right px-2 py-2 font-medium">Duration</th>
           <th className="text-right px-2 py-2 font-medium">Tokens</th>
           <th className="text-center px-2 py-2 font-medium">Gates</th>
-          <th className="text-right px-4 py-2 font-medium">Actions</th>
+          {/* Actions column hidden */}
         </tr>
       </thead>
       <tbody>
@@ -312,54 +227,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                   </div>
                 </div>
               </td>
-              <td className="px-4 py-2 text-right">
-                <div className="flex gap-1 justify-end">
-                  {['running', 'verifying', 'implementing'].includes(c.status) && (
-                    <button
-                      onClick={(e) => handleAction(e, c.name, 'pause')}
-                      disabled={actionLoading === `${c.name}:pause`}
-                      className="px-2 py-0.5 text-sm rounded disabled:opacity-50 bg-amber-900/50 text-amber-300 hover:bg-amber-900"
-                    >
-                      {actionLoading === `${c.name}:pause` ? '...' : 'Pause'}
-                    </button>
-                  )}
-                  {c.status === 'paused' && (
-                    <button
-                      onClick={(e) => handleAction(e, c.name, 'resume')}
-                      disabled={actionLoading === `${c.name}:resume`}
-                      className="px-2 py-0.5 text-sm rounded disabled:opacity-50 bg-green-900/50 text-green-300 hover:bg-green-900"
-                    >
-                      {actionLoading === `${c.name}:resume` ? '...' : 'Resume'}
-                    </button>
-                  )}
-                  {['running', 'verifying', 'implementing'].includes(c.status) && (
-                    <button
-                      onClick={(e) => handleAction(e, c.name, 'stop')}
-                      disabled={actionLoading === `${c.name}:stop`}
-                      className={`px-2 py-0.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
-                        confirmAction === `${c.name}:stop`
-                          ? 'bg-red-700 text-white hover:bg-red-600'
-                          : 'bg-red-900/50 text-red-300 hover:bg-red-900'
-                      }`}
-                    >
-                      {confirmAction === `${c.name}:stop` ? 'Sure?' : 'Stop'}
-                    </button>
-                  )}
-                  {(c.status === 'pending' || c.status === 'failed' || c.status === 'verify-failed' || c.status === 'stalled') && (
-                    <button
-                      onClick={(e) => handleAction(e, c.name, 'skip')}
-                      disabled={actionLoading === `${c.name}:skip`}
-                      className={`px-2 py-0.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ${
-                        confirmAction === `${c.name}:skip`
-                          ? 'bg-amber-700 text-white hover:bg-amber-600'
-                          : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-                      }`}
-                    >
-                      {confirmAction === `${c.name}:skip` ? 'Sure?' : 'Skip'}
-                    </button>
-                  )}
-                </div>
-              </td>
+              {/* Actions column hidden — sentinel manages change lifecycle */}
             </tr>
             {isGateExpanded && hasGates && (
               <tr className="border-b border-neutral-800/50 bg-neutral-950/50">
