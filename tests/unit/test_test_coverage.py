@@ -80,16 +80,30 @@ class TestGenerateTestPlan:
 
         assert out_path.is_file()
         # REQ-AUTH-001 has 2 scenarios, REQ-FORM-001 has 1, REQ-HOME-001 has 1
-        assert len(plan.entries) == 4
-        assert {e.req_id for e in plan.entries} == {"REQ-AUTH-001", "REQ-FORM-001", "REQ-HOME-001"}
+        assert len(plan.entries) == 5  # 2 auth + 1 form + 1 home + 1 misc (plain text)
+        assert {e.req_id for e in plan.entries} == {"REQ-AUTH-001", "REQ-FORM-001", "REQ-HOME-001", "REQ-MISC-001"}
 
-    def test_non_testable_requirements(self, tmp_path):
+    def test_empty_ac_is_non_testable(self, tmp_path):
+        """Requirements with no AC at all are non-testable."""
+        reqs = {"requirements": [
+            {"id": "REQ-EMPTY-001", "title": "No AC", "domain": "misc", "acceptance_criteria": []},
+        ]}
+        p = tmp_path / "reqs.json"
+        p.write_text(json.dumps(reqs), encoding="utf-8")
+        plan = generate_test_plan(p, tmp_path / "plan.json")
+        assert "REQ-EMPTY-001" in plan.non_testable
+        assert len(plan.entries) == 0
+
+    def test_plain_text_ac_generates_entries(self, tmp_path):
+        """Plain text ACs (no WHEN/THEN) still generate test plan entries."""
         req_path = _make_requirements_json(tmp_path)
         out_path = tmp_path / "test-plan.json"
         plan = generate_test_plan(req_path, out_path)
 
-        # REQ-MISC-001 has no WHEN/THEN → non-testable
-        assert "REQ-MISC-001" in plan.non_testable
+        # REQ-MISC-001 has plain text AC → should still get an entry
+        misc_entries = [e for e in plan.entries if e.req_id == "REQ-MISC-001"]
+        assert len(misc_entries) == 1
+        assert "REQ-MISC-001" not in plan.non_testable
 
     def test_idempotent(self, tmp_path):
         req_path = _make_requirements_json(tmp_path)

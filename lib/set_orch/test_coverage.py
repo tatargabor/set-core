@@ -583,12 +583,27 @@ def generate_test_plan(
         ac_items = req.get("acceptance_criteria", []) or []
         ac_text = "\n".join(f"#### Scenario: {ac}" for ac in ac_items) if ac_items else ""
 
-        # Also check for structured scenarios in the requirement
+        # Try structured WHEN/THEN scenarios first
         scenarios = parse_scenarios(ac_text) if ac_text else []
+
+        # Fallback: plain-text ACs without WHEN/THEN are still testable —
+        # create a DigestScenario per AC with the text as the name
+        if not scenarios and ac_items:
+            for ac in ac_items:
+                ac_str = str(ac).strip()
+                if not ac_str:
+                    continue
+                slug = _slugify(ac_str[:60])
+                scenarios.append(DigestScenario(
+                    name=ac_str,
+                    when=ac_str,
+                    then="verified",
+                    slug=slug or "ac",
+                ))
 
         if not scenarios:
             non_testable.append(req_id)
-            logger.debug("Requirement %s has no WHEN/THEN scenarios — non-testable", req_id)
+            logger.debug("Requirement %s has no acceptance criteria — non-testable", req_id)
             continue
 
         for scenario in scenarios:
