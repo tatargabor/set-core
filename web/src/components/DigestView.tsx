@@ -454,10 +454,12 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                     {isReqExpanded && hasScenarios && scenarioCount > 0 && (
                       r.scenarios!.map((sc, i) => {
                         const tc = cases.find(c => c.scenario_slug === sc.slug)
+                        // If no scenario-level match but REQ is covered (deterministic REQ-ID binding), show as covered
+                        const reqCovered = !tc && !uncoveredSet.has(r.id) && !nonTestableSet.has(r.id) && (testCoverage?.covered_reqs ?? []).includes(r.id)
                         return (
                           <div key={i} className="pl-12 pr-3 py-0.5">
                             <div className="flex items-center gap-1.5 text-sm">
-                              {tc ? <TestIcon result={tc.result} /> : <span className="text-neutral-600">○</span>}
+                              {tc ? <TestIcon result={tc.result} /> : reqCovered ? <span className="text-green-600">●</span> : <span className="text-neutral-600">○</span>}
                               <span className="text-neutral-300">{sc.name}</span>
                               {tc && <RiskBadge risk={tc.risk} />}
                               {/* Level 4: test file inline */}
@@ -466,7 +468,8 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                                   {tc.test_file}
                                 </span>
                               )}
-                              {!tc && !isNonTestable && <span className="text-xs text-yellow-500 ml-auto">no test</span>}
+                              {reqCovered && !tc && <span className="text-xs text-green-600 ml-auto">covered</span>}
+                              {!tc && !reqCovered && !isNonTestable && <span className="text-xs text-yellow-500 ml-auto">no test</span>}
                             </div>
                             {/* WHEN/THEN compact */}
                             {(sc.when || sc.then) && (

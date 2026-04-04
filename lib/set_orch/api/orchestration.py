@@ -211,14 +211,50 @@ def get_digest(project: str):
     _enrich_requirements_with_scenarios(result, project_path)
 
     # Attach test coverage from orchestration state if available
+    # Coverage can be at state.extras.test_coverage (legacy) or per-change extras
     state_file = project_path / "orchestration-state.json"
     if state_file.exists():
         try:
             with open(state_file) as f:
                 state_data = json.load(f)
-            tc = state_data.get("extras", state_data).get("test_coverage")
+
+            # Try state-level first (legacy)
+            tc = state_data.get("extras", {}).get("test_coverage")
             if not tc:
                 tc = state_data.get("test_coverage")
+
+            # Aggregate from per-change coverage if no state-level data
+            if not tc:
+                all_cases = []
+                covered = set()
+                uncovered = set()
+                non_testable = set()
+                passed = 0
+                failed = 0
+                for ch in state_data.get("changes", []):
+                    ch_tc = ch.get("extras", {}).get("test_coverage")
+                    if ch_tc:
+                        all_cases.extend(ch_tc.get("test_cases", []))
+                        covered.update(ch_tc.get("covered_reqs", []))
+                        uncovered.update(ch_tc.get("uncovered_reqs", []))
+                        non_testable.update(ch_tc.get("non_testable_reqs", []))
+                        passed += ch_tc.get("passed", 0)
+                        failed += ch_tc.get("failed", 0)
+                # Remove from uncovered anything that's covered by another change
+                uncovered -= covered
+                if all_cases or covered:
+                    total_testable = len(covered) + len(uncovered)
+                    tc = {
+                        "test_cases": all_cases,
+                        "covered_reqs": sorted(covered),
+                        "uncovered_reqs": sorted(uncovered),
+                        "non_testable_reqs": sorted(non_testable),
+                        "total_tests": len(all_cases),
+                        "passed": passed,
+                        "failed": failed,
+                        "coverage_pct": round(len(covered) / total_testable * 100, 1) if total_testable > 0 else 0,
+                    }
+
             if tc:
                 result["test_coverage"] = tc
         except (json.JSONDecodeError, OSError):
