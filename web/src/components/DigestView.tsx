@@ -92,6 +92,19 @@ export default function DigestView({ project }: Props) {
     return () => { cancelled = true; clearInterval(iv) }
   }, [project])
 
+  // Parse E2E test counts (must be before early returns — React hook rules)
+  const e2eStats = useMemo(() => {
+    let total = 0, passed = 0, failed = 0
+    for (const c of changes) {
+      if (!c.e2e_output) continue
+      for (const line of c.e2e_output.split('\n')) {
+        if (/[✓✔]\s+\d+\s+/.test(line)) { total++; passed++ }
+        else if (/[✗✘×]\s+\d+\s+/.test(line)) { total++; failed++ }
+      }
+    }
+    return { total, passed, failed }
+  }, [changes])
+
   if (error) return <div className="p-4 text-sm text-red-400">{error}</div>
   if (!data) return <div className="p-4 text-sm text-neutral-500">Loading digest...</div>
   if (!data.exists) return <DigestPendingView project={project} />
@@ -110,19 +123,6 @@ export default function DigestView({ project }: Props) {
 
   // Count total AC items
   const totalAC = reqs.reduce((sum, r) => sum + (r.acceptance_criteria?.length ?? 0), 0)
-
-  // Parse E2E test counts
-  const e2eStats = useMemo(() => {
-    let total = 0, passed = 0, failed = 0
-    for (const c of changes) {
-      if (!c.e2e_output) continue
-      for (const line of c.e2e_output.split('\n')) {
-        if (/[✓✔]\s+\d+\s+/.test(line)) { total++; passed++ }
-        else if (/[✗✘×]\s+\d+\s+/.test(line)) { total++; failed++ }
-      }
-    }
-    return { total, passed, failed }
-  }, [changes])
 
   const tabs: { id: DigestTab; label: string; hidden?: boolean }[] = [
     { id: 'domains', label: `Domains (${Object.keys(domains).length})`, hidden: Object.keys(domains).length === 0 },
