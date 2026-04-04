@@ -412,33 +412,51 @@ class WebProjectType(CoreProfile):
 
     # ─── ISTQB Risk Classification ────────────────────────────────
 
+    # Domain → risk (the requirement's primary domain from digest)
     _DOMAIN_RISK = {
-        "auth": "HIGH", "payment": "HIGH", "admin": "HIGH",
-        "forms": "MEDIUM", "navigation": "MEDIUM", "search": "MEDIUM",
+        "auth": "HIGH", "authentication": "HIGH",
+        "payment": "HIGH", "checkout": "HIGH", "billing": "HIGH",
+        "admin": "HIGH", "administration": "HIGH",
+        "security": "HIGH",
+        "cart": "MEDIUM", "order": "MEDIUM",
+        "subscription": "MEDIUM", "promo": "MEDIUM", "promotion": "MEDIUM",
+        "forms": "MEDIUM", "form": "MEDIUM",
+        "review": "MEDIUM", "moderation": "MEDIUM",
+        "navigation": "MEDIUM", "search": "MEDIUM",
     }
-    _KEYWORD_HIGH = {"delete", "password", "token", "checkout", "security", "mutation"}
-    _KEYWORD_MEDIUM = {"submit", "validate", "filter", "sort", "edit", "update"}
+
+    # Title-only patterns (requirement title, NOT AC text — avoids false positives)
+    import re as _re
+    _TITLE_HIGH = _re.compile(
+        r"(?:delet|cancel|refund|password|login|logout|"
+        r"checkout|payment|sign.?(?:in|out|up)|"
+        r"auth(?:entication)?|permission|role.?based|"
+        r"order.?(?:cancel|return|refund|revers)|"
+        r"reset.?password|cookie.?consent)",
+        _re.IGNORECASE,
+    )
+    _TITLE_MEDIUM = _re.compile(
+        r"(?:cart|basket|wishlist|favori|"
+        r"filter|sort|search|"
+        r"form|validat|submit|"
+        r"coupon|discount|promo|gift.?card|"
+        r"subscript|review|rating|"
+        r"upload|export|import|"
+        r"edit|update|moderat|manage|"
+        r"wizard|step|flow)",
+        _re.IGNORECASE,
+    )
 
     def classify_test_risk(self, scenario, requirement: dict) -> str:
-        """Classify scenario risk: domain-first, keyword fallback."""
-        # Domain-first lookup
+        """Classify scenario risk: domain first, then title pattern."""
         domain = (requirement.get("domain") or "").lower().strip()
         if domain in self._DOMAIN_RISK:
             return self._DOMAIN_RISK[domain]
 
-        # Keyword fallback from scenario text
-        text = ""
-        if hasattr(scenario, "when"):
-            text = f"{scenario.when} {scenario.then}".lower()
-        elif hasattr(scenario, "name"):
-            text = scenario.name.lower()
-
-        req_title = (requirement.get("title") or "").lower()
-        combined = f"{text} {req_title} {domain}"
-
-        if any(kw in combined for kw in self._KEYWORD_HIGH):
+        title = requirement.get("title") or ""
+        if self._TITLE_HIGH.search(title):
             return "HIGH"
-        if any(kw in combined for kw in self._KEYWORD_MEDIUM):
+        if self._TITLE_MEDIUM.search(title):
             return "MEDIUM"
         return "LOW"
 

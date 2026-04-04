@@ -176,23 +176,29 @@ class TestClassifyTestRisk:
         assert profile.classify_test_risk(scenario, {"domain": "navigation"}) == "MEDIUM"
         assert profile.classify_test_risk(scenario, {"domain": "search"}) == "MEDIUM"
 
-    def test_web_keyword_fallback(self):
+    def test_web_title_pattern_high(self):
         from set_project_web.project_type import WebProjectType
         profile = WebProjectType()
+        # Title with "checkout" → HIGH
+        scenario = DigestScenario(name="", when="", then="", slug="")
+        assert profile.classify_test_risk(scenario, {"domain": "misc", "title": "3-step checkout flow"}) == "HIGH"
+        # Title with "Order cancellation" → HIGH
+        assert profile.classify_test_risk(scenario, {"domain": "misc", "title": "Order cancellation with reversal"}) == "HIGH"
 
-        # HIGH keyword: "delete"
-        scenario = DigestScenario(name="delete item", when="user clicks delete", then="item removed", slug="del")
-        assert profile.classify_test_risk(scenario, {"domain": "misc"}) == "HIGH"
+    def test_web_title_pattern_medium(self):
+        from set_project_web.project_type import WebProjectType
+        profile = WebProjectType()
+        scenario = DigestScenario(name="", when="", then="", slug="")
+        # Title with "filter" → MEDIUM
+        assert profile.classify_test_risk(scenario, {"domain": "misc", "title": "Coffee catalog filtering"}) == "MEDIUM"
+        # Title with "Cart operations" → MEDIUM
+        assert profile.classify_test_risk(scenario, {"domain": "misc", "title": "Cart operations and management"}) == "MEDIUM"
 
-        # MEDIUM keyword: "validate"
-        scenario = DigestScenario(name="validate input", when="user submits", then="validate runs", slug="val")
-        assert profile.classify_test_risk(scenario, {"domain": "misc"}) == "MEDIUM"
-
-    def test_web_unknown_domain_no_keywords(self):
+    def test_web_unknown_domain_no_title_match(self):
         from set_project_web.project_type import WebProjectType
         profile = WebProjectType()
         scenario = DigestScenario(name="display heading", when="page loads", then="heading visible", slug="disp")
-        assert profile.classify_test_risk(scenario, {"domain": "display"}) == "LOW"
+        assert profile.classify_test_risk(scenario, {"domain": "display", "title": "Homepage sections"}) == "LOW"
 
 
 # ─── 6.3: extract_req_ids() ────────────────────────────────────
