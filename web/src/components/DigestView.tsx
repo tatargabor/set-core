@@ -291,12 +291,17 @@ function ACPanel({ reqs, coverage, testCoverage }: {
   testCoverage?: TestCoverage | null
 }) {
   const [domainFilter, setDomainFilter] = useState<string | null>(null)
-  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set())
-  const [expandedReqs, setExpandedReqs] = useState<Set<string>>(new Set())
-
   const reqsWithAC = useMemo(() => reqs.filter(r =>
     (r.acceptance_criteria?.length ?? 0) > 0 || (r.scenarios?.length ?? 0) > 0
   ), [reqs])
+
+  // Default: all domains and reqs expanded
+  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(() =>
+    new Set([...new Set(reqs.filter(r => (r.acceptance_criteria?.length ?? 0) > 0 || (r.scenarios?.length ?? 0) > 0).map(r => r.domain))])
+  )
+  const [expandedReqs, setExpandedReqs] = useState<Set<string>>(() =>
+    new Set(reqs.filter(r => (r.acceptance_criteria?.length ?? 0) > 0 || (r.scenarios?.length ?? 0) > 0).map(r => r.id))
+  )
 
   if (reqsWithAC.length === 0) {
     return <div className="p-4 text-sm text-neutral-500">No acceptance criteria extracted</div>
