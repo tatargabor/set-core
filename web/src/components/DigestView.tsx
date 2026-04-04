@@ -71,6 +71,14 @@ export default function DigestView({ project }: Props) {
     window.history.replaceState(null, '', url.toString())
   }, [])
 
+  // Fetch changes for E2E tab (lazy — only when E2E tab is selected)
+  const [changes, setChanges] = useState<ChangeInfo[]>([])
+  const [changesLoaded, setChangesLoaded] = useState(false)
+  useEffect(() => {
+    if (tab !== 'e2e' || changesLoaded) return
+    getChanges(project).then(c => { setChanges(c); setChangesLoaded(true) }).catch(() => { setChanges([]); setChangesLoaded(true) })
+  }, [project, tab, changesLoaded])
+
   useEffect(() => {
     let cancelled = false
     const load = () => {
@@ -102,14 +110,6 @@ export default function DigestView({ project }: Props) {
 
   // Count total AC items
   const totalAC = reqs.reduce((sum, r) => sum + (r.acceptance_criteria?.length ?? 0), 0)
-
-  // Fetch changes for E2E tab (lazy — only when E2E tab is selected)
-  const [changes, setChanges] = useState<ChangeInfo[]>([])
-  const [changesLoaded, setChangesLoaded] = useState(false)
-  useEffect(() => {
-    if (tab !== 'e2e' || changesLoaded) return
-    getChanges(project).then(c => { setChanges(c); setChangesLoaded(true) }).catch(() => { setChanges([]); setChangesLoaded(true) })
-  }, [project, tab, changesLoaded])
 
   // Parse E2E test counts
   const e2eStats = useMemo(() => {
