@@ -263,18 +263,19 @@ class GatePipeline:
                 "build": "build_result", "test": "test_result",
                 "e2e": "e2e_result", "smoke": "smoke_result",
                 "review": "review_result", "scope_check": "scope_check_result",
-                "rules": "rules_result",
+                "rules": "rules_result", "e2e_coverage": "e2e_coverage_result",
             }.get(entry.name)
             _gate_ms_field = {
                 "build": "gate_build_ms", "test": "gate_test_ms",
                 "e2e": "gate_e2e_ms", "review": "gate_review_ms",
                 "smoke": "gate_smoke_ms", "scope_check": "gate_scope_check_ms",
-                "rules": "gate_rules_ms",
+                "rules": "gate_rules_ms", "e2e_coverage": "gate_e2e_coverage_ms",
             }.get(entry.name)
             _gate_output_field = {
                 "build": "build_output", "test": "test_output", "e2e": "e2e_output",
                 "review": "review_output", "smoke": "smoke_output",
                 "scope_check": "scope_check_output", "rules": "rules_output",
+                "e2e_coverage": "e2e_coverage_output",
             }.get(entry.name)
             if _gate_state_field and self.state_file:
                 update_change_field(self.state_file, self.change_name, _gate_state_field, result.status)

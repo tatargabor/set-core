@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
-import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, type DigestData, type DigestReq, type TestCoverage, type TestCase, type SessionInfo } from '../lib/api'
+import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, getChanges, type DigestData, type DigestReq, type TestCoverage, type TestCase, type SessionInfo, type ChangeInfo } from '../lib/api'
 import { TuiProgress, TuiStatus, TuiSection } from './tui'
 
 interface Props {
   project: string
 }
 
-type DigestTab = 'overview' | 'requirements' | 'domains' | 'triage' | 'ac' | 'coverage' | 'deptree'
+type DigestTab = 'overview' | 'requirements' | 'domains' | 'triage' | 'ac' | 'coverage' | 'deptree' | 'e2e'
 
 type Ambiguity = NonNullable<DigestData['ambiguities']>[number]
 type Dependency = { from: string; to: string; type: string }
@@ -58,7 +58,7 @@ export default function DigestView({ project }: Props) {
   const [data, setData] = useState<DigestData | null>(null)
   const [error, setError] = useState<string | null>(null)
   // URL-backed sub-tab: ?sub=domains (default: domains)
-  const VALID_TABS: DigestTab[] = ['domains', 'overview', 'ac', 'coverage', 'deptree', 'triage']
+  const VALID_TABS: DigestTab[] = ['domains', 'overview', 'ac', 'e2e', 'coverage', 'deptree', 'triage']
   const initTab = useMemo(() => {
     const s = new URLSearchParams(window.location.search).get('sub')
     return (s && VALID_TABS.includes(s as DigestTab)) ? s as DigestTab : 'domains'
@@ -103,10 +103,30 @@ export default function DigestView({ project }: Props) {
   // Count total AC items
   const totalAC = reqs.reduce((sum, r) => sum + (r.acceptance_criteria?.length ?? 0), 0)
 
+  // Fetch changes for E2E tab
+  const [changes, setChanges] = useState<ChangeInfo[]>([])
+  useEffect(() => {
+    getChanges(project).then(setChanges).catch(() => setChanges([]))
+  }, [project])
+
+  // Parse E2E test counts
+  const e2eStats = useMemo(() => {
+    let total = 0, passed = 0, failed = 0
+    for (const c of changes) {
+      if (!c.e2e_output) continue
+      for (const line of c.e2e_output.split('\n')) {
+        if (/[✓✔]\s+\d+\s+/.test(line)) { total++; passed++ }
+        else if (/[✗✘×]\s+\d+\s+/.test(line)) { total++; failed++ }
+      }
+    }
+    return { total, passed, failed }
+  }, [changes])
+
   const tabs: { id: DigestTab; label: string; hidden?: boolean }[] = [
     { id: 'domains', label: `Domains (${Object.keys(domains).length})`, hidden: Object.keys(domains).length === 0 },
     { id: 'overview', label: `Reqs (${reqs.length})` },
     { id: 'ac', label: `AC (${totalAC})`, hidden: totalAC === 0 },
+    { id: 'e2e', label: `E2E (${e2eStats.total})`, hidden: e2eStats.total === 0 },
     { id: 'coverage', label: 'Coverage' },
     { id: 'deptree', label: 'Dep Tree' },
     { id: 'triage', label: 'Triage', hidden: !hasTriage },
@@ -141,6 +161,7 @@ export default function DigestView({ project }: Props) {
         {tab === 'overview' && <OverviewPanel reqs={reqs} coverage={coverage} uncovered={uncovered} domains={domains} />}
         {tab === 'ac' && <ACPanel reqs={reqs} coverage={coverage} testCoverage={data.test_coverage} />}
         {tab === 'domains' && <DomainsPanel domains={domains} reqs={reqs} coverage={coverage} dependencies={dependencies} ambiguities={ambiguities} />}
+        {tab === 'e2e' && <E2EPanel changes={changes} />}
         {tab === 'coverage' && <CoverageReportPanel project={project} />}
         {tab === 'deptree' && <DepTreePanel coverage={coverage} dependencies={dependencies} />}
         {tab === 'triage' && data.triage && <MarkdownPanel content={data.triage} />}
@@ -148,6 +169,102 @@ export default function DigestView({ project }: Props) {
     </div>
   )
 }
+
+// ─── E2E Tests Panel ─────────────────────────────────────────
+
+interface ParsedTest {
+  file: string
+  name: string
+  result: 'pass' | 'fail'
+  duration?: string
+}
+
+function parseE2EOutput(output: string): ParsedTest[] {
+  const tests: ParsedTest[] = []
+  for (const line of output.split('\n')) {
+    // Match: ✓  1 file.spec.ts:15:7 › Describe › test name (2.3s)
+    let m = line.match(/[✓✔]\s+\d+\s+([^:]+):\d+:\d+\s+›\s+(.+?)\s+\((\d[\d.]*s)\)/)
+    if (m) {
+      tests.push({ file: m[1].trim(), name: m[2].trim(), result: 'pass', duration: m[3] })
+      continue
+    }
+    // Match: ✗  2 file.spec.ts:25:7 › Describe › test name (5.1s)
+    m = line.match(/[✗✘×]\s+\d+\s+([^:]+):\d+:\d+\s+›\s+(.+?)\s+\((\d[\d.]*s)\)/)
+    if (m) {
+      tests.push({ file: m[1].trim(), name: m[2].trim(), result: 'fail', duration: m[3] })
+    }
+  }
+  return tests
+}
+
+function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
+  // Group tests by change
+  const byChange = useMemo(() => {
+    const groups: { change: string; status: string; tests: ParsedTest[] }[] = []
+    for (const c of changes) {
+      if (!c.e2e_output && !c.e2e_result) continue
+      const tests = c.e2e_output ? parseE2EOutput(c.e2e_output) : []
+      groups.push({ change: c.name, status: c.e2e_result || 'pending', tests })
+    }
+    return groups
+  }, [changes])
+
+  const totalTests = byChange.reduce((s, g) => s + g.tests.length, 0)
+  const totalPassed = byChange.reduce((s, g) => s + g.tests.filter(t => t.result === 'pass').length, 0)
+  const totalFailed = byChange.reduce((s, g) => s + g.tests.filter(t => t.result === 'fail').length, 0)
+
+  if (byChange.length === 0) {
+    return <div className="p-4 text-neutral-500 text-sm">No E2E test results yet.</div>
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Summary */}
+      <div className="px-3 py-1.5 border-b border-neutral-800/50 text-xs text-neutral-500 shrink-0">
+        {totalTests} tests across {byChange.length} change(s)
+        {' | '}<span className="text-green-400">{totalPassed} passed</span>
+        {totalFailed > 0 && <>{' | '}<span className="text-red-400">{totalFailed} failed</span></>}
+      </div>
+
+      {/* Per-change groups */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {byChange.map(g => (
+          <div key={g.change} className="border-b border-neutral-800/30">
+            {/* Change header */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30">
+              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                g.status === 'pass' ? 'bg-green-900/40 text-green-400' :
+                g.status === 'fail' ? 'bg-red-900/40 text-red-400' :
+                'bg-neutral-800 text-neutral-400'
+              }`}>{g.status}</span>
+              <span className="text-sm text-neutral-300 font-medium">{g.change}</span>
+              <span className="text-xs text-neutral-500 ml-auto">{g.tests.length} test(s)</span>
+            </div>
+
+            {/* Test rows */}
+            {g.tests.map((t, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-0.5 pl-6 text-sm">
+                <span className={t.result === 'pass' ? 'text-green-400' : 'text-red-400'}>
+                  {t.result === 'pass' ? '✓' : '✗'}
+                </span>
+                <span className="text-neutral-400 truncate flex-1">{t.name}</span>
+                <span className="text-xs text-neutral-600 shrink-0">{t.file}</span>
+                {t.duration && <span className="text-xs text-neutral-600 shrink-0">{t.duration}</span>}
+              </div>
+            ))}
+
+            {g.tests.length === 0 && g.status && (
+              <div className="px-6 py-1 text-xs text-neutral-600">
+                Gate result: {g.status} (no parsed test lines)
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 
 function OverviewPanel({ reqs, coverage, uncovered, domains }: {
   reqs: DigestReq[]

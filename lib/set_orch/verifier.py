@@ -843,6 +843,7 @@ class RuleEvalResult:
     """Result of verification rule evaluation."""
     errors: int = 0
     warnings: int = 0
+    messages: list = field(default_factory=list)
 
 
 # ─── Test Runner ─────────────────────────────────────────────────────
@@ -1372,6 +1373,7 @@ def evaluate_verification_rules(
 
     errors = 0
     warnings = 0
+    messages: list[str] = []
 
     for rule in rules:
         trigger = rule.get("trigger", "")
@@ -1386,6 +1388,8 @@ def evaluate_verification_rules(
         matched = any(fnmatch.fnmatch(f, trigger) for f in changed_files)
 
         if matched:
+            msg = f"[{severity.upper()}] {rule_name}: {check_desc}"
+            messages.append(msg)
             if severity == "error":
                 logger.error("Verification rule '%s' triggered (error): %s", rule_name, check_desc)
                 errors += 1
@@ -1399,12 +1403,15 @@ def evaluate_verification_rules(
                     data={"rule": rule_name, "severity": severity, "check": check_desc},
                 )
 
+    if not messages:
+        messages.append(f"Rules check passed: {len(rules)} rule(s) evaluated, {len(changed_files)} file(s) in diff.")
+
     if errors > 0:
         logger.error("Verification rules: %d error(s), %d warning(s) for %s", errors, warnings, change_name)
     elif warnings > 0:
         logger.info("Verification rules: %d warning(s) for %s", warnings, change_name)
 
-    return RuleEvalResult(errors=errors, warnings=warnings)
+    return RuleEvalResult(errors=errors, warnings=warnings, messages=messages)
 
 
 # ─── Health Check ────────────────────────────────────────────────────
@@ -2099,13 +2106,20 @@ def _execute_scope_gate(
         scope = change.scope or ""
         return GateResult(
             "scope", "fail",
+            output="No implementation code found — only OpenSpec artifacts and config files.",
             retry_context=(
                 "The change has NO implementation code — only OpenSpec artifacts and config files. "
                 "Run /opsx:apply to implement the tasks, then mark the change as done.\n\n"
                 f"Original scope: {scope}"
             ),
         )
-    return GateResult("scope", "pass")
+    # Report what was found
+    all_files = getattr(scope_result, 'all_files', []) or []
+    first = getattr(scope_result, 'first_impl_file', '')
+    output_lines = [f"Scope check passed: {len(all_files)} file(s) in diff."]
+    if first:
+        output_lines.append(f"  First impl: {first}")
+    return GateResult("scope", "pass", output="\n".join(output_lines))
 
 
 def _execute_test_files_gate(
@@ -2337,9 +2351,10 @@ def _execute_rules_gate(
         return GateResult("rules", "pass")
 
     rule_result = evaluate_verification_rules(change_name, wt_path, event_bus=event_bus)
+    output = "\n".join(rule_result.messages)
     if rule_result.errors > 0:
-        return GateResult("rules", "fail")
-    return GateResult("rules", "pass")
+        return GateResult("rules", "fail", output=output)
+    return GateResult("rules", "pass", output=output)
 
 
 def _execute_spec_verify_gate(
