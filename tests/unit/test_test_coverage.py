@@ -144,6 +144,19 @@ class TestGenerateTestPlan:
         assert all(e.risk == "LOW" for e in home_entries)
         assert all(e.min_tests == 1 for e in home_entries)
 
+    def test_llm_risk_takes_priority(self, tmp_path):
+        """LLM-assigned risk in requirements.json overrides profile classifier."""
+        reqs = {"requirements": [
+            {"id": "REQ-X-001", "title": "Display page", "domain": "display",
+             "risk": "HIGH",  # LLM says HIGH despite domain being display
+             "acceptance_criteria": ["#### Scenario: Page loads\n- **WHEN** user visits\n- **THEN** content visible"]},
+        ]}
+        p = tmp_path / "reqs.json"
+        p.write_text(json.dumps(reqs), encoding="utf-8")
+        plan = generate_test_plan(p, tmp_path / "plan.json", profile=None)
+        assert plan.entries[0].risk == "HIGH"
+        assert plan.entries[0].min_tests == 3
+
     def test_default_profile_all_low(self, tmp_path):
         """No profile override → all scenarios classified LOW."""
         req_path = _make_requirements_json(tmp_path)

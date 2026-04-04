@@ -1362,7 +1362,12 @@ From files classified as **feature**, extract discrete, independently testable r
 
 **ID format**: REQ-{DOMAIN_SHORT}-{NNN} (e.g., REQ-CART-001, REQ-SUB-003)
 
-Each requirement must have: id, title, source (file path), source_section (heading), domain, brief (1-2 sentence summary), acceptance_criteria (array of up to 5 concrete, verifiable condition strings).
+Each requirement must have: id, title, source (file path), source_section (heading), domain, brief (1-2 sentence summary), acceptance_criteria (array of up to 5 concrete, verifiable condition strings), risk (one of "HIGH", "MEDIUM", "LOW").
+
+**Risk classification (ISTQB-inspired)**: Classify each requirement by test risk:
+- **HIGH**: Authentication, payment, checkout, order mutations, data deletion, security, admin operations, password/token handling. These need 3 tests (happy + 2 negative).
+- **MEDIUM**: Forms with validation, cart operations, search/filter, subscriptions, reviews, CRUD operations, navigation state. These need 2 tests (happy + negative).
+- **LOW**: Static content display, read-only pages, informational pages, layout/footer. These need 1 test (happy path only).
 
 **Acceptance Criteria extraction**: For each requirement, extract up to 5 concrete, verifiable acceptance criteria from spec scenarios — HTTP contracts (e.g., "POST /api/cart/items → 201 with cartItemId"), state assertions (e.g., "Stock decremented by quantity"), error responses (e.g., "Returns 400 if quantity > stock"). Use `[]` if no explicit testable conditions are found in the spec. The 5-item cap is per-requirement, not counted toward the requirements total.
 
@@ -1434,7 +1439,8 @@ Respond with valid JSON only (no markdown fences, no commentary):
       "source_section": "Section heading",
       "domain": "domain-name",
       "brief": "1-2 sentence description of the testable behavior",
-      "acceptance_criteria": ["Concrete verifiable condition 1", "Condition 2"]
+      "acceptance_criteria": ["Concrete verifiable condition 1", "Condition 2"],
+      "risk": "HIGH|MEDIUM|LOW"
     }
   ],
   "domains": [

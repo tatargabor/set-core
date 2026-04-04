@@ -607,9 +607,12 @@ def generate_test_plan(
             continue
 
         for scenario in scenarios:
-            risk = "LOW"
-            if profile is not None:
-                risk = profile.classify_test_risk(scenario, req)
+            # Priority: LLM-assigned risk from digest > profile classifier > default LOW
+            risk = (req.get("risk") or "").upper()
+            if risk not in ("HIGH", "MEDIUM", "LOW"):
+                risk = "LOW"
+                if profile is not None:
+                    risk = profile.classify_test_risk(scenario, req)
             min_tests = RISK_MIN_TESTS.get(risk, 1)
             categories = list(RISK_CATEGORIES.get(risk, ["happy"]))
 
