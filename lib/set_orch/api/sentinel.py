@@ -40,11 +40,35 @@ def _get_supervisor(project: str):
     return sup
 
 
+def _last_spec_path(project_path: Path) -> str | None:
+    """Read last-used spec path from sentinel marker file."""
+    marker = project_path / "set" / "orchestration" / ".sentinel-spec"
+    if marker.is_file():
+        return marker.read_text().strip() or None
+    return None
+
+
+def _save_spec_path(project_path: Path, spec: str):
+    """Persist spec path for future restarts."""
+    marker = project_path / "set" / "orchestration" / ".sentinel-spec"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(spec)
+
+
 @router.post("/api/{project}/sentinel/start")
 async def sentinel_start(project: str, body: dict = {}):
     sup = _get_supervisor(project)
-    pid = sup.start_sentinel(spec=body.get("spec"))
-    return {"status": "ok", "pid": pid}
+    spec = body.get("spec")
+    # Fall back to last-used spec if none provided
+    if not spec:
+        spec = _last_spec_path(Path(sup.config.path))
+        if spec:
+            logger.info("Sentinel start: using last spec path '%s'", spec)
+    if not spec:
+        raise HTTPException(400, "No spec provided and no previous spec found. Pass {\"spec\": \"docs/spec.md\"}")
+    _save_spec_path(Path(sup.config.path), spec)
+    pid = sup.start_sentinel(spec=spec)
+    return {"status": "ok", "pid": pid, "spec": spec}
 
 
 @router.post("/api/{project}/sentinel/stop")
@@ -58,8 +82,14 @@ async def sentinel_stop(project: str):
 async def sentinel_restart(project: str, body: dict = {}):
     sup = _get_supervisor(project)
     sup.stop_sentinel()
-    pid = sup.start_sentinel(spec=body.get("spec"))
-    return {"status": "ok", "pid": pid}
+    spec = body.get("spec")
+    if not spec:
+        spec = _last_spec_path(Path(sup.config.path))
+    if not spec:
+        raise HTTPException(400, "No spec provided and no previous spec found")
+    _save_spec_path(Path(sup.config.path), spec)
+    pid = sup.start_sentinel(spec=spec)
+    return {"status": "ok", "pid": pid, "spec": spec}
 
 
 @router.get("/api/{project}/sentinel/log")

@@ -92,6 +92,13 @@ class ProjectSupervisor:
         self.sentinel_pid: Optional[int] = None
         self.sentinel_started_at: Optional[str] = None
         self.sentinel_spec: Optional[str] = None
+        # Restore last-used spec from disk
+        try:
+            marker = Path(config.path) / "set" / "orchestration" / ".sentinel-spec"
+            if marker.is_file():
+                self.sentinel_spec = marker.read_text().strip() or None
+        except OSError:
+            pass
         self.sentinel_crash_count: int = 0
         self.orchestrator_pid: Optional[int] = None
         self.orchestrator_started_at: Optional[str] = None
@@ -158,6 +165,13 @@ class ProjectSupervisor:
             self.sentinel_pid = proc.pid
             self.sentinel_started_at = now_iso()
             self.sentinel_spec = spec
+            # Persist spec path for future restarts
+            try:
+                marker = Path(self.config.path) / "set" / "orchestration" / ".sentinel-spec"
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text(spec or "")
+            except OSError:
+                pass
             self.sentinel_crash_count = 0
             logger.info(f"[{self.config.name}] Sentinel started, PID={proc.pid}")
             return proc.pid
