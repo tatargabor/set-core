@@ -1586,15 +1586,11 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         if not change:
             return
 
-        # Only run for acceptance-tests type changes
-        is_acceptance = (
-            change_name == "acceptance-tests"
-            or change.change_type == "test"
-        )
-        if not is_acceptance:
+        # Run for any change that has E2E results
+        if not change.e2e_result:
             return
 
-        logger.info("Parsing test coverage for acceptance-tests change: %s", change_name)
+        logger.info("Parsing test coverage for change: %s", change_name)
 
         from pathlib import Path
         from .test_coverage import parse_test_plan, build_test_coverage, TestPlan, validate_coverage
@@ -1604,11 +1600,8 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         plan_path = project_root / "tests" / "e2e" / "JOURNEY-TEST-PLAN.md"
         test_cases, non_testable = parse_test_plan(plan_path)
 
-        if not test_cases and not non_testable:
-            logger.info("No test plan found or empty — skipping coverage parsing")
-            return
-
-        # Parse test results via profile
+        # Parse test results via profile (even without JOURNEY-TEST-PLAN.md,
+        # build_test_coverage can extract REQ-IDs directly from test names)
         test_results: dict[tuple[str, str], str] = {}
         try:
             from .profile_loader import load_profile
@@ -1623,6 +1616,10 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
                 test_results = profile.parse_test_results(e2e_output)
         except Exception:
             logger.debug("Test result parsing failed (non-critical)", exc_info=True)
+
+        if not test_cases and not non_testable and not test_results:
+            logger.info("No test plan and no test results — skipping coverage parsing")
+            return
 
         # Get all digest REQ IDs — also use change.requirements as fallback
         digest_req_ids: list[str] = []
