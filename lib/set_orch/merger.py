@@ -905,7 +905,6 @@ def _run_integration_gates(
         if e2e_cmd:
             gates_executed += 1
             # Assign unique port to avoid collisions with parallel agents
-            import hashlib
             port_offset = int(hashlib.md5(change_name.encode()).hexdigest()[:4], 16) % 1000
             e2e_port = 4000 + port_offset
             e2e_env = dict(gate_env) if gate_env else {}
