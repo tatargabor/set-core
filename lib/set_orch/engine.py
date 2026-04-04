@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # ─── Constants (from bash globals) ──────────────────────────────────
 
 DEFAULT_POLL_INTERVAL = 15
-DEFAULT_TIME_LIMIT = "5h"
+DEFAULT_TIME_LIMIT = 0  # 0 = no limit; set "5h" or similar in config to enable
 DEFAULT_TOKEN_HARD_LIMIT = 50_000_000
 DEFAULT_MONITOR_IDLE_TIMEOUT = 1800
 DEFAULT_MAX_REPLAN_RETRIES = 3
