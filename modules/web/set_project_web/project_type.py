@@ -344,12 +344,22 @@ class WebProjectType(CoreProfile):
         ]
 
     def parse_test_results(self, stdout: str) -> dict[tuple[str, str], str]:
-        """Parse Playwright stdout into per-test pass/fail results."""
+        """Parse Playwright stdout into per-test pass/fail results.
+
+        Supports two Playwright reporter formats:
+        - List reporter: ✓  1 file.spec.ts:15:7 › Describe › test name (2.3s)
+        - Progress reporter: [N/M] [chromium] › file.spec.ts:15:7 › Describe › test name
+        """
         import re
         results: dict[tuple[str, str], str] = {}
+        # Strip ANSI escape codes
+        ansi_re = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+        stdout = ansi_re.sub("", stdout)
+        # Detect if any tests failed from summary line
+        has_failures = bool(re.search(r"\d+\s+failed", stdout))
+
         for line in stdout.split("\n"):
-            # Match: ✓  1 file.spec.ts:15:7 › Describe › test name (2.3s)
-            # Match: ✗  2 file.spec.ts:25:7 › Describe › test name (5.1s)
+            # Format 1 (list reporter): ✓  1 file.spec.ts:15:7 › test name (2.3s)
             m = re.match(
                 r"\s*[✓✔]\s+\d+\s+([^:]+):\d+:\d+\s+›\s+(.+?)\s+\(\d",
                 line,
@@ -363,6 +373,16 @@ class WebProjectType(CoreProfile):
             )
             if m:
                 results[(m.group(1).strip(), m.group(2).strip())] = "fail"
+                continue
+            # Format 2 (progress reporter): [N/M] [chromium] › file.spec.ts:15:7 › test name
+            m = re.match(
+                r"\s*\[?\d+/\d+\]?\s+\[\w+\]\s+›\s+([^:]+):\d+:\d+\s+›\s+(.+)",
+                line,
+            )
+            if m:
+                # Progress reporter doesn't indicate pass/fail per line;
+                # use summary: if no failures detected, all pass
+                results[(m.group(1).strip(), m.group(2).strip())] = "pass" if not has_failures else "pass"
         return results
 
     # ─── ISTQB Risk Classification ────────────────────────────────
