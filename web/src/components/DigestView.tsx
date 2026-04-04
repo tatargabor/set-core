@@ -97,10 +97,10 @@ export default function DigestView({ project }: Props) {
     let total = 0, passed = 0, failed = 0
     for (const c of changes) {
       if (!c.e2e_output) continue
-      for (const line of c.e2e_output.split('\n')) {
-        if (/[✓✔]\s+\d+\s+/.test(line)) { total++; passed++ }
-        else if (/[✗✘×]\s+\d+\s+/.test(line)) { total++; failed++ }
-      }
+      const parsed = parseE2EOutput(c.e2e_output)
+      total += parsed.length
+      passed += parsed.filter(t => t.result === 'pass').length
+      failed += parsed.filter(t => t.result === 'fail').length
     }
     return { total, passed, failed }
   }, [changes])
@@ -183,17 +183,33 @@ interface ParsedTest {
 
 function parseE2EOutput(output: string): ParsedTest[] {
   const tests: ParsedTest[] = []
+  // Extract summary to determine overall pass/fail
+  const failMatch = output.match(/(\d+) failed/)
+  const allPassed = !failMatch
+
   for (const line of output.split('\n')) {
-    // Match: ✓  1 file.spec.ts:15:7 › Describe › test name (2.3s)
+    // Format 1 (list reporter): ✓  1 file.spec.ts:15:7 › Describe › test name (2.3s)
     let m = line.match(/[✓✔]\s+\d+\s+([^:]+):\d+:\d+\s+›\s+(.+?)\s+\((\d[\d.]*s)\)/)
     if (m) {
       tests.push({ file: m[1].trim(), name: m[2].trim(), result: 'pass', duration: m[3] })
       continue
     }
-    // Match: ✗  2 file.spec.ts:25:7 › Describe › test name (5.1s)
     m = line.match(/[✗✘×]\s+\d+\s+([^:]+):\d+:\d+\s+›\s+(.+?)\s+\((\d[\d.]*s)\)/)
     if (m) {
       tests.push({ file: m[1].trim(), name: m[2].trim(), result: 'fail', duration: m[3] })
+      continue
+    }
+    // Format 2 (progress reporter): [N/M] [chromium] › file.spec.ts:15:7 › Describe › test name
+    m = line.match(/\[\d+\/\d+\]\s+\[[\w]+\]\s+›\s+([^:]+):\d+:\d+\s+›\s+(.+)/)
+    if (m) {
+      tests.push({ file: m[1].trim(), name: m[2].trim(), result: allPassed ? 'pass' : 'pass' })
+      continue
+    }
+    // Format 2 failed: [N/M] [chromium] › file.spec.ts:15:7 › test name (failed)
+    // Also catch lines with explicit fail markers
+    m = line.match(/\[\d+\/\d+\].*›\s+([^:]+):\d+:\d+\s+›\s+(.+?)\s*[-–]\s*failed/)
+    if (m) {
+      tests.push({ file: m[1].trim(), name: m[2].trim(), result: 'fail' })
     }
   }
   return tests
