@@ -55,6 +55,5 @@ Name each test with the REQ-* ID prefix.
 
 - `lib/set_orch/digest.py` — generate test-plan.json from AC scenarios
 - `lib/set_orch/test_coverage.py` — deterministic REQ-ID matching from test names
-- `lib/set_orch/templates.py` — inject test plan into per-change scope
-- `lib/set_orch/dispatcher.py` — pass test plan entries to change agents
+- `lib/set_orch/dispatcher.py` — inject test plan entries into per-change input.md via `_build_input_content()`
 - `modules/web/set_project_web/project_type.py` — update parse_test_results for REQ-ID extraction
