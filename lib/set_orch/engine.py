@@ -1013,6 +1013,124 @@ def _recover_verify_failed(
                 update_change_field(state_file, change.name, "failure_reason", reason)
 
 
+def _parse_e2e_summary(output: str) -> dict:
+    """Parse test runner summary output into structured results.
+
+    Framework-agnostic: matches common patterns like 'N failed', 'N passed',
+    and indented test lines with '[browser] › file:line › test name'.
+
+    Returns {passed: int, failed: int, flaky: int, skipped: int, failing_tests: [str]}.
+    """
+    import re
+    result: dict = {"passed": 0, "failed": 0, "flaky": 0, "skipped": 0, "failing_tests": []}
+
+    for pat, key in [
+        (r"(\d+)\s+passed", "passed"),
+        (r"(\d+)\s+failed", "failed"),
+        (r"(\d+)\s+flaky", "flaky"),
+        (r"(\d+)\s+(?:did not run|skipped)", "skipped"),
+    ]:
+        m = re.search(pat, output)
+        if m:
+            result[key] = int(m.group(1))
+
+    # Extract failing test names — matches indented lines after "N failed"
+    # Format: "    [chromium] › tests/e2e/file.spec.ts:14:7 › Describe › test name"
+    in_failed_section = False
+    for line in output.split("\n"):
+        stripped = line.strip()
+        if re.match(r"\d+\s+failed", stripped):
+            in_failed_section = True
+            continue
+        if in_failed_section:
+            m = re.match(r"\[.*?\]\s+›\s+(.+)", stripped)
+            if m:
+                result["failing_tests"].append(m.group(1).strip())
+            elif stripped and not stripped.startswith("["):
+                in_failed_section = False  # Hit next section (e.g. "2 flaky")
+
+    return result
+
+
+def _build_gate_retry_context(
+    change: "ChangeState", wt_path: str, e2e_output: str
+) -> str:
+    """Build enriched retry context for gate-failed redispatch.
+
+    Includes role framing, git history summary, parsed test results,
+    raw test output, and original scope — so the agent immediately
+    understands what it built and what needs fixing.
+    """
+    sections = [
+        "Integration e2e tests failed after merging main into your branch. "
+        "Fix the failing tests so they pass.\n"
+    ]
+
+    # --- Previous Work (git context) ---
+    git_log = ""
+    git_stat = ""
+    last_commit_body = ""
+    try:
+        r = run_command(["git", "log", "--oneline", "main..HEAD"], cwd=wt_path, timeout=10)
+        if r.exit_code == 0 and r.stdout.strip():
+            lines = r.stdout.strip().splitlines()
+            git_log = "\n".join(lines[:30])
+            if len(lines) > 30:
+                git_log += f"\n... and {len(lines) - 30} more commits"
+
+        r = run_command(["git", "diff", "--stat", "main..HEAD"], cwd=wt_path, timeout=10)
+        if r.exit_code == 0 and r.stdout.strip():
+            lines = r.stdout.strip().splitlines()
+            git_stat = "\n".join(lines[:50])
+            if len(lines) > 50:
+                git_stat += f"\n... and {len(lines) - 50} more files"
+
+        r = run_command(["git", "log", "-1", "--format=%B"], cwd=wt_path, timeout=10)
+        if r.exit_code == 0 and r.stdout.strip():
+            last_commit_body = r.stdout.strip()
+    except Exception:
+        pass  # Fall back to no git context
+
+    if git_log:
+        sections.append(
+            "## Your Previous Work\n\n"
+            "You implemented this change and it's all committed in your working tree.\n\n"
+            f"### Commits\n{git_log}\n\n"
+            f"### Files Changed\n{git_stat}\n"
+        )
+        if last_commit_body and len(last_commit_body) > 50:
+            sections.append(f"### Last Commit Summary\n{last_commit_body}\n")
+
+    # --- Parsed Test Results ---
+    parsed = _parse_e2e_summary(e2e_output)
+    total = parsed["passed"] + parsed["failed"] + parsed["flaky"] + parsed["skipped"]
+    if total > 0:
+        summary = f"**{parsed['passed']} passed, {parsed['failed']} failed"
+        if parsed["flaky"]:
+            summary += f", {parsed['flaky']} flaky"
+        if parsed["skipped"]:
+            summary += f", {parsed['skipped']} did not run"
+        summary += f"** out of {total} tests."
+
+        sections.append(f"## Test Results\n\n{summary}\n")
+
+        if parsed["failing_tests"]:
+            failing = "\n".join(f"- {t}" for t in parsed["failing_tests"])
+            sections.append(f"### Failing Tests\n{failing}\n")
+
+    # --- Raw E2E Output ---
+    if e2e_output:
+        sections.append(
+            f"### Test Output (last 2000 chars)\n{e2e_output[-2000:]}\n"
+        )
+
+    # --- Original Scope (reference) ---
+    if change.scope:
+        sections.append(f"## Original Scope\n{change.scope}\n")
+
+    return "\n".join(sections)
+
+
 def _recover_integration_e2e_failed(
     state_file: str, d: Directives, event_bus: Any
 ) -> None:
@@ -1033,16 +1151,11 @@ def _recover_integration_e2e_failed(
             update_change_field(state_file, change.name, "status", "merge-blocked")
             continue
 
-        # Build retry_context from stored e2e output if not already set
+        # Build enriched retry_context with git history + parsed test results
         retry_ctx = change.extras.get("retry_context", "")
         if not retry_ctx:
             e2e_output = change.extras.get("integration_e2e_output", "")
-            retry_ctx = (
-                f"Integration e2e tests failed after merging main into your branch. "
-                f"Fix the failing tests so they pass.\n\n"
-                f"E2E test output:\n{e2e_output}\n\n"
-                f"Original scope: {change.scope}"
-            )
+            retry_ctx = _build_gate_retry_context(change, wt_path, e2e_output)
             update_change_field(state_file, change.name, "retry_context", retry_ctx)
 
         e2e_retry = change.extras.get("integration_e2e_retry_count", 0)

@@ -931,12 +931,8 @@ def _run_integration_gates(
                         )
                         update_change_field(state_file, change_name, "integration_e2e_retry_count", e2e_retry + 1)
                         update_change_field(state_file, change_name, "integration_e2e_output", e2e_output)
-                        retry_ctx = (
-                            f"Integration e2e tests failed after merging main into your branch. "
-                            f"Fix the failing tests so they pass.\n\n"
-                            f"E2E test output (last 2000 chars):\n{e2e_output}\n\n"
-                            f"Original scope: {change.scope}"
-                        )
+                        from .engine import _build_gate_retry_context
+                        retry_ctx = _build_gate_retry_context(change, wt_path, e2e_output)
                         update_change_field(state_file, change_name, "retry_context", retry_ctx)
                         update_change_field(state_file, change_name, "status", "integration-e2e-failed")
                         update_change_field(state_file, change_name, "integration_gate_fail", "e2e-redispatch")
