@@ -571,7 +571,6 @@ def merge_change(
                 artifacts = _artifact_profile.collect_test_artifacts(wt_path)
                 if artifacts:
                     images = [a for a in artifacts if a.get("type") == "image"]
-                    from .state import update_change_field
                     update_change_field(state_file, change_name, "e2e_screenshot_count", len(images))
                     if images:
                         # Use parent dir of first image as screenshot dir
