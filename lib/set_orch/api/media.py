@@ -74,19 +74,19 @@ def get_change_screenshots(project: str, name: str):
             result: dict = {"smoke": [], "e2e": []}
             smoke_dir = getattr(c, "smoke_screenshot_dir", None) or c.extras.get("smoke_screenshot_dir")
             if smoke_dir:
-                sd = project_path / smoke_dir
+                sd = Path(smoke_dir) if os.path.isabs(smoke_dir) else project_path / smoke_dir
                 if sd.is_dir():
                     result["smoke"] = sorted(
-                        ({"path": f"{smoke_dir}/{f.relative_to(sd)}", "name": f.name}
+                        ({"path": str(f), "name": f.name, "test": f.parent.name}
                          for f in sd.rglob("*.png")),
                         key=lambda x: x["name"],
                     )
             e2e_dir = getattr(c, "e2e_screenshot_dir", None) or c.extras.get("e2e_screenshot_dir")
             if e2e_dir:
-                ed = project_path / e2e_dir
+                ed = Path(e2e_dir) if os.path.isabs(e2e_dir) else project_path / e2e_dir
                 if ed.is_dir():
                     result["e2e"] = sorted(
-                        ({"path": f"{e2e_dir}/{f.relative_to(ed)}", "name": f.name}
+                        ({"path": str(f), "name": f.name, "test": f.parent.name}
                          for f in ed.rglob("*.png")),
                         key=lambda x: x["name"],
                     )
@@ -96,19 +96,19 @@ def get_change_screenshots(project: str, name: str):
 
 @router.get("/api/{project}/screenshots/{file_path:path}")
 def serve_screenshot(project: str, file_path: str):
-    """Serve a screenshot image file."""
+    """Serve a screenshot image file. Accepts absolute or relative paths."""
     from fastapi.responses import FileResponse as FR
 
     if ".." in file_path:
         raise HTTPException(400, "Invalid path")
-    project_path = _resolve_project(project)
-    full_path = project_path / file_path
-    if not full_path.exists() or not full_path.suffix == ".png":
+
+    # Support absolute paths (from e2e_screenshot_dir) and relative paths
+    full_path = Path(file_path) if os.path.isabs(file_path) else _resolve_project(project) / file_path
+    if not full_path.exists() or full_path.suffix != ".png":
         raise HTTPException(404, "Screenshot not found")
-    # Ensure path is within project's set/orchestration/
-    orch_dir = project_path / "set" / "orchestration"
+    # Security: only serve PNGs within the e2e-runs directory
     try:
-        full_path.resolve().relative_to(orch_dir.resolve())
+        full_path.resolve().relative_to(Path.home() / ".local" / "share" / "set-core" / "e2e-runs")
     except ValueError:
         raise HTTPException(403, "Access denied")
     return FR(str(full_path), media_type="image/png")
