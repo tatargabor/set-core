@@ -604,7 +604,7 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                                 </span>
                               )}
                               {reqCovered && !tc && <span className="text-xs text-green-600 ml-auto">covered</span>}
-                              {!tc && !reqCovered && !isNonTestable && <span className="text-xs text-yellow-500 ml-auto">no test</span>}
+                              {!tc && !reqCovered && !isNonTestable && testCoverage && <span className="text-xs text-yellow-500 ml-auto">no test</span>}
                             </div>
                             {/* WHEN/THEN compact */}
                             {(sc.when || sc.then) && (
