@@ -1680,11 +1680,13 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         except Exception:
             logger.debug("Coverage validation failed (non-critical)", exc_info=True)
 
-        # Store in state
+        # Store in per-change extras (not state-level)
         with locked_state(state_file) as st:
-            st.extras["test_coverage"] = coverage.to_dict()
-            if validation_data:
-                st.extras["coverage_validation"] = validation_data
+            ch = next((c for c in st.changes if c.name == change_name), None)
+            if ch:
+                ch.extras["test_coverage"] = coverage.to_dict()
+                if validation_data:
+                    ch.extras["coverage_validation"] = validation_data
 
         logger.info(
             "Test coverage parsed: %d tests, %d/%d reqs covered (%.1f%%), %d gaps",
