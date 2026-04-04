@@ -133,6 +133,14 @@ class ProjectType(ABC):
         """File patterns needing serialization when touched by multiple changes."""
         return []
 
+    def design_page_aliases(self) -> dict[str, list[str]]:
+        """Page name → alias list for design brief scope matching.
+
+        Override in modules to add domain-specific aliases (e.g., Hungarian
+        route names). Return empty dict to use bridge.sh defaults.
+        """
+        return {}
+
     def collect_test_artifacts(self, wt_path: str) -> list:
         """Collect test artifacts (screenshots, traces, reports) from worktree.
 

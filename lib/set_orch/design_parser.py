@@ -1,10 +1,13 @@
-"""Design source parser — extract structured design tokens from Figma Make exports.
+"""Design source parser — extract structured design tokens from design sources.
 
-Parses .make files (Figma Make export ZIP) into a structured DesignSystem
-that can be rendered as design-system.md for the orchestration pipeline.
+Parses .make files (Figma Make export ZIP), figma.md (Figma Make prompt
+collections), and existing .md design files into a structured DesignSystem
+that can be rendered as design-system.md and design-brief.md for the
+orchestration pipeline.
 
 Usage:
     python3 -m set_orch.design_parser --input docs/design.make --spec-dir docs/
+    python3 -m set_orch.design_parser --input docs/figma.md --spec-dir docs/
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ class PageSpec:
     name: str
     sections: list[PageSection] = field(default_factory=list)
     layout_description: str = ""
+    visual_description: str = ""  # Rich visual description from design brief
 
 
 @dataclass
@@ -126,6 +130,29 @@ class DesignSystem:
             lines.append("```css")
             lines.append(self.raw_theme_css.strip())
             lines.append("```")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def to_brief_markdown(self) -> str:
+        """Render as design-brief.md with per-page visual descriptions.
+
+        Unlike to_markdown() which outputs tokens + component index (lean),
+        this outputs rich visual descriptions per page for agent dispatch.
+        """
+        lines: list[str] = ["# Design Brief", ""]
+        lines.append("Per-page visual specifications for implementing agents.")
+        lines.append("Each page section describes layout, components, and responsive behavior.")
+        lines.append("")
+
+        pages_with_visuals = [p for p in self.pages if p.visual_description]
+        if not pages_with_visuals:
+            return ""
+
+        for page in pages_with_visuals:
+            lines.append(f"## Page: {page.name}")
+            lines.append("")
+            lines.append(page.visual_description.strip())
             lines.append("")
 
         return "\n".join(lines)
@@ -299,13 +326,19 @@ class MakeParser(DesignParser):
                         ds.fonts.append(font_name)
 
     def _extract_components(self, writes: dict[str, str], ds: DesignSystem) -> None:
-        """Extract component names and key properties from .tsx files."""
+        """Extract component specs from design-spec.md and .tsx files.
+
+        Priority: design-spec.md COMPONENTS section (pixel-precise specs)
+        Fallback: TSX file analysis (color refs, layout type)
+        """
+        # Try to extract from design-spec.md first (richest source)
+        spec_components = self._extract_spec_components(writes)
+
         for path, content in writes.items():
             if not path.endswith(".tsx"):
                 continue
             basename = os.path.basename(path).replace(".tsx", "")
             dirname = os.path.dirname(path).lower()
-            # Only component files — skip pages, layouts, routes
             is_page = ("pages" in dirname or
                        (dirname.endswith("/app") or "/app/" in dirname and "component" not in dirname))
             if is_page and "component" not in dirname:
@@ -315,26 +348,82 @@ class MakeParser(DesignParser):
 
             comp = ComponentSpec(name=basename)
 
-            # Extract key visual properties from JSX
-            color_refs = set(re.findall(r"var\(--([a-z-]+)\)", content))
-            if color_refs:
-                comp.properties["colors"] = ", ".join(sorted(color_refs))
-
-            # Detect layout type
-            if "flex" in content.lower():
-                comp.layout_notes = "flexbox"
-            elif "grid" in content.lower():
-                comp.layout_notes = "grid"
+            # Use spec description if available (pixel-precise)
+            if basename in spec_components:
+                comp.layout_notes = spec_components[basename]
+            else:
+                # Fallback: extract from TSX
+                color_refs = set(re.findall(r"var\(--([a-z-]+)\)", content))
+                if color_refs:
+                    comp.properties["colors"] = ", ".join(sorted(color_refs))
+                if "flex" in content.lower():
+                    comp.layout_notes = "flexbox"
+                elif "grid" in content.lower():
+                    comp.layout_notes = "grid"
 
             ds.components.append(comp)
 
+    @staticmethod
+    def _extract_spec_components(writes: dict[str, str]) -> dict[str, str]:
+        """Extract component descriptions from design-spec.md COMPONENTS section.
+
+        Returns dict mapping component name → description text.
+        """
+        spec_content = ""
+        for path, content in writes.items():
+            if re.search(r"figma-design-spec\.md|design-spec\.md", path, re.IGNORECASE):
+                spec_content = content
+
+        if not spec_content:
+            return {}
+
+        comp_match = re.search(
+            r"## 🔧 COMPONENTS(.*?)(?=\n## [📱📸♿📐🔄🎭🚀📦✅🎯💡📞📚]|\Z)",
+            spec_content, re.DOTALL,
+        )
+        if not comp_match:
+            return {}
+
+        result: dict[str, str] = {}
+        # Split by ### Component Name
+        comp_re = re.compile(r"### (.+?)(?=\n### |\Z)", re.DOTALL)
+        for m in comp_re.finditer(comp_match.group(1)):
+            title = m.group(1).split("\n")[0].strip()
+            body = m.group(0).strip()
+
+            # Normalize title: "Button Component" → "Button"
+            name = re.sub(r"\s+Component$", "", title).strip()
+
+            # Extract code block content (the spec details)
+            code_blocks = re.findall(r"```\n?(.*?)```", body, re.DOTALL)
+            if code_blocks:
+                result[name] = "\n---\n".join(code_blocks).strip()
+            else:
+                # Use raw body minus the title
+                lines = body.split("\n")[1:]
+                result[name] = "\n".join(lines).strip()
+
+        return result
+
     def _extract_pages(self, writes: dict[str, str], ds: DesignSystem) -> None:
-        """Extract page layouts from page .tsx files."""
+        """Extract page layouts and visual descriptions from .make sources.
+
+        Combines three sources for visual descriptions (priority order):
+        1. design-spec.md SCREEN LAYOUTS (pixel-precise Figma descriptions)
+        2. design-system.json pages (structured sections with elements)
+        3. TSX section comments + headings (fallback for uncovered pages)
+        """
+        # Source 1: design-spec.md SCREEN LAYOUTS (richest, pixel-precise)
+        spec_screens = self._extract_screen_layouts(writes)
+
+        # Source 2: design-system.json pages (structured sections)
+        json_pages = self._extract_json_pages(writes)
+
+        # Source 3: TSX page files
         for path, content in writes.items():
             if not path.endswith(".tsx"):
                 continue
             dirname = os.path.dirname(path).lower()
-            # Only page files — skip components
             if "pages" not in dirname:
                 continue
             basename = os.path.basename(path).replace(".tsx", "")
@@ -343,7 +432,7 @@ class MakeParser(DesignParser):
 
             page = PageSpec(name=basename)
 
-            # Find section comments or major component usage
+            # Find section comments
             section_re = re.compile(r"/\*\*?\s*\n?\s*\*?\s*(.*?)\s*\*/|{/\*\s*(.*?)\s*\*/}", re.MULTILINE)
             for m in section_re.finditer(content):
                 section_name = (m.group(1) or m.group(2) or "").strip()
@@ -358,7 +447,142 @@ class MakeParser(DesignParser):
             if used_components:
                 page.layout_description = f"Uses: {', '.join(used_components)}"
 
+            # Build visual_description — priority: spec > json > tsx
+            page.visual_description = self._build_visual_description(
+                basename, content, json_pages.get(basename, {}),
+                spec_screens,
+            )
+
             ds.pages.append(page)
+
+    @staticmethod
+    def _extract_screen_layouts(writes: dict[str, str]) -> dict[str, str]:
+        """Extract SCREEN LAYOUTS sections from design-spec.md in the .make.
+
+        Returns dict mapping normalized page name → raw layout description.
+        Takes the LAST version of the spec (in case of dark→light mode fix).
+        """
+        spec_content = ""
+        for path, content in writes.items():
+            if re.search(r"figma-design-spec\.md|design-spec\.md", path, re.IGNORECASE):
+                spec_content = content  # last write wins
+
+        if not spec_content:
+            return {}
+
+        # Find SCREEN LAYOUTS section
+        screen_match = re.search(
+            r"## 📱 SCREEN LAYOUTS(.*?)(?=\n## [^\n#]|\Z)",
+            spec_content, re.DOTALL,
+        )
+        if not screen_match:
+            return {}
+
+        # Split by ### N. headings
+        screens: dict[str, str] = {}
+        section_re = re.compile(r"### \d+\.\s+(.+?)(?=\n### \d+\.|\Z)", re.DOTALL)
+        for m in section_re.finditer(screen_match.group(1)):
+            full = m.group(0).strip()
+            title_line = m.group(1).split("\n")[0].strip()
+
+            # Normalize title to page name
+            title_lower = re.sub(r"\s*\(.*?\)", "", title_line).strip().lower()
+            page_name = ""
+            for pattern, name in _TITLE_TO_PAGE.items():
+                if pattern in title_lower:
+                    page_name = name
+                    break
+            if not page_name:
+                # Fallback: capitalize first word
+                words = title_lower.split()
+                page_name = words[0].capitalize() if words else ""
+
+            if page_name:
+                # Extract the code block content (between ``` markers)
+                code_blocks = re.findall(r"```\n?(.*?)```", full, re.DOTALL)
+                if code_blocks:
+                    screens[page_name] = "\n\n".join(code_blocks).strip()
+                else:
+                    # No code blocks — use the raw text after the title line
+                    body = "\n".join(full.split("\n")[1:]).strip()
+                    screens[page_name] = body
+
+        return screens
+
+    @staticmethod
+    def _extract_json_pages(writes: dict[str, str]) -> dict[str, dict]:
+        """Extract structured page data from design-system.json."""
+        json_pages: dict = {}
+        for p, c in writes.items():
+            if "design-system.json" in p.lower():
+                try:
+                    json_pages = json.loads(c).get("pages", {})
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+                break
+
+        # Map camelCase JSON keys to PascalCase page names
+        json_key_map = {
+            "home": "Home", "productCatalog": "ProductCatalog",
+            "productDetail": "ProductDetail", "cart": "Cart",
+            "checkout": "Checkout", "subscriptionWizard": "SubscriptionWizard",
+            "userDashboard": "UserDashboard", "adminDashboard": "AdminDashboard",
+            "auth": "Login",
+        }
+        result: dict[str, dict] = {}
+        for jk, pn in json_key_map.items():
+            if jk in json_pages and isinstance(json_pages[jk], dict):
+                result[pn] = json_pages[jk]
+        return result
+
+    @staticmethod
+    def _build_visual_description(
+        page_name: str,
+        tsx_content: str,
+        json_page: dict,
+        spec_screens: dict[str, str],
+    ) -> str:
+        """Build rich visual description from spec > json > tsx (priority)."""
+        parts: list[str] = []
+
+        # Priority 1: design-spec.md SCREEN LAYOUTS (pixel-precise)
+        spec_desc = spec_screens.get(page_name, "")
+        if spec_desc:
+            parts.append(spec_desc)
+
+        # Priority 2: design-system.json sections (structured elements)
+        if not parts and json_page and isinstance(json_page, dict):
+            for sect in json_page.get("sections", []):
+                if not isinstance(sect, dict):
+                    continue
+                name = sect.get("name", "")
+                header = f"**{name}**"
+                if sect.get("height"):
+                    header += f" ({sect['height']})"
+                if sect.get("layout"):
+                    header += f" — {sect['layout']}"
+                if sect.get("background"):
+                    header += f" — {sect['background']}"
+                parts.append(header)
+                for el in sect.get("elements", []):
+                    parts.append(f"  - {el}")
+
+        # Priority 3: TSX structure (section comments + headings, fallback)
+        if not parts:
+            for line in tsx_content.split("\n"):
+                stripped = line.strip()
+                cm = re.search(r"\{/\*\s*(.+?)\s*\*/\}", stripped)
+                if cm and len(cm.group(1)) < 60 and not cm.group(1).startswith("TODO"):
+                    parts.append(f"\n**{cm.group(1)}**")
+                    continue
+                hm = re.search(r'<h([1-6])[^>]*>\s*"?([^<{"]+)"?\s*</h\1>', stripped)
+                if hm and len(hm.group(2).strip()) > 2:
+                    parts.append(f"  - h{hm.group(1)}: \"{hm.group(2).strip()}\"")
+                gm = re.findall(r"grid-cols-\d+|gap-\d+", stripped)
+                if gm and "className" in stripped:
+                    parts.append(f"  - Layout: {' '.join(gm)}")
+
+        return "\n".join(parts).strip()
 
     def _extract_images(self, queries: list[str], writes: dict[str, str], ds: DesignSystem) -> None:
         """Extract image references from Unsplash queries."""
@@ -394,11 +618,266 @@ class PassthroughParser(DesignParser):
         return ds
 
 
+# ─── Figma Make Prompt Parser ───────────────────────────────────────
+
+
+# Normalize section titles to canonical page names
+_TITLE_TO_PAGE: dict[str, str] = {
+    "design tokens": "",  # Skip — these are component library prompts, not a page
+    "component library": "",
+    "homepage": "Home",
+    "product catalog": "ProductCatalog",
+    "coffees": "ProductCatalog",
+    "product detail": "ProductDetail",
+    "coffee": "ProductDetail",
+    "cart": "Cart",
+    "checkout": "Checkout",
+    "subscription": "SubscriptionWizard",
+    "user dashboard": "UserDashboard",
+    "user account": "UserProfile",
+    "admin dashboard": "AdminDashboard",
+    "admin product": "AdminProducts",
+    "product management": "AdminProducts",
+    "admin order": "AdminOrders",
+    "order management": "AdminOrders",
+    "admin deliveries": "AdminOrders",
+    "daily deliveries": "AdminOrders",
+    "admin coupon": "AdminCoupons",
+    "coupon": "AdminCoupons",
+    "admin promo": "AdminCoupons",
+    "promo day": "AdminCoupons",
+    "admin gift": "AdminCoupons",
+    "gift card": "AdminCoupons",
+    "admin review": "AdminCoupons",
+    "stories": "Stories",
+    "content": "Stories",
+    "story detail": "StoryDetail",
+    "blog": "Stories",
+    "auth": "Login",
+    "login": "Login",
+    "register": "Login",
+    "promo banner": "PromoStates",
+    "special states": "PromoStates",
+    "error page": "PromoStates",
+    "email": "EmailTemplates",
+}
+
+
+def _normalize_page_name(title: str) -> str:
+    """Normalize a figma.md section title to a canonical page name.
+
+    Examples:
+        "HOMEPAGE — DESKTOP (1280px)" → "Home"
+        "ADMIN — PRODUCT MANAGEMENT" → "AdminProducts"
+        "AUTH PAGES — LOGIN, REGISTER" → "Login"
+    """
+    # Remove numbering prefix: "2. HOMEPAGE..." → "HOMEPAGE..."
+    cleaned = re.sub(r"^\d+\.\s*", "", title).strip()
+    # Remove resolution/dimension hints: "... (1280px)" or "... (375px)"
+    cleaned = re.sub(r"\s*\([\d]+px\)", "", cleaned)
+    # Remove "— DESKTOP" / "— MOBILE" suffixes for matching (keep for subsection)
+    base = re.sub(r"\s*—\s*(DESKTOP|MOBILE).*", "", cleaned, flags=re.IGNORECASE)
+    base_lower = base.lower().strip()
+
+    # Try direct match
+    for pattern, page_name in _TITLE_TO_PAGE.items():
+        if pattern in base_lower:
+            return page_name
+    # Fallback: PascalCase the first word
+    words = base_lower.split()
+    if words:
+        return words[0].capitalize()
+    return ""
+
+
+def _is_mobile_section(title: str) -> bool:
+    """Check if a section title refers to a mobile variant."""
+    return bool(re.search(r"mobile|375px", title, re.IGNORECASE))
+
+
+def _clean_prompt_content(content: str) -> str:
+    """Remove Figma Make meta-instructions, keep actionable design detail.
+
+    Strips lines like "Create a design..." or "Design the..." that are
+    prompts to Figma Make, not useful for implementing agents.
+    """
+    lines = content.split("\n")
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        # Skip Figma Make meta-instructions
+        if re.match(r"^(Create|Design|Build|Make|Generate)\s+(a|the|an)\s+", stripped, re.IGNORECASE):
+            continue
+        # Skip brand repetition lines (already in tokens)
+        if re.match(r"^(Colors?|Brand|BRAND):\s+", stripped) and "#" in stripped and len(stripped) > 100:
+            continue
+        # Skip typography repetition
+        if re.match(r"^(Typography|TYPOGRAPHY):\s+", stripped) and "Playfair" in stripped and len(stripped) > 80:
+            continue
+        # Skip "Colors: cream #FFFBEB..." style single-line token dumps
+        if re.match(r"^Colors?:\s+(cream|warm)", stripped, re.IGNORECASE) and stripped.count("#") >= 3:
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
+
+
+class FigmaMakePromptParser(DesignParser):
+    """Parse figma.md files containing Figma Make prompt collections.
+
+    These files have numbered sections (## N. TITLE) followed by fenced
+    code blocks containing design prompts. Each section describes one or
+    more pages of the application.
+    """
+
+    @classmethod
+    def detect(cls, path: str) -> bool:
+        if not path.endswith(".md"):
+            return False
+        try:
+            content = Path(path).read_text(encoding="utf-8", errors="replace")
+            # Figma Make prompt files have numbered sections with code blocks
+            has_numbered = bool(re.search(r"^## \d+\.", content, re.MULTILINE))
+            has_code_blocks = content.count("```") >= 4
+            # Must NOT be a design-system.md (has ## Design Tokens)
+            is_design_system = "## Design Tokens" in content
+            return has_numbered and has_code_blocks and not is_design_system
+        except OSError:
+            return False
+
+    def parse(self, path: str) -> DesignSystem:
+        ds = DesignSystem()
+        content = Path(path).read_text(encoding="utf-8", errors="replace")
+
+        # Split into sections by ## N. headings
+        section_re = re.compile(r"^## (\d+)\.\s+(.+)$", re.MULTILINE)
+        sections: list[tuple[str, str, str]] = []  # (num, title, content)
+
+        matches = list(section_re.finditer(content))
+        for i, m in enumerate(matches):
+            num = m.group(1)
+            title = m.group(2).strip()
+            start = m.end()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+            section_content = content[start:end].strip()
+            sections.append((num, title, section_content))
+
+        # Extract code blocks from each section
+        page_data: dict[str, list[str]] = {}  # page_name → [descriptions]
+
+        for num, title, section_content in sections:
+            page_name = _normalize_page_name(title)
+            if not page_name:  # Skip non-page sections (e.g., component library)
+                # But still extract tokens from component library section
+                self._extract_tokens_from_section(section_content, ds)
+                continue
+
+            # Extract fenced code block content
+            code_blocks = re.findall(r"```\n?(.*?)```", section_content, re.DOTALL)
+            if not code_blocks:
+                continue
+
+            raw_description = "\n\n".join(code_blocks)
+            cleaned = _clean_prompt_content(raw_description)
+
+            if not cleaned.strip():
+                continue
+
+            # Add mobile/desktop label if applicable
+            if _is_mobile_section(title):
+                cleaned = f"MOBILE VERSION:\n{cleaned}"
+
+            if page_name not in page_data:
+                page_data[page_name] = []
+            page_data[page_name].append(cleaned)
+
+        # Build PageSpecs — merge desktop+mobile into one page
+        for page_name, descriptions in page_data.items():
+            visual = "\n\n".join(descriptions)
+            page = PageSpec(
+                name=page_name,
+                visual_description=visual,
+            )
+            ds.pages.append(page)
+
+        # Extract tokens from all code blocks globally
+        all_code = "\n".join(
+            block
+            for _, _, sc in sections
+            for block in re.findall(r"```\n?(.*?)```", sc, re.DOTALL)
+        )
+        self._extract_tokens_from_section(all_code, ds)
+
+        # Extract fonts
+        font_re = re.compile(r"(Playfair Display|Inter|JetBrains Mono|Roboto|Poppins|Open Sans|Lato|Montserrat)", re.IGNORECASE)
+        for m in font_re.finditer(all_code):
+            font = m.group(1)
+            if font not in ds.fonts:
+                ds.fonts.append(font)
+
+        logger.info("Parsed %d page sections from figma.md", len(ds.pages))
+        return ds
+
+    def _extract_tokens_from_section(self, content: str, ds: DesignSystem) -> None:
+        """Extract color, spacing, and typography tokens from prompt text."""
+        # Extract hex colors with their context
+        color_re = re.compile(r"(?:(\w[\w\s]*?):\s*)?#([0-9A-Fa-f]{6})\b")
+        colors = ds.tokens.setdefault("Colors", {})
+        for m in color_re.finditer(content):
+            label = (m.group(1) or "").strip().lower()
+            hex_val = f"#{m.group(2)}"
+            # Map known color labels
+            if "primary" in label or "brown" in label or "coffee" in label:
+                colors.setdefault("color-primary", hex_val)
+            elif "secondary" in label or "gold" in label or "accent" in label:
+                colors.setdefault("color-secondary", hex_val)
+            elif "background" in label or "cream" in label or "bg" in label:
+                colors.setdefault("color-background", hex_val)
+            elif "surface" in label or "white" in label or "card" in label:
+                colors.setdefault("color-surface", hex_val)
+            elif "text" in label or "main" in label:
+                colors.setdefault("color-text", hex_val)
+            elif "muted" in label or "placeholder" in label:
+                colors.setdefault("color-muted", hex_val)
+            elif "border" in label or "divider" in label:
+                colors.setdefault("color-border", hex_val)
+            elif "success" in label or "green" in label or "stock" in label:
+                colors.setdefault("color-success", hex_val)
+            elif "error" in label or "red" in label or "danger" in label:
+                colors.setdefault("color-error", hex_val)
+            elif "warning" in label:
+                colors.setdefault("color-warning", hex_val)
+
+        # Extract spacing values
+        spacing_re = re.compile(r"(\d+)px\s+base\s+grid|padding[:\s]+(\d+)px|gap[:\s]+(\d+)px|max-width[:\s]+(\d+)px")
+        spacing = ds.tokens.setdefault("Spacing", {})
+        for m in spacing_re.finditer(content):
+            if m.group(1):
+                spacing.setdefault("spacing-base", f"{m.group(1)}px")
+            if m.group(2):
+                spacing.setdefault("spacing-card", f"{m.group(2)}px")
+            if m.group(3):
+                spacing.setdefault("spacing-grid", f"{m.group(3)}px")
+            if m.group(4):
+                spacing.setdefault("container-max", f"{m.group(4)}px")
+
+        # Extract border radius
+        radius_re = re.compile(r"border-radius[:\s]+(\d+)px|radius[:\s]+(\d+)px")
+        radii = ds.tokens.setdefault("Border Radius", {})
+        for m in radius_re.finditer(content):
+            val = m.group(1) or m.group(2)
+            if val and "radius-button" not in radii:
+                radii["radius-button"] = f"{val}px"
+
+
 # ─── Factory ─────────────────────────────────────────────────────────
 
 
-_PARSERS: list[type[DesignParser]] = [MakeParser, PassthroughParser]
-SUPPORTED_FORMATS = [".make (Figma Make export)", ".md (with '## Design Tokens' section)"]
+_PARSERS: list[type[DesignParser]] = [MakeParser, FigmaMakePromptParser, PassthroughParser]
+SUPPORTED_FORMATS = [
+    ".make (Figma Make export)",
+    ".md (Figma Make prompt collection with ## N. sections)",
+    ".md (with '## Design Tokens' section)",
+]
 
 
 def get_parser(path: str) -> DesignParser:
@@ -600,6 +1079,17 @@ def main() -> None:
     else:
         Path(output_path).write_text(md_content, encoding="utf-8")
         print(f"Generated: {output_path} ({line_count} lines)")
+
+    # Generate design-brief.md if parser produced visual descriptions
+    brief_content = design.to_brief_markdown()
+    if brief_content:
+        brief_path = os.path.join(output_dir, "design-brief.md")
+        brief_lines = len(brief_content.split("\n"))
+        if args.dry_run:
+            print(f"[dry-run] Would write {brief_path} ({brief_lines} lines)")
+        else:
+            Path(brief_path).write_text(brief_content, encoding="utf-8")
+            print(f"Generated: {brief_path} ({brief_lines} lines)")
 
     # Sync specs
     print(f"\nScanning specs in: {args.spec_dir}")

@@ -48,9 +48,77 @@
 ## Components
 
 ### Button
+- Layout: Auto Layout: Horizontal, padding 24px × 12px
+Min Height: 44px
+Background: #78350F (Primary Brown)
+Text: #FFFFFF (White), Inter Medium 16px
+Border Radius: 6px
+
+Hover State:
+- Background: #5A2808 (darker brown)
+
+Active/Pressed:
+- Background: #4A2006 (even darker)
+
+---
+Auto Layout: Horizontal, padding 24px × 12px
+Min Height: 44px
+Background: Transparent
+Border: 2px solid #78350F
+Text: #78350F, Inter Medium 16px
+Border Radius: 6px
+
+Hover State:
+- Background: #78350F
+- Text: #FFFFFF
+
+---
+Border: 2px solid #D97706
+Text: #D97706
+Hover: bg #D97706, text white
+
+---
+Auto Layout: Horizontal, padding 24px × 12px
+Min Height: 44px
+Background: Transparent
+Text: #78350F, Inter Medium 16px
+Border Radius: 6px
+
+Hover State:
+- Background: #FFFBEB (warm cream)
+
+---
+Opacity: 50%
+Cursor: not-allowed
 
 ### Badge
-- Layout: flexbox
+- Layout: Base:
+- Auto Layout Horizontal
+- Padding: 8px × 4px
+- Border Radius: 4px
+- Inter Medium 12px
+
+New Badge:
+- Background: #16A34A
+- Text: #FFFFFF
+
+Out of Stock:
+- Background: #DC2626
+- Text: #FFFFFF
+
+Low Stock:
+- Background: #D97706
+- Text: #FFFFFF
+
+Discount:
+- Background: #DC2626
+- Text: #FFFFFF
+- Example: "-20%"
+
+Category:
+- Background: #78350F
+- Text: #FFFFFF
+- Example: "Etiópia", "Világos"
 
 ### StarRating
 - Layout: flexbox
@@ -59,12 +127,63 @@
 - Layout: flexbox
 
 ### Header
-- **colors**: color-primary, font-heading
-- Layout: flexbox
+- Layout: Container:
+- Background: #FFFFFF
+- Border Bottom: 1px solid #E7E5E4
+- Shadow: Card Shadow
+- Position: Sticky
+
+Layout: 3-column (Logo | Nav | Actions)
+
+Logo:
+- Playfair Display Bold 24px
+- Color: #78350F
+- Left aligned
+
+Navigation (Center):
+- Auto Layout Horizontal, gap 32px
+- Links: Inter Regular 16px, #1C1917
+- Hover: #D97706
+- Active: color #78350F with underline 2px solid
+
+Actions (Right):
+- Auto Layout Horizontal, gap 16px
+- Icons: 20×20px, #1C1917
+- Hover: #D97706
+- Cart Badge: 20×20px circle, bg #DC2626, white text
+
+---
+Layout: 3-column (Hamburger | Logo | Actions)
+All icons: 24×24px minimum touch target 44×44px
 
 ### Footer
-- **colors**: color-primary, font-heading
-- Layout: flexbox
+- Layout: Container:
+- Background: #F5F1E6 (slightly darker cream)
+- Border Top: 1px solid #E7E5E4
+- Padding: 48px
+
+Layout: 3-column grid
+Gap: 32px
+
+Column 1 (Brand):
+- Logo: Playfair Display Bold 24px, #78350F
+- Tagline: Inter Regular 16px, #78716C
+- Copyright: Inter Regular 14px, #78716C
+
+Column 2 (Links):
+- Title: Inter SemiBold 16px, #1C1917
+- Links: Inter Regular 16px, #78716C
+- Hover: #D97706
+- Gap: 12px
+
+Column 3 (Contact):
+- Email: Inter Regular 16px, #78716C
+- Hover: #D97706
+- Address: Inter Regular 14px, #78716C
+- Social Icons: 40×40px circles
+  - Background: #FFFFFF
+  - Icon: #1C1917
+  - Hover: bg #D97706, icon white
 
 ### PromoBanner
 

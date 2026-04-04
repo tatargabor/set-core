@@ -142,6 +142,100 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
     return "## Relevant Patterns\n\n" + "\n\n".join(parts)
 
 
+def _find_design_brief() -> str | None:
+    """Find design-brief.md in standard paths. Returns path or None."""
+    for bp in ("docs/design-brief.md", "design-brief.md", "docs/design/design-brief.md"):
+        if os.path.isfile(bp):
+            return bp
+    return None
+
+
+def _build_per_change_design(
+    change_name: str,
+    scope: str,
+    design_snapshot_dir: str,
+    wt_path: str,
+) -> bool:
+    """Build per-change design.md with tokens + matched design brief pages.
+
+    Calls bridge.sh design_brief_for_dispatch() for scope-matched page
+    sections, combines with Design Tokens from design-system.md, and
+    writes to openspec/changes/<name>/design.md in the worktree.
+
+    Returns True if a per-change design.md was written.
+    """
+    brief_path = _find_design_brief()
+    if not brief_path:
+        return False
+
+    bridge_path = os.path.join(SET_TOOLS_ROOT, "lib", "design", "bridge.sh")
+    if not os.path.isfile(bridge_path):
+        return False
+
+    # Get matched page sections from design-brief.md
+    brief_r = run_command(
+        ["bash", "-c",
+         f'source "{bridge_path}" 2>/dev/null && '
+         f'design_brief_for_dispatch "{scope}" "{brief_path}"'],
+        timeout=5,
+    )
+    if brief_r.exit_code != 0 or not brief_r.stdout.strip():
+        return False
+
+    matched_pages = brief_r.stdout.strip()
+
+    # Get tokens from design-system.md (always include)
+    tokens_r = run_command(
+        ["bash", "-c",
+         f'source "{bridge_path}" 2>/dev/null && '
+         f'design_context_for_dispatch "{scope}" "{design_snapshot_dir}"'],
+        timeout=5,
+    )
+    tokens_section = ""
+    if tokens_r.exit_code == 0 and tokens_r.stdout.strip():
+        # Extract only the Design Tokens section (not the matched pages from old system)
+        lines = tokens_r.stdout.strip().split("\n")
+        in_tokens = False
+        token_lines = []
+        for line in lines:
+            if line.startswith("## Design Tokens"):
+                in_tokens = True
+            elif in_tokens and line.startswith("## "):
+                break
+            if in_tokens:
+                token_lines.append(line)
+        if token_lines:
+            tokens_section = "\n".join(token_lines)
+
+    # Build per-change design.md
+    parts = [
+        "# Design Context",
+        "",
+        "Use these EXACT values when implementing UI. Do NOT fall back to framework defaults.",
+        "",
+    ]
+    if tokens_section:
+        parts.append(tokens_section)
+        parts.append("")
+    parts.append(matched_pages)
+
+    design_content = "\n".join(parts)
+
+    # Write to worktree change directory
+    change_dir = os.path.join(wt_path, "openspec", "changes", change_name)
+    os.makedirs(change_dir, exist_ok=True)
+    design_path = os.path.join(change_dir, "design.md")
+    try:
+        with open(design_path, "w", encoding="utf-8") as f:
+            f.write(design_content)
+        logger.info("Wrote per-change design.md (%d lines) to %s",
+                     len(design_content.split("\n")), design_path)
+        return True
+    except OSError as e:
+        logger.warning("Failed to write per-change design.md: %s", e)
+        return False
+
+
 # Env files to copy from project root to worktree
 ENV_FILES = [".env", ".env.local", ".env.development", ".env.development.local"]
 
@@ -1543,6 +1637,34 @@ def dispatch_change(
             ctx.design_context += "\n\n" + rule_injection
         else:
             ctx.design_context = rule_injection
+
+    # Per-change design.md from design-brief.md (rich visual descriptions)
+    has_per_change_design = _build_per_change_design(
+        change_name, scope, design_snapshot_dir, wt_path,
+    )
+    if has_per_change_design:
+        # Replace inline design context with tokens-only + file reference
+        # Extract just tokens from the existing design context
+        if ctx.design_context:
+            dc_lines = ctx.design_context.split("\n")
+            token_lines = []
+            in_tokens = False
+            for line in dc_lines:
+                if "## Design Tokens" in line or "### Colors" in line or "### Typography" in line:
+                    in_tokens = True
+                elif in_tokens and line.startswith("## ") and "Design Tokens" not in line:
+                    in_tokens = False
+                if in_tokens:
+                    token_lines.append(line)
+            tokens_inline = "\n".join(token_lines) if token_lines else ""
+            ctx.design_context = (
+                tokens_inline + "\n\n"
+                "**Read `design.md` in this change directory for detailed visual specifications of your pages.**"
+            ).strip()
+        else:
+            ctx.design_context = (
+                "**Read `design.md` in this change directory for detailed visual specifications of your pages.**"
+            )
 
     # Setup change in worktree
     _setup_change_in_worktree(

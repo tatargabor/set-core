@@ -164,6 +164,17 @@ init_project() {
         cp "$SCAFFOLD_DIR/figma.md" "$TEST_DIR/"
     fi
 
+    # Generate design-brief.md from figma.md if not already in scaffold
+    if [[ -f "$TEST_DIR/figma.md" && ! -f "$TEST_DIR/docs/design-brief.md" ]]; then
+        info "Generating design-brief.md from figma.md..."
+        if command -v set-design-sync &>/dev/null; then
+            set-design-sync --input "$TEST_DIR/figma.md" --spec-dir "$TEST_DIR/docs/" --output "$TEST_DIR/docs/design-system.md" 2>/dev/null || true
+            [[ -f "$TEST_DIR/docs/design-brief.md" ]] && success "design-brief.md generated" || warn "design-brief.md generation failed"
+        else
+            warn "set-design-sync not found — design-brief.md not generated"
+        fi
+    fi
+
     local file_count
     file_count=$(find "$TEST_DIR/docs" -name '*.md' -o -name '*.make' | wc -l)
     success "Spec + design assets copied ($file_count files in docs/)"
