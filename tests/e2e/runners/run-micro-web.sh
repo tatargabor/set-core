@@ -209,7 +209,7 @@ ATTRS
 default_model: opus
 e2e_command: npx playwright test
 e2e_timeout: 120
-max_parallel: 2
+max_parallel: 1
 merge_policy: checkpoint
 checkpoint_auto_approve: true
 auto_replan: true
