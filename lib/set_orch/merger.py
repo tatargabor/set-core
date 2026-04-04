@@ -559,9 +559,23 @@ def merge_change(
         except Exception:
             logger.debug("Post-merge profile hooks failed (non-critical)", exc_info=True)
 
-        # Parse test coverage if this is the acceptance-tests change
+        # Parse test coverage
         _heartbeat("test_coverage")
         _parse_test_coverage_if_applicable(change_name, state_file)
+
+        # Collect E2E screenshot count from worktree test-results/
+        try:
+            if wt_path and os.path.isdir(wt_path):
+                tr_dir = os.path.join(wt_path, "test-results")
+                if os.path.isdir(tr_dir):
+                    pngs = glob.glob(os.path.join(tr_dir, "**", "*.png"), recursive=True)
+                    if pngs:
+                        from .state import update_change_field
+                        update_change_field(state_file, change_name, "e2e_screenshot_count", len(pngs))
+                        update_change_field(state_file, change_name, "e2e_screenshot_dir", tr_dir)
+                        logger.info("E2E screenshots: %d PNGs for %s", len(pngs), change_name)
+        except Exception:
+            logger.debug("Screenshot collection failed (non-critical)", exc_info=True)
 
         # Regenerate START.md on main from current project state
         try:
