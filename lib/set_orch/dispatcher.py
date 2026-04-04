@@ -2007,11 +2007,15 @@ def resume_change(
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Reset merge retry counter — agent redispatch gets fresh retry budget
+    # Reset retry counters — agent redispatch gets fresh retry budget
     with locked_state(state_path) as st:
         ch = _find_change(st, change_name)
-        if ch and ch.extras.get("merge_retry_count"):
-            ch.extras["merge_retry_count"] = 0
+        if ch:
+            if ch.extras.get("merge_retry_count"):
+                ch.extras["merge_retry_count"] = 0
+            # Reset e2e gate retry counter to prevent stale counts from previous sessions
+            if ch.extras.get("integration_e2e_retry_count"):
+                ch.extras["integration_e2e_retry_count"] = 0
 
     # Snapshot cumulative tokens
     update_change_field(state_path, change_name, "tokens_used_prev", change.tokens_used, event_bus=event_bus)

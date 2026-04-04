@@ -364,68 +364,13 @@ Shared resource awareness:
 - Common shared resources: design/convention docs, shared type definitions, package.json, layout components
 
 Test-per-change requirement:
-- Each change that adds a user-facing route, feature, or API endpoint MUST include its own tests. Do NOT defer all testing to a final "e2e" change.
+- Each change that adds a user-facing route, feature, or API endpoint MUST include its own E2E tests in `tests/e2e/<change-name>.spec.ts`.
+- Do NOT defer testing to a final "acceptance-tests" or "e2e" change — each change owns its tests.
+- The integration gate runs ALL tests in `tests/e2e/` (previous changes' tests + new ones). If a previously-passing test fails, the current change broke it and must fix its own code before merging.
 - The quality gate BLOCKS changes without test files for feature/infrastructure types.
-- Explicitly list test files in scope (e.g., "Tests: Create orders.test.ts").
+- Explicitly list test files in scope (e.g., "Tests: Create tests/e2e/auth-and-admin.spec.ts").
+- Cross-domain flows (e.g., catalog→cart→checkout) go in the change that implements the LAST step, since all dependencies are merged by then.
 
-Acceptance test change (REQUIRED):
-- Always include a FINAL change named "acceptance-tests" with type "test" and model "opus".
-- This change depends_on ALL other changes and is assigned to the LAST phase.
-- The "requirements" array for this change MUST include ALL REQ-* IDs from the digest (it validates them all). The "also_affects_reqs" should be empty.
-- Purpose: write cross-feature journey E2E tests that validate end-to-end user workflows spanning multiple domains.
-- To define the scope, analyze the spec for:
-  1. Cross-domain data flows — where one domain's output is another's input (e.g., items created in one domain are consumed/processed in another)
-  2. Multi-actor interactions — different user roles interacting with the same entities (e.g., one role creates, another manages, a third consumes)
-  3. Sequential workflows spanning 3+ features — user paths that touch multiple feature areas in sequence
-- List each identified journey by name, the domains it crosses, AND the REQ-* IDs it covers.
-- Example scope: "Journey: Full purchase flow (catalog→cart→checkout) covers REQ-CAT-001, REQ-CART-001, REQ-CHK-001"
-- The scope MUST also include these generic methodology rules for the implementing agent:
-
-  JOURNEY TEST METHODOLOGY:
-
-  PHASE 0 — TEST PLANNING (before writing any code):
-  a) Read ALL REQ-* IDs from the orchestration state (your change's "requirements" array has them all).
-  b) Classify each REQ by risk:
-     - HIGH (auth, payment, data mutation/CRUD) → 1 happy path + 2 negative/boundary tests
-     - MEDIUM (forms, state, filtering) → 1 happy path + 1 negative test
-     - LOW (display, navigation, static content) → 1 happy path only
-  c) For each test case, write a Given/When/Then scenario.
-  d) Assign each test case to either a journey-step (sequential, shares state) or standalone test (isolated).
-  e) SCOPE GUARD: If a test doesn't cross a page boundary or involve server interaction, it is NOT an E2E test — skip it.
-  f) ASSERTION DEPTH — for every test:
-     - Verify CONTENT not just visibility (check text values, counts, amounts)
-     - Verify SIDE-EFFECTS not just responses (record created? list updated? balance changed?)
-     - Verify NEGATIVE PATHS not just happy paths (wrong input → correct error message)
-  g) Write the plan to tests/e2e/JOURNEY-TEST-PLAN.md using THIS EXACT FORMAT:
-
-     ## REQ-XXX-NNN: Requirement title [HIGH|MEDIUM|LOW]
-     - [x] Happy: Given <precondition> → When <action> → Then <outcome>
-       → journey-<name>.spec.ts: "<describe> › <test name>"
-     - [x] Negative: Given <precondition> → When <wrong action> → Then <error>
-       → journey-<name>.spec.ts: "<describe> › <test name>"
-
-     ## REQ-YYY-NNN: Another requirement [NON-TESTABLE]
-     Exempt: <reason why it cannot be tested via E2E>
-
-     RULES FOR THE PLAN:
-     - Each ## header MUST start with the REQ-* ID from your requirements array
-     - Risk level in brackets: [HIGH], [MEDIUM], [LOW], or [NON-TESTABLE]
-     - Each test case is a checkbox line with Given/When/Then
-     - After each checkbox, a → line references the test file and test name
-     - The test name MUST match the actual test() name in the spec file exactly
-
-  PHASE 1 — IMPLEMENTATION:
-  1. ISOLATION: Each journey test file is self-contained. Set up preconditions via API calls in beforeAll/setup, never depend on state from another test file.
-  2. DATA STRATEGY: Read existing seed data (discover by reading the seed file) for read operations. For write operations that mutate state (creating records, using one-time resources), create a fresh test user via the registration API to avoid coupling between journeys.
-  3. THIRD-PARTY SERVICES: If a journey requires an external service (payment provider, email), check for test-mode keys in .env. If available, use test mode. If not, test the flow up to the external call and verify via API side-effects. Never skip the journey entirely.
-  4. IDEMPOTENCY: Tests must survive re-runs. Use unique identifiers (timestamps, random suffixes), clean up in afterAll, or design assertions that tolerate pre-existing data.
-  5. LOCATORS: Prefer semantic locators in this order: getByRole > getByLabel > getByText > getByTestId. CSS selectors and XPath are last resort.
-  6. GRANULARITY: 2-5 assertions per test. One test = one user action and its observable consequences. Use Given/When/Then from the plan as the test's doc comment.
-
-  PHASE 2 — VALIDATION:
-  7. FIX-UNTIL-PASS: Run tests, fix failures (app code or test code), re-run only failed tests. Repeat until all pass or token budget is exhausted. If budget exhausted with remaining failures, document what failed and why.
-  8. COVERAGE CHECK: Verify every testable spec AC has at least one test covering it. Add tests for gaps. Document non-testable ACs (email delivery, background jobs) as exempt.
-{acceptance_test_extra_rules}
 Phase assignment — group changes into execution phases for milestone checkpoints:
 - Assign a phase integer (1..N, max 5) to each change
 - Phase 1: infrastructure, schema, foundational changes
@@ -476,14 +421,7 @@ def _get_planning_rules(project_path: str = ".") -> str:
 
     profile = load_profile(project_path)
 
-    # Inject profile-specific acceptance test methodology (e.g., Playwright patterns)
-    extra_rules = ""
-    if hasattr(profile, "acceptance_test_methodology"):
-        at_rules = profile.acceptance_test_methodology()
-        if at_rules:
-            extra_rules = "\n" + at_rules
-
-    parts = [_PLANNING_RULES_CORE.replace("{acceptance_test_extra_rules}", extra_rules)]
+    parts = [_PLANNING_RULES_CORE]
 
     profile_rules = profile.planning_rules()
     if profile_rules:

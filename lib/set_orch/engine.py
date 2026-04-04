@@ -51,7 +51,7 @@ class Directives:
     Mirrors the ~40 variables parsed from JSON in monitor.sh L5-106.
     """
 
-    max_parallel: int = 3
+    max_parallel: int = 1  # Sequential execution; >1 is experimental (merge conflicts, port collisions)
     checkpoint_every: int = 0
     test_command: str = ""
     merge_policy: str = "eager"
@@ -60,6 +60,7 @@ class Directives:
     max_replan_cycles: int = MAX_REPLAN_CYCLES
     test_timeout: int = 300
     max_verify_retries: int = 3
+    e2e_retry_limit: int = 3
     review_before_merge: bool = True
     review_model: str = "opus"
     default_model: str = "opus"
@@ -116,6 +117,7 @@ def parse_directives(raw: dict) -> Directives:
     d.token_budget = _int(raw, "token_budget", d.token_budget)
     d.auto_replan = _bool(raw, "auto_replan", d.auto_replan)
     d.max_replan_cycles = _int(raw, "max_replan_cycles", d.max_replan_cycles)
+    d.e2e_retry_limit = _int(raw, "e2e_retry_limit", d.e2e_retry_limit)
     d.test_timeout = _int(raw, "test_timeout", d.test_timeout)
     d.max_verify_retries = _int(raw, "max_verify_retries", d.max_verify_retries)
     d.review_before_merge = _bool(raw, "review_before_merge", d.review_before_merge)
@@ -1052,6 +1054,55 @@ def _parse_e2e_summary(output: str) -> dict:
     return result
 
 
+def _classify_test_failures(wt_path: str, e2e_output: str) -> dict:
+    """Classify E2E failures as own-change vs regression using git diff.
+
+    Compares failing test file paths against files this change added/modified
+    in tests/e2e/. Returns structured classification so the retry prompt
+    gives the agent deterministic guidance (not an LLM judgment call).
+    """
+    import re
+
+    # 1. Get test files THIS change added/modified vs main
+    own_test_files: set[str] = set()
+    try:
+        r = run_command(
+            ["git", "diff", "--name-only", "main..HEAD", "--", "tests/e2e/"],
+            cwd=wt_path, timeout=10,
+        )
+        if r.exit_code == 0 and r.stdout.strip():
+            own_test_files = {f.strip() for f in r.stdout.strip().splitlines()}
+    except Exception:
+        pass
+
+    # 2. Parse failing tests
+    parsed = _parse_e2e_summary(e2e_output)
+    failing = parsed.get("failing_tests", [])
+
+    # 3. Classify each failure
+    own_failures: list[str] = []
+    regression_failures: list[str] = []
+
+    for test_line in failing:
+        # Extract file path from test line: "tests/e2e/auth.spec.ts:70:7 › Desc › test"
+        m = re.match(r"(tests/e2e/\S+?):\d+", test_line)
+        if m:
+            test_file = m.group(1)
+            if test_file in own_test_files:
+                own_failures.append(test_line)
+            else:
+                regression_failures.append(test_line)
+        else:
+            # Can't determine file — treat as own (safer)
+            own_failures.append(test_line)
+
+    return {
+        "own_failures": own_failures,
+        "regression_failures": regression_failures,
+        "own_test_files": sorted(own_test_files),
+    }
+
+
 def _build_gate_retry_context(
     change: "ChangeState", wt_path: str, e2e_output: str
 ) -> str:
@@ -1101,8 +1152,9 @@ def _build_gate_retry_context(
         if last_commit_body and len(last_commit_body) > 50:
             sections.append(f"### Last Commit Summary\n{last_commit_body}\n")
 
-    # --- Parsed Test Results ---
+    # --- Classified Test Results ---
     parsed = _parse_e2e_summary(e2e_output)
+    classified = _classify_test_failures(wt_path, e2e_output)
     total = parsed["passed"] + parsed["failed"] + parsed["flaky"] + parsed["skipped"]
     if total > 0:
         summary = f"**{parsed['passed']} passed, {parsed['failed']} failed"
@@ -1114,9 +1166,17 @@ def _build_gate_retry_context(
 
         sections.append(f"## Test Results\n\n{summary}\n")
 
-        if parsed["failing_tests"]:
-            failing = "\n".join(f"- {t}" for t in parsed["failing_tests"])
-            sections.append(f"### Failing Tests\n{failing}\n")
+        if classified["own_failures"]:
+            own = "\n".join(f"- {t}" for t in classified["own_failures"])
+            sections.append(
+                f"### Your Test Failures (fix your test code or your app code)\n{own}\n"
+            )
+
+        if classified["regression_failures"]:
+            reg = "\n".join(f"- {t}" for t in classified["regression_failures"])
+            sections.append(
+                f"### Regression Failures (your change broke a previously-passing test — fix YOUR app code, do NOT modify the old test)\n{reg}\n"
+            )
 
     # --- Raw E2E Output ---
     if e2e_output:

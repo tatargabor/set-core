@@ -745,6 +745,7 @@ def _run_integration_gates(
     change_name: str, change: Change, wt_path: str,
     state_file: str, profile: Any = None,
     event_bus: Any = None,
+    e2e_retry_limit: int = 3,
 ) -> bool:
     """Run integration gates (build + test + e2e) in worktree after integration.
 
@@ -922,11 +923,11 @@ def _run_integration_gates(
                     e2e_output = (result.stdout or "")[-2000:] + "\n" + (result.stderr or "")[-1000:]
                     e2e_retry = change.extras.get("integration_e2e_retry_count", 0)
 
-                    if e2e_retry < 2:
+                    if e2e_retry < e2e_retry_limit:
                         # Redispatch agent to fix e2e failures (same pattern as verify-failed)
                         logger.warning(
-                            "Integration gate: e2e FAILED for %s — redispatching agent (attempt %d/2)",
-                            change_name, e2e_retry + 1,
+                            "Integration gate: e2e FAILED for %s — redispatching agent (attempt %d/%d)",
+                            change_name, e2e_retry + 1, e2e_retry_limit,
                         )
                         update_change_field(state_file, change_name, "integration_e2e_retry_count", e2e_retry + 1)
                         update_change_field(state_file, change_name, "integration_e2e_output", e2e_output)
@@ -941,13 +942,15 @@ def _run_integration_gates(
                                 "retry": e2e_retry + 1})
                         return False
                     else:
-                        # Exhausted redispatch retries — fall through to merge-blocked
-                        logger.error("Integration gate: e2e FAILED for %s — redispatch retries exhausted (%d/2)",
-                                     change_name, e2e_retry)
-                        update_change_field(state_file, change_name, "integration_gate_fail", "e2e")
+                        # Exhausted redispatch retries — terminal failure, remove from queue
+                        logger.error("Integration gate: e2e FAILED for %s — redispatch retries exhausted (%d/%d)",
+                                     change_name, e2e_retry, e2e_retry_limit)
+                        update_change_field(state_file, change_name, "status", "integration-failed")
+                        update_change_field(state_file, change_name, "integration_gate_fail", "e2e-exhausted")
+                        _remove_from_merge_queue(state_file, change_name)
                         if event_bus:
-                            event_bus.emit("VERIFY_GATE", change=change_name, data={
-                                "gate": "e2e", "result": "fail", "phase": "integration"})
+                            event_bus.emit("CHANGE_INTEGRATION_FAILED", change=change_name, data={
+                                "gate": "e2e", "retry_count": e2e_retry, "limit": e2e_retry_limit})
                         return False
                 else:
                     logger.warning(
@@ -1109,7 +1112,8 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 # Integration gates (build + test + e2e)
                 import time as _time
                 _gate_start = _time.monotonic()
-                _gates_passed = _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus)
+                _e2e_limit = state.extras.get("directives", {}).get("e2e_retry_limit", 3)
+                _gates_passed = _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus, e2e_retry_limit=_e2e_limit)
                 _gate_elapsed_ms = int((_time.monotonic() - _gate_start) * 1000)
                 update_change_field(state_file, name, "gate_total_ms", _gate_elapsed_ms)
                 # gates_executed count is logged inside _run_integration_gates

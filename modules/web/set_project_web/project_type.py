@@ -358,19 +358,20 @@ class WebProjectType(CoreProfile):
                 results[(m.group(1).strip(), m.group(2).strip())] = "fail"
         return results
 
-    def acceptance_test_methodology(self) -> str:
+    def e2e_test_methodology(self) -> str:
         return """  FRAMEWORK-SPECIFIC (Playwright/Web):
-  7. SERIAL STEPS: Use test.describe.serial() with a shared Page. Create the page
-     in test.beforeAll via browser.newContext() + context.newPage(). Do NOT use the
-     default { page } fixture — it creates a fresh isolated page per test, losing
-     login state and cart contents between steps.
-  8. BROWSER CONTEXT: Each journey MUST start with a fresh browser context
-     (browser.newContext()) to ensure clean cookies/sessions. This prevents state
-     leaking between journey files.
-  9. FILE NAMING: Journey test files go in tests/e2e/journey-<name>.spec.ts.
-  10. RE-RUN COMMAND: To re-run only failed tests use: npx playwright test --grep "<test name>"
-  11. PLAYWRIGHT CONFIG: Tests run against real app via Playwright webServer config.
-      Do not start the dev server manually."""
+  - SERIAL STEPS: Use test.describe.serial() with a shared Page for stateful flows.
+    Create the page in test.beforeAll via browser.newContext() + context.newPage().
+    Do NOT use the default { page } fixture — it creates a fresh page per test.
+  - BROWSER CONTEXT: Each test file MUST start with a fresh browser context
+    (browser.newContext()) to ensure clean cookies/sessions between test files.
+  - FILE NAMING: E2E tests go in tests/e2e/<change-name>.spec.ts (one file per change).
+  - LOCATORS: getByRole > getByLabel > getByText > getByTestId. CSS selectors last resort.
+  - RE-RUN COMMAND: To re-run only failed tests: npx playwright test --grep "<test name>"
+  - PLAYWRIGHT CONFIG: Tests run against real app via Playwright webServer config.
+    Do not start the dev server manually.
+  - ISOLATION: Each test file is self-contained. Set up preconditions via API or seed data.
+  - IDEMPOTENCY: Tests must survive re-runs. Use unique IDs, clean up in afterAll."""
 
     def security_rules_paths(self, project_path: str) -> List[Path]:
         rules_dir = Path(project_path) / ".claude" / "rules"

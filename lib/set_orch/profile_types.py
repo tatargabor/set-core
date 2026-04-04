@@ -222,14 +222,18 @@ class ProjectType(ABC):
         """
         return {}
 
-    def acceptance_test_methodology(self) -> str:
-        """Return framework-specific methodology rules for acceptance journey tests.
+    def e2e_test_methodology(self) -> str:
+        """Return framework-specific E2E test methodology for per-change tests.
 
         Override in subclass to provide test framework patterns (e.g., Playwright
-        serial tests for web, pytest patterns for Python). The returned string is
-        appended to the acceptance-tests change scope in the decompose prompt.
+        serial tests for web, pytest patterns for Python). Injected into each
+        change's scope so agents write proper E2E tests alongside their features.
         """
         return ""
+
+    # Backwards compatibility alias
+    def acceptance_test_methodology(self) -> str:
+        return self.e2e_test_methodology()
 
     def register_gates(self) -> list:
         """Return domain-specific GateDefinitions for this project type.
