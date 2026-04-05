@@ -256,16 +256,15 @@ The proposal, design, specs, and tasks are in `openspec/changes/{change_name}/`.
    done
    ```
 
-4. **Reset blocked changes** so the orchestrator retries:
+4. **Reset blocked changes** so the orchestrator retries (keep merge_retry_count to prevent infinite loops):
    ```bash
    python3 -c "
    import json; f='orchestration-state.json'; s=json.load(open(f))
    for c in s['changes']:
        if c['status'] in ('integration-failed', 'merge-blocked'):
            c['status']='done'
-           c.setdefault('extras',{{}})['merge_retry_count']=0
-           c.setdefault('extras',{{}})['total_merge_attempts']=0
-           print(f'Reset {{c[\"name\"]}} → done')
+           c.setdefault('extras',{{}})['ff_retry_count']=0
+           print(f'Reset {{c[\"name\"]}} → done (merge_retry={{c.get(\"extras\",{{}}).get(\"merge_retry_count\",0)}})')
    json.dump(s, open(f,'w'), indent=2)
    "
    ```
@@ -315,9 +314,8 @@ The bug was detected in consumer project: {consumer_project}
        for c in s['changes']:
            if c['status'] in ('integration-failed', 'merge-blocked'):
                c['status'] = 'done'
-               c.setdefault('extras', {{}})['merge_retry_count'] = 0
-               c.setdefault('extras', {{}})['total_merge_attempts'] = 0
-               print(f'Reset {{c[\"name\"]}} → done')
+               c.setdefault('extras', {{}})['ff_retry_count'] = 0
+               print(f'Reset {{c[\"name\"]}} → done (merge_retry={{c.get(\"extras\",{{}}).get(\"merge_retry_count\",0)}})')
        json.dump(s, open(f, 'w'), indent=2)
    "
    ```
