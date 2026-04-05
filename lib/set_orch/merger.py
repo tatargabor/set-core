@@ -156,7 +156,7 @@ def _collect_test_artifacts(change_name: str, wt_path: str, state_file: str) -> 
 
     try:
         from .profile_loader import load_profile as _lp_art
-        profile = _lp_art()
+        profile = _lp_art(wt_path)
         artifacts = profile.collect_test_artifacts(wt_path)
     except Exception:
         logger.warning("collect_test_artifacts() failed for %s", change_name, exc_info=True)
