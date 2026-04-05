@@ -2087,6 +2087,8 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
                 model=c.get("model", None),
                 phase=offset_phase,
                 gate_hints=c.get("gate_hints") or None,
+                requirements=c.get("requirements") or None,
+                also_affects_reqs=c.get("also_affects_reqs") or None,
             )
             state.changes.append(change)
             added += 1
