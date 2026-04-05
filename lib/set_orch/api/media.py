@@ -143,5 +143,6 @@ def serve_screenshot(project: str, file_path: str):
         full_path.resolve().relative_to(Path.home() / ".local" / "share" / "set-core" / "e2e-runs")
     except ValueError:
         raise HTTPException(403, "Access denied")
-    return FR(str(full_path), media_type=media_type)
+    filename = full_path.name
+    return FR(str(full_path), media_type=media_type, filename=filename)
 

@@ -155,8 +155,14 @@ def _collect_test_artifacts(change_name: str, wt_path: str, state_file: str) -> 
         return
 
     try:
-        from .profile_loader import load_profile as _lp_art
+        from .profile_loader import load_profile as _lp_art, NullProfile as _NP_art
         profile = _lp_art(wt_path)
+        if isinstance(profile, _NP_art):
+            logger.warning(
+                "[ANOMALY] NullProfile for test artifact collection in %s "
+                "— project-type detection failed",
+                wt_path,
+            )
         artifacts = profile.collect_test_artifacts(wt_path)
     except Exception:
         logger.warning("collect_test_artifacts() failed for %s", change_name, exc_info=True)
@@ -1057,6 +1063,14 @@ def _run_integration_gates(
             _smoke_failed = False
             _smoke_output = ""
 
+            # E2E two-phase summary log (task 2.4)
+            if _use_two_phase:
+                _n_inherited_smoke = len(inherited_specs)
+                logger.info(
+                    "E2E two-phase: %d own specs, %d inherited specs, smoke=%d tests",
+                    len(own_specs), _n_inherited_smoke, _n_inherited_smoke,
+                )
+
             # ── Phase 1: Smoke inherited tests (non-blocking) ──
             if _use_two_phase and inherited_specs:
                 smoke_names = []
@@ -1143,6 +1157,13 @@ def _run_integration_gates(
             if e2e_pass:
                 _gates_passed_count += 1
                 logger.info("Integration gate: e2e PASSED for %s (%dms)", change_name, _s2e)
+                # ANOMALY: E2E passed but 0 spec files (task 3.2)
+                if not all_specs:
+                    logger.warning(
+                        "[ANOMALY] E2E gate passed for %s but 0 spec files found "
+                        "— tests may be missing",
+                        change_name,
+                    )
                 if event_bus:
                     event_bus.emit("GATE_PASS", change=change_name, data={"gate": "e2e", "elapsed_ms": _s2e, "phase": "integration"})
             else:
@@ -1306,7 +1327,15 @@ def _run_integration_gates(
             else:
                 logger.debug("Coverage gate: no test-plan.json found, skipping")
         else:
-            if _change_type != "feature":
+            # Coverage check skipped for feature change — warn (task 2.3)
+            if _change_type == "feature" and _change_reqs:
+                if _cov_threshold == 0.0:
+                    logger.warning(
+                        "Coverage check skipped for feature %s — threshold=0.0",
+                        change_name,
+                    )
+                # else: no requirements, so skip is expected
+            elif _change_type != "feature":
                 logger.debug("Coverage gate: skipping for %s (type=%s)", change_name, _change_type)
             elif _cov_threshold == 0.0:
                 logger.debug("Coverage gate: disabled (threshold=0.0)")
@@ -1327,14 +1356,26 @@ def _run_integration_gates(
                     "gates_executed": 0,
                 })
 
-    # Summary line
+    # Gate pipeline summary (task 2.1)
     _pipeline_elapsed = int((_time.monotonic() - _pipeline_start) * 1000)
     update_change_field(state_file, change_name, "gate_total_ms", _pipeline_elapsed)
-    if gates_executed > 0:
-        logger.info(
-            "Integration gates for %s: %d/%d passed in %.1fs",
-            change_name, _gates_passed_count, gates_executed, _pipeline_elapsed / 1000,
-        )
+
+    # Build detailed summary line
+    _build_r = change.build_result or "skip"
+    _test_r = change.test_result or "skip"
+    _e2e_r = change.e2e_result or "skip"
+    _build_ms = change.gate_build_ms or 0
+    _test_ms = change.gate_test_ms or 0
+    _e2e_ms = change.gate_e2e_ms or 0
+    _cov_r = change.extras.get("coverage_check_result", "skip")
+    _cov_pct = change.extras.get("coverage_pct", "?")
+    _overall = "PASSED" if gates_executed == 0 or _gates_passed_count == gates_executed else "FAILED"
+    logger.info(
+        "Gate pipeline for %s: build=%s(%dms) test=%s(%dms) "
+        "e2e=%s(%dms) coverage=%s(%s%%) — %s",
+        change_name, _build_r, _build_ms, _test_r, _test_ms,
+        _e2e_r, _e2e_ms, _cov_r, _cov_pct, _overall,
+    )
 
     # Collect test artifacts right after gates (screenshots exist now).
     # This is the PRIMARY collection point — the post-merge call is a fallback

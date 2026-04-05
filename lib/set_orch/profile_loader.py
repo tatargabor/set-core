@@ -220,7 +220,8 @@ def load_profile(project_path: str = "."):
 
     pt_file = Path(project_path) / "set" / "plugins" / "project-type.yaml"
     if not pt_file.is_file():
-        logger.debug("No project-type.yaml found, using NullProfile")
+        # Task 4.2: no project-type.yaml — expected for non-set-core projects
+        logger.debug("No project-type.yaml — using NullProfile")
         _cached_profile = NullProfile()
         return _cached_profile
 
@@ -236,6 +237,12 @@ def load_profile(project_path: str = "."):
         return _cached_profile
 
     if not type_name:
+        # Task 4.1: project-type.yaml exists but type is empty/invalid
+        logger.warning(
+            "[ANOMALY] project-type.yaml found but type '%s' unknown "
+            "— using NullProfile (no project-specific knowledge)",
+            type_name,
+        )
         _cached_profile = NullProfile()
         return _cached_profile
 
@@ -308,7 +315,11 @@ def load_profile(project_path: str = "."):
         except Exception as e:
             logger.warning("Built-in module load failed for '%s': %s", type_name, e)
 
-    logger.info("Profile '%s' not found, using NullProfile", type_name)
+    logger.warning(
+        "[ANOMALY] project-type.yaml found but type '%s' unknown "
+        "— using NullProfile (no project-specific knowledge)",
+        type_name,
+    )
     _cached_profile = NullProfile()
     return _cached_profile
 

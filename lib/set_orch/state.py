@@ -192,6 +192,9 @@ class Change:
                 kwargs[k] = v
             else:
                 extras[k] = v
+        if extras:
+            _name = kwargs.get("name", "?")
+            logger.debug("Change %s: %d unknown fields stored in extras", _name, len(extras))
         return cls(**kwargs, extras=extras)
 
 

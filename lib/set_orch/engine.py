@@ -1446,10 +1446,17 @@ def _recover_integration_e2e_failed(
             update_change_field(state_file, change.name, "retry_context", retry_ctx)
 
         e2e_retry = change.extras.get("integration_e2e_retry_count", 0)
-        logger.info(
-            "Redispatching %s to fix integration e2e failures (attempt %d/2)",
-            change.name, e2e_retry,
-        )
+        _is_coverage = change.status == "integration-coverage-failed"
+        if _is_coverage:
+            logger.info(
+                "Recovering coverage-failed %s — redispatching agent for missing tests",
+                change.name,
+            )
+        else:
+            logger.info(
+                "Redispatching %s to fix integration e2e failures (attempt %d/2)",
+                change.name, e2e_retry,
+            )
         if event_bus:
             event_bus.emit("CHANGE_REDISPATCH", change=change.name,
                            data={"reason": "integration_e2e_failed", "retry": e2e_retry})
@@ -2177,6 +2184,10 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
                 _digest_dir = ""
         if not os.path.isdir(_digest_dir):
             _digest_dir = ""
+        if not _digest_dir:
+            logger.warning(
+                "digest_dir is empty for dispatch — agents won't get Required Tests section"
+            )
         dispatch_ready_changes(
             state_file, d.max_parallel,
             default_model=d.default_model,

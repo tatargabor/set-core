@@ -511,12 +511,23 @@ def validate_plan(
                     _entries = [e for e in _tp.entries if e.req_id in _req_set]
                     _total = sum(e.min_tests for e in _entries)
                     if _total > 40:
+                        _cname = c.get('name', '?')
+                        logger.warning(
+                            "Change %s has %d required tests (%d REQs) — consider splitting",
+                            _cname, _total, len(_reqs),
+                        )
                         result.warnings.append(
-                            f"Change '{c.get('name', '?')}' has {_total} required tests "
+                            f"Change '{_cname}' has {_total} required tests "
                             f"({len(_reqs)} REQs) — consider splitting into smaller changes"
                         )
             except Exception:
                 pass
+
+    # Plan validation summary (task 5.3)
+    logger.info(
+        "Plan validated: %d changes, %d warnings, %d errors",
+        len(changes), len(result.warnings), len(result.errors),
+    )
 
     # Spec coverage annotation report (after successful validation)
     if not result.errors:
@@ -1515,6 +1526,12 @@ def _build_test_plan_context(digest_dir: str, requirement_ids: list[str]) -> str
         entries = [e for e in plan.entries if e.req_id in req_set]
         if not entries:
             return ""
+
+        # Task 5.1: log test plan injection
+        logger.info(
+            "Injecting %d test plan entries for %d requirements into planner prompt",
+            len(entries), len(req_set),
+        )
 
         lines = [
             f"\n## E2E Test Expectations ({len(entries)} scenarios)",

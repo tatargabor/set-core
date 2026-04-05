@@ -1033,12 +1033,20 @@ def _build_input_content(
         _test_plan_entries = _load_test_plan(digest_dir, change_requirements)
         if _test_plan_entries:
             import re as _re
-            scope = _re.sub(
+            _new_scope = _re.sub(
                 r'E2E:.*?(?=\n\n|\n[A-Z]|\Z)',
                 'E2E: See "Required Tests" section below — that is the authoritative and complete test list.',
                 scope,
                 flags=_re.DOTALL,
             )
+            if _new_scope == scope:
+                # No E2E pattern found in scope — normal for non-feature scopes (task 1.4)
+                logger.debug(
+                    "Scope E2E post-processing: no E2E pattern to replace for %s "
+                    "(test plan has %d entries but scope has no E2E line)",
+                    change_name, len(_test_plan_entries),
+                )
+            scope = _new_scope
 
     lines.append("## Scope")
     lines.append(scope)
@@ -1731,6 +1739,11 @@ def dispatch_change(
         manifest_path = os.path.join(wt_path, "e2e-manifest.json")
         with open(manifest_path, "w") as mf:
             json.dump(manifest_data, mf, indent=2)
+        logger.info(
+            "Wrote e2e-manifest.json for %s: %d spec files, %d requirements",
+            change_name, len(manifest_data.get("spec_files", [])),
+            len(change_reqs),
+        )
     except OSError:
         logger.debug("Failed to write e2e-manifest.json (non-fatal)")
 
@@ -1767,6 +1780,37 @@ def dispatch_change(
                 event_bus.emit("DISPATCH", change=change_name,
                                data={"result": "blocked", "reason": "pre_dispatch_check", "errors": pre_errors})
             return False
+
+    # Dispatch summary log (task 1.1)
+    _n_reqs = len(change_reqs) if change_reqs else 0
+    _n_test_entries = 0
+    if digest_dir and change_reqs:
+        _n_test_entries = len(_load_test_plan(digest_dir, change_reqs))
+    _has_design = "yes" if has_per_change_design else "no"
+    _retry_n = change.redispatch_count if hasattr(change, "redispatch_count") else 0
+    logger.info(
+        "Dispatched %s: requirements=%d, test_plan_entries=%d, "
+        "digest_dir=%s, design=%s, retry=%d",
+        change_name, _n_reqs, _n_test_entries,
+        "set" if digest_dir else "empty", _has_design, _retry_n,
+    )
+
+    # ANOMALY: feature change with 0 requirements (task 1.2)
+    _change_type = getattr(change, "change_type", "feature") or "feature"
+    if _change_type == "feature" and _n_reqs == 0:
+        logger.warning(
+            "[ANOMALY] Feature change %s dispatched with 0 requirements "
+            "— agent won't get Required Tests",
+            change_name,
+        )
+
+    # ANOMALY: has requirements but 0 test plan entries (task 1.3)
+    if _n_reqs > 0 and _n_test_entries == 0 and digest_dir:
+        logger.warning(
+            "[ANOMALY] %s has %d requirements but 0 test plan entries "
+            "— test-plan.json may not match",
+            change_name, _n_reqs,
+        )
 
     # Dispatch via set-loop
     impl_model = resolve_change_model(change, default_model, model_routing)
@@ -2401,7 +2445,11 @@ def resume_stalled_changes(
         stalled_at = change.extras.get("stalled_at", 0)
         cooldown = now - stalled_at
         if cooldown >= STALL_COOLDOWN_SECONDS:
-            logger.info("resuming stalled change %s after %ds cooldown", change.name, cooldown)
+            _stall_reason = change.extras.get("stall_reason", "unknown")
+            logger.info(
+                "Recovering stalled %s — stalled for %ds, reason=%s",
+                change.name, cooldown, _stall_reason,
+            )
             resume_change(state_path, change.name, event_bus=event_bus, **resume_kwargs)
             resumed += 1
 

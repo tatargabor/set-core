@@ -204,8 +204,11 @@ def _append_review_finding(findings_path: str, change_name: str,
         os.makedirs(os.path.dirname(findings_path), exist_ok=True)
         with open(findings_path, "a") as f:
             f.write(json.dumps(entry) + "\n")
-    except OSError:
-        logger.warning("Failed to append review finding to %s", findings_path)
+    except OSError as e:
+        logger.warning(
+            "Review finding lost — cannot write to %s: %s",
+            findings_path, e,
+        )
 
 
 def generate_review_findings_summary(findings_path: str, output_path: str) -> str:
@@ -2591,6 +2594,28 @@ def handle_change_done(
 
     wt_path = change.worktree_path or ""
     verify_retry_count = change.verify_retry_count
+
+    # ANOMALY: agent completed with 0 commits (task 3.1)
+    if wt_path and os.path.isdir(wt_path):
+        try:
+            _main_r = run_command(
+                ["git", "show-ref", "--verify", "--quiet", "refs/heads/main"],
+                timeout=5, cwd=wt_path,
+            )
+            _main_branch = "main" if _main_r.exit_code == 0 else "master"
+            _ahead_r = run_command(
+                ["git", "rev-list", "--count", f"{_main_branch}..HEAD"],
+                timeout=5, cwd=wt_path,
+            )
+            _ahead = int(_ahead_r.stdout.strip()) if _ahead_r.exit_code == 0 else -1
+            if _ahead == 0:
+                logger.warning(
+                    "[ANOMALY] Agent for %s completed but 0 commits on branch "
+                    "— possible false-done",
+                    change_name,
+                )
+        except Exception:
+            pass
 
     # ── Context window metrics — capture end tokens at loop completion ──
     if wt_path:
