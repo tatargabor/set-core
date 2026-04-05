@@ -1115,13 +1115,18 @@ def _build_input_content(
             lines.append("\n## Required Tests")
             lines.append(
                 "Name each test with the REQ-* ID prefix. "
-                "Example: `test('REQ-HOME-001: Hero heading visible', ...)`"
+                "Example: `test('REQ-HOME-001: Hero heading visible', ...)`\n"
+                "Tag SMOKE tests with: "
+                "`test('REQ-HOME-001: Hero heading visible', { tag: '@smoke' }, "
+                "async ({ page }) => { ... })`"
             )
             for entry in test_plan_entries:
                 cats = ", ".join(entry.categories)
+                entry_type = getattr(entry, "type", "functional") or "functional"
+                tag = "**[SMOKE]**" if entry_type == "smoke" else "**[FUNCTIONAL]**"
                 lines.append(
                     f"- {entry.req_id}: {entry.scenario_name} [{entry.risk}] "
-                    f"— {entry.min_tests} test(s) ({cats})"
+                    f"— {entry.min_tests} test(s) ({cats}) {tag}"
                 )
 
     if retry_ctx:
@@ -1678,6 +1683,20 @@ def dispatch_change(
     # Append schema digest to worktree CLAUDE.md (replaces data-definitions.md)
     from set_orch.dispatcher_schema import append_schema_digest_to_claudemd
     append_schema_digest_to_claudemd(wt_path)
+
+    # Write e2e-manifest.json for ownership detection at gate time
+    change_reqs = getattr(change, "requirements", []) or []
+    manifest_data = {
+        "change": change_name,
+        "spec_files": [f"tests/e2e/{change_name}.spec.ts"],
+        "requirements": change_reqs,
+    }
+    try:
+        manifest_path = os.path.join(wt_path, "e2e-manifest.json")
+        with open(manifest_path, "w") as mf:
+            json.dump(manifest_data, mf, indent=2)
+    except OSError:
+        logger.debug("Failed to write e2e-manifest.json (non-fatal)")
 
     # Update state
     update_change_field(state_path, change_name, "status", "dispatched", event_bus=event_bus)

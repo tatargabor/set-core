@@ -796,6 +796,53 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
     return "conflict"
 
 
+def _detect_own_spec_files(wt_path: str) -> list[str]:
+    """Detect which E2E spec files were added/modified by this change branch.
+
+    Uses git diff against merge-base to find ownership. Falls back to
+    e2e-manifest.json if git diff fails or returns empty.
+    Returns relative paths (e.g., "tests/e2e/cart.spec.ts").
+    """
+    from .subprocess_utils import run_command as _run
+
+    # Primary: git diff against merge-base
+    try:
+        base_result = _run(
+            ["git", "merge-base", "HEAD", "main"],
+            timeout=10, cwd=wt_path,
+        )
+        merge_base = (base_result.stdout or "").strip()
+        if merge_base and base_result.exit_code == 0:
+            diff_result = _run(
+                ["git", "diff", merge_base, "--name-only", "--diff-filter=AM"],
+                timeout=10, cwd=wt_path,
+            )
+            if diff_result.exit_code == 0 and diff_result.stdout:
+                specs = [
+                    f.strip() for f in diff_result.stdout.strip().split("\n")
+                    if f.strip().endswith((".spec.ts", ".spec.js"))
+                ]
+                if specs:
+                    logger.info("Detected %d own spec files via git diff: %s", len(specs), specs)
+                    return specs
+    except Exception:
+        pass
+
+    # Fallback: e2e-manifest.json
+    manifest = os.path.join(wt_path, "e2e-manifest.json")
+    if os.path.isfile(manifest):
+        try:
+            data = json.loads(Path(manifest).read_text(encoding="utf-8"))
+            specs = data.get("spec_files", [])
+            if specs:
+                logger.info("Detected %d own spec files via manifest: %s", len(specs), specs)
+                return specs
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return []
+
+
 def _run_integration_gates(
     change_name: str, change: Change, wt_path: str,
     state_file: str, profile: Any = None,
@@ -980,6 +1027,7 @@ def _run_integration_gates(
                     return False
 
     # E2E gate (from profile — web only)
+    # Two-phase: Phase 1 = smoke inherited (non-blocking), Phase 2 = own tests (blocking)
     if gc.should_run("e2e"):
         e2e_cmd = directives.get("e2e_command", "")
         if not e2e_cmd and profile and hasattr(profile, "detect_e2e_command"):
@@ -992,21 +1040,111 @@ def _run_integration_gates(
             e2e_env = dict(gate_env) if gate_env else {}
             if profile and hasattr(profile, "e2e_gate_env"):
                 e2e_env.update(profile.e2e_gate_env(e2e_port))
-            logger.info("Integration gate: e2e for %s (%s, port=%d)", change_name, e2e_cmd, e2e_port)
             if event_bus:
                 event_bus.emit("GATE_START", change=change_name, data={"gate": "e2e", "phase": "integration"})
-            _gs = _time.monotonic()
-            result = run_command(["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env)
-            _ge = int((_time.monotonic() - _gs) * 1000)
+
+            # Detect own vs inherited spec files
+            own_specs = _detect_own_spec_files(wt_path)
+            all_specs = sorted(
+                glob.glob(os.path.join(wt_path, "tests", "e2e", "*.spec.ts"))
+                + glob.glob(os.path.join(wt_path, "tests", "e2e", "*.spec.js"))
+            )
+            # Convert to relative paths for command construction
+            own_specs_abs = [os.path.join(wt_path, s) for s in own_specs]
+            inherited_specs = [s for s in all_specs if s not in own_specs_abs]
+
+            _use_two_phase = bool(own_specs) and profile is not None
+            _smoke_failed = False
+            _smoke_output = ""
+
+            # ── Phase 1: Smoke inherited tests (non-blocking) ──
+            if _use_two_phase and inherited_specs:
+                smoke_names = []
+                for spec in inherited_specs:
+                    if hasattr(profile, "extract_first_test_name"):
+                        name = profile.extract_first_test_name(spec)
+                        if name:
+                            smoke_names.append(name)
+
+                smoke_cmd = None
+                if smoke_names and hasattr(profile, "e2e_smoke_command"):
+                    smoke_cmd = profile.e2e_smoke_command(e2e_cmd, smoke_names)
+
+                if smoke_cmd:
+                    logger.info(
+                        "Integration gate: e2e smoke for %s (%d inherited tests from %d files)",
+                        change_name, len(smoke_names), len(inherited_specs),
+                    )
+                    _s1 = _time.monotonic()
+                    smoke_result = run_command(
+                        ["bash", "-c", smoke_cmd], timeout=120, cwd=wt_path, env=e2e_env,
+                    )
+                    _s1e = int((_time.monotonic() - _s1) * 1000)
+                    update_change_field(state_file, change_name, "gate_e2e_smoke_ms", _s1e)
+                    _smoke_output = ((smoke_result.stdout or "") + (smoke_result.stderr or ""))[-1000:]
+
+                    if smoke_result.exit_code == 0:
+                        logger.info(
+                            "Integration gate: e2e smoke PASSED for %s (%dms, %d tests)",
+                            change_name, _s1e, len(smoke_names),
+                        )
+                        update_change_field(state_file, change_name, "smoke_e2e_result", "pass")
+                    else:
+                        _smoke_failed = True
+                        logger.warning(
+                            "Integration gate: e2e smoke FAILED for %s (non-blocking, %dms) — "
+                            "inherited tests failed, regression possible",
+                            change_name, _s1e,
+                        )
+                        update_change_field(state_file, change_name, "smoke_e2e_result", "fail")
+                        update_change_field(state_file, change_name, "smoke_e2e_output", _smoke_output)
+                        if event_bus:
+                            event_bus.emit("VERIFY_GATE", change=change_name, data={
+                                "gate": "e2e-smoke", "result": "fail", "phase": "integration",
+                                "inherited_files": len(inherited_specs)})
+                        # Non-blocking: continue to Phase 2
+                else:
+                    logger.info("Integration gate: skipping smoke phase (profile doesn't support smoke commands)")
+
+            # ── Phase 2: Own tests (blocking) ──
+            if _use_two_phase and own_specs:
+                scoped_cmd = None
+                if hasattr(profile, "e2e_scoped_command"):
+                    scoped_cmd = profile.e2e_scoped_command(e2e_cmd, own_specs)
+                actual_cmd = scoped_cmd or e2e_cmd
+
+                logger.info(
+                    "Integration gate: e2e own for %s (%s, port=%d, %d own files)",
+                    change_name, actual_cmd, e2e_port, len(own_specs),
+                )
+                _s2 = _time.monotonic()
+                result = run_command(
+                    ["bash", "-c", actual_cmd], timeout=180, cwd=wt_path, env=e2e_env,
+                )
+                _s2e = int((_time.monotonic() - _s2) * 1000)
+            else:
+                # Fallback: single-phase (no ownership detected or no profile)
+                logger.info(
+                    "Integration gate: e2e for %s (%s, port=%d) — single-phase fallback",
+                    change_name, e2e_cmd, e2e_port,
+                )
+                _s2 = _time.monotonic()
+                result = run_command(
+                    ["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env,
+                )
+                _s2e = int((_time.monotonic() - _s2) * 1000)
+
+            update_change_field(state_file, change_name, "gate_e2e_own_ms", _s2e)
+            _ge = int((_time.monotonic() - (_s2 - _s2e / 1000)) * 1000)  # approximate total
             e2e_pass = result.exit_code == 0
             update_change_field(state_file, change_name, "e2e_result", "pass" if e2e_pass else "fail")
-            update_change_field(state_file, change_name, "gate_e2e_ms", _ge)
+            update_change_field(state_file, change_name, "gate_e2e_ms", _s2e)
             update_change_field(state_file, change_name, "e2e_output", ((result.stdout or "") + (result.stderr or ""))[-2000:])
             if e2e_pass:
                 _gates_passed_count += 1
-                logger.info("Integration gate: e2e PASSED for %s (%dms)", change_name, _ge)
+                logger.info("Integration gate: e2e PASSED for %s (%dms)", change_name, _s2e)
                 if event_bus:
-                    event_bus.emit("GATE_PASS", change=change_name, data={"gate": "e2e", "elapsed_ms": _ge, "phase": "integration"})
+                    event_bus.emit("GATE_PASS", change=change_name, data={"gate": "e2e", "elapsed_ms": _s2e, "phase": "integration"})
             else:
                 if event_bus:
                     event_bus.emit("VERIFY_GATE", change=change_name, data={"gate": "e2e", "result": "fail", "phase": "integration"})
@@ -1016,15 +1154,23 @@ def _run_integration_gates(
                     e2e_retry = change.extras.get("integration_e2e_retry_count", 0)
 
                     if e2e_retry < e2e_retry_limit:
-                        # Redispatch agent to fix e2e failures (same pattern as verify-failed)
+                        # Redispatch agent to fix e2e failures — scoped to own tests
                         logger.warning(
                             "Integration gate: e2e FAILED for %s — redispatching agent (attempt %d/%d)",
                             change_name, e2e_retry + 1, e2e_retry_limit,
                         )
                         update_change_field(state_file, change_name, "integration_e2e_retry_count", e2e_retry + 1)
                         update_change_field(state_file, change_name, "integration_e2e_output", e2e_output)
+                        # Scoped retry context: only own test output + own file list
                         from .engine import _build_gate_retry_context
                         retry_ctx = _build_gate_retry_context(change, wt_path, e2e_output)
+                        if own_specs:
+                            retry_ctx = f"Your spec files: {', '.join(own_specs)}\n\n{retry_ctx}"
+                        if _smoke_failed:
+                            retry_ctx = (
+                                "Note: some inherited smoke tests also failed (non-blocking, "
+                                "not your responsibility).\n\n" + retry_ctx
+                            )
                         update_change_field(state_file, change_name, "retry_context", retry_ctx)
                         update_change_field(state_file, change_name, "status", "integration-e2e-failed")
                         update_change_field(state_file, change_name, "integration_gate_fail", "e2e-redispatch")

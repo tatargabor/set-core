@@ -156,6 +156,11 @@ class TestCoverage:
     coverage_pct: float = 0.0
     unbound_tests: list[str] = field(default_factory=list)
     parsed_at: str = ""
+    # Smoke/own breakdown (populated when two-phase gate is used)
+    smoke_passed: int = 0
+    smoke_failed: int = 0
+    own_passed: int = 0
+    own_failed: int = 0
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -177,6 +182,10 @@ class TestCoverage:
             coverage_pct=d.get("coverage_pct", 0.0),
             unbound_tests=d.get("unbound_tests", []),
             parsed_at=d.get("parsed_at", ""),
+            smoke_passed=d.get("smoke_passed", 0),
+            smoke_failed=d.get("smoke_failed", 0),
+            own_passed=d.get("own_passed", 0),
+            own_failed=d.get("own_failed", 0),
         )
 
 
@@ -510,6 +519,7 @@ class TestPlanEntry:
     risk: str  # "HIGH" | "MEDIUM" | "LOW"
     min_tests: int
     categories: list[str] = field(default_factory=list)
+    type: str = "functional"  # "smoke" | "functional"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -523,6 +533,7 @@ class TestPlanEntry:
             risk=d.get("risk", "LOW"),
             min_tests=d.get("min_tests", 1),
             categories=d.get("categories", ["happy"]),
+            type=d.get("type", "functional"),
         )
 
 
@@ -629,6 +640,13 @@ def generate_test_plan(
                 "Scenario %s/%s classified as %s → %d test(s)",
                 req_id, scenario.slug, risk, min_tests,
             )
+
+    # Post-process: first happy-path entry per req_id → type "smoke"
+    _seen_smoke: set[str] = set()
+    for entry in entries:
+        if entry.req_id not in _seen_smoke and "happy" in entry.categories:
+            entry.type = "smoke"
+            _seen_smoke.add(entry.req_id)
 
     plan = TestPlan(
         entries=entries,

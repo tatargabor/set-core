@@ -295,6 +295,42 @@ class ProjectType(ABC):
         return ""
 
     def generate_smoke_e2e(self, project_path: str) -> Optional[str]:
+        """Deprecated: use e2e_smoke_command() instead."""
+        return None
+
+    def e2e_smoke_command(self, base_cmd: str, test_names: list) -> Optional[str]:
+        """Construct command to run only named tests (smoke subset).
+
+        Used by the merger to run a fast regression check on inherited tests
+        before running the change's own tests.
+
+        Args:
+            base_cmd: The detected e2e command (e.g., "npx playwright test")
+            test_names: List of test names to run as smoke
+        Returns:
+            Full command string, or None if not supported.
+        """
+        return None
+
+    def e2e_scoped_command(self, base_cmd: str, spec_files: list) -> Optional[str]:
+        """Construct command to run only specific spec files.
+
+        Used by the merger to run only the change's own test files.
+
+        Args:
+            base_cmd: The detected e2e command
+            spec_files: Relative paths to spec files to run
+        Returns:
+            Full command string, or None (falls back to base_cmd).
+        """
+        return None
+
+    def extract_first_test_name(self, spec_path: str) -> Optional[str]:
+        """Extract the first test name from a spec file for smoke selection.
+
+        Framework-specific parsing (e.g., regex for test() in Playwright,
+        def test_ in pytest). Override in subclass.
+        """
         return None
 
     def get_comparison_conventions(self) -> List[Dict[str, Any]]:

@@ -467,6 +467,11 @@ class WebProjectType(CoreProfile):
   - TEST NAMING: Each test MUST include the REQ-* ID prefix.
     Format: test('REQ-HOME-001: Hero heading visible', ...)
     This enables deterministic AC-to-test coverage binding.
+  - SMOKE TAGGING: The FIRST happy-path test per feature MUST use { tag: '@smoke' }.
+    Format: test('REQ-HOME-001: Hero heading visible', { tag: '@smoke' }, async ({ page }) => { ... })
+    Smoke tests run on every merge as a fast regression check (~10s).
+    Non-smoke (functional) tests run only for the owning change.
+    One smoke test per feature = "does the page load and show the main element."
   - SERIAL STEPS: Use test.describe.serial() with a shared Page for stateful flows.
     Create the page in test.beforeAll via browser.newContext() + context.newPage().
     Do NOT use the default { page } fixture — it creates a fresh page per test.
@@ -479,6 +484,38 @@ class WebProjectType(CoreProfile):
     Do not start the dev server manually.
   - ISOLATION: Each test file is self-contained. Set up preconditions via API or seed data.
   - IDEMPOTENCY: Tests must survive re-runs. Use unique IDs, clean up in afterAll."""
+
+    # ─── Smoke / Scoped E2E Commands ───────────────────────────
+
+    def extract_first_test_name(self, spec_path: str) -> Optional[str]:
+        """Extract the first test() name from a Playwright spec file."""
+        import re as _re
+        try:
+            with open(spec_path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    m = _re.search(r'test\(["\'](.+?)["\']', line)
+                    if m:
+                        return m.group(1)
+        except OSError:
+            pass
+        return None
+
+    def e2e_smoke_command(self, base_cmd: str, test_names: list) -> Optional[str]:
+        """Build Playwright --grep command for smoke tests."""
+        if not test_names:
+            return None
+        # Escape regex-special chars but NOT spaces (Playwright grep is regex-based)
+        _special = r'\.^$*+?{}[]|()\\'
+        def _esc(s: str) -> str:
+            return "".join(f"\\{c}" if c in _special else c for c in s)
+        pattern = "|".join(_esc(n) for n in test_names)
+        return f'{base_cmd} --grep "{pattern}"'
+
+    def e2e_scoped_command(self, base_cmd: str, spec_files: list) -> Optional[str]:
+        """Build Playwright command scoped to specific spec files."""
+        if not spec_files:
+            return None
+        return f'{base_cmd} -- {" ".join(spec_files)}'
 
     def security_rules_paths(self, project_path: str) -> List[Path]:
         rules_dir = Path(project_path) / ".claude" / "rules"
