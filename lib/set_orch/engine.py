@@ -2258,12 +2258,20 @@ def _recover_merge_blocked_safe(state_file: str, event_bus: Any) -> None:
             ]
             has_active = any(i.get("state") in active_issue_states for i in change_issues)
             if not has_active:
-                # No active blockers — recover
+                # No active blockers — recover.
+                # Reset ff_retry_count so the change gets fresh FF attempts with full gate execution.
+                old_ff = change.extras.get("ff_retry_count", 0)
+                if old_ff:
+                    update_change_field(state_file, change.name, "ff_retry_count", 0, event_bus=event_bus)
+                # Increment merge_retry_count so the monitor's >= 3 guard eventually terminates the loop.
+                merge_retry = change.extras.get("merge_retry_count", 0)
+                update_change_field(state_file, change.name, "merge_retry_count", merge_retry + 1, event_bus=event_bus)
                 update_change_field(state_file, change.name, "status", "done", event_bus=event_bus)
                 logger.info(
-                    "Recovered merge-blocked %s — %s",
+                    "Recovered merge-blocked %s — %s (ff_retry_count %d→0, merge_retry_count %d→%d)",
                     change.name,
                     "blocking issues resolved" if change_issues else "no blocking issues found",
+                    old_ff, merge_retry, merge_retry + 1,
                 )
     except Exception:
         logger.warning("merge-blocked recovery failed", exc_info=True)
@@ -2517,7 +2525,15 @@ def _generate_report_safe(state_file: str) -> None:
     """Generate HTML report (exception-safe)."""
     try:
         from .reporter import generate_report
-        generate_report(state_path=state_file)
+        project_dir = os.path.dirname(state_file)
+        orch_dir = os.path.join(project_dir, "set", "orchestration")
+        plan_path = os.path.join(orch_dir, "orchestration-plan.json")
+        digest_dir = os.path.join(orch_dir, "digest")
+        generate_report(
+            state_path=state_file,
+            plan_path=plan_path,
+            digest_dir=digest_dir,
+        )
     except Exception as _e:
         logger.debug("HTML report generation failed: %s", _e)
 

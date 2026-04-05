@@ -456,7 +456,8 @@ def update_state_field(
             setattr(state, field_name, value)
         else:
             state.extras[field_name] = value
-        logger.info("State update: %s = %r (was: %r)", field_name, value, old_value)
+        if value != old_value:
+            logger.info("State update: %s = %r (was: %r)", field_name, value, old_value)
 
 
 def update_change_field(
@@ -490,7 +491,8 @@ def update_change_field(
         else:
             change.extras[field_name] = value
 
-        logger.info("State update: %s.%s = %r (was: %r)", change_name, field_name, value, old_value)
+        if value != old_value:
+            logger.info("State update: %s.%s = %r (was: %r)", change_name, field_name, value, old_value)
 
         # Emit STATE_CHANGE event on status transitions
         if field_name == "status" and event_bus and old_status is not None:
