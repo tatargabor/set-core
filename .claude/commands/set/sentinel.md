@@ -2,7 +2,29 @@
 
 Start and supervise a `set-orchestrate` run with intelligent crash recovery, checkpoint handling, and completion reporting.
 
-**Arguments:** `[set-orchestrate start options...]`
+**Arguments:** `[--managed] [--spec <path>] [set-orchestrate start options...]`
+
+## Launch Guard
+
+**CHECK THIS FIRST before doing anything else.**
+
+If your arguments do NOT contain `--managed`, you were invoked directly (not by the web manager). In that case:
+
+1. **STOP.** Do not proceed with sentinel startup.
+2. Tell the user:
+   > The sentinel should be started via the web dashboard or `/set:start`, not directly.
+   > This ensures proper process supervision, crash recovery, and log collection.
+   >
+   > **To start orchestration:**
+   > - Open http://localhost:7400 and click "Start Sentinel" on your project
+   > - Or run `/set:start <spec-path>` in Claude Code
+   >
+   > If you really need standalone mode (debugging only), re-run with: `/set:sentinel --managed --spec <path>`
+3. **Do not continue to the Instructions section.**
+
+If `--managed` is present, proceed normally.
+
+---
 
 ## Instructions
 

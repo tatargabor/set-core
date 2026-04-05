@@ -106,7 +106,12 @@ class ProjectSupervisor:
         self._orch_proc: Optional[subprocess.Popen] = None
 
     def _load_sentinel_prompt(self, spec: Optional[str] = None) -> str:
-        """Load sentinel skill file as prompt, with fallback to hardcoded prompt."""
+        """Load sentinel skill file as prompt, with fallback to hardcoded prompt.
+
+        Always injects --managed flag so the sentinel skill's launch guard
+        knows it was started by the manager (not accidentally by an agent).
+        Without --managed, the skill refuses to run and redirects to /set:start.
+        """
         skill_file = self.config.path / SENTINEL_SKILL_PATH
         if skill_file.is_file():
             prompt = skill_file.read_text(encoding="utf-8")
@@ -121,8 +126,10 @@ class ProjectSupervisor:
                 path=self.config.path,
             )
 
+        # Always inject --managed flag so the skill knows it was launched by the manager
+        prompt += "\n\nArguments: --managed"
         if spec:
-            prompt += f"\n\nArguments: --spec {spec}"
+            prompt += f" --spec {spec}"
 
         return prompt
 
