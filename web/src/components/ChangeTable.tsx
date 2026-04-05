@@ -236,6 +236,22 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                   >
                     {(c.e2e_screenshot_count || 0) + (c.smoke_screenshot_count || 0)} files
                   </button>
+                ) : c.worktree_path ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      fetch(`/api/${project}/changes/${c.name}/screenshots`)
+                        .then(r => r.json())
+                        .then(d => {
+                          if (d.artifacts?.length) setScreenshotChange(c.name)
+                        })
+                        .catch(() => {})
+                    }}
+                    className="px-2 py-0.5 text-xs rounded bg-neutral-800/50 text-neutral-600 hover:bg-neutral-700 hover:text-neutral-300 transition-colors"
+                    title="Scan worktree for test artifacts"
+                  >
+                    scan
+                  </button>
                 ) : (
                   <span className="text-neutral-700">—</span>
                 )}

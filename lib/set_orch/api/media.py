@@ -83,7 +83,7 @@ def get_change_screenshots(project: str, name: str):
             if wt_path and os.path.isdir(wt_path):
                 try:
                     from ..profile_loader import load_profile
-                    profile = load_profile(str(project_path))
+                    profile = load_profile(wt_path)
                     artifacts = profile.collect_test_artifacts(wt_path)
                     if artifacts:
                         # Cache for next request
