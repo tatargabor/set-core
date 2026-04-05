@@ -14,3 +14,9 @@ When acting as sentinel supervisor:
 - **Update findings continuously.** Write observations to the findings MD file as they happen, don't wait for a report.
 - **Deploy fixes to running E2E.** After committing a fix, restart the test with the new code — the whole point of E2E is to validate fixes.
 - **Polling must never stop on its own.** The sentinel poll loop runs continuously until the user explicitly asks to stop. If a fix is applied, resume polling immediately after. If a restart happens, resume polling with the new PID. If context compacts, resume polling. Never let the poll loop silently die — always dispatch the next background poll after handling an event.
+
+## Log-Driven Debugging
+
+- **Scan logs for `[ANOMALY]` and WARNING.** After each poll cycle, check the orchestration log for new `[ANOMALY]` entries and WARNING messages. These are early-warning signals for conditions that will become bugs later (e.g., "digest_dir empty" precedes "agent writes 0 tests" by 30+ minutes).
+- **When fixing a bug, also check logging.** If you encounter a failure path that has no log message, add a `logger.debug()` or `logger.warning()` alongside the bug fix. Silent failures are the root cause of most debugging difficulty.
+- **Log before investigating.** When something is broken, first check the Python logs (`journalctl --user -u set-web`) and events JSONL for clues. The logs may already explain the root cause without needing to read code.

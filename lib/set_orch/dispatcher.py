@@ -94,6 +94,7 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
 
     rules_dir = os.path.join(wt_path, ".claude", "rules")
     if not os.path.isdir(rules_dir):
+        logger.debug("_build_rule_injection: rules_dir missing: %s", rules_dir)
         return ""
 
     profile = load_profile()
@@ -111,6 +112,7 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
             matched_globs.extend(cfg.get("globs", []))
 
     if not matched_globs:
+        logger.debug("_build_rule_injection: no keyword matches in scope for %d categories", len(mapping))
         return ""
 
     seen: set[str] = set()
@@ -125,6 +127,7 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
         try:
             content = open(full_path).read()
         except OSError:
+            logger.debug("_build_rule_injection: unreadable rule file: %s", full_path)
             continue
         # Strip YAML frontmatter if present
         if content.startswith("---"):
@@ -137,16 +140,18 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
         parts.append(content)
 
     if not parts:
+        logger.debug("_build_rule_injection: no rule content loaded from %d matched globs", len(matched_globs))
         return ""
 
     return "## Relevant Patterns\n\n" + "\n\n".join(parts)
 
 
-def _find_design_brief() -> str | None:
+def _find_design_brief(wt_path: str = "") -> str | None:
     """Find design-brief.md in standard paths. Returns path or None."""
     for bp in ("docs/design-brief.md", "design-brief.md", "docs/design/design-brief.md"):
         if os.path.isfile(bp):
             return bp
+    logger.debug("_find_design_brief: none found in %s", wt_path)
     return None
 
 
@@ -166,10 +171,12 @@ def _build_per_change_design(
     """
     brief_path = _find_design_brief()
     if not brief_path:
+        logger.debug("_build_per_change_design: no design brief found")
         return False
 
     bridge_path = os.path.join(SET_TOOLS_ROOT, "lib", "design", "bridge.sh")
     if not os.path.isfile(bridge_path):
+        logger.debug("_build_per_change_design: bridge.sh not found at %s", bridge_path)
         return False
 
     # Get matched page sections from design-brief.md
@@ -180,6 +187,7 @@ def _build_per_change_design(
         timeout=5,
     )
     if brief_r.exit_code != 0 or not brief_r.stdout.strip():
+        logger.debug("_build_per_change_design: design command returned empty")
         return False
 
     matched_pages = brief_r.stdout.strip()
@@ -285,15 +293,19 @@ _LOCKFILE_NAMES = {"package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.
 def _reinstall_deps_if_needed(wt_path: str, old_sha: str, new_sha: str) -> None:
     """Run package manager install if lockfile or package.json changed between two commits."""
     if not old_sha or not new_sha or old_sha == new_sha:
+        logger.debug("_reinstall_deps_if_needed: sha unchanged or invalid")
         return
     diff_r = run_git("diff", "--name-only", f"{old_sha}..{new_sha}", cwd=wt_path)
     if diff_r.exit_code != 0:
+        logger.debug("_reinstall_deps_if_needed: sha unchanged or invalid")
         return
     changed = set(diff_r.stdout.strip().splitlines())
     if not changed.intersection(_LOCKFILE_NAMES):
+        logger.debug("_reinstall_deps_if_needed: no lockfile changes detected")
         return
     pm = _detect_package_manager(wt_path)
     if not pm:
+        logger.debug("_reinstall_deps_if_needed: no package manager detected in %s", wt_path)
         return
     logger.info("sync: deps changed (%s) — running %s install in %s",
                 changed.intersection(_LOCKFILE_NAMES), pm, wt_path)
@@ -440,6 +452,7 @@ def bootstrap_worktree(project_path: str, wt_path: str, change_name: str = "") -
     Returns number of env files copied.
     """
     if not os.path.isdir(wt_path):
+        logger.debug("copy_env_files: wt_path missing: %s", wt_path)
         return 0
 
     # Create per-agent .set/ ephemeral directory
@@ -514,10 +527,12 @@ def prune_worktree_context(wt_path: str) -> int:
     """
     claude_dir = os.path.join(wt_path, ".claude")
     if not os.path.isdir(claude_dir):
+        logger.debug("prune_worktree_context: .claude dir missing in %s", wt_path)
         return 0
 
     cmd_dir = os.path.join(wt_path, ".claude", "commands", "wt")
     if not os.path.isdir(cmd_dir):
+        logger.debug("prune_worktree_context: commands/wt dir missing in %s", wt_path)
         return 0
 
     pruned = 0
@@ -745,8 +760,8 @@ def redispatch_change(
                     ls = json.load(f)
                 iters = ls.get("iterations", [])
                 iter_count = len(iters) if isinstance(iters, list) else 0
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as e:
+                logger.debug("Could not read loop-state for iter_count: %s", e)
 
     # 3. Build retry_context
     retry_prompt = (
@@ -935,15 +950,18 @@ def _format_conventions_summary(digest_dir: str) -> str:
     """Read conventions.json from digest and format as compact markdown."""
     conv_path = os.path.join(digest_dir, "conventions.json")
     if not os.path.isfile(conv_path):
+        logger.debug("_build_conventions_summary: conventions.json missing in %s", digest_dir)
         return ""
     try:
         with open(conv_path) as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
+        logger.debug("_build_conventions_summary: failed to parse conventions.json in %s", digest_dir)
         return ""
 
     categories = data.get("categories", [])
     if not categories:
+        logger.debug("_build_conventions_summary: no categories in conventions.json")
         return ""
 
     lines = []
@@ -965,11 +983,13 @@ def _detect_i18n_sidecar(wt_path: str, change_name: str, namespace: str = "") ->
     """
     pkg_path = os.path.join(wt_path, "package.json")
     if not os.path.isfile(pkg_path):
+        logger.debug("_detect_i18n_sidecar: package.json missing in %s", wt_path)
         return ""
     try:
         with open(pkg_path) as f:
             pkg = json.load(f)
     except (json.JSONDecodeError, OSError):
+        logger.debug("_detect_i18n_sidecar: failed to parse package.json in %s", wt_path)
         return ""
 
     deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
@@ -982,6 +1002,7 @@ def _detect_i18n_sidecar(wt_path: str, change_name: str, namespace: str = "") ->
         i18n_lib = "i18next"
 
     if not i18n_lib:
+        logger.debug("_detect_i18n_sidecar: no i18n lib found in %s", wt_path)
         return ""
 
     # Detect messages directory
@@ -993,6 +1014,7 @@ def _detect_i18n_sidecar(wt_path: str, change_name: str, namespace: str = "") ->
             break
 
     if not msg_dir:
+        logger.debug("_detect_i18n_sidecar: no message dir found in %s", wt_path)
         return ""
 
     # Use change name as namespace if not provided
@@ -1170,9 +1192,11 @@ def _build_input_content(
 def _load_requirements_lookup(digest_dir: str) -> dict[str, dict]:
     """Load requirements.json from digest dir into a {req_id: req_dict} lookup."""
     if not digest_dir:
+        logger.debug("_load_requirements_lookup: digest_dir is empty")
         return {}
     req_path = os.path.join(digest_dir, "requirements.json")
     if not os.path.isfile(req_path):
+        logger.debug("_load_requirements_lookup: requirements.json missing in %s", digest_dir)
         return {}
     try:
         with open(req_path) as f:
@@ -1230,6 +1254,7 @@ def _build_review_learnings(findings_path: str, exclude_change: str) -> str:
     markdown section (max ~15 lines).
     """
     if not os.path.isfile(findings_path):
+        logger.debug("_build_review_learnings: findings_path missing: %s", findings_path)
         return ""
 
     import re as _re
@@ -1261,6 +1286,7 @@ def _build_review_learnings(findings_path: str, exclude_change: str) -> str:
         return ""
 
     if not pattern_counts:
+        logger.debug("_build_review_learnings: no patterns found in %s", findings_path)
         return ""
 
     # Cluster by keywords
@@ -1327,6 +1353,12 @@ def _build_pk_context(scope: str, project_path: str) -> str:
             break
 
     if not pk_file or not shutil.which("yq"):
+        logger.debug(
+            "_build_pk_context: pk_file=%s, yq=%s — checked candidates: %s",
+            pk_file or "not found",
+            "available" if shutil.which("yq") else "missing",
+            pk_candidates,
+        )
         return ""
 
     # Check feature touches
@@ -1358,6 +1390,7 @@ def _build_pk_context(scope: str, project_path: str) -> str:
     cc_files = cc_r.stdout.strip() if cc_r.exit_code == 0 else ""
 
     if not feature_touches and not cc_files:
+        logger.debug("_build_pk_context: no feature touches or cross-cutting files found")
         return ""
 
     pk_ctx = "## Project Knowledge\n"
@@ -1381,6 +1414,11 @@ def _inject_feature_rules(project_path: str, wt_path: str, scope: str, spec_file
     ]
     pk_file = next((p for p in pk_candidates if os.path.isfile(p)), "")
     if not pk_file or not shutil.which("yq"):
+        logger.debug(
+            "_inject_feature_rules: pk_file=%s, yq=%s",
+            pk_file or "not found",
+            "available" if shutil.which("yq") else "missing",
+        )
         return
 
     rules_dir = os.path.join(wt_path, ".claude", "rules")
@@ -1388,6 +1426,7 @@ def _inject_feature_rules(project_path: str, wt_path: str, scope: str, spec_file
 
     names_r = run_command(["yq", "-r", ".features | keys[]? // empty", pk_file], timeout=5)
     if names_r.exit_code != 0 or not names_r.stdout.strip():
+        logger.debug("_inject_feature_rules: feature names cmd failed or empty for %s", pk_file)
         return
 
     for fname in names_r.stdout.strip().splitlines():
@@ -1608,8 +1647,8 @@ def dispatch_change(
                     val = v if v.startswith('"') else f'"{v}"'
                     f.write(f"{k}={val}\n")
             logger.info("bootstrap: wrote %d env var(s) to .env in %s", len(existing), wt_path)
-    except Exception:
-        pass  # non-fatal — env_vars is optional
+    except Exception as _e:
+        logger.warning("Failed to write env_vars to .env in %s: %s", wt_path, _e)
 
     # Sync with main immediately after bootstrap — ensures archive commits (openspec/specs/,
     # openspec/changes/ deletions) from recently merged changes are present before agent starts.
@@ -1899,18 +1938,21 @@ def _setup_digest_context(
     """
     index_path = os.path.join(digest_dir, "index.json")
     if not os.path.isfile(index_path):
+        logger.debug("_setup_digest_context: index.json missing in %s", digest_dir)
         return
 
     try:
         with open(index_path) as f:
             index = json.load(f)
     except (json.JSONDecodeError, OSError):
+        logger.debug("_setup_digest_context: failed to parse index.json in %s", digest_dir)
         return
 
     spec_base_dir = index.get("spec_base_dir", "")
     state = load_state(state_path)
     change = _find_change(state, change_name)
     if not change:
+        logger.debug("_setup_digest_context: change %s not found in state", change_name)
         return
 
     spec_files = change.extras.get("spec_files", [])
@@ -2073,7 +2115,8 @@ def _load_serialize_triggers() -> list[str]:
             for d in directives
             if getattr(d, "action", "") == "serialize" and getattr(d, "trigger", "")
         ]
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to load serialize triggers: %s", e)
         return []
 
 
@@ -2218,8 +2261,8 @@ def pause_change(
             if result.alive and result.match:
                 os.kill(pid, 15)  # SIGTERM
                 logger.info("paused %s (SIGTERM to PID %d)", change_name, pid)
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as e:
+            logger.warning("Failed to pause %s: %s", change_name, e)
 
     update_change_field(state_path, change_name, "status", "paused", event_bus=event_bus)
     return True

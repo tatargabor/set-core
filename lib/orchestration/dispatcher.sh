@@ -272,6 +272,10 @@ cmd_start() {
 
             # Exec to Python monitor
             log_info "Exec'ing to Python monitor (auto-resume path)"
+            log_info "  state_file=$STATE_FILENAME"
+            log_info "  directives=$_directives_file"
+            log_info "  cwd=$(pwd)"
+            log_info "  python=$(which python3 2>/dev/null || echo 'not found')"
             trap - EXIT
             update_state_field "status" '"running"'
             exec set-orch-core engine monitor \
@@ -551,6 +555,10 @@ cmd_start() {
             update_state_field "status" '"running"'
             local _directives_file="set/orchestration/directives.json"
             echo "$directives" > "$_directives_file"
+            log_info "Exec'ing to Python monitor (fresh start)"
+            log_info "  state_file=$STATE_FILENAME"
+            log_info "  directives=$_directives_file"
+            log_info "  cwd=$(pwd)"
             exec set-orch-core engine monitor \
                 --directives "$_directives_file" \
                 --state "$STATE_FILENAME" \
@@ -668,7 +676,9 @@ cmd_start() {
     dispatch_ready_changes "$max_parallel"
 
     # Exec to Python monitor loop
-    log_info "Exec'ing to Python monitor (fresh start)"
+    log_info "Exec'ing to Python monitor (digest start)"
+    log_info "  state_file=$STATE_FILENAME"
+    log_info "  cwd=$(pwd)"
     # Clear EXIT trap — exec replaces the process, and the bash EXIT
     # trap would write status=stopped before Python starts
     trap - EXIT

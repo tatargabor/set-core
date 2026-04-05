@@ -54,9 +54,11 @@ def _set_completed_at_if_missing(state_file: str, change_name: str) -> None:
 def _final_token_collect(state_file: str, change_name: str, wt_path: str) -> None:
     """Read loop-state.json tokens one last time before worktree cleanup."""
     if not wt_path or not os.path.isdir(wt_path):
+        logger.debug("_final_token_collect: wt_path missing for %s: %s", change_name, wt_path)
         return
     loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
     if not os.path.isfile(loop_state_path):
+        logger.debug("_final_token_collect: loop-state.json missing at %s", loop_state_path)
         return
     try:
         with open(loop_state_path) as f:
@@ -201,13 +203,16 @@ def _archive_worktree_logs(change_name: str, wt_path: str) -> int:
         # Legacy fallback
         logs_src = os.path.join(wt_path, ".claude", "logs")
         if not os.path.isdir(logs_src):
+            logger.debug("_archive_worktree_logs: no logs dir found in %s", wt_path)
             return 0
+        logger.debug("_archive_worktree_logs: using legacy .claude/logs in %s", wt_path)
 
     try:
         from .paths import SetRuntime
         archive_dir = SetRuntime().change_logs_dir(change_name)
-    except Exception:
+    except Exception as _e:
         archive_dir = f"set-core/orchestration/logs/{change_name}"
+        logger.warning("Log archive: SetRuntime failed (%s), using fallback: %s", _e, archive_dir)
     os.makedirs(archive_dir, exist_ok=True)
 
     count = 0
@@ -217,8 +222,8 @@ def _archive_worktree_logs(change_name: str, wt_path: str) -> int:
             try:
                 shutil.copy2(f, dest)
                 count += 1
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Failed to copy log %s: %s", f, _e)
     logger.info("Archived %d log files for %s to %s", count, change_name, archive_dir)
     return count
 
@@ -274,8 +279,11 @@ def _resolve_retention() -> str:
         if not os.path.isfile(path):
             path = "set/orchestration/config.yaml"  # legacy fallback
         config = load_config_file(path)
-        return config.get("worktree_retention", "keep")
-    except Exception:
+        result = config.get("worktree_retention", "keep")
+        logger.debug("_resolve_retention: %s (from %s)", result, path)
+        return result
+    except Exception as _e:
+        logger.debug("_resolve_retention: config load failed (%s), defaulting to 'keep'", _e)
         return "keep"
 
 
@@ -303,8 +311,8 @@ def cleanup_all_worktrees(state_file: str) -> int:
         from .milestone import cleanup_milestone_servers, cleanup_milestone_worktrees
         cleanup_milestone_servers(state_file)
         cleanup_milestone_worktrees()
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Milestone cleanup failed: %s", _e)
 
     return cleaned
 
@@ -351,11 +359,14 @@ def _apply_merge_strategies() -> None:
     """
     try:
         from .profile_loader import load_profile, NullProfile
-        profile = load_profile()
+        profile = load_profile(os.getcwd())
+        logger.debug("_apply_merge_strategies: profile=%s from cwd=%s", type(profile).__name__, os.getcwd())
         if isinstance(profile, NullProfile):
+            logger.debug("_apply_merge_strategies: NullProfile — skipping")
             return
         strategies = profile.merge_strategies()
         if not strategies:
+            logger.debug("_apply_merge_strategies: no strategies defined by %s", type(profile).__name__)
             return
 
         lines = []
@@ -383,7 +394,7 @@ def _apply_merge_strategies() -> None:
                 gitattrs.write_text(existing + block)
                 logger.info("Applied %d merge strategy pattern(s)", len(lines))
     except Exception:
-        logger.debug("Failed to apply merge strategies (non-critical)", exc_info=True)
+        logger.warning("Failed to apply merge strategies", exc_info=True)
 
 
 def _clean_untracked_merge_conflicts(change_name: str) -> None:
@@ -401,6 +412,7 @@ def _clean_untracked_merge_conflicts(change_name: str) -> None:
         timeout=10,
     )
     if diff_result.exit_code != 0 or not diff_result.stdout.strip():
+        logger.debug("_clean_untracked_merge_conflicts: no added files for %s (exit=%d)", change_name, diff_result.exit_code)
         return
 
     added_files = diff_result.stdout.strip().splitlines()
@@ -418,8 +430,8 @@ def _clean_untracked_merge_conflicts(change_name: str) -> None:
             try:
                 Path(f).unlink()
                 removed.append(f)
-            except OSError:
-                pass
+            except OSError as _e:
+                logger.debug("Failed to remove untracked conflict file %s: %s", f, _e)
 
     if removed:
         logger.info(
@@ -490,7 +502,7 @@ def merge_change(
             from .digest import update_coverage_status
             update_coverage_status(change_name, "merged")
         except Exception:
-            logger.debug("Coverage update failed for %s (non-critical)", change_name)
+            logger.warning("Coverage update failed for %s", change_name, exc_info=True)
         return MergeResult(success=True, status="merged", smoke_result="skip_merged")
 
     # Case 2: Branch is ancestor of HEAD (already merged, branch not deleted)
@@ -516,7 +528,7 @@ def merge_change(
                 from .digest import update_coverage_status
                 update_coverage_status(change_name, "merged")
             except Exception:
-                logger.debug("Coverage update failed for %s (non-critical)", change_name)
+                logger.warning("Coverage update failed for %s", change_name, exc_info=True)
             return MergeResult(success=True, status="merged", smoke_result="skip_merged")
 
     # Case 3: Fast-forward only merge (integrate-then-verify pattern)
@@ -580,16 +592,18 @@ def merge_change(
             from .digest import update_coverage_status
             update_coverage_status(change_name, "merged")
         except Exception:
-            logger.debug("Coverage update failed for %s (non-critical)", change_name)
+            logger.warning("Coverage update failed for %s", change_name, exc_info=True)
 
         # Post-merge dependency install via profile (or legacy fallback)
         _heartbeat("deps_install")
         try:
             from .profile_loader import load_profile
+            logger.debug("load_profile for post-merge deps: cwd=%s", os.getcwd())
             _profile = load_profile()
             if hasattr(_profile, "post_merge_install"):
                 _profile.post_merge_install(".")
-        except Exception:
+        except Exception as _e:
+            logger.warning("Profile post-merge install failed (%s), using legacy fallback", _e)
             _post_merge_deps_install(lockfile_conflicted=False, pre_merge_sha=pre_merge_sha)
 
         # Post-merge custom command
@@ -805,47 +819,86 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
 def _detect_own_spec_files(wt_path: str) -> list[str]:
     """Detect which E2E spec files were added/modified by this change branch.
 
-    Uses git diff against merge-base to find ownership. Falls back to
-    e2e-manifest.json if git diff fails or returns empty.
+    Strategy: compare spec files on current HEAD vs what exists on main.
+    Files present in the worktree but NOT on main are "own" (this change added them).
+    Falls back to e2e-manifest.json if comparison fails.
     Returns relative paths (e.g., "tests/e2e/cart.spec.ts").
     """
     from .subprocess_utils import run_command as _run
 
-    # Primary: git diff against merge-base
+    # Primary: compare worktree specs vs main branch specs
     try:
-        base_result = _run(
-            ["git", "merge-base", "HEAD", "main"],
+        # Get spec files on main
+        main_specs_result = _run(
+            ["git", "ls-tree", "-r", "--name-only", "main", "--", "tests/e2e/"],
             timeout=10, cwd=wt_path,
         )
-        merge_base = (base_result.stdout or "").strip()
-        if merge_base and base_result.exit_code == 0:
-            diff_result = _run(
-                ["git", "diff", merge_base, "--name-only", "--diff-filter=AM"],
+        main_specs = set()
+        if main_specs_result.exit_code == 0 and main_specs_result.stdout:
+            main_specs = {
+                f.strip() for f in main_specs_result.stdout.strip().split("\n")
+                if f.strip().endswith((".spec.ts", ".spec.js"))
+            }
+
+        # Get spec files in worktree
+        wt_specs = set()
+        e2e_dir = os.path.join(wt_path, "tests", "e2e")
+        if os.path.isdir(e2e_dir):
+            for fn in os.listdir(e2e_dir):
+                if fn.endswith((".spec.ts", ".spec.js")):
+                    wt_specs.add(f"tests/e2e/{fn}")
+
+        logger.debug(
+            "Own spec detection: main_specs=%s, wt_specs=%s, diff=%s",
+            sorted(main_specs), sorted(wt_specs), sorted(wt_specs - main_specs),
+        )
+
+        own = sorted(wt_specs - main_specs)
+        if own:
+            logger.info("Detected %d own spec files (worktree vs main): %s", len(own), own)
+            return own
+        elif wt_specs:
+            # All specs exist on main too — try git log for modified specs
+            log_result = _run(
+                ["git", "log", "--no-merges", "--diff-filter=AM", "--name-only",
+                 "--format=", "main..HEAD", "--", "tests/e2e/"],
                 timeout=10, cwd=wt_path,
             )
-            if diff_result.exit_code == 0 and diff_result.stdout:
-                specs = [
-                    f.strip() for f in diff_result.stdout.strip().split("\n")
+            if log_result.exit_code == 0 and log_result.stdout:
+                modified = sorted({
+                    f.strip() for f in log_result.stdout.strip().split("\n")
                     if f.strip().endswith((".spec.ts", ".spec.js"))
-                ]
-                if specs:
-                    logger.info("Detected %d own spec files via git diff: %s", len(specs), specs)
-                    return specs
-    except Exception:
-        pass
+                })
+                if modified:
+                    logger.info("Detected %d own spec files via git log: %s", len(modified), modified)
+                    return modified
+    except Exception as _e:
+        logger.debug("Git spec detection failed: %s", _e)
 
-    # Fallback: e2e-manifest.json
+    # Fallback: e2e-manifest.json (check actual file existence)
     manifest = os.path.join(wt_path, "e2e-manifest.json")
     if os.path.isfile(manifest):
         try:
             data = json.loads(Path(manifest).read_text(encoding="utf-8"))
-            specs = data.get("spec_files", [])
-            if specs:
-                logger.info("Detected %d own spec files via manifest: %s", len(specs), specs)
-                return specs
-        except (json.JSONDecodeError, OSError):
-            pass
+            manifest_specs = data.get("spec_files", [])
+            # Validate: only return specs that actually exist
+            valid = [s for s in manifest_specs if os.path.isfile(os.path.join(wt_path, s))]
+            if valid:
+                logger.info("Detected %d own spec files via manifest: %s", len(valid), valid)
+                return valid
+            # Manifest has wrong names — try to find actual spec matching change name
+            change_name = data.get("change", "")
+            if change_name:
+                e2e_dir = os.path.join(wt_path, "tests", "e2e")
+                if os.path.isdir(e2e_dir):
+                    for fn in os.listdir(e2e_dir):
+                        if fn.endswith((".spec.ts", ".spec.js")) and change_name in fn:
+                            logger.info("Detected own spec file via manifest name match: %s", fn)
+                            return [f"tests/e2e/{fn}"]
+        except (json.JSONDecodeError, OSError) as _e:
+            logger.debug("Manifest parse failed for %s: %s", manifest, _e)
 
+    logger.warning("Could not detect own spec files for %s — two-phase E2E disabled", wt_path)
     return []
 
 
@@ -1237,12 +1290,17 @@ def _run_integration_gates(
             and _change_reqs
             and _cov_threshold > 0.0
         ):
-            try:
-                from .paths import SetRuntime
-                _digest_dir = SetRuntime().digest_dir
-            except Exception:
-                _digest_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration", "digest")
+            _digest_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration", "digest")
+            if not os.path.isdir(_digest_dir):
+                # Legacy fallback
+                try:
+                    from .paths import SetRuntime
+                    _digest_dir = SetRuntime().digest_dir
+                    logger.warning("Coverage gate: primary digest_dir missing, using SetRuntime fallback: %s", _digest_dir)
+                except Exception:
+                    pass
             _plan_path = os.path.join(_digest_dir, "test-plan.json")
+            logger.debug("Coverage gate: digest_dir=%s, plan_exists=%s", _digest_dir, os.path.isfile(_plan_path))
 
             if os.path.isfile(_plan_path):
                 try:
@@ -1417,6 +1475,7 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
     from .profile_loader import load_profile
 
     profile = load_profile()
+    logger.debug("Profile for merge queue: %s (cwd=%s)", type(profile).__name__, os.getcwd())
     state = load_state(state_file)
     merged = 0
 
@@ -1787,6 +1846,10 @@ def _post_merge_deps_install(lockfile_conflicted: bool = False, pre_merge_sha: s
     elif os.path.exists("package-lock.json"):
         install_cmd = ["npm", "install"]
 
+    if not install_cmd:
+        logger.debug("_post_merge_deps_install: no lockfile detected — skipping install")
+        return
+
     if install_cmd:
         logger.info("Post-merge: %s, running %s", reason, " ".join(install_cmd))
         result = run_command(install_cmd, timeout=600)
@@ -1851,8 +1914,12 @@ def _persist_change_review_learnings(change_name: str, state_file: str) -> None:
         )
         findings_path = os.path.join(findings_dir, "review-findings.jsonl")
 
+        if not os.path.isfile(findings_path):
+            logger.debug("_persist_change_review_learnings: findings file missing: %s", findings_path)
+            return
         patterns = _extract_change_review_patterns(findings_path, change_name)
         if not patterns:
+            logger.debug("_persist_change_review_learnings: no patterns for %s", change_name)
             return
 
         profile = load_profile()
@@ -1957,7 +2024,8 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         test_results: dict[tuple[str, str], str] = {}
         try:
             from .profile_loader import load_profile
-            profile = load_profile()
+            profile = load_profile(str(project_root))
+            logger.debug("_parse_test_coverage: profile=%s from %s", type(profile).__name__, project_root)
             # Get E2E output — try top-level field first, then extras
             e2e_output = getattr(change, "e2e_output", "") or ""
             if not e2e_output:

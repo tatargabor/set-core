@@ -1360,8 +1360,8 @@ def evaluate_verification_rules(
                         # Plugin overrides YAML rule with same ID
                         rules = [r for r in rules if r.get("id", r.get("name", "")) != pr_dict["id"]]
                     rules.append(pr_dict)
-    except Exception:
-        pass  # Plugin loading failure shouldn't break verification
+    except Exception as _e:
+        logger.warning("Profile verification rules failed: %s", _e)
 
     if not rules:
         return RuleEvalResult()
@@ -1713,11 +1713,13 @@ def _read_loop_state(wt_path: str) -> dict:
     """Read loop-state.json from worktree .claude/ directory."""
     loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
     if not os.path.isfile(loop_state_path):
+        logger.debug("_read_loop_state: file missing at %s", loop_state_path)
         return {}
     try:
         with open(loop_state_path) as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as _e:
+        logger.debug("_read_loop_state: parse failed for %s: %s", loop_state_path, _e)
         return {}
 
 
@@ -1879,8 +1881,8 @@ def poll_change(
                     )
                     update_change_field(state_file, change_name, "status", "failed")
                     return "dead"
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as _e:
+                logger.debug("started_at parse failed for %s: %s", change_name, _e)
         return None
 
     # Extract tokens (safely handle malformed values)
@@ -1918,8 +1920,8 @@ def poll_change(
                         cr_tok = int(usage_data.get("cache_read_tokens", 0))
                         cc_tok = int(usage_data.get("cache_creation_tokens", 0))
                         tokens = in_tok + out_tok
-                    except (json.JSONDecodeError, ValueError):
-                        pass
+                    except (json.JSONDecodeError, ValueError) as _e:
+                        logger.debug("set-usage JSON parse failed: %s", _e)
 
     # Accumulate tokens
     _accumulate_tokens(state_file, change_name, {
@@ -2018,11 +2020,16 @@ def _execute_build_gate(
     from .gate_runner import GateResult
 
     if not wt_path or not os.path.isfile(os.path.join(wt_path, "package.json")):
+        logger.debug("Gate[build]: no package.json in %s", wt_path)
+        logger.info("Gate[build] END %s result=skipped", change_name)
         return GateResult("build", "skipped")
 
     build_command = _detect_build_command(wt_path)
     if not build_command:
+        logger.info("Gate[build] END %s result=skipped", change_name)
         return GateResult("build", "skipped")
+
+    logger.info("Gate[build] START %s wt=%s cmd=%s", change_name, wt_path, build_command)
 
     from .dispatcher import _detect_package_manager
     pm = _detect_package_manager(wt_path) or "npm"
@@ -2050,8 +2057,10 @@ def _execute_build_gate(
             )
             + f"\n\nOriginal scope: {scope}"
         )
+        logger.info("Gate[build] END %s result=fail", change_name)
         return GateResult("build", "fail", output=build_output[-2000:], retry_context=retry_prompt)
 
+    logger.info("Gate[build] END %s result=pass", change_name)
     return GateResult("build", "pass")
 
 
@@ -2064,7 +2073,10 @@ def _execute_test_gate(
     from .gate_runner import GateResult
 
     if not test_command or not wt_path:
+        logger.info("Gate[test] END %s result=skipped", change_name)
         return GateResult("test", "skipped")
+
+    logger.info("Gate[test] START %s wt=%s cmd=%s", change_name, wt_path, test_command)
 
     tr = run_tests_in_worktree(wt_path, test_command, test_timeout)
 
@@ -2088,6 +2100,7 @@ def _execute_test_gate(
             + f"\n\nOriginal scope: {scope}"
         )
 
+    logger.info("Gate[test] END %s result=%s", change_name, result.status)
     return result
 
 
@@ -2169,10 +2182,12 @@ def _execute_e2e_coverage_gate(
     from .gate_runner import GateResult
 
     if not wt_path:
+        logger.info("Gate[e2e-coverage] END %s result=pass (no wt_path)", change_name)
         return GateResult("e2e_coverage", "pass")
 
     scope = (change.scope or "").lower()
     if not scope:
+        logger.info("Gate[e2e-coverage] END %s result=pass (no scope)", change_name)
         return GateResult("e2e_coverage", "pass")
 
     # Extract required operations from scope keywords
@@ -2187,7 +2202,10 @@ def _execute_e2e_coverage_gate(
             required.append(op)
 
     if not required:
+        logger.info("Gate[e2e-coverage] END %s result=pass (no requirements)", change_name)
         return GateResult("e2e_coverage", "pass")
+
+    logger.info("Gate[e2e-coverage] START %s reqs=%d", change_name, len(required))
 
     # Scan spec.ts files in diff for assertion patterns
     merge_base = _get_merge_base(wt_path)
@@ -2218,17 +2236,19 @@ def _execute_e2e_coverage_gate(
     }
     try:
         update_change_field(state_file, change_name, "e2e_coverage_report", report)
-    except Exception:
-        pass  # non-critical
+    except Exception as _e:
+        logger.debug("Failed to store e2e_coverage_report: %s", _e)
 
     if missing:
         gap_text = ", ".join(f"{op}: NOT TESTED" for op in missing)
         logger.warning("E2E coverage gaps for %s: %s", change_name, gap_text)
+        logger.info("Gate[e2e-coverage] END %s result=warn", change_name)
         return GateResult(
             "e2e_coverage", "warn",
             output=f"E2E coverage gaps: {gap_text}. Tested: {', '.join(tested) or 'none'}.",
         )
 
+    logger.info("Gate[e2e-coverage] END %s result=pass", change_name)
     return GateResult("e2e_coverage", "pass", stats={"tested": tested})
 
 
@@ -2241,10 +2261,13 @@ def _execute_review_gate(
     from .gate_runner import GateResult
 
     if not wt_path:
+        logger.info("Gate[review] END %s result=skipped", change_name)
         return GateResult("review", "skipped")
 
     scope = change.scope or ""
     effective_review_model = gc.review_model if gc.review_model else review_model
+
+    logger.info("Gate[review] START %s wt=%s model=%s", change_name, wt_path, effective_review_model)
 
     # On retry rounds, use fix-verification mode:
     # Only verify previous findings were fixed, don't scan for new issues
@@ -2300,6 +2323,7 @@ def _execute_review_gate(
             findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
             findings_path = os.path.join(findings_dir, "review-findings.jsonl")
             _append_review_finding(findings_path, change_name, rr.output, verify_retry_count + 1)
+        logger.info("Gate[review] END %s result=pass", change_name)
         return GateResult("review", "pass", output=rr.output[:5000])
 
     # Critical review — write findings to MD file and build retry context
@@ -2340,6 +2364,7 @@ def _execute_review_gate(
         findings_md_path=md_path,
     )
 
+    logger.info("Gate[review] END %s result=fail", change_name)
     return GateResult("review", "fail", output=rr.output[:5000], retry_context=retry_prompt)
 
 
@@ -2367,7 +2392,10 @@ def _execute_spec_verify_gate(
     from .gate_runner import GateResult
 
     if not wt_path or not shutil.which("claude"):
+        logger.info("Gate[spec-verify] END %s result=skipped", change_name)
         return GateResult("spec_verify", "skipped")
+
+    logger.info("Gate[spec-verify] START %s wt=%s", change_name, wt_path)
 
     verify_cmd_result = run_claude_logged(
         f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\nRun /opsx:verify {change_name}",
@@ -2380,6 +2408,7 @@ def _execute_spec_verify_gate(
     if verify_cmd_result.exit_code != 0:
         scope = change.scope or ""
         verify_tail = verify_output[-2000:] if verify_output else ""
+        logger.info("Gate[spec-verify] END %s result=fail (exit_code=%d)", change_name, verify_cmd_result.exit_code)
         return GateResult(
             "spec_verify", "fail",
             output=verify_output[:2000],
@@ -2387,11 +2416,13 @@ def _execute_spec_verify_gate(
         )
 
     if "VERIFY_RESULT: PASS" in verify_output:
+        logger.info("Gate[spec-verify] END %s result=pass", change_name)
         return GateResult("spec_verify", "pass", output=verify_output[:2000])
     elif "VERIFY_RESULT: FAIL" in verify_output:
         scope = change.scope or ""
         verify_tail = verify_output[-2000:] if verify_output else ""
         logger.warning("Spec coverage FAIL for %s — blocking", change_name)
+        logger.info("Gate[spec-verify] END %s result=fail", change_name)
         return GateResult(
             "spec_verify", "fail",
             output=verify_output[:2000],
@@ -2406,6 +2437,7 @@ def _execute_spec_verify_gate(
     else:
         # No sentinel — timeout, non-blocking
         logger.warning("Spec verify timed out for %s — non-blocking", change_name)
+        logger.info("Gate[spec-verify] END %s result=pass (timeout)", change_name)
         return GateResult("spec_verify", "pass", output="timeout — no VERIFY_RESULT sentinel")
 
 
@@ -2595,6 +2627,29 @@ def handle_change_done(
     wt_path = change.worktree_path or ""
     verify_retry_count = change.verify_retry_count
 
+    if not wt_path:
+        logger.warning("handle_change_done: wt_path empty for %s — critical checks will be skipped", change_name)
+
+    # Update e2e-manifest.json with actual spec files (task 11.1)
+    if wt_path and os.path.isdir(wt_path):
+        _e2e_dir = os.path.join(wt_path, "tests", "e2e")
+        if os.path.isdir(_e2e_dir):
+            _actual_specs = sorted([
+                f"tests/e2e/{fn}" for fn in os.listdir(_e2e_dir)
+                if fn.endswith((".spec.ts", ".spec.js"))
+            ])
+            if _actual_specs:
+                _manifest_path = os.path.join(wt_path, "e2e-manifest.json")
+                try:
+                    _manifest = {}
+                    if os.path.isfile(_manifest_path):
+                        _manifest = json.loads(Path(_manifest_path).read_text())
+                    _manifest["spec_files"] = _actual_specs
+                    Path(_manifest_path).write_text(json.dumps(_manifest, indent=2))
+                    logger.info("Updated e2e-manifest.json: %d spec files: %s", len(_actual_specs), _actual_specs)
+                except Exception as _e:
+                    logger.debug("Failed to update e2e-manifest.json: %s", _e)
+
     # ANOMALY: agent completed with 0 commits (task 3.1)
     if wt_path and os.path.isdir(wt_path):
         try:
@@ -2614,8 +2669,8 @@ def handle_change_done(
                     "— possible false-done",
                     change_name,
                 )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Git commit count check failed: %s", _e)
 
     # ── Context window metrics — capture end tokens at loop completion ──
     if wt_path:
@@ -2625,8 +2680,8 @@ def handle_change_done(
             try:
                 _st = load_state(state_file)
                 _ctx_model = _st.extras.get("directives", {}).get("default_model", "")
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Model resolution from state failed: %s", _e)
         _capture_context_tokens_end(state_file, change_name, _read_loop_state(wt_path), model=_ctx_model)
 
     # ── Retry token tracking ──

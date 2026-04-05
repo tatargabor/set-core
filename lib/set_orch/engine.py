@@ -924,8 +924,8 @@ def _signal_alive(state_file: str, event_bus: Any) -> None:
     if event_bus:
         try:
             event_bus.emit("WATCHDOG_HEARTBEAT")
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Watchdog event emit failed: %s", _e)
     try:
         os.utime(state_file, None)
     except OSError:
@@ -1299,8 +1299,8 @@ def _classify_test_failures(wt_path: str, e2e_output: str) -> dict:
         )
         if r.exit_code == 0 and r.stdout.strip():
             own_test_files = {f.strip() for f in r.stdout.strip().splitlines()}
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Git diff for test classification failed: %s", _e)
 
     # 2. Parse failing tests
     parsed = _parse_e2e_summary(e2e_output)
@@ -1366,8 +1366,8 @@ def _build_gate_retry_context(
         r = run_command(["git", "log", "-1", "--format=%B"], cwd=wt_path, timeout=10)
         if r.exit_code == 0 and r.stdout.strip():
             last_commit_body = r.stdout.strip()
-    except Exception:
-        pass  # Fall back to no git context
+    except Exception as _e:
+        logger.debug("Git history extraction failed: %s", _e)
 
     if git_log:
         sections.append(
@@ -1765,6 +1765,7 @@ def _all_coverage_merged() -> bool:
     Returns True (skip replan) if no coverage data exists (can't determine gaps).
     """
     digest_dir = os.path.join(os.getcwd(), "set", "orchestration", "digest")
+    logger.debug("Gap check: digest_dir=%s, exists=%s", digest_dir, os.path.isdir(digest_dir))
     reqs_path = os.path.join(digest_dir, "requirements.json")
     cov_path = os.path.join(digest_dir, "coverage.json")
 
@@ -1942,6 +1943,7 @@ def _auto_replan_cycle(
         saved_domain_plans = saved.get("domain_plans", {})
 
         digest_dir = os.path.join(os.getcwd(), "set", "orchestration", "digest")
+        logger.debug("Replan: digest_dir=%s, exists=%s", digest_dir, os.path.isdir(digest_dir))
         domain_data = _load_domain_data(digest_dir)
         model = d.default_model or "opus"
 
@@ -2175,6 +2177,7 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
         # Resolve digest_dir: prefer project-local set/orchestration/digest (where
         # test-plan.json actually lives), fall back to SetRuntime path.
         _project_dir = os.path.dirname(state_file) or os.getcwd()
+        logger.debug("Dispatch: project_dir=%s (from state_file=%s)", _project_dir, state_file)
         _digest_dir = os.path.join(_project_dir, "set", "orchestration", "digest")
         if not os.path.isdir(_digest_dir):
             try:
@@ -2188,6 +2191,7 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
             logger.warning(
                 "digest_dir is empty for dispatch — agents won't get Required Tests section"
             )
+        logger.debug("Dispatch: digest_dir=%s, exists=%s", _digest_dir, os.path.isdir(_digest_dir) if _digest_dir else False)
         dispatch_ready_changes(
             state_file, d.max_parallel,
             default_model=d.default_model,
@@ -2454,14 +2458,19 @@ def _send_terminal_notifications(
             plan_data = {}
             if os.path.isfile(plan_path):
                 plan_data = _json.loads(open(plan_path).read())
-            try:
-                from .paths import SetRuntime
-                _rt = SetRuntime()
-                _default_digest = _rt.digest_dir
-                _default_coverage = _rt.spec_coverage_report
-            except Exception:
-                _default_digest = os.path.join(_project_dir, "set", "orchestration", "digest")
-                _default_coverage = os.path.join(_project_dir, "set", "orchestration", "spec-coverage-report.md")
+            # Prefer state_file-relative resolution over SetRuntime (which uses cwd)
+            _default_digest = os.path.join(_project_dir, "set", "orchestration", "digest")
+            _default_coverage = os.path.join(_project_dir, "set", "orchestration", "spec-coverage-report.md")
+            if not os.path.isdir(_default_digest):
+                try:
+                    from .paths import SetRuntime
+                    _rt = SetRuntime()
+                    if os.path.isdir(_rt.digest_dir):
+                        logger.warning("digest_dir: state-relative %s missing, falling back to SetRuntime %s", _default_digest, _rt.digest_dir)
+                        _default_digest = _rt.digest_dir
+                        _default_coverage = _rt.spec_coverage_report
+                except Exception:
+                    pass
             digest_dir = state.extras.get("digest_dir", _default_digest)
             if not os.path.isabs(digest_dir):
                 digest_dir = os.path.join(_project_dir, digest_dir)
@@ -2509,8 +2518,8 @@ def _generate_report_safe(state_file: str) -> None:
     try:
         from .reporter import generate_report
         generate_report(state_path=state_file)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("HTML report generation failed: %s", _e)
 
 
 def _generate_review_findings_summary_safe(state_file: str) -> None:
@@ -2523,8 +2532,8 @@ def _generate_review_findings_summary_safe(state_file: str) -> None:
         result = generate_review_findings_summary(findings_path, summary_path)
         if result:
             logger.info("Review findings summary: %s", result)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Review findings summary failed: %s", _e)
 
 
 def _persist_run_learnings(state_file: str) -> None:
