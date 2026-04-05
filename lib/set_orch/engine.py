@@ -1475,8 +1475,22 @@ def _check_completion(
 
     truly_complete = sum(
         1 for c in state.changes
-        if c.status in ("done", "merged", "skipped")
+        if c.status in ("done", "skipped")
+        or (c.status == "merged" and c.current_step in ("done", None))
     )
+    # Changes that are "merged" but still doing post-merge work (step != done)
+    # should not count as complete — the merger sets status=merged before
+    # post-merge steps finish (deps, hooks, coverage, artifact collection,
+    # worktree cleanup). Counting them as complete causes premature exit.
+    post_merge_active = sum(
+        1 for c in state.changes
+        if c.status == "merged" and c.current_step not in ("done", None)
+    )
+    if post_merge_active > 0:
+        logger.debug(
+            "%d changes still in post-merge processing (not yet step=done)",
+            post_merge_active,
+        )
     failed_count = sum(1 for c in state.changes if c.status in ("failed", "integration-failed"))
     merge_blocked = sum(1 for c in state.changes if c.status == "merge-blocked")
     # Pending changes with all deps failed will never run — count as blocked, not active
@@ -2355,7 +2369,10 @@ def _check_phase_completion(
     phase_changes = [c for c in state.changes if c.phase == current_phase]
     terminal_statuses = {"merged", "done", "skipped", "failed", "merge-blocked", "integration-failed", "awaiting_confirmation"}
     all_terminal = all(
-        c.status in terminal_statuses or (c.status == "pending" and deps_failed(state, c.name))
+        (c.status in terminal_statuses
+         # "merged" with step != done means post-merge work still running
+         and not (c.status == "merged" and c.current_step not in ("done", None)))
+        or (c.status == "pending" and deps_failed(state, c.name))
         for c in phase_changes
     )
 
