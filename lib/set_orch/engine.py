@@ -1826,14 +1826,25 @@ def _auto_replan_cycle(
 
 
 def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
-    """Append new plan changes to existing orchestration state."""
+    """Append new plan changes to existing orchestration state.
+
+    Phase numbers from the planner are relative (1, 2, 3...) but existing
+    changes already occupy phases. Offset new phases so they continue after
+    the highest existing phase.
+    """
     from .state import Change, locked_state
 
     with locked_state(state_file) as state:
         existing_names = {c.name for c in state.changes}
+
+        # Calculate phase offset: new phases start after the highest existing phase
+        max_existing_phase = max((c.phase for c in state.changes if c.phase), default=0)
+        added = 0
         for c in new_changes:
             if c.get("name") in existing_names:
                 continue
+            raw_phase = c.get("phase", 1)
+            offset_phase = raw_phase + max_existing_phase
             change = Change(
                 name=c["name"],
                 scope=c.get("scope", ""),
@@ -1842,11 +1853,30 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
                 depends_on=c.get("depends_on", []),
                 roadmap_item=c.get("roadmap_item", ""),
                 model=c.get("model", None),
-                phase=c.get("phase", 1),
+                phase=offset_phase,
                 gate_hints=c.get("gate_hints") or None,
             )
             state.changes.append(change)
-        logger.info("Appended %d new changes to state", len(new_changes))
+            added += 1
+        # Register new phases in the phases dict
+        if added:
+            phases_dict = state.extras.get("phases", {})
+            for c in new_changes:
+                if c.get("name") in existing_names:
+                    continue
+                offset_phase = c.get("phase", 1) + max_existing_phase
+                p_key = str(offset_phase)
+                if p_key not in phases_dict:
+                    phases_dict[p_key] = {
+                        "status": "pending",
+                        "tag": None,
+                        "server_port": None,
+                        "server_pid": None,
+                        "completed_at": None,
+                    }
+            state.extras["phases"] = phases_dict
+            logger.info("Appended %d new changes to state (phase offset +%d, phases: %s)",
+                        added, max_existing_phase, sorted(phases_dict.keys()))
 
 
 def _archive_completed_to_jsonl(state_file: str) -> None:
