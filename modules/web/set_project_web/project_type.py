@@ -528,7 +528,13 @@ class WebProjectType(CoreProfile):
   - PLAYWRIGHT CONFIG: Tests run against real app via Playwright webServer config.
     Do not start the dev server manually.
   - ISOLATION: Each test file is self-contained. Set up preconditions via API or seed data.
-  - IDEMPOTENCY: Tests must survive re-runs. Use unique IDs, clean up in afterAll."""
+  - IDEMPOTENCY: Tests must survive re-runs. Use unique IDs, clean up in afterAll.
+  - DEV MODE FLAKINESS: Next.js dev mode has cold compilation delays.
+    When navigating to a page that fetches data via API, use waitForResponse:
+      const apiPromise = page.waitForResponse(r => r.url().includes('/api/cart') && r.request().method() === 'GET', { timeout: 60000 });
+      await page.goto('/path', { waitUntil: 'networkidle' });
+      await apiPromise;
+    After client-side mutations (cancel, update), use page.reload() instead of relying on router.refresh()."""
 
     # ─── Smoke / Scoped E2E Commands ───────────────────────────
 
