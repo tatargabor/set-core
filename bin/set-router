@@ -4,6 +4,9 @@
 # Manual account management for multiple CC credentials.
 # Automatic rotation to circumvent rate limits violates Anthropic's ToS.
 
+# Handle deleted CWD (e.g. removed E2E run directory)
+cd / 2>/dev/null || true
+
 # Follow symlinks to find the real script location
 get_real_dir() {
     local script="${BASH_SOURCE[0]}"
