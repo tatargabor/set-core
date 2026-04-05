@@ -1319,7 +1319,7 @@ def _run_integration_gates(
                         if profile and hasattr(profile, "parse_test_results"):
                             _test_results = profile.parse_test_results(_e2e_out)
 
-                        _test_cases, _non_testable = parse_test_plan(_plan_path)
+                        _test_cases, _non_testable = parse_test_plan(Path(_plan_path))
                         _coverage = build_test_coverage(
                             test_cases=_test_cases,
                             non_testable=_non_testable,
