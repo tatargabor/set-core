@@ -277,6 +277,22 @@ class ProjectSupervisor:
                 self.sentinel_crash_count += 1
                 sentinel_needs_restart = True
 
+        # Orchestrator health — detect death, flag sentinel restart if needed.
+        # When the orchestrator dies (context limit, timeout, crash), the sentinel
+        # poll script detects EVENT:process_exit and tries to restart. But if the
+        # sentinel session also dies (context limit), it creates a crash-loop:
+        # sentinel detects dead PID → exits → manager restarts → no context → loop.
+        # Fix: when orchestrator is dead and sentinel is also dead, restart sentinel.
+        if self.orchestrator_pid and not _is_alive(self.orchestrator_pid):
+            actions.append(f"orchestrator died (pid={self.orchestrator_pid})")
+            self.orchestrator_pid = None
+            self._orch_proc = None
+            # If sentinel is also gone, flag restart so it can recover stalled changes
+            if not self.sentinel_pid and not sentinel_needs_restart:
+                sentinel_needs_restart = True
+                actions.append("orchestrator+sentinel both dead — will restart sentinel for recovery")
+
+        # Unified sentinel restart (triggered by sentinel death OR orchestrator death)
         if sentinel_needs_restart:
             if (self.config.auto_restart_sentinel
                     and self.sentinel_crash_count <= MAX_CRASH_RESTARTS
@@ -293,12 +309,6 @@ class ProjectSupervisor:
                     f"sentinel restart limit reached ({MAX_CRASH_RESTARTS}), "
                     "not restarting — manual intervention required"
                 )
-
-        # Orchestrator health (no auto-restart, just detect)
-        if self.orchestrator_pid and not _is_alive(self.orchestrator_pid):
-            actions.append(f"orchestrator died (pid={self.orchestrator_pid})")
-            self.orchestrator_pid = None
-            self._orch_proc = None
 
         return actions
 
