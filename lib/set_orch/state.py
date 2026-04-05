@@ -194,7 +194,11 @@ class Change:
                 extras[k] = v
         if extras:
             _name = kwargs.get("name", "?")
-            logger.debug("Change %s: %d unknown fields stored in extras", _name, len(extras))
+            _seen = getattr(cls, "_extras_logged", set())
+            if _name not in _seen:
+                logger.debug("Change %s: %d unknown fields in extras: %s", _name, len(extras), list(extras.keys()))
+                _seen.add(_name)
+                cls._extras_logged = _seen
         return cls(**kwargs, extras=extras)
 
 
