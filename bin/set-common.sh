@@ -355,9 +355,11 @@ find_existing_worktree() {
             [[ "$wt_path" == "$project_path" ]] && continue
 
             # Match: exact name, or repo-name-change-id, or repo-wt-change-id
+            # Also match with collision-avoidance suffix (-2, -3, etc.)
             if [[ "$wt_name" == "$change_id" ]] || \
                [[ "$wt_name" == "${repo_name}-${change_id}" ]] || \
-               [[ "$wt_name" == "${repo_name}-wt-${change_id}" ]]; then
+               [[ "$wt_name" == "${repo_name}-wt-${change_id}" ]] || \
+               [[ "$wt_name" =~ ^${repo_name}-wt-${change_id}-[0-9]+$ ]]; then
                 echo "$wt_path"
                 return 0
             fi
