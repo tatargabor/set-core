@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import os
 import sys
 
@@ -20,6 +21,7 @@ from set_orch.sentinel.findings import SentinelFindings
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
     parser = argparse.ArgumentParser(description="Sentinel findings management")
     parser.add_argument("--project", default=os.getcwd(), help="Project path")
     sub = parser.add_subparsers(dest="command", required=True)

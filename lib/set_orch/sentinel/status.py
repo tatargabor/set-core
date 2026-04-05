@@ -3,12 +3,15 @@ from __future__ import annotations
 """Sentinel status/identity management in shared sentinel directory."""
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
 from set_orch.sentinel.set_dir import ensure_set_dir
+
+logger = logging.getLogger(__name__)
 
 STATUS_FILE = "status.json"
 
@@ -45,6 +48,7 @@ class SentinelStatus:
             "orchestrator_pid": orchestrator_pid,
         }
         self._write(data)
+        logger.info("Sentinel registered: member=%s, session=%s, pid=%s", member, session_id, orchestrator_pid)
         return data
 
     def heartbeat(self) -> None:
@@ -52,6 +56,7 @@ class SentinelStatus:
         data = self.get()
         data["last_event_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         self._write(data)
+        logger.debug("Sentinel heartbeat: session=%s", data.get("session_id", "?"))
 
     def deactivate(self) -> None:
         """Mark sentinel as inactive (best-effort on exit)."""
@@ -60,6 +65,7 @@ class SentinelStatus:
             data["active"] = False
             data["last_event_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             self._write(data)
+            logger.info("Sentinel deactivated: session=%s", data.get("session_id", "?"))
         except Exception:
             pass  # Best-effort during cleanup
 

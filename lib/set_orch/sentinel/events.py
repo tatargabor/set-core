@@ -3,12 +3,15 @@ from __future__ import annotations
 """Structured event logging to shared sentinel directory."""
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
 from set_orch.sentinel.set_dir import ensure_set_dir
+
+logger = logging.getLogger(__name__)
 
 EVENTS_FILE = "events.jsonl"
 
@@ -35,6 +38,7 @@ class SentinelEventLogger:
         line = json.dumps(event, ensure_ascii=False) + "\n"
         with open(self.events_file, "a") as f:
             f.write(line)
+        logger.info("Sentinel event: %s — %s", event_type, {k: v for k, v in kwargs.items() if v})
         return event
 
     def poll(

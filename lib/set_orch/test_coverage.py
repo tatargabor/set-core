@@ -465,7 +465,7 @@ def build_test_coverage(
     total_testable = len(covered) + len(uncovered)
     coverage_pct = (len(covered) / total_testable * 100) if total_testable > 0 else 0.0
 
-    return TestCoverage(
+    cov = TestCoverage(
         plan_file=plan_file,
         test_cases=test_cases,
         covered_reqs=covered,
@@ -478,6 +478,13 @@ def build_test_coverage(
         unbound_tests=unbound_tests,
         parsed_at=datetime.now(timezone.utc).isoformat(),
     )
+    logger.info("Test coverage: %.1f%% (%d/%d reqs), %d passed, %d failed, %d unbound tests",
+                 coverage_pct, len(covered), total_testable, passed, failed, len(unbound_tests))
+    if unbound_tests:
+        logger.warning("Unbound tests: %s", unbound_tests[:10])
+    if uncovered:
+        logger.warning("Uncovered requirements: %s", uncovered[:10])
+    return cov
 
 
 def _fuzzy_match(a: str, b: str) -> bool:

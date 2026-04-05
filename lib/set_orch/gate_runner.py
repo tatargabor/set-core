@@ -137,9 +137,13 @@ def _resolve_gate_order(gates: list[GateDefinition]) -> list[GateDefinition]:
             break
 
     # Append any unresolved gates
+    if pending:
+        logger.warning("Gate order: %d unresolvable gates appended before end: %s",
+                       len(pending), [g.name for g in pending])
     placed.extend(pending)
     placed.extend(before_end_gates)
     placed.extend(end_gates)
+    logger.info("Gate order resolved: %s", [g.name for g in placed])
     return placed
 
 
@@ -215,6 +219,8 @@ class GatePipeline:
             extra_retries=extra_retries,
             result_fields=result_fields,
         ))
+        logger.debug("Gate registered: %s for %s (retry_counter=%s, extra_retries=%d)",
+                      name, self.change_name, own_retry_counter or "shared", extra_retries)
 
     def run(self) -> str:
         """Execute all registered gates in order.

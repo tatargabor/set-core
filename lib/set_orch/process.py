@@ -6,12 +6,15 @@ both process existence AND command line identity, preventing PID recycling bugs.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import signal
 import sys
 import time
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 try:
     import psutil
@@ -115,13 +118,11 @@ def check_pid(pid: int, expected_cmdline_pattern: str) -> CheckResult:
 
     # If we can't read cmdline at all, conservatively report no match
     if cmdline is None:
-        print(
-            f"Warning: cannot read cmdline for PID {pid}, assuming no match",
-            file=sys.stderr,
-        )
+        logger.warning("Cannot read cmdline for PID %d, assuming no match", pid)
         return CheckResult(alive=True, match=False)
 
     matched = _matches_pattern(cmdline, expected_cmdline_pattern)
+    logger.debug("PID %d status: alive=%s, match=%s (pattern=%r)", pid, True, matched, expected_cmdline_pattern)
     return CheckResult(alive=True, match=matched)
 
 
@@ -143,9 +144,11 @@ def safe_kill(
         return KillResult(outcome="not_matched", signal="none")
 
     # Send SIGTERM
+    logger.info("Killing PID %d (signal=SIGTERM, pattern=%r)", pid, expected_cmdline_pattern)
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
+        logger.info("PID %d already dead before SIGTERM", pid)
         return KillResult(outcome="already_dead", signal="none")
     except PermissionError:
         return KillResult(outcome="not_matched", signal="none")
@@ -166,11 +169,13 @@ def safe_kill(
         return KillResult(outcome="terminated", signal="SIGTERM")
 
     # Send SIGKILL
+    logger.warning("PID %d did not terminate after SIGTERM, sending SIGKILL", pid)
     try:
         os.kill(pid, signal.SIGKILL)
     except ProcessLookupError:
         return KillResult(outcome="terminated", signal="SIGTERM")
 
+    logger.info("PID %d killed with SIGKILL", pid)
     return KillResult(outcome="killed", signal="SIGKILL")
 
 
@@ -183,6 +188,7 @@ def find_orphans(
     on Linux if psutil is unavailable.
     """
     orphans: list[OrphanInfo] = []
+    logger.debug("Scanning for orphan processes (pattern=%r, known_pids=%s)", expected_pattern, known_pids)
 
     if HAS_PSUTIL:
         for proc in psutil.process_iter(["pid", "cmdline"]):
@@ -200,6 +206,8 @@ def find_orphans(
                     ))
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+        if orphans:
+            logger.warning("Found %d orphan processes: %s", len(orphans), [(o.pid, o.change) for o in orphans])
         return orphans
 
     # Fallback: scan /proc on Linux
@@ -223,8 +231,5 @@ def find_orphans(
         return orphans
 
     # No psutil, not Linux — can't scan
-    print(
-        "Warning: psutil not available and not on Linux, cannot scan for orphans",
-        file=sys.stderr,
-    )
+    logger.warning("psutil not available and not on Linux, cannot scan for orphans")
     return orphans

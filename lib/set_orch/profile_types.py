@@ -8,10 +8,13 @@ must implement, plus the data structures they use.
 Migrated from: set-project-base/set_project_base/base.py
 """
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -177,7 +180,9 @@ class ProjectType(ABC):
         d = Path(project_path)
         for lockfile, pm in self.lockfile_pm_map():
             if (d / lockfile).is_file():
+                logger.debug("Profile.detect_package_manager(%s) = %s (via %s)", project_path, pm, lockfile)
                 return pm
+        logger.debug("Profile.detect_package_manager(%s) = None", project_path)
         return None
 
     def detect_test_command(self, project_path: str) -> Optional[str]:
@@ -233,9 +238,11 @@ class ProjectType(ABC):
         return None
 
     def bootstrap_worktree(self, project_path: str, wt_path: str) -> bool:
+        logger.debug("Profile.bootstrap_worktree(%s, %s) = True (base no-op)", project_path, wt_path)
         return True
 
     def post_merge_install(self, project_path: str) -> bool:
+        logger.debug("Profile.post_merge_install(%s) = True (base no-op)", project_path)
         return True
 
     def ignore_patterns(self) -> list:
@@ -274,6 +281,7 @@ class ProjectType(ABC):
         Override in subclass to register gates like e2e, lint, etc.
         Returns list of GateDefinition instances.
         """
+        logger.debug("Profile.register_gates() = [] (base no-op)")
         return []
 
     def gate_overrides(self, change_type: str) -> dict:

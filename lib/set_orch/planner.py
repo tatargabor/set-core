@@ -2103,6 +2103,7 @@ def _parse_plan_response(response_text: str) -> dict | None:
     try:
         data = json.loads(text)
         if "changes" in data:
+            logger.debug("Plan response parsed: direct JSON (%d changes)", len(data.get("changes", [])))
             return data
     except json.JSONDecodeError:
         pass
@@ -2113,6 +2114,7 @@ def _parse_plan_response(response_text: str) -> dict | None:
         try:
             data = json.loads(match.group(1))
             if "changes" in data:
+                logger.debug("Plan response parsed: markdown fence (%d changes)", len(data.get("changes", [])))
                 return data
         except json.JSONDecodeError:
             pass
@@ -2124,8 +2126,10 @@ def _parse_plan_response(response_text: str) -> dict | None:
         try:
             data = json.loads(text[first:last + 1])
             if "changes" in data:
+                logger.debug("Plan response parsed: brace scan (%d changes)", len(data.get("changes", [])))
                 return data
         except json.JSONDecodeError:
             pass
 
+    logger.warning("Plan response parse failed: no valid JSON with 'changes' key (response length=%d)", len(text))
     return None

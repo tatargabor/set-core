@@ -342,6 +342,7 @@ def locked_state(path: str) -> Generator[OrchestratorState, None, None]:
     lock_fd = open(lock_file, "w")
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        logger.debug("State lock acquired: %s", path)
         state = load_state(path)
         yield state
         # Save without re-acquiring lock (we already hold it)
@@ -363,6 +364,7 @@ def locked_state(path: str) -> Generator[OrchestratorState, None, None]:
             raise
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        logger.debug("State lock released: %s", path)
         lock_fd.close()
 
 
@@ -411,6 +413,7 @@ def init_state(plan_file: str, output_path: str) -> None:
     )
 
     save_state(state, output_path)
+    logger.info("State initialized: %d changes from %s → %s", len(changes), plan_file, output_path)
 
 
 def query_changes(
@@ -448,10 +451,12 @@ def update_state_field(
     Migrated from: state.sh update_state_field() L73-77
     """
     with locked_state(path) as state:
+        old_value = getattr(state, field_name, state.extras.get(field_name))
         if field_name in {f.name for f in fields(OrchestratorState) if f.name != "extras"}:
             setattr(state, field_name, value)
         else:
             state.extras[field_name] = value
+        logger.info("State update: %s = %r (was: %r)", field_name, value, old_value)
 
 
 def update_change_field(
@@ -476,6 +481,7 @@ def update_change_field(
 
         old_status = change.status if field_name == "status" else None
         old_tokens = change.tokens_used if field_name == "tokens_used" else None
+        old_value = getattr(change, field_name, change.extras.get(field_name))
 
         # Set the field
         known = {f.name for f in fields(Change) if f.name != "extras"}
@@ -483,6 +489,8 @@ def update_change_field(
             setattr(change, field_name, value)
         else:
             change.extras[field_name] = value
+
+        logger.info("State update: %s.%s = %r (was: %r)", change_name, field_name, value, old_value)
 
         # Emit STATE_CHANGE event on status transitions
         if field_name == "status" and event_bus and old_status is not None:
@@ -625,8 +633,11 @@ def cascade_failed_deps(
 
         change.status = "failed"
         change.extras["failure_reason"] = f"dependency {failed_dep} failed"
+        logger.warning("Cascade failed: %s → failed (dependency %s failed)", change.name, failed_dep)
         cascaded += 1
 
+    if cascaded:
+        logger.info("Cascade failed deps: %d changes cascaded to failed", cascaded)
     return cascaded
 
 
@@ -771,11 +782,13 @@ def advance_phase(
     next_phases = [p for p in phase_nums if p > current]
 
     if not next_phases:
+        logger.info("Phase advance: no more phases after %d", current)
         return False
 
     next_phase = next_phases[0]
     state.extras["current_phase"] = next_phase
     phases[str(next_phase)]["status"] = "running"
+    logger.info("Phase advance: %d → %d", current, next_phase)
 
     if event_bus:
         event_bus.emit(
@@ -873,6 +886,7 @@ def reconstruct_state_from_events(
     # 3. Running changes become stalled (no live process)
     for change in state.changes:
         if change.status in ("running", "stalled", "stuck"):
+            logger.warning("Crash recovery: reset %s from %s to stalled", change.name, change.status)
             change.status = "stalled"
 
     # 4. Derive overall orchestration status

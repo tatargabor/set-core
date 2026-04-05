@@ -13,6 +13,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/set-paths" 2>/dev/null || true
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null || true
 
 usage() {
     cat <<EOF
@@ -82,6 +83,8 @@ fi
 threshold_epoch=$(date -d "-${THRESHOLD_DAYS} days" +%s 2>/dev/null || date -v-${THRESHOLD_DAYS}d +%s 2>/dev/null)
 now=$(date +%s)
 removed=0
+
+info "Cleanup started: threshold=${THRESHOLD_DAYS}d, state=${STATE_FILE}, dry_run=${DRY_RUN}" 2>/dev/null || true
 
 # Iterate merged/done changes
 while IFS='|' read -r name status wt_path merged_at; do

@@ -6,12 +6,15 @@ from __future__ import annotations
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -40,9 +43,11 @@ def find_tasks_file(wt_path: str) -> Optional[str]:
 
     Returns path to tasks.md or None if not found.
     """
+    logger.debug("Searching for tasks.md in %s", wt_path)
     # Prefer worktree root
     root_tasks = os.path.join(wt_path, "tasks.md")
     if os.path.isfile(root_tasks):
+        logger.info("Found tasks.md at worktree root: %s", root_tasks)
         return root_tasks
 
     # Fallback: search in subdirectories (maxdepth 4), excluding archive/node_modules
@@ -57,8 +62,11 @@ def find_tasks_file(wt_path: str) -> Optional[str]:
             d for d in dirs if d not in ("archive", "node_modules", ".git", ".claude")
         ]
         if "tasks.md" in files:
-            return os.path.join(root, "tasks.md")
+            found = os.path.join(root, "tasks.md")
+            logger.info("Found tasks.md via walk: %s", found)
+            return found
 
+    logger.warning("No tasks.md found in %s (searched to depth 4)", wt_path)
     return None
 
 
@@ -95,13 +103,15 @@ def check_completion(wt_path: str, tasks_file: Optional[str] = None) -> TaskStat
     total = done + pending + manual
     percent = (done / total * 100.0) if total > 0 else 0.0
 
-    return TaskStatus(
+    status = TaskStatus(
         total=total,
         done=done,
         pending=pending,
         manual=manual,
         percent=round(percent, 1),
     )
+    logger.info("Task progress: %d/%d tasks complete (%.1f%%) in %s", done, total, percent, tasks_file)
+    return status
 
 
 def find_manual_tasks(wt_path: str, tasks_file: Optional[str] = None) -> list:
@@ -160,22 +170,27 @@ def is_done(
     target_change: str = "",
 ) -> bool:
     """Comprehensive done check (tasks complete OR archived OR marker)."""
+    logger.debug("is_done check: wt=%s, criteria=%s, change=%s", wt_path, done_criteria, target_change)
     # Uncommitted work pre-check: all criteria except "manual"
     if done_criteria != "manual":
         from .git_utils import git_has_uncommitted_work
 
         has_uncommitted, summary = git_has_uncommitted_work(wt_path)
         if has_uncommitted:
+            logger.debug("is_done: False — uncommitted work: %s", summary)
             return False
 
     if done_criteria == "tasks":
         status = check_completion(wt_path)
-        return status.pending == 0 and status.total > 0
+        result = status.pending == 0 and status.total > 0
+        logger.info("is_done(tasks): %s — %d/%d complete", result, status.done, status.total)
+        return result
 
     elif done_criteria == "openspec":
         from .loop_prompt import detect_next_change_action
 
         action = detect_next_change_action(wt_path, target_change)
+        logger.info("is_done(openspec): action=%s, done=%s", action, action == "done")
         return action == "done"
 
     elif done_criteria == "manual":

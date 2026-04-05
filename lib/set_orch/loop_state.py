@@ -6,6 +6,7 @@ from __future__ import annotations
 """
 
 import json
+import logging
 import os
 import time
 import fcntl
@@ -14,6 +15,8 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -101,6 +104,7 @@ def init_loop_state(
 
     state_file = get_loop_state_file(wt_path)
     _write_state(state_file, _state_to_dict(state))
+    logger.info("Loop state initialized: wt=%s, max_iter=%d, done_criteria=%s", worktree_name, max_iter, done_criteria)
     return state
 
 
@@ -125,20 +129,24 @@ def update_loop_state(wt_path: str, field: str, value: Any) -> bool:
     """Update a single field in loop state (atomic with flock)."""
     state_file = get_loop_state_file(wt_path)
     if not os.path.exists(state_file):
+        logger.warning("Loop state file not found: %s", state_file)
         return False
     try:
         with open(state_file, "r+") as f:
             fcntl.flock(f, fcntl.LOCK_EX)
             try:
                 data = json.load(f)
+                old_value = data.get(field)
                 data[field] = value
                 f.seek(0)
                 f.truncate()
                 json.dump(data, f, indent=2)
             finally:
                 fcntl.flock(f, fcntl.LOCK_UN)
+        logger.debug("Loop state update: %s = %r (was: %r)", field, value, old_value)
         return True
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to update loop state field %s: %s", field, e)
         return False
 
 
@@ -202,8 +210,11 @@ def add_iteration(
                 json.dump(data, f, indent=2)
             finally:
                 fcntl.flock(f, fcntl.LOCK_UN)
+        logger.info("Iteration %d recorded: tokens=%d, done=%s, no_op=%s, ff_exhausted=%s",
+                     iteration, tokens_used, done_check, no_op, ff_exhausted)
         return True
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to add iteration %d: %s", iteration, e)
         return False
 
 

@@ -3,12 +3,15 @@ from __future__ import annotations
 """Structured findings storage in shared sentinel directory."""
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
 from set_orch.sentinel.set_dir import ensure_set_dir
+
+logger = logging.getLogger(__name__)
 
 FINDINGS_FILE = "findings.json"
 
@@ -88,6 +91,7 @@ class SentinelFindings:
         }
         data["findings"].append(finding)
         self._write(data)
+        logger.info("Finding recorded: %s %s — %s (change=%s)", finding_id, severity, summary, change)
 
         # Cross-module: emit finding event
         if self._event_logger:
@@ -107,7 +111,9 @@ class SentinelFindings:
             if f["id"] == finding_id:
                 f.update(kwargs)
                 self._write(data)
+                logger.info("Finding updated: %s — %s", finding_id, kwargs)
                 return f
+        logger.warning("Finding not found for update: %s", finding_id)
         return None
 
     def list(self, status: Optional[str] = None) -> list[dict]:
@@ -134,6 +140,7 @@ class SentinelFindings:
         }
         data["assessments"].append(assessment)
         self._write(data)
+        logger.info("Assessment recorded: scope=%s — %s", scope, summary)
 
         if self._event_logger:
             self._event_logger.assessment(scope=scope, summary=summary)

@@ -189,9 +189,12 @@ def watchdog_check(
         should_escalate = True
 
     if should_escalate:
+        old_level = escalation_level
         escalation_level += 1
         _update_watchdog_state(wd, now, escalation_level, consecutive_same)
         action = _escalation_action(escalation_level)
+        logger.info("Watchdog escalation: %s level %d → %d, action=%s",
+                     change_name, old_level, escalation_level, action)
         return WatchdogResult(
             action=action,
             reason=f"escalation level {escalation_level}",
@@ -339,8 +342,10 @@ def check_progress(
     # Determine pattern
     all_no_op = all(i.get("no_op") is True for i in tail)
     if all_no_op:
+        logger.warning("Watchdog progress: %s spinning (3 consecutive no-op iterations)", change_name)
         return "spinning"
     else:
+        logger.warning("Watchdog progress: %s stuck (3 iterations with no commits)", change_name)
         return "stuck"
 
 
@@ -417,7 +422,10 @@ def _compute_action_hash(change: dict[str, Any], state_path: str) -> str:
 
     tokens = str(change.get("tokens_used", 0))
     raw = f"{mtime}:{tokens}:{ralph_status}"
-    return hashlib.md5(raw.encode()).hexdigest()
+    h = hashlib.md5(raw.encode()).hexdigest()
+    logger.debug("Watchdog hash: %s = %s (mtime=%s, tokens=%s, ralph=%s)",
+                  change.get("name", "?"), h[:8], mtime, tokens, ralph_status)
+    return h
 
 
 def _timeout_for_status(
