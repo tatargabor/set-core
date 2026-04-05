@@ -161,6 +161,14 @@ set-harvest --dry-run                # preview without updating state
 
 The harvest tool scans ISS fix commits chronologically, classifies them as framework-relevant or project-specific, and suggests where to adopt them (planning rules, templates, or core code). Each fix is reviewed interactively — no auto-adoption.
 
+**Custom projects:** The harvest command runs from the **set-core repo**, not the consumer project. After an orchestration run completes on any registered project, switch to the set-core directory and run `set-harvest`. This is a manual step — the system cannot auto-adopt fixes without human review.
+
+```bash
+cd /path/to/set-core          # switch to set-core repo
+set-harvest                    # review all registered projects
+set-harvest --project my-app   # review single project
+```
+
 ---
 
 ## Where We're Heading
