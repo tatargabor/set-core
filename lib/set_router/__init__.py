@@ -149,18 +149,57 @@ class AccountPool:
         return f"Switched to '{name}'. New CC instances will use this account."
 
     def _save_current_credentials(self):
-        """Read ~/.claude/.credentials.json and update the active account's stored credentials."""
+        """Read ~/.claude/.credentials.json and update the active account's stored credentials.
+
+        Verifies the live token belongs to the active account before saving,
+        by comparing token suffixes. If they don't match, warns and skips.
+        """
         active = self._data.get("active")
         if not active or not CC_CREDENTIALS_FILE.exists():
             return
         try:
             with open(CC_CREDENTIALS_FILE) as f:
                 current_creds = json.load(f)
-            # Only update if the file has valid OAuth data
-            if not current_creds.get("claudeAiOauth", {}).get("accessToken"):
+            live_token = current_creds.get("claudeAiOauth", {}).get("accessToken", "")
+            if not live_token:
                 return
-            for i, acct in enumerate(self._data["accounts"]):
-                if acct["name"] == active:
+
+            acct = self.get(active)
+            if not acct:
+                return
+
+            stored_token = acct.get("credentials", {}).get("claudeAiOauth", {}).get("accessToken", "")
+
+            # Compare token suffixes (last 20 chars) — CC may refresh the token
+            # but the suffix pattern identifies the account
+            if stored_token and live_token[-20:] != stored_token[-20:]:
+                # Token was replaced by a different account (CC re-logged in)
+                # Find which account it actually belongs to
+                owner = None
+                for a in self.accounts:
+                    a_token = a.get("credentials", {}).get("claudeAiOauth", {}).get("accessToken", "")
+                    if a_token and live_token[-20:] == a_token[-20:]:
+                        owner = a["name"]
+                        break
+
+                if owner:
+                    logger.warning(
+                        "Live credentials belong to '%s', not active account '%s'. "
+                        "Saving to '%s' instead.", owner, active, owner)
+                    for i, a in enumerate(self._data["accounts"]):
+                        if a["name"] == owner:
+                            self._data["accounts"][i]["credentials"] = current_creds
+                            break
+                else:
+                    logger.warning(
+                        "Live credentials don't match any stored account (token ...%s). "
+                        "Skipping save — credentials may belong to a new account. "
+                        "Run `set-router add <name>` to register it.", live_token[-15:])
+                return
+
+            # Token matches active account — save (may have refreshed expiry)
+            for i, a in enumerate(self._data["accounts"]):
+                if a["name"] == active:
                     self._data["accounts"][i]["credentials"] = current_creds
                     logger.info("Saved refreshed credentials for '%s'", active)
                     break
