@@ -1335,11 +1335,26 @@ def cmd_build(args):
 
 def main():
     import logging
+
+    # Determine log file: prefer project-local, fall back to stderr
+    _log_file = None
+    for _arg_i, _arg in enumerate(sys.argv):
+        if _arg == "--state" and _arg_i + 1 < len(sys.argv):
+            _state_dir = os.path.dirname(sys.argv[_arg_i + 1])
+            _log_file = os.path.join(_state_dir, "set", "orchestration", "python.log")
+            os.makedirs(os.path.dirname(_log_file), exist_ok=True)
+            break
+
+    _handlers: list[logging.Handler] = []
+    if _log_file:
+        _handlers.append(logging.FileHandler(_log_file, encoding="utf-8"))
+    _handlers.append(logging.StreamHandler(sys.stderr))
+
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        stream=sys.stderr,
+        handlers=_handlers,
     )
 
     parser = argparse.ArgumentParser(
