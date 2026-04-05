@@ -75,6 +75,7 @@ class Directives:
     e2e_command: str = ""
     e2e_timeout: int = 120
     e2e_mode: str = "per_change"
+    e2e_coverage_threshold: float = 0.8
     e2e_port_base: int = 3100
     token_hard_limit: int = DEFAULT_TOKEN_HARD_LIMIT
     events_log: bool = True
@@ -134,6 +135,7 @@ def parse_directives(raw: dict) -> Directives:
     d.e2e_command = _str(raw, "e2e_command", d.e2e_command)
     d.e2e_timeout = _int(raw, "e2e_timeout", d.e2e_timeout)
     d.e2e_mode = _str(raw, "e2e_mode", d.e2e_mode)
+    d.e2e_coverage_threshold = float(raw.get("e2e_coverage_threshold", d.e2e_coverage_threshold))
     d.e2e_port_base = _int(raw, "e2e_port_base", d.e2e_port_base)
     d.token_hard_limit = _int(raw, "token_hard_limit", d.token_hard_limit)
     d.events_log = _bool(raw, "events_log", d.events_log)
@@ -1424,7 +1426,7 @@ def _recover_integration_e2e_failed(
 
     state = load_state(state_file)
     for change in state.changes:
-        if change.status != "integration-e2e-failed":
+        if change.status not in ("integration-e2e-failed", "integration-coverage-failed"):
             continue
 
         wt_path = change.worktree_path or ""
@@ -1940,7 +1942,7 @@ def _auto_replan_cycle(
             # Full re-decompose
             logger.info("Replan: full re-decompose (spec changed)")
             saved_brief = _phase1_planning_brief(domain_data, model=model)
-            saved_domain_plans = _phase2_parallel_decompose(domain_data, saved_brief, model=model)
+            saved_domain_plans = _phase2_parallel_decompose(domain_data, saved_brief, model=model, digest_dir=digest_dir)
         elif replan_trigger == "e2e_failure":
             # Phase 3 only — re-merge with failure context
             logger.info("Replan: Phase 3 only (E2E failure)")
@@ -1951,8 +1953,10 @@ def _auto_replan_cycle(
             for dname in failed_domains:
                 domain = next((dom for dom in domain_data["domains"] if dom["name"] == dname), None)
                 if domain:
+                    _dreq_ids = [r.get("id", "") for r in domain.get("requirements", [])]
                     saved_domain_plans[dname] = _decompose_single_domain(
                         domain, json.dumps(saved_brief), domain_data["conventions"], model=model,
+                        test_plan_context=_build_test_plan_context(digest_dir, _dreq_ids),
                     )
         else:
             # "batch_complete" — check coverage before full re-decompose
@@ -1967,8 +1971,10 @@ def _auto_replan_cycle(
             for dname in failed_domains:
                 domain = next((dom for dom in domain_data["domains"] if dom["name"] == dname), None)
                 if domain:
+                    _dreq_ids2 = [r.get("id", "") for r in domain.get("requirements", [])]
                     saved_domain_plans[dname] = _decompose_single_domain(
                         domain, json.dumps(saved_brief), domain_data["conventions"], model=model,
+                        test_plan_context=_build_test_plan_context(digest_dir, _dreq_ids2),
                     )
 
         _save_domain_plans(saved_brief, saved_domain_plans)

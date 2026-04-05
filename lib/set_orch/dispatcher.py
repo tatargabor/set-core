@@ -1026,6 +1026,20 @@ def _build_input_content(
     """
     lines = []
 
+    # Post-process scope: if test plan entries exist, replace narrative E2E
+    # descriptions with a reference to Required Tests to prevent conflict
+    _test_plan_entries = None
+    if digest_dir and change_requirements:
+        _test_plan_entries = _load_test_plan(digest_dir, change_requirements)
+        if _test_plan_entries:
+            import re as _re
+            scope = _re.sub(
+                r'E2E:.*?(?=\n\n|\n[A-Z]|\Z)',
+                'E2E: See "Required Tests" section below — that is the authoritative and complete test list.',
+                scope,
+                flags=_re.DOTALL,
+            )
+
     lines.append("## Scope")
     lines.append(scope)
     if roadmap_item and roadmap_item != scope:
@@ -1109,25 +1123,35 @@ def _build_input_content(
         lines.append(f"\n{ctx.review_learnings_checklist}")
 
     # Required Tests section (from generated test-plan.json)
-    if digest_dir and change_requirements:
+    # Use pre-loaded entries from scope post-processing if available
+    test_plan_entries = _test_plan_entries
+    if test_plan_entries is None and digest_dir and change_requirements:
         test_plan_entries = _load_test_plan(digest_dir, change_requirements)
-        if test_plan_entries:
-            lines.append("\n## Required Tests")
+    if test_plan_entries:
+        _threshold_pct = 80  # default; configurable via e2e_coverage_threshold directive
+        lines.append(
+            f"\n## Required Tests (MANDATORY — coverage gate will block if incomplete)\n"
+            f"You MUST write tests for ALL scenarios below. This list takes priority "
+            f"over any narrative test descriptions.\n"
+            f"Name each test with the REQ-* ID prefix. "
+            f"Example: `test('REQ-HOME-001: Hero heading visible', ...)`\n"
+            "Tag SMOKE tests with: "
+            "`test('REQ-HOME-001: ...', { tag: '@smoke' }, async ({ page }) => { ... })`\n"
+            f"Minimum test count: {len(test_plan_entries)} "
+            f"(coverage gate blocks below {_threshold_pct}%)."
+        )
+        for entry in test_plan_entries:
+            cats = ", ".join(entry.categories)
+            entry_type = getattr(entry, "type", "functional") or "functional"
+            tag = "**[SMOKE]**" if entry_type == "smoke" else "**[FUNCTIONAL]**"
             lines.append(
-                "Name each test with the REQ-* ID prefix. "
-                "Example: `test('REQ-HOME-001: Hero heading visible', ...)`\n"
-                "Tag SMOKE tests with: "
-                "`test('REQ-HOME-001: Hero heading visible', { tag: '@smoke' }, "
-                "async ({ page }) => { ... })`"
+                f"- {entry.req_id}: {entry.scenario_name} [{entry.risk}] "
+                f"— {entry.min_tests} test(s) ({cats}) {tag}"
             )
-            for entry in test_plan_entries:
-                cats = ", ".join(entry.categories)
-                entry_type = getattr(entry, "type", "functional") or "functional"
-                tag = "**[SMOKE]**" if entry_type == "smoke" else "**[FUNCTIONAL]**"
-                lines.append(
-                    f"- {entry.req_id}: {entry.scenario_name} [{entry.risk}] "
-                    f"— {entry.min_tests} test(s) ({cats}) {tag}"
-                )
+        lines.append(
+            f"\nTotal: {len(test_plan_entries)} required test scenarios. "
+            f"The integration gate verifies coverage before allowing merge."
+        )
 
     if retry_ctx:
         lines.append(f"\n## Retry Context\n{retry_ctx}")

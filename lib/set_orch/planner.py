@@ -496,6 +496,28 @@ def validate_plan(
             f"({ov.similarity}% keyword similarity)"
         )
 
+    # Test load validation: warn if a change has too many required tests
+    if digest_dir:
+        _plan_file = os.path.join(digest_dir, "test-plan.json")
+        if os.path.isfile(_plan_file):
+            try:
+                from .test_coverage import TestPlan
+                _tp = TestPlan.from_dict(json.loads(Path(_plan_file).read_text()))
+                for c in changes:
+                    _reqs = c.get("requirements", [])
+                    if not _reqs:
+                        continue
+                    _req_set = set(_reqs)
+                    _entries = [e for e in _tp.entries if e.req_id in _req_set]
+                    _total = sum(e.min_tests for e in _entries)
+                    if _total > 40:
+                        result.warnings.append(
+                            f"Change '{c.get('name', '?')}' has {_total} required tests "
+                            f"({len(_reqs)} REQs) — consider splitting into smaller changes"
+                        )
+            except Exception:
+                pass
+
     # Spec coverage annotation report (after successful validation)
     if not result.errors:
         try:
@@ -1475,6 +1497,40 @@ def _phase1_planning_brief(
     return brief
 
 
+def _build_test_plan_context(digest_dir: str, requirement_ids: list[str]) -> str:
+    """Build test plan context from test-plan.json for planner prompt injection.
+
+    Returns formatted markdown with test expectations per REQ, or empty string
+    if no test plan or no matching entries.
+    """
+    if not digest_dir:
+        return ""
+    plan_path = os.path.join(digest_dir, "test-plan.json")
+    if not os.path.isfile(plan_path):
+        return ""
+    try:
+        from .test_coverage import TestPlan
+        plan = TestPlan.from_dict(json.loads(Path(plan_path).read_text()))
+        req_set = set(requirement_ids)
+        entries = [e for e in plan.entries if e.req_id in req_set]
+        if not entries:
+            return ""
+
+        lines = [
+            f"\n## E2E Test Expectations ({len(entries)} scenarios)",
+            "The following test scenarios are required for the requirements in this domain.",
+            "Each change MUST include E2E tasks covering its assigned scenarios.",
+            "MEDIUM risk = happy + negative test. HIGH risk = happy + 2 negative tests.",
+            "Do NOT collapse these into a narrative summary — list each scenario as a separate task.",
+        ]
+        for e in entries:
+            cats = ", ".join(e.categories)
+            lines.append(f"- {e.req_id}: {e.scenario_name} [{e.risk}] — {e.min_tests} test(s) ({cats})")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _decompose_single_domain(
     domain: dict,
     planning_brief_json: str,
@@ -1482,6 +1538,7 @@ def _decompose_single_domain(
     *,
     test_infra_context: str = "",
     design_context: str = "",
+    test_plan_context: str = "",
     model: str = "opus",
     max_parallel: int = 3,
 ) -> dict:
@@ -1496,7 +1553,7 @@ def _decompose_single_domain(
         planning_brief=planning_brief_json,
         conventions=conventions,
         test_infra_context=test_infra_context,
-        design_context=design_context,
+        design_context=design_context + ("\n" + test_plan_context if test_plan_context else ""),
         max_parallel=max_parallel,
     )
 
@@ -1520,6 +1577,7 @@ def _phase2_parallel_decompose(
     *,
     test_infra_context: str = "",
     design_context: str = "",
+    digest_dir: str = "",
     model: str = "opus",
     max_parallel: int = 3,
 ) -> dict[str, dict]:
@@ -1545,6 +1603,10 @@ def _phase2_parallel_decompose(
                 conventions,
                 test_infra_context=test_infra_context,
                 design_context=design_context,
+                test_plan_context=_build_test_plan_context(
+                    digest_dir,
+                    [r.get("id", "") for r in domain.get("requirements", [])],
+                ) if digest_dir else "",
                 model=model,
                 max_parallel=max_parallel,
             ): domain["name"]
@@ -1671,6 +1733,7 @@ def _try_domain_parallel_decompose(
         planning_brief,
         test_infra_context=test_infra_context,
         design_context=design_context,
+        digest_dir=digest_dir,
         model=model,
         max_parallel=max_parallel,
     )

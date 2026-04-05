@@ -1197,6 +1197,120 @@ def _run_integration_gates(
                     )
                     update_change_field(state_file, change_name, "integration_gate_fail", "e2e-warn")
 
+    # Coverage gate: validate test coverage against test-plan.json (feature changes only)
+    _e2e_passed = locals().get('e2e_pass', False)
+    if _e2e_passed:
+        _change_type = getattr(change, 'change_type', '') or 'feature'
+        _change_reqs = getattr(change, 'requirements', None) or []
+        _cov_threshold = 0.8
+        try:
+            with locked_state(state_file) as _st:
+                _cov_threshold = float(
+                    _st.extras.get("directives", {}).get("e2e_coverage_threshold", 0.8)
+                )
+        except Exception:
+            pass
+
+        if (
+            _change_type == "feature"
+            and _change_reqs
+            and _cov_threshold > 0.0
+        ):
+            try:
+                from .paths import SetRuntime
+                _digest_dir = SetRuntime().digest_dir
+            except Exception:
+                _digest_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration", "digest")
+            _plan_path = os.path.join(_digest_dir, "test-plan.json")
+
+            if os.path.isfile(_plan_path):
+                try:
+                    from .test_coverage import (
+                        TestPlan, build_test_coverage, validate_coverage,
+                        parse_test_plan,
+                    )
+                    _plan = TestPlan.from_dict(json.loads(Path(_plan_path).read_text()))
+                    _req_set = set(_change_reqs)
+                    _plan_entries = [e for e in _plan.entries if e.req_id in _req_set]
+
+                    if _plan_entries:
+                        # Parse test results from own-phase output
+                        _e2e_out = ((result.stdout or "") + (result.stderr or ""))
+                        _test_results = {}
+                        if profile and hasattr(profile, "parse_test_results"):
+                            _test_results = profile.parse_test_results(_e2e_out)
+
+                        _test_cases, _non_testable = parse_test_plan(_plan_path)
+                        _coverage = build_test_coverage(
+                            test_cases=_test_cases,
+                            non_testable=_non_testable,
+                            test_results=_test_results,
+                            digest_req_ids=list(_req_set),
+                            plan_file=_plan_path,
+                        )
+
+                        _cov_pct = _coverage.coverage_pct / 100.0 if _coverage.coverage_pct > 1 else _coverage.coverage_pct
+                        update_change_field(state_file, change_name, "coverage_pct", _coverage.coverage_pct)
+
+                        if _cov_pct >= _cov_threshold:
+                            logger.info(
+                                "Integration gate: coverage PASSED for %s (%.0f%% >= %.0f%%)",
+                                change_name, _cov_pct * 100, _cov_threshold * 100,
+                            )
+                            update_change_field(state_file, change_name, "coverage_check_result", "pass")
+                        else:
+                            # Coverage insufficient — redispatch
+                            _missing = [
+                                e for e in _plan_entries
+                                if e.req_id not in set(_coverage.covered_reqs)
+                            ]
+                            _missing_lines = "\n".join(
+                                f"- {e.req_id}: {e.scenario_name} [{e.risk}] — {e.min_tests} test(s)"
+                                for e in _missing[:20]
+                            )
+                            _cov_retry = change.extras.get("integration_e2e_retry_count", 0)
+                            if _cov_retry < e2e_retry_limit:
+                                logger.warning(
+                                    "Integration gate: coverage FAILED for %s (%.0f%% < %.0f%%) — "
+                                    "redispatching (attempt %d/%d)",
+                                    change_name, _cov_pct * 100, _cov_threshold * 100,
+                                    _cov_retry + 1, e2e_retry_limit,
+                                )
+                                _cov_ctx = (
+                                    f"E2E tests pass but coverage is insufficient "
+                                    f"({_cov_pct*100:.0f}% vs {_cov_threshold*100:.0f}% required).\n\n"
+                                    f"Missing test scenarios:\n{_missing_lines}\n\n"
+                                )
+                                if own_specs:
+                                    _cov_ctx += f"Your spec files: {', '.join(own_specs)}\n"
+                                _cov_ctx += "Write tests for the missing scenarios and commit."
+                                update_change_field(state_file, change_name, "integration_e2e_retry_count", _cov_retry + 1)
+                                update_change_field(state_file, change_name, "retry_context", _cov_ctx)
+                                update_change_field(state_file, change_name, "status", "integration-coverage-failed")
+                                update_change_field(state_file, change_name, "integration_gate_fail", "coverage-redispatch")
+                                update_change_field(state_file, change_name, "coverage_check_result", "fail")
+                                if event_bus:
+                                    event_bus.emit("VERIFY_GATE", change=change_name, data={
+                                        "gate": "coverage", "result": "redispatch",
+                                        "coverage_pct": _cov_pct * 100, "threshold": _cov_threshold * 100,
+                                        "retry": _cov_retry + 1})
+                                return False
+                            else:
+                                logger.error(
+                                    "Integration gate: coverage FAILED for %s — retries exhausted",
+                                    change_name,
+                                )
+                                update_change_field(state_file, change_name, "coverage_check_result", "fail")
+                except Exception:
+                    logger.debug("Coverage gate check failed (non-fatal)", exc_info=True)
+            else:
+                logger.debug("Coverage gate: no test-plan.json found, skipping")
+        else:
+            if _change_type != "feature":
+                logger.debug("Coverage gate: skipping for %s (type=%s)", change_name, _change_type)
+            elif _cov_threshold == 0.0:
+                logger.debug("Coverage gate: disabled (threshold=0.0)")
+
     # Guard: warn if no gates actually executed for non-infrastructure changes
     if gates_executed == 0:
         change_type = getattr(change, 'change_type', '') or 'feature'
