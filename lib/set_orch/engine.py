@@ -456,12 +456,41 @@ def _cleanup_orphans(state_file: str) -> None:
             except Exception:
                 logger.warning("Worktree removal failed for %s", change_name, exc_info=True)
 
+    # ── Phase 3: Collect missing test artifacts ──
+    # If a worktree has test-results but state has no artifacts, collect them now.
+    # This catches cases where the merge pipeline didn't run (sentinel crash/timeout).
+    artifacts_collected = 0
+    try:
+        from .profile_loader import load_profile as _lp_cleanup
+        _cleanup_profile = _lp_cleanup()
+        state = load_state(state_file)
+        for change in state.changes:
+            wt = change.worktree_path
+            if not wt or not os.path.isdir(wt):
+                continue
+            if change.extras.get("test_artifacts"):
+                continue  # already collected
+            artifacts = _cleanup_profile.collect_test_artifacts(wt)
+            if artifacts:
+                images = [a for a in artifacts if a.get("type") == "image"]
+                with locked_state(state_file) as _ast2:
+                    _ch2 = next((c for c in _ast2.changes if c.name == change.name), None)
+                    if _ch2:
+                        _ch2.extras["test_artifacts"] = artifacts
+                        _ch2.extras["e2e_screenshot_count"] = len(images)
+                        if images:
+                            _ch2.extras["e2e_screenshot_dir"] = os.path.dirname(os.path.dirname(images[0]["path"]))
+                artifacts_collected += 1
+                logger.info("Collected %d test artifacts for %s (missed by merger)", len(artifacts), change.name)
+    except Exception:
+        logger.debug("Artifact collection in cleanup failed (non-critical)", exc_info=True)
+
     # Summary
-    total = pids_cleared + steps_fixed + worktrees_removed
+    total = pids_cleared + steps_fixed + worktrees_removed + artifacts_collected
     if total > 0:
         logger.info(
-            "Orphan cleanup: %d worktrees removed, %d PIDs cleared, %d steps fixed",
-            worktrees_removed, pids_cleared, steps_fixed,
+            "Orphan cleanup: %d worktrees removed, %d PIDs cleared, %d steps fixed, %d artifacts collected",
+            worktrees_removed, pids_cleared, steps_fixed, artifacts_collected,
         )
     else:
         logger.debug("Orphan cleanup: nothing to clean")
