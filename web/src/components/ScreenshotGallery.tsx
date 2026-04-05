@@ -38,7 +38,11 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   const images = useMemo(() => artifacts.filter(a => a.type === 'image'), [artifacts])
   const nonImages = useMemo(() => artifacts.filter(a => a.type !== 'image'), [artifacts])
 
-  const serveUrl = (a: Artifact) => `/api/${project}/screenshots/${encodeURIComponent(a.path)}`
+  const serveUrl = (a: Artifact) => {
+    // Encode path components but preserve '/' separators for FastAPI {path:path}
+    const parts = a.path.split('/').map(p => encodeURIComponent(p))
+    return `/api/${project}/screenshots/${parts.join('/')}`
+  }
 
   // Keyboard navigation
   useEffect(() => {
