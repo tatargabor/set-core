@@ -13,6 +13,9 @@ Template file protection:
 Playwright E2E test planning (when e2e_command is configured):
 - The infrastructure/foundation change (first in dependency order) MUST set up Playwright alongside the test runner (Jest or Vitest):
   * Create playwright.config.ts with PW_PORT env var support, webServer auto-start, headless: true, and screenshot: 'on' in the use section (headless: true prevents browser windows opening on desktop machines; screenshot: 'on' ensures PNG capture instead of text-only error-context.md)
+  * Set `reuseExistingServer: false` in playwright.config.ts webServer — stale dev servers from previous gate runs cause flaky tests
+  * Set `workers: 2` (not unlimited) — unlimited workers overload Next.js dev server compilation, causing timeout failures
+  * Set Playwright `locale` matching the project's i18n default (e.g., `locale: 'hu-HU'` for Hungarian projects) — locale mismatch causes wrong redirects in i18n middleware
   * If using Vitest: add `exclude: ["**/node_modules/**", "**/tests/e2e/**"]` to vitest.config.ts AND use `"test": "vitest run"` (NOT `"test": "vitest"` — watch mode hangs in CI/gates)
   * If using Jest: add testPathIgnorePatterns: ["/node_modules/", "/tests/e2e/"] to jest.config (Jest crashes on Playwright .spec.ts imports in jsdom)
   * Add @playwright/test to devDependencies + run npx playwright install chromium
@@ -34,6 +37,15 @@ Playwright E2E test planning (when e2e_command is configured):
 - Do NOT defer all E2E tests to a consolidation change — this overloads a single agent. Each feature change owns its tests.
 - Do NOT just list "Functional test scenarios:" as descriptions — create actual test files.
 - E2E tests run pre-merge in the worktree via e2e_command against an auto-started dev server with isolated port and DB.
+- E2E test stability (REQUIRED patterns to prevent flaky tests):
+  * ALWAYS use `waitUntil: 'networkidle'` on `page.goto()` before interacting with forms — React hydration races cause native form GET submissions instead of Server Action POST calls
+  * Use `page.waitForLoadState('networkidle')` after navigation to pages with client components
+  * Set generous timeouts for `waitForURL` assertions (at least 10s) — Next.js dev server compiles routes on first visit, which can take 3-5s
+  * Test selectors MUST match actual component data-testid values — verify by reading the component source, not guessing
+- Build script MUST handle missing database:
+  * The `build` script in package.json MUST include `prisma generate && prisma db push --accept-data-loss &&` before `next build` — the build gate runs in fresh worktrees where no database tables exist yet
+  * Any page that queries the database at build time (sitemap.ts, static generation) MUST wrap DB queries in try/catch to handle missing tables gracefully
+  * Without this, the build gate enters an infinite retry loop: build fails → agent retries → build fails again (no code change fixes it because the schema just isn't pushed)
 - CRUD E2E test completeness (REQUIRED for feature changes with data mutations):
   * CREATE: fill form with valid data → submit → verify new item appears in list
   * READ: navigate to list → verify items render with correct data

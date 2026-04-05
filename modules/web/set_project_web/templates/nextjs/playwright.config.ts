@@ -8,7 +8,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 1 : 2,
   reporter: "html",
   use: {
     baseURL: `http://localhost:${port}`,
@@ -26,7 +26,7 @@ export default defineConfig({
   webServer: {
     command: `npx next dev -p ${port}`,
     port,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     env: {
       ...process.env,
       NEXTAUTH_SECRET:
