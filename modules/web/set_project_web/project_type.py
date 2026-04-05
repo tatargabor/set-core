@@ -337,19 +337,41 @@ class WebProjectType(CoreProfile):
         return ""
 
     def collect_test_artifacts(self, wt_path: str) -> list:
-        """Collect Playwright test artifacts (screenshots, traces)."""
-        import glob as _glob
+        """Collect Playwright test artifacts (screenshots, traces).
+
+        Enriches each artifact with metadata:
+        - result: "pass" or "fail" (from Playwright naming: test-finished vs test-failed)
+        - label: human-readable test name (cleaned from dir name)
+        - meta: HTML snippet with test details for dashboard display
+        """
         artifacts = []
         tr_dir = Path(wt_path) / "test-results"
         if not tr_dir.is_dir():
             return []
         # Screenshots
         for png in sorted(tr_dir.rglob("*.png")):
+            test_dir = png.parent.name
+            result = "fail" if "test-failed" in png.name else "pass"
+            label = self._clean_test_label(test_dir)
+            spec_file = test_dir.split("-")[0] if "-" in test_dir else ""
+
+            meta_parts = []
+            if result == "fail":
+                meta_parts.append('<span style="color:#ef4444">FAILED</span>')
+            else:
+                meta_parts.append('<span style="color:#22c55e">PASSED</span>')
+            if spec_file:
+                meta_parts.append(f'<span style="color:#6b7280">{spec_file}.spec.ts</span>')
+            meta = " &middot; ".join(meta_parts)
+
             artifacts.append({
                 "name": png.name,
                 "path": str(png),
                 "type": "image",
-                "test": png.parent.name,
+                "test": test_dir,
+                "result": result,
+                "label": label,
+                "meta": meta,
             })
         # Traces
         for trace in sorted(tr_dir.rglob("*.zip")):
@@ -360,6 +382,29 @@ class WebProjectType(CoreProfile):
                 "test": trace.parent.name,
             })
         return artifacts
+
+    @staticmethod
+    def _clean_test_label(test_dir_name: str) -> str:
+        """Convert Playwright test-results dir name to human-readable label.
+
+        'catalog-Catalog-11-3-click-4dadc--page-with-variant-selector-chromium'
+        → 'Catalog: page with variant selector'
+        """
+        import re
+        s = test_dir_name
+        # Remove -chromium suffix
+        s = re.sub(r"-chromium$", "", s)
+        # Remove leading spec file prefix (e.g., 'catalog-')
+        s = re.sub(r"^[a-z]+-", "", s, count=1)
+        # Remove hash fragments (5+ hex chars)
+        s = re.sub(r"-[0-9a-f]{5,}-", "-", s)
+        # Split on describe separator (double dash or numbered prefix)
+        s = re.sub(r"---", " — ", s)
+        s = re.sub(r"-(\d+)-(\d+)-", r" ", s)
+        # Replace remaining dashes with spaces
+        s = s.replace("-", " ").strip()
+        # Capitalize first letter
+        return s[0].upper() + s[1:] if s else s
 
     def cross_cutting_files(self) -> list:
         return [

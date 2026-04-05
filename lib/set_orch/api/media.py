@@ -78,7 +78,29 @@ def get_change_screenshots(project: str, name: str):
                     a for a in artifacts if a.get("type") == "image"
                 ]}
 
-            # Fallback: legacy screenshot dirs
+            # Fallback: live scan from worktree (if no cached artifacts)
+            wt_path = c.worktree_path
+            if wt_path and os.path.isdir(wt_path):
+                try:
+                    from ..profile_loader import load_profile
+                    profile = load_profile(str(project_path))
+                    artifacts = profile.collect_test_artifacts(wt_path)
+                    if artifacts:
+                        # Cache for next request
+                        from ..state import locked_state
+                        with locked_state(str(sp)) as _st:
+                            _ch = next((x for x in _st.changes if x.name == name), None)
+                            if _ch:
+                                _ch.extras["test_artifacts"] = artifacts
+                                images = [a for a in artifacts if a.get("type") == "image"]
+                                _ch.extras["e2e_screenshot_count"] = len(images)
+                        return {"artifacts": artifacts, "smoke": [], "e2e": [
+                            a for a in artifacts if a.get("type") == "image"
+                        ]}
+                except Exception:
+                    pass
+
+            # Final fallback: legacy screenshot dirs
             result: dict = {"artifacts": [], "smoke": [], "e2e": []}
             e2e_dir = getattr(c, "e2e_screenshot_dir", None) or c.extras.get("e2e_screenshot_dir")
             if e2e_dir:

@@ -5,6 +5,9 @@ interface Artifact {
   name: string
   type: string  // "image" | "trace" | "report" | "log"
   test?: string
+  result?: string  // "pass" | "fail" — from profile plugin
+  label?: string   // human-readable test name
+  meta?: string    // HTML snippet with extra details (populated by profile plugin)
 }
 
 interface Props {
@@ -18,7 +21,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   const [loading, setLoading] = useState(true)
   const [selectedIndex, setSelectedIndex] = useState(0)
 
-  useEffect(() => {
+  const loadArtifacts = () => {
     setLoading(true)
     fetch(`/api/${project}/changes/${changeName}/screenshots`)
       .then(r => r.json())
@@ -28,7 +31,9 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
       })
       .catch(() => setArtifacts([]))
       .finally(() => setLoading(false))
-  }, [project, changeName])
+  }
+
+  useEffect(() => { loadArtifacts() }, [project, changeName])
 
   const images = useMemo(() => artifacts.filter(a => a.type === 'image'), [artifacts])
   const nonImages = useMemo(() => artifacts.filter(a => a.type !== 'image'), [artifacts])
@@ -61,11 +66,12 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   }
 
   const selected = images[selectedIndex]
-  const testLabel = selected?.test
-    ?.replace(/-chromium$/, '')
-    ?.replace(/^[a-z]+-/, '')
-    ?.replace(/-{2,}/g, ' — ')
-    ?.replace(/-/g, ' ')
+  const testLabel = selected?.label
+    || selected?.test
+      ?.replace(/-chromium$/, '')
+      ?.replace(/^[a-z]+-/, '')
+      ?.replace(/-{2,}/g, ' — ')
+      ?.replace(/-/g, ' ')
     || selected?.name || ''
 
   return (
@@ -84,7 +90,14 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
           <span className="text-xs text-neutral-600">
             {selectedIndex + 1} / {images.length}
           </span>
-          <button onClick={onClose} className="text-sm text-neutral-500 hover:text-neutral-300 ml-2">
+          <button
+            onClick={loadArtifacts}
+            className="text-xs text-neutral-600 hover:text-neutral-300 px-1.5 py-0.5 rounded hover:bg-neutral-800 transition-colors"
+            title="Re-scan worktree for artifacts"
+          >
+            Refresh
+          </button>
+          <button onClick={onClose} className="text-sm text-neutral-500 hover:text-neutral-300 ml-1">
             Close
           </button>
         </div>
@@ -119,9 +132,26 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
             />
           </div>
 
-          {/* Test name label */}
-          <div className="px-4 py-1.5 text-xs text-neutral-400 truncate border-b border-neutral-800 bg-neutral-900/50" title={selected?.test || ''}>
-            {testLabel}
+          {/* Test name + meta label */}
+          <div className="px-4 py-1.5 border-b border-neutral-800 bg-neutral-900/50 flex items-center gap-2">
+            {selected?.result && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                selected.result === 'fail'
+                  ? 'bg-red-500/20 text-red-400'
+                  : 'bg-green-500/15 text-green-500/80'
+              }`}>
+                {selected.result === 'fail' ? 'FAIL' : 'PASS'}
+              </span>
+            )}
+            <span className="text-xs text-neutral-400 truncate flex-1" title={selected?.test || ''}>
+              {testLabel}
+            </span>
+            {selected?.meta && (
+              <span
+                className="text-[11px] text-neutral-500 flex-shrink-0"
+                dangerouslySetInnerHTML={{ __html: selected.meta }}
+              />
+            )}
           </div>
 
           {/* Thumbnail strip */}
@@ -130,12 +160,14 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
               <button
                 key={img.path}
                 onClick={() => setSelectedIndex(i)}
-                className={`flex-shrink-0 w-16 h-11 rounded overflow-hidden border-2 transition-all ${
+                className={`flex-shrink-0 w-16 h-11 rounded overflow-hidden border-2 transition-all relative ${
                   i === selectedIndex
                     ? 'border-blue-500 opacity-100 scale-105'
-                    : 'border-transparent opacity-60 hover:opacity-90 hover:border-neutral-600'
+                    : img.result === 'fail'
+                      ? 'border-red-500/60 opacity-80 hover:opacity-100'
+                      : 'border-transparent opacity-60 hover:opacity-90 hover:border-neutral-600'
                 }`}
-                title={img.test?.replace(/-chromium$/, '').replace(/-/g, ' ')}
+                title={img.label || img.test?.replace(/-chromium$/, '').replace(/-/g, ' ')}
               >
                 <img
                   src={serveUrl(img)}
@@ -143,6 +175,9 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />
+                {img.result === 'fail' && (
+                  <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-bl" />
+                )}
               </button>
             ))}
           </div>
