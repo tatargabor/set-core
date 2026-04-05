@@ -1334,6 +1334,14 @@ def cmd_build(args):
 
 
 def main():
+    import logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stderr,
+    )
+
     parser = argparse.ArgumentParser(
         prog="set-orch-core",
         description="Python core for set-core orchestration engine",
