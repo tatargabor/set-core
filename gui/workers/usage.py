@@ -86,11 +86,12 @@ def load_cc_accounts():
             token = oauth.get("accessToken")
             if not token:
                 continue
+            email = acct.get("email", acct.get("name", "unknown"))
             result.append({
-                "name": acct["name"],
+                "name": email,
                 "oauth_token": token,
                 "type": "cc",
-                "active": acct["name"] == active_name,
+                "active": email == active_name,
                 "source": acct.get("source", "manual"),
             })
         return result

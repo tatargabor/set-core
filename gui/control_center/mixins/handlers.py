@@ -830,16 +830,16 @@ class HandlersMixin:
             show_information(self, "Switch CC Account", "No other CC accounts to switch to.")
             return
 
-        names = [a["name"] for a in accounts]
-        current = next((a["name"] for a in accounts if a["active"]), None)
-        current_idx = names.index(current) if current in names else 0
+        emails = [a["email"] for a in accounts]
+        current = next((a["email"] for a in accounts if a["active"]), None)
+        current_idx = emails.index(current) if current in emails else 0
 
         self.hide()
         chosen, ok = get_item(
             self, "Switch CC Account",
             "Select CC account to activate:\n"
             "(Manual switch — automatic rotation is not supported)",
-            names, current_idx, False,
+            emails, current_idx, False,
         )
         if ok and chosen and chosen != current:
             try:

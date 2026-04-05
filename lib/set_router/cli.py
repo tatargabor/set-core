@@ -23,7 +23,7 @@ TOS_NOTE = (
 def cmd_add(args):
     pool = AccountPool()
     try:
-        msg = pool.add(args.name, email=args.email)
+        msg = pool.add(args.email)
         print(msg)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -36,60 +36,30 @@ def cmd_add(args):
 def cmd_remove(args):
     pool = AccountPool()
     try:
-        msg = pool.remove(args.name)
+        msg = pool.remove(args.email)
         print(msg)
     except (KeyError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
-def _fetch_live_usage(pool):
-    """Fetch live usage for all accounts. Returns {name: usage_dict}."""
-    try:
-        import sys
-        sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent.parent.parent / "gui"))
-        from gui.workers.usage import UsageWorker
-        worker = UsageWorker()
-        result = {}
-        for acct in pool.accounts:
-            oauth = acct.get("credentials", {}).get("claudeAiOauth", {})
-            token = oauth.get("accessToken")
-            if token:
-                data = worker.fetch_claude_api_usage(oauth_token=token)
-                if data:
-                    result[acct["name"]] = data
-        return result
-    except Exception:
-        return {}
-
-
 def cmd_list(args):
     pool = AccountPool()
     accounts = pool.list_accounts()
     if not accounts:
-        print("No accounts registered. Run `claude login` then `set-router add <name>`.")
+        print("No accounts registered. Run `claude login` then `set-router add <email>`.")
         return
-
-    usage = _fetch_live_usage(pool) if getattr(args, "live", False) else {}
 
     for acct in accounts:
         marker = "\u25cf" if acct["active"] else "\u25cb"
         label = "[ACTIVE]" if acct["active"] else ""
-        email = f"({acct['email']})" if acct.get("email") else ""
-        u = usage.get(acct["name"])
-        if u:
-            s_pct = u.get("session_pct", 0)
-            w_pct = u.get("weekly_pct", 0)
-            print(f"  {marker} {acct['name']:10s} session: {s_pct:4.0f}%  weekly: {w_pct:4.0f}%  {label} {email}")
-        else:
-            sub = acct.get("subscription_type") or "unknown"
-            print(f"  {marker} {acct['name']:10s} plan: {sub:10s} {label} {email}")
+        print(f"  {marker} {acct['email']:30s} {label}")
 
 
 def cmd_switch(args):
     pool = AccountPool()
     try:
-        msg = pool.switch(args.name)
+        msg = pool.switch(args.email)
         print(msg)
         print(f"  Manual switch \u2014 automatic rotation is not supported.")
     except KeyError as e:
@@ -104,7 +74,7 @@ def cmd_status(args):
         print("No accounts registered.")
         return
 
-    print(f"Active: {info['name']}")
+    print(f"Active: {info['email']}")
     sub = info.get("subscription_type") or "unknown"
     tier = info.get("rate_limit_tier") or "unknown"
     print(f"Plan:   {sub} ({tier})")
@@ -121,7 +91,7 @@ def cmd_status(args):
                 mins = int((remaining.total_seconds() % 3600) // 60)
                 print(f"Token:  expires in {hours}h {mins}m")
             else:
-                print(f"Token:  EXPIRED — run `claude login` then `set-router add {info['name']}`")
+                print(f"Token:  EXPIRED \u2014 run `claude login` then `set-router add {info['email']}`")
         except (OSError, ValueError):
             pass
 
@@ -129,27 +99,25 @@ def cmd_status(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="set-router",
-        description="Claude Code account manager — manage multiple CC credentials.\n\n" + TOS_NOTE,
+        description="Claude Code account manager \u2014 manage multiple CC credentials.\n\n" + TOS_NOTE,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=TOS_NOTE,
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_add = sub.add_parser("add", help="Save current CC credentials as a named account")
-    p_add.add_argument("name", help="Short alias (e.g., 'gmail', 'work')")
-    p_add.add_argument("--email", required=True, help="Account email (from CC /stats → Email field)")
+    p_add = sub.add_parser("add", help="Save current CC credentials")
+    p_add.add_argument("email", help="Account email (from CC /stats)")
     p_add.set_defaults(func=cmd_add)
 
     p_remove = sub.add_parser("remove", help="Remove a saved account")
-    p_remove.add_argument("name", help="Account name to remove")
+    p_remove.add_argument("email", help="Account email to remove")
     p_remove.set_defaults(func=cmd_remove)
 
-    p_list = sub.add_parser("list", help="List all accounts with status")
-    p_list.add_argument("--live", action="store_true", help="Fetch live usage data (slower, ~2s per account)")
+    p_list = sub.add_parser("list", help="List all accounts")
     p_list.set_defaults(func=cmd_list)
 
     p_switch = sub.add_parser("switch", help="Switch active CC account (manual)")
-    p_switch.add_argument("name", help="Account name to switch to")
+    p_switch.add_argument("email", help="Account email to switch to")
     p_switch.set_defaults(func=cmd_switch)
 
     p_status = sub.add_parser("status", help="Show active account info")

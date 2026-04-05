@@ -24,7 +24,10 @@ _REQUIRED_CRED_FIELDS = ("accessToken", "refreshToken")
 
 
 class AccountPool:
-    """Manages a pool of Claude Code OAuth credentials."""
+    """Manages a pool of Claude Code OAuth credentials.
+
+    Accounts are identified by email address (from CC /stats → Email field).
+    """
 
     def __init__(self):
         self._data = self._load()
@@ -46,7 +49,6 @@ class AccountPool:
         with open(tmp, "w") as f:
             json.dump(self._data, f, indent=2)
         tmp.replace(CC_ACCOUNTS_FILE)
-        # Enforce 600 permissions
         os.chmod(CC_ACCOUNTS_FILE, stat.S_IRUSR | stat.S_IWUSR)
 
     @property
@@ -54,17 +56,21 @@ class AccountPool:
         return self._data.get("accounts", [])
 
     @property
-    def active_name(self) -> str | None:
+    def active_email(self) -> str | None:
         return self._data.get("active")
 
-    def get(self, name: str) -> dict | None:
+    def _email(self, acct: dict) -> str:
+        """Get the email identifier from an account entry (supports old 'name' format)."""
+        return acct.get("email", acct.get("name", ""))
+
+    def get(self, email: str) -> dict | None:
         for acct in self.accounts:
-            if acct["name"] == name:
+            if self._email(acct) == email:
                 return acct
         return None
 
-    def add(self, name: str, email: str = None) -> str:
-        """Add current ~/.claude/.credentials.json as a named account.
+    def add(self, email: str) -> str:
+        """Add current ~/.claude/.credentials.json under the given email.
 
         Returns a status message.
         """
@@ -76,7 +82,6 @@ class AccountPool:
         with open(CC_CREDENTIALS_FILE) as f:
             creds = json.load(f)
 
-        # Validate required fields
         oauth = creds.get("claudeAiOauth", {})
         for field in _REQUIRED_CRED_FIELDS:
             if not oauth.get(field):
@@ -84,79 +89,70 @@ class AccountPool:
                     f"Credentials missing '{field}'. Run `claude login` to get valid credentials."
                 )
 
-        existing = self.get(name)
+        existing = self.get(email)
         entry = {
-            "name": name,
+            "email": email,
             "credentials": creds,
             "source": "manual",
             "added_at": datetime.now(timezone.utc).isoformat(),
         }
-        if email:
-            entry["email"] = email
-        elif existing and existing.get("email"):
-            entry["email"] = existing["email"]
 
         if existing:
-            # Update in place
             for i, acct in enumerate(self._data["accounts"]):
-                if acct["name"] == name:
+                if self._email(acct) == email:
                     self._data["accounts"][i] = entry
                     break
             self._save()
-            return f"Updated existing account '{name}'"
+            return f"Updated account '{email}'"
 
         self._data["accounts"].append(entry)
         if not self._data.get("active"):
-            self._data["active"] = name
+            self._data["active"] = email
         self._save()
-        return f"Added account '{name}'"
+        return f"Added account '{email}'"
 
-    def remove(self, name: str) -> str:
-        """Remove a named account. Returns a status message."""
-        if not self.get(name):
-            raise KeyError(f"Account '{name}' not found")
+    def remove(self, email: str) -> str:
+        """Remove an account by email. Returns a status message."""
+        if not self.get(email):
+            raise KeyError(f"Account '{email}' not found")
 
         if len(self.accounts) <= 1:
             raise ValueError("Cannot remove the last account")
 
-        self._data["accounts"] = [a for a in self.accounts if a["name"] != name]
+        self._data["accounts"] = [a for a in self.accounts if self._email(a) != email]
 
-        # If we removed the active account, switch to the first remaining
-        if self._data.get("active") == name:
-            self._data["active"] = self._data["accounts"][0]["name"]
+        if self._data.get("active") == email:
+            self._data["active"] = self._email(self._data["accounts"][0])
             self._swap_credentials(self._data["active"])
             self._save()
-            return f"Removed '{name}'. Switched to '{self._data['active']}'"
+            return f"Removed '{email}'. Switched to '{self._data['active']}'"
 
         self._save()
-        return f"Removed account '{name}'"
+        return f"Removed account '{email}'"
 
-    def switch(self, name: str) -> str:
-        """Switch active CC account by swapping credentials file. Returns status message.
+    def switch(self, email: str) -> str:
+        """Switch active CC account. Returns status message.
 
         Before swapping, saves the current credentials file back to the
-        active account's pool entry — CC may have refreshed the token
-        since the last switch.
+        active account's pool entry — CC may have refreshed the token.
         """
-        if not self.get(name):
-            raise KeyError(f"Account '{name}' not found")
+        if not self.get(email):
+            raise KeyError(f"Account '{email}' not found")
 
-        if self._data.get("active") == name:
-            return f"'{name}' is already the active account."
+        if self._data.get("active") == email:
+            return f"'{email}' is already the active account."
 
-        # Save current credentials back to the outgoing account
         self._save_current_credentials()
-
-        self._swap_credentials(name)
-        self._data["active"] = name
+        self._swap_credentials(email)
+        self._data["active"] = email
         self._save()
-        return f"Switched to '{name}'. New CC instances will use this account."
+        return f"Switched to '{email}'. New CC instances will use this account."
 
     def _save_current_credentials(self):
         """Read ~/.claude/.credentials.json and update the active account's stored credentials.
 
         Verifies the live token belongs to the active account before saving,
-        by comparing token suffixes. If they don't match, warns and skips.
+        by comparing token suffixes.
         """
         active = self._data.get("active")
         if not active or not CC_CREDENTIALS_FILE.exists():
@@ -174,47 +170,41 @@ class AccountPool:
 
             stored_token = acct.get("credentials", {}).get("claudeAiOauth", {}).get("accessToken", "")
 
-            # Compare token suffixes (last 20 chars) — CC may refresh the token
-            # but the suffix pattern identifies the account
             if stored_token and live_token[-20:] != stored_token[-20:]:
-                # Token was replaced by a different account (CC re-logged in)
-                # Find which account it actually belongs to
                 owner = None
                 for a in self.accounts:
                     a_token = a.get("credentials", {}).get("claudeAiOauth", {}).get("accessToken", "")
                     if a_token and live_token[-20:] == a_token[-20:]:
-                        owner = a["name"]
+                        owner = self._email(a)
                         break
 
                 if owner:
                     logger.warning(
-                        "Live credentials belong to '%s', not active account '%s'. "
-                        "Saving to '%s' instead.", owner, active, owner)
+                        "Live credentials belong to '%s', not active '%s'. Saving to '%s'.",
+                        owner, active, owner)
                     for i, a in enumerate(self._data["accounts"]):
-                        if a["name"] == owner:
+                        if self._email(a) == owner:
                             self._data["accounts"][i]["credentials"] = current_creds
                             break
                 else:
                     logger.warning(
                         "Live credentials don't match any stored account (token ...%s). "
-                        "Skipping save — credentials may belong to a new account. "
-                        "Run `set-router add <name>` to register it.", live_token[-15:])
+                        "Run `set-router add <email>` to register it.", live_token[-15:])
                 return
 
-            # Token matches active account — save (may have refreshed expiry)
             for i, a in enumerate(self._data["accounts"]):
-                if a["name"] == active:
+                if self._email(a) == active:
                     self._data["accounts"][i]["credentials"] = current_creds
                     logger.info("Saved refreshed credentials for '%s'", active)
                     break
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("Could not save current credentials: %s", e)
 
-    def _swap_credentials(self, name: str):
-        """Write the named account's credentials to ~/.claude/.credentials.json with file locking."""
-        acct = self.get(name)
+    def _swap_credentials(self, email: str):
+        """Write the account's credentials to ~/.claude/.credentials.json with file locking."""
+        acct = self.get(email)
         if not acct:
-            raise KeyError(f"Account '{name}' not found")
+            raise KeyError(f"Account '{email}' not found")
 
         creds_dir = CC_CREDENTIALS_FILE.parent
         creds_dir.mkdir(parents=True, exist_ok=True)
@@ -233,9 +223,8 @@ class AccountPool:
         result = []
         for acct in self.accounts:
             result.append({
-                "name": acct["name"],
-                "active": acct["name"] == self.active_name,
-                "email": acct.get("email"),
+                "email": self._email(acct),
+                "active": self._email(acct) == self.active_email,
                 "source": acct.get("source", "manual"),
                 "added_at": acct.get("added_at"),
                 "subscription_type": acct.get("credentials", {})
@@ -248,15 +237,15 @@ class AccountPool:
         return result
 
     def status(self) -> dict | None:
-        """Return active account info for quick status display."""
-        if not self.active_name:
+        """Return active account info."""
+        if not self.active_email:
             return None
-        acct = self.get(self.active_name)
+        acct = self.get(self.active_email)
         if not acct:
             return None
         oauth = acct.get("credentials", {}).get("claudeAiOauth", {})
         return {
-            "name": self.active_name,
+            "email": self.active_email,
             "subscription_type": oauth.get("subscriptionType"),
             "rate_limit_tier": oauth.get("rateLimitTier"),
             "expires_at": oauth.get("expiresAt"),
