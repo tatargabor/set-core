@@ -1181,9 +1181,14 @@ def _load_requirements_lookup(digest_dir: str) -> dict[str, dict]:
 def _load_test_plan(digest_dir: str, change_req_ids: list[str]) -> list:
     """Load test-plan.json and filter entries by change's requirement IDs."""
     if not digest_dir:
+        logger.warning("_load_test_plan: digest_dir is empty — agent won't get Required Tests section")
         return []
     plan_path = os.path.join(digest_dir, "test-plan.json")
     if not os.path.isfile(plan_path):
+        logger.warning(
+            "_load_test_plan: test-plan.json not found at %s — agent won't get Required Tests section",
+            plan_path,
+        )
         return []
     try:
         from .test_coverage import TestPlan
@@ -1197,8 +1202,15 @@ def _load_test_plan(digest_dir: str, change_req_ids: list[str]) -> list:
                 "Loaded %d test plan entries for change (%d requirements)",
                 len(entries), len(req_set),
             )
+        else:
+            logger.warning(
+                "_load_test_plan: 0 entries matched %d requirements (%s) in %s (%d total entries) "
+                "— agent won't get Required Tests section",
+                len(req_set), list(req_set)[:3], plan_path, len(plan.entries),
+            )
         return entries
     except (json.JSONDecodeError, OSError, KeyError):
+        logger.warning("_load_test_plan: failed to parse %s", plan_path, exc_info=True)
         return []
 
 
