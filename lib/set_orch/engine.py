@@ -309,6 +309,188 @@ def cleanup_orchestrator(state_file: str, directives: Directives | None = None) 
         logger.error("cleanup_orchestrator failed", exc_info=True)
 
 
+# ─── Orphan Cleanup ────────────────────────────────────────────────
+
+
+def _cleanup_orphans(state_file: str) -> None:
+    """Clean orphaned resources on orchestrator startup.
+
+    Fixes three categories of detritus from previous crashes/restarts:
+    1. Stale ralph_pid references (process dead but PID in state)
+    2. Stuck current_step values (merged but step != done)
+    3. Orphaned worktrees (exist on disk but not in state, or for merged changes)
+
+    Conservative: never kills processes, skips dirty worktrees, skips active changes.
+    """
+    from .state import load_state, locked_state
+    from .subprocess_utils import run_command
+
+    state = load_state(state_file)
+    pids_cleared = 0
+    steps_fixed = 0
+    worktrees_removed = 0
+
+    # ── Phase 1: Fix stale PIDs and stuck steps ──
+    with locked_state(state_file) as st:
+        for change in st.changes:
+            # Fix stale ralph_pid
+            if change.ralph_pid:
+                try:
+                    os.kill(change.ralph_pid, 0)
+                    # Process alive — leave it alone
+                except OSError:
+                    # Process dead — clear PID
+                    old_pid = change.ralph_pid
+                    change.ralph_pid = None
+                    pids_cleared += 1
+
+                    if change.status in ("merged", "done"):
+                        change.current_step = "done"
+                        logger.info("Cleared stale PID %d for %s (merged, step→done)", old_pid, change.name)
+                    elif change.status == "running":
+                        change.status = "stalled"
+                        logger.info("Change %s stalled (PID %d dead)", change.name, old_pid)
+                    else:
+                        logger.info("Cleared stale PID %d for %s (status=%s)", old_pid, change.name, change.status)
+
+            # Fix stuck current_step
+            if change.status in ("merged", "done") and change.current_step not in ("done", None):
+                old_step = change.current_step
+                change.current_step = "done"
+                steps_fixed += 1
+                logger.info("Fixed stuck step for %s: %s → done", change.name, old_step)
+
+    # ── Phase 2: Clean orphaned worktrees ──
+    project_dir = os.path.dirname(os.path.abspath(state_file))
+    project_name = os.path.basename(project_dir)
+
+    # List git worktrees
+    wt_result = run_command(
+        ["git", "worktree", "list", "--porcelain"],
+        timeout=10,
+        cwd=project_dir,
+    )
+    if wt_result.exit_code != 0:
+        logger.debug("git worktree list failed — skipping worktree cleanup")
+    else:
+        # Reload state (may have been modified by phase 1)
+        state = load_state(state_file)
+        change_names = {c.name for c in state.changes}
+        active_statuses = {"running", "pending", "dispatched", "stalled"}
+
+        # Parse worktree paths
+        worktree_paths = []
+        for line in wt_result.stdout.split("\n"):
+            if line.startswith("worktree "):
+                worktree_paths.append(line[9:].strip())
+
+        for wt_path in worktree_paths:
+            wt_basename = os.path.basename(wt_path)
+            # Only consider worktrees matching <project>-wt-<name> pattern
+            wt_prefix = f"{project_name}-wt-"
+            if not wt_basename.startswith(wt_prefix):
+                continue
+
+            change_name = wt_basename[len(wt_prefix):]
+
+            # Find corresponding change in state
+            change = next((c for c in state.changes if c.name == change_name), None)
+
+            should_remove = False
+            reason = ""
+
+            if change is None:
+                # No state entry — orphaned
+                should_remove = True
+                reason = "no state entry"
+            elif change.status in ("merged", "done"):
+                # Change completed — worktree should be cleaned
+                should_remove = True
+                reason = f"status={change.status}"
+            elif change.status in active_statuses:
+                # Active change — don't touch
+                continue
+            else:
+                # Other statuses (failed, etc.) — check case by case
+                should_remove = True
+                reason = f"terminal status={change.status}"
+
+            if not should_remove:
+                continue
+
+            # Safety: skip if worktree has uncommitted changes
+            if os.path.isdir(wt_path):
+                status_r = run_command(
+                    ["git", "status", "--porcelain"],
+                    timeout=10,
+                    cwd=wt_path,
+                )
+                if status_r.exit_code == 0 and status_r.stdout.strip():
+                    logger.warning("Skipping dirty worktree: %s (has uncommitted changes)", change_name)
+                    continue
+
+                # Safety: skip if a process is running with CWD in this worktree
+                # (conservative check via /proc on Linux)
+                if _has_process_in_dir(wt_path):
+                    logger.warning("Skipping worktree %s: process running in directory", change_name)
+                    continue
+
+            # Remove the worktree
+            try:
+                rm_r = run_command(
+                    ["git", "worktree", "remove", "--force", wt_path],
+                    timeout=30,
+                    cwd=project_dir,
+                )
+                if rm_r.exit_code == 0:
+                    worktrees_removed += 1
+                    logger.info("Removed orphaned worktree: %s (%s)", change_name, reason)
+                    # Also delete the branch
+                    run_command(
+                        ["git", "branch", "-D", f"change/{change_name}"],
+                        timeout=10,
+                        cwd=project_dir,
+                    )
+                else:
+                    logger.warning("Failed to remove worktree %s: %s", change_name, rm_r.stderr[:200])
+            except Exception:
+                logger.warning("Worktree removal failed for %s", change_name, exc_info=True)
+
+    # Summary
+    total = pids_cleared + steps_fixed + worktrees_removed
+    if total > 0:
+        logger.info(
+            "Orphan cleanup: %d worktrees removed, %d PIDs cleared, %d steps fixed",
+            worktrees_removed, pids_cleared, steps_fixed,
+        )
+    else:
+        logger.debug("Orphan cleanup: nothing to clean")
+
+
+def _has_process_in_dir(directory: str) -> bool:
+    """Check if any process has its CWD in the given directory.
+
+    Uses /proc on Linux. Returns False on non-Linux or if check fails.
+    """
+    proc_dir = "/proc"
+    if not os.path.isdir(proc_dir):
+        return False  # Not Linux — can't check, assume safe
+
+    try:
+        for pid_entry in os.listdir(proc_dir):
+            if not pid_entry.isdigit():
+                continue
+            try:
+                cwd = os.readlink(f"/proc/{pid_entry}/cwd")
+                if cwd.startswith(directory):
+                    return True
+            except (OSError, PermissionError):
+                continue
+    except OSError:
+        pass
+    return False
+
+
 # ─── Monitor Loop ──────────────────────────────────────────────────
 
 # Source: monitor.sh monitor_loop() L5-586
@@ -444,6 +626,12 @@ def monitor_loop(
 
     # Clear checkpoint-specific transient state on restart
     _clear_checkpoint_state(state_file)
+
+    # Clean orphaned resources from previous crash/restart
+    try:
+        _cleanup_orphans(state_file)
+    except Exception:
+        logger.warning("Orphan cleanup failed (non-critical)", exc_info=True)
 
     logger.info("Monitor loop started (poll every %ds, auto_replan=%s)", poll_interval, d.auto_replan)
 
