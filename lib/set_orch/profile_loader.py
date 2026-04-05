@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 _cached_profile = None
 _cache_loaded: bool = False
+_cache_path: str = ""  # path the cached profile was loaded from
 
 # set-core root (lib/set_orch/profile_loader.py → ../../)
 _SET_CORE_ROOT = Path(__file__).resolve().parents[2]
@@ -210,13 +211,16 @@ def load_profile(project_path: str = "."):
     4. built-in modules/{type_name}/ — monorepo fallback
     5. NullProfile
     """
-    global _cached_profile, _cache_loaded
+    global _cached_profile, _cache_loaded, _cache_path
 
-    if _cache_loaded:
+    project_path = str(Path(project_path).resolve())
+
+    # Return cached profile if same path (or if default "." resolves to same)
+    if _cache_loaded and _cache_path == project_path:
         return _cached_profile
 
     _cache_loaded = True
-    project_path = str(Path(project_path).resolve())
+    _cache_path = project_path
 
     pt_file = Path(project_path) / "set" / "plugins" / "project-type.yaml"
     if not pt_file.is_file():
@@ -326,6 +330,7 @@ def load_profile(project_path: str = "."):
 
 def reset_cache():
     """Reset the profile cache (for testing)."""
-    global _cached_profile, _cache_loaded
+    global _cached_profile, _cache_loaded, _cache_path
     _cached_profile = None
     _cache_loaded = False
+    _cache_path = ""
