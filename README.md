@@ -129,6 +129,7 @@ merged, tested, done
 | :jigsaw: | **Plugin System** | Project-type plugins add domain rules, gates, templates, and conventions. [Docs](docs/reference/plugins.md) |
 | :art: | **Design Bridge** | Figma MCP → design-snapshot.md → Tailwind tokens injected into every agent's context. [Guide](docs/guide/openspec.md) |
 | :chart_with_upwards_trend: | **Cross-Run Learnings** | Review findings and gate failures become rules for the next run. The system gets better with use. [Dashboard](docs/guide/dashboard.md) |
+| :repeat: | **Account Manager** | Manage multiple Claude Code accounts — register, monitor usage, manually switch. [Docs](docs/account-manager.md) |
 
 ---
 
@@ -319,6 +320,7 @@ See [docs/guide/writing-specs.md](docs/guide/writing-specs.md) for the complete 
 | [set-spec-capture](https://git.setcode.dev/root/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
 | set-design-sync | Parse Figma Make `.make` exports → structured `design-system.md` + spec sync |
 | set-e2e-report | Generate benchmark reports from orchestration runs |
+| set-router | Manage multiple Claude Code accounts — register, switch, monitor usage ([docs](docs/account-manager.md)) |
 
 **Built-in modules** add domain-specific technology (Next.js, Prisma, Playwright for web; Soniox STT, Google TTS for voice). See [Plugins](docs/reference/plugins.md).
 
