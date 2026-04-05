@@ -128,17 +128,44 @@ class AccountPool:
         return f"Removed account '{name}'"
 
     def switch(self, name: str) -> str:
-        """Switch active CC account by swapping credentials file. Returns status message."""
+        """Switch active CC account by swapping credentials file. Returns status message.
+
+        Before swapping, saves the current credentials file back to the
+        active account's pool entry — CC may have refreshed the token
+        since the last switch.
+        """
         if not self.get(name):
             raise KeyError(f"Account '{name}' not found")
 
         if self._data.get("active") == name:
             return f"'{name}' is already the active account."
 
+        # Save current credentials back to the outgoing account
+        self._save_current_credentials()
+
         self._swap_credentials(name)
         self._data["active"] = name
         self._save()
         return f"Switched to '{name}'. New CC instances will use this account."
+
+    def _save_current_credentials(self):
+        """Read ~/.claude/.credentials.json and update the active account's stored credentials."""
+        active = self._data.get("active")
+        if not active or not CC_CREDENTIALS_FILE.exists():
+            return
+        try:
+            with open(CC_CREDENTIALS_FILE) as f:
+                current_creds = json.load(f)
+            # Only update if the file has valid OAuth data
+            if not current_creds.get("claudeAiOauth", {}).get("accessToken"):
+                return
+            for i, acct in enumerate(self._data["accounts"]):
+                if acct["name"] == active:
+                    self._data["accounts"][i]["credentials"] = current_creds
+                    logger.info("Saved refreshed credentials for '%s'", active)
+                    break
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Could not save current credentials: %s", e)
 
     def _swap_credentials(self, name: str):
         """Write the named account's credentials to ~/.claude/.credentials.json with file locking."""
