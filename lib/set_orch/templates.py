@@ -399,6 +399,21 @@ Manual tasks — flag changes that require human intervention:
 - Examples: "integrate Stripe payments" (needs API key), "set up Firebase auth" (needs project creation), "configure custom domain" (needs DNS records)
 - When false or omitted, all tasks are assumed automatable
 
+Observability — every change MUST add logging to new code:
+- All new Python modules MUST use `logger = logging.getLogger(__name__)` and log at INFO level for operational events (state transitions, key decisions, lifecycle start/stop) and DEBUG for internals (hash values, search paths, binding details).
+- WARNING level for anomalies (missing files, fallback paths, unexpected state, recovery actions).
+- Log messages MUST include contextual fields (change name, PID, file path, old→new values) — logs without context are useless in multi-change orchestration.
+- Bash scripts MUST source set-common.sh and use info()/warn()/error() for key operations.
+- NEVER write code that silently swallows errors (bare `except: pass`). At minimum, log the exception at WARNING level.
+- Scope text SHOULD mention "with INFO-level logging" for non-trivial features.
+
+Abstraction layer discipline — core vs module separation:
+- `lib/set_orch/` (Layer 1, core) is ABSTRACT — it MUST NOT contain project-type-specific patterns (web framework detection, Playwright patterns, Next.js config, Prisma commands, package.json parsing).
+- `modules/web/` (Layer 2) implements web-specific logic. `modules/example/` is the reference plugin.
+- When a change needs both core and module modifications (e.g., new ABC method + web implementation), the scope MUST clearly mark which files are core vs module.
+- New behaviors that depend on project type MUST go through the `ProjectType` ABC in `profile_types.py` — add the abstract method there first, then implement in the appropriate module.
+- If the spec mentions a web framework (Next.js, Playwright, Prisma, etc.), the implementation belongs in `modules/web/`, NOT in `lib/set_orch/`.
+
 CHANGE GROUPING RULES:
 - Group related items (same domain, same directory, same feature area) into ONE change.
 - Small bugfixes (S-complexity) in the same area MUST be bundled into a single M-complexity change.
