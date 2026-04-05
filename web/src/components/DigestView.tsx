@@ -215,21 +215,56 @@ function parseE2EOutput(output: string): ParsedTest[] {
   return tests
 }
 
+interface E2EChangeGroup {
+  change: string
+  status: string
+  smokeTests: ParsedTest[]
+  ownTests: ParsedTest[]
+  smokeResult?: string
+  smokeMs?: number
+  ownMs?: number
+  smokeCount?: number
+  ownCount?: number
+}
+
+function fmtMs(ms?: number): string {
+  if (!ms) return ''
+  return (ms / 1000).toFixed(1) + 's'
+}
+
 function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
-  // Group tests by change
   const byChange = useMemo(() => {
-    const groups: { change: string; status: string; tests: ParsedTest[] }[] = []
+    const groups: E2EChangeGroup[] = []
     for (const c of changes) {
       if (!c.e2e_output && !c.e2e_result) continue
-      const tests = c.e2e_output ? parseE2EOutput(c.e2e_output) : []
-      groups.push({ change: c.name, status: c.e2e_result || 'pending', tests })
+      const extras = c.extras || {}
+      const smokeOutput = (c as any).smoke_e2e_output || extras.smoke_e2e_output || ''
+      const smokeTests = smokeOutput ? parseE2EOutput(smokeOutput) : []
+      const ownTests = c.e2e_output ? parseE2EOutput(c.e2e_output) : []
+      groups.push({
+        change: c.name,
+        status: c.e2e_result || 'pending',
+        smokeTests,
+        ownTests,
+        smokeResult: (c as any).smoke_e2e_result || extras.smoke_e2e_result as string,
+        smokeMs: (c as any).gate_e2e_smoke_ms || extras.gate_e2e_smoke_ms as number,
+        ownMs: (c as any).gate_e2e_own_ms || extras.gate_e2e_own_ms as number,
+        smokeCount: (c as any).smoke_test_count || extras.smoke_test_count as number,
+        ownCount: (c as any).own_test_count || extras.own_test_count as number,
+      })
     }
     return groups
   }, [changes])
 
-  const totalTests = byChange.reduce((s, g) => s + g.tests.length, 0)
-  const totalPassed = byChange.reduce((s, g) => s + g.tests.filter(t => t.result === 'pass').length, 0)
-  const totalFailed = byChange.reduce((s, g) => s + g.tests.filter(t => t.result === 'fail').length, 0)
+  const totalSmoke = byChange.reduce((s, g) => s + g.smokeTests.length, 0)
+  const totalOwn = byChange.reduce((s, g) => s + g.ownTests.length, 0)
+  const totalTests = totalSmoke + totalOwn
+  const totalPassed = byChange.reduce((s, g) =>
+    s + g.smokeTests.filter(t => t.result === 'pass').length
+      + g.ownTests.filter(t => t.result === 'pass').length, 0)
+  const totalFailed = byChange.reduce((s, g) =>
+    s + g.smokeTests.filter(t => t.result === 'fail').length
+      + g.ownTests.filter(t => t.result === 'fail').length, 0)
 
   if (byChange.length === 0) {
     return <div className="p-4 text-neutral-500 text-sm">No E2E test results yet.</div>
@@ -242,6 +277,8 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
         {totalTests} tests across {byChange.length} change(s)
         {' | '}<span className="text-green-400">{totalPassed} passed</span>
         {totalFailed > 0 && <>{' | '}<span className="text-red-400">{totalFailed} failed</span></>}
+        {totalSmoke > 0 && <>{' | '}<span className="text-blue-400">smoke: {totalSmoke}</span></>}
+        {totalOwn > 0 && <>{' | '}<span className="text-amber-400">functional: {totalOwn}</span></>}
       </div>
 
       {/* Per-change groups */}
@@ -256,25 +293,75 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
                 'bg-neutral-800 text-neutral-400'
               }`}>{g.status}</span>
               <span className="text-sm text-neutral-300 font-medium">{g.change}</span>
-              <span className="text-xs text-neutral-500 ml-auto">{g.tests.length} test(s)</span>
+              <span className="text-xs text-neutral-500 ml-auto">
+                {g.smokeTests.length + g.ownTests.length} test(s)
+              </span>
             </div>
 
-            {/* Test rows */}
-            {g.tests.map((t, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-0.5 pl-6 text-sm">
-                <span className={t.result === 'pass' ? 'text-green-400' : 'text-red-400'}>
-                  {t.result === 'pass' ? '✓' : '✗'}
-                </span>
-                <span className="text-neutral-400 truncate flex-1">{t.name}</span>
-                <span className="text-xs text-neutral-600 shrink-0">{t.file}</span>
-                {t.duration && <span className="text-xs text-neutral-600 shrink-0">{t.duration}</span>}
-              </div>
-            ))}
+            {/* Smoke section */}
+            {(g.smokeTests.length > 0 || g.smokeResult) && (
+              <>
+                <div className="flex items-center gap-2 px-3 py-0.5 pl-4 bg-blue-950/20">
+                  <span className="text-[10px] font-mono px-1 py-px rounded bg-blue-900/40 text-blue-400">SMOKE</span>
+                  <span className="text-xs text-neutral-500">inherited</span>
+                  {g.smokeResult && (
+                    <span className={`text-xs ${g.smokeResult === 'pass' ? 'text-green-500' : 'text-red-500'}`}>
+                      {g.smokeResult}
+                    </span>
+                  )}
+                  <span className="text-xs text-neutral-600 ml-auto">
+                    {g.smokeTests.length || g.smokeCount || 0} test(s)
+                    {g.smokeMs ? ` · ${fmtMs(g.smokeMs)}` : ''}
+                  </span>
+                </div>
+                {g.smokeTests.map((t, i) => (
+                  <div key={`s${i}`} className="flex items-center gap-2 px-3 py-0.5 pl-8 text-sm">
+                    <span className={t.result === 'pass' ? 'text-green-400' : 'text-red-400'}>
+                      {t.result === 'pass' ? '✓' : '✗'}
+                    </span>
+                    <span className="text-neutral-400 truncate flex-1">{t.name}</span>
+                    <span className="text-xs text-neutral-600 shrink-0">{t.file}</span>
+                    {t.duration && <span className="text-xs text-neutral-600 shrink-0">{t.duration}</span>}
+                  </div>
+                ))}
+                {g.smokeTests.length === 0 && g.smokeResult && (
+                  <div className="px-8 py-0.5 text-xs text-neutral-600">
+                    {g.smokeCount || '?'} test(s) — {g.smokeResult} (no parsed output)
+                  </div>
+                )}
+              </>
+            )}
 
-            {g.tests.length === 0 && g.status && (
-              <div className="px-6 py-1 text-xs text-neutral-600">
-                Gate result: {g.status} (no parsed test lines)
-              </div>
+            {/* Functional section */}
+            {(g.ownTests.length > 0 || g.status) && (
+              <>
+                <div className="flex items-center gap-2 px-3 py-0.5 pl-4 bg-amber-950/20">
+                  <span className="text-[10px] font-mono px-1 py-px rounded bg-amber-900/40 text-amber-400">FUNC</span>
+                  <span className="text-xs text-neutral-500">own</span>
+                  <span className={`text-xs ${g.status === 'pass' ? 'text-green-500' : g.status === 'fail' ? 'text-red-500' : 'text-neutral-500'}`}>
+                    {g.status}
+                  </span>
+                  <span className="text-xs text-neutral-600 ml-auto">
+                    {g.ownTests.length || g.ownCount || 0} test(s)
+                    {g.ownMs ? ` · ${fmtMs(g.ownMs)}` : ''}
+                  </span>
+                </div>
+                {g.ownTests.map((t, i) => (
+                  <div key={`o${i}`} className="flex items-center gap-2 px-3 py-0.5 pl-8 text-sm">
+                    <span className={t.result === 'pass' ? 'text-green-400' : 'text-red-400'}>
+                      {t.result === 'pass' ? '✓' : '✗'}
+                    </span>
+                    <span className="text-neutral-400 truncate flex-1">{t.name}</span>
+                    <span className="text-xs text-neutral-600 shrink-0">{t.file}</span>
+                    {t.duration && <span className="text-xs text-neutral-600 shrink-0">{t.duration}</span>}
+                  </div>
+                ))}
+                {g.ownTests.length === 0 && g.status && !g.smokeResult && (
+                  <div className="px-8 py-0.5 text-xs text-neutral-600">
+                    Gate result: {g.status} (no parsed test lines)
+                  </div>
+                )}
+              </>
             )}
           </div>
         ))}

@@ -1123,6 +1123,9 @@ def _run_integration_gates(
                     "E2E two-phase: %d own specs, %d inherited specs, smoke=%d tests",
                     len(own_specs), _n_inherited_smoke, _n_inherited_smoke,
                 )
+                update_change_field(state_file, change_name, "smoke_test_count", _n_inherited_smoke)
+                update_change_field(state_file, change_name, "own_test_count", len(own_specs))
+                update_change_field(state_file, change_name, "inherited_file_count", _n_inherited_smoke)
 
             # ── Phase 1: Smoke inherited tests (non-blocking) ──
             if _use_two_phase and inherited_specs:
@@ -1164,12 +1167,13 @@ def _run_integration_gates(
                             change_name, _s1e,
                         )
                         update_change_field(state_file, change_name, "smoke_e2e_result", "fail")
-                        update_change_field(state_file, change_name, "smoke_e2e_output", _smoke_output)
                         if event_bus:
                             event_bus.emit("VERIFY_GATE", change=change_name, data={
                                 "gate": "e2e-smoke", "result": "fail", "phase": "integration",
                                 "inherited_files": len(inherited_specs)})
                         # Non-blocking: continue to Phase 2
+                    # Always save smoke output (pass or fail)
+                    update_change_field(state_file, change_name, "smoke_e2e_output", _smoke_output)
                 else:
                     logger.info("Integration gate: skipping smoke phase (profile doesn't support smoke commands)")
 
@@ -1191,6 +1195,9 @@ def _run_integration_gates(
                 _s2e = int((_time.monotonic() - _s2) * 1000)
             else:
                 # Fallback: single-phase (no ownership detected or no profile)
+                update_change_field(state_file, change_name, "own_test_count", len(all_specs))
+                update_change_field(state_file, change_name, "smoke_test_count", 0)
+                update_change_field(state_file, change_name, "inherited_file_count", 0)
                 logger.info(
                     "Integration gate: e2e for %s (%s, port=%d) — single-phase fallback",
                     change_name, e2e_cmd, e2e_port,

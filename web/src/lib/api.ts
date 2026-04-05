@@ -59,6 +59,7 @@ export interface ChangeInfo {
   test_output?: string
   e2e_output?: string
   smoke_output?: string
+  smoke_e2e_output?: string
   review_output?: string
   // Gate results (additional)
   scope_check_result?: string
@@ -72,6 +73,8 @@ export interface ChangeInfo {
   gate_verify_ms?: number
   gate_smoke_ms?: number
   gate_e2e_ms?: number
+  gate_e2e_smoke_ms?: number
+  gate_e2e_own_ms?: number
   gate_scope_check_ms?: number
   gate_rules_ms?: number
   gate_total_ms?: number
@@ -80,6 +83,11 @@ export interface ChangeInfo {
   smoke_screenshot_dir?: string
   e2e_screenshot_count?: number
   e2e_screenshot_dir?: string
+  // E2E smoke/functional stats
+  smoke_e2e_result?: string
+  smoke_test_count?: number
+  own_test_count?: number
+  inherited_file_count?: number
   // Spec coverage gate
   spec_coverage_result?: string
   // Context window metrics (optional — absent on old state files)
