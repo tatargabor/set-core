@@ -23,8 +23,10 @@ TOS_NOTE = (
 def cmd_add(args):
     pool = AccountPool()
     try:
-        msg = pool.add(args.name)
+        msg = pool.add(args.name, email=args.email)
         print(msg)
+        if not args.email:
+            print("  Tip: use --email <addr> to tag this account (shown in `set-router list`)")
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -75,14 +77,15 @@ def cmd_list(args):
     for acct in accounts:
         marker = "\u25cf" if acct["active"] else "\u25cb"
         label = "[ACTIVE]" if acct["active"] else ""
-        sub = acct.get("subscription_type") or "unknown"
+        email = f"({acct['email']})" if acct.get("email") else ""
         u = usage.get(acct["name"])
         if u:
             s_pct = u.get("session_pct", 0)
             w_pct = u.get("weekly_pct", 0)
-            print(f"  {marker} {acct['name']:20s} session: {s_pct:4.0f}%  weekly: {w_pct:4.0f}%  {label}")
+            print(f"  {marker} {acct['name']:10s} session: {s_pct:4.0f}%  weekly: {w_pct:4.0f}%  {label} {email}")
         else:
-            print(f"  {marker} {acct['name']:20s} plan: {sub:10s} {label}")
+            sub = acct.get("subscription_type") or "unknown"
+            print(f"  {marker} {acct['name']:10s} plan: {sub:10s} {label} {email}")
 
 
 def cmd_switch(args):
@@ -136,6 +139,7 @@ def main(argv=None):
 
     p_add = sub.add_parser("add", help="Save current CC credentials as a named account")
     p_add.add_argument("name", help="Account name (e.g., 'Personal', 'Work')")
+    p_add.add_argument("--email", help="Email for this account (from CC /stats, for identification)")
     p_add.set_defaults(func=cmd_add)
 
     p_remove = sub.add_parser("remove", help="Remove a saved account")

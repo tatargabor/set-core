@@ -63,7 +63,7 @@ class AccountPool:
                 return acct
         return None
 
-    def add(self, name: str) -> str:
+    def add(self, name: str, email: str = None) -> str:
         """Add current ~/.claude/.credentials.json as a named account.
 
         Returns a status message.
@@ -91,6 +91,10 @@ class AccountPool:
             "source": "manual",
             "added_at": datetime.now(timezone.utc).isoformat(),
         }
+        if email:
+            entry["email"] = email
+        elif existing and existing.get("email"):
+            entry["email"] = existing["email"]
 
         if existing:
             # Update in place
@@ -231,6 +235,7 @@ class AccountPool:
             result.append({
                 "name": acct["name"],
                 "active": acct["name"] == self.active_name,
+                "email": acct.get("email"),
                 "source": acct.get("source", "manual"),
                 "added_at": acct.get("added_at"),
                 "subscription_type": acct.get("credentials", {})
