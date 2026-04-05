@@ -114,22 +114,34 @@ def get_change_screenshots(project: str, name: str):
     raise HTTPException(404, f"Change not found: {name}")
 
 
+_ALLOWED_EXTENSIONS = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".zip": "application/zip",
+    ".json": "application/json",
+    ".html": "text/html",
+    ".log": "text/plain",
+}
+
+
 @router.get("/api/{project}/screenshots/{file_path:path}")
 def serve_screenshot(project: str, file_path: str):
-    """Serve a screenshot image file. Accepts absolute or relative paths."""
+    """Serve a test artifact file (screenshot, trace, report)."""
     from fastapi.responses import FileResponse as FR
 
     if ".." in file_path:
         raise HTTPException(400, "Invalid path")
 
-    # Support absolute paths (from e2e_screenshot_dir) and relative paths
     full_path = Path(file_path) if os.path.isabs(file_path) else _resolve_project(project) / file_path
-    if not full_path.exists() or full_path.suffix != ".png":
-        raise HTTPException(404, "Screenshot not found")
-    # Security: only serve PNGs within the e2e-runs directory
+    media_type = _ALLOWED_EXTENSIONS.get(full_path.suffix.lower())
+    if not full_path.exists() or media_type is None:
+        raise HTTPException(404, "Artifact not found")
+    # Security: only serve files within the e2e-runs directory
     try:
         full_path.resolve().relative_to(Path.home() / ".local" / "share" / "set-core" / "e2e-runs")
     except ValueError:
         raise HTTPException(403, "Access denied")
-    return FR(str(full_path), media_type="image/png")
+    return FR(str(full_path), media_type=media_type)
 
