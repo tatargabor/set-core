@@ -813,3 +813,39 @@ class HandlersMixin:
         dialog = RememberNoteDialog(self, project)
         dialog.exec()
         self.show()
+
+    def on_switch_cc_account(self):
+        """Show dialog to switch active Claude Code account (manual switch)."""
+        try:
+            from set_router import AccountPool
+        except ImportError:
+            show_warning(self, "Error", "set_router module not available.")
+            return
+
+        pool = AccountPool()
+        accounts = pool.list_accounts()
+        cc_accounts = [a for a in accounts if not a["active"]]
+
+        if not cc_accounts:
+            show_information(self, "Switch CC Account", "No other CC accounts to switch to.")
+            return
+
+        names = [a["name"] for a in accounts]
+        current = next((a["name"] for a in accounts if a["active"]), None)
+        current_idx = names.index(current) if current in names else 0
+
+        self.hide()
+        chosen, ok = get_item(
+            self, "Switch CC Account",
+            "Select CC account to activate:\n"
+            "(Manual switch — automatic rotation is not supported)",
+            names, current_idx, False,
+        )
+        if ok and chosen and chosen != current:
+            try:
+                msg = pool.switch(chosen)
+                show_information(self, "Switch CC Account", msg)
+            except (KeyError, ValueError) as e:
+                show_warning(self, "Error", str(e))
+            self._restart_usage_worker()
+        self.show_window()

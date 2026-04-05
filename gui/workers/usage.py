@@ -23,7 +23,7 @@ try:
 except ImportError:
     cffi_requests = None
 
-__all__ = ["UsageWorker", "load_accounts", "save_accounts"]
+__all__ = ["UsageWorker", "load_accounts", "save_accounts", "load_cc_accounts"]
 
 logger = logging.getLogger("set-control.workers.usage")
 
@@ -35,11 +35,11 @@ _HEADERS = {
 
 
 def load_accounts():
-    """Load accounts from claude-session.json.
+    """Load web accounts from claude-session.json.
 
     Handles both old format {"sessionKey": "..."} and new format
     {"accounts": [{"name": "...", "sessionKey": "..."}, ...]}.
-    Returns list of {"name": str, "sessionKey": str} dicts.
+    Returns list of {"name": str, "sessionKey": str, "type": "web"} dicts.
     """
     try:
         if not CLAUDE_SESSION_FILE.exists():
@@ -55,11 +55,45 @@ def load_accounts():
                     continue
                 if key not in seen_keys or a.get("source") != "chrome-scan":
                     seen_keys[key] = a
-            return list(seen_keys.values())
+            accounts = list(seen_keys.values())
+            for a in accounts:
+                a.setdefault("type", "web")
+            return accounts
         # Old format — auto-wrap
         if data.get("sessionKey"):
-            return [{"name": "Default", "sessionKey": data["sessionKey"]}]
+            return [{"name": "Default", "sessionKey": data["sessionKey"], "type": "web"}]
         return []
+    except Exception:
+        return []
+
+
+def load_cc_accounts():
+    """Load Claude Code accounts from cc-accounts.json.
+
+    Returns list of {"name": str, "oauth_token": str, "type": "cc", "active": bool} dicts.
+    """
+    try:
+        cc_file = CONFIG_DIR / "cc-accounts.json"
+        if not cc_file.exists():
+            return []
+        with open(cc_file) as f:
+            data = json.load(f)
+        accounts = data.get("accounts", [])
+        active_name = data.get("active")
+        result = []
+        for acct in accounts:
+            oauth = acct.get("credentials", {}).get("claudeAiOauth", {})
+            token = oauth.get("accessToken")
+            if not token:
+                continue
+            result.append({
+                "name": acct["name"],
+                "oauth_token": token,
+                "type": "cc",
+                "active": acct["name"] == active_name,
+                "source": acct.get("source", "manual"),
+            })
+        return result
     except Exception:
         return []
 
@@ -146,10 +180,62 @@ class UsageWorker(QThread):
 
         return None
 
-    def fetch_claude_api_usage(self, session_key):
-        """Fetch usage from Claude.ai API using session key"""
+    def _api_get_oauth(self, url: str, oauth_token: str):
+        """Make an API GET request with OAuth Bearer token.
+
+        Used for Claude Code accounts. Same fallback chain as _api_get
+        but uses Authorization header instead of session cookie.
+        Returns parsed JSON or None on failure.
+        """
+        auth_headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {oauth_token}",
+        }
+
+        # Try curl-cffi first
+        if cffi_requests is not None:
+            try:
+                resp = cffi_requests.get(
+                    url, headers=auth_headers,
+                    impersonate="chrome", timeout=15,
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+            except Exception:
+                pass
+
+        # Fallback: curl subprocess
         try:
-            orgs = self._api_get(f"{_API_BASE}/organizations", session_key)
+            result = subprocess.run(
+                ["curl", "-s",
+                 "-H", f"Authorization: Bearer {oauth_token}",
+                 "-H", "Accept: application/json",
+                 "-H", f"User-Agent: {_HEADERS['User-Agent']}",
+                 "--max-time", "15", url],
+                capture_output=True, text=True, timeout=20
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return json.loads(result.stdout)
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+            pass
+
+        # Fallback: urllib
+        try:
+            req = urllib.request.Request(url, headers={**_HEADERS, **auth_headers})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode())
+        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
+            pass
+
+        return None
+
+    def fetch_claude_api_usage(self, session_key=None, oauth_token=None):
+        """Fetch usage from Claude.ai API using session key or OAuth token."""
+        try:
+            getter = self._api_get_oauth if oauth_token else self._api_get
+            auth = oauth_token or session_key
+            orgs = getter(f"{_API_BASE}/organizations", auth)
             if not orgs or not isinstance(orgs, list):
                 return None
 
@@ -165,14 +251,16 @@ class UsageWorker(QThread):
             if not org_id:
                 return None
 
-            return self._fetch_org_usage(session_key, org_id)
+            return self._fetch_org_usage(org_id, session_key=session_key, oauth_token=oauth_token)
         except Exception:
             return None
 
-    def _fetch_org_usage(self, session_key, org_id):
+    def _fetch_org_usage(self, org_id, session_key=None, oauth_token=None):
         """Fetch usage for specific organization"""
         try:
-            data = self._api_get(f"{_API_BASE}/organizations/{org_id}/usage", session_key)
+            getter = self._api_get_oauth if oauth_token else self._api_get
+            auth = oauth_token or session_key
+            data = getter(f"{_API_BASE}/organizations/{org_id}/usage", auth)
             if not data:
                 return None
 
@@ -248,27 +336,42 @@ class UsageWorker(QThread):
 
     def run(self):
         while self._running:
-            accounts = load_accounts()
+            web_accounts = load_accounts()
+            cc_accounts = load_cc_accounts()
+            all_accounts = web_accounts + cc_accounts
 
-            if accounts:
-                logger.debug("polling %d accounts", len(accounts))
-                # Fetch usage for each account
+            if all_accounts:
+                logger.debug("polling %d accounts (%d web, %d cc)",
+                             len(all_accounts), len(web_accounts), len(cc_accounts))
                 results = []
-                for account in accounts:
+                for account in all_accounts:
                     if not self._running:
                         return
-                    api_data = self.fetch_claude_api_usage(account["sessionKey"])
+                    acct_type = account.get("type", "web")
+                    if acct_type == "cc":
+                        api_data = self.fetch_claude_api_usage(oauth_token=account["oauth_token"])
+                    else:
+                        api_data = self.fetch_claude_api_usage(session_key=account["sessionKey"])
                     if api_data:
                         api_data["name"] = account["name"]
+                        api_data["type"] = acct_type
+                        if acct_type == "cc":
+                            api_data["cc_active"] = account.get("active", False)
                         results.append(api_data)
-                        logger.debug("account %s: ok (source=%s)", account["name"], api_data.get("source"))
+                        logger.debug("account %s (%s): ok (source=%s)",
+                                     account["name"], acct_type, api_data.get("source"))
                     else:
-                        results.append({
+                        entry = {
                             "name": account["name"],
                             "available": False,
                             "source": "none",
-                        })
-                        logger.warning("account %s: all API fallbacks failed", account["name"])
+                            "type": acct_type,
+                        }
+                        if acct_type == "cc":
+                            entry["cc_active"] = account.get("active", False)
+                        results.append(entry)
+                        logger.warning("account %s (%s): all API fallbacks failed",
+                                       account["name"], acct_type)
                 self.usage_updated.emit(results)
                 logger.debug("poll complete, sleeping 30s")
                 self._interruptible_sleep(30000)

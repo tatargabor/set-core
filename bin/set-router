@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# set-router - Claude Code account manager
+#
+# Manual account management for multiple CC credentials.
+# Automatic rotation to circumvent rate limits violates Anthropic's ToS.
+
+# Follow symlinks to find the real script location
+get_real_dir() {
+    local script="${BASH_SOURCE[0]}"
+    while [[ -L "$script" ]]; do
+        local link=$(readlink "$script")
+        if [[ "$link" == /* ]]; then
+            script="$link"
+        else
+            script="$(dirname "$script")/$link"
+        fi
+    done
+    cd "$(dirname "$script")" && pwd
+}
+
+SCRIPT_DIR="$(get_real_dir)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Source set-common.sh for shared find_python()
+# shellcheck source=set-common.sh
+source "$SCRIPT_DIR/set-common.sh"
+
+PYTHON=$(set_find_python 2>/dev/null)
+if [[ -z "$PYTHON" ]]; then
+    echo "Error: python3 not found" >&2
+    exit 1
+fi
+
+export PYTHONPATH="$PROJECT_ROOT/lib:${PYTHONPATH:-}"
+
+exec "$PYTHON" -m set_router.cli "$@"

@@ -51,6 +51,16 @@ class MenusMixin:
             remove_account_action = menu.addAction("Remove Account...")
             remove_account_action.triggered.connect(self.show_remove_account)
 
+        # Show "Switch CC Account" if >1 CC account registered
+        try:
+            from set_router import AccountPool
+            cc_pool = AccountPool()
+            if len(cc_pool.accounts) > 1:
+                switch_cc_action = menu.addAction("Switch CC Account...")
+                switch_cc_action.triggered.connect(self.on_switch_cc_account)
+        except ImportError:
+            pass
+
         usage_action = menu.addAction("Usage (Browser)")
         usage_action.triggered.connect(self.show_claude_usage)
 

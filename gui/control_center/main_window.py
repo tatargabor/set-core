@@ -580,9 +580,14 @@ class ControlCenter(QMainWindow, TeamMixin, TableMixin, MenusMixin, HandlersMixi
                 break
             w = self.account_widgets[i]
 
-            # Set account name
+            # Set account name (with [ACTIVE] badge for CC accounts)
             if w.get("name_label"):
-                w["name_label"].setText(account_data.get("name", "")[:10])
+                name = account_data.get("name", "")[:10]
+                if account_data.get("type") == "cc" and account_data.get("cc_active"):
+                    name = f"\u25cf {name}"
+                elif account_data.get("type") == "cc":
+                    name = f"\u25cb {name}"
+                w["name_label"].setText(name)
 
             if not account_data.get("available"):
                 w["bar_5h"].set_empty(bg, border)
