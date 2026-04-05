@@ -143,6 +143,48 @@ def archive_change(change_name: str) -> bool:
 # Source: merger.sh _collect_smoke_screenshots() L38-52
 
 
+def _collect_test_artifacts(change_name: str, wt_path: str, state_file: str) -> None:
+    """Collect test artifacts (screenshots, traces) from a worktree.
+
+    Stores results in the change extras so the web dashboard can display them.
+    Called after integration gates and after merge — whichever produces artifacts.
+    Silently returns if worktree is missing or has no artifacts.
+    """
+    if not wt_path or not os.path.isdir(wt_path):
+        logger.debug("Skipping artifact collection for %s: wt_path missing", change_name)
+        return
+
+    try:
+        from .profile_loader import load_profile as _lp_art
+        profile = _lp_art()
+        artifacts = profile.collect_test_artifacts(wt_path)
+    except Exception:
+        logger.warning("collect_test_artifacts() failed for %s", change_name, exc_info=True)
+        return
+
+    if not artifacts:
+        logger.debug("No test artifacts found for %s in %s", change_name, wt_path)
+        return
+
+    images = [a for a in artifacts if a.get("type") == "image"]
+    logger.info("Test artifacts: %d items (%d images) for %s", len(artifacts), len(images), change_name)
+
+    # Save counts via update_change_field (top-level fields)
+    update_change_field(state_file, change_name, "e2e_screenshot_count", len(images))
+    if images:
+        first_dir = os.path.dirname(os.path.dirname(images[0]["path"]))
+        update_change_field(state_file, change_name, "e2e_screenshot_dir", first_dir)
+
+    # Save full artifact list in extras via locked_state
+    try:
+        with locked_state(state_file) as _ast:
+            _ach = next((c for c in _ast.changes if c.name == change_name), None)
+            if _ach:
+                _ach.extras["test_artifacts"] = artifacts
+    except Exception:
+        logger.warning("Failed to save test_artifacts to state for %s", change_name, exc_info=True)
+
+
 # ─── Worktree Lifecycle ─────────────────────────────────────────────
 
 # Source: merger.sh _archive_worktree_logs() L506-518
@@ -564,26 +606,8 @@ def merge_change(
         _parse_test_coverage_if_applicable(change_name, state_file)
 
         # Collect test artifacts via profile (screenshots, traces, reports)
-        try:
-            if wt_path and os.path.isdir(wt_path):
-                from .profile_loader import load_profile as _lp2
-                _artifact_profile = _lp2()
-                artifacts = _artifact_profile.collect_test_artifacts(wt_path)
-                if artifacts:
-                    images = [a for a in artifacts if a.get("type") == "image"]
-                    update_change_field(state_file, change_name, "e2e_screenshot_count", len(images))
-                    if images:
-                        # Use parent dir of first image as screenshot dir
-                        first_dir = os.path.dirname(os.path.dirname(images[0]["path"]))
-                        update_change_field(state_file, change_name, "e2e_screenshot_dir", first_dir)
-                    # Store full artifact list in extras
-                    with locked_state(state_file) as _ast:
-                        _ach = next((c for c in _ast.changes if c.name == change_name), None)
-                        if _ach:
-                            _ach.extras["test_artifacts"] = artifacts
-                    logger.info("Test artifacts: %d items (%d images) for %s", len(artifacts), len(images), change_name)
-        except Exception:
-            logger.debug("Artifact collection failed (non-critical)", exc_info=True)
+        _heartbeat("collect_artifacts")
+        _collect_test_artifacts(change_name, wt_path, state_file)
 
         # Regenerate START.md on main from current project state
         try:
@@ -1051,6 +1075,11 @@ def _run_integration_gates(
             "Integration gates for %s: %d/%d passed in %.1fs",
             change_name, _gates_passed_count, gates_executed, _pipeline_elapsed / 1000,
         )
+
+    # Collect test artifacts right after gates (screenshots exist now).
+    # This is the PRIMARY collection point — the post-merge call is a fallback
+    # in case the worktree is cleaned up between gates and merge.
+    _collect_test_artifacts(change_name, wt_path, state_file)
 
     return True
 
