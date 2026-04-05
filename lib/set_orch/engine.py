@@ -2048,6 +2048,7 @@ def _auto_replan_cycle(
         context_pruning=d.context_pruning,
         event_bus=event_bus,
         design_snapshot_dir=os.getcwd(),
+        digest_dir=digest_dir,
     )
 
     if event_bus:
@@ -2156,6 +2157,13 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
     """Dispatch ready changes (exception-safe wrapper)."""
     try:
         from .dispatcher import dispatch_ready_changes
+        from .paths import SetRuntime
+        try:
+            _digest_dir = SetRuntime().digest_dir
+        except Exception:
+            _digest_dir = os.path.join(os.getcwd(), "set", "orchestration", "digest")
+        if not os.path.isdir(_digest_dir):
+            _digest_dir = ""
         dispatch_ready_changes(
             state_file, d.max_parallel,
             default_model=d.default_model,
@@ -2164,6 +2172,7 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
             context_pruning=d.context_pruning,
             event_bus=event_bus,
             design_snapshot_dir=os.getcwd(),
+            digest_dir=_digest_dir,
         )
     except Exception:
         logger.warning("Dispatch failed", exc_info=True)
