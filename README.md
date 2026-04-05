@@ -132,6 +132,37 @@ merged, tested, done
 
 ---
 
+## Consumer Feedback Loop
+
+set-core is battle-tested through consumer projects — E2E runs that exercise the full pipeline from spec to merged app. During these runs, agents discover and fix real problems: build gate failures, middleware bugs, test flakiness. **These fixes are framework-level insights that belong in set-core**, not just in the consumer project.
+
+```
+set-core (framework)                    consumer project (E2E run)
+   │                                        │
+   ├── set-project init ───────────────────►│  deploy rules, templates, gates
+   │                                        │
+   │                                        ├── agents build features
+   │                                        ├── gates catch failures
+   │                                        ├── ISS pipeline creates fixes  ◄── valuable!
+   │                                        │
+   │◄── set-harvest ───────────────────────┤  review + adopt framework fixes
+   │                                        │
+   ├── update planning rules, templates     │
+   ├── set-project init ───────────────────►│  redeploy with improvements
+```
+
+**After every E2E run, harvest the fixes:**
+
+```bash
+set-harvest                          # scan all registered projects
+set-harvest --project craftbrew-run22 # scan single project
+set-harvest --dry-run                # preview without updating state
+```
+
+The harvest tool scans ISS fix commits chronologically, classifies them as framework-relevant or project-specific, and suggests where to adopt them (planning rules, templates, or core code). Each fix is reviewed interactively — no auto-adoption.
+
+---
+
 ## Where We're Heading
 
 Active development priorities:

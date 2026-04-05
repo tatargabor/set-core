@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# set-harvest — Scan consumer projects for unadopted framework fixes
+#
+# Usage:
+#   set-harvest                          # scan all registered projects
+#   set-harvest --project craftbrew-run22 # scan single project
+#   set-harvest --dry-run                # show without updating state
+#   set-harvest --json                   # machine-readable output
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+_py() {
+    if command -v python3 &>/dev/null; then
+        echo python3
+    elif command -v python &>/dev/null; then
+        echo python
+    else
+        echo "Error: python3 not found" >&2
+        exit 1
+    fi
+}
+
+PY=$(_py)
+export PYTHONPATH="$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}"
+
+exec "$PY" -m set_orch.harvest "$@"

@@ -47,7 +47,18 @@ After a skill-driven apply (e.g. `/opsx:apply`) finishes or pauses, automaticall
 
 set-core is developed and battle-tested through consumer projects. Before fixing bugs or adding features, always consult the primary consumer for real-world diagnostics.
 
-### Workflow
+### Harvest (primary tool)
+
+After every E2E run, use `set-harvest` to scan consumer projects for framework-relevant fixes:
+```bash
+set-harvest                          # scan all registered consumer projects
+set-harvest --project craftbrew-run22 # scan single project
+set-harvest --dry-run                # preview without updating state
+```
+
+The harvest tool scans ISS fix commits, classifies them (framework-relevant vs project-specific), and presents them for interactive adoption into planning rules, templates, or core code.
+
+### Manual workflow
 
 1. **Read the latest orchestration run log** — each log has a "set-core Bugs to Report" section and "Conclusions for set-core Development" with prioritized issues, root cause analysis, and design decisions.
 2. **Diff .claude/ for upstream changes** — during orchestration, the sentinel or user may improve commands, skills, or configs in the consumer's `.claude/`. Diff against set-core source to find changes to adopt.

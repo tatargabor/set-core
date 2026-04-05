@@ -1,148 +1,57 @@
-Harvest rules from a source project into reusable template modules.
+Harvest framework fixes from consumer project E2E runs.
 
-**Input**: `--from /path/to/project` (required) — the source project to harvest from. Optionally `--template <name>` to target a specific template variant.
+**Input**: `--project <name>` (optional) — scan a single project. Without it, scans all registered consumer projects.
 
-**You are a content analyst agent.** Your job is to compare a source project's rules against the current template, identify candidates for generalization, and write approved candidates as new optional template modules.
+**You are a framework maintainer.** Your job is to review ISS fixes and template changes from consumer E2E runs and decide which ones should be adopted into set-core.
 
-## Prerequisites
+## Quick Start
 
-Determine the source project's project type and template:
+Run the harvest CLI to see unadopted framework-relevant fixes:
 
 ```bash
-# Read source project's project-type.yaml
-cat <source-project>/set/plugins/project-type.yaml
+set-harvest --dry-run              # preview what's pending
+set-harvest --project craftbrew-run22  # scan single project
+set-harvest                        # interactive review all
+set-harvest --all                  # include project-specific fixes too
+set-harvest --json                 # machine-readable output
 ```
 
-Extract `type` and `template` fields. These determine which template package to compare against.
+## What It Scans
 
-## Steps
+The harvest tool scans registered consumer projects (from `set-project list`) for:
 
-### 1. Diff source vs template
+1. **ISS fix commits** — commits with `fix:` or `fix-iss-` patterns that were created by the orchestration agent during E2E runs to resolve build/test/e2e gate failures
+2. **Template divergences** — modifications to `.claude/rules/set-*.md` files that were deployed by `set-project init` but modified by agents during the run
 
-Read all rule files from the source project:
-```bash
-ls <source-project>/.claude/rules/*.md
-```
+Each commit is classified:
+- **FRAMEWORK** — modifies config files (package.json, playwright.config.ts, middleware.ts) → should be reviewed for adoption into planning_rules.txt or templates
+- **TEMPLATE** — modifies `.claude/` deployed files → diff against set-core templates
+- **PROJECT-SPECIFIC** — only modifies app code → usually skip
 
-Load the template's manifest to get the list of core + module files:
-```bash
-# Find the template directory from the installed package
-python3 -c "
-from importlib.metadata import entry_points
-from wt_project_base.deploy import resolve_template, _load_manifest
-eps = entry_points(group='set_tools.project_types')
-for ep in eps:
-    if ep.name == '<type-name>':
-        pt = ep.load()()
-        tid, tdir = resolve_template(pt, '<template-name>' or None)
-        print(tdir)
-        break
-"
-```
+## Interactive Review
 
-Read both the source rules and the template rules. For each source rule file:
-- If it has no corresponding template file → **new candidate**
-- If it exists in template but source is significantly richer (more sections, more detail) → **divergence candidate**
-- If identical or template is superset → **skip**
+For each candidate:
+1. **View** the commit message, files changed, and suggested adoption target
+2. **View diff** (`v`) to see the actual code change
+3. **Adopt** (`a`) to apply the learning to set-core (planning rules, templates, or core code)
+4. **Skip** (`s`) to mark as reviewed and move on
 
-### 2. Classify candidates
+## Adoption Targets
 
-For each new candidate, analyze its content and classify:
-- **base** — Universal rule applicable to any project type (e.g., data-privacy, testing patterns, git conventions). Goes to CoreProfile or a core template.
-- **web** — Web-specific rule (e.g., UI patterns, API conventions, auth flows). Goes to `modules/web/set_project_web/templates/`.
-- **skip** — Too project-specific to generalize (contains hardcoded paths, entity names, business logic specific to one project).
+| Consumer file | Set-core target |
+|--------------|-----------------|
+| `package.json` build script | `modules/web/.../planning_rules.txt` |
+| `playwright.config.ts` | `modules/web/.../templates/nextjs/playwright.config.ts` |
+| `middleware.ts` patterns | `.claude/rules/web/set-auth-middleware.md` |
+| `.claude/rules/set-*.md` | `templates/core/rules/` |
 
-Classification criteria:
-- References to specific frameworks (Next.js, React) → web
-- References to HTTP, REST, GraphQL, CSS, components → web
-- References to databases, caching, queues in generic terms → base
-- References to specific table names, API endpoints, business entities → skip (unless generalizable)
+## After Harvesting
 
-### 3. Generalize content
-
-For each `base` or `web` candidate:
-- Strip project-specific paths (e.g., `/app/api/webhooks/stripe` → `/app/api/webhooks/[provider]`)
-- Replace entity names with generic placeholders (e.g., "User subscription" → "domain entity")
-- Remove references to specific third-party services unless the rule is about integration patterns
-- Keep the structure, headings, and rule format intact
-- Preserve the actionable guidance — generalize the examples, not the principles
-
-### 4. Show summary and get approval
-
-Present each candidate to the user:
-
-```
-## Harvest Candidates
-
-### 1. data-privacy.md → base/default (new module: data-privacy)
-  Classification: base
-  Reason: Universal data retention and privacy patterns
-
-  Changes from original:
-  - Removed references to specific table names
-  - Generalized "user" to "entity"
-
-  [approve] [edit] [skip]
-
-### 2. ui-conventions.md → web/nextjs (divergence — 3 new sections)
-  Classification: divergence
-  Sections added in source:
-  - "Loading States" (new)
-  - "Error Boundaries" (new)
-  - "Accessibility Checklist" (new)
-
-  [merge back] [skip]
-```
-
-Use the **AskUserQuestion tool** to get approval for each candidate (or batch if many).
-
-### 5. Write approved files
-
-For each approved candidate:
-
-**New module:**
-1. Write the generalized file to the template directory:
-   - base → `lib/set_orch/` (add to CoreProfile or core templates)
-   - web → `modules/web/set_project_web/templates/<template>/rules/<filename>`
-2. Update `manifest.yaml` — add the file as a new optional module:
-   ```yaml
-   modules:
-     <module-id>:
-       description: "<one-line description>"
-       files:
-         - rules/<filename>
-   ```
-
-**Divergence merge:**
-1. Update the existing template rule file with the new sections from the source
-2. No manifest change needed (file is already in core)
-
-### 6. Report results
-
-Show a summary of what was written:
-```
-## Harvest Complete
-
-Written:
-  - base/default: rules/data-privacy.md (new module: data-privacy)
-  - web/nextjs: rules/integrations.md (updated module: integrations)
-
-Divergence merged:
-  - web/nextjs: rules/ui-conventions.md (+3 sections)
-
-Skipped:
-  - project-settings.md (too project-specific)
-
-Next steps:
-  - Review and commit changes in set-core (modules/web/ or lib/set_orch/)
-  - Run `set-project init --project-type web --template nextjs` to verify deployment
-```
+The harvest state (last reviewed SHA per project) is saved to `~/.local/share/set-core/harvest-state.json`. Future harvests only show new changes since the last review.
 
 ## Guardrails
 
-- Never write project-specific content to templates — always generalize first
-- Never overwrite existing template files without showing the diff and getting approval
-- Preserve manifest.yaml structure — only add to modules section, never remove
-- If a candidate could go to either base or web, prefer web (more specific is safer)
-- Always show the original vs generalized side-by-side before writing
-- If the source project has no project-type.yaml, ask the user which type/template to target
+- Never auto-adopt — always review the diff and confirm
+- Framework fixes often need generalization before adoption (strip project-specific paths, entity names)
+- If a fix appears in multiple runs, it's a strong signal for adoption
+- Template divergences should be diffed against the current set-core template, not blindly copied
