@@ -25,8 +25,6 @@ def cmd_add(args):
     try:
         msg = pool.add(args.name, email=args.email)
         print(msg)
-        if not args.email:
-            print("  Tip: use --email <addr> to tag this account (shown in `set-router list`)")
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -138,8 +136,8 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_add = sub.add_parser("add", help="Save current CC credentials as a named account")
-    p_add.add_argument("name", help="Account name (e.g., 'Personal', 'Work')")
-    p_add.add_argument("--email", help="Email for this account (from CC /stats, for identification)")
+    p_add.add_argument("name", help="Short alias (e.g., 'gmail', 'work')")
+    p_add.add_argument("--email", required=True, help="Account email (from CC /stats → Email field)")
     p_add.set_defaults(func=cmd_add)
 
     p_remove = sub.add_parser("remove", help="Remove a saved account")
