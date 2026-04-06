@@ -234,6 +234,8 @@ def _derive_session_label(session_path: Path) -> tuple[str, str]:
                 first_line = first_line.lower()
 
                 # Orchestration role patterns (match before generic fallback)
+                if "sentinel" in first_line and ("supervisor" in first_line or "orchestration" in first_line):
+                    return "Sentinel", "Orchestration supervisor"
                 if "software architect" in first_line and "plan" in first_line:
                     return "Planner", "Decompose spec into implementation plan"
                 if "technical analyst" in first_line and "digest" in first_line:
