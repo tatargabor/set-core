@@ -29,6 +29,28 @@ const MODEL_COLOR: Record<string, string> = {
   haiku: '#737373',
 }
 
+const PHASE_MAP: Record<string, string> = {
+  digest: 'Planning',
+  decompose: 'Planning',
+  decompose_summary: 'Planning',
+  decompose_brief: 'Planning',
+  decompose_domain: 'Planning',
+  decompose_merge: 'Planning',
+  sentinel: 'Monitoring',
+  task: 'Implementation',
+  review: 'Review gate',
+  smoke_fix: 'Smoke gate',
+  build_fix: 'Build gate',
+  replan: 'Replan',
+  classify: 'Classification',
+  audit: 'Audit',
+  spec_verify: 'Verification',
+}
+
+function getPhase(purposeRaw: string): string {
+  return PHASE_MAP[purposeRaw] ?? purposeRaw
+}
+
 function formatK(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`
@@ -64,7 +86,7 @@ interface BarData {
   status: string
 }
 
-type SortKey = 'timestamp' | 'purpose' | 'model' | 'change' | 'input_tokens' | 'output_tokens' | 'cache_tokens' | 'duration_ms'
+type SortKey = 'timestamp' | 'phase' | 'purpose' | 'model' | 'change' | 'input_tokens' | 'output_tokens' | 'cache_tokens' | 'duration_ms'
 
 export default function TokenChart({ changes, project }: Props) {
   const [calls, setCalls] = useState<LLMCall[]>([])
@@ -98,21 +120,32 @@ export default function TokenChart({ changes, project }: Props) {
   }, [changes])
 
   const totals = useMemo(() => {
+    // Sum from LLM calls (includes sentinel, digest, decompose — everything)
+    if (calls.length > 0) {
+      let input = 0, output = 0, cache = 0
+      for (const c of calls) {
+        input += c.input_tokens
+        output += c.output_tokens
+        cache += c.cache_tokens
+      }
+      return { input, output, cache, total: input + output }
+    }
+    // Fallback: state-level per-change tokens only
     let input = 0, output = 0, cache = 0
     for (const c of changes) {
-      // input_tokens includes cache — Total = input + output (not + cache)
       input += c.input_tokens ?? 0
       output += c.output_tokens ?? 0
       cache += c.cache_read_tokens ?? 0
     }
     return { input, output, cache, total: input + output }
-  }, [changes])
+  }, [changes, calls])
 
   const sortedCalls = useMemo(() => {
     const sorted = [...calls].sort((a, b) => {
       let cmp = 0
       switch (sortKey) {
         case 'timestamp': cmp = a.timestamp.localeCompare(b.timestamp); break
+        case 'phase': cmp = getPhase(a.purpose_raw).localeCompare(getPhase(b.purpose_raw)); break
         case 'purpose': cmp = a.purpose.localeCompare(b.purpose); break
         case 'model': cmp = a.model.localeCompare(b.model); break
         case 'change': cmp = a.change.localeCompare(b.change); break
@@ -231,6 +264,7 @@ export default function TokenChart({ changes, project }: Props) {
                 <thead className="bg-neutral-900/50 sticky top-0">
                   <tr>
                     <SortHeader k="timestamp" label="Time" />
+                    <SortHeader k="phase" label="Phase" />
                     <SortHeader k="purpose" label="Purpose" />
                     <SortHeader k="model" label="Model" />
                     <SortHeader k="change" label="Change" />
@@ -250,6 +284,7 @@ export default function TokenChart({ changes, project }: Props) {
                     return (
                       <tr key={i} className="border-t border-neutral-800/30 hover:bg-neutral-800/30">
                         <td className="px-3 py-1.5 text-neutral-500 whitespace-nowrap">{formatTime(call.timestamp)}</td>
+                        <td className="px-3 py-1.5 text-neutral-400">{getPhase(call.purpose_raw)}</td>
                         <td className="px-3 py-1.5 text-neutral-300">{call.purpose}</td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
                           <span style={{ color: modelColor }} className="font-medium">{modelShort}</span>
