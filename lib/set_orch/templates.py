@@ -370,7 +370,7 @@ Test-per-change requirement:
 - Explicitly list test files in scope.
 - Cross-domain flows go in the change that implements the LAST step, since all dependencies are merged by then.
 - Test names MUST include the REQ-ID prefix for coverage tracking: `test('REQ-XXX-NNN: description', ...)`.
-- Test names SHOULD also include a `[scenario: <slug>]` tag that matches a spec scenario. Example: `test('REQ-CART-001: item added to cart [scenario: add-item-to-empty-cart]', ...)`. This enables scenario-level acceptance criteria tracking — without it, the test counts toward requirement coverage but appears as "no test" in the AC dashboard view.
+- Each acceptance criterion (AC) from the tasks.md MUST have a corresponding test. Use the AC-ID in the test name: `test('REQ-CART-001 AC-1: WHEN item added THEN cart badge shows count', ...)`. The AC-ID + REQ-ID together enable scenario-level coverage tracking in the dashboard.
 
 Phase assignment — group changes into execution phases for milestone checkpoints:
 - Assign a phase integer (1..N, max 5) to each change

@@ -406,12 +406,35 @@ def build_test_coverage(
     # Phase 1: Try deterministic REQ-ID extraction from test result names
     # This creates additional test cases bound by REQ-ID from the output
     deterministic_bindings: dict[str, list[tuple[str, str]]] = {}  # req_id → [(file, result)]
+
+    # Build scenario lookup from test_cases for slug matching
+    _scenario_by_req: dict[str, list[TestCase]] = {}
+    for tc in test_cases:
+        _scenario_by_req.setdefault(tc.req_id, []).append(tc)
+
     for (file, name), result in test_results.items():
         req_ids = extract_req_ids(name)
         if req_ids:
             for rid in req_ids:
                 deterministic_bindings.setdefault(rid, []).append((file, result))
                 logger.debug("Bound %s (deterministic) from test: %s", rid, name)
+
+                # Try to match test name to a specific scenario slug
+                # Strip REQ-ID prefix to get the descriptive part
+                desc = re.sub(r"REQ-[A-Z]+-\d+:?\s*", "", name).strip()
+                desc_slug = _slugify(desc)
+                if desc_slug and rid in _scenario_by_req:
+                    for sc_tc in _scenario_by_req[rid]:
+                        if not sc_tc.result and (
+                            sc_tc.scenario_slug == desc_slug
+                            or desc_slug.startswith(sc_tc.scenario_slug[:30])
+                            or sc_tc.scenario_slug.startswith(desc_slug[:30])
+                        ):
+                            sc_tc.result = result
+                            sc_tc.test_file = sc_tc.test_file or file
+                            logger.debug("Scenario bound: %s/%s from test: %s",
+                                        rid, sc_tc.scenario_slug, name)
+                            break
         else:
             unbound_tests.append(name)
             logger.debug("Unbound test (no REQ-ID): %s, trying fuzzy", name)
