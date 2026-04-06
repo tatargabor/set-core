@@ -80,25 +80,32 @@ export default function TokenChart({ changes, project }: Props) {
     return changes
       .filter(c => (c.tokens_used ?? 0) > 0 || (c.input_tokens ?? 0) > 0)
       .sort((a, b) => (b.tokens_used ?? 0) - (a.tokens_used ?? 0))
-      .map(c => ({
-        name: c.name,
-        shortName: c.name.length > 20 ? c.name.slice(0, 18) + '\u2026' : c.name,
-        input: c.input_tokens ?? 0,
-        output: c.output_tokens ?? 0,
-        cache: c.cache_read_tokens ?? 0,
-        total: (c.input_tokens ?? 0) + (c.output_tokens ?? 0) + (c.cache_read_tokens ?? 0),
-        status: c.status,
-      }))
+      .map(c => {
+        // input_tokens already includes cache_read — split for stacked bar
+        const totalInput = c.input_tokens ?? 0
+        const cache = c.cache_read_tokens ?? 0
+        const rawInput = Math.max(0, totalInput - cache)
+        return {
+          name: c.name,
+          shortName: c.name.length > 20 ? c.name.slice(0, 18) + '\u2026' : c.name,
+          input: rawInput,
+          output: c.output_tokens ?? 0,
+          cache,
+          total: totalInput + (c.output_tokens ?? 0),  // no double-count
+          status: c.status,
+        }
+      })
   }, [changes])
 
   const totals = useMemo(() => {
     let input = 0, output = 0, cache = 0
     for (const c of changes) {
+      // input_tokens includes cache — Total = input + output (not + cache)
       input += c.input_tokens ?? 0
       output += c.output_tokens ?? 0
       cache += c.cache_read_tokens ?? 0
     }
-    return { input, output, cache, total: input + output + cache }
+    return { input, output, cache, total: input + output }
   }, [changes])
 
   const sortedCalls = useMemo(() => {
