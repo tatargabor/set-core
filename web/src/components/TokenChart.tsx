@@ -48,7 +48,7 @@ const PHASE_MAP: Record<string, string> = {
 }
 
 function getPhase(purposeRaw: string): string {
-  return PHASE_MAP[purposeRaw] ?? purposeRaw
+  return PHASE_MAP[purposeRaw] ?? 'Other'
 }
 
 function formatK(v: number): string {
@@ -120,22 +120,20 @@ export default function TokenChart({ changes, project }: Props) {
   }, [changes])
 
   const totals = useMemo(() => {
-    // Sum from LLM calls (includes sentinel, digest, decompose — everything)
-    if (calls.length > 0) {
-      let input = 0, output = 0, cache = 0
-      for (const c of calls) {
-        input += c.input_tokens
-        output += c.output_tokens
-        cache += c.cache_tokens
-      }
-      return { input, output, cache, total: input + output }
-    }
-    // Fallback: state-level per-change tokens only
+    // Per-change tokens from state (authoritative — loop-state accumulator)
     let input = 0, output = 0, cache = 0
     for (const c of changes) {
       input += c.input_tokens ?? 0
       output += c.output_tokens ?? 0
       cache += c.cache_read_tokens ?? 0
+    }
+    // Add orchestration-level calls NOT tied to a change (sentinel, digest, decompose)
+    for (const c of calls) {
+      if (!c.change) {
+        input += c.input_tokens
+        output += c.output_tokens
+        cache += c.cache_tokens
+      }
     }
     return { input, output, cache, total: input + output }
   }, [changes, calls])
