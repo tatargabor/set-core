@@ -1196,10 +1196,14 @@ def _build_input_content(
             change_name, len(test_plan_entries),
         )
         _threshold_pct = 80  # default; configurable via e2e_coverage_threshold directive
+        _skeleton_note = (
+            f"\n**A test skeleton has been pre-generated at `tests/e2e/{change_name}.spec.ts`** "
+            f"with {len(test_plan_entries)} test blocks marked `// TODO: implement`. "
+            f"Fill in the test bodies — do NOT delete or rename test blocks.\n"
+        )
         lines.append(
             f"\n## Required Tests (MANDATORY — coverage gate will block if incomplete)\n"
-            f"You MUST write tests for ALL scenarios below. This list takes priority "
-            f"over any narrative test descriptions.\n"
+            f"{_skeleton_note}"
             f"Name each test with the REQ-* ID prefix. "
             f"Example: `test('REQ-HOME-001: Hero heading visible', ...)`\n"
             "Tag SMOKE tests with: "
@@ -1245,6 +1249,67 @@ def _load_requirements_lookup(digest_dir: str) -> dict[str, dict]:
         }
     except (json.JSONDecodeError, OSError, KeyError):
         return {}
+
+
+def _rewrite_e2e_tasks(wt_path: str, change_name: str, skeleton_path: str, test_count: int) -> None:
+    """Post-process tasks.md to replace narrative E2E tasks with skeleton fill instruction.
+
+    Finds lines referencing tests/e2e/*.spec.ts or E2E test creation and replaces
+    them with a single "fill test bodies" task pointing to the skeleton.
+    """
+    import re as _re
+    import glob
+
+    # Find tasks.md in the worktree (could be in openspec/changes/<name>/ or root)
+    tasks_candidates = glob.glob(os.path.join(wt_path, "openspec", "changes", "*", "tasks.md"))
+    if not tasks_candidates:
+        return
+
+    tasks_path = tasks_candidates[0]
+    try:
+        content = open(tasks_path, encoding="utf-8").read()
+    except OSError:
+        return
+
+    lines = content.split("\n")
+    new_lines = []
+    in_e2e_section = False
+    e2e_tasks_replaced = False
+    skeleton_task_added = False
+
+    for line in lines:
+        # Detect E2E section header (e.g., "## 12. E2E Tests")
+        if _re.match(r'^## \d+\.\s*E2E\b', line, _re.IGNORECASE):
+            in_e2e_section = True
+            new_lines.append(line)
+            continue
+
+        # Detect next section header (exit E2E section)
+        if in_e2e_section and _re.match(r'^## \d+\.', line):
+            in_e2e_section = False
+
+        # Replace E2E task lines
+        if in_e2e_section and _re.match(r'^- \[ \].*(?:tests/e2e/|spec\.ts|E2E|REQ-)', line, _re.IGNORECASE):
+            if not skeleton_task_added:
+                spec_basename = os.path.basename(skeleton_path)
+                new_lines.append(
+                    f"- [ ] Fill test bodies in tests/e2e/{spec_basename} "
+                    f"({test_count} test blocks marked // TODO: implement)"
+                )
+                skeleton_task_added = True
+                e2e_tasks_replaced = True
+            # Skip original E2E task line
+            continue
+
+        new_lines.append(line)
+
+    if e2e_tasks_replaced:
+        with open(tasks_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(new_lines))
+        logger.info(
+            "Rewrote E2E tasks in %s → single skeleton fill task (%d blocks)",
+            tasks_path, test_count,
+        )
 
 
 def _load_test_plan(digest_dir: str, change_req_ids: list[str]) -> list:
@@ -1822,6 +1887,28 @@ def dispatch_change(
         )
     except OSError:
         logger.debug("Failed to write e2e-manifest.json (non-fatal)")
+
+    # Generate test skeleton from test-plan.json (deterministic structure)
+    _skeleton_path = ""
+    _skeleton_count = 0
+    if digest_dir and change_reqs:
+        try:
+            from .test_scaffold import generate_skeleton
+            from .profile_loader import load_profile as _load_scaffold_profile
+            _scaffold_profile = _load_scaffold_profile(project_path)
+            _scaffold_entries = _load_test_plan(digest_dir, change_reqs)
+            if _scaffold_entries and hasattr(_scaffold_profile, "render_test_skeleton"):
+                _skeleton_path, _skeleton_count = generate_skeleton(
+                    test_plan_entries=_scaffold_entries,
+                    change_name=change_name,
+                    worktree_path=wt_path,
+                    profile=_scaffold_profile,
+                )
+                if _skeleton_count > 0:
+                    # Post-process tasks.md: replace E2E tasks with "fill skeleton"
+                    _rewrite_e2e_tasks(wt_path, change_name, _skeleton_path, _skeleton_count)
+        except Exception:
+            logger.debug("Test skeleton generation failed (non-fatal)", exc_info=True)
 
     # Update state
     update_change_field(state_path, change_name, "status", "dispatched", event_bus=event_bus)

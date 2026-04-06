@@ -971,6 +971,26 @@ export function getSentinelLog(project: string, tail = 200): Promise<{ lines: st
   return fetchJSON(`/${project}/sentinel/log?tail=${tail}`)
 }
 
+// --- LLM Calls ---
+
+export interface LLMCall {
+  timestamp: string
+  source: 'orchestration' | 'session'
+  purpose: string
+  purpose_raw: string
+  model: string
+  change: string
+  duration_ms: number
+  input_tokens: number
+  output_tokens: number
+  cache_tokens: number
+  exit_code: number
+}
+
+export function getLLMCalls(project: string, limit = 500): Promise<{ calls: LLMCall[] }> {
+  return fetchJSON(`/${project}/llm-calls?limit=${limit}`)
+}
+
 // =====================================================
 
 export async function signScore(project: string, score: number, changesDone: number, totalTokens: number): Promise<string> {

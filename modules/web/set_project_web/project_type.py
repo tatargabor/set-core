@@ -413,6 +413,50 @@ class WebProjectType(CoreProfile):
             "tailwind.config.ts", "tailwind.config.js",
         ]
 
+    def render_test_skeleton(self, entries: list, change_name: str) -> str:
+        """Render Playwright test skeleton from test plan entries.
+
+        Generates a complete .spec.ts file with test.describe blocks per REQ-ID
+        and test() blocks per scenario, all with // TODO: implement bodies.
+        """
+        from collections import defaultdict
+
+        grouped: dict[str, list] = defaultdict(list)
+        for entry in entries:
+            grouped[entry.req_id].append(entry)
+
+        lines = [
+            "// AUTO-GENERATED from test-plan.json — fill test bodies, do not delete test blocks",
+            "// Coverage gate will fail if required REQ-ID tests are missing.",
+            "",
+            "import { test, expect } from '@playwright/test';",
+            "",
+        ]
+
+        for req_id in sorted(grouped.keys()):
+            req_entries = grouped[req_id]
+            # Use first entry's scenario name as describe label
+            first_name = req_entries[0].scenario_name.split("→")[0].split("—")[0].strip()
+            lines.append(f"test.describe('{req_id}: {first_name}', () => {{")
+
+            for entry in req_entries:
+                scenario = entry.scenario_name.replace("'", "\\'")
+                is_smoke = getattr(entry, "type", "functional") == "smoke"
+
+                if is_smoke:
+                    lines.append(f"  test('{req_id}: {scenario} @SMOKE', {{ tag: '@smoke' }}, async ({{ page }}) => {{")
+                else:
+                    lines.append(f"  test('{req_id}: {scenario}', async ({{ page }}) => {{")
+
+                lines.append("    // TODO: implement")
+                lines.append("  });")
+                lines.append("")
+
+            lines.append("});")
+            lines.append("")
+
+        return "\n".join(lines)
+
     def parse_test_results(self, stdout: str) -> dict[tuple[str, str], str]:
         """Parse Playwright stdout into per-test pass/fail results.
 

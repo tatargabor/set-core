@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -21,6 +22,7 @@ from .helpers import (
     _load_archived_changes,
     _list_worktrees,
     _enrich_changes,
+    _claude_mangle,
     _PURPOSE_LABELS,
 )
 
@@ -701,3 +703,187 @@ def get_memory_overview(project: str):
     }
 
 
+@router.get("/api/{project}/llm-calls")
+def get_llm_calls(project: str, limit: int = Query(500, ge=1, le=5000)):
+    """Chronological list of all LLM calls: events JSONL + session files.
+
+    Combines two sources:
+    1. LLM_CALL events from orchestration events JSONL (review, decompose, digest, etc.)
+    2. Claude session files per change (implementation sessions with full token data)
+
+    Returns sorted by timestamp, most recent first.
+    """
+    project_path = _resolve_project(project)
+    calls: list[dict] = []
+
+    # Source 1: LLM_CALL events from events JSONL
+    _read_llm_call_events(project_path, calls)
+
+    # Source 2: Session files across all changes
+    sp = _state_path(project_path)
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            _read_session_calls(state, project_path, calls)
+        except Exception:
+            pass  # best-effort
+
+    # Sort chronologically (most recent first) and limit
+    calls.sort(key=lambda c: c.get("timestamp", ""), reverse=True)
+    return {"calls": calls[:limit]}
+
+
+def _read_llm_call_events(project_path: Path, calls: list[dict]) -> None:
+    """Read LLM_CALL events from orchestration events JSONL."""
+    events_file = project_path / "orchestration-state-events.jsonl"
+    if not events_file.exists():
+        events_file = project_path / "set" / "orchestration" / "orchestration-state-events.jsonl"
+    if not events_file.exists():
+        return
+    try:
+        with open(events_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if ev.get("type") != "LLM_CALL":
+                    continue
+                data = ev.get("data", {})
+                calls.append({
+                    "timestamp": ev.get("ts", ""),
+                    "source": "orchestration",
+                    "purpose": _PURPOSE_LABELS.get(
+                        data.get("purpose", ""), data.get("purpose", "unknown")
+                    ),
+                    "purpose_raw": data.get("purpose", ""),
+                    "model": data.get("model", "default"),
+                    "change": ev.get("change", ""),
+                    "duration_ms": data.get("duration_ms", 0),
+                    "input_tokens": 0,  # not tracked in events
+                    "output_tokens": 0,
+                    "cache_tokens": 0,
+                    "exit_code": data.get("exit_code", 0),
+                })
+    except OSError:
+        pass
+
+
+def _read_session_calls(state, project_path: Path, calls: list[dict]) -> None:
+    """Read Claude session files for all changes and extract per-session LLM call data."""
+    from .sessions import (
+        _extract_session_model,
+        _extract_session_tokens,
+        _derive_session_label,
+    )
+
+    seen_ids: set[str] = set()
+
+    # Collect session dirs from all changes
+    for change in state.changes:
+        dirs: list[Path] = []
+        if change.worktree_path:
+            mangled = _claude_mangle(change.worktree_path)
+            d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+            if d.is_dir():
+                dirs.append(d)
+        proj_mangled = _claude_mangle(str(project_path))
+        proj_dir = Path.home() / ".claude" / "projects" / f"-{proj_mangled}"
+        if proj_dir.is_dir() and proj_dir not in dirs:
+            dirs.append(proj_dir)
+
+        for d in dirs:
+            try:
+                for f in d.iterdir():
+                    if not f.is_file() or f.suffix != ".jsonl":
+                        continue
+                    if f.stem in seen_ids:
+                        continue
+                    seen_ids.add(f.stem)
+                    try:
+                        st = f.stat()
+                        label, _full = _derive_session_label(f)
+                        model = _extract_session_model(f)
+                        tokens = _extract_session_tokens(f)
+
+                        # For project-dir sessions, check if this session
+                        # belongs to this change
+                        if d == proj_dir and change.worktree_path:
+                            from .sessions import _extract_session_change_name
+                            extracted = _extract_session_change_name(f)
+                            if extracted and extracted != change.name:
+                                continue
+                            if not extracted:
+                                continue
+
+                        # Calculate approximate duration from first/last entry
+                        duration_ms = _session_duration_ms(f)
+
+                        calls.append({
+                            "timestamp": datetime.fromtimestamp(
+                                st.st_mtime, tz=timezone.utc
+                            ).isoformat(),
+                            "source": "session",
+                            "purpose": label,
+                            "purpose_raw": label.lower().replace(" ", "_"),
+                            "model": model or "unknown",
+                            "change": change.name,
+                            "duration_ms": duration_ms,
+                            "input_tokens": tokens.get("input_tokens", 0),
+                            "output_tokens": tokens.get("output_tokens", 0),
+                            "cache_tokens": tokens.get("cache_read_tokens", 0),
+                            "exit_code": 0,
+                        })
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+
+
+def _session_duration_ms(path: Path) -> int:
+    """Estimate session duration from first and last JSONL entry timestamps."""
+    first_ts = None
+    last_ts = None
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts = entry.get("timestamp")
+                if not ts:
+                    continue
+                if first_ts is None:
+                    first_ts = ts
+                last_ts = ts
+    except OSError:
+        return 0
+    if first_ts and last_ts and first_ts != last_ts:
+        try:
+            # Timestamps may be ISO format or epoch
+            t1 = _parse_ts(first_ts)
+            t2 = _parse_ts(last_ts)
+            if t1 and t2:
+                return max(0, int((t2 - t1) * 1000))
+        except (ValueError, TypeError):
+            pass
+    return 0
+
+
+def _parse_ts(ts) -> float | None:
+    """Parse a timestamp (ISO string or epoch float) to epoch seconds."""
+    if isinstance(ts, (int, float)):
+        return float(ts)
+    if isinstance(ts, str):
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+    return None

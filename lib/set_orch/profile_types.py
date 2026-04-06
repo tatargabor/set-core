@@ -194,6 +194,15 @@ class ProjectType(ABC):
     def detect_e2e_command(self, project_path: str) -> Optional[str]:
         return None
 
+    def render_test_skeleton(self, entries: list, change_name: str) -> str:
+        """Render a test skeleton file from test plan entries.
+
+        Override in project-type modules to produce framework-specific syntax
+        (e.g., Playwright for web, Vitest for API-only).
+        Returns empty string if not supported.
+        """
+        return ""
+
     def e2e_gate_env(self, port: int) -> Dict[str, str]:
         """Return env vars for e2e gate with isolated port.
 

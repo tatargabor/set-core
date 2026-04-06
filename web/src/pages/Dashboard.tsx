@@ -380,7 +380,7 @@ export default function Dashboard({ project, initialTab }: Props) {
               <PlanViewer project={project} />
             )}
             {activeTab === 'tokens' && (
-              <TokenChart changes={changes} />
+              <TokenChart changes={changes} project={project} />
             )}
             {activeTab === 'audit' && state?.phase_audit_results && (
               <AuditPanel results={state.phase_audit_results} />

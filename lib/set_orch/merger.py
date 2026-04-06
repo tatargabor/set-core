@@ -816,6 +816,21 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
     return "conflict"
 
 
+def _count_skeleton_todos(wt_path: str, change_name: str) -> int:
+    """Count remaining // TODO: implement markers in the test skeleton file.
+
+    Returns 0 if no skeleton file exists (change didn't get one).
+    """
+    spec_file = os.path.join(wt_path, "tests", "e2e", f"{change_name}.spec.ts")
+    if not os.path.isfile(spec_file):
+        return 0
+    try:
+        content = Path(spec_file).read_text(encoding="utf-8")
+        return content.count("// TODO: implement")
+    except OSError:
+        return 0
+
+
 def _detect_own_spec_files(wt_path: str) -> list[str]:
     """Detect which E2E spec files were added/modified by this change branch.
 
@@ -1084,6 +1099,15 @@ def _run_integration_gates(
                         event_bus.emit("VERIFY_GATE", change=change_name, data={
                             "gate": "test", "result": "fail", "phase": "integration"})
                     return False
+
+    # TODO count warning — check if agent left unfilled test skeletons
+    _todo_count = _count_skeleton_todos(wt_path, change_name)
+    if _todo_count > 0:
+        logger.warning(
+            "E2E skeleton has %d unfilled // TODO: implement blocks in %s — "
+            "agent may not have completed all test bodies",
+            _todo_count, change_name,
+        )
 
     # E2E gate (from profile — web only)
     # Two-phase: Phase 1 = smoke inherited (non-blocking), Phase 2 = own tests (blocking)
