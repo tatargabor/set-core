@@ -727,7 +727,9 @@ def get_llm_calls(project: str, limit: int = Query(500, ge=1, le=5000)):
             state = load_state(str(sp))
         except Exception:
             pass
-    _read_session_calls(state, project_path, calls)
+    # Collect event-source purpose+change pairs for dedup
+    event_keys = {(c["purpose_raw"], c["change"]) for c in calls if c["source"] == "orchestration"}
+    _read_session_calls(state, project_path, calls, skip_keys=event_keys)
 
     # Sort chronologically (most recent first) and limit
     calls.sort(key=lambda c: c.get("timestamp", ""), reverse=True)
@@ -802,7 +804,7 @@ def _parse_llm_events_file(events_file: Path, calls: list[dict]) -> None:
         pass
 
 
-def _read_session_calls(state, project_path: Path, calls: list[dict]) -> None:
+def _read_session_calls(state, project_path: Path, calls: list[dict], skip_keys: set | None = None) -> None:
     """Read Claude session files for all changes + project-level orchestration sessions."""
     from .sessions import (
         _extract_session_model,
@@ -860,6 +862,11 @@ def _read_session_calls(state, project_path: Path, calls: list[dict]) -> None:
                     )
 
                     is_active = (time.time() - st.st_mtime) < 60
+
+                    # Skip if we already have an event-source entry for this purpose+change
+                    raw_purpose = label.lower().replace(" ", "_")
+                    if skip_keys and (raw_purpose, change_name or "") in skip_keys:
+                        continue
 
                     calls.append({
                         "timestamp": datetime.fromtimestamp(
