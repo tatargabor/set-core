@@ -298,6 +298,15 @@ export default function TokenChart({ changes, project }: Props) {
                       </tr>
                     )
                   })}
+                  {/* Summary row */}
+                  <tr className="border-t-2 border-neutral-700 bg-neutral-900/70 font-medium">
+                    <td className="px-3 py-2 text-neutral-400" colSpan={5}>Total ({calls.length} calls)</td>
+                    <td className="px-3 py-2 text-neutral-500 text-xs"></td>
+                    <td className="px-3 py-2 text-right text-blue-400">{formatK(calls.reduce((s, c) => s + c.input_tokens, 0))}</td>
+                    <td className="px-3 py-2 text-right text-green-400">{formatK(calls.reduce((s, c) => s + c.output_tokens, 0))}</td>
+                    <td className="px-3 py-2 text-right text-purple-400">{formatK(calls.reduce((s, c) => s + c.cache_tokens, 0))}</td>
+                    <td className="px-3 py-2 text-right text-neutral-400">{formatDuration(calls.reduce((s, c) => s + c.duration_ms, 0))}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
