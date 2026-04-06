@@ -202,6 +202,12 @@ ATTRS
             success "Scaffold rules deployed" || true
     fi
 
+    # Deploy scaffold design assets (globals.css with shadcn theme)
+    if [[ -f "$SCAFFOLD_DIR/src/app/globals.css" ]]; then
+        cp "$SCAFFOLD_DIR/src/app/globals.css" "$TEST_DIR/src/app/globals.css"
+        info "Scaffold globals.css deployed (shadcn theme)"
+    fi
+
     step "Orchestration config"
     mkdir -p set/orchestration
     cat > set/orchestration/config.yaml << 'YAML'
