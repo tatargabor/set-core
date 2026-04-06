@@ -157,8 +157,11 @@ init_project() {
     git init
     git checkout -b main 2>/dev/null || true
 
-    # Copy spec
+    # Copy spec + design files
     cp "$SPEC_FILE" docs/spec.md
+    for df in "$SCAFFOLD_DIR"/docs/design-*.md; do
+        [[ -f "$df" ]] && cp "$df" docs/ && info "Deployed $(basename "$df")"
+    done
 
     # .gitattributes — prevent lockfile conflicts
     cat > .gitattributes << 'ATTRS'
