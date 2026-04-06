@@ -332,9 +332,18 @@ class WebProjectType(CoreProfile):
 
     def planning_rules(self) -> str:
         rules_file = Path(__file__).parent / "planning_rules.txt"
-        if rules_file.is_file():
-            return rules_file.read_text()
-        return ""
+        rules = rules_file.read_text() if rules_file.is_file() else ""
+
+        # Detect shadcn/ui at runtime — inject explicit context for planner
+        import os
+        if os.path.isfile("components.json"):
+            rules = (
+                "IMPORTANT: This project uses shadcn/ui (components.json detected). "
+                "ALL UI must use shadcn/ui components (Button, Card, Input, Sheet, etc.), "
+                "NOT plain HTML elements with Tailwind classes.\n\n"
+            ) + rules
+
+        return rules
 
     def collect_test_artifacts(self, wt_path: str) -> list:
         """Collect Playwright test artifacts (screenshots, traces).
