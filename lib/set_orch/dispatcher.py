@@ -1737,6 +1737,7 @@ def dispatch_change(
             ctx.design_context = rule_injection
 
     # Per-change design.md from design-brief.md (rich visual descriptions)
+    has_per_change_design = False
     try:
         has_per_change_design = _build_per_change_design(
             change_name, scope, design_snapshot_dir, wt_path,
