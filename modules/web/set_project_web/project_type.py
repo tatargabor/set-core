@@ -451,11 +451,12 @@ class WebProjectType(CoreProfile):
             for entry in req_entries:
                 scenario = entry.scenario_name.replace("'", "\\'")
                 is_smoke = getattr(entry, "type", "functional") == "smoke"
+                ac_prefix = f"{entry.ac_id} — " if getattr(entry, "ac_id", "") else f"{req_id}: "
 
                 if is_smoke:
-                    lines.append(f"  test('{req_id}: {scenario} @SMOKE', {{ tag: '@smoke' }}, async ({{ page }}) => {{")
+                    lines.append(f"  test('{ac_prefix}{scenario} @SMOKE', {{ tag: '@smoke' }}, async ({{ page }}) => {{")
                 else:
-                    lines.append(f"  test('{req_id}: {scenario}', async ({{ page }}) => {{")
+                    lines.append(f"  test('{ac_prefix}{scenario}', async ({{ page }}) => {{")
 
                 lines.append("    // TODO: implement")
                 lines.append("  });")

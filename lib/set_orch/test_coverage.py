@@ -28,6 +28,7 @@ class DigestScenario:
     when: str
     then: str
     slug: str
+    ac_id: str = ""  # e.g., "REQ-NAV-001:AC-1"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -39,6 +40,7 @@ class DigestScenario:
             when=d.get("when", ""),
             then=d.get("then", ""),
             slug=d.get("slug", ""),
+            ac_id=d.get("ac_id", ""),
         )
 
 
@@ -123,7 +125,7 @@ def parse_scenarios(section_text: str) -> list[DigestScenario]:
 
 @dataclass
 class TestCase:
-    """A test case from JOURNEY-TEST-PLAN.md."""
+    """A test case from JOURNEY-TEST-PLAN.md or test-plan.json."""
 
     scenario_slug: str
     req_id: str
@@ -132,6 +134,7 @@ class TestCase:
     test_name: str
     category: str  # "happy" | "negative" | "boundary"
     result: str | None = None  # "pass" | "fail" | None
+    ac_id: str = ""  # e.g., "REQ-NAV-001:AC-1"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -403,26 +406,45 @@ def build_test_coverage(
     """
     unbound_tests: list[str] = []
 
-    # Phase 1: Try deterministic REQ-ID extraction from test result names
-    # This creates additional test cases bound by REQ-ID from the output
-    deterministic_bindings: dict[str, list[tuple[str, str]]] = {}  # req_id → [(file, result)]
-
-    # Build scenario lookup from test_cases for slug matching
-    _scenario_by_req: dict[str, list[TestCase]] = {}
+    # Build lookups from test_cases
+    _ac_lookup: dict[str, TestCase] = {}  # ac_id → TestCase (Phase 0)
+    _scenario_by_req: dict[str, list[TestCase]] = {}  # req_id → [TestCase] (Phase 1)
     for tc in test_cases:
+        if tc.ac_id:
+            _ac_lookup[tc.ac_id.upper()] = tc
         _scenario_by_req.setdefault(tc.req_id, []).append(tc)
 
+    # Phase 0: AC-ID direct binding (most reliable — from skeleton-generated tests)
+    _phase0_bound: set[tuple[str, str]] = set()  # (file, name) already bound
+    deterministic_bindings: dict[str, list[tuple[str, str]]] = {}  # req_id → [(file, result)]
+
     for (file, name), result in test_results.items():
+        ac_ids = extract_ac_ids(name)
+        if ac_ids:
+            for acid in ac_ids:
+                if acid in _ac_lookup:
+                    tc = _ac_lookup[acid]
+                    tc.result = result
+                    tc.test_file = tc.test_file or file
+                    logger.info("AC-ID bound: %s from test: %s", acid, name)
+                    _phase0_bound.add((file, name))
+                # Also track REQ-level binding
+                rid = acid.split(":")[0]
+                deterministic_bindings.setdefault(rid, []).append((file, result))
+
+    # Phase 1: REQ-ID extraction + slug matching (fallback for tests without AC-IDs)
+    for (file, name), result in test_results.items():
+        if (file, name) in _phase0_bound:
+            continue  # Already bound by Phase 0
+
         req_ids = extract_req_ids(name)
         if req_ids:
             for rid in req_ids:
                 deterministic_bindings.setdefault(rid, []).append((file, result))
                 logger.debug("Bound %s (deterministic) from test: %s", rid, name)
 
-                # Try to match test name to a specific scenario slug.
-                # Playwright names use "describe › test" format — split on › and
-                # try matching each segment individually after stripping REQ-IDs.
-                _raw_desc = re.sub(r"REQ-[A-Z]+-\d+:?\s*", "", name).strip()
+                # Slug matching: split on › and try each segment
+                _raw_desc = re.sub(r"REQ-[A-Z]+-\d+(?::AC-\d+)?[\s—:]*", "", name).strip()
                 _segments = [_slugify(seg.strip()) for seg in re.split(r"\s*›\s*", _raw_desc) if seg.strip()]
                 if not _segments:
                     _segments = [_slugify(_raw_desc)]
@@ -438,7 +460,7 @@ def build_test_coverage(
                                 or sc_tc.scenario_slug.startswith(seg_slug[:30])):
                                 sc_tc.result = result
                                 sc_tc.test_file = sc_tc.test_file or file
-                                logger.debug("Scenario bound: %s/%s from segment: %s",
+                                logger.debug("Scenario bound (slug): %s/%s from segment: %s",
                                             rid, sc_tc.scenario_slug, seg_slug)
                                 break
         else:
@@ -527,6 +549,7 @@ def _fuzzy_match(a: str, b: str) -> bool:
 # ─── REQ-ID Extraction ─────────────────────────────────────────
 
 _REQ_ID_RE = re.compile(r"REQ-[A-Z]+-\d+", re.IGNORECASE)
+_AC_ID_RE = re.compile(r"(REQ-[A-Z]+-\d+:AC-\d+)", re.IGNORECASE)
 
 
 def extract_req_ids(test_name: str) -> list[str]:
@@ -536,6 +559,14 @@ def extract_req_ids(test_name: str) -> list[str]:
     "REQ-HOME-001: REQ-NAV-001: heading and nav visible"
     """
     return [m.upper() for m in _REQ_ID_RE.findall(test_name)]
+
+
+def extract_ac_ids(test_name: str) -> list[str]:
+    """Extract AC-IDs (REQ-XXX-NNN:AC-M) from a test name.
+
+    Example: "REQ-NAV-001:AC-1 — Header visible" → ["REQ-NAV-001:AC-1"]
+    """
+    return [m.upper() for m in _AC_ID_RE.findall(test_name)]
 
 
 # ─── Generated Test Plan ───────────────────────────────────────
@@ -559,6 +590,7 @@ class TestPlanEntry:
     min_tests: int
     categories: list[str] = field(default_factory=list)
     type: str = "functional"  # "smoke" | "functional"
+    ac_id: str = ""  # e.g., "REQ-NAV-001:AC-1"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -573,6 +605,7 @@ class TestPlanEntry:
             min_tests=d.get("min_tests", 1),
             categories=d.get("categories", ["happy"]),
             type=d.get("type", "functional"),
+            ac_id=d.get("ac_id", ""),
         )
 
 
@@ -629,26 +662,32 @@ def generate_test_plan(
         if not req_id:
             continue
 
-        # Build scenario text from acceptance_criteria
+        # Build scenarios from acceptance_criteria, assigning AC-IDs
         ac_items = req.get("acceptance_criteria", []) or []
-        ac_text = "\n".join(f"#### Scenario: {ac}" for ac in ac_items) if ac_items else ""
+        scenarios: list[DigestScenario] = []
 
-        # Try structured WHEN/THEN scenarios first
-        scenarios = parse_scenarios(ac_text) if ac_text else []
+        for ac_idx, ac in enumerate(ac_items, 1):
+            ac_str = str(ac).strip()
+            if not ac_str:
+                continue
+            ac_id = f"{req_id}:AC-{ac_idx}"
 
-        # Fallback: plain-text ACs without WHEN/THEN are still testable —
-        # create a DigestScenario per AC with the text as the name
-        if not scenarios and ac_items:
-            for ac in ac_items:
-                ac_str = str(ac).strip()
-                if not ac_str:
-                    continue
+            # Try WHEN/THEN parsing
+            ac_text = f"#### Scenario: {ac_str}"
+            parsed = parse_scenarios(ac_text)
+            if parsed:
+                for s in parsed:
+                    s.ac_id = ac_id
+                    scenarios.append(s)
+            else:
+                # Plain-text AC → scenario
                 slug = _slugify(ac_str[:60])
                 scenarios.append(DigestScenario(
                     name=ac_str,
                     when=ac_str,
                     then="verified",
                     slug=slug or "ac",
+                    ac_id=ac_id,
                 ))
 
         if not scenarios:
@@ -673,6 +712,7 @@ def generate_test_plan(
                 risk=risk,
                 min_tests=min_tests,
                 categories=categories,
+                ac_id=scenario.ac_id,
             )
             entries.append(entry)
             logger.debug(

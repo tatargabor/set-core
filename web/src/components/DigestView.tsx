@@ -346,16 +346,26 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
                     {g.ownMs ? ` · ${fmtMs(g.ownMs)}` : ''}
                   </span>
                 </div>
-                {g.ownTests.map((t, i) => (
+                {g.ownTests.map((t, i) => {
+                  const acMatch = t.name.match(/^(REQ-[A-Z]+-\d+:AC-\d+)\s*[—:]\s*(.*)/)
+                  return (
                   <div key={`o${i}`} className="flex items-center gap-2 px-3 py-0.5 pl-8 text-sm">
                     <span className={t.result === 'pass' ? 'text-green-400' : 'text-red-400'}>
                       {t.result === 'pass' ? '✓' : '✗'}
                     </span>
-                    <span className="text-neutral-400 truncate flex-1">{t.name}</span>
+                    {acMatch ? (
+                      <span className="text-neutral-400 truncate flex-1">
+                        <span className="text-blue-400 font-mono text-xs">{acMatch[1]}</span>
+                        {' '}{acMatch[2]}
+                      </span>
+                    ) : (
+                      <span className="text-neutral-400 truncate flex-1">{t.name}</span>
+                    )}
                     <span className="text-xs text-neutral-600 shrink-0">{t.file}</span>
                     {t.duration && <span className="text-xs text-neutral-600 shrink-0">{t.duration}</span>}
                   </div>
-                ))}
+                  )
+                })}
                 {g.ownTests.length === 0 && g.status && !g.smokeResult && (
                   <div className="px-8 py-0.5 text-xs text-neutral-600">
                     Gate result: {g.status} (no parsed test lines)
@@ -675,7 +685,8 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                     {/* Level 3: Scenarios or plain ACs */}
                     {isReqExpanded && hasScenarios && scenarioCount > 0 && (
                       r.scenarios!.map((sc, i) => {
-                        const tc = cases.find(c => c.scenario_slug === sc.slug)
+                        const acId = `${r.id}:AC-${i + 1}`
+                        const tc = cases.find(c => c.ac_id === acId) || cases.find(c => c.scenario_slug === sc.slug)
                         // If no scenario-level match but REQ is covered (deterministic REQ-ID binding), show as covered
                         const reqCovered = !tc && !uncoveredSet.has(r.id) && !nonTestableSet.has(r.id) && (testCoverage?.covered_reqs ?? []).includes(r.id)
                         return (

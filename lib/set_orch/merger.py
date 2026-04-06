@@ -2068,6 +2068,7 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
                             test_file="",
                             test_name=entry.scenario_name,
                             category=entry.categories[0] if entry.categories else "happy",
+                            ac_id=entry.ac_id,
                         ))
                     non_testable = _tp.non_testable
                     logger.info("Loaded %d test cases from test-plan.json (no JOURNEY-TEST-PLAN.md)", len(test_cases))

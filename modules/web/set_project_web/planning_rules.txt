@@ -6,7 +6,7 @@ Change sizing and decomposition granularity:
 - Prefer 3 phases over 4+. More phases = more sequential bottlenecks. Ideal: Phase 1 (foundation + auth parallel), Phase 2 (catalog + cart + admin parallel), Phase 3 (checkout + polish).
 - Each change MUST have its own E2E test file. Test file names SHOULD match the change name (e.g., change `shopping-cart` → `tests/e2e/cart.spec.ts`).
 - Every E2E test block MUST include its REQ-XXX-NNN prefix in the test name for coverage tracking. Example: `test('REQ-CART-001: Add to cart shows badge', ...)`. Tests without REQ-IDs are invisible to the coverage gate and will not count toward the 80% threshold.
-- Each acceptance criterion (AC) from tasks.md MUST have a corresponding test. Include the AC-ID in the test name: `test('REQ-CART-001 AC-1: WHEN item added THEN cart badge shows count', ...)`. The AC-ID + REQ-ID enable scenario-level tracking — without AC-IDs, tests count toward REQ coverage but show as "no test" in the dashboard AC view.
+- A test skeleton is pre-generated at `tests/e2e/{change-name}.spec.ts` with AC-ID prefixed test blocks: `test('REQ-CART-001:AC-1 — item added to cart', ...)`. Fill the test bodies — do NOT delete or rename test blocks. The AC-ID prefix enables deterministic coverage binding.
 
 Template file protection:
 - Files deployed by `set-project init` (globals.css, vitest.config.ts, playwright.config.ts, tsconfig.json, next.config.js, postcss.config.mjs) SHOULD NOT be modified unless the change specifically requires it. If a config change is needed, document WHY in the commit message.

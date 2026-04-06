@@ -1056,7 +1056,7 @@ def _build_input_content(
             if ac_items:
                 req_lines.append(f"- {rid}: {title}")
                 for i, ac in enumerate(ac_items, 1):
-                    req_lines.append(f"  - AC-{i}: {ac}")
+                    req_lines.append(f"  - {rid}:AC-{i}: {ac}")
             else:
                 brief = req.get("brief", "")
                 if brief:
@@ -1123,8 +1123,8 @@ def _build_input_content(
         lines.append(
             f"\n## Required Tests (MANDATORY — coverage gate will block if incomplete)\n"
             f"{_skeleton_note}"
-            f"Name each test with the REQ-* ID prefix. "
-            f"Example: `test('REQ-HOME-001: Hero heading visible', ...)`\n"
+            f"Each test block is prefixed with an AC-ID (e.g., `REQ-HOME-001:AC-1`). "
+            f"Do NOT rename or remove the AC-ID prefix — it enables coverage tracking.\n"
             "Tag SMOKE tests with: "
             "`test('REQ-HOME-001: ...', { tag: '@smoke' }, async ({ page }) => { ... })`\n"
             f"Minimum test count: {len(test_plan_entries)} "
@@ -1134,8 +1134,9 @@ def _build_input_content(
             cats = ", ".join(entry.categories)
             entry_type = getattr(entry, "type", "functional") or "functional"
             tag = "**[SMOKE]**" if entry_type == "smoke" else "**[FUNCTIONAL]**"
+            ac_label = getattr(entry, "ac_id", "") or entry.req_id
             lines.append(
-                f"- {entry.req_id}: {entry.scenario_name} [{entry.risk}] "
+                f"- {ac_label}: {entry.scenario_name} [{entry.risk}] "
                 f"— {entry.min_tests} test(s) ({cats}) {tag}"
             )
         lines.append(
