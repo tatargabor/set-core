@@ -2081,17 +2081,18 @@ def _fetch_design_context(force: bool = False) -> str:
     Returns:
         Snapshot content (first 5000 chars) or empty string.
     """
-    # Search recursively under CWD for design-snapshot.md
-    for snap in sorted(Path(".").rglob("design-snapshot.md")):
-        try:
-            content = snap.read_text(errors="replace")
-            if content.strip():
-                logger.info("Design snapshot loaded from %s (%d bytes)", snap, len(content))
-                return content[:5000]
-        except OSError:
-            continue
+    # Search recursively under CWD for design files (snapshot or system)
+    for name in ("design-snapshot.md", "design-system.md"):
+        for snap in sorted(Path(".").rglob(name)):
+            try:
+                content = snap.read_text(errors="replace")
+                if content.strip():
+                    logger.info("Design context loaded from %s (%d bytes)", snap, len(content))
+                    return content[:5000]
+            except OSError:
+                continue
 
-    logger.info("No design-snapshot.md found — run 'set-figma-fetch <docs-dir>' to fetch")
+    logger.info("No design-snapshot.md or design-system.md found")
     return ""
 
 
