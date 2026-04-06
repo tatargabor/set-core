@@ -66,9 +66,15 @@ export default function Dashboard({ project, initialTab }: Props) {
 
   const onEvent = useCallback((event: WSEvent) => {
     switch (event.event) {
-      case 'state_update':
-        setState(event.data as StateData)
+      case 'state_update': {
+        // Dedup against REST poll to prevent flickering between WS and REST data
+        const json = JSON.stringify(event.data)
+        if (json !== stateJsonRef.current) {
+          stateJsonRef.current = json
+          setState(event.data as StateData)
+        }
         break
+      }
       case 'log_lines': {
         const { lines } = event.data as { lines: string[] }
         setLogLines((prev) => [...prev, ...lines].slice(-2000))

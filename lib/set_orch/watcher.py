@@ -187,10 +187,17 @@ class ProjectWatcher:
             return
 
         try:
+            refresh_counter = 0
             async for changes in awatch(*watch_dirs, poll_delay_ms=500):
+                # Periodically re-resolve state/log paths (every ~50 events)
+                # in case the engine started writing to a different location
+                refresh_counter += 1
+                if refresh_counter % 50 == 0:
+                    self._refresh_paths()
                 for change_type, change_path in changes:
                     path = Path(change_path)
-                    if path.name == "orchestration-state.json":
+                    if path.name in ("orchestration-state.json", "state.json"):
+                        self._refresh_paths()
                         await self._handle_state_change(callback)
                     elif path.name == "orchestration.log":
                         await self._handle_log_change(callback)

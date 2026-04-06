@@ -79,6 +79,7 @@ class HarvestCandidate:
     classification: str  # "framework", "project-specific", "template-divergence"
     suggested_target: str = ""
     diff_text: str = ""
+    kind: str = "commit"  # "commit" or "issue"
 
     def to_dict(self) -> dict:
         return {
@@ -89,6 +90,38 @@ class HarvestCandidate:
             "files_changed": self.files_changed,
             "classification": self.classification,
             "suggested_target": self.suggested_target,
+            "kind": self.kind,
+        }
+
+
+@dataclass
+class IssueCandidate:
+    """An ISS entry that may indicate a framework bug."""
+
+    project: str
+    issue_id: str
+    state: str  # diagnosed, new, failed, resolved
+    severity: str
+    summary: str
+    affected_change: str
+    root_cause: str
+    fix_target: str  # framework, consumer, both, none
+    suggested_fix: str
+    detected_at: str
+    investigation_path: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "project": self.project,
+            "issue_id": self.issue_id,
+            "state": self.state,
+            "severity": self.severity,
+            "summary": self.summary,
+            "affected_change": self.affected_change,
+            "root_cause": self.root_cause[:200],
+            "fix_target": self.fix_target,
+            "suggested_fix": self.suggested_fix[:200],
+            "detected_at": self.detected_at,
         }
 
 
@@ -300,17 +333,18 @@ def scan_project(
 
 def scan_all_projects(
     project_filter: Optional[str] = None,
-) -> list[HarvestCandidate]:
-    """Scan all registered projects for unadopted changes.
+) -> tuple[list[HarvestCandidate], list[IssueCandidate]]:
+    """Scan all registered projects for unadopted changes and unresolved issues.
 
-    Returns candidates sorted chronologically across all projects.
+    Returns (commit_candidates, issue_candidates) sorted chronologically.
     """
     projects = _get_registered_projects()
     if not projects:
         logger.warning("No registered projects found")
-        return []
+        return [], []
 
     all_candidates = []
+    all_issues = []
     harvest_state = _load_harvest_state()
 
     for name, path in projects.items():
@@ -334,9 +368,136 @@ def scan_all_projects(
         candidates = scan_project(name, path, since_sha)
         all_candidates.extend(candidates)
 
+        # Scan ISS registry for unresolved framework issues
+        issues = scan_issues(name, path)
+        all_issues.extend(issues)
+
     # Sort chronologically
     all_candidates.sort(key=lambda c: c.date)
-    return all_candidates
+    all_issues.sort(key=lambda i: i.detected_at)
+    return all_candidates, all_issues
+
+
+def scan_issues(
+    project_name: str,
+    project_path: str,
+) -> list[IssueCandidate]:
+    """Scan ISS registry for unresolved framework-relevant issues.
+
+    Looks for issues that are diagnosed but not fixed, or that have
+    fix_target=framework/both in their diagnosis.
+    """
+    registry_path = os.path.join(project_path, ".set", "issues", "registry.json")
+    if not os.path.isfile(registry_path):
+        return []
+
+    try:
+        data = json.loads(Path(registry_path).read_text())
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    issues_list = data.get("issues", []) if isinstance(data, dict) else []
+    candidates = []
+
+    for iss in issues_list:
+        if not isinstance(iss, dict):
+            continue
+
+        state = iss.get("state", "")
+        # Skip resolved issues that were already fixed
+        if state == "resolved":
+            continue
+
+        diag = iss.get("diagnosis") or {}
+        root_cause = ""
+        fix_target = "unknown"
+        suggested_fix = ""
+
+        if isinstance(diag, dict):
+            root_cause = diag.get("root_cause", "")
+            fix_target = diag.get("fix_target", "unknown")
+            suggested_fix = diag.get("suggested_fix", "")
+
+        # Classify: is this a framework bug?
+        classification = _classify_issue(iss, diag)
+        if classification in ("project-specific", "external", "sentinel-action"):
+            continue
+
+        investigation = ""
+        inv_path = os.path.join(
+            project_path, ".set", "issues", "investigations",
+            f"{iss.get('id', '')}.md",
+        )
+        if os.path.isfile(inv_path):
+            investigation = inv_path
+
+        candidates.append(IssueCandidate(
+            project=project_name,
+            issue_id=iss.get("id", ""),
+            state=state,
+            severity=iss.get("severity", "unknown"),
+            summary=iss.get("error_summary", ""),
+            affected_change=iss.get("affected_change", ""),
+            root_cause=root_cause,
+            fix_target=fix_target,
+            suggested_fix=suggested_fix,
+            detected_at=iss.get("detected_at", ""),
+            investigation_path=investigation,
+        ))
+
+    return candidates
+
+
+def _classify_issue(iss: dict, diag: dict) -> str:
+    """Classify an ISS entry as framework or project-specific.
+
+    Priority order (first match wins):
+    1. Explicit fix_target from diagnosis
+    2. Exclusions (rate limits, sentinel actions, app-level bugs)
+    3. Framework keyword match in root_cause + summary
+    4. Unknown (included for review)
+    """
+    fix_target = diag.get("fix_target", "")
+    if fix_target in ("framework", "both"):
+        return "framework"
+    if fix_target == "consumer":
+        return "project-specific"
+
+    text = (
+        (diag.get("root_cause", "") + " " + iss.get("error_summary", ""))
+        .lower()
+    )
+
+    # --- Exclusions first (before framework keyword scan) ---
+
+    # Rate limit / API issues — external, not framework
+    if "rate limit" in text or "api limit" in text or "hit your limit" in text:
+        return "external"
+
+    # Sentinel action logs (closing stale issues, unblocking) — not bugs
+    if "closed stale" in text or "unblock" in text:
+        return "sentinel-action"
+
+    # App-level build/test failures
+    app_keywords = [
+        "suspense", "usesearchparams", "prisma", "nextauth",
+        "stripe", "bcrypt", "next.js", "tailwind",
+    ]
+    if any(kw in text for kw in app_keywords):
+        return "project-specific"
+
+    # --- Framework keyword match ---
+    framework_keywords = [
+        "orchestrat", "engine", "merger", "dispatcher",
+        "stall", "redispatch", "set_orch", "set-core", "monitor",
+        "worktree", "merge queue", "integration-failed", "merge-blocked",
+        "coverage gate", "two-phase", "retry_count",
+        "reconcil", "watcher", "_check_all_done",
+    ]
+    if any(kw in text for kw in framework_keywords):
+        return "framework"
+
+    return "unknown"
 
 
 def get_commit_diff(project_path: str, sha: str) -> str:
@@ -365,82 +526,147 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    candidates = scan_all_projects(project_filter=args.project)
+    candidates, issues = scan_all_projects(project_filter=args.project)
 
     # Default: only show framework-relevant and template-divergence
     if not args.all:
         candidates = [c for c in candidates
                       if c.classification in ("framework", "template-divergence")]
 
-    if not candidates:
+    total = len(candidates) + len(issues)
+
+    if not total:
         print("No unadopted changes found across registered projects.")
         return
 
     if args.json:
-        print(json.dumps([c.to_dict() for c in candidates], indent=2))
+        print(json.dumps({
+            "commits": [c.to_dict() for c in candidates],
+            "issues": [i.to_dict() for i in issues],
+        }, indent=2))
         return
 
-    # Interactive presentation
-    print(f"\n{'='*60}")
-    print(f"  Harvest: {len(candidates)} unadopted changes found")
-    print(f"{'='*60}\n")
+    # ─── Issues section ───────────────────────────────────────────
+    if issues:
+        print(f"\n{'='*60}")
+        print(f"  ISS Issues: {len(issues)} unresolved framework-relevant")
+        print(f"{'='*60}\n")
 
-    projects = _get_registered_projects()
+        for i, iss in enumerate(issues, 1):
+            severity_color = {
+                "high": "\033[31m",
+                "medium": "\033[33m",
+                "low": "\033[36m",
+            }.get(iss.severity, "\033[90m")
 
-    for i, c in enumerate(candidates, 1):
-        # Classification badge
-        badge = {
-            "framework": "\033[33m[FRAMEWORK]\033[0m",
-            "template-divergence": "\033[36m[TEMPLATE]\033[0m",
-            "project-specific": "\033[90m[PROJECT-SPECIFIC]\033[0m",
-            "unknown": "\033[90m[UNKNOWN]\033[0m",
-        }.get(c.classification, c.classification)
+            state_badge = {
+                "diagnosed": "\033[33m●diagnosed\033[0m",
+                "new": "\033[34m●new\033[0m",
+                "failed": "\033[31m●failed\033[0m",
+                "fixing": "\033[33m●fixing\033[0m",
+            }.get(iss.state, iss.state)
 
-        print(f"[{i}/{len(candidates)}] {badge} {c.project} ({c.date[:10]})")
-        print(f"  {c.message}")
-        print(f"  Files: {', '.join(c.files_changed[:5])}")
-        if len(c.files_changed) > 5:
-            print(f"    ... +{len(c.files_changed) - 5} more")
-        if c.suggested_target:
-            print(f"  Suggested target: {c.suggested_target}")
-        print()
+            print(f"[{i}/{len(issues)}] {severity_color}{iss.issue_id}\033[0m {state_badge}  {iss.project}")
+            print(f"  {iss.summary}")
+            if iss.root_cause:
+                # First sentence of root cause
+                first_sentence = iss.root_cause.split(". ")[0] + "."
+                print(f"  Root cause: {first_sentence[:150]}")
+            if iss.affected_change:
+                print(f"  Affected: {iss.affected_change}")
+            print()
 
-        if args.dry_run:
-            continue
+            if args.dry_run:
+                continue
 
-        # Interactive prompt
-        while True:
-            choice = input("  [a]dopt / [s]kip / [v]iew diff / [q]uit > ").strip().lower()
-            if choice == "q":
-                print("\nHarvest paused. Run again to continue from here.")
-                return
-            elif choice == "s":
-                break
-            elif choice == "v":
-                project_path = projects.get(c.project, "")
-                if project_path:
-                    diff = get_commit_diff(project_path, c.commit_sha)
-                    print(f"\n{diff[:3000]}")
-                    if len(diff) > 3000:
-                        print(f"... ({len(diff)} chars total)")
-                    print()
-            elif choice == "a":
-                target = c.suggested_target
-                if not target:
-                    target = input("  Target file in set-core: ").strip()
+            while True:
+                choice = input("  [i]nvestigate / [s]kip / [d]ismiss / [q]uit > ").strip().lower()
+                if choice == "q":
+                    print("\nHarvest paused.")
+                    return
+                elif choice == "s":
+                    break
+                elif choice == "d":
+                    print(f"  → Dismissed {iss.issue_id}")
+                    break
+                elif choice == "i":
+                    if iss.investigation_path and os.path.isfile(iss.investigation_path):
+                        content = Path(iss.investigation_path).read_text()
+                        print(f"\n{content[:3000]}")
+                        if len(content) > 3000:
+                            print(f"... ({len(content)} chars total)")
+                        print()
+                    elif iss.root_cause:
+                        print(f"\n  Root cause:\n  {iss.root_cause[:1000]}")
+                        if iss.suggested_fix:
+                            print(f"\n  Suggested fix:\n  {iss.suggested_fix[:500]}")
+                        print()
+                    else:
+                        print("  No investigation available.")
                 else:
-                    confirm = input(f"  Target: {target} [Enter=confirm, or type new path]: ").strip()
-                    if confirm:
-                        target = confirm
-                print(f"  → Adopt to: {target}")
-                print(f"  NOTE: Review the diff and manually apply the relevant changes to {target}")
-                print(f"  Commit SHA: {c.commit_sha}")
-                break
-            else:
-                print("  Invalid choice. Use a/s/v/q.")
+                    print("  Invalid choice. Use i/s/d/q.")
+
+    # ─── Commits section ──────────────────────────────────────────
+    if candidates:
+        print(f"\n{'='*60}")
+        print(f"  Commits: {len(candidates)} unadopted changes")
+        print(f"{'='*60}\n")
+
+        projects = _get_registered_projects()
+
+        for i, c in enumerate(candidates, 1):
+            badge = {
+                "framework": "\033[33m[FRAMEWORK]\033[0m",
+                "template-divergence": "\033[36m[TEMPLATE]\033[0m",
+                "project-specific": "\033[90m[PROJECT-SPECIFIC]\033[0m",
+                "unknown": "\033[90m[UNKNOWN]\033[0m",
+            }.get(c.classification, c.classification)
+
+            print(f"[{i}/{len(candidates)}] {badge} {c.project} ({c.date[:10]})")
+            print(f"  {c.message}")
+            print(f"  Files: {', '.join(c.files_changed[:5])}")
+            if len(c.files_changed) > 5:
+                print(f"    ... +{len(c.files_changed) - 5} more")
+            if c.suggested_target:
+                print(f"  Suggested target: {c.suggested_target}")
+            print()
+
+            if args.dry_run:
+                continue
+
+            while True:
+                choice = input("  [a]dopt / [s]kip / [v]iew diff / [q]uit > ").strip().lower()
+                if choice == "q":
+                    print("\nHarvest paused. Run again to continue from here.")
+                    return
+                elif choice == "s":
+                    break
+                elif choice == "v":
+                    project_path = projects.get(c.project, "")
+                    if project_path:
+                        diff = get_commit_diff(project_path, c.commit_sha)
+                        print(f"\n{diff[:3000]}")
+                        if len(diff) > 3000:
+                            print(f"... ({len(diff)} chars total)")
+                        print()
+                elif choice == "a":
+                    target = c.suggested_target
+                    if not target:
+                        target = input("  Target file in set-core: ").strip()
+                    else:
+                        confirm = input(f"  Target: {target} [Enter=confirm, or type new path]: ").strip()
+                        if confirm:
+                            target = confirm
+                    print(f"  → Adopt to: {target}")
+                    print(f"  NOTE: Review the diff and manually apply the relevant changes to {target}")
+                    print(f"  Commit SHA: {c.commit_sha}")
+                    break
+                else:
+                    print("  Invalid choice. Use a/s/v/q.")
 
     # Update harvest state for all scanned projects
     if not args.dry_run:
+        projects = _get_registered_projects()
         for name, path in projects.items():
             if args.project and name != args.project:
                 continue
@@ -452,7 +678,7 @@ def main() -> None:
                 logger.info("Updated harvest state: %s → %s", name, head[:8])
 
     print(f"\n{'='*60}")
-    print(f"  Harvest complete: {len(candidates)} changes reviewed")
+    print(f"  Harvest complete: {len(candidates)} commits, {len(issues)} issues reviewed")
     print(f"{'='*60}")
 
 

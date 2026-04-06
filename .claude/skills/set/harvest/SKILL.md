@@ -20,17 +20,29 @@ set-harvest --json                 # machine-readable output
 
 The harvest tool scans registered consumer projects (from `set-project list`) for:
 
-1. **ISS fix commits** — commits with `fix:` or `fix-iss-` patterns that were created by the orchestration agent during E2E runs to resolve build/test/e2e gate failures
-2. **Template divergences** — modifications to `.claude/rules/set-*.md` files that were deployed by `set-project init` but modified by agents during the run
+1. **ISS registry** — unresolved issues from `.set/issues/registry.json` with diagnosed root causes. Framework-relevant issues (orchestrator bugs, gate failures, stall recovery) are surfaced even if no fix commit exists. This catches bugs that were **diagnosed but never fixed**.
+2. **ISS fix commits** — commits with `fix:` or `fix-iss-` patterns that were created by the orchestration agent during E2E runs to resolve build/test/e2e gate failures
+3. **Template divergences** — modifications to `.claude/rules/set-*.md` files that were deployed by `set-project init` but modified by agents during the run
 
-Each commit is classified:
+Issues are classified by keyword analysis of root_cause and error_summary:
+- **FRAMEWORK** — mentions orchestrator, engine, merger, gate, stall, redispatch, worktree
+- **EXTERNAL** — rate limits, API issues
+- **PROJECT-SPECIFIC** — app-level bugs (Suspense, Prisma, Stripe)
+
+Commits are classified by files changed:
 - **FRAMEWORK** — modifies config files (package.json, playwright.config.ts, middleware.ts) → should be reviewed for adoption into planning_rules.txt or templates
 - **TEMPLATE** — modifies `.claude/` deployed files → diff against set-core templates
 - **PROJECT-SPECIFIC** — only modifies app code → usually skip
 
 ## Interactive Review
 
-For each candidate:
+**Issues** (shown first):
+1. **View** the ISS ID, severity, state, summary, and root cause
+2. **Investigate** (`i`) to read the full investigation report
+3. **Skip** (`s`) to move on
+4. **Dismiss** (`d`) to mark as not relevant
+
+**Commits** (shown after issues):
 1. **View** the commit message, files changed, and suggested adoption target
 2. **View diff** (`v`) to see the actual code change
 3. **Adopt** (`a`) to apply the learning to set-core (planning rules, templates, or core code)
