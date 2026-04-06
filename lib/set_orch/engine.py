@@ -1033,16 +1033,17 @@ def _poll_active_changes(
                         event_bus.emit("CHANGE_DONE", change=change.name)
                     # Fall through to poll_change() below — do NOT mark done or continue
 
-                logger.warning(
-                    "Change %s running but agent dead (pid=%d, loop_status=%s) — marking stalled",
-                    change.name, ralph_pid, ls_status or "unknown",
-                )
-                update_change_field(state_file, change.name, "status", "stalled")
-                update_change_field(state_file, change.name, "stalled_at", int(time.time()))
-                if event_bus:
-                    event_bus.emit("CHANGE_STALLED", change=change.name,
-                                   data={"reason": f"dead_running_agent_{ls_status or 'unknown'}"})
-                continue
+                else:
+                    logger.warning(
+                        "Change %s running but agent dead (pid=%d, loop_status=%s) — marking stalled",
+                        change.name, ralph_pid, ls_status or "unknown",
+                    )
+                    update_change_field(state_file, change.name, "status", "stalled")
+                    update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                    if event_bus:
+                        event_bus.emit("CHANGE_STALLED", change=change.name,
+                                       data={"reason": f"dead_running_agent_{ls_status or 'unknown'}"})
+                    continue
 
         if change.status == "verifying":
             # Check 1: verify timeout
