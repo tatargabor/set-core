@@ -149,11 +149,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
 
           <div className="flex gap-3 ml-auto text-sm text-neutral-400">
             <span>{done}/{changes.length} changes</span>
-            <span className="hidden md:inline" title="Input tokens">In: {formatTokens(totals.input)}</span>
-            <span className="hidden md:inline" title="Output tokens">Out: {formatTokens(totals.output)}</span>
-            {totals.cacheRead > 0 && (
-              <span className="hidden md:inline" title="Cache read">Cache: {formatTokens(totals.cacheRead)}</span>
-            )}
+            <span className="hidden md:inline" title="Total = input + output (input includes cache)">{formatTokens(totals.input + totals.output)}</span>
           </div>
 
           <div className="flex gap-2 ml-2">

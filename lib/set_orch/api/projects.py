@@ -48,7 +48,10 @@ def list_projects():
                         changes = state_data.get("changes", [])
                         total = len(changes)
                         merged = sum(1 for c in changes if c.get("status") == "merged")
-                        total_tokens = sum(c.get("tokens_used", 0) or 0 for c in changes)
+                        total_tokens = sum(
+                            (c.get("input_tokens", 0) or 0) + (c.get("output_tokens", 0) or 0)
+                            for c in changes
+                        )
                         active_secs = state_data.get("active_seconds", 0) or 0
                         entry["changes_merged"] = merged
                         entry["changes_total"] = total
