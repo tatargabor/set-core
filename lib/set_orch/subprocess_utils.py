@@ -32,7 +32,11 @@ class CommandResult:
 class ClaudeResult(CommandResult):
     """Result of a Claude CLI invocation."""
 
-    pass
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_create_tokens: int = 0
+    cost_usd: float = 0.0
 
 
 @dataclass
@@ -198,6 +202,39 @@ def _extract_text_from_json_output(raw: str) -> str:
     return result_text if result_text else "\n".join(texts)
 
 
+def _extract_usage_from_json_output(raw: str) -> dict:
+    """Extract token usage from Claude CLI JSON output's result object."""
+    import json as _json
+    try:
+        data = _json.loads(raw)
+        items = data if isinstance(data, list) else [data]
+    except _json.JSONDecodeError:
+        for line in reversed(raw.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                items = [_json.loads(line)]
+                break
+            except _json.JSONDecodeError:
+                continue
+        else:
+            return {}
+    for obj in reversed(items):
+        if not isinstance(obj, dict) or obj.get("type") != "result":
+            continue
+        usage = obj.get("usage", {})
+        if usage:
+            return {
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+                "cache_read_tokens": usage.get("cache_read_input_tokens", 0),
+                "cache_create_tokens": usage.get("cache_creation_input_tokens", 0),
+                "cost_usd": obj.get("total_cost_usd", 0.0) or 0.0,
+            }
+    return {}
+
+
 def run_claude(
     prompt: str,
     *,
@@ -248,12 +285,15 @@ def run_claude(
         stdin_data=prompt,
     )
 
-    # Extract text from JSON stream (workaround for empty result field)
-    stdout = result.stdout
-    if result.exit_code == 0 and stdout.strip():
-        extracted = _extract_text_from_json_output(stdout)
+    # Extract text and usage from JSON output
+    raw_stdout = result.stdout
+    stdout = raw_stdout
+    usage = {}
+    if result.exit_code == 0 and raw_stdout.strip():
+        extracted = _extract_text_from_json_output(raw_stdout)
         if extracted:
             stdout = extracted
+        usage = _extract_usage_from_json_output(raw_stdout)
 
     return ClaudeResult(
         exit_code=result.exit_code,
@@ -261,6 +301,11 @@ def run_claude(
         stderr=result.stderr,
         duration_ms=result.duration_ms,
         timed_out=result.timed_out,
+        input_tokens=usage.get("input_tokens", 0),
+        output_tokens=usage.get("output_tokens", 0),
+        cache_read_tokens=usage.get("cache_read_tokens", 0),
+        cache_create_tokens=usage.get("cache_create_tokens", 0),
+        cost_usd=usage.get("cost_usd", 0.0),
     )
 
 
@@ -308,7 +353,11 @@ def run_claude_logged(
             "purpose": purpose,
             "model": model or "default",
             "duration_ms": result.duration_ms,
-            "output_size": len(result.stdout),
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "cache_read_tokens": result.cache_read_tokens,
+            "cache_create_tokens": result.cache_create_tokens,
+            "cost_usd": result.cost_usd,
             "exit_code": result.exit_code,
             "timed_out": result.timed_out,
         })

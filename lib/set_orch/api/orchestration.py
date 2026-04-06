@@ -734,12 +734,25 @@ def get_llm_calls(project: str, limit: int = Query(500, ge=1, le=5000)):
 
 
 def _read_llm_call_events(project_path: Path, calls: list[dict]) -> None:
-    """Read LLM_CALL events from orchestration events JSONL."""
-    events_file = project_path / "orchestration-state-events.jsonl"
-    if not events_file.exists():
-        events_file = project_path / "set" / "orchestration" / "orchestration-state-events.jsonl"
-    if not events_file.exists():
-        return
+    """Read LLM_CALL events from ALL orchestration events JSONL files.
+
+    Two files may exist: orchestration-state-events.jsonl (engine._emit_event)
+    and orchestration-events.jsonl (event_bus from run_claude_logged).
+    """
+    candidates = [
+        project_path / "orchestration-state-events.jsonl",
+        project_path / "set" / "orchestration" / "orchestration-state-events.jsonl",
+        project_path / "orchestration-events.jsonl",
+        project_path / "set" / "orchestration" / "orchestration-events.jsonl",
+    ]
+    for events_file in candidates:
+        if not events_file.exists():
+            continue
+        _parse_llm_events_file(events_file, calls)
+
+
+def _parse_llm_events_file(events_file: Path, calls: list[dict]) -> None:
+    """Parse LLM_CALL events from a single JSONL file."""
     try:
         with open(events_file) as f:
             for line in f:
@@ -763,9 +776,13 @@ def _read_llm_call_events(project_path: Path, calls: list[dict]) -> None:
                     "model": data.get("model", "default"),
                     "change": ev.get("change", ""),
                     "duration_ms": data.get("duration_ms", 0),
-                    "input_tokens": 0,  # not tracked in events
-                    "output_tokens": 0,
-                    "cache_tokens": 0,
+                    "input_tokens": (
+                        data.get("input_tokens", 0)
+                        + data.get("cache_read_tokens", 0)
+                        + data.get("cache_create_tokens", 0)
+                    ),
+                    "output_tokens": data.get("output_tokens", 0),
+                    "cache_tokens": data.get("cache_read_tokens", 0),
                     "exit_code": data.get("exit_code", 0),
                 })
     except OSError:
