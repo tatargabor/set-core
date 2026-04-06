@@ -784,6 +784,7 @@ def _parse_llm_events_file(events_file: Path, calls: list[dict]) -> None:
                     "output_tokens": data.get("output_tokens", 0),
                     "cache_tokens": data.get("cache_read_tokens", 0),
                     "exit_code": data.get("exit_code", 0),
+                    "active": False,
                 })
     except OSError:
         pass
@@ -845,6 +846,8 @@ def _read_session_calls(state, project_path: Path, calls: list[dict]) -> None:
                         + tokens.get("cache_create_tokens", 0)
                     )
 
+                    is_active = (time.time() - st.st_mtime) < 60
+
                     calls.append({
                         "timestamp": datetime.fromtimestamp(
                             st.st_mtime, tz=timezone.utc
@@ -859,6 +862,7 @@ def _read_session_calls(state, project_path: Path, calls: list[dict]) -> None:
                         "output_tokens": tokens.get("output_tokens", 0),
                         "cache_tokens": tokens.get("cache_read_tokens", 0),
                         "exit_code": 0,
+                        "active": is_active,
                     })
                 except OSError:
                     pass

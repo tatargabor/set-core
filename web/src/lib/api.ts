@@ -317,6 +317,7 @@ export interface TestCase {
   test_name: string
   category: string
   result: string | null
+  ac_id?: string
 }
 
 export interface TestCoverage {
@@ -985,6 +986,7 @@ export interface LLMCall {
   output_tokens: number
   cache_tokens: number
   exit_code: number
+  active?: boolean
 }
 
 export function getLLMCalls(project: string, limit = 500): Promise<{ calls: LLMCall[] }> {

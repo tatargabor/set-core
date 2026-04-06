@@ -86,7 +86,7 @@ interface BarData {
   status: string
 }
 
-type SortKey = 'timestamp' | 'phase' | 'purpose' | 'model' | 'change' | 'input_tokens' | 'output_tokens' | 'cache_tokens' | 'duration_ms'
+type SortKey = 'timestamp' | 'phase' | 'purpose' | 'model' | 'change' | 'source' | 'input_tokens' | 'output_tokens' | 'cache_tokens' | 'duration_ms'
 
 export default function TokenChart({ changes, project }: Props) {
   const [calls, setCalls] = useState<LLMCall[]>([])
@@ -147,6 +147,7 @@ export default function TokenChart({ changes, project }: Props) {
         case 'purpose': cmp = a.purpose.localeCompare(b.purpose); break
         case 'model': cmp = a.model.localeCompare(b.model); break
         case 'change': cmp = a.change.localeCompare(b.change); break
+        case 'source': cmp = a.source.localeCompare(b.source); break
         case 'input_tokens': cmp = a.input_tokens - b.input_tokens; break
         case 'output_tokens': cmp = a.output_tokens - b.output_tokens; break
         case 'cache_tokens': cmp = a.cache_tokens - b.cache_tokens; break
@@ -266,6 +267,7 @@ export default function TokenChart({ changes, project }: Props) {
                     <SortHeader k="purpose" label="Purpose" />
                     <SortHeader k="model" label="Model" />
                     <SortHeader k="change" label="Change" />
+                    <SortHeader k="source" label="Source" />
                     <SortHeader k="input_tokens" label="Input" align="right" />
                     <SortHeader k="output_tokens" label="Output" align="right" />
                     <SortHeader k="cache_tokens" label="Cache" align="right" />
@@ -280,7 +282,7 @@ export default function TokenChart({ changes, project }: Props) {
                       : call.model
                     const modelColor = MODEL_COLOR[modelShort] ?? '#737373'
                     return (
-                      <tr key={i} className="border-t border-neutral-800/30 hover:bg-neutral-800/30">
+                      <tr key={i} className={`border-t border-neutral-800/30 hover:bg-neutral-800/30 ${call.active ? 'bg-green-950/30' : ''}`}>
                         <td className="px-3 py-1.5 text-neutral-500 whitespace-nowrap">{formatTime(call.timestamp)}</td>
                         <td className="px-3 py-1.5 text-neutral-400">{getPhase(call.purpose_raw)}</td>
                         <td className="px-3 py-1.5 text-neutral-300">{call.purpose}</td>
@@ -288,6 +290,7 @@ export default function TokenChart({ changes, project }: Props) {
                           <span style={{ color: modelColor }} className="font-medium">{modelShort}</span>
                         </td>
                         <td className="px-3 py-1.5 text-neutral-400 max-w-[160px] truncate">{call.change || '-'}</td>
+                        <td className="px-3 py-1.5 text-neutral-600 text-xs">{call.source === 'orchestration' ? 'event' : 'session'}</td>
                         <td className="px-3 py-1.5 text-right text-blue-400/80">{call.input_tokens ? formatK(call.input_tokens) : '-'}</td>
                         <td className="px-3 py-1.5 text-right text-green-400/80">{call.output_tokens ? formatK(call.output_tokens) : '-'}</td>
                         <td className="px-3 py-1.5 text-right text-purple-400/80">{call.cache_tokens ? formatK(call.cache_tokens) : '-'}</td>
