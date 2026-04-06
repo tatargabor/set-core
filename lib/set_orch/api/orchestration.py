@@ -773,74 +773,80 @@ def _read_llm_call_events(project_path: Path, calls: list[dict]) -> None:
 
 
 def _read_session_calls(state, project_path: Path, calls: list[dict]) -> None:
-    """Read Claude session files for all changes and extract per-session LLM call data."""
+    """Read Claude session files for all changes + project-level orchestration sessions."""
     from .sessions import (
         _extract_session_model,
         _extract_session_tokens,
         _derive_session_label,
+        _extract_session_change_name,
     )
 
     seen_ids: set[str] = set()
 
-    # Collect session dirs from all changes
+    # Build list of (session_dir, change_name_or_empty) pairs
+    dir_change_pairs: list[tuple[Path, str]] = []
+
+    # Project-level sessions (digest, decompose, sentinel — not change-specific)
+    proj_mangled = _claude_mangle(str(project_path))
+    proj_dir = Path.home() / ".claude" / "projects" / f"-{proj_mangled}"
+    if proj_dir.is_dir():
+        dir_change_pairs.append((proj_dir, ""))
+
+    # Per-change worktree sessions
     for change in state.changes:
-        dirs: list[Path] = []
         if change.worktree_path:
             mangled = _claude_mangle(change.worktree_path)
             d = Path.home() / ".claude" / "projects" / f"-{mangled}"
             if d.is_dir():
-                dirs.append(d)
-        proj_mangled = _claude_mangle(str(project_path))
-        proj_dir = Path.home() / ".claude" / "projects" / f"-{proj_mangled}"
-        if proj_dir.is_dir() and proj_dir not in dirs:
-            dirs.append(proj_dir)
+                dir_change_pairs.append((d, change.name))
 
-        for d in dirs:
-            try:
-                for f in d.iterdir():
-                    if not f.is_file() or f.suffix != ".jsonl":
-                        continue
-                    if f.stem in seen_ids:
-                        continue
-                    seen_ids.add(f.stem)
-                    try:
-                        st = f.stat()
-                        label, _full = _derive_session_label(f)
-                        model = _extract_session_model(f)
-                        tokens = _extract_session_tokens(f)
+    for d, default_change in dir_change_pairs:
+        try:
+            for f in d.iterdir():
+                if not f.is_file() or f.suffix != ".jsonl":
+                    continue
+                if f.stem in seen_ids:
+                    continue
+                seen_ids.add(f.stem)
+                try:
+                    st = f.stat()
+                    label, _full = _derive_session_label(f)
+                    model = _extract_session_model(f)
+                    tokens = _extract_session_tokens(f)
+                    duration_ms = _session_duration_ms(f)
 
-                        # For project-dir sessions, check if this session
-                        # belongs to this change
-                        if d == proj_dir and change.worktree_path:
-                            from .sessions import _extract_session_change_name
-                            extracted = _extract_session_change_name(f)
-                            if extracted and extracted != change.name:
-                                continue
-                            if not extracted:
-                                continue
+                    # Determine change name
+                    change_name = default_change
+                    if not change_name:
+                        # Project-dir session — try to extract change from content
+                        change_name = _extract_session_change_name(f)
 
-                        # Calculate approximate duration from first/last entry
-                        duration_ms = _session_duration_ms(f)
+                    # Effective input = input + cache_read + cache_create
+                    eff_input = (
+                        tokens.get("input_tokens", 0)
+                        + tokens.get("cache_read_tokens", 0)
+                        + tokens.get("cache_create_tokens", 0)
+                    )
 
-                        calls.append({
-                            "timestamp": datetime.fromtimestamp(
-                                st.st_mtime, tz=timezone.utc
-                            ).isoformat(),
-                            "source": "session",
-                            "purpose": label,
-                            "purpose_raw": label.lower().replace(" ", "_"),
-                            "model": model or "unknown",
-                            "change": change.name,
-                            "duration_ms": duration_ms,
-                            "input_tokens": tokens.get("input_tokens", 0),
-                            "output_tokens": tokens.get("output_tokens", 0),
-                            "cache_tokens": tokens.get("cache_read_tokens", 0),
-                            "exit_code": 0,
-                        })
-                    except OSError:
-                        pass
-            except OSError:
-                pass
+                    calls.append({
+                        "timestamp": datetime.fromtimestamp(
+                            st.st_mtime, tz=timezone.utc
+                        ).isoformat(),
+                        "source": "session",
+                        "purpose": label,
+                        "purpose_raw": label.lower().replace(" ", "_"),
+                        "model": model or "unknown",
+                        "change": change_name or "",
+                        "duration_ms": duration_ms,
+                        "input_tokens": eff_input,
+                        "output_tokens": tokens.get("output_tokens", 0),
+                        "cache_tokens": tokens.get("cache_read_tokens", 0),
+                        "exit_code": 0,
+                    })
+                except OSError:
+                    pass
+        except OSError:
+            pass
 
 
 def _session_duration_ms(path: Path) -> int:
