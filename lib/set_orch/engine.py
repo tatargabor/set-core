@@ -1020,17 +1020,18 @@ def _poll_active_changes(
                     pass
 
                 if ls_status == "done":
-                    # Agent completed successfully — transition to done, not stalled
+                    # Agent completed successfully — let poll_change() handle it.
+                    # poll_change reads loop-state, detects done, calls handle_change_done()
+                    # which runs the full gate pipeline (review, rules, spec_verify, etc.)
+                    # before adding to merge queue. Agent being dead is fine.
                     logger.info(
-                        "Change %s: agent finished (loop_status=done) — marking done",
+                        "Change %s: agent finished (loop_status=done) — routing to verifier pipeline",
                         change.name,
                     )
-                    update_change_field(state_file, change.name, "status", "done")
-                    _set_step(state_file, change.name, "integrating", event_bus)
                     _resolve_issues_for_change(change.name)
                     if event_bus:
                         event_bus.emit("CHANGE_DONE", change=change.name)
-                    continue
+                    # Fall through to poll_change() below — do NOT mark done or continue
 
                 logger.warning(
                     "Change %s running but agent dead (pid=%d, loop_status=%s) — marking stalled",
