@@ -719,14 +719,15 @@ def get_llm_calls(project: str, limit: int = Query(500, ge=1, le=5000)):
     # Source 1: LLM_CALL events from events JSONL
     _read_llm_call_events(project_path, calls)
 
-    # Source 2: Session files across all changes
+    # Source 2: Session files across all changes (+ project-level even without state)
     sp = _state_path(project_path)
+    state = None
     if sp.exists():
         try:
             state = load_state(str(sp))
-            _read_session_calls(state, project_path, calls)
         except Exception:
-            pass  # best-effort
+            pass
+    _read_session_calls(state, project_path, calls)
 
     # Sort chronologically (most recent first) and limit
     calls.sort(key=lambda c: c.get("timestamp", ""), reverse=True)
@@ -810,13 +811,14 @@ def _read_session_calls(state, project_path: Path, calls: list[dict]) -> None:
     if proj_dir.is_dir():
         dir_change_pairs.append((proj_dir, ""))
 
-    # Per-change worktree sessions
-    for change in state.changes:
-        if change.worktree_path:
-            mangled = _claude_mangle(change.worktree_path)
-            d = Path.home() / ".claude" / "projects" / f"-{mangled}"
-            if d.is_dir():
-                dir_change_pairs.append((d, change.name))
+    # Per-change worktree sessions (only if state is available)
+    if state is not None:
+        for change in state.changes:
+            if change.worktree_path:
+                mangled = _claude_mangle(change.worktree_path)
+                d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+                if d.is_dir():
+                    dir_change_pairs.append((d, change.name))
 
     for d, default_change in dir_change_pairs:
         try:
