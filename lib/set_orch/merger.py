@@ -1316,6 +1316,7 @@ def _run_integration_gates(
                         parse_test_plan,
                     )
                     _plan = TestPlan.from_dict(json.loads(Path(_plan_path).read_text()))
+                    # Per-change reqs — consistent with _parse_test_coverage_if_applicable
                     _req_set = set(_change_reqs)
                     _plan_entries = [e for e in _plan.entries if e.req_id in _req_set]
 
@@ -2050,47 +2051,65 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
             logger.info("No test plan and no test results — skipping coverage parsing")
             return
 
-        # Get all digest REQ IDs — also use change.requirements as fallback
-        digest_req_ids: list[str] = []
-        try:
-            digest_dir = project_root / "set" / "orchestration" / "digest"
-            req_file = digest_dir / "requirements.json"
-            if req_file.is_file():
-                import json
-                with open(req_file) as f:
-                    req_data = json.load(f)
-                # Handle all formats: dict with "requirements" key, list of dicts, list of req objects
-                req_list = req_data
-                if isinstance(req_data, dict) and "requirements" in req_data:
-                    req_list = req_data["requirements"]
-                if isinstance(req_list, list):
-                    for r in req_list:
-                        if isinstance(r, dict):
-                            if "requirements" in r:
-                                digest_req_ids.extend(
-                                    rr.get("id", "") for rr in r["requirements"] if isinstance(rr, dict)
-                                )
-                            elif "id" in r:
-                                digest_req_ids.append(r["id"])
-        except Exception:
-            logger.debug("Failed to read digest requirements", exc_info=True)
+        # Determine REQ-ID set for coverage calculation.
+        # Per-change requirements take priority — each change is only responsible
+        # for its own REQs. Digest-level (all REQs) only used for acceptance-test
+        # changes that validate cross-cutting coverage.
+        change_reqs = getattr(change, 'requirements', None) or []
+        change_type = getattr(change, 'change_type', '') or ''
 
-        # Fallback: collect REQ IDs from all changes in state
-        if not digest_req_ids:
+        if change_reqs and change_type != "acceptance-tests":
+            # Per-change: only check this change's own requirements
+            coverage_req_ids = list(set(change_reqs))
+            logger.info(
+                "Coverage parsing for %s: using %d per-change reqs (change has own requirements)",
+                change_name, len(coverage_req_ids),
+            )
+        else:
+            # Global: acceptance-test changes or changes without own reqs
+            coverage_req_ids = []
             try:
-                for ch in state.changes:
-                    if ch.requirements:
-                        digest_req_ids.extend(ch.requirements)
+                digest_dir = project_root / "set" / "orchestration" / "digest"
+                req_file = digest_dir / "requirements.json"
+                if req_file.is_file():
+                    import json
+                    with open(req_file) as f:
+                        req_data = json.load(f)
+                    req_list = req_data
+                    if isinstance(req_data, dict) and "requirements" in req_data:
+                        req_list = req_data["requirements"]
+                    if isinstance(req_list, list):
+                        for r in req_list:
+                            if isinstance(r, dict):
+                                if "requirements" in r:
+                                    coverage_req_ids.extend(
+                                        rr.get("id", "") for rr in r["requirements"] if isinstance(rr, dict)
+                                    )
+                                elif "id" in r:
+                                    coverage_req_ids.append(r["id"])
             except Exception:
-                pass
-            digest_req_ids = list(set(digest_req_ids))
+                logger.debug("Failed to read digest requirements", exc_info=True)
+
+            # Fallback: collect REQ IDs from all changes in state
+            if not coverage_req_ids:
+                try:
+                    for ch in state.changes:
+                        if ch.requirements:
+                            coverage_req_ids.extend(ch.requirements)
+                except Exception:
+                    pass
+            coverage_req_ids = list(set(coverage_req_ids))
+            logger.info(
+                "Coverage parsing for %s: using %d digest-level reqs (type=%s)",
+                change_name, len(coverage_req_ids), change_type or "no-own-reqs",
+            )
 
         # Build coverage
         coverage = build_test_coverage(
             test_cases=test_cases,
             non_testable=non_testable,
             test_results=test_results,
-            digest_req_ids=digest_req_ids,
+            digest_req_ids=coverage_req_ids,
             plan_file=str(plan_path),
         )
 

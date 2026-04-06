@@ -1048,27 +1048,50 @@ def _build_input_content(
     """
     lines = []
 
-    # Post-process scope: if test plan entries exist, replace narrative E2E
-    # descriptions with a reference to Required Tests to prevent conflict
+    # Post-process scope: if test plan entries exist, remove narrative E2E
+    # descriptions to prevent conflict with the structured Required Tests section
     _test_plan_entries = None
     if digest_dir and change_requirements:
         _test_plan_entries = _load_test_plan(digest_dir, change_requirements)
         if _test_plan_entries:
             import re as _re
+            # Match common E2E narrative patterns in planner scope:
+            #   "E2E: cold-visit loads homepage..."
+            #   "E2E tests/e2e/cart.spec.ts — cold-visit, add product..."
+            #   "Tests: tests/e2e/smoke.spec.ts..."
             _new_scope = _re.sub(
-                r'E2E:.*?(?=\n\n|\n[A-Z]|\Z)',
-                'E2E: See "Required Tests" section below — that is the authoritative and complete test list.',
+                r'(?:E2E[:\s]|Tests?[:\s]).*?tests/e2e/\S+.*?(?=\n\n|\n[A-Z]|\Z)',
+                'E2E: See "Required Tests" section below for the authoritative test list.',
                 scope,
                 flags=_re.DOTALL,
             )
             if _new_scope == scope:
-                # No E2E pattern found in scope — normal for non-feature scopes (task 1.4)
+                # Try simpler pattern: "E2E:..." on a single line
+                _new_scope = _re.sub(
+                    r'E2E:.*?(?=\n\n|\n[A-Z]|\Z)',
+                    'E2E: See "Required Tests" section below for the authoritative test list.',
+                    scope,
+                    flags=_re.DOTALL,
+                )
+            if _new_scope == scope:
                 logger.debug(
-                    "Scope E2E post-processing: no E2E pattern to replace for %s "
-                    "(test plan has %d entries but scope has no E2E line)",
+                    "Scope E2E post-processing: no narrative E2E pattern for %s "
+                    "(test plan has %d entries — Required Tests section will be appended)",
                     change_name, len(_test_plan_entries),
                 )
+            else:
+                logger.info(
+                    "Scope E2E post-processing: replaced narrative for %s with Required Tests pointer",
+                    change_name,
+                )
             scope = _new_scope
+            # Strip any remaining tests/e2e/*.spec.ts references that could
+            # mislead the agent into writing fewer tests than Required Tests demands
+            scope = _re.sub(
+                r'tests/e2e/\S+\.spec\.ts\S*',
+                '',
+                scope,
+            )
 
     lines.append("## Scope")
     lines.append(scope)
@@ -1158,6 +1181,10 @@ def _build_input_content(
     if test_plan_entries is None and digest_dir and change_requirements:
         test_plan_entries = _load_test_plan(digest_dir, change_requirements)
     if test_plan_entries:
+        logger.info(
+            "Required Tests injected for %s: %d entries from test plan",
+            change_name, len(test_plan_entries),
+        )
         _threshold_pct = 80  # default; configurable via e2e_coverage_threshold directive
         lines.append(
             f"\n## Required Tests (MANDATORY — coverage gate will block if incomplete)\n"
