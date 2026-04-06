@@ -2051,6 +2051,29 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         plan_path = project_root / "tests" / "e2e" / "JOURNEY-TEST-PLAN.md"
         test_cases, non_testable = parse_test_plan(plan_path)
 
+        # Fallback: if no JOURNEY-TEST-PLAN.md, generate TestCases from test-plan.json
+        # so scenario-level binding can work via slug matching
+        if not test_cases:
+            plan_json = project_root / "set" / "orchestration" / "digest" / "test-plan.json"
+            if plan_json.is_file():
+                try:
+                    import json as _json_tp
+                    _tp_data = _json_tp.loads(plan_json.read_text(encoding="utf-8"))
+                    _tp = TestPlan.from_dict(_tp_data)
+                    for entry in _tp.entries:
+                        test_cases.append(TestCase(
+                            scenario_slug=entry.scenario_slug,
+                            req_id=entry.req_id,
+                            risk=entry.risk,
+                            test_file="",
+                            test_name=entry.scenario_name,
+                            category=entry.categories[0] if entry.categories else "happy",
+                        ))
+                    non_testable = _tp.non_testable
+                    logger.info("Loaded %d test cases from test-plan.json (no JOURNEY-TEST-PLAN.md)", len(test_cases))
+                except Exception:
+                    logger.debug("Failed to load test-plan.json fallback", exc_info=True)
+
         # Parse test results via profile (even without JOURNEY-TEST-PLAN.md,
         # build_test_coverage can extract REQ-IDs directly from test names)
         test_results: dict[tuple[str, str], str] = {}

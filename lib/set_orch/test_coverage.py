@@ -440,7 +440,10 @@ def build_test_coverage(
             logger.debug("Unbound test (no REQ-ID): %s, trying fuzzy", name)
 
     # Phase 2: Match test results to existing test cases (from JOURNEY-TEST-PLAN.md)
+    # Only overwrite result if Phase 1 didn't already bind this scenario
     for tc in test_cases:
+        if tc.result is not None:
+            continue  # Phase 1 already bound this scenario — don't overwrite
         if tc.test_file and tc.test_name:
             key = (tc.test_file.lower().strip(), tc.test_name.lower().strip())
             # Try exact match first, then fuzzy
