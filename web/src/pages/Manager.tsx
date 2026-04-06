@@ -124,6 +124,9 @@ export default function Manager() {
                     </td>
                     <td className="px-4 py-2.5 text-right text-neutral-400">
                       {formatTokens(p.total_tokens)}
+                      {(p as any).cache_tokens > 0 && (
+                        <span className="text-purple-400/50 text-xs ml-1">({formatTokens((p as any).cache_tokens)} cached)</span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-right text-neutral-400">
                       {formatDuration(p.active_seconds)}

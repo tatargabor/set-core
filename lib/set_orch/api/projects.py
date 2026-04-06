@@ -52,10 +52,12 @@ def list_projects():
                             (c.get("input_tokens", 0) or 0) + (c.get("output_tokens", 0) or 0)
                             for c in changes
                         )
+                        cache_tokens = sum(c.get("cache_read_tokens", 0) or 0 for c in changes)
                         active_secs = state_data.get("active_seconds", 0) or 0
                         entry["changes_merged"] = merged
                         entry["changes_total"] = total
                         entry["total_tokens"] = total_tokens
+                        entry["cache_tokens"] = cache_tokens
                         entry["active_seconds"] = active_secs
                     except (json.JSONDecodeError, OSError):
                         pass
