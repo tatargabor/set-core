@@ -1718,12 +1718,15 @@ def dispatch_change(
             for f in no_modify
         ]
 
-    # Design context (tokens + hierarchy) via profile system
-    from .profile_loader import load_profile as _load_profile_for_design
-    _design_profile = _load_profile_for_design()
-    _design_ctx = _design_profile.get_design_dispatch_context(scope, design_snapshot_dir)
-    if _design_ctx:
-        ctx.design_context = _design_ctx
+    # Design context (tokens + hierarchy) via profile system — non-fatal
+    try:
+        from .profile_loader import load_profile as _load_profile_for_design
+        _design_profile = _load_profile_for_design()
+        _design_ctx = _design_profile.get_design_dispatch_context(scope, design_snapshot_dir)
+        if _design_ctx:
+            ctx.design_context = _design_ctx
+    except Exception:
+        logger.debug("Design context enrichment failed (non-fatal)", exc_info=True)
 
     # Proactive rule injection (keyword-matched rules from .claude/rules/)
     rule_injection = _build_rule_injection(scope, wt_path)
@@ -1734,32 +1737,33 @@ def dispatch_change(
             ctx.design_context = rule_injection
 
     # Per-change design.md from design-brief.md (rich visual descriptions)
-    has_per_change_design = _build_per_change_design(
-        change_name, scope, design_snapshot_dir, wt_path,
-    )
-    if has_per_change_design:
-        # Replace inline design context with tokens-only + file reference
-        # Extract just tokens from the existing design context
-        if ctx.design_context:
-            dc_lines = ctx.design_context.split("\n")
-            token_lines = []
-            in_tokens = False
-            for line in dc_lines:
-                if "## Design Tokens" in line or "### Colors" in line or "### Typography" in line:
-                    in_tokens = True
-                elif in_tokens and line.startswith("## ") and "Design Tokens" not in line:
-                    in_tokens = False
-                if in_tokens:
-                    token_lines.append(line)
-            tokens_inline = "\n".join(token_lines) if token_lines else ""
-            ctx.design_context = (
-                tokens_inline + "\n\n"
-                "**Read `design.md` in this change directory for detailed visual specifications of your pages.**"
-            ).strip()
-        else:
-            ctx.design_context = (
-                "**Read `design.md` in this change directory for detailed visual specifications of your pages.**"
-            )
+    try:
+        has_per_change_design = _build_per_change_design(
+            change_name, scope, design_snapshot_dir, wt_path,
+        )
+        if has_per_change_design:
+            if ctx.design_context:
+                dc_lines = ctx.design_context.split("\n")
+                token_lines = []
+                in_tokens = False
+                for line in dc_lines:
+                    if "## Design Tokens" in line or "### Colors" in line or "### Typography" in line:
+                        in_tokens = True
+                    elif in_tokens and line.startswith("## ") and "Design Tokens" not in line:
+                        in_tokens = False
+                    if in_tokens:
+                        token_lines.append(line)
+                tokens_inline = "\n".join(token_lines) if token_lines else ""
+                ctx.design_context = (
+                    tokens_inline + "\n\n"
+                    "**Read `design.md` in this change directory for detailed visual specifications of your pages.**"
+                ).strip()
+            else:
+                ctx.design_context = (
+                    "**Read `design.md` in this change directory for detailed visual specifications of your pages.**"
+                )
+    except Exception:
+        logger.debug("Per-change design.md generation failed (non-fatal)", exc_info=True)
 
     # Setup change in worktree
     _setup_change_in_worktree(
