@@ -740,12 +740,23 @@ def _read_llm_call_events(project_path: Path, calls: list[dict]) -> None:
     Two files may exist: orchestration-state-events.jsonl (engine._emit_event)
     and orchestration-events.jsonl (event_bus from run_claude_logged).
     """
+    # Resolve runtime events path (where event_bus singleton writes before engine sync)
+    runtime_events = None
+    try:
+        from ..paths import SetRuntime
+        rt = SetRuntime(str(project_path))
+        runtime_events = Path(rt.events_file)
+    except Exception:
+        pass
+
     candidates = [
         project_path / "orchestration-state-events.jsonl",
         project_path / "set" / "orchestration" / "orchestration-state-events.jsonl",
         project_path / "orchestration-events.jsonl",
         project_path / "set" / "orchestration" / "orchestration-events.jsonl",
     ]
+    if runtime_events and runtime_events not in candidates:
+        candidates.append(runtime_events)
     for events_file in candidates:
         if not events_file.exists():
             continue
