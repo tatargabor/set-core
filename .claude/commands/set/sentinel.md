@@ -128,8 +128,8 @@ Run this single-shot poll command with `run_in_background: true`. Replace `$ORCH
 **IMPORTANT: Claude Code Bash tool escapes `!` as `\!` which breaks bash syntax. NEVER use `!` in the poll script. Use the workarounds below (kill -0 with || instead of if !, test -f instead of -f inline, etc.)**
 
 ```bash
-# Split 30s sleep into 10x3s for inbox responsiveness (max 3s message latency)
-for _i in 1 2 3 4 5 6 7 8 9; do sleep 3; set-sentinel-inbox check 2>/dev/null || true; done; sleep 3
+# Split 120s sleep into 12x10s for inbox responsiveness (max 10s message latency)
+for _i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 10; set-sentinel-inbox check 2>/dev/null || true; done
 STATE_FILE="orchestration-state.json"
 ORCH_PID=<actual PID number>
 
@@ -308,15 +308,19 @@ Then **immediately go back to Step 2** (start another background poll).
 
 #### EVENT: terminal
 
+**STOP POLLING IMMEDIATELY.** Do NOT start another background poll. Do NOT continue monitoring. Produce the final report (Step 5) and then STOP completely — your job is done.
+
 | Status | Action |
 |--------|--------|
-| `done` with ALL changes merged | Produce final report (see Step 5), stop |
-| `done` with non-merged changes | Some changes failed — log findings for failures, report, stop |
+| `done` with ALL changes merged | Produce final report (see Step 5), **STOP — do not poll again** |
+| `done` with non-merged changes | Some changes failed — log findings for failures, report, **STOP** |
 | `stopped` but orchestrator process still alive | NOT terminal — just a stale state write. Keep polling. |
 | `stopped` and orchestrator process dead | Restart orchestrator: `set-orchestrate start $ARGUMENTS &` |
-| `time_limit` | Summarize progress, stop |
+| `time_limit` | Summarize progress, **STOP** |
 
 **IMPORTANT:** `stopped` is NOT always terminal. The orchestrator may write "stopped" transiently (bash EXIT trap, duplicate monitor cleanup). Always check if the orchestrator process is alive before treating "stopped" as terminal. If the process died, restart it — don't produce a final report.
+
+**CRITICAL: When status is `done` or `time_limit`, you MUST stop after the report. Do NOT poll again. Every extra poll wastes ~100k tokens of context. After the final report, your work is complete.**
 
 #### EVENT: process_exit (crash)
 
@@ -531,7 +535,7 @@ When running E2E tests (see `tests/e2e/E2E-GUIDE.md`), the sentinel gains **Tier
 ## What happens
 
 1. Orchestrator starts in background
-2. Sentinel polls state.json every 30 seconds using background commands (non-blocking)
+2. Sentinel polls state.json every 2 minutes using background commands (non-blocking)
 3. You remain responsive to user messages between polls
 4. On events (crash, checkpoint, completion, stale), the agent makes a decision
 5. `EVENT:running` is handled instantly — no analysis, just start next poll

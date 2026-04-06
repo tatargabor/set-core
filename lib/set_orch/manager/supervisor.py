@@ -146,7 +146,8 @@ class ProjectSupervisor:
         stdout_file = open(sentinel_log / "stdout.log", "w")
         stderr_file = open(sentinel_log / "stderr.log", "w")
 
-        cmd = ["claude", "-p", "--max-turns", "500", "--dangerously-skip-permissions",
+        cmd = ["claude", "-p", "--model", "sonnet", "--max-turns", "500",
+               "--dangerously-skip-permissions",
                "--verbose", "--output-format", "stream-json"]
 
         # Ensure set-core bin/ is on PATH so sentinel can call set-sentinel-finding etc.
