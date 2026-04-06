@@ -1216,21 +1216,12 @@ def review_change(
     if state_file:
         req_section = build_req_review_section(change_name, state_file, digest_dir)
 
-    # Build design compliance section (empty if no snapshot)
+    # Build design compliance section via profile system
     design_compliance = ""
     if design_snapshot_dir:
-        from .root import SET_TOOLS_ROOT
-        bridge_path = os.path.join(SET_TOOLS_ROOT, "lib", "design", "bridge.sh")
-        if os.path.isfile(bridge_path):
-            design_r = run_command(
-                ["bash", "-c",
-                 f'source "{bridge_path}" 2>/dev/null && build_design_review_section "{design_snapshot_dir}"'],
-                timeout=10,
-            )
-            if design_r.exit_code == 0 and design_r.stdout.strip():
-                design_compliance = design_r.stdout.strip()
-            elif design_r.exit_code != 0 and design_r.stderr.strip():
-                logger.warning("Design review section failed: %s", design_r.stderr[:200])
+        from .profile_loader import load_profile as _load_design_profile
+        _dp = _load_design_profile()
+        design_compliance = _dp.build_design_review_section(design_snapshot_dir)
 
     # Load security rules for first review attempt
     security_rules = _load_security_rules(wt_path)

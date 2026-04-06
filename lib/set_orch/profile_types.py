@@ -144,6 +144,40 @@ class ProjectType(ABC):
         """
         return {}
 
+    def build_per_change_design(self, change_name: str, scope: str, wt_path: str, snapshot_dir: str) -> bool:
+        """Build per-change design.md with tokens + matched design brief pages.
+
+        Override in project-type modules to implement design-specific logic
+        (e.g., web module calls bridge.sh for Figma/shadcn design extraction).
+        Returns True if a per-change design.md was written.
+        """
+        return False
+
+    def get_design_dispatch_context(self, scope: str, snapshot_dir: str) -> str:
+        """Return design context (tokens + component hierarchy) for dispatch prompt.
+
+        Override in project-type modules to extract design tokens from
+        project-specific sources (Figma snapshots, shadcn config, etc.).
+        Returns design context string or empty string.
+        """
+        return ""
+
+    def build_design_review_section(self, snapshot_dir: str) -> str:
+        """Return design compliance section for code review prompt.
+
+        Override in project-type modules to generate design adherence checks.
+        Returns compliance text or empty string.
+        """
+        return ""
+
+    def fetch_design_data_model(self, project_path: str) -> str:
+        """Return design data model (TypeScript interfaces, entity definitions).
+
+        Override in project-type modules to extract data models from design
+        sources (e.g., Figma component code). Returns data model text or empty string.
+        """
+        return ""
+
     def collect_test_artifacts(self, wt_path: str) -> list:
         """Collect test artifacts (screenshots, traces, reports) from worktree.
 

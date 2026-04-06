@@ -146,102 +146,21 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
     return "## Relevant Patterns\n\n" + "\n\n".join(parts)
 
 
-def _find_design_brief(wt_path: str = "") -> str | None:
-    """Find design-brief.md in standard paths. Returns path or None."""
-    for bp in ("docs/design-brief.md", "design-brief.md", "docs/design/design-brief.md"):
-        if os.path.isfile(bp):
-            return bp
-    logger.debug("_find_design_brief: none found in %s", wt_path)
-    return None
-
-
 def _build_per_change_design(
     change_name: str,
     scope: str,
     design_snapshot_dir: str,
     wt_path: str,
 ) -> bool:
-    """Build per-change design.md with tokens + matched design brief pages.
+    """Build per-change design.md via profile system.
 
-    Calls bridge.sh design_brief_for_dispatch() for scope-matched page
-    sections, combines with Design Tokens from design-system.md, and
-    writes to openspec/changes/<name>/design.md in the worktree.
-
-    Returns True if a per-change design.md was written.
+    Delegates to profile.build_per_change_design() which handles
+    project-type-specific design extraction (web: bridge.sh, others: no-op).
     """
-    brief_path = _find_design_brief()
-    if not brief_path:
-        logger.debug("_build_per_change_design: no design brief found")
-        return False
+    from .profile_loader import load_profile
 
-    bridge_path = os.path.join(SET_TOOLS_ROOT, "lib", "design", "bridge.sh")
-    if not os.path.isfile(bridge_path):
-        logger.debug("_build_per_change_design: bridge.sh not found at %s", bridge_path)
-        return False
-
-    # Get matched page sections from design-brief.md
-    brief_r = run_command(
-        ["bash", "-c",
-         f'source "{bridge_path}" 2>/dev/null && '
-         f'design_brief_for_dispatch "{scope}" "{brief_path}"'],
-        timeout=5,
-    )
-    if brief_r.exit_code != 0 or not brief_r.stdout.strip():
-        logger.debug("_build_per_change_design: design command returned empty")
-        return False
-
-    matched_pages = brief_r.stdout.strip()
-
-    # Get tokens from design-system.md (always include)
-    tokens_r = run_command(
-        ["bash", "-c",
-         f'source "{bridge_path}" 2>/dev/null && '
-         f'design_context_for_dispatch "{scope}" "{design_snapshot_dir}"'],
-        timeout=5,
-    )
-    tokens_section = ""
-    if tokens_r.exit_code == 0 and tokens_r.stdout.strip():
-        # Extract only the Design Tokens section (not the matched pages from old system)
-        lines = tokens_r.stdout.strip().split("\n")
-        in_tokens = False
-        token_lines = []
-        for line in lines:
-            if line.startswith("## Design Tokens"):
-                in_tokens = True
-            elif in_tokens and line.startswith("## "):
-                break
-            if in_tokens:
-                token_lines.append(line)
-        if token_lines:
-            tokens_section = "\n".join(token_lines)
-
-    # Build per-change design.md
-    parts = [
-        "# Design Context",
-        "",
-        "Use these EXACT values when implementing UI. Do NOT fall back to framework defaults.",
-        "",
-    ]
-    if tokens_section:
-        parts.append(tokens_section)
-        parts.append("")
-    parts.append(matched_pages)
-
-    design_content = "\n".join(parts)
-
-    # Write to worktree change directory
-    change_dir = os.path.join(wt_path, "openspec", "changes", change_name)
-    os.makedirs(change_dir, exist_ok=True)
-    design_path = os.path.join(change_dir, "design.md")
-    try:
-        with open(design_path, "w", encoding="utf-8") as f:
-            f.write(design_content)
-        logger.info("Wrote per-change design.md (%d lines) to %s",
-                     len(design_content.split("\n")), design_path)
-        return True
-    except OSError as e:
-        logger.warning("Failed to write per-change design.md: %s", e)
-        return False
+    profile = load_profile()
+    return profile.build_per_change_design(change_name, scope, wt_path, design_snapshot_dir)
 
 
 # Env files to copy from project root to worktree
@@ -1799,26 +1718,12 @@ def dispatch_change(
             for f in no_modify
         ]
 
-    # Design context (tokens + hierarchy)
-    bridge_path = os.path.join(SET_TOOLS_ROOT, "lib", "design", "bridge.sh")
-    design_r = run_command(
-        ["bash", "-c", f'source "{bridge_path}" 2>/dev/null && design_context_for_dispatch "{scope}" "{design_snapshot_dir}"'],
-        timeout=5,
-    ) if os.path.isfile(bridge_path) else type("R", (), {"exit_code": 1, "stdout": ""})()
-    if design_r.exit_code == 0 and design_r.stdout.strip():
-        ctx.design_context = design_r.stdout.strip()
-
-    # Design source files (Figma component code matched against scope)
-    if os.path.isfile(bridge_path):
-        sources_r = run_command(
-            ["bash", "-c", f'source "{bridge_path}" 2>/dev/null && design_sources_for_dispatch "{scope}" "{design_snapshot_dir}"'],
-            timeout=10,
-        )
-        if sources_r.exit_code == 0 and sources_r.stdout.strip():
-            if ctx.design_context:
-                ctx.design_context += "\n\n" + sources_r.stdout.strip()
-            else:
-                ctx.design_context = sources_r.stdout.strip()
+    # Design context (tokens + hierarchy) via profile system
+    from .profile_loader import load_profile as _load_profile_for_design
+    _design_profile = _load_profile_for_design()
+    _design_ctx = _design_profile.get_design_dispatch_context(scope, design_snapshot_dir)
+    if _design_ctx:
+        ctx.design_context = _design_ctx
 
     # Proactive rule injection (keyword-matched rules from .claude/rules/)
     rule_injection = _build_rule_injection(scope, wt_path)

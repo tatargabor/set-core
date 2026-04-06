@@ -1235,6 +1235,124 @@ class WebProjectType(CoreProfile):
 
         return "\n".join(lines)
 
+    # ─── Design Integration (Layer 2) ─────────────────────────────
+
+    def _bridge_path(self) -> str:
+        """Resolve path to lib/design/bridge.sh."""
+        import os
+        root = os.environ.get("SET_TOOLS_ROOT", "")
+        if not root:
+            # Fallback: derive from this package's location
+            root = str(Path(__file__).parent.parent.parent.parent)
+        return os.path.join(root, "lib", "design", "bridge.sh")
+
+    def _run_bridge(self, cmd: str, timeout: int = 5) -> str:
+        """Run a bridge.sh function, return stdout or empty string."""
+        import os
+        bridge = self._bridge_path()
+        if not os.path.isfile(bridge):
+            return ""
+        r = subprocess.run(
+            ["bash", "-c", f'source "{bridge}" 2>/dev/null && {cmd}'],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return r.stdout.strip() if r.returncode == 0 else ""
+
+    def build_per_change_design(self, change_name: str, scope: str, wt_path: str, snapshot_dir: str) -> bool:
+        """Build per-change design.md with tokens + matched design brief pages."""
+        import os
+        import logging
+        log = logging.getLogger(__name__)
+
+        # Find design-brief.md
+        brief_path = None
+        for bp in ("docs/design-brief.md", "design-brief.md", "docs/design/design-brief.md"):
+            if os.path.isfile(bp):
+                brief_path = bp
+                break
+        if not brief_path:
+            return False
+
+        # Get matched page sections
+        matched_pages = self._run_bridge(
+            f'design_brief_for_dispatch "{scope}" "{brief_path}"'
+        )
+        if not matched_pages:
+            return False
+
+        # Get tokens
+        tokens_raw = self._run_bridge(
+            f'design_context_for_dispatch "{scope}" "{snapshot_dir}"'
+        )
+        tokens_section = ""
+        if tokens_raw:
+            lines = tokens_raw.split("\n")
+            in_tokens = False
+            token_lines = []
+            for line in lines:
+                if line.startswith("## Design Tokens"):
+                    in_tokens = True
+                elif in_tokens and line.startswith("## "):
+                    break
+                if in_tokens:
+                    token_lines.append(line)
+            if token_lines:
+                tokens_section = "\n".join(token_lines)
+
+        # Build content
+        parts = [
+            "# Design Context",
+            "",
+            "Use these EXACT values when implementing UI. Do NOT fall back to framework defaults.",
+            "",
+        ]
+        if tokens_section:
+            parts.append(tokens_section)
+            parts.append("")
+        parts.append(matched_pages)
+        design_content = "\n".join(parts)
+
+        # Write to worktree
+        change_dir = os.path.join(wt_path, "openspec", "changes", change_name)
+        os.makedirs(change_dir, exist_ok=True)
+        design_path = os.path.join(change_dir, "design.md")
+        try:
+            with open(design_path, "w", encoding="utf-8") as f:
+                f.write(design_content)
+            log.info("Wrote per-change design.md (%d lines) to %s",
+                     len(design_content.split("\n")), design_path)
+            return True
+        except OSError as e:
+            log.warning("Failed to write per-change design.md: %s", e)
+            return False
+
+    def get_design_dispatch_context(self, scope: str, snapshot_dir: str) -> str:
+        """Return design tokens + component hierarchy + Figma source code."""
+        context = self._run_bridge(
+            f'design_context_for_dispatch "{scope}" "{snapshot_dir}"'
+        )
+        sources = self._run_bridge(
+            f'design_sources_for_dispatch "{scope}" "{snapshot_dir}"',
+            timeout=10,
+        )
+        if sources:
+            context = (context + "\n\n" + sources) if context else sources
+        return context
+
+    def build_design_review_section(self, snapshot_dir: str) -> str:
+        """Return design compliance section for code review."""
+        return self._run_bridge(
+            f'build_design_review_section "{snapshot_dir}"',
+            timeout=10,
+        )
+
+    def fetch_design_data_model(self, project_path: str) -> str:
+        """Return TypeScript interfaces from Figma source files."""
+        return self._run_bridge(
+            f'design_data_model_section "{project_path}"',
+            timeout=10,
+        )
+
     def decompose_hints(self) -> list:
         """Return web-specific decomposition hints for the planner."""
         return [
