@@ -271,3 +271,8 @@ def _resolve_log_path() -> Path | None:
         stem = Path(state_file).stem.replace("-state", "")
         return Path(state_file).parent / f"{stem}-events.jsonl"
     return Path("orchestration-events.jsonl")
+
+
+# Module-level singleton — used by run_claude_logged() to emit LLM_CALL events.
+# monitor_loop() syncs this to the per-project events file at startup.
+event_bus = EventBus()

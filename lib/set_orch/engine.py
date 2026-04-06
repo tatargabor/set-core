@@ -644,6 +644,16 @@ def monitor_loop(
     update_state_field(state_file, "time_limit_secs", d.time_limit_secs)
     update_state_field(state_file, "orchestrator_pid", os.getpid())
 
+    # Sync module-level event_bus to the per-project events file so that
+    # run_claude_logged() LLM_CALL events land in the same file the API reads.
+    try:
+        from .events import event_bus as _module_bus
+        if event_bus and event_bus.log_path and _module_bus.log_path != event_bus.log_path:
+            _module_bus._log_path = event_bus.log_path
+            logger.debug("Synced module event_bus to %s", event_bus.log_path)
+    except Exception:
+        pass
+
     # Restore active_seconds from state (cumulative across restarts)
     state = load_state(state_file)
     active_seconds = state.extras.get("active_seconds", 0)
