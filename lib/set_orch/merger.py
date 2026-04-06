@@ -2044,7 +2044,7 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
         logger.info("Parsing test coverage for change: %s", change_name)
 
         from pathlib import Path
-        from .test_coverage import parse_test_plan, build_test_coverage, TestPlan, validate_coverage
+        from .test_coverage import parse_test_plan, build_test_coverage, TestCase, TestPlan, validate_coverage
 
         # Read test plan — use project root from state file location
         project_root = Path(state_file).parent

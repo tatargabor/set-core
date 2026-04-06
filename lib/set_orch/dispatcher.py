@@ -1055,8 +1055,8 @@ def _build_input_content(
             ac_items = req.get("acceptance_criteria", []) or []
             if ac_items:
                 req_lines.append(f"- {rid}: {title}")
-                for ac in ac_items:
-                    req_lines.append(f"  - {ac}")
+                for i, ac in enumerate(ac_items, 1):
+                    req_lines.append(f"  - AC-{i}: {ac}")
             else:
                 brief = req.get("brief", "")
                 if brief:
