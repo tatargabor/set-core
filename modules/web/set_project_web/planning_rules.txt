@@ -6,6 +6,7 @@ Change sizing and decomposition granularity:
 - Prefer 3 phases over 4+. More phases = more sequential bottlenecks. Ideal: Phase 1 (foundation + auth parallel), Phase 2 (catalog + cart + admin parallel), Phase 3 (checkout + polish).
 - Each change MUST have its own E2E test file. Test file names SHOULD match the change name (e.g., change `shopping-cart` → `tests/e2e/cart.spec.ts`).
 - Every E2E test block MUST include its REQ-XXX-NNN prefix in the test name for coverage tracking. Example: `test('REQ-CART-001: Add to cart shows badge', ...)`. Tests without REQ-IDs are invisible to the coverage gate and will not count toward the 80% threshold.
+- Each test SHOULD map to a specific scenario from the spec. Include the scenario slug in the test name using `[scenario: <slug>]` format. Example: `test('REQ-CART-001: Add to cart shows badge [scenario: add-item-to-empty-cart]', ...)`. This enables scenario-level coverage tracking in the dashboard. Without scenario tags, the test counts toward REQ coverage but shows as "no test" in the AC (acceptance criteria) view.
 
 Template file protection:
 - Files deployed by `set-project init` (globals.css, vitest.config.ts, playwright.config.ts, tsconfig.json, next.config.js, postcss.config.mjs) SHOULD NOT be modified unless the change specifically requires it. If a config change is needed, document WHY in the commit message.
