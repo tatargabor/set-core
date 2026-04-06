@@ -380,10 +380,10 @@ Phase assignment — group changes into execution phases for milestone checkpoin
 - Dependencies across phases are respected regardless of phase assignment
 
 Model selection — suggest a model per change based on task nature:
-- "opus" for ALL changes that write functional code (features, bug fixes, refactors, cleanup, tests)
-- "sonnet" ONLY for doc-only changes (doc sync, doc audit, README updates) — zero code writing
-- Sonnet cannot follow OpenSpec workflows, make architecture decisions, or write quality code
-- When in doubt, always use "opus"
+- "opus" for feature changes that write functional code (features, bug fixes, complex refactors)
+- "sonnet" for infrastructure, foundational, cleanup, and doc-only changes — these involve straightforward patterns (config setup, template code, test body filling, doc updates)
+- "sonnet" is also suitable when a test skeleton is pre-generated and the agent only fills test bodies
+- When in doubt, use "opus" for features and "sonnet" for non-features
 
 Quality gate profiles — each change_type has a different set of active verification gates:
 - infrastructure: scope_check + review + rules only. Build/test/e2e/smoke are SKIPPED (no app code yet). spec_verify is soft (non-blocking).

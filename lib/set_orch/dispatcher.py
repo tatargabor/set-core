@@ -620,19 +620,29 @@ def resolve_change_model(
     # 1. Per-change explicit model (highest priority)
     explicit_model = change.model
     if explicit_model:
-        # Guard: sonnet only for doc changes
+        # Guard: sonnet only for safe change types (doc, infrastructure, cleanup)
+        # Feature changes should use opus unless they only have test-fill tasks
         if explicit_model == "sonnet" and not is_doc:
-            logger.warning(
-                "overriding planner model=sonnet → opus for code change '%s'",
-                change.name,
+            change_type = getattr(change, "change_type", "") or ""
+            if change_type in ("feature",):
+                logger.warning(
+                    "overriding planner model=sonnet → opus for feature change '%s'",
+                    change.name,
+                )
+                return "opus"
+            # Allow sonnet for infrastructure, cleanup, foundational
+            logger.info(
+                "allowing planner model=sonnet for %s (type=%s)",
+                change.name, change_type,
             )
-            return "opus"
         return explicit_model
 
     # 2. Complexity-based routing
     if model_routing == "complexity":
         if change.complexity == "S" and change.change_type != "feature":
             logger.info("model routing: %s → sonnet (S-complexity, type=%s)", change.name, change.change_type)
+            return "sonnet"
+        if change.complexity == "S" and change.change_type == "infrastructure":
             return "sonnet"
         if is_doc:
             return "sonnet"

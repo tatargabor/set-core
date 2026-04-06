@@ -62,7 +62,9 @@ class Directives:
     max_verify_retries: int = 3
     e2e_retry_limit: int = 3
     review_before_merge: bool = True
-    review_model: str = "opus"
+    review_model: str = "sonnet"
+    digest_model: str = "sonnet"
+    investigation_model: str = "sonnet"
     default_model: str = "opus"
     smoke_command: str = ""
     smoke_timeout: int = 120
@@ -123,6 +125,8 @@ def parse_directives(raw: dict) -> Directives:
     d.max_verify_retries = _int(raw, "max_verify_retries", d.max_verify_retries)
     d.review_before_merge = _bool(raw, "review_before_merge", d.review_before_merge)
     d.review_model = _str(raw, "review_model", d.review_model)
+    d.digest_model = _str(raw, "digest_model", d.digest_model)
+    d.investigation_model = _str(raw, "investigation_model", d.investigation_model)
     d.default_model = _str(raw, "default_model", d.default_model)
     d.smoke_command = _str(raw, "smoke_command", d.smoke_command)
     d.smoke_timeout = _int(raw, "smoke_timeout", d.smoke_timeout)

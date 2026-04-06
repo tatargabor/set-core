@@ -68,6 +68,7 @@ class InvestigationRunner:
         cmd = [
             "claude", "-p",
             "--max-turns", "20",
+            "--model", "claude-sonnet-4-6",
             "--verbose", "--output-format", "stream-json",
             "--dangerously-skip-permissions",
             prompt,
