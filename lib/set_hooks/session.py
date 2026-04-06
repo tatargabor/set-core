@@ -15,6 +15,9 @@ from .util import read_cache, write_cache, _dbg
 def dedup_clear(cache_file: str) -> None:
     """Clear dedup keys (preserving turn_count, metrics, frustration_history)."""
     _dbg("session", "dedup_clear: clearing dedup keys")
+    # Also clear session-level content dedup
+    from .memory_ops import clear_content_seen
+    clear_content_seen()
     cache = read_cache(cache_file)
     if not cache:
         return

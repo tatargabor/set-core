@@ -5,6 +5,7 @@ Uses set-memoryd daemon client for fast recall (bypass CLI subprocess overhead).
 Falls back to CLI subprocess if daemon is unavailable.
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -16,8 +17,17 @@ from .util import (
 )
 from .session import gen_context_id, store_injected_content
 
+# Session-level content dedup: tracks md5(content[:100]) to prevent
+# the same memory from being injected multiple times under different IDs.
+_content_seen: set = set()
+
+def clear_content_seen() -> None:
+    """Clear the session-level content dedup set. Called on session clear."""
+    _content_seen.clear()
+
+
 # Minimum relevance score threshold
-MIN_RELEVANCE = 0.3
+MIN_RELEVANCE = 0.55
 MIN_CONTENT_LEN = 20
 
 
@@ -244,14 +254,18 @@ def get_last_context_ids() -> list:
 
 
 def _format_memories(memories: list, cache_file: str, source: str) -> Optional[str]:
-    """Format and filter memories with dedup and relevance filtering."""
+    """Format and filter memories with dedup, relevance filtering, truncation, and token budget."""
     global _last_context_ids
     _last_context_ids = []
+
+    MAX_DISPLAY_LEN = 300
+    TOKEN_BUDGET = 800
 
     seen = set()
     lines = []
     context_ids = []
     content_map = {}
+    cumulative_tokens = 0
 
     for m in memories:
         # Relevance filter (proactive has scores)
@@ -267,26 +281,34 @@ def _format_memories(memories: list, cache_file: str, source: str) -> Optional[s
         if len(c) < MIN_CONTENT_LEN:
             continue
 
-        # Dedup by content prefix
+        # Content-based dedup (session-level, survives across hook types)
+        content_hash = hashlib.md5(c[:100].encode()).hexdigest()[:16]
+        if content_hash in _content_seen:
+            continue
+        _content_seen.add(content_hash)
+
+        # Legacy prefix dedup (within single format call)
         key = c[:50]
         if key in seen:
             continue
         seen.add(key)
 
-        cid = gen_context_id(cache_file)
-        context_ids.append(cid)
-        content_map[cid] = c[:500]
-
-        # Format score
-        score_str = "?"
-        if score is not None and score != "N/A":
-            try:
-                score_str = f"{float(score):.2f}"
-            except (ValueError, TypeError):
-                pass
+        # Display truncation
+        display = c[:MAX_DISPLAY_LEN] + "..." if len(c) > MAX_DISPLAY_LEN else c
 
         heur = "\u26a0\ufe0f HEURISTIC: " if HEURISTIC_RE.search(c) else ""
-        lines.append(f"  - [MEM#{cid}] {heur}{c}")
+        line = f"  - [MEM#{gen_context_id(cache_file)}] {heur}{display}"
+
+        # Token budget check
+        line_tokens = len(line) // 4
+        if cumulative_tokens + line_tokens > TOKEN_BUDGET and lines:
+            break
+        cumulative_tokens += line_tokens
+
+        cid = line.split("[MEM#")[1].split("]")[0]
+        context_ids.append(cid)
+        content_map[cid] = c[:500]
+        lines.append(line)
 
     if not lines:
         return None

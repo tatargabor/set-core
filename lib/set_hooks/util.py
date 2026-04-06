@@ -151,6 +151,12 @@ def extract_scores(memories: list) -> list:
     return scores
 
 
+# ─── Hook mode ───────────────────────────────────────────────
+
+# SET_MEMORY_HOOKS: "full" (all hooks), "lite" (SessionStart+UserPrompt only), "off" (no injection)
+HOOK_MODE = os.environ.get("SET_MEMORY_HOOKS", "lite").lower()
+
+
 # ─── Checkpoint config ────────────────────────────────────────
 
 CHECKPOINT_INTERVAL = 10  # Save checkpoint every N user prompts

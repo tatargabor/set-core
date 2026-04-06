@@ -21,6 +21,7 @@ from .util import (
     extract_scores,
     METRICS_ENABLED,
     CHECKPOINT_INTERVAL,
+    HOOK_MODE,
 )
 from .session import (
     dedup_clear,
@@ -71,6 +72,8 @@ def handle_session_start(
     input_data: dict, cache_file: str, **kwargs
 ) -> Optional[str]:
     """SessionStart: dedup clear, cheat sheet recall, project context recall."""
+    if HOOK_MODE == "off":
+        return None
     metrics_timer_start()
     source = input_data.get("source", "")
     _dbg("SessionStart", f"source={source}")
@@ -87,7 +90,7 @@ def handle_session_start(
     recent_files = _get_recent_files(project_dir)
 
     proactive_query = f"Project: {project_name}. Changed files: {recent_files}"
-    project_ctx = proactive_context(proactive_query, cache_file, limit=5)
+    project_ctx = proactive_context(proactive_query, cache_file, limit=3)
 
     # Build output
     output_parts = []
@@ -117,6 +120,8 @@ def handle_user_prompt(
     input_data: dict, cache_file: str, **kwargs
 ) -> Optional[str]:
     """UserPromptSubmit: topic recall, rules matching, frustration detection."""
+    if HOOK_MODE == "off":
+        return None
     metrics_timer_start()
     prompt = input_data.get("prompt", "")
     _dbg("UserPromptSubmit", f"prompt='{prompt[:120]}'")
@@ -158,7 +163,7 @@ def handle_user_prompt(
     query = f"{change_name} {prompt[:200]}" if change_name else prompt[:200]
 
     # Proactive recall
-    formatted = proactive_context(query, cache_file, limit=5)
+    formatted = proactive_context(query, cache_file, limit=3)
 
     # Load mandatory rules
     rules_block = load_matching_rules(prompt)
@@ -203,6 +208,14 @@ def handle_post_tool(
     input_data: dict, cache_file: str, **kwargs
 ) -> Optional[str]:
     """PostToolUse: file/command context recall, commit save."""
+    if HOOK_MODE != "full":
+        # Still save commit memories even in lite/off mode
+        tool_name = input_data.get("tool_name", "")
+        if tool_name == "Bash":
+            cmd = input_data.get("tool_input", {}).get("command", "")[:300]
+            if "git commit" in cmd:
+                _commit_save(input_data, cache_file)
+        return None
     metrics_timer_start()
     tool_name = input_data.get("tool_name", "")
     _dbg("PostToolUse", f"tool={tool_name}")
@@ -250,6 +263,8 @@ def handle_post_tool_failure(
     input_data: dict, cache_file: str, **kwargs
 ) -> Optional[str]:
     """PostToolUseFailure: error fix surfacing."""
+    if HOOK_MODE != "full":
+        return None
     metrics_timer_start()
     is_interrupt = input_data.get("is_interrupt", False)
     error_text = input_data.get("error", "")[:300]
@@ -257,7 +272,7 @@ def handle_post_tool_failure(
     if is_interrupt or len(error_text) < 10:
         return None
 
-    formatted = recall_memories(error_text, cache_file, limit=3, mode="hybrid")
+    formatted = recall_memories(error_text, cache_file, limit=2, mode="hybrid")
     if not formatted:
         dur = metrics_timer_elapsed()
         metrics_append(cache_file, "L4", "PostToolUseFailure", error_text[:200], 0, 0, [], dur, 0, 0)
@@ -279,6 +294,8 @@ def handle_subagent_start(
     input_data: dict, cache_file: str, **kwargs
 ) -> Optional[str]:
     """SubagentStart: proactive recall based on task description."""
+    if HOOK_MODE != "full":
+        return None
     ti = input_data.get("tool_input", {})
     task_desc = ti.get("prompt", "") or ti.get("description", "") or ""
     task_desc = task_desc[:300]
@@ -299,6 +316,8 @@ def handle_subagent_stop(
     input_data: dict, cache_file: str, **kwargs
 ) -> Optional[str]:
     """SubagentStop: proactive recall from agent transcript summary."""
+    if HOOK_MODE != "full":
+        return None
     agent_path = input_data.get("agent_transcript_path", "")
     if not agent_path:
         return None

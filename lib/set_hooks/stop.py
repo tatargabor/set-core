@@ -88,6 +88,27 @@ def flush_metrics(
     if set_tools_root and set_tools_root not in sys.path:
         sys.path.insert(0, set_tools_root)
 
+    # Compute per-layer aggregates
+    layer_agg = {}
+    for m in metrics:
+        layer = m.get("layer", "?")
+        if layer not in layer_agg:
+            layer_agg[layer] = {"injections": 0, "tokens": 0, "dedup_hits": 0, "empty": 0}
+        agg = layer_agg[layer]
+        if m.get("token_estimate", 0) > 0:
+            agg["injections"] += 1
+            agg["tokens"] += m.get("token_estimate", 0)
+        elif m.get("dedup_hit", 0):
+            agg["dedup_hits"] += 1
+        else:
+            agg["empty"] += 1
+
+    if layer_agg:
+        parts = []
+        for layer, agg in sorted(layer_agg.items()):
+            parts.append(f"{layer}: {agg['injections']}inj/{agg['tokens']}tok/{agg['dedup_hits']}dup/{agg['empty']}empty")
+        _log("stop", f"metrics-agg: {', '.join(parts)}")
+
     try:
         from lib.metrics import flush_session, scan_transcript_citations
 
