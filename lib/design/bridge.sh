@@ -912,25 +912,9 @@ setup_design_bridge() {
 # Default page alias map for scope matching.
 # Format: "PageName:alias1,alias2,alias3"
 # Aliases are phrase-level (multi-word) to avoid false positives.
-_DESIGN_BRIEF_ALIASES=(
-    "Home:homepage,hero banner,featured coffees,featured products,testimonial"
-    "ProductCatalog:catalog,listing page,filter sidebar,product grid,kavek"
-    "ProductDetail:product detail,variant selector,cross-sell,breadcrumb"
-    "Cart:cart,kosar,cart session"
-    "Checkout:checkout,penztar,3-step,shipping zone"
-    "SubscriptionWizard:subscription wizard,subscription setup,elofizetes"
-    "UserDashboard:user dashboard,user subscription"
-    "UserProfile:profile,adataim,cimeim,kedvenceim"
-    "AdminDashboard:admin dashboard,admin kpi,admin layout,admin sidebar"
-    "AdminProducts:admin product,product crud,product editor"
-    "AdminOrders:admin order,order management,daily deliver"
-    "AdminCoupons:admin coupon,admin promo,admin gift card,admin review,moderation"
-    "Stories:stories,sztorik,story list,category tab"
-    "StoryDetail:story detail,article content,share button"
-    "Login:login,register,belepes,regisztracio"
-    "PromoStates:promo banner,404,empty state,out of stock,toast,skeleton"
-    "EmailTemplates:email template,welcome email,shipping notification"
-)
+# Default aliases — empty. Per-scaffold aliases loaded from file.
+# Format: "PageName:alias1,alias2,alias3"
+_DESIGN_BRIEF_ALIASES=()
 
 # Extract and return matched design brief page sections for a change scope.
 # Reads design-brief.md, matches "## Page: <name>" sections against scope
@@ -956,8 +940,17 @@ design_brief_for_dispatch() {
     local scope_lower
     scope_lower=$(echo "$scope_text" | tr '[:upper:]' '[:lower:]')
 
-    # Read custom aliases from file if it exists (profile override)
+    # Load aliases: env var → auto-discover next to brief → default (empty)
     local aliases_file="${DESIGN_BRIEF_ALIASES_FILE:-}"
+    if [[ -z "$aliases_file" || ! -f "$aliases_file" ]]; then
+        # Auto-discover: check docs/design-brief-aliases.txt
+        for _ap in "docs/design-brief-aliases.txt" "design-brief-aliases.txt"; do
+            if [[ -f "$_ap" ]]; then
+                aliases_file="$_ap"
+                break
+            fi
+        done
+    fi
     local -a alias_entries=()
     if [[ -n "$aliases_file" && -f "$aliases_file" ]]; then
         mapfile -t alias_entries < "$aliases_file"
@@ -999,6 +992,25 @@ design_brief_for_dispatch() {
                     break
                 fi
             done
+        fi
+
+        # Check 3: stem-based bidirectional — ALL page words (3+ chars, stemmed
+        # to first 4 chars) must appear somewhere in the scope text
+        if [[ "$matched" == "false" ]]; then
+            local -a _pw=()
+            for _w in $page_lower; do
+                [[ ${#_w} -ge 3 ]] && _pw+=("${_w:0:4}")
+            done
+            if [[ ${#_pw[@]} -gt 0 ]]; then
+                local _all=true
+                for _stem in "${_pw[@]}"; do
+                    if ! echo "$scope_lower" | grep -qi "$_stem"; then
+                        _all=false
+                        break
+                    fi
+                done
+                [[ "$_all" == "true" ]] && matched=true
+            fi
         fi
 
         if [[ "$matched" == "true" ]]; then

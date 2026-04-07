@@ -1,0 +1,8 @@
+Product Grid:catalog,product listing,product browse,storefront
+Product Detail:product page,product view,variant selector
+Shopping Cart:cart,basket,checkout
+Orders List:order history,order table,my orders
+Order Detail:order view,order tracking,order summary
+Admin Login:auth,login,sign in,authentication
+Admin Dashboard:admin overview,admin stats,admin home,admin panel
+Admin Products:product management,product crud,product editor,admin product
