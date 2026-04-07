@@ -41,6 +41,14 @@ Keep foundation and auth SEPARATE. Keep cart and checkout SEPARATE. This prevent
 - NEVER reference local files like `/images/product.jpg`
 - Seed data `imageUrl` fields must use working placeholder URLs
 
+## UI Components
+
+- ALL UI components MUST use shadcn/ui: Button, Card, Input, Label, Table, Dialog, Select, etc.
+- Import from `@/components/ui/<component>` — install first with `npx shadcn@latest add <component>`
+- Use `cn()` from `@/lib/utils` for conditional class merging
+- Do NOT use plain HTML `<button>`, `<input>`, `<select>` — always use shadcn equivalents
+- Do NOT delete `components.json` or `src/lib/utils.ts` — these are required
+
 ## Admin Authentication
 
 - bcrypt for password hashing (devDependency: `bcryptjs`)

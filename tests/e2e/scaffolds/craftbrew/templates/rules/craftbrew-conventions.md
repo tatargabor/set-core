@@ -47,6 +47,14 @@ CRITICAL: NEVER combine cart and checkout in one change. The cart-and-checkout m
 - Hungarian locale: date format `YYYY.MM.DD`, thousand separator: space
 - `formatPrice(amount: number)`: format with space separators, append ` Ft`
 
+## UI Components
+
+- ALL UI components MUST use shadcn/ui: Button, Card, Input, Label, Textarea, Table, Dialog, Sheet, Select, etc.
+- Import from `@/components/ui/<component>` — install first with `npx shadcn@latest add <component>`
+- Use `cn()` from `@/lib/utils` for conditional class merging
+- Do NOT use plain HTML `<button>`, `<input>`, `<select>` — always use shadcn equivalents
+- Do NOT delete `components.json` or `src/lib/utils.ts` — these are required
+
 ## Design System
 
 - Design source: `docs/figma-raw/` directory contains Figma export
