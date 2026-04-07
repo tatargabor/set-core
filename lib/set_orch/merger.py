@@ -921,7 +921,7 @@ def _run_integration_gates(
     change_name: str, change: Change, wt_path: str,
     state_file: str, profile: Any = None,
     event_bus: Any = None,
-    e2e_retry_limit: int = 3,
+    e2e_retry_limit: int = 5,
 ) -> bool:
     """Run integration gates (build + test + e2e) in worktree after integration.
 

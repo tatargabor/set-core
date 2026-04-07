@@ -60,7 +60,7 @@ class Directives:
     max_replan_cycles: int = MAX_REPLAN_CYCLES
     test_timeout: int = 300
     max_verify_retries: int = 3
-    e2e_retry_limit: int = 3
+    e2e_retry_limit: int = 5
     review_before_merge: bool = True
     review_model: str = "sonnet"
     digest_model: str = "sonnet"
