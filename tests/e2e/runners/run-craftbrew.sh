@@ -230,6 +230,10 @@ ATTRS
             success "Scaffold rules deployed" || true
     fi
 
+    # Deploy shadcn/ui overlay (if scaffold opts in via shadcn/ dir)
+    source "$(dirname "$0")/lib/deploy-shadcn.sh"
+    deploy_shadcn_overlay "$SCAFFOLD_DIR" "$TEST_DIR"
+
     # NOTE: Figma MCP registration removed — OAuth requires interactive auth
     # which blocks `claude -p` (pipe mode) used by the orchestrator.
     # Design data is available via static design-snapshot.md + figma-raw/ files

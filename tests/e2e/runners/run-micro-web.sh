@@ -211,31 +211,9 @@ ATTRS
         info "Scaffold globals.css deployed (shadcn theme)"
     fi
 
-    # Deploy shadcn/ui overlay (if scaffold opts in)
-    if [[ -d "$SCAFFOLD_DIR/shadcn" ]]; then
-        info "Deploying shadcn/ui overlay..."
-        # Copy components.json and utils.ts
-        cp "$SCAFFOLD_DIR/shadcn/components.json" "$TEST_DIR/" 2>/dev/null
-        mkdir -p "$TEST_DIR/src/lib"
-        cp "$SCAFFOLD_DIR/shadcn/src/lib/utils.ts" "$TEST_DIR/src/lib/" 2>/dev/null
-        # Merge extra dependencies into package.json
-        if [[ -f "$SCAFFOLD_DIR/shadcn/deps.json" ]]; then
-            python3 -c "
-import json
-with open('package.json') as f:
-    pkg = json.load(f)
-with open('$SCAFFOLD_DIR/shadcn/deps.json') as f:
-    extra = json.load(f)
-for section in ('dependencies', 'devDependencies'):
-    if section in extra:
-        pkg.setdefault(section, {}).update(extra[section])
-with open('package.json', 'w') as f:
-    json.dump(pkg, f, indent=2)
-"
-            info "shadcn deps merged into package.json"
-        fi
-        success "shadcn/ui overlay deployed (components.json + utils.ts + deps)"
-    fi
+    # Deploy shadcn/ui overlay (if scaffold opts in via shadcn/ dir)
+    source "$(dirname "$0")/lib/deploy-shadcn.sh"
+    deploy_shadcn_overlay "$SCAFFOLD_DIR" "$TEST_DIR"
 
     step "Orchestration config"
     mkdir -p set/orchestration
