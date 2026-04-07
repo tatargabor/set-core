@@ -27,11 +27,8 @@ core:
   - postcss.config.mjs
   - path: next.config.js
     protected: true
-  - components.json
   - reflection.md
   - path: src/app/globals.css
-    protected: true
-  - path: src/lib/utils.ts
     protected: true
   - src/lib/prisma.ts
   - path: .env.example
