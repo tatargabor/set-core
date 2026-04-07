@@ -129,17 +129,19 @@ class TestGenerateTestPlan:
         profile = WebProjectType()
         plan = generate_test_plan(req_path, out_path, profile=profile)
 
-        # REQ-AUTH-001 (domain: auth) → HIGH
+        # REQ-AUTH-001 (domain: auth) → HIGH risk
         auth_entries = [e for e in plan.entries if e.req_id == "REQ-AUTH-001"]
         assert all(e.risk == "HIGH" for e in auth_entries)
-        assert all(e.min_tests == 3 for e in auth_entries)
+        # With AC-ID skeleton, min_tests=1 per AC (each AC = 1 test block)
+        assert all(e.min_tests == 1 for e in auth_entries)
+        assert all(e.ac_id for e in auth_entries)  # All have AC-IDs
 
-        # REQ-FORM-001 (domain: forms) → MEDIUM
+        # REQ-FORM-001 (domain: forms) → MEDIUM risk
         form_entries = [e for e in plan.entries if e.req_id == "REQ-FORM-001"]
         assert all(e.risk == "MEDIUM" for e in form_entries)
-        assert all(e.min_tests == 2 for e in form_entries)
+        assert all(e.min_tests == 1 for e in form_entries)
 
-        # REQ-HOME-001 (domain: display) → LOW
+        # REQ-HOME-001 (domain: display) → LOW risk
         home_entries = [e for e in plan.entries if e.req_id == "REQ-HOME-001"]
         assert all(e.risk == "LOW" for e in home_entries)
         assert all(e.min_tests == 1 for e in home_entries)
@@ -155,7 +157,8 @@ class TestGenerateTestPlan:
         p.write_text(json.dumps(reqs), encoding="utf-8")
         plan = generate_test_plan(p, tmp_path / "plan.json", profile=None)
         assert plan.entries[0].risk == "HIGH"
-        assert plan.entries[0].min_tests == 3
+        # AC-ID entries always get min_tests=1 (1 skeleton block per AC)
+        assert plan.entries[0].min_tests == 1
 
     def test_default_profile_all_low(self, tmp_path):
         """No profile override → all scenarios classified LOW."""

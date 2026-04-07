@@ -421,16 +421,21 @@ def build_test_coverage(
     for (file, name), result in test_results.items():
         ac_ids = extract_ac_ids(name)
         if ac_ids:
+            _phase0_bound.add((file, name))  # Always mark — Phase 1 should not re-process
+            _seen_rids: set[str] = set()
             for acid in ac_ids:
+                rid = acid.split(":")[0]
                 if acid in _ac_lookup:
                     tc = _ac_lookup[acid]
                     tc.result = result
                     tc.test_file = tc.test_file or file
                     logger.info("AC-ID bound: %s from test: %s", acid, name)
-                    _phase0_bound.add((file, name))
-                # Also track REQ-level binding
-                rid = acid.split(":")[0]
-                deterministic_bindings.setdefault(rid, []).append((file, result))
+                else:
+                    logger.debug("AC-ID %s not in test plan — REQ-level binding only", acid)
+                # Track REQ-level binding (deduplicate per rid per test)
+                if rid not in _seen_rids:
+                    deterministic_bindings.setdefault(rid, []).append((file, result))
+                    _seen_rids.add(rid)
 
     # Phase 1: REQ-ID extraction + slug matching (fallback for tests without AC-IDs)
     for (file, name), result in test_results.items():
@@ -702,7 +707,9 @@ def generate_test_plan(
                 risk = "LOW"
                 if profile is not None:
                     risk = profile.classify_test_risk(scenario, req)
-            min_tests = RISK_MIN_TESTS.get(risk, 1)
+            # With AC-ID skeleton, each AC = 1 test block. min_tests reflects
+            # the skeleton reality, not the theoretical risk-based count.
+            min_tests = 1 if scenario.ac_id else RISK_MIN_TESTS.get(risk, 1)
             categories = list(RISK_CATEGORIES.get(risk, ["happy"]))
 
             entry = TestPlanEntry(

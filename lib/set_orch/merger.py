@@ -1237,7 +1237,7 @@ def _run_integration_gates(
             e2e_pass = result.exit_code == 0
             update_change_field(state_file, change_name, "e2e_result", "pass" if e2e_pass else "fail")
             update_change_field(state_file, change_name, "gate_e2e_ms", _s2e)
-            update_change_field(state_file, change_name, "e2e_output", ((result.stdout or "") + (result.stderr or ""))[-2000:])
+            update_change_field(state_file, change_name, "e2e_output", ((result.stdout or "") + (result.stderr or ""))[-8000:])
             if e2e_pass:
                 _gates_passed_count += 1
                 logger.info("Integration gate: e2e PASSED for %s (%dms)", change_name, _s2e)
@@ -1336,7 +1336,7 @@ def _run_integration_gates(
             if os.path.isfile(_plan_path):
                 try:
                     from .test_coverage import (
-                        TestPlan, build_test_coverage, validate_coverage,
+                        TestPlan, TestCase as _TC, build_test_coverage, validate_coverage,
                         parse_test_plan,
                     )
                     _plan = TestPlan.from_dict(json.loads(Path(_plan_path).read_text()))
@@ -1351,7 +1351,22 @@ def _run_integration_gates(
                         if profile and hasattr(profile, "parse_test_results"):
                             _test_results = profile.parse_test_results(_e2e_out)
 
-                        _test_cases, _non_testable = parse_test_plan(Path(_plan_path))
+                        # Try JOURNEY-TEST-PLAN.md first, fallback to test-plan.json entries
+                        _journey_path = Path(os.path.dirname(state_file)) / "tests" / "e2e" / "JOURNEY-TEST-PLAN.md"
+                        _test_cases, _non_testable = parse_test_plan(_journey_path)
+                        if not _test_cases:
+                            # Build TestCases from test-plan.json (AC-ID binding needs these)
+                            for _entry in _plan.entries:
+                                _test_cases.append(_TC(
+                                    scenario_slug=_entry.scenario_slug,
+                                    req_id=_entry.req_id,
+                                    risk=_entry.risk,
+                                    test_file="",
+                                    test_name=_entry.scenario_name,
+                                    category=_entry.categories[0] if _entry.categories else "happy",
+                                    ac_id=_entry.ac_id,
+                                ))
+                            _non_testable = _plan.non_testable
                         _coverage = build_test_coverage(
                             test_cases=_test_cases,
                             non_testable=_non_testable,
