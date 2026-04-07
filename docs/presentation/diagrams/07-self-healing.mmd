@@ -1,0 +1,24 @@
+flowchart LR
+    GATE[Gate runs]
+    FAIL[Gate FAILS]
+    READ[Agent reads<br/>error output]
+    DIAG[Agent diagnoses<br/>root cause]
+    FIX[Agent applies<br/>fix]
+    RERUN[Re-run gate]
+    PASS[Gate PASSES]
+    MERGE[Merge to main]
+
+    GATE --> FAIL
+    FAIL --> READ
+    READ --> DIAG
+    DIAG --> FIX
+    FIX --> RERUN
+    RERUN --> PASS
+    PASS --> MERGE
+
+    classDef step fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#fafafa
+    classDef bad fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fafafa
+    classDef good fill:#166534,stroke:#22c55e,stroke-width:2px,color:#fafafa
+    class GATE,READ,DIAG,FIX,RERUN step
+    class FAIL bad
+    class PASS,MERGE good

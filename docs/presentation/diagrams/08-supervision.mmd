@@ -1,0 +1,25 @@
+flowchart TB
+    subgraph T3["Tier 3: Sentinel"]
+        S[Infrastructure errors<br/>crashes, disk, deadlocks<br/>30s detection]
+    end
+
+    subgraph T2["Tier 2: Orchestrator"]
+        O[Workflow errors<br/>stalls, budget<br/>merge conflicts]
+    end
+
+    subgraph T1["Tier 1: Agents"]
+        A[Code errors<br/>test failures<br/>type errors]
+    end
+
+    S -.supervises.-> O
+    O -.supervises.-> A
+
+    A -.escalates.-> O
+    O -.escalates.-> S
+
+    classDef tier1 fill:#166534,stroke:#22c55e,stroke-width:2px,color:#fafafa
+    classDef tier2 fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#fafafa
+    classDef tier3 fill:#3b1e5f,stroke:#a855f7,stroke-width:2px,color:#fafafa
+    class A tier1
+    class O tier2
+    class S tier3

@@ -42,6 +42,12 @@ Navigation map for finding the right doc based on your role and goal.
 | [benchmarks.md](learn/benchmarks.md) | E2E run results and metrics |
 | [lessons-learned.md](learn/lessons-learned.md) | Production insights |
 
+## FAQ
+
+| Doc | Description |
+|-----|-------------|
+| [faq/](faq/) | Common questions from architects, CTOs, and senior engineers evaluating SET ([HTML](faq/faq.html), [Markdown](faq/index.md)) |
+
 ## Examples
 
 | Doc | Description |

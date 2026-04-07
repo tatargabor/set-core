@@ -1,0 +1,23 @@
+flowchart TB
+    NORMAL[Normal operation]
+    L1["L1: Warning<br/>Log + notification<br/>no intervention"]
+    L2["L2: Restart<br/>Agent restart with<br/>context pruning<br/>~70% success"]
+    L3["L3: Redispatch<br/>Full worktree<br/>rebuild<br/>max 2x"]
+    L4["L4: Give up<br/>Change → failed<br/>better than burning<br/>tokens forever"]
+    DONE[Recovery]
+
+    NORMAL --> L1
+    L1 -.still stuck.-> L2
+    L2 --> DONE
+    L2 -.still stuck.-> L3
+    L3 --> DONE
+    L3 -.still stuck.-> L4
+
+    classDef normal fill:#166534,stroke:#22c55e,stroke-width:2px,color:#fafafa
+    classDef level fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#fafafa
+    classDef giveup fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fafafa
+    classDef good fill:#166534,stroke:#22c55e,stroke-width:2px,color:#fafafa
+    class NORMAL normal
+    class L1,L2,L3 level
+    class L4 giveup
+    class DONE good

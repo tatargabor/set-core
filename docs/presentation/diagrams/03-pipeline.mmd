@@ -1,0 +1,18 @@
+flowchart LR
+    INPUT[spec.md<br/>+ Figma]
+    DIGEST[digest<br/>requirements<br/>domains]
+    DECOMPOSE[decompose<br/>DAG<br/>phases]
+    DISPATCH[dispatch<br/>parallel<br/>worktrees]
+    VERIFY[verify<br/>7 gates<br/>per change]
+    MERGE[merge<br/>FF-only<br/>sequential]
+    DONE[done<br/>100%<br/>coverage]
+
+    INPUT --> DIGEST --> DECOMPOSE --> DISPATCH --> VERIFY --> MERGE --> DONE
+
+    VERIFY -.fail.-> DISPATCH
+    MERGE -.coverage<100%.-> DECOMPOSE
+
+    classDef step fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#fafafa
+    classDef done fill:#166534,stroke:#22c55e,stroke-width:3px,color:#fafafa
+    class INPUT,DIGEST,DECOMPOSE,DISPATCH,VERIFY,MERGE step
+    class DONE done

@@ -1,0 +1,27 @@
+flowchart TB
+    subgraph P1[Phase 1]
+        INFRA[project-infrastructure]
+    end
+
+    subgraph P2[Phase 2 - parallel]
+        PRODUCTS[products-page]
+        AUTH[admin-auth]
+    end
+
+    subgraph P3[Phase 3 - parallel]
+        CART[cart-feature]
+        ORDERS[orders-checkout]
+        ADMIN[admin-products]
+    end
+
+    INFRA --> PRODUCTS
+    INFRA --> AUTH
+    PRODUCTS --> CART
+    PRODUCTS --> ADMIN
+    CART --> ORDERS
+    AUTH --> ORDERS
+    AUTH --> ADMIN
+
+    classDef change fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#fafafa
+    classDef phase fill:#0f172a,stroke:#475569,stroke-width:1px,color:#94a3b8
+    class INFRA,PRODUCTS,AUTH,CART,ORDERS,ADMIN change

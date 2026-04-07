@@ -1,0 +1,47 @@
+stateDiagram-v2
+    direction TB
+    [*] --> spec_md: spec.md + design
+
+    state "SPECIFY + DECOMPOSE" as planning {
+        spec_md --> digest
+        digest --> triage
+        triage --> plan_DAG: ambiguities resolved
+        plan_DAG --> dispatch
+    }
+
+    state "EXECUTE (per change)" as execute {
+        pending --> dispatched
+        dispatched --> running
+        running --> ralph_loop
+        ralph_loop --> done_ralph: tasks complete
+        ralph_loop --> stalled: no progress >120s
+        stalled --> running: redispatch
+    }
+
+    state "VERIFY" as verify {
+        test_gate --> build_gate
+        build_gate --> e2e_gate
+        e2e_gate --> review_gate
+        review_gate --> coverage_gate
+        coverage_gate --> smoke_gate
+        smoke_gate --> [*]
+    }
+
+    state "MERGE + LEARN" as merge {
+        merge_queue --> ff_merge
+        ff_merge --> post_smoke
+        post_smoke --> coverage_check
+        coverage_check --> done: 100%
+        coverage_check --> replan: under 100%
+    }
+
+    dispatch --> pending
+    done_ralph --> test_gate
+    smoke_gate --> merge_queue
+    replan --> spec_md
+    done --> [*]
+
+    note right of verify
+        FAIL → agent fixes → re-verify
+        PASS → merge_queue
+    end note

@@ -1,0 +1,30 @@
+flowchart TB
+    subgraph L3["Layer 3: External Plugins"]
+        FIN[set-project-fintech<br/>IDOR, PCI compliance]
+        HEALTH[set-project-healthcare<br/>HIPAA rules]
+        CUSTOM[your-project-type<br/>custom domain]
+    end
+
+    subgraph L2["Layer 2: Built-in Modules"]
+        WEB[modules/web<br/>Next.js, Prisma<br/>Playwright]
+        EXAMPLE[modules/example<br/>Reference impl]
+    end
+
+    subgraph L1["Layer 1: Core Engine"]
+        ENGINE[engine.py<br/>State machine]
+        DISP[dispatcher.py<br/>Worktree creation]
+        MERG[merger.py<br/>Merge queue]
+        VERIF[verifier.py<br/>Quality gates]
+        PLAN[planner.py<br/>Decomposition]
+        DIG[digest.py<br/>Requirements]
+    end
+
+    L3 -.inherits.-> L2
+    L2 -.inherits.-> L1
+
+    classDef core fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#fafafa
+    classDef module fill:#3b1e5f,stroke:#a855f7,stroke-width:2px,color:#fafafa
+    classDef plugin fill:#5f1e3a,stroke:#ec4899,stroke-width:2px,color:#fafafa
+    class ENGINE,DISP,MERG,VERIF,PLAN,DIG core
+    class WEB,EXAMPLE module
+    class FIN,HEALTH,CUSTOM plugin

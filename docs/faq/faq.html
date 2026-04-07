@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SET — Frequently Asked Questions</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --bg-card: #12121a;
+    --bg-card-hover: #1a1a26;
+    --border: #1e1e2e;
+    --border-accent: #2d2d44;
+    --text: #e4e4ef;
+    --text-dim: #8888a0;
+    --text-muted: #555566;
+    --accent: #6366f1;
+    --accent-light: #818cf8;
+    --accent-glow: rgba(99, 102, 241, 0.15);
+    --green: #22c55e;
+    --green-dim: rgba(34, 197, 94, 0.12);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239, 68, 68, 0.12);
+    --cyan: #06b6d4;
+    --cyan-dim: rgba(6, 182, 212, 0.12);
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Nav ── */
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(10, 10, 15, 0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  nav .logo {
+    font-weight: 800;
+    font-size: 1.1rem;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--accent-light), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  nav .nav-links {
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  nav .nav-links::-webkit-scrollbar { display: none; }
+  nav .nav-links a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  nav .nav-links a:hover, nav .nav-links a.active {
+    color: var(--text);
+    background: var(--accent-glow);
+  }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 8rem 2rem 4rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 600px;
+    background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero h1 {
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+    margin-bottom: 1.25rem;
+    position: relative;
+  }
+  .hero h1 span {
+    background: linear-gradient(135deg, var(--accent-light), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero .subtitle {
+    font-size: 1.15rem;
+    color: var(--text-dim);
+    max-width: 640px;
+    margin: 0 auto 2rem;
+    font-weight: 400;
+  }
+  .hero .badge-row {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+  }
+  .badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .badge.green .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .badge.amber .dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .badge.cyan .dot  { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+
+  /* ── Main layout ── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* ── Section ── */
+  .section {
+    margin-bottom: 4rem;
+    scroll-margin-top: 72px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+  .section-icon.purple { background: var(--accent-glow); border: 1px solid rgba(99,102,241,0.3); }
+  .section-icon.green  { background: var(--green-dim); border: 1px solid rgba(34,197,94,0.3); }
+  .section-icon.amber  { background: var(--amber-dim); border: 1px solid rgba(245,158,11,0.3); }
+  .section-icon.red    { background: var(--red-dim); border: 1px solid rgba(239,68,68,0.3); }
+  .section-icon.cyan   { background: var(--cyan-dim); border: 1px solid rgba(6,182,212,0.3); }
+  .section-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  /* ── FAQ Card ── */
+  .faq-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .faq-card:hover {
+    border-color: var(--border-accent);
+  }
+  .faq-card.open {
+    border-color: rgba(99, 102, 241, 0.3);
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.05);
+  }
+  .faq-question {
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    user-select: none;
+  }
+  .faq-question h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    flex: 1;
+  }
+  .faq-chevron {
+    width: 20px;
+    height: 20px;
+    color: var(--text-muted);
+    transition: transform 0.3s ease, color 0.2s;
+    flex-shrink: 0;
+  }
+  .faq-card.open .faq-chevron {
+    transform: rotate(180deg);
+    color: var(--accent-light);
+  }
+  .faq-answer {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease;
+  }
+  .faq-card.open .faq-answer {
+    max-height: 3000px;
+  }
+  .faq-body {
+    padding: 0 1.5rem 1.5rem;
+    color: var(--text-dim);
+    font-size: 0.92rem;
+    line-height: 1.8;
+  }
+  .faq-body p { margin-bottom: 0.75rem; }
+  .faq-body strong { color: var(--text); font-weight: 600; }
+  .faq-body em { color: var(--accent-light); font-style: normal; font-weight: 500; }
+  .faq-body ul, .faq-body ol {
+    margin: 0.5rem 0 1rem 1.25rem;
+  }
+  .faq-body li { margin-bottom: 0.35rem; }
+  .faq-body code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    color: var(--accent-light);
+  }
+  .faq-body pre {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  /* ── Comparison table ── */
+  .cmp-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.85rem;
+  }
+  .cmp-table th {
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    font-weight: 600;
+    color: var(--text);
+    border-bottom: 1px solid var(--border-accent);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .cmp-table td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .cmp-table tr:last-child td { border-bottom: none; }
+  .cmp-table .label { color: var(--text); font-weight: 500; white-space: nowrap; }
+
+  /* ── Metrics grid ── */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  .metric-card {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.25rem;
+    text-align: center;
+  }
+  .metric-val {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--accent-light), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .metric-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Competitor matrix ── */
+  .matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+    font-size: 0.78rem;
+  }
+  .matrix-table th {
+    padding: 0.5rem 0.6rem;
+    font-weight: 600;
+    color: var(--text);
+    border-bottom: 1px solid var(--border-accent);
+    text-align: center;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .matrix-table th:first-child { text-align: left; }
+  .matrix-table td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+  }
+  .matrix-table td:first-child {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .matrix-table .yes { color: var(--green); }
+  .matrix-table .no { color: var(--text-muted); }
+  .matrix-table .partial { color: var(--amber); }
+  .matrix-table .highlight-row { background: rgba(99,102,241,0.06); }
+  .matrix-table .highlight-row td:first-child { color: var(--accent-light); font-weight: 700; }
+
+  /* ── Six pillars ── */
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+  .pillar {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1.25rem;
+    position: relative;
+  }
+  .pillar-num {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--accent-light);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.4rem;
+  }
+  .pillar h4 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+  }
+  .pillar p {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ── Pipeline visualization ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+  }
+  .pipeline-step {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    text-align: center;
+    min-width: 110px;
+    flex-shrink: 0;
+  }
+  .pipeline-step .step-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .pipeline-step .step-detail {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+  }
+  .pipeline-arrow {
+    color: var(--accent);
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    padding: 0 0.15rem;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+  footer a {
+    color: var(--accent-light);
+    text-decoration: none;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    nav { padding: 0 1rem; }
+    .hero { padding: 6rem 1rem 3rem; }
+    main { padding: 0 1rem 4rem; }
+    .faq-question { padding: 1rem; }
+    .faq-body { padding: 0 1rem 1rem; }
+    .pipeline { flex-wrap: wrap; gap: 0.5rem; }
+    .pipeline-arrow { display: none; }
+    nav .nav-links { gap: 0; }
+    nav .nav-links a { padding: 0.4rem 0.5rem; font-size: 0.72rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">SET FAQ</div>
+  <div class="nav-links">
+    <a href="#general">General</a>
+    <a href="#comparisons">Comparisons</a>
+    <a href="#openspec">OpenSpec</a>
+    <a href="#orchestration">Orchestration</a>
+    <a href="#quality">Quality</a>
+    <a href="#memory">Memory</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#practical">Practical</a>
+    <a href="#big-picture">Big Picture</a>
+  </div>
+</nav>
+
+<!-- ══════════ Hero ══════════ -->
+<div class="hero">
+  <h1>Everything you need to know about <span>SET</span></h1>
+  <p class="subtitle">Autonomous multi-agent orchestration for Claude Code. Give it a spec, get merged features. Here's how and why.</p>
+  <div class="badge-row">
+    <span class="badge green"><span class="dot"></span>30+ E2E runs</span>
+    <span class="badge amber"><span class="dot"></span>134K LOC</span>
+    <span class="badge cyan"><span class="dot"></span>720+ agent hours</span>
+  </div>
+</div>
+
+<main>
+
+<!-- ══════════ General ══════════ -->
+<div class="section" id="general">
+  <div class="section-header">
+    <div class="section-icon purple">?</div>
+    <h2 class="section-title">General</h2>
+  </div>
+
+  <div class="faq-card open">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What is SET?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>SET is an orchestration framework that transforms a product specification into fully implemented, tested, and merged code — <strong>autonomously</strong>.</p>
+        <p>You write a detailed markdown spec (data model, pages, design tokens, auth flows, seed data). SET decomposes it into independent changes, dispatches parallel Claude Code agents into isolated git worktrees, runs deterministic quality gates, and merges the results.</p>
+        <div class="pipeline">
+          <div class="pipeline-step"><div class="step-name">Spec</div><div class="step-detail">Markdown input</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Decompose</div><div class="step-detail">DAG of changes</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Dispatch</div><div class="step-detail">Parallel agents</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Monitor</div><div class="step-detail">15s poll cycle</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Verify</div><div class="step-detail">Quality gates</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Merge</div><div class="step-detail">Conflict resolution</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Replan</div><div class="step-detail">Cover gaps</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Who is SET for?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Development teams and technical leaders who already use Claude Code and want to scale beyond single-agent, single-task workflows. If you're an architect managing a backlog of well-specified features, or a CTO evaluating how AI agents can own the full implementation-to-merge cycle, SET is the layer that makes that possible.</p>
+        <p>It assumes you can write a good spec — it handles everything after that.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Is this production-ready?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>SET was built with itself over 79 days. These are the numbers:</p>
+        <div class="metrics">
+          <div class="metric-card"><div class="metric-val">1,295</div><div class="metric-label">Commits</div></div>
+          <div class="metric-card"><div class="metric-val">134K</div><div class="metric-label">Lines of Code</div></div>
+          <div class="metric-card"><div class="metric-val">720+</div><div class="metric-label">Agent Hours</div></div>
+          <div class="metric-card"><div class="metric-val">30+</div><div class="metric-label">E2E Runs</div></div>
+        </div>
+        <p>The MiniShop benchmark delivers <strong>6/6 changes merged, zero human intervention, in 1h 45m</strong>. CraftBrew (15 changes, 150+ files, 28 DB models) completed fully autonomously in ~6h.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Comparisons ══════════ -->
+<div class="section" id="comparisons">
+  <div class="section-header">
+    <div class="section-icon amber">&#x2194;</div>
+    <h2 class="section-title">How Is SET Different From...</h2>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>...just using Claude Code?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Claude Code is an excellent single-agent tool. SET is the orchestration layer on top. The difference is like comparing <em>a skilled developer</em> to <em>a managed sprint</em>.</p>
+        <table class="cmp-table">
+          <tr><th></th><th>Claude Code (alone)</th><th>SET</th></tr>
+          <tr><td class="label">Scope</td><td>One task at a time</td><td>Full spec &rarr; multiple parallel changes</td></tr>
+          <tr><td class="label">Parallelism</td><td>Agent teams (experimental, ~7)</td><td>N worktrees, dedicated agents, across machines</td></tr>
+          <tr><td class="label">Planning</td><td>Plan mode (freeform, ephemeral)</td><td>OpenSpec: structured artifacts with traceability</td></tr>
+          <tr><td class="label">Quality</td><td>Manual test runs</td><td>Gate pipeline: build &rarr; test &rarr; E2E &rarr; review</td></tr>
+          <tr><td class="label">Merging</td><td>Manual git merge</td><td>Automated merge queue + conflict resolution</td></tr>
+          <tr><td class="label">Recovery</td><td>Session dies, restart manually</td><td>Sentinel detects crash in 30s, auto-restarts</td></tr>
+          <tr><td class="label">Memory</td><td>Per-session context</td><td>Persistent cross-session memory via hooks</td></tr>
+          <tr><td class="label">State</td><td>Ephemeral</td><td>Atomic JSON with full orchestration history</td></tr>
+        </table>
+        <p>Claude Code provides the primitives. SET provides the orchestration: planning, dispatch, monitoring, gating, merging, replanning — the <strong>full outer loop</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>...Claude Code Agent Teams?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p><strong>Agent Teams</strong> = parallelism <em>within</em> a worktree. A lead assigns subtasks to teammates; they share context. Good for a single feature.</p>
+        <p><strong>SET</strong> = parallelism <em>across</em> worktrees. A planner decomposes a full spec into a dependency DAG, dispatches each to its own worktree, manages the merge pipeline. Good for <strong>shipping an entire product</strong>.</p>
+        <p>They're complementary. SET can use Agent Teams inside each worktree while managing cross-change orchestration externally.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>...Cursor's parallel agents?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Cursor 3 introduced parallel agents (up to 8) with worktree isolation. That's the <em>execution</em> capability. What it lacks is the <em>orchestration</em>:</p>
+        <ul>
+          <li><strong>No spec decomposition</strong> — agents launched from ad-hoc prompts, no dependency ordering</li>
+          <li><strong>No quality gates</strong> — no automated build/test/E2E before merge</li>
+          <li><strong>No merge pipeline</strong> — no conflict resolution, no post-merge verification</li>
+          <li><strong>No supervision</strong> — no sentinel watching for crashes, stalls, budget overruns</li>
+          <li><strong>No persistent state</strong> — no tracking across restarts</li>
+        </ul>
+        <p>Cursor gives you 8 agents. SET gives you a <em>system</em> that manages those agents toward a verified outcome.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>...Devin?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Devin is an autonomous worker — one task at a time, sandboxed VM, creates PRs. SET is the orchestration layer that could coordinate <em>many</em> Devins working in parallel:</p>
+        <ul>
+          <li><strong>Devin</strong> handles one task. <strong>SET</strong> decomposes a spec into N tasks, runs them in parallel.</li>
+          <li><strong>Devin</strong> creates a PR. <strong>SET</strong> manages the merge queue with pre-merge quality gates.</li>
+          <li><strong>Devin</strong> has no spec traceability. <strong>SET</strong> traces every task to a WHEN/THEN requirement.</li>
+          <li><strong>Devin</strong> reports ~67% PR merge rate. <strong>SET</strong> MiniShop: 100% merge, zero intervention.</li>
+        </ul>
+        <p>Devin is a worker. SET is the project manager, CI/CD pipeline, and QA team for autonomous workers.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>...Kiro (Amazon)?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Kiro is the closest philosophical match: a spec-driven agentic IDE that generates user stories with acceptance criteria, technical design documents, and implementation task lists. It shares SET's belief that <strong>specs matter more than prompts</strong>.</p>
+        <p>The differences:</p>
+        <ul>
+          <li><strong>Kiro</strong> is an IDE. <strong>SET</strong> works with your existing tools (Claude Code, git, your editor).</li>
+          <li><strong>Kiro</strong> is single-agent. <strong>SET</strong> runs parallel agents in isolated worktrees.</li>
+          <li><strong>Kiro</strong> generates specs. <strong>SET</strong> also decomposes them into a DAG, dispatches agents, enforces gates, manages merges, and replans for gaps.</li>
+          <li><strong>Kiro</strong> has no merge pipeline, sentinel supervision, or crash recovery.</li>
+        </ul>
+        <p>Kiro validates the spec-driven approach. SET takes it further with full orchestration infrastructure.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>...Roo Code, Aider, Cline, Windsurf?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>All excellent single-agent tools solving different problems:</p>
+        <ul>
+          <li><strong>Roo Code</strong> — Multi-mode (Architect/Code/Debug) in one session. No parallel execution or merge pipeline.</li>
+          <li><strong>Aider</strong> — CLI pair programmer with great git integration. Single-agent, no orchestration.</li>
+          <li><strong>Cline</strong> — VS Code extension, every action needs approval. Opposite of autonomous orchestration.</li>
+          <li><strong>Windsurf</strong> — AI IDE with Cascade engine and memory. Single-agent, no parallelism.</li>
+        </ul>
+        <p>SET is not a better version of these tools — it's a <em>different category</em>. These are the developer's hands. SET is the sprint board, CI pipeline, and release manager.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>...OpenHands, Composio, GPT-Engineer?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <ul>
+          <li><strong>OpenHands</strong> — Agent runtime that scales to thousands. Provides infrastructure, not development workflow. No spec decomposition, no gates, no merge pipeline.</li>
+          <li><strong>Composio</strong> — Architecturally most similar: parallel worktrees + CI fix. But no spec decomposition, no pre-merge gates, no persistent state, no sentinel.</li>
+          <li><strong>GPT-Engineer / Lovable</strong> — App builders for non-developers. Prompt to MVP. Different category entirely.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Capability Matrix -->
+  <div class="faq-card open">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Capability matrix: SET vs. the landscape</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <table class="matrix-table">
+          <tr>
+            <th>Tool</th>
+            <th>Parallel Agents</th>
+            <th>Worktree Isolation</th>
+            <th>Structured Specs</th>
+            <th>Quality Gates</th>
+            <th>Merge Pipeline</th>
+            <th>Supervisor</th>
+          </tr>
+          <tr class="highlight-row">
+            <td>SET</td>
+            <td class="yes">&#10003;</td>
+            <td class="yes">&#10003;</td>
+            <td class="yes">&#10003;</td>
+            <td class="yes">&#10003;</td>
+            <td class="yes">&#10003;</td>
+            <td class="yes">&#10003;</td>
+          </tr>
+          <tr>
+            <td>Claude Code</td>
+            <td class="partial">Experimental</td>
+            <td class="yes">&#10003;</td>
+            <td class="no">&mdash;</td>
+            <td class="partial">Hooks</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <td>Cursor</td>
+            <td class="yes">&#10003; (8)</td>
+            <td class="yes">&#10003;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <td>Devin</td>
+            <td class="no">Single</td>
+            <td class="partial">Sandbox</td>
+            <td class="no">&mdash;</td>
+            <td class="no">Relies on CI</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <td>Kiro</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">&#10003;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <td>Composio</td>
+            <td class="yes">&#10003;</td>
+            <td class="yes">&#10003;</td>
+            <td class="no">&mdash;</td>
+            <td class="partial">CI fix</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <td>OpenHands</td>
+            <td class="yes">&#10003;</td>
+            <td class="partial">Sandbox</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <td>Roo Code</td>
+            <td class="no">Modes</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <td>Aider</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+          <tr>
+            <td>Windsurf</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ OpenSpec ══════════ -->
+<div class="section" id="openspec">
+  <div class="section-header">
+    <div class="section-icon green">&#x2630;</div>
+    <h2 class="section-title">OpenSpec</h2>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What is OpenSpec and why not just use a prompt?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>OpenSpec is a structured, artifact-driven methodology. Instead of a conversation, work is expressed as a sequence of structured documents that serve as <strong>contracts</strong> between planner, implementer, and verifier:</p>
+        <ol>
+          <li><strong>Proposal</strong> — Why we're doing this (problem, impact)</li>
+          <li><strong>Specs</strong> — What exactly must be built (WHEN/THEN acceptance criteria)</li>
+          <li><strong>Design</strong> — How we'll build it (decisions, tradeoffs)</li>
+          <li><strong>Tasks</strong> — Implementation checklist (<code>[REQ: requirement-name]</code> traceability)</li>
+        </ol>
+        <p>Why not just a prompt?</p>
+        <ul>
+          <li><strong>Prompts drift.</strong> Agents interpret, improvise, skip. Specs have explicit IN SCOPE / OUT OF SCOPE.</li>
+          <li><strong>Prompts can't be verified.</strong> How do you check "build a webshop"? OpenSpec checks every requirement against tasks against code.</li>
+          <li><strong>Prompts don't compose.</strong> 5 parallel agents need divided scope. Delta specs assign specific requirements to specific changes.</li>
+          <li><strong>Prompts leave no record.</strong> OpenSpec archives the full decision chain for future reference.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>How is this different from Claude Code's Plan mode?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Plan mode is a <em>thinking step</em>. OpenSpec is a <em>workflow system</em>.</p>
+        <table class="cmp-table">
+          <tr><th></th><th>Plan Mode</th><th>OpenSpec</th></tr>
+          <tr><td class="label">Output</td><td>Freeform text</td><td>Structured artifacts (proposal, specs, design, tasks)</td></tr>
+          <tr><td class="label">Persistence</td><td>Disappears after session</td><td>Committed to repo, archived after completion</td></tr>
+          <tr><td class="label">Traceability</td><td>None</td><td>Every task traces to a requirement</td></tr>
+          <tr><td class="label">Verification</td><td>None</td><td>Automated: completeness, correctness, coherence</td></tr>
+          <tr><td class="label">Scope</td><td>Trust</td><td>Explicit IN SCOPE / OUT OF SCOPE</td></tr>
+          <tr><td class="label">Multi-agent</td><td>Not designed for it</td><td>Delta specs assign scoped work to each agent</td></tr>
+        </table>
+        <p>Plan mode helps a single agent think. OpenSpec gives a system of agents <strong>structured contracts</strong> to work against and verify.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What are delta specs?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>When a change is created (e.g., <code>add-user-auth</code>), its spec files are <em>delta specifications</em> — the incremental requirements this change introduces, using ADDED / MODIFIED / REMOVED markers.</p>
+        <p>After merge, delta specs sync into <em>main specs</em> — the single source of truth. This means:</p>
+        <ul>
+          <li>Each change only describes what <em>it</em> changes, not the entire system</li>
+          <li>Multiple changes can touch the same capability without conflicting</li>
+          <li>Main specs evolve incrementally as changes merge</li>
+          <li>Full history preserved in archived changes</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What does the artifact workflow look like?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <div class="pipeline">
+          <div class="pipeline-step"><div class="step-name">Explore</div><div class="step-detail">Think (read-only)</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Proposal</div><div class="step-detail">Why</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Specs</div><div class="step-detail">What (WHEN/THEN)</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Design</div><div class="step-detail">How</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Tasks</div><div class="step-detail">Checklist</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Apply</div><div class="step-detail">Implement</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Verify</div><div class="step-detail">Check</div></div>
+          <div class="pipeline-arrow">&rarr;</div>
+          <div class="pipeline-step"><div class="step-name">Archive</div><div class="step-detail">Preserve</div></div>
+        </div>
+        <p>Each artifact depends on the previous. The schema enforces ordering — you can't create tasks before design, because design decisions inform task structure.</p>
+        <p>Fast-track: <code>/opsx:ff</code> generates all artifacts in one pass.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Orchestration ══════════ -->
+<div class="section" id="orchestration">
+  <div class="section-header">
+    <div class="section-icon cyan">&#x2699;</div>
+    <h2 class="section-title">Orchestration</h2>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>How does parallel execution actually work?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <ol>
+          <li><strong>Decompose</strong> — Planner reads your spec, creates a dependency DAG of independent changes</li>
+          <li><strong>Dispatch</strong> — For each ready change: create worktree, generate context, bootstrap env, start Ralph Loop</li>
+          <li><strong>Monitor</strong> — Every 15 seconds: check progress, detect stalls, track budgets</li>
+          <li><strong>Verify</strong> — Agent reports "done" &rarr; run gate pipeline (build &rarr; test &rarr; E2E &rarr; review)</li>
+          <li><strong>Merge</strong> — Sequential merge queue with conflict resolution and post-merge verification</li>
+          <li><strong>Sync</strong> — After each merge, all running worktrees pull main immediately</li>
+          <li><strong>Replan</strong> — After all changes merge, check for uncovered requirements, generate new changes</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Why git worktrees?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>True filesystem isolation without the overhead of cloning:</p>
+        <ul>
+          <li>Each agent has its own working directory — no file conflicts during parallel development</li>
+          <li>Each agent has its own branch — clean, independent git history</li>
+          <li>Worktrees share the same <code>.git</code> directory — no disk waste from full clones</li>
+          <li>Independent dep installs, test runs, and builds — no interference</li>
+        </ul>
+        <p>This is fundamentally different from agents "coordinating" via messages in a shared workspace — that approach breaks down when agents edit the same files simultaneously.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What happens when agents conflict?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Multi-layer conflict resolution:</p>
+        <ol>
+          <li><strong>Preventive</strong> — Dependency DAG orders cross-cutting changes sequentially. Profile-defined cross-cutting files are serialized.</li>
+          <li><strong>Generated files</strong> — Lockfiles, build artifacts auto-resolved, then regenerated (<code>pnpm install</code>).</li>
+          <li><strong>Real conflicts</strong> — Source code conflicts cause <code>merge-blocked</code>. Sentinel investigates, redispatches, or escalates.</li>
+          <li><strong>Post-merge sync</strong> — All running worktrees pull main immediately after every merge.</li>
+        </ol>
+        <p>In practice: CraftBrew (15 changes) had 4 conflicts — all auto-resolved. MiniShop (6 changes): zero conflicts.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What is the sentinel?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>An AI supervisor that watches orchestration and handles what goes wrong. Separate agent from the orchestrator — supervisor/subordinate pattern.</p>
+        <table class="cmp-table">
+          <tr><th>Event</th><th>Sentinel Action</th></tr>
+          <tr><td class="label">Agent crash</td><td>Diagnose from logs, restart or escalate</td></tr>
+          <tr><td class="label">Agent stall (&gt;120s)</td><td>Investigate cause, attempt recovery</td></tr>
+          <tr><td class="label">Periodic checkpoint</td><td>Auto-approve (routine) or escalate (unusual)</td></tr>
+          <tr><td class="label">Orchestration complete</td><td>Generate summary report</td></tr>
+          <tr><td class="label">Budget overrun</td><td>Pause agent, escalate</td></tr>
+        </table>
+        <p>Cost: typically <strong>5-10 LLM calls per entire run</strong>. Saves hours of wasted compute by catching crashes that would otherwise silently waste an overnight run.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Quality ══════════ -->
+<div class="section" id="quality">
+  <div class="section-header">
+    <div class="section-icon green">&#x2713;</div>
+    <h2 class="section-title">Quality &amp; Verification</h2>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What are integration gates?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Deterministic quality checks before merging. Exit codes, not LLM judgment.</p>
+        <table class="cmp-table">
+          <tr><th>Gate</th><th>What</th><th>How</th></tr>
+          <tr><td class="label">build</td><td>Types check, code compiles</td><td><code>tsc --noEmit</code>, <code>next build</code></td></tr>
+          <tr><td class="label">test</td><td>Unit/integration tests</td><td><code>vitest run</code>, <code>pytest</code></td></tr>
+          <tr><td class="label">e2e</td><td>Browser tests</td><td><code>playwright test</code></td></tr>
+          <tr><td class="label">review</td><td>Code quality, security</td><td>Claude review — no CRITICAL findings</td></tr>
+          <tr><td class="label">smoke</td><td>Post-merge sanity</td><td>Custom command</td></tr>
+          <tr><td class="label">spec_coverage</td><td>Requirements addressed</td><td>All REQ-IDs have tasks</td></tr>
+        </table>
+        <p>If a gate fails, the agent receives the error and retries. Self-healing. No human needed.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Why not just trust the LLM's judgment?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Because LLMs hallucinate confidence. "Looks good to me" from a code review is not the same as <code>vitest run</code> returning exit code 0.</p>
+        <p>MiniShop's 5 gate retries — all self-healed from <em>real bugs</em> an LLM review would have missed:</p>
+        <ol>
+          <li>Missing test file &rarr; test gate caught it</li>
+          <li>Jest config import error &rarr; build gate caught it</li>
+          <li>Playwright auth test failures &times;3 &rarr; agent fixed to match actual behavior</li>
+          <li>Post-merge type mismatch &rarr; agent synced main</li>
+          <li>Cart test race condition &rarr; agent added <code>waitForSelector</code></li>
+        </ol>
+        <p>An LLM review would have said "looks good" for at least 3 of these.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>How do you measure output quality across runs?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p><strong>Structural convergence.</strong> Run the same spec twice independently and measure similarity:</p>
+        <div class="metrics">
+          <div class="metric-card"><div class="metric-val">83%</div><div class="metric-label">MiniShop convergence</div></div>
+          <div class="metric-card"><div class="metric-val">87%</div><div class="metric-label">Micro-Web convergence</div></div>
+          <div class="metric-card"><div class="metric-val">100%</div><div class="metric-label">Schema equivalence</div></div>
+          <div class="metric-card"><div class="metric-val">100%</div><div class="metric-label">Convention compliance</div></div>
+        </div>
+        <p>Remaining divergence is stylistic (variable naming, CSS order), not structural. The spec + template system produces <strong>deterministic architecture</strong> even with non-deterministic LLMs.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Memory ══════════ -->
+<div class="section" id="memory">
+  <div class="section-header">
+    <div class="section-icon purple">&#x1D5D4;</div>
+    <h2 class="section-title">Memory &amp; Learning</h2>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>How does persistent memory work?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Hook-driven memory (shodh-memory) captures and injects context automatically. Agents don't need to save explicitly.</p>
+        <table class="cmp-table">
+          <tr><th>Hook</th><th>When</th><th>What</th></tr>
+          <tr><td class="label">Warmstart</td><td>Session start</td><td>Loads relevant memories as context</td></tr>
+          <tr><td class="label">Pre-tool</td><td>Before each tool call</td><td>Injects topic-based recall</td></tr>
+          <tr><td class="label">Post-tool</td><td>After Read/Bash</td><td>Surfaces past experience</td></tr>
+          <tr><td class="label">Save</td><td>Session end</td><td>Extracts new insights from conversation</td></tr>
+        </table>
+        <p>Key finding: <strong>zero voluntary saves</strong> across 15+ sessions. Agents don't save on their own — the hook infrastructure is essential.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Why does memory matter for orchestration?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Without memory, every agent rediscovers conventions, repeats mistakes, wastes tokens.</p>
+        <div class="metrics">
+          <div class="metric-card"><div class="metric-val">-20%</div><div class="metric-label">Token usage</div></div>
+          <div class="metric-card"><div class="metric-val">+34%</div><div class="metric-label">Convention compliance</div></div>
+        </div>
+        <p>Learnings from failed runs convert to rules, enforced in the next run. <strong>The system improves with every orchestration.</strong></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Architecture ══════════ -->
+<div class="section" id="architecture">
+  <div class="section-header">
+    <div class="section-icon red">&#x25A0;</div>
+    <h2 class="section-title">Architecture &amp; Extensibility</h2>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What is the plugin system?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Three layers separate concerns:</p>
+        <ul>
+          <li><strong>Layer 1 — Core</strong> (<code>lib/set_orch/</code>): Abstract orchestration. Dispatcher, monitor, merger, gates. No project-specific logic.</li>
+          <li><strong>Layer 2 — Modules</strong> (<code>modules/</code>): Project-type knowledge. <code>modules/web/</code> knows Next.js, Playwright, Prisma.</li>
+          <li><strong>Layer 3 — External</strong>: Your own plugins via <code>pip install</code> + entry_points. <code>set-project-fintech</code> could add IDOR scanning, PCI compliance.</li>
+        </ul>
+        <p>Each module implements the <code>ProjectType</code> ABC: test detection, forbidden patterns, verification rules, custom gates, merge strategies, planning rules. <strong>New project types don't touch core — they extend it.</strong></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Can I use this without Claude Code?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>No. SET is built specifically for Claude Code: worktrees, hooks, MCP, skills, subagents. This is by design — SET doesn't abstract over LLMs. It leverages Claude's strengths fully: 200K+ context, native tool use, code understanding.</p>
+        <p><strong>Depth beats breadth.</strong> Abstracting to a lowest-common-denominator API would sacrifice these capabilities for theoretical portability.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Can this run on-premise?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>The infrastructure is designed for it. SET is self-hosted — no SaaS dependency. The orchestration engine, gates, and state management have no cloud dependency. Only the LLM endpoint needs configuration.</p>
+        <p>When on-premise Claude models become available for regulated industries (banks, defense, government), SET's architecture works unchanged.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>How does design system integration work?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <ol>
+          <li><strong>Export</strong> from design tool &rarr; <code>design-system.md</code> (tokens) + <code>design-brief.md</code> (visual specs)</li>
+          <li><strong>Dispatcher scope-matches</strong> relevant pages to each change &rarr; per-change <code>design.md</code></li>
+          <li><strong>Agent receives</strong> exact hex colors, font names, component layouts</li>
+          <li><strong>Review gate checks</strong> design compliance — token mismatches flagged</li>
+        </ol>
+        <p>Eliminates the "shadcn defaults everywhere" problem. Agents implement <em>your</em> brand, not a generic component library.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Practical ══════════ -->
+<div class="section" id="practical">
+  <div class="section-header">
+    <div class="section-icon amber">&#x25B6;</div>
+    <h2 class="section-title">Practical</h2>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What does a spec need to contain?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Your spec is the single most important input. Required:</p>
+        <ol>
+          <li><strong>Project overview</strong> — What, who, tech stack</li>
+          <li><strong>Data model</strong> — Entities, fields, relationships</li>
+          <li><strong>Page layouts</strong> — Sections, columns, components</li>
+          <li><strong>Component behavior</strong> — Click, hover, state changes</li>
+          <li><strong>Auth & roles</strong> — Permissions, protected routes</li>
+          <li><strong>Seed data</strong> — Realistic initial data</li>
+          <li><strong>Design tokens</strong> — Brand colors (hex), fonts, spacing</li>
+          <li><strong>E2E test expectations</strong> — Critical flows</li>
+        </ol>
+        <p>Each requirement needs a <strong>REQ-ID</strong> (<code>REQ-AUTH-01</code>) and at least one <strong>WHEN/THEN scenario</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>How long does an orchestration take?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <table class="cmp-table">
+          <tr><th>Project</th><th>Changes</th><th>Wall time</th><th>Tokens</th><th>Interventions</th></tr>
+          <tr><td class="label">Micro-Web (simple)</td><td>3-4</td><td>~45m</td><td>~1M</td><td>0</td></tr>
+          <tr><td class="label">MiniShop (e-commerce)</td><td>6</td><td>1h 45m</td><td>2.7M</td><td>0</td></tr>
+          <tr><td class="label">CraftBrew (complex)</td><td>15</td><td>~6h</td><td>~11M</td><td>0</td></tr>
+        </table>
+        <p>Token scaling is super-linear (4x tokens for 2.5x changes) because later changes require more context from merged code.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What are the self-healing capabilities?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p><strong>Gate-level:</strong></p>
+        <ul>
+          <li>Test failure &rarr; agent reads error, fixes, reruns</li>
+          <li>Build error &rarr; agent reads type error, fixes it</li>
+          <li>E2E failure &rarr; agent sees Playwright trace, updates selectors</li>
+          <li>Type mismatch &rarr; agent syncs main, resolves</li>
+        </ul>
+        <p><strong>Sentinel-level:</strong></p>
+        <ul>
+          <li>Agent crash &rarr; detected in 30s, auto-restart</li>
+          <li>Agent stall &rarr; watchdog escalates: warn &rarr; restart &rarr; redispatch &rarr; fail</li>
+          <li>Orphaned worktree &rarr; cleaned up on restart</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>How do I get started?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+<pre>
+# Install SET
+pip install -e .
+pip install -e modules/web
+
+# Initialize a project
+set-project init --name my-app --project-type web --template nextjs
+
+# Write your spec (docs/spec.md)
+
+# Start orchestration
+curl -X POST http://localhost:7400/api/my-app/sentinel/start \
+  -H 'Content-Type: application/json' \
+  -d '{"spec":"docs/spec.md"}'
+</pre>
+        <p>Or step-by-step:</p>
+<pre>
+/opsx:explore   &rarr; Think through the problem
+/opsx:ff change &rarr; Generate all artifacts
+/opsx:apply     &rarr; Implement
+/opsx:verify    &rarr; Check
+/opsx:archive   &rarr; Done
+</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Big Picture ══════════ -->
+<div class="section" id="big-picture">
+  <div class="section-header">
+    <div class="section-icon cyan">&#x2605;</div>
+    <h2 class="section-title">The Big Picture</h2>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What problem does SET actually solve?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>The gap between <strong>"AI can write code"</strong> and <strong>"AI can ship software."</strong></p>
+        <p>Writing code is 20% of the work. The other 80%: decomposing requirements, coordinating parallel work, handling conflicts, running quality checks, managing merge order, recovering from failures, learning from mistakes.</p>
+        <p><strong>SET automates the 80%.</strong></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Why specs instead of prompts?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>"Build a webshop" produces a different webshop every time.</p>
+        <p>"Build a webshop with these 28 data models, these 12 pages, these design tokens, these auth rules, these seed data records, and these E2E scenarios" produces <strong>the same webshop every time</strong>.</p>
+        <p>The spec is the determinism layer. MiniShop: <strong>83% structural convergence</strong> across independent runs. Without specs, convergence approaches 0%.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>How is this different from just running CI/CD?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>CI/CD validates code <em>after</em> someone creates a PR. SET manages the entire pipeline <em>before</em> the PR exists:</p>
+        <table class="cmp-table">
+          <tr><th>CI/CD</th><th>SET</th></tr>
+          <tr><td>PR created &rarr; tests &rarr; review &rarr; merge</td><td>Spec &rarr; decompose &rarr; dispatch &rarr; gates &rarr; merge &rarr; replan</td></tr>
+        </table>
+        <p>CI/CD assumes someone creates the PR. SET creates the PRs, validates them, merges them, and identifies what's still missing.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Why not abstract over multiple LLMs?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Because <strong>depth beats breadth</strong>. SET leverages Claude-specific capabilities: 200K+ context, native tool use, worktree support, hooks, MCP. Abstracting to a lowest-common-denominator API would sacrifice these for theoretical portability.</p>
+        <p>SET bets on Claude getting better — and compounds that bet.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card open">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>What's the competitive moat?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>The combination. No other tool provides <strong>all six</strong>:</p>
+        <div class="pillars">
+          <div class="pillar">
+            <div class="pillar-num">Pillar 1</div>
+            <h4>Structured Specs</h4>
+            <p>Traceable requirements with WHEN/THEN scenarios, not prompts</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-num">Pillar 2</div>
+            <h4>Parallel Agents</h4>
+            <p>Isolated worktrees, dedicated agents, across machines</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-num">Pillar 3</div>
+            <h4>Quality Gates</h4>
+            <p>Deterministic: exit codes, not vibes. Build, test, E2E, review.</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-num">Pillar 4</div>
+            <h4>Merge Pipeline</h4>
+            <p>Automated conflict resolution, post-merge verification</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-num">Pillar 5</div>
+            <h4>Sentinel Supervision</h4>
+            <p>Crash recovery in 30s, stall detection, budget tracking</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-num">Pillar 6</div>
+            <h4>Persistent Memory</h4>
+            <p>Cross-session learning, convention compliance, continuous improvement</p>
+          </div>
+        </div>
+        <p>Most tools have 1-2 of these. Closest competitors have 2-3. The value is in the integration — the six capabilities <strong>reinforce each other</strong>. Structured specs enable meaningful gates. Gates enable autonomous merging. Memory enables learning. The sentinel enables unattended operation.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  <p>SET (ShipExactlyThis) &mdash; Autonomous multi-agent orchestration for Claude Code</p>
+  <p style="margin-top: 0.5rem"><a href="index.md">Markdown version</a></p>
+</footer>
+
+<script>
+function toggle(el) {
+  const card = el.closest('.faq-card');
+  card.classList.toggle('open');
+}
+
+// Smooth scroll for nav links
+document.querySelectorAll('nav a').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth' });
+  });
+});
+
+// Active nav link on scroll
+const sections = document.querySelectorAll('.section');
+const navLinks = document.querySelectorAll('nav .nav-links a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => {
+    if (window.scrollY >= s.offsetTop - 100) current = s.id;
+  });
+  navLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+});
+</script>
+
+</body>
+</html>

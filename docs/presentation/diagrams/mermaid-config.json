@@ -1,0 +1,15 @@
+{
+  "theme": "dark",
+  "themeVariables": {
+    "darkMode": true,
+    "background": "#0f172a",
+    "primaryColor": "#1e3a5f",
+    "primaryTextColor": "#e2e8f0",
+    "primaryBorderColor": "#38bdf8",
+    "lineColor": "#475569",
+    "secondaryColor": "#1e293b",
+    "tertiaryColor": "#0f172a",
+    "fontFamily": "monospace",
+    "fontSize": "16px"
+  }
+}
