@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 
 DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "max_parallel": 1,
-    "merge_policy": "checkpoint",
-    "checkpoint_every": 3,
+    "merge_policy": "eager",
+    "checkpoint_every": 0,
     "test_command": "",
     "notification": "desktop",
     "token_budget": 0,
