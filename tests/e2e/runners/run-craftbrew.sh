@@ -230,6 +230,13 @@ ATTRS
             success "Scaffold rules deployed" || true
     fi
 
+    # Deploy scaffold design assets (globals.css with shadcn theme)
+    if [[ -f "$SCAFFOLD_DIR/src/app/globals.css" ]]; then
+        mkdir -p "$TEST_DIR/src/app"
+        cp "$SCAFFOLD_DIR/src/app/globals.css" "$TEST_DIR/src/app/globals.css"
+        info "Scaffold globals.css deployed (shadcn theme)"
+    fi
+
     # Deploy shadcn/ui overlay (if scaffold opts in via shadcn/ dir)
     source "$SCRIPT_DIR/lib/deploy-shadcn.sh"
     deploy_shadcn_overlay "$SCAFFOLD_DIR" "$TEST_DIR"

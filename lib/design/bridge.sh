@@ -1015,7 +1015,7 @@ design_brief_for_dispatch() {
         local block
         block=$(awk -v pname="$pname" '
             $0 == "## Page: " pname { found=1; next }
-            found && /^## Page: / { exit }
+            found && /^## / { exit }
             found { print }
         ' "$brief_file")
         if [[ -n "$block" ]]; then
