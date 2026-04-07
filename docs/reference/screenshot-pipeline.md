@@ -39,6 +39,7 @@ docs/images/auto/
 │   ├── tab-sentinel.png          # Sentinel log
 │   ├── tab-plan.png              # Plan viewer (conditional — only generated when data exists)
 │   ├── tab-digest.png            # Spec digest (if data exists)
+│   ├── tab-context.png           # Context analysis (conditional — needs LLM call data)
 │   ├── tab-audit.png             # Audit results (conditional — only generated when data exists)
 │   ├── global-issues.png         # Global issues browser
 │   ├── page-memory.png           # Memory stats page

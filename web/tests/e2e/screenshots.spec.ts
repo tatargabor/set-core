@@ -32,6 +32,7 @@ const TABS = [
 const OPTIONAL_TABS = [
   'plan',
   'digest',
+  'context',
   'audit',
 ] as const
 
