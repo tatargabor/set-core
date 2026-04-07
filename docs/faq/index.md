@@ -24,7 +24,7 @@ SET was built with itself over 79 days (1,295 commits, 134K LOC, 720+ hours of c
 
 ### ...just using Claude Code?
 
-Claude Code in 2026 is dramatically capable on its own: native worktrees (`--worktree`), Agent Teams (experimental, 3-5 agents with worktree isolation), 27 hook events, auto-memory (`MEMORY.md`), Plan mode, subagents, the Agent SDK, and MCP support. SET is built *on top of* all these primitives — it provides the opinionated orchestration workflow that ties them together.
+Claude Code in 2026 is dramatically capable on its own: native worktrees (`--worktree`), Agent Teams (experimental, 3-5 agents), 26 hook events with 4 handler types, auto-memory (`MEMORY.md`), Plan mode, subagents with worktree isolation, the Agent SDK, and MCP support. SET is built *on top of* all these primitives — it provides the opinionated orchestration workflow that ties them together.
 
 | | Claude Code (alone) | SET |
 |---|---|---|
@@ -43,9 +43,9 @@ Claude Code gives you excellent building blocks. SET gives you the assembled mac
 
 ### ...Claude Code Agent Teams?
 
-Agent Teams (experimental) coordinate multiple Claude instances within a single session with a shared task list and inter-agent messaging. Each teammate can work in its own worktree via `isolation: worktree`. 3-5 teammates recommended, no hard limit.
+Agent Teams (experimental since v2.1.32) coordinate multiple Claude instances within a single session with a shared task list and inter-agent messaging. 3-5 teammates recommended. Important: teammates share the same working directory by default — two teammates editing the same file leads to overwrites. Worktree isolation is available via subagent `isolation: worktree` but is not automatic.
 
-- **Agent Teams** = parallelism *within* one session. A lead assigns subtasks; teammates share context and message each other. Good for breaking down a single feature. Still experimental: no session resumption for teammates, task status can lag, shutdown can be slow, one team per session.
+- **Agent Teams** = parallelism *within* one session. A lead assigns subtasks; teammates share context and message each other. Good for breaking down a single feature. Still experimental: no session resumption for teammates, task status can lag, shutdown can be slow, one team per session, lead is fixed.
 - **SET** = parallelism *across* sessions, machines, and time. A planner decomposes a full spec into a dependency DAG of independent changes, dispatches each to its own worktree with its own long-running agent, runs quality gates before merge, and manages the merge pipeline. Good for shipping an entire product.
 
 They're complementary. SET can use Agent Teams inside each worktree for complex individual changes while managing the cross-change orchestration externally.
@@ -54,22 +54,29 @@ They're complementary. SET can use Agent Teams inside each worktree for complex 
 
 ### ...Cursor's parallel agents?
 
-Cursor introduced Background Agents (BGA): cloud-hosted VMs that work autonomously, create branches, and open PRs. Each BGA gets its own sandboxed environment.
+Cursor 3 (April 2026) has two parallelism modes:
+
+- **Local worktree agents** (up to 8 via Agents Window) — uses `git worktree add` for filesystem isolation, runs on your machine.
+- **Cloud Background Agents** (no hard cap, credit-bound) — each runs in an isolated Ubuntu VM on AWS. You can close your laptop. Each agent gets its own terminal, browser, and full desktop.
 
 What Cursor has:
-- **Cloud execution** — agents run in Cursor's cloud, no local resources needed. You can close your laptop.
-- **Git branch + PR workflow** — each BGA creates a branch and opens a PR when done.
-- **Cursor Rules** (`.cursor/rules/`) — static text instructions scoped by glob pattern to constrain agent behavior.
-- **GitHub Issue triggers** — link an issue to a BGA.
+- **Cloud execution** — agents run in Cursor's cloud. No local resources needed.
+- **Git branch + PR workflow** — each agent creates a branch and opens a PR with a video recording of its actions.
+- **Cursor Rules** (`.cursor/rules/`) — `.mdc` files with glob-scoped instructions injected into context.
+- **Auto-generated memories** — optional setting that creates `.mdc` memory files from chat interactions.
+- **CI auto-fix cookbook** — GitHub Actions recipe that triggers a Cursor agent when CI fails.
+- **Environment config** — `.cursor/environment.json` for setup commands, Dockerfiles, env variables.
 
 What Cursor lacks vs SET:
-- **No spec decomposition.** BGAs are launched from ad-hoc prompts or issues, not from a structured spec with dependency ordering.
-- **No quality gates before merge.** If the agent says it's done, it opens a PR. No automated build → test → E2E pipeline before the PR exists. It relies on your CI.
-- **No inter-agent coordination.** Multiple BGAs working on the same repo have no awareness of each other. No merge conflict prevention, no merge ordering.
-- **No persistent orchestration state.** No tracking of which changes are pending/running/done/merged across restarts.
+- **No spec decomposition.** Agents launched from ad-hoc prompts or issues, not from a structured spec with dependency ordering.
+- **No pre-merge quality gates.** Cursor's own published stat: **~30% of generated PRs pass CI and merge** without intervention. The other 70% need human help. SET's MiniShop: 100% merge, zero intervention.
+- **No inter-agent coordination.** Multiple agents have no awareness of each other. No merge conflict prevention, no merge ordering.
+- **No persistent orchestration state.** No tracking across restarts, no resumable state.
 - **No sentinel supervision.** No crash recovery or stall detection.
 
-**What Cursor does better:** Cloud execution (no local resource cost), GitHub-native workflow (issue → PR), lower barrier to entry (it's an IDE with built-in agents), and Cursor Rules are simpler to write than SET's orchestration config. For small, independent tasks, Cursor BGA is arguably easier to use.
+**What Cursor does better:** Cloud execution (no local cost, works while you sleep), local worktree agents with zero framework setup, polished IDE experience, multi-model support. For small, independent tasks, Cursor is easier to reach for.
+
+**Cost caveat:** Cloud agents are credit-based, typically $5-15 per merged PR. Pricing is opaque — users have reported spending $2,000+ in two days with heavy usage. SET's local execution has no per-run cost beyond the Claude API.
 
 ### ...Devin?
 
@@ -92,27 +99,30 @@ Devin (by Cognition) is an autonomous AI software engineer — takes a task and 
 
 ### ...Kiro (Amazon)?
 
-Kiro is the closest philosophical match: a spec-driven agentic IDE that generates user stories with acceptance criteria, design documents, and implementation task lists. Built on VS Code, powered by Amazon Bedrock (Claude).
+Kiro (GA since November 2025) is the closest philosophical match: a spec-driven agentic IDE with formal requirements (EARS notation), design documents, and task lists. Built on VS Code, powered by Amazon Bedrock. Supports Claude, DeepSeek, Qwen, MiniMax, and other models via an auto-router.
 
 Kiro's genuine innovations:
-- **Spec flow is the best in-IDE implementation.** User Story → Design Doc → Task List, all in a guided wizard within the IDE. Specs stored as markdown in `.kiro/specs/`.
-- **Hooks are novel.** Event-driven automated actions that trigger on file events (e.g., file save triggers README update, schema change triggers type regeneration). Defined in `.kiro/hooks/`.
-- **Steering files** (`.kiro/steering/`) — clean project-level instruction system.
-- **Free tier + VS Code familiarity** — zero barrier to entry.
+- **Spec flow with EARS notation.** Requirements → Design Doc → Tasks, with two entry points (Requirements-First or Design-First). Uses formal EARS syntax with SHALL statements. Specs stay synced with code.
+- **Property-Based Testing (PBT).** Extracts testable properties from requirements, generates hundreds of random test inputs, uses shrinking to find minimal failing cases. Auto-fixes implementation. This is a genuine quality mechanism SET doesn't have.
+- **10 hook trigger types.** File Create/Save/Delete, Prompt Submit, Agent Stop, Pre/Post Tool Use, Pre/Post Task Execution, Manual. Both agent-prompt and shell-command actions.
+- **Autonomous Agent (preview).** Background agent with 3 sub-agents (planner, writer, verifier). Up to 10 concurrent tasks across multiple repos. Opens PRs, never auto-merges. Learns from code review feedback.
+- **Steering files** with 4 inclusion modes: Always, Conditional (glob-scoped), Manual (referenced via `#name`), Auto (description-matched).
+- **Multi-model** — Claude (Opus/Sonnet/Haiku), DeepSeek, Qwen, MiniMax, GLM, plus auto-router.
+- **Pricing:** Free (50 credits) → Pro ($20/mo, 1000) → Pro+ ($40, 2000) → Power ($200, 10000).
 
 | | Kiro | SET |
 |---|---|---|
-| **Spec system** | In-IDE wizard, generated specs | CLI-driven OpenSpec, manual + automated |
-| **Agent scope** | Single-session, IDE-bound | Daemon-based, hours-long autonomous runs |
-| **Parallel agents** | None (single agent per IDE) | Worktree-based, N parallel agents |
-| **Quality gates** | Hooks + spec adherence | Full pipeline: build → test → E2E → review |
-| **Merge handling** | Basic git | Integration-gated merge queue |
-| **Memory** | Steering files (static) | Semantic memory with cross-session learning |
+| **Spec system** | In-IDE wizard, EARS notation, synced with code | CLI-driven OpenSpec, delta specs, archived changes |
+| **Agent scope** | IDE + Autonomous Agent (preview, 10 concurrent tasks) | Daemon-based, hours-long runs, N parallel agents |
+| **Quality** | PBT + LSP diagnostics (35ms) + 10 hook types | Gate pipeline: build → test → E2E → review → smoke |
+| **Merge handling** | Opens PRs (never auto-merges) | Integration-gated merge queue with conflict resolution |
+| **Memory** | Steering files (4 modes) | Semantic memory with cross-session learning |
+| **Models** | Claude, DeepSeek, Qwen, auto-router | Claude only |
 | **Design integration** | None | Design pipeline (tokens, briefs, per-change design.md) |
 
-**What Kiro does better:** Lower barrier to entry — no CLI setup, no orchestration concepts, just open the IDE and follow the wizard. The hooks system (file-event triggers) is something SET doesn't have at the IDE level. Spec generation from natural language is guided and approachable. For a single developer who wants structured AI assistance without a framework, Kiro is easier.
+**What Kiro does better:** Property-Based Testing is genuinely novel — random test generation from spec properties that SET doesn't have. The Autonomous Agent handles 10 concurrent tasks across repos. Multi-model support with auto-routing. Lower barrier to entry. 10 hook trigger types (vs SET's orchestration-level hooks). For a single developer or small team wanting structured AI with quality feedback, Kiro is more accessible.
 
-**What SET does better:** Everything after spec creation — decomposition, parallel execution, quality enforcement, merge automation, supervision, cross-session learning.
+**What SET does better:** Spec decomposition into dependency DAGs, coordinated parallel execution with merge ordering, deterministic integration gates before merge (not just PBT), sentinel supervision with crash recovery, cross-session semantic memory, and design system integration. SET manages the full lifecycle; Kiro's Autonomous Agent opens PRs but never merges.
 
 ### ...Roo Code (Roo Cline)?
 
@@ -168,6 +178,32 @@ Copilot Coding Agent is GitHub's background AI — assign a GitHub Issue to Copi
 
 **What SET does better:** Coordinated multi-change development from a single spec. Copilot handles one issue → one PR with no awareness of other agents on the same repo. SET manages the dependencies, merge ordering, conflict resolution, and spec coverage tracking.
 
+### ...Augment Intent?
+
+Augment Intent (public beta, February 2026, macOS only) is architecturally the most similar tool to SET. It features:
+
+- **Living Specifications** — self-maintaining spec documents that auto-update as agents work. When requirements change, updates propagate to active agents. Similar to OpenSpec's delta specs.
+- **Coordinator/Specialist/Verifier architecture** — a coordinator breaks specs into tasks, delegates to specialist agents (Investigate, Implement, Verify, Critique, Debug, Code Review), a verifier checks results.
+- **Git worktree isolation** — each task creates a "Space" with its own branch and worktree. Very similar to SET's model.
+- **Multi-agent with mixed models** — runs Augment's agents plus Claude Code, Codex, OpenCode. Can mix models per task (e.g., Opus for architecture, Sonnet for iteration).
+- **No fixed agent cap** — "Run as many agents as the task needs. Intent keeps them in sync."
+- **Proprietary Context Engine** — curates relevant context from thousands of sources.
+
+| | Augment Intent | SET |
+|---|---|---|
+| **Specs** | Living specs (auto-updating) | OpenSpec with delta specs + archive |
+| **Agents** | Coordinator + specialists + verifier | Planner + Ralph Loop + sentinel |
+| **Isolation** | Worktree "Spaces" | Git worktrees |
+| **Models** | Multi-model (Claude, Codex, etc.) | Claude only |
+| **Quality** | Verifier agent | 7 deterministic gates (exit codes) |
+| **Merge** | Not documented | Integration-gated merge queue |
+| **Platform** | macOS only (desktop app) | Linux/macOS (CLI + web) |
+| **Status** | Public beta | Production (30+ E2E runs) |
+
+**What Augment does better:** Multi-model support (mix Opus for planning, Sonnet for coding), living specs that auto-update (SET's specs are explicit), specialist agent personas, and a polished desktop experience. The coordinator/specialist pattern is elegant.
+
+**What SET does better:** Deterministic quality gates (exit codes, not agent judgment), proven production track record (30+ autonomous runs with published benchmarks), Linux support, web dashboard for monitoring, design system integration, persistent semantic memory, and the full merge pipeline with conflict resolution and post-merge verification. Augment Intent is in public beta on macOS only; SET has been battle-tested in production.
+
 ### ...Windsurf?
 
 Windsurf (by Codeium) was an AI IDE with the Cascade engine for multi-step agentic actions with strong context tracking across files and terminal commands. OpenAI announced acquisition of Codeium for ~$3B (late 2024). Current product status post-acquisition is uncertain.
@@ -192,20 +228,21 @@ Different category entirely. Lovable is an app builder for non-developers — pr
 
 ### Capability matrix: SET vs. the landscape
 
-| Tool | Parallel Agents | Worktree Isolation | Structured Specs | Quality Gates | Merge Pipeline | Supervisor | Cloud Exec | Model Flexibility |
+| Tool | Parallel Agents | Worktree Isolation | Structured Specs | Quality Gates | Merge Pipeline | Supervisor | Cloud Exec | Multi-Model |
 |---|---|---|---|---|---|---|---|---|
 | **SET** | Yes | Yes | Yes (OpenSpec) | Yes (7 gates) | Yes | Yes (Sentinel) | No (local) | Claude only |
-| Claude Code | Experimental (Teams) | Yes (native) | No | Hooks (DIY) | No | No | No | Claude only |
-| Cursor BGA | Yes (cloud VMs) | Branches (cloud) | No | No (relies on CI) | No | No | Yes | Multi-model |
-| Devin | Independent sessions | Sandbox VMs | No | Ad-hoc (runs tests) | No | No | Yes | Proprietary |
-| Kiro | No | No | Yes (in-IDE) | Hooks (file events) | No | No | No | Claude (Bedrock) |
+| Augment Intent | Yes (coordinator) | Yes (Spaces) | Yes (living specs) | Verifier agent | Not documented | No | No | Yes (multi) |
+| Claude Code | Experimental (Teams) | Yes (subagents) | No | Hooks (DIY) | No | No | No | Claude only |
+| Cursor | Yes (local 8 + cloud) | Yes (worktrees + VMs) | No | No (~30% PR merge) | No | No | Yes | Multi-model |
+| Devin | Independent sessions | Sandbox VMs | No | Ad-hoc tests | No | No | Yes | Proprietary |
+| Kiro | Autonomous (10 tasks) | No | Yes (EARS + PBT) | PBT + hooks | No (opens PRs) | No | No | Yes (auto-router) |
 | Copilot Agent | Independent agents | Cloud VMs | No | CI + self-review | No | No | Yes | GPT/Claude |
 | Roo Code | No (modes) | No | No | No | No | No | No | Any LLM |
 | Aider | No | No | No | No | No | No | No | Any LLM |
 | Cline | No | No | No | No | No | No | No | Any LLM |
-| OpenHands | No | Docker sandbox | No | No | No | No | Yes | Any LLM |
+| OpenHands | Sub-agents (3) | Docker sandbox | No | No | No | No | Yes | Any LLM |
 
-**What SET uniquely provides:** The combination of all six in the left columns. Other tools excel in areas SET doesn't cover: cloud execution (Cursor, Devin, Copilot), model flexibility (Aider, Roo Code, Cline), IDE integration (Kiro, Cursor, Windsurf), and zero-setup simplicity (Copilot, Cline).
+**What SET uniquely provides:** The combination of structured specs + parallel agents + deterministic gates + merge pipeline + sentinel + memory. Other tools excel where SET doesn't: cloud execution (Cursor, Devin, Copilot), model flexibility (Aider, Roo Code, Cline, Kiro), IDE integration (Kiro, Cursor), living specs (Augment Intent), Property-Based Testing (Kiro).
 
 ---
 

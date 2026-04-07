@@ -574,7 +574,7 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p>Claude Code in 2026 is dramatically capable: native worktrees, Agent Teams (experimental, 3-5 agents with worktree isolation), 27 hook events, auto-memory, Plan mode, subagents, Agent SDK, and MCP. SET is built <em>on top of</em> all these primitives.</p>
+        <p>Claude Code in 2026 is dramatically capable: native worktrees, Agent Teams (experimental, 3-5 agents), 26 hook events with 4 handler types, auto-memory, Plan mode, subagents with worktree isolation, Agent SDK, and MCP. SET is built <em>on top of</em> all these primitives.</p>
         <table class="cmp-table">
           <tr><th></th><th>Claude Code (alone)</th><th>SET</th></tr>
           <tr><td class="label">Scope</td><td>One task or one team session</td><td>Full spec &rarr; decomposed into N parallel changes</td></tr>
@@ -599,7 +599,7 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p><strong>Agent Teams</strong> = parallelism <em>within</em> one session. A lead assigns subtasks to teammates (3-5 recommended); they share context via task list + mailbox. Each can use its own worktree. Good for a single feature. Still experimental: no session resumption, task status lag, one team per session.</p>
+        <p><strong>Agent Teams</strong> = parallelism <em>within</em> one session. A lead assigns subtasks to teammates (3-5 recommended); they share context via task list + mailbox. Important: teammates <strong>share the working directory</strong> by default &mdash; two teammates editing the same file leads to overwrites. Worktree isolation available via subagent config but not automatic. Still experimental: no session resumption, task status lag, one team per session, lead is fixed.</p>
         <p><strong>SET</strong> = parallelism <em>across</em> sessions, machines, and time. A planner decomposes a full spec into a dependency DAG, dispatches each to its own long-running agent, manages quality gates and the merge pipeline. Good for <strong>shipping an entire product</strong>.</p>
         <p>They're complementary. SET can use Agent Teams inside each worktree while managing cross-change orchestration externally.</p>
         <p><strong>What Agent Teams does better:</strong> Zero-setup parallelism. No framework installation needed &mdash; one environment variable starts a team. For a quick parallel task within a single feature, Agent Teams is faster to reach for.</p>
@@ -614,16 +614,15 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p>Cursor introduced Background Agents (BGA): <strong>cloud-hosted VMs</strong> that work autonomously, create branches, and open PRs. No local resources needed &mdash; you can close your laptop.</p>
+        <p>Cursor 3 (April 2026) has two parallelism modes: <strong>local worktree agents</strong> (up to 8, via <code>git worktree add</code>) and <strong>cloud Background Agents</strong> (no cap, credit-bound, each in an isolated AWS Ubuntu VM). You can close your laptop with cloud agents.</p>
         <p>What Cursor lacks vs SET:</p>
         <ul>
-          <li><strong>No spec decomposition</strong> &mdash; agents launched from ad-hoc prompts or issues, no dependency ordering</li>
-          <li><strong>No quality gates before merge</strong> &mdash; agents open PRs and rely on CI. No pre-merge build/test/E2E pipeline.</li>
-          <li><strong>No inter-agent coordination</strong> &mdash; multiple BGAs have no awareness of each other</li>
+          <li><strong>No spec decomposition</strong> &mdash; agents launched from ad-hoc prompts, no dependency ordering</li>
+          <li><strong>~30% PR merge rate</strong> &mdash; Cursor's own published stat: ~30% of generated PRs pass CI and merge without intervention. SET MiniShop: 100%.</li>
+          <li><strong>No inter-agent coordination</strong> &mdash; multiple agents have no awareness of each other</li>
           <li><strong>No supervision</strong> &mdash; no sentinel, no crash recovery, no stall detection</li>
-          <li><strong>No persistent orchestration state</strong> &mdash; no tracking across restarts</li>
         </ul>
-        <p><strong>What Cursor does better:</strong> Cloud execution (no local resource cost), GitHub-native issue&rarr;PR workflow, lower barrier to entry, and Cursor Rules are simpler than SET's orchestration config.</p>
+        <p><strong>What Cursor does better:</strong> Cloud execution (agents work while you sleep), local worktree agents with zero framework setup, polished IDE, multi-model support, CI auto-fix cookbook. Cost caveat: cloud agents ~$5-15 per PR, users report $2000+ in two days with heavy use.</p>
       </div>
     </div>
   </div>
@@ -657,21 +656,43 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p>Kiro is the closest philosophical match: a spec-driven agentic IDE that generates user stories with acceptance criteria, design documents, and task lists. Built on VS Code, powered by Amazon Bedrock (Claude). It shares SET's belief that <strong>specs matter more than prompts</strong>.</p>
+        <p>Kiro (GA Nov 2025) is the closest philosophical match: a spec-driven IDE with formal EARS requirements, design docs, and task lists. Built on VS Code, powered by Bedrock. Supports Claude, DeepSeek, Qwen, MiniMax via auto-router.</p>
         <p>Kiro's genuine innovations:</p>
         <ul>
-          <li><strong>In-IDE spec wizard</strong> &mdash; User Story &rarr; Design Doc &rarr; Task List, guided flow within the IDE. Best-in-class UX for spec generation.</li>
-          <li><strong>File-event hooks</strong> &mdash; automated actions triggered by file save (e.g., schema change triggers type regeneration). Novel concept.</li>
-          <li><strong>Steering files</strong> (<code>.kiro/steering/</code>) &mdash; clean project-level instruction system.</li>
-          <li><strong>Free tier + VS Code familiarity</strong> &mdash; zero barrier to entry.</li>
+          <li><strong>EARS spec notation</strong> &mdash; formal SHALL statements with Requirements-First or Design-First entry points. Specs stay synced with code.</li>
+          <li><strong>Property-Based Testing</strong> &mdash; extracts testable properties from specs, generates hundreds of random inputs, shrinks to find minimal failing cases. Auto-fixes. Genuinely novel.</li>
+          <li><strong>10 hook trigger types</strong> &mdash; File Create/Save/Delete, Prompt Submit, Agent Stop, Pre/Post Tool Use, Pre/Post Task Execution, Manual.</li>
+          <li><strong>Autonomous Agent (preview)</strong> &mdash; background agent with 3 sub-agents (planner, writer, verifier). Up to 10 concurrent tasks across repos. Opens PRs, never merges. Learns from code review.</li>
+          <li><strong>Multi-model</strong> &mdash; Claude, DeepSeek, Qwen, auto-router. Pricing: Free&rarr;$20&rarr;$40&rarr;$200/mo.</li>
         </ul>
         <p>The differences:</p>
         <ul>
-          <li><strong>Kiro</strong> is single-agent, IDE-bound. <strong>SET</strong> runs parallel agents in isolated worktrees for hours.</li>
-          <li><strong>Kiro</strong> generates specs for one agent. <strong>SET</strong> decomposes specs into a dependency DAG for parallel execution.</li>
-          <li><strong>Kiro</strong> has no merge pipeline, sentinel supervision, or crash recovery.</li>
+          <li>Kiro's Autonomous Agent handles 10 tasks but opens PRs without merging. SET manages the full merge pipeline with gates.</li>
+          <li>Kiro has PBT (random test generation from spec properties). SET has deterministic gates (exit codes).</li>
+          <li>Kiro is multi-model. SET is Claude-only.</li>
         </ul>
-        <p><strong>What Kiro does better:</strong> Lower barrier to entry &mdash; no CLI setup, just open the IDE. File-event hooks are something SET doesn't have at the IDE level. Spec generation UX is guided and approachable.</p>
+        <p><strong>What Kiro does better:</strong> PBT is genuinely novel, Autonomous Agent handles 10 concurrent tasks, multi-model support, lower barrier to entry, 10 hook trigger types. <strong>What SET does better:</strong> Spec decomposition into DAGs, coordinated merge with gates, sentinel supervision, semantic memory, design integration.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>...Augment Intent?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>Augment Intent (public beta, Feb 2026, macOS only) is <strong>architecturally the most similar tool to SET</strong>:</p>
+        <ul>
+          <li><strong>Living Specifications</strong> &mdash; self-maintaining spec docs that auto-update as agents work. Changes propagate to active agents.</li>
+          <li><strong>Coordinator/Specialist/Verifier</strong> &mdash; 6 specialist personas (Investigate, Implement, Verify, Critique, Debug, Code Review).</li>
+          <li><strong>Git worktree isolation</strong> &mdash; each task creates a "Space" with its own branch and worktree.</li>
+          <li><strong>Multi-model</strong> &mdash; runs Claude Code, Codex, OpenCode. Mix models per task.</li>
+          <li><strong>No agent cap</strong> &mdash; "Run as many agents as the task needs."</li>
+        </ul>
+        <p><strong>What Augment does better:</strong> Multi-model mixing (Opus for planning, Sonnet for coding), living specs that auto-update, specialist agent personas, polished desktop UX.</p>
+        <p><strong>What SET does better:</strong> Deterministic gates (exit codes, not agent judgment), proven production track record (30+ runs), Linux support, web dashboard, design integration, persistent semantic memory, full merge pipeline. Augment is macOS-only beta; SET is battle-tested in production.</p>
       </div>
     </div>
   </div>
@@ -744,9 +765,20 @@
             <td class="no">Claude</td>
           </tr>
           <tr>
+            <td>Augment Intent</td>
+            <td class="yes">Coordinator</td>
+            <td class="yes">Spaces</td>
+            <td class="yes">Living specs</td>
+            <td class="partial">Verifier agent</td>
+            <td class="no">N/A</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">&#10003;</td>
+          </tr>
+          <tr>
             <td>Claude Code</td>
             <td class="partial">Experimental</td>
-            <td class="yes">Worktrees</td>
+            <td class="yes">Subagents</td>
             <td class="no">&mdash;</td>
             <td class="partial">Hooks (DIY)</td>
             <td class="no">&mdash;</td>
@@ -755,11 +787,11 @@
             <td class="no">Claude</td>
           </tr>
           <tr>
-            <td>Cursor BGA</td>
-            <td class="yes">Cloud VMs</td>
-            <td class="yes">Branches</td>
+            <td>Cursor</td>
+            <td class="yes">8 local + cloud</td>
+            <td class="yes">WT + VMs</td>
             <td class="no">&mdash;</td>
-            <td class="no">Relies on CI</td>
+            <td class="no">~30% merge</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
             <td class="yes">&#10003;</td>
@@ -778,14 +810,14 @@
           </tr>
           <tr>
             <td>Kiro</td>
+            <td class="partial">10 tasks (preview)</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">EARS + PBT</td>
+            <td class="partial">PBT + hooks</td>
+            <td class="no">Opens PRs</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
-            <td class="yes">In-IDE</td>
-            <td class="partial">File hooks</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
-            <td class="no">Claude</td>
+            <td class="yes">Auto-router</td>
           </tr>
           <tr>
             <td>Copilot Agent</td>
@@ -843,7 +875,7 @@
             <td class="yes">&#10003;</td>
           </tr>
         </table>
-        <p><strong>SET's unique position:</strong> the combination of the left 6 columns. Other tools excel where SET doesn't: <em>cloud execution</em> (Cursor, Devin, Copilot), <em>model flexibility</em> (Aider, Roo, Cline), <em>IDE integration</em> (Kiro, Cursor), <em>zero-setup simplicity</em> (Copilot, Cline).</p>
+        <p><strong>SET's unique position:</strong> the combination of structured specs + deterministic gates + merge pipeline + sentinel. Other tools excel where SET doesn't: <em>cloud execution</em> (Cursor, Devin, Copilot), <em>model flexibility</em> (Aider, Kiro, Cline), <em>living specs</em> (Augment Intent), <em>PBT</em> (Kiro), <em>IDE integration</em> (Kiro, Cursor).</p>
       </div>
     </div>
   </div>
