@@ -106,7 +106,13 @@ while IFS='|' read -r name status wt_path merged_at; do
         else
             echo "Removing: $name ($wt_path, merged ${age_days}d ago)"
             "$SCRIPT_DIR/set-close" "$name" 2>/dev/null || {
-                git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path"
+                # Archive worktree dir before removing git entry
+                if [[ -d "$wt_path" ]]; then
+                    local archived="${wt_path}.archived-$(date +%Y%m%d-%H%M%S)"
+                    mv "$wt_path" "$archived"
+                    info "Archived worktree to $archived" 2>/dev/null || echo "Archived worktree to $archived"
+                fi
+                git worktree remove --force "$wt_path" 2>/dev/null || true
             }
             removed=$((removed + 1))
         fi

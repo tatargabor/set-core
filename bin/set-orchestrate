@@ -564,6 +564,12 @@ cmd_reset() {
         local removed_wt=0
         while IFS= read -r wt_path; do
             [[ -z "$wt_path" ]] && continue
+            # Archive worktree dir before removing git entry
+            if [[ -d "$wt_path" ]]; then
+                local archived="${wt_path}.archived-$(date +%Y%m%d-%H%M%S)"
+                mv "$wt_path" "$archived"
+                echo "Archived worktree to $archived"
+            fi
             git worktree remove "$wt_path" --force 2>/dev/null && ((removed_wt++)) || true
         done < <(git worktree list 2>/dev/null | grep -v -E "bare|master|main" | awk '{print $1}')
 

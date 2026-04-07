@@ -144,12 +144,15 @@ main() {
         fi
     fi
 
-    # Remove worktree
-    git -C "$project_path" worktree remove "$wt_path" --force
-    if [[ $? -ne 0 ]]; then
-        error "Failed to remove worktree"
-        exit 1
+    # Archive worktree dir before removing git entry
+    if [[ -d "$wt_path" ]]; then
+        local archived="${wt_path}.archived-$(date +%Y%m%d-%H%M%S)"
+        mv "$wt_path" "$archived"
+        info "Archived worktree to $archived"
     fi
+
+    # Remove worktree
+    git -C "$project_path" worktree remove "$wt_path" --force 2>/dev/null || true
 
     success "Worktree removed"
 
