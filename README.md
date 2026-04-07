@@ -10,9 +10,11 @@ set-core takes a markdown spec, decomposes it into independent changes, dispatch
 
 **We don't prompt — we specify.** Every change starts with a [proposal](docs/guide/openspec.md), is defined by requirements with acceptance criteria, and is verified against the spec before merge. Agents don't get free rein — they get a task list derived from the spec, and the [verify gate](docs/guide/orchestration.md) checks that what they built matches what was asked. This is [OpenSpec](https://github.com/fission-ai/openspec) — the structured artifact workflow that eliminates "prompt and pray."
 
-**Built with set-core, using set-core.** This project was developed using its own orchestration pipeline — 363 capability specifications, 1,295 commits, every one planned through OpenSpec and validated through quality gates.
+**Built with set-core, using set-core.** This project was developed using its own orchestration pipeline — 376 capability specifications, 1,500+ commits, every one planned through OpenSpec and validated through quality gates.
 
 > Don't wait for perfection — start using it now. There will be bugs. But this is a self-healing system: the sentinel detects issues, investigates root causes, and dispatches fixes automatically. The more people use it, the faster it improves.
+
+**[Read the FAQ](docs/faq/faq.html)** — how SET compares to Cursor, Devin, Kiro, Copilot, Augment Intent, and others. What we do, what we don't, and why.
 
 ---
 

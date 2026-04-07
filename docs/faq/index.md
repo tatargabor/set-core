@@ -16,7 +16,7 @@ Development teams and technical leaders who already use Claude Code and want to 
 
 ### Is this production-ready?
 
-SET was built with itself over 79 days (1,500+ commits, 376 capability specifications, 350+ archived OpenSpec changes, 720+ hours of continuous autonomous agent runtime). It has completed 30+ full E2E orchestration runs with published benchmarks: the MiniShop benchmark delivers 6/6 changes merged, zero human intervention, in 1h 45m. CraftBrew (15 changes, 150+ files, 28 DB models) completed fully autonomously in ~6h. These are real projects with real tests passing.
+SET was built with itself over 79 days (1,500+ commits, 376 capability specifications, 350+ archived OpenSpec changes, 720+ hours of continuous autonomous agent runtime). It has completed 200+ full E2E orchestration runs with published benchmarks: the MiniShop benchmark delivers 6/6 changes merged, zero human intervention, in 1h 45m. CraftBrew (15 changes, 150+ files, 28 DB models) completed fully autonomously in ~6h. These are real projects with real tests passing.
 
 ---
 
@@ -198,11 +198,11 @@ Augment Intent (public beta, February 2026, macOS only) is architecturally the m
 | **Quality** | Verifier agent | 7 deterministic gates (exit codes) |
 | **Merge** | Not documented | Integration-gated merge queue |
 | **Platform** | macOS only (desktop app) | Linux/macOS (CLI + web) |
-| **Status** | Public beta | Production (30+ E2E runs) |
+| **Status** | Public beta | Production (200+ E2E runs) |
 
 **What Augment does better:** Multi-model support (mix Opus for planning, Sonnet for coding), living specs that auto-update (SET's specs are explicit), specialist agent personas, and a polished desktop experience. The coordinator/specialist pattern is elegant.
 
-**What SET does better:** Deterministic quality gates (exit codes, not agent judgment), proven production track record (30+ autonomous runs with published benchmarks), Linux support, web dashboard for monitoring, design system integration, persistent semantic memory, and the full merge pipeline with conflict resolution and post-merge verification. Augment Intent is in public beta on macOS only; SET has been battle-tested in production.
+**What SET does better:** Deterministic quality gates (exit codes, not agent judgment), proven production track record (200+ autonomous runs with published benchmarks), Linux support, web dashboard for monitoring, design system integration, persistent semantic memory, and the full merge pipeline with conflict resolution and post-merge verification. Augment Intent is in public beta on macOS only; SET has been battle-tested in production.
 
 ### ...Windsurf?
 
@@ -540,8 +540,10 @@ Honest gaps where competitors are ahead — these inform our development roadmap
 | **Slack integration** | Devin | Can't trigger SET orchestration from Slack. |
 | **File-event hooks** | Kiro | SET's hooks are at the orchestration level, not IDE file-save events. |
 | **MCP marketplace** | Cline | SET has a custom MCP server, but no marketplace for discovering third-party integrations. |
+| **Quick prototyping** | Lovable, Cursor, Claude Code | SET's spec-driven workflow adds upfront overhead. For a quick prototype, just using Claude Code directly is faster. |
+| **Spec writing** | — | The spec is a bottleneck: orchestration quality is bounded by spec quality. Writing a good spec takes effort. |
 
-These are conscious trade-offs, not oversights. SET optimizes for orchestration depth over integration breadth. Some may become development priorities as the framework matures.
+These are conscious trade-offs, not oversights. SET optimizes for orchestration depth over integration breadth. The overhead cost is real — SET is not for quick prototypes. It's for when you already know what to build and want deterministic, reproducible implementation. Some gaps may become development priorities as the framework matures.
 
 ---
 
@@ -659,4 +661,4 @@ The combination. No other tool provides *all six*:
 
 Most tools have 1-2 of these. The closest competitors (Kiro for specs, Cursor for parallel agents, Copilot for cloud execution) have 2-3 each. The value is in the integration — the six capabilities reinforce each other. Structured specs enable meaningful gates. Gates enable autonomous merging. Memory enables learning. The sentinel enables unattended operation.
 
-The moat is not any single feature — it's the assembled system and the 30+ production runs of battle-testing that validate it works together.
+The moat is not any single feature — it's the assembled system and the 200+ production runs of battle-testing that validate it works together.

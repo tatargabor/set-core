@@ -484,7 +484,7 @@
   <h1>Everything you need to know about <span>SET</span></h1>
   <p class="subtitle">Autonomous multi-agent orchestration for Claude Code. Give it a spec, get merged features. Here's how and why.</p>
   <div class="badge-row">
-    <span class="badge green"><span class="dot"></span>30+ E2E runs</span>
+    <span class="badge green"><span class="dot"></span>200+ E2E runs</span>
     <span class="badge amber"><span class="dot"></span>376 LOC</span>
     <span class="badge cyan"><span class="dot"></span>720+ agent hours</span>
   </div>
@@ -552,7 +552,7 @@
           <div class="metric-card"><div class="metric-val">1,500+</div><div class="metric-label">Commits</div></div>
           <div class="metric-card"><div class="metric-val">376</div><div class="metric-label">Capability Specs</div></div>
           <div class="metric-card"><div class="metric-val">720+</div><div class="metric-label">Agent Hours</div></div>
-          <div class="metric-card"><div class="metric-val">30+</div><div class="metric-label">E2E Runs</div></div>
+          <div class="metric-card"><div class="metric-val">200+</div><div class="metric-label">E2E Runs</div></div>
         </div>
         <p>The MiniShop benchmark delivers <strong>6/6 changes merged, zero human intervention, in 1h 45m</strong>. CraftBrew (15 changes, 150+ files, 28 DB models) completed fully autonomously in ~6h.</p>
       </div>
@@ -692,7 +692,7 @@
           <li><strong>No agent cap</strong> &mdash; "Run as many agents as the task needs."</li>
         </ul>
         <p><strong>What Augment does better:</strong> Multi-model mixing (Opus for planning, Sonnet for coding), living specs that auto-update, specialist agent personas, polished desktop UX.</p>
-        <p><strong>What SET does better:</strong> Deterministic gates (exit codes, not agent judgment), proven production track record (30+ runs), Linux support, web dashboard, design integration, persistent semantic memory, full merge pipeline. Augment is macOS-only beta; SET is battle-tested in production.</p>
+        <p><strong>What SET does better:</strong> Deterministic gates (exit codes, not agent judgment), proven production track record (200+ runs), Linux support, web dashboard, design integration, persistent semantic memory, full merge pipeline. Augment is macOS-only beta; SET is battle-tested in production.</p>
       </div>
     </div>
   </div>
@@ -1283,8 +1283,10 @@
           <tr><td class="label">Slack trigger</td><td>Devin</td><td>Can't trigger SET from Slack.</td></tr>
           <tr><td class="label">File-event hooks</td><td>Kiro</td><td>SET hooks are at orchestration level, not IDE file-save events.</td></tr>
           <tr><td class="label">MCP marketplace</td><td>Cline</td><td>SET has a custom MCP server, not a marketplace for third-party tools.</td></tr>
+          <tr><td class="label">Quick prototyping</td><td>Lovable, Cursor, Claude Code</td><td>SET's spec-driven workflow adds upfront overhead. For a quick prototype, Claude Code alone is faster.</td></tr>
+          <tr><td class="label">Spec writing</td><td>&mdash;</td><td>The spec is a bottleneck: orchestration quality is bounded by spec quality. Writing a good spec takes effort.</td></tr>
         </table>
-        <p>These are conscious trade-offs, not oversights. SET optimizes for <strong>orchestration depth</strong> over integration breadth. Some may become development priorities as the framework matures.</p>
+        <p>These are conscious trade-offs, not oversights. SET optimizes for <strong>orchestration depth</strong> over integration breadth. The overhead cost is real &mdash; SET is not for quick prototypes. It's for when you already know what to build and want deterministic, reproducible implementation.</p>
       </div>
     </div>
   </div>
