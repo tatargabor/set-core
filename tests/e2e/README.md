@@ -32,7 +32,7 @@ set-project list-types    # should show "web (built-in)"
 ```
 
 Each runner:
-1. Creates a project at `~/.local/share/set-core/e2e-runs/<name>-runN/`
+1. Creates a project at `~/.local/share/set-core/e2e-runs/<name>-run-YYYYMMDD-HHMM/`
 2. Copies the spec from `scaffolds/<name>/docs/`
 3. Runs `set-project init --project-type web --template nextjs`
 4. Generates `set/orchestration/config.yaml` with env_vars, discord, gate config
@@ -110,12 +110,12 @@ pkill -f "set-orchestrate.*<name>" 2>/dev/null || true
 pkill -f "set-loop.*<name>" 2>/dev/null || true
 
 # Remove worktrees
-cd ~/.local/share/set-core/e2e-runs/<name>-runN
+cd ~/.local/share/set-core/e2e-runs/<name>-run-YYYYMMDD-HHMM
 git worktree list --porcelain | grep "^worktree " | awk '{print $2}' | \
   xargs -I{} git worktree remove {} --force 2>/dev/null || true
 
 # Remove project
-rm -rf ~/.local/share/set-core/e2e-runs/<name>-runN
-rm -rf ~/.local/share/set-core/memory/<name>-runN
-set-project remove <name>-runN 2>/dev/null || true
+rm -rf ~/.local/share/set-core/e2e-runs/<name>-run-YYYYMMDD-HHMM
+rm -rf ~/.local/share/set-core/memory/<name>-run-YYYYMMDD-HHMM
+set-project remove <name>-run-YYYYMMDD-HHMM 2>/dev/null || true
 ```

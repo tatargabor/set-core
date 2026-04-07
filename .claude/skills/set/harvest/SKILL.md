@@ -10,7 +10,7 @@ Run the harvest CLI to see unadopted framework-relevant fixes:
 
 ```bash
 set-harvest --dry-run              # preview what's pending
-set-harvest --project craftbrew-run22  # scan single project
+set-harvest --project craftbrew-run-20260320-1445  # scan single project
 set-harvest                        # interactive review all
 set-harvest --all                  # include project-specific fixes too
 set-harvest --json                 # machine-readable output

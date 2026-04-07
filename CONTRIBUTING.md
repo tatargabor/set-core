@@ -115,13 +115,13 @@ python -m pytest tests/merge/
 cd web/
 
 # Requires: running API server + a project with completed orchestration
-E2E_PROJECT=minishop-run10 pnpm test:e2e
+E2E_PROJECT=minishop-run-20260315-0930 pnpm test:e2e
 
 # View HTML report with screenshots
 pnpm test:e2e:report
 
 # Single test file
-E2E_PROJECT=minishop-run10 npx playwright test changes-data
+E2E_PROJECT=minishop-run-20260315-0930 npx playwright test changes-data
 ```
 
 ### Full orchestration E2E

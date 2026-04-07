@@ -52,7 +52,7 @@ set-core is developed and battle-tested through consumer projects. Before fixing
 After every E2E run, use `set-harvest` to scan consumer projects for framework-relevant fixes:
 ```bash
 set-harvest                          # scan all registered consumer projects
-set-harvest --project craftbrew-run22 # scan single project
+set-harvest --project craftbrew-run-20260320-1445 # scan single project
 set-harvest --dry-run                # preview without updating state
 ```
 
@@ -93,7 +93,7 @@ set-core (source)                     consumer project
 
 If you MUST init manually, **always** include `--project-type web --template nextjs`:
 ```bash
-set-project init --name minishop-runN --project-type web --template nextjs
+set-project init --name minishop-run-YYYYMMDD-HHMM --project-type web --template nextjs
 ```
 Without `--project-type web`, no `project-type.yaml` is created → NullProfile loads → integration gates silently skip (no build/test/e2e detection).
 
@@ -115,8 +115,8 @@ curl -X POST http://localhost:7400/api/<project>/sentinel/start \
 
 After two runs of the same spec, compare their structural similarity:
 ```bash
-./bin/set-compare minishop-run12 minishop-run13          # markdown report
-./bin/set-compare micro-web-run10 micro-web-run11 --json # JSON output
+./bin/set-compare minishop-run-20260315-0930 minishop-run-20260318-1415          # markdown report
+./bin/set-compare micro-web-run-20260322-1100 micro-web-run-20260325-0845 --json # JSON output
 ./bin/set-compare run-a run-b --output docs/comparison.md # save to file
 ```
 
@@ -132,16 +132,16 @@ The web dashboard (`web/`) has Playwright E2E tests that verify the UI renders A
 cd web/
 
 # Prerequisites: set-orch-core running, project with completed orchestration
-E2E_PROJECT=minishop-run10 pnpm test:e2e
+E2E_PROJECT=minishop-run-20260315-0930 pnpm test:e2e
 
 # View HTML report (screenshots on failure, step-by-step trace)
 pnpm test:e2e:report
 
 # Single test file
-E2E_PROJECT=minishop-run10 npx playwright test changes-data
+E2E_PROJECT=minishop-run-20260315-0930 npx playwright test changes-data
 
 # Debug with visible browser
-E2E_PROJECT=minishop-run10 npx playwright test --headed
+E2E_PROJECT=minishop-run-20260315-0930 npx playwright test --headed
 ```
 
 ### What they test

@@ -22,7 +22,7 @@ This catches bugs at every layer:
 ## Prerequisites
 
 1. `set-orch-core` server running on port 7400 (or custom `E2E_BASE_URL`)
-2. At least one registered project with completed orchestration (e.g., `minishop-run10`)
+2. At least one registered project with completed orchestration (e.g., `minishop-run-20260315-0930`)
 3. Chromium installed: `npx playwright install chromium`
 
 ## Running
@@ -31,16 +31,16 @@ This catches bugs at every layer:
 cd web/
 
 # Run all tests against a specific project
-E2E_PROJECT=minishop-run10 pnpm test:e2e
+E2E_PROJECT=minishop-run-20260315-0930 pnpm test:e2e
 
 # View the HTML report
 pnpm test:e2e:report
 
 # Run a specific test file
-E2E_PROJECT=minishop-run10 npx playwright test changes-data
+E2E_PROJECT=minishop-run-20260315-0930 npx playwright test changes-data
 
 # Run with headed browser (debug)
-E2E_PROJECT=minishop-run10 npx playwright test --headed
+E2E_PROJECT=minishop-run-20260315-0930 npx playwright test --headed
 ```
 
 ## Test Structure

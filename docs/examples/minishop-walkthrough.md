@@ -25,8 +25,8 @@ MiniShop is a synthetic e-commerce application (Next.js + Prisma + Playwright) u
 This single command does everything:
 
 ```
-[run.sh] Creating project directory: minishop-run11
-[run.sh] Running: set-project init --name minishop-run11 --project-type web --template nextjs
+[run.sh] Creating project directory: minishop-run-20260316-2030
+[run.sh] Running: set-project init --name minishop-run-20260316-2030 --project-type web --template nextjs
   ✓ Deployed .claude/ directory (rules, skills, commands)
   ✓ Created orchestration.yaml
   ✓ Created project-type.yaml (web)
@@ -36,7 +36,7 @@ This single command does everything:
   ✓ Sentinel PID: 48291
 ```
 
-The project is created under `~/.local/share/set-core/e2e-runs/minishop-run11/`.
+The project is created under `~/.local/share/set-core/e2e-runs/minishop-run-20260316-2030/`.
 
 ### 2. Digest Phase
 

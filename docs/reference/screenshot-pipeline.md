@@ -65,13 +65,13 @@ docs/images/auto/
 ## Web Dashboard Screenshots
 
 **Script:** `web/tests/e2e/screenshots.spec.ts`
-**Command:** `cd web && E2E_PROJECT=minishop-run5 pnpm screenshot:docs`
+**Command:** `cd web && E2E_PROJECT=minishop-run-20260312-1630 pnpm screenshot:docs`
 
 Captures all dashboard pages via Playwright. Tabs without data for the selected project are automatically skipped.
 
 ### Project selection
 
-- Set `E2E_PROJECT` explicitly: `E2E_PROJECT=minishop-run10 pnpm screenshot:docs`
+- Set `E2E_PROJECT` explicitly: `E2E_PROJECT=minishop-run-20260315-0930 pnpm screenshot:docs`
 - Or use `make screenshots-web` which auto-detects the latest "done" project from the API
 
 ### Requirements
@@ -114,7 +114,7 @@ Starts a dev server for a consumer project, auto-discovers Next.js routes from `
 
 ```bash
 ./scripts/capture-app-screenshots.sh                    # latest "done" E2E run
-./scripts/capture-app-screenshots.sh minishop-run10     # specific run name
+./scripts/capture-app-screenshots.sh minishop-run-20260315-0930     # specific run name
 ./scripts/capture-app-screenshots.sh /path/to/project   # absolute path
 ```
 

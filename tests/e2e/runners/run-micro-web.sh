@@ -32,23 +32,9 @@ error()   { echo -e "${RED}[error]${NC} $*" >&2; }
 step()    { echo -e "\n${BLUE}=== $* ===${NC}"; }
 die()     { error "$*"; echo "  Test dir: $TEST_DIR"; exit 1; }
 
-# Auto-increment run number: persistent counter file (survives deletions)
-next_run_number() {
-    local counter_file="$BASE_DIR/.micro-web-run-counter"
-    local last=0
-    if [[ -f "$counter_file" ]]; then
-        last=$(cat "$counter_file" 2>/dev/null || echo 0)
-        [[ "$last" =~ ^[0-9]+$ ]] || last=0
-    fi
-    for d in "$BASE_DIR"/micro-web-run*; do
-        [[ -d "$d" ]] || continue
-        local n="${d##*micro-web-run}"
-        n="${n%%-*}"
-        [[ "$n" =~ ^[0-9]+$ ]] && (( n > last )) && last=$n
-    done
-    local next=$(( last + 1 ))
-    echo "$next" > "$counter_file"
-    echo "$next"
+# Generate timestamp-based run ID (e.g., micro-web-run-20260407-2246)
+run_timestamp() {
+    date +%Y%m%d-%H%M
 }
 
 # Parse --project-dir flag
@@ -66,9 +52,9 @@ if [[ -n "${1:-}" ]]; then
     TEST_DIR="$1"
     PROJECT_NAME="$(basename "$TEST_DIR")"
 else
-    RUN_NUM=$(next_run_number)
-    TEST_DIR="$BASE_DIR/micro-web-run${RUN_NUM}"
-    PROJECT_NAME="micro-web-run${RUN_NUM}"
+    RUN_TS=$(run_timestamp)
+    TEST_DIR="$BASE_DIR/micro-web-run-${RUN_TS}"
+    PROJECT_NAME="micro-web-run-${RUN_TS}"
 fi
 
 # ── Preflight checks ──

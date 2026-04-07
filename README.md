@@ -158,7 +158,7 @@ set-core (framework)                    consumer project (E2E run)
 
 ```bash
 set-harvest                          # scan all registered projects
-set-harvest --project craftbrew-run22 # scan single project
+set-harvest --project craftbrew-run-20260320-1445 # scan single project
 set-harvest --dry-run                # preview without updating state
 ```
 
