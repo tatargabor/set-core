@@ -135,12 +135,12 @@ Ma egy valós E2E teszten keresztül mutatom be a teljes működést.
 | Idő | Téma |
 |-----|------|
 | 5 perc | **A probléma** -- Miért nem elég a "prompt and pray"? |
+| 10 perc | **6 pillér** -- SPECIFY, DECOMPOSE, EXECUTE, SUPERVISE, VERIFY, LEARN |
 | 5 perc | **A bemenet** -- Spec + Design = minőségi input |
-| 20 perc | **E2E Demo: MiniShop** -- A teljes pipeline végigvezetése |
-| 10 perc | **Quality Gates** -- Determinisztikus minőségbiztosítás |
+| 15 perc | **E2E Demo: MiniShop** -- A teljes pipeline végigvezetése |
+| 5 perc | **Works everywhere** -- Greenfield, brownfield, isolated unit |
 | 5 perc | **Dashboard & Monitoring** -- Valós idejű felügyelet |
-| 5 perc | **Architektúra** -- 3 réteg, plugin rendszer |
-| 5 perc | **Tanulságok** -- 30+ futtatás tapasztalatai |
+| 5 perc | **Tanulságok** -- 100+ futtatás tapasztalatai |
 | 5 perc | **Roadmap** -- Hová tartunk |
 
 <!-- SPEAKER_NOTES:
@@ -204,7 +204,113 @@ A kulcs: specifikáció-vezérelt fejlesztés. Nem azt mondjuk az ágensnek hogy
 
 <!-- _class: section-divider -->
 
-# 2. A bemenet
+# 2. Hat pillér
+
+*Az architektúra ami mögötte van*
+
+---
+
+# SPECIFY > DECOMPOSE > EXECUTE > SUPERVISE > VERIFY > LEARN
+
+```
+┌───────────┬───────────┬───────────┬───────────┬───────────┬───────────┐
+│  SPECIFY  │ DECOMPOSE │  EXECUTE  │ SUPERVISE │  VERIFY   │   LEARN   │
+│           │           │           │           │           │           │
+│ Strukt.   │ Intell.   │ Strukt.   │ 3 szintű  │ Determ.   │ Minden    │
+│ bemenet,  │ tervezés, │ implem.,  │ felügy.,  │ minőség,  │ futtatás  │
+│ nem prompt│ nem tipp  │ nem free  │ nem baby- │ nem LLM   │ javítja a │
+│           │           │ rein      │ sitting   │ vélemény  │ következőt│
+└───────────┴───────────┴───────────┴───────────┴───────────┴───────────┘
+```
+
+> Minden feature, gate és automatizáció ehhez a 6 pillérhez kapcsolódik.
+
+<!-- SPEAKER_NOTES:
+Ez a 6 pillér a rendszer mentális modellje. Nem marketing --
+mindegyik mögött van egy konkrét failure story ami igazolja.
+A CTO-nak ez az 5 perc a legfontosabb: ha ezt megérti, a többit
+a kontextusában fogja hallani.
+-->
+
+---
+
+# A change lifecycle -- állapotgép
+
+```
+                  ┌─────────────────────────────────────────────────┐
+                  │              SPECIFY + DECOMPOSE                │
+     spec.md ────►│  digest ──► triage ──► plan (DAG) ──► dispatch │
+                  └──────────────────────────┬──────────────────────┘
+                                             │
+                  ┌──────────────────────────▼──────────────────────┐
+                  │              EXECUTE (per change)               │
+                  │  pending ──► dispatched ──► running             │
+                  │                             │                   │
+                  │              Ralph Loop:    │                   │
+                  │              proposal ──► design ──► spec       │
+                  │              ──► tasks ──► code ──► test        │
+                  └──────────────────────────┬──────────────────────┘
+                                             │
+                  ┌──────────────────────────▼──────────────────────┐
+                  │              VERIFY                             │
+                  │  test ──► build ──► E2E ──► review              │
+                  │  ──► spec_coverage ──► smoke                    │
+                  │       │                                         │
+                  │       ├─ PASS ──► merge_queue                   │
+                  │       └─ FAIL ──► agent javít ──► újra VERIFY   │
+                  └──────────────────────────┬──────────────────────┘
+                                             │
+                  ┌──────────────────────────▼──────────────────────┐
+                  │              SUPERVISE + LEARN                  │
+                  │  merge (FF-only) ──► post-merge smoke           │
+                  │  ──► coverage check                             │
+                  │       │                                         │
+                  │       ├─ 100% ──► done                          │
+                  │       └─ <100% ──► REPLAN ──► új DECOMPOSE      │
+                  └─────────────────────────────────────────────────┘
+```
+
+<!-- SPEAKER_NOTES:
+Ez az állapotgép a teljes lifecycle. A lényeg:
+minden change végigmegy ezen, és a rendszer nem áll le amíg
+a spec 100%-ban nincs lefedve. Ha egy gate elbukik, az ágens
+javít -- nem mi. Ha 100% alatti a coverage, új change-ek indulnak.
+-->
+
+---
+
+# Gradual escalation -- ha valami elromlik
+
+```
+  Normál működés
+       │
+       ▼
+  ┌─ L1: Warning ──────────────── Log + notification, nincs beavatkozás
+  │
+  ├─ L2: Restart ──────────────── Agent újraindítás, context pruning (~70% siker)
+  │
+  ├─ L3: Redispatch ───────────── Teljes worktree újraépítés (max 2x)
+  │
+  └─ L4: Give up ──────────────── Change → failed (jobb mint végtelen token égetés)
+```
+
+A watchdog **kontextus-tudatos**:
+- `pnpm install` 90s stdout nélkül? → Grace period (nem stall)
+- Prisma migráció fut? → Extended timeout
+- Nem "nincs output = halott" -- az megölte egy ágensünket Prisma közben. Soha többé.
+
+<!-- SPEAKER_NOTES:
+A gradual escalation a 25 éves SMS gateway mintából jön.
+L2 (restart fresh context-tel) az esetek 70%-ában megoldja a problémát.
+L4 (feladás) az utolsó lehetőség -- jobb elveszíteni egy change-et
+mint végtelen tokent égetni.
+-->
+
+---
+
+<!-- _class: section-divider -->
+
+# 3. A bemenet
 
 *A spec minősége határozza meg az output minőségét*
 
@@ -520,6 +626,37 @@ Ha valami kimarad, automatikusan új change indul rá.
 
 <!-- _class: section-divider -->
 
+# Works everywhere
+
+*Nem csak "build me an app from scratch"*
+
+---
+
+# Greenfield, Brownfield, Isolated Unit
+
+| Mód | Mit jelent | Példa |
+|-----|-----------|-------|
+| **Greenfield** | Teljes app spec-ből + design-ból | MiniShop: 6/6 merged, 1h 45m, 0 beavatkozás |
+| **Brownfield** | Meglévő kódbázis + új funkciók | A SET saját magát építi: 1,500+ commit, 376 spec |
+| **Isolated unit** | Egy modul, egy feature, egy fix | "3 API endpoint auth-tal a meglévő Next.js-hez" |
+
+A pipeline **ugyanaz** mindhárom módban:
+- Worktree izoláció (még 1 change-nél is)
+- Quality gate-ek (a meglévő teszteket is futtatja)
+- A rendszer **elolvassa a meglévő kódot** mielőtt bármit csinál
+
+> A belépési küszöb nem egy 30 oldalas spec. Lehet egyetlen feladat leírás is.
+
+<!-- SPEAKER_NOTES:
+Ez fontos a CTO-nak: nem kell full greenfield projektet csinálni.
+A SET működik a meglévő kódbázison is. Sőt, mi magunk is így használjuk --
+a set-core-t a set-core-ral fejlesztjük, brownfield módban.
+-->
+
+---
+
+<!-- _class: section-divider -->
+
 # Az eredmény
 
 *Amit a pipeline produkált*
@@ -822,10 +959,10 @@ set-core/
 
 | Statisztika | Érték |
 |-------------|-------|
-| Fejlesztési idő | 950+ óra |
-| Commitok | 1,295 (~16/nap) |
+| Fejlesztési idő | 1,000+ óra |
+| Commitok | 1,500+ (~17/nap) |
 | Specifikációk | 376 |
-| E2E futtatások | 30+ |
+| E2E futtatások | 100+ |
 
 > **Saját magával fejlesztve** -- a set-core saját orkesztrálási pipeline-jával készült.
 
@@ -842,7 +979,7 @@ mi magunk futunk bele először.
 
 # 7. Tanulságok
 
-*30+ futtatás, valós production tapasztalatok*
+*100+ futtatás, valós production tapasztalatok*
 
 ---
 
@@ -1002,9 +1139,7 @@ automatikus ellenőrzése a quality gate-eken keresztül.
 | Repository | Leírás |
 |------------|--------|
 | **set-core** | Core engine, web modul, dashboard, CLI |
-| **set-spec-capture** | Spec kinyerés webből, PDF-ből, beszélgetésből |
 | **set-voice-agent-delivery** | Hang-alapú agent delivery |
-| **set-project-example** | Referencia plugin (Dungeon Builder) |
 
 **Technológiai stack:**
 
@@ -1025,16 +1160,18 @@ automatikus ellenőrzése a quality gate-eken keresztül.
 
 # Összefoglalás
 
-**Spec → Digest → Decompose → Dispatch → Verify → Merge → Done**
+**SPECIFY → DECOMPOSE → EXECUTE → SUPERVISE → VERIFY → LEARN**
 
 6 change | 1h 45m | 0 beavatkozás | 70 teszt | 100% spec coverage
+
+Greenfield, brownfield, isolated unit -- ugyanaz a pipeline.
 
 ---
 
 # Kérdések?
 
 **Források:**
-- Repo: `git.setcode.dev/root/set-core`
+- GitHub: `github.com/tatargabor/set-core`
 - Web: `setcode.dev`
 - Benchmarks: `docs/learn/benchmarks.md`
 - Lessons learned: `docs/learn/lessons-learned.md`
