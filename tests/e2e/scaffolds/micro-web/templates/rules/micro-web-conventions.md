@@ -26,9 +26,18 @@ This is a minimal static website — no database, no authentication, no API rout
 
 ## Dependencies
 
-- Minimal: `next`, `react`, `react-dom`, `tailwindcss` only
+- Core: `next`, `react`, `react-dom`, `tailwindcss`
+- UI: `shadcn/ui` — install components with `npx shadcn@latest add <component>`
+- shadcn/ui utilities: `clsx`, `tailwind-merge`, `class-variance-authority`, `lucide-react` (pre-installed)
 - No Prisma, no NextAuth, no bcrypt, no form libraries
-- No shadcn/ui — use plain Tailwind classes for styling
+
+## UI Components
+
+- ALL UI components MUST use shadcn/ui: Button, Card, Input, Label, Textarea, Sheet, etc.
+- Import from `@/components/ui/<component>` — install first if not present
+- Use `cn()` from `@/lib/utils` for conditional class merging
+- Do NOT use plain HTML `<button>`, `<input>` — always use shadcn equivalents
+- Do NOT delete `components.json` or `src/lib/utils.ts` — these are required
 
 ## Forms
 

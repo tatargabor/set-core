@@ -2300,7 +2300,17 @@ def _execute_review_gate(
             "(form fill → submit → verify result), not just page-load tests.\n\n"
         )
 
-    combined_prefix = e2e_coverage_prefix + fix_verification_prefix
+    # shadcn/ui enforcement: if components.json exists, reviewer must NOT recommend removing it
+    shadcn_prefix = ""
+    if wt_path and os.path.isfile(os.path.join(wt_path, "components.json")):
+        shadcn_prefix = (
+            "IMPORTANT: This project uses shadcn/ui (components.json exists). "
+            "shadcn/ui components are MANDATORY — do NOT recommend removing components.json, "
+            "utils.ts, or shadcn dependencies. If shadcn components are missing, that is a "
+            "[CRITICAL] issue — the agent must install and use them.\n\n"
+        )
+
+    combined_prefix = shadcn_prefix + e2e_coverage_prefix + fix_verification_prefix
 
     rr = review_change(
         change_name, wt_path, scope, effective_review_model,
