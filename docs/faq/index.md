@@ -24,111 +24,188 @@ SET was built with itself over 79 days (1,295 commits, 134K LOC, 720+ hours of c
 
 ### ...just using Claude Code?
 
-Claude Code is an excellent single-agent tool. SET is the orchestration layer on top. The difference is like comparing a skilled developer to a managed sprint.
+Claude Code in 2026 is dramatically capable on its own: native worktrees (`--worktree`), Agent Teams (experimental, 3-5 agents with worktree isolation), 27 hook events, auto-memory (`MEMORY.md`), Plan mode, subagents, the Agent SDK, and MCP support. SET is built *on top of* all these primitives — it provides the opinionated orchestration workflow that ties them together.
 
 | | Claude Code (alone) | SET |
 |---|---|---|
-| **Scope** | One task at a time | Full spec → multiple parallel changes |
-| **Parallelism** | Agent teams (experimental, ~7 agents, one session) | N worktrees, each with a dedicated agent, across machines |
-| **Planning** | Plan mode (freeform, read-only) | OpenSpec: structured artifacts with traceability (proposal → spec → design → tasks) |
-| **Quality** | Manual test runs, no enforcement | Automated gate pipeline: dep install → build → test → E2E → code review → smoke |
-| **Merging** | Manual `git merge` | Automated merge queue with conflict resolution and post-merge verification |
-| **Recovery** | Session dies, you restart manually | Sentinel detects crashes in 30s, auto-restarts, escalates if needed |
-| **Memory** | Per-session context | Persistent cross-session memory via hooks (decisions, learnings, conventions survive) |
-| **State** | Ephemeral | Atomic JSON state file with full orchestration history |
+| **Scope** | One task or one team session | Full spec → decomposed into N parallel changes |
+| **Planning** | Plan mode (freeform, ephemeral, read-only) | OpenSpec: persistent versioned artifacts (proposal → spec → design → tasks) |
+| **Quality** | Hooks *can* run checks, but you wire them yourself | Structured gate pipeline: dep install → build → test → E2E → review → smoke |
+| **Merging** | Manual `git merge`, no enforcement | Automated merge queue with integration gates, conflict resolution, post-merge verification |
+| **Recovery** | Session dies, you restart manually | Sentinel detects crashes in 30s, auto-restarts, graduated escalation |
+| **Memory** | Auto-memory (flat file loaded at startup) | Semantic memory graph with topic-based recall, auto-injection at every lifecycle point |
+| **State** | Session-scoped, lost on restart | Atomic JSON state file with full orchestration history, resumable across restarts |
+| **Coordination** | Agent Teams: shared task list + mailbox (one session) | Cross-session, cross-machine orchestration with sentinel supervisor |
 
-Claude Code provides the primitives (worktrees, subagents, hooks). SET provides the orchestration: planning, dispatch, monitoring, gating, merging, replanning — the full outer loop.
+Claude Code gives you excellent building blocks. SET gives you the assembled machine: planning, dispatch, monitoring, gating, merging, replanning — the full outer loop. You *could* build this yourself using the Agent SDK and hooks — SET is the battle-tested implementation.
+
+**What SET doesn't have that Claude Code does natively:** Claude Code's 101+ plugin marketplace, the Agent SDK for custom agent development, and deep IDE integration (VS Code, JetBrains). SET is CLI-first with a web dashboard, not an IDE experience.
 
 ### ...Claude Code Agent Teams?
 
-Agent Teams (experimental) coordinate multiple Claude instances within a single session with a shared task list. SET orchestrates across sessions, machines, and time:
+Agent Teams (experimental) coordinate multiple Claude instances within a single session with a shared task list and inter-agent messaging. Each teammate can work in its own worktree via `isolation: worktree`. 3-5 teammates recommended, no hard limit.
 
-- **Agent Teams** = parallelism *within* a worktree. A lead assigns subtasks to teammates; they share context and message each other. Good for breaking down a single feature.
-- **SET** = parallelism *across* worktrees. A planner decomposes a full spec into a dependency DAG of independent changes, dispatches each to its own worktree with its own agent, and manages the merge pipeline. Good for shipping an entire product.
+- **Agent Teams** = parallelism *within* one session. A lead assigns subtasks; teammates share context and message each other. Good for breaking down a single feature. Still experimental: no session resumption for teammates, task status can lag, shutdown can be slow, one team per session.
+- **SET** = parallelism *across* sessions, machines, and time. A planner decomposes a full spec into a dependency DAG of independent changes, dispatches each to its own worktree with its own long-running agent, runs quality gates before merge, and manages the merge pipeline. Good for shipping an entire product.
 
 They're complementary. SET can use Agent Teams inside each worktree for complex individual changes while managing the cross-change orchestration externally.
 
+**What Agent Teams does better:** Zero-setup parallelism within a session. No framework installation, no orchestration config. Start a team with one environment variable. For a quick parallel task within a single feature, Agent Teams is faster to reach for.
+
 ### ...Cursor's parallel agents?
 
-Cursor 3 introduced parallel agents (up to 8) with worktree isolation. That's significant — it means Cursor now has the *execution* capability. What it lacks is the *orchestration*:
+Cursor introduced Background Agents (BGA): cloud-hosted VMs that work autonomously, create branches, and open PRs. Each BGA gets its own sandboxed environment.
 
-- **No spec decomposition.** Cursor agents are launched from ad-hoc prompts, not from a structured spec with dependency ordering.
-- **No quality gates.** No automated build → test → E2E pipeline before merge. If the agent says it's done, it's done.
-- **No merge pipeline.** No conflict resolution strategy, no post-merge verification, no cross-worktree sync.
-- **No supervision.** No sentinel watching for crashes, stalls, or budget overruns.
-- **No persistent state.** No orchestration state file tracking which changes are pending/running/done/merged across restarts.
+What Cursor has:
+- **Cloud execution** — agents run in Cursor's cloud, no local resources needed. You can close your laptop.
+- **Git branch + PR workflow** — each BGA creates a branch and opens a PR when done.
+- **Cursor Rules** (`.cursor/rules/`) — static text instructions scoped by glob pattern to constrain agent behavior.
+- **GitHub Issue triggers** — link an issue to a BGA.
 
-Cursor gives you 8 agents. SET gives you a *system* that manages those agents toward a verified outcome.
+What Cursor lacks vs SET:
+- **No spec decomposition.** BGAs are launched from ad-hoc prompts or issues, not from a structured spec with dependency ordering.
+- **No quality gates before merge.** If the agent says it's done, it opens a PR. No automated build → test → E2E pipeline before the PR exists. It relies on your CI.
+- **No inter-agent coordination.** Multiple BGAs working on the same repo have no awareness of each other. No merge conflict prevention, no merge ordering.
+- **No persistent orchestration state.** No tracking of which changes are pending/running/done/merged across restarts.
+- **No sentinel supervision.** No crash recovery or stall detection.
+
+**What Cursor does better:** Cloud execution (no local resource cost), GitHub-native workflow (issue → PR), lower barrier to entry (it's an IDE with built-in agents), and Cursor Rules are simpler to write than SET's orchestration config. For small, independent tasks, Cursor BGA is arguably easier to use.
 
 ### ...Devin?
 
-Devin is an autonomous AI software engineer — a single agent that takes a task (Jira ticket, bug report) and works on it end-to-end in a sandboxed VM: planning, coding, testing, PR creation.
+Devin (by Cognition) is an autonomous AI software engineer — takes a task and works end-to-end in a sandboxed VM: planning, coding, testing, PR creation. Can run multiple concurrent sessions, each in its own VM.
 
-SET is the orchestration layer that could coordinate *many* Devins (or Claude Code agents) working in parallel on related changes toward the same product spec:
+| | Devin | SET |
+|---|---|---|
+| **Execution** | Cloud VM sandbox | Local worktrees |
+| **Parallelism** | Multiple independent sessions (no coordination) | Coordinated parallel via orchestrator + merge queue |
+| **Planning** | Informal step-by-step (visible in UI) | OpenSpec: structured artifacts with traceability |
+| **Testing** | Runs tests if they exist (ad-hoc) | Structured gate pipeline (build → test → E2E → review) |
+| **Self-review** | Basic re-read (inconsistent) | Separate verification phase with code review gate |
+| **Integrations** | Excellent Slack/Jira/GitHub (trigger via Slack message) | CLI + web dashboard + MCP |
+| **Merge safety** | Opens PR, relies on CI | Integration gates enforced before merge |
+| **Recovery** | Within-session retry | Sentinel: crash detection, stall recovery, redispatch |
 
-- **Devin** handles one task at a time. SET decomposes a spec into N tasks and runs them in parallel.
-- **Devin** creates a PR. SET manages the merge queue with pre-merge quality gates.
-- **Devin** has no spec-driven traceability. SET traces every task back to a requirement with WHEN/THEN acceptance criteria.
-- **Devin** reports ~67% PR merge rate. SET's MiniShop benchmark: 100% merge rate, zero intervention.
+**What Devin does better:** Slack integration is best-in-class — assign a task from Slack, get a PR back. The sandboxed VM means zero local setup. The UI for watching agent work is polished. For well-scoped, independent tasks (migrations, CRUD endpoints, test writing), Devin's workflow is smoother than setting up SET orchestration.
 
-Devin is a worker. SET is the project manager, CI/CD pipeline, and QA team for autonomous workers.
-
-### ...Roo Code (Roo Cline)?
-
-Roo Code organizes AI capabilities into specialized modes (Architect, Code, Debug, Ask) with an Orchestrator that delegates subtasks to the right mode. It's model-agnostic and works in VS Code.
-
-The "multi-agent" in Roo Code is really multi-*mode* within a single session — it's role-based delegation, not parallel execution:
-
-- No worktree isolation (all modes operate on the same workspace).
-- No merge pipeline or quality gates.
-- No structured spec system — modes are role-based, not requirement-driven.
-- No persistent orchestration state.
-
-Roo Code is a sophisticated single-session AI assistant with role specialization. SET is a multi-session, multi-worktree orchestration framework.
-
-### ...Aider?
-
-Aider is a CLI-based AI pair programmer — interactive, lightweight, model-agnostic. It's excellent at what it does: focused code changes with automatic git commits. It has no concept of multi-agent parallelism, spec decomposition, quality gates, or merge orchestration. Aider is a tool you'd use *inside* a worktree; SET is the system that manages the worktrees.
-
-### ...Cline?
-
-Cline is a VS Code extension where every file change and terminal command requires human approval. It's the opposite of autonomous orchestration — deliberate, transparent, human-in-the-loop. SET targets the other end of the spectrum: give it a spec, walk away, come back to merged code. Different philosophies for different trust levels.
+**What SET does better:** Multi-change coordination, spec-driven traceability, quality gates before merge (not after), sentinel supervision, persistent memory, and deterministic merge ordering. SET is for shipping a product from spec; Devin is for delegating individual tasks.
 
 ### ...Kiro (Amazon)?
 
-Kiro is the closest philosophical match: a spec-driven agentic IDE that generates user stories with acceptance criteria, technical design documents, and implementation task lists from natural language requirements. It shares SET's belief that specs matter more than prompts.
+Kiro is the closest philosophical match: a spec-driven agentic IDE that generates user stories with acceptance criteria, design documents, and implementation task lists. Built on VS Code, powered by Amazon Bedrock (Claude).
 
-The differences:
+Kiro's genuine innovations:
+- **Spec flow is the best in-IDE implementation.** User Story → Design Doc → Task List, all in a guided wizard within the IDE. Specs stored as markdown in `.kiro/specs/`.
+- **Hooks are novel.** Event-driven automated actions that trigger on file events (e.g., file save triggers README update, schema change triggers type regeneration). Defined in `.kiro/hooks/`.
+- **Steering files** (`.kiro/steering/`) — clean project-level instruction system.
+- **Free tier + VS Code familiarity** — zero barrier to entry.
 
-- **Kiro** is an IDE. **SET** is a framework that works with your existing tools (Claude Code, git, your editor).
-- **Kiro** is single-agent. **SET** runs parallel agents in isolated worktrees.
-- **Kiro** generates specs. **SET** also decomposes them into a dependency DAG, dispatches agents, enforces quality gates, manages merges, and replans for gaps.
-- **Kiro** has no merge pipeline, sentinel supervision, or crash recovery.
+| | Kiro | SET |
+|---|---|---|
+| **Spec system** | In-IDE wizard, generated specs | CLI-driven OpenSpec, manual + automated |
+| **Agent scope** | Single-session, IDE-bound | Daemon-based, hours-long autonomous runs |
+| **Parallel agents** | None (single agent per IDE) | Worktree-based, N parallel agents |
+| **Quality gates** | Hooks + spec adherence | Full pipeline: build → test → E2E → review |
+| **Merge handling** | Basic git | Integration-gated merge queue |
+| **Memory** | Steering files (static) | Semantic memory with cross-session learning |
+| **Design integration** | None | Design pipeline (tokens, briefs, per-change design.md) |
 
-Kiro validates the spec-driven approach. SET takes it further with full orchestration infrastructure.
+**What Kiro does better:** Lower barrier to entry — no CLI setup, no orchestration concepts, just open the IDE and follow the wizard. The hooks system (file-event triggers) is something SET doesn't have at the IDE level. Spec generation from natural language is guided and approachable. For a single developer who wants structured AI assistance without a framework, Kiro is easier.
+
+**What SET does better:** Everything after spec creation — decomposition, parallel execution, quality enforcement, merge automation, supervision, cross-session learning.
+
+### ...Roo Code (Roo Cline)?
+
+Roo Code organizes AI capabilities into configurable modes (Architect, Code, Debug, Ask, custom) with a "Boomerang" pattern where an Orchestrator mode delegates subtasks to specialized modes. Model-agnostic.
+
+The "multi-agent" is really multi-*mode* within a single session — sequential delegation, not parallel execution:
+- No worktree isolation (all modes operate on the same workspace).
+- No merge pipeline or quality gates.
+- No structured spec system.
+- No persistent orchestration state or cross-session memory (manual rules files only).
+
+**What Roo Code does better:** Extremely easy to set up. Custom modes are intuitive — define a persona with tools and permissions, no code needed. Model-agnostic — use any LLM provider. Fully open source with an active community. For individual developers who want flexible AI assistance without framework overhead, Roo Code is lighter and more accessible.
+
+### ...Aider?
+
+Aider is a CLI-based AI pair programmer — interactive, lightweight, model-agnostic. Single-agent, single-session. No parallelism, no spec decomposition, no quality gates, no merge orchestration.
+
+**What Aider does genuinely better than SET (and most alternatives):**
+- **Git integration** — best-in-class. Every edit auto-committed with meaningful messages. Full undo via `git revert`. No other tool matches this.
+- **Model flexibility** — supports virtually every LLM provider. Easy mid-session model switching. SET is Claude-only.
+- **Repo map** — tree-sitter-based symbol map gives the LLM structural codebase awareness efficiently. Smart context management.
+- **Cost efficiency** — careful token usage, transparent cost tracking per message.
+- **Edit format innovation** — matches diff format to model capability (diff, whole-file, udiff). Genuine innovation.
+
+Aider is a tool you'd use *inside* a worktree; SET is the system that manages the worktrees. Complementary, not competitive.
+
+### ...Cline?
+
+Cline is a VS Code extension where every action is transparent and controllable. Has an auto-approve mode but fundamentally designed for human oversight.
+
+**What Cline does better:**
+- **MCP marketplace** — best-in-class. MCP server discovery, installation, and configuration directly in the extension. The largest MCP ecosystem.
+- **Transparency** — shows every tool call, diff, and command. You see exactly what the agent does and why.
+- **Model flexibility** — any LLM provider (OpenAI, Anthropic, local models, custom endpoints).
+- **Open source** — fully open, active community, rapid iteration.
+
+Different philosophy: Cline is deliberate, transparent, human-in-the-loop. SET is autonomous, hands-off, spec-driven. For developers who want to understand and approve every change, Cline is the right tool.
+
+### ...GitHub Copilot Coding Agent?
+
+Copilot Coding Agent is GitHub's background AI — assign a GitHub Issue to Copilot, it creates a branch, makes changes, runs your CI (GitHub Actions), self-reviews, and opens a PR. Runs in GitHub-hosted cloud environments.
+
+| | Copilot Coding Agent | SET |
+|---|---|---|
+| **Trigger** | GitHub Issue assignment | Spec document |
+| **Execution** | Cloud (GitHub-hosted) | Local worktrees |
+| **Quality** | Runs existing CI + self-review | Structured gate pipeline before merge |
+| **Parallelism** | Multiple independent agents (no coordination) | Coordinated parallel with dependency DAG |
+| **Merge** | Opens PR, human reviews | Automated merge queue with integration gates |
+| **Distribution** | GitHub-native (largest distribution) | Framework installation needed |
+
+**What Copilot does better:** Zero setup for GitHub users — it's built in. GitHub-native workflow (Issue → PR). Cloud execution. The largest distribution of any AI coding agent. For well-scoped, independent issues, it's the lowest-friction option.
+
+**What SET does better:** Coordinated multi-change development from a single spec. Copilot handles one issue → one PR with no awareness of other agents on the same repo. SET manages the dependencies, merge ordering, conflict resolution, and spec coverage tracking.
 
 ### ...Windsurf?
 
-Windsurf (by Codeium, acquired by Cognition) is an AI IDE with the Cascade engine for multi-step agentic actions. It has persistent memory across sessions, which is notable. But it's a single-agent IDE experience — no parallel execution, no spec decomposition, no quality gates, no merge pipeline. Windsurf and SET solve different problems at different scales.
+Windsurf (by Codeium) was an AI IDE with the Cascade engine for multi-step agentic actions with strong context tracking across files and terminal commands. OpenAI announced acquisition of Codeium for ~$3B (late 2024). Current product status post-acquisition is uncertain.
+
+Single-agent IDE experience — no parallel execution, no spec decomposition, no quality gates, no merge pipeline. Cascade's context tracking within a session was genuinely strong, and autocomplete was fast.
 
 ### ...OpenHands (OpenDevin)?
 
-OpenHands is an open-source platform for running AI coding agents at scale — potentially thousands of them. It provides the *runtime* (sandboxed environments, model-agnostic agent execution) but not the *orchestration* (spec decomposition, dependency DAG, quality gates, merge pipeline, sentinel supervision). You could build something like SET on top of OpenHands, but OpenHands alone doesn't give you the development workflow.
+OpenHands is the strongest open-source single-agent coding runtime — Docker-sandboxed, multi-model, strong SWE-bench results (50%+). It provides the *runtime* (execute code, browse web, edit files in a sandbox) but not the *orchestration* (spec decomposition, parallel coordination, quality gates, merge pipeline, sentinel).
 
-### ...Composio Agent-Orchestrator?
+You could theoretically build a SET-like orchestrator on top of OpenHands as the agent runtime. OpenHands alone is a worker, not a coordinator.
 
-Composio is architecturally the most similar: parallel agents in worktrees with automated CI fix attempts. The key differences:
+### ...Composio?
 
-- **No spec decomposition.** Composio orchestrates agents but doesn't plan what they should build from a product spec.
-- **No pre-merge integration gates.** Relies on CI/CD pipelines after PR creation, not gate enforcement before merge.
-- **No persistent orchestration state.** No crash recovery, no resumable state across restarts.
-- **No sentinel supervision.**
-
-Composio is an agent runtime with basic coordination. SET is a full development orchestration framework.
+**Correction from earlier versions of this FAQ:** Composio is primarily a **tool-integration platform** (250+ pre-built API integrations for AI agents), not an agent orchestrator. It provides middleware for frameworks like CrewAI, LangGraph, and AutoGen to call external tools (GitHub, Jira, Slack, databases) via function calling. It has a reference SWE-agent implementation but no parallel orchestration, quality gates, or merge pipelines. Different category from SET.
 
 ### ...GPT-Engineer / Lovable?
 
 Different category entirely. Lovable is an app builder for non-developers — prompt to MVP. SET is infrastructure for professional development teams who write detailed specs and expect production-quality, tested output. Lovable generates apps; SET generates software engineering process outcomes.
+
+---
+
+### Capability matrix: SET vs. the landscape
+
+| Tool | Parallel Agents | Worktree Isolation | Structured Specs | Quality Gates | Merge Pipeline | Supervisor | Cloud Exec | Model Flexibility |
+|---|---|---|---|---|---|---|---|---|
+| **SET** | Yes | Yes | Yes (OpenSpec) | Yes (7 gates) | Yes | Yes (Sentinel) | No (local) | Claude only |
+| Claude Code | Experimental (Teams) | Yes (native) | No | Hooks (DIY) | No | No | No | Claude only |
+| Cursor BGA | Yes (cloud VMs) | Branches (cloud) | No | No (relies on CI) | No | No | Yes | Multi-model |
+| Devin | Independent sessions | Sandbox VMs | No | Ad-hoc (runs tests) | No | No | Yes | Proprietary |
+| Kiro | No | No | Yes (in-IDE) | Hooks (file events) | No | No | No | Claude (Bedrock) |
+| Copilot Agent | Independent agents | Cloud VMs | No | CI + self-review | No | No | Yes | GPT/Claude |
+| Roo Code | No (modes) | No | No | No | No | No | No | Any LLM |
+| Aider | No | No | No | No | No | No | No | Any LLM |
+| Cline | No | No | No | No | No | No | No | Any LLM |
+| OpenHands | No | Docker sandbox | No | No | No | No | Yes | Any LLM |
+
+**What SET uniquely provides:** The combination of all six in the left columns. Other tools excel in areas SET doesn't cover: cloud execution (Cursor, Devin, Copilot), model flexibility (Aider, Roo Code, Cline), IDE integration (Kiro, Cursor, Windsurf), and zero-setup simplicity (Copilot, Cline).
 
 ---
 
@@ -152,20 +229,29 @@ Why not just a prompt?
 
 ### How is this different from Claude Code's Plan mode?
 
-Plan mode is a *thinking step* — Claude reads the codebase, analyzes the problem, and outlines an approach before implementing. It's freeform, ephemeral, and advisory.
+Plan mode is a *thinking step* — Claude reads the codebase, analyzes the problem, and outlines an approach before implementing. It's freeform, ephemeral (exists within the session only), and advisory. Plans are not saved to disk as separate artifacts — when you accept a plan, Claude proceeds to implement. Ctrl+G opens the plan in your editor for manual editing.
 
 OpenSpec is a *workflow system*:
 
 | | Plan Mode | OpenSpec |
 |---|---|---|
 | **Output** | Freeform text plan | Structured artifacts (proposal, specs with WHEN/THEN, design, tasks) |
-| **Persistence** | Disappears after session | Committed to repo, archived after completion |
+| **Persistence** | Session-scoped (lost when session ends) | Committed to repo, archived after completion |
 | **Traceability** | None | Every task traces to a requirement: `[REQ: auth-login]` |
 | **Verification** | None | Automated: completeness (all tasks done?), correctness (spec scenarios covered?), coherence (design followed?) |
 | **Scope enforcement** | Trust | Explicit IN SCOPE / OUT OF SCOPE sections |
 | **Multi-agent** | Not designed for it | Delta specs assign requirements to specific changes; agents get scoped work |
 
 Plan mode helps a single agent think. OpenSpec gives a system of agents structured contracts to work against and verify.
+
+### How is this different from Kiro's spec system?
+
+Kiro also generates specs — user stories with acceptance criteria, design documents, and task lists. It's the closest approach to OpenSpec in the market. The differences:
+
+- **Generation vs. orchestration.** Kiro generates specs within one IDE session for one agent to implement. OpenSpec generates specs AND decomposes them into a dependency DAG for parallel multi-agent execution.
+- **Persistence model.** Kiro specs live in `.kiro/specs/` and are consumed within the IDE. OpenSpec specs are versioned artifacts that sync across worktrees, survive archiving, and build a living specification library (363 specs in set-core itself).
+- **Delta specs.** OpenSpec has a unique concept: each change creates *delta specifications* (incremental ADDED/MODIFIED/REMOVED requirements) that sync into main specs after merge. Multiple changes can touch the same capability without conflicting.
+- **Verification.** OpenSpec has automated verification (completeness, correctness, coherence) with traceability matrices. Kiro's quality enforcement is through file-event hooks, not spec-level verification.
 
 ### What are delta specs?
 
@@ -211,16 +297,19 @@ Each artifact depends on the previous: proposal → specs → design → tasks. 
 6. **Sync**: After each merge, all other running worktrees pull main to stay current.
 7. **Replan**: After all planned changes merge, check for uncovered requirements and generate new changes if gaps remain.
 
-### Why git worktrees?
+### Why git worktrees instead of cloud VMs?
 
-Worktrees provide true filesystem isolation without the overhead of cloning:
+Worktrees provide true filesystem isolation without the overhead of cloud infrastructure:
 
 - Each agent has its own working directory — no file conflicts during parallel development.
 - Each agent has its own branch — git history is clean and independent.
 - Worktrees share the same `.git` directory — no disk waste from full clones.
 - Agents can independently install deps, run tests, and build without interfering with each other.
+- Everything runs locally — no cloud costs, no network latency, full control.
 
 This is fundamentally different from agents sharing a workspace and "coordinating" via messages — that approach breaks down when agents edit the same files simultaneously.
+
+**Trade-off vs. cloud VMs (Cursor BGA, Devin, Copilot):** Cloud agents can run without your machine being on. SET requires a running machine. For overnight runs this matters — SET needs an always-on server or workstation.
 
 ### What happens when agents conflict?
 
@@ -278,6 +367,15 @@ Deterministic quality checks that every change must pass before merging. The key
 
 Gates run sequentially (fast gates first for early failure). If a gate fails, the agent receives the error output and retries (up to `max_verify_retries`). No human intervention needed — agents self-heal from test failures, type errors, and build issues.
 
+### How is this different from just running CI after a PR?
+
+CI/CD validates code *after* a PR exists. SET's gates run *before* merge — the agent receives gate failures and self-heals before the code ever reaches main. This is the difference:
+
+- **Copilot/Devin/Cursor:** Agent creates PR → CI runs → CI fails → human notices → human tells agent to fix → repeat.
+- **SET:** Agent reports "done" → gate runs → gate fails → agent receives error → agent fixes → gate re-runs → passes → merge.
+
+The feedback loop is automated and internal. No human in the loop for routine failures.
+
 ### Why not just trust the LLM's judgment?
 
 Because LLMs hallucinate confidence. "Looks good to me" from a code review is not the same as `vitest run` returning exit code 0.
@@ -328,6 +426,19 @@ SET uses a hook-driven memory system (shodh-memory) that captures and injects co
 
 Memory types: Decision (architectural choices), Learning (discovered patterns), Context (project state), Bug (known issues + fixes), Feedback (user preferences).
 
+### How is this different from Claude Code's auto-memory?
+
+Claude Code has native auto-memory since v2.1.59: Claude saves notes to `~/.claude/projects/<project>/memory/MEMORY.md` and topic files. The first 200 lines are loaded at session start. Shared across worktrees of the same repo.
+
+SET's shodh-memory goes further:
+- **Semantic recall** — topic-based queries, not just flat file loading. "What do we know about Prisma migrations?" returns relevant memories, not everything.
+- **Lifecycle injection** — memory is injected at 4 points (warmstart, pre-tool, post-tool, save), not just at session start.
+- **Automatic extraction** — session-end hooks extract decisions, learnings, and bugs from the conversation without explicit save.
+- **Memory graph** — tags, relationships, deduplication, consolidation. Not just a flat list.
+- **MCP tools** — programmatic memory operations (remember, recall, forget, brain, context_summary) available as tools during sessions.
+
+Claude Code's auto-memory is a notebook. SET's memory is a queryable knowledge base.
+
 ### Why does memory matter for orchestration?
 
 Without memory, every agent rediscovers the same conventions, makes the same mistakes, and wastes tokens on the same investigations. Benchmarks show:
@@ -356,6 +467,8 @@ Each module implements the `ProjectType` ABC: `detect_test_command()`, `detect_e
 
 No. SET is built specifically for Claude Code and goes deeper into its capabilities (worktrees, hooks, MCP, skills, subagents). This is by design — SET doesn't abstract over LLMs. It leverages Claude's strengths (long context, tool use, code understanding) fully.
 
+**This is a deliberate trade-off.** Tools like Aider, Roo Code, and Cline support any LLM provider. SET bets on Claude getting better and compounds that bet. If you need model flexibility, SET is not the right choice.
+
 ### Can this run on-premise?
 
 The infrastructure is designed for it. SET is self-hosted — no SaaS dependency. When on-premise Claude models become available for regulated industries (banks, defense, government), SET's architecture works unchanged. The orchestration engine, gates, and state management have no cloud dependency. Only the LLM inference endpoint needs to be configured.
@@ -370,6 +483,25 @@ SET can integrate design tokens and visual specifications:
 4. **Review gate checks** design compliance — token mismatches are flagged
 
 This eliminates the "shadcn defaults everywhere" problem. Agents implement *your* brand, not a generic component library.
+
+---
+
+## What SET Doesn't Do (Yet)
+
+Honest gaps where competitors are ahead — these inform our development roadmap:
+
+| Gap | Who does it better | Notes |
+|---|---|---|
+| **Cloud execution** | Cursor BGA, Devin, Copilot | SET requires a running local machine. Cloud agents work while you sleep. |
+| **Model flexibility** | Aider, Roo Code, Cline | SET is Claude-only by design. No GPT, Gemini, or local model support. |
+| **IDE integration** | Kiro, Cursor, Windsurf | SET is CLI + web dashboard. No VS Code/JetBrains plugin for in-editor orchestration control. |
+| **Zero-setup simplicity** | Copilot, Cline, Cursor | SET requires pip install, project init, orchestration config. Others are install-and-go. |
+| **GitHub Issue → PR** | Copilot Coding Agent | SET works from specs, not from issue trackers. No native Jira/Linear/GitHub Issue integration. |
+| **Slack integration** | Devin | Can't trigger SET orchestration from Slack. |
+| **File-event hooks** | Kiro | SET's hooks are at the orchestration level, not IDE file-save events. |
+| **MCP marketplace** | Cline | SET has a custom MCP server, but no marketplace for discovering third-party integrations. |
+
+These are conscious trade-offs, not oversights. SET optimizes for orchestration depth over integration breadth. Some may become development priorities as the framework matures.
 
 ---
 
@@ -472,6 +604,8 @@ CI/CD assumes someone creates the PR. SET creates the PRs, validates them, merge
 
 Because depth beats breadth. SET leverages Claude-specific capabilities: 200K+ context for large codebases, native tool use for file operations, worktree support for isolation, hooks for memory injection, MCP for external integrations. Abstracting to a lowest-common-denominator API would sacrifice these capabilities for theoretical portability. SET bets on Claude getting better — and compounds that bet.
 
+This is a trade-off. If Claude Code changes its API or another model becomes dramatically better, SET's Claude-only approach becomes a liability. We accept this risk for the depth advantage.
+
 ### What's the competitive moat?
 
 The combination. No other tool provides *all six*:
@@ -483,4 +617,6 @@ The combination. No other tool provides *all six*:
 5. **Sentinel supervision** with crash recovery
 6. **Persistent memory** that improves across runs
 
-Most tools have 1-2 of these. The closest competitors (Composio, Kiro, Augment) have 2-3. The value is in the integration — the six capabilities reinforce each other. Structured specs enable meaningful gates. Gates enable autonomous merging. Memory enables learning. The sentinel enables unattended operation. None works as well alone.
+Most tools have 1-2 of these. The closest competitors (Kiro for specs, Cursor for parallel agents, Copilot for cloud execution) have 2-3 each. The value is in the integration — the six capabilities reinforce each other. Structured specs enable meaningful gates. Gates enable autonomous merging. Memory enables learning. The sentinel enables unattended operation.
+
+The moat is not any single feature — it's the assembled system and the 30+ production runs of battle-testing that validate it works together.

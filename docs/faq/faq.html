@@ -473,6 +473,7 @@
     <a href="#quality">Quality</a>
     <a href="#memory">Memory</a>
     <a href="#architecture">Architecture</a>
+    <a href="#gaps">Gaps</a>
     <a href="#practical">Practical</a>
     <a href="#big-picture">Big Picture</a>
   </div>
@@ -573,19 +574,20 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p>Claude Code is an excellent single-agent tool. SET is the orchestration layer on top. The difference is like comparing <em>a skilled developer</em> to <em>a managed sprint</em>.</p>
+        <p>Claude Code in 2026 is dramatically capable: native worktrees, Agent Teams (experimental, 3-5 agents with worktree isolation), 27 hook events, auto-memory, Plan mode, subagents, Agent SDK, and MCP. SET is built <em>on top of</em> all these primitives.</p>
         <table class="cmp-table">
           <tr><th></th><th>Claude Code (alone)</th><th>SET</th></tr>
-          <tr><td class="label">Scope</td><td>One task at a time</td><td>Full spec &rarr; multiple parallel changes</td></tr>
-          <tr><td class="label">Parallelism</td><td>Agent teams (experimental, ~7)</td><td>N worktrees, dedicated agents, across machines</td></tr>
-          <tr><td class="label">Planning</td><td>Plan mode (freeform, ephemeral)</td><td>OpenSpec: structured artifacts with traceability</td></tr>
-          <tr><td class="label">Quality</td><td>Manual test runs</td><td>Gate pipeline: build &rarr; test &rarr; E2E &rarr; review</td></tr>
-          <tr><td class="label">Merging</td><td>Manual git merge</td><td>Automated merge queue + conflict resolution</td></tr>
-          <tr><td class="label">Recovery</td><td>Session dies, restart manually</td><td>Sentinel detects crash in 30s, auto-restarts</td></tr>
-          <tr><td class="label">Memory</td><td>Per-session context</td><td>Persistent cross-session memory via hooks</td></tr>
-          <tr><td class="label">State</td><td>Ephemeral</td><td>Atomic JSON with full orchestration history</td></tr>
+          <tr><td class="label">Scope</td><td>One task or one team session</td><td>Full spec &rarr; decomposed into N parallel changes</td></tr>
+          <tr><td class="label">Planning</td><td>Plan mode (freeform, ephemeral, read-only)</td><td>OpenSpec: persistent versioned artifacts with traceability</td></tr>
+          <tr><td class="label">Quality</td><td>Hooks <em>can</em> run checks (DIY wiring)</td><td>Structured gate pipeline: build &rarr; test &rarr; E2E &rarr; review</td></tr>
+          <tr><td class="label">Merging</td><td>Manual git merge, no enforcement</td><td>Automated merge queue + conflict resolution + post-merge verification</td></tr>
+          <tr><td class="label">Recovery</td><td>Session dies, restart manually</td><td>Sentinel detects crash in 30s, graduated escalation</td></tr>
+          <tr><td class="label">Memory</td><td>Auto-memory (flat file at startup)</td><td>Semantic memory graph with topic recall at 4 lifecycle points</td></tr>
+          <tr><td class="label">State</td><td>Session-scoped, lost on restart</td><td>Atomic JSON, resumable across restarts</td></tr>
+          <tr><td class="label">Coordination</td><td>Agent Teams: one session, shared task list</td><td>Cross-session, cross-machine orchestration with sentinel</td></tr>
         </table>
-        <p>Claude Code provides the primitives. SET provides the orchestration: planning, dispatch, monitoring, gating, merging, replanning — the <strong>full outer loop</strong>.</p>
+        <p>Claude Code gives you excellent building blocks. SET gives you the assembled machine. You <em>could</em> build this yourself with the Agent SDK and hooks &mdash; SET is the battle-tested implementation.</p>
+        <p><strong>What SET doesn't have:</strong> Claude Code's 101+ plugin marketplace, Agent SDK for custom development, deep IDE integration (VS Code, JetBrains).</p>
       </div>
     </div>
   </div>
@@ -597,9 +599,10 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p><strong>Agent Teams</strong> = parallelism <em>within</em> a worktree. A lead assigns subtasks to teammates; they share context. Good for a single feature.</p>
-        <p><strong>SET</strong> = parallelism <em>across</em> worktrees. A planner decomposes a full spec into a dependency DAG, dispatches each to its own worktree, manages the merge pipeline. Good for <strong>shipping an entire product</strong>.</p>
+        <p><strong>Agent Teams</strong> = parallelism <em>within</em> one session. A lead assigns subtasks to teammates (3-5 recommended); they share context via task list + mailbox. Each can use its own worktree. Good for a single feature. Still experimental: no session resumption, task status lag, one team per session.</p>
+        <p><strong>SET</strong> = parallelism <em>across</em> sessions, machines, and time. A planner decomposes a full spec into a dependency DAG, dispatches each to its own long-running agent, manages quality gates and the merge pipeline. Good for <strong>shipping an entire product</strong>.</p>
         <p>They're complementary. SET can use Agent Teams inside each worktree while managing cross-change orchestration externally.</p>
+        <p><strong>What Agent Teams does better:</strong> Zero-setup parallelism. No framework installation needed &mdash; one environment variable starts a team. For a quick parallel task within a single feature, Agent Teams is faster to reach for.</p>
       </div>
     </div>
   </div>
@@ -611,15 +614,16 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p>Cursor 3 introduced parallel agents (up to 8) with worktree isolation. That's the <em>execution</em> capability. What it lacks is the <em>orchestration</em>:</p>
+        <p>Cursor introduced Background Agents (BGA): <strong>cloud-hosted VMs</strong> that work autonomously, create branches, and open PRs. No local resources needed &mdash; you can close your laptop.</p>
+        <p>What Cursor lacks vs SET:</p>
         <ul>
-          <li><strong>No spec decomposition</strong> — agents launched from ad-hoc prompts, no dependency ordering</li>
-          <li><strong>No quality gates</strong> — no automated build/test/E2E before merge</li>
-          <li><strong>No merge pipeline</strong> — no conflict resolution, no post-merge verification</li>
-          <li><strong>No supervision</strong> — no sentinel watching for crashes, stalls, budget overruns</li>
-          <li><strong>No persistent state</strong> — no tracking across restarts</li>
+          <li><strong>No spec decomposition</strong> &mdash; agents launched from ad-hoc prompts or issues, no dependency ordering</li>
+          <li><strong>No quality gates before merge</strong> &mdash; agents open PRs and rely on CI. No pre-merge build/test/E2E pipeline.</li>
+          <li><strong>No inter-agent coordination</strong> &mdash; multiple BGAs have no awareness of each other</li>
+          <li><strong>No supervision</strong> &mdash; no sentinel, no crash recovery, no stall detection</li>
+          <li><strong>No persistent orchestration state</strong> &mdash; no tracking across restarts</li>
         </ul>
-        <p>Cursor gives you 8 agents. SET gives you a <em>system</em> that manages those agents toward a verified outcome.</p>
+        <p><strong>What Cursor does better:</strong> Cloud execution (no local resource cost), GitHub-native issue&rarr;PR workflow, lower barrier to entry, and Cursor Rules are simpler than SET's orchestration config.</p>
       </div>
     </div>
   </div>
@@ -631,14 +635,17 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p>Devin is an autonomous worker — one task at a time, sandboxed VM, creates PRs. SET is the orchestration layer that could coordinate <em>many</em> Devins working in parallel:</p>
-        <ul>
-          <li><strong>Devin</strong> handles one task. <strong>SET</strong> decomposes a spec into N tasks, runs them in parallel.</li>
-          <li><strong>Devin</strong> creates a PR. <strong>SET</strong> manages the merge queue with pre-merge quality gates.</li>
-          <li><strong>Devin</strong> has no spec traceability. <strong>SET</strong> traces every task to a WHEN/THEN requirement.</li>
-          <li><strong>Devin</strong> reports ~67% PR merge rate. <strong>SET</strong> MiniShop: 100% merge, zero intervention.</li>
-        </ul>
-        <p>Devin is a worker. SET is the project manager, CI/CD pipeline, and QA team for autonomous workers.</p>
+        <p>Devin is an autonomous AI engineer &mdash; takes a task, works in a sandboxed VM, creates PRs. Can run <strong>multiple concurrent sessions</strong> (each in its own VM), but sessions are independent with <strong>no coordination between them</strong>.</p>
+        <table class="cmp-table">
+          <tr><th></th><th>Devin</th><th>SET</th></tr>
+          <tr><td class="label">Execution</td><td>Cloud VM sandbox</td><td>Local worktrees</td></tr>
+          <tr><td class="label">Parallelism</td><td>Independent sessions (no coordination)</td><td>Coordinated parallel via orchestrator + merge queue</td></tr>
+          <tr><td class="label">Testing</td><td>Runs tests if they exist (ad-hoc)</td><td>Structured gate pipeline (build &rarr; test &rarr; E2E &rarr; review)</td></tr>
+          <tr><td class="label">Integrations</td><td>Excellent Slack/Jira/GitHub</td><td>CLI + web dashboard + MCP</td></tr>
+          <tr><td class="label">Merge</td><td>Opens PR, relies on CI</td><td>Integration gates enforced before merge</td></tr>
+        </table>
+        <p><strong>What Devin does better:</strong> Slack integration is best-in-class &mdash; assign a task from Slack, get a PR back. Cloud VM means zero local setup. The UI for watching agent work is polished. For simple, independent tasks (migrations, CRUD, test writing), Devin is smoother than setting up SET orchestration.</p>
+        <p><strong>What SET does better:</strong> Multi-change coordination, spec traceability, pre-merge quality gates, sentinel supervision, persistent memory, and deterministic merge ordering.</p>
       </div>
     </div>
   </div>
@@ -650,15 +657,21 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p>Kiro is the closest philosophical match: a spec-driven agentic IDE that generates user stories with acceptance criteria, technical design documents, and implementation task lists. It shares SET's belief that <strong>specs matter more than prompts</strong>.</p>
+        <p>Kiro is the closest philosophical match: a spec-driven agentic IDE that generates user stories with acceptance criteria, design documents, and task lists. Built on VS Code, powered by Amazon Bedrock (Claude). It shares SET's belief that <strong>specs matter more than prompts</strong>.</p>
+        <p>Kiro's genuine innovations:</p>
+        <ul>
+          <li><strong>In-IDE spec wizard</strong> &mdash; User Story &rarr; Design Doc &rarr; Task List, guided flow within the IDE. Best-in-class UX for spec generation.</li>
+          <li><strong>File-event hooks</strong> &mdash; automated actions triggered by file save (e.g., schema change triggers type regeneration). Novel concept.</li>
+          <li><strong>Steering files</strong> (<code>.kiro/steering/</code>) &mdash; clean project-level instruction system.</li>
+          <li><strong>Free tier + VS Code familiarity</strong> &mdash; zero barrier to entry.</li>
+        </ul>
         <p>The differences:</p>
         <ul>
-          <li><strong>Kiro</strong> is an IDE. <strong>SET</strong> works with your existing tools (Claude Code, git, your editor).</li>
-          <li><strong>Kiro</strong> is single-agent. <strong>SET</strong> runs parallel agents in isolated worktrees.</li>
-          <li><strong>Kiro</strong> generates specs. <strong>SET</strong> also decomposes them into a DAG, dispatches agents, enforces gates, manages merges, and replans for gaps.</li>
+          <li><strong>Kiro</strong> is single-agent, IDE-bound. <strong>SET</strong> runs parallel agents in isolated worktrees for hours.</li>
+          <li><strong>Kiro</strong> generates specs for one agent. <strong>SET</strong> decomposes specs into a dependency DAG for parallel execution.</li>
           <li><strong>Kiro</strong> has no merge pipeline, sentinel supervision, or crash recovery.</li>
         </ul>
-        <p>Kiro validates the spec-driven approach. SET takes it further with full orchestration infrastructure.</p>
+        <p><strong>What Kiro does better:</strong> Lower barrier to entry &mdash; no CLI setup, just open the IDE. File-event hooks are something SET doesn't have at the IDE level. Spec generation UX is guided and approachable.</p>
       </div>
     </div>
   </div>
@@ -670,29 +683,30 @@
     </div>
     <div class="faq-answer">
       <div class="faq-body">
-        <p>All excellent single-agent tools solving different problems:</p>
+        <p>All excellent single-agent tools &mdash; each with genuine strengths SET lacks:</p>
         <ul>
-          <li><strong>Roo Code</strong> — Multi-mode (Architect/Code/Debug) in one session. No parallel execution or merge pipeline.</li>
-          <li><strong>Aider</strong> — CLI pair programmer with great git integration. Single-agent, no orchestration.</li>
-          <li><strong>Cline</strong> — VS Code extension, every action needs approval. Opposite of autonomous orchestration.</li>
-          <li><strong>Windsurf</strong> — AI IDE with Cascade engine and memory. Single-agent, no parallelism.</li>
+          <li><strong>Roo Code</strong> &mdash; Configurable modes (Architect/Code/Debug/custom), sequential delegation ("Boomerang" pattern). Model-agnostic. <em>Better at:</em> easy custom mode creation, any-LLM support, open source community.</li>
+          <li><strong>Aider</strong> &mdash; CLI pair programmer. <em>Better at:</em> <strong>best-in-class git integration</strong> (auto-commit with meaningful messages, full undo), <strong>any-model support</strong>, repo map (tree-sitter), cost-efficient token usage, edit format innovation.</li>
+          <li><strong>Cline</strong> &mdash; VS Code extension. <em>Better at:</em> <strong>best-in-class MCP marketplace</strong>, full transparency (every tool call visible), any-model support, granular approval workflow.</li>
+          <li><strong>Windsurf</strong> &mdash; AI IDE (acquired by OpenAI ~$3B). Cascade engine had strong within-session context tracking. Current status post-acquisition uncertain.</li>
         </ul>
-        <p>SET is not a better version of these tools — it's a <em>different category</em>. These are the developer's hands. SET is the sprint board, CI pipeline, and release manager.</p>
+        <p>SET is not a better version of these tools &mdash; it's a <em>different category</em>. These are the developer's hands. SET is the sprint board, CI pipeline, and release manager.</p>
       </div>
     </div>
   </div>
 
   <div class="faq-card">
     <div class="faq-question" onclick="toggle(this)">
-      <h3>...OpenHands, Composio, GPT-Engineer?</h3>
+      <h3>...Copilot Coding Agent, OpenHands, Composio?</h3>
       <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
     </div>
     <div class="faq-answer">
       <div class="faq-body">
         <ul>
-          <li><strong>OpenHands</strong> — Agent runtime that scales to thousands. Provides infrastructure, not development workflow. No spec decomposition, no gates, no merge pipeline.</li>
-          <li><strong>Composio</strong> — Architecturally most similar: parallel worktrees + CI fix. But no spec decomposition, no pre-merge gates, no persistent state, no sentinel.</li>
-          <li><strong>GPT-Engineer / Lovable</strong> — App builders for non-developers. Prompt to MVP. Different category entirely.</li>
+          <li><strong>GitHub Copilot Coding Agent</strong> &mdash; Assign a GitHub Issue, Copilot creates a branch, codes, runs CI, self-reviews, opens a PR. Cloud-hosted. <em>Better at:</em> zero-setup for GitHub users, largest distribution, GitHub-native workflow. <em>Lacks:</em> no multi-agent coordination (each agent independent), no spec decomposition, no pre-merge gate pipeline.</li>
+          <li><strong>OpenHands</strong> &mdash; Strongest open-source single-agent runtime. Docker-sandboxed, multi-model, strong SWE-bench results (50%+). Provides agent execution, not orchestration workflow. No parallel coordination, no gates, no merge pipeline.</li>
+          <li><strong>Composio</strong> &mdash; <strong>Correction:</strong> Composio is a <em>tool-integration platform</em> (250+ API integrations for agents), NOT an agent orchestrator. It provides middleware for CrewAI, LangGraph, etc. to call external tools. Different category from SET.</li>
+          <li><strong>GPT-Engineer / Lovable</strong> &mdash; App builders for non-developers. Prompt to MVP. Different category entirely.</li>
         </ul>
       </div>
     </div>
@@ -710,74 +724,79 @@
           <tr>
             <th>Tool</th>
             <th>Parallel Agents</th>
-            <th>Worktree Isolation</th>
-            <th>Structured Specs</th>
-            <th>Quality Gates</th>
+            <th>Isolation</th>
+            <th>Specs</th>
+            <th>Gates</th>
             <th>Merge Pipeline</th>
             <th>Supervisor</th>
+            <th>Cloud</th>
+            <th>Any LLM</th>
           </tr>
           <tr class="highlight-row">
             <td>SET</td>
             <td class="yes">&#10003;</td>
+            <td class="yes">Worktrees</td>
+            <td class="yes">OpenSpec</td>
+            <td class="yes">7 gates</td>
             <td class="yes">&#10003;</td>
-            <td class="yes">&#10003;</td>
-            <td class="yes">&#10003;</td>
-            <td class="yes">&#10003;</td>
-            <td class="yes">&#10003;</td>
+            <td class="yes">Sentinel</td>
+            <td class="no">&mdash;</td>
+            <td class="no">Claude</td>
           </tr>
           <tr>
             <td>Claude Code</td>
             <td class="partial">Experimental</td>
-            <td class="yes">&#10003;</td>
+            <td class="yes">Worktrees</td>
             <td class="no">&mdash;</td>
-            <td class="partial">Hooks</td>
+            <td class="partial">Hooks (DIY)</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">Claude</td>
           </tr>
           <tr>
-            <td>Cursor</td>
-            <td class="yes">&#10003; (8)</td>
-            <td class="yes">&#10003;</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
-          </tr>
-          <tr>
-            <td>Devin</td>
-            <td class="no">Single</td>
-            <td class="partial">Sandbox</td>
+            <td>Cursor BGA</td>
+            <td class="yes">Cloud VMs</td>
+            <td class="yes">Branches</td>
             <td class="no">&mdash;</td>
             <td class="no">Relies on CI</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
+            <td class="yes">&#10003;</td>
+            <td class="partial">Multi</td>
+          </tr>
+          <tr>
+            <td>Devin</td>
+            <td class="partial">Independent</td>
+            <td class="yes">Sandbox VM</td>
+            <td class="no">&mdash;</td>
+            <td class="partial">Ad-hoc tests</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">&#10003;</td>
+            <td class="no">Proprietary</td>
           </tr>
           <tr>
             <td>Kiro</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
-            <td class="yes">&#10003;</td>
+            <td class="yes">In-IDE</td>
+            <td class="partial">File hooks</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
+            <td class="no">Claude</td>
           </tr>
           <tr>
-            <td>Composio</td>
+            <td>Copilot Agent</td>
+            <td class="partial">Independent</td>
+            <td class="yes">Cloud VM</td>
+            <td class="no">&mdash;</td>
+            <td class="partial">CI + self-review</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
             <td class="yes">&#10003;</td>
-            <td class="yes">&#10003;</td>
-            <td class="no">&mdash;</td>
-            <td class="partial">CI fix</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
-          </tr>
-          <tr>
-            <td>OpenHands</td>
-            <td class="yes">&#10003;</td>
-            <td class="partial">Sandbox</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
-            <td class="no">&mdash;</td>
+            <td class="partial">GPT/Claude</td>
           </tr>
           <tr>
             <td>Roo Code</td>
@@ -787,6 +806,8 @@
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">&#10003;</td>
           </tr>
           <tr>
             <td>Aider</td>
@@ -796,17 +817,33 @@
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">&#10003;</td>
           </tr>
           <tr>
-            <td>Windsurf</td>
+            <td>Cline</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
             <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">&#10003;</td>
+          </tr>
+          <tr>
+            <td>OpenHands</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">Docker</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="no">&mdash;</td>
+            <td class="yes">&#10003;</td>
+            <td class="yes">&#10003;</td>
           </tr>
         </table>
+        <p><strong>SET's unique position:</strong> the combination of the left 6 columns. Other tools excel where SET doesn't: <em>cloud execution</em> (Cursor, Devin, Copilot), <em>model flexibility</em> (Aider, Roo, Cline), <em>IDE integration</em> (Kiro, Cursor), <em>zero-setup simplicity</em> (Copilot, Cline).</p>
       </div>
     </div>
   </div>
@@ -1183,6 +1220,37 @@
           <li><strong>Review gate checks</strong> design compliance — token mismatches flagged</li>
         </ol>
         <p>Eliminates the "shadcn defaults everywhere" problem. Agents implement <em>your</em> brand, not a generic component library.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Gaps ══════════ -->
+<div class="section" id="gaps">
+  <div class="section-header">
+    <div class="section-icon red">!</div>
+    <h2 class="section-title">What SET Doesn't Do (Yet)</h2>
+  </div>
+
+  <div class="faq-card open">
+    <div class="faq-question" onclick="toggle(this)">
+      <h3>Honest gaps where competitors are ahead</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <table class="cmp-table">
+          <tr><th>Gap</th><th>Who does it better</th><th>Notes</th></tr>
+          <tr><td class="label">Cloud execution</td><td>Cursor BGA, Devin, Copilot</td><td>SET requires a running local machine. Cloud agents work while you sleep.</td></tr>
+          <tr><td class="label">Model flexibility</td><td>Aider, Roo Code, Cline</td><td>SET is Claude-only. No GPT, Gemini, or local model support.</td></tr>
+          <tr><td class="label">IDE integration</td><td>Kiro, Cursor, Windsurf</td><td>SET is CLI + web dashboard. No VS Code/JetBrains plugin.</td></tr>
+          <tr><td class="label">Zero-setup</td><td>Copilot, Cline, Cursor</td><td>SET requires pip install, project init, config. Others are install-and-go.</td></tr>
+          <tr><td class="label">Issue tracker &rarr; PR</td><td>Copilot Coding Agent</td><td>SET works from specs, not from Jira/Linear/GitHub Issues.</td></tr>
+          <tr><td class="label">Slack trigger</td><td>Devin</td><td>Can't trigger SET from Slack.</td></tr>
+          <tr><td class="label">File-event hooks</td><td>Kiro</td><td>SET hooks are at orchestration level, not IDE file-save events.</td></tr>
+          <tr><td class="label">MCP marketplace</td><td>Cline</td><td>SET has a custom MCP server, not a marketplace for third-party tools.</td></tr>
+        </table>
+        <p>These are conscious trade-offs, not oversights. SET optimizes for <strong>orchestration depth</strong> over integration breadth. Some may become development priorities as the framework matures.</p>
       </div>
     </div>
   </div>
