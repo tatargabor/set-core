@@ -16,7 +16,7 @@ Development teams and technical leaders who already use Claude Code and want to 
 
 ### Is this production-ready?
 
-SET was built with itself over 79 days (1,295 commits, 134K LOC, 720+ hours of continuous autonomous agent runtime). It has completed 30+ full E2E orchestration runs with published benchmarks: the MiniShop benchmark delivers 6/6 changes merged, zero human intervention, in 1h 45m. CraftBrew (15 changes, 150+ files, 28 DB models) completed fully autonomously in ~6h. These are real projects with real tests passing.
+SET was built with itself over 79 days (1,500+ commits, 376 capability specifications, 350+ archived OpenSpec changes, 720+ hours of continuous autonomous agent runtime). It has completed 30+ full E2E orchestration runs with published benchmarks: the MiniShop benchmark delivers 6/6 changes merged, zero human intervention, in 1h 45m. CraftBrew (15 changes, 150+ files, 28 DB models) completed fully autonomously in ~6h. These are real projects with real tests passing.
 
 ---
 
@@ -230,7 +230,7 @@ Different category entirely. Lovable is an app builder for non-developers — pr
 
 | Tool | Parallel Agents | Worktree Isolation | Structured Specs | Quality Gates | Merge Pipeline | Supervisor | Cloud Exec | Multi-Model |
 |---|---|---|---|---|---|---|---|---|
-| **SET** | Yes | Yes | Yes (OpenSpec) | Yes (7 gates) | Yes | Yes (Sentinel) | No (local) | Claude only |
+| **SET** | Yes | Yes | Yes (OpenSpec) | Yes (9 gates) | Yes | Yes (Sentinel) | No (local) | Claude only |
 | Augment Intent | Yes (coordinator) | Yes (Spaces) | Yes (living specs) | Verifier agent | Not documented | No | No | Yes (multi) |
 | Claude Code | Experimental (Teams) | Yes (subagents) | No | Hooks (DIY) | No | No | No | Claude only |
 | Cursor | Yes (local 8 + cloud) | Yes (worktrees + VMs) | No | No (~30% PR merge) | No | No | Yes | Multi-model |
@@ -381,7 +381,7 @@ The autonomous agent cycle running inside each worktree. When dispatched, an age
 2. Creates artifacts if needed (proposal → specs → design → tasks)
 3. Implements each task from `tasks.md`
 4. Marks tasks complete (`- [ ]` → `- [x]`)
-5. Iterates until all tasks done (up to 30 iterations)
+5. Iterates until all tasks done (up to 20 iterations by default)
 
 The monitor tracks progress via `loop-state.json`, detecting stalls (agent doing the same thing repeatedly) and budget limits.
 
@@ -398,11 +398,14 @@ Deterministic quality checks that every change must pass before merging. The key
 | **build** | Code compiles, types check | `tsc --noEmit`, `next build` — exit code 0/1 |
 | **test** | Unit/integration tests pass | `vitest run`, `pytest`, `jest --ci` — exit code 0/1 |
 | **e2e** | Browser tests pass | `playwright test`, `cypress run` — exit code 0/1 |
+| **scope_check** | Files match declared scope | Validates changed files against change scope |
+| **test_files** | Test files present | Ensures test files exist for implemented code |
 | **review** | Code quality, security, patterns | Claude code review — no CRITICAL findings |
-| **smoke** | Post-merge sanity | Custom command (e.g., HTTP health check) |
-| **spec_coverage** | Requirements addressed | All assigned REQ-IDs have corresponding tasks |
+| **rules** | Custom compliance rules | Profile-defined rules (e.g., naming, patterns) |
+| **spec_verify** | Requirements addressed | All assigned REQ-IDs have corresponding tasks |
+| **smoke** | Post-merge sanity | Custom command (e.g., HTTP health check) — runs after merge |
 
-Gates run sequentially (fast gates first for early failure). If a gate fails, the agent receives the error output and retries (up to `max_verify_retries`). No human intervention needed — agents self-heal from test failures, type errors, and build issues.
+9 gates total, all profile-configurable. Gates run sequentially (fast gates first for early failure). If a gate fails, the agent receives the error output and retries (up to 3 retries by default). No human intervention needed — agents self-heal from test failures, type errors, and build issues.
 
 ### How is this different from just running CI after a PR?
 
@@ -438,11 +441,11 @@ Output: detailed report with traceability matrix, issues categorized as CRITICAL
 
 ### How do you measure output quality across runs?
 
-Structural convergence. Run the same spec twice independently and measure how similar the outputs are:
+Structural convergence — measured by the `set-compare` tool. Run the same spec twice independently, compare route coverage, schema equivalence, dependency overlap, and convention compliance:
 
-- **MiniShop**: 83% structural convergence (same routes, schemas, component hierarchy)
-- **Micro-Web**: 87% convergence
-- **Both**: 100% schema equivalence, 100% convention compliance
+- **MiniShop**: 83/100 convergence score (routes, schemas, component hierarchy match)
+- **Range across projects**: 83-87% structural convergence
+- **100% schema equivalence, 100% convention compliance** in all measured runs
 
 Remaining divergence is stylistic (variable naming, CSS order), not structural. The spec + template system produces deterministic architecture even with non-deterministic LLMs.
 
@@ -478,10 +481,10 @@ Claude Code's auto-memory is a notebook. SET's memory is a queryable knowledge b
 
 ### Why does memory matter for orchestration?
 
-Without memory, every agent rediscovers the same conventions, makes the same mistakes, and wastes tokens on the same investigations. Benchmarks show:
+Without memory, every agent rediscovers the same conventions, makes the same mistakes, and wastes tokens on the same investigations. Measured results:
 
-- **-20% token usage** via memory avoiding re-discovery
-- **+34% convention compliance** (agents follow established patterns instead of inventing new ones)
+- **+34% convention compliance** in CraftBazaar benchmark (agents follow established patterns instead of inventing new ones)
+- **Reduced token waste** — memory avoids re-discovery of project conventions, though exact savings vary by run
 - **Zero voluntary saves** across 15+ sessions — agents don't save on their own. The hook infrastructure is essential.
 
 Learnings from failed runs convert to rules, which are enforced in the next run. The system improves with every orchestration.
@@ -626,7 +629,7 @@ The gap between "AI can write code" and "AI can ship software." Writing code is 
 
 Because "build a webshop" produces a different webshop every time. "Build a webshop with these 28 data models, these 12 pages with this layout, these design tokens, these auth rules, these seed data records, and these E2E test scenarios" produces the same webshop every time. The spec is the determinism layer that makes LLM output reproducible.
 
-MiniShop achieves 83% structural convergence across independent runs from the same spec. Without specs, convergence approaches 0%.
+MiniShop achieves 83/100 structural convergence score across independent runs from the same spec (measured by `set-compare`). Without specs, convergence approaches 0%.
 
 ### How is this different from just running CI/CD?
 

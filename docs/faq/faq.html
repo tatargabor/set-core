@@ -485,7 +485,7 @@
   <p class="subtitle">Autonomous multi-agent orchestration for Claude Code. Give it a spec, get merged features. Here's how and why.</p>
   <div class="badge-row">
     <span class="badge green"><span class="dot"></span>30+ E2E runs</span>
-    <span class="badge amber"><span class="dot"></span>134K LOC</span>
+    <span class="badge amber"><span class="dot"></span>376 LOC</span>
     <span class="badge cyan"><span class="dot"></span>720+ agent hours</span>
   </div>
 </div>
@@ -549,8 +549,8 @@
       <div class="faq-body">
         <p>SET was built with itself over 79 days. These are the numbers:</p>
         <div class="metrics">
-          <div class="metric-card"><div class="metric-val">1,295</div><div class="metric-label">Commits</div></div>
-          <div class="metric-card"><div class="metric-val">134K</div><div class="metric-label">Lines of Code</div></div>
+          <div class="metric-card"><div class="metric-val">1,500+</div><div class="metric-label">Commits</div></div>
+          <div class="metric-card"><div class="metric-val">376</div><div class="metric-label">Capability Specs</div></div>
           <div class="metric-card"><div class="metric-val">720+</div><div class="metric-label">Agent Hours</div></div>
           <div class="metric-card"><div class="metric-val">30+</div><div class="metric-label">E2E Runs</div></div>
         </div>
@@ -758,7 +758,7 @@
             <td class="yes">&#10003;</td>
             <td class="yes">Worktrees</td>
             <td class="yes">OpenSpec</td>
-            <td class="yes">7 gates</td>
+            <td class="yes">9 gates</td>
             <td class="yes">&#10003;</td>
             <td class="yes">Sentinel</td>
             <td class="no">&mdash;</td>
@@ -1092,9 +1092,12 @@
           <tr><td class="label">build</td><td>Types check, code compiles</td><td><code>tsc --noEmit</code>, <code>next build</code></td></tr>
           <tr><td class="label">test</td><td>Unit/integration tests</td><td><code>vitest run</code>, <code>pytest</code></td></tr>
           <tr><td class="label">e2e</td><td>Browser tests</td><td><code>playwright test</code></td></tr>
+          <tr><td class="label">scope_check</td><td>Files match scope</td><td>Changed files validated against declared scope</td></tr>
+          <tr><td class="label">test_files</td><td>Tests present</td><td>Test files exist for implemented code</td></tr>
           <tr><td class="label">review</td><td>Code quality, security</td><td>Claude review — no CRITICAL findings</td></tr>
-          <tr><td class="label">smoke</td><td>Post-merge sanity</td><td>Custom command</td></tr>
-          <tr><td class="label">spec_coverage</td><td>Requirements addressed</td><td>All REQ-IDs have tasks</td></tr>
+          <tr><td class="label">rules</td><td>Custom compliance</td><td>Profile-defined rules (naming, patterns)</td></tr>
+          <tr><td class="label">spec_verify</td><td>Requirements addressed</td><td>All REQ-IDs have tasks</td></tr>
+          <tr><td class="label">smoke</td><td>Post-merge sanity</td><td>Custom command (runs after merge)</td></tr>
         </table>
         <p>If a gate fails, the agent receives the error and retries. Self-healing. No human needed.</p>
       </div>
@@ -1131,8 +1134,8 @@
       <div class="faq-body">
         <p><strong>Structural convergence.</strong> Run the same spec twice independently and measure similarity:</p>
         <div class="metrics">
-          <div class="metric-card"><div class="metric-val">83%</div><div class="metric-label">MiniShop convergence</div></div>
-          <div class="metric-card"><div class="metric-val">87%</div><div class="metric-label">Micro-Web convergence</div></div>
+          <div class="metric-card"><div class="metric-val">83/100</div><div class="metric-label">MiniShop convergence</div></div>
+          <div class="metric-card"><div class="metric-val">83-87%</div><div class="metric-label">Range across projects</div></div>
           <div class="metric-card"><div class="metric-val">100%</div><div class="metric-label">Schema equivalence</div></div>
           <div class="metric-card"><div class="metric-val">100%</div><div class="metric-label">Convention compliance</div></div>
         </div>
@@ -1178,8 +1181,7 @@
       <div class="faq-body">
         <p>Without memory, every agent rediscovers conventions, repeats mistakes, wastes tokens.</p>
         <div class="metrics">
-          <div class="metric-card"><div class="metric-val">-20%</div><div class="metric-label">Token usage</div></div>
-          <div class="metric-card"><div class="metric-val">+34%</div><div class="metric-label">Convention compliance</div></div>
+          <div class="metric-card"><div class="metric-val">+34%</div><div class="metric-label">Convention compliance (CraftBazaar)</div></div>
         </div>
         <p>Learnings from failed runs convert to rules, enforced in the next run. <strong>The system improves with every orchestration.</strong></p>
       </div>
@@ -1425,7 +1427,7 @@ curl -X POST http://localhost:7400/api/my-app/sentinel/start \
       <div class="faq-body">
         <p>"Build a webshop" produces a different webshop every time.</p>
         <p>"Build a webshop with these 28 data models, these 12 pages, these design tokens, these auth rules, these seed data records, and these E2E scenarios" produces <strong>the same webshop every time</strong>.</p>
-        <p>The spec is the determinism layer. MiniShop: <strong>83% structural convergence</strong> across independent runs. Without specs, convergence approaches 0%.</p>
+        <p>The spec is the determinism layer. MiniShop: <strong>83/100 structural convergence</strong> score across independent runs (measured by <code>set-compare</code>). Without specs, convergence approaches 0%.</p>
       </div>
     </div>
   </div>
