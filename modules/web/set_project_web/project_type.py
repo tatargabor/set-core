@@ -1256,17 +1256,28 @@ class WebProjectType(CoreProfile):
             root = str(Path(__file__).parent.parent.parent.parent)
         return os.path.join(root, "lib", "design", "bridge.sh")
 
-    def _run_bridge(self, cmd: str, timeout: int = 5) -> str:
-        """Run a bridge.sh function, return stdout or empty string."""
+    def _run_bridge(self, cmd: str, timeout: int = 120) -> str:
+        """Run a bridge.sh function, return stdout or empty string.
+
+        Default timeout 120s — design extraction from large snapshot files
+        can take 10-30s for scope matching + awk parsing.
+        """
         import os
         bridge = self._bridge_path()
         if not os.path.isfile(bridge):
             return ""
-        r = subprocess.run(
-            ["bash", "-c", f'source "{bridge}" 2>/dev/null && {cmd}'],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        return r.stdout.strip() if r.returncode == 0 else ""
+        try:
+            r = subprocess.run(
+                ["bash", "-c", f'source "{bridge}" 2>/dev/null && {cmd}'],
+                capture_output=True, text=True, timeout=timeout,
+            )
+            return r.stdout.strip() if r.returncode == 0 else ""
+        except subprocess.TimeoutExpired:
+            import logging
+            logging.getLogger(__name__).error(
+                "bridge.sh timed out after %ds: %s", timeout, cmd[:100]
+            )
+            return ""
 
     def build_per_change_design(self, change_name: str, scope: str, wt_path: str, snapshot_dir: str) -> bool:
         """Build per-change design.md with tokens + matched design brief pages."""

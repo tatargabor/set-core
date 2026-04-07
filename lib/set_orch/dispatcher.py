@@ -1779,15 +1779,22 @@ def dispatch_change(
             for f in no_modify
         ]
 
-    # Design context (tokens + hierarchy) via profile system — non-fatal
+    # Design context (tokens + hierarchy) via profile system
     try:
         from .profile_loader import load_profile as _load_profile_for_design
         _design_profile = _load_profile_for_design()
         _design_ctx = _design_profile.get_design_dispatch_context(scope, design_snapshot_dir)
         if _design_ctx:
             ctx.design_context = _design_ctx
+            logger.info("Design context injected (%d chars) for %s", len(_design_ctx), change_name)
+        else:
+            logger.warning(
+                "[ANOMALY] Design context EMPTY for %s — agent won't see design tokens/Figma source. "
+                "Check design-system.md, design-snapshot.md, or bridge.sh timeout.",
+                change_name,
+            )
     except Exception:
-        logger.debug("Design context enrichment failed (non-fatal)", exc_info=True)
+        logger.error("Design context enrichment FAILED for %s", change_name, exc_info=True)
 
     # Proactive rule injection (keyword-matched rules from .claude/rules/)
     rule_injection = _build_rule_injection(scope, wt_path)
