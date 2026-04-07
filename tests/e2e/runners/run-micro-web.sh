@@ -212,7 +212,7 @@ ATTRS
     fi
 
     # Deploy shadcn/ui overlay (if scaffold opts in via shadcn/ dir)
-    source "$(dirname "$0")/lib/deploy-shadcn.sh"
+    source "$SCRIPT_DIR/lib/deploy-shadcn.sh"
     deploy_shadcn_overlay "$SCAFFOLD_DIR" "$TEST_DIR"
 
     step "Orchestration config"
