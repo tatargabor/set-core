@@ -305,18 +305,14 @@ def _execute_plan(project_path: Path, plan: RecoveryPlan, state: OrchestratorSta
             else:
                 logger.info("Branch delete skipped (%s): %s", branch, r.stderr.strip())
 
-        # 4. Reset main
-        r = run_git("reset", "--hard", plan.target_commit, cwd=str(project_path))
-        if r.exit_code != 0:
-            raise RecoveryError(f"git reset failed: {r.stderr}")
-        logger.info("Reset main to %s", plan.target_commit[:8])
-
-        # 5. Restore archived changes
-        changes_root = project_path / "openspec" / "changes"
+        # 4. Save archived change dirs to temp BEFORE git reset deletes them
+        import tempfile
+        _archive_temp = Path(tempfile.mkdtemp(prefix="set-recovery-archive-"))
+        _saved_archives: list[tuple[Path, str]] = []  # (temp_path, change_name)
         for archive_dir in plan.archive_dirs_to_restore:
-            # Strip date prefix (e.g., "2026-04-07-1230-admin-products" → "admin-products")
+            if not archive_dir.is_dir():
+                continue
             parts = archive_dir.name.split("-")
-            # Find where the change name starts (after numeric date parts)
             for i, p in enumerate(parts):
                 if not p.isdigit() and not (len(p) == 4 and p.isdigit()):
                     name_start = i
@@ -324,12 +320,29 @@ def _execute_plan(project_path: Path, plan: RecoveryPlan, state: OrchestratorSta
             else:
                 name_start = 0
             change_name = "-".join(parts[name_start:])
+            temp_dest = _archive_temp / change_name
+            shutil.copytree(str(archive_dir), str(temp_dest))
+            _saved_archives.append((temp_dest, change_name))
+            logger.info("Saved archive to temp: %s", change_name)
+
+        # 5. Reset main (this deletes archive dirs from git tree)
+        r = run_git("reset", "--hard", plan.target_commit, cwd=str(project_path))
+        if r.exit_code != 0:
+            shutil.rmtree(str(_archive_temp), ignore_errors=True)
+            raise RecoveryError(f"git reset failed: {r.stderr}")
+        logger.info("Reset main to %s", plan.target_commit[:8])
+
+        # 6. Restore archived changes from temp
+        changes_root = project_path / "openspec" / "changes"
+        changes_root.mkdir(parents=True, exist_ok=True)
+        for temp_path, change_name in _saved_archives:
             dest = changes_root / change_name
             if dest.exists():
                 logger.warning("Change dir already exists, skipping restore: %s", dest)
                 continue
-            shutil.move(str(archive_dir), str(dest))
-            logger.info("Restored archive: %s → %s", archive_dir.name, dest)
+            shutil.move(str(temp_path), str(dest))
+            logger.info("Restored archive: %s → openspec/changes/%s", change_name, change_name)
+        shutil.rmtree(str(_archive_temp), ignore_errors=True)
 
         # 6. Reset state.json
         with locked_state(str(state_file)) as s:
