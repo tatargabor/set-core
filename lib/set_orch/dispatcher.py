@@ -163,6 +163,66 @@ def _build_per_change_design(
     return profile.build_per_change_design(change_name, scope, wt_path, design_snapshot_dir)
 
 
+def _build_resume_preamble(change_name: str, wt_path: str) -> str:
+    """Build context restoration preamble for resume_change.
+
+    Lists files the agent should re-read to refresh design/conventions/tests
+    context that may have been lost from the conversation history during
+    long-running sessions or claude --resume compaction.
+    """
+    file_list = []
+    n = 1
+
+    input_md = f"openspec/changes/{change_name}/input.md"
+    if os.path.isfile(os.path.join(wt_path, input_md)):
+        file_list.append(f"{n}. `{input_md}` — original task scope, requirements, design context")
+        n += 1
+
+    design_md = f"openspec/changes/{change_name}/design.md"
+    if os.path.isfile(os.path.join(wt_path, design_md)):
+        file_list.append(f"{n}. `{design_md}` — design tokens and Figma source code")
+        n += 1
+
+    skeleton_spec = f"tests/e2e/{change_name}.spec.ts"
+    if os.path.isfile(os.path.join(wt_path, skeleton_spec)):
+        file_list.append(
+            f"{n}. `{skeleton_spec}` — test skeleton (fill bodies, do NOT recreate structure)"
+        )
+        n += 1
+
+    rules_dir = os.path.join(wt_path, ".claude", "rules")
+    if os.path.isdir(rules_dir):
+        try:
+            convention_files = sorted(
+                f for f in os.listdir(rules_dir) if f.endswith("-conventions.md")
+            )
+        except OSError:
+            convention_files = []
+        if convention_files:
+            file_list.append(
+                f"{n}. `.claude/rules/{convention_files[0]}` — project conventions (UI library, styling)"
+            )
+
+    if not file_list:
+        return ""
+
+    parts = [
+        "## Context Restoration",
+        "",
+        "Before fixing the issue below, RE-READ these files to refresh your context:",
+        "",
+        *file_list,
+        "",
+        "**Key reminders:**",
+        "- Use EXACT design tokens from design.md — do NOT fall back to shadcn defaults",
+        "- Follow the Figma source code structure for components (sidebar, layout, colors)",
+        "- Keep the test skeleton structure intact — only fill in test bodies",
+        "",
+        "## Fix Required",
+    ]
+    return "\n".join(parts)
+
+
 # Env files to copy from project root to worktree
 ENV_FILES = [".env", ".env.local", ".env.development", ".env.development.local"]
 
@@ -2371,8 +2431,12 @@ def resume_change(
     max_iter: int
 
     if retry_ctx:
-        task_desc = retry_ctx
-        logger.info("resuming %s with retry context (%d chars)", change_name, len(retry_ctx))
+        preamble = _build_resume_preamble(change_name, wt_path)
+        task_desc = (preamble + "\n\n" + retry_ctx) if preamble else retry_ctx
+        logger.info(
+            "resuming %s with retry context (%d chars + %d preamble)",
+            change_name, len(retry_ctx), len(preamble),
+        )
         update_change_field(state_path, change_name, "retry_context", None, event_bus=event_bus)
         update_change_field(state_path, change_name, "current_step", "fixing", event_bus=event_bus)
 
