@@ -2273,6 +2273,11 @@ def dispatch_ready_changes(
 
     running = count_changes_by_status(state, "running")
     running += count_changes_by_status(state, "dispatched")
+    # Changes in retry (e2e/coverage failed, being redispatched) block new dispatches
+    # because they haven't merged yet — new changes would run against stale main
+    running += count_changes_by_status(state, "integration-e2e-failed")
+    running += count_changes_by_status(state, "integration-coverage-failed")
+    running += count_changes_by_status(state, "fixing")
 
     # Topological order from state (not plan — state carries forward after replan)
     order = topological_sort(state.changes)
