@@ -38,6 +38,12 @@ IDLE_THRESHOLD_SECONDS = 60
 _idle_active = False
 
 
+def reset_idle_state() -> None:
+    """Reset the idle detection state. Call between test runs or on restart."""
+    global _idle_active
+    _idle_active = False
+
+
 # ─── Dataclasses ─────────────────────────────────────────────────
 
 

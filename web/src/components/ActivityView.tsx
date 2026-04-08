@@ -102,10 +102,7 @@ function GanttTimeline({ spans, categories, minTime, maxTime, pxPerSecond }: Gan
   }, [spans, categories, minTime, pxPerSecond])
 
   const handleMouseEnter = useCallback((e: React.MouseEvent, span: ActivitySpan) => {
-    const rect = svgRef.current?.getBoundingClientRect()
-    if (rect) {
-      setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, span })
-    }
+    setTooltip({ x: e.clientX, y: e.clientY, span })
   }, [])
 
   const handleMouseLeave = useCallback(() => setTooltip(null), [])
@@ -183,13 +180,13 @@ function GanttTimeline({ spans, categories, minTime, maxTime, pxPerSecond }: Gan
         })}
       </svg>
 
-      {/* Tooltip */}
+      {/* Tooltip — fixed to viewport to avoid scroll/overflow issues */}
       {tooltip && (
         <div
-          className="absolute z-50 bg-neutral-800 border border-neutral-600 rounded px-3 py-2 text-xs font-mono pointer-events-none shadow-lg"
+          className="fixed z-50 bg-neutral-800 border border-neutral-600 rounded px-3 py-2 text-xs font-mono pointer-events-none shadow-lg"
           style={{
-            left: Math.min(tooltip.x + 12, totalWidth - 250),
-            top: tooltip.y - 60,
+            left: tooltip.x + 12,
+            top: Math.max(8, tooltip.y - 60),
           }}
         >
           <div className="text-neutral-200 font-bold">{tooltip.span.category}</div>
@@ -254,6 +251,7 @@ function BreakdownBars({ breakdown }: { breakdown: ActivityBreakdown[] }) {
 export default function ActivityView({ project, isRunning }: Props) {
   const [data, setData] = useState<ActivityTimelineData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<string>('')
   const [pxPerSecond, setPxPerSecond] = useState(0.5)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -265,9 +263,10 @@ export default function ActivityView({ project, isRunning }: Props) {
     getActivityTimeline(project)
       .then((d) => {
         setData(d)
+        setError(null)
         setLastRefresh(new Date().toLocaleTimeString('en-GB'))
       })
-      .catch(() => {})
+      .catch((e) => setError(e?.message || 'Failed to load activity data'))
       .finally(() => setLoading(false))
   }, [project])
 
@@ -328,6 +327,13 @@ export default function ActivityView({ project, isRunning }: Props) {
 
   return (
     <div className="p-3 space-y-4 font-mono text-xs">
+      {/* Error state */}
+      {error && (
+        <div className="text-red-400 bg-red-950/30 border border-red-900 rounded px-3 py-2">
+          {error}
+        </div>
+      )}
+
       {/* Summary header */}
       {data && (
         <div className="flex items-center gap-6 text-neutral-300 border-b border-neutral-800 pb-2">

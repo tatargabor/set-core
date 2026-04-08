@@ -120,12 +120,12 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
 
         # ── Gate spans ──
         if etype == "GATE_START":
-            gate = data.get("gate", "unknown")
+            gate = data.get("gate", "unknown").replace("_", "-")
             key = (change, gate)
             open_gates[key] = {"start": ts, "change": change, "gate": gate}
 
         elif etype == "GATE_PASS":
-            gate = data.get("gate", "unknown")
+            gate = data.get("gate", "unknown").replace("_", "-")
             key = (change, gate)
             if key in open_gates:
                 start_ev = open_gates.pop(key)
@@ -140,13 +140,13 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                 })
 
         elif etype == "VERIFY_GATE":
-            gate = data.get("gate", "unknown")
+            # VERIFY_GATE from verifier.py uses "stop_gate" not "gate"
+            gate = (data.get("gate") or data.get("stop_gate", "unknown")).replace("_", "-")
             result = data.get("result", "unknown")
             key = (change, gate)
             if key in open_gates:
                 start_ev = open_gates.pop(key)
                 cat = f"gate:{gate}"
-                # Count retries for this gate
                 retry = sum(1 for s in spans if s["category"] == cat and s["change"] == change)
                 spans.append({
                     "category": cat,
@@ -154,9 +154,26 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                     "start": start_ev["start"],
                     "end": ts,
                     "duration_ms": _ts_diff_ms(start_ev["start"], ts),
-                    "result": "fail" if result in ("fail", "critical") else result,
+                    "result": "fail" if result in ("fail", "failed", "critical") else result,
                     "retry": retry,
                 })
+            else:
+                # No matching GATE_START (verifier.py doesn't emit them) —
+                # create a point span from per-gate timing if available
+                gate_ms_key = f"gate_{gate}_ms"
+                duration = data.get(gate_ms_key, 0) or data.get("elapsed_ms", 0)
+                if gate != "unknown":
+                    cat = f"gate:{gate}"
+                    retry = sum(1 for s in spans if s["category"] == cat and s["change"] == change)
+                    spans.append({
+                        "category": cat,
+                        "change": change,
+                        "start": ts,
+                        "end": ts,
+                        "duration_ms": int(duration) if duration else 0,
+                        "result": "fail" if result in ("fail", "failed", "critical") else result,
+                        "retry": retry,
+                    })
 
         # ── Step spans (implementing, planning, fixing) ──
         elif etype == "STEP_TRANSITION":
@@ -329,6 +346,37 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                 "duration_ms": _ts_diff_ms(start_ev["start"], end_ts),
                 "open": True,
             })
+        # Flush unclosed gate spans
+        for (change, gate), start_ev in open_gates.items():
+            spans.append({
+                "category": f"gate:{gate}",
+                "change": change,
+                "start": start_ev["start"],
+                "end": end_ts,
+                "duration_ms": _ts_diff_ms(start_ev["start"], end_ts),
+                "open": True,
+            })
+        # Flush unclosed merge spans
+        for change, start_ev in open_merges.items():
+            spans.append({
+                "category": "merge",
+                "change": change,
+                "start": start_ev["start"],
+                "end": end_ts,
+                "duration_ms": _ts_diff_ms(start_ev["start"], end_ts),
+                "open": True,
+            })
+        # Flush unclosed stall-recovery spans
+        for key, start_ev in open_stall.items():
+            change = key if not key.startswith("conflict:") and key != "__sentinel__" else ""
+            spans.append({
+                "category": "stall-recovery",
+                "change": change,
+                "start": start_ev["start"],
+                "end": end_ts,
+                "duration_ms": _ts_diff_ms(start_ev["start"], end_ts),
+                "open": True,
+            })
 
     # Detect idle gaps from event gaps (>60s with no events for any change)
     _detect_idle_gaps(events, spans, from_ts, to_ts)
@@ -362,24 +410,43 @@ def _detect_idle_gaps(
     if len(activity_events) < 2:
         return
 
-    # Check if we already have explicit idle spans — skip gap detection if so
-    has_explicit_idle = any(s["category"] == "idle" for s in spans)
-    if has_explicit_idle:
-        return
+    # Build a list of covered time ranges from existing spans to avoid double-counting
+    existing_ranges: list[tuple[int, int]] = []
+    for s in spans:
+        if s.get("start") and s.get("end"):
+            try:
+                s_start = int(datetime.fromisoformat(s["start"].replace("Z", "+00:00")).timestamp() * 1000)
+                s_end = int(datetime.fromisoformat(s["end"].replace("Z", "+00:00")).timestamp() * 1000)
+                existing_ranges.append((s_start, s_end))
+            except (ValueError, AttributeError):
+                pass
+
+    def _is_covered(gap_start_ms: int, gap_end_ms: int) -> bool:
+        """Check if a gap is already covered by existing spans."""
+        for rs, re in existing_ranges:
+            if rs <= gap_start_ms and re >= gap_end_ms:
+                return True
+        return False
 
     for i in range(len(activity_events) - 1):
         ts1 = activity_events[i].get("ts", "")
         ts2 = activity_events[i + 1].get("ts", "")
         gap_ms = _ts_diff_ms(ts1, ts2)
         if gap_ms > idle_threshold * 1000:
-            spans.append({
-                "category": "idle",
-                "change": "",
-                "start": ts1,
-                "end": ts2,
-                "duration_ms": gap_ms,
-                "detail": {"source": "gap-detection"},
-            })
+            try:
+                g_start = int(datetime.fromisoformat(ts1.replace("Z", "+00:00")).timestamp() * 1000)
+                g_end = int(datetime.fromisoformat(ts2.replace("Z", "+00:00")).timestamp() * 1000)
+            except (ValueError, AttributeError):
+                continue
+            if not _is_covered(g_start, g_end):
+                spans.append({
+                    "category": "idle",
+                    "change": "",
+                    "start": ts1,
+                    "end": ts2,
+                    "duration_ms": gap_ms,
+                    "detail": {"source": "gap-detection"},
+                })
 
 
 def _clip_spans(spans: list[dict], from_ts: str | None, to_ts: str | None) -> list[dict]:

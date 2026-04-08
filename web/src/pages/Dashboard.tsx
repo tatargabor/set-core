@@ -377,7 +377,7 @@ export default function Dashboard({ project, initialTab }: Props) {
         {/* Activity tab — time-based activity timeline */}
         {activeTab === 'activity' && (
           <div className="h-full overflow-auto">
-            <ActivityView project={project} isRunning={state?.status !== 'done'} />
+            <ActivityView project={project} isRunning={!!state && state.status !== 'done'} />
           </div>
         )}
 
