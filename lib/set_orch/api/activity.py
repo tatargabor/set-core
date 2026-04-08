@@ -159,10 +159,10 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                 })
             else:
                 # No matching GATE_START (verifier.py doesn't emit them) —
-                # create a point span from per-gate timing if available
+                # create a span only if we have actual timing data
                 gate_ms_key = f"gate_{gate}_ms"
                 duration = data.get(gate_ms_key, 0) or data.get("elapsed_ms", 0)
-                if gate != "unknown":
+                if gate != "unknown" and duration:
                     cat = f"gate:{gate}"
                     retry = sum(1 for s in spans if s["category"] == cat and s["change"] == change)
                     spans.append({
@@ -170,7 +170,7 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                         "change": change,
                         "start": ts,
                         "end": ts,
-                        "duration_ms": int(duration) if duration else 0,
+                        "duration_ms": int(duration),
                         "result": "fail" if result in ("fail", "failed", "critical") else result,
                         "retry": retry,
                     })
