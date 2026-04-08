@@ -127,4 +127,3 @@ Use exact values from `docs/design-system.md` — do NOT use framework defaults.
 - **Catalog**: see design-system.md § Page Layouts
 - **Stories**: Uses: figma
 - **Search**: see design-system.md § Page Layouts
-

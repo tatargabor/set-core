@@ -210,8 +210,75 @@ STEP 3 - Megerősítés
 
 ## Page: Login
 
-- h2: "Bejelentkezés"
-  - Layout: gap-2
+- Centered white card (max 420px) on cream background
+- CraftBrew logo at top
+- Title: "Bejelentkezés" — h2 Playfair Display
+- Email input with label
+- Password input with label + show/hide toggle
+- "Emlékezz rám" checkbox
+- "Bejelentkezés" button — full-width, #78350F filled
+- "Elfelejtett jelszó?" link — #D97706
+- Divider: "Nincs még fiókod?"
+- "Regisztráció" link/button — outlined
+
+- Same centered card style
+- Title: "Regisztráció"
+- Inputs: Teljes név, Email, Jelszó (min 8 chars helper text), Jelszó megerősítése
+- Language preference: HU/EN radio
+- Checkbox: "Elfogadom az ÁSZF-et és az Adatvédelmi szabályzatot" — with underlined links
+- "Regisztráció" button — full-width
+- "Van már fiókod? Bejelentkezés" link
+PASSWORD RESET — REQUEST:
+- Title: "Elfelejtett jelszó"
+- Email input
+- "Új jelszó kérése" button
+- Success state: "Emailt küldtünk a megadott címre."
+PASSWORD RESET — NEW PASSWORD:
+- Title: "Új jelszó megadása"
+- New password + Confirm password
+- "Jelszó mentése" button
+ERROR STATES: Red border on inputs, error text below in #DC2626. "Érvénytelen email vagy jelszó" (non-specific).
+MOBILE: Card becomes full-width with padding, same vertical layout.
+```
+---
+## 17. PROMO BANNER & SPECIAL STATES
+```
+Design special UI states for "CraftBrew". 1280px desktop + 375px mobile.
+
+- Centered white card (max 420px) on cream background
+- CraftBrew logo at top
+- Title: "Bejelentkezés" — h2 Playfair Display
+- Email input with label
+- Password input with label + show/hide toggle
+- "Emlékezz rám" checkbox
+- "Bejelentkezés" button — full-width, #78350F filled
+- "Elfelejtett jelszó?" link — #D97706
+- Divider: "Nincs még fiókod?"
+- "Regisztráció" link/button — outlined
+
+- Same centered card style
+- Title: "Regisztráció"
+- Inputs: Teljes név, Email, Jelszó (min 8 chars helper text), Jelszó megerősítése
+- Language preference: HU/EN radio
+- Checkbox: "Elfogadom az ÁSZF-et és az Adatvédelmi szabályzatot" — with underlined links
+- "Regisztráció" button — full-width
+- "Van már fiókod? Bejelentkezés" link
+PASSWORD RESET — REQUEST:
+- Title: "Elfelejtett jelszó"
+- Email input
+- "Új jelszó kérése" button
+- Success state: "Emailt küldtünk a megadott címre."
+PASSWORD RESET — NEW PASSWORD:
+- Title: "Új jelszó megadása"
+- New password + Confirm password
+- "Jelszó mentése" button
+ERROR STATES: Red border on inputs, error text below in #DC2626. "Érvénytelen email vagy jelszó" (non-specific).
+MOBILE: Card becomes full-width with padding, same vertical layout.
+```
+---
+## 17. PROMO BANNER & SPECIAL STATES
+```
+Design special UI states for "CraftBrew". 1280px desktop + 375px mobile.
 
 ## Page: Register
 
@@ -260,30 +327,29 @@ STEP 3 - Megerősítés
 
 ## Page: SubscriptionWizard
 
-**Progress Bar**
+- Two-column layout: Left = illustration/photo of coffee delivery, Right = text
+- Title: "Friss kávé minden reggel" — h2
+- Body: "Napi szállítás Budapesten, 15% kedvezménnyel. Válaszd ki a kedvenc kávédat, mi visszük."
+- CTA: "Előfizetés részletei →" — outlined button
 
-**Step 1: Choose Coffee**
-  - h2: "Válaszd ki a kávédat"
-  - Layout: grid-cols-1 grid-cols-2 grid-cols-4 gap-6
+- Active status badge (green)
+- Coffee: "Ethiopia Yirgacheffe — Szemes, 500g"
+- Frequency: "Naponta, Reggel (6-9)"
+- Next delivery: "2026-03-13 (holnap)"
+- Price: "3 978 Ft/szállítás (15% kedvezmény)"
+- Action buttons: "Módosítás" | "Szüneteltetés" | "Kihagyás" | "Lemondás"
 
-**Step 2: Size**
-  - h2: "Forma és méret"
-  - Layout: gap-4
+- Two-column layout: Left = illustration/photo of coffee delivery, Right = text
+- Title: "Friss kávé minden reggel" — h2
+- Body: "Napi szállítás Budapesten, 15% kedvezménnyel. Válaszd ki a kedvenc kávédat, mi visszük."
+- CTA: "Előfizetés részletei →" — outlined button
 
-**Step 3: Frequency**
-  - h2: "Gyakoriság"
-  - Layout: grid-cols-1 grid-cols-2 gap-4
-  - Layout: gap-4
-
-**Step 4: Delivery Details**
-  - h2: "Kiszállítás"
-  - Layout: gap-3
-  - Layout: gap-4
-
-**Step 5: Summary**
-  - h2: "Összegzés"
-  - h3: "Kiválasztott kávé"
-  - h3: "Szállítás részletei"
+- Active status badge (green)
+- Coffee: "Ethiopia Yirgacheffe — Szemes, 500g"
+- Frequency: "Naponta, Reggel (6-9)"
+- Next delivery: "2026-03-13 (holnap)"
+- Price: "3 978 Ft/szállítás (15% kedvezmény)"
+- Action buttons: "Módosítás" | "Szüneteltetés" | "Kihagyás" | "Lemondás"
 
 ## Page: UserDashboard
 
@@ -327,200 +393,246 @@ STEP 3 - Megerősítés
 
 ## Page: AdminProducts
 
-- h1: "Termékek"
-
-**Filters**
-  - Layout: gap-4
-
-**DataTable**
-  - Layout: gap-2
-
-**Product Editor Modal**
-
-**Tabs**
-  - Layout: gap-6
-
-**Basic Tab**
-  - Layout: grid-cols-2 gap-4
-  - Layout: grid-cols-2 gap-4
-  - Layout: gap-2
-
-**Coffee Tab**
-  - Layout: grid-cols-3 gap-4
-
-**Variants Tab**
-  - h3: "Variánsok"
-
-**SEO Tab**
-
-**Cross-sell Tab**
-  - Layout: gap-3
+- Title "Termékek", filters row (Category dropdown, Status,
+Search), "+ Új termék" button #78350F
+- DataTable: 40px thumbnail | Név | Kategória | Alapár | Készlet
+| Státusz badge (Aktív green / Inaktív gray) | Szerkesztés |
+Törlés
+- Product editor with 5 tabs: Alap (Name HU/EN side-by-side,
+Description HU/EN textarea tabs, Category dropdown, Base price
+HUF, Image URLs, Active toggle), Kávé (Origin/Roast/Processing
+dropdowns, Flavor tags input), Variánsok (SKU DataTable: Options,
+Price modifier, Stock, Active, inline edit), SEO (Slug
+auto-generated, Meta title/description HU/EN with 160 char
+counter), Keresztértékesítés (recommended products multi-select
+max 3)
+- Bundle editor variant: component product list with quantities,
+calculated "Külön ár" vs "Csomag ár", auto savings badge
+"Megtakarítás: 20%"
 
 ## Page: AdminOrders
 
-- h1: "Rendelések"
-
-**Filters**
-  - Layout: gap-4
-
-**DataTable**
-
-**Order Detail Slide-in Panel**
-
-**Customer Info**
-  - h3: "Vásárló"
-
-**Line Items**
-  - h3: "Termékek"
-  - Layout: gap-4
-  - Layout: gap-4
-
-**Price Breakdown**
-
-**Stripe Payment ID**
-
-**Status Flow Buttons**
-  - h3: "Állapot módosítása"
-  - Layout: gap-2
-
-**Status Timeline**
-  - h3: "Állapot történet"
-  - Layout: gap-3
-  - Layout: gap-3
-
-**Cancel Button**
+- Filters: Status dropdown, Date range picker, Search by order #
+or customer
+- DataTable: #Szám | Vásárló | Dátum | Összeg | Állapot badge |
+Részletek
+- Status badges: Új (blue #3B82F6), Feldolgozás (yellow #EAB308),
+Csomagolva (orange #F97316), Szállítás (purple #A855F7),
+Kézbesítve (green #16A34A), Lemondva (red #DC2626)
+- Order detail slide-in panel: customer info, line items with
+thumbnails, coupon/gift card/shipping/total breakdown, Stripe
+Payment ID in JetBrains Mono, status flow buttons ("Feldolgozás"
+→ "Csomagolva" → "Szállítás" → "Kézbesítve"), "Lemondás" red
+danger button with confirmation, vertical status timeline with
+timestamps
 
 ## Page: AdminDeliveries
 
-- h1: "Szállítás"
-  - Layout: gap-3
+- Date picker at top (defaults to today)
+- Grouped by time window:
+- Section "Reggel (6:00-9:00)" — 5 delivery
+- Section "Délelőtt (9:00-12:00)" — 3 delivery
+- Section "Délután (14:00-17:00)" — 2 delivery
+- Each row: Time, Customer name, Address (short), Product+Variant, Status checkbox (✓ Kézbesítve)
+- Summary bar: "Összesen: 10 szállítás | Előfizetés: 7 | Egyszeri: 3 | Budapest: 8 | +20km: 2"
+- "Mind kézbesítve" bulk button
+```
+---
+## 14. ADMIN — COUPONS, PROMO DAYS, GIFT CARDS, REVIEWS
+```
+Design 4 admin management pages for "CraftBrew". 1280px desktop.
 
-**Summary Bar**
-  - Layout: gap-6
+- Date picker at top (defaults to today)
+- Grouped by time window:
+- Section "Reggel (6:00-9:00)" — 5 delivery
+- Section "Délelőtt (9:00-12:00)" — 3 delivery
+- Section "Délután (14:00-17:00)" — 2 delivery
+- Each row: Time, Customer name, Address (short), Product+Variant, Status checkbox (✓ Kézbesítve)
+- Summary bar: "Összesen: 10 szállítás | Előfizetés: 7 | Egyszeri: 3 | Budapest: 8 | +20km: 2"
+- "Mind kézbesítve" bulk button
+```
+---
+## 14. ADMIN — COUPONS, PROMO DAYS, GIFT CARDS, REVIEWS
+```
+Design 4 admin management pages for "CraftBrew". 1280px desktop.
 
-**Morning Section**
-  - Layout: gap-2
-
-**Forenoon Section**
-  - Layout: gap-2
-
-**Afternoon Section**
-  - Layout: gap-2
+- Title "Szállítás", date picker at top (defaults today)
+- Sections grouped by time window: "Reggel (6:00-9:00)" — 5
+items, "Délelőtt (9:00-12:00)" — 3 items, "Délután (14:00-17:00)"
+— 2 items
+- Each row: Time, Customer name, Address, Product+Variant, Status
+checkbox ✓ Kézbesítve
+- Summary bar: "Összesen: 10 | Előfizetés: 7 | Egyszeri: 3 |
+Budapest: 8 | +20km: 2"
+- "Mind kézbesítve" bulk action button
 
 ## Page: AdminCoupons
 
-- h1: "Kuponok"
+- Input field: "Kuponkód" placeholder
+- "Beváltás" button next to it
+- Applied state: Green badge "ELSO10 — 10% kedvezmény" with X to remove
 
-**DataTable**
+- DataTable: Kód | Típus (%) | Érték | Kategória | Lejárat | Felhasználás/Max | Aktív
+- Create/Edit modal: Code (uppercase), Type dropdown (% / fixed Ft), Value, Min order amount, Max uses, Category filter (multi-select or "All"), First order only checkbox, Expiry date picker, Active toggle
+- Seeded examples: ELSO10 (10%, first order), NYAR2026 (15%, 500 uses, expires 2026-08-31), BUNDLE20 (20%, bundles only)
 
-**Create/Edit Modal**
-  - h2: "Új kupon"
-  - Layout: grid-cols-2 gap-4
-  - Layout: grid-cols-2 gap-4
-  - Layout: gap-2
-  - Layout: gap-2
-  - Layout: gap-3
+- Input field: "Kuponkód" placeholder
+- "Beváltás" button next to it
+- Applied state: Green badge "ELSO10 — 10% kedvezmény" with X to remove
+
+- DataTable: Kód | Típus (%) | Érték | Kategória | Lejárat | Felhasználás/Max | Aktív
+- Create/Edit modal: Code (uppercase), Type dropdown (% / fixed Ft), Value, Min order amount, Max uses, Category filter (multi-select or "All"), First order only checkbox, Expiry date picker, Active toggle
+- Seeded examples: ELSO10 (10%, first order), NYAR2026 (15%, 500 uses, expires 2026-08-31), BUNDLE20 (20%, bundles only)
+
+- DataTable: Kód | Típus (%) | Érték | Kategória | Lejárat |
+Felhasználás/Max | Aktív toggle
+- Create/Edit modal: Code uppercase, Type dropdown (% / fixed
+Ft), Value, Min order, Max uses, Category filter multi-select,
+First order only checkbox, Expiry date, Active toggle
+- Show seeded data: ELSO10 (10%, first order), NYAR2026 (15%, 500
+uses, 2026-08-31), BUNDLE20 (20%, bundles only)
 
 ## Page: AdminPromoDays
 
-- h1: "Promóciós napok"
-  - h2: "Új promóciós nap"
-  - Layout: grid-cols-2 gap-4
-  - Layout: grid-cols-2 gap-4
-  - Layout: gap-2
-  - Layout: gap-3
+- DataTable: Név | Dátum | Kedvezmény | Email elküldve | Aktív
+- Create/Edit: Name HU/EN, Date picker, Discount %, Banner text HU/EN (max 200 chars with counter), Active toggle
+- Seeded: "Bolt születésnap" (03-15, 20%), "Kávé Világnapja" (10-01, 15%)
+
+- Full-width bar, background #D97706 (gold)
+- Text: "🎉 A CraftBrew 1 éves! 20% kedvezmény mindenből!" — white, Inter semibold
+- Dismissible X button on right
+- Mobile: Text wraps, smaller font, X still accessible
+404 ERROR PAGE:
+- Centered layout on cream background
+- Large coffee cup illustration/icon (empty cup)
+- Title: "Hoppá! Ez az oldal nem található" — h1
+- Body: "A keresett oldal nem létezik vagy átköltözött."
+- "Vissza a főoldalra" button — #78350F
+500 ERROR PAGE:
+- Same style
+- Title: "Valami hiba történt" — h1
+- Body: "Próbáld újra később, vagy lépj kapcsolatba velünk."
+- "Főoldal" button + "hello@craftbrew.hu" link
+
+- DataTable: Név | Dátum | Kedvezmény | Email elküldve | Aktív
+- Create/Edit: Name HU/EN, Date picker, Discount %, Banner text HU/EN (max 200 chars with counter), Active toggle
+- Seeded: "Bolt születésnap" (03-15, 20%), "Kávé Világnapja" (10-01, 15%)
+
+- Full-width bar, background #D97706 (gold)
+- Text: "🎉 A CraftBrew 1 éves! 20% kedvezmény mindenből!" — white, Inter semibold
+- Dismissible X button on right
+- Mobile: Text wraps, smaller font, X still accessible
+404 ERROR PAGE:
+- Centered layout on cream background
+- Large coffee cup illustration/icon (empty cup)
+- Title: "Hoppá! Ez az oldal nem található" — h1
+- Body: "A keresett oldal nem létezik vagy átköltözött."
+- "Vissza a főoldalra" button — #78350F
+500 ERROR PAGE:
+- Same style
+- Title: "Valami hiba történt" — h1
+- Body: "Próbáld újra később, vagy lépj kapcsolatba velünk."
+- "Főoldal" button + "hello@craftbrew.hu" link
+
+- DataTable: Név | Dátum | Kedvezmény % | Email elküldve | Aktív
+- Create/Edit: Name HU/EN, Date picker, Discount %, Banner text
+HU/EN (200 char counter), Active toggle
+- Seeded: "Bolt születésnap" (03-15, 20%), "Kávé Világnapja"
+(10-01, 15%)
 
 ## Page: AdminReviews
 
-- h1: "Értékelések"
-
-**Filters**
-  - Layout: gap-4
-
-**DataTable**
-  - Layout: gap-1
-
-**Review Content**
-  - Layout: gap-1
-  - Layout: gap-4
-
-**Action Buttons**
-  - Layout: gap-3
-
-**Reply Section**
-
-**Example Reply Display**
+- DataTable: ★ stars | Termék | Felhasználó | Cím (truncated) |
+Státusz (Új blue / Elfogadva green / Elutasítva red) | Dátum
+- Filters: Status dropdown, Min stars, Product dropdown
+- Expand card: full review (stars, title, text), user info,
+product link
+- Action buttons: "Elfogadás" green, "Elutasítás" red
+- Reply textarea (500 char), "Válasz küldése" button
+- Display: "CraftBrew válaszolt:" indented below review
 
 ## Page: AdminGiftCards
 
-- h1: "Ajándékkártyák"
+- Input field: "Ajándékkártya kód" placeholder
+- "Beváltás" button
+- Applied state: "GC-XXXX-XXXX — Egyenleg: 15 000 Ft, Levonva: 5 000 Ft"
 
-**Tab Filters**
-  - Layout: gap-4
+- DataTable: Kód | Eredeti összeg | Egyenleg | Vásárló | Címzett | Lejárat | Státusz (Active/Expired/Depleted)
+- Filters: Has balance / Depleted / Expired tabs
+- Detail modal: Card info, Transaction log table (Date | Type: PURCHASE/REDEMPTION | Amount | User | Balance after)
+- Format: GC-XXXX-XXXX in mono font
 
-**DataTable**
+- Input field: "Ajándékkártya kód" placeholder
+- "Beváltás" button
+- Applied state: "GC-XXXX-XXXX — Egyenleg: 15 000 Ft, Levonva: 5 000 Ft"
+
+- DataTable: Kód | Eredeti összeg | Egyenleg | Vásárló | Címzett | Lejárat | Státusz (Active/Expired/Depleted)
+- Filters: Has balance / Depleted / Expired tabs
+- Detail modal: Card info, Transaction log table (Date | Type: PURCHASE/REDEMPTION | Amount | User | Balance after)
+- Format: GC-XXXX-XXXX in mono font
+
+- DataTable: Kód (GC-XXXX-XXXX in JetBrains Mono) | Eredeti
+összeg | Egyenleg | Vásárló | Lejárat | Státusz
+(Active/Expired/Depleted)
+- Tab filters: Has balance / Depleted / Expired
+- Detail modal: card info + transaction log table (Date | Type
+PURCHASE/REDEMPTION | Amount | User | Balance after)
 
 ## Page: AdminStories
 
-- h1: "Sztorik"
-
-**DataTable**
-
-**Story Editor Modal**
-  - h2: "Új sztori"
-
-**Language Tabs**
-  - Layout: gap-4
-  - Layout: grid-cols-2 gap-4
-  - Layout: grid-cols-2 gap-4
-  - Layout: grid-cols-2 gap-4
-  - Layout: gap-4
-  - Layout: gap-2
-  - Layout: gap-2
-  - Layout: gap-3
+- Story list DataTable: Cím | Kategória | Státusz (Vázlat gray /
+Publikált green) | Dátum | Szerkesztés
+- "+ Új sztori" button
+- Editor: HU/EN tabs for content, Title HU/EN, Category dropdown,
+Slug auto, Content HU/EN large textarea, Cover image URL,
+Author, Related products multi-select (max 4), SEO meta HU/EN,
+Status radio (Draft/Published), Publication date picker, "Mentés"
++ "Előnézet" buttons
 
 ## Page: AdminSubscriptions
 
-- h1: "Előfizetések"
-  - Layout: gap-2
+- DataTable: Vásárló | Kávé | Gyakoriság | Következő szállítás |
+Státusz badge (Aktív green / Szüneteltetve yellow / Lemondva red)
+- Actions: Szüneteltetés, Módosítás, Lemondás on behalf of
+customer
 
 ## Page: UserProfile
 
-- Layout: gap-8
-
-**Sidebar - Desktop**
-  - h3: "Nagy Petra"
-  - Layout: gap-3
-
-**Mobile Menu Tabs**
-  - Layout: gap-2
-  - Layout: gap-2
-
-**Main Content**
-  - h1: "Adataim"
-  - Layout: gap-4
-  - Layout: gap-2
-  - Layout: gap-2
-
-**Password Change Section**
-  - h2: "Jelszó módosítása"
+- Left sidebar 240px: photo placeholder, user name, menu (Adataim
+active, Címeim, Rendeléseim, Előfizetéseim, Kedvenceim)
+- Form: Name input, Email input (read-only with lock icon),
+Language toggle HU/EN
+- "Mentés" button
+- Password change section: Old password, New password, Confirm,
+"Módosítás" button
+- Mobile: sidebar becomes horizontal scrollable tabs
 
 ## Page: UserAddresses
 
-- Layout: gap-8
+- Address cards: Label "Otthom", Name, Full address, Phone, Zone
+badge ("Budapest" #D97706), Default star icon
+- Actions: "Szerkesztés" | "Törlés" | "Alapértelmezett"
+- "+ Új cím" button at top
+- Add/Edit form: Label, Name, Postal code (auto zone detect
+badge), City, Street, Phone
 
-**Sidebar**
-  - h3: "Nagy Petra"
-  - Layout: gap-3
+## Design Reference
 
-**Main Content**
-  - h1: "Címeim"
+Use exact values from `docs/design-system.md` — do NOT use framework defaults.
 
-**Address Cards**
-  - Layout: gap-4 grid-cols-2
-  - Layout: gap-2
+**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
+**Fonts**: Playfair Display, Inter, JetBrains Mono
 
-**Add/Edit Modal**
-  - h2: "Új cím hozzáadása"
-  - Layout: grid-cols-2 gap-4
-  - Layout: gap-3
+**Matched pages:**
+- **Homepage**: see design-system.md § Page Layouts
+- **Catalog**: see design-system.md § Page Layouts
+- **Product Detail**: see design-system.md § Page Layouts
+- **Cart**: Uses: Button, figma
+- **Checkout**: Uses: Button
+- **Admin**: see design-system.md § Page Layouts
+- **Auth**: see design-system.md § Page Layouts
+- **Subscription**: see design-system.md § Page Layouts
+- **Stories**: Uses: figma
+- **Profile**: see design-system.md § Page Layouts
+- **Search**: see design-system.md § Page Layouts
+

@@ -72,4 +72,3 @@ Use exact values from `docs/design-system.md` — do NOT use framework defaults.
 - **Homepage**: see design-system.md § Page Layouts
 - **Catalog**: see design-system.md § Page Layouts
 - **Search**: see design-system.md § Page Layouts
-

@@ -73,4 +73,3 @@ Use exact values from `docs/design-system.md` — do NOT use framework defaults.
 - **Catalog**: see design-system.md § Page Layouts
 - **Checkout**: Uses: Button
 - **Admin**: see design-system.md § Page Layouts
-

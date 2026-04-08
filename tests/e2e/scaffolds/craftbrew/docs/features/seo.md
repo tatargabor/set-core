@@ -97,4 +97,3 @@ Use exact values from `docs/design-system.md` — do NOT use framework defaults.
 - **Subscription**: see design-system.md § Page Layouts
 - **Stories**: Uses: figma
 - **Profile**: see design-system.md § Page Layouts
-

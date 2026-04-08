@@ -201,35 +201,50 @@ class MakeParser(DesignParser):
             with open(chat_path, encoding="utf-8") as f:
                 chat = json.load(f)
 
-            # Extract write_tool calls
+            # Extract write_tool calls + read tool results (pasted text imports)
             writes: dict[str, str] = {}  # path -> content
             unsplash_queries: list[str] = []
+            pasted_texts: list[str] = []  # content from read tool results (pasted text)
 
             for thread in chat.get("threads", []):
                 for msg in thread.get("messages", []):
                     for part in msg.get("parts", []):
-                        if part.get("partType") != "tool-call-json-DO-NOT-USE-IN-PROD":
-                            continue
-                        try:
-                            call = json.loads(part.get("contentJson", "{}"))
-                            tool = call.get("toolName", "")
-                            args = json.loads(call.get("argsJson", "{}"))
-                        except (json.JSONDecodeError, TypeError):
-                            continue
+                        pt = part.get("partType", "")
 
-                        if tool == "write_tool":
-                            file_path = args.get("path", "")
-                            content = args.get("file_text", "")
-                            if file_path and content:
-                                writes[file_path] = content
+                        if pt == "tool-call-json-DO-NOT-USE-IN-PROD":
+                            try:
+                                call = json.loads(part.get("contentJson", "{}"))
+                                tool = call.get("toolName", "")
+                                args = json.loads(call.get("argsJson", "{}"))
+                            except (json.JSONDecodeError, TypeError):
+                                continue
 
-                        elif tool == "unsplash_tool":
-                            query = args.get("query", "")
-                            if query:
-                                unsplash_queries.append(query)
+                            if tool == "write_tool":
+                                file_path = args.get("path", "")
+                                content = args.get("file_text", "")
+                                if file_path and content:
+                                    writes[file_path] = content
 
-            logger.info("Extracted %d files and %d image queries from .make",
-                        len(writes), len(unsplash_queries))
+                            elif tool == "unsplash_tool":
+                                query = args.get("query", "")
+                                if query:
+                                    unsplash_queries.append(query)
+
+                        elif pt == "tool-result-json-DO-NOT-USE-IN-PROD":
+                            # Capture read tool results — these contain pasted text
+                            # imports (e.g., admin-pages.md) with design specs
+                            try:
+                                cj = json.loads(part.get("contentJson", "{}"))
+                                result_str = cj.get("resultJson", "{}")
+                                result = json.loads(result_str) if isinstance(result_str, str) else result_str
+                                content = result.get("content", "")
+                                if isinstance(content, str) and len(content) > 200:
+                                    pasted_texts.append(content)
+                            except (json.JSONDecodeError, TypeError):
+                                continue
+
+            logger.info("Extracted %d files, %d image queries, %d pasted texts from .make",
+                        len(writes), len(unsplash_queries), len(pasted_texts))
 
             # Parse tokens from theme/style files
             self._extract_tokens(writes, ds)
@@ -240,8 +255,8 @@ class MakeParser(DesignParser):
             # Parse components
             self._extract_components(writes, ds)
 
-            # Parse pages
-            self._extract_pages(writes, ds)
+            # Parse pages (include pasted texts as additional design source)
+            self._extract_pages(writes, ds, pasted_texts)
 
             # Parse images
             self._extract_images(unsplash_queries, writes, ds)
@@ -405,16 +420,25 @@ class MakeParser(DesignParser):
 
         return result
 
-    def _extract_pages(self, writes: dict[str, str], ds: DesignSystem) -> None:
+    def _extract_pages(self, writes: dict[str, str], ds: DesignSystem,
+                        pasted_texts: list[str] | None = None) -> None:
         """Extract page layouts and visual descriptions from .make sources.
 
-        Combines three sources for visual descriptions (priority order):
+        Combines four sources for visual descriptions (priority order):
         1. design-spec.md SCREEN LAYOUTS (pixel-precise Figma descriptions)
-        2. design-system.json pages (structured sections with elements)
-        3. TSX section comments + headings (fallback for uncovered pages)
+        2. Pasted text imports (admin-pages.md etc. with detailed design specs)
+        3. design-system.json pages (structured sections with elements)
+        4. TSX section comments + headings (fallback for uncovered pages)
         """
         # Source 1: design-spec.md SCREEN LAYOUTS (richest, pixel-precise)
         spec_screens = self._extract_screen_layouts(writes)
+
+        # Source 1b: Pasted text design descriptions (admin pages, user pages, etc.)
+        pasted_pages = self._extract_pasted_text_pages(pasted_texts or [])
+        # Merge into spec_screens (pasted fills gaps, doesn't override)
+        for page_name, desc in pasted_pages.items():
+            if page_name not in spec_screens:
+                spec_screens[page_name] = desc
 
         # Source 2: design-system.json pages (structured sections)
         json_pages = self._extract_json_pages(writes)
@@ -508,6 +532,83 @@ class MakeParser(DesignParser):
                     screens[page_name] = body
 
         return screens
+
+    @staticmethod
+    def _extract_pasted_text_pages(pasted_texts: list[str]) -> dict[str, str]:
+        """Extract page-level design descriptions from pasted text imports.
+
+        Pasted texts (e.g., admin-pages.md) contain structured design specs
+        organized by page headings like "ADMIN PRODUCTS PAGE:" or
+        "USER PROFILE (Adataim):". This method splits them into per-page
+        visual descriptions.
+        """
+        # Heading patterns that indicate a new page section
+        # Captures the full title including ADMIN/USER prefix for correct mapping
+        page_heading_re = re.compile(
+            r"^\s*((?:ADMIN\s+|USER\s+)?[A-Z][A-Z\s/]+?)(?:\s+PAGE|\s+EDITOR)?:?\s*$"
+            r"|"
+            r"^\s*((?:ADMIN\s+|USER\s+)?[A-Z][A-Z\s/]+?)\s*\(([^)]+)\)\s*:?\s*$"
+            r"|"
+            r"^\s*((?:ADMIN\s+|USER\s+)?[A-Z][A-Z\s/]+?\s+with\s+[A-Z]+):?\s*$",
+            re.MULTILINE,
+        )
+
+        pages: dict[str, str] = {}
+
+        for text in pasted_texts:
+            # Strip line numbers if present (e.g., "1:   content")
+            lines = []
+            for line in text.split("\n"):
+                cleaned = re.sub(r"^\d+:\s{0,3}", "", line)
+                lines.append(cleaned)
+            text_clean = "\n".join(lines)
+
+            # Split text into sections by page headings
+            matches = list(page_heading_re.finditer(text_clean))
+            if not matches:
+                continue
+
+            for i, m in enumerate(matches):
+                title = (m.group(1) or m.group(2) or m.group(4) or "").strip()
+                # Determine end of this section
+                start = m.end()
+                end = matches[i + 1].start() if i + 1 < len(matches) else len(text_clean)
+                body = text_clean[start:end].strip()
+
+                if not body or not title:
+                    continue
+
+                # Normalize title to canonical page name
+                title_lower = title.lower().strip()
+                page_name = ""
+                for pattern, name in _TITLE_TO_PAGE.items():
+                    if pattern in title_lower:
+                        page_name = name
+                        break
+                if not page_name:
+                    # Try to build a PascalCase name from the title
+                    words = title_lower.split()
+                    page_name = "".join(w.capitalize() for w in words[:3])
+
+                if page_name and body:
+                    # Clean up the body — remove leading dashes indent
+                    body_lines = []
+                    for line in body.split("\n"):
+                        stripped = line.strip()
+                        if stripped and not stripped.startswith("Add the following"):
+                            body_lines.append(stripped)
+                    cleaned_body = "\n".join(body_lines)
+                    if cleaned_body:
+                        # Append to existing (don't override)
+                        if page_name in pages:
+                            pages[page_name] += "\n\n" + cleaned_body
+                        else:
+                            pages[page_name] = cleaned_body
+
+        if pages:
+            logger.info("Extracted %d page descriptions from pasted text imports", len(pages))
+
+        return pages
 
     @staticmethod
     def _extract_json_pages(writes: dict[str, str]) -> dict[str, dict]:
@@ -632,6 +733,10 @@ _TITLE_TO_PAGE: dict[str, str] = {
     "coffee": "ProductDetail",
     "cart": "Cart",
     "checkout": "Checkout",
+    "admin subscription": "AdminSubscriptions",
+    "user subscription": "UserSubscriptions",
+    "subscription wizard": "SubscriptionWizard",
+    "subscription setup": "SubscriptionWizard",
     "subscription": "SubscriptionWizard",
     "user dashboard": "UserDashboard",
     "user account": "UserProfile",
@@ -640,15 +745,17 @@ _TITLE_TO_PAGE: dict[str, str] = {
     "product management": "AdminProducts",
     "admin order": "AdminOrders",
     "order management": "AdminOrders",
-    "admin deliveries": "AdminOrders",
-    "daily deliveries": "AdminOrders",
+    "admin deliveries": "AdminDeliveries",
+    "daily deliveries": "AdminDeliveries",
     "admin coupon": "AdminCoupons",
     "coupon": "AdminCoupons",
-    "admin promo": "AdminCoupons",
-    "promo day": "AdminCoupons",
-    "admin gift": "AdminCoupons",
-    "gift card": "AdminCoupons",
-    "admin review": "AdminCoupons",
+    "admin promo": "AdminPromoDays",
+    "promo day": "AdminPromoDays",
+    "admin gift": "AdminGiftCards",
+    "gift card": "AdminGiftCards",
+    "admin review": "AdminReviews",
+    "admin stories": "AdminStories",
+    "admin subscription": "AdminSubscriptions",
     "stories": "Stories",
     "content": "Stories",
     "story detail": "StoryDetail",
@@ -656,10 +763,21 @@ _TITLE_TO_PAGE: dict[str, str] = {
     "auth": "Login",
     "login": "Login",
     "register": "Login",
+    "password reset": "PasswordReset",
     "promo banner": "PromoStates",
     "special states": "PromoStates",
     "error page": "PromoStates",
+    "cookie consent": "CookieConsent",
     "email": "EmailTemplates",
+    "equipment catalog": "EquipmentCatalog",
+    "merch catalog": "MerchCatalog",
+    "bundle": "BundlePage",
+    "legal": "LegalPages",
+    "user profile": "UserProfile",
+    "user address": "UserAddresses",
+    "user order": "UserOrders",
+    "user favorite": "UserFavorites",
+    "user subscription": "UserSubscriptions",
 }
 
 

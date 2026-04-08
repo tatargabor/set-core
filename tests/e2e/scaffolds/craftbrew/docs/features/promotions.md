@@ -100,4 +100,3 @@ Use exact values from `docs/design-system.md` — do NOT use framework defaults.
 - **Admin**: see design-system.md § Page Layouts
 - **Auth**: see design-system.md § Page Layouts
 - **Search**: see design-system.md § Page Layouts
-

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import time
@@ -26,6 +27,7 @@ from .helpers import (
     _PURPOSE_LABELS,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/api/{project}/state")
@@ -572,12 +574,12 @@ def get_project_settings(project: str):
     if sp.exists():
         result["state_path"] = str(sp)
         try:
-            state = load_state(str(sp))
-            result["orchestrator_pid"] = state.orchestrator_pid
-            result["plan_version"] = state.plan_version
-            result["orch_status"] = state.status
-        except Exception:
-            pass
+            state_raw = json.loads(sp.read_text())
+            result["orchestrator_pid"] = state_raw.get("orchestrator_pid")
+            result["plan_version"] = state_raw.get("plan_version")
+            result["orch_status"] = state_raw.get("status")
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"settings: failed to read state file {sp}: {e}")
 
     # Sentinel PID
     sentinel_pid_file = _sentinel_dir(project_path) / "sentinel.pid"

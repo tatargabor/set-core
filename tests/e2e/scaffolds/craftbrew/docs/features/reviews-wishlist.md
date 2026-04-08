@@ -134,4 +134,3 @@ Use exact values from `docs/design-system.md` — do NOT use framework defaults.
 - **Admin**: see design-system.md § Page Layouts
 - **Auth**: see design-system.md § Page Layouts
 - **Profile**: see design-system.md § Page Layouts
-
