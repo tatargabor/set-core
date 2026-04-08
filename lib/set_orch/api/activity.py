@@ -346,16 +346,10 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                 "duration_ms": _ts_diff_ms(start_ev["start"], end_ts),
                 "open": True,
             })
-        # Flush unclosed gate spans
-        for (change, gate), start_ev in open_gates.items():
-            spans.append({
-                "category": f"gate:{gate}",
-                "change": change,
-                "start": start_ev["start"],
-                "end": end_ts,
-                "duration_ms": _ts_diff_ms(start_ev["start"], end_ts),
-                "open": True,
-            })
+        # Drop unclosed gate spans — a GATE_START without GATE_PASS is an
+        # instrumentation gap (missing GATE_PASS), not a gate that's actually
+        # still running. Flushing them to end_ts creates artificially huge spans.
+        # (Future runs will have proper GATE_PASS events.)
         # Flush unclosed merge spans
         for change, start_ev in open_merges.items():
             spans.append({
