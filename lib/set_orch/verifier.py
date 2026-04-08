@@ -59,15 +59,20 @@ DEFAULT_TEST_TIMEOUT = 120
 DEFAULT_SMOKE_TIMEOUT = 180
 
 # Context window sizes for Claude 4.x models
-CONTEXT_WINDOW_SIZE = 200_000  # default for standard models
-CONTEXT_WINDOW_SIZE_1M = 1_000_000  # for opus-1m / sonnet-1m
+CONTEXT_WINDOW_SIZE = 200_000  # legacy/standard window
+CONTEXT_WINDOW_SIZE_1M = 1_000_000  # default for Claude 4.x family in 2026
 
 
 def _context_window_for_model(model: str = "") -> int:
-    """Return context window size based on model name."""
-    if "1m" in model or "[1m]" in model:
-        return CONTEXT_WINDOW_SIZE_1M
-    return CONTEXT_WINDOW_SIZE
+    """Return context window size based on model name.
+
+    Default: 1M (Claude 4.x family). Use explicit [200k] suffix for legacy.
+    """
+    m = model.lower()
+    if "[200k]" in m or "200k" in m:
+        return CONTEXT_WINDOW_SIZE
+    # All Claude 4.x models default to 1M (opus, sonnet, haiku, claude-opus-4-x, etc.)
+    return CONTEXT_WINDOW_SIZE_1M
 DEFAULT_SMOKE_FIX_MAX_RETRIES = 3
 DEFAULT_SMOKE_FIX_MAX_TURNS = 15
 DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT = 30
@@ -1761,17 +1766,30 @@ def _capture_context_tokens_end(
 ) -> None:
     """Capture context_tokens_end at loop completion.
 
-    Uses total_cache_create as the proxy for peak context size this session.
+    Uses MAX cache_create_tokens across iterations as the proxy for peak
+    context size — this is what was loaded into a single iteration. The
+    legacy `total_cache_create` was cumulative and over-reported by N×.
     """
-    cc = int(loop_state.get("total_cache_create", 0))
-    if cc > 0:
-        update_change_field(state_file, change_name, "context_tokens_end", cc)
+    iterations = loop_state.get("iterations") or []
+    peak = 0
+    for it in iterations:
+        try:
+            v = int(it.get("cache_create_tokens", 0) or 0)
+            if v > peak:
+                peak = v
+        except (TypeError, ValueError):
+            continue
+    # Fallback for older loop-state.json without per-iter breakdown
+    if peak == 0:
+        peak = int(loop_state.get("total_cache_create", 0) or 0)
+    if peak > 0:
+        update_change_field(state_file, change_name, "context_tokens_end", peak)
         cw = _context_window_for_model(model)
-        pct = cc / cw * 100
+        pct = peak / cw * 100
         level = "warning" if pct >= 80 else "info"
         getattr(logger, level)(
-            "context_tokens_end for %s: %d (%.0f%% of %dK window)",
-            change_name, cc, pct, cw // 1000,
+            "context_tokens_end for %s: %d (%.0f%% of %dK window, peak across %d iter)",
+            change_name, peak, pct, cw // 1000, len(iterations) or 1,
         )
 
 
@@ -2399,7 +2417,12 @@ def _execute_spec_verify_gate(
     logger.info("Gate[spec-verify] START %s wt=%s", change_name, wt_path)
 
     verify_cmd_result = run_claude_logged(
-        f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\nRun /opsx:verify {change_name}",
+        f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\n"
+        f"Run /opsx:verify {change_name}\n\n"
+        f"CRITICAL: Your FINAL output line MUST be exactly one of:\n"
+        f"  VERIFY_RESULT: PASS\n"
+        f"  VERIFY_RESULT: FAIL\n"
+        f"This sentinel is parsed by the orchestrator. Without it, the gate cannot determine the verdict.",
         purpose="spec_verify", change=change_name,
         extra_args=["--max-turns", "40"],
         cwd=wt_path,
@@ -2436,10 +2459,15 @@ def _execute_spec_verify_gate(
             ),
         )
     else:
-        # No sentinel — timeout, non-blocking
-        logger.warning("Spec verify timed out for %s — non-blocking", change_name)
-        logger.info("Gate[spec-verify] END %s result=pass (timeout)", change_name)
-        return GateResult("spec_verify", "pass", output="timeout — no VERIFY_RESULT sentinel")
+        # No sentinel found — agent didn't write VERIFY_RESULT line. Non-blocking
+        # for backward compat, but log loudly so the prompt issue surfaces.
+        logger.warning(
+            "[ANOMALY] Spec verify: missing VERIFY_RESULT sentinel for %s — "
+            "assuming PASS (verify skill prompt issue, agent didn't write final verdict)",
+            change_name,
+        )
+        logger.info("Gate[spec-verify] END %s result=pass (missing-sentinel)", change_name)
+        return GateResult("spec_verify", "pass", output="missing VERIFY_RESULT sentinel — assumed PASS")
 
 
 # ─── Integrate Main Into Branch ─────────────────────────────────────
@@ -2460,10 +2488,10 @@ def _integrate_main_into_branch(
     """
     update_change_field(state_file, change_name, "status", "integrating")
 
-    # Find the main branch name
+    # Find the main branch name (best-effort: not all repos have origin/HEAD)
     main_ref_result = run_git(
         "symbolic-ref", "refs/remotes/origin/HEAD",
-        cwd=wt_path, timeout=10,
+        cwd=wt_path, timeout=10, best_effort=True,
     )
     if main_ref_result.exit_code == 0:
         main_branch = main_ref_result.stdout.strip().replace("refs/remotes/origin/", "")
@@ -2471,7 +2499,7 @@ def _integrate_main_into_branch(
         main_branch = "main"
 
     # Determine merge ref: prefer origin/<main> if remote exists, else local <main>
-    fetch_result = run_git("fetch", "origin", main_branch, cwd=wt_path, timeout=60)
+    fetch_result = run_git("fetch", "origin", main_branch, cwd=wt_path, timeout=60, best_effort=True)
     has_origin = fetch_result.exit_code == 0
     merge_ref = f"origin/{main_branch}" if has_origin else main_branch
     if not has_origin:

@@ -873,7 +873,7 @@ def _unique_worktree_name(project_path: str, change_name: str) -> str:
     # Check if branch and directory are both free
     branch = f"change/{change_name}"
     wt_dir = f"{project_path}-{change_name}"
-    branch_exists = run_git("rev-parse", "--verify", branch, cwd=project_path).exit_code == 0
+    branch_exists = run_git("rev-parse", "--verify", branch, cwd=project_path, best_effort=True).exit_code == 0
     dir_exists = os.path.isdir(wt_dir)
 
     if not branch_exists and not dir_exists:
@@ -884,7 +884,7 @@ def _unique_worktree_name(project_path: str, change_name: str) -> str:
         candidate = f"{change_name}-{i}"
         branch = f"change/{candidate}"
         wt_dir = f"{project_path}-{candidate}"
-        branch_exists = run_git("rev-parse", "--verify", branch, cwd=project_path).exit_code == 0
+        branch_exists = run_git("rev-parse", "--verify", branch, cwd=project_path, best_effort=True).exit_code == 0
         dir_exists = os.path.isdir(wt_dir)
         if not branch_exists and not dir_exists:
             logger.info("change name collision: %s exists, using %s", change_name, candidate)
@@ -1659,11 +1659,11 @@ def dispatch_change(
 
     if not os.path.isdir(wt_path):
         branch_name = f"change/{wt_name}"
-        branch_check = run_git("rev-parse", "--verify", branch_name)
+        branch_check = run_git("rev-parse", "--verify", branch_name, best_effort=True)
 
         if branch_check.exit_code == 0:
             # Branch exists — check if it has commits ahead of main worth preserving
-            main_r = run_git("show-ref", "--verify", "--quiet", "refs/heads/main")
+            main_r = run_git("show-ref", "--verify", "--quiet", "refs/heads/main", best_effort=True)
             main_branch = "main" if main_r.exit_code == 0 else "master"
             ahead_r = run_git("rev-list", "--count", f"{main_branch}..{branch_name}")
             ahead_count = int(ahead_r.stdout.strip()) if ahead_r.exit_code == 0 else 0
@@ -1788,11 +1788,28 @@ def dispatch_change(
             ctx.design_context = _design_ctx
             logger.info("Design context injected (%d chars) for %s", len(_design_ctx), change_name)
         else:
-            logger.warning(
-                "[ANOMALY] Design context EMPTY for %s — agent won't see design tokens/Figma source. "
-                "Check design-system.md, design-snapshot.md, or bridge.sh timeout.",
-                change_name,
-            )
+            # Check if any design assets exist — distinguishes "no design files in project"
+            # (normal for foundation/data changes) from "files exist but pipeline broke" (real bug)
+            _design_paths = [
+                os.path.join(design_snapshot_dir, "docs", "design-system.md"),
+                os.path.join(design_snapshot_dir, "docs", "design-snapshot.md"),
+                os.path.join(design_snapshot_dir, "docs", "design-brief.md"),
+                os.path.join(design_snapshot_dir, "design-system.md"),
+                os.path.join(design_snapshot_dir, "design-snapshot.md"),
+                os.path.join(design_snapshot_dir, "design-brief.md"),
+            ]
+            _has_design_assets = any(os.path.isfile(p) for p in _design_paths)
+            if _has_design_assets:
+                logger.warning(
+                    "[ANOMALY] Design context EMPTY for %s despite design assets present — "
+                    "agent won't see design tokens/Figma source. Check bridge.sh matcher or timeout.",
+                    change_name,
+                )
+            else:
+                logger.info(
+                    "Design context not available for %s — no design assets in project",
+                    change_name,
+                )
     except Exception:
         logger.error("Design context enrichment FAILED for %s", change_name, exc_info=True)
 

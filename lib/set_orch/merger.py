@@ -1983,8 +1983,8 @@ def _persist_change_review_learnings(change_name: str, state_file: str) -> None:
         if os.path.isfile(proj_jsonl):
             from .subprocess_utils import run_git
             run_git("add", proj_jsonl, cwd=project_path)
-            # Only commit if there are staged changes
-            diff_r = run_git("diff", "--cached", "--quiet", cwd=project_path)
+            # Only commit if there are staged changes (--quiet returns exit 1 if there are diffs)
+            diff_r = run_git("diff", "--cached", "--quiet", cwd=project_path, best_effort=True)
             if diff_r.exit_code != 0:
                 run_git(
                     "commit", "-m",

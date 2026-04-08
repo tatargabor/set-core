@@ -367,13 +367,21 @@ def run_claude_logged(
     return result
 
 
-def run_git(*args: str, cwd: str | Path | None = None, timeout: int = 60) -> GitResult:
+def run_git(
+    *args: str,
+    cwd: str | Path | None = None,
+    timeout: int = 60,
+    best_effort: bool = False,
+) -> GitResult:
     """Execute a git command.
 
     Args:
         *args: Git subcommand and arguments (e.g., "log", "--oneline", "-5").
         cwd: Working directory.
         timeout: Timeout in seconds (default 60).
+        best_effort: If True, suppress the WARNING log on non-zero exit.
+            Use for calls where failure is an expected/valid scenario
+            (e.g., `fetch origin` in a project without a remote).
 
     Returns:
         GitResult with exit_code, stdout, stderr, duration_ms.
@@ -382,7 +390,7 @@ def run_git(*args: str, cwd: str | Path | None = None, timeout: int = 60) -> Git
 
     result = run_command(cmd, timeout=timeout, cwd=cwd)
 
-    if result.exit_code != 0:
+    if result.exit_code != 0 and not best_effort:
         _stderr_snippet = (result.stderr[:200] if result.stderr else "").strip()
         logger.warning(
             "git_failed: %s (exit=%d) %s",

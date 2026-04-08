@@ -224,7 +224,8 @@ def parse_test_plan(plan_path: Path) -> tuple[list[TestCase], list[str]]:
     Returns (test_cases, non_testable_req_ids).
     """
     if not plan_path.is_file():
-        logger.warning("Test plan not found: %s", plan_path)
+        # Callers always have a fallback (test-plan.json) — debug-level only
+        logger.debug("Test plan not found: %s (caller will fallback)", plan_path)
         return [], []
 
     try:

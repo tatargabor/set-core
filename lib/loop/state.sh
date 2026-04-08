@@ -208,15 +208,31 @@ get_current_tokens() {
 
     # Derive project dir from $PWD: replace / with -
     # Claude's project dirs keep the leading dash (e.g. -home-tg-code-project)
+    # For worktrees: use the parent repo path (git common-dir → dirname),
+    # since Claude tracks per-repo not per-worktree.
     local project_dir_flag=""
+    local source_path="$PWD"
+    local common_git
+    common_git=$(git rev-parse --git-common-dir 2>/dev/null || true)
+    if [[ -n "$common_git" ]]; then
+        # Convert to absolute path if relative
+        if [[ "$common_git" != /* ]]; then
+            common_git="$PWD/$common_git"
+        fi
+        # Parent of .git is the repo root
+        local parent_repo
+        parent_repo=$(dirname "$common_git")
+        if [[ -d "$parent_repo" ]]; then
+            source_path="$parent_repo"
+        fi
+    fi
     local derived_dir
-    derived_dir=$(echo "$PWD" | sed 's|/|-|g')
+    derived_dir=$(echo "$source_path" | sed 's|/|-|g')
     local claude_projects_dir="$HOME/.claude/projects"
     if [[ -d "$claude_projects_dir/$derived_dir" ]]; then
         project_dir_flag="--project-dir=$derived_dir"
-    elif [[ -n "$derived_dir" ]]; then
-        echo "warn: derived project dir '$derived_dir' not found under $claude_projects_dir, falling back to unfiltered" >&2
     fi
+    # No warning when not found — caller has unfiltered fallback by design
 
     if [[ -n "$since" ]]; then
         usage_json=$("$SCRIPT_DIR/set-usage" --since "$since" $project_dir_flag --format json 2>/dev/null || echo "$zero_json")
