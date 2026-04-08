@@ -325,13 +325,7 @@ _PLANNING_RULES_CORE = """Rules:
 - Complexity: S (< 8 tasks, preferred), M (8-15 tasks, maximum). L (15+ tasks) is NOT ALLOWED — split into smaller changes.
 - Max 6 requirements per change. If a feature domain has more than 6 requirements, split it into sub-domain changes.
 - Scope text should be 800-1500 chars. If you need more than 2000 chars to describe a change, it is too large — split it.
-
-Entity count limits (these predict actual implementation size better than requirement count):
-- Max 3 new pages/routes per change. A "checkout flow" with 3 step pages + order history + cancellation = 5 pages → MUST split (e.g., "checkout-flow" + "order-management").
-- Max 2 new DB models per change (beyond what foundation-setup creates). A change that adds Order + OrderItem + Payment + Shipment = 4 models → split.
-- Max 1 multi-step wizard or complex form per change. A subscription wizard with 5 steps is a full change by itself.
-- NEVER combine two independent user flows in one change. "cart AND checkout" or "auth AND profile" are two changes, not one.
-- If a change scope mentions more than 4 distinct UI components to create (ProductCard, FilterSidebar, SortDropdown, PriceRange, QuickView), it is too large.
+- NEVER combine two independent user flows in one change. Each distinct workflow (create vs read, setup vs usage) is a separate change.
 - Skip already-active changes listed above
 - Every change scope MUST include specific test requirements (happy path, error cases, security boundaries)
 - For security-related changes: include tenant isolation tests, auth guard tests
@@ -355,10 +349,6 @@ Split heuristics for common patterns:
 - CRUD operations → separate from read-only views when the domain is large
 - Search/filtering with its own API routes → separate change
 - Auth + profile + password management → split auth/login from profile/account management
-- Checkout flow → split from order history/management (checkout = write path, orders = read path)
-- Admin CRUD → one change per 2-3 admin pages max (e.g., admin-products + admin-coupons, NOT all admin)
-- Email/notification system → separate change (cross-cutting, multiple templates)
-- Subscription/recurring billing → separate change (complex state machine)
 
 Dependency ordering heuristics — classify each change by type and apply ordering:
 - Classify each change as one of: infrastructure (test/build setup, CI), schema (DB migrations, model changes), foundational (auth, shared types, base components), feature (new functionality), cleanup-before (refactor/rename/reorganize existing code), cleanup-after (dead code removal, cosmetic fixes)

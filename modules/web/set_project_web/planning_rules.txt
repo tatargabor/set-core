@@ -3,7 +3,16 @@ Change sizing and decomposition granularity:
 - NEVER combine infrastructure/foundation with authentication in one change. Foundation sets up: Prisma schema, seed data, Tailwind, layout, tooling. Auth sets up: NextAuth, middleware, login/register pages. These are separate concerns with separate test surfaces.
 - NEVER combine cart and checkout in one change. Cart (session, add/remove/update) and checkout (order placement, payment, order history) are separate features.
 - Admin CRUD can be one change if it covers a single entity (products). If it covers multiple entities (products + orders + users), split by entity.
+- Checkout flow MUST be split from order management. Checkout (form, payment, order creation) is write-path. Order history, order detail, cancellation, returns are read-path. These are separate changes.
+- Email/notification system is always a separate change. It is cross-cutting (touches multiple domains) and has its own test surface (template rendering, sending logic).
+- Subscription/recurring billing is always a separate change. It has complex state machine logic (create, pause, resume, cancel, skip delivery) that deserves focused implementation.
 - Prefer 3 phases over 4+. More phases = more sequential bottlenecks. Ideal: Phase 1 (foundation + auth parallel), Phase 2 (catalog + cart + admin parallel), Phase 3 (checkout + polish).
+
+Entity count limits (predict implementation size better than requirement count):
+- Max 3 new pages/routes per change. "Checkout + order history + cancellation" = 5 pages → MUST split.
+- Max 2 new DB models per change (beyond foundation-setup). Order + OrderItem + Payment + Shipment = 4 → split.
+- Max 1 multi-step wizard or complex stateful form per change. A 5-step subscription wizard is a full change.
+- Max 4 new UI components per change. If scope mentions ProductCard + FilterSidebar + SortDropdown + PriceRange + QuickView, it is too large.
 - Each change MUST have its own E2E test file. Test file names SHOULD match the change name (e.g., change `shopping-cart` → `tests/e2e/cart.spec.ts`).
 - Every E2E test block MUST include its REQ-XXX-NNN prefix in the test name for coverage tracking. Example: `test('REQ-CART-001: Add to cart shows badge', ...)`. Tests without REQ-IDs are invisible to the coverage gate and will not count toward the 80% threshold.
 - A test skeleton is pre-generated at `tests/e2e/{change-name}.spec.ts` with AC-ID prefixed test blocks: `test('REQ-CART-001:AC-1 — item added to cart', ...)`. Fill the test bodies — do NOT delete or rename test blocks. The AC-ID prefix enables deterministic coverage binding.
@@ -16,7 +25,7 @@ Playwright E2E test planning (when e2e_command is configured):
 - The infrastructure/foundation change (first in dependency order) MUST set up Playwright alongside the test runner (Jest or Vitest):
   * Create playwright.config.ts with PW_PORT env var support, webServer auto-start, headless: true, and screenshot: 'on' in the use section (headless: true prevents browser windows opening on desktop machines; screenshot: 'on' ensures PNG capture instead of text-only error-context.md)
   * Set `reuseExistingServer: false` in playwright.config.ts webServer — stale dev servers from previous gate runs cause flaky tests
-  * Set `workers: 2` (not unlimited) — unlimited workers overload Next.js dev server compilation, causing timeout failures
+  * Set `workers: 1` for SQLite projects (default) — SQLite single-writer constraint causes SQLITE_BUSY under concurrent connections. Override only when using Postgres/MySQL with per-worker DB isolation.
   * Set Playwright `locale` matching the project's i18n default (e.g., `locale: 'hu-HU'` for Hungarian projects) — locale mismatch causes wrong redirects in i18n middleware
   * If using Vitest: add `exclude: ["**/node_modules/**", "**/tests/e2e/**"]` to vitest.config.ts AND use `"test": "vitest run"` (NOT `"test": "vitest"` — watch mode hangs in CI/gates)
   * If using Jest: add testPathIgnorePatterns: ["/node_modules/", "/tests/e2e/"] to jest.config (Jest crashes on Playwright .spec.ts imports in jsdom)
