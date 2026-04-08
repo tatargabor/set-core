@@ -203,6 +203,39 @@ export default defineConfig({
 
 **Always run `prisma generate` before `prisma db push`** — without it, the Prisma client doesn't know about models added by the current change, causing seed/test failures.
 
+### Workers Must Be 1 with SQLite
+
+SQLite has a single-writer constraint. Concurrent Playwright workers writing to the same `dev.db` (login attempts, session creation, order writes) cause `SQLITE_BUSY` errors and flaky tests with non-deterministic failure patterns.
+
+**Required `playwright.config.ts` setting:**
+```typescript
+export default defineConfig({
+  fullyParallel: false,
+  workers: 1,  // SQLite single-writer constraint
+  ...
+})
+```
+
+Override only when the project uses Postgres/MySQL with per-worker database isolation. The default template ships with `workers: 1` for safety.
+
+## Rate Limiters Must Skip Outside Production
+
+Auth and API rate limiters (login, password reset, OTP, etc.) MUST short-circuit when `NODE_ENV !== "production"`. E2E suites repeatedly log in as the same test user and will trigger the rate limit after the configured threshold (typically 5 attempts/minute), causing the rest of the run to fail with `429` responses unrelated to the actual feature being tested.
+
+**Required pattern:**
+```typescript
+// src/lib/rate-limit.ts
+export function rateLimit(key: string, opts = { maxAttempts: 5, windowMs: 60_000 }) {
+  // Skip in dev/test — E2E tests reuse the same credentials
+  if (process.env.NODE_ENV !== "production") {
+    return { success: true }
+  }
+  // ... real rate-limit logic
+}
+```
+
+**Anti-pattern:** Only checking `NODE_ENV === "test"`. Playwright runs the dev server with `NODE_ENV=development`, not `test`, so the rate limiter still triggers. Use `!== "production"` to cover both dev and test contexts.
+
 ## Test File Organization
 - Unit tests: co-located with source (`src/**/*.test.ts`) or `__tests__/`
 - Playwright tests: `tests/e2e/*.spec.ts` (one file per feature area)

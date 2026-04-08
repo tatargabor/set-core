@@ -112,6 +112,81 @@ const orders = await db.order.findMany({ where: { userId: currentUser.id } })
 - If rich text is required, use a sanitizer (DOMPurify, bleach)
 - CSP headers are a defense-in-depth layer — not a substitute for output encoding
 
+### JSON-LD / Structured Data XSS
+
+`<script type="application/ld+json">` is a common XSS sink because raw `JSON.stringify()` output can break out of the script tag if any field contains `</script>` or HTML-significant characters.
+
+**Wrong — raw stringify in dangerouslySetInnerHTML:**
+```typescript
+<script type="application/ld+json"
+  dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+```
+
+If any field of `jsonLd` ever contains attacker-controlled text (product name, review body, story title), this is a script-tag breakout.
+
+**Correct — escape `<`, `>`, `&` and use React 19 script children:**
+```typescript
+function SafeJsonLd({ data }: { data: Record<string, unknown> }) {
+  const json = JSON.stringify(data)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+  return <script type="application/ld+json">{json}</script>
+}
+```
+
+**The rule:** Any `<script type="application/ld+json">` rendering MUST escape the three HTML-significant characters (`<`, `>`, `&`) as Unicode escapes. Use a `SafeJsonLd` helper component — never inline `dangerouslySetInnerHTML`.
+
+### Open Redirect Prevention
+
+Login/auth pages with a `?from=...` redirect parameter are open-redirect sinks if the value is not validated.
+
+**Wrong — trusts query param blindly:**
+```typescript
+const from = searchParams.from || "/"
+redirect(from) // attacker: ?from=https://evil.com
+```
+
+**Correct — validate it's an internal relative path:**
+```typescript
+function isSafeInternalPath(p: string): boolean {
+  if (!p || typeof p !== "string") return false
+  if (p.startsWith("//")) return false  // protocol-relative
+  if (!p.startsWith("/")) return false   // not absolute
+  try {
+    new URL(p)  // valid absolute URL → reject
+    return false
+  } catch {
+    return true  // not a URL → safe relative path
+  }
+}
+
+const from = searchParams.from
+const safe = typeof from === "string" && isSafeInternalPath(from) ? from : "/"
+redirect(safe)
+```
+
+**The rule:** Any redirect target read from query params, body, or cookies MUST be validated as an internal path before being passed to `redirect()` or `Response.redirect()`. Reject URLs starting with `//`, `http://`, `https://`, or anything that parses as an absolute URL.
+
+### Token Invalidation on Credential Changes
+
+Password change/reset operations MUST invalidate all outstanding session tokens AND password-reset tokens for that user. Otherwise an attacker who already has a valid token (or who triggered a reset email but didn't complete it) retains access after the user thinks they've secured their account.
+
+**Required cleanup on password change:**
+```typescript
+await db.$transaction([
+  db.user.update({ where: { id: userId }, data: { passwordHash } }),
+  // 1. Invalidate any pending password reset tokens
+  db.passwordResetToken.deleteMany({ where: { userId } }),
+  // 2. Invalidate active sessions (if using DB sessions)
+  db.session.deleteMany({ where: { userId } }),
+])
+// 3. If using JWT sessions, bump a tokenVersion field on the user and check
+//    it in the session callback to reject older tokens.
+```
+
+**The rule:** Password change/reset MUST be atomic with: deleting all `passwordResetToken` rows for the user, AND invalidating sessions (DB delete or JWT version bump). Do not leave a window where old tokens still work.
+
 ## 7. CSRF Protection
 
 - State-changing requests (POST/PUT/DELETE) need CSRF tokens if using cookie-based auth
