@@ -17,7 +17,13 @@ from pydantic import BaseModel
 
 from ..state import load_state, StateCorruptionError
 from .helpers import _resolve_project, _state_path, _sentinel_dir, _list_worktrees
-from .helpers import _resolve_project, _state_path, _sentinel_dir
+from .sessions import (
+    _sessions_dirs_for_change,
+    _extract_session_tokens,
+    _extract_session_model,
+    _derive_session_label,
+    _session_outcome,
+)
 
 router = APIRouter()
 
@@ -304,7 +310,7 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
     import glob as _glob
 
     # --- Step 1: Find Claude session files for this change ---
-    state_file = project_path / "orchestration-state.json"
+    state_file = _state_path(project_path)
     claude_sessions: list[dict] = []
 
     if state_file.exists():

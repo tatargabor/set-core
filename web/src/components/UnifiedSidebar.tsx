@@ -1,8 +1,17 @@
 import { useState } from 'react'
+import type { LucideIcon } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { getApps, getGlobalItems, type SidebarApp, type SidebarSubItem, type GlobalItem } from '../lib/sidebarRegistry'
 import { useSidebarStats } from '../hooks/useSidebarStats'
 import { restartManager, startManager } from '../lib/api'
+
+function SidebarIcon({ icon, className }: { icon: string | LucideIcon; className?: string }) {
+  if (typeof icon === 'string') {
+    return <span className={className}>{icon}</span>
+  }
+  const Icon = icon
+  return <Icon size={16} className={className} />
+}
 
 interface Props {
   project: string | null
@@ -97,7 +106,7 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose }: Props)
                         : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
                     }`}
                   >
-                    <span className="w-5 text-center text-xs">{app.icon}</span>
+                    <SidebarIcon icon={app.icon} className="w-5 text-center shrink-0" />
                     <span className="flex-1">{app.label}</span>
                     {issueBadge != null && issueBadge > 0 && (
                       <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
@@ -227,7 +236,7 @@ function GlobalLink({ item, active, badge, onClick }: {
           : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
       }`}
     >
-      <span className="w-5 text-center text-xs">{item.icon}</span>
+      <SidebarIcon icon={item.icon} className="w-5 text-center shrink-0" />
       <span className="flex-1">{item.label}</span>
       {badge != null && badge > 0 && (
         <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">

@@ -9,6 +9,8 @@
  */
 
 import type { ComponentType } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import { LayoutDashboard, TriangleAlert, BrainCircuit, Settings, SquareStack } from 'lucide-react'
 
 export interface SidebarSubItem {
   id: string
@@ -24,7 +26,7 @@ export interface SidebarSubItem {
 export interface SidebarApp {
   id: string
   label: string
-  icon: string
+  icon: string | LucideIcon
   /** Sort order (lower = higher in list) */
   order: number
   /** Default route when clicking the app — use :name as project placeholder */
@@ -37,7 +39,7 @@ export interface SidebarApp {
 export interface GlobalItem {
   id: string
   label: string
-  icon: string
+  icon: string | LucideIcon
   route: string
   order: number
   badge?: ComponentType<{ project: string | null }>
@@ -124,7 +126,7 @@ export function unregisterApp(id: string): void {
 registerGlobalItem({
   id: 'global-overview',
   label: 'Overview',
-  icon: '■',
+  icon: SquareStack,
   route: '/',
   order: 10,
 })
@@ -132,7 +134,7 @@ registerGlobalItem({
 registerGlobalItem({
   id: 'global-all-issues',
   label: 'All Issues',
-  icon: '⚠',
+  icon: TriangleAlert,
   route: '/issues',
   order: 20,
 })
@@ -143,7 +145,7 @@ registerGlobalItem({
 registerApp({
   id: 'orchestration',
   label: 'Orchestration',
-  icon: '📊',
+  icon: LayoutDashboard,
   order: 10,
   defaultRoute: '/p/:name/orch',
   matchPatterns: ['/p/:name/orch'],
@@ -153,7 +155,7 @@ registerApp({
 registerApp({
   id: 'issues',
   label: 'Issues',
-  icon: '⚠',
+  icon: TriangleAlert,
   order: 30,
   defaultRoute: '/p/:name/issues',
   matchPatterns: ['/p/:name/issues'],
@@ -163,7 +165,7 @@ registerApp({
 registerApp({
   id: 'memory',
   label: 'Memory',
-  icon: '🧠',
+  icon: BrainCircuit,
   order: 40,
   defaultRoute: '/p/:name/memory',
   matchPatterns: ['/p/:name/memory'],
@@ -173,7 +175,7 @@ registerApp({
 registerApp({
   id: 'settings',
   label: 'Settings',
-  icon: '⚙',
+  icon: Settings,
   order: 50,
   defaultRoute: '/p/:name/settings',
   matchPatterns: ['/p/:name/settings'],

@@ -88,8 +88,8 @@ function buildTree(phaseChanges: ChangeInfo[]): TreeNode[] {
   return roots.map(buildNode)
 }
 
-// Grid column template: name(tree) | status | complexity | type | sessions | duration | tokens | model | gates
-const GRID_COLS = 'minmax(180px,1fr) 90px 50px 70px 40px 70px 100px 80px 120px'
+// Grid column template: name(tree) | status | complexity | type | sessions | duration | tokens | gates
+const GRID_COLS = 'minmax(160px,1.5fr) 80px 40px 60px 30px 65px 95px minmax(100px,1fr)'
 
 function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: number; phaseChanges: ChangeInfo[] }) {
   const c = node.change
@@ -141,11 +141,6 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
         {/* Tokens */}
         <span className="text-sm text-neutral-500 text-right">
           {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
-        </span>
-
-        {/* Model */}
-        <span className="text-sm text-neutral-600 truncate">
-          {c.model ? c.model.replace('claude-', '').replace('-latest', '') : '—'}
         </span>
 
         {/* Gates */}
@@ -233,7 +228,6 @@ export default function PhaseView({ changes, state }: Props) {
               <span className="text-center">Ss</span>
               <span className="text-right">Duration</span>
               <span className="text-right">In/Out</span>
-              <span>Model</span>
               <span className="text-right">Gates</span>
             </div>
 

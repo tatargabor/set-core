@@ -16,6 +16,7 @@
   "dependencies": {
     "@soniox/speech-to-text-web": "^1.4.0",
     "@tailwindcss/vite": "^4.2.1",
+    "lucide-react": "^1.7.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.1",

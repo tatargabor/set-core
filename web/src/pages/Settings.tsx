@@ -26,6 +26,7 @@ interface SettingsData {
   orchestrator_pid?: number | null
   sentinel_pid?: number | null
   plan_version?: string | number | null
+  orch_status?: string | null
   data_sources?: Record<string, DataSource>
 }
 
@@ -89,7 +90,7 @@ export default function Settings({ project }: Props) {
 
   const directives = data.config?.directives as Record<string, unknown> | undefined
 
-  const orchStatus = (data.config as Record<string, unknown>)?.status as string | undefined
+  const orchStatus = data.orch_status ?? (data.config as Record<string, unknown>)?.status as string | undefined
   const isShutdown = orchStatus === 'shutdown'
   const isStopped = orchStatus === 'stopped'
   const isResumable = isShutdown || isStopped

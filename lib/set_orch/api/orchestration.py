@@ -575,6 +575,7 @@ def get_project_settings(project: str):
             state = load_state(str(sp))
             result["orchestrator_pid"] = state.orchestrator_pid
             result["plan_version"] = state.plan_version
+            result["orch_status"] = state.status
         except Exception:
             pass
 

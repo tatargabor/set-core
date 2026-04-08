@@ -32,8 +32,6 @@ export default function ManagerIssues({ project }: Props) {
     : null
   const detailProject = project || selectedIssue?.environment
 
-  // Cross-project mode: detail inline below list
-  // Single project mode: detail as slide-out panel
   const isAllProjects = !project
 
   return (
@@ -56,33 +54,19 @@ export default function ManagerIssues({ project }: Props) {
       <div className="flex-1 overflow-y-auto p-4">
         {loading && <div className="text-sm text-neutral-500">Loading issues...</div>}
         {!loading && (
-          <>
-            <IssueList
-              issues={issues}
-              groups={groups}
-              selectedKey={selectedKey}
-              onSelect={(key) => setSelectedKey(prev => prev === key ? null : key)}
-              issueKeyFn={(i) => issueKey(i, project)}
-              showEnv={isAllProjects}
-            />
-
-            {/* Inline detail below list — cross-project mode */}
-            {isAllProjects && selectedIssue && detailProject && (
-              <div className="mt-4 border border-neutral-800 rounded-lg overflow-hidden">
-                <IssueDetail
-                  project={detailProject}
-                  issueId={selectedIssue.id}
-                  onClose={() => setSelectedKey(null)}
-                  inline
-                />
-              </div>
-            )}
-          </>
+          <IssueList
+            issues={issues}
+            groups={groups}
+            selectedKey={selectedKey}
+            onSelect={(key) => setSelectedKey(prev => prev === key ? null : key)}
+            issueKeyFn={(i) => issueKey(i, project)}
+            showEnv={isAllProjects}
+          />
         )}
       </div>
 
-      {/* Slide-out detail — single project mode */}
-      {!isAllProjects && selectedIssue && detailProject && (
+      {/* Modal detail — both modes */}
+      {selectedIssue && detailProject && (
         <IssueDetail
           project={detailProject}
           issueId={selectedIssue.id}

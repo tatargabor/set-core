@@ -12,12 +12,11 @@ interface Props {
   project: string
   issueId: string
   onClose: () => void
-  inline?: boolean
 }
 
 type Tab = 'timeline' | 'diagnosis' | 'error' | 'session' | 'related'
 
-export function IssueDetail({ project, issueId, onClose, inline }: Props) {
+export function IssueDetail({ project, issueId, onClose }: Props) {
   const { issue, timeline, loading } = useIssueDetail(project, issueId)
   const { messages, send } = useIssueChat(project, issueId)
   const [tab, setTab] = useState<Tab>('timeline')
@@ -29,13 +28,11 @@ export function IssueDetail({ project, issueId, onClose, inline }: Props) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const LoadWrapper = inline ? InlinePanel : SlideOut
-
   if (loading || !issue) {
     return (
-      <LoadWrapper onClose={onClose}>
+      <Modal onClose={onClose}>
         <div className="p-6 text-sm text-neutral-500">Loading...</div>
-      </LoadWrapper>
+      </Modal>
     )
   }
 
@@ -49,11 +46,9 @@ export function IssueDetail({ project, issueId, onClose, inline }: Props) {
   }))
   const merged = [...timeline, ...chatEntries].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
 
-  const Wrapper = inline ? InlinePanel : SlideOut
-
   return (
-    <Wrapper onClose={onClose}>
-      <div className={`flex flex-col ${inline ? 'max-h-[500px]' : 'h-full'}`}>
+    <Modal onClose={onClose}>
+      <div className="flex flex-col h-[80vh]">
         {/* Header */}
         <div className="p-4 border-b border-neutral-800 space-y-2">
           <div className="flex items-center justify-between">
@@ -101,20 +96,22 @@ export function IssueDetail({ project, issueId, onClose, inline }: Props) {
           {tab === 'related' && <RelatedTab issue={issue} />}
         </div>
       </div>
-    </Wrapper>
+    </Modal>
   )
 }
 
-function SlideOut({ children }: { onClose?: () => void; children: React.ReactNode }) {
+function Modal({ children, onClose }: { onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full md:w-[55%] bg-neutral-950 border-l border-neutral-800 shadow-2xl">
-      {children}
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        className="relative w-full max-w-3xl mx-4 bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {children}
+      </div>
     </div>
   )
-}
-
-function InlinePanel({ children }: { onClose?: () => void; children: React.ReactNode }) {
-  return <div className="bg-neutral-950 border-t border-neutral-800">{children}</div>
 }
 
 function DiagnosisTab({ issue }: { issue: Issue }) {
