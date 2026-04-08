@@ -1001,6 +1001,8 @@ def _run_integration_gates(
             run_command(["bash", "-c", dep_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
             _ge = int((_time.monotonic() - _gs) * 1000)
             logger.info("Integration gate: dep install PASSED for %s (%dms)", change_name, _ge)
+            if event_bus:
+                event_bus.emit("GATE_PASS", change=change_name, data={"gate": "dep_install", "elapsed_ms": _ge, "phase": "integration"})
 
     # Pre-build setup (e.g. Prisma DB schema sync for Next.js + Prisma projects)
     # next build executes server components which query the DB — needs schema synced
