@@ -18,6 +18,9 @@ core:
   - rules/web-frontend.md
   - rules/worktree-setup.md
   - rules/i18n-conventions.md
+  - rules/nextjs-patterns.md
+  - rules/schema-integrity.md
+  - rules/transaction-safety.md
   - path: vitest.config.ts
     protected: true
   - path: playwright.config.ts

@@ -121,3 +121,59 @@ src/app/
 - Admin auth pages (login, register) sit under `admin/` directly — outside the dashboard layout so they render full-screen without sidebar
 - Admin feature pages go under `admin/(dashboard)/` — inside the sidebar layout
 - This separation prevents layout bugs where admin sub-pages lose the sidebar or storefront pages render without the shop nav
+
+## 4. Nested Layout Inheritance — DRY Rule
+
+Next.js layouts compose hierarchically: a child layout receives the parent layout's chrome **automatically**. NEVER redeclare the parent's components, providers, or wrappers in a child layout — this creates duplicate state, double-mounted providers, and rendering races.
+
+**Wrong — child layout duplicates parent's chrome and providers:**
+```typescript
+// src/app/(shop)/layout.tsx — parent
+export default function ShopLayout({ children }) {
+  return (
+    <CartProvider>
+      <Header />
+      <main>{children}</main>
+      <Footer />
+      <Toaster />
+    </CartProvider>
+  )
+}
+
+// src/app/(shop)/checkout/layout.tsx — child (WRONG)
+export default function CheckoutLayout({ children }) {
+  return (
+    <CartProvider>           {/* ← duplicates parent! Two cart states! */}
+      <Header />              {/* ← double-rendered header */}
+      <main>{children}</main>
+      <Footer />              {/* ← double-rendered footer */}
+      <Toaster />             {/* ← double toast manager */}
+    </CartProvider>
+  )
+}
+```
+
+The two `CartProvider` instances each maintain their own state. After mutations (e.g., placing an order that empties the cart), one provider sees empty and redirects, the other still has items, causing redirect races and ghost-cart UI bugs.
+
+**Correct — child layout only adds what's NEW, inherits the rest:**
+```typescript
+// src/app/(shop)/checkout/layout.tsx — child (CORRECT)
+export default async function CheckoutLayout({ children }) {
+  const session = await auth()
+  if (!session?.user) redirect('/login')
+
+  // Just return children — parent layout's CartProvider, Header, Footer
+  // are inherited automatically. Add ONLY what this layout needs that
+  // the parent doesn't provide (e.g., auth gate, checkout-specific UI).
+  return <>{children}</>
+}
+```
+
+**The rule:** A child layout should only add components/providers that the parent does NOT already provide. If you're tempted to copy-paste from a parent layout, you're creating a bug. Layouts compose, they don't override.
+
+**Detection patterns:**
+- Same provider imported in multiple layouts → duplicate state
+- Same `<Header />` / `<Footer />` rendered in nested layouts → double-mount
+- Cart/auth/theme state behaves differently on different routes → likely duplicate provider
+
+**When you DO need a different layout:** use a route group (e.g., `(shop)` vs `(checkout-fullscreen)`) at the same level as the parent, NOT a nested layout that redeclares everything.
