@@ -1255,18 +1255,34 @@ def review_change(
     if prompt_prefix:
         review_prompt = prompt_prefix + review_prompt
 
-    # Run review via Claude
-    claude_result = run_claude_logged(review_prompt, purpose="review", change=change_name, model=review_model)
+    # Run review via Claude — 15 min timeout (default 5 min was too short for
+    # large changes with many spec files, causing silent "skipping" pass-through)
+    claude_result = run_claude_logged(
+        review_prompt, purpose="review", change=change_name, model=review_model,
+        timeout=900,
+    )
     if claude_result.exit_code != 0:
         # Escalate to opus if not already
         if review_model != "opus":
-            logger.warning("Code review failed with %s for %s, escalating to opus", review_model, change_name)
-            claude_result = run_claude_logged(review_prompt, purpose="review", change=change_name, model="opus")
+            logger.warning(
+                "Code review failed with %s for %s (exit=%d, timed_out=%s) — escalating to opus",
+                review_model, change_name, claude_result.exit_code, claude_result.timed_out,
+            )
+            claude_result = run_claude_logged(
+                review_prompt, purpose="review", change=change_name, model="opus",
+                timeout=900,
+            )
             if claude_result.exit_code != 0:
-                logger.warning("Code review failed with opus for %s — skipping", change_name)
+                logger.error(
+                    "Code review failed with opus for %s (exit=%d, timed_out=%s) — skipping (FALSE PASS)",
+                    change_name, claude_result.exit_code, claude_result.timed_out,
+                )
                 return ReviewResult(has_critical=False, output="")
         else:
-            logger.warning("Code review failed for %s — skipping", change_name)
+            logger.error(
+                "Code review failed for %s (exit=%d, timed_out=%s) — skipping (FALSE PASS)",
+                change_name, claude_result.exit_code, claude_result.timed_out,
+            )
             return ReviewResult(has_critical=False, output="")
 
     review_output = claude_result.stdout
