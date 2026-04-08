@@ -2290,6 +2290,9 @@ def dispatch_ready_changes(
 
     running = count_changes_by_status(state, "running")
     running += count_changes_by_status(state, "dispatched")
+    # In-flight merge pipeline blocks new dispatches — new changes would run
+    # against stale main while integration gates / conflict resolution finishes
+    running += count_changes_by_status(state, "integrating")
     # Changes in retry (e2e/coverage failed, being redispatched) block new dispatches
     # because they haven't merged yet — new changes would run against stale main
     running += count_changes_by_status(state, "integration-e2e-failed")
