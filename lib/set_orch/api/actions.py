@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import signal
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -17,7 +19,7 @@ from .helpers import _resolve_project, _state_path, _sentinel_dir, _with_state_l
 router = APIRouter()
 
 @router.post("/api/{project}/approve")
-def approve_checkpoint(project: str):
+async def approve_checkpoint(project: str):
     """Approve the latest checkpoint."""
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
@@ -40,11 +42,11 @@ def approve_checkpoint(project: str):
         save_state(state, str(sp))
         return {"ok": True}
 
-    return _with_state_lock(sp, do_approve)
+    return await _with_state_lock(sp, do_approve)
 
 
 @router.post("/api/{project}/stop")
-def stop_orchestration(project: str):
+async def stop_orchestration(project: str):
     """Stop the orchestration process."""
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
@@ -72,7 +74,7 @@ def stop_orchestration(project: str):
         s.status = "stopped"
         save_state(s, str(sp))
 
-    _with_state_lock(sp, do_stop)
+    await _with_state_lock(sp, do_stop)
     return {"ok": True, "kill_result": kill_result}
 
 
@@ -259,7 +261,7 @@ def resume_change(project: str, name: str):
 
 
 @router.post("/api/{project}/changes/{name}/stop")
-def stop_change(project: str, name: str):
+async def stop_change(project: str, name: str):
     """Stop a specific change's Ralph process."""
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
@@ -294,12 +296,12 @@ def stop_change(project: str, name: str):
                 break
         save_state(s, str(sp))
 
-    _with_state_lock(sp, do_stop_change)
+    await _with_state_lock(sp, do_stop_change)
     return {"ok": True, "kill_result": kill_result}
 
 
 @router.post("/api/{project}/changes/{name}/skip")
-def skip_change(project: str, name: str):
+async def skip_change(project: str, name: str):
     """Mark a change as skipped."""
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
@@ -317,7 +319,7 @@ def skip_change(project: str, name: str):
                 return {"ok": True}
         raise HTTPException(404, f"Change not found: {name}")
 
-    return _with_state_lock(sp, do_skip)
+    return await _with_state_lock(sp, do_skip)
 
 
 # ─── Process Management ──────────────────────────────────────────────
@@ -472,7 +474,7 @@ def stop_process(project: str, pid: int):
 
 
 @router.post("/api/{project}/processes/stop-all")
-def stop_all_processes(project: str):
+async def stop_all_processes(project: str):
     """Stop all processes bottom-up: agents → orchestrator → sentinel."""
     project_path = _resolve_project(project)
     trees = _build_project_process_tree(Path(project_path))
@@ -493,7 +495,7 @@ def stop_all_processes(project: str):
 
     # Wait up to 3s for graceful shutdown, then SIGKILL survivors
     if killed:
-        time.sleep(3)
+        await asyncio.sleep(3)
         for pid in killed:
             try:
                 os.kill(pid, 0)  # still alive?
@@ -509,7 +511,7 @@ def stop_all_processes(project: str):
                 s = load_state(str(sp))
                 s.status = "stopped"
                 save_state(s, str(sp))
-            _with_state_lock(sp, do_stop)
+            await _with_state_lock(sp, do_stop)
         except Exception:
             pass
 

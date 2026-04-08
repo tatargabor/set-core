@@ -6,6 +6,7 @@ worktree listing, activity reading, state locking.
 
 from __future__ import annotations
 
+import asyncio
 import fcntl
 import json
 import os
@@ -318,8 +319,12 @@ def _read_activity(project_path: Path) -> list[dict]:
 # ─── State locking ────────────────────────────────────────────────────
 
 
-def _with_state_lock(state_file: Path, fn):
-    """Execute fn while holding flock on state lock file."""
+async def _with_state_lock(state_file: Path, fn):
+    """Execute fn while holding flock on state lock file.
+
+    Uses asyncio.sleep() for retry delays so the Uvicorn event loop
+    is never blocked during lock contention.
+    """
     lock_path = str(state_file) + ".lock"
     lock_fd = open(lock_path, "w")
     try:
@@ -333,7 +338,7 @@ def _with_state_lock(state_file: Path, fn):
                 acquired = True
                 break
             except BlockingIOError:
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
         if not acquired:
             lock_fd.close()
             raise HTTPException(503, "State file locked, try again")
