@@ -707,6 +707,32 @@ def topological_sort(changes: list[Change] | list[dict]) -> list[str]:
 
 _TERMINAL_STATUSES = frozenset({"merged", "failed", "skipped", "done"})
 
+# Statuses that count as NOT in-flight for dispatch parallel-limit purposes.
+# A change is "in flight" (counts toward the running total) UNLESS it is in
+# one of these states. We use a whitelist (not a blacklist of in-flight states)
+# so that adding a new intermediate state in the future fails safe — it will
+# be treated as in-flight and block new dispatches until classified.
+_NOT_IN_FLIGHT_STATUSES = frozenset({
+    "merged",       # successfully merged to main
+    "skipped",      # skipped by merge policy
+    "skip_merged",  # skipped via merge policy + recorded as merged
+    "failed",       # terminal failure, will not retry
+    "pending",      # not yet dispatched
+    "dep-blocked",  # waiting for dependency, not yet dispatched
+})
+
+
+def count_in_flight_changes(state: "OrchestratorState") -> int:
+    """Count changes currently in flight (occupying a parallel slot).
+
+    A change is in-flight if it has been dispatched and has not yet reached
+    a terminal/pending state. This includes: dispatched, running, done,
+    verifying, integrating, integration-failed, integration-e2e-failed,
+    integration-coverage-failed, fixing, merge-blocked, stalled, paused,
+    stopped, waiting:human, waiting:budget, and any future intermediate state.
+    """
+    return sum(1 for c in state.changes if c.status not in _NOT_IN_FLIGHT_STATUSES)
+
 
 def init_phase_state(state: OrchestratorState) -> None:
     """Compute unique phases from changes and create phase tracking state.

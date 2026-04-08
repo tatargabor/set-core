@@ -2288,16 +2288,13 @@ def dispatch_ready_changes(
     """
     state = load_state(state_path)
 
-    running = count_changes_by_status(state, "running")
-    running += count_changes_by_status(state, "dispatched")
-    # In-flight merge pipeline blocks new dispatches — new changes would run
-    # against stale main while integration gates / conflict resolution finishes
-    running += count_changes_by_status(state, "integrating")
-    # Changes in retry (e2e/coverage failed, being redispatched) block new dispatches
-    # because they haven't merged yet — new changes would run against stale main
-    running += count_changes_by_status(state, "integration-e2e-failed")
-    running += count_changes_by_status(state, "integration-coverage-failed")
-    running += count_changes_by_status(state, "fixing")
+    # Whitelist-based counting: every change that is NOT in a terminal/pending
+    # state counts toward the parallel limit. This is safer than blacklisting
+    # specific in-flight states — adding a new intermediate status in the
+    # future will fail safe (block dispatches) until explicitly classified.
+    # See state.py:_NOT_IN_FLIGHT_STATUSES for the whitelist.
+    from .state import count_in_flight_changes
+    running = count_in_flight_changes(state)
 
     # Topological order from state (not plan — state carries forward after replan)
     order = topological_sort(state.changes)
