@@ -2426,6 +2426,7 @@ def _execute_spec_verify_gate(
         purpose="spec_verify", change=change_name,
         extra_args=["--max-turns", "40"],
         cwd=wt_path,
+        timeout=900,
     )
     verify_output = verify_cmd_result.stdout
 
