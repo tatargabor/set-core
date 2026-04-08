@@ -457,6 +457,16 @@ def _cleanup_orphans(state_file: str) -> None:
                         timeout=10,
                         cwd=project_dir,
                     )
+                    # If the change was paused, reset to pending so it can be
+                    # re-dispatched. Paused changes count as in-flight
+                    # (not in _NOT_IN_FLIGHT_STATUSES) so leaving them paused
+                    # with no worktree permanently occupies a parallel slot.
+                    if change is not None and change.status == "paused":
+                        update_change_field(state_file, change_name, "status", "pending")
+                        logger.info(
+                            "Reset paused change %s to pending (worktree removed — cannot resume)",
+                            change_name,
+                        )
                 else:
                     logger.warning("Failed to remove worktree %s: %s", change_name, rm_r.stderr[:200])
             except Exception:
