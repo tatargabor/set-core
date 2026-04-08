@@ -57,10 +57,11 @@ CRITICAL: NEVER combine cart and checkout in one change. The cart-and-checkout m
 
 ## Design System
 
-- Design source: `docs/figma-raw/` directory contains Figma export
-- `docs/design-snapshot.md` has design tokens (colors, typography, spacing)
-- Follow design tokens exactly — do not fall back to Tailwind defaults if they differ
-- Brand colors: Coffee Brown (#6F4E37), Cream (#FFF8DC), Dark Roast (#3C2415)
+- `docs/design-system.md` has design tokens (colors, typography, spacing, radii)
+- `docs/design-brief.md` has per-page visual descriptions (layout, components, responsive behavior)
+- Per-change `openspec/changes/<name>/design.md` (if present) has scope-matched tokens + visual specs — read this FIRST
+- Follow design tokens exactly — do not fall back to shadcn/ui or Tailwind defaults if they differ
+- Brand colors: Coffee Brown `#78350F` (primary), Amber `#D97706` (secondary), Cream `#FFFBEB` (background)
 
 ## Admin
 
@@ -71,5 +72,5 @@ CRITICAL: NEVER combine cart and checkout in one change. The cart-and-checkout m
 
 ## Images
 
-- Product images use placeholder service: `https://placehold.co/400x300/6F4E37/FFF8DC?text=Product+Name`
-- Use brand colors in placeholder URLs
+- Product images use placeholder service: `https://placehold.co/400x300/78350F/FFFBEB?text=Product+Name`
+- Use brand colors in placeholder URLs (coffee brown `#78350F` bg, cream `#FFFBEB` fg)

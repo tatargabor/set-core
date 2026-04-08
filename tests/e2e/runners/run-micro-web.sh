@@ -209,8 +209,7 @@ default_model: opus
 e2e_command: npx playwright test
 e2e_timeout: 120
 max_parallel: 1
-merge_policy: checkpoint
-checkpoint_auto_approve: true
+merge_policy: eager
 auto_replan: true
 max_replan_cycles: 2
 review_before_merge: true
