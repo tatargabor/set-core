@@ -2389,6 +2389,8 @@ def pause_change(
             logger.warning("Failed to pause %s: %s", change_name, e)
 
     update_change_field(state_path, change_name, "status", "paused", event_bus=event_bus)
+    if event_bus:
+        event_bus.emit("MANUAL_STOP", change=change_name)
     return True
 
 
@@ -2544,6 +2546,8 @@ def resume_change(
 
     update_change_field(state_path, change_name, "ralph_pid", terminal_pid, event_bus=event_bus)
     update_change_field(state_path, change_name, "status", "running", event_bus=event_bus)
+    if event_bus:
+        event_bus.emit("MANUAL_RESUME", change=change_name)
     return True
 
 

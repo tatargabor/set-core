@@ -724,7 +724,7 @@ def merge_change(
 # ─── Merge Queue ────────────────────────────────────────────────────
 
 
-def _integrate_for_merge(wt_path: str, change_name: str) -> str:
+def _integrate_for_merge(wt_path: str, change_name: str, event_bus: Any = None) -> str:
     """Integrate current main into branch before ff-only merge.
 
     Returns "ok" or "conflict". Checks exit code (unlike old _try_merge).
@@ -777,6 +777,12 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
     conflicted_files = [f.strip() for f in (conflict_check.stdout or "").strip().splitlines() if f.strip()]
 
     if conflicted_files:
+        _cr_start = time.time()
+        if event_bus:
+            event_bus.emit("CONFLICT_RESOLUTION_START", change=change_name, data={
+                "conflicted_files": conflicted_files,
+            })
+
         # Auto-resolve .claude/** and other generated files — accept branch version ("ours")
         auto_resolve_prefixes = (".claude/", "set/", ".gitattributes")
         auto_resolvable = [f for f in conflicted_files if any(f.startswith(p) for p in auto_resolve_prefixes)]
@@ -795,16 +801,28 @@ def _integrate_for_merge(wt_path: str, change_name: str) -> str:
             )
             if commit_result.exit_code == 0:
                 logger.info("Integration merge completed after auto-resolve for %s", change_name)
+                if event_bus:
+                    event_bus.emit("CONFLICT_RESOLUTION_END", change=change_name, data={
+                        "result": "resolved", "duration_ms": int((time.time() - _cr_start) * 1000),
+                    })
                 if stashed:
                     run_command(["git", "stash", "pop"], timeout=30, cwd=wt_path)
                 return "ok"
             else:
                 logger.error("Commit after auto-resolve failed for %s", change_name)
                 run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
+                if event_bus:
+                    event_bus.emit("CONFLICT_RESOLUTION_END", change=change_name, data={
+                        "result": "failed", "duration_ms": int((time.time() - _cr_start) * 1000),
+                    })
         else:
             logger.warning("Integration conflict for %s: %s (auto-resolved: %s)",
                            change_name, ", ".join(real_conflicts), ", ".join(auto_resolvable) or "none")
             run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
+            if event_bus:
+                event_bus.emit("CONFLICT_RESOLUTION_END", change=change_name, data={
+                    "result": "failed", "duration_ms": int((time.time() - _cr_start) * 1000),
+                })
     else:
         logger.error("Integration merge failed for %s (non-conflict): %s", change_name, result.stderr[:300])
         run_command(["git", "merge", "--abort"], timeout=10, cwd=wt_path)
@@ -1601,7 +1619,7 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 logger.error("Failed to recreate worktree for %s: %s — merging without gates", name, e)
 
         if wt_path and os.path.isdir(wt_path) and not ff_exhausted:
-            integration = _integrate_for_merge(wt_path, name)
+            integration = _integrate_for_merge(wt_path, name, event_bus=event_bus)
             if integration == "conflict":
                 # Delegate to conflict handler (agent rebase)
                 conflict_result = _handle_merge_conflict(name, state_file, wt_path)

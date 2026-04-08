@@ -1018,3 +1018,42 @@ export function submitScore(entry: {
     body: JSON.stringify(entry),
   })
 }
+
+// ─── Activity Timeline ──────────────────────────────────────────
+
+export interface ActivitySpan {
+  category: string
+  change: string
+  start: string
+  end: string
+  duration_ms: number
+  result?: string
+  retry?: number
+  detail?: Record<string, unknown>
+}
+
+export interface ActivityBreakdown {
+  category: string
+  total_ms: number
+  pct: number
+}
+
+export interface ActivityTimelineData {
+  wall_time_ms: number
+  activity_time_ms: number
+  parallel_efficiency: number
+  spans: ActivitySpan[]
+  breakdown: ActivityBreakdown[]
+}
+
+export function getActivityTimeline(
+  project: string,
+  from?: string,
+  to?: string,
+): Promise<ActivityTimelineData> {
+  const params = new URLSearchParams()
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
+  const qs = params.toString()
+  return fetchJSON(`/${project}/activity-timeline${qs ? `?${qs}` : ''}`)
+}

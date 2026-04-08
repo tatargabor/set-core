@@ -172,6 +172,8 @@ def add_iteration(
     team_spawned: bool = False,
     teammates_count: int = 0,
     team_tasks_parallel: int = 0,
+    event_bus: Any = None,
+    change_name: str = "",
 ) -> bool:
     """Append an iteration record to loop state."""
     state_file = get_loop_state_file(wt_path)
@@ -212,6 +214,23 @@ def add_iteration(
                 fcntl.flock(f, fcntl.LOCK_UN)
         logger.info("Iteration %d recorded: tokens=%d, done=%s, no_op=%s, ff_exhausted=%s",
                      iteration, tokens_used, done_check, no_op, ff_exhausted)
+
+        # Emit iteration boundary events for activity timeline
+        if event_bus and change_name:
+            duration_ms = 0
+            if started and ended:
+                try:
+                    s_epoch = parse_date_to_epoch(started)
+                    e_epoch = parse_date_to_epoch(ended)
+                    duration_ms = (e_epoch - s_epoch) * 1000
+                except Exception:
+                    pass
+            event_bus.emit("ITERATION_END", change=change_name, data={
+                "iteration": iteration,
+                "duration_ms": duration_ms,
+                "tokens_used": tokens_used,
+            })
+
         return True
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to add iteration %d: %s", iteration, e)

@@ -31,6 +31,13 @@ WATCHDOG_LOOP_THRESHOLD = 5
 WATCHDOG_HASH_RING_SIZE = 5
 
 
+# Idle detection threshold (seconds) — emit IDLE_START after this gap
+IDLE_THRESHOLD_SECONDS = 60
+
+# Module-level idle state tracker
+_idle_active = False
+
+
 # ─── Dataclasses ─────────────────────────────────────────────────
 
 
@@ -54,6 +61,7 @@ def watchdog_check(
     *,
     timeout_override: int | None = None,
     loop_threshold: int = WATCHDOG_LOOP_THRESHOLD,
+    event_bus: Any = None,
 ) -> WatchdogResult:
     """Main watchdog check for a single change.
 
@@ -195,6 +203,12 @@ def watchdog_check(
         action = _escalation_action(escalation_level)
         logger.info("Watchdog escalation: %s level %d → %d, action=%s",
                      change_name, old_level, escalation_level, action)
+        if event_bus:
+            event_bus.emit("WATCHDOG_ESCALATION", change=change_name, data={
+                "from_level": old_level,
+                "to_level": escalation_level,
+                "action": action,
+            })
         return WatchdogResult(
             action=action,
             reason=f"escalation level {escalation_level}",
@@ -202,6 +216,50 @@ def watchdog_check(
         )
 
     return WatchdogResult(action="ok", reason="healthy")
+
+
+# ─── Idle Detection ──────────────────────────────────────────────
+
+
+def check_idle(
+    state: dict[str, Any],
+    event_bus: Any = None,
+) -> None:
+    """Check if the entire orchestration is idle (no active changes).
+
+    Emits IDLE_START when idle threshold exceeded, IDLE_END when activity resumes.
+    """
+    global _idle_active
+
+    changes = state.get("changes", [])
+    active_statuses = ("running", "verifying", "dispatched", "integrating")
+    active_changes = [c.get("name", "") for c in changes if c.get("status") in active_statuses]
+
+    if active_changes:
+        if _idle_active:
+            _idle_active = False
+            if event_bus:
+                event_bus.emit("IDLE_END", data={"resumed_changes": active_changes})
+                logger.debug("Idle ended — active changes: %s", active_changes)
+        return
+
+    # No active changes — check how long we've been idle
+    now = int(time.time())
+    last_activity = 0
+    for c in changes:
+        wd = c.get("watchdog", {})
+        epoch = wd.get("last_activity_epoch", 0)
+        if epoch > last_activity:
+            last_activity = epoch
+
+    idle_secs = now - last_activity if last_activity else 0
+
+    if idle_secs >= IDLE_THRESHOLD_SECONDS and not _idle_active:
+        _idle_active = True
+        watched = [c.get("name", "") for c in changes if c.get("status") not in ("merged", "failed", "skipped")]
+        if event_bus:
+            event_bus.emit("IDLE_START", data={"watched_changes": watched, "idle_seconds": idle_secs})
+            logger.debug("Idle started — no active changes for %ds, watching: %s", idle_secs, watched)
 
 
 # ─── Init State ──────────────────────────────────────────────────

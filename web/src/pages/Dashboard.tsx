@@ -18,12 +18,13 @@ import ShutdownProgress from '../components/ShutdownProgress'
 import LearningsPanel from '../components/LearningsPanel'
 import ChangeTimelineDetail from '../components/ChangeTimelineDetail'
 import BattleView from './BattleView'
+import ActivityView from '../components/ActivityView'
 // useIsMobile removed — no longer needed
 // useSentinelData removed — sentinel tab now shows raw log
 import { getDigest, getPlans, getState, getLog, getSentinelLog } from '../lib/api'
 import type { StateData, ChangeInfo } from '../lib/api'
 
-type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle'
+type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle' | 'activity'
 
 interface Props {
   project: string | null
@@ -43,11 +44,11 @@ export default function Dashboard({ project, initialTab }: Props) {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const [activeTab, setActiveTabRaw] = useState<PanelTab>(() => {
     // Route-driven tab takes priority over query param
-    if (initialTab && ['changes','phases','plan','tokens','context','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(initialTab)) {
+    if (initialTab && ['changes','phases','plan','tokens','context','audit','digest','sessions','log','agent','sentinel','learnings','battle','activity'].includes(initialTab)) {
       return initialTab as PanelTab
     }
     const t = params.get('tab')
-    return (t && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','learnings','battle'].includes(t)) ? t as PanelTab : 'changes'
+    return (t && ['changes','phases','plan','tokens','audit','digest','sessions','log','agent','sentinel','learnings','battle','activity'].includes(t)) ? t as PanelTab : 'changes'
   })
   const setActiveTab = useCallback((tab: PanelTab) => {
     setActiveTabRaw(tab)
@@ -216,6 +217,7 @@ export default function Dashboard({ project, initialTab }: Props) {
     { id: 'learnings', label: 'Learnings' },
     { id: 'plan', label: 'Plan', hidden: !hasPlans },
     { id: 'battle', label: '\u{1F3AE} Battle' },
+    { id: 'activity', label: 'Activity' },
   ]
 
   return (
@@ -372,7 +374,14 @@ export default function Dashboard({ project, initialTab }: Props) {
           </div>
         )}
 
-        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'sentinel' && activeTab !== 'log' && activeTab !== 'battle' && activeTab !== 'learnings' && (
+        {/* Activity tab — time-based activity timeline */}
+        {activeTab === 'activity' && (
+          <div className="h-full overflow-auto">
+            <ActivityView project={project} isRunning={state?.status !== 'done'} />
+          </div>
+        )}
+
+        {activeTab !== 'changes' && activeTab !== 'phases' && activeTab !== 'agent' && activeTab !== 'sentinel' && activeTab !== 'log' && activeTab !== 'battle' && activeTab !== 'learnings' && activeTab !== 'activity' && (
           <div className="h-full overflow-auto">
             {activeTab === 'plan' && (
               <PlanViewer project={project} />

@@ -887,6 +887,10 @@ def monitor_loop(
                 },
             )
 
+        # Idle detection (activity-timeline instrumentation)
+        from .watchdog import check_idle
+        check_idle(state.to_dict(), event_bus=event_bus)
+
         # Completion detection
         if _check_completion(state_file, d, event_bus):
             break
