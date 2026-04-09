@@ -357,12 +357,20 @@ class WebProjectType(CoreProfile):
         tr_dir = Path(wt_path) / "test-results"
         if not tr_dir.is_dir():
             return []
+
+        # Build an allow-list of known spec file basenames so multi-word
+        # change names like "admin-panel" or "reviews-and-wishlist" don't get
+        # truncated to "admin" / "reviews" by a naive first-hyphen split.
+        # Playwright names test-results dirs `<spec_basename>-<describe...>-<test...>-chromium`
+        # where `<spec_basename>` matches the file under tests/e2e/<basename>.spec.ts.
+        spec_basenames = self._list_spec_basenames(wt_path)
+
         # Screenshots
         for png in sorted(tr_dir.rglob("*.png")):
             test_dir = png.parent.name
             result = "fail" if "test-failed" in png.name else "pass"
-            label = self._clean_test_label(test_dir)
-            spec_file = test_dir.split("-")[0] if "-" in test_dir else ""
+            spec_file = self._match_spec_basename(test_dir, spec_basenames)
+            label = self._clean_test_label(test_dir, spec_file)
 
             meta_parts = []
             if result == "fail":
@@ -393,18 +401,55 @@ class WebProjectType(CoreProfile):
         return artifacts
 
     @staticmethod
-    def _clean_test_label(test_dir_name: str) -> str:
+    def _list_spec_basenames(wt_path: str) -> list:
+        """List spec file basenames (without `.spec.ts`) from tests/e2e/."""
+        e2e_dir = Path(wt_path) / "tests" / "e2e"
+        if not e2e_dir.is_dir():
+            return []
+        bases = []
+        for f in e2e_dir.iterdir():
+            name = f.name
+            if name.endswith(".spec.ts"):
+                bases.append(name[: -len(".spec.ts")])
+            elif name.endswith(".spec.js"):
+                bases.append(name[: -len(".spec.js")])
+        # Sort by length descending so longest match wins — "admin-panel"
+        # before "admin", "reviews-and-wishlist" before "reviews".
+        bases.sort(key=len, reverse=True)
+        return bases
+
+    @staticmethod
+    def _match_spec_basename(test_dir: str, spec_basenames: list) -> str:
+        """Find the longest spec basename that is a hyphen-prefix of test_dir.
+
+        `admin-panel-REQ-ADM-001-...` + [`admin-panel`, `admin`] → `admin-panel`.
+        Empty string if no match.
+        """
+        for base in spec_basenames:  # already sorted longest-first
+            if test_dir == base or test_dir.startswith(base + "-"):
+                return base
+        # Fallback: first hyphen-separated token (preserves old behavior when
+        # the worktree has no tests/e2e/ or the dir doesn't match any known spec)
+        return test_dir.split("-", 1)[0] if "-" in test_dir else test_dir
+
+    @staticmethod
+    def _clean_test_label(test_dir_name: str, spec_basename: str = "") -> str:
         """Convert Playwright test-results dir name to human-readable label.
 
-        'catalog-Catalog-11-3-click-4dadc--page-with-variant-selector-chromium'
-        → 'Catalog: page with variant selector'
+        `admin-panel-REQ-ADM-001-KP-18210-ge-vs-previous-period-shown-chromium`
+        + spec_basename=`admin-panel`
+        → `REQ-ADM-001 KP ge vs previous period shown`
         """
         import re
         s = test_dir_name
         # Remove -chromium suffix
-        s = re.sub(r"-chromium$", "", s)
-        # Remove leading spec file prefix (e.g., 'catalog-')
-        s = re.sub(r"^[a-z]+-", "", s, count=1)
+        s = re.sub(r"-chromium(-retry\d+)?$", "", s)
+        # Strip the spec basename prefix if provided (longest-match aware)
+        if spec_basename and (s == spec_basename or s.startswith(spec_basename + "-")):
+            s = s[len(spec_basename):].lstrip("-")
+        else:
+            # Backward-compat fallback: old first-hyphen-split behavior
+            s = re.sub(r"^[a-z]+-", "", s, count=1)
         # Remove hash fragments (5+ hex chars)
         s = re.sub(r"-[0-9a-f]{5,}-", "-", s)
         # Split on describe separator (double dash or numbered prefix)

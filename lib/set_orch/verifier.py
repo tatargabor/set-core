@@ -2420,6 +2420,31 @@ def _execute_rules_gate(
     return GateResult("rules", "pass", output=output)
 
 
+def _parse_critical_count(output: str) -> int | None:
+    """Parse the `CRITICAL_COUNT: N` sentinel from spec-verify LLM output.
+
+    The spec-verify prompt asks the LLM to emit an explicit critical-findings
+    count as its second-to-last line, alongside `VERIFY_RESULT: PASS|FAIL`.
+    This is deliberately NOT a body-regex heuristic — past heuristic-based
+    CRITICAL detection misdiagnosed real findings, so we rely on the model
+    self-reporting instead.
+
+    Returns:
+        The parsed integer count (>= 0).
+        None if the sentinel is absent or unparseable — callers should treat
+        this as "unknown" and NOT downgrade the verdict.
+    """
+    if not output:
+        return None
+    m = re.search(r"CRITICAL_COUNT:\s*(\d+)\b", output)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
 def _execute_spec_verify_gate(
     change_name: str, change: Change, wt_path: str,
 ) -> "GateResult":
@@ -2435,10 +2460,18 @@ def _execute_spec_verify_gate(
     verify_prompt = (
         f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\n"
         f"Run /opsx:verify {change_name}\n\n"
-        f"CRITICAL: Your FINAL output line MUST be exactly one of:\n"
-        f"  VERIFY_RESULT: PASS\n"
-        f"  VERIFY_RESULT: FAIL\n"
-        f"This sentinel is parsed by the orchestrator. Without it, the gate cannot determine the verdict."
+        f"CRITICAL: Your FINAL TWO output lines MUST be exactly:\n"
+        f"  CRITICAL_COUNT: <integer count of CRITICAL-severity findings, 0 if none>\n"
+        f"  VERIFY_RESULT: PASS|FAIL\n"
+        f"\n"
+        f"Rules for CRITICAL_COUNT:\n"
+        f"  - Count ONLY findings you marked as CRITICAL severity in your report.\n"
+        f"  - WARNING and SUGGESTION findings do NOT count — use 0 if you only have those.\n"
+        f"  - Be honest: the orchestrator uses this count to downgrade VERIFY_RESULT: FAIL\n"
+        f"    with CRITICAL_COUNT: 0 to PASS (the warnings will still surface in logs).\n"
+        f"\n"
+        f"Both sentinels are parsed by the orchestrator. Without them the gate cannot\n"
+        f"determine the verdict and will default to FAIL-safe behavior."
     )
 
     # Start with Sonnet (cheaper, sufficient for verification checks),
@@ -2483,19 +2516,45 @@ def _execute_spec_verify_gate(
         logger.info("Gate[spec-verify] END %s result=pass", change_name)
         return GateResult("spec_verify", "pass", output=verify_output[:2000])
     elif "VERIFY_RESULT: FAIL" in verify_output:
+        # Severity threshold via explicit LLM self-reported CRITICAL_COUNT
+        # sentinel. If the LLM says "CRITICAL_COUNT: 0" alongside FAIL, the
+        # FAIL was driven by WARNING/SUGGESTION-level findings only, so we
+        # downgrade to PASS. If the sentinel is missing or > 0, keep the
+        # conservative behavior and block the merge.
+        critical_count = _parse_critical_count(verify_output)
+        if critical_count == 0:
+            logger.warning(
+                "Gate[spec-verify] %s: LLM emitted VERIFY_RESULT: FAIL with "
+                "CRITICAL_COUNT: 0 — downgrading to PASS (warning-level findings "
+                "only). Tail: %s",
+                change_name,
+                verify_output[-400:].replace("\n", " | "),
+            )
+            logger.info(
+                "Gate[spec-verify] END %s result=pass (warnings-only)", change_name
+            )
+            return GateResult("spec_verify", "pass", output=verify_output[:2000])
+
         scope = change.scope or ""
         verify_tail = verify_output[-2000:] if verify_output else ""
-        logger.warning("Spec coverage FAIL for %s — blocking", change_name)
+        sentinel_note = (
+            f"CRITICAL_COUNT={critical_count}"
+            if critical_count is not None
+            else "CRITICAL_COUNT sentinel missing (backward-compat fail)"
+        )
+        logger.warning(
+            "Spec coverage FAIL for %s — blocking (%s)", change_name, sentinel_note
+        )
         logger.info("Gate[spec-verify] END %s result=fail", change_name)
         return GateResult(
             "spec_verify", "fail",
             output=verify_output[:2000],
             retry_context=(
-                "Spec verification FAILED — requirements not fully covered.\n\n"
+                "Spec verification FAILED — CRITICAL findings present.\n\n"
                 f"Verify output (last 2000 chars):\n{verify_tail}\n\n"
                 f"Original scope: {scope}\n\n"
-                "Fix: Ensure all requirements from the scope are implemented "
-                "and acceptance criteria are satisfied."
+                "Fix: Address every CRITICAL finding listed above. "
+                "WARNING-level findings are informational and do not block the gate."
             ),
         )
     else:
