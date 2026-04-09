@@ -617,7 +617,7 @@ Or use the step-by-step approach:
 /opsx:archive   → Done
 ```
 
-See the [Quick Start guide](guide/quick-start.md) for the full walkthrough.
+See the [Quick Start guide](../guide/quick-start.md) for the full walkthrough.
 
 ---
 
