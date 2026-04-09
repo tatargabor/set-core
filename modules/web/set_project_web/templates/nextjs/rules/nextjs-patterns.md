@@ -122,41 +122,55 @@ src/app/
 - Admin feature pages go under `admin/(dashboard)/` — inside the sidebar layout
 - This separation prevents layout bugs where admin sub-pages lose the sidebar or storefront pages render without the shop nav
 
-### CRITICAL: globals.css Import Location
+### CRITICAL: Root Layout Must NOT Render `<html>` (i18n projects)
 
-`globals.css` (Tailwind base + design tokens + shadcn theme) MUST be imported in EVERY top-level layout that has children.
+In projects with `next-intl` or any `[locale]` route segment, the `[locale]/layout.tsx` renders `<html lang={locale}>`. If the root `src/app/layout.tsx` ALSO renders `<html>`, React produces a **hydration mismatch** — the server sends `<html lang="hu">` (root) but the client expects `<html lang="en">` (locale), and CSS class attributes diverge too.
 
-**The most common bug** in i18n projects: split root layout (`src/app/layout.tsx`) and locale layout (`src/app/[locale]/layout.tsx`) where `globals.css` is only imported in the locale layout. Routes OUTSIDE the `[locale]` route group (typically `/admin/*`, `/api/*` are fine since they have no UI) render with browser default styles — no Tailwind, no shadcn, no design tokens.
-
-**Wrong — globals.css only in locale layout:**
+**Wrong — BOTH layouts render `<html>` (causes hydration mismatch):**
 ```typescript
-// src/app/layout.tsx (root) — MISSING globals.css import
+// src/app/layout.tsx (root) — BAD: creates a duplicate <html>
+import "./globals.css";
 export default function RootLayout({ children }) {
-  return <html><body>{children}</body></html>
+  return <html lang="hu"><body>{children}</body></html>
 }
 
-// src/app/[locale]/layout.tsx
-import "../globals.css"  // ← only loaded for /[locale]/* routes
+// src/app/[locale]/layout.tsx — ALSO renders <html> → nested <html> tags!
+export default function LocaleLayout({ children, params }) {
+  return <html lang={locale}><body>{children}</body></html>
+}
 ```
 
-Result: `/admin/dashboard` renders unstyled. Tailwind classes on the page become no-ops because the CSS file is never linked into the HTML.
+Result: React hydration error on every page. The `lang` attribute and font `className` differ between server and client renders.
 
-**Correct — globals.css imported in BOTH:**
+**Correct — root layout is a pass-through, locale layout owns `<html>`:**
 ```typescript
-// src/app/layout.tsx (root)
-import "./globals.css"  // ← REQUIRED for routes outside [locale]
-
+// src/app/layout.tsx (root) — pass-through shell
+import "./globals.css";  // imported here so admin routes outside [locale] get styles
 export default function RootLayout({ children }) {
-  return <html><body>{children}</body></html>
+  return children;  // NO <html>, NO <body> — delegate to [locale]/layout.tsx
 }
 
-// src/app/[locale]/layout.tsx
-import "../globals.css"  // ← also imported here is OK; Next.js dedupes
+// src/app/[locale]/layout.tsx — the ONLY place that renders <html>
+import "../globals.css";  // Next.js dedupes; safe to import in both
+export default async function LocaleLayout({ children, params }) {
+  const { locale } = await params;
+  return (
+    <html lang={locale} className={`${heading.variable} ${body.variable}`}>
+      <body className="bg-background text-foreground font-sans">
+        <NextIntlClientProvider messages={messages}>
+          {children}
+        </NextIntlClientProvider>
+      </body>
+    </html>
+  );
+}
 ```
 
-**The rule:** every layout file that returns `<html>` MUST import `globals.css`. If you have a split root + locale layout, BOTH must import it. Tailwind/shadcn does not "cascade" through `<html>` — the import is what tells Next.js to link the stylesheet into that route's HTML output.
+**The rule:** In i18n projects, ONLY the `[locale]/layout.tsx` may render `<html>` and `<body>`. The root layout returns `children` directly. Import `globals.css` in the root layout for admin/non-locale routes, but do NOT wrap children in HTML tags.
 
-**Detection:** if any page renders with browser-default fonts and zero card/button styling (looks like 1996 HTML), the globals.css import is missing from the layout serving that route.
+**For non-i18n projects** (no `[locale]` segment): the root layout renders `<html>` and `<body>` as usual.
+
+**Detection:** if Next.js dev console shows "A tree hydrated but some attributes of the server rendered HTML didn't match" with `lang` or `className` diffs on `<html>`, you have duplicate `<html>` tags from nested layouts.
 
 ## 4. Nested Layout Inheritance — DRY Rule
 
