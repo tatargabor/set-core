@@ -134,6 +134,11 @@ def serve_screenshot(project: str, file_path: str):
     if ".." in file_path:
         raise HTTPException(400, "Invalid path")
 
+    # Absolute paths lose their leading "/" when captured by FastAPI's {path:path}
+    # parameter (e.g., "/home/tg/..." becomes "home/tg/..."). Restore it.
+    if not os.path.isabs(file_path) and file_path.startswith("home/"):
+        file_path = "/" + file_path
+
     full_path = Path(file_path) if os.path.isabs(file_path) else _resolve_project(project) / file_path
     media_type = _ALLOWED_EXTENSIONS.get(full_path.suffix.lower())
     if not full_path.exists() or media_type is None:
