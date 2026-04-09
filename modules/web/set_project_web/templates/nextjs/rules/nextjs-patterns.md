@@ -367,3 +367,43 @@ images: {
 Or replace every placehold.co reference in `prisma/seed.ts` + fixtures with a real PNG CDN first, then drop the SVG settings.
 
 **The rule:** when editing `next.config.js`, preserve the existing `images` keys unless you also update seed data and fixtures. Removing `dangerouslyAllowSVG` + `contentSecurityPolicy` without replacing placehold.co references is a known regression that blocks E2E runs.
+
+## 8. Navigation Link ↔ Page Coverage
+
+Every entry rendered in shared navigation (header nav, footer nav, admin sidebar, language switcher, mobile drawer) MUST resolve to a real page that returns 200. Verify gates crawl the home page, follow every `<Link>` in the navigation, and fail if any target 404s. The failure mode is the same whether the link was added speculatively ("we'll build /merch later") or the route was renamed mid-scope ("/products" → "/shop").
+
+**Wrong — foundation change seeds five nav items, only three have pages:**
+```tsx
+// src/components/Header.tsx
+<nav>
+  <Link href="/kavek">Kávék</Link>       {/* page exists */}
+  <Link href="/eszkozok">Eszközök</Link> {/* page exists */}
+  <Link href="/csomagok">Csomagok</Link> {/* 404 — page never created */}
+  <Link href="/merch">Merch</Link>       {/* 404 */}
+  <Link href="/sztorik">Sztorik</Link>   {/* 404 */}
+</nav>
+```
+Result: verify gate follows each link, three return 404, the change hard-fails verify with "nav links return 404". Cost: a full retry cycle on the feature change, sometimes exhausting the retry budget for a missing placeholder the planner forgot.
+
+**Correct — ship a placeholder for every link the same change renders:**
+```tsx
+// src/app/[locale]/(shop)/csomagok/page.tsx
+export default function BundlesPage() {
+  const t = useTranslations("bundles");
+  return (
+    <main className="mx-auto max-w-6xl px-4 py-12">
+      <h1 className="text-3xl font-bold">{t("title")}</h1>
+      <p className="text-muted-foreground mt-4">{t("comingSoon")}</p>
+    </main>
+  );
+}
+```
+
+Any of these approaches is acceptable:
+- Minimal placeholder page with `generateMetadata` + heading + "Coming soon" copy.
+- Gate the link render behind a feature flag (`{flags.bundles && <Link … />}`) so the nav only shows what's live.
+- Conditional rendering driven by seed data (`{categories.length > 0 && <Link … />}`).
+
+**The rule:** do not merge a change whose navigation points at routes the same change does not also create. The dependency is "nav entry → page", not the other way around. A `grep -r 'href="' src/components/Header.tsx src/components/Footer.tsx` cross-referenced against `src/app/**/page.tsx` is the minimum manual check before committing.
+
+Also relevant: inside-app navigation MUST use `next/link` `<Link>`, never raw `<a href>`. Raw anchors skip prefetch, skip client-side routing, and break the `/en/...` locale prefix injected by `next-intl`. Use `<a>` ONLY for external URLs (`https://...`) and explicit same-tab downloads.

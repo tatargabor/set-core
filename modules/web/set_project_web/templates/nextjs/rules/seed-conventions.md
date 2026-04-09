@@ -93,6 +93,34 @@ await prisma.user.upsert({
 
 Without this, every feature change has to re-invent the login fixture and tests break when someone changes the credentials.
 
+## State Coverage — Seed Every Enum State the Tests Touch
+
+For every enum field whose state the tests assert or transition (`status`, `moderationState`, `role`, `visibility`, `subscriptionState`, …), the seed MUST contain at least one row per state that the tests exercise. A seed that creates only the "happy" state silently breaks every test that lists, filters, or transitions the other states — the test page is empty, a "no pending items" message renders, and assertions fail with misleading "element not found" errors.
+
+**Wrong — all reviews APPROVED, approve/reject tests have no fixtures:**
+```typescript
+for (const review of reviews) {
+  await prisma.review.upsert({
+    where: { id: review.id },
+    update: {},
+    create: { ...review, moderationState: "APPROVED" }, // ← only one state
+  });
+}
+```
+Result: admin moderation test navigates to `/admin/reviews?state=pending`, the page shows "No pending reviews", the click-to-approve test fails with `locator('button:has-text("Approve")') not found` — but the bug is in the seed, not the feature.
+
+**Correct — cover every state the tests touch:**
+```typescript
+// Approve/reject tests need PENDING fixtures.
+// Filter tests need all three.
+await prisma.review.create({ data: { ...p1, moderationState: "PENDING"  } });
+await prisma.review.create({ data: { ...p2, moderationState: "PENDING"  } });
+await prisma.review.create({ data: { ...a1, moderationState: "APPROVED" } });
+await prisma.review.create({ data: { ...r1, moderationState: "REJECTED" } });
+```
+
+**The rule:** before committing `prisma/seed.ts`, grep the matching `*.spec.ts` files for every enum value that appears in an assertion, selector, URL query, or click target. Every referenced value MUST have a corresponding seed row. Apply this to order statuses, subscription states, coupon `isActive`, feature flags, and any other enum the feature exposes.
+
 ## Order of Operations
 
 1. **Delete in FK-safe order** — only if the seed intentionally wipes a subset (usually not needed after `db push --force-reset`).

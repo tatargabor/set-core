@@ -236,6 +236,30 @@ export function rateLimit(key: string, opts = { maxAttempts: 5, windowMs: 60_000
 
 **Anti-pattern:** Only checking `NODE_ENV === "test"`. Playwright runs the dev server with `NODE_ENV=development`, not `test`, so the rate limiter still triggers. Use `!== "production"` to cover both dev and test contexts.
 
+## Unique Values for Tests That Write Unique-Constrained Entities
+
+Tests that `CREATE` rows with a UNIQUE column (coupon `code`, promo `slug`, user `email`, invitation `token`) MUST generate a distinct value per test run. Sharing a literal value across multiple tests causes a second-invocation crash on retry, and cross-file collisions when a different `.spec.ts` touches the same entity. The failure surfaces as `Unique constraint failed` or as a silent "element not found" when the create returns the existing row instead of a new one.
+
+**Wrong — every test uses the same code, the retry hits a uniqueness violation:**
+```typescript
+test("admin creates coupon", async ({ page }) => {
+  await page.getByLabel("Code").fill("SUMMER20"); // ← collides on retry, collides with another spec
+  await page.getByRole("button", { name: "Create" }).click();
+});
+```
+
+**Correct — derive from `testInfo` or the worker index:**
+```typescript
+test("admin creates coupon", async ({ page }, testInfo) => {
+  const code = `E2E_${testInfo.workerIndex}_${Date.now().toString(36)}`;
+  await page.getByLabel("Code").fill(code);
+  // Store for teardown / later asserts
+  testInfo.attach("created-coupon", { body: code, contentType: "text/plain" });
+});
+```
+
+Alternatives: `crypto.randomUUID()` for long-lived entities, `testInfo.title` slugified for human-readable fixtures, or a per-worker prefix set in `globalSetup`. Whatever you pick, the value MUST differ across parallel workers AND across retries of the same test.
+
 ## Test File Organization
 - Unit tests: co-located with source (`src/**/*.test.ts`) or `__tests__/`
 - Playwright tests: `tests/e2e/*.spec.ts` (one file per feature area)
