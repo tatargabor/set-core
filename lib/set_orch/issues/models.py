@@ -30,6 +30,7 @@ VALID_TRANSITIONS: dict[IssueState, set[IssueState]] = {
     IssueState.NEW: {
         IssueState.INVESTIGATING, IssueState.DIAGNOSED,
         IssueState.DISMISSED, IssueState.MUTED, IssueState.SKIPPED,
+        IssueState.RESOLVED,
     },
     IssueState.INVESTIGATING: {
         IssueState.DIAGNOSED, IssueState.RESOLVED, IssueState.FAILED, IssueState.CANCELLED,

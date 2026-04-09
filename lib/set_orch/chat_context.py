@@ -33,44 +33,44 @@ def build_chat_context(project_path: Path) -> str:
 
 
 def _role_section() -> str:
-    return """## Szereped
+    return """## Your role
 
-Te az orchestration supervisor vagy (Level 2 — reaktív).
+You are the orchestration supervisor (Level 2 — reactive).
 
-Feladataid:
-- Válaszolj a felhasználó kérdéseire az orchestration állapotáról
-- A felhasználó kérésére avatkozz be: skip, pause, resume, restart loop
-- NE avatkozz be magadtól — csak ha kérnek
+Your responsibilities:
+- Answer the user's questions about the orchestration state
+- Intervene on user request: skip, pause, resume, restart loop
+- NEVER intervene on your own — only when asked
 
-FONTOS szabályok:
-- Az aktuális orchestration státusz LENTEBB LÁTHATÓ ebben a promptban — NE olvasd újra a state fájlt, hacsak nem kérnek frissítést
-- Státusz kérdésre válaszolj a promptban lévő adatokból, NE futtass parancsokat
-- Csak akkor futtass parancsot ha: (1) a promptban nincs meg az info, VAGY (2) a user kifejezetten kéri
-- SOHA ne futtasd ugyanazt a parancsot kétszer
-- Egy kérdésre max 1-2 parancs, ne több
-- Az ELSŐ üzenetre mindig köszönj és add meg a rövid státusz összefoglalót a promptban lévő adatokból (hány change, mi a státusz, hány kész/futó/pending). NE futtass parancsot ehhez.
+IMPORTANT rules:
+- The current orchestration status is VISIBLE BELOW in this prompt — do NOT re-read the state file unless a refresh is explicitly requested
+- Answer status questions from the data in this prompt, do NOT run commands
+- Only run a command if: (1) the info is not in the prompt, OR (2) the user explicitly asks
+- NEVER run the same command twice
+- Max 1-2 commands per question, not more
+- On the FIRST message, always say hi and give a short status summary from the data in the prompt (how many changes, status, how many done/running/pending). Do NOT run a command for this.
 
-Válaszolj magyarul. Legyél tömör."""
+Respond in English by default. If the user writes to you in another language (e.g. Hungarian), mirror their language naturally. Be concise."""
 
 
 def _state_section(project_path: Path) -> str:
     state = _read_state(project_path)
     if state is None:
-        return "## Orchestration státusz\n\nNincs aktív orchestration (state fájl nem található)."
+        return "## Orchestration status\n\nNo active orchestration (state file not found)."
 
     if isinstance(state, str):
         # Error message
-        return f"## Orchestration státusz\n\n{state}"
+        return f"## Orchestration status\n\n{state}"
 
     # Format summary
-    lines = ["## Orchestration státusz\n"]
+    lines = ["## Orchestration status\n"]
 
     status = state.get("status", "unknown")
-    lines.append(f"**Állapot:** {status}")
+    lines.append(f"**State:** {status}")
 
     changes = state.get("changes", [])
     if not changes:
-        lines.append("Nincsenek change-ek.")
+        lines.append("No changes.")
         return "\n".join(lines)
 
     # Summary counts
@@ -79,11 +79,11 @@ def _state_section(project_path: Path) -> str:
         s = c.get("status", "unknown")
         by_status[s] = by_status.get(s, 0) + 1
     summary_parts = [f"{v} {k}" for k, v in sorted(by_status.items())]
-    lines.append(f"**Összesen:** {len(changes)} change ({', '.join(summary_parts)})")
+    lines.append(f"**Total:** {len(changes)} changes ({', '.join(summary_parts)})")
 
     total_tokens = sum(c.get("tokens_used", 0) for c in changes)
     if total_tokens:
-        lines.append(f"**Token összesen:** {total_tokens:,}")
+        lines.append(f"**Total tokens:** {total_tokens:,}")
 
     # Change table
     lines.append("")
@@ -129,31 +129,31 @@ def _config_section(project_path: Path) -> str:
 
 
 def _commands_section() -> str:
-    return """## Elérhető parancsok
+    return """## Available commands
 
-### Lekérdezés
-- `cat set/orchestration/orchestration-state.json | python3 -m json.tool` — teljes state
-- `set-orch-core state query --file set/orchestration/orchestration-state.json --status running` — futó change-ek
-- `set-orch-core state get --file set/orchestration/orchestration-state.json --change <name> --field status` — egy mező
-- `tail -50 .claude/orchestration.log` — utolsó log sorok
-- `tail -20 set/orchestration/orchestration-events.jsonl` — utolsó események
-- `git worktree list` — aktív worktree-k
-- `set-loop monitor <change-id>` — Ralph loop státusz
+### Query
+- `cat set/orchestration/orchestration-state.json | python3 -m json.tool` — full state
+- `set-orch-core state query --file set/orchestration/orchestration-state.json --status running` — running changes
+- `set-orch-core state get --file set/orchestration/orchestration-state.json --change <name> --field status` — single field
+- `tail -50 .claude/orchestration.log` — recent log lines
+- `tail -20 set/orchestration/orchestration-events.jsonl` — recent events
+- `git worktree list` — active worktrees
+- `set-loop monitor <change-id>` — Ralph loop status
 
-### Vezérlés
-- `set-orchestrate skip <change-name> --reason "text"` — change kihagyása
-- `set-orchestrate pause <change-name>` — change szüneteltetése
-- `set-orchestrate resume <change-name>` — change folytatása
-- `set-loop start <change-id> "<task>"` — Ralph loop indítása
-- `set-loop stop <change-id>` — Ralph loop leállítása
+### Control
+- `set-orchestrate skip <change-name> --reason "text"` — skip a change
+- `set-orchestrate pause <change-name>` — pause a change
+- `set-orchestrate resume <change-name>` — resume a change
+- `set-loop start <change-id> "<task>"` — start Ralph loop
+- `set-loop stop <change-id>` — stop Ralph loop
 
 ### Worktree
-- `set-new <change-id>` — worktree létrehozása
-- `set-close <change-id>` — worktree törlése
-- `set-merge <change-id>` — worktree merge
+- `set-new <change-id>` — create worktree
+- `set-close <change-id>` — remove worktree
+- `set-merge <change-id>` — merge worktree
 
-### Kommunikáció
-- `set-msg <recipient> "<message>"` — üzenet küldése agentnek"""
+### Communication
+- `set-msg <recipient> "<message>"` — send a message to an agent"""
 
 
 # ─── File readers ─────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ def _read_state(project_path: Path) -> dict[str, Any] | str | None:
                 return json.loads(path.read_text())
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to read state: {e}")
-                return "State fájl olvashatatlan."
+                return "State file is unreadable."
     return None
 
 

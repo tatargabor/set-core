@@ -193,19 +193,21 @@ class TestMergeI18nSidecars:
     def test_no_messages_dir_returns_zero(self, tmp_dir):
         assert merge_i18n_sidecars(tmp_dir) == 0
 
-    def test_namespace_collision_warns_but_merges(self, tmp_dir):
+    def test_namespace_collision_deep_merges(self, tmp_dir):
         msg_dir = os.path.join(tmp_dir, "src", "messages")
         os.makedirs(msg_dir)
         with open(os.path.join(msg_dir, "en.json"), "w") as f:
-            json.dump({"cart": {"old": "value"}}, f)
+            json.dump({"cart": {"old": "value", "nested": {"a": 1}}}, f)
         with open(os.path.join(msg_dir, "en.cart.json"), "w") as f:
-            json.dump({"cart": {"new": "value"}}, f)
+            json.dump({"cart": {"new": "value", "nested": {"b": 2}}}, f)
 
         count = merge_i18n_sidecars(tmp_dir)
         assert count == 1
         result = json.loads(open(os.path.join(msg_dir, "en.json")).read())
-        # Sidecar overwrites at top level
-        assert result["cart"] == {"new": "value"}
+        # Deep merge preserves existing keys
+        assert result["cart"]["old"] == "value"
+        assert result["cart"]["new"] == "value"
+        assert result["cart"]["nested"] == {"a": 1, "b": 2}
 
     def test_creates_canonical_if_missing(self, tmp_dir):
         msg_dir = os.path.join(tmp_dir, "src", "messages")

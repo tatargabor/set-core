@@ -399,11 +399,6 @@ async def websocket_chat(websocket: WebSocket, project: str):
         "status": session.status,
     })
 
-    # Auto-greeting: if fresh session (no messages), trigger agent greeting
-    if not session.messages and not session.session_id and session.status == "idle":
-        session.status = "running"
-        asyncio.create_task(session.send_message("Köszönj és add meg a rövid orchestration státusz összefoglalót."))
-
     try:
         while True:
             raw = await websocket.receive_text()
@@ -432,6 +427,21 @@ async def websocket_chat(websocket: WebSocket, project: str):
                 session.status = "running"
                 asyncio.create_task(session.send_message(content))
 
+            elif msg_type == "start":
+                # Explicit client-initiated greeting — only spawned on user request.
+                if session.status == "running":
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Already processing a message, please wait",
+                    })
+                    continue
+
+                logger.info(f"Start greeting requested [{project}]")
+                session.status = "running"
+                asyncio.create_task(session.send_message(
+                    "Say hi and give a short orchestration status summary."
+                ))
+
             elif msg_type == "stop":
                 await session.stop()
 
@@ -439,9 +449,6 @@ async def websocket_chat(websocket: WebSocket, project: str):
                 await session.stop()
                 session.new_session()
                 await session._broadcast({"type": "session_cleared"})
-                # Auto-greeting on new session
-                session.status = "running"
-                asyncio.create_task(session.send_message("Köszönj és add meg a rövid orchestration státusz összefoglalót."))
 
     except WebSocketDisconnect:
         pass

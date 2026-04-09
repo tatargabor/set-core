@@ -367,6 +367,28 @@ Alternative: expose a `TEST_*` constant in `prisma/seed.ts` that the test import
 
 **The rule:** No hardcoded slugs, emails, IDs, or titles in E2E tests. Either query the DB in a fixture helper, or import a named constant from the seed. When the seed changes, the test updates itself.
 
+## i18n Smoke Check — Detect Raw Translation Keys
+
+E2E tests that use `data-testid` selectors won't catch broken translations — the page renders with raw keys like `checkout_and_payment.step1.title` instead of translated text, but the test passes because the `data-testid` element exists.
+
+Every E2E spec file MUST include at least one **i18n smoke assertion** that verifies actual translated text appears on the page and no raw namespace keys leak through:
+
+```typescript
+test("i18n smoke — no raw translation keys on page", async ({ page }) => {
+  await page.goto("/hu/penztar");
+  const body = await page.locator("body").innerText();
+  // No raw namespace keys should appear in rendered text
+  expect(body).not.toMatch(/\b\w+_and_\w+\.\w+\./);  // e.g. checkout_and_payment.step1.title
+  expect(body).not.toMatch(/\b[a-z_]+\.[a-z_]+\.[a-z_]+/);  // e.g. admin_panel.sidebar.users
+  // At least one expected translated string is present
+  expect(body).toContain("Szállítás");  // or whatever the page's primary heading should be
+});
+```
+
+**Why this matters:** The i18n sidecar merge can silently destroy translation namespaces (see deep-merge fix). Without a text-level assertion, a page can render entirely in raw keys and still pass all `data-testid` tests. One i18n smoke check per spec file catches this class of regression.
+
+**The rule:** Every spec file must have at least one assertion that checks `innerText()` for raw key patterns. The regex `\b\w+_and_\w+\.\w+\.` catches the most common pattern (change-name-derived namespaces like `checkout_and_payment.step1.title`).
+
 ## `e2e-manifest.json` — Engine-Managed, Hands-Off
 
 `e2e-manifest.json` at the project root is written and maintained by the orchestrator (dispatcher writes it on dispatch, verifier updates `spec_files` on completion). It holds cumulative REQ coverage and spec-file inventory across every merged change, plus a `requirements_by_change` map for per-change ownership.

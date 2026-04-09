@@ -12,13 +12,29 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Recursively merge overlay into base, preserving existing keys.
+
+    Unlike dict.update(), this preserves nested keys that only exist in
+    base.  If the same key maps to a dict in both, recurse; otherwise
+    the overlay value wins (leaf replacement).
+    """
+    for key, value in overlay.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 def merge_i18n_sidecars(project_root: str = ".") -> int:
     """Merge i18n sidecar files into canonical message files.
 
     Scans for `<locale>.<namespace>.json` sidecar files in i18n message
-    directories and merges them into the canonical `<locale>.json` at the
-    top level (Object.assign semantics — no deep merge needed since each
-    sidecar owns a unique top-level namespace).
+    directories and deep-merges them into the canonical `<locale>.json`.
+    Deep merge preserves existing keys when multiple changes contribute
+    to the same namespace (e.g. both auth-and-navigation and
+    wishlist-and-restock add keys under ``auth_and_navigation``).
 
     Returns the number of sidecar files merged.
     """
@@ -60,12 +76,12 @@ def merge_i18n_sidecars(project_root: str = ".") -> int:
 
         for key in sidecar_data:
             if key in canonical_data:
-                logger.warning(
-                    "i18n sidecar: namespace '%s' from %s already exists in %s — overwriting",
+                logger.info(
+                    "i18n sidecar: namespace '%s' from %s already exists in %s — deep-merging",
                     key, f, f"{locale}.json",
                 )
 
-        canonical_data.update(sidecar_data)
+        _deep_merge(canonical_data, sidecar_data)
 
         try:
             Path(canonical_path).write_text(

@@ -64,6 +64,27 @@ const t = useTranslations("wishlist");
 
 The same append-only discipline applies to `set/orchestration/e2e-manifest.json` (REQ coverage) — see testing-conventions.md § "`e2e-manifest.json` — Append-Only REQ Coverage".
 
+## Sidecar Merge Is Deep — Write Only Your Keys
+
+The sidecar merge step uses **deep merge**, not namespace replacement. When your change writes `messages/hu.auth.json` containing `{ "auth": { "wishlist": "Kedvenceim" } }`, the merge adds/updates only `auth.wishlist` in `hu.json` — it does NOT delete other keys under `auth.*` that previous changes added.
+
+This means:
+- Your sidecar file should contain ONLY the keys your change introduces or modifies
+- You do NOT need to copy existing keys from the canonical file into your sidecar
+- Multiple changes can safely contribute to the same namespace (e.g., `auth_and_navigation`)
+
+**Wrong — copying the full namespace destroys keys if another change adds to it in parallel:**
+```json
+// messages/hu.auth.json — DON'T copy all existing auth keys
+{ "auth": { "login": "Bejelentkezés", "register": "Regisztráció", "myNewKey": "Új kulcs" } }
+```
+
+**Correct — only your new keys:**
+```json
+// messages/hu.auth.json — only what this change adds
+{ "auth": { "myNewKey": "Új kulcs" } }
+```
+
 ## Sidecar File Resilience
 
 When using per-change i18n sidecar files (e.g., `messages/hu.feature_name.json` that get merged into base `messages/hu.json` during archive), ALL sidecar imports MUST use try/catch:
