@@ -2112,6 +2112,9 @@ def _kill_existing_wt_loop(wt_path: str, change_name: str) -> None:
     """Kill any existing set-loop/Claude session in a worktree before starting a new one.
 
     Prevents overlapping sessions that cause file conflicts and data corruption.
+    The loop-state.json is preserved (not deleted) so that ``init_loop_state`` can
+    reuse the previous ``session_id`` for Claude ``--resume``, keeping the prompt
+    cache warm across dispatcher-level restarts (e.g. gate retry fixes).
     """
     loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
     if not os.path.isfile(loop_state_path):
@@ -2131,11 +2134,17 @@ def _kill_existing_wt_loop(wt_path: str, change_name: str) -> None:
                 kill_result = safe_kill(old_pid, "set-loop", timeout=10)
                 logger.info("dispatch guard: kill result for %s: %s", change_name, kill_result.outcome)
                 time.sleep(1)  # Let tmux session die
-        # Remove stale loop-state so new set-loop can start clean
-        os.remove(loop_state_path)
-        logger.info("dispatch guard: removed stale loop-state.json for %s", change_name)
+        # NOTE: loop-state.json is intentionally NOT removed here. init_loop_state()
+        # reads the prior session_id + resume_failures to allow Claude --resume
+        # to reuse the cached prompt prefix. Change-name guard in init_loop_state
+        # prevents cross-change cache poisoning if worktree is reused.
+        prior_sid = ls.get("session_id") or ""
+        logger.info(
+            "dispatch guard: preserving loop-state.json for %s (session_id=%s)",
+            change_name, prior_sid[:8] if prior_sid else "none",
+        )
     except (json.JSONDecodeError, OSError, ValueError) as e:
-        logger.warning("dispatch guard: error cleaning %s: %s", change_name, e)
+        logger.warning("dispatch guard: error reading state for %s: %s", change_name, e)
 
 
 def dispatch_via_wt_loop(
@@ -2461,18 +2470,94 @@ def resume_change(
     done_criteria: str
     max_iter: int
 
+    # Determine retry type FIRST so we can skip session resume for unsafe cases.
+    is_merge_retry = change.extras.get("merge_rebase_pending", False)
+    is_review_retry = "REVIEW FEEDBACK" in retry_ctx or "review" in retry_ctx.lower()[:50]
+
+    # Check if a Claude session can be SAFELY resumed. Session resume keeps the
+    # prompt cache warm and avoids re-reading files, but it also carries over
+    # prior conversation history which can "poison" the fix if the context changed
+    # underneath the agent. Guardrails:
+    #   1. Merge rebase retries → NEVER resume. The main branch moved, the agent's
+    #      prior view of the codebase is stale, and applying old code to new base
+    #      causes conflicts and hallucinations.
+    #   2. Stale session (> 60 min since last activity) → fresh start. Claude's
+    #      auto-compaction may have summarized away important details, and long-
+    #      delayed resumes increase hallucination risk.
+    #   3. Too many prior resume failures → fresh start (existing behavior).
+    #   4. Change name must match (already enforced in init_loop_state).
+    has_resumable_session = False
+    resume_skip_reason = ""
+    if is_merge_retry:
+        resume_skip_reason = "merge_rebase_pending (main branch changed)"
+    elif os.path.isfile(loop_state_path):
+        try:
+            with open(loop_state_path) as f:
+                _ls = json.load(f)
+            _prior_sid = _ls.get("session_id") or ""
+            _prior_change = _ls.get("change") or ""
+            _prior_resume_failures = int(_ls.get("resume_failures") or 0)
+            _prior_started = _ls.get("started_at", "")
+            # Age check: how old is this session?
+            session_age_min = 0
+            if _prior_started:
+                try:
+                    from datetime import datetime, timezone
+                    prior_dt = datetime.fromisoformat(_prior_started.replace("Z", "+00:00"))
+                    if prior_dt.tzinfo is None:
+                        prior_dt = prior_dt.replace(tzinfo=timezone.utc)
+                    session_age_min = (datetime.now(timezone.utc) - prior_dt).total_seconds() / 60
+                except (ValueError, TypeError):
+                    pass
+
+            if not _prior_sid:
+                resume_skip_reason = "no prior session_id"
+            elif _prior_change != change_name:
+                resume_skip_reason = f"change name mismatch ({_prior_change!r} != {change_name!r})"
+            elif _prior_resume_failures >= 3:
+                resume_skip_reason = f"too many prior resume failures ({_prior_resume_failures})"
+            elif session_age_min > 60:
+                resume_skip_reason = f"session too old ({session_age_min:.0f} min > 60 min)"
+            else:
+                has_resumable_session = True
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            resume_skip_reason = f"state read error: {e}"
+    else:
+        resume_skip_reason = "no loop-state.json"
+
+    if has_resumable_session:
+        logger.info("resume_change %s: session resume ELIGIBLE — cache stays warm", change_name)
+    elif retry_ctx:
+        logger.info("resume_change %s: fresh session (%s)", change_name, resume_skip_reason)
+        # Clear the preserved session_id so init_loop_state won't reuse it
+        try:
+            with open(loop_state_path) as f:
+                _ls = json.load(f)
+            _ls["session_id"] = None
+            _ls["resume_failures"] = 0
+            with open(loop_state_path, "w") as f:
+                json.dump(_ls, f, indent=2)
+            logger.debug("cleared preserved session_id for %s (unsafe to resume)", change_name)
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass
+
     if retry_ctx:
-        preamble = _build_resume_preamble(change_name, wt_path)
-        task_desc = (preamble + "\n\n" + retry_ctx) if preamble else retry_ctx
-        logger.info(
-            "resuming %s with retry context (%d chars + %d preamble)",
-            change_name, len(retry_ctx), len(preamble),
-        )
+        if has_resumable_session:
+            # Session will resume — files already in context, no preamble needed.
+            task_desc = retry_ctx
+            logger.info(
+                "resuming %s with retry context (%d chars, session resume — preamble skipped)",
+                change_name, len(retry_ctx),
+            )
+        else:
+            preamble = _build_resume_preamble(change_name, wt_path)
+            task_desc = (preamble + "\n\n" + retry_ctx) if preamble else retry_ctx
+            logger.info(
+                "resuming %s with retry context (%d chars + %d preamble, fresh session)",
+                change_name, len(retry_ctx), len(preamble),
+            )
         update_change_field(state_path, change_name, "retry_context", None, event_bus=event_bus)
         update_change_field(state_path, change_name, "current_step", "fixing", event_bus=event_bus)
-
-        is_merge_retry = change.extras.get("merge_rebase_pending", False)
-        is_review_retry = "REVIEW FEEDBACK" in retry_ctx or "review" in retry_ctx.lower()[:50]
         if is_merge_retry:
             done_criteria = "merge"
             max_iter = 5

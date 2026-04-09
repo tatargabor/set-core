@@ -309,18 +309,28 @@ cmd_run() {
         local resume_failures
         resume_failures=$(jq -r '.resume_failures // 0' "$state_file" 2>/dev/null)
 
-        if [[ $iteration -eq 1 ]] || [[ -z "$session_id" ]] || [[ "$resume_failures" -ge 3 ]]; then
-            # First iteration or no session or too many resume failures: new session
+        # Decide between new session and --resume. We use --resume whenever a
+        # valid session_id is present (preserved by init_loop_state across
+        # dispatcher-level restarts) and resume_failures are below the threshold.
+        # This keeps Claude's prompt cache warm across gate retries and avoids
+        # re-reading files + rebuilding context on every fix iteration.
+        if [[ -z "$session_id" ]] || [[ "$resume_failures" -ge 3 ]]; then
+            # No session or too many resume failures: new session
             session_id=$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
             session_flags="--session-id $session_id"
             update_loop_state "$state_file" "session_id" "\"$session_id\""
             if [[ "$resume_failures" -ge 3 ]]; then
                 echo "⚠️  Too many resume failures ($resume_failures), using fresh session"
+                update_loop_state "$state_file" "resume_failures" "0"
             fi
         else
-            # Subsequent iteration: resume existing session
+            # Resume existing session — either mid-iteration continuation or
+            # cross-dispatch retry with a preserved session_id.
             session_flags="--resume $session_id"
             is_resumed=true
+            if [[ $iteration -eq 1 ]]; then
+                echo "♻️  Resuming preserved session ${session_id:0:8} for iteration 1 (retry/redispatch)"
+            fi
         fi
 
         # Build effective prompt: use full prompt always (even on resume)

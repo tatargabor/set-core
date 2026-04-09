@@ -2432,18 +2432,41 @@ def _execute_spec_verify_gate(
 
     logger.info("Gate[spec-verify] START %s wt=%s", change_name, wt_path)
 
-    verify_cmd_result = run_claude_logged(
+    verify_prompt = (
         f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\n"
         f"Run /opsx:verify {change_name}\n\n"
         f"CRITICAL: Your FINAL output line MUST be exactly one of:\n"
         f"  VERIFY_RESULT: PASS\n"
         f"  VERIFY_RESULT: FAIL\n"
-        f"This sentinel is parsed by the orchestrator. Without it, the gate cannot determine the verdict.",
+        f"This sentinel is parsed by the orchestrator. Without it, the gate cannot determine the verdict."
+    )
+
+    # Start with Sonnet (cheaper, sufficient for verification checks),
+    # escalate to Opus on failure — same pattern as review gate.
+    verify_cmd_result = run_claude_logged(
+        verify_prompt,
         purpose="spec_verify", change=change_name,
+        model="sonnet",
         extra_args=["--max-turns", "40"],
         cwd=wt_path,
         timeout=900,
     )
+
+    # Escalate to Opus if Sonnet failed or timed out
+    if verify_cmd_result.exit_code != 0:
+        logger.warning(
+            "Gate[spec-verify] Sonnet failed for %s (exit=%d, timed_out=%s) — escalating to opus",
+            change_name, verify_cmd_result.exit_code, verify_cmd_result.timed_out,
+        )
+        verify_cmd_result = run_claude_logged(
+            verify_prompt,
+            purpose="spec_verify", change=change_name,
+            model="opus",
+            extra_args=["--max-turns", "40"],
+            cwd=wt_path,
+            timeout=900,
+        )
+
     verify_output = verify_cmd_result.stdout
 
     if verify_cmd_result.exit_code != 0:

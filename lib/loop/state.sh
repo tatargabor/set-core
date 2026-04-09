@@ -63,6 +63,28 @@ init_loop_state() {
     # Ensure .set agent directory exists
     mkdir -p "$wt_path/.set" "$wt_path/.set/logs"
 
+    # Preserve session_id and resume_failures from prior state (same worktree/change).
+    # This allows Claude --resume to reuse the cached prefix across dispatcher-level
+    # restarts (e.g. gate retry fixes), avoiding cold cache rebuilds on every retry.
+    # If no prior state exists or session_id was never set, defaults to null/0.
+    local preserved_session_id="null"
+    local preserved_resume_failures="0"
+    if [[ -f "$state_file" ]]; then
+        local prior_change
+        prior_change=$(jq -r '.change // ""' "$state_file" 2>/dev/null || echo "")
+        local prior_sid
+        prior_sid=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null || echo "")
+        # Only preserve if same change name (avoid cross-change cache poisoning)
+        if [[ -n "$prior_sid" ]] && [[ "$prior_change" == "$change" ]]; then
+            preserved_session_id="\"$prior_sid\""
+            preserved_resume_failures=$(jq -r '.resume_failures // 0' "$state_file" 2>/dev/null || echo "0")
+            # Validate resume_failures is an integer
+            if ! [[ "$preserved_resume_failures" =~ ^[0-9]+$ ]]; then
+                preserved_resume_failures="0"
+            fi
+        fi
+    fi
+
     # Create initial state
     cat > "$state_file" <<EOF
 {
@@ -88,8 +110,8 @@ init_loop_state() {
   "max_idle_iterations": 3,
   "idle_count": 0,
   "last_output_hash": null,
-  "session_id": null,
-  "resume_failures": 0,
+  "session_id": $preserved_session_id,
+  "resume_failures": $preserved_resume_failures,
   "base_context_tokens": 0,
   "team_mode": false,
   "label": $(if [[ -n "$label" ]]; then printf '%s' "$label" | jq -Rs .; else echo "null"; fi),
