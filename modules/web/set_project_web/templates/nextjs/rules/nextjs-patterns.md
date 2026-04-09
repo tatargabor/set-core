@@ -168,6 +168,20 @@ export default async function LocaleLayout({ children, params }) {
 
 **The rule:** In i18n projects, ONLY the `[locale]/layout.tsx` may render `<html>` and `<body>`. The root layout returns `children` directly. Import `globals.css` in the root layout for admin/non-locale routes, but do NOT wrap children in HTML tags.
 
+**Admin routes outside `[locale]/`:** If admin pages live at `/admin/*` (not under `[locale]/`), they don't inherit the locale layout's `<html>`. The admin layout MUST render its own `<html lang="...">` and `<body>`. Example:
+```typescript
+// src/app/admin/layout.tsx — admin gets its own <html>
+export default function AdminLayout({ children }) {
+  return (
+    <html lang="hu">
+      <body className="bg-neutral-50 text-neutral-900 font-sans">
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
 **For non-i18n projects** (no `[locale]` segment): the root layout renders `<html>` and `<body>` as usual.
 
 **Detection:** if Next.js dev console shows "A tree hydrated but some attributes of the server rendered HTML didn't match" with `lang` or `className` diffs on `<html>`, you have duplicate `<html>` tags from nested layouts.
