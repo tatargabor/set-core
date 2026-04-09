@@ -122,6 +122,42 @@ src/app/
 - Admin feature pages go under `admin/(dashboard)/` — inside the sidebar layout
 - This separation prevents layout bugs where admin sub-pages lose the sidebar or storefront pages render without the shop nav
 
+### CRITICAL: globals.css Import Location
+
+`globals.css` (Tailwind base + design tokens + shadcn theme) MUST be imported in EVERY top-level layout that has children.
+
+**The most common bug** in i18n projects: split root layout (`src/app/layout.tsx`) and locale layout (`src/app/[locale]/layout.tsx`) where `globals.css` is only imported in the locale layout. Routes OUTSIDE the `[locale]` route group (typically `/admin/*`, `/api/*` are fine since they have no UI) render with browser default styles — no Tailwind, no shadcn, no design tokens.
+
+**Wrong — globals.css only in locale layout:**
+```typescript
+// src/app/layout.tsx (root) — MISSING globals.css import
+export default function RootLayout({ children }) {
+  return <html><body>{children}</body></html>
+}
+
+// src/app/[locale]/layout.tsx
+import "../globals.css"  // ← only loaded for /[locale]/* routes
+```
+
+Result: `/admin/dashboard` renders unstyled. Tailwind classes on the page become no-ops because the CSS file is never linked into the HTML.
+
+**Correct — globals.css imported in BOTH:**
+```typescript
+// src/app/layout.tsx (root)
+import "./globals.css"  // ← REQUIRED for routes outside [locale]
+
+export default function RootLayout({ children }) {
+  return <html><body>{children}</body></html>
+}
+
+// src/app/[locale]/layout.tsx
+import "../globals.css"  // ← also imported here is OK; Next.js dedupes
+```
+
+**The rule:** every layout file that returns `<html>` MUST import `globals.css`. If you have a split root + locale layout, BOTH must import it. Tailwind/shadcn does not "cascade" through `<html>` — the import is what tells Next.js to link the stylesheet into that route's HTML output.
+
+**Detection:** if any page renders with browser-default fonts and zero card/button styling (looks like 1996 HTML), the globals.css import is missing from the layout serving that route.
+
 ## 4. Nested Layout Inheritance — DRY Rule
 
 Next.js layouts compose hierarchically: a child layout receives the parent layout's chrome **automatically**. NEVER redeclare the parent's components, providers, or wrappers in a child layout — this creates duplicate state, double-mounted providers, and rendering races.
