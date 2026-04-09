@@ -25,9 +25,9 @@ Built with set-core, using set-core. This project was developed using its own or
 
 | Repository | Description |
 |------------|-------------|
-| **[set-core](https://git.setcode.dev/root/set-core)** | Core orchestration engine, web module, dashboard, CLI tools |
+| **[set-core](https://github.com/tatargabor/set-core)** | Core orchestration engine, web module, dashboard, CLI tools |
 | [set-spec-capture](https://git.setcode.dev/root/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
-| [set-voice-agent-delivery](https://git.setcode.dev/root/set-voice-agent-delivery) | Voice agent project type — Soniox STT, Google TTS, spec-driven customer interaction |
+| [set-voice-agent-delivery](https://github.com/tatargabor/set-voice-agent-delivery) | Voice agent project type — Soniox STT, Google TTS, spec-driven customer interaction |
 
 ---
 
