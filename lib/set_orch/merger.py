@@ -228,18 +228,73 @@ def _archive_worktree_logs(change_name: str, wt_path: str) -> int:
     return count
 
 
+def _archive_test_artifacts(change_name: str, wt_path: str, project_path: str) -> int:
+    """Archive test-results (screenshots, traces) to the main project before worktree cleanup.
+
+    Copies worktree test-results/ to project_path/set/orchestration/artifacts/<change_name>/
+    so the dashboard can still serve screenshots after the worktree is removed.
+    Also updates the cached test_artifacts paths in orchestration state.
+    """
+    src = os.path.join(wt_path, "test-results")
+    if not os.path.isdir(src):
+        return 0
+
+    dest = os.path.join(project_path, "set", "orchestration", "artifacts", change_name, "test-results")
+    os.makedirs(dest, exist_ok=True)
+
+    count = 0
+    for root, _dirs, files in os.walk(src):
+        for fname in files:
+            src_file = os.path.join(root, fname)
+            rel = os.path.relpath(src_file, src)
+            dst_file = os.path.join(dest, rel)
+            os.makedirs(os.path.dirname(dst_file), exist_ok=True)
+            if not os.path.exists(dst_file):
+                try:
+                    shutil.copy2(src_file, dst_file)
+                    count += 1
+                except Exception as _e:
+                    logger.debug("Failed to copy artifact %s: %s", src_file, _e)
+
+    if count > 0:
+        logger.info("Archived %d test artifacts for %s to %s", count, change_name, dest)
+
+        # Rewrite cached artifact paths in state so the dashboard finds them
+        state_path = os.path.join(project_path, "orchestration-state.json")
+        if os.path.isfile(state_path):
+            try:
+                from .state import locked_state
+                with locked_state(state_path) as st:
+                    ch = next((c for c in st.changes if c.name == change_name), None)
+                    if ch and ch.extras.get("test_artifacts"):
+                        old_prefix = src
+                        new_prefix = dest
+                        for art in ch.extras["test_artifacts"]:
+                            if art.get("path", "").startswith(old_prefix):
+                                art["path"] = new_prefix + art["path"][len(old_prefix):]
+                        logger.debug("Rewrote %d artifact paths for %s", len(ch.extras["test_artifacts"]), change_name)
+            except Exception as _e:
+                logger.warning("Failed to rewrite artifact paths for %s: %s", change_name, _e)
+
+    return count
+
+
 # Source: merger.sh cleanup_worktree() L521-547
-def cleanup_worktree(change_name: str, wt_path: str, retention: str = "") -> None:
+def cleanup_worktree(change_name: str, wt_path: str, retention: str = "", project_path: str = "") -> None:
     """Clean up worktree and branch after successful merge.
 
     Args:
         retention: "keep" (default) = archive logs only, preserve worktree+branch.
                    "delete-on-merge" = legacy behavior, remove worktree+branch.
                    Empty string = auto-detect from orchestration.yaml.
+        project_path: main project directory. If provided, test artifacts are
+                      archived to set/orchestration/artifacts/ before cleanup.
     """
-    # Always archive logs regardless of retention
+    # Always archive logs and test artifacts regardless of retention
     if wt_path and os.path.isdir(wt_path):
         _archive_worktree_logs(change_name, wt_path)
+        if project_path:
+            _archive_test_artifacts(change_name, wt_path, project_path)
 
     # Resolve retention policy
     if not retention:
@@ -300,7 +355,7 @@ def cleanup_all_worktrees(state_file: str) -> int:
         wt_path = change.worktree_path or ""
         if not wt_path or not os.path.isdir(wt_path):
             continue
-        cleanup_worktree(change.name, wt_path)
+        cleanup_worktree(change.name, wt_path, project_path=os.path.dirname(state_file))
         cleaned += 1
 
     if cleaned > 0:
@@ -493,7 +548,7 @@ def merge_change(
         _set_completed_at_if_missing(state_file, change_name)
         update_change_field(state_file, change_name, "smoke_result", "skip_merged")
         update_change_field(state_file, change_name, "smoke_status", "skipped")
-        cleanup_worktree(change_name, wt_path or "")
+        cleanup_worktree(change_name, wt_path or "", project_path=os.path.dirname(state_file))
         update_change_field(state_file, change_name, "current_step", "archiving")
         archive_change(change_name)
         update_change_field(state_file, change_name, "current_step", "done")
@@ -521,7 +576,7 @@ def merge_change(
             _set_completed_at_if_missing(state_file, change_name)
             update_change_field(state_file, change_name, "smoke_result", "skip_merged")
             update_change_field(state_file, change_name, "smoke_status", "skipped")
-            cleanup_worktree(change_name, wt_path or "")
+            cleanup_worktree(change_name, wt_path or "", project_path=os.path.dirname(state_file))
             archive_change(change_name)
             _remove_from_merge_queue(state_file, change_name)
             try:
@@ -649,7 +704,7 @@ def merge_change(
 
         _heartbeat("archive")
         update_change_field(state_file, change_name, "current_step", "archiving")
-        cleanup_worktree(change_name, wt_path or "")
+        cleanup_worktree(change_name, wt_path or "", project_path=os.path.dirname(state_file))
         archive_change(change_name)
 
         # Sync running worktrees AFTER archive (Bug #38)
@@ -1809,13 +1864,23 @@ def _run_hook(hook_name: str, change_name: str, status: str, wt_path: str) -> bo
     return True
 
 
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Recursively merge overlay into base, preserving existing keys."""
+    for key, value in overlay.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 def merge_i18n_sidecars(project_root: str = ".") -> int:
     """Merge i18n sidecar files into canonical message files.
 
     Scans for `<locale>.<namespace>.json` sidecar files in i18n message
-    directories and merges them into the canonical `<locale>.json` at the
-    top level (Object.assign semantics — no deep merge needed since each
-    sidecar owns a unique top-level namespace).
+    directories and deep-merges them into the canonical `<locale>.json`.
+    Deep merge preserves existing keys when multiple changes contribute
+    to the same namespace.
 
     Returns the number of sidecar files merged.
     """
@@ -1857,16 +1922,14 @@ def merge_i18n_sidecars(project_root: str = ".") -> int:
             except (json.JSONDecodeError, OSError):
                 canonical_data = {}
 
-        # Check for namespace collision
         for key in sidecar_data:
             if key in canonical_data:
-                logger.warning(
-                    "i18n sidecar: namespace '%s' from %s already exists in %s — overwriting",
+                logger.info(
+                    "i18n sidecar: namespace '%s' from %s already exists in %s — deep-merging",
                     key, f, f"{locale}.json",
                 )
 
-        # Merge at top level
-        canonical_data.update(sidecar_data)
+        _deep_merge(canonical_data, sidecar_data)
 
         try:
             Path(canonical_path).write_text(
