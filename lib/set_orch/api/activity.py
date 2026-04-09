@@ -9,7 +9,7 @@ from __future__ import annotations
 import glob as _glob
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -24,10 +24,14 @@ router = APIRouter()
 
 CATEGORY_ORDER = [
     "planning", "implementing", "fixing",
+    "llm:review", "llm:spec_verify", "llm:replan", "llm:classify",
     "gate:build", "gate:test", "gate:review", "gate:verify",
     "gate:e2e", "gate:e2e-smoke", "gate:smoke",
     "gate:scope-check", "gate:rules", "gate:dep-install",
-    "merge", "idle", "stall-recovery", "dep-wait", "manual-wait", "sentinel",
+    "merge", "idle", "stall-recovery", "dep-wait", "manual-wait",
+    "sentinel",
+    "sentinel:llm:review", "sentinel:llm:spec_verify",
+    "sentinel:llm:replan", "sentinel:llm:classify",
 ]
 
 
@@ -110,6 +114,32 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
     open_dep: dict[str, dict] = {}
     # stall-recovery: key = change
     open_stall: dict[str, dict] = {}
+    # DISPATCH-based implementing fallback: key = change
+    open_implementing: dict[str, dict] = {}
+    # Changes that had STEP_TRANSITION — DISPATCH fallback spans are filtered
+    # out for these after the walk (STEP_TRANSITION takes precedence).
+    step_transition_seen: set[str] = set()
+    # Last observed event timestamp per change (used to tight-flush open
+    # implementing spans when a change is abandoned/failed without emitting
+    # a terminal STATE_CHANGE event).
+    last_event_ts_per_change: dict[str, str] = {}
+    # Pre-orchestration planning phase: DIGEST_STARTED → first DISPATCH.
+    # Captures digest + decomposer + planner as a single "planning" span.
+    planning_start_ts: str | None = None
+    planning_emitted = False
+
+    def _close_implementing(ch: str, end_ts_val: str) -> None:
+        """Close an open DISPATCH-fallback implementing span for `ch` at `end_ts_val`."""
+        if ch in open_implementing:
+            impl = open_implementing.pop(ch)
+            spans.append({
+                "category": "implementing",
+                "change": ch,
+                "start": impl["start"],
+                "end": end_ts_val,
+                "duration_ms": _ts_diff_ms(impl["start"], end_ts_val),
+                "detail": {"source": "dispatch-fallback"},
+            })
 
     for ev in events:
         etype = ev.get("type", "")
@@ -117,6 +147,65 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
         ts = ev.get("ts", "")
         data = ev.get("data", {})
         source = ev.get("_source", "orchestration")
+
+        # Track last event timestamp per change (orchestration events only,
+        # excluding heartbeats which carry no activity signal).
+        if (
+            change
+            and ts
+            and source == "orchestration"
+            and etype not in ("WATCHDOG_HEARTBEAT", "MONITOR_HEARTBEAT")
+        ):
+            last_event_ts_per_change[change] = ts
+
+        # ── LLM call spans ──
+        # LLM_CALL events are emitted AFTER the subprocess returns, so `ts`
+        # is the END of the call. Start is reconstructed as ts - duration_ms.
+        # Orchestrator-source → "llm:<purpose>", sentinel-source → "sentinel:llm:<purpose>".
+        if etype == "LLM_CALL":
+            purpose = str(data.get("purpose", "unknown")).strip() or "unknown"
+            raw_duration = data.get("duration_ms", 0)
+            try:
+                duration_ms_val = int(raw_duration) if raw_duration is not None else 0
+            except (TypeError, ValueError):
+                duration_ms_val = 0
+            cat_prefix = "sentinel:llm" if source == "sentinel" else "llm"
+            cat = f"{cat_prefix}:{purpose}"
+            detail: dict = {
+                "model": data.get("model"),
+                "cost_usd": data.get("cost_usd"),
+                "input_tokens": data.get("input_tokens"),
+                "output_tokens": data.get("output_tokens"),
+                "cache_read_tokens": data.get("cache_read_tokens"),
+                "cache_create_tokens": data.get("cache_create_tokens"),
+            }
+            # Strip None-valued detail keys
+            detail = {k: v for k, v in detail.items() if v is not None}
+            if duration_ms_val > 0:
+                start_ts = _ts_shift_ms(ts, -duration_ms_val)
+                spans.append({
+                    "category": cat,
+                    "change": change,
+                    "start": start_ts,
+                    "end": ts,
+                    "duration_ms": duration_ms_val,
+                    "detail": detail,
+                })
+            else:
+                # Missing/zero duration — emit a zero-length marker span, log warning.
+                logger.warning(
+                    "LLM_CALL with missing/zero duration_ms: purpose=%s change=%s ts=%s data=%r",
+                    purpose, change, ts, data,
+                )
+                spans.append({
+                    "category": cat,
+                    "change": change,
+                    "start": ts,
+                    "end": ts,
+                    "duration_ms": 0,
+                    "detail": detail,
+                })
+            continue
 
         # ── Gate spans ──
         if etype == "GATE_START":
@@ -177,6 +266,11 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
 
         # ── Step spans (implementing, planning, fixing) ──
         elif etype == "STEP_TRANSITION":
+            # Mark that this change has STEP_TRANSITION events — the DISPATCH
+            # fallback implementing spans for this change will be filtered out
+            # after the walk, because STEP_TRANSITION gives finer granularity.
+            if change:
+                step_transition_seen.add(change)
             new_step = data.get("to", "")
             # Close previous step span for this change
             if change in open_steps:
@@ -192,9 +286,48 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
             if new_step in ("implementing", "planning", "fixing"):
                 open_steps[change] = {"start": ts, "step": new_step}
 
+        # ── Pre-dispatch planning phase ──
+        # DIGEST_STARTED marks the start of the digest/decomposition pipeline.
+        # The phase ends at the first DISPATCH event (handled below).
+        elif etype == "DIGEST_STARTED":
+            if planning_start_ts is None:
+                planning_start_ts = ts
+
+        # ── DISPATCH-based implementing fallback ──
+        # The agent runs as a separate `claude -p` process in its worktree and
+        # does NOT emit LLM_CALL events. Fallback: treat DISPATCH → {next DISPATCH
+        # | MERGE_START | state failed/pending | end-of-stream} as an
+        # implementing span. We deliberately do NOT close on CHANGE_DONE,
+        # because a single dispatch can produce multiple CHANGE_DONE events as
+        # the verifier loops (review → redispatch agent → review again).
+        # STEP_TRANSITION takes precedence when present (filtered at end).
+        # CHANGE_REDISPATCH is treated identically to DISPATCH — the agent
+        # is being woken up to retry after a failure.
+        elif etype in ("DISPATCH", "CHANGE_REDISPATCH"):
+            # Emit the planning span on the very first DISPATCH (only once).
+            if not planning_emitted and planning_start_ts is not None:
+                spans.append({
+                    "category": "planning",
+                    "change": "",
+                    "start": planning_start_ts,
+                    "end": ts,
+                    "duration_ms": _ts_diff_ms(planning_start_ts, ts),
+                    "detail": {"source": "digest-to-dispatch"},
+                })
+                planning_emitted = True
+            if change:
+                # Close any already-open implementing span for this change
+                # (redispatch case — the previous session ended when this one started).
+                if change in open_implementing:
+                    _close_implementing(change, ts)
+                open_implementing[change] = {"start": ts}
+
         # ── Merge spans ──
         elif etype == "MERGE_START":
             open_merges[change] = {"start": ts}
+            # Agent work is considered done once the merge pipeline starts.
+            if change:
+                _close_implementing(change, ts)
 
         elif etype == "MERGE_COMPLETE":
             if change in open_merges:
@@ -254,6 +387,9 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                     "end": ts,
                     "duration_ms": _ts_diff_ms(start_ev["start"], ts),
                 })
+            # Failure / abort transitions close any open implementing span.
+            if new_status in ("failed", "pending") and change:
+                _close_implementing(change, ts)
 
         # ── Watchdog escalation / stall-recovery ──
         elif etype == "WATCHDOG_ESCALATION":
@@ -371,6 +507,41 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                 "duration_ms": _ts_diff_ms(start_ev["start"], end_ts),
                 "open": True,
             })
+        # Flush unclosed DISPATCH-based implementing spans.
+        # Close at the last event observed for that change, NOT at end-of-stream.
+        # Failed/abandoned changes often have no terminal STATE_CHANGE event in
+        # the log (the state file is updated without emitting), so flushing to
+        # end-of-stream would produce wildly inflated spans.
+        for ch_name, impl in list(open_implementing.items()):
+            close_ts = last_event_ts_per_change.get(ch_name, end_ts)
+            # Guard: if last event is earlier than the span's start (shouldn't
+            # happen, but defensive), fall back to end_ts.
+            if _ts_diff_ms(impl["start"], close_ts) <= 0:
+                close_ts = end_ts
+            spans.append({
+                "category": "implementing",
+                "change": ch_name,
+                "start": impl["start"],
+                "end": close_ts,
+                "duration_ms": _ts_diff_ms(impl["start"], close_ts),
+                "detail": {"source": "dispatch-fallback"},
+                "open": True,
+            })
+        open_implementing.clear()
+
+    # STEP_TRANSITION precedence: drop dispatch-fallback implementing spans
+    # for any change where a STEP_TRANSITION was observed — the regular
+    # open_steps code path already produced higher-granularity spans for them.
+    if step_transition_seen:
+        spans = [
+            s for s in spans
+            if not (
+                s.get("category") == "implementing"
+                and s.get("change") in step_transition_seen
+                and isinstance(s.get("detail"), dict)
+                and s["detail"].get("source") == "dispatch-fallback"
+            )
+        ]
 
     # Detect idle gaps from event gaps (>60s with no events for any change)
     _detect_idle_gaps(events, spans, from_ts, to_ts)
@@ -390,57 +561,103 @@ def _detect_idle_gaps(
     from_ts: str | None,
     to_ts: str | None,
 ) -> None:
-    """Detect idle periods from gaps between events where no spans exist."""
-    # Build a set of seconds that are covered by existing spans
-    # Use simple approach: check for gaps > 60s in the event stream
-    idle_threshold = 60  # seconds
+    """Detect idle periods as time intervals not covered by ANY non-idle span.
+
+    Algorithm:
+        1. Take the orchestration event time range as the walk bounds
+           (sentinel/heartbeat events excluded, they don't imply activity).
+        2. Build the union of all non-idle spans' intervals (merge overlapping).
+        3. Walk complementary gaps between merged intervals, clamped to the
+           walk bounds; emit `idle` span for any complementary interval > 60s.
+
+    This is correct under partial overlap, where the old strict-containment
+    check produced false-idle spans.
+    """
+    idle_threshold_ms = 60 * 1000
 
     activity_events = [
         e for e in events
         if e.get("type", "") not in ("WATCHDOG_HEARTBEAT", "MONITOR_HEARTBEAT", "IDLE_START", "IDLE_END")
         and e.get("_source") != "sentinel"
     ]
-
     if len(activity_events) < 2:
         return
 
-    # Build a list of covered time ranges from existing spans to avoid double-counting
-    existing_ranges: list[tuple[int, int]] = []
+    range_start_ms = _ts_to_ms(activity_events[0].get("ts", ""))
+    range_end_ms = _ts_to_ms(activity_events[-1].get("ts", ""))
+    if range_end_ms <= range_start_ms:
+        return
+
+    # 1. Build list of non-idle span intervals, clamped to the walk range.
+    intervals: list[tuple[int, int]] = []
     for s in spans:
-        if s.get("start") and s.get("end"):
-            try:
-                s_start = int(datetime.fromisoformat(s["start"].replace("Z", "+00:00")).timestamp() * 1000)
-                s_end = int(datetime.fromisoformat(s["end"].replace("Z", "+00:00")).timestamp() * 1000)
-                existing_ranges.append((s_start, s_end))
-            except (ValueError, AttributeError):
-                pass
+        if s.get("category") == "idle":
+            continue
+        start = s.get("start")
+        end = s.get("end")
+        if not start or not end:
+            continue
+        s_start = _ts_to_ms(start)
+        s_end = _ts_to_ms(end)
+        if s_end <= s_start:
+            continue
+        # Clamp to walk range
+        s_start = max(s_start, range_start_ms)
+        s_end = min(s_end, range_end_ms)
+        if s_end > s_start:
+            intervals.append((s_start, s_end))
 
-    def _is_covered(gap_start_ms: int, gap_end_ms: int) -> bool:
-        """Check if a gap is already covered by existing spans."""
-        for rs, re in existing_ranges:
-            if rs <= gap_start_ms and re >= gap_end_ms:
-                return True
-        return False
+    # 2. Sort and merge overlapping/adjacent intervals.
+    intervals.sort()
+    merged: list[list[int]] = []
+    for s_start, s_end in intervals:
+        if merged and s_start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], s_end)
+        else:
+            merged.append([s_start, s_end])
 
-    for i in range(len(activity_events) - 1):
-        ts1 = activity_events[i].get("ts", "")
-        ts2 = activity_events[i + 1].get("ts", "")
-        gap_ms = _ts_diff_ms(ts1, ts2)
-        if gap_ms > idle_threshold * 1000:
-            try:
-                g_start = int(datetime.fromisoformat(ts1.replace("Z", "+00:00")).timestamp() * 1000)
-                g_end = int(datetime.fromisoformat(ts2.replace("Z", "+00:00")).timestamp() * 1000)
-            except (ValueError, AttributeError):
-                continue
-            if not _is_covered(g_start, g_end):
+    # 3. Walk complementary gaps.
+    emitted_count = 0
+    emitted_total_ms = 0
+    cursor = range_start_ms
+    for seg_start, seg_end in merged:
+        if seg_start > cursor:
+            gap = seg_start - cursor
+            if gap > idle_threshold_ms:
                 spans.append({
                     "category": "idle",
                     "change": "",
-                    "start": ts1,
-                    "end": ts2,
-                    "duration_ms": gap_ms,
+                    "start": _ts_shift_ms(activity_events[0].get("ts", ""), cursor - range_start_ms),
+                    "end": _ts_shift_ms(activity_events[0].get("ts", ""), seg_start - range_start_ms),
+                    "duration_ms": gap,
                     "detail": {"source": "gap-detection"},
                 })
+                emitted_count += 1
+                emitted_total_ms += gap
+        if seg_end > cursor:
+            cursor = seg_end
+        if cursor >= range_end_ms:
+            break
+
+    # Trailing gap from last segment to range_end_ms
+    if cursor < range_end_ms:
+        gap = range_end_ms - cursor
+        if gap > idle_threshold_ms:
+            spans.append({
+                "category": "idle",
+                "change": "",
+                "start": _ts_shift_ms(activity_events[0].get("ts", ""), cursor - range_start_ms),
+                "end": activity_events[-1].get("ts", ""),
+                "duration_ms": gap,
+                "detail": {"source": "gap-detection"},
+            })
+            emitted_count += 1
+            emitted_total_ms += gap
+
+    logger.debug(
+        "idle gap detection: %d non-idle intervals → %d merged → %d idle gaps emitted (%d ms total)",
+        len(intervals), len(merged), emitted_count, emitted_total_ms,
+    )
 
 
 def _clip_spans(spans: list[dict], from_ts: str | None, to_ts: str | None) -> list[dict]:
@@ -518,6 +735,26 @@ def _ts_diff_ms(ts1: str, ts2: str) -> int:
         dt1 = datetime.fromisoformat(ts1.replace("Z", "+00:00"))
         dt2 = datetime.fromisoformat(ts2.replace("Z", "+00:00"))
         return max(0, int((dt2 - dt1).total_seconds() * 1000))
+    except (ValueError, AttributeError):
+        return 0
+
+
+def _ts_shift_ms(ts: str, delta_ms: int) -> str:
+    """Return a new ISO 8601 timestamp shifted by `delta_ms` (can be negative)."""
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        shifted = dt + timedelta(milliseconds=delta_ms)
+        # Preserve the Z-suffix convention if input had it; otherwise emit offset form.
+        iso = shifted.isoformat()
+        return iso
+    except (ValueError, AttributeError):
+        return ts
+
+
+def _ts_to_ms(ts: str) -> int:
+    """Convert an ISO 8601 timestamp to epoch milliseconds; 0 on failure."""
+    try:
+        return int(datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp() * 1000)
     except (ValueError, AttributeError):
         return 0
 

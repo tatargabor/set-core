@@ -13,6 +13,12 @@ const CATEGORY_COLORS: Record<string, string> = {
   planning: '#a78bfa',       // violet
   implementing: '#22c55e',   // green
   fixing: '#f59e0b',         // amber
+  // Orchestrator-side LLM calls (verifier/replanner/classifier) — warm hues
+  'llm:review': '#fbbf24',       // amber-400
+  'llm:spec_verify': '#f59e0b',  // amber-500
+  'llm:replan': '#d97706',       // amber-600
+  'llm:classify': '#fcd34d',     // amber-300
+  // Build/test/e2e/etc. gates
   'gate:build': '#3b82f6',   // blue
   'gate:test': '#06b6d4',    // cyan
   'gate:review': '#ec4899',  // pink
@@ -29,10 +35,35 @@ const CATEGORY_COLORS: Record<string, string> = {
   'dep-wait': '#737373',     // gray
   'manual-wait': '#a3a3a3',  // light gray
   sentinel: '#525252',       // dim
+  // Sentinel-side LLM calls — muted cool hues to distinguish from orchestrator LLM
+  'sentinel:llm:review': '#64748b',       // slate-500
+  'sentinel:llm:spec_verify': '#475569',  // slate-600
+  'sentinel:llm:replan': '#334155',       // slate-700
+  'sentinel:llm:classify': '#94a3b8',     // slate-400
+}
+
+// Pretty labels for categories that benefit from a longer name in tooltips/labels.
+const CATEGORY_LABELS: Record<string, string> = {
+  'llm:review': 'LLM: Review',
+  'llm:spec_verify': 'LLM: Spec Verify',
+  'llm:replan': 'LLM: Replan',
+  'llm:classify': 'LLM: Classify',
+  'sentinel:llm:review': 'Sentinel: Review',
+  'sentinel:llm:spec_verify': 'Sentinel: Spec Verify',
+  'sentinel:llm:replan': 'Sentinel: Replan',
+  'sentinel:llm:classify': 'Sentinel: Classify',
 }
 
 function getCategoryColor(cat: string): string {
-  return CATEGORY_COLORS[cat] || '#525252'
+  if (CATEGORY_COLORS[cat]) return CATEGORY_COLORS[cat]
+  // Fallback for unknown llm:* / sentinel:llm:* purposes — keep them visible.
+  if (cat.startsWith('sentinel:llm:')) return '#475569'
+  if (cat.startsWith('llm:')) return '#f59e0b'
+  return '#525252'
+}
+
+function getCategoryLabel(cat: string): string {
+  return CATEGORY_LABELS[cat] || cat
 }
 
 // ─── Time formatting ────────────────────────────────────────────────
@@ -189,7 +220,7 @@ function GanttTimeline({ spans, categories, minTime, maxTime, pxPerSecond }: Gan
             top: Math.max(8, tooltip.y - 60),
           }}
         >
-          <div className="text-neutral-200 font-bold">{tooltip.span.category}</div>
+          <div className="text-neutral-200 font-bold">{getCategoryLabel(tooltip.span.category)}</div>
           {tooltip.span.change && <div className="text-neutral-400">change: {tooltip.span.change}</div>}
           <div className="text-neutral-400">{formatTime(tooltip.span.start)} — {formatTime(tooltip.span.end)}</div>
           <div className="text-neutral-300">duration: {formatDuration(tooltip.span.duration_ms)}</div>
@@ -227,7 +258,7 @@ function BreakdownBars({ breakdown }: { breakdown: ActivityBreakdown[] }) {
     <div className="font-mono text-xs space-y-1">
       {breakdown.map((b) => (
         <div key={b.category} className="flex items-center gap-2">
-          <span className="w-28 text-right text-neutral-400 truncate">{b.category}</span>
+          <span className="w-28 text-right text-neutral-400 truncate" title={getCategoryLabel(b.category)}>{getCategoryLabel(b.category)}</span>
           <div className="flex-1 h-4 bg-neutral-900 rounded overflow-hidden">
             <div
               className="h-full rounded"
@@ -343,7 +374,7 @@ export default function ActivityView({ project, isRunning }: Props) {
           <span>
             Activity: <span className="text-neutral-100">{formatDuration(data.activity_time_ms)}</span>
           </span>
-          <span>
+          <span title="Parallel efficiency = activity_time / wall_time. >1.0x means LLM verifier and agent sessions overlap, or multiple changes ran in parallel.">
             Parallel: <span className="text-neutral-100">{data.parallel_efficiency}x</span>
           </span>
           <div className="flex-1" />
@@ -372,13 +403,13 @@ export default function ActivityView({ project, isRunning }: Props) {
               <div
                 key={cat}
                 className="h-6 flex items-center text-neutral-400 text-right pr-2 truncate"
-                title={cat}
+                title={getCategoryLabel(cat)}
               >
                 <span
                   className="inline-block w-2 h-2 rounded-full mr-1 flex-shrink-0"
                   style={{ backgroundColor: getCategoryColor(cat) }}
                 />
-                {cat}
+                {getCategoryLabel(cat)}
               </div>
             ))}
           </div>
