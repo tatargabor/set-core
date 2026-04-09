@@ -31,19 +31,27 @@ fi
 # on empty log files for minutes while the agent is actively working.
 # stdbuf -oL is unreliable on bundled node binaries.
 #
-# Preferred: script(1) from util-linux 2.36+ with `-E never` (no input echo).
-# It allocates a PTY for Claude, which flips claude's stdout into line-buffered
-# mode, so every newline flushes immediately. script writes its "typescript"
-# banner to the log file; we bypass that by writing the typescript to /dev/null
-# and piping script's forwarded stdout through `tr -d '\r' | tee` to strip the
-# PTY's \r\n line endings and capture a clean log.
+# !!! DISABLED !!!  USE_PTY_WRAP is force-0 due to an EOF-propagation bug.
+# The `script(1) -E never -efqc CMD /dev/null` wrapper allocates a PTY for
+# claude so its stdout line-buffers. That part works — but the PTY does NOT
+# forward "stdin EOF" from the outer `echo prompt | script ...` pipe to the
+# child. Claude reads the initial prompt from the PTY, then blocks in epoll
+# on the PTY fd waiting for more input (because TTYs don't normally close),
+# burning 0% CPU forever with no session JSONL ever created.
 #
-# Fallback: stdbuf -oL (partial fix) when util-linux script is not available
-# or is too old to support -E.
+# Observed on 2026-04-09 reviews-and-moderation dispatch: claude hung for
+# 22 minutes, 0 session file, iter-001.log 0 bytes.
+#
+# Keeping the PTY code path in place for when we figure out a proper EOF
+# forwarding fix (socat? custom Python PTY master? different flag combo?).
+# Until then, stick with the stdbuf + tee fallback — imperfect line
+# buffering but it doesn't deadlock.
 USE_PTY_WRAP=0
-if command -v script &>/dev/null; then
+
+# Keep the detection for future reference / tests, but DO NOT enable it:
+if [[ "${SET_LOOP_EXPERIMENTAL_PTY:-0}" == "1" ]] && command -v script &>/dev/null; then
     if script --help 2>&1 | grep -q "\-E,"; then
-        USE_PTY_WRAP=1
+        USE_PTY_WRAP=1  # Opt-in via env var for dev testing only
     fi
 fi
 
