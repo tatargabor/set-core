@@ -298,3 +298,44 @@ export default async function Page({ params }: Props) {
 ```
 
 **The rule:** any record fetched by both `generateMetadata` and the page's default export MUST go through a `React.cache()`-wrapped loader. The memoisation is per-request, so it's safe and automatic.
+
+## 7. `next.config.js` — Preserve `images` Defaults
+
+The shipped `next.config.js` template sets three `images` keys together as a matched set:
+
+```js
+images: {
+  unoptimized: true,
+  dangerouslyAllowSVG: true,
+  contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+}
+```
+
+These exist because seeded fixtures and example data reference `placehold.co` which serves SVG, not PNG. Without `dangerouslyAllowSVG` the Next.js dev server crashes on `<Image src="https://placehold.co/...">` with *"type image/svg+xml but dangerouslyAllowSVG is disabled"*, breaking E2E tests that load product pages.
+
+**Wrong — agent rewrites the config and drops protections:**
+```js
+// Removes unoptimized, adds remotePatterns, forgets dangerouslyAllowSVG
+images: {
+  remotePatterns: [
+    { protocol: "https", hostname: "placehold.co" },
+  ],
+},
+```
+Result: every page that renders a product image triggers a 500 in dev mode because Next.js optimises the SVG and refuses to serve it.
+
+**Correct — if you must switch to `remotePatterns`, keep SVG settings:**
+```js
+images: {
+  remotePatterns: [
+    { protocol: "https", hostname: "placehold.co" },
+    { protocol: "https", hostname: "cdn.example.com" },
+  ],
+  dangerouslyAllowSVG: true,
+  contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+},
+```
+
+Or replace every placehold.co reference in `prisma/seed.ts` + fixtures with a real PNG CDN first, then drop the SVG settings.
+
+**The rule:** when editing `next.config.js`, preserve the existing `images` keys unless you also update seed data and fixtures. Removing `dangerouslyAllowSVG` + `contentSecurityPolicy` without replacing placehold.co references is a known regression that blocks E2E runs.

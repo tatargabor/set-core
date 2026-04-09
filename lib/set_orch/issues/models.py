@@ -54,6 +54,12 @@ VALID_TRANSITIONS: dict[IssueState, set[IssueState]] = {
     },
     IssueState.FAILED: {
         IssueState.INVESTIGATING, IssueState.DISMISSED, IssueState.NEW,
+        # Allow FAILED → RESOLVED when the underlying cause is resolved
+        # by something other than the issue pipeline — most commonly when
+        # the orchestrator merges the affected change (observed on
+        # craftbrew-run-20260409-0034, ISS-001 and ISS-007 spammed error
+        # logs every 30s because `failed → resolved` was rejected).
+        IssueState.RESOLVED,
     },
     IssueState.MUTED: {
         IssueState.NEW,

@@ -353,15 +353,32 @@ cmd_run() {
             # fully controlled strings from get_claude_permission_flags() and jq,
             # never from user input. eval is needed because --allowedTools "X,Y"
             # requires proper word splitting of the quoted argument.
-            if [[ -n "$TIMEOUT_CMD" ]]; then
-                eval "echo \"\$effective_prompt\" | env -u CLAUDECODE $STDBUF_PREFIX $TIMEOUT_CMD --foreground --signal=TERM \"$timeout_seconds\" \
-                    claude $perm_flags $model_flag $session_flags \
-                       --verbose 2>&1 | $STDBUF_PREFIX tee -a \"\$iter_log_file\""
+            #
+            # Output path:
+            #   USE_PTY_WRAP=1 (preferred): script -E never -efqc CMD /dev/null
+            #     allocates a PTY so Claude's stdout is line-buffered (fixes the
+            #     "chain.log empty for minutes" bug). `script -e` returns the
+            #     child's exit code via PIPESTATUS[1]. tr strips PTY \r\n.
+            #   USE_PTY_WRAP=0 (fallback): stdbuf + tee — unreliable on node.
+            if [[ "${USE_PTY_WRAP:-0}" == "1" ]]; then
+                if [[ -n "$TIMEOUT_CMD" ]]; then
+                    eval "echo \"\$effective_prompt\" | env -u CLAUDECODE script -E never -efqc \"$TIMEOUT_CMD --foreground --signal=TERM $timeout_seconds claude $perm_flags $model_flag $session_flags --verbose\" /dev/null 2>&1 | tr -d '\r' | tee -a \"\$iter_log_file\""
+                else
+                    eval "echo \"\$effective_prompt\" | env -u CLAUDECODE script -E never -efqc \"claude $perm_flags $model_flag $session_flags --verbose\" /dev/null 2>&1 | tr -d '\r' | tee -a \"\$iter_log_file\""
+                fi
+                # PIPESTATUS: [0]=echo  [1]=script(-e→child exit)  [2]=tr  [3]=tee
+                claude_exit_code=${PIPESTATUS[1]:-$?}
             else
-                eval "echo \"\$effective_prompt\" | env -u CLAUDECODE $STDBUF_PREFIX claude $perm_flags $model_flag $session_flags \
-                   --verbose 2>&1 | $STDBUF_PREFIX tee -a \"\$iter_log_file\""
+                if [[ -n "$TIMEOUT_CMD" ]]; then
+                    eval "echo \"\$effective_prompt\" | env -u CLAUDECODE $STDBUF_PREFIX $TIMEOUT_CMD --foreground --signal=TERM \"$timeout_seconds\" \
+                        claude $perm_flags $model_flag $session_flags \
+                           --verbose 2>&1 | $STDBUF_PREFIX tee -a \"\$iter_log_file\""
+                else
+                    eval "echo \"\$effective_prompt\" | env -u CLAUDECODE $STDBUF_PREFIX claude $perm_flags $model_flag $session_flags \
+                       --verbose 2>&1 | $STDBUF_PREFIX tee -a \"\$iter_log_file\""
+                fi
+                claude_exit_code=${PIPESTATUS[0]:-$?}
             fi
-            claude_exit_code=${PIPESTATUS[0]:-$?}
 
             if [[ $claude_exit_code -eq 124 ]]; then
                 # Timeout exit code
@@ -824,15 +841,25 @@ except:
                     chain_session_id=$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
                     chain_log_file="${iter_log_file%.log}-chain.log"
 
-                    if [[ -n "$TIMEOUT_CMD" ]]; then
-                        echo "$chain_prompt" | env -u CLAUDECODE $STDBUF_PREFIX $TIMEOUT_CMD --foreground --signal=TERM "$timeout_seconds" \
-                            claude $perm_flags $model_flag --session-id "$chain_session_id" \
-                               --verbose 2>&1 | $STDBUF_PREFIX tee -a "$chain_log_file"
+                    # See PTY wrapping rationale in main invocation above.
+                    if [[ "${USE_PTY_WRAP:-0}" == "1" ]]; then
+                        if [[ -n "$TIMEOUT_CMD" ]]; then
+                            eval "echo \"\$chain_prompt\" | env -u CLAUDECODE script -E never -efqc \"$TIMEOUT_CMD --foreground --signal=TERM $timeout_seconds claude $perm_flags $model_flag --session-id $chain_session_id --verbose\" /dev/null 2>&1 | tr -d '\r' | tee -a \"\$chain_log_file\""
+                        else
+                            eval "echo \"\$chain_prompt\" | env -u CLAUDECODE script -E never -efqc \"claude $perm_flags $model_flag --session-id $chain_session_id --verbose\" /dev/null 2>&1 | tr -d '\r' | tee -a \"\$chain_log_file\""
+                        fi
+                        chain_exit=${PIPESTATUS[1]:-$?}
                     else
-                        echo "$chain_prompt" | env -u CLAUDECODE $STDBUF_PREFIX claude $perm_flags $model_flag --session-id "$chain_session_id" \
-                           --verbose 2>&1 | $STDBUF_PREFIX tee -a "$chain_log_file"
+                        if [[ -n "$TIMEOUT_CMD" ]]; then
+                            echo "$chain_prompt" | env -u CLAUDECODE $STDBUF_PREFIX $TIMEOUT_CMD --foreground --signal=TERM "$timeout_seconds" \
+                                claude $perm_flags $model_flag --session-id "$chain_session_id" \
+                                   --verbose 2>&1 | $STDBUF_PREFIX tee -a "$chain_log_file"
+                        else
+                            echo "$chain_prompt" | env -u CLAUDECODE $STDBUF_PREFIX claude $perm_flags $model_flag --session-id "$chain_session_id" \
+                               --verbose 2>&1 | $STDBUF_PREFIX tee -a "$chain_log_file"
+                        fi
+                        chain_exit=${PIPESTATUS[0]:-$?}
                     fi
-                    chain_exit=${PIPESTATUS[0]:-$?}
 
                     # Collect chained commits
                     local chain_commits

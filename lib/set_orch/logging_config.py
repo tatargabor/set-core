@@ -12,6 +12,62 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from stat import ST_DEV, ST_INO
+
+
+class WatchedRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler that auto-reopens when the log file is unlinked.
+
+    Python's `RotatingFileHandler` handles size-based rotation internally but
+    keeps writing to a stale fd if the log file is unlinked externally (manual
+    `rm`, a rogue cleanup script, logrotate with `create` mode, test teardown).
+    `WatchedFileHandler` reopens on inode change but doesn't rotate by size.
+    This class layers the inode-watch behavior from WatchedFileHandler on top
+    of RotatingFileHandler, so we get both size-based rotation AND auto-reopen
+    when the file disappears from disk.
+
+    Observed on 2026-04-09: the engine's python.log appeared "frozen at 02:28"
+    while the engine process was actively running — `/proc/<pid>/fd/3` showed
+    the fd pointing at `python.log (deleted)`. With this handler the engine
+    reopens the log on the next write, creating a fresh file if needed.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._update_inode()
+
+    def _update_inode(self) -> None:
+        try:
+            sres = os.stat(self.baseFilename)
+            self.dev = sres[ST_DEV]
+            self.ino = sres[ST_INO]
+        except FileNotFoundError:
+            self.dev = -1
+            self.ino = -1
+
+    def emit(self, record: logging.LogRecord) -> None:  # type: ignore[override]
+        # Check for inode change BEFORE delegating to RotatingFileHandler.emit().
+        # Logic mirrors logging.handlers.WatchedFileHandler but respects the
+        # rotation behavior of the parent class.
+        try:
+            sres = os.stat(self.baseFilename)
+        except FileNotFoundError:
+            sres = None
+        if not sres or sres[ST_DEV] != self.dev or sres[ST_INO] != self.ino:
+            # File was unlinked, moved, or replaced. Drop the old stream so
+            # RotatingFileHandler.emit() → _open() creates a fresh one.
+            if self.stream is not None:
+                try:
+                    self.stream.flush()
+                except (OSError, ValueError):
+                    pass
+                try:
+                    self.stream.close()
+                except (OSError, ValueError):
+                    pass
+                self.stream = None  # type: ignore[assignment]
+            self._update_inode()
+        super().emit(record)
 
 # Default log format matching orchestration.log style
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s:%(funcName)s %(message)s"
@@ -105,8 +161,8 @@ def setup_logging(
 
     formatter = ExtraFormatter(LOG_FORMAT)
 
-    # File handler with rotation
-    file_handler = RotatingFileHandler(
+    # File handler with rotation + inode-watch (auto-reopen if unlinked).
+    file_handler = WatchedRotatingFileHandler(
         str(resolved_path),
         maxBytes=max_bytes,
         backupCount=backup_count,

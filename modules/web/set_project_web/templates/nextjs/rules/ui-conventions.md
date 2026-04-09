@@ -13,6 +13,34 @@ paths:
 - Icons: use `lucide-react` exclusively
 - When design source files (`docs/figma-raw/*/sources/`) specify particular icons (e.g., `ShoppingBag` for cart, `Package` for products), use those exact icons — design source files override generic icon choices
 
+## Design Tokens — Use Tailwind Classes, Not Inline Hex
+
+The project's `src/app/globals.css` defines brand colours, radii, and typography as Tailwind `@theme` tokens. Every visual primitive on the page MUST reach those tokens through the generated Tailwind class names — NEVER inline the raw hex value with arbitrary-value syntax like `bg-[#78350F]`.
+
+**Wrong — inline hex, bypasses the token layer:**
+```tsx
+<button className="bg-[#78350F] hover:bg-[#78350F]/90 text-white rounded-[6px]">
+  Add to Cart
+</button>
+<div className="bg-[#FFFBEB] text-[#1c1917]">...</div>
+```
+This "works" visually but it means:
+- A design refresh (flipping the primary to a new brown) requires a project-wide search-replace.
+- Dark mode / theming is impossible — there's no indirection.
+- Agents copy the hex as a literal instead of "the primary colour," so half the site uses `#78350F` and the other half uses `#78350f` (same value, different token-space).
+
+**Correct — tailwind classes that resolve to the `@theme` tokens:**
+```tsx
+<button className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-button">
+  Add to Cart
+</button>
+<div className="bg-background text-text-primary">...</div>
+```
+
+**The rule:** if a CSS value you want to write already exists as a `--color-*` / `--radius-*` / `--font-*` token in `src/app/globals.css @theme`, you MUST use the corresponding Tailwind class (`bg-primary`, `text-muted`, `rounded-card`, etc.) — not the inline `[#HEX]` form. The inline form is only acceptable for one-off values that are deliberately NOT part of the token system.
+
+**Detection:** grep for `\[#[0-9a-fA-F]{6}\]` in `src/` — any match that corresponds to a value already in `globals.css @theme` is a rule violation and the review gate will flag it.
+
 ## Feature Component Location
 - Co-locate feature-specific components with their route segment (e.g., `src/app/admin/(dashboard)/products/ProductsTable.tsx`)
 - NEVER create `src/components/admin/`, `src/components/shop/`, or other domain directories
@@ -26,6 +54,60 @@ paths:
 - Mobile-first: design for small screens, enhance for larger
 - All pages within a route group MUST use the shared layout — never create page-level wrappers that replace the route group layout sidebar/nav
 - Admin pages must always render within the admin layout (`app/admin/layout.tsx`) — if the sidebar disappears on a sub-page, the layout nesting is broken
+
+## shadcn-First — No Raw HTML Form Elements
+
+Every interactive primitive on the page MUST be a shadcn/ui component, never a raw HTML element with hand-rolled Tailwind classes. The exception is static layout elements (`<div>`, `<section>`, `<header>`, `<main>`, etc.) — those are fine.
+
+**Required replacements — always use the shadcn version:**
+
+| Raw HTML | shadcn/ui equivalent |
+|---|---|
+| `<button>`, `<a>` styled as button | `<Button>` from `@/components/ui/button` |
+| `<input type="text|email|password|number|search">` | `<Input>` |
+| `<input type="checkbox">` | `<Checkbox>` |
+| `<input type="radio">` | `<RadioGroup>` + `<RadioGroupItem>` |
+| `<select>` | `<Select>` + `<SelectTrigger>` + `<SelectContent>` + `<SelectItem>` |
+| `<textarea>` | `<Textarea>` |
+| `<label>` | `<Label>` |
+| `<hr>` | `<Separator>` |
+| `<table>` | `@tanstack/react-table` + shadcn `<Table>` |
+| Modal via `role="dialog"` | `<Dialog>` / `<AlertDialog>` / `<Sheet>` |
+| Toast via `alert()` or custom | `toast()` from `sonner` |
+| Tooltip via `title=""` | `<Tooltip>` + `<TooltipTrigger>` + `<TooltipContent>` |
+| Badge via `<span>` | `<Badge>` |
+| Tab via custom state | `<Tabs>` + `<TabsList>` + `<TabsTrigger>` + `<TabsContent>` |
+| Accordion via `<details>` | `<Accordion>` |
+| Avatar via `<img>` | `<Avatar>` + `<AvatarImage>` + `<AvatarFallback>` |
+| Skeleton via custom animation | `<Skeleton>` |
+| Progress via custom bar | `<Progress>` |
+
+**Wrong — raw button with Tailwind classes:**
+```tsx
+<button
+  className="px-4 py-2 bg-primary text-primary-foreground rounded-button hover:bg-primary/90"
+  onClick={handleSubmit}
+>
+  Save
+</button>
+```
+
+**Correct — shadcn Button with `variant`:**
+```tsx
+import { Button } from "@/components/ui/button";
+
+<Button variant="default" onClick={handleSubmit}>
+  Save
+</Button>
+```
+
+**Why this matters**:
+1. **Accessibility**: shadcn components ship with keyboard navigation, focus states, ARIA attributes, and `aria-disabled` handling. A raw `<button>` with `disabled` class but no `aria-disabled` fails the accessibility gate.
+2. **Consistency**: a site with 8 pages using 7 different custom button styles looks cheap. Using `<Button variant="...">` guarantees visual + interactive consistency.
+3. **Design system evolution**: if the design team flips primary colours or border radii, changing the `@theme` tokens updates every shadcn component automatically. Hand-rolled buttons stay stuck on the old values.
+4. **Review gate**: the review gate flags raw `<button>` usage as a finding — saving you one retry round.
+
+**Install on demand**: run `npx shadcn@latest add <component>` when you first need a component. Don't pre-install everything.
 
 ## Button Variant Policy
 - `variant="ghost"` → icon-only, NO text content

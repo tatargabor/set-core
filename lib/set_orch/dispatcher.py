@@ -2101,6 +2101,14 @@ def _setup_change_in_worktree(
     logger.info("wrote input.md for %s", change_name)
 
     if retry_ctx:
+        # Preserve the retry context into extras.last_retry_context BEFORE
+        # clearing it. The main retry_context field gets cleared because it's
+        # already been consumed — written into input.md above. But if the
+        # agent subsequently hard-fails (verify-retry budget exhausted), we
+        # want post-mortem analysis to still see what the last feedback was.
+        # extras.last_retry_context is never cleared on dispatch, so it
+        # survives until the next retry cycle overwrites it OR the run ends.
+        update_change_field(state_path, change_name, "last_retry_context", retry_ctx)
         update_change_field(state_path, change_name, "retry_context", None)
 
     # Digest mode: copy spec files
@@ -2619,6 +2627,9 @@ def resume_change(
                 "resuming %s with retry context (%d chars + %d preamble, fresh session)",
                 change_name, len(retry_ctx), len(preamble),
             )
+        # Preserve into extras.last_retry_context for post-mortem (see dispatch_change
+        # comment above — same rationale: on hard-fail we want the history).
+        update_change_field(state_path, change_name, "last_retry_context", retry_ctx, event_bus=event_bus)
         update_change_field(state_path, change_name, "retry_context", None, event_bus=event_bus)
         update_change_field(state_path, change_name, "current_step", "fixing", event_bus=event_bus)
         if is_merge_retry:

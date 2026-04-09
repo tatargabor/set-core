@@ -25,12 +25,34 @@ else
     TIMEOUT_CMD=""
 fi
 
-# Find stdbuf for line-buffered output (real-time terminal visibility)
+# Line-buffered output for real-time visibility in chain.log / iter.log.
+#
+# Claude CLI buffers stdout when it's not a TTY, so `claude | tee` can sit
+# on empty log files for minutes while the agent is actively working.
+# stdbuf -oL is unreliable on bundled node binaries.
+#
+# Preferred: script(1) from util-linux 2.36+ with `-E never` (no input echo).
+# It allocates a PTY for Claude, which flips claude's stdout into line-buffered
+# mode, so every newline flushes immediately. script writes its "typescript"
+# banner to the log file; we bypass that by writing the typescript to /dev/null
+# and piping script's forwarded stdout through `tr -d '\r' | tee` to strip the
+# PTY's \r\n line endings and capture a clean log.
+#
+# Fallback: stdbuf -oL (partial fix) when util-linux script is not available
+# or is too old to support -E.
+USE_PTY_WRAP=0
+if command -v script &>/dev/null; then
+    if script --help 2>&1 | grep -q "\-E,"; then
+        USE_PTY_WRAP=1
+    fi
+fi
+
 if command -v stdbuf &>/dev/null; then
     STDBUF_PREFIX="stdbuf -oL"
 else
     STDBUF_PREFIX=""
 fi
+export USE_PTY_WRAP STDBUF_PREFIX
 
 # Default settings
 DEFAULT_MAX_ITERATIONS=10
