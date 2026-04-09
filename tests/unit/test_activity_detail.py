@@ -16,10 +16,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
 from set_orch.api.activity_detail import (
+    _build_gap_spans,
     _build_llm_wait_spans,
     _build_sub_spans_for_session,
     _build_tool_spans,
+    _categorize_gap,
     _is_cache_valid,
+    _is_verifier_session,
     _link_subagents,
     _load_cache,
     _normalize_tool_name,
@@ -257,22 +260,29 @@ class TestOverheadCalculation:
         overhead = [s for s in spans if s["category"] == "agent:overhead"]
         assert overhead == []  # no residual
 
-    def test_overhead_with_residual(self, tmp_path):
-        """Synthetic 10s session with 3s llm-wait + 2s tool → 5s overhead."""
+    def test_short_residual_below_threshold_produces_no_gap_span(self, tmp_path):
+        """Residual time below the 30s gap threshold doesn't produce any span.
+
+        Previously this emitted an `agent:overhead` span for any >1s residual,
+        but that single-span approach hid the semantic meaning of gaps.
+        Now sub-30s residuals are considered normal inter-turn latency and
+        are not classified — they contribute to neither llm-wait nor gap.
+        """
         path = tmp_path / "session.jsonl"
         _write_session(path, [
-            # First entry at t=1000
             _user_entry(_ts(1000), text="task"),
-            _assistant_entry(_ts(1003), tool_uses=[("t1", "Bash", {"command": "ls"})]),  # llm-wait 3s
-            _user_entry(_ts(1005), tool_results=["t1"]),                                  # tool 2s
-            # Add a 5s gap before the next entry (no spans cover it)
+            _assistant_entry(_ts(1003), tool_uses=[("t1", "Bash", {"command": "ls"})]),
+            _user_entry(_ts(1005), tool_results=["t1"]),
+            # 5-second trailing queue-operation — no span should be emitted
             {"type": "queue-operation", "timestamp": _ts(1010), "uuid": "qop"},
         ])
         spans = _build_sub_spans_for_session(path)
-        overhead = [s for s in spans if s["category"] == "agent:overhead"]
-        # Wall = 10s, accounted = 5s, overhead = 5s
-        assert len(overhead) == 1
-        assert overhead[0]["duration_ms"] == 5000
+        # No legacy overhead span + no short gap span
+        assert all(s["category"] != "agent:overhead" for s in spans)
+        assert all(not s["category"].startswith("agent:review-wait") for s in spans)
+        assert all(not s["category"].startswith("agent:verify-wait") for s in spans)
+        assert all(not s["category"].startswith("agent:loop-restart") for s in spans)
+        assert all(not s["category"].startswith("agent:gap") for s in spans)
 
 
 # ─── Cache file (tasks 11.8-11.10) ──────────────────────────────────
@@ -362,6 +372,170 @@ class TestUnionDurationMs:
         ]
         # Union: 0→8 = 8s
         assert _union_duration_ms(spans) == 8000
+
+
+# ─── Verifier session exclusion ─────────────────────────────────────
+
+
+class TestVerifierSessionDetection:
+    def test_spec_verify_marker_detected(self):
+        entries = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "[PURPOSE:spec_verify:foundation-setup]\nIMPORTANT: ..."),
+            _assistant_entry(_ts(1010), "ok"),
+        ])
+        assert _is_verifier_session(entries) is True
+
+    def test_review_marker_detected(self):
+        entries = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "[PURPOSE:review:auth-and-navigation]\nReview the change..."),
+            _assistant_entry(_ts(1010), "ok"),
+        ])
+        assert _is_verifier_session(entries) is True
+
+    def test_regular_agent_task_not_detected(self):
+        entries = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "# Task\nImplement the 'foundation-setup' change"),
+            _assistant_entry(_ts(1010), "ok"),
+        ])
+        assert _is_verifier_session(entries) is False
+
+    def test_verifier_session_produces_no_spans(self, tmp_path):
+        path = tmp_path / "verifier.jsonl"
+        _write_session(path, [
+            _user_entry(_ts(1000), "[PURPOSE:spec_verify:some-change]\nVerify..."),
+            _assistant_entry(_ts(1030), "verified", tool_uses=[("t1", "Bash", {"command": "ls"})]),
+            _user_entry(_ts(1040), tool_results=["t1"]),
+        ])
+        assert _build_sub_spans_for_session(path) == []
+
+
+# ─── Gap categorization (_categorize_gap) ───────────────────────────
+
+
+class TestCategorizeGap:
+    def test_empty_prompt_is_gap(self):
+        assert _categorize_gap("") == "agent:gap"
+
+    def test_review_failure_becomes_review_wait(self):
+        assert _categorize_gap("# Task\nCRITICAL CODE REVIEW FAILURE for foo") == "agent:review-wait"
+
+    def test_review_findings_becomes_review_wait(self):
+        assert _categorize_gap("Please fix the review findings in .claude/...") == "agent:review-wait"
+
+    def test_failing_tests_becomes_verify_wait(self):
+        assert _categorize_gap("# Task\nFix the failing tests in tests/e2e/") == "agent:verify-wait"
+
+    def test_smoke_tests_failed_becomes_verify_wait(self):
+        assert _categorize_gap("Note: some inherited smoke tests also failed (non-blocking)") == "agent:verify-wait"
+
+    def test_generic_task_prompt_becomes_loop_restart(self):
+        assert _categorize_gap("# Task\nImplement REQ-XYZ-001 in src/foo.ts") == "agent:loop-restart"
+
+    def test_unrelated_prompt_becomes_gap(self):
+        assert _categorize_gap("hello world") == "agent:gap"
+
+
+# ─── _build_gap_spans ───────────────────────────────────────────────
+
+
+class TestBuildGapSpans:
+    def test_short_gap_produces_no_span(self):
+        """Gaps below the 30s threshold are ignored — normal inter-turn latency."""
+        entries = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "task"),
+            _assistant_entry(_ts(1020), "ok"),  # 20s gap, below threshold
+        ])
+        gaps = _build_gap_spans(entries, [], "s")
+        assert gaps == []
+
+    def test_long_gap_with_review_prompt_produces_review_wait(self):
+        entries = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "initial task"),
+            _assistant_entry(_ts(1010), "Done."),
+            # 120s gap — no activity
+            _user_entry(_ts(1130), "# Task\nCRITICAL CODE REVIEW FAILURE for 'x'"),
+            _assistant_entry(_ts(1140), "fixing..."),
+        ])
+        # Build existing llm-wait spans first, then detect gaps not covered
+        llm_spans = _build_llm_wait_spans(entries, "s")
+        gaps = _build_gap_spans(entries, llm_spans, "s")
+        assert len(gaps) == 1
+        assert gaps[0]["category"] == "agent:review-wait"
+        assert gaps[0]["duration_ms"] == 120_000
+        assert "CRITICAL CODE REVIEW" in gaps[0]["detail"]["next_prompt"]
+
+    def test_long_gap_with_verify_prompt_produces_verify_wait(self):
+        entries = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "task"),
+            _assistant_entry(_ts(1010), "Done fixing tests."),
+            # 5 minute gap
+            _user_entry(_ts(1310), "# Task\nSome inherited smoke tests also failed — fix them"),
+        ])
+        llm_spans = _build_llm_wait_spans(entries, "s")
+        gaps = _build_gap_spans(entries, llm_spans, "s")
+        assert len(gaps) == 1
+        assert gaps[0]["category"] == "agent:verify-wait"
+
+    def test_gap_fully_covered_by_existing_span_is_skipped(self):
+        entries = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "task"),
+            _assistant_entry(_ts(1500), "done"),  # 500s gap from user→assistant
+        ])
+        llm_spans = _build_llm_wait_spans(entries, "s")
+        # The llm-wait span already covers 1000→1500; gap detection should
+        # find the gap but determine it's covered → no gap span.
+        gaps = _build_gap_spans(entries, llm_spans, "s")
+        assert gaps == []
+
+    def test_gap_queue_operation_enqueue_content_used_for_categorization(self, tmp_path):
+        """queue-operation entries carry the enqueued prompt in `content`; gap
+        detection should use that for categorization."""
+        path = tmp_path / "q.jsonl"
+        entries = [
+            _user_entry(_ts(1000), "initial"),
+            _assistant_entry(_ts(1010), "done."),
+            # queue-operation marks a new enqueued task — the gap is from 1010 to 1200
+            {
+                "type": "queue-operation",
+                "timestamp": _ts(1200),
+                "operation": "enqueue",
+                "content": "# Task\nCRITICAL CODE REVIEW FAILURE for 'x'. Fix it.",
+                "sessionId": "s",
+            },
+            _user_entry(_ts(1201), "# Task\nCRITICAL CODE REVIEW FAILURE for 'x'. Fix it."),
+            _assistant_entry(_ts(1210), "fixing"),
+        ]
+        _write_session(path, entries)
+        parsed = _parse_session_file(path)
+        llm_spans = _build_llm_wait_spans(parsed, "s")
+        gaps = _build_gap_spans(parsed, llm_spans, "s")
+        # Should find the gap between the first assistant (1010) and the
+        # queue-operation (1200) = 190s, categorized as review-wait
+        review_gaps = [g for g in gaps if g["category"] == "agent:review-wait"]
+        assert len(review_gaps) >= 1, f"expected review-wait gap, got: {[g['category'] for g in gaps]}"
+
+
+# ─── Integration: full session build with new gap logic ────────────
+
+
+class TestSessionBuildWithGaps:
+    def test_no_agent_overhead_category_emitted(self, tmp_path):
+        """The old single `agent:overhead` span is gone — per-gap spans replace it."""
+        path = tmp_path / "sess.jsonl"
+        _write_session(path, [
+            _user_entry(_ts(1000), "task"),
+            _assistant_entry(_ts(1005), "Done."),
+            # 3 minute gap
+            _user_entry(_ts(1185), "# Task\nCRITICAL CODE REVIEW FAILURE"),
+            _assistant_entry(_ts(1190), "fixing"),
+        ])
+        spans = _build_sub_spans_for_session(path)
+        # No legacy overhead span
+        assert all(s["category"] != "agent:overhead" for s in spans)
+        # But we have a review-wait gap span
+        review = [s for s in spans if s["category"] == "agent:review-wait"]
+        assert len(review) == 1
+        assert review[0]["duration_ms"] == 180_000
 
 
 # ─── Helpers used in tests ──────────────────────────────────────────

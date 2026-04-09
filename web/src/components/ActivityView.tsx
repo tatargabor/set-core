@@ -57,7 +57,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   'agent:tool:multiedit': '#0891b2',
   'agent:tool:notebookedit': '#06b6d4',
   'agent:tool:other': '#737373',
-  'agent:overhead': '#3f3f46',     // zinc-700 — unaccounted
+  'agent:overhead': '#3f3f46',     // zinc-700 — legacy fallback
+  // Gap categories — each gap in the session is classified by the prompt
+  // content that appears after it (review findings / failing tests / etc.)
+  'agent:review-wait': '#fb923c',  // orange — orchestrator review gate running
+  'agent:verify-wait': '#ef4444',  // red — orchestrator verify/e2e gate running
+  'agent:loop-restart': '#64748b', // slate — ralph iter boundary
+  'agent:gap': '#3f3f46',          // zinc — unclassified gap
 }
 
 // Pretty labels for categories that benefit from a longer name in tooltips/labels.
@@ -86,6 +92,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
   'agent:tool:notebookedit': 'NotebookEdit',
   'agent:tool:other': 'Tool: other',
   'agent:overhead': 'Overhead',
+  'agent:review-wait': 'Review Gate',
+  'agent:verify-wait': 'Verify Gate',
+  'agent:loop-restart': 'Iter Restart',
+  'agent:gap': 'Gap',
 }
 
 export function getCategoryColor(cat: string): string {

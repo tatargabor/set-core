@@ -7,10 +7,16 @@ time gaps into typed sub-spans:
 - agent:llm-wait        — gap from user → assistant (Claude API roundtrip)
 - agent:tool:<name>     — gap from tool_use → matching tool_result
 - agent:subagent:<purp> — Task tool linked to a sibling sub-session
-- agent:overhead        — residual time per session (hooks, ralph transitions)
+- agent:review-wait     — gap while orchestrator review gate runs (ralph resume)
+- agent:verify-wait     — gap while orchestrator verify/e2e gate runs
+- agent:loop-restart    — gap between ralph loop iterations
+- agent:gap             — unaccounted gap (fallback)
 
-Pure heuristic — no LLM calls. Cached at `<project>/set/orchestration/activity-detail.jsonl`
-with mtime-based invalidation.
+Pure heuristic — no LLM calls. Verifier sessions (prefix `[PURPOSE:<type>:...]`)
+are excluded because their time is already shown on the main timeline as
+`llm:<type>` spans. Cached per-change at
+`<project>/set/orchestration/activity-detail-<change>.jsonl` with mtime-based
+invalidation.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -43,6 +50,34 @@ KNOWN_TOOLS = {
 # Tool names that represent a sub-agent dispatch — these are candidates for
 # linking to a sibling sub-session via _link_subagents().
 SUBAGENT_TOOL_NAMES = {"task", "agent"}
+
+# Verifier sessions launched by `run_claude_logged()` (verifier.py, engine.py)
+# start with a user message prefixed `[PURPOSE:<purpose>:<change>]`. These
+# sessions are already represented on the main activity timeline as
+# `llm:<purpose>` spans from LLM_CALL events — we exclude them from the
+# drilldown to avoid double-counting.
+VERIFIER_PURPOSE_RE = re.compile(r'^\s*\[PURPOSE:([a-z_]+):([a-zA-Z0-9_-]+)\]')
+
+# Gap categorization — identifies the cause of a time gap inside a session
+# by pattern-matching the first user/queue content that appears after the gap.
+# Applied in declaration order; the first matching pattern wins.
+GAP_CATEGORY_PATTERNS: list[tuple[str, str]] = [
+    ("agent:review-wait",  r"critical code review failure"),
+    ("agent:review-wait",  r"review findings"),
+    ("agent:review-wait",  r"you must fix the review"),
+    ("agent:verify-wait",  r"failing tests"),
+    ("agent:verify-wait",  r"e2e failed"),
+    ("agent:verify-wait",  r"smoke tests? (also )?failed"),
+    ("agent:verify-wait",  r"tests? also failed"),
+    ("agent:verify-wait",  r"gate.*failed"),
+    ("agent:loop-restart", r"^\s*#\s*task\s"),
+    ("agent:loop-restart", r"iteration \d+ of \d+"),
+]
+GAP_CATEGORY_REGEXES = [(cat, re.compile(pat, re.IGNORECASE)) for cat, pat in GAP_CATEGORY_PATTERNS]
+
+# Minimum gap threshold — gaps below this are considered normal inter-turn
+# latency, not meaningful overhead.
+GAP_THRESHOLD_MS = 30_000
 
 
 def _normalize_tool_name(raw: str) -> str:
@@ -157,6 +192,14 @@ def _parse_session_file(path: Path) -> list[dict]:
                             norm["text_first200"] = (block.get("text", "") or "")[:200]
                 elif isinstance(content, str) and norm["type"] == "user" and not norm["text_first200"]:
                     norm["text_first200"] = content[:200]
+                # `queue-operation` entries carry their payload in a top-level
+                # `content` string field. Capture it into `text_first200` so
+                # gap categorization can pattern-match against it without
+                # needing to re-parse the raw dict.
+                if raw.get("type") == "queue-operation":
+                    qc = raw.get("content", "")
+                    if isinstance(qc, str) and qc:
+                        norm["text_first200"] = qc[:200]
                 if isinstance(msg, dict):
                     usage = msg.get("usage") or {}
                     if isinstance(usage, dict):
@@ -435,39 +478,135 @@ def _slugify_purpose(text: str) -> str:
 # ─── Per-session sub-span build ─────────────────────────────────────
 
 
+def _is_verifier_session(entries: list[dict]) -> bool:
+    """Detect whether a session jsonl is a verifier session (should be skipped).
+
+    Verifier sessions are launched by `run_claude_logged()` from the orchestrator
+    (verifier.py / engine.py / profile_types.py) with a prompt prefixed
+    `[PURPOSE:<type>:<change>]`. Their time is already shown on the main
+    timeline as `llm:<type>` spans from LLM_CALL events; including them in the
+    drilldown would double-count the same wall time.
+    """
+    for e in entries:
+        if e.get("type") != "user":
+            continue
+        text = e.get("text_first200", "") or ""
+        return bool(VERIFIER_PURPOSE_RE.match(text))
+    return False
+
+
+def _categorize_gap(next_prompt: str) -> str:
+    """Classify a time gap by pattern-matching the user/queue prompt that follows it."""
+    if not next_prompt:
+        return "agent:gap"
+    for category, regex in GAP_CATEGORY_REGEXES:
+        if regex.search(next_prompt):
+            return category
+    return "agent:gap"
+
+
+def _build_gap_spans(entries: list[dict], existing_spans: list[dict], session_id: str) -> list[dict]:
+    """Emit one sub-span per non-trivial time gap not covered by an existing span.
+
+    Walks consecutive entry pairs. For each gap > GAP_THRESHOLD_MS not fully
+    contained inside an existing llm-wait/tool/subagent span, emits a span
+    categorized by the prompt content that appears after the gap.
+
+    This replaces the old single `agent:overhead` span that covered the
+    entire session wall — with per-gap spans we keep exact start/end
+    timestamps AND a semantic label for each gap, so the timeline shows
+    WHERE and WHY time was spent, not just HOW MUCH.
+    """
+    if len(entries) < 2:
+        return []
+
+    # Build a sorted list of covered intervals from existing spans so we can
+    # check containment in O(log n) — but the number of spans is usually small
+    # enough that a linear scan is fine.
+    covered: list[tuple[int, int]] = []
+    for s in existing_spans:
+        s_start = _ts_to_ms(s.get("start", ""))
+        s_end = _ts_to_ms(s.get("end", ""))
+        if s_end > s_start:
+            covered.append((s_start, s_end))
+    covered.sort()
+
+    def _is_covered(gap_start: int, gap_end: int) -> bool:
+        """True if an existing span fully encloses [gap_start, gap_end]."""
+        for cs, ce in covered:
+            if cs <= gap_start and ce >= gap_end:
+                return True
+            if cs > gap_start:
+                break  # sorted → no later span can start earlier
+        return False
+
+    result: list[dict] = []
+    for i in range(len(entries) - 1):
+        a = entries[i]
+        b = entries[i + 1]
+        a_ms = a["ts_ms"]
+        b_ms = b["ts_ms"]
+        gap_ms = b_ms - a_ms
+        if gap_ms < GAP_THRESHOLD_MS:
+            continue
+        if _is_covered(a_ms, b_ms):
+            continue
+
+        # Look at the first user/queue-operation entry in the next few to get the
+        # prompt content that caused the gap to end. queue-operation entries
+        # carry the enqueued prompt directly; user entries carry text_first200.
+        next_prompt = ""
+        for j in range(i + 1, min(i + 6, len(entries))):
+            nt = entries[j].get("type", "")
+            if nt in ("user", "queue-operation"):
+                text = entries[j].get("text_first200", "") or ""
+                if text:
+                    next_prompt = text
+                    break
+        category = _categorize_gap(next_prompt)
+        result.append({
+            "category": category,
+            "start": a["ts"],
+            "end": b["ts"],
+            "duration_ms": gap_ms,
+            "detail": {
+                "session": session_id,
+                "next_prompt": next_prompt[:160],
+            },
+        })
+    return result
+
+
 def _build_sub_spans_for_session(session_path: Path) -> list[dict]:
-    """Build all sub-spans for a single session jsonl file (incl. overhead)."""
+    """Build all sub-spans for a single session jsonl file.
+
+    Verifier sessions (prefix `[PURPOSE:*]`) are skipped to avoid double-counting
+    time that's already visible on the main timeline as `llm:*` spans.
+
+    For agent sessions, the residual time between spans is broken down into
+    per-gap spans with a semantic category (review-wait, verify-wait,
+    loop-restart, gap) based on the prompt that follows each gap. This replaces
+    the old single `agent:overhead` span which hid the gap timing and cause.
+    """
     entries = _parse_session_file(session_path)
     if len(entries) < 2:
         return []
     session_id = session_path.stem
+
+    # Skip verifier sessions outright — their wall time is the same wall time
+    # shown on the main timeline as llm:review/llm:spec_verify/llm:replan.
+    if _is_verifier_session(entries):
+        logger.debug("activity_detail: skipping verifier session %s", session_id)
+        return []
+
     llm_spans = _build_llm_wait_spans(entries, session_id)
     tool_spans = _build_tool_spans(entries, session_id)
     tool_spans = _link_subagents(session_path, entries, session_id, tool_spans)
 
     sub_spans = list(llm_spans) + list(tool_spans)
+    gap_spans = _build_gap_spans(entries, sub_spans, session_id)
+    sub_spans.extend(gap_spans)
 
-    # Overhead = session wall time minus the UNION of non-overhead span intervals.
-    # Multi-tool-use entries can produce overlapping tool spans (parallel calls
-    # in one assistant message), so we cannot simply sum durations.
-    wall_ms = entries[-1]["ts_ms"] - entries[0]["ts_ms"]
-    accounted_ms = _union_duration_ms(sub_spans)
-    if wall_ms - accounted_ms > 1000:  # ignore <1s residuals
-        sub_spans.append({
-            "category": "agent:overhead",
-            "start": entries[0]["ts"],
-            "end": entries[-1]["ts"],
-            "duration_ms": wall_ms - accounted_ms,
-            "detail": {
-                "session": session_id,
-                "reason": "unaccounted",
-            },
-        })
-    elif wall_ms - accounted_ms < -1000:
-        logger.warning(
-            "activity_detail: negative overhead session=%s wall_ms=%d accounted=%d",
-            session_id, wall_ms, accounted_ms,
-        )
     return sub_spans
 
 
@@ -562,7 +701,10 @@ def _build_sub_spans_for_change(
         return [], False
     cache = _cache_path(project_path)
     # Per-change cache key — partition cache by change name
-    cache_for_change = cache.with_name(f"activity-detail-{change_name}.jsonl")
+    # Cache filename carries a format version suffix so old caches written
+    # with a different schema (e.g., the pre-gap-categorization `agent:overhead`
+    # format) are naturally ignored after a code upgrade.
+    cache_for_change = cache.with_name(f"activity-detail-v2-{change_name}.jsonl")
     if _is_cache_valid(cache_for_change, session_files):
         cached = _load_cache(cache_for_change)
         if cached is not None:
