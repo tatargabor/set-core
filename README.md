@@ -2,6 +2,7 @@
 
 **Autonomous multi-agent orchestration for Claude Code** — give it a spec, get merged features.
 
+[![Status: early alpha](https://img.shields.io/badge/Status-early%20alpha-orange.svg)](docs/alpha-release.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux & macOS (Apple Silicon)](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20(Apple%20Silicon)-lightgrey.svg)]()
 [![Website](https://img.shields.io/badge/Website-setcode.dev-22c55e)](https://setcode.dev)
@@ -12,7 +13,9 @@ set-core takes a markdown spec, decomposes it into independent changes, dispatch
 
 **Built with set-core, using set-core.** This project was developed using its own orchestration pipeline — 376 capability specifications, 1,500+ commits, every one planned through OpenSpec and validated through quality gates.
 
-> Don't wait for perfection — start using it now. There will be bugs. But this is a self-healing system: the sentinel detects issues, investigates root causes, and dispatches fixes automatically. The more people use it, the faster it improves.
+> **This is an early alpha.** It works end-to-end today — spec in, merged features out — but expect rough edges. The sentinel auto-recovers from most of them, which is how it stays usable at this stage. See [`docs/alpha-release.md`](docs/alpha-release.md) for the current state, known issues, and what's not yet implemented.
+>
+> Don't wait for perfection — start using it now. The more people use it, the faster it improves.
 
 **[Read the FAQ](docs/faq/faq.html)** — how SET compares to Cursor, Devin, Kiro, Copilot, Augment Intent, and others. What we do, what we don't, and why.
 
@@ -52,7 +55,7 @@ set-core takes a markdown spec, decomposes it into independent changes, dispatch
   <img src="docs/images/auto/web/tab-digest.png" width="48%" alt="Digest — 7 domains, 32 requirements, 84 acceptance criteria" />
 </p>
 
-**Visibility:** Where every minute of a 9-hour run actually went — agent sessions, LLM calls, tool executions, sub-agents, gates. Click any block to drill in.
+**Visibility:** See where every minute goes — agent sessions, LLM calls, tool executions, sub-agents, gates — all placed on a real-time axis. Click any implementing span to drill into its per-tool breakdown.
 
 <p align="center">
   <img src="docs/images/auto/web/tab-activity-drilldown.png" width="90%" alt="Activity timeline + drilldown — implementing span expanded into per-tool / LLM-wait / sub-agent breakdown with top operations" />
