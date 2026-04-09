@@ -1,0 +1,11 @@
+name = "setcode-contact"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+account_id = "e312d827f9e36d6584e4ca31c50ebff1"
+
+[vars]
+NOTIFY_EMAIL = "gabor@setcode.dev"
+
+[[kv_namespaces]]
+binding = "CONTACTS"
+id = "d0979a754aad46f8acf0267375422f8e"

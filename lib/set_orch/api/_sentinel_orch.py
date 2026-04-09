@@ -148,6 +148,24 @@ async def completion_action(project: str, body: dict):
     with open(inbox_file, "a") as f:
         f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
+    # Accept action: transition state to 'accepted' so the UI stops showing the banner
+    if action == "accept":
+        state_file = pp / "orchestration-state.json"
+        if state_file.exists():
+            import fcntl
+            try:
+                with open(state_file, "r+") as sf:
+                    fcntl.flock(sf, fcntl.LOCK_EX)
+                    state = json.load(sf)
+                    if state.get("status") == "done":
+                        state["status"] = "accepted"
+                        sf.seek(0)
+                        sf.truncate()
+                        json.dump(state, sf, ensure_ascii=False, indent=2)
+                    fcntl.flock(sf, fcntl.LOCK_UN)
+            except Exception:
+                pass  # non-critical — banner just stays visible
+
     return {"status": "sent", "action": action}
 
 

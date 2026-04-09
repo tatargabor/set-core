@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SET — Ship Exactly This</title>
+  <meta name="description" content="An experiment in structured AI development. Specs, quality gates, and parallel agents — applied to Claude Code.">
+
+  <!-- Open Graph / LinkedIn / Social -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://setcode.dev/">
+  <meta property="og:title" content="SET — Structured Development for AI Agents">
+  <meta property="og:description" content="An experiment: what happens when you apply real development practices to Claude Code agents? Specs, gates, parallel worktrees, autonomous merging.">
+  <meta property="og:image" content="https://setcode.dev/images/og-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter/X -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SET — Structured Development for AI Agents">
+  <meta name="twitter:description" content="An experiment: what happens when you apply real development practices to Claude Code agents? Specs, gates, parallel worktrees, autonomous merging.">
+  <meta name="twitter:image" content="https://setcode.dev/images/og-preview.png">
+
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --fg: #d4d4d8;
+      --bright: #fafafa;
+      --muted: #52525b;
+      --green: #22c55e;
+      --dim-green: #166534;
+      --blue: #60a5fa;
+      --surface: #141414;
+      --border: #1e1e1e;
+      --comment: #6b7280;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.7;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+    a { color: var(--green); text-decoration: none; }
+    a:visited { color: var(--green); }
+    a:hover { text-decoration: underline; }
+
+    /* Hero */
+    .hero { padding: 120px 0 80px; text-align: center; }
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      color: var(--green);
+      margin-bottom: 8px;
+      letter-spacing: 0.1em;
+    }
+    .hero .expansion {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-bottom: 24px;
+    }
+    .hero .tagline {
+      font-size: 1.1rem;
+      color: var(--bright);
+      margin-bottom: 8px;
+    }
+    .hero .sub {
+      color: var(--comment);
+      font-size: 0.9rem;
+      margin-bottom: 32px;
+      max-width: 640px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero .install {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 14px 20px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 16px;
+    }
+    .hero .install .prompt { color: var(--green); }
+    .hero .install .cmd { color: var(--fg); }
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      margin-left: 10px;
+      transition: all 0.15s;
+      vertical-align: middle;
+    }
+    .copy-btn:hover { border-color: var(--green); color: var(--green); }
+    .copy-btn.copied { border-color: var(--green); color: var(--green); }
+    .hero .links {
+      margin-top: 16px;
+      font-size: 0.85rem;
+    }
+    .hero .links a { margin-right: 24px; }
+
+    /* Terminal log animation */
+    .terminal-log {
+      max-width: 620px;
+      margin: 20px auto 28px;
+      height: 110px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+      position: relative;
+      text-align: left;
+    }
+    .terminal-log::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 24px;
+      background: linear-gradient(var(--surface), transparent);
+      z-index: 1;
+      pointer-events: none;
+    }
+    .terminal-log::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 24px;
+      background: linear-gradient(transparent, var(--surface));
+      z-index: 1;
+      pointer-events: none;
+    }
+    .log-scroll {
+      animation: scrollLog 26s linear infinite;
+      padding: 12px 16px;
+    }
+    @keyframes scrollLog {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-50%); }
+    }
+    .log-line {
+      font-size: 0.75rem;
+      line-height: 1.9;
+      white-space: nowrap;
+    }
+    .log-time { color: var(--muted); }
+    .log-ok { color: var(--green); }
+    .log-pass {
+      background: #2563eb;
+      color: #fff;
+      padding: 1px 5px;
+      font-weight: 500;
+    }
+    .log-warn {
+      background: #d97706;
+      color: #fff;
+      padding: 1px 5px;
+      font-weight: 500;
+    }
+    .log-arrow { color: var(--blue); }
+    .log-gate { color: #f59e0b; }
+    .log-dim { color: var(--muted); }
+
+    /* Section headers */
+    .section { padding: 60px 0; border-top: 1px solid var(--border); }
+    .section-head {
+      color: var(--comment);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--bright);
+      margin-bottom: 16px;
+      text-align: center;
+      max-width: 100%;
+    }
+    .lead {
+      color: var(--comment);
+      font-size: 0.9rem;
+      margin-bottom: 32px;
+      max-width: 640px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: center;
+    }
+
+    /* Pillar section — sticky nav + stacked blocks */
+    .pillar-nav {
+      display: flex;
+      gap: 0;
+      margin-bottom: 32px;
+      justify-content: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg);
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .pillar-nav-btn {
+      padding: 10px 20px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 700;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.05em;
+      text-decoration: none;
+    }
+    .pillar-nav-btn:first-child { border-radius: 4px 0 0 4px; }
+    .pillar-nav-btn:last-child { border-radius: 0 4px 4px 0; }
+    .pillar-nav-btn.active,
+    .pillar-nav-btn:hover {
+      background: var(--green);
+      color: var(--bg);
+      border-color: var(--green);
+    }
+    .pillar-block {
+      display: block;
+      scroll-margin-top: 80px;
+      padding-top: 40px;
+      padding-bottom: 40px;
+      border-top: 1px dashed var(--border);
+    }
+    .pillar-block:first-of-type { border-top: none; padding-top: 20px; }
+    .pillar-block-head {
+      color: var(--comment);
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    html { scroll-behavior: smooth; }
+
+    /* Pipeline mosaic grid — replaces carousel */
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .pipeline-tile {
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .pipeline-tile-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .pipeline-tile-num {
+      color: var(--green);
+      font-weight: 700;
+    }
+    .pipeline-tile-title {
+      color: var(--fg);
+      font-weight: 700;
+    }
+    .pipeline-tile-images {
+      display: flex;
+      gap: 1px;
+      background: var(--border);
+      height: 180px;
+      overflow: hidden;
+    }
+    .pipeline-tile-images img {
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      object-fit: cover;
+      object-position: top;
+      display: block;
+      cursor: pointer;
+    }
+    .pipeline-tile-caption {
+      padding: 12px 14px;
+      font-size: 0.78rem;
+      color: var(--comment);
+      line-height: 1.55;
+      flex: 1;
+    }
+    .pipeline-tile-caption strong { color: var(--fg); }
+    .pipeline-flow {
+      margin-top: 16px;
+      padding: 12px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-align: center;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .pipeline-flow code {
+      color: var(--green);
+      background: none;
+      padding: 0;
+    }
+    .pillar-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .pillar-header h3 {
+      color: var(--green);
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .pillar-header .pillar-tagline {
+      color: var(--comment);
+      font-size: 0.85rem;
+      font-style: italic;
+      max-width: 580px;
+      margin: 0 auto;
+    }
+    .pillar-quote {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .pillar-badge {
+      display: inline-block;
+      background: var(--dim-green);
+      color: var(--green);
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 3px;
+      letter-spacing: 0.08em;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* Feature grid — terminal style */
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .feature {
+      background: var(--surface);
+      padding: 20px;
+    }
+    .feature-name {
+      color: var(--green);
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+    }
+    .feature p {
+      color: var(--comment);
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+
+    /* Proof metrics */
+    .proof-metrics {
+      display: flex;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+    .proof-metric {
+      flex: 1;
+      background: var(--surface);
+      padding: 20px 12px;
+      text-align: center;
+    }
+    .proof-metric .val {
+      color: var(--green);
+      font-weight: 700;
+      font-size: 1.5rem;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .proof-metric .label {
+      color: var(--muted);
+      font-size: 0.7rem;
+      line-height: 1.4;
+    }
+
+    /* Table */
+    .tbl {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      margin-top: 16px;
+    }
+    .tbl th {
+      text-align: left;
+      padding: 10px 16px;
+      color: var(--bright);
+      border-bottom: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .tbl td {
+      padding: 10px 16px;
+      color: var(--comment);
+      border-bottom: 1px solid var(--border);
+    }
+    .tbl .result { color: var(--green); }
+
+    /* Vision cards */
+    .vision-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 24px;
+    }
+    .vision-card {
+      background: var(--surface);
+      padding: 20px;
+    }
+    .vision-card h4 {
+      color: var(--green);
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .vision-card p {
+      color: var(--comment);
+      font-size: 0.75rem;
+      line-height: 1.5;
+    }
+
+    /* GIF section */
+    .gif-section { padding: 60px 0; border-top: 1px solid var(--border); text-align: center; }
+    .gif-section img {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    /* Text blocks */
+    .text-block {
+      max-width: 680px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .text-block p {
+      color: var(--comment);
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+      line-height: 1.7;
+    }
+    .text-block strong { color: var(--fg); }
+    .text-block .hl { color: var(--green); font-weight: 700; }
+
+    /* Work With Us */
+    .services-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+    .service-card {
+      background: var(--surface);
+      padding: 24px 20px;
+      text-align: center;
+    }
+    .service-icon {
+      font-size: 1.6rem;
+      margin-bottom: 12px;
+      display: block;
+    }
+    .service-card h3 {
+      color: var(--green);
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .service-card p {
+      color: var(--comment);
+      font-size: 0.75rem;
+      line-height: 1.6;
+    }
+    .contact-form {
+      max-width: 520px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 28px 24px;
+    }
+    .contact-form label {
+      display: block;
+      color: var(--fg);
+      font-size: 0.8rem;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .contact-form input[type="email"],
+    .contact-form textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 10px 12px;
+      color: var(--fg);
+      font-family: inherit;
+      font-size: 0.8rem;
+      margin-bottom: 16px;
+      transition: border-color 0.15s;
+    }
+    .contact-form input[type="email"]:focus,
+    .contact-form textarea:focus {
+      outline: none;
+      border-color: var(--green);
+    }
+    .contact-form textarea {
+      height: 80px;
+      resize: vertical;
+    }
+    .checkbox-group {
+      margin-bottom: 16px;
+    }
+    .checkbox-group .group-label {
+      color: var(--fg);
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--comment);
+      font-size: 0.75rem;
+      margin-bottom: 6px;
+      font-weight: 400;
+      cursor: pointer;
+    }
+    .checkbox-group input[type="checkbox"] {
+      accent-color: var(--green);
+      width: 14px;
+      height: 14px;
+    }
+    .submit-btn {
+      background: var(--green);
+      color: var(--bg);
+      border: none;
+      padding: 10px 28px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 700;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      width: 100%;
+    }
+    .submit-btn:hover { opacity: 0.9; }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .form-status {
+      text-align: center;
+      font-size: 0.8rem;
+      margin-top: 12px;
+      min-height: 20px;
+    }
+    .form-status.success { color: var(--green); }
+    .form-status.error { color: #ef4444; }
+
+    /* Footer */
+    footer {
+      padding: 32px 0;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-align: center;
+    }
+
+    /* Mobile */
+    @media (max-width: 700px) {
+      .container { padding: 0 16px; }
+      .hero { padding: 60px 0 40px; }
+      .hero h1 { font-size: 2.2rem; }
+      .features { grid-template-columns: 1fr; }
+      .vision-grid { grid-template-columns: 1fr; }
+      .pillar-nav { flex-wrap: wrap; gap: 4px; }
+      .pillar-nav-btn { padding: 8px 12px; font-size: 0.7rem; border-radius: 4px !important; }
+      .pipeline-grid { grid-template-columns: 1fr; }
+      .pipeline-tile-images { height: 220px; }
+      .pipeline-nav { flex-wrap: wrap; }
+      .proof-metrics { flex-direction: column; }
+      .tbl { font-size: 0.7rem; }
+      .tbl th, .tbl td { padding: 6px 8px; }
+      .services-grid { grid-template-columns: 1fr; }
+      .contact-form { padding: 20px 16px; }
+      .section [style*="grid-template-columns:1fr 1fr 1fr"] { grid-template-columns: 1fr !important; }
+    }
+
+    /* Lightbox */
+    .lightbox-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 9999;
+      cursor: zoom-out;
+      justify-content: center;
+      align-items: center;
+    }
+    .lightbox-overlay.active { display: flex; }
+    .lightbox-overlay img {
+      max-width: 95vw;
+      max-height: 95vh;
+      border-radius: 4px;
+      box-shadow: 0 0 40px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- Hero -->
+    <section class="hero">
+      <h1>SET</h1>
+      <div class="expansion">Ship Exactly This.</div>
+      <p class="tagline">An experiment in structured AI development.</p>
+      <p class="sub">AI agents can write code. Shipping software — planning, coordinating, testing, merging — that's different. SET applies the practices that always worked to Claude Code agents working in parallel. Specs instead of prompts. Gates instead of hope. Structure instead of improvisation.</p>
+      <p style="color:var(--comment); font-size:0.85rem; font-style:italic; margin-top:12px; letter-spacing:0.01em;">It works well enough that I use it every day. It's rough around some edges. I'm curious what you'll make of it.</p>
+      <div class="terminal-log" aria-hidden="true">
+        <div class="log-scroll">
+          <div class="log-line"><span class="log-time">14:32:01</span> <span class="log-ok">&#10003;</span> REQ-AUTH-001 admin registration — <span class="log-pass">PASS</span></div>
+          <div class="log-line"><span class="log-time">14:32:03</span> <span class="log-arrow">&#8594;</span> dispatching cart-system to worktree...</div>
+          <div class="log-line"><span class="log-time">14:32:08</span> <span class="log-ok">&#10003;</span> AC-4: WHEN user adds to cart THEN total updates — <span class="log-pass">VERIFIED</span></div>
+          <div class="log-line"><span class="log-time">14:32:12</span> <span class="log-gate">&#9889;</span> gate: build <span class="log-pass">PASS</span> (2.1s) test <span class="log-pass">PASS</span> (8.3s) e2e <span class="log-pass">PASS</span> (12s)</div>
+          <div class="log-line"><span class="log-time">14:32:18</span> <span class="log-ok">&#10003;</span> cart-system merged to main <span class="log-dim">(ff-only)</span></div>
+          <div class="log-line"><span class="log-time">14:32:22</span> <span class="log-arrow">&#8594;</span> phase 3: dispatching admin-products, orders-checkout</div>
+          <div class="log-line"><span class="log-time">14:32:35</span> <span class="log-ok">&#10003;</span> REQ-PROD-003 variant management — <span class="log-pass">PASS</span></div>
+          <div class="log-line"><span class="log-time">14:32:41</span> <span class="log-gate">&#9889;</span> spec coverage: 28/32 requirements — <span class="log-warn">87%</span></div>
+          <div class="log-line"><span class="log-time">14:32:45</span> <span class="log-arrow">&#8594;</span> auto-replan: 4 remaining requirements</div>
+          <div class="log-line"><span class="log-time">14:32:52</span> <span class="log-ok">&#10003;</span> AC-12: WHEN admin edits product THEN changes persist — <span class="log-pass">VERIFIED</span></div>
+          <div class="log-line"><span class="log-time">14:33:01</span> <span class="log-ok">&#10003;</span> admin-products merged to main <span class="log-dim">(ff-only)</span></div>
+          <div class="log-line"><span class="log-time">14:33:05</span> <span class="log-gate">&#9889;</span> spec coverage: 32/32 requirements — <span class="log-pass">100%</span></div>
+          <div class="log-line"><span class="log-time">14:33:08</span> <span class="log-ok">&#10003;</span> orchestration complete — 6/6 changes merged, 0 interventions</div>
+          <div class="log-line"><span class="log-time">14:32:01</span> <span class="log-ok">&#10003;</span> REQ-AUTH-001 admin registration — <span class="log-pass">PASS</span></div>
+          <div class="log-line"><span class="log-time">14:32:03</span> <span class="log-arrow">&#8594;</span> dispatching cart-system to worktree...</div>
+          <div class="log-line"><span class="log-time">14:32:08</span> <span class="log-ok">&#10003;</span> AC-4: WHEN user adds to cart THEN total updates — <span class="log-pass">VERIFIED</span></div>
+          <div class="log-line"><span class="log-time">14:32:12</span> <span class="log-gate">&#9889;</span> gate: build <span class="log-pass">PASS</span> (2.1s) test <span class="log-pass">PASS</span> (8.3s) e2e <span class="log-pass">PASS</span> (12s)</div>
+          <div class="log-line"><span class="log-time">14:32:18</span> <span class="log-ok">&#10003;</span> cart-system merged to main <span class="log-dim">(ff-only)</span></div>
+          <div class="log-line"><span class="log-time">14:32:22</span> <span class="log-arrow">&#8594;</span> phase 3: dispatching admin-products, orders-checkout</div>
+          <div class="log-line"><span class="log-time">14:32:35</span> <span class="log-ok">&#10003;</span> REQ-PROD-003 variant management — <span class="log-pass">PASS</span></div>
+          <div class="log-line"><span class="log-time">14:32:41</span> <span class="log-gate">&#9889;</span> spec coverage: 28/32 requirements — <span class="log-warn">87%</span></div>
+          <div class="log-line"><span class="log-time">14:32:45</span> <span class="log-arrow">&#8594;</span> auto-replan: 4 remaining requirements</div>
+          <div class="log-line"><span class="log-time">14:32:52</span> <span class="log-ok">&#10003;</span> AC-12: WHEN admin edits product THEN changes persist — <span class="log-pass">VERIFIED</span></div>
+          <div class="log-line"><span class="log-time">14:33:01</span> <span class="log-ok">&#10003;</span> admin-products merged to main <span class="log-dim">(ff-only)</span></div>
+          <div class="log-line"><span class="log-time">14:33:05</span> <span class="log-gate">&#9889;</span> spec coverage: 32/32 requirements — <span class="log-pass">100%</span></div>
+          <div class="log-line"><span class="log-time">14:33:08</span> <span class="log-ok">&#10003;</span> orchestration complete — 6/6 changes merged, 0 interventions</div>
+        </div>
+      </div>
+
+      <div class="install">
+        <span class="prompt">$</span> <span class="cmd">git clone https://git.setcode.dev/root/set-core.git && cd set-core && ./install.sh</span>
+        <button class="copy-btn" onclick="copyCmd(this, 'git clone https://git.setcode.dev/root/set-core.git && cd set-core && ./install.sh')">copy</button>
+      </div>
+
+      <div style="margin:20px auto 0; text-align:left; background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:16px 20px; font-size:0.8rem; line-height:1.8;">
+        <div style="color:var(--comment); margin-bottom:8px;">// after install:</div>
+        <div><span style="color:var(--green);">1.</span> <span style="color:var(--fg);">Open</span> <span style="color:var(--blue);">http://localhost:7400</span> <span style="color:var(--comment);">— dashboard starts automatically</span> <button class="copy-btn" onclick="copyCmd(this, 'http://localhost:7400')">copy</button></div>
+        <div><span style="color:var(--green);">2.</span> <span style="color:var(--fg);">Open Claude Code in set-core dir, type:</span> <span style="color:var(--blue);">"run a micro-web E2E test"</span> <button class="copy-btn" onclick="copyCmd(this, 'run a micro-web E2E test')">copy</button></div>
+        <div><span style="color:var(--green);">3.</span> <span style="color:var(--fg);">Start sentinel from the dashboard</span> <span style="color:var(--comment);">— or tell Claude: <span style="color:var(--blue);">/set:start</span></span> <button class="copy-btn" onclick="copyCmd(this, '/set:start')">copy</button></div>
+        <div><span style="color:var(--green);">4.</span> <span style="color:var(--fg);">Watch the dashboard</span> <span style="color:var(--comment);">— agents decompose, implement, verify, merge</span></div>
+        <div><span style="color:var(--green);">5.</span> <span style="color:var(--fg);">When done, tell Claude:</span> <span style="color:var(--blue);">"start the application that was just built"</span> <button class="copy-btn" onclick="copyCmd(this, 'start the application that was just built')">copy</button></div>
+        <div><span style="color:var(--green);">6.</span> <span style="color:var(--fg);">Ready for your own project:</span> <code style="color:var(--blue);">set-project init --project-type web</code> <button class="copy-btn" onclick="copyCmd(this, 'set-project init --project-type web')">copy</button></div>
+      </div>
+
+      <div class="links">
+        <a href="https://github.com/tatargabor/set-core/blob/main/README.md">GitHub</a>
+        <a href="https://git.setcode.dev/root/set-core">GitLab</a>
+      </div>
+    </section>
+
+    <!-- The approach -->
+    <section class="section">
+      <div class="section-head">// the approach</div>
+      <h2>What happens when you add structure to AI agents?</h2>
+      <p class="lead">None of these ideas are new. Specs, planning, quality gates, supervision, learning from failures — development teams have always done this. The experiment is applying them to autonomous agents.</p>
+
+      <div class="pillar-nav">
+        <a class="pillar-nav-btn active" href="#pillar-specify" data-pillar-link="0">SPECIFY</a>
+        <a class="pillar-nav-btn" href="#pillar-decompose" data-pillar-link="1">DECOMPOSE</a>
+        <a class="pillar-nav-btn" href="#pillar-execute" data-pillar-link="2">EXECUTE</a>
+        <a class="pillar-nav-btn" href="#pillar-supervise" data-pillar-link="3">SUPERVISE</a>
+        <a class="pillar-nav-btn" href="#pillar-verify" data-pillar-link="4">VERIFY</a>
+        <a class="pillar-nav-btn" href="#pillar-learn" data-pillar-link="5">LEARN</a>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:4px; overflow:hidden; margin-bottom:24px;">
+        <a href="#pillar-specify" style="background:var(--surface); padding:12px 8px; text-align:center; text-decoration:none;">
+          <div style="color:var(--green); font-weight:700; font-size:0.7rem; margin-bottom:4px; letter-spacing:0.05em;">SPECIFY</div>
+          <div style="color:var(--muted); font-size:0.65rem; line-height:1.4;">Structured input,<br>not prompts</div>
+        </a>
+        <a href="#pillar-decompose" style="background:var(--surface); padding:12px 8px; text-align:center; text-decoration:none;">
+          <div style="color:var(--green); font-weight:700; font-size:0.7rem; margin-bottom:4px; letter-spacing:0.05em;">DECOMPOSE</div>
+          <div style="color:var(--muted); font-size:0.65rem; line-height:1.4;">Intelligent planning,<br>not guessing</div>
+        </a>
+        <a href="#pillar-execute" style="background:var(--surface); padding:12px 8px; text-align:center; text-decoration:none;">
+          <div style="color:var(--green); font-weight:700; font-size:0.7rem; margin-bottom:4px; letter-spacing:0.05em;">EXECUTE</div>
+          <div style="color:var(--muted); font-size:0.65rem; line-height:1.4;">Structured implementation,<br>not free rein</div>
+        </a>
+        <a href="#pillar-supervise" style="background:var(--surface); padding:12px 8px; text-align:center; text-decoration:none;">
+          <div style="color:var(--green); font-weight:700; font-size:0.7rem; margin-bottom:4px; letter-spacing:0.05em;">SUPERVISE</div>
+          <div style="color:var(--muted); font-size:0.65rem; line-height:1.4;">Three-tier supervision,<br>not babysitting</div>
+        </a>
+        <a href="#pillar-verify" style="background:var(--surface); padding:12px 8px; text-align:center; text-decoration:none;">
+          <div style="color:var(--green); font-weight:700; font-size:0.7rem; margin-bottom:4px; letter-spacing:0.05em;">VERIFY</div>
+          <div style="color:var(--muted); font-size:0.65rem; line-height:1.4;">Deterministic quality,<br>not vibes</div>
+        </a>
+        <a href="#pillar-learn" style="background:var(--surface); padding:12px 8px; text-align:center; text-decoration:none;">
+          <div style="color:var(--green); font-weight:700; font-size:0.7rem; margin-bottom:4px; letter-spacing:0.05em;">LEARN</div>
+          <div style="color:var(--muted); font-size:0.65rem; line-height:1.4;">Every run improves<br>the next</div>
+        </a>
+      </div>
+
+      <!-- SPECIFY -->
+      <div class="pillar-block" data-pillar="0" id="pillar-specify">
+        <div class="pillar-block-head">// pillar 01 — specify</div>
+        <div class="pillar-header">
+          <h3>Structured input, not prompts</h3>
+          <p class="pillar-tagline">Output quality depends on input quality. 90% of agent failures are underspecification.</p>
+        </div>
+        <div class="features">
+          <div class="feature">
+            <div class="feature-name">openspec_workflow</div>
+            <p>Structured artifacts: proposal &rarr; design &rarr; spec &rarr; tasks &rarr; code. Acceptance criteria (WHEN/THEN), requirement IDs (REQ-xxx), end-to-end traceability. Agents implement against the spec, not their imagination.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">design_bridge</div>
+            <p>Figma Make &rarr; <code>set-design-sync</code> &rarr; per-change <code>design.md</code> with scope-matched tokens. Each agent gets only the colors, fonts, layouts for its pages. Not "make it look nice" — exact hex values, exact spacing. Part of the built-in <strong>web project type</strong> — the battle-tested default.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">spec_flexibility</div>
+            <p>Full 30-page spec with Figma design. Or 3 requirements for your existing codebase. Or a single task description. The pipeline scales from a sentence to a specification. <code>/set:write-spec</code> generates structured specs interactively.</p>
+          </div>
+        </div>
+        <div class="pillar-quote">Without a spec, we told agents "build a cart feature." Result: no price calculation, no empty-cart state, no persistence. With OpenSpec: 8 requirements, 8 implemented.</div>
+        <div class="text-block" style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border);">
+          <h3 style="color:var(--bright); font-size:1.1rem; margin-bottom:12px;">The spec is the bottleneck. That's intentional.</h3>
+          <p>The principle hasn't changed: <strong>output quality depends on input quality.</strong> Writing a good spec takes effort. But agents working from a detailed spec produce dramatically better results than agents working from a conversation.</p>
+          <p>The better the spec, the better the result. <span class="hl">That's the trade-off SET makes — upfront structure for reliable output.</span></p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); border:1px solid var(--border); border-radius:4px; overflow:hidden; margin-top:16px; text-align:left;">
+            <div style="background:var(--surface); padding:16px;">
+              <div style="color:var(--green); font-weight:700; font-size:0.85rem; margin-bottom:6px;">your_spec</div>
+              <p style="color:var(--comment); font-size:0.8rem; line-height:1.6;">Business requirements, acceptance criteria (WHEN/THEN), technical constraints, dependency listing, seed data conventions.</p>
+            </div>
+            <div style="background:var(--surface); padding:16px;">
+              <div style="color:var(--green); font-weight:700; font-size:0.85rem; margin-bottom:6px;">our_templates</div>
+              <p style="color:var(--comment); font-size:0.8rem; line-height:1.6;">Framework boilerplate, build config, test setup, linting rules, conventions. You say what. Templates handle how.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DECOMPOSE -->
+      <div class="pillar-block" data-pillar="1" id="pillar-decompose">
+        <div class="pillar-block-head">// pillar 02 — decompose</div>
+        <div class="pillar-header">
+          <h3>Intelligent planning, not guessing</h3>
+          <p class="pillar-tagline">One big task fails. Many small ones succeed. Max 6 requirements per change — above that, failure rate spikes.</p>
+        </div>
+        <div class="features">
+          <div class="feature">
+            <div class="feature-name">dependency_dag</div>
+            <p>Spec &rarr; requirements &rarr; dependency graph &rarr; phased execution. Changes that don't depend on each other run in parallel. Changes that do, wait. The planner does this automatically — no manual sprint planning.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">parallel_worktrees</div>
+            <p>Multiple Claude agents in isolated git worktrees. Real branches, real merges. No containers, no VMs — just git. Even with a single change, the worktree provides isolation — your main branch stays clean until gates pass. With multiple changes, they run in parallel without interference.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">complexity_aware_allocation</div>
+            <p>S/M/L sizing per change. Token budgets (S: 2M, M: 5M, L: 10M). Model selection per complexity. These thresholds come from 100+ production runs — not guesswork.</p>
+          </div>
+        </div>
+        <div class="pillar-quote">CraftBrew's auth change hit 443K tokens and failed. After splitting into smaller changes: each completed in 15-20 minutes. Decomposition isn't optional.</div>
+      </div>
+
+      <!-- EXECUTE -->
+      <div class="pillar-block" data-pillar="2" id="pillar-execute">
+        <div class="pillar-block-head">// pillar 03 — execute</div>
+        <div class="pillar-header">
+          <h3>Structured implementation, not free rein</h3>
+          <p class="pillar-tagline">Agents don't get a prompt and good luck. They get structured artifacts, project-type conventions, and iterative loops with progress tracking.</p>
+        </div>
+        <div class="features">
+          <div class="feature">
+            <div class="feature-name">ralph_loop</div>
+            <p>Iterative agent development cycle: proposal &rarr; design &rarr; spec &rarr; tasks &rarr; code. Not a single-shot prompt — multiple iterations with stall detection, done criteria, and context pruning between turns. Single-shot gets you 70% done. The loop gets you to merge.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">project_types</div>
+            <p>The built-in <strong>web project type</strong>: Next.js, Playwright, Prisma templates. Agents work into existing structure, not from scratch. Convention enforcement, route groups, colocation rules. Build your own for any stack — fintech, healthcare, CLI, API.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">agent_tooling</div>
+            <p>Every agent gets: scoped proposal, task list with REQ-IDs, design.md with exact tokens, MCP tools for memory and team sync. Plus: token budget awareness, progress-based trend detection, and auto-pause when stuck or over budget.</p>
+          </div>
+        </div>
+        <div class="pillar-quote">Single-shot prompts get ~70% done and stop. The loop iterates: write code, run tests, read errors, fix, repeat. That last 30% is where most of the work happens.</div>
+      </div>
+
+      <!-- SUPERVISE -->
+      <div class="pillar-block" data-pillar="3" id="pillar-supervise">
+        <div class="pillar-block-head">// pillar 04 — supervise</div>
+        <div class="pillar-header">
+          <h3>Three-tier supervision, not babysitting</h3>
+          <p class="pillar-tagline">The goal is always the happy path. But when things break — and they will — recovery must be fast, thorough, and automatic.</p>
+        </div>
+        <div class="features" style="grid-template-columns: 1fr 1fr;">
+          <div class="feature">
+            <div class="feature-name">sentinel_supervisor</div>
+            <p>3-tier decision model: sentinel &rarr; orchestrator &rarr; agents. Each tier handles its own failure mode. Agents handle code errors. Orchestrator handles workflow errors. Sentinel handles infrastructure — crashes, disk, deadlocks. 30s detection, auto-recovery.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">watchdog_intelligence</div>
+            <p>Context-aware stall detection. <code>pnpm install</code> taking 90s with no stdout? Grace period. Prisma migration running? Extended timeout. Graduated escalation: warn &rarr; restart &rarr; rebuild &rarr; give up. Not "no output = dead."</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">team_sync</div>
+            <p>Multi-agent messaging. Broadcast status, avoid file conflicts, coordinate dependencies. The orchestrator sees what everyone is doing — and intervenes when needed.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">web_dashboard</div>
+            <p>Real-time monitoring at <code>localhost:7400</code>. Step progress, gate results, token charts, agent terminal, sentinel decisions, learnings — every tab is live. Start orchestration from the browser. Not a CLI afterthought — a proper operations center.</p>
+          </div>
+        </div>
+        <div class="pillar-quote">Crashes happen — disk fills up, network drops, agents stall. Before the sentinel existed, we lost 3 overnight runs. Now it detects problems in 30 seconds and recovers automatically.</div>
+      </div>
+
+      <!-- VERIFY -->
+      <div class="pillar-block" data-pillar="4" id="pillar-verify">
+        <div class="pillar-block-head">// pillar 05 — verify</div>
+        <div class="pillar-header">
+          <h3>Deterministic quality, not vibes</h3>
+          <p class="pillar-tagline">Exit codes, not LLM judgment. You can't talk your way past a failing test.</p>
+        </div>
+        <div class="features" style="grid-template-columns: 1fr 1fr;">
+          <div class="feature">
+            <div class="feature-name">quality_gates[7]</div>
+            <p>Test, build, E2E, lint, review, spec coverage, smoke. Sequential pipeline — fast gates first. If Jest fails in 8s, you don't wait 45s for Playwright. Exit codes decide pass/fail. BDD traceability binds REQ-IDs to tests.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">self_healing</div>
+            <p>Gate fails &rarr; agent reads error &rarr; fixes &rarr; re-runs gate. Not "retry 3 times and give up." The agent diagnoses. MiniShop: 5 gate failures, 5 autonomous fixes — including IDOR vulnerabilities caught and patched without human review.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">deterministic_output</div>
+            <p>3-layer templates + <code>set-compare</code> scoring. Run the same spec twice: 87% structural overlap on micro-web, 83% on minishop. Schema equivalence: 100%. Convention compliance: 100%. The remaining divergence is stylistic, not structural.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">spec_coverage</div>
+            <p>"Tests pass" does not mean "spec is implemented." The verify gate checks every REQ-ID has corresponding code. If 28/32 requirements are covered, auto-replan kicks in for the remaining 4. Doesn't stop until 100%.</p>
+          </div>
+        </div>
+        <div class="pillar-quote">Early CraftBrew: the LLM review let through a "TODO: implement later" that broke checkout. After that — exit codes only. Gates can't be gamed.</div>
+      </div>
+
+      <!-- LEARN -->
+      <div class="pillar-block" data-pillar="5" id="pillar-learn">
+        <div class="pillar-block-head">// pillar 06 — learn</div>
+        <div class="pillar-header">
+          <h3>Every run improves the next</h3>
+          <p class="pillar-tagline">The real value shows from run #2 onward. Every error occurs only once.</p>
+        </div>
+        <div class="features">
+          <div class="feature">
+            <div class="feature-name">cross_run_learnings</div>
+            <p>Gate failures become planning rules. <code>set-harvest</code> extracts framework-level fixes from 100+ runs across 4 projects. Each run is smarter than the last — not by prompting better, but by codifying what went wrong into rules.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">persistent_memory</div>
+            <p>Hook-driven cross-session recall. Agents learn from each other. Shared across worktrees. In 15+ sessions, agents made 0 voluntary memory saves. Zero. So we built 5-layer hook infrastructure that captures everything automatically.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-name">template_system</div>
+            <p>Telling 5 agents "create a Next.js project" produces 5 different directory structures. Templates produce one. 3-layer system: core &rarr; module &rarr; project. Reduced file structure divergence from 63% to 0%.</p>
+          </div>
+        </div>
+        <div class="pillar-quote">The first run always reveals problems. The point: every error occurs only once, because the fix gets codified into rules, templates, or gates.</div>
+      </div>
+    </section>
+
+    <!-- Pipeline -->
+    <section class="section">
+      <div class="section-head">// the pipeline</div>
+      <h2>From spec to merged code</h2>
+
+      <div class="pipeline-grid">
+        <div class="pipeline-tile">
+          <div class="pipeline-tile-head">
+            <span class="pipeline-tile-num">01</span>
+            <span class="pipeline-tile-title">spec + design</span>
+            <span class="pillar-badge" style="margin-left:auto;">SPECIFY</span>
+          </div>
+          <div class="pipeline-tile-images">
+            <img src="images/spec-preview.png" alt="Markdown specification" />
+            <img src="images/storefront-design.png" alt="Figma design" />
+          </div>
+          <div class="pipeline-tile-caption"><strong>input:</strong> markdown spec + figma design. Use <code>/set:write-spec</code> for interactive spec generation, <code>set-design-sync</code> to extract Figma tokens.</div>
+        </div>
+
+        <div class="pipeline-tile">
+          <div class="pipeline-tile-head">
+            <span class="pipeline-tile-num">02</span>
+            <span class="pipeline-tile-title">digest</span>
+            <span class="pillar-badge" style="margin-left:auto;">DECOMPOSE</span>
+          </div>
+          <div class="pipeline-tile-images">
+            <img src="images/tab-digest.png" alt="Digest — domains, requirements, acceptance criteria" />
+          </div>
+          <div class="pipeline-tile-caption"><strong>digest:</strong> spec parsed into structured requirements, domains, and dependency graph. Every acceptance criterion tied to a REQ-ID.</div>
+        </div>
+
+        <div class="pipeline-tile">
+          <div class="pipeline-tile-head">
+            <span class="pipeline-tile-num">03</span>
+            <span class="pipeline-tile-title">triage</span>
+            <span class="pillar-badge" style="margin-left:auto;">SPECIFY</span>
+          </div>
+          <div class="pipeline-tile-images">
+            <img src="images/tab-triage.png" alt="Triage — ambiguity resolution and decisions" />
+          </div>
+          <div class="pipeline-tile-caption"><strong>triage:</strong> ambiguities flagged during digest get resolved — automatically by the planner, or interactively by you. Nothing proceeds until every AMB has a decision.</div>
+        </div>
+
+        <div class="pipeline-tile">
+          <div class="pipeline-tile-head">
+            <span class="pipeline-tile-num">04</span>
+            <span class="pipeline-tile-title">orchestrate</span>
+            <span class="pillar-badge" style="margin-left:auto;">EXECUTE</span>
+          </div>
+          <div class="pipeline-tile-images">
+            <img src="images/tab-learnings.png" alt="Learnings — agent reflections and findings" />
+            <img src="images/tab-activity.png" alt="Activity timeline" />
+          </div>
+          <div class="pipeline-tile-caption"><strong>orchestrate:</strong> independent changes run in parallel worktrees. Agents implement iteratively. Sentinel monitors everything.</div>
+        </div>
+
+        <div class="pipeline-tile">
+          <div class="pipeline-tile-head">
+            <span class="pipeline-tile-num">05</span>
+            <span class="pipeline-tile-title">verify</span>
+            <span class="pillar-badge" style="margin-left:auto;">VERIFY</span>
+          </div>
+          <div class="pipeline-tile-images">
+            <img src="images/tab-phases.png" alt="Phase progression" />
+            <img src="images/tab-sentinel.png" alt="Sentinel log" />
+          </div>
+          <div class="pipeline-tile-caption"><strong>verify:</strong> 7 quality gates per change — test, build, e2e, lint, review, spec coverage, smoke. Exit codes, not judgment.</div>
+        </div>
+
+        <div class="pipeline-tile">
+          <div class="pipeline-tile-head">
+            <span class="pipeline-tile-num">06</span>
+            <span class="pipeline-tile-title">ship</span>
+            <span class="pillar-badge" style="margin-left:auto;">LEARN</span>
+          </div>
+          <div class="pipeline-tile-images">
+            <img src="images/dashboard-overview.png" alt="Orchestration complete" />
+            <img src="images/products.png" alt="Running application — built from spec" />
+          </div>
+          <div class="pipeline-tile-caption"><strong>ship:</strong> verified code merges to main. Result: running application built from your spec. Zero intervention.</div>
+        </div>
+      </div>
+
+      <div class="pipeline-flow">
+        <code>spec.md</code> ─► <code>digest</code> ─► <code>triage</code> ─► <code>orchestrate</code> ─► <code>verify</code> ─► <code>ship</code>
+      </div>
+    </section>
+
+    <!-- Stats -->
+    <div style="padding:32px 0; border-top:1px solid var(--border); font-size:1rem; color:var(--comment); text-align:center;">
+      <span style="color:var(--green); font-weight:700; font-size:1.1rem;">1,500+</span> commits &middot; <span style="color:var(--green); font-weight:700; font-size:1.1rem;">65K</span> core LOC &middot; <span style="color:var(--green); font-weight:700; font-size:1.1rem;">376</span> specs &middot; <span style="color:var(--green); font-weight:700; font-size:1.1rem;">860+</span> change artifacts &middot; <span style="color:var(--green); font-weight:700; font-size:1.1rem;">200+</span> E2E runs
+    </div>
+
+    <!-- Works Everywhere -->
+    <section class="section">
+      <div class="section-head">// scope</div>
+      <h2>From a full app to a single feature</h2>
+      <p class="lead">The same pipeline works at different scales. Most of our testing is greenfield (easier to measure), but the interesting work is brownfield — adding to existing codebases.</p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--border); border:1px solid var(--border); border-radius:4px; overflow:hidden;">
+        <div style="background:var(--surface); padding:24px 20px;">
+          <div style="color:var(--green); font-weight:700; font-size:0.9rem; margin-bottom:12px;">greenfield</div>
+          <p style="color:var(--comment); font-size:0.8rem; line-height:1.6; margin-bottom:16px;">Full app from spec + design. 6-15 changes, parallel agents, zero intervention.</p>
+          <div style="border-top:1px solid var(--border); padding-top:12px; color:var(--muted); font-size:0.75rem; line-height:1.5;">MiniShop: 6/6 merged, 1h 45m, 38 unit tests, 32 E2E tests, 0 human interventions.</div>
+        </div>
+        <div style="background:var(--surface); padding:24px 20px;">
+          <div style="color:var(--green); font-weight:700; font-size:0.9rem; margin-bottom:12px;">brownfield</div>
+          <p style="color:var(--comment); font-size:0.8rem; line-height:1.6; margin-bottom:16px;">Your existing codebase. Add features, refactor modules, fix technical debt. The pipeline reads your code first.</p>
+          <div style="border-top:1px solid var(--border); padding-top:12px; color:var(--muted); font-size:0.75rem; line-height:1.5;">set-core itself is built with SET — 376 specs, 1,500+ commits, every one through OpenSpec.</div>
+        </div>
+        <div style="background:var(--surface); padding:24px 20px;">
+          <div style="color:var(--green); font-weight:700; font-size:0.9rem; margin-bottom:12px;">isolated_unit</div>
+          <p style="color:var(--comment); font-size:0.8rem; line-height:1.6; margin-bottom:16px;">One module, one feature, one fix. Single change, full gate pipeline. Same quality guarantees at any scale.</p>
+          <div style="border-top:1px solid var(--border); padding-top:12px; color:var(--muted); font-size:0.75rem; line-height:1.5;">"Add 3 API endpoints with auth to my existing Next.js project." One spec, one run, done.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- See it run -->
+    <section class="gif-section">
+      <div class="section-head">// see it run</div>
+      <h2>A real agent session — spec to merged code</h2>
+      <div style="margin-top:20px">
+        <img src="images/agent-session-scroll.gif" alt="Claude agent session — debugging, testing, and fixing code autonomously" />
+      </div>
+    </section>
+
+    <!-- Proof -->
+    <section class="section">
+      <div class="section-head">// what we measured</div>
+      <h2>Numbers from real runs</h2>
+      <p class="lead">100+ orchestration runs across 4 project types. <code>set-compare</code> measures structural similarity between independent runs of the same spec. Here's where things stand.</p>
+
+      <div class="proof-metrics">
+        <div class="proof-metric">
+          <span class="val">1,500+</span>
+          <span class="label">commits</span>
+        </div>
+        <div class="proof-metric">
+          <span class="val">83-87%</span>
+          <span class="label">convergence</span>
+        </div>
+        <div class="proof-metric">
+          <span class="val">7</span>
+          <span class="label">gates per change</span>
+        </div>
+        <div class="proof-metric">
+          <span class="val">100+</span>
+          <span class="label">E2E runs</span>
+        </div>
+        <div class="proof-metric">
+          <span class="val">0</span>
+          <span class="label">overnight failures<br>(with sentinel)</span>
+        </div>
+      </div>
+
+      <table class="tbl">
+        <thead>
+          <tr><th>challenge</th><th>approach</th><th class="result">result</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>output divergence</strong></td><td>3-layer template system + <code>set-compare</code></td><td class="result">87% micro-web &middot; 83% minishop &middot; 4 project types</td></tr>
+          <tr><td><strong>convention compliance</strong></td><td>route groups, colocation, naming rules</td><td class="result">100% across all runs</td></tr>
+          <tr><td><strong>quality roulette</strong></td><td>7 programmatic gates (exit codes)</td><td class="result">deterministic</td></tr>
+          <tr><td><strong>hallucination</strong></td><td>OpenSpec artifacts + acceptance criteria</td><td class="result">spec-verified</td></tr>
+          <tr><td><strong>spec drift</strong></td><td>coverage tracking + auto-replan</td><td class="result">100% coverage</td></tr>
+          <tr><td><strong>failure recovery</strong></td><td>issue pipeline (detect &rarr; diagnose &rarr; fix)</td><td class="result">auto-recovery</td></tr>
+          <tr><td><strong>agent amnesia</strong></td><td>hook-driven memory (infrastructure)</td><td class="result">100% capture</td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top:40px; border-top:1px solid var(--border); padding-top:32px;">
+        <h3 style="text-align:center; color:var(--bright); font-size:1.1rem; margin-bottom:8px;">When things break, it investigates.</h3>
+        <div class="text-block" style="margin-bottom:24px;">
+          <p>The sentinel doesn't blindly retry. It reads logs, traces root causes, and dispatches targeted fixes. <span class="hl">Environment misconfigured? It reconfigures. Dependency conflict? It resolves.</span> The goal is that each failure only happens once.</p>
+          <p>This doesn't always work perfectly — sometimes it chases the wrong root cause, sometimes the fix creates a new problem. But over 100+ runs, the pattern holds: <span class="hl">detect, investigate, fix, learn.</span></p>
+        </div>
+        <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; cursor:pointer;" onclick="openLightbox(this.querySelector('img'))">
+          <div style="background:var(--surface); padding:8px 14px; font-size:0.75rem; color:var(--muted); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px;">
+            <span style="display:flex; gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#ff5f57;display:inline-block;"></span><span style="width:10px;height:10px;border-radius:50%;background:#febc2e;display:inline-block;"></span><span style="width:10px;height:10px;border-radius:50%;background:#28c840;display:inline-block;"></span></span>
+            sentinel — global issues (live)
+          </div>
+          <img src="images/sentinel-issues.png" alt="Sentinel Issues Dashboard — real self-healing pipeline across 100+ orchestration runs" style="width:100%; display:block;" />
+        </div>
+        <p style="color:var(--muted); font-size:0.7rem; margin-top:8px; text-align:center;">Real issue tracker from 100+ orchestration runs. Every resolved issue was fixed autonomously.</p>
+      </div>
+
+      <div style="margin-top:40px; border-top:1px solid var(--border); padding-top:32px;">
+        <h3 style="text-align:center; color:var(--bright); font-size:1.1rem; margin-bottom:8px;">See where the time (and tokens) goes.</h3>
+        <div class="text-block" style="margin-bottom:24px;">
+          <p>The activity timeline shows every gate, LLM call, and agent session on a time axis. Click any span to drill into tool execution, wait times, and the longest operations.</p>
+          <p>This matters because <span class="hl">most of the cost in AI development is wasted compute on runs you can't observe.</span> The dashboard makes the pipeline visible so you can see what's slow and why.</p>
+        </div>
+        <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; cursor:pointer;" onclick="openLightbox(this.querySelector('img'))">
+          <div style="background:var(--surface); padding:8px 14px; font-size:0.75rem; color:var(--muted); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px;">
+            <span style="display:flex; gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#ff5f57;display:inline-block;"></span><span style="width:10px;height:10px;border-radius:50%;background:#febc2e;display:inline-block;"></span><span style="width:10px;height:10px;border-radius:50%;background:#28c840;display:inline-block;"></span></span>
+            activity — timeline + drilldown
+          </div>
+          <img src="images/tab-activity-drilldown.png" alt="Activity timeline + drilldown — implementing span expanded into per-tool, LLM-wait, sub-agent breakdown with top operations" style="width:100%; display:block;" />
+        </div>
+        <p style="color:var(--muted); font-size:0.7rem; margin-top:8px; text-align:center;">Top: full run timeline with every change as a row. Bottom: one implementing span expanded — tools, LLM calls, sub-agents, and the longest operations.</p>
+      </div>
+
+    </section>
+
+    <!-- Commands -->
+    <section class="section">
+      <div class="section-head">// commands</div>
+      <h2>40+ tools. One workflow.</h2>
+      <p class="lead">Slash commands in Claude Code, CLI tools in your terminal. Everything composes.</p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--border); border:1px solid var(--border); border-radius:4px; overflow:hidden;">
+
+        <!-- Column 1: Use SET -->
+        <div style="background:var(--surface); padding:20px;">
+          <div style="color:var(--green); font-weight:700; font-size:0.85rem; margin-bottom:12px;">use_set <span style="color:var(--muted); font-weight:400; font-size:0.7rem;">// your project</span></div>
+          <div style="font-size:0.8rem; line-height:2.2;">
+            <div><code style="color:var(--blue);">set-project init</code> <button class="copy-btn" onclick="copyCmd(this, 'set-project init')">copy</button> <span style="color:var(--muted);">deploy to project</span></div>
+            <div><code style="color:var(--blue);">/set:write-spec</code> <button class="copy-btn" onclick="copyCmd(this, '/set:write-spec')">copy</button> <span style="color:var(--muted);">interactive spec gen</span></div>
+            <div><code style="color:var(--blue);">/set:decompose</code> <button class="copy-btn" onclick="copyCmd(this, '/set:decompose')">copy</button> <span style="color:var(--muted);">spec &rarr; execution plan</span></div>
+            <div><code style="color:var(--blue);">/set:start</code> <button class="copy-btn" onclick="copyCmd(this, '/set:start')">copy</button> <span style="color:var(--muted);">start orchestration</span></div>
+            <div><code style="color:var(--blue);">set-design-sync</code> <button class="copy-btn" onclick="copyCmd(this, 'set-design-sync')">copy</button> <span style="color:var(--muted);">Figma &rarr; tokens</span></div>
+            <div><code style="color:var(--blue);">/set:audit</code> <button class="copy-btn" onclick="copyCmd(this, '/set:audit')">copy</button> <span style="color:var(--muted);">health check</span></div>
+          </div>
+        </div>
+
+        <!-- Column 2: Extend SET -->
+        <div style="background:var(--surface); padding:20px;">
+          <div style="color:var(--green); font-weight:700; font-size:0.85rem; margin-bottom:12px;">extend_set <span style="color:var(--muted); font-weight:400; font-size:0.7rem;">// plugins</span></div>
+          <div style="font-size:0.8rem; line-height:2.2;">
+            <div><code style="color:var(--blue);">modules/web/</code> <span style="color:var(--muted);">built-in web type</span></div>
+            <div><code style="color:var(--blue);">ProjectType ABC</code> <span style="color:var(--muted);">base class</span></div>
+            <div><code style="color:var(--blue);">entry_points</code> <span style="color:var(--muted);">pip plugin system</span></div>
+            <div><code style="color:var(--blue);">CoreProfile</code> <span style="color:var(--muted);">inherit universal rules</span></div>
+            <div><code style="color:var(--blue);">planning_rules.txt</code> <span style="color:var(--muted);">domain patterns</span></div>
+            <div><code style="color:var(--blue);">templates/</code> <span style="color:var(--muted);">scaffold per stack</span></div>
+          </div>
+        </div>
+
+        <!-- Column 3: Develop SET -->
+        <div style="background:var(--surface); padding:20px;">
+          <div style="color:var(--green); font-weight:700; font-size:0.85rem; margin-bottom:12px;">develop_set <span style="color:var(--muted); font-weight:400; font-size:0.7rem;">// contribute</span></div>
+          <div style="font-size:0.8rem; line-height:2.2;">
+            <div><code style="color:var(--blue);">/opsx:new</code> <button class="copy-btn" onclick="copyCmd(this, '/opsx:new')">copy</button> <span style="color:var(--muted);">structured change</span></div>
+            <div><code style="color:var(--blue);">/opsx:apply</code> <button class="copy-btn" onclick="copyCmd(this, '/opsx:apply')">copy</button> <span style="color:var(--muted);">implement tasks</span></div>
+            <div><code style="color:var(--blue);">/opsx:verify</code> <button class="copy-btn" onclick="copyCmd(this, '/opsx:verify')">copy</button> <span style="color:var(--muted);">check before merge</span></div>
+            <div><code style="color:var(--blue);">set-harvest</code> <button class="copy-btn" onclick="copyCmd(this, 'set-harvest')">copy</button> <span style="color:var(--muted);">adopt E2E fixes</span></div>
+            <div><code style="color:var(--blue);">set-compare</code> <button class="copy-btn" onclick="copyCmd(this, 'set-compare')">copy</button> <span style="color:var(--muted);">measure divergence</span></div>
+            <div><code style="color:var(--blue);">set-memory</code> <button class="copy-btn" onclick="copyCmd(this, 'set-memory')">copy</button> <span style="color:var(--muted);">persistent recall</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <p style="color:var(--muted); font-size:0.7rem; margin-top:12px; text-align:center;">Plus: <code>set-new</code>, <code>set-work</code>, <code>set-merge</code>, <code>set-close</code> (worktrees) &middot; <code>/set:status</code>, <code>/set:msg</code>, <code>/set:inbox</code> (team sync) &middot; <code>/set:todo</code>, <code>/set:loop</code>, <code>/set:push</code> (workflow)</p>
+    </section>
+
+    <!-- Ecosystem -->
+    <section class="section">
+      <div class="section-head">// ecosystem</div>
+      <h2>The plugin system</h2>
+      <p class="lead">SET ships with a <strong>web project type</strong> (Next.js, Playwright, Prisma) — that's what we test against most. The architecture is designed so you can build your own for any stack.</p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--border); border:1px solid var(--border); border-radius:4px; overflow:hidden; margin-top:24px;">
+        <div class="vision-card">
+          <h4>modules/web/</h4>
+          <p>Next.js, Playwright, Prisma. 100+ runs across micro-web, minishop, craftbrew. Per-change E2E, BDD traceability, convention enforcement.</p>
+        </div>
+        <div class="vision-card">
+          <h4>E2E runners</h4>
+          <p>Scaffold &rarr; init &rarr; register &rarr; sentinel start. One script per project. <code>run-micro-web.sh</code>, <code>run-minishop.sh</code>, <code>run-craftbrew.sh</code>. Repeatable validation.</p>
+        </div>
+        <div class="vision-card">
+          <h4>your_project_type/</h4>
+          <p>IDOR checks for fintech. HIPAA for healthcare. Your gates, your conventions, your templates. pip-installable plugin inheriting CoreProfile.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Where this is going -->
+    <section class="section">
+      <div class="section-head">// where this is going</div>
+      <div class="text-block">
+        <p><strong>SET is a working experiment, not a finished product.</strong> It handles my daily development work — features, refactors, bug fixes — reliably enough that I reach for it by default. But it has rough edges. Some runs need intervention. Some configurations take trial and error to get right.</p>
+        <p>The interesting question isn't whether this specific tool is "the one." It's whether <strong>structured, spec-driven development is the right way to work with AI agents.</strong> I think it is — and every run gives more data on where structure helps and where it gets in the way.</p>
+        <p>Models keep getting better. The orchestration layer on top needs to evolve with them. Maybe this grows into something bigger. Maybe the ideas here get absorbed into the tools themselves. Either way, <span class="hl">the best time to figure out how to work with AI agents is right now.</span></p>
+      </div>
+    </section>
+
+    <!-- Get involved -->
+    <section class="section" id="contact">
+      <div class="section-head">// get involved</div>
+      <h2>Try it. Break it. Tell me what happened.</h2>
+      <p class="lead">SET is open source (MIT). Clone it, run a test orchestration, see if it fits how you work. Contributions, bug reports, and honest feedback are all welcome.</p>
+
+      <div class="services-grid">
+        <div class="service-card">
+          <span class="service-icon" aria-hidden="true">&gt;_</span>
+          <h3>try_it</h3>
+          <p>Clone the repo, run <code>./install.sh</code>, start a micro-web test run. See the pipeline end-to-end in ~45 minutes. No commitment needed.</p>
+        </div>
+        <div class="service-card">
+          <span class="service-icon" aria-hidden="true">[ ]</span>
+          <h3>extend_it</h3>
+          <p>Build a project type for your stack. The plugin system is designed for it — fintech rules, healthcare compliance, your domain conventions. Or improve the web type that ships by default.</p>
+        </div>
+        <div class="service-card">
+          <span class="service-icon" aria-hidden="true">~/&gt;</span>
+          <h3>work_together</h3>
+          <p>Have an interesting project? Need help setting up orchestration for your codebase? I'm happy to pair on it — whether that's a quick call or a longer engagement.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Easter egg -->
+    <section class="section" style="text-align:center; padding-bottom:40px;">
+      <div class="section-head">// one more thing</div>
+      <p style="color:var(--comment); font-size:0.8rem; margin-bottom:16px;">when orchestration gets intense, defend your changes.</p>
+      <div style="max-width:640px; margin:0 auto;">
+        <img src="images/battle-view.png" alt="Battle View" style="width:100%; border:1px solid var(--border); border-radius:4px;" />
+      </div>
+      <p style="color:var(--muted); font-size:0.7rem; margin-top:8px;">arrow keys + space. every change is a ship.</p>
+    </section>
+
+    <section class="section" style="text-align:center; padding:48px 0;">
+      <p style="color:var(--comment); font-size:1rem; margin-bottom:20px;">How does SET compare to Cursor, Devin, Kiro, Copilot, Augment?</p>
+      <a href="/faq.html" style="display:inline-block; padding:14px 40px; background:var(--green); color:var(--bg); font-weight:700; font-size:1rem; border-radius:4px; text-decoration:none; letter-spacing:0.02em;">Read the FAQ</a>
+      <p style="color:var(--muted); font-size:0.7rem; margin-top:12px;">Honest comparison — what SET does well, where others are ahead, and the trade-offs we chose.</p>
+    </section>
+
+    <!-- Contact form -->
+    <section class="section" id="contact-form">
+      <div class="section-head">// get in touch</div>
+      <form class="contact-form" id="contactForm" onsubmit="return submitContact(event)">
+        <label for="email">email</label>
+        <input type="email" id="email" name="email" required placeholder="you@company.com" autocomplete="email">
+
+        <div class="checkbox-group">
+          <div class="group-label">what are you thinking?</div>
+          <label><input type="checkbox" name="interest" value="try-it"> Just want to try it out</label>
+          <label><input type="checkbox" name="interest" value="custom-project-type"> Build a project type for my stack</label>
+          <label><input type="checkbox" name="interest" value="collaboration"> Work together on a project</label>
+          <label><input type="checkbox" name="interest" value="feedback"> Have feedback / found a bug</label>
+        </div>
+
+        <div style="position:absolute;left:-9999px;" aria-hidden="true">
+          <label for="website">website</label>
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <label for="message">tell me more <span style="color:var(--muted)">(optional)</span></label>
+        <textarea id="message" name="message" placeholder="What are you working on? What caught your interest?"></textarea>
+
+        <button type="submit" class="submit-btn">send</button>
+        <div class="form-status" id="formStatus"></div>
+      </form>
+    </section>
+
+  </div>
+
+  <footer>
+    <div class="container">
+      <a href="https://github.com/tatargabor/set-core/blob/main/README.md">github</a> &middot; <a href="https://git.setcode.dev/root/set-core">gitlab</a> &middot; <a href="https://gabor.setcode.dev">gabor.setcode.dev</a> &middot; <a href="mailto:gabor@setcode.dev">gabor@setcode.dev</a> &middot; MIT
+    </div>
+  </footer>
+
+  <!-- Copy button helper (used by commands section) -->
+  <script>
+    function copyCmd(btn, text) {
+      navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'copied!';
+        btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+      });
+    }
+  </script>
+
+  <!-- Pillar nav scroll-spy — highlights the active pillar as the user scrolls.
+       All 6 pillar blocks are stacked and visible at once; the sticky nav at the
+       top lets users jump between them with smooth scrolling. No auto-rotation. -->
+  <script>
+    (function() {
+      var navBtns = document.querySelectorAll('.pillar-nav-btn[data-pillar-link]');
+      var blocks = document.querySelectorAll('.pillar-block');
+      if (!navBtns.length || !blocks.length) return;
+
+      function setActive(idx) {
+        navBtns.forEach(function(btn, i) {
+          btn.classList.toggle('active', i === idx);
+        });
+      }
+
+      // IntersectionObserver: pick the block whose top is closest to the
+      // sticky-nav baseline (80px from the viewport top).
+      var currentActive = 0;
+      var observer = new IntersectionObserver(function(entries) {
+        // Find the entry nearest the top that is intersecting.
+        var best = null;
+        var bestTop = Infinity;
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            var top = entry.boundingClientRect.top;
+            if (top >= 0 && top < bestTop) {
+              bestTop = top;
+              best = entry.target;
+            }
+          }
+        });
+        if (best) {
+          var idx = parseInt(best.dataset.pillar);
+          if (!isNaN(idx) && idx !== currentActive) {
+            currentActive = idx;
+            setActive(idx);
+          }
+        }
+      }, {
+        rootMargin: '-80px 0px -60% 0px',
+        threshold: 0
+      });
+      blocks.forEach(function(b) { observer.observe(b); });
+
+      // Also support simple click: the href does the smooth scroll, but we
+      // set the active class eagerly for snappier feedback.
+      navBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var idx = parseInt(btn.dataset.pillarLink);
+          if (!isNaN(idx)) setActive(idx);
+        });
+      });
+    })();
+  </script>
+
+  <!-- Lightbox -->
+  <div class="lightbox-overlay" id="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" src="" alt="">
+  </div>
+  <script>
+    function openLightbox(img) {
+      document.getElementById('lightbox-img').src = img.src;
+      document.getElementById('lightbox').classList.add('active');
+    }
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.remove('active');
+    }
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
+
+    // Make all content images clickable
+    document.querySelectorAll('.section img, .gif-section img').forEach(function(img) {
+      if (!img.closest('[onclick]')) {
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', function() { openLightbox(this); });
+      }
+    });
+  </script>
+
+  <!-- Contact form -->
+  <script>
+    function submitContact(e) {
+      e.preventDefault();
+      var form = document.getElementById('contactForm');
+      var btn = form.querySelector('.submit-btn');
+      var status = document.getElementById('formStatus');
+      var email = form.email.value;
+      var interests = Array.from(form.querySelectorAll('input[name="interest"]:checked')).map(function(c) { return c.value; });
+      var message = form.message.value;
+      var website = form.website ? form.website.value : '';
+
+      btn.disabled = true;
+      btn.textContent = 'sending...';
+      status.textContent = '';
+      status.className = 'form-status';
+
+      fetch('https://setcode-contact.tatar-gabor.workers.dev/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, interests: interests, message: message, website: website })
+      })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed');
+        btn.textContent = 'sent!';
+        status.textContent = 'Thanks! We\'ll be in touch.';
+        status.className = 'form-status success';
+        form.reset();
+        setTimeout(function() { btn.textContent = 'get in touch'; btn.disabled = false; }, 3000);
+      })
+      .catch(function() {
+        btn.textContent = 'get in touch';
+        btn.disabled = false;
+        status.textContent = 'Something went wrong. Try gabor@setcode.dev instead.';
+        status.className = 'form-status error';
+      });
+
+      return false;
+    }
+  </script>
+  <script data-goatcounter="https://setcode.goatcounter.com/count"
+          async src="//gc.zgo.at/count.js"></script>
+
+</body>
+</html>

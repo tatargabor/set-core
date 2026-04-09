@@ -91,6 +91,8 @@ export default function StatusHeader({ state, connected, project }: Props) {
     failed: 'bg-red-900 text-red-300',
     corrupt: 'bg-red-900 text-red-300',
     idle: 'bg-neutral-800 text-neutral-500',
+    done: 'bg-green-900 text-green-300',
+    accepted: 'bg-green-900 text-green-300',
   }
 
   // Aggregate tokens from changes

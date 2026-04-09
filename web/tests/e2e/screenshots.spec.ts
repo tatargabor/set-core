@@ -94,6 +94,20 @@ test.describe('Documentation screenshots', () => {
     })
   }
 
+  // ── Manager / global pages ──
+
+  test('manager — project detail', async ({ page }) => {
+    await page.goto(`/p/${PROJECT}`)
+    await page.waitForTimeout(1500)
+    await page.screenshot({ path: path.join(OUT_DIR, 'manager-project-detail.png'), fullPage: true })
+  })
+
+  test('manager — sentinel chat', async ({ page }) => {
+    await page.goto(`/p/${PROJECT}/sentinel/chat`)
+    await page.waitForTimeout(1500)
+    await page.screenshot({ path: path.join(OUT_DIR, 'manager-sentinel-chat.png'), fullPage: true })
+  })
+
   // ── Secondary pages ──
 
   test('page — memory', async ({ page }) => {
@@ -118,6 +132,31 @@ test.describe('Documentation screenshots', () => {
     await page.goto(`/p/${PROJECT}/orch/worktrees`)
     await page.waitForTimeout(1000)
     await page.screenshot({ path: path.join(OUT_DIR, 'page-worktrees.png'), fullPage: true })
+  })
+
+  // ── Digest + triage (direct URL, skip if empty) ──
+
+  test('tab — digest (direct)', async ({ page }) => {
+    await page.goto(`${ORCH_BASE}?tab=digest`)
+    await page.waitForTimeout(1500)
+    // Check if content rendered (not just empty tab)
+    const hasContent = await page.locator('.digest-view, [class*="digest"], table, .card').first().isVisible({ timeout: 3000 }).catch(() => false)
+    if (!hasContent) { test.skip(); return }
+    await page.screenshot({ path: path.join(OUT_DIR, 'tab-digest.png'), fullPage: true })
+  })
+
+  test('tab — triage (direct)', async ({ page }) => {
+    await page.goto(`${ORCH_BASE}?tab=digest&sub=triage`)
+    await page.waitForTimeout(1500)
+    const hasContent = await page.locator('table, .card, [class*="triage"], [class*="ambig"]').first().isVisible({ timeout: 3000 }).catch(() => false)
+    if (!hasContent) { test.skip(); return }
+    await page.screenshot({ path: path.join(OUT_DIR, 'tab-triage.png'), fullPage: true })
+  })
+
+  test('tab — digest e2e (direct)', async ({ page }) => {
+    await page.goto(`${ORCH_BASE}?tab=digest&sub=e2e`)
+    await page.waitForTimeout(1500)
+    await page.screenshot({ path: path.join(OUT_DIR, 'tab-digest-e2e.png'), fullPage: true })
   })
 
   // ── Activity tab with drilldown panel open ──

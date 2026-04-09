@@ -1,23 +1,23 @@
 # set-core
 
-**Autonomous multi-agent orchestration for Claude Code** — give it a spec, get merged features.
+**An experiment in structured AI development** — specs, quality gates, and parallel agents applied to Claude Code.
 
-[![Status: early alpha](https://img.shields.io/badge/Status-early%20alpha-orange.svg)](docs/alpha-release.md)
+[![Status: early alpha](https://img.shields.io/badge/Status-early%20alpha-orange.svg)](docs/release/alpha-release.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux & macOS (Apple Silicon)](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20(Apple%20Silicon)-lightgrey.svg)]()
 [![Website](https://img.shields.io/badge/Website-setcode.dev-22c55e)](https://setcode.dev)
 
-set-core takes a markdown spec, decomposes it into independent changes, dispatches parallel Claude Code agents in git worktrees, runs quality gates on each, and merges the results. You provide the spec — it builds the app.
+I use Claude Code every day. It's great for writing code, but shipping software — coordinating parallel agents, testing, merging, recovering from failures — needs more structure. set-core is what I built around it: give it a markdown spec, it decomposes into independent changes, dispatches parallel agents in git worktrees, runs quality gates on each, and merges the results.
 
-**We don't prompt — we specify.** Every change starts with a [proposal](docs/guide/openspec.md), is defined by requirements with acceptance criteria, and is verified against the spec before merge. Agents don't get free rein — they get a task list derived from the spec, and the [verify gate](docs/guide/orchestration.md) checks that what they built matches what was asked. This is [OpenSpec](https://github.com/fission-ai/openspec) — the structured artifact workflow that eliminates "prompt and pray."
+Every change goes through [OpenSpec](https://github.com/fission-ai/openspec) — a structured workflow (proposal → design → spec → tasks → code → verify) that gives agents contracts to work against instead of prompts to interpret. Quality gates are deterministic: exit codes, not LLM judgment.
 
-**Built with set-core, using set-core.** This project was developed using its own orchestration pipeline — 376 capability specifications, 1,500+ commits, every one planned through OpenSpec and validated through quality gates.
+Built with set-core, using set-core. This project was developed using its own orchestration pipeline.
 
-> **This is an early alpha.** It works end-to-end today — spec in, merged features out — but expect rough edges. The sentinel auto-recovers from most of them, which is how it stays usable at this stage. See [`docs/alpha-release.md`](docs/alpha-release.md) for the current state, known issues, and what's not yet implemented.
+> **This is an early alpha — a working experiment, not a finished product.** It works well enough that I use it daily, but expect rough edges. The sentinel auto-recovers from most of them. See [`docs/release/alpha-release.md`](docs/release/alpha-release.md) for the current state, known issues, and what's not yet implemented.
 >
-> Don't wait for perfection — start using it now. The more people use it, the faster it improves.
+> Open source (MIT) — in case it's useful to someone else too.
 
-**[Read the FAQ](docs/faq/faq.html)** — how SET compares to Cursor, Devin, Kiro, Copilot, Augment Intent, and others. What we do, what we don't, and why.
+**[Read the FAQ](https://setcode.dev/faq.html)** — how SET compares to Cursor, Devin, Kiro, Copilot, Augment Intent, and others. Honest comparison — what SET does well, where others are ahead.
 
 ---
 
@@ -201,9 +201,9 @@ See [docs/learn/journey.md](docs/learn/journey.md) for the full development hist
 
 ---
 
-## What We're Solving
+## What We're Measuring
 
-Most AI coding tools are nondeterministic — run the same prompt twice, get different results. set-core treats **reproducibility as an engineering problem**, not a hope.
+AI agents are nondeterministic — run the same prompt twice, get different results. The experiment here: does adding structure (specs, gates, templates) make the output converge?
 
 | Challenge | Our Approach | Result |
 |-----------|-------------|--------|
@@ -215,13 +215,13 @@ Most AI coding tools are nondeterministic — run the same prompt twice, get dif
 | **Agent amnesia** | [Hook-driven memory](docs/guide/memory.md) — shared across worktrees, survives sessions | Zero voluntary saves → 100% capture via hooks |
 | **Framework reliability** | [E2E scaffold testing](docs/learn/benchmarks.md) — the orchestrator tests itself | 30+ runs across 4 project scaffolds |
 
-We measure structural convergence across paired runs — latest: [83% minishop](tests/e2e/runs/minishop/run-16-vs-17.md), 87% micro-web. Schema equivalence at 100%, convention compliance at 100%. The remaining divergence is stylistic, not structural. [Full research →](docs/learn/journey.md)
+Structural convergence across paired runs: [83% minishop](tests/e2e/runs/minishop/run-16-vs-17.md), 87% micro-web. Schema equivalence at 100%, convention compliance at 100%. The remaining divergence is stylistic, not structural. Not perfect, but converging. [Full data →](docs/learn/journey.md)
 
 ---
 
-## The Spec Is Everything
+## The Spec Is the Bottleneck
 
-In traditional development, a detailed spec meant 8 months of waterfall. Now it means 8 hours of orchestrated agents. But the principle is the same: **the quality of the output depends on the quality of the input.**
+Writing a good spec takes effort. That's intentional — **the quality of the output depends on the quality of the input.** The trade-off SET makes: upfront structure for reliable results.
 
 A good spec for SET includes:
 - **Data model** — entities, fields, relationships, enums (becomes the Prisma schema)
@@ -236,7 +236,7 @@ Use **`/set:write-spec`** in Claude Code to generate a structured spec interacti
 
 The [project type templates](docs/reference/plugins.md) handle the rest — framework boilerplate, build config, test setup, linting rules. You focus on _what_ to build. The templates ensure _how_ it gets built is consistent and deterministic.
 
-Think of it this way: **you are the product owner, the agents are the dev team, and the spec is the sprint backlog.** The better the backlog, the better the sprint. The difference is that this sprint takes hours, not weeks — and the team never gets tired, never forgets conventions, and never skips tests.
+The better the spec, the better the result. Agents working from a detailed spec produce dramatically better output than agents working from a conversation.
 
 See the [Writing Specs guide](docs/guide/writing-specs.md) for the full methodology, the [CraftBrew scaffold](tests/e2e/scaffolds/craftbrew/docs/) for a production-quality example with Figma design integration, and the [MiniShop spec](tests/e2e/scaffolds/minishop/docs/v1-minishop.md) for a minimal but complete example.
 

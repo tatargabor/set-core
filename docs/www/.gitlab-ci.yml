@@ -1,0 +1,12 @@
+pages:
+  stage: deploy
+  script:
+    - mkdir -p public
+    - cp index.html public/
+    - cp CNAME public/ 2>/dev/null || true
+    - cp -r images public/ 2>/dev/null || true
+  artifacts:
+    paths:
+      - public
+  only:
+    - main

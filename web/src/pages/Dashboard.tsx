@@ -209,8 +209,7 @@ export default function Dashboard({ project, initialTab }: Props) {
     { id: 'changes', label: 'Changes' },
     { id: 'activity', label: 'Activity' },
     { id: 'phases', label: 'Phases' },
-    // Agent runtime state
-    { id: 'agent', label: 'Agent' },
+    // Runtime state
     { id: 'sessions', label: 'Sessions' },
     { id: 'sentinel', label: 'Sentinel' },
     // Diagnostics / details
@@ -221,6 +220,8 @@ export default function Dashboard({ project, initialTab }: Props) {
     { id: 'plan', label: 'Plan', hidden: !hasPlans },
     // Knowledge
     { id: 'learnings', label: 'Learnings' },
+    // Conversational supervisor (second-to-last)
+    { id: 'agent', label: 'Agent' },
     // Game (always last)
     { id: 'battle', label: '\u{1F3AE} Battle' },
   ]
