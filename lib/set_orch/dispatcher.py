@@ -1943,7 +1943,8 @@ def dispatch_change(
     append_schema_digest_to_claudemd(wt_path)
 
     # Write e2e-manifest.json for ownership detection at gate time.
-    _write_e2e_manifest(wt_path, change_name, list(getattr(change, "requirements", []) or []))
+    change_reqs = list(getattr(change, "requirements", []) or [])
+    _write_e2e_manifest(wt_path, change_name, change_reqs)
 
     # Generate test skeleton from test-plan.json (deterministic structure)
     _skeleton_path = ""
