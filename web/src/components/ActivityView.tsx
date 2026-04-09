@@ -152,6 +152,9 @@ interface GanttProps {
   onSpanClick?: (span: GanttSpan) => void
   /** Show a vertical line at the cursor across all lanes (terminal hover lattice). */
   hoverLattice?: boolean
+  /** Minimum SVG width in pixels. Defaults to 600 for the main timeline; embed
+   *  Gantts (e.g., drilldown mini-Gantt) should pass 0 to fit their container. */
+  minWidth?: number
 }
 
 export function GanttTimeline({
@@ -162,6 +165,7 @@ export function GanttTimeline({
   pxPerSecond,
   onSpanClick,
   hoverLattice = true,
+  minWidth = 600,
 }: GanttProps) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; span: GanttSpan } | null>(null)
   const [hoverX, setHoverX] = useState<number | null>(null)
@@ -169,7 +173,7 @@ export function GanttTimeline({
 
   const laneHeight = 24
   const headerHeight = 28
-  const totalWidth = Math.max(600, ((maxTime - minTime) / 1000) * pxPerSecond)
+  const totalWidth = Math.max(minWidth, ((maxTime - minTime) / 1000) * pxPerSecond)
   const totalHeight = headerHeight + categories.length * laneHeight
 
   // Time axis tick marks
@@ -340,9 +344,31 @@ function _bestTickInterval(totalSeconds: number, totalWidth: number): number {
 
 // ─── Breakdown bars ─────────────────────────────────────────────────
 
-function BreakdownBars({ breakdown }: { breakdown: ActivityBreakdown[] }) {
+function BreakdownBars({ breakdown, compact = false }: { breakdown: ActivityBreakdown[]; compact?: boolean }) {
   if (!breakdown.length) return null
   const maxMs = breakdown[0]?.total_ms || 1
+
+  if (compact) {
+    // Compact mode: color dot + label + duration + pct (no bar graph).
+    // Used when the breakdown sits in a narrow side column.
+    return (
+      <div className="font-mono text-xs space-y-1">
+        {breakdown.map((b) => (
+          <div key={b.category} className="flex items-center gap-1.5">
+            <span
+              className="inline-block w-2 h-2 flex-shrink-0"
+              style={{ backgroundColor: getCategoryColor(b.category) }}
+            />
+            <span className="text-neutral-400 truncate flex-1 min-w-0" title={getCategoryLabel(b.category)}>
+              {getCategoryLabel(b.category)}
+            </span>
+            <span className="text-neutral-300 flex-shrink-0">{formatDuration(b.total_ms)}</span>
+            <span className="text-neutral-500 w-9 text-right flex-shrink-0">{b.pct}%</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="font-mono text-xs space-y-1">
@@ -523,42 +549,56 @@ export default function ActivityView({ project, isRunning }: Props) {
         </div>
       )}
 
-      {/* Gantt chart */}
+      {/* Top row: Gantt (75%) + Breakdown (25%) side by side.
+          On narrow screens (<lg) Breakdown stacks under the Gantt. */}
       {data && categories.length > 0 && (
-        <div className="flex">
-          {/* Fixed category labels */}
-          <div className="flex-shrink-0 w-28 pt-7">
-            {categories.map((cat) => (
-              <div
-                key={cat}
-                className="h-6 flex items-center text-neutral-400 text-right pr-2 truncate"
-                title={getCategoryLabel(cat)}
-              >
-                <span
-                  className="inline-block w-2 h-2 mr-1 flex-shrink-0"
-                  style={{ backgroundColor: getCategoryColor(cat) }}
-                />
-                {getCategoryLabel(cat)}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-x-4">
+          {/* Main Gantt chart — 3/4 width */}
+          <div className="lg:col-span-3 min-w-0">
+            <div className="flex">
+              {/* Fixed category labels */}
+              <div className="flex-shrink-0 w-28 pt-7">
+                {categories.map((cat) => (
+                  <div
+                    key={cat}
+                    className="h-6 flex items-center text-neutral-400 text-right pr-2 truncate"
+                    title={getCategoryLabel(cat)}
+                  >
+                    <span
+                      className="inline-block w-2 h-2 mr-1 flex-shrink-0"
+                      style={{ backgroundColor: getCategoryColor(cat) }}
+                    />
+                    {getCategoryLabel(cat)}
+                  </div>
+                ))}
               </div>
-            ))}
+
+              {/* Scrollable timeline */}
+              <div
+                ref={scrollRef}
+                className="flex-1 overflow-x-auto overflow-y-hidden bg-black min-w-0"
+                onWheel={handleWheel}
+              >
+                <GanttTimeline
+                  spans={data.spans as GanttSpan[]}
+                  categories={categories}
+                  minTime={minTime}
+                  maxTime={maxTime}
+                  pxPerSecond={pxPerSecond}
+                  onSpanClick={handleSpanClick}
+                  hoverLattice
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Scrollable timeline */}
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-x-auto overflow-y-hidden bg-black"
-            onWheel={handleWheel}
-          >
-            <GanttTimeline
-              spans={data.spans as GanttSpan[]}
-              categories={categories}
-              minTime={minTime}
-              maxTime={maxTime}
-              pxPerSecond={pxPerSecond}
-              onSpanClick={handleSpanClick}
-              hoverLattice
-            />
-          </div>
+          {/* Breakdown — 1/4 width column on the right */}
+          {data.breakdown.length > 0 && (
+            <div className="lg:col-span-1 min-w-0 lg:pt-7">
+              <div className="text-neutral-500 mb-2">┌──── Breakdown ────┐</div>
+              <BreakdownBars breakdown={data.breakdown} compact />
+            </div>
+          )}
         </div>
       )}
 
@@ -574,14 +614,6 @@ export default function ActivityView({ project, isRunning }: Props) {
       {/* Empty state */}
       {data && categories.length === 0 && (
         <div className="text-neutral-600 text-center py-8">No activity data available</div>
-      )}
-
-      {/* Breakdown */}
-      {data && data.breakdown.length > 0 && (
-        <div className="border-t border-neutral-800 pt-3">
-          <div className="text-neutral-500 mb-2">┌──── Breakdown ────┐</div>
-          <BreakdownBars breakdown={data.breakdown} />
-        </div>
       )}
     </div>
   )

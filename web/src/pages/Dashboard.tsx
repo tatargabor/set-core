@@ -205,19 +205,24 @@ export default function Dashboard({ project, initialTab }: Props) {
   const hasAudit = (state?.phase_audit_results?.length ?? 0) > 0
 
   const tabs: { id: PanelTab; label: string; hidden?: boolean }[] = [
+    // High-level status (what's happening)
     { id: 'changes', label: 'Changes' },
+    { id: 'activity', label: 'Activity' },
     { id: 'phases', label: 'Phases' },
+    // Agent runtime state
+    { id: 'agent', label: 'Agent' },
+    { id: 'sessions', label: 'Sessions' },
+    { id: 'sentinel', label: 'Sentinel' },
+    // Diagnostics / details
     { id: 'log', label: 'Log' },
     { id: 'tokens', label: 'Tokens' },
-    { id: 'audit', label: 'Audit', hidden: !hasAudit },
     { id: 'digest', label: 'Digest', hidden: !hasDigest },
-    { id: 'sessions', label: 'Sessions' },
-    { id: 'agent', label: 'Agent' },
-    { id: 'sentinel', label: 'Sentinel' },
-    { id: 'learnings', label: 'Learnings' },
+    { id: 'audit', label: 'Audit', hidden: !hasAudit },
     { id: 'plan', label: 'Plan', hidden: !hasPlans },
+    // Knowledge
+    { id: 'learnings', label: 'Learnings' },
+    // Game (always last)
     { id: 'battle', label: '\u{1F3AE} Battle' },
-    { id: 'activity', label: 'Activity' },
   ]
 
   return (

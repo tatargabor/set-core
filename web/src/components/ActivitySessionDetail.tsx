@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { getSessionDetail } from '../lib/api'
 import type { ActivitySpan, ActivitySessionDetail as DetailData } from '../lib/api'
 import {
@@ -84,12 +84,29 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
     return { categories: cats, minTime: mn, maxTime: mx }
   }, [data])
 
-  // Mini-Gantt zoom — fit to a fixed 900px width by default
+  // Mini-Gantt zoom — auto-fit to actual container width via ResizeObserver.
+  // The drilldown is a sub-breakdown of the main timeline; it should never
+  // need its own horizontal scrollbar.
+  const miniContainerRef = useRef<HTMLDivElement>(null)
+  const [miniContainerWidth, setMiniContainerWidth] = useState(0)
+  useEffect(() => {
+    const el = miniContainerRef.current
+    if (!el) return
+    const update = () => setMiniContainerWidth(el.clientWidth)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [data])
+
   const miniPxPerSecond = useMemo(() => {
-    if (maxTime <= minTime) return 0.1
+    if (maxTime <= minTime || miniContainerWidth <= 0) return 0.1
     const wallSec = (maxTime - minTime) / 1000
-    return Math.max(0.005, Math.min(900 / Math.max(wallSec, 1), 5))
-  }, [minTime, maxTime])
+    if (wallSec <= 0) return 0.1
+    // Subtract a small padding so the rightmost span doesn't touch the edge.
+    const usable = Math.max(100, miniContainerWidth - 8)
+    return Math.max(0.001, usable / wallSec)
+  }, [minTime, maxTime, miniContainerWidth])
 
   const handleSubSpanClick = useCallback((s: GanttSpan) => {
     // Sub-spans are leaves in current Claude Code (subagents run in-process,
@@ -134,36 +151,10 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
       )}
 
       {data && data.sub_spans.length > 0 && (
-        <>
-          {/* Per-category breakdown bars */}
-          <div className="space-y-1 mb-4">
-            {breakdown.map((b) => (
-              <div key={b.category} className="flex items-center gap-2">
-                <span
-                  className="w-32 text-right text-neutral-400 truncate"
-                  title={getCategoryLabel(b.category)}
-                >
-                  {getCategoryLabel(b.category)}
-                </span>
-                <div className="flex-1 h-3 bg-neutral-900">
-                  <div
-                    className="h-full"
-                    style={{
-                      width: `${Math.max(1, (b.total_ms / Math.max(breakdown[0].total_ms, 1)) * 100)}%`,
-                      backgroundColor: getCategoryColor(b.category),
-                      opacity: 0.8,
-                    }}
-                  />
-                </div>
-                <span className="w-16 text-right text-neutral-300">{formatDuration(b.total_ms)}</span>
-                <span className="w-10 text-right text-neutral-500">{b.pct}%</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Mini-Gantt of sub-spans */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-x-4 gap-y-3">
+          {/* Mini-Gantt — ~58% width (col-span-7 of 12) */}
           {categories.length > 0 && (
-            <div className="border-t border-neutral-900 pt-3 mb-3">
+            <div className="lg:col-span-7 min-w-0">
               <div className="text-neutral-500 mb-2">┌──── Timeline ────┐</div>
               <div className="flex">
                 <div className="flex-shrink-0 w-32 pt-7">
@@ -181,7 +172,7 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
                     </div>
                   ))}
                 </div>
-                <div className="flex-1 overflow-x-auto overflow-y-hidden bg-black">
+                <div ref={miniContainerRef} className="flex-1 overflow-hidden bg-black min-w-0">
                   <GanttTimeline
                     spans={data.sub_spans as unknown as GanttSpan[]}
                     categories={categories}
@@ -190,34 +181,56 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
                     pxPerSecond={miniPxPerSecond}
                     onSpanClick={handleSubSpanClick}
                     hoverLattice
+                    minWidth={0}
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Top 5 longest operations */}
+          {/* Top operations — ~25% width (col-span-3 of 12) */}
           {data.top_operations.length > 0 && (
-            <div className="border-t border-neutral-900 pt-3">
+            <div className="lg:col-span-3 min-w-0">
               <div className="text-neutral-500 mb-2">┌──── Top operations ────┐</div>
               <div className="space-y-1">
                 {data.top_operations.map((op, i) => (
-                  <div key={i} className="flex items-center gap-2">
+                  <div key={i} className="flex items-center gap-1.5">
                     <span
                       className="inline-block w-2 h-2 flex-shrink-0"
                       style={{ backgroundColor: getCategoryColor(op.category) }}
                     />
-                    <span className="w-32 text-neutral-300 truncate">{getCategoryLabel(op.category)}</span>
-                    <span className="w-16 text-right text-neutral-200">{formatDuration(op.duration_ms)}</span>
-                    <span className="text-neutral-500 truncate flex-1" title={op.preview}>
-                      │ {op.preview || '(no preview)'}
+                    <span className="text-neutral-200 flex-shrink-0">{formatDuration(op.duration_ms)}</span>
+                    <span className="text-neutral-500 truncate flex-1 min-w-0" title={`${getCategoryLabel(op.category)} — ${op.preview}`}>
+                      {op.preview || getCategoryLabel(op.category)}
                     </span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-        </>
+
+          {/* Breakdown — ~17% width (col-span-2 of 12) */}
+          <div className="lg:col-span-2 min-w-0">
+            <div className="text-neutral-500 mb-2">┌──── Breakdown ────┐</div>
+            <div className="space-y-1">
+              {breakdown.map((b) => (
+                <div key={b.category} className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-2 h-2 flex-shrink-0"
+                    style={{ backgroundColor: getCategoryColor(b.category) }}
+                  />
+                  <span
+                    className="text-neutral-400 truncate flex-1 min-w-0"
+                    title={getCategoryLabel(b.category)}
+                  >
+                    {getCategoryLabel(b.category)}
+                  </span>
+                  <span className="text-neutral-500 w-9 text-right flex-shrink-0">{b.pct}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
