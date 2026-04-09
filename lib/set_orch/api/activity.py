@@ -95,7 +95,12 @@ def _read_jsonl(
 # ─── Span reconstruction ───────────────────────────────────────────
 
 
-def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> list[dict]:
+def _build_spans(
+    events: list[dict],
+    from_ts: str | None,
+    to_ts: str | None,
+    active_changes: set[str] | None = None,
+) -> list[dict]:
     """Reconstruct activity spans from an ordered event stream."""
     spans: list[dict] = []
 
@@ -508,16 +513,31 @@ def _build_spans(events: list[dict], from_ts: str | None, to_ts: str | None) -> 
                 "open": True,
             })
         # Flush unclosed DISPATCH-based implementing spans.
-        # Close at the last event observed for that change, NOT at end-of-stream.
-        # Failed/abandoned changes often have no terminal STATE_CHANGE event in
-        # the log (the state file is updated without emitting), so flushing to
-        # end-of-stream would produce wildly inflated spans.
+        #
+        # Close-at logic:
+        #   1. If the change is CURRENTLY ACTIVE (running/integrating/verifying/
+        #      dispatched/implementing) in the live state file, close at end_ts
+        #      (~now). The change is still doing work but the agent doesn't emit
+        #      LLM_CALL events to the orchestrator event bus, so we have no
+        #      newer event to anchor on — the span should extend to the present.
+        #   2. Otherwise, close at the last event observed for that change.
+        #      Failed/abandoned changes often have no terminal STATE_CHANGE
+        #      event (the state file is updated without emitting), so flushing
+        #      to end-of-stream would produce wildly inflated spans for those.
+        active_change_set = active_changes or set()
         for ch_name, impl in list(open_implementing.items()):
-            close_ts = last_event_ts_per_change.get(ch_name, end_ts)
-            # Guard: if last event is earlier than the span's start (shouldn't
-            # happen, but defensive), fall back to end_ts.
-            if _ts_diff_ms(impl["start"], close_ts) <= 0:
+            if ch_name in active_change_set:
+                # Live change → extend to ~now (end_ts is the latest event or
+                # the user's `to` query param). This matches the user's
+                # intuition that an actively-running change should have its
+                # implementing bar growing on the timeline.
                 close_ts = end_ts
+            else:
+                close_ts = last_event_ts_per_change.get(ch_name, end_ts)
+                # Guard: if last event is earlier than the span's start
+                # (shouldn't happen, but defensive), fall back to end_ts.
+                if _ts_diff_ms(impl["start"], close_ts) <= 0:
+                    close_ts = end_ts
             spans.append({
                 "category": "implementing",
                 "change": ch_name,
@@ -782,8 +802,28 @@ def get_activity_timeline(
             "breakdown": [],
         }
 
+    # Load current state to identify live-active changes. Open implementing
+    # spans for these changes extend to ~now instead of the last observed
+    # event (which can be stale by many minutes while the agent is actively
+    # working but not emitting orchestration events).
+    active_changes: set[str] = set()
+    try:
+        from ..state import load_state
+        state_path = _state_path(project_path)
+        if state_path.exists():
+            state = load_state(str(state_path))
+            _ACTIVE_STATUSES = {
+                "running", "implementing", "verifying",
+                "integrating", "dispatched", "planning", "fixing",
+            }
+            for c in state.changes:
+                if c.status in _ACTIVE_STATUSES:
+                    active_changes.add(c.name)
+    except Exception:  # noqa: BLE001
+        logger.debug("active_changes load failed (non-fatal)", exc_info=True)
+
     # Build spans from events
-    spans = _build_spans(events, from_ts, to_ts)
+    spans = _build_spans(events, from_ts, to_ts, active_changes=active_changes)
 
     # Compute breakdown
     wall_time_ms, activity_time_ms, parallel_efficiency, breakdown = _compute_breakdown(spans)
