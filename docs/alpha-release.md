@@ -107,6 +107,29 @@ set-project init --name my-project --project-type web --template nextjs
 
 This is the first tagged release. There is no upgrade path yet. If you tried set-core from a pre-tag `main` checkout, the safest move is to re-clone and re-run `set-project init` on your project.
 
+## Release checklist (work-in-progress)
+
+Things still open between "main is ready" and "announce on external channels". Picking these up in the next session.
+
+### Observed during the reference run, not yet in the Known issues list
+
+- **Review gate false-positive on truncated diffs.** On a large change (`checkout-and-payment`) the round-2 LLM reviewer returned `NOT_FIXED — payment-step.tsx content truncated from diff`, despite all other findings being resolved. The truncation was on the reviewer's input, not the code. Gate treated this as a hard fail and consumed a verify retry slot. Fix: map "cannot verify" to a neutral/WARN verdict, not CRITICAL.
+- **`chain.log` 0-byte buffering.** `.set/logs/ralph-iter-XXX-chain.log` stays empty for minutes at a time because `claude -p --verbose` stdout is buffered by `tee` and only flushes on process exit or large chunks. Observable on long Opus iterations. Real progress is in git commits and `loop-state.json` — the chain log is misleading. Fix: run `claude` under `stdbuf -oL` or use `script(1)` instead of `tee` to force line buffering.
+- **`placehold.co` SVG regression in inherited E2E tests.** During integration smoke runs (inherited specs from already-merged changes), Next.js rejects placehold.co images with *"type image/svg+xml but dangerouslyAllowSVG is disabled"*. The smoke gate is non-blocking so it doesn't stop the merge, but the warning is noise and points at a real issue: the web template should either set `images.dangerouslyAllowSVG: true` in `next.config.js` OR agents should avoid `placehold.co` for `<Image>` sources (prefer `.png` endpoints or `unoptimized`). Harvest target for the next template update.
+
+### Release tasks (do not cut the tag yet)
+
+- [ ] Wait until the current reference run (`craftbrew-run-20260409-0034`) either finishes or stabilizes at a good merged share, then snapshot final numbers
+- [ ] Re-verify `setcode.dev` landing is live and points at the public repo
+- [ ] Take a fresh dashboard screenshot for the LinkedIn post (activity timeline + gate bar)
+- [ ] Final proofread of `docs/announcements/v0.1.0-alpha.md` drafts
+- [ ] `git tag v0.1.0-alpha` + `git push --tags` (both remotes: github + gitlab)
+- [ ] Create GitHub release with release notes excerpt from this file
+- [ ] Post the LinkedIn draft
+- [ ] Post the Anthropic Discord / community variant
+- [ ] Post the OpenSpec community variant
+- [ ] Pin the repo on the author's GitHub profile
+
 ## License
 
 MIT. See `LICENSE`.
