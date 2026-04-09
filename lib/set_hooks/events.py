@@ -41,7 +41,6 @@ from .memory_ops import (
 )
 from .stop import (
     flush_metrics,
-    extract_insights,
     save_commit_memories,
     save_checkpoint,
 )
@@ -395,12 +394,7 @@ def handle_stop(
     # Clean dedup
     dedup_clear(cache_file)
 
-    # Background transcript extraction
-    if transcript_path and os.path.isfile(transcript_path):
-        change_name = _extract_change_from_transcript(transcript_path)
-        extract_insights(transcript_path, change_name)
-
-    # Commit extraction
+    # Commit extraction — curated source of learnings
     save_commit_memories()
 
     return None
@@ -621,34 +615,3 @@ def _extract_agent_summary(agent_path: str) -> str:
     return " ".join(entries[-3:])[:500]
 
 
-def _extract_change_from_transcript(transcript_path: str) -> str:
-    """Extract change names from transcript."""
-    names = set()
-    try:
-        with open(transcript_path, "r", errors="replace") as f:
-            for line in f:
-                try:
-                    obj = json.loads(line)
-                    if obj.get("type") != "assistant":
-                        continue
-                    for block in obj.get("message", {}).get("content", []) or []:
-                        if not isinstance(block, dict):
-                            continue
-                        if (
-                            block.get("type") == "tool_use"
-                            and block.get("name") == "Skill"
-                        ):
-                            inp = block.get("input", {})
-                            skill = inp.get("skill", "")
-                            if "opsx:" in skill or "openspec-" in skill:
-                                args = inp.get("args", "").strip()
-                                if args:
-                                    names.add(args.split()[0])
-                except json.JSONDecodeError:
-                    pass
-    except OSError:
-        pass
-
-    if names:
-        return sorted(names)[0]
-    return "unknown"

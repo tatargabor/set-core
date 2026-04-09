@@ -1,21 +1,22 @@
-"""Hook stop pipeline: metrics flush, transcript extraction, commit-based memory save.
+"""Hook stop pipeline: metrics flush, commit-based memory save, checkpoint.
 
-1:1 migration of lib/hooks/stop.sh.
 Uses set-memoryd daemon client for fast remember (bypass CLI subprocess overhead).
 Falls back to CLI subprocess if daemon is unavailable.
+
+Transcript-based insight extraction was removed (2026-04-09) — the auto-extracted
+memories had ~0.1% citation rate and dominated the memory store with noise
+(regex matched every `## ` markdown heading). Valuable learnings come from
+commit messages, design choices, and explicit user feedback, all saved here.
 """
 
-import json
 import os
-import re
 import subprocess
 from typing import Optional
 
 from .util import (
     _log, _dbg, read_cache, write_cache,
-    get_daemon_client, daemon_is_running, HEURISTIC_RE,
+    get_daemon_client, daemon_is_running,
 )
-from .session import dedup_clear
 
 
 def _remember_via_daemon_or_cli(
@@ -131,42 +132,6 @@ def flush_metrics(
         _dbg("stop", "metrics: lib.metrics not available")
     except Exception as e:
         _dbg("stop", f"metrics: error: {e}")
-
-
-def extract_insights(transcript_path: str, change_name: str = "unknown") -> int:
-    """Scan JSONL transcript, extract HIGH-VALUE entries only as memories.
-
-    Only saves: errors/failures, decisions/summaries, and key outcomes.
-    Skips: routine tool calls, short user messages, incremental progress updates.
-
-    Returns number of entries saved.
-    """
-    if not transcript_path or not os.path.exists(transcript_path):
-        return 0
-
-    entries = _filter_transcript(transcript_path)
-    if not entries:
-        return 0
-
-    base_tags = "phase:auto-extract,source:hook"
-    if change_name != "unknown":
-        base_tags = f"{base_tags},change:{change_name}"
-
-    saved = 0
-    total = len(entries)
-
-    for entry in entries:
-        role = entry["role"]
-        content = entry["content"]
-
-        mem_type = "Context" if role == "user" else "Learning"
-        tags = base_tags
-
-        if _remember_via_daemon_or_cli(content, mem_type=mem_type, tags=tags):
-            saved += 1
-
-    _log("stop", f"extract: saved {saved}/{total} filtered (from transcript)")
-    return saved
 
 
 def save_commit_memories(set_tools_root: str = "") -> int:
@@ -338,83 +303,6 @@ def save_checkpoint(
 
 
 # ─── Internal helpers ─────────────────────────────────────────
-
-
-
-# Patterns that indicate high-value assistant content worth saving
-_INSIGHT_PATTERNS = re.compile(
-    r"(?i)"
-    r"(?:summary|conclusion|decision|architecture|root cause|bug|fix|lesson|"
-    r"implementation complete|all.*(?:tasks?|tests?).*(?:pass|complet|done)|"
-    r"key (?:finding|takeaway|insight)|"
-    r"## )"
-)
-
-# Max entries to extract per transcript (hard cap)
-_MAX_EXTRACT_ENTRIES = 30
-
-
-def _filter_transcript(transcript_path: str) -> list:
-    """Parse JSONL transcript, return only high-value entries.
-
-    High-value = errors, summaries, decisions, key outcomes.
-    Skips: routine tool calls, short messages, incremental progress.
-    Hard-capped at _MAX_EXTRACT_ENTRIES.
-    """
-    entries = []
-
-    try:
-        with open(transcript_path, "r", errors="replace") as f:
-            for line in f:
-                if len(entries) >= _MAX_EXTRACT_ENTRIES:
-                    break
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-
-                t = obj.get("type", "")
-
-                # Skip user messages entirely — they're ephemeral prompts,
-                # not insights worth persisting
-                if t == "user":
-                    continue
-
-                elif t == "assistant":
-                    msg = obj.get("message", {})
-                    for block in msg.get("content", []) or []:
-                        if len(entries) >= _MAX_EXTRACT_ENTRIES:
-                            break
-                        if not isinstance(block, dict):
-                            continue
-                        if block.get("type") == "text":
-                            text = block.get("text", "").strip()
-                            # Only save substantial text that looks like
-                            # a summary, decision, or conclusion
-                            if len(text) >= 200 and _INSIGHT_PATTERNS.search(text):
-                                entries.append(
-                                    {"role": "assistant", "content": text[:1500]}
-                                )
-                        # Skip tool_use — routine operations, not insights
-
-                elif t == "tool_result":
-                    content = obj.get("content", "")
-                    if isinstance(content, str):
-                        cl = content.lower()
-                        if (
-                            "error" in cl
-                            or "traceback" in cl
-                        ) and len(content) >= 50:
-                            entries.append(
-                                {
-                                    "role": "assistant",
-                                    "content": f"[Error] {content[:500]}",
-                                }
-                            )
-    except OSError:
-        pass
-
-    return entries
 
 
 def _save_design_choices(change_name: str, design_marker: str) -> None:
