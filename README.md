@@ -388,6 +388,7 @@ Model providers (Anthropic included) will build orchestration into their platfor
 | **[Guide](docs/guide/)** | Quick start, **writing specs**, design integration, orchestration, sentinel, worktrees, OpenSpec, memory, dashboard |
 | **[Reference](docs/reference/)** | CLI tools, configuration, architecture, plugins |
 | **[Learn](docs/learn/)** | How it works, development journey, benchmarks, lessons learned |
+| **[Research](docs/research/)** | Dated deep-dives: token optimization, cache tier analysis, divergence studies, framework comparisons |
 | **[Examples](docs/examples/)** | MiniShop walkthrough, first project setup |
 | **[Deep Dive](docs/howitworks/)** | 18-chapter technical reference covering every pipeline stage |
 | **[Contributing](CONTRIBUTING.md)** | Dev setup, testing, plugin development, code style |

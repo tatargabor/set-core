@@ -42,6 +42,19 @@ Navigation map for finding the right doc based on your role and goal.
 | [benchmarks.md](learn/benchmarks.md) | E2E run results and metrics |
 | [lessons-learned.md](learn/lessons-learned.md) | Production insights |
 
+## Research (Investigations)
+
+Dated technical deep-dives and empirical studies. See [research/README.md](research/README.md) for the full index.
+
+| Doc | Topic |
+|-----|-------|
+| [token-optimization-analysis-2026-04-09.md](research/token-optimization-analysis-2026-04-09.md) | Claude token usage deep-dive, session-restart bug, cache tier decode |
+| [template-divergence-elimination-2026-03-28.md](research/template-divergence-elimination-2026-03-28.md) | Consumer template drift cleanup |
+| [orchestration-output-divergence-2026-03-27.md](research/orchestration-output-divergence-2026-03-27.md) | Cross-run structural divergence analysis |
+| [e2e-testing-strategy.md](research/e2e-testing-strategy.md) | Consumer E2E runner design |
+| [benchmark-results.md](research/benchmark-results.md) | Memory system benchmarks |
+| [pi-mono-comparison.md](research/pi-mono-comparison.md) | Comparative analysis with Pi coding agent |
+
 ## FAQ
 
 | Doc | Description |
