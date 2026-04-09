@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useChatWebSocket, type ChatEvent } from '../hooks/useChatWebSocket'
+import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import VoiceInput from './VoiceInput'
 
 interface ChatMessage {
@@ -208,7 +209,11 @@ export default function OrchestrationChat({ project }: Props) {
     }
   }, [])
 
-  const { connected, sendMessage, newSession } = useChatWebSocket({ project, onEvent })
+  const { connected, sendMessage, startSession, newSession } = useChatWebSocket({ project, onEvent })
+  const { hasKey: hasSonioxKey, micSupported } = useSonioxAvailable()
+
+  // Splash state: true when no chat history AND user hasn't initiated voice entry yet
+  const [voiceEntryMode, setVoiceEntryMode] = useState(false)
 
   // Auto-scroll
   useEffect(() => {
@@ -274,6 +279,33 @@ export default function OrchestrationChat({ project }: Props) {
   const isProcessing = agentStatus === 'thinking' || agentStatus === 'responding'
   const isInputEnabled = connected && !isProcessing
 
+  // Splash shows when no messages and agent is idle. After the server starts
+  // streaming, agentStatus flips to thinking/responding and splash hides. After
+  // New Session (messages cleared + status idle), splash reappears.
+  const showSplash = messages.length === 0 && agentStatus === 'idle' && !voiceEntryMode
+
+  const handleDiscussClick = () => {
+    if (!connected || isProcessing) return
+    startSession()
+  }
+
+  const handleVoiceEntryClick = () => {
+    if (!connected || isProcessing) return
+    setVoiceEntryMode(true)
+  }
+
+  const handleVoiceTranscript = (text: string) => {
+    const trimmed = text.trim()
+    setVoiceEntryMode(false)
+    if (!trimmed) return
+    setMessages(prev => [
+      ...prev,
+      { id: nextId(), role: 'user', content: trimmed, timestamp: Date.now() },
+    ])
+    sendMessage(trimmed)
+    setAutoScroll(true)
+  }
+
   return (
     <div className="flex flex-col h-full max-h-[100dvh] bg-neutral-950 overflow-hidden">
       {/* Header */}
@@ -308,13 +340,63 @@ export default function OrchestrationChat({ project }: Props) {
         </button>
       </div>
 
-      {/* Messages */}
+      {/* Splash screen — big DISCUSS WITH AGENT button, optional voice entry */}
+      {showSplash && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-8 min-h-0">
+          <button
+            onClick={handleDiscussClick}
+            disabled={!connected || isProcessing}
+            className="px-8 py-6 text-xl md:text-2xl font-semibold tracking-wide bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:cursor-not-allowed text-white rounded-2xl shadow-lg transition-colors min-h-[88px] min-w-[280px]"
+          >
+            DISCUSS WITH AGENT
+          </button>
+          {hasSonioxKey && micSupported && (
+            <button
+              onClick={handleVoiceEntryClick}
+              disabled={!connected || isProcessing}
+              title="Start with voice input"
+              className="flex items-center justify-center gap-2 px-5 py-3 min-h-[56px] min-w-[200px] bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-200 rounded-xl border border-neutral-700 transition-colors"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="23" />
+                <line x1="8" y1="23" x2="16" y2="23" />
+              </svg>
+              <span className="text-sm font-medium">Speak to agent</span>
+            </button>
+          )}
+          <p className="text-xs text-neutral-600 text-center max-w-xs">
+            No agent subprocess is running. Click above to start a conversation.
+          </p>
+        </div>
+      )}
+
+      {/* Voice entry mode — show recorder in the center while capturing first utterance */}
+      {voiceEntryMode && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-8 min-h-0">
+          <div className="text-neutral-300 text-sm">Listening… speak your message</div>
+          <VoiceInput
+            onTranscript={handleVoiceTranscript}
+            onPartial={() => {}}
+            autoStart
+          />
+          <button
+            onClick={() => setVoiceEntryMode(false)}
+            className="text-xs text-neutral-500 hover:text-neutral-300 underline"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Messages (hidden while splash or voice entry is active) */}
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto overflow-x-hidden px-3 py-2 space-y-3 min-h-0"
+        className={`flex-1 overflow-auto overflow-x-hidden px-3 py-2 space-y-3 min-h-0 ${showSplash || voiceEntryMode ? 'hidden' : ''}`}
       >
-        {messages.length === 0 && (
+        {messages.length === 0 && !showSplash && !voiceEntryMode && (
           <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
             Send a message to start a conversation with the agent
           </div>
@@ -394,8 +476,8 @@ export default function OrchestrationChat({ project }: Props) {
         )}
       </div>
 
-      {/* Input area */}
-      <div className="flex-shrink-0 border-t border-neutral-800 p-2">
+      {/* Input area — hidden while splash or voice entry mode is active */}
+      <div className={`flex-shrink-0 border-t border-neutral-800 p-2 ${showSplash || voiceEntryMode ? 'hidden' : ''}`}>
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}

@@ -1,52 +1,29 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 
 interface Props {
   onTranscript: (text: string) => void
   onPartial: (text: string) => void
   disabled?: boolean
+  /** Optional: start recording as soon as the component mounts (splash voice entry). */
+  autoStart?: boolean
 }
 
 type Language = 'hu' | 'en'
 
-export default function VoiceInput({ onTranscript, onPartial, disabled }: Props) {
-  const [apiKey, setApiKey] = useState<string | null>(null)
-  const [keyChecked, setKeyChecked] = useState(false)
+export default function VoiceInput({ onTranscript, onPartial, disabled, autoStart }: Props) {
+  const { checked: keyChecked, apiKey, micSupported: micAvailable } = useSonioxAvailable()
   const [recording, setRecording] = useState(false)
   const [language, setLanguage] = useState<Language>(() => {
-    return (localStorage.getItem('set-voice-lang') as Language) || 'hu'
+    return (localStorage.getItem('set-voice-lang') as Language) || 'en'
   })
   const [duration, setDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [micAvailable, setMicAvailable] = useState(true)
 
   const clientRef = useRef<any>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const finalTextRef = useRef('')
   const partialRef = useRef('')
-
-  // Check if Soniox API key is available
-  useEffect(() => {
-    fetch('/api/soniox-key')
-      .then(res => {
-        if (res.ok) return res.json()
-        throw new Error('No key')
-      })
-      .then(data => {
-        setApiKey(data.api_key)
-        setKeyChecked(true)
-      })
-      .catch(() => {
-        setApiKey(null)
-        setKeyChecked(true)
-      })
-  }, [])
-
-  // Check if getUserMedia is available (HTTPS requirement)
-  useEffect(() => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setMicAvailable(false)
-    }
-  }, [])
 
   // Save language preference
   useEffect(() => {
@@ -159,6 +136,15 @@ export default function VoiceInput({ onTranscript, onPartial, disabled }: Props)
       }
     }
   }, [])
+
+  // Auto-start recording (splash voice entry)
+  const autoStartedRef = useRef(false)
+  useEffect(() => {
+    if (autoStart && !autoStartedRef.current && apiKey && keyChecked && !disabled && !recording) {
+      autoStartedRef.current = true
+      startRecording()
+    }
+  }, [autoStart, apiKey, keyChecked, disabled, recording, startRecording])
 
   // Don't render if no API key or mic not available
   if (!keyChecked || !apiKey || !micAvailable) {

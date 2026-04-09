@@ -86,6 +86,10 @@ export function useChatWebSocket({ project, onEvent }: UseChatWebSocketOptions) 
     send({ type: 'message', content })
   }, [send])
 
+  const startSession = useCallback(() => {
+    send({ type: 'start' })
+  }, [send])
+
   const stopAgent = useCallback(() => {
     send({ type: 'stop' })
   }, [send])
@@ -94,5 +98,5 @@ export function useChatWebSocket({ project, onEvent }: UseChatWebSocketOptions) 
     send({ type: 'new_session' })
   }, [send])
 
-  return { connected, sendMessage, stopAgent, newSession }
+  return { connected, sendMessage, startSession, stopAgent, newSession }
 }
