@@ -61,15 +61,25 @@ VERIFIER_PURPOSE_RE = re.compile(r'^\s*\[PURPOSE:([a-z_]+):([a-zA-Z0-9_-]+)\]')
 # Gap categorization — identifies the cause of a time gap inside a session
 # by pattern-matching the first user/queue content that appears after the gap.
 # Applied in declaration order; the first matching pattern wins.
+# Specific patterns MUST precede the generic `# Task` / `iteration N of M`
+# fallbacks, because those match almost every ralph resume prompt.
 GAP_CATEGORY_PATTERNS: list[tuple[str, str]] = [
+    # Review gate failures — orchestrator review LLM call running
     ("agent:review-wait",  r"critical code review failure"),
     ("agent:review-wait",  r"review findings"),
     ("agent:review-wait",  r"you must fix the review"),
+    # Verify/E2E/spec-verify gate failures — orchestrator verify LLM + test gates
+    ("agent:verify-wait",  r"spec[\s_-]*verif(?:ication|y).*fail"),
+    ("agent:verify-wait",  r"requirements not fully covered"),
+    ("agent:verify-wait",  r"spec coverage.*fail"),
+    ("agent:verify-wait",  r"coverage.*below"),
     ("agent:verify-wait",  r"failing tests"),
-    ("agent:verify-wait",  r"e2e failed"),
+    ("agent:verify-wait",  r"e2e (test )?(failed|failing)"),
     ("agent:verify-wait",  r"smoke tests? (also )?failed"),
     ("agent:verify-wait",  r"tests? also failed"),
     ("agent:verify-wait",  r"gate.*failed"),
+    ("agent:verify-wait",  r"build (failed|error)"),
+    # Ralph loop iteration boundary — generic task prompt fallbacks
     ("agent:loop-restart", r"^\s*#\s*task\s"),
     ("agent:loop-restart", r"iteration \d+ of \d+"),
 ]
@@ -552,18 +562,30 @@ def _build_gap_spans(entries: list[dict], existing_spans: list[dict], session_id
         if _is_covered(a_ms, b_ms):
             continue
 
-        # Look at the first user/queue-operation entry in the next few to get the
-        # prompt content that caused the gap to end. queue-operation entries
+        # Look at the first user/queue-operation entry in the next few to get
+        # the prompt content that caused the gap to end. queue-operation entries
         # carry the enqueued prompt directly; user entries carry text_first200.
+        # If no such entry is found in the next few, the gap is most likely a
+        # hook-processing overhead — the Claude session resumed without a new
+        # user prompt (e.g., PostToolUse hook ran for a minute, then the
+        # assistant continued).
         next_prompt = ""
-        for j in range(i + 1, min(i + 6, len(entries))):
+        next_is_user_prompt = False
+        for j in range(i + 1, min(i + 8, len(entries))):
             nt = entries[j].get("type", "")
             if nt in ("user", "queue-operation"):
                 text = entries[j].get("text_first200", "") or ""
                 if text:
                     next_prompt = text
+                    next_is_user_prompt = True
                     break
-        category = _categorize_gap(next_prompt)
+        if next_is_user_prompt:
+            category = _categorize_gap(next_prompt)
+        else:
+            # Gap has no following user/queue prompt → Claude continued the
+            # session itself (hook processing between tool_result and next
+            # assistant/attachment block).
+            category = "agent:hook-overhead"
         result.append({
             "category": category,
             "start": a["ts"],

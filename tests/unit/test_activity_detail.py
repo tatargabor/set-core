@@ -428,6 +428,17 @@ class TestCategorizeGap:
     def test_smoke_tests_failed_becomes_verify_wait(self):
         assert _categorize_gap("Note: some inherited smoke tests also failed (non-blocking)") == "agent:verify-wait"
 
+    def test_spec_verification_failed_becomes_verify_wait(self):
+        # Key case: the generic `# Task` loop-restart pattern must NOT win
+        # before the specific spec-verification-failed pattern.
+        assert _categorize_gap("# Task\nSpec verification FAILED — requirements not fully covered") == "agent:verify-wait"
+
+    def test_spec_coverage_below_becomes_verify_wait(self):
+        assert _categorize_gap("# Task\nSpec coverage is below threshold (28/32 requirements)") == "agent:verify-wait"
+
+    def test_build_error_becomes_verify_wait(self):
+        assert _categorize_gap("# Task\nBuild failed in web/ — TypeScript errors in three files") == "agent:verify-wait"
+
     def test_generic_task_prompt_becomes_loop_restart(self):
         assert _categorize_gap("# Task\nImplement REQ-XYZ-001 in src/foo.ts") == "agent:loop-restart"
 
@@ -475,6 +486,39 @@ class TestBuildGapSpans:
         gaps = _build_gap_spans(entries, llm_spans, "s")
         assert len(gaps) == 1
         assert gaps[0]["category"] == "agent:verify-wait"
+
+    def test_gap_without_following_user_prompt_is_hook_overhead(self):
+        """A gap with no user/queue-operation entry after it (just more
+        assistant/attachment entries) means Claude resumed the session by
+        itself — typically hook processing between the tool_result and
+        the next assistant turn."""
+        entries = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "task"),
+            _assistant_entry(_ts(1010), tool_uses=[("t1", "Write", {"file_path": "/x"})]),
+            _user_entry(_ts(1011), tool_results=["t1"]),
+            # 90 seconds of nothing (hook running)
+            _assistant_entry(_ts(1101), "Now let me verify the file"),
+        ])
+        # No llm-wait span covers [1011, 1101] because user[1011] has no text
+        # content (only tool_result), and the assistant[1101] is preceded by
+        # user[1011] which creates a llm-wait span from 1011 to 1101 (90s).
+        # So the gap IS covered by llm-wait — test a different shape where
+        # attachment blocks break the user→assistant pattern.
+        entries2 = _parse_session_file_from_list([
+            _user_entry(_ts(1000), "task"),
+            _assistant_entry(_ts(1010), tool_uses=[("t1", "Write", {"file_path": "/x"})]),
+            _user_entry(_ts(1011), tool_results=["t1"]),
+            # attachment at 1011 (hook output)
+            {"type": "attachment", "timestamp": _ts(1011), "uuid": "a1"},
+            # 90-second gap with nothing — hook processing
+            {"type": "attachment", "timestamp": _ts(1101), "uuid": "a2"},
+            _assistant_entry(_ts(1102), "Now let me verify"),
+        ])
+        llm_spans = _build_llm_wait_spans(entries2, "s")
+        tool_spans = _build_tool_spans(entries2, "s")
+        gaps = _build_gap_spans(entries2, llm_spans + tool_spans, "s")
+        hook_gaps = [g for g in gaps if g["category"] == "agent:hook-overhead"]
+        assert len(hook_gaps) >= 1, f"expected hook-overhead gap, got: {[g['category'] for g in gaps]}"
 
     def test_gap_fully_covered_by_existing_span_is_skipped(self):
         entries = _parse_session_file_from_list([

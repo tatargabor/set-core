@@ -63,6 +63,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   'agent:review-wait': '#fb923c',  // orange — orchestrator review gate running
   'agent:verify-wait': '#ef4444',  // red — orchestrator verify/e2e gate running
   'agent:loop-restart': '#64748b', // slate — ralph iter boundary
+  'agent:hook-overhead': '#6366f1', // indigo — hook processing between turns
   'agent:gap': '#3f3f46',          // zinc — unclassified gap
 }
 
@@ -95,6 +96,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   'agent:review-wait': 'Review Gate',
   'agent:verify-wait': 'Verify Gate',
   'agent:loop-restart': 'Iter Restart',
+  'agent:hook-overhead': 'Hook Overhead',
   'agent:gap': 'Gap',
 }
 
