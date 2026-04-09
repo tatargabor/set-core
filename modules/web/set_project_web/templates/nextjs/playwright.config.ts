@@ -1,11 +1,25 @@
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PW_PORT) || 3000;
 
-// NEXTAUTH_SECRET MUST be provided by global-setup.ts or .env — no fallback.
-// Fallback secrets violate security-patterns.md § 10 (allow stale cookies
-// to bypass auth). global-setup.ts crashes loudly if it's missing.
+// NEXTAUTH_SECRET for the E2E webServer.
+//
+// This MUST be set at config load time (before `webServer.env` spreads
+// process.env below) because globalSetup runs AFTER the webServer child
+// process is spawned — too late for it to inherit the value.
+//
+// Precedence:
+//   1. Real `.env` / `NEXTAUTH_SECRET` set in the environment (e.g. CI secret).
+//   2. Otherwise: a cryptographically random secret generated per test run.
+//
+// Safe because playwright.config.ts is never loaded by production builds —
+// it only runs when `npx playwright test` invokes it. This does NOT violate
+// security-patterns.md § 10 (which bans fallbacks in *production* code).
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = randomBytes(32).toString("base64");
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",

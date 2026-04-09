@@ -242,3 +242,33 @@ This applies to:
 - Any value that, if known, grants access to protected resources
 
 **Why this matters:** A hardcoded fallback means production can silently run with a weak secret if the env var is misconfigured. Attackers who know the fallback value (from source code) can forge valid tokens. Stale cookies from development sessions bypass auth when the fallback matches.
+
+### Lazy validation — never throw at module top level
+
+"Fail loudly" MUST NOT be implemented as a top-level `throw` in a file imported by `src/app/**`. Next.js statically analyses routes during `next build` and executes top-level module code to collect page metadata; a top-level throw crashes the build with a cryptic "Collecting page data" error even when the code path needing the secret is never reached during build.
+
+```typescript
+// ✗ WRONG — crashes `next build` for any route that transitively imports this file
+const secret = process.env.NEXTAUTH_SECRET
+if (!secret) throw new Error("NEXTAUTH_SECRET is required")
+export const { auth } = NextAuth({ secret, providers: [...] })
+
+// ✓ CORRECT — validation runs at request time inside the handler/callback
+function requireSecret(name: string): string {
+  const v = process.env[name]
+  if (!v) throw new Error(`${name} environment variable is required`)
+  return v
+}
+export const { auth } = NextAuth({
+  // Auth.js v5 reads NEXTAUTH_SECRET from process.env at request time automatically.
+  providers: [
+    Credentials({
+      async authorize(credentials) {
+        // Use requireSecret() here if you need to reference a secret inside the handler.
+      },
+    }),
+  ],
+})
+```
+
+If you genuinely need fail-fast on server startup (not per-request), put the check in `src/instrumentation.ts` — Next.js runs that once on server boot and NOT during `next build`. See also auth-conventions.md § "No Module-Level Env Validation Throws".

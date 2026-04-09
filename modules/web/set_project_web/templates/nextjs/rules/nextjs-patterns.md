@@ -213,3 +213,88 @@ export default async function CheckoutLayout({ children }) {
 - Cart/auth/theme state behaves differently on different routes → likely duplicate provider
 
 **When you DO need a different layout:** use a route group (e.g., `(shop)` vs `(checkout-fullscreen)`) at the same level as the parent, NOT a nested layout that redeclares everything.
+
+## 5. No Raw `<img>` — Always `next/image`
+
+Raw `<img>` tags bypass Next.js image optimisation: no lazy loading, no responsive `srcset`, no format negotiation (AVIF/WebP), no CLS prevention. They also trip ESLint rules (`@next/next/no-img-element`) and the review gate consistently flags them.
+
+**Wrong — raw `<img>`:**
+```tsx
+<img src={product.imageUrl} alt={product.name} className="h-64 w-full object-cover" />
+```
+
+**Correct — `next/image` with explicit dimensions or `fill`:**
+```tsx
+import Image from "next/image";
+
+// Known intrinsic size:
+<Image
+  src={product.imageUrl}
+  alt={product.name}
+  width={640}
+  height={480}
+  className="object-cover"
+/>
+
+// Unknown size — parent container must be `relative`:
+<div className="relative h-64 w-full">
+  <Image src={product.imageUrl} alt={product.name} fill className="object-cover" />
+</div>
+```
+
+**Remote hosts:** any external image origin MUST be listed in `next.config.js` → `images.remotePatterns`. Otherwise `next/image` throws at build time:
+
+```js
+// next.config.js
+module.exports = {
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "placehold.co" },
+      { protocol: "https", hostname: "cdn.example.com" },
+    ],
+  },
+};
+```
+
+**The rule:** zero raw `<img>` tags in `src/app/**` and `src/components/**`. If the image source is dynamic/remote, whitelist the host in `remotePatterns`. Use `fill` only inside a `position: relative` parent.
+
+## 6. `React.cache()` for `generateMetadata` + Page Dedup
+
+When a page has both `generateMetadata` and a default export that each fetch the same record (product, story, user), the DB is hit twice per request. Wrap the shared loader in `React.cache()` so the second call returns the memoised result.
+
+**Wrong — two queries per request:**
+```tsx
+// app/products/[slug]/page.tsx
+export async function generateMetadata({ params }: Props) {
+  const product = await db.product.findUnique({ where: { slug: params.slug } });
+  return { title: product?.name };
+}
+
+export default async function Page({ params }: Props) {
+  const product = await db.product.findUnique({ where: { slug: params.slug } });
+  if (!product) notFound();
+  return <ProductView product={product} />;
+}
+```
+
+**Correct — `cache()`-wrapped loader, called twice but queried once:**
+```tsx
+import { cache } from "react";
+
+const getProduct = cache(async (slug: string) => {
+  return db.product.findUnique({ where: { slug } });
+});
+
+export async function generateMetadata({ params }: Props) {
+  const product = await getProduct(params.slug);
+  return { title: product?.name };
+}
+
+export default async function Page({ params }: Props) {
+  const product = await getProduct(params.slug);
+  if (!product) notFound();
+  return <ProductView product={product} />;
+}
+```
+
+**The rule:** any record fetched by both `generateMetadata` and the page's default export MUST go through a `React.cache()`-wrapped loader. The memoisation is per-request, so it's safe and automatic.

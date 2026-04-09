@@ -43,6 +43,43 @@ const updated = await tx.giftCard.updateMany({
 if (updated.count === 0) throw new Error("Insufficient balance")
 ```
 
+### Cart `add` / Quantity Update MUST Wrap Stock Check + Write
+
+A common cart bug is reading stock with `findUnique`, then calling `upsert`/`update` as a separate operation. Two concurrent users both see the last unit in stock and both succeed — the shop oversells.
+
+**Wrong — two round-trips, race window in between:**
+```typescript
+// POST /api/cart — add item to cart
+const variant = await db.productVariant.findUnique({ where: { id: variantId } })
+if (variant.stock < qty) return Response.json({ error: "Out of stock" }, { status: 400 })
+
+await db.cartItem.upsert({
+  where: { cartId_variantId: { cartId, variantId } },
+  create: { cartId, variantId, quantity: qty },
+  update: { quantity: { increment: qty } },
+})
+```
+
+**Correct — single `$transaction` block with a conditional update:**
+```typescript
+await db.$transaction(async (tx) => {
+  const reserved = await tx.productVariant.updateMany({
+    where: { id: variantId, stock: { gte: qty } },
+    data: { stock: { decrement: qty } },
+  })
+  if (reserved.count === 0) {
+    throw new Error("INSUFFICIENT_STOCK")
+  }
+  await tx.cartItem.upsert({
+    where: { cartId_variantId: { cartId, variantId } },
+    create: { cartId, variantId, quantity: qty },
+    update: { quantity: { increment: qty } },
+  })
+})
+```
+
+The same pattern applies to `PATCH /api/cart/[itemId]` (quantity change): compute the delta, decrement stock with a conditional `updateMany`, update the cart row — all inside one `$transaction`. Never split the stock check from the cart write.
+
 ## Payment Failure Rollback
 When checkout has multiple side effects (stock, coupon, gift card), ALL must be reversed on payment failure. Apply side effects AFTER payment, or explicitly reverse in catch block.
 

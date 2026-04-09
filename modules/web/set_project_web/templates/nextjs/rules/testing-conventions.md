@@ -268,6 +268,131 @@ After merging other changes into main, E2E tests commonly break due to stale cac
 - **Scope selectors to containers** — when multiple elements match a selector, scope to a parent: `page.getByRole('banner').getByText('Home')` instead of `page.getByText('Home')`.
 - **Password fields** — `getByLabel('Password')` may match both the input and a show/hide toggle button. Use `page.locator('#password')` or `data-testid` instead.
 
+## Playwright Strict Mode on Repeated Elements
+
+Playwright's default strict mode throws on selectors that match multiple elements. Common repeating components that trigger this:
+
+- Star ratings / review badges / review counts (appear in listing cards AND detail pages AND cross-sell)
+- Validation error messages (same error text shown above AND below the form)
+- Cart badge counts (header + mobile drawer + footer mini-cart)
+- "Add to cart" buttons (card view + detail view)
+- Status pills / inventory stamps ("In stock", "Sale")
+
+**Wrong — matches multiple elements, Playwright throws:**
+```typescript
+await expect(page.getByText(/★.*4\.5/)).toBeVisible();
+await expect(page.getByText("This field is required")).toBeVisible();
+```
+
+**Correct — use `.first()`, scope to a container, or use `data-testid`:**
+```typescript
+// Option A: .first() when the test only cares any instance exists
+await expect(page.getByText(/★.*4\.5/).first()).toBeVisible();
+
+// Option B: scope to the specific section under test
+await expect(
+  page.getByRole("article", { name: /product-detail/ }).getByText(/★.*4\.5/)
+).toBeVisible();
+
+// Option C: add data-testid to the element the test targets
+await expect(page.getByTestId("product-detail-rating")).toBeVisible();
+```
+
+**The rule:** If a selector could plausibly match a cross-sell card, a related-products rail, or a mini-cart, add `.first()`, scope it, or use `data-testid`. Never rely on a bare text/role selector for any element that could appear more than once on a real page.
+
+## `waitForURL` — Don't Use Locale-Only Patterns
+
+`waitForURL` with a regex that matches the locale prefix alone will resolve as soon as the response hits *any* locale-prefixed URL — including the login page itself (`/hu/login`). The test then races forward before the actual redirect completes.
+
+**Wrong — matches the login page too, resolves instantly:**
+```typescript
+await page.waitForURL(/\/hu\//);  // matches /hu/login AND /hu/account
+```
+
+**Correct — include the target path:**
+```typescript
+await page.waitForURL(/\/(hu|en)\/account/);
+// or, exact final URL:
+await page.waitForURL("**/account");
+```
+
+**The rule:** `waitForURL` patterns MUST include the target path, not just the locale prefix. If the test needs to wait for "any non-login page", use `waitForURL(url => !url.pathname.includes("/login"))`.
+
+## shadcn/Radix Checkbox — Use `.click()`, Not `.check()`
+
+shadcn/ui and Radix UI render checkboxes as `<button role="checkbox">` elements backed by state, not as native `<input type="checkbox">`. Playwright's `.check()` method targets native inputs and silently no-ops on the Radix version.
+
+**Wrong — no-op on Radix checkbox:**
+```typescript
+await page.getByLabel("Only in stock").check();
+```
+
+**Correct — click the button:**
+```typescript
+await page.getByLabel("Only in stock").click();
+// For assertions, use aria-checked (not .isChecked()):
+await expect(page.getByLabel("Only in stock")).toHaveAttribute("aria-checked", "true");
+```
+
+**The rule:** For any form control from shadcn/ui, Radix, Headless UI, or similar state-driven component libraries, use `.click()` and assert via `aria-*` attributes. Reserve `.check()` for native `<input type="checkbox">`.
+
+## Test Data MUST Come From Seed, Never Hardcoded
+
+E2E tests that reference specific products, users, slugs, or IDs MUST source them from the seed data — never hardcode the values in the test file. When the seed changes (rename, locale flip, id reshuffle), hardcoded tests break after main merge even though nothing the test targets is broken.
+
+**Wrong — hardcoded slug diverges from seed:**
+```typescript
+await page.goto(`/products/ethiopia-yirgacheffe`);  // seed uses a different slug
+```
+
+**Correct — import from a shared fixture derived from seed:**
+```typescript
+// tests/e2e/fixtures/seed-data.ts
+import { prisma } from "@/lib/prisma";
+export async function firstProductSlug() {
+  const p = await prisma.product.findFirst({ orderBy: { createdAt: "asc" } });
+  if (!p) throw new Error("seed did not create any products");
+  return p.slug;
+}
+
+// tests/e2e/product.spec.ts
+import { firstProductSlug } from "./fixtures/seed-data";
+test("product detail", async ({ page }) => {
+  const slug = await firstProductSlug();
+  await page.goto(`/products/${slug}`);
+});
+```
+
+Alternative: expose a `TEST_*` constant in `prisma/seed.ts` that the test imports directly. The point is a single source of truth.
+
+**The rule:** No hardcoded slugs, emails, IDs, or titles in E2E tests. Either query the DB in a fixture helper, or import a named constant from the seed. When the seed changes, the test updates itself.
+
+## `e2e-manifest.json` — Append-Only REQ Coverage
+
+`set/orchestration/e2e-manifest.json` accumulates REQ coverage across changes. Every change's implementation MUST merge its new REQs with the existing file, NOT overwrite it. Wiping prior changes' REQs causes the verifier to flag previously-merged changes as no-longer-covered.
+
+**Wrong — replaces prior changes' entries:**
+```typescript
+// feat/feature-b rewrites the file
+const manifest = { cumulative_requirements: { "REQ-B-001": { ... } } };
+writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
+```
+
+**Correct — read, merge, write:**
+```typescript
+const existing = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
+const merged = {
+  ...existing,
+  cumulative_requirements: {
+    ...existing.cumulative_requirements,
+    "REQ-B-001": { ... },
+  },
+};
+writeFileSync(MANIFEST_PATH, JSON.stringify(merged, null, 2));
+```
+
+Same rule applies to the sibling `messages/<locale>.<change>.json` i18n sidecars — never overwrite a sidecar from a different change's scope (a wipe to `{}` is the most common failure mode).
+
 ## Hydration Race Conditions
 
 Next.js dev server has known race conditions during E2E tests:

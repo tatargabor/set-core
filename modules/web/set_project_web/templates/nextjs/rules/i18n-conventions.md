@@ -16,6 +16,54 @@ paths:
 - Pipeline/system messages shown to users (warnings, notes, status text) MUST be translated — if the source generates English strings, add a translation layer before display
 - Seed data content (stories, descriptions, placeholder text) MUST have translations for all supported locales — do not seed with English-only content for a multilingual app
 
+## No Hardcoded Locale Strings
+
+Any call to `Intl.*`, `toLocaleString`, `toLocaleDateString`, `Intl.DateTimeFormat`, `Intl.NumberFormat`, or hand-written `aria-label` values that embed language text MUST use the current locale from `useLocale()` / `getLocale()` — not a hardcoded string like `"hu-HU"` or `"en-US"`.
+
+**Wrong — hardcoded locale ignores the user's language:**
+```typescript
+// Hungarian date format even when the page is rendered in English
+const formatted = date.toLocaleDateString("hu-HU");
+
+// Hungarian currency even for English users
+const price = amount.toLocaleString("hu-HU", { style: "currency", currency: "HUF" });
+
+// English aria-label even when the page is Hungarian
+<button aria-label="Add to wishlist">...</button>
+```
+
+**Correct — derive from the current locale:**
+```typescript
+"use client";
+import { useLocale, useTranslations } from "next-intl";
+
+export function ReviewDate({ date }: { date: Date }) {
+  const locale = useLocale();
+  return <time>{date.toLocaleDateString(locale)}</time>;
+}
+
+// Server component equivalent
+import { getLocale, getTranslations } from "next-intl/server";
+const locale = await getLocale();
+const formatted = date.toLocaleDateString(locale);
+
+// aria-label uses a translation key, not a hardcoded string
+const t = useTranslations("wishlist");
+<button aria-label={t("add")}>...</button>
+```
+
+**The rule:** the first argument to any `toLocale*` / `Intl.*` constructor MUST be `locale` from `useLocale()` / `getLocale()`. The only exception is code that intentionally normalises to a specific locale (e.g., log lines written in English) — add an inline comment explaining why.
+
+## Sidecar Files Must Never Be Wiped
+
+`messages/<locale>.<change>.json` per-change sidecar files (see Sidecar File Resilience below) are the vehicle that moves translations from a feature worktree into `messages/<locale>.json` on archive. Until the archive step runs, each change's sidecar holds that change's strings — and ONLY that change's strings.
+
+- **Never overwrite a sidecar that belongs to a different scope** (e.g., a cart change must not write `messages/hu.admin_panel.json`).
+- **Never reset a sidecar to `{}`** as a "clean slate" — that drops whatever was already merged from upstream changes and breaks all localised text on merged-in features.
+- **If your change adds keys to an existing sidecar, merge — do not replace.** Read the file, spread the existing content, add your keys, write it back.
+
+The same append-only discipline applies to `set/orchestration/e2e-manifest.json` (REQ coverage) — see testing-conventions.md § "`e2e-manifest.json` — Append-Only REQ Coverage".
+
 ## Sidecar File Resilience
 
 When using per-change i18n sidecar files (e.g., `messages/hu.feature_name.json` that get merged into base `messages/hu.json` during archive), ALL sidecar imports MUST use try/catch:

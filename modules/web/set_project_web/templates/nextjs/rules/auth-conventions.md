@@ -138,3 +138,91 @@ export const config = { matcher: ["/admin/:path*"] }
 **Why this works:** middleware imports `getToken` from `next-auth/jwt` (Edge-safe JWT verification, no bcryptjs). The full Credentials provider with bcryptjs lives in `auth.ts` which is only imported by Node-runtime contexts (API routes, Server Actions, layouts).
 
 **Anti-pattern:** importing `auth` from `auth.ts` in `middleware.ts` — pulls bcryptjs into Edge Runtime → build error or runtime crash.
+
+## Auth Action Ordering — Side-Effects AFTER Verification
+
+Login/register server actions that also mutate per-user state (cart merge, audit log, welcome email, history write) MUST run those side-effects ONLY after credential verification has succeeded. Running them before is both a correctness bug (stale/bot cart content pollutes the real account) and a timing oracle (attackers can measure login latency to learn which emails exist).
+
+**Wrong — cart merge runs before password check:**
+```typescript
+export async function loginAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+
+  // ❌ Fires regardless of whether the password is correct.
+  //    - Bot traffic pollutes real users' carts.
+  //    - Timing difference between "merge ran" and "merge didn't" leaks
+  //      whether the account exists before any credential check.
+  await mergeGuestCartIntoUser(email);
+
+  const result = await signIn("credentials", { email, password, redirect: false });
+  if (result?.error) return { error: "Invalid credentials" };
+  // ...
+}
+```
+
+**Correct — verify first, mutate second:**
+```typescript
+export async function loginAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+
+  const result = await signIn("credentials", { email, password, redirect: false });
+  if (result?.error) return { error: "Invalid credentials" };
+
+  // ✅ Only reachable on successful auth. Cart merge, audit log,
+  //    and any "first-time login" side-effects go here.
+  const session = await auth();
+  if (session?.user?.id) {
+    await mergeGuestCartIntoUser(session.user.id);
+  }
+  // ...
+}
+```
+
+**The rule:** In any auth-adjacent server action (`login`, `register`, `reset-password`, `verify-email`), the ordering MUST be:
+1. Parse and validate input.
+2. Run credential/token verification.
+3. On success only: run side-effects that touch per-user state.
+4. Return/redirect.
+
+Audit logs and rate-limit counters are the exception — they record the attempt regardless of outcome and should log BOTH success and failure (but never mutate user data on failure).
+
+## No Module-Level Env Validation Throws
+
+Validation of secret env vars (see security-patterns.md § 10) MUST run **lazily** inside the handler/callback that uses the secret — never at module top level. Top-level throws crash `next build` during page data collection for any route that transitively imports the file, even when the code path using the secret is never actually hit during build.
+
+**Wrong — throws at import time, crashes `next build` for all admin routes:**
+```typescript
+// src/lib/auth.ts
+const secret = process.env.NEXTAUTH_SECRET;
+if (!secret) {
+  throw new Error("NEXTAUTH_SECRET is required"); // ❌ runs during build
+}
+
+export const { handlers, auth } = NextAuth({
+  secret,
+  // ...
+});
+```
+
+Next.js statically analyses every route during build. Importing `auth.ts` into `app/admin/layout.tsx` runs this top-level throw, so `pnpm build` fails with a cryptic "Collecting page data" error — even if `NEXTAUTH_SECRET` will be set at runtime.
+
+**Correct — lazy validation inside the callback:**
+```typescript
+// src/lib/auth.ts
+function getSecret(): string {
+  const s = process.env.NEXTAUTH_SECRET;
+  if (!s) throw new Error("NEXTAUTH_SECRET is required");
+  return s;
+}
+
+export const { handlers, auth } = NextAuth({
+  // Auth.js v5 reads NEXTAUTH_SECRET from process.env automatically at
+  // request time. Explicit `secret: getSecret()` in a callback is also OK.
+  // What's NOT ok: a bare top-level throw.
+  providers: [/* ... */],
+});
+```
+
+**The rule:** any `throw` that depends on `process.env.*` MUST live inside a function body that only runs at request/handler time. If the validation needs to fail fast on startup, put it in a dedicated `instrumentation.ts` (Next.js calls this once on server boot, never during build). Never at top level of a module imported by `src/app/**`.
