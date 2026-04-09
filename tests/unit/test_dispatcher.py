@@ -23,6 +23,7 @@ from set_orch.dispatcher import (
     _format_conventions_summary,
     _is_doc_change,
     _load_requirements_lookup,
+    _merge_e2e_manifest,
     bootstrap_worktree,
     recover_orphaned_changes,
     resolve_change_model,
@@ -990,3 +991,145 @@ class TestBuildReviewLearnings:
         content = _build_input_content("my-change", "Build checkout", "", ctx)
         assert "## Lessons from Prior Changes" in content
         assert "No auth" in content
+
+
+# ─── _merge_e2e_manifest — cumulative REQ coverage ──────────────────────────
+
+
+class TestMergeE2eManifest:
+    """Regression tests for the dispatcher e2e-manifest merge bug.
+
+    Bug: dispatcher used to overwrite e2e-manifest.json with only the current
+    change's REQs, wiping prior merged changes' cumulative coverage. Agents
+    kept adding manual 'append prior requirements' fix commits. Root cause
+    was in dispatcher.py, not the agent.
+    """
+
+    def test_fresh_manifest_from_scratch(self):
+        """First dispatch on an empty project — nothing to merge, own REQs only."""
+        result = _merge_e2e_manifest(
+            existing=None,
+            change_name="foundation-setup",
+            change_reqs=["REQ-FND-001", "REQ-FND-002"],
+        )
+        assert result["change"] == "foundation-setup"
+        assert result["requirements"] == ["REQ-FND-001", "REQ-FND-002"]
+        assert result["spec_files"] == ["tests/e2e/foundation-setup.spec.ts"]
+        assert result["requirements_by_change"] == {
+            "foundation-setup": ["REQ-FND-001", "REQ-FND-002"],
+        }
+
+    def test_second_dispatch_preserves_prior_reqs(self):
+        """Dispatch B on a worktree branched from main — B's REQs unioned with A's."""
+        existing = {
+            "change": "foundation-setup",
+            "spec_files": ["tests/e2e/foundation-setup.spec.ts"],
+            "requirements": ["REQ-FND-001", "REQ-FND-002"],
+            "requirements_by_change": {
+                "foundation-setup": ["REQ-FND-001", "REQ-FND-002"],
+            },
+        }
+        result = _merge_e2e_manifest(
+            existing=existing,
+            change_name="auth-and-nav",
+            change_reqs=["REQ-AUTH-001", "REQ-AUTH-002"],
+        )
+        # Current change is always the "pointer"
+        assert result["change"] == "auth-and-nav"
+        # Requirements cumulative — union in insertion order
+        assert result["requirements"] == [
+            "REQ-FND-001", "REQ-FND-002", "REQ-AUTH-001", "REQ-AUTH-002",
+        ]
+        # Spec files cumulative
+        assert result["spec_files"] == [
+            "tests/e2e/foundation-setup.spec.ts",
+            "tests/e2e/auth-and-nav.spec.ts",
+        ]
+        # Per-change map preserved AND extended
+        assert result["requirements_by_change"] == {
+            "foundation-setup": ["REQ-FND-001", "REQ-FND-002"],
+            "auth-and-nav": ["REQ-AUTH-001", "REQ-AUTH-002"],
+        }
+
+    def test_dispatch_with_empty_reqs_does_not_drop_prior(self):
+        """Dispatching a REQ-less change must not wipe the prior manifest."""
+        existing = {
+            "change": "foundation",
+            "spec_files": ["tests/e2e/foundation.spec.ts"],
+            "requirements": ["REQ-FND-001"],
+            "requirements_by_change": {"foundation": ["REQ-FND-001"]},
+        }
+        result = _merge_e2e_manifest(
+            existing=existing,
+            change_name="docs-only",
+            change_reqs=[],
+        )
+        assert result["requirements"] == ["REQ-FND-001"]
+        assert "tests/e2e/foundation.spec.ts" in result["spec_files"]
+        assert result["requirements_by_change"]["foundation"] == ["REQ-FND-001"]
+        assert result["requirements_by_change"]["docs-only"] == []
+
+    def test_duplicate_reqs_deduped_insertion_order(self):
+        """Cross-cutting REQs that appear in two changes stay once, first-wins."""
+        existing = {
+            "requirements": ["REQ-A-001", "REQ-SHARED-001"],
+            "spec_files": [],
+            "requirements_by_change": {"change-a": ["REQ-A-001", "REQ-SHARED-001"]},
+        }
+        result = _merge_e2e_manifest(
+            existing=existing,
+            change_name="change-b",
+            change_reqs=["REQ-SHARED-001", "REQ-B-001"],
+        )
+        # REQ-SHARED-001 not duplicated, original position preserved
+        assert result["requirements"] == [
+            "REQ-A-001", "REQ-SHARED-001", "REQ-B-001",
+        ]
+        # Both changes still list their own claim on it
+        assert result["requirements_by_change"]["change-b"] == [
+            "REQ-SHARED-001", "REQ-B-001",
+        ]
+
+    def test_corrupt_existing_treated_as_empty(self):
+        """Garbage 'existing' input degrades gracefully to empty baseline."""
+        for bad in (None, [], "not a dict", 42):
+            result = _merge_e2e_manifest(
+                existing=bad,
+                change_name="x",
+                change_reqs=["REQ-X-001"],
+            )
+            assert result["requirements"] == ["REQ-X-001"]
+            assert result["requirements_by_change"] == {"x": ["REQ-X-001"]}
+
+    def test_existing_with_wrong_field_types_ignored(self):
+        """If requirements/spec_files/requirements_by_change have wrong types, ignore."""
+        existing = {
+            "requirements": "not a list",
+            "spec_files": {"not": "a list"},
+            "requirements_by_change": ["not", "a", "dict"],
+        }
+        result = _merge_e2e_manifest(
+            existing=existing,
+            change_name="x",
+            change_reqs=["REQ-X-001"],
+        )
+        assert result["requirements"] == ["REQ-X-001"]
+        assert result["spec_files"] == ["tests/e2e/x.spec.ts"]
+        assert result["requirements_by_change"] == {"x": ["REQ-X-001"]}
+
+    def test_caller_dict_not_mutated(self):
+        """Pure function — caller's existing dict must not be mutated."""
+        existing = {
+            "requirements": ["REQ-A"],
+            "spec_files": ["tests/e2e/a.spec.ts"],
+            "requirements_by_change": {"a": ["REQ-A"]},
+        }
+        snapshot = {
+            "requirements": list(existing["requirements"]),
+            "spec_files": list(existing["spec_files"]),
+            "requirements_by_change": dict(existing["requirements_by_change"]),
+        }
+        _merge_e2e_manifest(existing=existing, change_name="b", change_reqs=["REQ-B"])
+        assert existing["requirements"] == snapshot["requirements"]
+        assert existing["spec_files"] == snapshot["spec_files"]
+        assert existing["requirements_by_change"] == snapshot["requirements_by_change"]

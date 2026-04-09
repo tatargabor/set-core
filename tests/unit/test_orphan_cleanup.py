@@ -24,12 +24,13 @@ def state_dir(tmp_path):
     return state_file
 
 
-def _write_state(state_file, changes):
+def _write_state(state_file, changes, merge_queue=None):
     """Write a test orchestration state."""
     state = {
         "status": "running",
         "plan_version": 1,
         "changes": changes,
+        "merge_queue": list(merge_queue or []),
     }
     state_file.write_text(json.dumps(state, indent=2))
 
@@ -124,6 +125,83 @@ class TestStuckStepCleanup:
 
         state = json.loads(state_dir.read_text())
         assert state["changes"][0]["current_step"] == "fixing"
+
+
+class TestRestoreOrphanedIntegrating:
+    """Regression: sentinel dying mid-merge leaves change in status=integrating
+    but NOT in merge_queue. Without recovery, it sits there forever, occupying
+    a parallel dispatch slot and never getting merged.
+    """
+
+    def test_integrating_with_worktree_gets_requeued(self, state_dir, tmp_path):
+        wt = tmp_path / "wt-shopping-cart"
+        wt.mkdir()
+        _write_state(state_dir, [{
+            "name": "shopping-cart",
+            "status": "integrating",
+            "current_step": "fixing",
+            "worktree_path": str(wt),
+            "scope": "", "complexity": "S",
+        }], merge_queue=[])
+
+        _cleanup_orphans(str(state_dir))
+
+        state = json.loads(state_dir.read_text())
+        assert "shopping-cart" in state["merge_queue"]
+        # Status stays integrating — execute_merge_queue will process it
+        assert state["changes"][0]["status"] == "integrating"
+
+    def test_integrating_already_in_queue_untouched(self, state_dir, tmp_path):
+        wt = tmp_path / "wt-a"
+        wt.mkdir()
+        _write_state(state_dir, [{
+            "name": "a",
+            "status": "integrating",
+            "current_step": "fixing",
+            "worktree_path": str(wt),
+            "scope": "", "complexity": "S",
+        }], merge_queue=["a"])
+
+        _cleanup_orphans(str(state_dir))
+
+        state = json.loads(state_dir.read_text())
+        # Still exactly one entry — we don't duplicate
+        assert state["merge_queue"].count("a") == 1
+
+    def test_integrating_without_worktree_not_requeued(self, state_dir):
+        """No worktree on disk — _poll_active_changes handles this case by
+        marking the change stalled. Cleanup MUST NOT requeue, otherwise
+        execute_merge_queue will try to gate a non-existent worktree."""
+        _write_state(state_dir, [{
+            "name": "a",
+            "status": "integrating",
+            "current_step": "fixing",
+            "worktree_path": "/tmp/this-does-not-exist-12345",
+            "scope": "", "complexity": "S",
+        }], merge_queue=[])
+
+        _cleanup_orphans(str(state_dir))
+
+        state = json.loads(state_dir.read_text())
+        assert state["merge_queue"] == []
+
+    def test_non_integrating_not_requeued(self, state_dir, tmp_path):
+        """Running / verifying / done changes are NOT requeued by this path.
+        Orphaned 'done' is handled by the self-watchdog + suspended poll loops.
+        """
+        wt = tmp_path / "wt-a"
+        wt.mkdir()
+        _write_state(state_dir, [{
+            "name": "a",
+            "status": "verifying",
+            "worktree_path": str(wt),
+            "scope": "", "complexity": "S",
+        }], merge_queue=[])
+
+        _cleanup_orphans(str(state_dir))
+
+        state = json.loads(state_dir.read_text())
+        assert state["merge_queue"] == []
 
 
 class TestNoCleanupNeeded:

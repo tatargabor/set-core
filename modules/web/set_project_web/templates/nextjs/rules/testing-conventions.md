@@ -367,31 +367,13 @@ Alternative: expose a `TEST_*` constant in `prisma/seed.ts` that the test import
 
 **The rule:** No hardcoded slugs, emails, IDs, or titles in E2E tests. Either query the DB in a fixture helper, or import a named constant from the seed. When the seed changes, the test updates itself.
 
-## `e2e-manifest.json` — Append-Only REQ Coverage
+## `e2e-manifest.json` — Engine-Managed, Hands-Off
 
-`set/orchestration/e2e-manifest.json` accumulates REQ coverage across changes. Every change's implementation MUST merge its new REQs with the existing file, NOT overwrite it. Wiping prior changes' REQs causes the verifier to flag previously-merged changes as no-longer-covered.
+`e2e-manifest.json` at the project root is written and maintained by the orchestrator (dispatcher writes it on dispatch, verifier updates `spec_files` on completion). It holds cumulative REQ coverage and spec-file inventory across every merged change, plus a `requirements_by_change` map for per-change ownership.
 
-**Wrong — replaces prior changes' entries:**
-```typescript
-// feat/feature-b rewrites the file
-const manifest = { cumulative_requirements: { "REQ-B-001": { ... } } };
-writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
-```
+**Agents MUST NOT edit `e2e-manifest.json` manually.** If a prior version of the agent touched it, that was a workaround for a dispatcher bug that is now fixed — hand-editing it today only risks re-introducing the same overwrite bug.
 
-**Correct — read, merge, write:**
-```typescript
-const existing = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
-const merged = {
-  ...existing,
-  cumulative_requirements: {
-    ...existing.cumulative_requirements,
-    "REQ-B-001": { ... },
-  },
-};
-writeFileSync(MANIFEST_PATH, JSON.stringify(merged, null, 2));
-```
-
-Same rule applies to the sibling `messages/<locale>.<change>.json` i18n sidecars — never overwrite a sidecar from a different change's scope (a wipe to `{}` is the most common failure mode).
+The in-change counterpart — your `messages/<locale>.<change>.json` i18n sidecars — follow the same "don't clobber other scopes" discipline: never overwrite a sidecar from a different change, and never reset one to `{}`.
 
 ## Hydration Race Conditions
 

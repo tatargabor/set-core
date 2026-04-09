@@ -335,6 +335,7 @@ def _cleanup_orphans(state_file: str) -> None:
     pids_cleared = 0
     steps_fixed = 0
     worktrees_removed = 0
+    queue_restored = 0
 
     # ── Phase 1: Fix stale PIDs and stuck steps ──
     with locked_state(state_file) as st:
@@ -365,6 +366,34 @@ def _cleanup_orphans(state_file: str) -> None:
                 change.current_step = "done"
                 steps_fixed += 1
                 logger.info("Fixed stuck step for %s: %s → done", change.name, old_step)
+
+        # Phase 1b: restore orphaned "integrating" changes to the merge queue.
+        #
+        # When the sentinel dies mid-merge (e.g. during a gate-fix sub-dispatch),
+        # a change can be left with status=integrating but absent from
+        # state.merge_queue. _poll_active_changes polls integrating changes
+        # via poll_change() which is a no-op for that state; _self_watchdog
+        # only re-queues orphaned "done" changes; execute_merge_queue only
+        # drains what's in merge_queue. Without this step the change is stuck
+        # forever and occupies an in-flight slot.
+        #
+        # Conservative: only re-queue when worktree still exists on disk.
+        # A missing worktree is handled by _poll_active_changes (line ~1007)
+        # which marks the change stalled.
+        for change in st.changes:
+            if change.status != "integrating":
+                continue
+            if change.name in st.merge_queue:
+                continue
+            wt = change.worktree_path or ""
+            if not wt or not os.path.isdir(wt):
+                continue
+            st.merge_queue.append(change.name)
+            queue_restored += 1
+            logger.warning(
+                "Restored orphaned integrating change %s to merge queue "
+                "(worktree=%s)", change.name, wt,
+            )
 
     # ── Phase 2: Clean orphaned worktrees ──
     project_dir = os.path.dirname(os.path.abspath(state_file))
@@ -502,11 +531,12 @@ def _cleanup_orphans(state_file: str) -> None:
         logger.debug("Artifact collection in cleanup failed (non-critical)", exc_info=True)
 
     # Summary
-    total = pids_cleared + steps_fixed + worktrees_removed + artifacts_collected
+    total = pids_cleared + steps_fixed + worktrees_removed + artifacts_collected + queue_restored
     if total > 0:
         logger.info(
-            "Orphan cleanup: %d worktrees removed, %d PIDs cleared, %d steps fixed, %d artifacts collected",
-            worktrees_removed, pids_cleared, steps_fixed, artifacts_collected,
+            "Orphan cleanup: %d worktrees removed, %d PIDs cleared, %d steps fixed, "
+            "%d artifacts collected, %d merge queue entries restored",
+            worktrees_removed, pids_cleared, steps_fixed, artifacts_collected, queue_restored,
         )
     else:
         logger.debug("Orphan cleanup: nothing to clean")

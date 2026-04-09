@@ -423,6 +423,84 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
     return SyncResult(ok=False, message="merge conflicts", behind_count=behind_count)
 
 
+def _merge_e2e_manifest(
+    existing: dict | None,
+    change_name: str,
+    change_reqs: list[str],
+) -> dict:
+    """Merge a dispatch's REQs into an existing e2e-manifest.json payload.
+
+    Cumulative semantics: the worktree was just branched from main, so any
+    existing e2e-manifest.json on disk reflects prior merged changes' REQ
+    coverage. We MERGE the current change's REQs rather than overwrite —
+    otherwise every dispatch wipes the cumulative REQ list and downstream
+    tooling (review gate, spec-verify, harvesters) reads a broken history.
+    verifier.py only updates `spec_files` afterwards, so we don't need to
+    track new spec files here beyond the change's own.
+
+    Pure function — accepts a parsed dict (or None) and returns the merged
+    dict. Callers handle the file I/O.
+    """
+    if not isinstance(existing, dict):
+        existing = {}
+
+    prior_reqs = existing.get("requirements") or []
+    if not isinstance(prior_reqs, list):
+        prior_reqs = []
+    merged_reqs = list(dict.fromkeys(list(prior_reqs) + list(change_reqs)))
+
+    prior_spec_files = existing.get("spec_files") or []
+    if not isinstance(prior_spec_files, list):
+        prior_spec_files = []
+    own_spec = f"tests/e2e/{change_name}.spec.ts"
+    merged_specs = list(dict.fromkeys(list(prior_spec_files) + [own_spec]))
+
+    prior_by_change = existing.get("requirements_by_change") or {}
+    if not isinstance(prior_by_change, dict):
+        prior_by_change = {}
+    else:
+        prior_by_change = dict(prior_by_change)  # don't mutate caller's dict
+    prior_by_change[change_name] = list(change_reqs)
+
+    return {
+        "change": change_name,
+        "spec_files": merged_specs,
+        "requirements": merged_reqs,
+        "requirements_by_change": prior_by_change,
+    }
+
+
+def _write_e2e_manifest(wt_path: str, change_name: str, change_reqs: list[str]) -> None:
+    """Read existing e2e-manifest.json (if any), merge in current change, write back."""
+    manifest_path = os.path.join(wt_path, "e2e-manifest.json")
+    existing: dict = {}
+    if os.path.isfile(manifest_path):
+        try:
+            existing = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                existing = {}
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+    prior_req_count = len(existing.get("requirements") or [])
+    manifest_data = _merge_e2e_manifest(existing, change_name, change_reqs)
+
+    try:
+        with open(manifest_path, "w") as mf:
+            json.dump(manifest_data, mf, indent=2)
+        logger.info(
+            "Wrote e2e-manifest.json for %s: %d spec files, %d requirements "
+            "(own=%d, prior=%d)",
+            change_name,
+            len(manifest_data["spec_files"]),
+            len(manifest_data["requirements"]),
+            len(change_reqs),
+            prior_req_count,
+        )
+    except OSError:
+        logger.debug("Failed to write e2e-manifest.json (non-fatal)")
+
+
 def bootstrap_worktree(project_path: str, wt_path: str, change_name: str = "") -> int:
     """Copy .env files, inject port, and install deps in a worktree.
 
@@ -1864,24 +1942,8 @@ def dispatch_change(
     from set_orch.dispatcher_schema import append_schema_digest_to_claudemd
     append_schema_digest_to_claudemd(wt_path)
 
-    # Write e2e-manifest.json for ownership detection at gate time
-    change_reqs = getattr(change, "requirements", []) or []
-    manifest_data = {
-        "change": change_name,
-        "spec_files": [f"tests/e2e/{change_name}.spec.ts"],
-        "requirements": change_reqs,
-    }
-    try:
-        manifest_path = os.path.join(wt_path, "e2e-manifest.json")
-        with open(manifest_path, "w") as mf:
-            json.dump(manifest_data, mf, indent=2)
-        logger.info(
-            "Wrote e2e-manifest.json for %s: %d spec files, %d requirements",
-            change_name, len(manifest_data.get("spec_files", [])),
-            len(change_reqs),
-        )
-    except OSError:
-        logger.debug("Failed to write e2e-manifest.json (non-fatal)")
+    # Write e2e-manifest.json for ownership detection at gate time.
+    _write_e2e_manifest(wt_path, change_name, list(getattr(change, "requirements", []) or []))
 
     # Generate test skeleton from test-plan.json (deterministic structure)
     _skeleton_path = ""
