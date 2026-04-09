@@ -52,6 +52,13 @@ set-core takes a markdown spec, decomposes it into independent changes, dispatch
   <img src="docs/images/auto/web/tab-digest.png" width="48%" alt="Digest — 7 domains, 32 requirements, 84 acceptance criteria" />
 </p>
 
+**Visibility:** Where every minute of a 9-hour run actually went — agent sessions, LLM calls, tool executions, sub-agents, gates. Click any block to drill in.
+
+<p align="center">
+  <img src="docs/images/auto/web/tab-activity-drilldown.png" width="90%" alt="Activity timeline + drilldown — implementing span expanded into per-tool / LLM-wait / sub-agent breakdown with top operations" />
+</p>
+<p align="center"><em>Activity timeline (top) — every change as a row, every gate and LLM call placed in time. Drilldown (below) — one implementing span expanded into per-tool, per-LLM-call, per-sub-agent breakdown with the longest operations called out.</em></p>
+
 **Output:** Running application — built entirely from the spec
 
 <p align="center">
