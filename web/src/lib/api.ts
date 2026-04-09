@@ -1057,3 +1057,56 @@ export function getActivityTimeline(
   const qs = params.toString()
   return fetchJSON(`/${project}/activity-timeline${qs ? `?${qs}` : ''}`)
 }
+
+// ─── Activity Drilldown (per-session detail) ────────────────────
+
+export interface SubSpan {
+  category: string
+  start: string
+  end: string
+  duration_ms: number
+  detail?: {
+    session?: string
+    tool?: string
+    preview?: string
+    purpose?: string
+    model?: string
+    input_tokens?: number
+    output_tokens?: number
+    cache_read_tokens?: number
+    cache_create_tokens?: number
+    kind?: string
+    reason?: string
+    subagent_session_id?: string
+    [key: string]: unknown
+  }
+}
+
+export interface TopOperation {
+  category: string
+  duration_ms: number
+  preview: string
+  tool: string
+}
+
+export interface ActivitySessionDetail {
+  sub_spans: SubSpan[]
+  total_llm_calls: number
+  total_tool_calls: number
+  subagent_count: number
+  top_operations: TopOperation[]
+  cache_hit: boolean
+}
+
+export function getSessionDetail(
+  project: string,
+  change: string,
+  from?: string,
+  to?: string,
+): Promise<ActivitySessionDetail> {
+  const params = new URLSearchParams()
+  params.set('change', change)
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
+  return fetchJSON(`/${project}/activity-timeline/session-detail?${params.toString()}`)
+}
