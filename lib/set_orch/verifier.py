@@ -1070,13 +1070,19 @@ def _get_merge_base(wt_path: str) -> str:
 
     Uses `git merge-base HEAD <ref>` to find the true fork point, ensuring
     review diffs only contain files modified by the change branch. Falls back
-    to HEAD~10 if merge-base resolution fails (orphan branch, shallow clone).
+    to the root commit if merge-base resolution fails (first change in new repo).
     """
     for ref in ("main", "origin/main"):
         result = run_git("merge-base", "HEAD", ref, cwd=wt_path)
         if result.exit_code == 0 and result.stdout.strip():
             logger.debug("merge-base resolved via %s for %s", ref, wt_path)
             return result.stdout.strip()
+    # Fallback: find the root commit (works for first change in new repo)
+    root_result = run_git("rev-list", "--max-parents=0", "HEAD", cwd=wt_path)
+    if root_result.exit_code == 0 and root_result.stdout.strip():
+        root = root_result.stdout.strip().splitlines()[0]
+        logger.info("merge-base: using root commit %s for %s (no main branch)", root[:8], wt_path)
+        return root
     logger.warning("merge-base failed for %s — falling back to HEAD~10", wt_path)
     return "HEAD~10"
 
