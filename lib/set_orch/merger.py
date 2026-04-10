@@ -38,6 +38,7 @@ from .state import (
     update_state_field,
 )
 from .subprocess_utils import CommandResult, run_command
+from .truncate import smart_truncate_structured
 
 from datetime import datetime, timezone
 
@@ -1087,7 +1088,7 @@ def _run_integration_gates(
             gate_pass = result.exit_code == 0
             update_change_field(state_file, change_name, "build_result", "pass" if gate_pass else "fail")
             update_change_field(state_file, change_name, "gate_build_ms", _ge)
-            update_change_field(state_file, change_name, "build_output", ((result.stdout or "") + (result.stderr or ""))[-2000:])
+            update_change_field(state_file, change_name, "build_output", smart_truncate_structured((result.stdout or "") + (result.stderr or ""), 2000))
             if gate_pass:
                 _gates_passed_count += 1
                 logger.info("Integration gate: build PASSED for %s (%dms)", change_name, _ge)
@@ -1115,7 +1116,7 @@ def _run_integration_gates(
             result = run_command(["bash", "-c", test_cmd], timeout=120, cwd=wt_path, env=gate_env or None)
             _ge = int((_time.monotonic() - _gs) * 1000)
             update_change_field(state_file, change_name, "gate_test_ms", _ge)
-            update_change_field(state_file, change_name, "test_output", ((result.stdout or "") + (result.stderr or ""))[-2000:])
+            update_change_field(state_file, change_name, "test_output", smart_truncate_structured((result.stdout or "") + (result.stderr or ""), 2000))
             if result.exit_code == 0:
                 _gates_passed_count += 1
                 update_change_field(state_file, change_name, "test_result", "pass")
@@ -1250,7 +1251,7 @@ def _run_integration_gates(
                     )
                     _s1e = int((_time.monotonic() - _s1) * 1000)
                     update_change_field(state_file, change_name, "gate_e2e_smoke_ms", _s1e)
-                    _smoke_output = ((smoke_result.stdout or "") + (smoke_result.stderr or ""))[-1000:]
+                    _smoke_output = smart_truncate_structured((smoke_result.stdout or "") + (smoke_result.stderr or ""), 1000)
 
                     if smoke_result.exit_code == 0:
                         logger.info(
@@ -1312,7 +1313,7 @@ def _run_integration_gates(
             e2e_pass = result.exit_code == 0
             update_change_field(state_file, change_name, "e2e_result", "pass" if e2e_pass else "fail")
             update_change_field(state_file, change_name, "gate_e2e_ms", _s2e)
-            update_change_field(state_file, change_name, "e2e_output", ((result.stdout or "") + (result.stderr or ""))[-8000:])
+            update_change_field(state_file, change_name, "e2e_output", smart_truncate_structured((result.stdout or "") + (result.stderr or ""), 8000))
             if e2e_pass:
                 _gates_passed_count += 1
                 logger.info("Integration gate: e2e PASSED for %s (%dms)", change_name, _s2e)
@@ -1330,7 +1331,7 @@ def _run_integration_gates(
                     event_bus.emit("VERIFY_GATE", change=change_name, data={"gate": "e2e", "result": "fail", "phase": "integration"})
             if not e2e_pass:
                 if gc.is_blocking("e2e"):
-                    e2e_output = (result.stdout or "")[-2000:] + "\n" + (result.stderr or "")[-1000:]
+                    e2e_output = smart_truncate_structured((result.stdout or "") + "\n" + (result.stderr or ""), 3000)
                     e2e_retry = change.extras.get("integration_e2e_retry_count", 0)
 
                     if e2e_retry < e2e_retry_limit:

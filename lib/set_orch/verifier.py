@@ -35,6 +35,7 @@ from .state import (
     update_state_field,
 )
 from .subprocess_utils import CommandResult, run_claude, run_claude_logged, run_command, run_git
+from .truncate import smart_truncate, smart_truncate_structured, truncate_with_budget
 
 logger = logging.getLogger(__name__)
 
@@ -444,7 +445,7 @@ def _build_unified_retry_context(
             sections.append(parsed)
         else:
             # Unknown build format — fall back to truncated raw
-            sections.append(f"```\n{build_output[-3000:]}\n```")
+            sections.append(f"```\n{smart_truncate_structured(build_output, 3000)}\n```")
 
     if test_output:
         parsed = _extract_test_failures(test_output)
@@ -452,7 +453,7 @@ def _build_unified_retry_context(
         if parsed:
             sections.append(parsed)
         else:
-            sections.append(f"```\n{test_output[-3000:]}\n```")
+            sections.append(f"```\n{smart_truncate_structured(test_output, 3000)}\n```")
 
     if review_output:
         parsed = _extract_review_fixes(review_output)
@@ -461,7 +462,7 @@ def _build_unified_retry_context(
             sections.append(parsed)
         else:
             # Only include raw if there were critical issues but parser returned nothing
-            sections.append(f"```\n{review_output[-3000:]}\n```")
+            sections.append(f"```\n{smart_truncate_structured(review_output, 3000)}\n```")
 
     # Include prior review findings from JSONL if available
     if change_name and findings_path:
@@ -774,8 +775,7 @@ def _load_security_rules(wt_path: str) -> str:
     profile = load_profile()
     rule_paths = profile.security_rules_paths(wt_path)
     if rule_paths:
-        parts = []
-        total = 0
+        rule_items = []
         for rf in sorted(set(rule_paths)):
             try:
                 content = rf.read_text()
@@ -785,12 +785,11 @@ def _load_security_rules(wt_path: str) -> str:
                 end = content.find("---", 3)
                 if end > 0:
                     content = content[end + 3:].strip()
-            if len(content) > 1500:
-                content = content[:1500] + "\n..."
-            total += len(content)
-            if total > 4000:
-                break
-            parts.append(content)
+            rule_items.append((rf.name, content))
+        included, omitted = truncate_with_budget(rule_items, 4000)
+        parts = [content for _, content in included]
+        if omitted:
+            parts.append(f"\n({len(omitted)} rules omitted for space: {', '.join(omitted)})")
         return "\n\n".join(parts)
 
     # TODO(profile-cleanup): remove after profile adoption confirmed
@@ -815,8 +814,7 @@ def _load_web_security_rules(wt_path: str) -> str:
     if not rule_files:
         return ""
 
-    parts = []
-    total = 0
+    rule_items = []
     for rf in sorted(set(rule_files)):
         try:
             content = rf.read_text()
@@ -827,13 +825,12 @@ def _load_web_security_rules(wt_path: str) -> str:
             end = content.find("---", 3)
             if end > 0:
                 content = content[end + 3:].strip()
-        # Truncate individual rules
-        if len(content) > 1500:
-            content = content[:1500] + "\n..."
-        total += len(content)
-        if total > 4000:
-            break
-        parts.append(content)
+        rule_items.append((rf.name, content))
+
+    included, omitted = truncate_with_budget(rule_items, 4000)
+    parts = [content for _, content in included]
+    if omitted:
+        parts.append(f"\n({len(omitted)} rules omitted for space: {', '.join(omitted)})")
 
     return "\n\n".join(parts)
 
@@ -872,9 +869,9 @@ def run_tests_in_worktree(
     )
 
     output = result.stdout + result.stderr
-    # Truncate output to max_chars (keep tail)
+    # Truncate output preserving head (setup errors) + tail (summary)
     if len(output) > max_chars:
-        output = f"...truncated...\n{output[-max_chars:]}"
+        output = smart_truncate(output, max_chars)
 
     passed = result.exit_code == 0 and not result.timed_out
     stats = _parse_test_stats(output) if output else None
@@ -2106,7 +2103,7 @@ def _execute_build_gate(
             + f"\n\nOriginal scope: {scope}"
         )
         logger.info("Gate[build] END %s result=fail", change_name)
-        return GateResult("build", "fail", output=build_output[-2000:], retry_context=retry_prompt)
+        return GateResult("build", "fail", output=smart_truncate_structured(build_output, 2000), retry_context=retry_prompt)
 
     logger.info("Gate[build] END %s result=pass", change_name)
     return GateResult("build", "pass")
@@ -2527,17 +2524,17 @@ def _execute_spec_verify_gate(
 
     if verify_cmd_result.exit_code != 0:
         scope = change.scope or ""
-        verify_tail = verify_output[-2000:] if verify_output else ""
+        verify_tail = smart_truncate_structured(verify_output, 2000) if verify_output else ""
         logger.info("Gate[spec-verify] END %s result=fail (exit_code=%d)", change_name, verify_cmd_result.exit_code)
         return GateResult(
             "spec_verify", "fail",
-            output=verify_output[:2000],
-            retry_context=f"Verify failed. Fix the issues.\n\nVerify output (last 2000 chars):\n{verify_tail}\n\nOriginal scope: {scope}",
+            output=smart_truncate(verify_output, 2000) if verify_output else "",
+            retry_context=f"Verify failed. Fix the issues.\n\nVerify output:\n{verify_tail}\n\nOriginal scope: {scope}",
         )
 
     if "VERIFY_RESULT: PASS" in verify_output:
         logger.info("Gate[spec-verify] END %s result=pass", change_name)
-        return GateResult("spec_verify", "pass", output=verify_output[:2000])
+        return GateResult("spec_verify", "pass", output=smart_truncate(verify_output, 2000))
     elif "VERIFY_RESULT: FAIL" in verify_output:
         # Severity threshold via explicit LLM self-reported CRITICAL_COUNT
         # sentinel. If the LLM says "CRITICAL_COUNT: 0" alongside FAIL, the
@@ -2556,10 +2553,10 @@ def _execute_spec_verify_gate(
             logger.info(
                 "Gate[spec-verify] END %s result=pass (warnings-only)", change_name
             )
-            return GateResult("spec_verify", "pass", output=verify_output[:2000])
+            return GateResult("spec_verify", "pass", output=smart_truncate(verify_output, 2000))
 
         scope = change.scope or ""
-        verify_tail = verify_output[-2000:] if verify_output else ""
+        verify_tail = smart_truncate_structured(verify_output, 2000) if verify_output else ""
         sentinel_note = (
             f"CRITICAL_COUNT={critical_count}"
             if critical_count is not None
@@ -2571,10 +2568,10 @@ def _execute_spec_verify_gate(
         logger.info("Gate[spec-verify] END %s result=fail", change_name)
         return GateResult(
             "spec_verify", "fail",
-            output=verify_output[:2000],
+            output=smart_truncate(verify_output, 2000),
             retry_context=(
                 "Spec verification FAILED — CRITICAL findings present.\n\n"
-                f"Verify output (last 2000 chars):\n{verify_tail}\n\n"
+                f"Verify output:\n{verify_tail}\n\n"
                 f"Original scope: {scope}\n\n"
                 "Fix: Address every CRITICAL finding listed above. "
                 "WARNING-level findings are informational and do not block the gate."

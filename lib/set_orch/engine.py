@@ -28,6 +28,7 @@ from .state import (
     update_state_field,
 )
 from .subprocess_utils import run_command
+from .truncate import smart_truncate_structured
 
 logger = logging.getLogger(__name__)
 
@@ -1275,7 +1276,7 @@ def _recover_verify_failed(
                 if build_output:
                     rebuild_prompt = (
                         f"Build failed after implementation. Fix the build errors.\n\n"
-                        f"Build output (last 2000 chars):\n{build_output[-2000:]}\n\n"
+                        f"Build output:\n{smart_truncate_structured(build_output, 2000)}\n\n"
                         f"Original scope: {change.scope}"
                     )
                     update_change_field(state_file, change.name, "retry_context", rebuild_prompt)
@@ -1468,7 +1469,7 @@ def _build_gate_retry_context(
     # --- Raw E2E Output ---
     if e2e_output:
         sections.append(
-            f"### Test Output (last 2000 chars)\n{e2e_output[-2000:]}\n"
+            f"### Test Output\n{smart_truncate_structured(e2e_output, 2000)}\n"
         )
 
     # --- Original Scope (reference) ---

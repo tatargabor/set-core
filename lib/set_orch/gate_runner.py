@@ -21,6 +21,7 @@ import os
 import shutil
 
 from .state import Change, locked_state, update_change_field
+from .truncate import smart_truncate
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +289,7 @@ class GatePipeline:
             if _gate_ms_field and self.state_file:
                 update_change_field(self.state_file, self.change_name, _gate_ms_field, elapsed_ms)
             if _gate_output_field and self.state_file and result.output:
-                update_change_field(self.state_file, self.change_name, _gate_output_field, result.output[-2000:])
+                update_change_field(self.state_file, self.change_name, _gate_output_field, smart_truncate(result.output, 2000))
 
             # Handle result
             if result.status == "pass":

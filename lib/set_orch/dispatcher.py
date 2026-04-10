@@ -39,6 +39,7 @@ from .state import (
     update_state_field,
 )
 from .subprocess_utils import CommandResult, run_command, run_git
+from .truncate import smart_truncate_structured, truncate_with_budget
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +117,7 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
         return ""
 
     seen: set[str] = set()
-    parts: list[str] = []
-    total = 0
+    rule_items: list[tuple[str, str]] = []
     for glob_pat in matched_globs:
         # glob_pat is relative, e.g. "web/auth-middleware.md"
         full_path = os.path.join(rules_dir, glob_pat)
@@ -134,14 +134,16 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
             end = content.find("---", 3)
             if end > 0:
                 content = content[end + 3:].strip()
-        if total + len(content) > 4000:
-            break
-        total += len(content)
-        parts.append(content)
+        rule_items.append((os.path.basename(full_path), content))
 
-    if not parts:
+    if not rule_items:
         logger.debug("_build_rule_injection: no rule content loaded from %d matched globs", len(matched_globs))
         return ""
+
+    included, omitted = truncate_with_budget(rule_items, 4000)
+    parts = [content for _, content in included]
+    if omitted:
+        parts.append(f"\n({len(omitted)} rules omitted for space: {', '.join(omitted)})")
 
     return "## Relevant Patterns\n\n" + "\n\n".join(parts)
 
@@ -919,7 +921,7 @@ def retry_failed_builds(
         build_output = change.extras.get("build_output", "")
         retry_prompt = (
             f"Build failed. Fix the build error.\n\n"
-            f"Build output:\n{build_output[:2000]}\n\n"
+            f"Build output:\n{smart_truncate_structured(build_output, 2000, head_ratio=0.7)}\n\n"
             f"Original scope: {change.scope}"
         )
         update_change_field(state_path, change.name, "retry_context", retry_prompt, event_bus=event_bus)

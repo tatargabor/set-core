@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from .truncate import smart_truncate_structured
+
 # Maximum diff size before truncation
 MAX_DIFF_CHARS = 50_000
 
@@ -276,8 +278,8 @@ def render_fix_prompt(
 Fix the code or tests so smoke tests pass again.
 {multi_change_context}
 Smoke command: {smoke_cmd}
-Smoke output (last 2000 chars):
-{output_tail[-2000:] if len(output_tail) > 2000 else output_tail}
+Smoke output:
+{smart_truncate_structured(output_tail, 2000)}
 
 Instructions:
 1. Analyze the smoke test failures above
@@ -301,8 +303,8 @@ def render_build_fix_prompt(
 Fix these TypeScript/build errors directly on the main branch.
 
 Build command: {pm} run {build_cmd}
-Build output (last 3000 chars):
-{build_output[-3000:] if len(build_output) > 3000 else build_output}
+Build output:
+{smart_truncate_structured(build_output, 3000)}
 
 Instructions:
 1. Analyze the build errors above carefully

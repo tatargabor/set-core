@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .subprocess_utils import CommandResult, run_claude_logged, run_command
+from .truncate import smart_truncate_structured
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +143,8 @@ def fix_base_build(
 Fix these TypeScript/build errors directly on the main branch.
 
 Build command: {pm} run {build_cmd}
-Build output (last 3000 chars):
-{error_output[-3000:]}
+Build output:
+{smart_truncate_structured(error_output, 3000)}
 
 Instructions:
 1. Analyze the build errors above carefully
