@@ -984,23 +984,21 @@ _REVIEW_DEPRIORITY_PREFIXES = (
     "docs/",
 )
 
-_REVIEW_DIFF_LIMIT = 60_000
+_REVIEW_DIFF_LIMIT = 80_000
 
 
 def _prioritize_diff_for_review(raw_diff: str) -> str:
-    """Reorder diff hunks: implementation files first, artifacts/tests last.
+    """Build review diff: full diff for impl files, stat summary for low-priority.
 
-    Git diff outputs files in alphabetical order, which puts openspec/ and
-    __tests__/ before src/. When truncated, the reviewer never sees the
-    actual implementation — only artifacts and tests. This caused false
-    "missing implementation" reviews in Run #19 (Bug #53).
+    Git diff outputs files alphabetically, putting openspec/ and tests/ before
+    src/. Blind truncation caused a false "missing E2E test file" review when
+    the test diff was cut — the reviewer couldn't tell the file existed.
 
-    Strategy: split diff into per-file hunks, partition into impl vs low-priority,
-    reassemble with impl first, then truncate.
+    Strategy: split diff into per-file hunks, always include impl files in full.
+    For deprioritized files (tests, openspec, docs), include full diff only if
+    space allows — otherwise include a stat summary so the reviewer knows they
+    exist and how large they are. No file is ever silently dropped.
     """
-    if len(raw_diff) <= _REVIEW_DIFF_LIMIT:
-        return raw_diff
-
     # Split into per-file hunks
     hunks: list[tuple[str, str]] = []  # (filepath, hunk_text)
     current_path = ""
@@ -1010,7 +1008,6 @@ def _prioritize_diff_for_review(raw_diff: str) -> str:
         if line.startswith("diff --git"):
             if current_lines:
                 hunks.append((current_path, "\n".join(current_lines)))
-            # Extract b/ path
             parts = line.split(" b/")
             current_path = parts[-1] if len(parts) > 1 else ""
             current_lines = [line]
@@ -1020,27 +1017,53 @@ def _prioritize_diff_for_review(raw_diff: str) -> str:
     if current_lines:
         hunks.append((current_path, "\n".join(current_lines)))
 
-    # Partition: implementation first, deprioritized last
-    impl_hunks = []
-    depri_hunks = []
+    # Partition
+    impl_hunks: list[tuple[str, str]] = []
+    depri_hunks: list[tuple[str, str]] = []
     for path, hunk in hunks:
         if any(path.startswith(p) for p in _REVIEW_DEPRIORITY_PREFIXES):
-            depri_hunks.append(hunk)
+            depri_hunks.append((path, hunk))
         else:
-            impl_hunks.append(hunk)
+            impl_hunks.append((path, hunk))
 
-    # Reassemble: impl first
-    reordered = "\n".join(impl_hunks + depri_hunks)
+    # Always include all impl hunks in full
+    parts = [hunk for _, hunk in impl_hunks]
+    impl_size = sum(len(h) for h in parts)
 
-    # Truncate with note
-    if len(reordered) > _REVIEW_DIFF_LIMIT:
-        reordered = (
-            reordered[:_REVIEW_DIFF_LIMIT]
-            + f"\n\n... diff truncated at {_REVIEW_DIFF_LIMIT} chars "
-            "(artifact/test files may be cut) ..."
-        )
+    # Budget remaining for deprioritized files
+    budget = _REVIEW_DIFF_LIMIT - impl_size
 
-    return reordered
+    if budget >= sum(len(h) for _, h in depri_hunks):
+        # Everything fits — include full diffs
+        parts.extend(hunk for _, hunk in depri_hunks)
+    else:
+        # Include depri files that fit in full, summarize the rest
+        full_depri = []
+        summarized = []
+        remaining = budget - 500  # reserve space for summary header
+
+        for path, hunk in depri_hunks:
+            if remaining >= len(hunk):
+                full_depri.append(hunk)
+                remaining -= len(hunk) + 1
+            else:
+                # Count added/removed lines for stat summary
+                added = sum(1 for ln in hunk.split("\n") if ln.startswith("+") and not ln.startswith("+++"))
+                removed = sum(1 for ln in hunk.split("\n") if ln.startswith("-") and not ln.startswith("---"))
+                summarized.append((path, added, removed))
+
+        parts.extend(full_depri)
+
+        if summarized:
+            stat_lines = [
+                "\n\n--- Files present but diff omitted for space "
+                "(DO NOT report these as missing) ---"
+            ]
+            for path, added, removed in summarized:
+                stat_lines.append(f"  {path}  | +{added} -{removed}")
+            parts.append("\n".join(stat_lines))
+
+    return "\n".join(parts)
 
 
 def _get_merge_base(wt_path: str) -> str:
