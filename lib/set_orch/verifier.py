@@ -1948,15 +1948,16 @@ def poll_change(
     # Fallback: if loop-state has 0 tokens, try set-usage
     if tokens == 0:
         loop_started = loop_state.get("started_at", "")
-        derived_dir = wt_path.replace("/", "-")
+        mangled = wt_path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")
+        claude_project_dir = f"-{mangled}"
         home = os.environ.get("HOME", "")
-        projects_dir = os.path.join(home, ".claude", "projects", derived_dir)
+        projects_dir = os.path.join(home, ".claude", "projects", claude_project_dir)
         if loop_started and os.path.isdir(projects_dir):
             script_dir = os.environ.get("SCRIPT_DIR", os.path.dirname(os.path.abspath(__file__)))
             usage_cmd = os.path.join(script_dir, "..", "..", "bin", "set-usage")
             if os.path.isfile(usage_cmd):
                 usage_result = run_command(
-                    [usage_cmd, "--since", loop_started, f"--project-dir={derived_dir}", "--format", "json"],
+                    [usage_cmd, "--since", loop_started, f"--project-dir={claude_project_dir}", "--format", "json"],
                     timeout=10,
                 )
                 if usage_result.exit_code == 0:
