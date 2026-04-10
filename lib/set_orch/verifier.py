@@ -34,7 +34,7 @@ from .state import (
     update_change_field,
     update_state_field,
 )
-from .subprocess_utils import CommandResult, run_claude, run_claude_logged, run_command, run_git
+from .subprocess_utils import CommandResult, detect_default_branch, run_claude, run_claude_logged, run_command, run_git
 from .truncate import smart_truncate, smart_truncate_structured, truncate_with_budget
 
 logger = logging.getLogger(__name__)
@@ -1072,7 +1072,8 @@ def _get_merge_base(wt_path: str) -> str:
     review diffs only contain files modified by the change branch. Falls back
     to the root commit if merge-base resolution fails (first change in new repo).
     """
-    for ref in ("main", "origin/main"):
+    main = detect_default_branch(wt_path)
+    for ref in (main, f"origin/{main}"):
         result = run_git("merge-base", "HEAD", ref, cwd=wt_path)
         if result.exit_code == 0 and result.stdout.strip():
             logger.debug("merge-base resolved via %s for %s", ref, wt_path)
@@ -2616,15 +2617,7 @@ def _integrate_main_into_branch(
     """
     update_change_field(state_file, change_name, "status", "integrating")
 
-    # Find the main branch name (best-effort: not all repos have origin/HEAD)
-    main_ref_result = run_git(
-        "symbolic-ref", "refs/remotes/origin/HEAD",
-        cwd=wt_path, timeout=10, best_effort=True,
-    )
-    if main_ref_result.exit_code == 0:
-        main_branch = main_ref_result.stdout.strip().replace("refs/remotes/origin/", "")
-    else:
-        main_branch = "main"
+    main_branch = detect_default_branch(wt_path)
 
     # Determine merge ref: prefer origin/<main> if remote exists, else local <main>
     fetch_result = run_git("fetch", "origin", main_branch, cwd=wt_path, timeout=60, best_effort=True)
@@ -2814,11 +2807,7 @@ def handle_change_done(
     # ANOMALY: agent completed with 0 commits (task 3.1)
     if wt_path and os.path.isdir(wt_path):
         try:
-            _main_r = run_command(
-                ["git", "show-ref", "--verify", "--quiet", "refs/heads/main"],
-                timeout=5, cwd=wt_path,
-            )
-            _main_branch = "main" if _main_r.exit_code == 0 else "master"
+            _main_branch = detect_default_branch(wt_path)
             _ahead_r = run_command(
                 ["git", "rev-list", "--count", f"{_main_branch}..HEAD"],
                 timeout=5, cwd=wt_path,

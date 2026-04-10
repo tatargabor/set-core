@@ -37,7 +37,7 @@ from .state import (
     update_change_field,
     update_state_field,
 )
-from .subprocess_utils import CommandResult, run_command
+from .subprocess_utils import CommandResult, detect_default_branch, run_command
 from .truncate import smart_truncate_structured
 
 from datetime import datetime, timezone
@@ -1805,16 +1805,7 @@ def _remove_from_merge_queue(state_file: str, change_name: str) -> None:
 
 def _get_main_branch(cwd: str = "") -> str:
     """Detect the main branch name from the given repo (or cwd)."""
-    kwargs = {"cwd": cwd} if cwd else {}
-    result = run_command(
-        ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
-        timeout=10, **kwargs,
-    )
-    if result.exit_code == 0:
-        ref = result.stdout.strip()
-        return ref.replace("refs/remotes/origin/", "")
-    # No origin — check which local branch exists
-    return "main"
+    return detect_default_branch(cwd or None)
 
 
 def _run_hook(hook_name: str, change_name: str, status: str, wt_path: str) -> bool:

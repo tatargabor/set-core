@@ -839,10 +839,8 @@ def _is_branch_merged_in_git(change_name: str) -> bool:
     or if it's an ancestor of main. Returns False only if the branch exists
     but is NOT in main's history.
     """
-    from .subprocess_utils import run_command
-    # Detect main branch
-    main_r = run_command(["git", "show-ref", "--verify", "--quiet", "refs/heads/main"], timeout=5)
-    main_branch = "main" if main_r.exit_code == 0 else "master"
+    from .subprocess_utils import run_command, detect_default_branch
+    main_branch = detect_default_branch()
 
     branch_name = f"change/{change_name}"
     # Check if branch exists

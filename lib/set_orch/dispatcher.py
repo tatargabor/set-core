@@ -38,7 +38,7 @@ from .state import (
     update_change_field,
     update_state_field,
 )
-from .subprocess_utils import CommandResult, run_command, run_git
+from .subprocess_utils import CommandResult, detect_default_branch, run_command, run_git
 from .truncate import smart_truncate_structured, truncate_with_budget
 
 logger = logging.getLogger(__name__)
@@ -306,13 +306,11 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
     Aborts merge on real conflicts.
     """
     # Determine main branch
-    main_branch = ""
-    r = run_git("show-ref", "--verify", "--quiet", "refs/heads/main", cwd=wt_path)
-    if r.exit_code == 0:
-        main_branch = "main"
-    else:
-        logger.warning("sync: could not find main branch for %s", change_name)
-        return SyncResult(ok=False, message="no main branch found")
+    main_branch = detect_default_branch(wt_path)
+    r = run_git("show-ref", "--verify", "--quiet", f"refs/heads/{main_branch}", cwd=wt_path)
+    if r.exit_code != 0:
+        logger.info("sync: no %s branch for %s — skipping (first change?)", main_branch, change_name)
+        return SyncResult(ok=True, message="no main branch — first change")
 
     # Check if already up to date
     wt_branch_r = run_git("rev-parse", "--abbrev-ref", "HEAD", cwd=wt_path)
@@ -1743,8 +1741,7 @@ def dispatch_change(
 
         if branch_check.exit_code == 0:
             # Branch exists — check if it has commits ahead of main worth preserving
-            main_r = run_git("show-ref", "--verify", "--quiet", "refs/heads/main", best_effort=True)
-            main_branch = "main" if main_r.exit_code == 0 else "master"
+            main_branch = detect_default_branch()
             ahead_r = run_git("rev-list", "--count", f"{main_branch}..{branch_name}")
             ahead_count = int(ahead_r.stdout.strip()) if ahead_r.exit_code == 0 else 0
 

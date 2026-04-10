@@ -367,6 +367,31 @@ def run_claude_logged(
     return result
 
 
+def detect_default_branch(repo_path: str | Path | None = None) -> str:
+    """Detect the default branch name (main, master, etc.) for a repo.
+
+    Checks: symbolic-ref origin/HEAD → show-ref main → show-ref master → "main".
+    """
+    # Try origin/HEAD first (most reliable for cloned repos)
+    r = run_command(
+        ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+        timeout=5, cwd=str(repo_path) if repo_path else None,
+    )
+    if r.exit_code == 0 and r.stdout.strip():
+        return r.stdout.strip().replace("refs/remotes/origin/", "")
+
+    # Local branch detection
+    for name in ("main", "master"):
+        r = run_command(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{name}"],
+            timeout=5, cwd=str(repo_path) if repo_path else None,
+        )
+        if r.exit_code == 0:
+            return name
+
+    return "main"  # default assumption
+
+
 def run_git(
     *args: str,
     cwd: str | Path | None = None,

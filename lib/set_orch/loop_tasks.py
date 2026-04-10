@@ -328,16 +328,8 @@ def _check_build_done(wt_path: str) -> bool:
 def _check_merge_done(wt_path: str) -> bool:
     """Branch merges cleanly with main = done."""
     try:
-        # Get main branch ref
-        result = subprocess.run(
-            ["git", "-C", wt_path, "symbolic-ref", "refs/remotes/origin/HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        main_ref = "main"
-        if result.returncode == 0:
-            main_ref = result.stdout.strip().replace("refs/remotes/origin/", "")
+        from .subprocess_utils import detect_default_branch
+        main_ref = detect_default_branch(wt_path)
 
         # Fetch (may fail if no remote — use local ref instead)
         fetch_result = subprocess.run(
