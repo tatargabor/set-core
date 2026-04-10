@@ -107,7 +107,7 @@ import { Button } from "@/components/ui/button";
 3. **Design system evolution**: if the design team flips primary colours or border radii, changing the `@theme` tokens updates every shadcn component automatically. Hand-rolled buttons stay stuck on the old values.
 4. **Review gate**: the review gate flags raw `<button>` usage as a finding — saving you one retry round.
 
-**Install on demand**: run `npx shadcn@latest add <component>` when you first need a component. Don't pre-install everything.
+**Install on demand**: run `npx shadcn@latest add <component>` when you first need a component. Don't pre-install everything. The `components.json` config is already in the project root — do NOT run `shadcn init`, just `shadcn add`.
 
 ## Button Variant Policy
 - `variant="ghost"` → icon-only, NO text content
