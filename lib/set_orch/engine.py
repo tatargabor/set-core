@@ -465,11 +465,26 @@ def _cleanup_orphans(state_file: str) -> None:
                     logger.warning("Skipping dirty worktree: %s (has uncommitted changes)", change_name)
                     continue
 
-                # Safety: skip if a process is running with CWD in this worktree
-                # (conservative check via /proc on Linux)
+                # If a stale process is running in the worktree, kill it first
+                # (only for terminal statuses — the change is done, the process is orphaned)
                 if _has_process_in_dir(wt_path):
-                    logger.warning("Skipping worktree %s: process running in directory", change_name)
-                    continue
+                    stale_pids = _find_pids_in_dir(wt_path)
+                    if stale_pids:
+                        logger.warning(
+                            "Killing %d stale process(es) in worktree %s: %s",
+                            len(stale_pids), change_name, stale_pids,
+                        )
+                        for pid in stale_pids:
+                            try:
+                                os.kill(pid, 15)  # SIGTERM
+                            except OSError:
+                                pass
+                        import time as _time
+                        _time.sleep(1)
+                    # Re-check after kill
+                    if _has_process_in_dir(wt_path):
+                        logger.warning("Skipping worktree %s: process still running after SIGTERM", change_name)
+                        continue
 
             # Remove the worktree
             try:
@@ -541,6 +556,27 @@ def _cleanup_orphans(state_file: str) -> None:
         )
     else:
         logger.debug("Orphan cleanup: nothing to clean")
+
+
+def _find_pids_in_dir(directory: str) -> list[int]:
+    """Find PIDs that have their CWD in the given directory."""
+    pids = []
+    proc_dir = "/proc"
+    if not os.path.isdir(proc_dir):
+        return pids
+    try:
+        for pid_entry in os.listdir(proc_dir):
+            if not pid_entry.isdigit():
+                continue
+            try:
+                cwd = os.readlink(f"/proc/{pid_entry}/cwd")
+                if cwd.startswith(directory):
+                    pids.append(int(pid_entry))
+            except (OSError, PermissionError):
+                continue
+    except OSError:
+        pass
+    return pids
 
 
 def _has_process_in_dir(directory: str) -> bool:

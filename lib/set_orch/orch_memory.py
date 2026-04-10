@@ -299,12 +299,10 @@ def orch_memory_audit() -> dict[str, Any]:
 
     elapsed_ms = _now_ms() - start_ms
 
-    logger.info(
-        "Memory audit: %dms — %d duplicates, index %s",
-        elapsed_ms,
-        dedup_count,
-        "ok" if index_ok else "BROKEN",
-    )
+    if index_ok:
+        logger.info("Memory audit: %dms — %d duplicates, index ok", elapsed_ms, dedup_count)
+    else:
+        logger.debug("Memory audit: %dms — %d duplicates, index not initialized", elapsed_ms, dedup_count)
 
     return {
         "duplicates": dedup_count,

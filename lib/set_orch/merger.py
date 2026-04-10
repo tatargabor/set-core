@@ -2191,6 +2191,12 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
                 e2e_output = change.extras.get("smoke_output", "")
             if e2e_output:
                 test_results = profile.parse_test_results(e2e_output)
+                if not test_results:
+                    logger.warning(
+                        "parse_test_results returned 0 results for %s — "
+                        "e2e_output may contain errors instead of test results (len=%d)",
+                        change_name, len(e2e_output),
+                    )
         except Exception:
             logger.debug("Test result parsing failed (non-critical)", exc_info=True)
 

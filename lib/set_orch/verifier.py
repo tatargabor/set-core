@@ -741,11 +741,13 @@ def _build_review_retry_prompt(
                 parts.append(f"  Changed: {h['diff_summary']}")
             parts.append(f"  Result: STILL CRITICAL\n")
 
-    # Security reference (patterns to follow)
+    # Security reference — don't embed the full text (it's already in
+    # .claude/rules/), just remind the agent to check it
     if security_guide:
-        parts.append("=== SECURITY REFERENCE (follow these patterns) ===")
-        parts.append(security_guide)
-        parts.append("=== END SECURITY REFERENCE ===\n")
+        parts.append(
+            "SECURITY: Read `.claude/rules/` for security patterns. "
+            "All review issues must comply with the security rules in that directory.\n"
+        )
 
     # Final attempt escalation
     is_last_attempt = verify_retry_count >= review_retry_limit - 1
@@ -2625,15 +2627,19 @@ def _integrate_main_into_branch(
         logger.info("No origin remote — using local %s for integration", main_branch)
 
     # Check if integration is needed (is main ahead of branch?)
-    merge_base_result = run_git(
-        "merge-base", "HEAD", merge_ref,
-        cwd=wt_path, timeout=10,
-    )
     origin_head_result = run_git(
         "rev-parse", merge_ref,
         cwd=wt_path, timeout=10,
     )
-    if (merge_base_result.exit_code == 0 and origin_head_result.exit_code == 0
+    if origin_head_result.exit_code != 0:
+        # merge_ref doesn't exist (no origin, no local main — first change in new repo)
+        logger.info("Integration skip for %s — %s ref not found (first change?)", change_name, merge_ref)
+        return "ok"
+    merge_base_result = run_git(
+        "merge-base", "HEAD", merge_ref,
+        cwd=wt_path, timeout=10,
+    )
+    if (merge_base_result.exit_code == 0
             and merge_base_result.stdout.strip() == origin_head_result.stdout.strip()):
         logger.info("Integration skip for %s — branch already up-to-date with %s", change_name, main_branch)
         return "ok"
