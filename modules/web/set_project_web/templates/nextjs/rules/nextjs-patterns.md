@@ -407,3 +407,36 @@ Any of these approaches is acceptable:
 **The rule:** do not merge a change whose navigation points at routes the same change does not also create. The dependency is "nav entry → page", not the other way around. A `grep -r 'href="' src/components/Header.tsx src/components/Footer.tsx` cross-referenced against `src/app/**/page.tsx` is the minimum manual check before committing.
 
 Also relevant: inside-app navigation MUST use `next/link` `<Link>`, never raw `<a href>`. Raw anchors skip prefetch, skip client-side routing, and break the `/en/...` locale prefix injected by `next-intl`. Use `<a>` ONLY for external URLs (`https://...`) and explicit same-tab downloads.
+
+## 14. `useSearchParams()` Requires Suspense Boundary
+
+`useSearchParams()` (used in login pages for `?callbackUrl=` or `?error=`) triggers Next.js to opt out of static rendering. Without a `<Suspense>` boundary, the build fails.
+
+**Wrong — build error:**
+```typescript
+// src/app/login/page.tsx
+"use client";
+export default function LoginPage() {
+  const searchParams = useSearchParams();  // BUILD ERROR: needs Suspense
+  // ...
+}
+```
+
+**Correct — server component wrapper + client form:**
+```typescript
+// src/app/login/page.tsx (server component)
+import { Suspense } from "react";
+import LoginForm from "./login-form";
+export default function LoginPage() {
+  return <Suspense><LoginForm /></Suspense>;
+}
+
+// src/app/login/login-form.tsx (client component)
+"use client";
+export default function LoginForm() {
+  const searchParams = useSearchParams();
+  // ...
+}
+```
+
+**The rule:** Any page using `useSearchParams()` MUST be a client component wrapped in `<Suspense>` by a server component parent. Never call `useSearchParams()` directly in a page.tsx.

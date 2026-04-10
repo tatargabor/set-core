@@ -15,10 +15,14 @@ paths:
 - After successful registration, auto-login the user via `signIn("credentials", ...)` — do not redirect to login page
 
 ## Role Checking
+- The User model MUST have a `role String @default("USER")` field from the start
 - Define project roles in auth config (e.g., USER, ADMIN)
+- Seed the test/admin user with `role: "ADMIN"`
+- Include `role` in the JWT callback: `token.role = user.role` and in the session callback
 - Use centralized role check helpers — never compare role strings inline
-- Protected server actions: check auth/role at the top, before any logic
+- Protected server actions: check auth AND role at the top, before any logic
 - Protected pages: use middleware or layout-level auth checks
+- The review gate WILL flag missing role checks as CRITICAL — add them upfront
 
 ## API Route Authentication (CRITICAL — most common review failure)
 - **EVERY** API route under `/api/admin/` MUST check auth before processing
@@ -27,10 +31,29 @@ paths:
 - If a route handles sensitive data (gift cards, coupons, orders, user data), it MUST have auth even for GET
 - Test: `curl` the endpoint without auth headers — it MUST return 401, never 200
 
-## Middleware
+## Middleware (MUST create — review gate blocks without it)
+- You MUST create `src/middleware.ts` (or root `middleware.ts`) — the review gate will flag missing middleware as CRITICAL
+- Use the edge-safe `getToken` pattern from `next-auth/jwt` — do NOT use the `auth()` wrapper (it pulls bcryptjs into Edge Runtime)
 - Protect routes selectively — specify exact matcher patterns
 - Public routes (storefront, landing) must remain accessible
 - Auth pages (login, register) must be accessible without auth
+- Pattern:
+  ```typescript
+  import { getToken } from "next-auth/jwt";
+  import { NextRequest, NextResponse } from "next/server";
+  
+  export async function middleware(req: NextRequest) {
+    const isAdmin = req.nextUrl.pathname.startsWith("/admin");
+    const isAuthPage = /^\/(admin\/)?(login|register)/.test(req.nextUrl.pathname);
+    if (isAdmin && !isAuthPage) {
+      const token = await getToken({ req });
+      if (!token) return NextResponse.redirect(new URL("/admin/login", req.url));
+    }
+    return NextResponse.next();
+  }
+  
+  export const config = { matcher: ["/((?!api|_next|.*\\..*).*)"] };
+  ```
 
 ## Password & Credentials
 - Passwords hashed with `bcrypt` (bcryptjs)

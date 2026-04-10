@@ -324,6 +324,24 @@ await expect(page.getByTestId("product-detail-rating")).toBeVisible();
 
 **The rule:** If a selector could plausibly match a cross-sell card, a related-products rail, or a mini-cart, add `.first()`, scope it, or use `data-testid`. Never rely on a bare text/role selector for any element that could appear more than once on a real page.
 
+## `waitForURL` — Don't Use After Client-Side Navigation
+
+Server Actions that call `router.push()` or `router.replace()` trigger client-side navigation. `page.waitForURL()` will timeout because no full page load event fires.
+
+**Wrong — hangs after form submission with router.push():**
+```typescript
+await page.getByRole('button', { name: 'Save' }).click();
+await page.waitForURL('/products');  // TIMEOUT — no "load" event
+```
+
+**Correct — poll-based URL assertion:**
+```typescript
+await page.getByRole('button', { name: 'Save' }).click();
+await expect(page).toHaveURL(/\/products/, { timeout: 15000 });
+```
+
+**The rule:** After any form submission or action that uses `router.push()`/`redirect()`, use `expect(page).toHaveURL()` (which polls) instead of `page.waitForURL()` (which waits for a load event).
+
 ## `waitForURL` — Don't Use Locale-Only Patterns
 
 `waitForURL` with a regex that matches the locale prefix alone will resolve as soon as the response hits *any* locale-prefixed URL — including the login page itself (`/hu/login`). The test then races forward before the actual redirect completes.
