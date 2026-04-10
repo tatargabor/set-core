@@ -143,10 +143,23 @@ def serve_screenshot(project: str, file_path: str):
     media_type = _ALLOWED_EXTENSIONS.get(full_path.suffix.lower())
     if not full_path.exists() or media_type is None:
         raise HTTPException(404, "Artifact not found")
-    # Security: only serve files within the e2e-runs directory
-    try:
-        full_path.resolve().relative_to(Path.home() / ".local" / "share" / "set-core" / "e2e-runs")
-    except ValueError:
+    # Security: only serve files within the project repo or its worktrees
+    resolved = full_path.resolve()
+    project_path = _resolve_project(project)
+    allowed_roots = [project_path.resolve()]
+    # Add worktree paths from state
+    sp = _state_path(project_path)
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            for c in state.changes:
+                if c.worktree_path:
+                    wt = Path(c.worktree_path).resolve()
+                    if wt.is_dir():
+                        allowed_roots.append(wt)
+        except Exception:
+            pass
+    if not any(resolved.is_relative_to(root) for root in allowed_roots):
         raise HTTPException(403, "Access denied")
     filename = full_path.name
     return FR(str(full_path), media_type=media_type, filename=filename)
