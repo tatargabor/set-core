@@ -1279,7 +1279,7 @@ def review_change(
     # large changes with many spec files, causing silent "skipping" pass-through)
     claude_result = run_claude_logged(
         review_prompt, purpose="review", change=change_name, model=review_model,
-        timeout=900,
+        timeout=900, cwd=wt_path,
     )
     if claude_result.exit_code != 0:
         # Escalate to opus if not already
@@ -1290,7 +1290,7 @@ def review_change(
             )
             claude_result = run_claude_logged(
                 review_prompt, purpose="review", change=change_name, model="opus",
-                timeout=900,
+                timeout=900, cwd=wt_path,
             )
             if claude_result.exit_code != 0:
                 logger.error(
