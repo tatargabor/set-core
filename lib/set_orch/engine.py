@@ -741,6 +741,13 @@ def monitor_loop(
     token_wait = False
     replan_retry_count = 0
 
+    # Refuse to start if orchestration is already complete — prevents
+    # sentinel restart from re-dispatching all changes from scratch
+    if state.status == "done":
+        logger.info("Orchestration already done — refusing to start. Use --force to override.")
+        lock_fd.close()
+        return
+
     # Ensure state is "running" — the bash layer may have set "stopped"
     # via EXIT trap before exec'ing to us
     if state.status == "stopped":
