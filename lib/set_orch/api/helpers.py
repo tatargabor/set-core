@@ -92,7 +92,7 @@ def _save_projects(projects: list[dict]):
 
 def _claude_mangle(path: str) -> str:
     """Mangle a path the same way Claude CLI does for ~/.claude/projects/ dirs."""
-    return path.lstrip("/").replace("/", "-").replace(".", "-")
+    return path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")
 
 
 def _resolve_project(project_name: str) -> Path:

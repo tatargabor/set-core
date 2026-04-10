@@ -1009,6 +1009,24 @@ cmd_init() {
         fi
     fi
 
+    # Register with the web manager API (if running) so the lifecycle
+    # service picks up the project without a restart.
+    local manager_url="${SET_MANAGER_URL:-http://localhost:7400}"
+    local api_body
+    api_body=$(jq -nc --arg n "$name" --arg p "$git_root" --arg pt "${project_type:-}" \
+        '{name: $n, path: $p, project_type: $pt}')
+    local reg_resp
+    reg_resp=$(curl -sf -X POST "$manager_url/api/projects" \
+        -H 'Content-Type: application/json' -d "$api_body" 2>/dev/null) && {
+        local reg_status
+        reg_status=$(echo "$reg_resp" | jq -r '.status // empty' 2>/dev/null)
+        if [[ "$reg_status" == "ok" ]]; then
+            success "Registered with manager at $manager_url"
+        elif [[ "$reg_status" == "exists" ]]; then
+            info "Already registered with manager"
+        fi
+    } || info "Manager not running — project will be picked up on next manager start"
+
     # Run health audit if set-audit is available
     if command -v set-audit &>/dev/null; then
         echo ""

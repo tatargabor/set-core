@@ -248,6 +248,7 @@ export interface SessionInfo {
   label?: string
   full_label?: string
   outcome?: 'active' | 'success' | 'error' | 'unknown'
+  change?: string
 }
 
 export function getChangeSession(

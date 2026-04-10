@@ -77,7 +77,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   'sentinel:llm:spec_verify': 'Sentinel: Spec Verify',
   'sentinel:llm:replan': 'Sentinel: Replan',
   'sentinel:llm:classify': 'Sentinel: Classify',
-  'agent:llm-wait': 'LLM Wait',
+  'agent:llm-wait': 'LLM Work',
   'agent:tool:bash': 'Bash',
   'agent:tool:edit': 'Edit',
   'agent:tool:read': 'Read',

@@ -402,7 +402,7 @@ export default function Dashboard({ project, initialTab }: Props) {
               <DigestView project={project} />
             )}
             {activeTab === 'sessions' && (
-              <SessionPanel project={project} change={selectedChange} />
+              <SessionPanel project={project} />
             )}
           </div>
         )}

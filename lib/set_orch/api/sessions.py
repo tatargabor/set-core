@@ -601,13 +601,48 @@ def _parse_session_jsonl(path: Path, tail: int) -> list[str]:
 
 @router.get("/api/{project}/sessions")
 def list_project_sessions(project: str):
-    """List all Claude session files for the project itself (not change-specific)."""
+    """List all Claude session files across the project and all change worktrees.
+
+    Aggregates sessions from:
+    1. Project-level sessions dir (sentinel, planner, digest)
+    2. Per-change worktree session dirs (implementation, gate review, etc.)
+
+    Each session entry includes a 'change' field with the change name (or empty
+    for project-level sessions).
+    """
     project_path = _resolve_project(project)
-    mangled = _claude_mangle(str(project_path))
-    sessions_dir = Path.home() / ".claude" / "projects" / f"-{mangled}"
-    if not sessions_dir.is_dir():
-        return {"sessions": []}
-    return {"sessions": _list_session_files(sessions_dir)}
+    seen_ids: set[str] = set()
+    all_sessions: list[dict] = []
+
+    # Source 1: Project-level sessions
+    proj_mangled = _claude_mangle(str(project_path))
+    proj_dir = Path.home() / ".claude" / "projects" / f"-{proj_mangled}"
+    if proj_dir.is_dir():
+        for entry in _list_session_files(proj_dir):
+            seen_ids.add(entry["id"])
+            entry["change"] = ""
+            all_sessions.append(entry)
+
+    # Source 2: Per-change worktree sessions
+    sp = _state_path(project_path)
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            for change in state.changes:
+                if change.worktree_path:
+                    mangled = _claude_mangle(change.worktree_path)
+                    d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+                    if d.is_dir():
+                        for entry in _list_session_files(d):
+                            if entry["id"] not in seen_ids:
+                                seen_ids.add(entry["id"])
+                                entry["change"] = change.name
+                                all_sessions.append(entry)
+        except (StateCorruptionError, Exception):
+            pass
+
+    all_sessions.sort(key=lambda x: x["mtime"], reverse=True)
+    return {"sessions": all_sessions}
 
 
 @router.get("/api/{project}/sessions/{session_id}")
@@ -615,15 +650,36 @@ def get_project_session(
     project: str, session_id: str,
     tail: int = Query(200, ge=1, le=2000),
 ):
-    """Read a Claude session log for the project (parsed from JSONL)."""
+    """Read a Claude session log (searches project dir + all change worktrees)."""
     project_path = _resolve_project(project)
-    mangled = _claude_mangle(str(project_path))
-    sessions_dir = Path.home() / ".claude" / "projects" / f"-{mangled}"
-    target = sessions_dir / f"{session_id}.jsonl"
-    if not target.is_file():
-        raise HTTPException(404, f"Session not found: {session_id}")
-    lines = _parse_session_jsonl(target, tail)
-    return {"lines": lines, "session_id": session_id}
+
+    # Build list of candidate directories
+    dirs: list[Path] = []
+    proj_mangled = _claude_mangle(str(project_path))
+    proj_dir = Path.home() / ".claude" / "projects" / f"-{proj_mangled}"
+    if proj_dir.is_dir():
+        dirs.append(proj_dir)
+    sp = _state_path(project_path)
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            for change in state.changes:
+                if change.worktree_path:
+                    mangled = _claude_mangle(change.worktree_path)
+                    d = Path.home() / ".claude" / "projects" / f"-{mangled}"
+                    if d.is_dir() and d not in dirs:
+                        dirs.append(d)
+        except Exception:
+            pass
+
+    # Search for the session file in all dirs
+    for d in dirs:
+        target = d / f"{session_id}.jsonl"
+        if target.is_file():
+            lines = _parse_session_jsonl(target, tail)
+            return {"lines": lines, "session_id": session_id}
+
+    raise HTTPException(404, f"Session not found: {session_id}")
 
 
 @router.get("/api/{project}/activity")

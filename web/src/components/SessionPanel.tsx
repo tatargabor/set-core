@@ -71,7 +71,7 @@ export default function SessionPanel({ project, change }: Props) {
     return () => { cancelled = true; clearInterval(iv) }
   }, [project, change])
 
-  // Load selected session content
+  // Load selected session content — project-level endpoint searches all dirs
   useEffect(() => {
     if (!selected) return
     let cancelled = false
@@ -94,7 +94,7 @@ export default function SessionPanel({ project, change }: Props) {
     const isLatest = sessions.length > 0 && sessions[0].id === selected
     const iv = isLatest ? setInterval(load, 5000) : undefined
     return () => { cancelled = true; if (iv) clearInterval(iv) }
-  }, [project, selected, sessions])
+  }, [project, selected, sessions, change])
 
   // Auto-scroll on new lines for latest session
   useEffect(() => {
@@ -148,6 +148,7 @@ export default function SessionPanel({ project, change }: Props) {
                   {s.label || s.id.slice(0, 8)}
                 </div>
                 <div className="text-sm text-neutral-600 truncate pl-3" title={s.full_label}>
+                  {s.change && <span className="text-blue-400/60">{s.change} · </span>}
                   {age} · {(s.size / 1024).toFixed(0)}KB
                 </div>
               </button>
@@ -157,7 +158,7 @@ export default function SessionPanel({ project, change }: Props) {
       )}
 
       {/* Desktop: session list sidebar */}
-      <div className="hidden md:block w-48 shrink-0 border-r border-neutral-800 overflow-y-auto">
+      <div className="hidden md:block w-56 shrink-0 border-r border-neutral-800 overflow-y-auto">
         {sessions.map(s => {
           const isActive = s.id === selected
           const age = timeSince(s.mtime)
@@ -173,7 +174,10 @@ export default function SessionPanel({ project, change }: Props) {
                 <span className={`shrink-0 ${outcomeChar(s.outcome).color}`}>{outcomeChar(s.outcome).char}</span>
                 {s.label || s.id.slice(0, 8)}
               </div>
-              <div className="text-sm text-neutral-600 truncate pl-3" title={s.full_label}>
+              {s.change && (
+                <div className="text-xs text-blue-400/60 truncate pl-5">{s.change}</div>
+              )}
+              <div className="text-sm text-neutral-600 truncate pl-5" title={s.full_label}>
                 {age} · {(s.size / 1024).toFixed(0)}KB
               </div>
             </button>

@@ -16,7 +16,7 @@ logger = logging.getLogger("set-web.watcher")
 
 def _claude_mangle(path: str) -> str:
     """Mangle a path the same way Claude CLI does for ~/.claude/projects/ dirs."""
-    return path.lstrip("/").replace("/", "-").replace(".", "-")
+    return path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")
 
 
 class LogTailer:

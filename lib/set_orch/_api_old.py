@@ -88,7 +88,7 @@ def _claude_mangle(path: str) -> str:
     Claude strips leading '/', replaces '/' with '-', and removes '.' from
     directory names (e.g. '/home/tg/.local/share' -> 'home-tg--local-share').
     """
-    return path.lstrip("/").replace("/", "-").replace(".", "-")
+    return path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")
 
 
 def _resolve_project(project_name: str) -> Path:
