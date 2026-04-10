@@ -193,9 +193,13 @@ if [ "$DEADLOCKED" -gt 0 ]; then WARNINGS="${WARNINGS}|WARNING:deadlocked=$DEADL
 echo "EVENT:running|status=$STATUS|progress=${CHANGES_DONE}/${CHANGES_TOTAL}|tokens=$TOKENS${WARNINGS}"
 ```
 
-**IMPORTANT:** This command runs in the background. You remain available for user interaction while it sleeps and checks.
+**IMPORTANT:** This command runs in the background for ~120 seconds. While it runs:
+- **DO NOT** poll the state file with jq/cat/Bash — the poll script does this for you
+- **DO NOT** check process status with ps/kill — the poll script does this for you
+- **WAIT** for the background task notification before taking any action
+- You may respond to user messages during this time, but do not initiate state checks
 
-**After each poll completes**, emit structured events and check inbox:
+**After the poll task completes** (you'll get a notification), emit structured events and check inbox:
 ```bash
 # Heartbeat (keeps set-web Sentinel tab "active" indicator green)
 set-sentinel-status heartbeat
