@@ -479,8 +479,7 @@ def _cleanup_orphans(state_file: str) -> None:
                                 os.kill(pid, 15)  # SIGTERM
                             except OSError:
                                 pass
-                        import time as _time
-                        _time.sleep(1)
+                        time.sleep(1)
                     # Re-check after kill
                     if _has_process_in_dir(wt_path):
                         logger.warning("Skipping worktree %s: process still running after SIGTERM", change_name)
@@ -558,6 +557,11 @@ def _cleanup_orphans(state_file: str) -> None:
         logger.debug("Orphan cleanup: nothing to clean")
 
 
+def _cwd_in_dir(cwd: str, directory: str) -> bool:
+    """Check if a CWD path is inside the given directory (exact or subdir)."""
+    return cwd == directory or cwd.startswith(directory + os.sep)
+
+
 def _find_pids_in_dir(directory: str) -> list[int]:
     """Find PIDs that have their CWD in the given directory."""
     pids = []
@@ -570,7 +574,7 @@ def _find_pids_in_dir(directory: str) -> list[int]:
                 continue
             try:
                 cwd = os.readlink(f"/proc/{pid_entry}/cwd")
-                if cwd.startswith(directory):
+                if _cwd_in_dir(cwd, directory):
                     pids.append(int(pid_entry))
             except (OSError, PermissionError):
                 continue
@@ -594,7 +598,7 @@ def _has_process_in_dir(directory: str) -> bool:
                 continue
             try:
                 cwd = os.readlink(f"/proc/{pid_entry}/cwd")
-                if cwd.startswith(directory):
+                if _cwd_in_dir(cwd, directory):
                     return True
             except (OSError, PermissionError):
                 continue

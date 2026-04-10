@@ -104,6 +104,7 @@ class ProjectSupervisor:
         self.orchestrator_started_at: Optional[str] = None
         self._sentinel_proc: Optional[subprocess.Popen] = None
         self._orch_proc: Optional[subprocess.Popen] = None
+        self._manually_stopped: bool = False
 
     def _load_sentinel_prompt(self, spec: Optional[str] = None) -> str:
         """Load sentinel skill file as prompt, with fallback to hardcoded prompt.
@@ -181,6 +182,7 @@ class ProjectSupervisor:
             except OSError:
                 pass
             self.sentinel_crash_count = 0
+            self._manually_stopped = False
             logger.info(f"[{self.config.name}] Sentinel started, PID={proc.pid}")
             return proc.pid
         except FileNotFoundError:
@@ -189,6 +191,7 @@ class ProjectSupervisor:
 
     def stop_sentinel(self):
         """Gracefully stop sentinel agent and its child processes (orchestrator etc.)."""
+        self._manually_stopped = True
         if self.sentinel_pid and _is_alive(self.sentinel_pid):
             _kill_gracefully(self.sentinel_pid)
             logger.info(f"[{self.config.name}] Sentinel stopped (PID={self.sentinel_pid})")
@@ -244,6 +247,7 @@ class ProjectSupervisor:
 
     def stop_orchestration(self):
         """Stop orchestration."""
+        self._manually_stopped = True
         if self.orchestrator_pid and _is_alive(self.orchestrator_pid):
             _kill_gracefully(self.orchestrator_pid)
             logger.info(f"[{self.config.name}] Orchestration stopped (PID={self.orchestrator_pid})")
@@ -302,14 +306,8 @@ class ProjectSupervisor:
 
         # Unified sentinel restart (triggered by sentinel death OR orchestrator death)
         if sentinel_needs_restart:
-            if (self.config.auto_restart_sentinel
-                    and self.sentinel_crash_count <= MAX_CRASH_RESTARTS
-                    and not self._is_orchestration_done()):
-                try:
-                    self.start_sentinel(spec=self.sentinel_spec)
-                    actions.append(f"sentinel auto-restarted (#{self.sentinel_crash_count})")
-                except Exception as e:
-                    actions.append(f"sentinel restart failed: {e}")
+            if self._manually_stopped:
+                actions.append("sentinel exited — manually stopped, not restarting")
             elif self._is_orchestration_done():
                 actions.append("sentinel exited — orchestration done, not restarting")
             elif self.sentinel_crash_count > MAX_CRASH_RESTARTS:
@@ -317,6 +315,12 @@ class ProjectSupervisor:
                     f"sentinel restart limit reached ({MAX_CRASH_RESTARTS}), "
                     "not restarting — manual intervention required"
                 )
+            elif self.config.auto_restart_sentinel:
+                try:
+                    self.start_sentinel(spec=self.sentinel_spec)
+                    actions.append(f"sentinel auto-restarted (#{self.sentinel_crash_count})")
+                except Exception as e:
+                    actions.append(f"sentinel restart failed: {e}")
 
         return actions
 
