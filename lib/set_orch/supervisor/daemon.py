@@ -565,6 +565,25 @@ class SupervisorDaemon:
 
     def _build_anomaly_context(self) -> AnomalyContext:
         """Snapshot all the inputs detectors need this poll cycle."""
+        # Lazy path re-resolution: state.json + log file may not exist
+        # at daemon-start time (the orchestrator creates them a few
+        # seconds after spawn). Re-resolve missing paths every poll until
+        # they appear, then keep them. Cheap — at most three stat calls.
+        if self._state_path is None or self._log_path is None:
+            sp, ep, lp = self._resolve_runtime_paths()
+            if self._state_path is None and sp is not None:
+                logger.info("[supervisor] state path resolved (lazy): %s", sp)
+                self._state_path = sp
+            if self._log_path is None and lp is not None:
+                logger.info("[supervisor] log path resolved (lazy): %s", lp)
+                self._log_path = lp
+            if self._events_path is None and ep is not None:
+                self._events_path = ep
+                # The trigger executor was constructed with the old (None
+                # or stale) events path; update it so prior_attempts
+                # summaries find the right file.
+                self._trigger_executor.events_path = ep
+
         # State
         state_dict: Optional[dict] = None
         state_mtime: float = 0.0
