@@ -185,7 +185,7 @@ The `phase_end` mode is more efficient for large projects, because E2E tests are
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `e2e_command` | "" | E2E test command |
-| `e2e_timeout` | 120s | E2E timeout |
+| `e2e_timeout` | 300s | E2E timeout |
 | `e2e_mode` | per_change | per_change/phase_end |
 
 ## Gate Order Summary

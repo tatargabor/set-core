@@ -21,7 +21,11 @@ auto_replan: true
 max_replan_cycles: 2
 
 # E2E
-e2e_timeout: 120
+# 300s default — realistic web suite (100+ tests, Prisma seed, Next.js dev cold
+# start) typically runs in ~150s. Lower values silently time out and used to
+# mask failures as PASS via the baseline-comparison branch. See change:
+# fix-e2e-gate-timeout-masking.
+e2e_timeout: 300
 
 # Environment variables injected into every worktree .env
 env_vars:

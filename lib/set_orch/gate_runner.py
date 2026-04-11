@@ -20,10 +20,50 @@ import glob as glob_mod
 import os
 import shutil
 
+import re
+
 from .state import Change, locked_state, update_change_field
-from .truncate import smart_truncate
+from .truncate import smart_truncate, smart_truncate_structured
+
+
+# Per-gate output storage budgets. E2E gets a much larger budget because
+# Playwright's numbered failure list + summary can exceed the default 2000
+# bytes, and truncating it hides the failures from retry context.
+# See OpenSpec change: fix-e2e-gate-timeout-masking.
+_GATE_OUTPUT_BUDGETS = {
+    "e2e": 32000,
+}
+_DEFAULT_GATE_OUTPUT_BUDGET = 2000
 
 logger = logging.getLogger(__name__)
+
+
+# Pattern that matches Playwright's numbered failure list entries —
+# "  1) [chromium] › tests/e2e/foo.spec.ts:45 › REQ-FOO-001"
+# Preserved in the middle of truncated e2e output so failure IDs survive
+# state storage even on suites with 50+ failures.
+#
+# Note: this pattern intentionally differs from _extract_e2e_failure_ids in
+# modules/web/set_project_web/gates.py. That one CAPTURES the "<spec>:<line>"
+# substring for baseline comparison; this one only needs to MATCH the entry
+# line so smart_truncate_structured preserves it. Stopping at `.spec.\w+`
+# (without the `:line_number` suffix) is deliberate — we only care whether
+# the line exists, not what the capture group returns.
+_PLAYWRIGHT_FAIL_PATTERN = re.compile(
+    r"^\s*\d+\)\s+\[.*?\]\s+[›»]\s+[^\s:]+\.spec\.\w+",
+    re.MULTILINE,
+)
+
+
+def _truncate_gate_output(gate_name: str, output: str) -> str:
+    """Truncate gate output with per-gate budgets and pattern-preserving logic for e2e."""
+    if not output:
+        return output
+    budget = _GATE_OUTPUT_BUDGETS.get(gate_name, _DEFAULT_GATE_OUTPUT_BUDGET)
+    if gate_name == "e2e":
+        # Preserve numbered failure lines so retry context keeps the failure IDs.
+        return smart_truncate_structured(output, budget, keep_patterns=_PLAYWRIGHT_FAIL_PATTERN)
+    return smart_truncate(output, budget)
 
 
 # ─── Data Structures ──────────────────────────────────────────────
@@ -289,7 +329,7 @@ class GatePipeline:
             if _gate_ms_field and self.state_file:
                 update_change_field(self.state_file, self.change_name, _gate_ms_field, elapsed_ms)
             if _gate_output_field and self.state_file and result.output:
-                update_change_field(self.state_file, self.change_name, _gate_output_field, smart_truncate(result.output, 2000))
+                update_change_field(self.state_file, self.change_name, _gate_output_field, _truncate_gate_output(entry.name, result.output))
 
             # Handle result
             if result.status == "pass":
@@ -431,7 +471,7 @@ class GatePipeline:
 
                     # Store output for gates that produce useful output
                     if r.output and r.duration_ms > 0:
-                        c.extras[f"{r.gate_name}_output"] = r.output[:2000]
+                        c.extras[f"{r.gate_name}_output"] = _truncate_gate_output(r.gate_name, r.output)
 
                     # Store stats
                     if r.stats:

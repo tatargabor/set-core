@@ -170,7 +170,7 @@ A `phase_end` mód hatékonyabb nagy projekteknél, mert az E2E tesztek gyakran 
 | Paraméter | Alapértelmezés | Leírás |
 |-----------|---------------|--------|
 | `e2e_command` | "" | E2E teszt parancs |
-| `e2e_timeout` | 120s | E2E timeout |
+| `e2e_timeout` | 300s | E2E timeout |
 | `e2e_mode` | per_change | per_change/phase_end |
 
 ## A gate-ek sorrendje összefoglalva

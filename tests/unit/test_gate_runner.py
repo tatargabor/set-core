@@ -247,3 +247,65 @@ class TestGatePipelineCommitResults:
         assert c1.test_result == "fail"
         assert "build" in summary
         assert "test" in summary
+
+
+# ─── _truncate_gate_output ──────────────────────────────────────────
+
+
+class TestTruncateGateOutput:
+    """Per-gate output truncation with Playwright pattern preservation.
+
+    See OpenSpec change: fix-e2e-gate-timeout-masking.
+    """
+
+    def test_short_output_returned_as_is(self):
+        from set_orch.gate_runner import _truncate_gate_output
+        out = "short output\nline 2\nline 3"
+        assert _truncate_gate_output("e2e", out) == out
+        assert _truncate_gate_output("build", out) == out
+
+    def test_empty_output_returned_as_is(self):
+        from set_orch.gate_runner import _truncate_gate_output
+        assert _truncate_gate_output("e2e", "") == ""
+        assert _truncate_gate_output("build", "") == ""
+
+    def test_non_e2e_uses_2000_budget(self):
+        from set_orch.gate_runner import _truncate_gate_output
+        big = "x" * 10000
+        result = _truncate_gate_output("build", big)
+        # smart_truncate adds a marker (~80 chars), so ~2080 total
+        assert len(result) < 2200
+        assert len(result) > 1000
+
+    def test_e2e_uses_32k_budget(self):
+        from set_orch.gate_runner import _truncate_gate_output
+        big = "x" * 100000
+        result = _truncate_gate_output("e2e", big)
+        # 32000 budget + marker overhead
+        assert len(result) < 33000
+        assert len(result) > 30000
+
+    def test_e2e_preserves_playwright_failure_lines(self):
+        """Numbered failure entries from the middle of the output must survive."""
+        from set_orch.gate_runner import _truncate_gate_output
+        # Build a 60KB+ output with 50 failure lines scattered inside
+        filler = "filler line with ordinary text that does not match anything\n" * 100
+        failures = "\n".join(
+            f"  {i}) [chromium] \u203a tests/e2e/spec_{i}.spec.ts:{i*5}:7 \u203a test {i}"
+            for i in range(1, 51)
+        )
+        output = filler + "\n" + failures + "\n" + filler + "\n" + filler * 5
+        assert len(output) > 32000  # ensure truncation will happen
+
+        result = _truncate_gate_output("e2e", output)
+
+        # Every failure line should be preserved by the keep pattern
+        import re
+        preserved = re.findall(
+            r"\d+\)\s+\[chromium\]\s+\u203a\s+tests/e2e/spec_\d+\.spec\.ts:\d+",
+            result,
+        )
+        assert len(preserved) == 50, (
+            f"Expected all 50 failure lines preserved, got {len(preserved)}. "
+            f"Result length: {len(result)}"
+        )

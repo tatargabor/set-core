@@ -20,6 +20,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# E2E capture ceiling — large enough to hold the full Playwright output for
+# extreme failure counts (200+ failures with long stack traces or multi-KB
+# JSON diffs). The downstream state storage in gate_runner applies a tighter
+# pattern-preserving bound (32KB) via smart_truncate_structured. This value
+# only affects the transient capture used for failure-ID extraction and
+# baseline comparison — raising it has no persistent cost.
+_E2E_CAPTURE_MAX_BYTES = 4 * 1024 * 1024  # 4 MiB
+
 # Runtime error indicators in E2E output — if any appear, the page has client-side errors
 # even if HTTP returned 200.
 E2E_RUNTIME_ERROR_INDICATORS = [
@@ -144,9 +152,14 @@ def _get_or_create_e2e_baseline(
             pass
 
     logger.info("Creating E2E baseline on main (%s)...", main_sha[:8])
+    # Capture the full output (4MB cap) so _extract_e2e_failure_ids sees
+    # every failing test on main. A smaller cap would silently drop
+    # pre-existing failures from the baseline set, causing them to be
+    # flagged as "new regressions" in later worktree runs.
     result = run_command(
         ["bash", "-c", e2e_command],
-        timeout=e2e_timeout, cwd=project_root, max_output_size=8000,
+        timeout=e2e_timeout, cwd=project_root,
+        max_output_size=_E2E_CAPTURE_MAX_BYTES,
     )
     output = result.stdout + result.stderr
     stats = parse_test_output(output)
@@ -263,12 +276,20 @@ def execute_e2e_gate(
         if not profile.e2e_pre_gate(wt_path, e2e_env):
             return GateResult("e2e", "skipped", output="e2e_pre_gate returned False")
 
-    # Run E2E tests
+    # Run E2E tests.
+    # Capture up to 4MB of output — _extract_e2e_failure_ids needs to see
+    # every failure entry, including long assertion diffs and stack traces.
+    # The subprocess_utils default of 1MB is enough for ~200 typical
+    # failures but can truncate suites that fail on huge JSON diffs.
+    # 4MB covers extreme edge cases without meaningful memory cost
+    # (one short-lived string per gate run). Downstream state storage
+    # still bounds the persisted value at 32KB via gate_runner's
+    # smart_truncate_structured with a Playwright-aware keep pattern.
     try:
         e2e_cmd_result = run_command(
             ["bash", "-c", e2e_command],
             timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
-            max_output_size=4000,
+            max_output_size=_E2E_CAPTURE_MAX_BYTES,
         )
     finally:
         # Post-gate hook (cleanup) — always runs
@@ -307,19 +328,76 @@ def execute_e2e_gate(
         )
 
     if raw_status == "pass":
-        output_text = e2e_output[:4000]
+        # Pass the full captured output to gate_runner — it handles
+        # pattern-preserving truncation to 32KB at the storage boundary.
         if runtime_errors:
             output_text = (
                 f"WARNING: {len(runtime_errors)} runtime error(s) detected in E2E output: "
-                f"{', '.join(runtime_errors)}\n\n" + output_text[:3500]
+                f"{', '.join(runtime_errors)}\n\n" + e2e_output
             )
+        else:
+            output_text = e2e_output
         return GateResult(
             "e2e", "pass", output=output_text,
             stats=parse_test_output(e2e_output) if e2e_output else None,
         )
 
+    # Timeout guard: an incomplete run cannot be compared against baseline —
+    # the numbered failure list only arrives after the suite finishes, so a
+    # timed-out run always produces wt_failures=set() and would otherwise
+    # masquerade as PASS via the baseline branch below.
+    if e2e_cmd_result.timed_out:
+        logger.warning(
+            "E2E gate timed out for %s after %ds — marking fail (no baseline comparison)",
+            change_name, e2e_timeout,
+        )
+        return GateResult(
+            "e2e", "fail",
+            output=(
+                f"E2E timed out after {e2e_timeout}s — Playwright did not finish "
+                f"(incomplete run, cannot assess failures)\n\n"
+                + e2e_output
+            ),
+            retry_context=(
+                f"E2E gate timed out after {e2e_timeout}s. The test suite did not "
+                f"finish executing — this is an infrastructure signal, not an "
+                f"assertion failure. Check: webServer startup time, prisma db push "
+                f"duration, test count, slow fixtures, network-bound tests. "
+                f"Consider increasing e2e_timeout or marking slow tests with a "
+                f"dedicated tag."
+            ),
+            stats=parse_test_output(e2e_output) if e2e_output else None,
+        )
+
     # E2E failed — check baseline to filter pre-existing failures
     wt_failures = _extract_e2e_failure_ids(e2e_output)
+
+    # Unparseable-fail guard: non-zero exit with no extractable failure IDs
+    # means Playwright crashed or the formatter output was garbled — the
+    # baseline comparison cannot help here, and would mask the failure as PASS.
+    if not wt_failures:
+        logger.warning(
+            "E2E gate failed for %s with exit_code=%d but no parseable failure list "
+            "— marking fail (no baseline comparison)",
+            change_name, e2e_cmd_result.exit_code,
+        )
+        return GateResult(
+            "e2e", "fail",
+            output=(
+                f"E2E exited with code {e2e_cmd_result.exit_code} but no parseable "
+                f"failure list — likely crash, OOM, or formatter issue\n\n"
+                + e2e_output
+            ),
+            retry_context=(
+                f"E2E gate failed with exit_code={e2e_cmd_result.exit_code} but "
+                f"Playwright did not emit a failure list. This usually means the "
+                f"suite crashed before completing — check the worktree for stack "
+                f"traces, OOM kills, webServer startup errors, or a Playwright "
+                f"reporter that differs from the default."
+            ),
+            stats=parse_test_output(e2e_output) if e2e_output else None,
+        )
+
     project_root = os.path.dirname(wt_path.rstrip("/"))
     toplevel = run_git("rev-parse", "--show-toplevel", cwd=wt_path)
     if toplevel.exit_code == 0:
@@ -356,10 +434,13 @@ def execute_e2e_gate(
             f"E2E: {len(new_failures)} NEW failures (+ {len(pre_existing)} pre-existing on main)\n"
             f"New failures: {', '.join(sorted(new_failures))}\n\n"
         )
-        e2e_output = e2e_output_header + e2e_output[:3500]
+        # Prepend header but keep the full output — gate_runner applies
+        # smart_truncate_structured when writing to state, preserving the
+        # numbered failure list.
+        e2e_output = e2e_output_header + e2e_output
 
     result = GateResult(
-        "e2e", "fail", output=e2e_output[:4000],
+        "e2e", "fail", output=e2e_output,
         stats=parse_test_output(e2e_output) if e2e_output else None,
     )
     scope = change.scope or ""
