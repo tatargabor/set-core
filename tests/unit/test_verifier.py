@@ -899,8 +899,14 @@ class TestExecuteSpecVerifyGate:
         assert result.gate_name == "spec_verify"
         assert result.status == "pass"
 
-    def test_timeout_no_sentinel_stays_pass(self, monkeypatch):
-        """No VERIFY_RESULT sentinel (timeout) should return pass with warning."""
+    def test_no_sentinel_classifier_disabled_backward_compat_pass(self, monkeypatch):
+        """No VERIFY_RESULT sentinel with classifier disabled → backward-compat pass.
+
+        When `llm_verdict_classifier_enabled` is False (explicit operator opt-out),
+        a missing sentinel defaults to PASS with an [ANOMALY] WARNING log — the
+        pre-fix behavior. The new classifier fallback is covered by
+        test_spec_verify_classifier.py.
+        """
         from set_orch import verifier
         from set_orch.subprocess_utils import CommandResult
 
@@ -909,9 +915,13 @@ class TestExecuteSpecVerifyGate:
             verifier, "run_claude_logged",
             lambda *a, **kw: CommandResult(0, "Some partial output without sentinel", "", 5000),
         )
+        monkeypatch.setattr(verifier, "_classifier_enabled", lambda _: False)
 
         change = self._make_change()
-        result = verifier._execute_spec_verify_gate("test-change", change, "/tmp/fake-wt")
+        result = verifier._execute_spec_verify_gate(
+            "test-change", change, "/tmp/fake-wt",
+            state_file="/tmp/fake-state.json",
+        )
 
         assert result.gate_name == "spec_verify"
         assert result.status == "pass"

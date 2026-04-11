@@ -1,0 +1,49 @@
+## Retry Review — Verifying 3 Previous Findings
+
+### Finding 1: Missing `waitUntil: 'networkidle'` on `page.goto` calls
+**NOT_FIXED** [CRITICAL]
+
+All four `page.goto('/')` calls (lines ~9, 15, 22, 35 in `tests/e2e/create-task.spec.ts`) still lack `waitUntil: 'networkidle'`. The scope explicitly requires it.
+
+FILE: tests/e2e/create-task.spec.ts
+FIX: Change every `await page.goto('/')` to `await page.goto('/', { waitUntil: 'networkidle' })`
+
+---
+
+### Finding 2: Missing blank-input validation test
+**NOT_FIXED** [CRITICAL]
+
+The test file has 4 tests (AC-1 through AC-4) but none test blank-input rejection. The scope requires: "Add a validation test: submit with empty input, verify no blank task created."
+
+FILE: tests/e2e/create-task.spec.ts
+FIX: Add a test like:
+```typescript
+test('REQ-CREATE-001: Blank input does not create a task', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  const countBefore = await page.getByTestId('task-row').count();
+  await page.getByLabel('Add task', { exact: true }).fill('   ');
+  await page.getByRole('button', { name: 'Add task' }).click();
+  await expect(page.getByTestId('task-row')).toHaveCount(countBefore);
+});
+```
+
+---
+
+### Finding 3: No title length limit in server action
+**NOT_FIXED** [CRITICAL]
+
+`src/app/actions.ts` still has no max-length guard after the trim check. An unbounded string goes directly to `prisma.task.create`.
+
+FILE: src/app/actions.ts
+LINE: 15
+FIX: Add after the blank check:
+```typescript
+const MAX_TITLE_LENGTH = 255;
+if (title.length > MAX_TITLE_LENGTH) {
+  return { success: false, error: "Title is too long" };
+}
+```
+
+---
+
+**Summary: 0/3 fixed, 3 NOT_FIXED [CRITICAL].**

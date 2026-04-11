@@ -1,0 +1,19 @@
+REVIEW PASS — no critical issues found.
+
+Two MEDIUM items worth noting:
+
+**ISSUE: [MEDIUM] Missing `waitUntil: 'networkidle'` on `page.goto` calls**
+FILE: tests/e2e/create-task.spec.ts
+LINE: 9, 15, 22, 33
+FIX: Change all `page.goto('/')` to `page.goto('/', { waitUntil: 'networkidle' })` — the scope explicitly requires this for test stability.
+
+**ISSUE: [MEDIUM] Missing blank-input validation test**
+FILE: tests/e2e/create-task.spec.ts
+FIX: The scope says "Add a validation test: submit with empty input, verify no blank task created." No such test exists.
+
+**ISSUE: [LOW] No title length limit in server action**
+FILE: src/app/actions.ts
+LINE: 15
+FIX: Consider adding `if (title.length > 500) return { success: false, error: "Title too long" }` — currently unbounded input reaches the database.
+
+Everything else looks solid: server action validates correctly, form has proper loading state per web-frontend rules, accessible labeling matches test selectors, e2e-manifest preserves foundation requirements, and the foundation ordering test fix is a good defensive change.

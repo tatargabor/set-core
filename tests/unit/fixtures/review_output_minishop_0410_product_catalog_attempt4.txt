@@ -1,0 +1,48 @@
+## Retry Review — Verifying 5 Previous Findings
+
+### Finding 1: Missing `priceCents` validation
+**FIXED** ✓
+
+The server action now validates `priceCents` is a positive integer.
+
+### Finding 2: Missing product image upload wiring
+**FIXED** ✓
+
+`uploadProductImage` action now exists and is wired to the form.
+
+### Finding 3: Shadcn Card component not used on product detail
+**FIXED** ✓
+
+`src/app/products/[slug]/page.tsx` now uses `Card`, `CardHeader`, `CardContent`.
+
+### Finding 4: Admin route missing auth check
+**FIXED** ✓
+
+`middleware.ts` now guards `/admin/*` routes with `auth()`.
+
+### Finding 5: [CRITICAL] E2E test file still does not exist
+**NOT_FIXED** [CRITICAL]
+
+The scope requires `tests/e2e/product-catalog.spec.ts` — this file is still missing from the worktree. The agent added `tests/e2e/admin-panel.spec.ts` in an earlier round but never created the storefront catalog spec. Coverage gate would catch this, but the file was marked required in the scope.
+
+FILE: tests/e2e/product-catalog.spec.ts
+FIX: Create the file with at least these tests:
+```typescript
+test('REQ-CAT-001: Storefront lists all products', async ({ page }) => { ... });
+test('REQ-CAT-002: Product detail renders with price and image', async ({ page }) => { ... });
+test('REQ-CAT-003: Search filters product list', async ({ page }) => { ... });
+```
+
+---
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | Missing priceCents validation | FIXED ✓ |
+| 2 | Missing image upload wiring | FIXED ✓ |
+| 3 | Shadcn Card component not used | FIXED ✓ |
+| 4 | Admin route missing auth | FIXED ✓ |
+| 5 | Missing E2E test file | **NOT_FIXED** [CRITICAL] |
+
+---
+
+**REVIEW BLOCKED** — 1 unique critical issue remains. Agent must create `tests/e2e/product-catalog.spec.ts` before this change can merge.

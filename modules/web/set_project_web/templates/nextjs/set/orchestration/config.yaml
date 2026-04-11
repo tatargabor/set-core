@@ -16,6 +16,14 @@ max_parallel: 1
 review_before_merge: true
 max_verify_retries: 2
 
+# LLM verdict classifier — second Sonnet pass that reads review/spec-verify
+# output and extracts a structured verdict. Defends against silent gate
+# passes where the primary LLM emits findings in a format the body-regex
+# parser does not recognise (observed twice in 2026-04 retry reviews).
+# Default True; set to False to disable the extra Sonnet call if cost is a
+# concern (at the price of reopening the silent-pass window).
+# llm_verdict_classifier_enabled: true
+
 # Replanning
 auto_replan: true
 max_replan_cycles: 2

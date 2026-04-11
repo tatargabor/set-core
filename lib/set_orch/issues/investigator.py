@@ -187,25 +187,118 @@ class InvestigationRunner:
         diagnosis.raw_output = proposal
         return diagnosis
 
-    def _parse_proposal(self, proposal: str, has_tasks: bool) -> Diagnosis:
-        """Extract diagnosis fields from proposal.md content."""
-        lines = proposal.lower()
+    def _parse_proposal(self, proposal: str, has_tasks: bool, *,
+                        classifier_enabled: bool = True) -> Diagnosis:
+        """Extract diagnosis fields from proposal.md content.
 
-        # Detect impact/severity from content
-        impact = "medium"
-        if any(w in lines for w in ["critical", "blocker", "permanently block", "pipeline blocked"]):
-            impact = "high"
-        elif any(w in lines for w in ["minor", "cosmetic", "warning"]):
-            impact = "low"
+        Priority order for each field:
+        1. Explicit sentinel — `**Impact:** high`, `**Fix-Scope:** single_file`,
+           `**Target:** framework`, `**Confidence:** 0.9`. The sentinel is
+           trusted verbatim when present (no drift vs. downstream auto-fix).
+        2. LLM verdict classifier — a second Sonnet pass that reads the
+           proposal and returns a structured JSON diagnosis. This handles
+           proposals that the investigation agent writes in free-form
+           markdown without the sentinel format.
+        3. Keyword heuristic fallback — only when the classifier errors out
+           (timeout, non-JSON). Uses word-boundary matching to avoid
+           false positives like "criticality" → high.
 
-        # Detect scope from content
-        fix_scope = "single_file"
-        if any(w in lines for w in ["config.yaml", "config override", "vitest.config", "playwright.config"]):
-            fix_scope = "config_override"
-        elif any(w in lines for w in ["multiple files", "cross-module", "several files"]):
-            fix_scope = "multi_file"
+        See OpenSpec change: llm-verdict-classifier
+        """
+        # ─── 1. Sentinel pass ──────────────────────────────
+        impact_m = re.search(
+            r"\*\*Impact:\*\*\s*(low|medium|high)", proposal, re.IGNORECASE,
+        )
+        fix_scope_m = re.search(
+            r"\*\*Fix-Scope:\*\*\s*(single_file|multi_file|config_override)",
+            proposal, re.IGNORECASE,
+        )
+        target_m = re.search(
+            r"\*\*Target:\*\*\s*(framework|consumer|both)", proposal, re.IGNORECASE,
+        )
+        confidence_m = re.search(
+            r"\*\*Confidence:\*\*\s*(\d+(?:\.\d+)?|\.\d+)", proposal,
+        )
 
-        # Extract root cause — first paragraph after "## Problem" or "## Why"
+        impact = impact_m.group(1).lower() if impact_m else None
+        fix_scope = fix_scope_m.group(1).lower() if fix_scope_m else None
+        fix_target = target_m.group(1).lower() if target_m else None
+
+        sentinel_confidence: Optional[float] = None
+        if confidence_m:
+            try:
+                raw = float(confidence_m.group(1))
+                sentinel_confidence = raw / 100.0 if raw > 1.0 else raw
+            except ValueError:
+                sentinel_confidence = None
+
+        # ─── 2. Classifier fallback (fills missing fields) ─────
+        classifier_used = False
+        classifier_failed = False
+        missing = [
+            name for name, val in
+            (("impact", impact), ("fix_scope", fix_scope), ("fix_target", fix_target))
+            if val is None
+        ]
+        if missing and classifier_enabled:
+            try:
+                from ..llm_verdict import INVESTIGATOR_SCHEMA, classify_verdict
+                try:
+                    from ..events import event_bus as _ev
+                except Exception:
+                    _ev = None
+                cls_result = classify_verdict(
+                    proposal,
+                    INVESTIGATOR_SCHEMA,
+                    purpose="investigator",
+                    event_bus=_ev,
+                )
+                if cls_result.error is None:
+                    classifier_used = True
+                    rj = cls_result.raw_json or {}
+                    if impact is None and rj.get("impact"):
+                        val = str(rj.get("impact", "")).lower()
+                        if val in ("low", "medium", "high"):
+                            impact = val
+                    if fix_scope is None and rj.get("fix_scope"):
+                        val = str(rj.get("fix_scope", "")).lower()
+                        if val in ("single_file", "multi_file", "config_override"):
+                            fix_scope = val
+                    if fix_target is None and rj.get("fix_target"):
+                        val = str(rj.get("fix_target", "")).lower()
+                        if val in ("framework", "consumer", "both"):
+                            fix_target = val
+                    if sentinel_confidence is None and rj.get("confidence") is not None:
+                        try:
+                            raw = float(rj.get("confidence", 0))
+                            sentinel_confidence = raw / 100.0 if raw > 1.0 else raw
+                        except (TypeError, ValueError):
+                            pass
+                else:
+                    classifier_failed = True
+                    logger.warning(
+                        "Investigator classifier failed (error=%s) — falling back to heuristic",
+                        cls_result.error,
+                    )
+            except Exception as exc:
+                classifier_failed = True
+                logger.warning(
+                    "Investigator classifier import or call failed: %s — falling back to heuristic",
+                    exc,
+                )
+        elif missing and not classifier_enabled:
+            # Operator disabled the classifier — go straight to heuristic
+            classifier_failed = True
+
+        # ─── 3. Keyword heuristic — word-boundary matching ────
+        if impact is None:
+            impact = self._heuristic_impact(proposal)
+        if fix_scope is None:
+            fix_scope = self._heuristic_fix_scope(proposal)
+        if fix_target is None:
+            fix_target = self._heuristic_fix_target(proposal)
+
+        # ─── 4. Root cause + suggested fix (section extraction) ──
         root_cause = ""
         for header in [r"##\s*(?:Problem|Why|Root Cause|Background)", r"##\s*\w+"]:
             match = re.search(header + r"\s*\n\s*(.+?)(?:\n\n|\n##)", proposal, re.DOTALL | re.IGNORECASE)
@@ -213,14 +306,12 @@ class InvestigationRunner:
                 root_cause = match.group(1).strip()[:500]
                 break
         if not root_cause:
-            # Fallback: first non-header paragraph
             for line in proposal.split("\n"):
                 line = line.strip()
                 if line and not line.startswith("#") and not line.startswith("-") and len(line) > 20:
                     root_cause = line[:500]
                     break
 
-        # Extract suggested fix — from "## What" or "## Solution" section
         suggested_fix = ""
         for header in [r"##\s*(?:What|Solution|Fix|Scope)", r"##\s*\w+"]:
             match = re.search(header + r"\s*\n\s*(.+?)(?:\n\n|\n##)", proposal, re.DOTALL | re.IGNORECASE)
@@ -228,28 +319,20 @@ class InvestigationRunner:
                 suggested_fix = match.group(1).strip()[:500]
                 break
 
-        # Confidence based on completeness
-        confidence = 0.5
-        if root_cause and suggested_fix:
-            confidence = 0.8
-        if has_tasks:
-            confidence = 0.95  # /opsx:ff completed fully
-
-        # Detect fix target from explicit "## Fix Target" section (LLM classification)
-        target_match = re.search(r'\*\*Target:\*\*\s*(framework|consumer|both)', proposal, re.IGNORECASE)
-        if target_match:
-            fix_target = target_match.group(1).lower()
+        # ─── 5. Confidence ────────────────────────────────
+        if sentinel_confidence is not None:
+            confidence = sentinel_confidence
         else:
-            # Fallback: keyword heuristic
-            framework_indicators = [
-                "merger", "dispatcher", "gate", "profile", "orchestrat",
-                "set-core", "set_orch", "ff-only", "fast-forward",
-                "integration gate", "merge strategy",
-                "lib/set_orch", "framework bug",
-            ]
-            fix_target = "consumer"
-            if any(ind in lines for ind in framework_indicators):
-                fix_target = "framework"
+            confidence = 0.5
+            if root_cause and suggested_fix:
+                confidence = 0.8
+            if has_tasks:
+                confidence = 0.95
+
+        # Penalise when we had to fall through to the keyword heuristic —
+        # the verdict is less trustworthy than sentinel or classifier paths.
+        if classifier_failed:
+            confidence = max(0.0, confidence - 0.1)
 
         return Diagnosis(
             root_cause=root_cause or "See proposal.md for details",
@@ -262,6 +345,51 @@ class InvestigationRunner:
             tags=[],
             fix_target=fix_target,
         )
+
+    @staticmethod
+    def _heuristic_impact(proposal: str) -> str:
+        """Word-boundary keyword match for impact classification.
+
+        Uses `\\b` boundaries so "criticality" and "not critical" do not
+        trip the "critical" keyword. Scans the raw text (not lowercased)
+        via the IGNORECASE flag.
+        """
+        high_patterns = [r"\bcritical\b", r"\bblocker\b", r"\bpermanently block",
+                          r"\bpipeline blocked\b"]
+        low_patterns = [r"\bminor\b", r"\bcosmetic\b", r"\bwarning\b"]
+        for p in high_patterns:
+            if re.search(p, proposal, re.IGNORECASE):
+                return "high"
+        for p in low_patterns:
+            if re.search(p, proposal, re.IGNORECASE):
+                return "low"
+        return "medium"
+
+    @staticmethod
+    def _heuristic_fix_scope(proposal: str) -> str:
+        config_patterns = [r"\bconfig\.yaml\b", r"\bconfig override\b",
+                            r"\bvitest\.config\b", r"\bplaywright\.config\b"]
+        multi_patterns = [r"\bmultiple files\b", r"\bcross-module\b", r"\bseveral files\b"]
+        for p in config_patterns:
+            if re.search(p, proposal, re.IGNORECASE):
+                return "config_override"
+        for p in multi_patterns:
+            if re.search(p, proposal, re.IGNORECASE):
+                return "multi_file"
+        return "single_file"
+
+    @staticmethod
+    def _heuristic_fix_target(proposal: str) -> str:
+        framework_patterns = [
+            r"\bmerger\b", r"\bdispatcher\b", r"\bgate\b", r"\bprofile\b",
+            r"\borchestrat", r"\bset-core\b", r"\bset_orch\b",
+            r"\bff-only\b", r"\bfast-forward\b", r"\bintegration gate\b",
+            r"\bmerge strategy\b", r"\blib/set_orch\b", r"\bframework bug\b",
+        ]
+        for p in framework_patterns:
+            if re.search(p, proposal, re.IGNORECASE):
+                return "framework"
+        return "consumer"
 
     def _investigation_path(self, issue: Issue) -> Path:
         project_path = Path(issue.environment_path) if issue.environment_path else self.set_core_path
