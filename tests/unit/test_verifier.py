@@ -870,7 +870,7 @@ class TestExecuteSpecVerifyGate:
 
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/claude")
         monkeypatch.setattr(
-            verifier, "run_claude",
+            verifier, "run_claude_logged",
             lambda *a, **kw: CommandResult(0, "Some output\nVERIFY_RESULT: FAIL\nDetails here", "", 5000),
         )
 
@@ -879,8 +879,8 @@ class TestExecuteSpecVerifyGate:
 
         assert result.gate_name == "spec_verify"
         assert result.status == "fail"
-        assert "requirements not fully covered" in result.retry_context
-        assert "Implement auth feature" in result.retry_context
+        assert "Spec verification FAILED" in result.retry_context
+        assert "CRITICAL" in result.retry_context
 
     def test_verify_result_pass_unchanged(self, monkeypatch):
         """VERIFY_RESULT: PASS should return gate pass."""
@@ -889,7 +889,7 @@ class TestExecuteSpecVerifyGate:
 
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/claude")
         monkeypatch.setattr(
-            verifier, "run_claude",
+            verifier, "run_claude_logged",
             lambda *a, **kw: CommandResult(0, "All good\nVERIFY_RESULT: PASS\n", "", 5000),
         )
 
@@ -906,7 +906,7 @@ class TestExecuteSpecVerifyGate:
 
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/claude")
         monkeypatch.setattr(
-            verifier, "run_claude",
+            verifier, "run_claude_logged",
             lambda *a, **kw: CommandResult(0, "Some partial output without sentinel", "", 5000),
         )
 
@@ -915,7 +915,7 @@ class TestExecuteSpecVerifyGate:
 
         assert result.gate_name == "spec_verify"
         assert result.status == "pass"
-        assert "timeout" in result.output
+        assert "missing VERIFY_RESULT sentinel" in result.output
 
 
 # ─── E2E auto-detect helpers ──────────────────────────────────────────

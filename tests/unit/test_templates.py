@@ -141,10 +141,9 @@ class TestRenderFixPrompt:
             smoke_cmd="test",
             variant="smoke",
         )
-        # Should only include last 2000 chars
-        lines = result.split("\n")
-        # The output section should be limited
-        assert "last 2000 chars" in result
+        # smart_truncate_structured caps output_tail at ~2000 chars, so the
+        # final rendered prompt is well below the raw 5000-char input
+        assert result.count("x") < 3000
 
 
 class TestRenderBuildFixPrompt:

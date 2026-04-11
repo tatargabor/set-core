@@ -224,4 +224,4 @@ class TestMergeI18nSidecars:
 
 class TestConstants:
     def test_max_merge_retries(self):
-        assert MAX_MERGE_RETRIES == 5
+        assert MAX_MERGE_RETRIES == 3
