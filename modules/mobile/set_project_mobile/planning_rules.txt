@@ -1,0 +1,19 @@
+## Mobile (Capacitor) Planning Rules
+
+### Change Separation
+- **Separate web changes from native changes.** A change that modifies only web code (src/, pages/, components/) should NOT touch ios/App/ or android/app/. Native changes are slower to verify (Xcode build) and create serialization bottlenecks.
+- **Capacitor plugin additions are their own change.** Adding a new Capacitor plugin (e.g., @capacitor/camera) touches package.json, requires `cap sync`, and may need native config (Info.plist permissions). Keep it isolated.
+- **Share Extension changes are foundational.** If the app needs a Share Extension, plan it as an early change — later changes may depend on the sharing pipeline.
+
+### Platform Testing
+- **E2E tests run in the browser, not on device.** Capacitor apps are web apps — Playwright tests cover the web layer. Native-only features (push notifications, deep links) need manual verification or dedicated native test changes.
+- **Build verification includes `cap sync`.** After web build, `npx cap sync` must succeed. The build gate runs both steps.
+
+### Native Code Constraints
+- **Xcode project files are merge-hostile.** .xcodeproj/project.pbxproj is XML that conflicts easily. Never have two parallel changes modifying Xcode project structure.
+- **Info.plist changes need review.** Permission strings, URL schemes, and App Transport Security exceptions are security-sensitive.
+- **App Groups require matching entitlements.** If a change adds App Groups (for Share Extension), both the main app and extension must have matching group identifiers in their entitlements.
+
+### Capacitor Config
+- **capacitor.config.ts is cross-cutting.** Multiple plugins may need config entries. Treat it like layout.tsx — serialize changes that modify it.
+- **webDir must match build output.** For Next.js: `out/` (static export) or custom. For standard builds: `dist/` or `build/`. Mismatch causes blank screens on device.

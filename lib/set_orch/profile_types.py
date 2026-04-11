@@ -94,14 +94,20 @@ class ProjectType(ABC):
         """Return available template variants."""
 
     def get_template_dir(self, template_id: str) -> Optional[Path]:
-        """Return the directory containing template files for a variant."""
+        """Return the directory containing template files for a variant.
+
+        Walks the MRO so that inherited templates resolve to the parent
+        module's directory (e.g., MobileProjectType can find WebProjectType's
+        "nextjs" template in modules/web/).
+        """
         import inspect
 
-        for tmpl in self.get_templates():
-            if tmpl.id == template_id:
-                cls_file = inspect.getfile(type(self))
-                pkg_dir = Path(cls_file).parent
-                return pkg_dir / tmpl.template_dir
+        for cls in type(self).__mro__:
+            if "get_templates" not in cls.__dict__:
+                continue
+            for tmpl in cls.__dict__["get_templates"](self):
+                if tmpl.id == template_id:
+                    return Path(inspect.getfile(cls)).parent / tmpl.template_dir
         return None
 
     # --- Rules and directives ---

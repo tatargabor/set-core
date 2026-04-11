@@ -1,0 +1,13 @@
+core:
+  - capacitor.config.ts
+  - rules/capacitor-conventions.md
+  - rules/native-bridge.md
+  - project-knowledge.yaml
+
+protected:
+  - capacitor.config.ts
+
+modules:
+  share-extension:
+    description: "iOS Share Extension scaffold and App Groups setup"
+    files: []

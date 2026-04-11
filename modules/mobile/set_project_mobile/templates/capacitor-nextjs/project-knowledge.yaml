@@ -1,0 +1,16 @@
+project_type: mobile
+framework: capacitor
+web_framework: nextjs
+platforms:
+  - ios
+  - web
+build_pipeline:
+  - npm run build
+  - npx cap sync
+native_projects:
+  ios: ios/App/
+  android: android/app/
+cross_cutting_files:
+  - capacitor.config.ts
+  - ios/App/App/Info.plist
+  - ios/App/App/App.entitlements
