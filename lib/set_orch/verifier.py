@@ -1377,49 +1377,53 @@ def review_change(
     # cheaply and deterministically, and is the only path that ever runs when
     # the llm_verdict_classifier_enabled directive is False.
     parsed_issues = _parse_review_issues(review_output)
-    has_critical = any(i["severity"] == "CRITICAL" for i in parsed_issues)
+    fast_path_critical = sum(1 for i in parsed_issues if i["severity"] == "CRITICAL")
+    has_critical = fast_path_critical > 0
     verdict_source = "fast_path"
 
-    # Defense in depth: retry reviews use a different markdown structure
-    # (`### Finding N:` headers, `**NOT_FIXED** [CRITICAL]` annotations,
-    # `**REVIEW BLOCKED**` summaries) that the fast-path regex does not
-    # recognise. Two confirmed silent-pass incidents
-    # (micro/create-task 2026-04-11 and minishop_0410/product-catalog
-    # attempt 4) slipped through because of this. When the fast-path finds
-    # ZERO issues on a non-trivial review output, fall through to the LLM
-    # verdict classifier — a format-agnostic second Sonnet pass that reads
-    # the review text and returns a structured verdict.
+    # Defense in depth: ALWAYS run the LLM verdict classifier on every
+    # non-trivial review output (not just retries, not just zero-finding
+    # cases). The fast-path regex was the source of two confirmed
+    # silent-pass incidents because it could not parse retry-format
+    # markdown (`### Finding N:` headers, `**NOT_FIXED** [CRITICAL]`
+    # annotations, `**REVIEW BLOCKED**` summaries). The classifier is a
+    # format-agnostic second Sonnet pass that reads the review text and
+    # returns a structured verdict.
     #
-    # The classifier runs ONLY when parsed_issues is empty: if the fast-path
-    # already extracted findings (at any severity), we trust that they are a
-    # complete list in the format the parser understands. Running the
-    # classifier on top could produce conflicting results for lower-severity
-    # findings and add latency with no safety benefit.
-    if len(parsed_issues) == 0 and len(review_output) >= 500:
-        classifier_enabled = _classifier_enabled(state_file)
-        if classifier_enabled:
-            from .llm_verdict import REVIEW_SCHEMA, classify_verdict
-            logger.info(
-                "Gate[review] classifier fallback — fast-path found 0 issues, "
-                "running classifier on %d bytes",
-                len(review_output),
-            )
-            try:
-                from .events import event_bus as _ev
-            except Exception:
-                _ev = None
-            cls_result = classify_verdict(
-                review_output,
-                REVIEW_SCHEMA,
-                purpose="review",
-                event_bus=_ev,
-            )
-            if cls_result.error is None and cls_result.critical_count > 0:
-                first_summary = (cls_result.findings[0].get("summary", "") if cls_result.findings else "")[:160]
+    # We take the WORSE of (fast_path_critical, classifier_critical_count)
+    # so neither path can silently lose findings. The cost is one extra
+    # Sonnet call per review (~$0.001 + ~5s) — acceptable to eliminate
+    # the silent-pass class of bug entirely.
+    if len(review_output) >= 500 and _classifier_enabled(state_file):
+        from .llm_verdict import REVIEW_SCHEMA, classify_verdict
+        logger.info(
+            "Gate[review] running classifier (fast_path=%d critical) on %d bytes",
+            fast_path_critical, len(review_output),
+        )
+        try:
+            from .events import event_bus as _ev
+        except Exception:
+            _ev = None
+        cls_result = classify_verdict(
+            review_output,
+            REVIEW_SCHEMA,
+            purpose="review",
+            event_bus=_ev,
+        )
+        if cls_result.error is None:
+            cls_critical = cls_result.critical_count
+            if cls_critical > fast_path_critical:
+                # Classifier found findings the fast-path missed —
+                # merge gets blocked, classifier wins.
+                first_summary = (
+                    cls_result.findings[0].get("summary", "")
+                    if cls_result.findings else ""
+                )[:160]
                 logger.error(
-                    "Gate[review] classifier found %d critical issues that "
-                    "fast-path missed for %s — merge blocked. Pattern: %s",
-                    cls_result.critical_count, change_name, first_summary,
+                    "Gate[review] classifier found %d critical (fast_path missed %d) "
+                    "for %s — merge blocked. Pattern: %s",
+                    cls_critical, cls_critical - fast_path_critical,
+                    change_name, first_summary,
                 )
                 has_critical = True
                 parsed_issues = [
@@ -1433,19 +1437,27 @@ def review_change(
                     for f in cls_result.findings
                 ]
                 verdict_source = "classifier_override"
-            elif cls_result.error is None:
+            elif cls_critical < fast_path_critical:
+                # Fast-path was stricter than classifier — KEEP the
+                # fast-path verdict. We never silently downgrade.
                 logger.info(
-                    "Gate[review] classifier confirmed 0 critical findings for %s "
-                    "(elapsed=%dms)", change_name, cls_result.elapsed_ms,
+                    "Gate[review] fast_path stricter (%d) than classifier (%d) for %s — "
+                    "keeping fast_path verdict", fast_path_critical, cls_critical, change_name,
+                )
+                verdict_source = "fast_path_stricter"
+            else:
+                logger.info(
+                    "Gate[review] classifier and fast_path agree (%d critical) for %s "
+                    "(elapsed=%dms)", cls_critical, change_name, cls_result.elapsed_ms,
                 )
                 verdict_source = "classifier_confirmed"
-            else:
-                logger.warning(
-                    "Gate[review] classifier failed for %s (error=%s, elapsed=%dms) "
-                    "— falling through with fast-path verdict",
-                    change_name, cls_result.error, cls_result.elapsed_ms,
-                )
-                verdict_source = "classifier_failed"
+        else:
+            logger.warning(
+                "Gate[review] classifier failed for %s (error=%s, elapsed=%dms) — "
+                "falling through with fast-path verdict",
+                change_name, cls_result.error, cls_result.elapsed_ms,
+            )
+            verdict_source = "classifier_failed"
 
     _persist_review_verdict(
         cwd=wt_path, baseline=session_baseline, change_name=change_name,
@@ -2623,10 +2635,22 @@ def _parse_critical_count(output: str) -> int | None:
     """Parse the `CRITICAL_COUNT: N` sentinel from spec-verify LLM output.
 
     The spec-verify prompt asks the LLM to emit an explicit critical-findings
-    count as its second-to-last line, alongside `VERIFY_RESULT: PASS|FAIL`.
+    count as the second-to-last line, alongside `VERIFY_RESULT: PASS|FAIL`.
     This is deliberately NOT a body-regex heuristic — past heuristic-based
     CRITICAL detection misdiagnosed real findings, so we rely on the model
     self-reporting instead.
+
+    Robustness rules:
+      - Only the LAST occurrence in the output counts. Quoted echoes of
+        prior runs ("the previous report said CRITICAL_COUNT: 0 ...")
+        appear earlier in the prose; the genuine sentinel the LLM emitted
+        as its sign-off is always the last one.
+      - Only the last 4 KB of output is scanned. The sentinel must be
+        near the end (the prompt explicitly says "second-to-last line")
+        and bounding the scan eliminates false matches from large quoted
+        documents in the middle of the output.
+      - Anchored at line start with `re.MULTILINE` so a quoted prefix
+        like `> CRITICAL_COUNT: 0` does NOT match.
 
     Returns:
         The parsed integer count (>= 0).
@@ -2635,11 +2659,12 @@ def _parse_critical_count(output: str) -> int | None:
     """
     if not output:
         return None
-    m = re.search(r"CRITICAL_COUNT:\s*(\d+)\b", output)
-    if not m:
+    tail = output[-4096:] if len(output) > 4096 else output
+    matches = re.findall(r"^\s*CRITICAL_COUNT:\s*(\d+)\b", tail, re.MULTILINE)
+    if not matches:
         return None
     try:
-        return int(m.group(1))
+        return int(matches[-1])
     except ValueError:
         return None
 
@@ -2915,19 +2940,36 @@ def _execute_spec_verify_gate(
                     f"Original scope: {scope}"
                 ),
             )
-        # Classifier disabled — preserve old backward-compat behavior.
-        logger.warning(
-            "[ANOMALY] Spec verify: missing VERIFY_RESULT sentinel for %s — "
-            "assuming PASS (verify skill prompt issue, classifier disabled)",
+        # Classifier disabled AND no sentinel: fail closed. The previous
+        # backward-compat behaviour (silent pass with [ANOMALY] log) was a
+        # known silent-merge risk — see audit. There is no trustworthy
+        # signal here, so we block the merge and ask the verify skill
+        # to be rerun with the sentinel format. Operators who want the
+        # old "lenient" behaviour should re-enable the classifier.
+        scope = change.scope or ""
+        logger.error(
+            "Gate[spec-verify] %s: missing VERIFY_RESULT sentinel AND classifier "
+            "disabled — failing closed (no trustworthy signal)",
             change_name,
         )
-        logger.info("Gate[spec-verify] END %s result=pass (missing-sentinel)", change_name)
+        logger.info("Gate[spec-verify] END %s result=fail (missing-sentinel-no-classifier)", change_name)
         _persist_spec_verify_verdict(
             cwd=wt_path, baseline=session_baseline, change_name=change_name,
-            verdict="pass", critical_count=0, source="missing_sentinel_legacy",
-            summary="missing VERIFY_RESULT sentinel + classifier disabled — assumed pass",
+            verdict="fail", critical_count=1, source="missing_sentinel_classifier_disabled",
+            summary="missing VERIFY_RESULT sentinel + classifier disabled — failing closed",
         )
-        return GateResult("spec_verify", "pass", output="missing VERIFY_RESULT sentinel — assumed PASS")
+        return GateResult(
+            "spec_verify", "fail",
+            output=smart_truncate(verify_output, 2000) or "missing VERIFY_RESULT sentinel and classifier disabled",
+            retry_context=(
+                "Spec verification verdict could not be determined — the verify "
+                "skill did not emit the VERIFY_RESULT/CRITICAL_COUNT sentinel lines "
+                "and the LLM verdict classifier is disabled in directives. "
+                "Re-run /opsx:verify and ensure the final two lines are exactly:\n"
+                "  CRITICAL_COUNT: <integer>\n  VERIFY_RESULT: PASS|FAIL\n\n"
+                f"Original scope: {scope}"
+            ),
+        )
 
 
 # ─── Integrate Main Into Branch ─────────────────────────────────────

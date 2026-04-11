@@ -286,21 +286,36 @@ def _derive_session_label(session_path: Path) -> tuple[str, str]:
 
 
 def _session_outcome(session_path: Path) -> str:
-    """Derive session outcome — sidecar first, keyword scan as fallback.
+    """Return the canonical outcome for a Claude session.
 
     Returns 'success', 'error', or 'unknown'.
 
-    The authoritative source is `<session_id>.verdict.json` written by the
-    gate that generated the session (see `lib/set_orch/gate_verdict.py`).
-    Sessions whose gate uses the sidecar pattern (currently: review) get
-    a single-source-of-truth outcome that matches the merge decision.
+    Strict single source of truth: only the `<session_id>.verdict.json`
+    sidecar written by the gate that produced this session is considered
+    authoritative. Sessions without a sidecar return "unknown" (rendered
+    as a neutral gray badge).
 
-    For sessions without a sidecar (legacy gates, ad-hoc Claude calls,
-    pre-sidecar runs), we fall back to the older keyword heuristic. The
-    keyword heuristic is fragile and is the reason this sidecar mechanism
-    exists — sessions where the prose mentioned `[CRITICAL]` while the
-    gate said pass would render as failed in the UI. With the sidecar
-    present we just trust whatever the gate wrote.
+    Why no fallback heuristic?
+    --------------------------
+    Earlier versions of this function ran a keyword scan ("review fail",
+    "[critical]", "fixed", "committed", ...) over the last assistant
+    message. That heuristic was wrong in both directions:
+      - false errors when the prose quoted a previous critical finding
+        and the gate had actually decided pass (the original bug — see
+        commit 692e6019)
+      - false successes when the agent said "fixed" but the next gate
+        re-ran and failed
+    There is no reliable way to derive a binary verdict from natural
+    language without rerunning the LLM verdict classifier — and that
+    classifier already runs at gate-decision time and writes a sidecar.
+
+    For Claude sessions that go through `run_claude_logged`, the
+    subprocess wrapper writes a default sidecar based on the claude exit
+    code so EVERY logged session has at least a coarse pass/fail. Gates
+    that produce a richer verdict (review, spec_verify) overwrite the
+    default with their canonical outcome. Sessions that bypass
+    `run_claude_logged` (legacy ad-hoc calls) stay "unknown" until they
+    are migrated.
     """
     try:
         from ..gate_verdict import read_verdict_sidecar
@@ -308,73 +323,6 @@ def _session_outcome(session_path: Path) -> str:
         if v is not None:
             return v.to_outcome()
     except Exception:
-        pass
-
-    try:
-        # Read last ~20 lines efficiently
-        lines: list[str] = []
-        with open(session_path, "rb") as fh:
-            fh.seek(0, 2)
-            size = fh.tell()
-            # Read last 32KB
-            fh.seek(max(0, size - 32768))
-            raw = fh.read().decode("utf-8", errors="replace")
-            lines = [l.strip() for l in raw.splitlines() if l.strip()]
-
-        # Find last assistant message text
-        for raw_line in reversed(lines):
-            try:
-                entry = json.loads(raw_line)
-            except json.JSONDecodeError:
-                continue
-            if entry.get("type") != "assistant":
-                continue
-            msg = entry.get("message", {})
-            if not isinstance(msg, dict):
-                continue
-            content = msg.get("content", [])
-            if isinstance(content, str):
-                text = content.lower()
-            elif isinstance(content, list):
-                text = " ".join(
-                    b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
-                ).lower()
-            else:
-                continue
-            if not text:
-                continue
-
-            # Check for failure indicators (use phrases, not single words)
-            fail_phrases = [
-                "review fail", "build fail", "test fail", "tests fail",
-                "unable to fix", "cannot fix", "still failing",
-                "not passing", "errors remain", "could not resolve",
-                "[critical]", "review critical",
-            ]
-            # Check for success indicators
-            pass_phrases = [
-                "review pass", "all tests pass", "tests pass",
-                "committed", "commit ", "no issues found",
-                "all changes are complete", "implementation complete",
-                "all tasks", "successfully", "fixed",
-                "reflection committed", "done.",
-            ]
-
-            has_fail = any(p in text for p in fail_phrases)
-            has_pass = any(p in text for p in pass_phrases)
-
-            # When both match, success wins if "fixed"/"committed" is present
-            # (agent reported critical issues but then fixed them)
-            if has_pass and has_fail:
-                if "fixed" in text or "committed" in text:
-                    return "success"
-                return "error"
-            if has_fail:
-                return "error"
-            if has_pass:
-                return "success"
-            return "unknown"
-    except (OSError, ValueError):
         pass
     return "unknown"
 

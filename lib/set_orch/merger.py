@@ -45,6 +45,66 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 
+def _test_script_missing(wt_path: str, test_cmd: str) -> bool:
+    """Return True if `test_cmd`'s referenced script is not in package.json.
+
+    Replaces the older substring-scan heuristic ("Missing script",
+    "ERR_PNPM_NO_SCRIPT", ...) which produced false positives whenever
+    the test runner emitted similar wording for unrelated errors.
+
+    Decision logic:
+      1. Extract the script name from `test_cmd`. We support common forms:
+            pnpm test                   → script "test"
+            pnpm run e2e                → script "e2e"
+            npm test                    → script "test"
+            npm run integration-test    → script "integration-test"
+            yarn test                   → script "test"
+         For anything else (raw bash, custom binaries) we return False —
+         we do not assume missing-ness for unknown shapes.
+      2. Read `<wt_path>/package.json`. If it doesn't exist or is unreadable,
+         return False (we cannot prove the script is missing).
+      3. Look for the extracted script name in `scripts`. If absent,
+         return True (definitively missing). If present, return False.
+    """
+    import json as _json
+    if not test_cmd or not wt_path:
+        return False
+
+    parts = test_cmd.strip().split()
+    if not parts:
+        return False
+    pm = parts[0]
+    if pm not in ("pnpm", "npm", "yarn"):
+        return False
+
+    # Resolve script name: `<pm> [run] <script>` or `<pm> test` shorthand.
+    script_name = ""
+    if len(parts) >= 3 and parts[1] == "run":
+        script_name = parts[2]
+    elif len(parts) >= 2 and parts[1] in ("test", "build", "lint"):
+        script_name = parts[1]
+    elif len(parts) >= 2:
+        # `pnpm e2e` (pnpm allows omitting `run` for non-builtin scripts)
+        script_name = parts[1]
+    else:
+        return False
+
+    pkg = Path(wt_path) / "package.json"
+    if not pkg.is_file():
+        return False
+    try:
+        data = _json.loads(pkg.read_text())
+    except (OSError, _json.JSONDecodeError) as exc:
+        logger.warning(
+            "[merger] Could not parse %s for missing-script check: %s", pkg, exc,
+        )
+        return False
+    scripts = data.get("scripts") or {}
+    if not isinstance(scripts, dict):
+        return False
+    return script_name not in scripts
+
+
 def _set_completed_at_if_missing(state_file: str, change_name: str) -> None:
     """Set completed_at if not already set (verifier may have set it on 'done')."""
     state = load_state(state_file)
@@ -1128,17 +1188,17 @@ def _run_integration_gates(
                 if event_bus:
                     event_bus.emit("GATE_PASS", change=change_name, data={"gate": "test", "elapsed_ms": _ge, "phase": "integration"})
             elif gc.is_blocking("test"):
-                # Check if failure is because test runner isn't installed (missing script/binary)
+                # Check if failure is because the test script is not defined
+                # in package.json. Query package.json directly — substring
+                # scanning the failed run's output is fragile and was the
+                # source of false skips.
                 output = (result.stdout or "") + (result.stderr or "")
-                missing_indicators = [
-                    "Missing script",
-                    "ERR_PNPM_NO_SCRIPT",
-                    "command not found",
-                    "not found",
-                    'is not recognized',
-                ]
-                is_missing = any(ind.lower() in output.lower() for ind in missing_indicators)
-                # pnpm/npm exit 1 with empty output when script doesn't exist — only apply this heuristic for npm/pnpm
+                is_missing = _test_script_missing(wt_path, test_cmd)
+                # Empty-output fallback only for npm/pnpm — package managers
+                # sometimes exit 1 with no output when bootstrapping fails
+                # before the script even runs. Treat this as ambiguous, NOT
+                # a "definitely missing" — we still mark skip but log it
+                # explicitly so the user can investigate.
                 is_empty_fail = (
                     not output.strip()
                     and result.exit_code == 1

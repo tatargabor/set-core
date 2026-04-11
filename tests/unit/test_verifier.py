@@ -899,13 +899,13 @@ class TestExecuteSpecVerifyGate:
         assert result.gate_name == "spec_verify"
         assert result.status == "pass"
 
-    def test_no_sentinel_classifier_disabled_backward_compat_pass(self, monkeypatch):
-        """No VERIFY_RESULT sentinel with classifier disabled → backward-compat pass.
+    def test_no_sentinel_classifier_disabled_fails_closed(self, monkeypatch):
+        """No VERIFY_RESULT sentinel with classifier disabled → FAIL CLOSED.
 
-        When `llm_verdict_classifier_enabled` is False (explicit operator opt-out),
-        a missing sentinel defaults to PASS with an [ANOMALY] WARNING log — the
-        pre-fix behavior. The new classifier fallback is covered by
-        test_spec_verify_classifier.py.
+        Was: backward-compat silent pass with [ANOMALY] log.
+        Now: fail closed — there is no trustworthy signal, and the silent
+        pass was a known silent-merge risk (see audit + commit history).
+        Operators who want lenient behaviour must re-enable the classifier.
         """
         from set_orch import verifier
         from set_orch.subprocess_utils import CommandResult
@@ -924,8 +924,9 @@ class TestExecuteSpecVerifyGate:
         )
 
         assert result.gate_name == "spec_verify"
-        assert result.status == "pass"
-        assert "missing VERIFY_RESULT sentinel" in result.output
+        assert result.status == "fail"
+        assert "VERIFY_RESULT" in result.retry_context
+        assert "classifier" in result.retry_context.lower()
 
 
 # ─── E2E auto-detect helpers ──────────────────────────────────────────

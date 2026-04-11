@@ -319,24 +319,49 @@ def run_claude_logged(
     extra_args: list[str] | None = None,
     cwd: str | Path | None = None,
 ) -> ClaudeResult:
-    """Execute Claude CLI and emit an LLM_CALL event for tracking.
+    """Execute Claude CLI, emit LLM_CALL event, and write a verdict sidecar.
 
-    Thin wrapper around run_claude() that logs every invocation to the
-    orchestration event bus so calls are visible in set-web and persist
-    across sessions.
+    Thin wrapper around run_claude() that:
+      1. tags the prompt with [PURPOSE:<purpose>:<change>] so the session
+         JSONL can be matched back to its caller
+      2. emits an LLM_CALL event so the call is visible in set-web
+      3. writes a default `<session_id>.verdict.json` sidecar based on
+         the Claude process exit code
+
+    The sidecar is the single source of truth the dashboard reads — see
+    `lib/set_orch/gate_verdict.py` and `api/sessions.py::_session_outcome`.
+    Gates that produce a richer verdict (review, spec_verify) call
+    `persist_gate_verdict` themselves AFTER this function returns; that
+    second write overwrites the default sidecar atomically (rename), so
+    the more specific source/critical_count wins. Sessions that don't get
+    a richer verdict still have the coarse exit-code-based sidecar so the
+    UI never falls back to a heuristic outcome.
 
     Args:
         prompt: The prompt text to send via stdin.
         purpose: Why this call is made (review, smoke_fix, spec_verify,
                  classify, replan, decompose, digest, audit, build_fix, …).
+                 Used as the `gate` field in the sidecar.
         change: Change name if call is change-scoped, empty for global calls.
         timeout: Timeout in seconds (default 300 = 5 min).
         model: Model short name or full ID.
         extra_args: Additional CLI arguments.
-        cwd: Working directory.
+        cwd: Working directory. If unset, the sidecar cannot be written
+            (no Claude session dir to look in) and the caller must rely
+            on the gate's own sidecar persistence.
     """
     # Prepend PURPOSE header so _derive_session_label() can identify the call
     tagged_prompt = f"[PURPOSE:{purpose}:{change}]\n{prompt}"
+
+    # Snapshot the Claude session dir before the call so we can locate
+    # the session JSONL the call is about to create.
+    session_baseline: set[str] = set()
+    if cwd:
+        try:
+            from .gate_verdict import snapshot_session_files
+            session_baseline = snapshot_session_files(str(cwd))
+        except Exception:
+            logger.debug("snapshot_session_files failed", exc_info=True)
 
     result = run_claude(
         tagged_prompt,
@@ -363,6 +388,29 @@ def run_claude_logged(
         })
     except Exception:
         logger.debug("Failed to emit LLM_CALL event", exc_info=True)
+
+    # Write default verdict sidecar from exit code (best-effort).
+    if cwd:
+        try:
+            from .gate_verdict import persist_gate_verdict
+            verdict = "pass" if result.exit_code == 0 and not result.timed_out else "fail"
+            summary = (
+                f"claude exit={result.exit_code} timed_out={result.timed_out}"
+                if verdict == "fail"
+                else f"claude exit=0 elapsed_ms={result.duration_ms}"
+            )
+            persist_gate_verdict(
+                cwd=str(cwd),
+                baseline=session_baseline,
+                change_name=change,
+                gate=purpose,
+                verdict=verdict,
+                critical_count=0 if verdict == "pass" else 1,
+                source="claude_exit_code",
+                summary=summary,
+            )
+        except Exception:
+            logger.debug("Default verdict sidecar persist failed", exc_info=True)
 
     return result
 
