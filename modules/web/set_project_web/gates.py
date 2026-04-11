@@ -6,12 +6,14 @@ These executors are registered by WebProjectType.register_gates().
 
 from __future__ import annotations
 
+import fcntl
 import fnmatch
 import json
 import logging
 import os
 import re
 import shutil
+import tempfile
 import time
 from typing import TYPE_CHECKING
 
@@ -27,6 +29,11 @@ logger = logging.getLogger(__name__)
 # only affects the transient capture used for failure-ID extraction and
 # baseline comparison — raising it has no persistent cost.
 _E2E_CAPTURE_MAX_BYTES = 4 * 1024 * 1024  # 4 MiB
+
+# Dedicated port for the baseline regeneration run. Deliberately far from
+# the default worktree port base (3100) so a live worktree dev server never
+# collides with the baseline. See OpenSpec change: harden-e2e-baseline-cache.
+_E2E_BASELINE_PORT = 3199
 
 # Runtime error indicators in E2E output — if any appear, the page has client-side errors
 # even if HTTP returned 200.
@@ -126,8 +133,82 @@ def _count_e2e_tests(wt_path: str, pw_config: dict | None = None) -> tuple[int, 
     return count, searched_desc
 
 
+def _detect_main_worktree(wt_path: str) -> str | None:
+    """Detect the main checkout path from a worktree's perspective.
+
+    Returns the main worktree path or None if detection is unreliable.
+    Fail-closed: callers should skip baseline comparison on None rather
+    than fall back to a heuristic parent-dir guess. See OpenSpec change:
+    harden-e2e-baseline-cache.
+    """
+    from set_orch.subprocess_utils import run_git
+
+    # Connectivity probe — if git cannot resolve the worktree, abort.
+    # We don't use the stdout of rev-parse; worktree list below provides
+    # the full topology we need.
+    git_probe = run_git("rev-parse", "--show-toplevel", cwd=wt_path)
+    if git_probe.exit_code != 0:
+        logger.info("Main worktree detection failed: rev-parse exit=%d", git_probe.exit_code)
+        return None
+
+    wt_list = run_git("worktree", "list", "--porcelain", cwd=wt_path)
+    if wt_list.exit_code != 0:
+        logger.info("Main worktree detection failed: worktree list exit=%d", wt_list.exit_code)
+        return None
+
+    wt_basename = os.path.basename(wt_path.rstrip("/"))
+    main_path: str | None = None
+    for line in wt_list.stdout.split("\n"):
+        if not line.startswith("worktree "):
+            continue
+        candidate = line.split(" ", 1)[1].strip()
+        if not candidate:
+            continue
+        if os.path.basename(candidate.rstrip("/")) == wt_basename:
+            continue
+        main_path = candidate
+        break
+
+    if not main_path:
+        logger.info("Main worktree detection failed: no main entry in worktree list")
+        return None
+
+    # Validate: main_path must exist and contain a .git entry (file or dir).
+    if not os.path.isdir(main_path):
+        logger.info("Main worktree detection failed: %s is not a directory", main_path)
+        return None
+    git_entry = os.path.join(main_path, ".git")
+    if not os.path.exists(git_entry):
+        logger.info("Main worktree detection failed: %s has no .git entry", main_path)
+        return None
+
+    return main_path
+
+
+def _is_project_root_clean(project_root: str) -> bool:
+    """Return True if project_root has no uncommitted changes.
+
+    A dirty root means the baseline run may capture ephemeral state that
+    does not reflect main's real behavior. See OpenSpec change:
+    harden-e2e-baseline-cache.
+    """
+    from set_orch.subprocess_utils import run_git
+
+    status = run_git("status", "--porcelain", cwd=project_root)
+    if status.exit_code != 0:
+        # Treat unknown as dirty — safer not to persist
+        return False
+    return status.stdout.strip() == ""
+
+
+def _baseline_lock_path(baseline_path: str) -> str:
+    """Return the sidecar lock file path next to the baseline cache."""
+    return baseline_path + ".lock"
+
+
 def _get_or_create_e2e_baseline(
     e2e_command: str, e2e_timeout: int, project_root: str,
+    profile: "object | None" = None,
 ) -> dict | None:
     """Run Playwright on main and cache baseline failures."""
     from set_orch.subprocess_utils import run_command, run_git
@@ -139,51 +220,132 @@ def _get_or_create_e2e_baseline(
     except Exception:
         baseline_path = os.path.join("set", "orchestration", "e2e-baseline.json")
 
-    main_sha = run_git("rev-parse", "HEAD", cwd=project_root).stdout.strip()
-    if os.path.isfile(baseline_path):
+    def _load_cached_if_fresh(sha: str) -> dict | None:
+        """Return the on-disk cache if its main_sha matches; else None."""
+        if not os.path.isfile(baseline_path):
+            return None
         try:
-            with open(baseline_path) as f:
-                cached = json.load(f)
-            if cached.get("main_sha") == main_sha:
-                cached["failures"] = set(cached.get("failures", []))
-                return cached
-            logger.info("E2E baseline stale (main moved to %s) — regenerating", main_sha[:8])
+            with open(baseline_path) as fh:
+                data = json.load(fh)
         except (json.JSONDecodeError, OSError):
-            pass
+            return None
+        if data.get("main_sha") != sha:
+            return None
+        data["failures"] = set(data.get("failures", []))
+        return data
 
-    logger.info("Creating E2E baseline on main (%s)...", main_sha[:8])
-    # Capture the full output (4MB cap) so _extract_e2e_failure_ids sees
-    # every failing test on main. A smaller cap would silently drop
-    # pre-existing failures from the baseline set, causing them to be
-    # flagged as "new regressions" in later worktree runs.
-    result = run_command(
-        ["bash", "-c", e2e_command],
-        timeout=e2e_timeout, cwd=project_root,
-        max_output_size=_E2E_CAPTURE_MAX_BYTES,
-    )
-    output = result.stdout + result.stderr
-    stats = parse_test_output(output)
-    failures = _extract_e2e_failure_ids(output)
+    main_sha = run_git("rev-parse", "HEAD", cwd=project_root).stdout.strip()
+    fresh = _load_cached_if_fresh(main_sha)
+    if fresh is not None:
+        return fresh
+    if os.path.isfile(baseline_path):
+        logger.info("E2E baseline stale (main moved to %s) — regenerating", main_sha[:8])
 
-    baseline = {
-        "main_sha": main_sha,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "failures": list(failures),
-        "total": stats.get("total", 0),
-        "passed": stats.get("passed", 0),
-        "failed": stats.get("failed", 0),
-    }
+    # Dirty-tree check BEFORE acquiring the lock so concurrent callers
+    # don't all run the check — cheap and idempotent. Best-effort only:
+    # between this check and the actual baseline run, the tree can change
+    # (another process editing the main checkout mid-orchestration). The
+    # check's purpose is to avoid persisting a likely-stale baseline, not
+    # to guarantee cleanliness — the main_sha invalidation covers the
+    # cache-correctness side of the same concern.
+    clean_root = _is_project_root_clean(project_root)
+    if not clean_root:
+        logger.warning(
+            "E2E baseline: dirty project root at %s — running baseline but "
+            "not caching (cacheable=False)",
+            project_root,
+        )
 
+    # Acquire an exclusive lock on the sidecar .lock file so concurrent
+    # callers do not race to regenerate. The lock is held for the full
+    # duration of the baseline run (can be minutes).
+    lock_path = _baseline_lock_path(baseline_path)
+    os.makedirs(os.path.dirname(baseline_path), exist_ok=True)
+
+    # Open lock file for writing and acquire exclusive lock
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
     try:
-        os.makedirs(os.path.dirname(baseline_path), exist_ok=True)
-        with open(baseline_path, "w") as f:
-            json.dump(baseline, f, indent=2)
-        logger.info("E2E baseline cached: %d passed, %d failed on main", baseline["passed"], baseline["failed"])
-    except OSError:
-        logger.warning("Failed to cache E2E baseline")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
-    baseline["failures"] = failures
-    return baseline
+        # Re-check after lock acquisition — a peer may have regenerated
+        # while we were waiting. This avoids spawning a duplicate e2e run.
+        fresh = _load_cached_if_fresh(main_sha)
+        if fresh is not None:
+            logger.info("E2E baseline: peer regenerated while we waited — reusing")
+            return fresh
+
+        logger.info("Creating E2E baseline on main (%s)...", main_sha[:8])
+
+        # Build an isolated env with a dedicated baseline port so the
+        # baseline dev server cannot collide with a live worktree server.
+        # Order matters: profile-provided keys first, then our explicit
+        # PW_PORT last so the constant always wins — no profile can
+        # accidentally override the dedicated baseline port.
+        baseline_env: dict[str, str] = {}
+        if profile is not None and hasattr(profile, "e2e_gate_env"):
+            try:
+                baseline_env.update(profile.e2e_gate_env(_E2E_BASELINE_PORT))
+            except Exception:
+                logger.debug("profile.e2e_gate_env failed for baseline port", exc_info=True)
+        baseline_env["PW_PORT"] = str(_E2E_BASELINE_PORT)
+
+        # Capture up to 4MB so _extract_e2e_failure_ids sees every failure.
+        result = run_command(
+            ["bash", "-c", e2e_command],
+            timeout=e2e_timeout, cwd=project_root,
+            env=baseline_env,
+            max_output_size=_E2E_CAPTURE_MAX_BYTES,
+        )
+        output = result.stdout + result.stderr
+        stats = parse_test_output(output)
+        failures = _extract_e2e_failure_ids(output)
+
+        baseline = {
+            "main_sha": main_sha,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "failures": list(failures),
+            "total": stats.get("total", 0),
+            "passed": stats.get("passed", 0),
+            "failed": stats.get("failed", 0),
+            "cacheable": clean_root,
+        }
+
+        if clean_root:
+            # Atomic temp-file-plus-rename so a crashed writer cannot leave
+            # a partial JSON on disk.
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=".e2e-baseline.",
+                suffix=".tmp",
+                dir=os.path.dirname(baseline_path),
+            )
+            try:
+                with os.fdopen(fd, "w") as tmp_fh:
+                    json.dump(baseline, tmp_fh, indent=2)
+                os.rename(tmp_path, baseline_path)
+                logger.info(
+                    "E2E baseline cached: %d passed, %d failed on main",
+                    baseline["passed"], baseline["failed"],
+                )
+            except OSError as exc:
+                logger.warning("Failed to cache E2E baseline: %s", exc)
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+        else:
+            logger.info(
+                "E2E baseline not persisted (dirty project root, in-memory only)"
+            )
+
+        # Return with set-typed failures for the caller's convenience
+        baseline["failures"] = failures
+        return baseline
+    finally:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(lock_fd)
 
 
 def _auto_detect_e2e_command(wt_path: str, profile=None) -> str:
@@ -398,20 +560,24 @@ def execute_e2e_gate(
             stats=parse_test_output(e2e_output) if e2e_output else None,
         )
 
-    project_root = os.path.dirname(wt_path.rstrip("/"))
-    toplevel = run_git("rev-parse", "--show-toplevel", cwd=wt_path)
-    if toplevel.exit_code == 0:
-        main_wt = run_git("worktree", "list", "--porcelain", cwd=wt_path)
-        for line in main_wt.stdout.split("\n"):
-            if line.startswith("worktree ") and not line.endswith(os.path.basename(wt_path)):
-                project_root = line.split(" ", 1)[1]
-                break
+    # Detect the main worktree via a strict helper that returns None when
+    # git topology is unreliable. When None, skip baseline comparison and
+    # treat every wt failure as new — fail-closed.
+    project_root = _detect_main_worktree(wt_path)
 
     baseline = None
-    try:
-        baseline = _get_or_create_e2e_baseline(e2e_command, e2e_timeout, project_root)
-    except Exception as e:
-        logger.warning("E2E baseline creation failed (using all-failures mode): %s", e)
+    if project_root is None:
+        logger.info(
+            "main worktree detection unreliable for %s — skipping baseline comparison (fail-closed)",
+            change_name,
+        )
+    else:
+        try:
+            baseline = _get_or_create_e2e_baseline(
+                e2e_command, e2e_timeout, project_root, profile=profile,
+            )
+        except Exception as e:
+            logger.warning("E2E baseline creation failed (using all-failures mode): %s", e)
 
     if baseline:
         baseline_failures = baseline.get("failures", set())
