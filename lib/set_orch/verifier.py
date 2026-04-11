@@ -3011,6 +3011,15 @@ def handle_change_done(
         "e2e_coverage",
         lambda: _execute_e2e_coverage_gate(change_name, change, wt_path, state_file),
     )
+    pipeline.register(
+        "spec_verify",
+        lambda: _execute_spec_verify_gate(change_name, change, wt_path),
+        result_fields=("spec_coverage_result", "gate_verify_ms"),
+    )
+    pipeline.register(
+        "rules",
+        lambda: _execute_rules_gate(change_name, change, wt_path, event_bus),
+    )
     if review_before_merge:
         pipeline.register(
             "review",
@@ -3021,15 +3030,6 @@ def handle_change_done(
             extra_retries=getattr(gc, "review_extra_retries", 1),
             result_fields=("review_result", "gate_review_ms"),
         )
-    pipeline.register(
-        "rules",
-        lambda: _execute_rules_gate(change_name, change, wt_path, event_bus),
-    )
-    pipeline.register(
-        "spec_verify",
-        lambda: _execute_spec_verify_gate(change_name, change, wt_path),
-        result_fields=("spec_coverage_result", "gate_verify_ms"),
-    )
 
     # Execute pipeline
     action = pipeline.run()
@@ -3084,7 +3084,11 @@ def handle_change_done(
     )
 
     if event_bus:
-        _gate_names = ["build", "test", "e2e", "review", "smoke", "rules", "spec_verify"]
+        _gate_names = [
+            "build", "test", "e2e", "lint", "smoke",
+            "scope_check", "test_files", "e2e_coverage",
+            "spec_verify", "rules", "review",
+        ]
         gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
         event_bus.emit("VERIFY_GATE", change=change_name, data={
             **summary,

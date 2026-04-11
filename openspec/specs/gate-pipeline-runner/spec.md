@@ -8,7 +8,7 @@
 - Screenshot collection unified into a single helper
 
 ## OUT OF SCOPE
-- Changing gate execution order (build → test → e2e → scope → test_files → review → rules → spec_verify remains)
+- Changing gate execution order (the authoritative order lives in `gate-registry`; the pipeline runner executes whatever order is registered)
 - Adding new gate types
 - Changing the retry prompt content or review feedback format
 - Modifying the smoke pipeline (post-merge, stays in merger.py)

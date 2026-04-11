@@ -41,6 +41,7 @@ DEFAULT_MONITOR_IDLE_TIMEOUT = 1800
 DEFAULT_MAX_REPLAN_RETRIES = 3
 MAX_REPLAN_CYCLES = 5
 VERIFY_TIMEOUT = 600  # 10 min max for verify gate
+DEFAULT_E2E_RETRY_LIMIT = 3  # max integration-e2e redispatches per change
 
 
 # ─── Directives ────────────────────────────────────────────────────
@@ -61,7 +62,7 @@ class Directives:
     max_replan_cycles: int = MAX_REPLAN_CYCLES
     test_timeout: int = 300
     max_verify_retries: int = 3
-    e2e_retry_limit: int = 5
+    e2e_retry_limit: int = DEFAULT_E2E_RETRY_LIMIT
     review_before_merge: bool = True
     review_model: str = "sonnet"
     digest_model: str = "sonnet"

@@ -324,6 +324,88 @@ await expect(page.getByTestId("product-detail-rating")).toBeVisible();
 
 **The rule:** If a selector could plausibly match a cross-sell card, a related-products rail, or a mini-cart, add `.first()`, scope it, or use `data-testid`. Never rely on a bare text/role selector for any element that could appear more than once on a real page.
 
+## Cross-Spec DB Pollution — Exact Counts Forbidden
+
+Playwright runs specs alphabetically with a single worker under SQLite (required — see `Workers Must Be 1 with SQLite` above). The dev.db is reset + seeded **once per run**, before the first spec. Every spec after that inherits whatever rows earlier specs wrote. Any spec that calls `CREATE` actions — admin forms, factory helpers, fixtures — pollutes the row count seen by alphabetically-later specs.
+
+This makes exact-count assertions against DB-backed listings fragile: a spec that passes in isolation can break when a sibling spec is added to the same suite months later.
+
+**Wrong — passes alone, breaks when another spec adds products:**
+```typescript
+test("storefront shows all seeded products", async ({ page }) => {
+  await page.goto("/products");
+  const cards = page.getByTestId("product-card");
+  await expect(cards).toHaveCount(6); // ← seed count; breaks if any other spec creates products
+});
+```
+
+**Correct (preferred — works on all Playwright versions) — assert only seed rows by name:**
+```typescript
+test("storefront shows each seeded product by name", async ({ page }) => {
+  await page.goto("/products");
+  for (const name of ["Widget A", "Widget B", "Widget C"]) {
+    await expect(page.getByTestId("product-card").filter({ hasText: name })).toBeVisible();
+  }
+});
+```
+
+**Also correct (Playwright ≥ 1.44) — `toHaveCount` with a minimum bound:**
+```typescript
+// Requires @playwright/test >= 1.44. The template ships 1.50+, so this is safe here.
+test("storefront shows at least the seeded products", async ({ page }) => {
+  await page.goto("/products");
+  const cards = page.getByTestId("product-card");
+  await expect(cards).toHaveCount({ min: 6 });
+});
+```
+
+**Applicability:** Forbid `toHaveCount(N)` whenever the counted entity type is also written by any other spec in the same suite. Prefer the `.filter()` pattern when you care about *specific* rows — it is version-independent. Use `toHaveCount({ min: N })` only when the Playwright version is known to be ≥ 1.44. This applies to product listings, order history, admin lists, user directories — every page that reads a DB-backed collection.
+
+## getByLabel Prefix Ambiguity — Require `exact: true`
+
+`page.getByLabel("Foo")` uses **case-insensitive substring matching by default** when the argument is a plain string. Any label whose visible text contains `"Foo"` matches. When a form has labels like `"Description"` and `"Short Description"`, or `"Name"` and `"Display Name"`, or `"Price"` and `"Sale Price"`, the locator resolves to multiple elements and strict mode fires.
+
+**Wrong — matches both `"Description"` and `"Short Description"`:**
+```typescript
+await page.getByLabel("Name").fill("Widget");
+await page.getByLabel("Description").fill("A test product"); // ← strict-mode violation
+await page.getByLabel("Short Description").fill("test");
+```
+
+**Correct — `{ exact: true }` on any label whose text is a substring of another:**
+```typescript
+await page.getByLabel("Name", { exact: true }).fill("Widget");
+await page.getByLabel("Description", { exact: true }).fill("A test product");
+await page.getByLabel("Short Description", { exact: true }).fill("test");
+```
+
+**Applicability:** Use `{ exact: true }` on every `getByLabel` call whose text is a prefix or suffix of another label on the same page. If unsure, default to `{ exact: true }` — there is no downside on labels that are already unique.
+
+## `toHaveURL` Regex — Exclude Intermediate Routes
+
+`toHaveURL(/\/admin/)` is a substring regex — it matches `/admin/login` immediately, long before the post-login redirect lands. Tests that wait on this assertion pass without the user ever being logged in, then fail downstream when the next action hits an unauthenticated API.
+
+**Wrong — passes at `/admin/login` before the redirect:**
+```typescript
+await page.getByRole("button", { name: "Sign In" }).click();
+await expect(page).toHaveURL(/\/admin/, { timeout: 15000 }); // ← matches /admin/login
+await page.getByRole("link", { name: "Products" }).click(); // ← fails: not logged in
+```
+
+**Correct — negative lookahead excluding the login route:**
+```typescript
+await page.getByRole("button", { name: "Sign In" }).click();
+await expect(page).toHaveURL(/\/admin(?!\/login)/, { timeout: 15000 });
+```
+
+**Also correct — anchor to a specific post-login path:**
+```typescript
+await page.getByRole("button", { name: "Sign In" }).click();
+await expect(page).toHaveURL(/\/admin\/dashboard/, { timeout: 15000 });
+```
+
+**Applicability:** Use an exclusion pattern (negative lookahead) or anchor to a specific path whenever the target path has a login, setup, or onboarding sub-route sharing the same prefix. Never write a `toHaveURL` regex whose only constraint is "contains the protected prefix".
+
 ## `waitForURL` — Don't Use After Client-Side Navigation
 
 Server Actions that call `router.push()` or `router.replace()` trigger client-side navigation. `page.waitForURL()` will timeout because no full page load event fires.

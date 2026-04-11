@@ -64,9 +64,9 @@ The resolution chain SHALL be: (1) universal gate defaults, (2) universal change
 handle_change_done SHALL collect universal gates + profile gates, resolve ordering via position hints, and register them with GatePipeline in the resolved order.
 
 #### Scenario: Gates execute in position order
-- **GIVEN** universal gates (build→test→scope→test_files→review→rules→spec_verify) and profile gates (e2e after:test, lint after:test_files)
+- **GIVEN** universal gates (build→test→scope→test_files→e2e_coverage→spec_verify→rules→review) and profile gates (e2e after:test, lint after:e2e)
 - **WHEN** pipeline runs
-- **THEN** execution order SHALL be: build, test, e2e, scope_check, test_files, lint, review, rules, spec_verify
+- **THEN** execution order SHALL be: build, test, e2e, lint, scope_check, test_files, e2e_coverage, spec_verify, rules, review
 
 ### Requirement: Merge queue shall serialize integration
 The merge queue SHALL process changes sequentially. For each change: (1) integrate current main into branch with checked result, (2) ff-only merge branch into main. Each subsequent change integrates against the fresh main that includes the previous merge.

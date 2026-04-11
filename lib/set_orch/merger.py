@@ -995,7 +995,7 @@ def _run_integration_gates(
     change_name: str, change: Change, wt_path: str,
     state_file: str, profile: Any = None,
     event_bus: Any = None,
-    e2e_retry_limit: int = 5,
+    e2e_retry_limit: int | None = None,
 ) -> bool:
     """Run integration gates (build + test + e2e) in worktree after integration.
 
@@ -1004,9 +1004,13 @@ def _run_integration_gates(
 
     Returns True if all gates pass, False if any blocking gate fails.
     """
+    from .engine import DEFAULT_E2E_RETRY_LIMIT
     from .gate_profiles import resolve_gate_config
     from .gate_runner import GateResult
     from .subprocess_utils import run_command
+
+    if e2e_retry_limit is None:
+        e2e_retry_limit = DEFAULT_E2E_RETRY_LIMIT
 
     def _record_gate_output_hash(output: str) -> None:
         """Store SHA256 of gate output for identical-output retry detection."""
@@ -1701,7 +1705,8 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 # Integration gates (build + test + e2e)
                 import time as _time
                 _gate_start = _time.monotonic()
-                _e2e_limit = state.extras.get("directives", {}).get("e2e_retry_limit", 3)
+                from .engine import DEFAULT_E2E_RETRY_LIMIT
+                _e2e_limit = state.extras.get("directives", {}).get("e2e_retry_limit", DEFAULT_E2E_RETRY_LIMIT)
                 _gates_passed = _run_integration_gates(name, change, wt_path, state_file, profile, event_bus=event_bus, e2e_retry_limit=_e2e_limit)
                 _gate_elapsed_ms = int((_time.monotonic() - _gate_start) * 1000)
                 update_change_field(state_file, name, "gate_total_ms", _gate_elapsed_ms)
