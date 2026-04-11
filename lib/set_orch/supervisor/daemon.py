@@ -33,9 +33,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from .anomaly import (
+    AnomalyContext,
+    AnomalyTrigger,
+    KNOWN_EVENT_TYPES,
+    scan_for_anomalies,
+)
+from .canary import CanaryRunner, build_canary_diff
 from .ephemeral import spawn_ephemeral_claude
 from .inbox import InboxMessage, classify_message, read_new_messages
 from .state import SupervisorStatus, read_status, write_status
+from .triggers import TriggerExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +131,52 @@ class SupervisorDaemon:
         self._stop_requested = False
         self._stop_reason = ""
         self._last_event_ts = time.time()
+
+        # Phase 2: anomaly + canary infrastructure. Both readers/writers
+        # of the orchestration state and events files; we resolve the
+        # paths once via SetRuntime and reuse them every poll.
+        self._state_path, self._events_path, self._log_path = self._resolve_runtime_paths()
+        self._known_event_types: set[str] = set(self.status.known_event_types or [])
+        self._error_baseline: dict = dict(self.status.error_baseline or {})
+        self._trigger_executor = TriggerExecutor(
+            status=self.status,
+            project_path=self.project_path,
+            events_path=self._events_path or (self.project_path / "orchestration-events.jsonl"),
+            spec=config.spec,
+            emit_event=self._emit_event,
+        )
+        self._canary_runner = CanaryRunner(
+            status=self.status,
+            project_path=self.project_path,
+            spec=config.spec,
+            emit_event=self._emit_event,
+        )
+        self._last_canary_window_iso = self.status.last_canary_at or _now_iso()
+
         write_status(self.project_path, self.status)
+
+    def _resolve_runtime_paths(self) -> tuple[Optional[Path], Optional[Path], Optional[Path]]:
+        """Locate the orchestration state, events, and log files via SetRuntime.
+
+        Falls back to project-relative paths if SetRuntime resolution fails
+        (e.g. in unit tests against a tempdir that isn't a git repo).
+        """
+        try:
+            from ..paths import SetRuntime
+            rt = SetRuntime(str(self.project_path))
+            sp = Path(rt.state_file)
+            ep = Path(rt.events_file)
+            lp = Path(rt.orchestration_log)
+            return (
+                sp if sp.is_file() else None,
+                ep if ep.is_file() or ep.parent.is_dir() else None,
+                lp if lp.is_file() else None,
+            )
+        except Exception as exc:
+            logger.warning("[supervisor] SetRuntime path resolution failed: %s", exc)
+            sp = self.project_path / "orchestration-state.json"
+            ep = self.project_path / "orchestration-events.jsonl"
+            return (sp if sp.is_file() else None, ep, None)
 
     # ── Lifecycle ────────────────────────────────────────
 
@@ -297,14 +350,19 @@ class SupervisorDaemon:
                 self._stop_requested = True
                 break
 
-            # 4. (Phase 2 hook) Anomaly signal detection — currently no-op
-            # from .anomaly import scan_for_anomalies
-            # triggers = scan_for_anomalies(self.project_path, self.status)
-            # for t in triggers: self._fire_trigger(t)
+            # 4. Phase 2: anomaly signal detection + ephemeral Claude dispatch.
+            try:
+                self._scan_and_dispatch_anomalies()
+            except Exception:
+                logger.exception("[supervisor] Anomaly scan crashed — continuing")
 
-            # 5. (Phase 2 hook) Periodic canary check — currently no-op
-            # if self._canary_due():
-            #     self._run_canary()
+            # 5. Phase 2: periodic canary check (cheap is_due() poll, expensive
+            #    LLM call only when due).
+            try:
+                if self._canary_runner.is_due():
+                    self._run_canary()
+            except Exception:
+                logger.exception("[supervisor] Canary run crashed — continuing")
 
             # 6. Persist status (cheap — tmpfile + rename)
             self.status.last_event_at = _now_iso()
@@ -361,6 +419,184 @@ class SupervisorDaemon:
             response_path.write_text(json.dumps(payload, indent=2))
         except OSError as exc:
             logger.warning("[supervisor] Could not write inbox response: %s", exc)
+
+    # ── Phase 2: anomaly + canary ────────────────────────
+
+    def _scan_and_dispatch_anomalies(self) -> None:
+        """Build an AnomalyContext, run all detectors, dispatch via TriggerExecutor."""
+        ctx = self._build_anomaly_context()
+        triggers = scan_for_anomalies(ctx)
+
+        # Persist any state mutated by the detectors back into status
+        self.status.known_event_types = sorted(self._known_event_types)
+        self.status.error_baseline = dict(self._error_baseline)
+        self.status.last_state_mtime = ctx.state_mtime
+        self.status.last_state_change_at = ctx.last_state_change_at
+        if ctx.log_size > self.status.last_log_size:
+            self.status.last_log_growth_at = ctx.now
+        self.status.last_log_size = ctx.log_size
+
+        if not triggers:
+            return
+
+        logger.info(
+            "[supervisor] Anomaly scan: %d trigger(s) firing — %s",
+            len(triggers), ", ".join(f"{t.type}({t.change or '-'})" for t in triggers),
+        )
+        outcomes = self._trigger_executor.execute(triggers)
+
+        # If a terminal_state trigger actually dispatched, request shutdown.
+        for o in outcomes:
+            if o.trigger.type == "terminal_state" and o.result is not None:
+                logger.info("[supervisor] terminal_state trigger fired — requesting shutdown")
+                self._stop_requested = True
+                self._stop_reason = "terminal_state"
+                break
+
+    def _build_anomaly_context(self) -> AnomalyContext:
+        """Snapshot all the inputs detectors need this poll cycle."""
+        # State
+        state_dict: Optional[dict] = None
+        state_mtime: float = 0.0
+        if self._state_path and self._state_path.is_file():
+            try:
+                state_dict = json.loads(self._state_path.read_text())
+                state_mtime = self._state_path.stat().st_mtime
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.warning("[supervisor] Could not read state file: %s", exc)
+
+        last_state_change_at = self.status.last_state_change_at
+        if state_mtime > self.status.last_state_mtime:
+            last_state_change_at = time.time()
+        elif last_state_change_at <= 0 and state_mtime > 0:
+            # First poll observing this file — seed the timestamp so we don't
+            # immediately fire state_stall against an unknown baseline.
+            last_state_change_at = time.time()
+
+        # Events: read since last cursor
+        new_events: list[dict] = []
+        if self._events_path and self._events_path.is_file():
+            new_events, new_cursor = self._read_new_events(
+                self._events_path, self.status.events_cursor,
+            )
+            self.status.events_cursor = new_cursor
+
+        # Log size
+        log_size = 0
+        if self._log_path and self._log_path.is_file():
+            try:
+                log_size = self._log_path.stat().st_size
+            except OSError:
+                log_size = 0
+
+        orchestrator_pid = self._orch_proc.pid if self._orch_proc else 0
+        orchestrator_alive = (
+            self._orch_proc is not None and _is_alive(self._orch_proc.pid)
+        )
+
+        return AnomalyContext(
+            project_path=self.project_path,
+            state_path=self._state_path,
+            events_path=self._events_path,
+            log_path=self._log_path,
+            state=state_dict,
+            new_events=new_events,
+            orchestrator_pid=orchestrator_pid,
+            orchestrator_alive=orchestrator_alive,
+            now=time.time(),
+            state_mtime=state_mtime,
+            last_state_mtime=self.status.last_state_mtime,
+            last_state_change_at=last_state_change_at,
+            log_size=log_size,
+            last_log_size=self.status.last_log_size,
+            last_log_growth_at=self.status.last_log_growth_at,
+            error_baseline=self._error_baseline,
+            known_event_types=self._known_event_types,
+        )
+
+    def _read_new_events(self, path: Path, cursor: int) -> tuple[list[dict], int]:
+        """Read events.jsonl from `cursor` to EOF. Returns (events, new_cursor).
+
+        Bounded read: at most ~5 MB per call to keep poll cycles cheap on
+        runaway logs.
+        """
+        out: list[dict] = []
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return [], cursor
+        if size <= cursor:
+            return [], cursor
+        max_read = 5 * 1024 * 1024
+        if size - cursor > max_read:
+            cursor = size - max_read  # skip ahead, drop old events
+        try:
+            with open(path, "r") as f:
+                f.seek(cursor)
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        out.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+                new_cursor = f.tell()
+        except OSError as exc:
+            logger.warning("[supervisor] Could not read events file: %s", exc)
+            return [], cursor
+        return out, new_cursor
+
+    def _run_canary(self) -> None:
+        """Build a CanaryDiff and ask the canary runner to spawn its Claude."""
+        # Reuse the most recent anomaly context's inputs if possible —
+        # otherwise rebuild a minimal one for state snapshot
+        state_dict: Optional[dict] = None
+        if self._state_path and self._state_path.is_file():
+            try:
+                state_dict = json.loads(self._state_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                state_dict = None
+
+        new_events: list[dict] = []
+        if self._events_path and self._events_path.is_file():
+            new_events, _ = self._read_new_events(
+                self._events_path, self.status.events_cursor,
+            )
+
+        log_warns = 0
+        log_errors = 0
+        if self._log_path and self._log_path.is_file():
+            from .anomaly import _count_log_severity
+            log_warns, log_errors = _count_log_severity(
+                self._log_path, self.status.last_log_size, self._log_path.stat().st_size,
+            )
+
+        window_end = _now_iso()
+        diff = build_canary_diff(
+            state=state_dict,
+            new_events=new_events,
+            poll_cycle=self.status.poll_cycle,
+            window_start_iso=self._last_canary_window_iso,
+            window_end_iso=window_end,
+            log_warns=log_warns,
+            log_errors=log_errors,
+        )
+        logger.info(
+            "[supervisor] Running canary: merged=%d running=%d failed=%d",
+            len(diff.merged_changes), len(diff.running_changes),
+            len(diff.failed_changes),
+        )
+        run = self._canary_runner.run(diff)
+        self._last_canary_window_iso = window_end
+
+        # Stop on STOP verdict
+        if run.verdict == "stop":
+            logger.error(
+                "[supervisor] Canary returned STOP — halting orchestrator for user review"
+            )
+            self._stop_requested = True
+            self._stop_reason = "canary_stop"
 
     # ── Event emission ────────────────────────────────────
 

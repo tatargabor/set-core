@@ -1,0 +1,453 @@
+"""Unit tests for lib/set_orch/supervisor/anomaly.py.
+
+Each detector gets at least:
+  - one positive case (triggers)
+  - one negative case (does not trigger)
+Plus a smoke test for `scan_for_anomalies` that the priority sort works.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
+
+from set_orch.supervisor.anomaly import (
+    AnomalyContext,
+    AnomalyTrigger,
+    DEFAULT_LOG_SILENCE_SECS,
+    DEFAULT_STATE_STALL_SECS,
+    DEFAULT_TOKEN_STALL_LIMIT,
+    DEFAULT_TOKEN_STALL_SECS,
+    KNOWN_EVENT_TYPES,
+    detect_error_rate_spike,
+    detect_integration_failed,
+    detect_log_silence,
+    detect_non_periodic_checkpoint,
+    detect_process_crash,
+    detect_state_stall,
+    detect_terminal_state,
+    detect_token_stall,
+    detect_unknown_event_type,
+    scan_for_anomalies,
+)
+
+
+@pytest.fixture
+def tmp_project():
+    d = tempfile.mkdtemp()
+    yield Path(d)
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def make_ctx(
+    *,
+    project_path: Path,
+    state: dict | None = None,
+    new_events: list[dict] | None = None,
+    orchestrator_alive: bool = True,
+    orchestrator_pid: int = 12345,
+    state_mtime: float = 0.0,
+    last_state_mtime: float = 0.0,
+    last_state_change_at: float = 0.0,
+    log_path: Path | None = None,
+    log_size: int = 0,
+    last_log_size: int = 0,
+    last_log_growth_at: float = 0.0,
+    error_baseline: dict | None = None,
+    known_event_types: set[str] | None = None,
+    now: float | None = None,
+) -> AnomalyContext:
+    return AnomalyContext(
+        project_path=project_path,
+        state_path=None,
+        events_path=None,
+        log_path=log_path,
+        state=state,
+        new_events=new_events or [],
+        orchestrator_pid=orchestrator_pid,
+        orchestrator_alive=orchestrator_alive,
+        now=now or time.time(),
+        state_mtime=state_mtime,
+        last_state_mtime=last_state_mtime,
+        last_state_change_at=last_state_change_at,
+        log_size=log_size,
+        last_log_size=last_log_size,
+        last_log_growth_at=last_log_growth_at,
+        error_baseline=error_baseline if error_baseline is not None else {},
+        known_event_types=known_event_types if known_event_types is not None else set(),
+    )
+
+
+# ─── terminal_state ──────────────────────────────────────
+
+
+class TestTerminalState:
+    def test_fires_when_status_done_and_pid_dead(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "done", "changes": []},
+            orchestrator_alive=False,
+        )
+        result = detect_terminal_state(ctx)
+        assert len(result) == 1
+        assert result[0].type == "terminal_state"
+        assert result[0].priority == 1
+        assert result[0].context["status"] == "done"
+
+    def test_no_fire_when_pid_alive(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "done", "changes": []},
+            orchestrator_alive=True,
+        )
+        assert detect_terminal_state(ctx) == []
+
+    def test_no_fire_when_running(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "running"},
+            orchestrator_alive=False,
+        )
+        assert detect_terminal_state(ctx) == []
+
+
+# ─── process_crash ───────────────────────────────────────
+
+
+class TestProcessCrash:
+    def test_fires_when_dead_and_status_running(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "running"},
+            orchestrator_alive=False,
+            orchestrator_pid=99,
+        )
+        result = detect_process_crash(ctx)
+        assert len(result) == 1
+        assert result[0].type == "process_crash"
+
+    def test_no_fire_when_alive(self, tmp_project):
+        ctx = make_ctx(project_path=tmp_project, state={"status": "running"}, orchestrator_alive=True)
+        assert detect_process_crash(ctx) == []
+
+    def test_no_fire_when_terminal(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "done"},
+            orchestrator_alive=False,
+        )
+        assert detect_process_crash(ctx) == []
+
+    def test_no_fire_with_zero_pid(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "running"},
+            orchestrator_alive=False,
+            orchestrator_pid=0,
+        )
+        assert detect_process_crash(ctx) == []
+
+
+# ─── integration_failed ──────────────────────────────────
+
+
+class TestIntegrationFailed:
+    def test_fires_per_failing_change(self, tmp_project):
+        state = {
+            "changes": [
+                {"name": "foo", "status": "integration-failed", "tokens_used": 50},
+                {"name": "bar", "status": "running"},
+                {"name": "baz", "status": "integration-e2e-failed", "tokens_used": 100},
+            ]
+        }
+        ctx = make_ctx(project_path=tmp_project, state=state)
+        result = detect_integration_failed(ctx)
+        assert len(result) == 2
+        names = {t.change for t in result}
+        assert names == {"foo", "baz"}
+        for t in result:
+            assert t.type == "integration_failed"
+            assert t.priority == 10
+
+    def test_no_fire_when_all_clean(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "foo", "status": "merged"}]},
+        )
+        assert detect_integration_failed(ctx) == []
+
+
+# ─── non_periodic_checkpoint ─────────────────────────────
+
+
+class TestNonPeriodicCheckpoint:
+    def test_fires_for_non_periodic_reason(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            new_events=[
+                {"type": "CHECKPOINT", "data": {"reason": "manual"}, "ts": "2026-04-11T10:00:00Z"},
+                {"type": "CHECKPOINT", "data": {"reason": "periodic"}},
+            ],
+        )
+        result = detect_non_periodic_checkpoint(ctx)
+        assert len(result) == 1
+        assert result[0].context["checkpoint_reason"] == "manual"
+
+    def test_periodic_silent(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            new_events=[{"type": "CHECKPOINT", "data": {"reason": "periodic"}}],
+        )
+        assert detect_non_periodic_checkpoint(ctx) == []
+
+
+# ─── state_stall ─────────────────────────────────────────
+
+
+class TestStateStall:
+    def test_fires_after_threshold(self, tmp_project):
+        now = time.time()
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "running"},
+            state_mtime=now - DEFAULT_STATE_STALL_SECS - 30,
+            last_state_change_at=now - DEFAULT_STATE_STALL_SECS - 30,
+            now=now,
+        )
+        result = detect_state_stall(ctx)
+        assert len(result) == 1
+        assert result[0].type == "state_stall"
+        assert result[0].context["stall_seconds"] >= DEFAULT_STATE_STALL_SECS
+
+    def test_no_fire_under_threshold(self, tmp_project):
+        now = time.time()
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "running"},
+            state_mtime=now - 30,
+            last_state_change_at=now - 30,
+            now=now,
+        )
+        assert detect_state_stall(ctx) == []
+
+    def test_no_fire_when_dead(self, tmp_project):
+        now = time.time()
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "running"},
+            orchestrator_alive=False,
+            state_mtime=now - 1000,
+            last_state_change_at=now - 1000,
+            now=now,
+        )
+        assert detect_state_stall(ctx) == []
+
+
+# ─── token_stall ─────────────────────────────────────────
+
+
+class TestTokenStall:
+    def test_fires_above_limit_with_stall(self, tmp_project):
+        now = time.time()
+        state = {
+            "changes": [
+                {
+                    "name": "hot",
+                    "status": "running",
+                    "tokens_used": DEFAULT_TOKEN_STALL_LIMIT + 100,
+                },
+            ],
+        }
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state=state,
+            last_state_change_at=now - DEFAULT_TOKEN_STALL_SECS - 60,
+            now=now,
+        )
+        result = detect_token_stall(ctx)
+        assert len(result) == 1
+        assert result[0].change == "hot"
+
+    def test_no_fire_under_token_limit(self, tmp_project):
+        now = time.time()
+        state = {"changes": [{"name": "x", "status": "running", "tokens_used": 100}]}
+        ctx = make_ctx(
+            project_path=tmp_project, state=state,
+            last_state_change_at=now - 5000, now=now,
+        )
+        assert detect_token_stall(ctx) == []
+
+    def test_no_fire_recent_progress(self, tmp_project):
+        now = time.time()
+        state = {
+            "changes": [
+                {"name": "x", "status": "running", "tokens_used": 999_999},
+            ],
+        }
+        ctx = make_ctx(
+            project_path=tmp_project, state=state,
+            last_state_change_at=now - 60, now=now,
+        )
+        assert detect_token_stall(ctx) == []
+
+
+# ─── unknown_event_type ──────────────────────────────────
+
+
+class TestUnknownEventType:
+    def test_fires_once_per_new_type(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            new_events=[
+                {"type": "STATE_CHANGE"},   # known
+                {"type": "MYSTERY_EVENT"},  # unknown
+                {"type": "MYSTERY_EVENT"},  # second occurrence — silent
+            ],
+        )
+        result = detect_unknown_event_type(ctx)
+        assert len(result) == 1
+        assert result[0].context["event_type"] == "MYSTERY_EVENT"
+        # Side-effect: known set updated
+        assert "MYSTERY_EVENT" in ctx.known_event_types
+
+    def test_known_set_silences_future_calls(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            new_events=[{"type": "MYSTERY_EVENT"}],
+            known_event_types={"MYSTERY_EVENT"},
+        )
+        assert detect_unknown_event_type(ctx) == []
+
+
+# ─── error_rate_spike ────────────────────────────────────
+
+
+class TestErrorRateSpike:
+    def test_no_fire_until_baseline_built(self, tmp_project):
+        log = tmp_project / "orch.log"
+        log.write_text("INFO normal\n WARNING something\n WARNING again\n")
+        ctx = make_ctx(
+            project_path=tmp_project,
+            log_path=log,
+            log_size=log.stat().st_size,
+            last_log_size=0,
+            error_baseline={},
+        )
+        # Baseline starts at 0 — first sample seeds it but cannot trigger
+        assert detect_error_rate_spike(ctx) == []
+        assert ctx.error_baseline.get("avg_per_window", 0) > 0
+
+    def test_fires_on_3x_spike_after_baseline(self, tmp_project):
+        log = tmp_project / "orch.log"
+        # Build a log with a baseline of ~2 warns and a fresh slice with 20
+        body = " WARNING noise\n" * 2 + " ERROR boom\n" * 20
+        log.write_text(body)
+        ctx = make_ctx(
+            project_path=tmp_project,
+            log_path=log,
+            log_size=log.stat().st_size,
+            last_log_size=0,
+            error_baseline={"avg_per_window": 5.0},
+        )
+        result = detect_error_rate_spike(ctx)
+        assert len(result) == 1
+        assert result[0].type == "error_rate_spike"
+        assert result[0].context["error_count"] >= 1
+
+    def test_no_fire_when_no_new_log(self, tmp_project):
+        log = tmp_project / "orch.log"
+        log.write_text("noise\n")
+        ctx = make_ctx(
+            project_path=tmp_project,
+            log_path=log,
+            log_size=log.stat().st_size,
+            last_log_size=log.stat().st_size,  # no growth
+            error_baseline={"avg_per_window": 100.0},
+        )
+        assert detect_error_rate_spike(ctx) == []
+
+
+# ─── log_silence ─────────────────────────────────────────
+
+
+class TestLogSilence:
+    def test_fires_when_silent_past_threshold(self, tmp_project):
+        log = tmp_project / "orch.log"
+        log.write_text("just one line\n")
+        now = time.time()
+        size = log.stat().st_size
+        ctx = make_ctx(
+            project_path=tmp_project,
+            log_path=log,
+            log_size=size,
+            last_log_size=size,    # no growth
+            last_log_growth_at=now - DEFAULT_LOG_SILENCE_SECS - 60,
+            now=now,
+        )
+        result = detect_log_silence(ctx)
+        assert len(result) == 1
+        assert result[0].type == "log_silence"
+
+    def test_no_fire_when_log_grew(self, tmp_project):
+        log = tmp_project / "orch.log"
+        log.write_text("a\nb\nc\n")
+        now = time.time()
+        ctx = make_ctx(
+            project_path=tmp_project,
+            log_path=log,
+            log_size=log.stat().st_size,
+            last_log_size=log.stat().st_size - 2,
+            last_log_growth_at=now - DEFAULT_LOG_SILENCE_SECS - 60,
+            now=now,
+        )
+        assert detect_log_silence(ctx) == []
+
+    def test_no_fire_when_dead(self, tmp_project):
+        log = tmp_project / "orch.log"
+        log.write_text("x\n")
+        now = time.time()
+        ctx = make_ctx(
+            project_path=tmp_project,
+            orchestrator_alive=False,
+            log_path=log,
+            log_size=log.stat().st_size,
+            last_log_size=log.stat().st_size,
+            last_log_growth_at=now - 9999,
+            now=now,
+        )
+        assert detect_log_silence(ctx) == []
+
+
+# ─── scan_for_anomalies (priority sort) ──────────────────
+
+
+class TestScanForAnomalies:
+    def test_priority_sort(self, tmp_project):
+        # Build inputs that cause MULTIPLE detectors to fire and verify
+        # the result is sorted by priority (terminal_state first).
+        state = {
+            "status": "done",
+            "changes": [{"name": "foo", "status": "integration-failed"}],
+        }
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state=state,
+            orchestrator_alive=False,
+            new_events=[{"type": "MYSTERY"}],
+        )
+        result = scan_for_anomalies(ctx)
+        types = [t.type for t in result]
+        assert types[0] == "terminal_state"  # priority 1
+        assert "integration_failed" in types
+        assert "unknown_event_type" in types
+        # Priorities are non-decreasing
+        priorities = [t.priority for t in result]
+        assert priorities == sorted(priorities)

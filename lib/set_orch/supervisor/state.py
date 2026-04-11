@@ -46,6 +46,37 @@ class SupervisorStatus:
     status: str = "starting"  # starting|running|stopping|stopped|crashed
     stop_reason: str = ""
 
+    # ── Phase 2: anomaly + canary state ──────────────────
+    # Rolling list of recent ephemeral Claude spawn timestamps (epoch seconds)
+    # Used by triggers.py for the global hourly rate limit. Pruned on each
+    # rate-limit check to bound size.
+    ephemeral_spawns_ts: list = field(default_factory=list)
+
+    # Retry budget counters keyed by f"{trigger_type}:{change_name}" (or
+    # just trigger_type for change-less triggers). Once a key reaches the
+    # configured budget, that (trigger, change) pair stops firing for the
+    # remainder of the daemon's lifetime.
+    trigger_attempts: dict = field(default_factory=dict)
+
+    # Canary warn rate-limit log: signature → ISO timestamp of last warn.
+    # Same signature within 30 min is downgraded to "note".
+    canary_warn_log: dict = field(default_factory=dict)
+
+    # Learned event type whitelist — supplements the hardcoded KNOWN_EVENT_TYPES
+    # in anomaly.py. The unknown_event_type detector adds to this set on first
+    # occurrence so subsequent occurrences are silent.
+    known_event_types: list = field(default_factory=list)
+
+    # State stall tracking — last observed state.json mtime + when it changed.
+    last_state_mtime: float = 0.0
+    last_state_change_at: float = 0.0
+
+    # Log silence + error rate spike tracking — last observed log size + when
+    # it grew, plus a rolling baseline used by detect_error_rate_spike.
+    last_log_size: int = 0
+    last_log_growth_at: float = 0.0
+    error_baseline: dict = field(default_factory=dict)
+
 
 def _status_path(project_path: str | Path) -> Path:
     return Path(project_path) / ".set" / "supervisor" / "status.json"

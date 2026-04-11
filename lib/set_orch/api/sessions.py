@@ -286,10 +286,30 @@ def _derive_session_label(session_path: Path) -> tuple[str, str]:
 
 
 def _session_outcome(session_path: Path) -> str:
-    """Derive session outcome from last assistant message content.
+    """Derive session outcome — sidecar first, keyword scan as fallback.
 
     Returns 'success', 'error', or 'unknown'.
+
+    The authoritative source is `<session_id>.verdict.json` written by the
+    gate that generated the session (see `lib/set_orch/gate_verdict.py`).
+    Sessions whose gate uses the sidecar pattern (currently: review) get
+    a single-source-of-truth outcome that matches the merge decision.
+
+    For sessions without a sidecar (legacy gates, ad-hoc Claude calls,
+    pre-sidecar runs), we fall back to the older keyword heuristic. The
+    keyword heuristic is fragile and is the reason this sidecar mechanism
+    exists — sessions where the prose mentioned `[CRITICAL]` while the
+    gate said pass would render as failed in the UI. With the sidecar
+    present we just trust whatever the gate wrote.
     """
+    try:
+        from ..gate_verdict import read_verdict_sidecar
+        v = read_verdict_sidecar(session_path)
+        if v is not None:
+            return v.to_outcome()
+    except Exception:
+        pass
+
     try:
         # Read last ~20 lines efficiently
         lines: list[str] = []

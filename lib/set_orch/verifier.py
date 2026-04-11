@@ -1321,6 +1321,12 @@ def review_change(
     if prompt_prefix:
         review_prompt = prompt_prefix + review_prompt
 
+    # Snapshot Claude session dir before the call so we can locate the new
+    # session file afterwards and persist a verdict sidecar (single source
+    # of truth for the dashboard's session outcome — see gate_verdict.py).
+    from .gate_verdict import snapshot_session_files
+    session_baseline = snapshot_session_files(wt_path)
+
     # Run review via Claude — 15 min timeout (default 5 min was too short for
     # large changes with many spec files, causing silent "skipping" pass-through)
     claude_result = run_claude_logged(
@@ -1343,11 +1349,23 @@ def review_change(
                     "Code review failed with opus for %s (exit=%d, timed_out=%s) — skipping (FALSE PASS)",
                     change_name, claude_result.exit_code, claude_result.timed_out,
                 )
+                _persist_review_verdict(
+                    cwd=wt_path, baseline=session_baseline, change_name=change_name,
+                    has_critical=False, parsed_issues=[],
+                    source="exec_failed",
+                    summary=f"opus exit={claude_result.exit_code} timed_out={claude_result.timed_out} — forced pass",
+                )
                 return ReviewResult(has_critical=False, output="")
         else:
             logger.error(
                 "Code review failed for %s (exit=%d, timed_out=%s) — skipping (FALSE PASS)",
                 change_name, claude_result.exit_code, claude_result.timed_out,
+            )
+            _persist_review_verdict(
+                cwd=wt_path, baseline=session_baseline, change_name=change_name,
+                has_critical=False, parsed_issues=[],
+                source="exec_failed",
+                summary=f"opus exit={claude_result.exit_code} timed_out={claude_result.timed_out} — forced pass",
             )
             return ReviewResult(has_critical=False, output="")
 
@@ -1360,6 +1378,7 @@ def review_change(
     # the llm_verdict_classifier_enabled directive is False.
     parsed_issues = _parse_review_issues(review_output)
     has_critical = any(i["severity"] == "CRITICAL" for i in parsed_issues)
+    verdict_source = "fast_path"
 
     # Defense in depth: retry reviews use a different markdown structure
     # (`### Finding N:` headers, `**NOT_FIXED** [CRITICAL]` annotations,
@@ -1413,19 +1432,73 @@ def review_change(
                     }
                     for f in cls_result.findings
                 ]
+                verdict_source = "classifier_override"
             elif cls_result.error is None:
                 logger.info(
                     "Gate[review] classifier confirmed 0 critical findings for %s "
                     "(elapsed=%dms)", change_name, cls_result.elapsed_ms,
                 )
+                verdict_source = "classifier_confirmed"
             else:
                 logger.warning(
                     "Gate[review] classifier failed for %s (error=%s, elapsed=%dms) "
                     "— falling through with fast-path verdict",
                     change_name, cls_result.error, cls_result.elapsed_ms,
                 )
+                verdict_source = "classifier_failed"
 
+    _persist_review_verdict(
+        cwd=wt_path, baseline=session_baseline, change_name=change_name,
+        has_critical=has_critical, parsed_issues=parsed_issues,
+        source=verdict_source,
+    )
     return ReviewResult(has_critical=has_critical, output=review_output)
+
+
+def _persist_review_verdict(
+    *,
+    cwd: str,
+    baseline: set[str],
+    change_name: str,
+    has_critical: bool,
+    parsed_issues: list[dict],
+    source: str,
+    summary: str = "",
+) -> None:
+    """Write a `<session_id>.verdict.json` next to the review's Claude session.
+
+    Single source of truth for the dashboard's session outcome — replaces
+    the older keyword-heuristic in `api/sessions.py::_session_outcome`.
+    Best-effort: any failure logs a warning but never breaks the gate.
+    """
+    try:
+        from .gate_verdict import persist_gate_verdict
+        sev_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        for i in parsed_issues:
+            sev = (i.get("severity") or "").upper()
+            if sev in sev_counts:
+                sev_counts[sev] += 1
+        if not summary:
+            if has_critical:
+                first = (parsed_issues[0].get("summary", "") if parsed_issues else "")[:160]
+                summary = f"{sev_counts['CRITICAL']} critical via {source}: {first}"
+            else:
+                summary = f"0 critical findings (source={source})"
+        persist_gate_verdict(
+            cwd=cwd,
+            baseline=baseline,
+            change_name=change_name,
+            gate="review",
+            verdict="fail" if has_critical else "pass",
+            critical_count=sev_counts["CRITICAL"],
+            high_count=sev_counts["HIGH"],
+            medium_count=sev_counts["MEDIUM"],
+            low_count=sev_counts["LOW"],
+            source=source,
+            summary=summary,
+        )
+    except Exception:
+        logger.warning("review verdict sidecar persist failed", exc_info=True)
 
 
 # ─── Verification Rules ─────────────────────────────────────────────
