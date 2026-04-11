@@ -151,9 +151,34 @@ class SupervisorDaemon:
             spec=config.spec,
             emit_event=self._emit_event,
         )
-        self._last_canary_window_iso = self.status.last_canary_at or _now_iso()
+        # Seed last_canary_at on first start so the very first canary fires
+        # 15 minutes AFTER daemon start, not immediately. The orchestrator
+        # has barely had time to do anything 15s after launch — there's
+        # nothing useful for a canary to evaluate yet, and skipping the
+        # immediate fire avoids burning a Claude call on every supervisor
+        # restart (and unblocks tests that don't mock the canary).
+        if not self.status.last_canary_at:
+            self.status.last_canary_at = _now_iso()
+        self._last_canary_window_iso = self.status.last_canary_at
 
         write_status(self.project_path, self.status)
+
+    def _is_state_terminal(self) -> bool:
+        """Check whether orchestration-state.json reports a terminal status.
+
+        Used by the monitor loop to distinguish a clean orchestrator exit
+        (terminal status) from a crash (status still running). Terminal
+        statuses are sourced from `anomaly.TERMINAL_STATUSES` so the two
+        modules cannot drift apart.
+        """
+        if not self._state_path or not self._state_path.is_file():
+            return False
+        try:
+            data = json.loads(self._state_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return False
+        from .anomaly import TERMINAL_STATUSES
+        return (data.get("status") or "").lower() in TERMINAL_STATUSES
 
     def _resolve_runtime_paths(self) -> tuple[Optional[Path], Optional[Path], Optional[Path]]:
         """Locate the orchestration state, events, and log files via SetRuntime.
@@ -325,9 +350,69 @@ class SupervisorDaemon:
         while not self._stop_requested:
             self.status.poll_cycle += 1
 
-            # 1. Process alive check
-            orch_alive = self._orch_proc is not None and _is_alive(self._orch_proc.pid)
+            # 1. Process alive check. Four cases by (poll_result, state.status):
+            #    (alive)            → continue normally
+            #    (exit 0, *)        → clean exit, treat as orchestrator_done.
+            #                         If state is terminal, run a final
+            #                         anomaly scan first so the terminal_state
+            #                         trigger fires and the final-report
+            #                         Claude is spawned via the normal pipe.
+            #    (exit != 0, term)  → orchestrator died with non-zero status
+            #                         but state already terminal → also treat
+            #                         as orchestrator_exit_N, no restart.
+            #    (exit != 0, run)   → real crash, restart via the rapid-crash
+            #                         counter.
+            #
+            # We call Popen.poll() FIRST so the zombie gets reaped — if we
+            # only checked _is_alive() (kill -0), an unreaped zombie would
+            # still report as alive forever and the daemon would never
+            # detect the orchestrator's exit. _is_alive() is the secondary
+            # source of truth (for the case when self._orch_proc is None).
+            poll_result = (
+                self._orch_proc.poll() if self._orch_proc is not None else None
+            )
+            orch_alive = (
+                self._orch_proc is not None
+                and poll_result is None
+                and _is_alive(self._orch_proc.pid)
+            )
             if not orch_alive and not self._stop_requested:
+                exit_code = poll_result if poll_result is not None else 0
+                state_terminal = self._is_state_terminal()
+
+                if state_terminal:
+                    # Orchestration finished naturally → fire terminal_state
+                    # trigger so the final-report Claude is spawned through
+                    # the normal anomaly pipeline.
+                    logger.info(
+                        "[supervisor] Orchestrator done + state terminal — "
+                        "running final anomaly scan (exit=%d)",
+                        exit_code,
+                    )
+                    try:
+                        self._scan_and_dispatch_anomalies()
+                    except Exception:
+                        logger.exception("[supervisor] Final anomaly scan crashed")
+                    self._stop_reason = (
+                        "orchestrator_done" if exit_code == 0
+                        else f"orchestrator_exit_{exit_code}"
+                    )
+                    self._stop_requested = True
+                    break
+
+                if exit_code == 0:
+                    # Clean exit but state.json says not-terminal — likely
+                    # an external kill or a non-orchestrator process. No
+                    # final report needed. Don't restart, just shut down.
+                    logger.info(
+                        "[supervisor] Orchestrator exited code 0 but state "
+                        "not terminal — shutting down without final scan",
+                    )
+                    self._stop_reason = "orchestrator_done"
+                    self._stop_requested = True
+                    break
+
+                # Crash path: non-zero exit AND state not terminal → restart
                 if not self._restart_orchestrator():
                     break
                 continue
@@ -335,19 +420,6 @@ class SupervisorDaemon:
             # 2. Inbox check
             self._check_inbox()
             if self._stop_requested:
-                break
-
-            # 3. Terminal state check (if orchestrator finished on its own)
-            if self._orch_proc and self._orch_proc.poll() is not None:
-                exit_code = self._orch_proc.returncode
-                logger.info(
-                    "[supervisor] Orchestrator exited cleanly with code=%d", exit_code,
-                )
-                if exit_code == 0:
-                    self._stop_reason = "orchestrator_done"
-                else:
-                    self._stop_reason = f"orchestrator_exit_{exit_code}"
-                self._stop_requested = True
                 break
 
             # 4. Phase 2: anomaly signal detection + ephemeral Claude dispatch.

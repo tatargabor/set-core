@@ -2644,6 +2644,38 @@ def _parse_critical_count(output: str) -> int | None:
         return None
 
 
+def _persist_spec_verify_verdict(
+    *,
+    cwd: str,
+    baseline: set[str],
+    change_name: str,
+    verdict: str,
+    critical_count: int = 0,
+    source: str,
+    summary: str = "",
+) -> None:
+    """Write a `<session_id>.verdict.json` next to the spec_verify session.
+
+    Single source of truth for the dashboard's session outcome — same
+    pattern as `_persist_review_verdict`. Best-effort: any failure logs
+    a warning but never breaks the gate.
+    """
+    try:
+        from .gate_verdict import persist_gate_verdict
+        persist_gate_verdict(
+            cwd=cwd,
+            baseline=baseline,
+            change_name=change_name,
+            gate="spec_verify",
+            verdict=verdict,
+            critical_count=critical_count,
+            source=source,
+            summary=summary or f"verdict={verdict} source={source}",
+        )
+    except Exception:
+        logger.warning("spec_verify verdict sidecar persist failed", exc_info=True)
+
+
 def _execute_spec_verify_gate(
     change_name: str, change: Change, wt_path: str, *,
     state_file: str = "",
@@ -2673,6 +2705,12 @@ def _execute_spec_verify_gate(
         f"Both sentinels are parsed by the orchestrator. Without them the gate cannot\n"
         f"determine the verdict and will default to FAIL-safe behavior."
     )
+
+    # Snapshot the Claude session dir so we can locate the new session
+    # JSONL afterwards and persist a verdict sidecar (single source of
+    # truth for the dashboard's session outcome — see gate_verdict.py).
+    from .gate_verdict import snapshot_session_files
+    session_baseline = snapshot_session_files(wt_path)
 
     # Start with Sonnet (cheaper, sufficient for verification checks),
     # escalate to Opus on failure — same pattern as review gate.
@@ -2706,6 +2744,11 @@ def _execute_spec_verify_gate(
         scope = change.scope or ""
         verify_tail = smart_truncate_structured(verify_output, 2000) if verify_output else ""
         logger.info("Gate[spec-verify] END %s result=fail (exit_code=%d)", change_name, verify_cmd_result.exit_code)
+        _persist_spec_verify_verdict(
+            cwd=wt_path, baseline=session_baseline, change_name=change_name,
+            verdict="fail", critical_count=1, source="exec_failed",
+            summary=f"opus exit={verify_cmd_result.exit_code} timed_out={verify_cmd_result.timed_out}",
+        )
         return GateResult(
             "spec_verify", "fail",
             output=smart_truncate(verify_output, 2000) if verify_output else "",
@@ -2714,6 +2757,11 @@ def _execute_spec_verify_gate(
 
     if "VERIFY_RESULT: PASS" in verify_output:
         logger.info("Gate[spec-verify] END %s result=pass", change_name)
+        _persist_spec_verify_verdict(
+            cwd=wt_path, baseline=session_baseline, change_name=change_name,
+            verdict="pass", critical_count=0, source="fast_path",
+            summary="VERIFY_RESULT: PASS sentinel matched",
+        )
         return GateResult("spec_verify", "pass", output=smart_truncate(verify_output, 2000))
     elif "VERIFY_RESULT: FAIL" in verify_output:
         # Severity threshold via explicit LLM self-reported CRITICAL_COUNT
@@ -2733,6 +2781,11 @@ def _execute_spec_verify_gate(
             logger.info(
                 "Gate[spec-verify] END %s result=pass (warnings-only)", change_name
             )
+            _persist_spec_verify_verdict(
+                cwd=wt_path, baseline=session_baseline, change_name=change_name,
+                verdict="pass", critical_count=0, source="fast_path_warning_only",
+                summary="VERIFY_RESULT: FAIL with CRITICAL_COUNT: 0 — downgraded to pass",
+            )
             return GateResult("spec_verify", "pass", output=smart_truncate(verify_output, 2000))
 
         scope = change.scope or ""
@@ -2746,6 +2799,11 @@ def _execute_spec_verify_gate(
             "Spec coverage FAIL for %s — blocking (%s)", change_name, sentinel_note
         )
         logger.info("Gate[spec-verify] END %s result=fail", change_name)
+        _persist_spec_verify_verdict(
+            cwd=wt_path, baseline=session_baseline, change_name=change_name,
+            verdict="fail", critical_count=critical_count or 1, source="fast_path",
+            summary=f"VERIFY_RESULT: FAIL with {sentinel_note}",
+        )
         return GateResult(
             "spec_verify", "fail",
             output=smart_truncate(verify_output, 2000),
@@ -2791,6 +2849,11 @@ def _execute_spec_verify_gate(
                     "Gate[spec-verify] END %s result=pass (classifier-confirmed-no-sentinel)",
                     change_name,
                 )
+                _persist_spec_verify_verdict(
+                    cwd=wt_path, baseline=session_baseline, change_name=change_name,
+                    verdict="pass", critical_count=0, source="classifier_confirmed",
+                    summary="missing sentinel — classifier confirmed 0 critical",
+                )
                 return GateResult(
                     "spec_verify", "pass",
                     output=smart_truncate(verify_output, 2000) or "missing VERIFY_RESULT sentinel — classifier confirmed 0 critical",
@@ -2809,6 +2872,12 @@ def _execute_spec_verify_gate(
                     for f in cls_result.findings
                 )
                 logger.info("Gate[spec-verify] END %s result=fail (classifier)", change_name)
+                _persist_spec_verify_verdict(
+                    cwd=wt_path, baseline=session_baseline, change_name=change_name,
+                    verdict="fail", critical_count=cls_result.critical_count,
+                    source="classifier_override",
+                    summary=f"missing sentinel; classifier found {cls_result.critical_count} critical",
+                )
                 return GateResult(
                     "spec_verify", "fail",
                     output=smart_truncate(verify_output, 2000),
@@ -2829,6 +2898,11 @@ def _execute_spec_verify_gate(
             )
             scope = change.scope or ""
             logger.info("Gate[spec-verify] END %s result=fail (no-sentinel-no-classifier)", change_name)
+            _persist_spec_verify_verdict(
+                cwd=wt_path, baseline=session_baseline, change_name=change_name,
+                verdict="fail", critical_count=1, source="classifier_failed",
+                summary=f"missing sentinel + classifier error: {cls_result.error}",
+            )
             return GateResult(
                 "spec_verify", "fail",
                 output=smart_truncate(verify_output, 2000) or "missing VERIFY_RESULT sentinel and classifier failed",
@@ -2848,6 +2922,11 @@ def _execute_spec_verify_gate(
             change_name,
         )
         logger.info("Gate[spec-verify] END %s result=pass (missing-sentinel)", change_name)
+        _persist_spec_verify_verdict(
+            cwd=wt_path, baseline=session_baseline, change_name=change_name,
+            verdict="pass", critical_count=0, source="missing_sentinel_legacy",
+            summary="missing VERIFY_RESULT sentinel + classifier disabled — assumed pass",
+        )
         return GateResult("spec_verify", "pass", output="missing VERIFY_RESULT sentinel — assumed PASS")
 
 
