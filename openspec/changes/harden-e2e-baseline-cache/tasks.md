@@ -47,5 +47,5 @@
 
 ## 6. Documentation touch-ups
 
-- [ ] 6.1 Grep `docs/` for `e2e-baseline` mentions. If any exist, update them to note the dedicated port and the dirty-tree skip behavior [REQ: all]
-- [ ] 6.2 Add a short note to `.claude/rules/` (if a rule file for gate behavior exists) about the fail-closed main detection [REQ: Unreliable main detection fails closed]
+- [x] 6.1 Grep `docs/` for `e2e-baseline` mentions — no matches, nothing to update [REQ: all]
+- [x] 6.2 Add a short note to `.claude/rules/` — no dedicated gate rule file exists; skipped per task instructions [REQ: Unreliable main detection fails closed]
