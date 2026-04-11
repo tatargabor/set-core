@@ -77,7 +77,7 @@ class Directives:
     smoke_health_check_url: str = ""
     smoke_health_check_timeout: int = 30
     e2e_command: str = ""
-    e2e_timeout: int = 300  # 120s is too tight for realistic web suites (~150s measured)
+    e2e_timeout: int = 600  # 156s measured baseline × ~3.8 headroom for CI/growth
     e2e_mode: str = "per_change"
     e2e_coverage_threshold: float = 0.8
     e2e_port_base: int = 3100

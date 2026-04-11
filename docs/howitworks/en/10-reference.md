@@ -134,7 +134,7 @@ Testing directives configure the quality gates. `test_command` is the most impor
 | `smoke_health_check_url` | string | "" | Health check URL |
 | `smoke_health_check_timeout` | number | 30 | Health check timeout |
 | `e2e_command` | string | "" | E2E test command |
-| `e2e_timeout` | number | 300 | E2E timeout (seconds) |
+| `e2e_timeout` | number | 600 | E2E timeout (seconds) |
 | `e2e_mode` | enum | per_change | per_change / phase_end |
 
 ### Review and Verify

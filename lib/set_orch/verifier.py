@@ -79,7 +79,7 @@ DEFAULT_SMOKE_FIX_MAX_TURNS = 15
 DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT = 30
 DEFAULT_MAX_VERIFY_RETRIES = 2
 DEFAULT_REVIEW_MODEL = "sonnet"
-DEFAULT_E2E_TIMEOUT = 300  # Realistic web suite baseline is ~150s; 2x headroom
+DEFAULT_E2E_TIMEOUT = 600  # 156s measured baseline × ~3.8 headroom for CI + growth
 E2E_HEALTH_TIMEOUT = 30  # seconds; override via config e2e_health_timeout
 
 # ─── Data Structures ────────────────────────────────────────────────

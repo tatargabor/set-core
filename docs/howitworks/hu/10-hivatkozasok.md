@@ -134,7 +134,7 @@ A tesztelési direktívák a minőségi gate-eket konfigurálják. A `test_comma
 | `smoke_health_check_url` | string | "" | Health check URL |
 | `smoke_health_check_timeout` | szám | 30 | Health check timeout |
 | `e2e_command` | string | "" | E2E test parancs |
-| `e2e_timeout` | szám | 300 | E2E timeout (mp) |
+| `e2e_timeout` | szám | 600 | E2E timeout (mp) |
 | `e2e_mode` | enum | per_change | per_change / phase_end |
 
 ### Review és Verify
