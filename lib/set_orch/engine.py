@@ -66,6 +66,7 @@ class Directives:
     integration_smoke_blocking: bool = True  # Smoke failures block the merge by default
     integration_smoke_timeout: int = 300  # Per-change smoke run timeout (sibling specs)
     llm_verdict_classifier_enabled: bool = True  # Second Sonnet pass classifies LLM gate outputs into structured verdicts (review/spec-verify/investigator)
+    supervisor_mode: str = "python"  # "python" (set-supervisor daemon) | "claude" (legacy sentinel.md) | "off" (no supervision)
     review_before_merge: bool = True
     review_model: str = "sonnet"
     digest_model: str = "sonnet"
@@ -129,6 +130,7 @@ def parse_directives(raw: dict) -> Directives:
     d.integration_smoke_blocking = _bool(raw, "integration_smoke_blocking", d.integration_smoke_blocking)
     d.integration_smoke_timeout = _int(raw, "integration_smoke_timeout", d.integration_smoke_timeout)
     d.llm_verdict_classifier_enabled = _bool(raw, "llm_verdict_classifier_enabled", d.llm_verdict_classifier_enabled)
+    d.supervisor_mode = _str(raw, "supervisor_mode", d.supervisor_mode)
     d.test_timeout = _int(raw, "test_timeout", d.test_timeout)
     d.max_verify_retries = _int(raw, "max_verify_retries", d.max_verify_retries)
     d.review_before_merge = _bool(raw, "review_before_merge", d.review_before_merge)

@@ -1,0 +1,3 @@
+project_type: web
+template: nextjs
+ui_library: shadcn

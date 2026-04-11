@@ -134,8 +134,122 @@ class ProjectSupervisor:
 
         return prompt
 
+    def _supervisor_mode(self) -> str:
+        """Read the supervisor_mode directive from the project's state.
+
+        Falls back to "python" (default) if the directive is missing or
+        the state file is unreadable. Valid values: python | claude | off.
+        """
+        state_file = self.config.path / "orchestration-state.json"
+        if not state_file.is_file():
+            return "python"
+        try:
+            import json as _json
+            data = _json.loads(state_file.read_text())
+            mode = (data.get("directives") or {}).get("supervisor_mode", "python")
+            return str(mode).lower()
+        except Exception:
+            return "python"
+
     def start_sentinel(self, spec: Optional[str] = None) -> int:
-        """Spawn sentinel as a dedicated claude agent process."""
+        """Spawn the supervisor for this project.
+
+        Dispatches based on the project's `supervisor_mode` directive:
+        - "python" (default): spawn `set-supervisor` Python daemon
+        - "claude": spawn the legacy Claude-driven sentinel skill
+        - "off": start the orchestrator directly with no supervision
+        """
+        mode = self._supervisor_mode()
+        if mode == "python":
+            return self._start_python_supervisor(spec=spec)
+        if mode == "off":
+            return self._start_orchestrator_unsupervised(spec=spec)
+        # mode == "claude" → legacy path (or any unknown value, for safety)
+        return self._start_claude_sentinel(spec=spec)
+
+    def _start_python_supervisor(self, spec: Optional[str] = None) -> int:
+        """Spawn the set-supervisor Python daemon."""
+        if not spec:
+            raise RuntimeError("supervisor_mode=python requires a spec path")
+
+        try:
+            from ..paths import SetRuntime
+            log_dir = Path(SetRuntime(str(self.config.path)).sentinel_dir)
+        except Exception:
+            log_dir = self.config.path / ".set" / "sentinel"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stdout_file = open(log_dir / "stdout.log", "w")
+        stderr_file = open(log_dir / "stderr.log", "w")
+
+        set_core_bin = Path(__file__).resolve().parent.parent.parent.parent / "bin"
+        cmd = [
+            str(set_core_bin / "set-supervisor"),
+            "--project", str(self.config.path),
+            "--spec", spec,
+        ]
+
+        env = os.environ.copy()
+        if set_core_bin.is_dir():
+            env["PATH"] = f"{set_core_bin}:{env.get('PATH', '')}"
+
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(self.config.path),
+                stdout=stdout_file,
+                stderr=stderr_file,
+                start_new_session=True,
+                env=env,
+            )
+            self._sentinel_proc = proc
+            self.sentinel_pid = proc.pid
+            self.sentinel_started_at = now_iso()
+            self.sentinel_spec = spec
+            try:
+                marker = Path(self.config.path) / "set" / "orchestration" / ".sentinel-spec"
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text(spec or "")
+            except OSError:
+                pass
+            self.sentinel_crash_count = 0
+            self._manually_stopped = False
+            logger.info(f"[{self.config.name}] Python supervisor started, PID={proc.pid}")
+            return proc.pid
+        except FileNotFoundError as exc:
+            logger.error(f"[{self.config.name}] set-supervisor not found: {exc}")
+            raise
+
+    def _start_orchestrator_unsupervised(self, spec: Optional[str] = None) -> int:
+        """Start set-orchestrate directly with no supervisor wrapper."""
+        if not spec:
+            raise RuntimeError("supervisor_mode=off requires a spec path")
+        cmd = ["set-orchestrate", "start", "--spec", spec]
+        try:
+            from ..paths import SetRuntime
+            log_dir = Path(SetRuntime(str(self.config.path)).sentinel_dir)
+        except Exception:
+            log_dir = self.config.path / ".set" / "sentinel"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stdout_file = open(log_dir / "stdout.log", "w")
+        stderr_file = open(log_dir / "stderr.log", "w")
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(self.config.path),
+            stdout=stdout_file,
+            stderr=stderr_file,
+            start_new_session=True,
+        )
+        self._orch_proc = proc
+        self.orchestrator_pid = proc.pid
+        self.orchestrator_started_at = now_iso()
+        self.sentinel_pid = proc.pid  # Manager API tracks this as the "supervisor" pid
+        self.sentinel_started_at = self.orchestrator_started_at
+        self.sentinel_spec = spec
+        logger.info(f"[{self.config.name}] Orchestrator started unsupervised, PID={proc.pid}")
+        return proc.pid
+
+    def _start_claude_sentinel(self, spec: Optional[str] = None) -> int:
+        """Legacy path — spawn the Claude sentinel skill via `claude -p`."""
         prompt = self._load_sentinel_prompt(spec=spec)
         # Log stdout and stderr to files for debugging
         try:
