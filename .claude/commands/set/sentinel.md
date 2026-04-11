@@ -128,8 +128,12 @@ Run this single-shot poll command with `run_in_background: true`. Replace `$ORCH
 **IMPORTANT: Claude Code Bash tool escapes `!` as `\!` which breaks bash syntax. NEVER use `!` in the poll script. Use the workarounds below (kill -0 with || instead of if !, test -f instead of -f inline, etc.)**
 
 ```bash
-# Split 120s sleep into 12x10s for inbox responsiveness (max 10s message latency)
-for _i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 10; set-sentinel-inbox check 2>/dev/null || true; done
+# Single 120s sleep — inbox is checked once at the end of every poll cycle
+# (see "After the poll task completes" below), so user messages have at most
+# ~120s latency. The previous 12x10s loop spawned a Python subprocess every
+# 10 seconds even when no messages were pending, which was pure polling
+# overhead with no functional benefit.
+sleep 120
 STATE_FILE="orchestration-state.json"
 ORCH_PID=<actual PID number>
 
