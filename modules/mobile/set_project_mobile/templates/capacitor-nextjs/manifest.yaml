@@ -1,3 +1,5 @@
+inherits: nextjs
+
 core:
   - capacitor.config.ts
   - rules/capacitor-conventions.md

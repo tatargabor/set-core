@@ -261,8 +261,52 @@ def deploy_templates(
     File deployment respects manifest flags:
     - protected: skip if file exists and differs from template (project modified it)
     - merge: additive YAML merge (add missing keys, never overwrite existing)
+    - inherits: deploy parent template first (e.g., mobile inherits web's nextjs)
     """
     resolved_id, template_dir = resolve_template(project_type, template_id)
+    manifest = _load_manifest(template_dir)
+
+    # Deploy parent template first if manifest declares inheritance
+    if manifest and manifest.get("inherits"):
+        parent_template_id = manifest["inherits"]
+        parent_dir = project_type.get_template_dir(parent_template_id)
+        if parent_dir and parent_dir.is_dir():
+            parent_msgs = _deploy_single_template(
+                parent_dir, target_dir, modules=None, force=force, dry_run=dry_run
+            )
+            # Return parent messages followed by child messages
+            messages = parent_msgs
+        else:
+            messages = [f"  Warning: inherited template '{parent_template_id}' not found"]
+    else:
+        messages = []
+
+    # Deploy the leaf template (with modules and optional-module display)
+    leaf_msgs = _deploy_single_template(
+        template_dir, target_dir, modules=modules, force=force, dry_run=dry_run
+    )
+    messages.extend(leaf_msgs)
+
+    # Project-level template override: .claude/project-templates/
+    project_templates = target_dir / ".claude" / "project-templates"
+    if project_templates.is_dir():
+        pt_messages = _merge_project_templates(project_templates, target_dir, force, dry_run)
+        if pt_messages:
+            messages.append("")
+            messages.append("  Project-level template overrides:")
+            messages.extend(pt_messages)
+
+    return messages
+
+
+def _deploy_single_template(
+    template_dir: Path,
+    target_dir: Path,
+    modules: Optional[List[str]] = None,
+    force: bool = False,
+    dry_run: bool = False,
+) -> List[str]:
+    """Deploy files from a single template directory into the target."""
     manifest = _load_manifest(template_dir)
     messages: List[str] = []
 
@@ -320,15 +364,6 @@ def deploy_templates(
                 desc = mdef.get("description", "")
                 messages.append(f"    - {mid}: {desc}")
             messages.append("  Use --modules <name,...> to deploy optional modules")
-
-    # Project-level template override: .claude/project-templates/
-    project_templates = target_dir / ".claude" / "project-templates"
-    if project_templates.is_dir():
-        pt_messages = _merge_project_templates(project_templates, target_dir, force, dry_run)
-        if pt_messages:
-            messages.append("")
-            messages.append("  Project-level template overrides:")
-            messages.extend(pt_messages)
 
     return messages
 
