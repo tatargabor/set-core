@@ -94,14 +94,26 @@ async def sentinel_restart(project: str, body: dict = {}):
 
 @router.get("/api/{project}/sentinel/log")
 async def sentinel_log(project: str, tail: int = 200, raw: str = ""):
-    """Return last N lines of sentinel stdout.log, parsing stream-json format."""
+    """Return last N lines of sentinel stdout.log, parsing stream-json format.
+
+    Source priority:
+      1. stdout.log if it has content
+      2. stderr.log fallback — Python supervisor daemons started before
+         the bin/set-supervisor stdout-redirect fix wrote their logs to
+         stderr. Falling back here lets the dashboard show those runs
+         too without forcing a daemon restart.
+    """
     sup = _get_supervisor(project)
     try:
         from ..paths import SetRuntime
         rt = SetRuntime(str(sup.config.path))
         log_path = Path(rt.sentinel_dir) / "stdout.log"
-        if not log_path.exists():
-            return {"lines": []}
+        if not log_path.exists() or log_path.stat().st_size == 0:
+            stderr_path = Path(rt.sentinel_dir) / "stderr.log"
+            if stderr_path.exists() and stderr_path.stat().st_size > 0:
+                log_path = stderr_path
+            else:
+                return {"lines": []}
         content = log_path.read_text()
         if raw:
             lines = content.splitlines()[-tail:]

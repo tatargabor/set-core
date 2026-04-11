@@ -181,27 +181,65 @@ class SupervisorDaemon:
         return (data.get("status") or "").lower() in TERMINAL_STATUSES
 
     def _resolve_runtime_paths(self) -> tuple[Optional[Path], Optional[Path], Optional[Path]]:
-        """Locate the orchestration state, events, and log files via SetRuntime.
+        """Locate the orchestration state, events, and log files.
 
-        Falls back to project-relative paths if SetRuntime resolution fails
-        (e.g. in unit tests against a tempdir that isn't a git repo).
+        The orchestrator's path layout is hybrid:
+          - state.json typically lives at `<project>/orchestration-state.json`
+            (the manager API + set-orchestrate CLI default)
+          - events.jsonl lives at the SetRuntime path
+            (`~/.local/share/set-core/runtime/<project>/orchestration/events.jsonl`)
+            because the orchestrator's event_bus uses SetRuntime
+          - the orchestration log lives at SetRuntime's logs/ dir
+
+        We try BOTH locations for state and events and return whichever
+        actually exists. Without this fallback the supervisor's anomaly
+        scan was completely blind to state on real runs (the SetRuntime
+        path for state never gets populated by current orchestrator
+        builds), and the canary always saw an empty diff.
         """
+        candidates_state: list[Path] = []
+        candidates_events: list[Path] = []
+        candidates_log: list[Path] = []
+
+        # Tier 1: SetRuntime (works for events + log; rarely for state)
         try:
             from ..paths import SetRuntime
             rt = SetRuntime(str(self.project_path))
-            sp = Path(rt.state_file)
-            ep = Path(rt.events_file)
-            lp = Path(rt.orchestration_log)
-            return (
-                sp if sp.is_file() else None,
-                ep if ep.is_file() or ep.parent.is_dir() else None,
-                lp if lp.is_file() else None,
-            )
+            candidates_state.append(Path(rt.state_file))
+            candidates_events.append(Path(rt.events_file))
+            candidates_log.append(Path(rt.orchestration_log))
         except Exception as exc:
             logger.warning("[supervisor] SetRuntime path resolution failed: %s", exc)
-            sp = self.project_path / "orchestration-state.json"
-            ep = self.project_path / "orchestration-events.jsonl"
-            return (sp if sp.is_file() else None, ep, None)
+
+        # Tier 2: project-relative legacy layout (where state actually lives)
+        candidates_state.append(self.project_path / "orchestration-state.json")
+        candidates_events.append(self.project_path / "orchestration-events.jsonl")
+
+        # Pick first existing file for state + log; for events, fall back
+        # to whichever parent dir exists (the events file may not have
+        # been created yet on the very first poll cycle).
+        state_path: Optional[Path] = next(
+            (p for p in candidates_state if p.is_file()), None,
+        )
+        events_path: Optional[Path] = None
+        for p in candidates_events:
+            if p.is_file():
+                events_path = p
+                break
+        if events_path is None:
+            for p in candidates_events:
+                if p.parent.is_dir():
+                    events_path = p
+                    break
+        log_path: Optional[Path] = next(
+            (p for p in candidates_log if p.is_file()), None,
+        )
+
+        logger.info(
+            "[supervisor] Resolved paths: state=%s events=%s log=%s",
+            state_path, events_path, log_path,
+        )
+        return state_path, events_path, log_path
 
     # ── Lifecycle ────────────────────────────────────────
 

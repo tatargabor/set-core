@@ -25,12 +25,23 @@ from set_orch.supervisor import SupervisorConfig, SupervisorDaemon
 
 
 def _setup_logging(level: str) -> None:
+    # Stream to STDOUT (not stderr) so the manager-launched daemon's logs
+    # land in <runtime>/sentinel/stdout.log where the dashboard's
+    # /api/<project>/sentinel/log endpoint reads them. Without this the
+    # logs go to stderr.log and the dashboard's "Sentinel" tab shows
+    # nothing while the daemon is running.
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        stream=sys.stderr,
+        stream=sys.stdout,
     )
+    # Force unbuffered stdout so the dashboard sees lines as they're
+    # written, not in 8KB chunks after the daemon exits.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
 
 def main() -> int:
