@@ -376,16 +376,47 @@ class ProjectSupervisor:
         # Sentinel health — check both process death AND session end
         sentinel_needs_restart = False
 
+        # Python-mode supervisors have completely different lifecycle
+        # semantics from Claude sentinels:
+        #   - they log to stderr (via logging), not stdout, so stdout-mtime
+        #     staleness detection is invalid
+        #   - a clean exit (code 0) is the normal path for a completed
+        #     orchestration — the Python daemon writes SUPERVISOR_STOP and
+        #     exits, and we SHOULD NOT restart it
+        #   - the daemon has its own internal crash recovery for the
+        #     orchestrator subprocess
+        # So for python mode, only auto-restart on a hard process crash
+        # (PID gone without a clean exit), never on staleness or clean exit.
+        python_mode = self._supervisor_mode() == "python"
+
         if self.sentinel_pid and not _is_alive(self.sentinel_pid):
-            # Process died (crash or normal exit)
-            actions.append(f"sentinel died (pid={self.sentinel_pid})")
-            self.sentinel_pid = None
-            self._sentinel_proc = None
-            self.sentinel_crash_count += 1
-            sentinel_needs_restart = True
+            # Process died — but distinguish clean exit from crash.
+            clean_exit = False
+            if self._sentinel_proc is not None:
+                code = self._sentinel_proc.poll()
+                if code == 0:
+                    clean_exit = True
+            if python_mode and clean_exit:
+                actions.append(f"python supervisor exited cleanly (pid={self.sentinel_pid})")
+                self.sentinel_pid = None
+                self._sentinel_proc = None
+                # No restart — orchestration is done or was stopped
+            else:
+                actions.append(f"sentinel died (pid={self.sentinel_pid})")
+                self.sentinel_pid = None
+                self._sentinel_proc = None
+                self.sentinel_crash_count += 1
+                sentinel_needs_restart = True
+
+        elif python_mode and self.sentinel_pid:
+            # Python supervisor alive — trust it, skip staleness + session
+            # end checks. The daemon writes supervisor/status.json which
+            # the dashboard can read for liveness detail.
+            pass
 
         elif self.sentinel_pid and self._sentinel_proc:
-            # Process alive — but check if session ended (claude -p may linger)
+            # Legacy Claude sentinel — process alive, but check if session
+            # ended (claude -p may linger even after end_turn)
             poll_result = self._sentinel_proc.poll()
             if poll_result is not None:
                 # Process actually exited
