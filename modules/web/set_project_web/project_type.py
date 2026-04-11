@@ -638,14 +638,54 @@ class WebProjectType(CoreProfile):
     # ─── Smoke / Scoped E2E Commands ───────────────────────────
 
     def extract_first_test_name(self, spec_path: str) -> Optional[str]:
-        """Extract the first test() name from a Playwright spec file."""
+        """Extract the first test() name from a Playwright spec file.
+
+        The naive regex `test\\(["\'](.+?)["\']` breaks on JS string
+        literals that contain escaped quotes inside the title, e.g.
+        `test('REQ-A:AC-1 — Click \\'Add task\\' button', ...)` — the
+        non-greedy `(.+?)` stops at the first literal quote it sees,
+        which is the escaped `\\'`, and returns a truncated title like
+        `REQ-A:AC-1 — Click \\`. That truncated title then gets joined
+        into the smoke command's `--grep` pattern as a meaningless
+        substring, and Playwright reports "No tests found" — a false
+        positive integration smoke failure.
+
+        This version walks the line and respects JS-style `\\` escape
+        sequences so `\\'` or `\\"` inside a matching-quote string does
+        not terminate the capture. Supports both single- and
+        double-quoted test titles; the regex also tolerates
+        whitespace/`.only`/`.skip` between `test` and `(`.
+        """
         import re as _re
         try:
             with open(spec_path, encoding="utf-8", errors="replace") as f:
                 for line in f:
-                    m = _re.search(r'test\(["\'](.+?)["\']', line)
-                    if m:
-                        return m.group(1)
+                    m = _re.search(r'\btest(?:\.only|\.skip)?\s*\(\s*(["\'])', line)
+                    if not m:
+                        continue
+                    quote = m.group(1)
+                    start = m.end()
+                    # Walk the string literal respecting \ escapes
+                    result_chars: list[str] = []
+                    i = start
+                    while i < len(line):
+                        ch = line[i]
+                        if ch == "\\" and i + 1 < len(line):
+                            # JS escape — unescape the next char for the return value
+                            nxt = line[i + 1]
+                            if nxt in ("'", '"', "\\"):
+                                result_chars.append(nxt)
+                            else:
+                                # Keep other escapes verbatim (e.g. \n, \t) as the
+                                # actual char — tests rarely contain these in titles.
+                                result_chars.append(nxt)
+                            i += 2
+                            continue
+                        if ch == quote:
+                            return "".join(result_chars) or None
+                        result_chars.append(ch)
+                        i += 1
+                    # Unterminated string — fall through to next line
         except OSError:
             pass
         return None
