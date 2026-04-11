@@ -138,13 +138,19 @@ def _make_wt(tmp_path):
     return wt
 
 
-def _make_state_file(tmp_path, integration_smoke_blocking=True):
+def _make_state_file(tmp_path, integration_smoke_blocking=True, integration_smoke_timeout=None):
     """Create a minimal state file with the directive flag set.
 
     Note: directives go at the TOP LEVEL of the state JSON (as an unknown
     field that gets captured into state.extras by OrchestratorState.from_dict).
     """
     state_path = os.path.join(str(tmp_path), "state.json")
+    directives = {
+        "integration_smoke_blocking": integration_smoke_blocking,
+        "e2e_retry_limit": 3,
+    }
+    if integration_smoke_timeout is not None:
+        directives["integration_smoke_timeout"] = integration_smoke_timeout
     state = {
         "plan_version": 1,
         "brief_hash": "test",
@@ -159,10 +165,7 @@ def _make_state_file(tmp_path, integration_smoke_blocking=True):
         "checkpoints": [],
         "changes_since_checkpoint": 0,
         # Top-level — captured into state.extras["directives"] by the loader
-        "directives": {
-            "integration_smoke_blocking": integration_smoke_blocking,
-            "e2e_retry_limit": 3,
-        },
+        "directives": directives,
     }
     with open(state_path, "w") as f:
         json.dump(state, f)
@@ -185,7 +188,7 @@ def _install_run_command_sequence(monkeypatch, results):
     import subprocess
     from set_orch.subprocess_utils import run_command as real_run_command
 
-    calls = {"commands": []}
+    calls = {"commands": [], "kwargs": []}
     queue = {"idx": 0}
 
     def fake_run_command(cmd, **kwargs):
@@ -197,6 +200,7 @@ def _install_run_command_sequence(monkeypatch, results):
         idx = queue["idx"]
         queue["idx"] += 1
         calls["commands"].append(cmd[-1] if isinstance(cmd, list) else str(cmd))
+        calls["kwargs"].append(kwargs)
         if idx < len(results):
             return results[idx]
         return results[-1]
@@ -315,6 +319,65 @@ class TestSmokePassLetsMergeProceed:
         ch = next(c for c in state["changes"] if c["name"] == "admin-products")
         # Status did NOT change to integration-e2e-failed
         assert ch["status"] != "integration-e2e-failed"
+
+
+class TestSmokeTimeoutDirective:
+    def test_default_smoke_timeout_is_300(self, tmp_path_dir, monkeypatch):
+        """With no explicit integration_smoke_timeout, smoke call gets timeout=300."""
+        wt = _make_wt(tmp_path_dir)
+        state_file = _make_state_file(tmp_path_dir, integration_smoke_blocking=True)
+        profile = FakeWebProfile()
+
+        smoke_pass = CommandResult(0, "3 passed\n", "", 1000, False)
+        own_pass = CommandResult(0, OWN_TESTS_PASS_OUTPUT, "", 1000, False)
+        calls = _install_run_command_sequence(
+            monkeypatch,
+            [DEP_PASS, BUILD_PASS, TEST_PASS, smoke_pass, own_pass],
+        )
+
+        change = Change(name="admin-products", scope="add admin CRUD", status="integrating")
+        merger._run_integration_gates(
+            change_name="admin-products",
+            change=change,
+            wt_path=wt,
+            state_file=state_file,
+            profile=profile,
+        )
+
+        # The smoke call is the 4th (idx 3) queued call
+        smoke_kwargs = calls["kwargs"][3]
+        assert smoke_kwargs.get("timeout") == 300, (
+            f"Expected smoke timeout 300s, got {smoke_kwargs.get('timeout')}"
+        )
+
+    def test_directive_override_propagates_to_smoke_run(self, tmp_path_dir, monkeypatch):
+        """When operator sets integration_smoke_timeout=600, the smoke call uses 600s."""
+        wt = _make_wt(tmp_path_dir)
+        state_file = _make_state_file(
+            tmp_path_dir,
+            integration_smoke_blocking=True,
+            integration_smoke_timeout=600,
+        )
+        profile = FakeWebProfile()
+
+        smoke_pass = CommandResult(0, "3 passed\n", "", 1000, False)
+        own_pass = CommandResult(0, OWN_TESTS_PASS_OUTPUT, "", 1000, False)
+        calls = _install_run_command_sequence(
+            monkeypatch,
+            [DEP_PASS, BUILD_PASS, TEST_PASS, smoke_pass, own_pass],
+        )
+
+        change = Change(name="admin-products", scope="add admin CRUD", status="integrating")
+        merger._run_integration_gates(
+            change_name="admin-products",
+            change=change,
+            wt_path=wt,
+            state_file=state_file,
+            profile=profile,
+        )
+
+        smoke_kwargs = calls["kwargs"][3]
+        assert smoke_kwargs.get("timeout") == 600
 
 
 class TestDirectiveOverride:

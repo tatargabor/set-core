@@ -1232,8 +1232,9 @@ def _run_integration_gates(
                 update_change_field(state_file, change_name, "own_test_count", len(own_specs))
                 update_change_field(state_file, change_name, "inherited_file_count", _n_inherited_smoke)
 
-            # Read directive flag — smoke blocking defaults to True.
+            # Read directive flags — smoke blocking defaults to True, timeout to 300s.
             smoke_blocking = directives.get("integration_smoke_blocking", True)
+            smoke_timeout = directives.get("integration_smoke_timeout", 300)
 
             # ── Phase 1: Smoke inherited tests (blocking by default) ──
             if _use_two_phase and inherited_specs:
@@ -1255,7 +1256,7 @@ def _run_integration_gates(
                     )
                     _s1 = _time.monotonic()
                     smoke_result = run_command(
-                        ["bash", "-c", smoke_cmd], timeout=120, cwd=wt_path, env=e2e_env,
+                        ["bash", "-c", smoke_cmd], timeout=smoke_timeout, cwd=wt_path, env=e2e_env,
                     )
                     _s1e = int((_time.monotonic() - _s1) * 1000)
                     update_change_field(state_file, change_name, "gate_e2e_smoke_ms", _s1e)
