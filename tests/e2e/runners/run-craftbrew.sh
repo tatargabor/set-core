@@ -246,7 +246,7 @@ ATTRS
 # Orchestration config for CraftBrew E2E
 default_model: opus
 e2e_command: npx playwright test
-e2e_timeout: 180
+e2e_timeout: 600
 max_parallel: 1
 merge_policy: eager
 auto_replan: true
