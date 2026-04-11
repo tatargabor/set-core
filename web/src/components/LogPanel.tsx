@@ -7,6 +7,7 @@ interface Props {
   orchLines: string[]
   selectedChange: ChangeInfo | null
   project: string
+  autoFollow?: boolean
 }
 
 function orchLineColor(line: string): string {
@@ -155,7 +156,7 @@ function GateOutputPane({ gate }: { gate: GateTab }) {
   )
 }
 
-export default function LogPanel({ orchLines, selectedChange, project }: Props) {
+export default function LogPanel({ orchLines, selectedChange, project, autoFollow }: Props) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [sessionLines, setSessionLines] = useState<string[]>([])
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -210,6 +211,33 @@ export default function LogPanel({ orchLines, selectedChange, project }: Props) 
       .catch(() => setSessionLines(['(Failed to load session)']))
       .finally(() => setSessionLoading(false))
   }
+
+  // Auto-follow: switch to latest session when new sessions appear
+  useEffect(() => {
+    if (!autoFollow || !selectedChange || sessions.length === 0) return
+    const latest = sessions[0]
+    if (latest && latest.id !== activeSessionId) {
+      setActiveSessionId(latest.id)
+      setSessionLoading(true)
+      getChangeSession(project, selectedChange.name, 500, latest.id)
+        .then((data) => setSessionLines(data.lines))
+        .catch(() => setSessionLines(['(Failed to load session)']))
+        .finally(() => setSessionLoading(false))
+    }
+  }, [autoFollow, sessions, selectedChange?.name])
+
+  // Auto-follow: switch sub-tab based on current_step
+  useEffect(() => {
+    if (!autoFollow || !selectedChange) return
+    const step = selectedChange.current_step
+    if (step === 'fixing') {
+      const gates = buildGateTabs(selectedChange)
+      const failing = gates.find(g => g.result === 'fail' || g.result === 'critical')
+      if (failing) setActiveSubTab(failing.id)
+    } else {
+      setActiveSubTab('task')
+    }
+  }, [autoFollow, selectedChange?.current_step, selectedChange?.build_result, selectedChange?.test_result, selectedChange?.e2e_result])
 
   // Auto-refresh for running changes
   useEffect(() => {

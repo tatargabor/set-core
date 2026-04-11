@@ -40,6 +40,9 @@ export default function Dashboard({ project, initialTab }: Props) {
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
   const [changeDetailView, setChangeDetailView] = useState<'log' | 'timeline'>('log')
+  const [autoFollow, setAutoFollow] = useState(() => {
+    try { return localStorage.getItem('set-auto-follow') === '1' } catch { return false }
+  })
   // URL-backed tab state: ?tab=digest&sub=domains
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const [activeTab, setActiveTabRaw] = useState<PanelTab>(() => {
@@ -194,6 +197,21 @@ export default function Dashboard({ project, initialTab }: Props) {
 
   const changes = state?.changes ?? []
 
+  // Persist autoFollow
+  useEffect(() => {
+    try { localStorage.setItem('set-auto-follow', autoFollow ? '1' : '0') } catch {}
+  }, [autoFollow])
+
+  // Auto-follow: select the running change
+  useEffect(() => {
+    if (autoFollow && changes.length > 0) {
+      const running = changes.find(c => c.status === 'running')
+      if (running && running.name !== selectedChange) {
+        setSelectedChange(running.name)
+      }
+    }
+  }, [autoFollow, changes])
+
   // Auto-select first change when none selected
   useEffect(() => {
     if (!selectedChange && changes.length > 0) {
@@ -326,6 +344,15 @@ export default function Dashboard({ project, initialTab }: Props) {
                         {v === 'log' ? 'Log' : 'Timeline'}
                       </button>
                     ))}
+                    <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={autoFollow}
+                        onChange={e => setAutoFollow(e.target.checked)}
+                        className="accent-blue-500 w-3.5 h-3.5"
+                      />
+                      <span className="text-sm text-neutral-500">Auto Follow</span>
+                    </label>
                   </div>
                   <div className="flex-1 min-h-0 overflow-auto">
                     {changeDetailView === 'log' ? (
@@ -333,6 +360,7 @@ export default function Dashboard({ project, initialTab }: Props) {
                         orchLines={[]}
                         selectedChange={selectedChangeInfo}
                         project={project}
+                        autoFollow={autoFollow}
                       />
                     ) : (
                       selectedChange && <ChangeTimelineDetail project={project} changeName={selectedChange} />
