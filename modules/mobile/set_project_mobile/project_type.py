@@ -78,6 +78,34 @@ class MobileProjectType(WebProjectType):
                 severity="info",
                 config={"pattern": "ios/App/App/App.entitlements"},
             ),
+            VerificationRule(
+                id="app-group-consistency",
+                description="App Group identifiers must match across all targets (main app and extensions)",
+                check="cross-reference",
+                severity="error",
+                config={
+                    "groups": [{
+                        "name": "app-group-ids",
+                        "files": [
+                            {"role": "main-app", "pattern": "ios/App/App/App.entitlements"},
+                            {"role": "extensions", "pattern": "ios/App/*/entitlements"},
+                        ],
+                    }],
+                },
+            ),
+            VerificationRule(
+                id="no-secrets-in-native",
+                description="Native source files should not contain hardcoded API keys or secrets",
+                check="pattern-absence",
+                severity="error",
+                config={
+                    "pattern": "ios/**/*.swift",
+                    "forbidden": [
+                        r'(?i)(api[_-]?key|secret[_-]?key|password)\s*[:=]\s*"[^"]{8,}"',
+                    ],
+                    "exclude": ["*.test.*"],
+                },
+            ),
         ]
 
         return parent_rules + mobile_rules
@@ -160,8 +188,12 @@ class MobileProjectType(WebProjectType):
         return parent + [
             "ios/App/Pods/",
             "ios/App/build/",
+            "ios/App/DerivedData/",
+            "ios/App/*.xcarchive",
+            "ios/App/App/public/",
             "android/app/build/",
             "android/.gradle/",
+            "android/app/src/main/assets/public/",
         ]
 
     def generated_file_patterns(self) -> List[str]:
