@@ -651,7 +651,13 @@ class WebProjectType(CoreProfile):
         return None
 
     def e2e_smoke_command(self, base_cmd: str, test_names: list) -> Optional[str]:
-        """Build Playwright --grep command for smoke tests."""
+        """Build Playwright --grep command for smoke tests.
+
+        When base_cmd is a package-manager script (e.g. `pnpm run test:e2e`),
+        insert `--` so the `--grep` flag reaches Playwright instead of being
+        consumed by the package manager. For direct invocations (e.g.
+        `npx playwright test`) no separator is needed.
+        """
         if not test_names:
             return None
         # Escape regex-special chars but NOT spaces (Playwright grep is regex-based)
@@ -659,7 +665,8 @@ class WebProjectType(CoreProfile):
         def _esc(s: str) -> str:
             return "".join(f"\\{c}" if c in _special else c for c in s)
         pattern = "|".join(_esc(n) for n in test_names)
-        return f'{base_cmd} --grep "{pattern}"'
+        sep = " -- " if any(base_cmd.startswith(pm) for pm in ("pnpm ", "npm ", "yarn ", "bun ")) else " "
+        return f'{base_cmd}{sep}--grep "{pattern}"'
 
     def e2e_scoped_command(self, base_cmd: str, spec_files: list) -> Optional[str]:
         """Build Playwright command scoped to specific spec files."""

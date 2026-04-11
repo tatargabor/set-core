@@ -2517,15 +2517,17 @@ def resume_change(
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Reset retry counters — agent redispatch gets fresh retry budget
+    # Reset merge-rebase retry counter — an agent redispatch produces a
+    # fresh commit tree so the git-conflict counter starts from zero. Do
+    # NOT touch `integration_e2e_retry_count` here: that counter limits
+    # how many times we ask the agent to fix the SAME smoke/own-test
+    # failure, and clearing it on every dispatch would create an infinite
+    # loop against a persistent gate failure (observed in micro E2E run).
     with locked_state(state_path) as st:
         ch = _find_change(st, change_name)
         if ch:
             if ch.extras.get("merge_retry_count"):
                 ch.extras["merge_retry_count"] = 0
-            # Reset e2e gate retry counter to prevent stale counts from previous sessions
-            if ch.extras.get("integration_e2e_retry_count"):
-                ch.extras["integration_e2e_retry_count"] = 0
 
     # Snapshot cumulative tokens
     update_change_field(state_path, change_name, "tokens_used_prev", change.tokens_used, event_bus=event_bus)
