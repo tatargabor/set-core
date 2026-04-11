@@ -1190,7 +1190,8 @@ def _run_integration_gates(
         )
 
     # E2E gate (from profile — web only)
-    # Two-phase: Phase 1 = smoke inherited (non-blocking), Phase 2 = own tests (blocking)
+    # Two-phase: Phase 1 = smoke inherited (blocking by default — see
+    # `integration_smoke_blocking` directive), Phase 2 = own tests (blocking)
     if gc.should_run("e2e"):
         e2e_cmd = directives.get("e2e_command", "")
         if not e2e_cmd and profile and hasattr(profile, "detect_e2e_command"):
@@ -1231,7 +1232,10 @@ def _run_integration_gates(
                 update_change_field(state_file, change_name, "own_test_count", len(own_specs))
                 update_change_field(state_file, change_name, "inherited_file_count", _n_inherited_smoke)
 
-            # ── Phase 1: Smoke inherited tests (non-blocking) ──
+            # Read directive flag — smoke blocking defaults to True.
+            smoke_blocking = directives.get("integration_smoke_blocking", True)
+
+            # ── Phase 1: Smoke inherited tests (blocking by default) ──
             if _use_two_phase and inherited_specs:
                 smoke_names = []
                 for spec in inherited_specs:
@@ -1255,7 +1259,7 @@ def _run_integration_gates(
                     )
                     _s1e = int((_time.monotonic() - _s1) * 1000)
                     update_change_field(state_file, change_name, "gate_e2e_smoke_ms", _s1e)
-                    _smoke_output = smart_truncate_structured((smoke_result.stdout or "") + (smoke_result.stderr or ""), 1000)
+                    _smoke_output = smart_truncate_structured((smoke_result.stdout or "") + (smoke_result.stderr or ""), 1500)
 
                     if smoke_result.exit_code == 0:
                         logger.info(
@@ -1263,21 +1267,98 @@ def _run_integration_gates(
                             change_name, _s1e, len(smoke_names),
                         )
                         update_change_field(state_file, change_name, "smoke_e2e_result", "pass")
+                        update_change_field(state_file, change_name, "smoke_e2e_output", _smoke_output)
                     else:
                         _smoke_failed = True
-                        logger.warning(
-                            "Integration gate: e2e smoke FAILED for %s (non-blocking, %dms) — "
-                            "inherited tests failed, regression possible",
-                            change_name, _s1e,
-                        )
                         update_change_field(state_file, change_name, "smoke_e2e_result", "fail")
+                        # Always save smoke output (pass or fail) before deciding
+                        update_change_field(state_file, change_name, "smoke_e2e_output", _smoke_output)
                         if event_bus:
                             event_bus.emit("VERIFY_GATE", change=change_name, data={
                                 "gate": "e2e-smoke", "result": "fail", "phase": "integration",
-                                "inherited_files": len(inherited_specs)})
-                        # Non-blocking: continue to Phase 2
-                    # Always save smoke output (pass or fail)
-                    update_change_field(state_file, change_name, "smoke_e2e_output", _smoke_output)
+                                "inherited_files": len(inherited_specs),
+                                "blocking": smoke_blocking})
+
+                        if smoke_blocking:
+                            # Blocking: skip Phase 2, redispatch the change.
+                            logger.warning(
+                                "Integration gate: e2e smoke FAILED for %s (blocking, %dms) — "
+                                "redispatching, skipping own-tests phase",
+                                change_name, _s1e,
+                            )
+
+                            # Reuse the Phase 2 redispatch path — set status,
+                            # persist the smoke output as integration_e2e_output,
+                            # build a smoke-specific retry context, increment
+                            # the retry counter.
+                            e2e_retry = change.extras.get("integration_e2e_retry_count", 0)
+
+                            if e2e_retry < e2e_retry_limit:
+                                update_change_field(
+                                    state_file, change_name,
+                                    "integration_e2e_retry_count", e2e_retry + 1,
+                                )
+                                update_change_field(
+                                    state_file, change_name,
+                                    "integration_e2e_output", _smoke_output,
+                                )
+                                update_change_field(
+                                    state_file, change_name,
+                                    "status", "integration-e2e-failed",
+                                )
+
+                                # Smoke-specific retry context
+                                sibling_list = "\n".join(
+                                    f"- {os.path.relpath(s, wt_path)}" for s in inherited_specs
+                                )
+                                retry_ctx = (
+                                    "Integration smoke tests FAILED. These tests belong to "
+                                    "sibling changes that are already merged on main. Your "
+                                    "change is likely polluting shared state (DB rows, .next/ "
+                                    "cache, session cookies) in a way that breaks tests you "
+                                    "do not own.\n\n"
+                                    f"Failing sibling spec files:\n{sibling_list}\n\n"
+                                    f"Smoke output:\n{_smoke_output}\n\n"
+                                    "Fix: ensure your tests clean up (test.afterEach), use "
+                                    "unique names per test (see testing-conventions.md for "
+                                    "the Cross-Spec DB Pollution rule), and avoid writing to "
+                                    "shared tables without cleanup."
+                                )
+                                update_change_field(
+                                    state_file, change_name, "retry_context", retry_ctx,
+                                )
+                                logger.info(
+                                    "Integration gate: e2e smoke redispatch %s (attempt %d/%d)",
+                                    change_name, e2e_retry + 1, e2e_retry_limit,
+                                )
+                            else:
+                                # Exhausted — mirror the Phase 2 exhaustion path
+                                # (same status, same cleanup, same event) so downstream
+                                # consumers do not see two different terminal states.
+                                logger.error(
+                                    "Integration gate: e2e smoke FAILED for %s — redispatch "
+                                    "retries exhausted (%d/%d)",
+                                    change_name, e2e_retry, e2e_retry_limit,
+                                )
+                                update_change_field(
+                                    state_file, change_name, "status", "integration-failed",
+                                )
+                                update_change_field(
+                                    state_file, change_name, "integration_gate_fail", "e2e-smoke-exhausted",
+                                )
+                                _remove_from_merge_queue(state_file, change_name)
+                                if event_bus:
+                                    event_bus.emit("CHANGE_INTEGRATION_FAILED", change=change_name, data={
+                                        "gate": "e2e-smoke", "retry_count": e2e_retry, "limit": e2e_retry_limit})
+
+                            return False
+                        else:
+                            logger.warning(
+                                "Integration gate: e2e smoke FAILED for %s (non-blocking, %dms) — "
+                                "inherited tests failed, regression possible",
+                                change_name, _s1e,
+                            )
+                            # Non-blocking (legacy): continue to Phase 2
                 else:
                     logger.info("Integration gate: skipping smoke phase (profile doesn't support smoke commands)")
 

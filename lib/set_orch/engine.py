@@ -63,6 +63,7 @@ class Directives:
     test_timeout: int = 300
     max_verify_retries: int = 3
     e2e_retry_limit: int = DEFAULT_E2E_RETRY_LIMIT
+    integration_smoke_blocking: bool = True  # Smoke failures block the merge by default
     review_before_merge: bool = True
     review_model: str = "sonnet"
     digest_model: str = "sonnet"
@@ -123,6 +124,7 @@ def parse_directives(raw: dict) -> Directives:
     d.auto_replan = _bool(raw, "auto_replan", d.auto_replan)
     d.max_replan_cycles = _int(raw, "max_replan_cycles", d.max_replan_cycles)
     d.e2e_retry_limit = _int(raw, "e2e_retry_limit", d.e2e_retry_limit)
+    d.integration_smoke_blocking = _bool(raw, "integration_smoke_blocking", d.integration_smoke_blocking)
     d.test_timeout = _int(raw, "test_timeout", d.test_timeout)
     d.max_verify_retries = _int(raw, "max_verify_retries", d.max_verify_retries)
     d.review_before_merge = _bool(raw, "review_before_merge", d.review_before_merge)
