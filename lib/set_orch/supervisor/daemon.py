@@ -183,44 +183,71 @@ class SupervisorDaemon:
     def _resolve_runtime_paths(self) -> tuple[Optional[Path], Optional[Path], Optional[Path]]:
         """Locate the orchestration state, events, and log files.
 
-        The orchestrator's path layout is hybrid:
-          - state.json typically lives at `<project>/orchestration-state.json`
-            (the manager API + set-orchestrate CLI default)
-          - events.jsonl lives at the SetRuntime path
-            (`~/.local/share/set-core/runtime/<project>/orchestration/events.jsonl`)
-            because the orchestrator's event_bus uses SetRuntime
-          - the orchestration log lives at SetRuntime's logs/ dir
+        The orchestrator has a hybrid path layout that the supervisor must
+        navigate carefully to avoid reading from the wrong (sparse) source:
 
-        We try BOTH locations for state and events and return whichever
-        actually exists. Without this fallback the supervisor's anomaly
-        scan was completely blind to state on real runs (the SetRuntime
-        path for state never gets populated by current orchestrator
-        builds), and the canary always saw an empty diff.
+          STATE:
+            - canonical:  `<project>/orchestration-state.json`
+              (set-orchestrate CLI's `--state` arg points here on every
+              real run; manager API doesn't override it)
+            - SetRuntime path is reserved but never populated in practice
+
+          EVENTS:
+            - canonical:  `<project>/orchestration-events.jsonl`
+              (where DISPATCH, STATE_CHANGE, GATE_*, VERIFY_GATE, MERGE_*,
+              WATCHDOG_*, MONITOR_*, CHANGE_DONE, CLASSIFIER_CALL, plus
+              SUPERVISOR_* events from the daemon itself all land —
+              ~570 events on a typical nano run)
+            - SetRuntime path  contains only digest-phase LLM_CALLs from
+              the event_bus singleton's first init (~3 events on nano).
+              Reading the SetRuntime path silently misses 99% of events.
+
+          LOG:
+            - canonical:  SetRuntime's `<runtime>/logs/orchestration.log`
+              (the orchestrator's stdlib logger writes here)
+
+        Resolution policy: try the CANONICAL path first for each artifact,
+        fall back to SetRuntime second. The canonical file may not exist
+        yet at daemon startup — `_build_anomaly_context` calls this
+        function lazily each poll until all three paths resolve.
+
+        This is the same hybrid-path bug as state, but for events. State
+        was easy because the SetRuntime state file NEVER exists, so the
+        original "SetRuntime first, project fallback" logic happened to
+        work via fall-through. For events the SetRuntime file DOES exist
+        (with sparse content), so the fall-through silently picked the
+        wrong file. Hence: explicit canonical-first ordering everywhere.
         """
         candidates_state: list[Path] = []
         candidates_events: list[Path] = []
         candidates_log: list[Path] = []
 
-        # Tier 1: SetRuntime (works for events + log; rarely for state)
-        try:
-            from ..paths import SetRuntime
-            rt = SetRuntime(str(self.project_path))
-            candidates_state.append(Path(rt.state_file))
-            candidates_events.append(Path(rt.events_file))
-            candidates_log.append(Path(rt.orchestration_log))
-        except Exception as exc:
-            logger.warning("[supervisor] SetRuntime path resolution failed: %s", exc)
-
-        # Tier 2: project-relative legacy layout (where state actually lives)
+        # CANONICAL paths first (project-relative for state + events)
         candidates_state.append(self.project_path / "orchestration-state.json")
         candidates_events.append(self.project_path / "orchestration-events.jsonl")
 
-        # Pick first existing file for state + log; for events, fall back
-        # to whichever parent dir exists (the events file may not have
-        # been created yet on the very first poll cycle).
+        # SetRuntime as the secondary source (canonical for log)
+        try:
+            from ..paths import SetRuntime
+            rt = SetRuntime(str(self.project_path))
+            candidates_log.append(Path(rt.orchestration_log))
+            candidates_state.append(Path(rt.state_file))
+            candidates_events.append(Path(rt.events_file))
+        except Exception as exc:
+            logger.warning("[supervisor] SetRuntime path resolution failed: %s", exc)
+
+        # Pick first existing file for state + log
         state_path: Optional[Path] = next(
             (p for p in candidates_state if p.is_file()), None,
         )
+        log_path: Optional[Path] = next(
+            (p for p in candidates_log if p.is_file()), None,
+        )
+
+        # Events: prefer first existing file. If none exist, fall back to
+        # the first candidate whose PARENT directory exists — so a poll
+        # before the orchestrator's first emit still has a valid path
+        # to tail (it will be empty, which is fine).
         events_path: Optional[Path] = None
         for p in candidates_events:
             if p.is_file():
@@ -231,9 +258,6 @@ class SupervisorDaemon:
                 if p.parent.is_dir():
                     events_path = p
                     break
-        log_path: Optional[Path] = next(
-            (p for p in candidates_log if p.is_file()), None,
-        )
 
         logger.info(
             "[supervisor] Resolved paths: state=%s events=%s log=%s",
@@ -565,24 +589,51 @@ class SupervisorDaemon:
 
     def _build_anomaly_context(self) -> AnomalyContext:
         """Snapshot all the inputs detectors need this poll cycle."""
-        # Lazy path re-resolution: state.json + log file may not exist
-        # at daemon-start time (the orchestrator creates them a few
-        # seconds after spawn). Re-resolve missing paths every poll until
-        # they appear, then keep them. Cheap — at most three stat calls.
-        if self._state_path is None or self._log_path is None:
+        # Lazy path re-resolution. Three artifacts (state, events, log)
+        # may not exist at daemon-start time and have to be re-checked
+        # each poll until they appear. The events path is doubly tricky:
+        #   - the canonical project-relative file may not exist yet
+        #     when the daemon starts, but the SetRuntime fallback DOES
+        #     exist (with sparse digest-phase events)
+        #   - if we picked the SetRuntime file early, we MUST upgrade to
+        #     the canonical file as soon as it appears, otherwise the
+        #     supervisor reads only ~3 events for the entire run
+        #
+        # We re-resolve on every poll while ANY of the three paths is
+        # either None or pointing at a non-canonical fallback. Cheap —
+        # at most six stat calls per poll, all O(1).
+        canonical_state = self.project_path / "orchestration-state.json"
+        canonical_events = self.project_path / "orchestration-events.jsonl"
+        needs_state = self._state_path is None or self._state_path != canonical_state
+        needs_events = (
+            self._events_path is None
+            or (self._events_path != canonical_events and canonical_events.is_file())
+        )
+        needs_log = self._log_path is None
+        if needs_state or needs_events or needs_log:
             sp, ep, lp = self._resolve_runtime_paths()
-            if self._state_path is None and sp is not None:
+            if needs_state and sp is not None and sp != self._state_path:
                 logger.info("[supervisor] state path resolved (lazy): %s", sp)
                 self._state_path = sp
-            if self._log_path is None and lp is not None:
+            if needs_log and lp is not None:
                 logger.info("[supervisor] log path resolved (lazy): %s", lp)
                 self._log_path = lp
-            if self._events_path is None and ep is not None:
+            if needs_events and ep is not None and ep != self._events_path:
+                old_events = self._events_path
+                logger.info(
+                    "[supervisor] events path resolved (lazy): %s (was %s)",
+                    ep, old_events,
+                )
                 self._events_path = ep
-                # The trigger executor was constructed with the old (None
-                # or stale) events path; update it so prior_attempts
+                # The trigger executor captured the old (None or stale)
+                # events path at __init__; update it so prior_attempts
                 # summaries find the right file.
                 self._trigger_executor.events_path = ep
+                # Reset the byte-offset cursor — it was an offset into a
+                # different file and would skip events on the new one.
+                # Re-scan from the beginning of the canonical file.
+                if old_events != ep:
+                    self.status.events_cursor = 0
 
         # State
         state_dict: Optional[dict] = None
