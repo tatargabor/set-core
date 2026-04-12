@@ -60,7 +60,7 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset({
     # Monitor loop
     "MONITOR_HEARTBEAT",
     # Per-iteration / Claude calls
-    "ITERATION_END", "LLM_CALL", "CLASSIFIER_CALL",
+    "ITERATION_END", "LLM_CALL", "CLASSIFIER_CALL", "TOKENS",
     # Lifecycle
     "CHECKPOINT", "ERROR", "MANUAL_STOP", "MANUAL_RESUME",
     "WORKTREE_MISSING",
