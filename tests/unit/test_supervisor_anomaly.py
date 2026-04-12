@@ -177,6 +177,44 @@ class TestIntegrationFailed:
             assert t.type == "integration_failed"
             assert t.priority == 10
 
+    def test_fires_on_plain_failed_status(self, tmp_project):
+        # The orchestrator uses plain "failed" (not "integration-failed")
+        # as the terminal status after max_verify_retries exhausts. The
+        # detector must match this case too — it was the missing status
+        # that left minishop-run-20260412-0103 uninstrumented for 1.5h.
+        state = {
+            "changes": [
+                {"name": "foundation-setup", "status": "failed",
+                 "tokens_used": 247_037, "verify_retry_count": 3},
+            ]
+        }
+        ctx = make_ctx(project_path=tmp_project, state=state)
+        result = detect_integration_failed(ctx)
+        assert len(result) == 1
+        assert result[0].change == "foundation-setup"
+        assert result[0].context["verify_retry_count"] == 3
+
+    def test_fires_on_any_status_with_failed_substring(self, tmp_project):
+        state = {
+            "changes": [
+                {"name": "a", "status": "failed"},
+                {"name": "b", "status": "integration-failed"},
+                {"name": "c", "status": "integration-e2e-failed"},
+                {"name": "d", "status": "integration-coverage-failed"},
+            ]
+        }
+        ctx = make_ctx(project_path=tmp_project, state=state)
+        result = detect_integration_failed(ctx)
+        assert {t.change for t in result} == {"a", "b", "c", "d"}
+
+    def test_does_not_fire_on_skipped(self, tmp_project):
+        # "skipped" is intentional no-op, not a failure
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "skipped"}]},
+        )
+        assert detect_integration_failed(ctx) == []
+
     def test_no_fire_when_all_clean(self, tmp_project):
         ctx = make_ctx(
             project_path=tmp_project,

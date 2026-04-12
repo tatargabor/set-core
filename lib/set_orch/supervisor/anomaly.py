@@ -212,13 +212,32 @@ def detect_process_crash(ctx: AnomalyContext) -> list[AnomalyTrigger]:
 
 
 def detect_integration_failed(ctx: AnomalyContext) -> list[AnomalyTrigger]:
-    """Any change in `integration*failed*` status — one trigger per change."""
+    """Any change in a `failed` terminal status — one trigger per change.
+
+    Matches every status whose name contains ``failed``, including:
+      - ``failed``                        (generic terminal failure after
+                                           max_verify_retries exhausts)
+      - ``integration-failed``            (legacy)
+      - ``integration-e2e-failed``        (e2e gate exhausted)
+      - ``integration-coverage-failed``   (coverage gate exhausted)
+
+    The previous implementation required BOTH "integration" AND "failed"
+    in the status, which missed the plain ``failed`` case. That case is
+    the real terminal state the orchestrator uses when max_verify_retries
+    is exhausted — so the supervisor was blind to the most common change
+    failure mode on any run with non-trivial retry behavior. Caught
+    mid-minishop-run-20260412-0103 on foundation-setup after 3 verify
+    retries exhausted at 02:34; the trigger never fired.
+
+    Note: ``skipped`` contains no "failed" substring and is excluded,
+    correctly — skipped is an intentional no-op, not a failure.
+    """
     if not ctx.state:
         return []
     out: list[AnomalyTrigger] = []
     for change in ctx.state.get("changes") or []:
         status = (change.get("status") or "").lower()
-        if "integration" in status and "failed" in status:
+        if "failed" in status:
             out.append(AnomalyTrigger(
                 type="integration_failed",
                 change=str(change.get("name", "")),
@@ -227,6 +246,7 @@ def detect_integration_failed(ctx: AnomalyContext) -> list[AnomalyTrigger]:
                 context={
                     "status": status,
                     "tokens": int(change.get("tokens_used", 0) or 0),
+                    "verify_retry_count": int(change.get("verify_retry_count", 0) or 0),
                 },
             ))
     return out
