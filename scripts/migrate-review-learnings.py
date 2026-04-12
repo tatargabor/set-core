@@ -114,6 +114,8 @@ def main():
         return
 
     # Deduplicate across runs
+    from set_orch.profile_types import ProjectType
+
     by_key: dict[str, dict] = {}
     for p in all_patterns:
         key = re.sub(r"\[(?:CRITICAL|HIGH)\]\s*", "", p["pattern"]).strip().lower()[:60]
@@ -130,13 +132,13 @@ def main():
                 "count": 1,
                 "last_seen": "2026-03-22T00:00:00+00:00",
                 "source_changes": p.get("source_changes", []),
-                "fix_hint": p.get("fix_hint", ""),
+                "fix_hint": ProjectType._truncate_fix_hint(p.get("fix_hint", "")),
+                "categories": ProjectType._assign_categories(
+                    p["pattern"], p.get("fix_hint", ""),
+                ),
             }
 
     unique = list(by_key.values())
-    # Cap at 50
-    if len(unique) > 50:
-        unique = unique[:50]
 
     print(f"\n{len(all_patterns)} total → {len(unique)} unique patterns after dedup")
 
@@ -184,15 +186,11 @@ def main():
 
     if existing:
         print(f"Merging with {len(existing)} existing entries in {out_path}")
-        # Use profile's merge logic
-        try:
-            from set_orch.profile_types import ProjectType
-            merged = ProjectType._merge_learnings(existing, unique, "2026-03-22T00:00:00+00:00")
-        except Exception:
-            # Fallback: just append deduped
-            merged = existing + unique
+        merged = ProjectType._merge_learnings(existing, unique, "2026-03-22T00:00:00+00:00")
     else:
         merged = unique
+
+    print(f"After merge: {len(merged)} entries (cap=200)")
 
     with open(out_path, "w") as f:
         for entry in merged:

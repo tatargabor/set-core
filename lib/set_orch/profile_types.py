@@ -455,6 +455,13 @@ class ProjectType(ABC):
             f"Classify each review finding as \"template\" (generic framework/security pattern "
             f"applicable to any {profile_name} project) or \"project\" (business logic, "
             f"domain-specific, or app-specific pattern).\n\n"
+            f"Examples:\n"
+            f"- \"No authentication middleware on API routes\" → template (applies to any web project)\n"
+            f"- \"IDOR — any user can modify other users' resources\" → template (generic security)\n"
+            f"- \"Budapest postal code validation missing\" → project (domain-specific)\n"
+            f"- \"Product name must be unique per brewery\" → project (business rule)\n"
+            f"- \"Missing CSRF protection\" → template (generic security)\n"
+            f"- \"Loyalty points not deducted on refund\" → project (business logic)\n\n"
             f"Findings:\n{json.dumps(items, indent=2)}\n\n"
             f"Return ONLY a JSON array: [{{\"pattern\": \"...\", \"scope\": \"template|project\"}}]"
         )
@@ -493,12 +500,196 @@ class ProjectType(ABC):
 
         return patterns
 
+    # Category keywords for scope-aware filtering — aligned with
+    # templates.py:classify_diff_content() patterns.
+    LEARNINGS_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+        "auth": [
+            "auth", "session", "middleware", "login", "cookie", "password",
+            "bcrypt", "jwt", "token", "credential", "permission", "role",
+        ],
+        "api": [
+            "api", "endpoint", "route", "handler", "request", "response",
+            "rate limit", "cors", "csrf",
+        ],
+        "database": [
+            "prisma", "database", "query", "migration", "schema", "sql",
+            "findmany", "findfirst", "create", "update", "delete",
+            "transaction", "cascade", "foreign key",
+        ],
+        "frontend": [
+            "component", "tsx", "jsx", "react", "css", "tailwind", "shadcn",
+            "button", "form", "layout", "page", "html", "svg", "image",
+        ],
+    }
+
+    @staticmethod
+    def _assign_categories(pattern: str, fix_hint: str = "") -> list[str]:
+        """Assign content categories to a learning based on keyword matching.
+
+        Returns list of matching categories, or ["general"] if none match.
+        """
+        text = (pattern + " " + fix_hint).lower()
+        matched = []
+        for category, keywords in ProjectType.LEARNINGS_CATEGORY_KEYWORDS.items():
+            if any(kw in text for kw in keywords):
+                matched.append(category)
+        return matched or ["general"]
+
+    @staticmethod
+    def _truncate_fix_hint(fix_hint: str, max_len: int = 200) -> str:
+        """Truncate fix_hint: strip code blocks, cap at max_len chars."""
+        import re
+        # Strip fenced code blocks
+        hint = re.sub(r"```[\s\S]*?```", "", fix_hint).strip()
+        # Collapse multi-line to single line
+        hint = re.sub(r"\s*\n\s*", " ", hint).strip()
+        if len(hint) > max_len:
+            hint = hint[:max_len - 3] + "..."
+        return hint
+
+    @staticmethod
+    def _eviction_score(entry: dict) -> float:
+        """Compute eviction priority score: higher = more valuable, kept longer.
+
+        Formula: count * severity_weight * recency_factor
+        """
+        from datetime import datetime, timezone
+
+        count = entry.get("count", 1)
+
+        severity = entry.get("severity", "HIGH").upper()
+        severity_weights = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0.5}
+        sev_w = severity_weights.get(severity, 1)
+
+        last_seen = entry.get("last_seen", "")
+        recency = 0.4  # default: old
+        if last_seen:
+            try:
+                ts = datetime.fromisoformat(last_seen)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age_days = (datetime.now(timezone.utc) - ts).days
+                if age_days <= 7:
+                    recency = 1.0
+                elif age_days <= 30:
+                    recency = 0.7
+                else:
+                    recency = 0.4
+            except (ValueError, TypeError):
+                pass
+
+        return count * sev_w * recency
+
+    def _dedup_learnings(self, entries: list[dict], project_path: str = "") -> list[dict]:
+        """Semantic dedup via Sonnet: merge entries describing the same issue.
+
+        Returns deduplicated entries list. Falls back to no-op on LLM failure.
+        """
+        if len(entries) <= 1:
+            return entries
+
+        import json
+        import logging
+        from .subprocess_utils import run_claude_logged
+
+        _logger = logging.getLogger(__name__)
+
+        # Build index of patterns for the LLM
+        indexed = [{"idx": i, "pattern": e.get("pattern", "")} for i, e in enumerate(entries)]
+        prompt = (
+            "Group these review findings by semantic equivalence. "
+            "Only merge patterns that describe the EXACT same issue "
+            "(e.g., 'No middleware.ts' and 'Missing src/middleware.ts' are the same; "
+            "'No auth middleware' and 'Missing CSRF protection' are NOT the same).\n\n"
+            f"Patterns:\n{json.dumps(indexed, indent=2)}\n\n"
+            "Return ONLY a JSON array of groups, where each group is an array of indices. "
+            "Every index must appear in exactly one group. "
+            "Example: [[0, 2, 4], [1], [3]]"
+        )
+
+        result = run_claude_logged(
+            prompt,
+            purpose="classify",
+            model="sonnet",
+            timeout=60,
+            extra_args=["--max-turns", "1"],
+            cwd=project_path or None,
+        )
+
+        if result.exit_code != 0:
+            _logger.warning("Learnings dedup LLM call failed (exit=%d) — skipping dedup", result.exit_code)
+            return entries
+
+        # Parse merge groups
+        try:
+            import re
+            match = re.search(r"\[.*\]", result.stdout, re.DOTALL)
+            if not match:
+                _logger.warning("Learnings dedup: no JSON array in LLM output — skipping dedup")
+                return entries
+            groups = json.loads(match.group())
+            if not isinstance(groups, list) or not all(isinstance(g, list) for g in groups):
+                _logger.warning("Learnings dedup: malformed groups — skipping dedup")
+                return entries
+        except (json.JSONDecodeError, TypeError):
+            _logger.warning("Learnings dedup: JSON parse error — skipping dedup", exc_info=True)
+            return entries
+
+        # Validate all indices present
+        all_indices = set()
+        for g in groups:
+            all_indices.update(g)
+        if all_indices != set(range(len(entries))):
+            _logger.warning(
+                "Learnings dedup: index mismatch (got %d indices for %d entries) — skipping dedup",
+                len(all_indices), len(entries),
+            )
+            return entries
+
+        # Merge each group
+        merged = []
+        for group in groups:
+            if len(group) == 1:
+                merged.append(entries[group[0]])
+                continue
+
+            group_entries = [entries[i] for i in group]
+            # Keep shortest clear pattern text
+            best = min(group_entries, key=lambda e: len(e.get("pattern", "")))
+            result_entry = dict(best)
+            # Sum counts
+            result_entry["count"] = sum(e.get("count", 1) for e in group_entries)
+            # Union source_changes (cap 10)
+            all_changes: list[str] = []
+            for e in group_entries:
+                for c in e.get("source_changes", []):
+                    if c not in all_changes:
+                        all_changes.append(c)
+            result_entry["source_changes"] = all_changes[-10:]
+            # Most recent last_seen
+            result_entry["last_seen"] = max(
+                (e.get("last_seen", "") for e in group_entries), default=""
+            )
+            # Highest severity
+            sev_order = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
+            result_entry["severity"] = max(
+                (e.get("severity", "HIGH") for e in group_entries),
+                key=lambda s: sev_order.get(s, 0),
+            )
+            merged.append(result_entry)
+
+        _logger.info(
+            "Learnings dedup: %d entries → %d (merged %d groups)",
+            len(entries), len(merged), sum(1 for g in groups if len(g) > 1),
+        )
+        return merged
+
     def persist_review_learnings(self, patterns: list[dict], project_path: str) -> None:
         """Persist classified review learnings to template and project JSONLs.
 
         Called after each change merge. Classifies patterns via Sonnet,
-        writes template-scoped patterns to ~/.config JSONL (with flock),
-        writes project-scoped patterns to project JSONL.
+deduplicates semantically, writes template-scoped patterns to ~/.config
+        JSONL (with flock), writes project-scoped patterns to project JSONL.
         """
         import fcntl
         import json
@@ -507,6 +698,15 @@ class ProjectType(ABC):
 
         if not patterns:
             return
+
+        # Truncate fix_hints before any processing
+        for p in patterns:
+            if p.get("fix_hint"):
+                p["fix_hint"] = self._truncate_fix_hint(p["fix_hint"])
+
+        # Assign categories
+        for p in patterns:
+            p["categories"] = self._assign_categories(p.get("pattern", ""), p.get("fix_hint", ""))
 
         # Classify
         classified = self._classify_patterns(patterns, project_path=project_path)
@@ -534,6 +734,8 @@ class ProjectType(ABC):
                                 except json.JSONDecodeError:
                                     pass
                 existing = self._merge_learnings(existing, template_patterns, now)
+                # Semantic dedup on full set
+                existing = self._dedup_learnings(existing, project_path=project_path)
                 with open(tpl_path, "w") as f:
                     for entry in existing:
                         f.write(json.dumps(entry) + "\n")
@@ -556,19 +758,33 @@ class ProjectType(ABC):
                             except json.JSONDecodeError:
                                 pass
             existing = self._merge_learnings(existing, project_patterns, now)
+            existing = self._dedup_learnings(existing, project_path=project_path)
             with open(proj_path, "w") as f:
                 for entry in existing:
                     f.write(json.dumps(entry) + "\n")
 
     @staticmethod
     def _merge_learnings(
-        existing: list[dict], new_patterns: list[dict], now: str, cap: int = 50
+        existing: list[dict], new_patterns: list[dict], now: str, cap: int = 200
     ) -> list[dict]:
-        """Merge new patterns into existing, dedup by normalized pattern, cap at N."""
+        """Merge new patterns into existing, dedup by normalized pattern.
+
+        Uses severity-weighted eviction with hysteresis (evict to cap-20 when cap reached).
+        Backfills categories for existing entries that lack the field.
+        Truncates fix_hints that exceed 200 chars.
+        """
         import re
         by_key: dict[str, dict] = {}
         for e in existing:
             key = re.sub(r"\[(?:CRITICAL|HIGH)\]\s*", "", e.get("pattern", "")).strip().lower()[:60]
+            # Backfill categories for entries that lack them
+            if "categories" not in e:
+                e["categories"] = ProjectType._assign_categories(
+                    e.get("pattern", ""), e.get("fix_hint", ""),
+                )
+            # Truncate oversized fix_hints on existing entries
+            if e.get("fix_hint") and len(e["fix_hint"]) > 200:
+                e["fix_hint"] = ProjectType._truncate_fix_hint(e["fix_hint"])
             by_key[key] = e
 
         for p in new_patterns:
@@ -581,6 +797,9 @@ class ProjectType(ABC):
                     if c not in changes:
                         changes.append(c)
                 by_key[key]["source_changes"] = changes[-10:]  # keep last 10
+                # Update categories if new pattern has them
+                if p.get("categories"):
+                    by_key[key]["categories"] = p["categories"]
             else:
                 by_key[key] = {
                     "pattern": p["pattern"],
@@ -590,24 +809,42 @@ class ProjectType(ABC):
                     "last_seen": now,
                     "source_changes": p.get("source_changes", []),
                     "fix_hint": p.get("fix_hint", ""),
+                    "categories": p.get("categories", ["general"]),
                 }
 
-        # Cap: remove oldest by last_seen
+        # Eviction: severity-weighted scoring with hysteresis
         entries = list(by_key.values())
         if len(entries) > cap:
-            entries.sort(key=lambda e: e.get("last_seen", ""), reverse=True)
-            entries = entries[:cap]
+            entries.sort(key=ProjectType._eviction_score, reverse=True)
+            entries = entries[:cap - 20]  # hysteresis: evict to cap-20
 
         return entries
 
-    def review_learnings_checklist(self, project_path: str) -> str:
+    def review_learnings_checklist(
+        self, project_path: str, content_categories: "set[str] | None" = None,
+    ) -> str:
         """Return compact markdown checklist from 3 sources.
 
         Combines: static baseline [baseline] + template JSONL [template, seen Nx]
-        + project JSONL [project, seen Nx]. Max 15 lines.
+        + project JSONL [project, seen Nx].
+
+        When content_categories is provided, only entries whose categories
+        overlap with the provided set (plus "general" always included) are
+        returned. This filters learnings to those relevant to the change scope.
         """
         import json
         import os
+
+        # Build the set of accepted categories (always include "general")
+        accepted_cats = None
+        if content_categories:
+            accepted_cats = content_categories | {"general"}
+
+        def _category_matches(entry: dict) -> bool:
+            if accepted_cats is None:
+                return True
+            entry_cats = set(entry.get("categories", ["general"]))
+            return bool(entry_cats & accepted_cats)
 
         items: list[tuple[str, str, int]] = []  # (pattern, tag, sort_key)
 
@@ -620,6 +857,8 @@ class ProjectType(ABC):
                         line = line.strip()
                         if line:
                             e = json.loads(line)
+                            if not _category_matches(e):
+                                continue
                             count = e.get("count", 1)
                             items.append((e["pattern"], f"project, seen {count}x", 1000 + count))
             except (json.JSONDecodeError, OSError, KeyError):
@@ -634,6 +873,8 @@ class ProjectType(ABC):
                         line = line.strip()
                         if line:
                             e = json.loads(line)
+                            if not _category_matches(e):
+                                continue
                             count = e.get("count", 1)
                             items.append((e["pattern"], f"template, seen {count}x", 500 + count))
             except (json.JSONDecodeError, OSError, KeyError):
@@ -642,6 +883,11 @@ class ProjectType(ABC):
         # 3. Static baseline (lowest priority) — subclass overrides to provide
         baseline = self._review_baseline_items()
         for pattern in baseline:
+            # Baseline items have no categories — apply keyword filter
+            if accepted_cats is not None:
+                cats = set(self._assign_categories(pattern))
+                if not (cats & accepted_cats):
+                    continue
             items.append((pattern, "baseline", 0))
 
         if not items:
@@ -657,7 +903,7 @@ class ProjectType(ABC):
                 seen.add(norm)
                 unique.append((pattern, tag, sort_key))
 
-        # Sort by priority descending (no cap — full checklist fits in context)
+        # Sort by priority descending (no cap — scope filtering handles size)
         unique.sort(key=lambda x: -x[2])
 
         lines = ["## Review Learnings Checklist (review will BLOCK if violated)"]

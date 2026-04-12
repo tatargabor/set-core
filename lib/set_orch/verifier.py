@@ -2556,7 +2556,37 @@ def _execute_review_gate(
             "[CRITICAL] issue — the agent must install and use them.\n\n"
         )
 
-    combined_prefix = shadcn_prefix + e2e_coverage_prefix + fix_verification_prefix
+    # Persistent review learnings injection — the reviewer must enforce these
+    learnings_prefix = ""
+    if state_file and verify_retry_count == 0:
+        # Only inject on first review (retries focus on fixing prior findings)
+        try:
+            from .profile_loader import load_profile as _load_review_profile
+            _review_profile = _load_review_profile()
+            project_path = os.path.dirname(state_file)
+            checklist = _review_profile.review_learnings_checklist(project_path)
+            if checklist:
+                # Extract individual items from the markdown checklist
+                checklist_lines = [
+                    line for line in checklist.splitlines()
+                    if line.startswith("- ")
+                ]
+                if checklist_lines:
+                    learnings_prefix = (
+                        "REVIEW LEARNINGS — patterns from prior runs that the reviewer MUST check:\n"
+                        + "\n".join(checklist_lines[:30])
+                        + "\n\n"
+                        "If the diff violates any pattern with count>=3 and CRITICAL severity, "
+                        "flag it as [CRITICAL]. For other violated patterns, flag as [HIGH].\n\n"
+                    )
+                    logger.info(
+                        "Gate[review] injected %d learnings into review prompt for %s",
+                        len(checklist_lines[:30]), change_name,
+                    )
+        except Exception:
+            logger.debug("Failed to load learnings for review gate", exc_info=True)
+
+    combined_prefix = shadcn_prefix + learnings_prefix + e2e_coverage_prefix + fix_verification_prefix
 
     rr = review_change(
         change_name, wt_path, scope, effective_review_model,

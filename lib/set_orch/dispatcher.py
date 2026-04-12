@@ -1406,12 +1406,18 @@ def _load_test_plan(digest_dir: str, change_req_ids: list[str]) -> list:
         return []
 
 
-def _build_review_learnings(findings_path: str, exclude_change: str) -> str:
+def _build_review_learnings(
+    findings_path: str, exclude_change: str,
+    content_categories: "set[str] | None" = None,
+) -> str:
     """Build compact cross-change review learnings from JSONL.
 
     Reads review-findings.jsonl, excludes the current change's own findings,
     keeps only CRITICAL+HIGH, clusters by keyword, and returns a compact
     markdown section (max ~15 lines).
+
+    When content_categories is provided, filters patterns to those relevant
+    to the change scope (plus "general" patterns always included).
     """
     if not os.path.isfile(findings_path):
         logger.debug("_build_review_learnings: findings_path missing: %s", findings_path)
@@ -1419,6 +1425,18 @@ def _build_review_learnings(findings_path: str, exclude_change: str) -> str:
 
     import re as _re
     from .review_clusters import REVIEW_PATTERN_CLUSTERS
+
+    # Build category filter from content_categories if provided
+    _accepted_cats = None
+    if content_categories:
+        from .profile_types import ProjectType
+        _accepted_cats = content_categories | {"general"}
+
+    def _pattern_matches_categories(text: str) -> bool:
+        if _accepted_cats is None:
+            return True
+        cats = set(ProjectType._assign_categories(text))
+        return bool(cats & _accepted_cats)
 
     # Read and filter findings
     pattern_counts: dict[str, set[str]] = {}
@@ -1440,7 +1458,7 @@ def _build_review_learnings(findings_path: str, exclude_change: str) -> str:
                     if sev not in ("CRITICAL", "HIGH"):
                         continue
                     norm = _re.sub(r"\[(?:CRITICAL|HIGH)\]\s*", "", issue.get("summary", ""))[:80]
-                    if norm:
+                    if norm and _pattern_matches_categories(norm):
                         pattern_counts.setdefault(norm, set()).add(change)
     except OSError:
         return ""
@@ -1470,6 +1488,11 @@ def _build_review_learnings(findings_path: str, exclude_change: str) -> str:
         "xss": "XSS risk",
         "no-rate-limit": "Missing rate limiting",
         "secrets-exposed": "Secrets/credentials exposed",
+        "idor": "IDOR / missing ownership check",
+        "cascade-delete": "Cascade delete / data loss",
+        "race-condition": "Race condition / non-atomic operation",
+        "missing-validation": "Missing input validation",
+        "open-redirect": "Open redirect vulnerability",
     }
     for cid, changes_set in sorted(cluster_results.items(), key=lambda x: -len(x[1])):
         label = _CLUSTER_LABELS.get(cid, cid)
@@ -1826,16 +1849,24 @@ def dispatch_change(
     if context_pruning:
         prune_worktree_context(wt_path)
 
-    # Cross-change review learnings
-    findings_path = os.path.join(os.path.dirname(state_path), "set", "orchestration", "review-findings.jsonl")
-    review_learnings = _build_review_learnings(findings_path, change_name)
+    # Classify scope text for content-aware learnings filtering
+    from .templates import classify_diff_content
+    _content_categories = classify_diff_content(scope)
+    if _content_categories:
+        logger.debug("Dispatch %s: content categories from scope: %s", change_name, _content_categories)
 
-    # Profile-based persistent review checklist (cross-run)
+    # Cross-change review learnings (scope-filtered)
+    findings_path = os.path.join(os.path.dirname(state_path), "set", "orchestration", "review-findings.jsonl")
+    review_learnings = _build_review_learnings(findings_path, change_name, content_categories=_content_categories)
+
+    # Profile-based persistent review checklist (cross-run, scope-filtered)
     review_checklist = ""
     try:
         from .profile_loader import load_profile
         _profile = load_profile()
-        review_checklist = _profile.review_learnings_checklist(project_path)
+        review_checklist = _profile.review_learnings_checklist(
+            project_path, content_categories=_content_categories or None,
+        )
     except Exception:
         logger.debug("Failed to load review learnings checklist", exc_info=True)
 
