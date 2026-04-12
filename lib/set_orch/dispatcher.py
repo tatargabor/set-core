@@ -1426,10 +1426,13 @@ def _build_review_learnings(
     import re as _re
     from .review_clusters import REVIEW_PATTERN_CLUSTERS
 
-    # Build category filter from content_categories if provided
+    # Build category filter from content_categories if provided.
+    # Note: empty set() is treated the same as None — both mean "no
+    # category signal, include all entries". This prevents false
+    # negatives when classify_diff_content() can't categorize a scope.
+    from .profile_types import ProjectType
     _accepted_cats = None
     if content_categories:
-        from .profile_types import ProjectType
         _accepted_cats = content_categories | {"general"}
 
     def _pattern_matches_categories(text: str) -> bool:

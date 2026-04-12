@@ -437,6 +437,8 @@ class ProjectType(ABC):
 
         Each pattern dict must have 'pattern' and optionally 'fix_hint'.
         Returns the same dicts with 'scope' field added.
+        Uses index-based LLM response matching to avoid silent drops
+        when the LLM paraphrases pattern strings.
         Falls back to all 'project' if the LLM call fails.
         """
         if not patterns:
@@ -450,7 +452,11 @@ class ProjectType(ABC):
         patterns = [copy.copy(p) for p in patterns]
         profile_name = self.info.name
 
-        items = [{"pattern": p["pattern"], "fix_hint": p.get("fix_hint", "")} for p in patterns]
+        # Index-based items: LLM returns {"idx": N, "scope": ...}
+        items = [
+            {"idx": i, "pattern": p["pattern"], "fix_hint": p.get("fix_hint", "")}
+            for i, p in enumerate(patterns)
+        ]
         prompt = (
             f"Classify each review finding as \"template\" (generic framework/security pattern "
             f"applicable to any {profile_name} project) or \"project\" (business logic, "
@@ -463,7 +469,9 @@ class ProjectType(ABC):
             f"- \"Missing CSRF protection\" → template (generic security)\n"
             f"- \"Loyalty points not deducted on refund\" → project (business logic)\n\n"
             f"Findings:\n{json.dumps(items, indent=2)}\n\n"
-            f"Return ONLY a JSON array: [{{\"pattern\": \"...\", \"scope\": \"template|project\"}}]"
+            f"Return ONLY a raw JSON array (no markdown fences, no prose): "
+            f"[{{\"idx\": 0, \"scope\": \"template|project\"}}, ...]. "
+            f"Every idx from 0 to {len(patterns) - 1} must appear exactly once."
         )
 
         result = run_claude_logged(
@@ -476,25 +484,45 @@ class ProjectType(ABC):
         )
 
         if result.exit_code != 0:
-            # Fallback: all project (safe — no template pollution)
+            logger.warning(
+                "Learnings classifier LLM call failed (exit=%d) — defaulting all to project",
+                result.exit_code,
+            )
             for p in patterns:
                 p["scope"] = "project"
             return patterns
 
-        # Parse LLM response
+        # Parse LLM response with markdown-fence stripping
         try:
             import re
-            # Extract JSON array from response
-            match = re.search(r"\[.*\]", result.stdout, re.DOTALL)
+            stdout = result.stdout
+            stdout = re.sub(r"```(?:json)?\s*", "", stdout)
+            stdout = re.sub(r"\s*```", "", stdout)
+            match = re.search(r"\[.*\]", stdout, re.DOTALL)
             if match:
                 classified = json.loads(match.group())
-                scope_map = {c["pattern"]: c["scope"] for c in classified}
-                for p in patterns:
-                    p["scope"] = scope_map.get(p["pattern"], "project")
+                # Build idx → scope map
+                scope_map = {}
+                for c in classified:
+                    if isinstance(c, dict) and "idx" in c and "scope" in c:
+                        idx = c["idx"]
+                        if isinstance(idx, int) and 0 <= idx < len(patterns):
+                            scope_map[idx] = c["scope"]
+                # Apply scopes by index
+                for i, p in enumerate(patterns):
+                    p["scope"] = scope_map.get(i, "project")
+                missing = len(patterns) - len(scope_map)
+                if missing > 0:
+                    logger.warning(
+                        "Learnings classifier: %d/%d entries missing from LLM response — defaulted to project",
+                        missing, len(patterns),
+                    )
             else:
+                logger.warning("Learnings classifier: no JSON array in LLM output — defaulting all to project")
                 for p in patterns:
                     p["scope"] = "project"
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, TypeError):
+            logger.warning("Learnings classifier: parse error — defaulting all to project", exc_info=True)
             for p in patterns:
                 p["scope"] = "project"
 
@@ -502,37 +530,57 @@ class ProjectType(ABC):
 
     # Category keywords for scope-aware filtering — aligned with
     # templates.py:classify_diff_content() patterns.
+    #
+    # Keywords are matched with word boundaries (\b<kw>\b) to avoid false
+    # positives from substring hits (e.g., "create" should not match
+    # "re-create" or "creation of a form"). Short generic verbs like
+    # create/update/delete are intentionally excluded — they would match
+    # too broadly. Rely on longer, domain-specific keywords (prisma,
+    # findmany, schema, etc.) for database detection.
     LEARNINGS_CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "auth": [
-            "auth", "session", "middleware", "login", "cookie", "password",
-            "bcrypt", "jwt", "token", "credential", "permission", "role",
+            "auth", "authentication", "authorization", "session", "middleware",
+            "login", "logout", "cookie", "password", "bcrypt", "jwt", "token",
+            "credential", "permission", "role", "rbac", "idor",
         ],
         "api": [
-            "api", "endpoint", "route", "handler", "request", "response",
-            "rate limit", "cors", "csrf",
+            "api", "endpoint", "route", "handler", "rate limit", "rate-limit",
+            "cors", "csrf", "server action", "server actions",
         ],
         "database": [
-            "prisma", "database", "query", "migration", "schema", "sql",
-            "findmany", "findfirst", "create", "update", "delete",
-            "transaction", "cascade", "foreign key",
+            "prisma", "database", "migration", "schema", "sql", "findmany",
+            "findfirst", "transaction", "cascade", "foreign key",
+            "updatemany", "deletemany", "where clause",
         ],
         "frontend": [
             "component", "tsx", "jsx", "react", "css", "tailwind", "shadcn",
             "button", "form", "layout", "page", "html", "svg", "image",
+            "accessibility", "aria", "xss",
         ],
     }
 
     @staticmethod
     def _assign_categories(pattern: str, fix_hint: str = "") -> list[str]:
-        """Assign content categories to a learning based on keyword matching.
+        """Assign content categories to a learning based on word-boundary
+        keyword matching.
 
         Returns list of matching categories, or ["general"] if none match.
+        Uses `\\b<keyword>\\b` regex to avoid substring false positives.
         """
+        import re
         text = (pattern + " " + fix_hint).lower()
         matched = []
         for category, keywords in ProjectType.LEARNINGS_CATEGORY_KEYWORDS.items():
-            if any(kw in text for kw in keywords):
-                matched.append(category)
+            for kw in keywords:
+                # Word-boundary match for single tokens, substring for multi-word
+                if " " in kw or "-" in kw:
+                    if kw in text:
+                        matched.append(category)
+                        break
+                else:
+                    if re.search(r"\b" + re.escape(kw) + r"\b", text):
+                        matched.append(category)
+                        break
         return matched or ["general"]
 
     @staticmethod
@@ -589,10 +637,7 @@ class ProjectType(ABC):
             return entries
 
         import json
-        import logging
         from .subprocess_utils import run_claude_logged
-
-        _logger = logging.getLogger(__name__)
 
         # Build index of patterns for the LLM
         indexed = [{"idx": i, "pattern": e.get("pattern", "")} for i, e in enumerate(entries)]
@@ -602,8 +647,10 @@ class ProjectType(ABC):
             "(e.g., 'No middleware.ts' and 'Missing src/middleware.ts' are the same; "
             "'No auth middleware' and 'Missing CSRF protection' are NOT the same).\n\n"
             f"Patterns:\n{json.dumps(indexed, indent=2)}\n\n"
-            "Return ONLY a JSON array of groups, where each group is an array of indices. "
-            "Every index must appear in exactly one group. "
+            "Return ONLY a raw JSON array of groups (no markdown fences, no prose), "
+            "where each group is an array of indices. "
+            "Every index from 0 to "
+            f"{len(entries) - 1} must appear in exactly one group. "
             "Example: [[0, 2, 4], [1], [3]]"
         )
 
@@ -617,22 +664,37 @@ class ProjectType(ABC):
         )
 
         if result.exit_code != 0:
-            _logger.warning("Learnings dedup LLM call failed (exit=%d) — skipping dedup", result.exit_code)
+            logger.warning("Learnings dedup LLM call failed (exit=%d) — skipping dedup", result.exit_code)
             return entries
 
-        # Parse merge groups
+        # Parse merge groups — strip markdown fences first, then extract JSON array
         try:
             import re
-            match = re.search(r"\[.*\]", result.stdout, re.DOTALL)
+            stdout = result.stdout
+            # Strip common markdown fence wrappers
+            stdout = re.sub(r"```(?:json)?\s*", "", stdout)
+            stdout = re.sub(r"\s*```", "", stdout)
+            # Extract outermost JSON array (balanced approach: find first [ then
+            # match brackets to handle nested groups correctly)
+            match = re.search(r"\[\s*\[.*?\]\s*\]", stdout, re.DOTALL)
             if not match:
-                _logger.warning("Learnings dedup: no JSON array in LLM output — skipping dedup")
+                # Fallback: non-greedy search for any array
+                match = re.search(r"\[.*\]", stdout, re.DOTALL)
+            if not match:
+                logger.warning("Learnings dedup: no JSON array in LLM output — skipping dedup")
                 return entries
             groups = json.loads(match.group())
             if not isinstance(groups, list) or not all(isinstance(g, list) for g in groups):
-                _logger.warning("Learnings dedup: malformed groups — skipping dedup")
+                logger.warning("Learnings dedup: malformed groups — skipping dedup")
                 return entries
+            # Extra safety: all indices must be ints within range
+            for g in groups:
+                for i in g:
+                    if not isinstance(i, int) or i < 0 or i >= len(entries):
+                        logger.warning("Learnings dedup: out-of-range index %r — skipping dedup", i)
+                        return entries
         except (json.JSONDecodeError, TypeError):
-            _logger.warning("Learnings dedup: JSON parse error — skipping dedup", exc_info=True)
+            logger.warning("Learnings dedup: JSON parse error — skipping dedup", exc_info=True)
             return entries
 
         # Validate all indices present
@@ -640,7 +702,7 @@ class ProjectType(ABC):
         for g in groups:
             all_indices.update(g)
         if all_indices != set(range(len(entries))):
-            _logger.warning(
+            logger.warning(
                 "Learnings dedup: index mismatch (got %d indices for %d entries) — skipping dedup",
                 len(all_indices), len(entries),
             )
@@ -678,7 +740,7 @@ class ProjectType(ABC):
             )
             merged.append(result_entry)
 
-        _logger.info(
+        logger.info(
             "Learnings dedup: %d entries → %d (merged %d groups)",
             len(entries), len(merged), sum(1 for g in groups if len(g) > 1),
         )
@@ -688,8 +750,9 @@ class ProjectType(ABC):
         """Persist classified review learnings to template and project JSONLs.
 
         Called after each change merge. Classifies patterns via Sonnet,
-deduplicates semantically, writes template-scoped patterns to ~/.config
-        JSONL (with flock), writes project-scoped patterns to project JSONL.
+        deduplicates semantically, writes template-scoped patterns to
+        ~/.config JSONL (with flock), writes project-scoped patterns to
+        project JSONL.
         """
         import fcntl
         import json
@@ -717,13 +780,25 @@ deduplicates semantically, writes template-scoped patterns to ~/.config
         now = datetime.now(timezone.utc).isoformat()
 
         # --- Template JSONL (flock for concurrency) ---
+        #
+        # Two-phase approach to avoid holding the lock during the slow
+        # (up to 60s) dedup LLM call:
+        #   1. Acquire lock → read existing → release lock
+        #   2. Merge + dedup (slow, no lock held)
+        #   3. Re-acquire lock → write atomically → release lock
+        # Between phase 1 and 3, another process may have written. We
+        # accept that small race window: the last writer wins. Readers
+        # never see a half-written file because write happens while
+        # holding the lock.
         if template_patterns:
             tpl_path = self._learnings_template_path(ensure_dir=True)
             lock_path = str(tpl_path) + ".lock"
+
+            # Phase 1: read under lock
+            existing = []
             lock_fd = open(lock_path, "a")
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_EX)
-                existing = []
                 if tpl_path.is_file():
                     with open(tpl_path) as f:
                         for line in f:
@@ -733,9 +808,18 @@ deduplicates semantically, writes template-scoped patterns to ~/.config
                                     existing.append(json.loads(line))
                                 except json.JSONDecodeError:
                                     pass
-                existing = self._merge_learnings(existing, template_patterns, now)
-                # Semantic dedup on full set
-                existing = self._dedup_learnings(existing, project_path=project_path)
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
+
+            # Phase 2: merge + dedup (slow LLM call) WITHOUT holding lock
+            existing = self._merge_learnings(existing, template_patterns, now)
+            existing = self._dedup_learnings(existing, project_path=project_path)
+
+            # Phase 3: write under lock
+            lock_fd = open(lock_path, "a")
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
                 with open(tpl_path, "w") as f:
                     for entry in existing:
                         f.write(json.dumps(entry) + "\n")
@@ -744,6 +828,7 @@ deduplicates semantically, writes template-scoped patterns to ~/.config
                 lock_fd.close()
 
         # --- Project JSONL ---
+        # No flock needed — single-project access, serial merges.
         if project_patterns:
             proj_path = os.path.join(project_path, "set", "orchestration", "review-learnings.jsonl")
             os.makedirs(os.path.dirname(proj_path), exist_ok=True)
@@ -835,7 +920,12 @@ deduplicates semantically, writes template-scoped patterns to ~/.config
         import json
         import os
 
-        # Build the set of accepted categories (always include "general")
+        # Build the set of accepted categories (always include "general").
+        # Note: we use a truthy check, which means an empty set() is treated
+        # the same as None — both mean "no category signal, include all
+        # entries". This is intentional: `classify_diff_content(scope)` can
+        # return set() for ambiguous scopes, and we prefer false positives
+        # (over-inclusion) over false negatives (missing critical learnings).
         accepted_cats = None
         if content_categories:
             accepted_cats = content_categories | {"general"}

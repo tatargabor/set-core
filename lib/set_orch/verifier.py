@@ -2562,11 +2562,19 @@ def _execute_review_gate(
         # Only inject on first review (retries focus on fixing prior findings)
         try:
             from .profile_loader import load_profile as _load_review_profile
+            from .templates import classify_diff_content
             _review_profile = _load_review_profile()
             project_path = os.path.dirname(state_file)
-            checklist = _review_profile.review_learnings_checklist(project_path)
+            # Scope-filter learnings to the change's content categories so
+            # the reviewer only sees relevant patterns (auth change → only
+            # auth+general learnings, not database/frontend noise).
+            _review_cats = classify_diff_content(scope) or None
+            checklist = _review_profile.review_learnings_checklist(
+                project_path, content_categories=_review_cats,
+            )
             if checklist:
-                # Extract individual items from the markdown checklist
+                # Extract individual items from the markdown checklist. Items
+                # are formatted as "- <pattern> [source, seen Nx]".
                 checklist_lines = [
                     line for line in checklist.splitlines()
                     if line.startswith("- ")
@@ -2576,12 +2584,14 @@ def _execute_review_gate(
                         "REVIEW LEARNINGS — patterns from prior runs that the reviewer MUST check:\n"
                         + "\n".join(checklist_lines[:30])
                         + "\n\n"
-                        "If the diff violates any pattern with count>=3 and CRITICAL severity, "
-                        "flag it as [CRITICAL]. For other violated patterns, flag as [HIGH].\n\n"
+                        "Each line ends with '[source, seen Nx]' where N is how many times the "
+                        "pattern was previously observed. If the diff violates a pattern with "
+                        "'seen 3x' or more AND CRITICAL severity context, flag it as [CRITICAL]. "
+                        "For other violated patterns, flag as [HIGH].\n\n"
                     )
                     logger.info(
-                        "Gate[review] injected %d learnings into review prompt for %s",
-                        len(checklist_lines[:30]), change_name,
+                        "Gate[review] injected %d learnings (cats=%s) into review prompt for %s",
+                        len(checklist_lines[:30]), _review_cats or "all", change_name,
                     )
         except Exception:
             logger.debug("Failed to load learnings for review gate", exc_info=True)
