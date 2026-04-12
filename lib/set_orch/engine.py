@@ -17,6 +17,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from .root import SET_TOOLS_ROOT
@@ -104,6 +105,11 @@ class Directives:
     post_merge_command: str = ""
     monitor_idle_timeout: int = DEFAULT_MONITOR_IDLE_TIMEOUT
     time_limit_secs: int = 0
+    # Part 7: dispatcher regenerates input.md between ralph iterations when
+    # the project-level review-learnings.jsonl file is newer. Opt-out for
+    # pathological cases where the refresh would add noise (e.g. mass
+    # migrations that already carry their own learnings).
+    refresh_input_on_learnings_update: bool = True
 
     # Hook scripts
     hook_pre_dispatch: str = ""
@@ -165,6 +171,9 @@ def parse_directives(raw: dict) -> Directives:
     d.monitor_idle_timeout = _int(raw, "monitor_idle_timeout", d.monitor_idle_timeout)
     d.checkpoint_auto_approve = _bool(raw, "checkpoint_auto_approve", d.checkpoint_auto_approve)
     d.checkpoint_timeout = _int(raw, "checkpoint_timeout", d.checkpoint_timeout)
+    d.refresh_input_on_learnings_update = _bool(
+        raw, "refresh_input_on_learnings_update", d.refresh_input_on_learnings_update,
+    )
 
     # Milestones sub-object
     ms = raw.get("milestones", {})
@@ -952,6 +961,22 @@ def monitor_loop(
         # Periodic memory operations (every ~10 polls ≈ 2.5 minutes)
         if poll_count % 10 == 0:
             _periodic_memory_ops_safe(state_file)
+
+        # Issue diagnosed-timeout watchdog (every ~10 polls ≈ 2.5 minutes).
+        # Non-blocking: failure logs a warning and continues.
+        if poll_count % 10 == 0:
+            try:
+                from .issues.watchdog import check_diagnosed_timeouts
+
+                check_diagnosed_timeouts(
+                    Path(os.path.dirname(os.path.abspath(state_file))),
+                    event_bus=event_bus,
+                )
+            except Exception:
+                logger.debug(
+                    "Diagnosed-timeout watchdog failed (non-blocking)",
+                    exc_info=True,
+                )
 
         # Watchdog heartbeat — must be more frequent than sentinel stuck timeout (180s)
         # Every 8th poll at 15s = 120s, well within the 180s threshold

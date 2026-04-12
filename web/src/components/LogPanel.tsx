@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import type { ChangeInfo, SessionInfo } from '../lib/api'
-import { getChangeSession } from '../lib/api'
+import type { ChangeInfo, ChangeJournal, GateRun, SessionInfo } from '../lib/api'
+import { getChangeJournal, getChangeSession } from '../lib/api'
 import useIsMobile from '../hooks/useIsMobile'
 
 interface Props {
@@ -115,6 +115,7 @@ interface GateTab {
   result?: string
   output?: string
   ms?: number
+  runs?: GateRun[]
 }
 
 const gateResultStyle: Record<string, string> = {
@@ -124,7 +125,7 @@ const gateResultStyle: Record<string, string> = {
   skip: 'text-neutral-500',
 }
 
-function buildGateTabs(change: ChangeInfo): GateTab[] {
+function buildGateTabs(change: ChangeInfo, journal: ChangeJournal | null): GateTab[] {
   const gates: GateTab[] = [
     { id: 'build', label: 'Build', result: change.build_result, output: change.build_output, ms: change.gate_build_ms },
     { id: 'test', label: 'Test', result: change.test_result, output: change.test_output, ms: change.gate_test_ms },
@@ -132,25 +133,81 @@ function buildGateTabs(change: ChangeInfo): GateTab[] {
     { id: 'review', label: 'Review', result: change.review_result, output: change.review_output, ms: change.gate_review_ms },
     { id: 'smoke', label: 'Smoke', result: change.smoke_result, output: change.smoke_output, ms: change.gate_smoke_ms },
   ]
-  return gates.filter(g => g.result)
+  if (journal?.grouped) {
+    for (const g of gates) {
+      const runs = journal.grouped[g.id]
+      if (runs && runs.length > 0) {
+        g.runs = runs
+      }
+    }
+  }
+  return gates.filter(g => g.result || (g.runs && g.runs.length > 0))
 }
 
-function GateOutputPane({ gate }: { gate: GateTab }) {
+function runIcon(result: GateRun['result']): string {
+  if (result === 'pass') return '✓'
+  if (result === 'fail') return '✗'
+  if (result === 'skip') return '–'
+  return '·'
+}
+
+function GateOutputPane({
+  gate,
+  activeRunIndex,
+  onSelectRun,
+}: {
+  gate: GateTab
+  activeRunIndex: number | null
+  onSelectRun: (idx: number) => void
+}) {
+  const hasHistory = gate.runs && gate.runs.length > 0
+  const activeRun =
+    hasHistory && activeRunIndex != null && activeRunIndex >= 0
+      ? gate.runs![activeRunIndex]
+      : null
+  const displayResult = activeRun ? (activeRun.result || gate.result) : gate.result
+  const displayOutput = activeRun ? (activeRun.output || '') : (gate.output || '')
+  const displayMs = activeRun ? activeRun.ms : gate.ms
   return (
-    <div className="h-full flex flex-col p-3">
-      <div className="flex items-center gap-3 mb-2 shrink-0">
-        <span className="text-sm font-medium text-neutral-300">{gate.label}</span>
-        <span className={`text-sm ${gateResultStyle[gate.result!] ?? 'text-neutral-400'}`}>{gate.result}</span>
-        {gate.ms != null && (
-          <span className="text-sm text-neutral-500">{(gate.ms / 1000).toFixed(1)}s</span>
-        )}
-      </div>
-      <div className="flex-1 overflow-auto">
-        {gate.output ? (
-          <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{gate.output}</pre>
-        ) : (
-          <span className="text-sm text-neutral-600">No output</span>
-        )}
+    <div className="h-full flex flex-col">
+      {hasHistory && (
+        <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/30 overflow-x-auto shrink-0">
+          <span className="text-sm text-neutral-600 shrink-0 mr-1">Runs</span>
+          {gate.runs!.map((run, idx) => {
+            const isActive = idx === activeRunIndex
+            const icon = runIcon(run.result)
+            return (
+              <button
+                key={run.run}
+                onClick={() => onSelectRun(idx)}
+                className={`px-1.5 py-0.5 text-sm rounded shrink-0 ${
+                  isActive
+                    ? 'bg-blue-900/60 text-blue-300'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+                }`}
+                title={run.ts || ''}
+              >
+                Run {run.run} <span className={`${gateResultStyle[run.result || ''] ?? ''}`}>{icon}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <div className="h-full flex flex-col p-3 flex-1 min-h-0">
+        <div className="flex items-center gap-3 mb-2 shrink-0">
+          <span className="text-sm font-medium text-neutral-300">{gate.label}</span>
+          <span className={`text-sm ${gateResultStyle[displayResult ?? ''] ?? 'text-neutral-400'}`}>{displayResult}</span>
+          {displayMs != null && (
+            <span className="text-sm text-neutral-500">{(displayMs / 1000).toFixed(1)}s</span>
+          )}
+        </div>
+        <div className="flex-1 overflow-auto">
+          {displayOutput ? (
+            <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{displayOutput}</pre>
+          ) : (
+            <span className="text-sm text-neutral-600">No output</span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -162,6 +219,8 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
   const [sessionLoading, setSessionLoading] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('task')
+  const [journal, setJournal] = useState<ChangeJournal | null>(null)
+  const [activeRunIndex, setActiveRunIndex] = useState<Record<string, number>>({})
   const [splitRatio, setSplitRatio] = useState(loadSplitRatio)
   const [dragging, setDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -179,10 +238,12 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
       setSessionLines([])
       setActiveSessionId(null)
       setActiveSubTab('task')
+      setJournal(null)
+      setActiveRunIndex({})
       return
     }
     // Auto-select first failing gate, otherwise default to task
-    const gates = buildGateTabs(selectedChange)
+    const gates = buildGateTabs(selectedChange, null)
     const firstFail = gates.find(g => g.result === 'fail' || g.result === 'critical')
     setActiveSubTab(firstFail ? firstFail.id : 'task')
 
@@ -199,6 +260,26 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
         setActiveSessionId(null)
       })
       .finally(() => setSessionLoading(false))
+
+    // Fetch gate journal for run history sub-tabs. Legacy changes or
+    // missing journals yield null → GateOutputPane falls back to the
+    // single-run `ChangeInfo` fields.
+    getChangeJournal(project, selectedChange.name)
+      .then((data) => {
+        setJournal(data)
+        // Default to the last run for each gate
+        const next: Record<string, number> = {}
+        for (const [gate, runs] of Object.entries(data.grouped || {})) {
+          if (Array.isArray(runs) && runs.length > 0) {
+            next[gate] = runs.length - 1
+          }
+        }
+        setActiveRunIndex(next)
+      })
+      .catch(() => {
+        setJournal(null)
+        setActiveRunIndex({})
+      })
   }, [project, selectedChange?.name])
 
   // Load specific session
@@ -231,13 +312,13 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
     if (!autoFollow || !selectedChange) return
     const step = selectedChange.current_step
     if (step === 'fixing') {
-      const gates = buildGateTabs(selectedChange)
+      const gates = buildGateTabs(selectedChange, journal)
       const failing = gates.find(g => g.result === 'fail' || g.result === 'critical')
       if (failing) setActiveSubTab(failing.id)
     } else {
       setActiveSubTab('task')
     }
-  }, [autoFollow, selectedChange?.current_step, selectedChange?.build_result, selectedChange?.test_result, selectedChange?.e2e_result])
+  }, [autoFollow, journal, selectedChange?.current_step, selectedChange?.build_result, selectedChange?.test_result, selectedChange?.e2e_result])
 
   // Auto-refresh for running changes
   useEffect(() => {
@@ -294,8 +375,8 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
     )
   }
 
-  // Build sub-tabs: Task + gate tabs + merge tab
-  const gateTabs = buildGateTabs(selectedChange)
+  // Build sub-tabs: Session + gate tabs + merge tab
+  const gateTabs = buildGateTabs(selectedChange, journal)
   const mergeLines = selectedChange.status === 'merged'
     ? orchLines.filter(l => {
         const lower = l.toLowerCase()
@@ -317,7 +398,7 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
             activeSubTab === 'task' ? 'bg-blue-900/60 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'
           }`}
         >
-          Task
+          Session
         </button>
         {gateTabs.map(g => (
           <button
@@ -395,7 +476,18 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
           // Gate output pane
           (() => {
             const gate = gateTabs.find(g => g.id === activeSubTab)
-            return gate ? <GateOutputPane gate={gate} /> : <div className="p-2 text-sm text-neutral-600">No data</div>
+            if (!gate) return <div className="p-2 text-sm text-neutral-600">No data</div>
+            const idx =
+              gate.runs && gate.runs.length > 0
+                ? (activeRunIndex[gate.id] ?? gate.runs.length - 1)
+                : null
+            return (
+              <GateOutputPane
+                gate={gate}
+                activeRunIndex={idx}
+                onSelectRun={(i) => setActiveRunIndex({ ...activeRunIndex, [gate.id]: i })}
+              />
+            )
           })()
         )}
       </div>

@@ -692,7 +692,23 @@ def generate_coverage_report(
     ]
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(output_path).write_text("\n".join(lines) + "\n")
+    content = "\n".join(lines) + "\n"
+    try:
+        from .archive import archive_and_write
+
+        archive_dir = str(Path(output_path).parent / "archive" / "spec-coverage")
+        archive_and_write(
+            output_path,
+            content,
+            archive_dir=archive_dir,
+            reason="coverage-regen",
+        )
+    except Exception as exc:
+        logger.warning(
+            "archive_and_write failed for coverage report, falling back to direct write: %s",
+            exc,
+        )
+        Path(output_path).write_text(content)
     logger.info("Spec coverage report written to %s", output_path)
 
 

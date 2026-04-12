@@ -151,9 +151,16 @@ class GateVerdict:
     high_count: int = 0
     medium_count: int = 0
     low_count: int = 0
-    source: str = ""         # fast_path | classifier_confirmed | classifier_override | classifier_failed
+    source: str = ""         # fast_path | classifier_confirmed | classifier_override | classifier_downgrade | classifier_failed
     change: str = ""
     summary: str = ""        # one-line description of why we landed here
+    # Severity downgrade audit trail — populated when the classifier lowers
+    # a reviewer-tagged severity per the rubric. Each entry: {from, to, summary}.
+    downgrades: list = None
+
+    def __post_init__(self) -> None:
+        if self.downgrades is None:
+            self.downgrades = []
 
     def to_outcome(self) -> str:
         """Translate to the {success, error, unknown} the session API uses."""
@@ -223,6 +230,7 @@ def persist_gate_verdict(
     low_count: int = 0,
     source: str = "",
     summary: str = "",
+    downgrades: list | None = None,
 ) -> Path | None:
     """Resolve the new session for the call we just made and write its sidecar.
 
@@ -249,5 +257,6 @@ def persist_gate_verdict(
         source=source,
         change=change_name,
         summary=summary,
+        downgrades=list(downgrades or []),
     ))
     return session

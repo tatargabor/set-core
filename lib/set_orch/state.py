@@ -25,6 +25,122 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_JOURNALED_FIELDS: frozenset[str] = frozenset(
+    {
+        "build_result",
+        "test_result",
+        "e2e_result",
+        "smoke_result",
+        "review_result",
+        "scope_check_result",
+        "rules_result",
+        "e2e_coverage_result",
+        "build_output",
+        "test_output",
+        "e2e_output",
+        "smoke_output",
+        "review_output",
+        "scope_check_output",
+        "rules_output",
+        "e2e_coverage_output",
+        "gate_build_ms",
+        "gate_test_ms",
+        "gate_e2e_ms",
+        "gate_review_ms",
+        "gate_smoke_ms",
+        "gate_scope_check_ms",
+        "gate_rules_ms",
+        "gate_e2e_coverage_ms",
+        "retry_context",
+        "status",
+        "current_step",
+    }
+)
+
+_JOURNAL_SEQ_CACHE: dict[str, int] = {}
+
+
+def _journal_path(state_file: str, change_name: str) -> str:
+    return os.path.join(os.path.dirname(state_file), "journals", f"{change_name}.jsonl")
+
+
+def _seed_seq_from_file(path: str) -> int:
+    """Read the last JSONL line of an existing journal and extract its `seq`.
+
+    The process-local cache resets on daemon restart. Without re-seeding
+    from disk the new process would start at seq=1 and collide with
+    entries written by the previous process lifetime, corrupting the
+    journal-reader's seq-based ordering.
+    """
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size == 0:
+                return 0
+            read_size = min(size, 4096)
+            f.seek(size - read_size)
+            chunk = f.read(read_size)
+        text = chunk.decode("utf-8", errors="replace")
+        last = text.rstrip("\n").rsplit("\n", 1)[-1].strip()
+        if not last:
+            return 0
+        entry = json.loads(last)
+        seq = entry.get("seq", 0)
+        return int(seq) if isinstance(seq, (int, float)) else 0
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        return 0
+
+
+def _append_journal(
+    state_file: str,
+    change_name: str,
+    field_name: str,
+    old_value: Any,
+    new_value: Any,
+) -> None:
+    path = _journal_path(state_file, change_name)
+    parent = os.path.dirname(path)
+    os.makedirs(parent, exist_ok=True)
+
+    if path not in _JOURNAL_SEQ_CACHE:
+        _JOURNAL_SEQ_CACHE[path] = _seed_seq_from_file(path)
+    seq = _JOURNAL_SEQ_CACHE[path] + 1
+    _JOURNAL_SEQ_CACHE[path] = seq
+
+    entry = {
+        "ts": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "field": field_name,
+        "old": old_value,
+        "new": new_value,
+        "seq": seq,
+    }
+
+    try:
+        line = json.dumps(entry, ensure_ascii=False)
+    except (TypeError, ValueError):
+        try:
+            line = json.dumps(entry, default=str, ensure_ascii=False)
+        except (TypeError, ValueError, UnicodeEncodeError):
+            sanitized = {
+                "ts": entry["ts"],
+                "field": field_name,
+                "old": repr(old_value),
+                "new": repr(new_value),
+                "seq": seq,
+            }
+            line = json.dumps(sanitized, ensure_ascii=True)
+
+    data = (line + "\n").encode("utf-8", errors="replace")
+
+    with open(path, "ab") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(data)
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
 class StateCorruptionError(Exception):
     """Raised when state JSON is invalid or structurally corrupt."""
 
@@ -497,6 +613,14 @@ def update_change_field(
 
         if value != old_value:
             logger.info("State update: %s.%s = %r (was: %r)", change_name, field_name, value, old_value)
+
+            if field_name in _JOURNALED_FIELDS:
+                try:
+                    _append_journal(path, change_name, field_name, old_value, value)
+                except BaseException as exc:
+                    logger.warning(
+                        "_append_journal failed for %s.%s: %s", change_name, field_name, exc
+                    )
 
         # Emit STATE_CHANGE event on status transitions
         if field_name == "status" and event_bus and old_status is not None:

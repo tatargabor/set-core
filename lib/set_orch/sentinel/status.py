@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from set_orch.archive import archive_and_write
 from set_orch.sentinel.set_dir import ensure_set_dir
 
 logger = logging.getLogger(__name__)
@@ -24,11 +25,29 @@ class SentinelStatus:
         self.sentinel_dir = ensure_set_dir(self.project_path)
         self.status_file = os.path.join(self.sentinel_dir, STATUS_FILE)
 
-    def _write(self, data: dict) -> None:
+    def _write_direct(self, data: dict) -> None:
         tmp = self.status_file + ".tmp"
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         os.replace(tmp, self.status_file)
+
+    def _write(self, data: dict) -> None:
+        content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        archive_dir = os.path.join(self.sentinel_dir, "archive", "status")
+        try:
+            archive_and_write(
+                self.status_file,
+                content,
+                archive_dir=archive_dir,
+                reason="status-update",
+                max_archives=20,
+            )
+        except OSError as exc:
+            logger.warning(
+                "archive_and_write failed for status, falling back to direct: %s",
+                exc,
+            )
+            self._write_direct(data)
 
     def register(
         self,

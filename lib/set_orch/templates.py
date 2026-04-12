@@ -222,6 +222,30 @@ WITHIN the code that this diff actually touches.
 ```
 {req_section}
 {design_section}{security_section}{content_section}
+## Severity Rubric
+Severity tags are NOT interchangeable. Apply them with this exact rubric:
+
+- **CRITICAL** — will crash the app, expose secrets, leak other users' data, allow privilege
+  escalation, or cause data loss. Examples: SQL injection, missing auth on admin routes,
+  password hash exposure, middleware imports that crash Edge Runtime, race conditions that
+  double-charge payments.
+
+- **HIGH** — will produce incorrect output or broken UX in a primary user path. Examples:
+  checkout total calculation off by cents, cart badge shows wrong count, form submits but
+  shows success on error, product search returns stale data.
+
+- **MEDIUM** — violates a project rule or convention without breaking core functionality.
+  Examples: raw `<button>` instead of shadcn Button, hardcoded color instead of design token,
+  missing error handling on non-critical paths, fragile test selectors.
+
+- **LOW** — code hygiene, accessibility gaps in secondary views, missing trailing newlines,
+  outdated comments, minor performance. Examples: `div` instead of semantic element, inline
+  styles, console.log left in, missing alt text on decorative images.
+
+**When in doubt between two tiers, pick the LOWER one.** Escalation to CRITICAL requires
+that the issue makes the code unusable, insecure, or lossy in a primary path. Design-system
+violations and UI polish are NEVER CRITICAL.
+
 ## Review Criteria
 Check for issues IN THE DIFF ABOVE (not hypothetical missing features):
 1. Security vulnerabilities: SQL injection, XSS, command injection, path traversal
@@ -230,7 +254,7 @@ Check for issues IN THE DIFF ABOVE (not hypothetical missing features):
 4. Data integrity: missing validation, race conditions, data loss risks
 5. Error handling: unhandled exceptions that crash the app
 
-For each issue found, classify severity as: CRITICAL, HIGH, MEDIUM, LOW.
+For each issue found, classify severity per the rubric above: CRITICAL, HIGH, MEDIUM, LOW.
 
 Output format:
 - If no issues: "REVIEW PASS — no critical issues found"

@@ -179,6 +179,30 @@ async def issue_message(project: str, iid: str, body: dict):
     return {"status": "ok"}
 
 
+@router.post("/api/{project}/issues/{iid}/resolve")
+async def action_resolve(project: str, iid: str, body: dict = {}):
+    """Operator escape hatch — mark an issue RESOLVED via the state machine.
+
+    Used when a diagnosed issue blocks the merge queue and automatic
+    resolution has not fired yet. Routes through `IssueManager.action_resolve`
+    so any active investigator/fixer is killed, the state-machine
+    transition is validated, and an audit entry is written.
+
+    Body: {"reason": str}.
+    """
+    mgr = _get_issue_manager(project)
+    reason = body.get("reason", "manual_resolve_via_api")
+    try:
+        mgr.action_resolve(iid, reason=reason)
+    except ValueError as e:
+        raise HTTPException(404, f"issue_not_found: {iid}") from e
+    except Exception as e:
+        if "Cannot transition" in str(e):
+            raise HTTPException(409, str(e)) from e
+        raise
+    return {"status": "ok", "iss_id": iid, "new_state": "resolved"}
+
+
 def _do_action(project: str, iid: str, action_name: str):
     mgr = _get_issue_manager(project)
     try:

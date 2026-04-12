@@ -62,10 +62,25 @@ def _check_e2e_runtime_errors(output: str) -> list[str]:
     return found
 
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
 def _extract_e2e_failure_ids(output: str) -> set[str]:
-    """Extract unique failure identifiers from Playwright output."""
+    """Extract unique failure identifiers from Playwright output.
+
+    Strips ANSI escape sequences first. Playwright emits cursor-control
+    codes (`\\x1b[1A\\x1b[2K`) before each progress line when stdout is
+    a terminal-like stream; the `^\\s*` anchor in the failure regex does
+    not match escape bytes, so without stripping we miss every failure
+    and hand control to the "unparseable crash" guard, which then fires
+    a misleading retry_context ("likely crash, OOM, or formatter issue")
+    on a perfectly parseable assertion failure. Caught on
+    nano-run-20260412-1941 where a `toHaveCount({min: 2})` assertion
+    error was misdiagnosed as a crash.
+    """
+    clean = _ANSI_ESCAPE_RE.sub("", output)
     ids: set[str] = set()
-    for m in re.finditer(r"^\s*\d+\)\s+\[.*?\]\s+[›»]\s+([^\s:]+\.spec\.\w+:\d+)", output, re.MULTILINE):
+    for m in re.finditer(r"^\s*\d+\)\s+\[.*?\]\s+[›»]\s+([^\s:]+\.spec\.\w+:\d+)", clean, re.MULTILINE):
         ids.add(m.group(1))
     return ids
 

@@ -124,6 +124,130 @@ def get_change(project: str, name: str):
             return d
     raise HTTPException(404, f"Change not found: {name}")
 
+
+def _load_journal_entries(journal_path: Path) -> list[dict]:
+    if not journal_path.exists():
+        return []
+    entries: list[dict] = []
+    try:
+        with open(journal_path) as f:
+            for raw in f:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entries.append(json.loads(raw))
+                except json.JSONDecodeError:
+                    continue
+    except OSError as exc:
+        logger.warning("Failed to read journal %s: %s", journal_path, exc)
+        return []
+    return entries
+
+
+_GATES = ("build", "test", "e2e", "review", "smoke", "scope_check", "rules", "e2e_coverage")
+
+
+def _parse_journal_ts(ts) -> float:
+    """Parse a journal entry timestamp to epoch seconds, 0.0 on any failure.
+
+    Must return a float unconditionally — callers use the result in
+    arithmetic (sort keys, abs-delta comparisons). A separate helper from
+    `_parse_ts` (defined later in the file) avoids shadow issues: the
+    other `_parse_ts` returns `float | None` which would crash the
+    grouping logic with `TypeError: unsupported operand type(s) for -`.
+    """
+    if ts is None:
+        return 0.0
+    if isinstance(ts, (int, float)):
+        return float(ts)
+    if isinstance(ts, str):
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+        except (ValueError, TypeError):
+            return 0.0
+    return 0.0
+
+
+def _group_journal_by_gate(entries: list[dict]) -> dict[str, list[dict]]:
+    """Pair result/output/ms entries into per-run records grouped by gate.
+
+    Strategy: iterate chronologically and for each `<gate>_result` entry,
+    attach the most-recent `<gate>_output` and `gate_<gate>_ms` that share
+    a timestamp within a ±2s window. Each result closes one run.
+    """
+    grouped: dict[str, list[dict]] = {g: [] for g in _GATES}
+    run_counters: dict[str, int] = {g: 0 for g in _GATES}
+
+    by_gate_field: dict[tuple[str, str], list[dict]] = {}
+    for e in entries:
+        field = e.get("field", "")
+        for g in _GATES:
+            if field == f"{g}_result":
+                by_gate_field.setdefault((g, "result"), []).append(e)
+            elif field == f"{g}_output":
+                by_gate_field.setdefault((g, "output"), []).append(e)
+            elif field == f"gate_{g}_ms":
+                by_gate_field.setdefault((g, "ms"), []).append(e)
+
+    def _pick_closest(entries: list[dict], target_ts: float) -> dict | None:
+        """Return the entry within ±2s of target_ts with the minimum delta."""
+        best: dict | None = None
+        best_delta = 2.0
+        for e in entries:
+            delta = abs(_parse_journal_ts(e.get("ts", "")) - target_ts)
+            if delta <= best_delta:
+                best = e
+                best_delta = delta
+        return best
+
+    for gate in _GATES:
+        results = by_gate_field.get((gate, "result"), [])
+        outputs = by_gate_field.get((gate, "output"), [])
+        timings = by_gate_field.get((gate, "ms"), [])
+        for r in results:
+            run_counters[gate] += 1
+            r_ts = _parse_journal_ts(r.get("ts", ""))
+            output_entry = _pick_closest(outputs, r_ts)
+            ms_entry = _pick_closest(timings, r_ts)
+            grouped[gate].append(
+                {
+                    "run": run_counters[gate],
+                    "result": r.get("new"),
+                    "output": output_entry.get("new") if output_entry else None,
+                    "ms": ms_entry.get("new") if ms_entry else None,
+                    "ts": r.get("ts"),
+                }
+            )
+
+    return {g: runs for g, runs in grouped.items() if runs}
+
+
+@router.get("/api/{project}/changes/{name}/journal")
+def get_change_journal(project: str, name: str):
+    """Return raw journal entries plus per-gate grouped run history."""
+    project_path = _resolve_project(project)
+    sp = _state_path(project_path)
+    if not sp.exists():
+        raise HTTPException(404, "No orchestration state found")
+    try:
+        state = load_state(str(sp))
+    except StateCorruptionError as e:
+        raise HTTPException(500, f"Corrupt state: {e.detail}")
+
+    if not any(c.name == name for c in state.changes):
+        raise HTTPException(404, f"Change not found: {name}")
+
+    journal_path = Path(os.path.dirname(str(sp))) / "journals" / f"{name}.jsonl"
+    entries = _load_journal_entries(journal_path)
+    # Sort by (ts, seq) — `ts` is the primary key so daemon-restart seq
+    # collisions don't reorder older entries after newer ones. `seq` is
+    # the tiebreaker for entries written within the same millisecond.
+    entries.sort(key=lambda e: (_parse_journal_ts(e.get("ts", "")), e.get("seq", 0)))
+    grouped = _group_journal_by_gate(entries)
+    return {"entries": entries, "grouped": grouped}
+
+
 @router.get("/api/{project}/worktrees")
 def list_worktrees_endpoint(project: str):
     """List git worktrees with loop-state and activity data."""

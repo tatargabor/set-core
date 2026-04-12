@@ -74,6 +74,8 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset({
     # Supervisor itself (we emit these)
     "SUPERVISOR_START", "SUPERVISOR_STOP", "SUPERVISOR_RESTART",
     "SUPERVISOR_INBOX", "SUPERVISOR_TRIGGER", "CANARY_CHECK",
+    # Issue management
+    "ISSUE_DIAGNOSED_TIMEOUT",
 })
 
 # Status values that mean orchestration is finished — process death is
@@ -92,6 +94,51 @@ DEFAULT_ERROR_BASELINE_ALPHA = 0.3    # EMA smoothing factor
 ERROR_BASELINE_MIN = 1.0              # don't trigger until baseline > this
 
 LOG_SLICE_MAX_BYTES = 1_048_576       # never read more than 1 MB at a time
+
+
+# ── Permanent error catalog ──────────────────────────────
+#
+# (stderr_pattern, reason_code). _classify_exit() returns the first
+# matching reason code, or None if no pattern matches. Patterns are
+# matched against the tail of stderr.log via plain substring search.
+#
+# Adding a new permanent error signal requires:
+#   1. Append a (pattern, reason) tuple here
+#   2. Add a unit test in tests/unit/test_supervisor_anomaly.py that
+#      feeds the pattern to _classify_exit and asserts the reason code
+PERMANENT_ERROR_SIGNALS: list[tuple[str, str]] = [
+    # Spec-level
+    ("Error: Spec file not found:", "spec_not_found"),
+    ("No such file or directory: 'docs/", "spec_not_found"),
+
+    # Python import / module errors that cannot recover with a retry
+    ("ModuleNotFoundError: No module named 'set_orch", "orchestrator_import_broken"),
+    ("ImportError: cannot import name", "orchestrator_import_broken"),
+
+    # Exec / binary issues
+    ("set-orchestrate: command not found", "orchestrator_binary_missing"),
+
+    # Configuration
+    ("Error: No directives file", "directives_missing"),
+    ("Error: State file not found", "state_file_missing"),
+
+    # Plugin system
+    ("ProfileResolutionError:", "profile_resolution_failed"),
+]
+
+
+def _classify_exit(stderr_tail: str) -> Optional[str]:
+    """Return a permanent-error reason code if stderr matches a known pattern.
+
+    Returns None for transient failures (including Python tracebacks) so
+    the supervisor can proceed with the normal rapid-crash retry path.
+    """
+    if not stderr_tail:
+        return None
+    for pattern, reason in PERMANENT_ERROR_SIGNALS:
+        if pattern in stderr_tail:
+            return reason
+    return None
 
 
 # ── Data classes ─────────────────────────────────────────
@@ -125,6 +172,7 @@ class AnomalyContext:
     to the daemon (which then persists them in supervisor.status.json):
         - known_event_types : set[str]
         - error_baseline    : dict
+        - crossed_token_stall_thresholds : set[str]
     Everything else is read-only by convention.
     """
     project_path: Path
@@ -144,6 +192,15 @@ class AnomalyContext:
     last_log_growth_at: float
     error_baseline: dict                  # mutable: detectors update it
     known_event_types: set[str]           # mutable: detectors learn from it
+    # Transition-based trigger inputs (read-only by detectors).
+    last_change_statuses: dict[str, str] = field(default_factory=dict)
+    last_orch_status: str = ""
+    # Has detect_terminal_state fired this daemon lifetime? Prevents re-fire
+    # on restart against a pre-existing dead+terminal state.
+    terminal_state_fired: bool = False
+    # Mutable: detectors add keys when they fire to prevent re-fire on
+    # subsequent polls with the same conditions.
+    crossed_token_stall_thresholds: set[str] = field(default_factory=set)
 
 
 # ── Public entry point ───────────────────────────────────
@@ -176,9 +233,12 @@ def scan_for_anomalies(ctx: AnomalyContext) -> list[AnomalyTrigger]:
 def detect_terminal_state(ctx: AnomalyContext) -> list[AnomalyTrigger]:
     """Orchestration entered a terminal status — emit final-report trigger.
 
-    Fires once per poll when state.status is terminal AND the orchestrator
-    process is dead. Highest priority — the daemon will exit shortly after,
-    so this is the last useful trigger we can fire.
+    Fires exactly once per daemon lifetime when all three conditions hold:
+      1. state.status is in TERMINAL_STATUSES
+      2. the orchestrator process is dead
+      3. the terminal_state trigger has not yet fired in this lifetime
+    The third check prevents re-fire on a daemon restart against a
+    pre-existing dead+terminal state.
     """
     if not ctx.state:
         return []
@@ -186,6 +246,8 @@ def detect_terminal_state(ctx: AnomalyContext) -> list[AnomalyTrigger]:
     if status not in TERMINAL_STATUSES:
         return []
     if ctx.orchestrator_alive:
+        return []
+    if ctx.terminal_state_fired:
         return []
     return [AnomalyTrigger(
         type="terminal_state",
@@ -236,19 +298,27 @@ def detect_integration_failed(ctx: AnomalyContext) -> list[AnomalyTrigger]:
         return []
     out: list[AnomalyTrigger] = []
     for change in ctx.state.get("changes") or []:
+        name = str(change.get("name", ""))
         status = (change.get("status") or "").lower()
-        if "failed" in status:
-            out.append(AnomalyTrigger(
-                type="integration_failed",
-                change=str(change.get("name", "")),
-                reason=f"change.status={status}",
-                priority=10,
-                context={
-                    "status": status,
-                    "tokens": int(change.get("tokens_used", 0) or 0),
-                    "verify_retry_count": int(change.get("verify_retry_count", 0) or 0),
-                },
-            ))
+        if "failed" not in status:
+            continue
+        prev = (ctx.last_change_statuses.get(name) or "").lower()
+        # Transition-check: only fire when the status just became failed.
+        # Repeated polls of a stable failed state emit nothing.
+        if prev == status:
+            continue
+        out.append(AnomalyTrigger(
+            type="integration_failed",
+            change=name,
+            reason=f"change.status={status} (was {prev or 'unseen'})",
+            priority=10,
+            context={
+                "status": status,
+                "prev_status": prev,
+                "tokens": int(change.get("tokens_used", 0) or 0),
+                "verify_retry_count": int(change.get("verify_retry_count", 0) or 0),
+            },
+        ))
     return out
 
 
@@ -312,6 +382,7 @@ def detect_token_stall(ctx: AnomalyContext) -> list[AnomalyTrigger]:
     out: list[AnomalyTrigger] = []
     stall = ctx.now - ctx.last_state_change_at if ctx.last_state_change_at else 0
     for change in ctx.state.get("changes") or []:
+        name = str(change.get("name", ""))
         tokens = int(change.get("tokens_used", 0) or 0)
         status = (change.get("status") or "").lower()
         if tokens < DEFAULT_TOKEN_STALL_LIMIT:
@@ -320,9 +391,16 @@ def detect_token_stall(ctx: AnomalyContext) -> list[AnomalyTrigger]:
             continue
         if stall < DEFAULT_TOKEN_STALL_SECS:
             continue
+        # Transition-check: the first time we see (change, threshold) cross,
+        # fire once and record the pair. Subsequent polls with the same
+        # numbers skip.
+        key = f"{name}:{DEFAULT_TOKEN_STALL_LIMIT}"
+        if key in ctx.crossed_token_stall_thresholds:
+            continue
+        ctx.crossed_token_stall_thresholds.add(key)
         out.append(AnomalyTrigger(
             type="token_stall",
-            change=str(change.get("name", "")),
+            change=name,
             reason=f"tokens={tokens} and no state movement for {int(stall)}s",
             priority=25,
             context={"tokens": tokens, "stall_seconds": int(stall)},

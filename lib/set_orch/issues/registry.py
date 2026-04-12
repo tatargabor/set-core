@@ -182,6 +182,65 @@ class IssueRegistry:
 
     # --- Queries ---
 
+    def auto_resolve_for_change(
+        self,
+        change_name: str,
+        reason: str = "change_merged_auto_resolve",
+    ) -> list[str]:
+        """Transition all open issues tagged to `change_name` to RESOLVED.
+
+        Called from merger.merge_change() after a successful merge. Issues
+        in terminal states (resolved, dismissed, muted, skipped, cancelled)
+        are left alone. Returns the list of resolved issue IDs.
+
+        Safe to call from any context — failure writes a WARNING but does
+        not raise (see merger hook).
+        """
+        from datetime import datetime, timezone
+
+        terminal = {
+            IssueState.RESOLVED,
+            IssueState.DISMISSED,
+            IssueState.MUTED,
+            IssueState.SKIPPED,
+            IssueState.CANCELLED,
+        }
+        now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        resolved: list[str] = []
+        for issue in self._issues.values():
+            if issue.affected_change != change_name:
+                continue
+            if issue.state in terminal:
+                continue
+            issue.state = IssueState.RESOLVED
+            issue.resolved_at = now
+            issue.updated_at = now
+            resolved.append(issue.id)
+        if resolved:
+            self.save()
+            try:
+                from .audit import AuditLog
+
+                audit = AuditLog(self.project_path)
+                for iss_id in resolved:
+                    # Spec mandates the exact action name so post-run audit
+                    # tooling can grep for it.
+                    audit.log(
+                        iss_id,
+                        "change_merged_auto_resolve",
+                        reason=reason,
+                        change=change_name,
+                        from_state="diagnosed",
+                        to_state="resolved",
+                    )
+            except Exception:
+                # Audit write failure must not break the caller — the
+                # merger's try/except would catch anything but we prefer
+                # to swallow here to keep the data-mutation and
+                # observability paths independent.
+                pass
+        return resolved
+
     def by_state(self, state: IssueState) -> list[Issue]:
         return [i for i in self._issues.values() if i.state == state]
 

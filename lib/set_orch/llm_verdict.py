@@ -77,6 +77,9 @@ class ClassifierResult:
     raw_json: dict = field(default_factory=dict)
     error: str | None = None
     elapsed_ms: int = 0
+    # Severity downgrades: list of {from, to, summary} entries recorded
+    # when the classifier lowers a reviewer-tagged severity per the rubric.
+    downgrades: list[dict] = field(default_factory=list)
 
 
 # ─── Schemas ────────────────────────────────────────────────────────
@@ -100,6 +103,13 @@ REVIEW_SCHEMA: dict = {
             "file": "path or empty string",
             "line": "line number or empty string",
             "fix": "suggested fix or empty string",
+        },
+    ],
+    "downgrades": [
+        {
+            "from": "CRITICAL|HIGH|MEDIUM|LOW — the reviewer's original tag",
+            "to": "CRITICAL|HIGH|MEDIUM|LOW — the corrected tag per rubric",
+            "summary": "short description of the finding that was downgraded",
         },
     ],
 }
@@ -275,8 +285,8 @@ def _build_classifier_prompt(
         "2. Severity counts (`critical_count`, `high_count`, ...) are the "
         "number of distinct findings at each severity level.\n"
         "3. A finding marked `NOT_FIXED`, `REVIEW BLOCKED`, `FAIL`, "
-        "`CRITICAL`, or similar is a CRITICAL finding unless explicitly "
-        "tagged with a lower severity.\n"
+        "`CRITICAL`, or similar is a CRITICAL finding UNLESS the rubric in "
+        "rule 8 says it should be lower.\n"
         "4. A finding marked `FIXED`, `RESOLVED`, `PASS`, or similar is NOT "
         "a finding — do not count it.\n"
         "5. Quoted references to prior findings (`\"previous ISSUE: [CRITICAL]\"`) "
@@ -285,6 +295,25 @@ def _build_classifier_prompt(
         "fences, no commentary. The response must start with `{` and end "
         "with `}`.\n"
         f"{scope_rule}"
+        "8. SEVERITY RUBRIC: Apply this tiering when the reviewer's tag is "
+        "ambiguous OR when the reviewer escalated a convention violation to "
+        "CRITICAL.\n"
+        "   - CRITICAL: crashes the app, exposes secrets, leaks other users' "
+        "data, allows privilege escalation, or causes data loss.\n"
+        "   - HIGH: produces incorrect output or broken UX in a primary user "
+        "path (wrong totals, broken checkout, form shows success on error).\n"
+        "   - MEDIUM: violates a project rule or convention without breaking "
+        "functionality (raw <button> instead of shadcn Button, hardcoded "
+        "color instead of design token, fragile test selectors).\n"
+        "   - LOW: code hygiene, outdated comments, missing trailing newlines, "
+        "accessibility gaps in secondary views.\n"
+        "   When a reviewer-tagged CRITICAL does not meet the CRITICAL bar, "
+        "DOWNGRADE it: lower `critical_count` and raise `medium_count` (or "
+        "`high_count`) and add an entry to the `downgrades` list with the "
+        "shape `{\"from\": \"CRITICAL\", \"to\": \"MEDIUM\", \"summary\": "
+        "\"short description\"}`. Default to the LOWER tier in doubt.\n"
+        "9. SEVERITY DEFAULT: If a finding lists no explicit severity tag, "
+        "apply rule 8's rubric and default to the LOWER of two ambiguous tiers.\n"
         "\n"
         "<<<BEGIN OUTPUT>>>\n"
         f"{primary_output}\n"
@@ -397,6 +426,17 @@ def _build_result(parsed: dict, elapsed_ms: int) -> ClassifierResult:
                     "fix": str(f.get("fix", "")),
                 })
 
+    downgrades_raw = parsed.get("downgrades") or []
+    downgrades: list[dict] = []
+    if isinstance(downgrades_raw, list):
+        for d in downgrades_raw:
+            if isinstance(d, dict):
+                downgrades.append({
+                    "from": str(d.get("from", "")).upper(),
+                    "to": str(d.get("to", "")).upper(),
+                    "summary": str(d.get("summary", "")),
+                })
+
     return ClassifierResult(
         verdict=verdict,
         critical_count=_count("critical_count"),
@@ -407,6 +447,7 @@ def _build_result(parsed: dict, elapsed_ms: int) -> ClassifierResult:
         raw_json=parsed,
         error=None,
         elapsed_ms=elapsed_ms,
+        downgrades=downgrades,
     )
 
 

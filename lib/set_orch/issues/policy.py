@@ -187,20 +187,53 @@ class PolicyEngine:
         """Should this issue be auto-investigated?"""
         return self.config.investigation.auto_investigate
 
+    # Severities that are informational — they describe what happened but
+    # are not actionable bugs. The terminal_state trigger's "final report"
+    # ephemeral Claude emits these; without filtering, a SUCCESSFUL run
+    # would register a fake "issue" against the whole run.
+    # Caught on nano-run-20260412-1941 where the success-report finding
+    # `severity: observation` became ISS-001.
+    _INFORMATIONAL_SEVERITIES = frozenset({
+        "observation",
+        "info",
+        "note",
+        "success",
+        "noted",
+    })
+
     def should_register(
         self,
         source: str,
         severity_hint: str,
         error_summary: str,
         mute_match: Optional[MutePattern] = None,
+        affected_change: Optional[str] = None,
     ) -> bool:
         """Filter: which detection events become issues?"""
         if mute_match:
             return False
 
+        # Informational findings are not actionable — the terminal_state
+        # trigger's final report uses `--severity info`, and the sentinel
+        # may emit `observation` findings for interesting-but-not-broken
+        # events. Neither should spawn an investigator or create a fix
+        # change. Without this filter, a successful run that produces a
+        # final report gets polluted by a self-referential "fix yourself"
+        # ISS entry.
+        if (severity_hint or "").lower() in self._INFORMATIONAL_SEVERITIES:
+            return False
+
+        # Run-level observations (affected_change == "_run") are never
+        # change-scoped bugs. The final report writer uses "_run" as the
+        # synthetic change id — skip these at registration time so the
+        # issue pipeline stays focused on real per-change failures.
+        if (affected_change or "").strip() in ("_run", "_all", ""):
+            if (severity_hint or "").lower() not in ("critical", "high"):
+                return False
+
         match source:
             case "sentinel":
-                return True  # All sentinel findings become issues
+                return True  # All real-severity sentinel findings become issues
             case "gate":
                 return True
             case "watchdog":

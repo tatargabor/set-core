@@ -37,6 +37,7 @@ from .anomaly import (
     AnomalyContext,
     AnomalyTrigger,
     KNOWN_EVENT_TYPES,
+    _classify_exit,
     scan_for_anomalies,
 )
 from .canary import CanaryRunner, build_canary_diff
@@ -128,6 +129,7 @@ class SupervisorDaemon:
         self.status.status = "starting"
         self.status.stop_reason = ""
         self._orch_proc: Optional[subprocess.Popen] = None
+        self._orch_stderr_path: Optional[Path] = None
         self._stop_requested = False
         self._stop_reason = ""
         self._last_event_ts = time.time()
@@ -347,14 +349,58 @@ class SupervisorDaemon:
             start_new_session=True,
         )
         self._orch_proc = proc
+        self._orch_stderr_path = stderr_path
         self.status.orchestrator_pid = proc.pid
         self.status.orchestrator_started_at = _now_iso()
         self.status.status = "running"
         write_status(self.project_path, self.status)
         logger.info("[supervisor] Orchestrator started pid=%d", proc.pid)
 
+    def _read_orch_stderr_tail(self, max_bytes: int = 2048) -> str:
+        """Read the last `max_bytes` of the current orchestrator's stderr log."""
+        path = self._orch_stderr_path
+        if path is None or not path.is_file():
+            return ""
+        try:
+            size = path.stat().st_size
+            start = max(0, size - max_bytes)
+            with open(path, "rb") as f:
+                f.seek(start)
+                data = f.read(size - start)
+            return data.decode("utf-8", errors="replace")
+        except OSError as exc:
+            logger.warning("[supervisor] Failed to read orchestrator stderr tail: %s", exc)
+            return ""
+
     def _restart_orchestrator(self) -> bool:
         """Restart orchestrator after a crash. Returns True if restarted, False if rapid-crash exhausted."""
+        # Permanent-error classification runs BEFORE the rapid-crash counter
+        # so a deterministic failure (bad spec path, missing binary) halts
+        # immediately without burning the retry budget.
+        stderr_tail = self._read_orch_stderr_tail()
+        exit_code = (
+            self._orch_proc.poll()
+            if self._orch_proc is not None
+            else None
+        )
+        reason_code = _classify_exit(stderr_tail or "")
+        if reason_code is None and exit_code == 127:
+            reason_code = "orchestrator_binary_missing"
+        if reason_code is not None:
+            logger.error(
+                "[supervisor] Permanent error detected: %s — halting daemon "
+                "without retrying. stderr tail: %s",
+                reason_code,
+                (stderr_tail or "")[-512:],
+            )
+            self._stop_reason = f"permanent_error:{reason_code}"
+            self.status.permanent_error = {
+                "code": reason_code,
+                "stderr_tail": (stderr_tail or "")[-2048:],
+            }
+            self._stop_requested = True
+            return False
+
         now = time.time()
         # Reset window if expired
         if now - self.status.rapid_crashes_window_start > self.config.rapid_crash_window:
@@ -570,6 +616,21 @@ class SupervisorDaemon:
             self.status.last_log_growth_at = ctx.now
         self.status.last_log_size = ctx.log_size
 
+        # Persist transition-trigger state so detectors see the right
+        # "previous" values on the next poll (and after daemon restart).
+        if ctx.state:
+            new_change_statuses: dict[str, str] = {}
+            for change in ctx.state.get("changes") or []:
+                name = str(change.get("name", ""))
+                if not name:
+                    continue
+                new_change_statuses[name] = (change.get("status") or "").lower()
+            self.status.last_change_statuses = new_change_statuses
+            self.status.last_orch_status = (ctx.state.get("status") or "").lower()
+        self.status.crossed_token_stall_thresholds = sorted(
+            ctx.crossed_token_stall_thresholds
+        )
+
         if not triggers:
             return
 
@@ -577,6 +638,12 @@ class SupervisorDaemon:
             "[supervisor] Anomaly scan: %d trigger(s) firing — %s",
             len(triggers), ", ".join(f"{t.type}({t.change or '-'})" for t in triggers),
         )
+        # Mark terminal_state as fired BEFORE execute so a failed dispatch
+        # does not cause a re-fire. The spec's semantics (AC-43) say "fires
+        # exactly once" — the check is on whether conditions were met, not
+        # whether the executor succeeded.
+        if any(t.type == "terminal_state" for t in triggers):
+            self.status.terminal_state_fired = True
         outcomes = self._trigger_executor.execute(triggers)
 
         # If a terminal_state trigger actually dispatched, request shutdown.
@@ -692,6 +759,12 @@ class SupervisorDaemon:
             last_log_growth_at=self.status.last_log_growth_at,
             error_baseline=self._error_baseline,
             known_event_types=self._known_event_types,
+            last_change_statuses=dict(self.status.last_change_statuses),
+            last_orch_status=self.status.last_orch_status,
+            terminal_state_fired=self.status.terminal_state_fired,
+            crossed_token_stall_thresholds=set(
+                self.status.crossed_token_stall_thresholds
+            ),
         )
 
     def _read_new_events(self, path: Path, cursor: int) -> tuple[list[dict], int]:

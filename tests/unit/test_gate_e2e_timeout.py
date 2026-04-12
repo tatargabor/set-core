@@ -232,6 +232,32 @@ def test_unparseable_nonzero_exit_returns_fail(tmp_wt, monkeypatch, tmp_path):
     assert "no parseable" in result.output.lower() or "crash" in result.output.lower() or "infra" in result.output.lower()
 
 
+def test_extract_failure_ids_strips_ansi_cursor_codes():
+    """Regression: Playwright emits \\x1b[1A\\x1b[2K cursor-control codes
+    before each progress line when stdout is a tty. The failure-line regex
+    uses `^\\s*` which does not match escape bytes, so the extractor used
+    to miss every ANSI-prefixed failure and trigger the "unparseable crash"
+    guard. Caught on nano-run-20260412-1941 where a `toHaveCount({min: 2})`
+    syntax error was misdiagnosed as a Playwright crash.
+    """
+    from set_project_web.gates import _extract_e2e_failure_ids
+
+    ansi_output = (
+        "Running 7 tests using 1 worker\n\n"
+        "\x1b[1A\x1b[2K[1/7] [chromium] \u203a tests/e2e/infra.spec.ts:8:7 \u203a AC-1\n"
+        "\x1b[1A\x1b[2K[4/7] (retries) [chromium] \u203a tests/e2e/infra.spec.ts:19:7 \u203a AC-3 (retry #1)\n"
+        "\x1b[1A\x1b[2K  1) [chromium] \u203a tests/e2e/infra.spec.ts:19:7 \u203a REQ-INFRA-001:AC-3 \n"
+        "\n    Error: locator._expect: expectedNumber: expected float, got object\n"
+        "\x1b[1A\x1b[2K  1 failed\n"
+        "    [chromium] \u203a tests/e2e/infra.spec.ts:19:7 \u203a REQ-INFRA-001:AC-3\n"
+        "  6 passed (12.1s)\n"
+    )
+    ids = _extract_e2e_failure_ids(ansi_output)
+    assert ids == {"tests/e2e/infra.spec.ts:19"}, (
+        f"Expected to extract the ANSI-prefixed failure id, got {ids!r}"
+    )
+
+
 def test_real_failure_enters_baseline_comparison(tmp_wt, monkeypatch, tmp_path):
     """Real Playwright failure with a parseable numbered list MUST flow through
     the baseline comparison (existing behavior preserved).

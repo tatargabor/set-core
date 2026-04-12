@@ -192,53 +192,39 @@ class TestIntegrationFailedDispatch:
 
 
 class TestRetryBudgetEndToEnd:
-    def test_integration_failed_stops_after_3_attempts(
+    def test_integration_failed_fires_once_on_stable_failed(
         self, project_dir, monkeypatch,
     ):
+        """With transition-based detection, a stable `failed` status fires
+        exactly once — not on every poll. The retry budget still protects
+        against pathological flapping (running→failed→running→failed),
+        tested separately in `test_integration_failed_retry_budget_caps_flaps`.
+        """
         state = {
             "status": "running",
             "changes": [
                 {"name": "stuck", "status": "integration-failed"},
             ],
         }
-        # Long-lived orchestrator so the daemon polls many times
         daemon, spawn_calls = _build_daemon(
             project_dir,
             state=state,
             monkeypatch=monkeypatch,
-            fake_orch_cmd=["/bin/sh", "-c", "sleep 10"],
+            fake_orch_cmd=["/bin/sh", "-c", "sleep 4"],
         )
         from set_orch.supervisor.canary import CanaryRunner
         monkeypatch.setattr(CanaryRunner, "is_due", lambda self: False)
 
-        # Run the daemon briefly in this thread, then signal it to stop.
-        # We use a side channel: monkeypatch the executor's emit so that
-        # after 3 dispatches we set _stop_requested.
-        original_execute = daemon._trigger_executor.execute
-
-        def execute_then_check(triggers):
-            outcomes = original_execute(triggers)
-            attempts = daemon.status.trigger_attempts.get(
-                "integration_failed:stuck", 0,
-            )
-            if attempts >= 3:
-                daemon._stop_requested = True
-                daemon._stop_reason = "test_done"
-            return outcomes
-
-        daemon._trigger_executor.execute = execute_then_check  # type: ignore[assignment]
-
         exit_code = daemon.run()
         assert exit_code == 0
 
-        # Exactly 3 dispatches (the budget for integration_failed)
-        spawned_triggers = [c["trigger"] for c in spawn_calls if c["trigger"] == "integration_failed"]
-        assert len(spawned_triggers) == 3
-
-        # Subsequent attempts emit a "skipped" event (we triggered stop
-        # right after 3, so likely none — but if any extra polls happened
-        # they MUST be skipped, never spawned)
-        assert daemon.status.trigger_attempts["integration_failed:stuck"] == 3
+        # Transition semantics: exactly ONE dispatch for a stable failed state
+        spawned_triggers = [
+            c["trigger"] for c in spawn_calls if c["trigger"] == "integration_failed"
+        ]
+        assert len(spawned_triggers) == 1
+        # No attempts beyond the single fire
+        assert daemon.status.trigger_attempts.get("integration_failed:stuck", 0) == 1
 
 
 class TestTerminalStateShortCircuit:

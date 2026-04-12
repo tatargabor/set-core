@@ -221,6 +221,39 @@ export function getChange(project: string, name: string): Promise<ChangeInfo> {
   return fetchJSON(`/${project}/changes/${name}`)
 }
 
+export interface JournalEntry {
+  ts: string
+  field: string
+  old: unknown
+  new: unknown
+  seq: number
+}
+
+export type GateRunResult = 'pass' | 'fail' | 'skip'
+
+export interface GateRun {
+  run: number
+  result: GateRunResult
+  output: string | null
+  ts: string
+  ms: number | null
+}
+
+export interface ChangeJournal {
+  entries: JournalEntry[]
+  grouped: Record<string, GateRun[]>
+}
+
+export function getChangeJournal(project: string, name: string): Promise<ChangeJournal> {
+  return fetchJSON<ChangeJournal>(`/${project}/changes/${name}/journal`).catch((err: unknown) => {
+    // Spec: the fetcher rejects with an Error whose message includes the
+    // change name so the caller's fallback log identifies which change
+    // failed without inspecting the URL.
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`getChangeJournal(${name}): ${msg}`)
+  })
+}
+
 export function getWorktrees(project: string): Promise<WorktreeInfo[]> {
   return fetchJSON(`/${project}/worktrees`)
 }

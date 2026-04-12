@@ -74,6 +74,35 @@ def get_terminal_pid_file(wt_path: str) -> str:
     return os.path.join(wt_path, ".set", "ralph-terminal.pid")
 
 
+def _resolve_project_from_wt(wt_path: str) -> Optional[str]:
+    """Resolve the main project path from a git worktree path.
+
+    Used by the input.md refresh hook so the dispatcher can locate the
+    `set/orchestration/review-learnings.jsonl` file that lives next to
+    the main checkout, not inside the worktree.
+    """
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=wt_path,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        common_dir = result.stdout.strip()
+        if not common_dir or common_dir == ".git":
+            return wt_path
+        abs_common = os.path.normpath(os.path.join(wt_path, common_dir))
+        return os.path.dirname(abs_common)
+    except (OSError, subprocess.SubprocessError, Exception):
+        return None
+
+
 def init_loop_state(
     wt_path: str,
     worktree_name: str,
@@ -230,6 +259,21 @@ def add_iteration(
                 "duration_ms": duration_ms,
                 "tokens_used": tokens_used,
             })
+
+        # Refresh input.md with latest review learnings from merged sibling
+        # changes. Non-blocking: failure logs a warning but never breaks
+        # the ralph loop.
+        if change_name:
+            try:
+                from .dispatcher import _maybe_refresh_input_md
+
+                project_path = _resolve_project_from_wt(wt_path)
+                if project_path:
+                    _maybe_refresh_input_md(change_name, wt_path, project_path)
+            except Exception:
+                logger.debug(
+                    "Input refresh check failed for %s", change_name, exc_info=True
+                )
 
         return True
     except (json.JSONDecodeError, OSError) as e:

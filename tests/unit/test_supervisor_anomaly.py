@@ -27,6 +27,8 @@ from set_orch.supervisor.anomaly import (
     DEFAULT_TOKEN_STALL_LIMIT,
     DEFAULT_TOKEN_STALL_SECS,
     KNOWN_EVENT_TYPES,
+    PERMANENT_ERROR_SIGNALS,
+    _classify_exit,
     detect_error_rate_spike,
     detect_integration_failed,
     detect_log_silence,
@@ -64,6 +66,10 @@ def make_ctx(
     error_baseline: dict | None = None,
     known_event_types: set[str] | None = None,
     now: float | None = None,
+    last_change_statuses: dict[str, str] | None = None,
+    last_orch_status: str = "",
+    terminal_state_fired: bool = False,
+    crossed_token_stall_thresholds: set[str] | None = None,
 ) -> AnomalyContext:
     return AnomalyContext(
         project_path=project_path,
@@ -83,6 +89,14 @@ def make_ctx(
         last_log_growth_at=last_log_growth_at,
         error_baseline=error_baseline if error_baseline is not None else {},
         known_event_types=known_event_types if known_event_types is not None else set(),
+        last_change_statuses=last_change_statuses if last_change_statuses is not None else {},
+        last_orch_status=last_orch_status,
+        terminal_state_fired=terminal_state_fired,
+        crossed_token_stall_thresholds=(
+            crossed_token_stall_thresholds
+            if crossed_token_stall_thresholds is not None
+            else set()
+        ),
     )
 
 
@@ -221,6 +235,127 @@ class TestIntegrationFailed:
             state={"changes": [{"name": "foo", "status": "merged"}]},
         )
         assert detect_integration_failed(ctx) == []
+
+
+class TestTransitionTriggers:
+    """Transition-check coverage for detect_integration_failed, detect_terminal_state, detect_token_stall."""
+
+    def test_integration_failed_first_observation_fires(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "failed"}]},
+            last_change_statuses={},
+        )
+        result = detect_integration_failed(ctx)
+        assert len(result) == 1
+        assert result[0].change == "x"
+
+    def test_integration_failed_stable_state_no_refire(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "failed"}]},
+            last_change_statuses={"x": "failed"},
+        )
+        assert detect_integration_failed(ctx) == []
+
+    def test_integration_failed_running_to_failed_transition_fires(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "failed"}]},
+            last_change_statuses={"x": "running"},
+        )
+        result = detect_integration_failed(ctx)
+        assert len(result) == 1
+        assert result[0].context["prev_status"] == "running"
+
+    def test_integration_failed_failed_to_done_no_fire(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "done"}]},
+            last_change_statuses={"x": "failed"},
+        )
+        assert detect_integration_failed(ctx) == []
+
+    def test_integration_failed_failed_to_running_no_fire(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "running"}]},
+            last_change_statuses={"x": "failed"},
+        )
+        assert detect_integration_failed(ctx) == []
+
+    def test_integration_failed_running_to_running_no_fire(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "running"}]},
+            last_change_statuses={"x": "running"},
+        )
+        assert detect_integration_failed(ctx) == []
+
+    def test_integration_failed_daemon_restart_persisted_status_no_refire(self, tmp_project):
+        """AC-41: daemon restart against pre-existing failed change should not re-fire.
+
+        The persisted `last_change_statuses` dict is loaded by
+        `read_status` on daemon start, so the first poll after restart
+        sees the same prev/current and the detector stays silent.
+        """
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "foundation", "status": "failed"}]},
+            last_change_statuses={"foundation": "failed"},
+        )
+        assert detect_integration_failed(ctx) == []
+
+    def test_terminal_state_first_observation_fires(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "done", "changes": []},
+            orchestrator_alive=False,
+            terminal_state_fired=False,
+        )
+        result = detect_terminal_state(ctx)
+        assert len(result) == 1
+
+    def test_terminal_state_already_fired_no_refire(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "done", "changes": []},
+            orchestrator_alive=False,
+            terminal_state_fired=True,
+        )
+        assert detect_terminal_state(ctx) == []
+
+    def test_terminal_state_alive_no_fire(self, tmp_project):
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "done", "changes": []},
+            orchestrator_alive=True,
+            terminal_state_fired=False,
+        )
+        assert detect_terminal_state(ctx) == []
+
+    def test_token_stall_first_crossing_fires(self, tmp_project):
+        now = time.time()
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "running", "tokens_used": 600_000}]},
+            now=now,
+            last_state_change_at=now - DEFAULT_TOKEN_STALL_SECS - 10,
+            crossed_token_stall_thresholds=set(),
+        )
+        result = detect_token_stall(ctx)
+        assert len(result) == 1
+
+    def test_token_stall_already_crossed_no_refire(self, tmp_project):
+        now = time.time()
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"changes": [{"name": "x", "status": "running", "tokens_used": 600_000}]},
+            now=now,
+            last_state_change_at=now - DEFAULT_TOKEN_STALL_SECS - 10,
+            crossed_token_stall_thresholds={f"x:{DEFAULT_TOKEN_STALL_LIMIT}"},
+        )
+        assert detect_token_stall(ctx) == []
 
 
 # ─── non_periodic_checkpoint ─────────────────────────────
@@ -489,3 +624,54 @@ class TestScanForAnomalies:
         # Priorities are non-decreasing
         priorities = [t.priority for t in result]
         assert priorities == sorted(priorities)
+
+
+# ─── _classify_exit (permanent errors) ────────────────────
+
+
+class TestClassifyExit:
+    def test_spec_not_found(self):
+        assert _classify_exit("Error: Spec file not found: docs/spec.md\n") == "spec_not_found"
+
+    def test_spec_not_found_alt(self):
+        assert _classify_exit("FileNotFoundError: [Errno 2] No such file or directory: 'docs/missing.md'") == "spec_not_found"
+
+    def test_orchestrator_import_broken_module(self):
+        assert _classify_exit("ModuleNotFoundError: No module named 'set_orch.engine'") == "orchestrator_import_broken"
+
+    def test_orchestrator_import_broken_importerror(self):
+        assert _classify_exit("ImportError: cannot import name 'foo' from 'bar'") == "orchestrator_import_broken"
+
+    def test_orchestrator_binary_missing(self):
+        assert _classify_exit("set-orchestrate: command not found\n") == "orchestrator_binary_missing"
+
+    def test_directives_missing(self):
+        assert _classify_exit("Error: No directives file at path") == "directives_missing"
+
+    def test_state_file_missing(self):
+        assert _classify_exit("Error: State file not found: foo.json") == "state_file_missing"
+
+    def test_profile_resolution_failed(self):
+        assert _classify_exit("ProfileResolutionError: plugin not loaded") == "profile_resolution_failed"
+
+    def test_empty_stderr_returns_none(self):
+        assert _classify_exit("") is None
+
+    def test_python_traceback_is_transient(self):
+        tb = (
+            "Traceback (most recent call last):\n"
+            "  File \"engine.py\", line 10, in <module>\n"
+            "    run()\n"
+            "RuntimeError: something went wrong\n"
+        )
+        assert _classify_exit(tb) is None
+
+    def test_random_stderr_is_transient(self):
+        assert _classify_exit("warning: something noisy but retryable\n") is None
+
+    def test_every_cataloged_pattern_has_test_coverage(self):
+        """Regression guard: every PERMANENT_ERROR_SIGNALS entry must match when fed literally."""
+        for pattern, expected in PERMANENT_ERROR_SIGNALS:
+            assert _classify_exit(pattern) == expected, (
+                f"Pattern {pattern!r} did not classify as {expected!r}"
+            )

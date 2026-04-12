@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from set_orch.archive import archive_and_write
 from set_orch.sentinel.set_dir import ensure_set_dir
 
 logger = logging.getLogger(__name__)
@@ -62,11 +63,28 @@ class SentinelFindings:
         except (json.JSONDecodeError, OSError):
             return _empty_findings()
 
-    def _write(self, data: dict) -> None:
+    def _write_direct(self, data: dict) -> None:
         tmp = self.findings_file + ".tmp"
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         os.replace(tmp, self.findings_file)
+
+    def _write(self, data: dict) -> None:
+        content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        archive_dir = os.path.join(self.sentinel_dir, "archive", "findings")
+        try:
+            archive_and_write(
+                self.findings_file,
+                content,
+                archive_dir=archive_dir,
+                reason="findings-update",
+            )
+        except OSError as exc:
+            logger.warning(
+                "archive_and_write failed for findings, falling back to direct: %s",
+                exc,
+            )
+            self._write_direct(data)
 
     def add(
         self,

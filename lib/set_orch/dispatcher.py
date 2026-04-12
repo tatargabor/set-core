@@ -1096,6 +1096,167 @@ def _detect_i18n_sidecar(wt_path: str, change_name: str, namespace: str = "") ->
     )
 
 
+_LEARNINGS_SECTION_MARKER = "<!-- AUTOREFRESH:review-learnings -->"
+_LEARNINGS_SECTION_END = "<!-- /AUTOREFRESH:review-learnings -->"
+
+
+def _learnings_file_path(project_path: str) -> str:
+    return os.path.join(project_path, "set", "orchestration", "review-learnings.jsonl")
+
+
+def _render_learnings_section(project_path: str) -> str:
+    """Render a bounded review-learnings checklist block for injection.
+
+    Returns the block body WITHOUT surrounding blank-line separators — the
+    caller is responsible for concatenation. This keeps repeated refreshes
+    idempotent: the same input yields byte-identical output.
+    """
+    try:
+        from .profile_loader import load_profile
+
+        profile = load_profile()
+        checklist = profile.review_learnings_checklist(project_path) or ""
+    except Exception:
+        return ""
+    if not checklist.strip():
+        return ""
+    lines = [ln for ln in checklist.splitlines() if ln.startswith("- ")]
+    if not lines:
+        return ""
+    body = "\n".join(lines[:30])
+    return (
+        f"{_LEARNINGS_SECTION_MARKER}\n"
+        "## Current Review Learnings\n"
+        "Patterns surfaced by prior merged changes. Check each against your diff:\n"
+        f"{body}\n"
+        f"{_LEARNINGS_SECTION_END}\n"
+    )
+
+
+def _replace_learnings_section(content: str, new_section: str) -> str:
+    """Replace any prior AUTOREFRESH learnings block with `new_section`.
+
+    If no prior block exists and `new_section` is non-empty, append it with
+    a single blank-line separator. Repeated calls are idempotent — the same
+    input yields the same output.
+    """
+    start = content.find(_LEARNINGS_SECTION_MARKER)
+    if start != -1:
+        end = content.find(_LEARNINGS_SECTION_END, start)
+        if end != -1:
+            end_after = end + len(_LEARNINGS_SECTION_END)
+            prefix = content[:start].rstrip("\n")
+            suffix = content[end_after:].lstrip("\n")
+            if not new_section:
+                merged = prefix + "\n"
+                if suffix:
+                    merged += "\n" + suffix
+                return merged
+            merged = prefix + "\n\n" + new_section
+            if suffix:
+                merged = merged.rstrip("\n") + "\n\n" + suffix
+            return merged
+    if not new_section:
+        return content
+    base = content.rstrip("\n")
+    return base + "\n\n" + new_section
+
+
+def _learnings_refresh_directive(project_path: str) -> bool:
+    """Return False if the operator disabled learnings refresh via directive.
+
+    Reads `set/orchestration/directives.json` directly — we cannot import
+    the parsed Directives here because the dispatcher is called from
+    contexts that don't have an orchestration state yet. Failure to read
+    the directives file defaults to enabled (the spec default).
+    """
+    path = os.path.join(project_path, "set", "orchestration", "directives.json")
+    if not os.path.isfile(path):
+        return True
+    try:
+        with open(path) as f:
+            raw = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return True
+    val = raw.get("refresh_input_on_learnings_update", True)
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.lower() not in ("0", "false", "no", "off")
+    return True
+
+
+def _maybe_refresh_input_md(
+    change_name: str,
+    wt_path: str,
+    project_path: str,
+) -> bool:
+    """Regenerate the learnings section of input.md when newer learnings exist.
+
+    Returns True if input.md was rewritten, False otherwise. Non-blocking:
+    any failure logs a WARNING and returns False — the ralph loop must
+    never crash because of a refresh hiccup.
+    """
+    if not _learnings_refresh_directive(project_path):
+        logger.debug(
+            "Input refresh skipped for %s — directive refresh_input_on_learnings_update is False",
+            change_name,
+        )
+        return False
+
+    input_md_path = os.path.join(
+        wt_path, "openspec", "changes", change_name, "input.md"
+    )
+    if not os.path.isfile(input_md_path):
+        return False
+
+    learnings_path = _learnings_file_path(project_path)
+    if not os.path.isfile(learnings_path):
+        return False
+
+    try:
+        input_mtime = os.path.getmtime(input_md_path)
+        learnings_mtime = os.path.getmtime(learnings_path)
+    except OSError as exc:
+        logger.warning(
+            "Input refresh mtime check failed for %s: %s", change_name, exc
+        )
+        return False
+
+    if learnings_mtime <= input_mtime:
+        logger.debug(
+            "Input refresh skipped for %s — learnings not newer "
+            "(learnings=%.0f, input=%.0f)",
+            change_name, learnings_mtime, input_mtime,
+        )
+        return False
+
+    try:
+        content = open(input_md_path).read()
+        new_section = _render_learnings_section(project_path)
+        updated = _replace_learnings_section(content, new_section)
+        if updated == content:
+            # No-op: section was already up to date (e.g. learnings file
+            # touched but content unchanged). Touch the input.md so the
+            # next mtime compare skips cleanly.
+            os.utime(input_md_path, None)
+            return False
+        tmp_path = input_md_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            f.write(updated)
+        os.replace(tmp_path, input_md_path)
+        logger.info(
+            "Input refresh for %s — learnings mtime %.0f > input mtime %.0f",
+            change_name, learnings_mtime, input_mtime,
+        )
+        return True
+    except OSError as exc:
+        logger.warning(
+            "Input refresh rewrite failed for %s: %s", change_name, exc
+        )
+        return False
+
+
 def _build_input_content(
     change_name: str,
     scope: str,

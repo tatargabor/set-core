@@ -22,7 +22,7 @@ import os
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,22 @@ class SupervisorStatus:
     last_log_size: int = 0
     last_log_growth_at: float = 0.0
     error_baseline: dict = field(default_factory=dict)
+
+    # Transition-based trigger state — last observed per-change status and
+    # orchestration-level status. Detectors fire only when the current value
+    # differs from the persisted one, so a stable `failed` state does not
+    # re-fire on every poll.
+    last_change_statuses: dict = field(default_factory=dict)
+    last_orch_status: str = ""
+    crossed_token_stall_thresholds: list = field(default_factory=list)
+    # Fires exactly once per daemon lifetime. Prevents terminal_state from
+    # re-firing after a restart against a pre-existing dead+terminal state.
+    terminal_state_fired: bool = False
+
+    # Permanent error surface — populated by _restart_orchestrator() when
+    # stderr matches a PERMANENT_ERROR_SIGNALS entry. When set, the daemon
+    # halts immediately and the manager API surfaces this to the dashboard.
+    permanent_error: Optional[dict] = None
 
 
 def _status_path(project_path: str | Path) -> Path:

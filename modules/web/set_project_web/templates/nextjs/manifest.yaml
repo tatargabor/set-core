@@ -9,6 +9,7 @@ core:
   - rules/data-model.md
   - rules/deployment.md
   - rules/testing-conventions.md
+  - rules/playwright-assertions.md
   - rules/seo-conventions.md
   - rules/accessibility.md
   - rules/performance.md

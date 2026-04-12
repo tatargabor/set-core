@@ -356,6 +356,14 @@ def cleanup_worktree(change_name: str, wt_path: str, retention: str = "", projec
         _archive_worktree_logs(change_name, wt_path)
         if project_path:
             _archive_test_artifacts(change_name, wt_path, project_path)
+            try:
+                from .worktree_harvest import harvest_worktree
+
+                harvest_worktree(change_name, wt_path, project_path)
+            except Exception:
+                logger.warning(
+                    "Worktree harvest failed for %s", change_name, exc_info=True
+                )
 
     # Resolve retention policy
     if not retention:
@@ -692,6 +700,30 @@ def merge_change(
         logger.info("Merged %s (ff-only, git-verified)", change_name)
         if event_bus:
             event_bus.emit("MERGE_COMPLETE", change=change_name, data={"result": "success"})
+
+        # Auto-resolve any diagnosed issues that were blocking the merge queue.
+        # Non-blocking: merger failure here must never undo a successful merge.
+        # Project path is derived from state_file — os.getcwd() is fragile
+        # because gate runners chdir into worktrees during execution.
+        try:
+            from .issues.registry import IssueRegistry
+
+            project_path = Path(os.path.dirname(os.path.abspath(state_file)))
+            registry = IssueRegistry(project_path)
+            resolved = registry.auto_resolve_for_change(
+                change_name, reason=f"merge_success:{change_name}"
+            )
+            if resolved:
+                logger.info(
+                    "Auto-resolved %d issue(s) on merge of %s: %s",
+                    len(resolved), change_name, ", ".join(resolved),
+                )
+        except Exception:
+            logger.warning(
+                "Issue auto-resolve failed on merge of %s (non-blocking)",
+                change_name,
+                exc_info=True,
+            )
 
         # Heartbeat helper for post-merge steps
         def _heartbeat(step: str) -> None:

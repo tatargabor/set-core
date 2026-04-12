@@ -223,7 +223,11 @@ def _build_terminal_state(*, reason, change, context, project_path, spec) -> str
         "  - any unmerged-but-not-failed changes\n"
         "  - top 5 anomalies the supervisor saw during the run\n"
         "  - one-paragraph summary suitable for the user\n"
-        "Use `set-sentinel-finding add --severity info` to record it. "
+        "Use `set-sentinel-finding add --severity observation --change _run` "
+        "to record the final report. The `observation` severity + `_run` "
+        "change scope tells the issue pipeline this is an informational "
+        "record, NOT a bug to investigate — it will not spawn an "
+        "investigator or create a fix change.\n"
         "End with VERDICT: noted."
     )
 

@@ -3,6 +3,30 @@ from __future__ import annotations
 """Git utilities shared across orchestration modules."""
 
 import subprocess
+from typing import Optional
+
+
+def resolve_head_commit(cwd: str, timeout: float = 2.0) -> Optional[str]:
+    """Return the HEAD commit SHA for `cwd`, or None on any failure.
+
+    Used by archive_and_write metadata sidecars and worktree harvest meta
+    files. Swallows all errors so the caller never has to.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        if result.returncode == 0:
+            commit = result.stdout.strip()
+            return commit or None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    return None
 
 # Paths that are always dirty during agent execution (framework-internal).
 # These are written by Ralph loop, Claude Code session, set-core hooks, and

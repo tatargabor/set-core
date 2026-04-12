@@ -740,6 +740,62 @@ def _write_review_findings_md(
     return md_path
 
 
+def _group_review_findings_by_severity(review_output: str) -> dict[str, list[dict]]:
+    """Parse findings and return them grouped by severity tier."""
+    issues = _parse_review_issues(review_output)
+    groups: dict[str, list[dict]] = {
+        "CRITICAL": [],
+        "HIGH": [],
+        "MEDIUM": [],
+        "LOW": [],
+    }
+    for i in issues:
+        sev = (i.get("severity") or "").upper()
+        if sev in groups:
+            groups[sev].append(i)
+    return groups
+
+
+def _render_grouped_findings_section(grouped: dict[str, list[dict]]) -> str:
+    """Render findings as Must Fix / Should Fix / Nice to Have sections.
+
+    Applied per Part 8 severity rubric: CRITICAL+HIGH → Must Fix,
+    MEDIUM → Should Fix (if trivial), LOW → Nice to Have.
+    """
+    must_fix = grouped["CRITICAL"] + grouped["HIGH"]
+    should_fix = grouped["MEDIUM"]
+    nice_to_have = grouped["LOW"]
+
+    sections: list[str] = []
+    if must_fix:
+        sections.append("## Must Fix")
+        for i in must_fix:
+            sev = i.get("severity", "").upper()
+            summary = i.get("summary", "").strip()
+            file = i.get("file", "").strip()
+            line = i.get("line", "").strip()
+            loc = f" ({file}:{line})" if file else ""
+            sections.append(f"- [{sev}] {summary}{loc}")
+    if should_fix:
+        sections.append("\n## Should Fix (if trivial)")
+        for i in should_fix:
+            summary = i.get("summary", "").strip()
+            sections.append(f"- {summary}")
+    if nice_to_have:
+        sections.append("\n## Nice to Have")
+        for i in nice_to_have:
+            summary = i.get("summary", "").strip()
+            sections.append(f"- {summary}")
+
+    if not sections:
+        return ""
+    sections.append(
+        "\nFocus on Must Fix first. Move to Should Fix only if there is "
+        "capacity. Skip Nice to Have unless the fix is a one-line change."
+    )
+    return "\n".join(sections) + "\n\n"
+
+
 def _build_review_retry_prompt(
     state_file: str,
     change_name: str,
@@ -757,6 +813,15 @@ def _build_review_retry_prompt(
     history = _get_review_history(state_file, change_name)
 
     parts = [f'CRITICAL CODE REVIEW FAILURE for "{change_name}". You MUST fix the review issues.\n']
+
+    # Severity-grouped findings summary — per Part 8 rubric, the agent
+    # prioritizes CRITICAL+HIGH (Must Fix) over MEDIUM (Should Fix) and LOW
+    # (Nice to Have). Previous prompts mixed all findings at the same
+    # level, causing agents to spend retry cycles on cosmetic issues.
+    grouped = _group_review_findings_by_severity(current_review_output)
+    grouped_section = _render_grouped_findings_section(grouped)
+    if grouped_section:
+        parts.append(grouped_section)
 
     # Reference the findings file
     if findings_md_path:
@@ -1380,6 +1445,7 @@ def review_change(
     fast_path_critical = sum(1 for i in parsed_issues if i["severity"] == "CRITICAL")
     has_critical = fast_path_critical > 0
     verdict_source = "fast_path"
+    classifier_downgrades: list[dict] = []
 
     # Defense in depth: ALWAYS run the LLM verdict classifier on every
     # non-trivial review output (not just retries, not just zero-finding
@@ -1412,6 +1478,7 @@ def review_change(
             scope_context=scope,
         )
         if cls_result.error is None:
+            classifier_downgrades = list(cls_result.downgrades or [])
             cls_critical = cls_result.critical_count
             if cls_critical > fast_path_critical:
                 # Classifier found findings the fast-path missed —
@@ -1439,13 +1506,59 @@ def review_change(
                 ]
                 verdict_source = "classifier_override"
             elif cls_critical < fast_path_critical:
-                # Fast-path was stricter than classifier — KEEP the
-                # fast-path verdict. We never silently downgrade.
-                logger.info(
-                    "Gate[review] fast_path stricter (%d) than classifier (%d) for %s — "
-                    "keeping fast_path verdict", fast_path_critical, cls_critical, change_name,
+                # Fast-path was stricter than classifier.
+                # Only respect classifier downgrades when:
+                #   (a) the classifier actually provided downgrade entries
+                #   (b) the downgrades account for the gap — the sum of
+                #       downgraded-from-CRITICAL entries must cover the
+                #       reduction. Without this the classifier could zero
+                #       out critical_count with an empty findings list
+                #       and bypass a real CRITICAL the fast path caught.
+                downgrade_critical_count = sum(
+                    1
+                    for d in classifier_downgrades
+                    if (d.get("from") or "").upper() == "CRITICAL"
                 )
-                verdict_source = "fast_path_stricter"
+                delta = fast_path_critical - cls_critical
+                if classifier_downgrades and downgrade_critical_count >= delta:
+                    logger.info(
+                        "Gate[review] classifier downgraded %d findings per rubric "
+                        "(fast_path=%d critical → classifier=%d critical, delta=%d covered) for %s",
+                        len(classifier_downgrades),
+                        fast_path_critical,
+                        cls_critical,
+                        delta,
+                        change_name,
+                    )
+                    has_critical = cls_critical > 0
+                    parsed_issues = [
+                        {
+                            "severity": f.get("severity", "MEDIUM"),
+                            "summary": f.get("summary", ""),
+                            "file": f.get("file", ""),
+                            "line": f.get("line", ""),
+                            "fix": f.get("fix", ""),
+                        }
+                        for f in cls_result.findings
+                    ]
+                    verdict_source = "classifier_downgrade"
+                else:
+                    if classifier_downgrades:
+                        logger.warning(
+                            "Gate[review] classifier claimed %d downgrades but only "
+                            "%d were from CRITICAL (delta=%d) — rejecting and keeping "
+                            "fast_path verdict for %s",
+                            len(classifier_downgrades),
+                            downgrade_critical_count,
+                            delta,
+                            change_name,
+                        )
+                    else:
+                        logger.info(
+                            "Gate[review] fast_path stricter (%d) than classifier (%d) for %s — "
+                            "keeping fast_path verdict", fast_path_critical, cls_critical, change_name,
+                        )
+                    verdict_source = "fast_path_stricter"
             else:
                 logger.info(
                     "Gate[review] classifier and fast_path agree (%d critical) for %s "
@@ -1464,6 +1577,7 @@ def review_change(
         cwd=wt_path, baseline=session_baseline, change_name=change_name,
         has_critical=has_critical, parsed_issues=parsed_issues,
         source=verdict_source,
+        downgrades=classifier_downgrades,
     )
     return ReviewResult(has_critical=has_critical, output=review_output)
 
@@ -1477,6 +1591,7 @@ def _persist_review_verdict(
     parsed_issues: list[dict],
     source: str,
     summary: str = "",
+    downgrades: list[dict] | None = None,
 ) -> None:
     """Write a `<session_id>.verdict.json` next to the review's Claude session.
 
@@ -1509,6 +1624,7 @@ def _persist_review_verdict(
             low_count=sev_counts["LOW"],
             source=source,
             summary=summary,
+            downgrades=downgrades or [],
         )
     except Exception:
         logger.warning("review verdict sidecar persist failed", exc_info=True)
@@ -2427,12 +2543,35 @@ def _execute_e2e_coverage_gate(
         logger.info("Gate[e2e-coverage] END %s result=pass (no scope)", change_name)
         return GateResult("e2e_coverage", "pass")
 
-    # Extract required operations from scope keywords
+    # Extract required operations from scope keywords. Patterns require
+    # USER-FACING context so that file-creation instructions
+    # ("create prisma/schema.prisma") and test-setup instructions
+    # ("delete all items in beforeAll") don't false-positive as CRUD
+    # requirements. Caught on nano-run-20260412-1941 where the `infra`
+    # foundation change was flagged for missing create/delete E2E
+    # coverage despite having no user-facing CRUD in scope.
     required = []
     crud_keywords = {
-        "create": ["create", "add new", "new product", "new item", "form.*submit"],
-        "update": ["edit", "update", "modify", "change.*name"],
-        "delete": ["delete", "remove", "confirmation.*dialog"],
+        "create": [
+            r"\bcreate\s+(?:new|an?)\s+(?:item|product|entry|record|post|user)",
+            r"\badd\s+(?:new|an?|the)\s+(?:item|product|entry|record|user)",
+            r"\bnew\s+(?:item|product|entry|record|user)\s+(?:form|button|dialog|modal|page)",
+            r"\b(?:submit|click)\s+(?:the\s+)?(?:add|create)\s+(?:button|form)",
+            r"\bform\s+(?:to|that)\s+(?:create|add)",
+            r"\bserver\s+action.*\b(?:to|for)\s+(?:create|add)",
+        ],
+        "update": [
+            r"\bedit\s+(?:the\s+)?(?:item|product|entry|record|name|title)",
+            r"\bupdate\s+(?:the\s+)?(?:item|product|entry|record|name|title)",
+            r"\bmodify\s+(?:the\s+)?(?:item|product|entry|record)",
+            r"\bchange\s+(?:the\s+)?(?:name|title|status)\s+(?:of|for)",
+        ],
+        "delete": [
+            r"\bdelete\s+(?:the\s+)?(?:item|product|entry|record|user|button)",
+            r"\bremove\s+(?:the\s+)?(?:item|product|entry|record|user)",
+            r"\bconfirmation\s+(?:dialog|modal|prompt)\s+(?:for|before)",
+            r"\btrash\s+(?:icon|button)",
+        ],
     }
     for op, keywords in crud_keywords.items():
         if any(re.search(kw, scope) for kw in keywords):

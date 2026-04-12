@@ -1,97 +1,52 @@
-## review-learnings
+## MODIFIED Requirements
 
-Cross-run review findings persistence with two-layer storage (template vs project), LLM-based classification, and dispatch-time checklist injection.
+### Requirement: Review gate receives learnings checklist
+The review gate SHALL receive the persistent learnings checklist as part of the review prompt, so the reviewer LLM can enforce violations. Currently only the implementation agent sees learnings via input.md.
 
-### Requirements
+#### Scenario: Review prompt includes learnings
+- **WHEN** `_execute_review_gate()` runs for a change
+- **THEN** the review prompt SHALL include a learnings section via `prompt_prefix`
+- **AND** the section SHALL list relevant persistent learnings with severity and count
+- **AND** the reviewer SHALL treat violations of high-count CRITICAL learnings as [CRITICAL] findings
 
-#### RL-PERSIST — Persist review learnings after each change merge
-- After a change merges successfully, extract CRITICAL/HIGH patterns from `review-findings.jsonl`
-- Normalize patterns: strip severity tags, first 60 chars
-- Classify via Sonnet into `template` or `project` scope (single batch call)
-- Template patterns → `~/.config/set-core/review-learnings/<profile-name>.jsonl` (with flock)
-- Project patterns → `<project>/set/orchestration/review-learnings.jsonl` (committed to main)
-- Deduplicate against existing entries by normalized pattern text
-- Increment `count` and update `last_seen` for existing patterns
-- JSONL entry: `{"pattern", "severity", "scope", "count", "last_seen", "source_changes": [], "fix_hint"}`
-- Cap at 50 entries per JSONL; when exceeded, remove oldest by `last_seen`
+#### Scenario: No learnings available
+- **WHEN** no learnings exist (empty JSONL, no baseline)
+- **THEN** the review prompt SHALL not include a learnings prefix
+- **AND** review behavior SHALL be unchanged from current
 
-#### RL-CLASSIFY — LLM classification of findings scope
-- Single Sonnet call per merge, batch all patterns
-- Prompt includes profile name (e.g., "web") for context
-- Input: array of `{"pattern", "fix_hint"}` objects
-- Output: array of `{"pattern", "scope": "template|project"}`
-- Fallback on API error/timeout: classify all as `project` (safe — no template pollution)
-- No regex or keyword matching — pure LLM classification
+### Requirement: Severity-weighted eviction replaces timestamp LRU
+The `_merge_learnings()` method SHALL use a scoring formula for eviction instead of pure `last_seen` ordering. Score: `count * severity_weight * recency_factor`. Cap raised from 50 to 200 entries with hysteresis (evict to 180 when 200 reached).
 
-#### RL-CHECKLIST — Profile method returns compact checklist from 3 sources
-- `ProjectType.review_learnings_checklist(project_path)` returns markdown (max 15 lines)
-- Combines: static baseline (`[baseline]`) + template JSONL (`[template, seen Nx]`) + project JSONL (`[project, seen Nx]`)
-- Priority: project > template > baseline (most specific first)
-- Deduplicate by normalized pattern text across all 3 sources
-- Returns empty string if no learnings and no baseline exist
+#### Scenario: High-signal pattern survives over low-signal
+- **WHEN** the JSONL has 200 entries and a new pattern arrives
+- **AND** pattern A has count=8, severity=CRITICAL, last_seen=20 days ago (score=8*3*0.7=16.8)
+- **AND** pattern B has count=1, severity=HIGH, last_seen=2 days ago (score=1*2*1.0=2.0)
+- **THEN** pattern B SHALL be evicted before pattern A
 
-#### RL-BASELINE — Static web security baseline
-- `modules/web/set_project_web/review_baseline.md` contains hand-curated checklist
-- Items: auth middleware, type safety (no `as any`), input validation, rate limiting, password hashing, CSRF, html lang
-- Read by `WebProjectType.review_learnings_checklist()` as lowest priority source
-- Other project types ship their own baseline or return empty
+#### Scenario: Eviction hysteresis
+- **WHEN** the JSONL reaches 200 entries
+- **THEN** eviction SHALL remove the lowest-scoring entries until 180 remain
+- **AND** subsequent merges SHALL not trigger eviction until 200 is reached again
 
-#### RL-INJECT — Dispatch-time checklist injection
-- `dispatcher.py` calls `profile.review_learnings_checklist(project_path)` in `_build_input_content()`
-- Injected as `## Review Learnings Checklist` section in input.md
-- Placed after existing `## Lessons from Prior Changes` (cross-change within-run)
-- Both sections coexist: within-run learnings + cross-run persistent checklist
+### Requirement: Classifier prompt includes few-shot examples
+The `_classify_patterns()` prompt SHALL include few-shot examples demonstrating template vs project classification.
 
-#### RL-SCOPE — Two-layer storage isolation
-- Template JSONL: `~/.config/set-core/review-learnings/<profile-name>.jsonl` — shared across projects
-- Project JSONL: `<project>/set/orchestration/review-learnings.jsonl` — committed to main
-- Profile name derived from `profile.info.name`; NullProfile uses "core"
-- Web template patterns never appear in non-web dispatches
-- Template JSONL uses `fcntl.flock(LOCK_EX)` for concurrent access from multiple projects
+#### Scenario: Classifier uses examples
+- **WHEN** `_classify_patterns()` builds its prompt
+- **THEN** the prompt SHALL include at least 4 example classifications
+- **AND** examples SHALL cover both template (generic security/framework) and project (domain-specific) patterns
 
-#### RL-MIGRATE — Seed template learnings from existing runs
-- Migration script: `scripts/migrate-review-learnings.py`
-- Scans `~/.local/share/set-core/e2e-runs/*/orchestration/review-findings.jsonl`
-- Extracts CRITICAL/HIGH, batch classifies via Sonnet, writes template patterns to `.config` JSONL
-- Project patterns discarded during migration (only template seeded)
-- Aggregates counts across multiple runs for same pattern
+### Requirement: Expanded review pattern clusters
+`REVIEW_PATTERN_CLUSTERS` SHALL include clusters for IDOR, cascade-delete, race-condition, missing-validation, and open-redirect patterns in addition to existing clusters.
 
-#### RL-PROMOTE — Interactive skill to promote template learnings to baseline
-- Skill: `/set:findings promote` (or `set:review-promote`)
-- Reads `~/.config/set-core/review-learnings/<profile-name>.jsonl`
-- Shows each pattern with count, severity, source changes, fix hint
-- For each: asks "Promote to baseline? (y/n/edit/skip)"
-  - `y` → append to `modules/<type>/review_baseline.md` as-is
-  - `edit` → let user edit the wording before appending
-  - `n` → skip, mark as "reviewed" in JSONL (don't re-ask next time)
-  - `skip` → skip without marking (will re-ask next time)
-- After all reviewed: show summary of promoted items
-- Commit changes to `review_baseline.md` if any promoted
+#### Scenario: IDOR patterns clustered
+- **WHEN** findings include "IDOR — user can modify other users' data" and "No ownership check on delete"
+- **THEN** both SHALL be clustered under the "idor" cluster in cross-change learnings
 
-#### RL-LLM-LOG — Unified LLM call event logging
-- New event type `LLM_CALL` emitted for EVERY `run_claude()` invocation across the codebase
-- Event data: `{"purpose", "model", "duration_ms", "output_size", "exit_code", "timed_out"}`
-- `purpose` values: `review`, `smoke_fix`, `spec_verify`, `classify`, `replan`, `decompose`, `decompose_summary`, `decompose_domain`, `decompose_merge`, `digest`, `audit`, `build_fix`
-- `change` field populated when the call is change-scoped (review, smoke_fix, spec_verify, classify); empty for global calls (replan, decompose, digest, audit, build_fix)
-- Persists to `orchestration-events.jsonl` — survives sessions, visible across runs
-- Wrapper function `run_claude_logged(prompt, *, purpose, change="", **kwargs)` that calls `run_claude()` then emits `LLM_CALL` event
-- All existing `run_claude()` call sites migrated to `run_claude_logged()`
+### Requirement: fix_hint truncated at storage
+The `fix_hint` field SHALL be truncated to 200 characters when persisting to JSONL. Code blocks and multi-line content SHALL be stripped to a single-line summary.
 
-#### RL-SESSION-LABEL — Meaningful session labels for LLM calls
-- `run_claude_logged()` passes `--session-name` (or equivalent) to encode purpose into the Claude session
-- Session name format: `{change_name}:{purpose}` (e.g., `auth-user-accounts:review`, `auth-user-accounts:smoke_fix`, `:replan`, `:decompose`)
-- `_derive_session_label()` in `api.py` updated to parse this format → shows purpose instead of "Task"
-- For calls without change context, prefix is empty (`:replan` → label "Replan")
-- Fallback: if session name not available, existing heuristic applies
-
-#### RL-LLM-UI — LLM call visibility in set-web
-- Changes tab timeline includes `LLM_CALL` events with purpose, model, duration
-- Changes tab log (bottom panel) shows chronological LLM calls for the selected change
-- Global LLM calls (replan, decompose, digest) appear in a "System" section or run-level log
-- Each entry shows: timestamp, purpose, model, duration_ms, exit_code
-- Filterable by purpose (e.g., show only review calls, or only classification calls)
-
-#### RL-UI — set-web findings display
-- Review findings summary shows Source column: `set-core` (baseline) / `.local` (template dynamic) / `project`
-- Shows Scope column: `template` / `project`
-- Pattern, Count, Last Seen columns as existing
+#### Scenario: Long fix_hint truncated
+- **WHEN** a review finding has a fix_hint of 500 characters with code blocks
+- **THEN** the persisted entry SHALL have fix_hint truncated to 200 characters
+- **AND** trailing `...` SHALL indicate truncation

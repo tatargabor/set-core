@@ -1,17 +1,20 @@
-# Spec: Design Dispatch Context
+# Spec: Design Dispatch Context (delta)
 
-## Status: modified
+## MODIFIED Requirements
 
-## Requirements
+### Requirement: Alias externalization
+The `_DESIGN_BRIEF_ALIASES` hardcoded array in bridge.sh SHALL be emptied. Project-specific aliases SHALL be stored in per-scaffold files and loaded via the existing `DESIGN_BRIEF_ALIASES_FILE` environment variable.
 
-### REQ-DISPATCH-FALLBACK: Use design-system.md as primary design source
-- `design_context_for_dispatch()` in `bridge.sh` SHALL check for `docs/design-system.md` first
-- If `design-system.md` exists and contains `## Design Tokens` section, use it instead of `design-snapshot.md`
-- Fallback chain: `docs/design-system.md` → `design-snapshot.md` → `figma-raw/sources/*tokens*.md` → empty
+The alias file format remains the same: one entry per line, `PageName:alias1,alias2,alias3`.
 
-### REQ-DISPATCH-PAGE-MATCH: Page-specific design injection
-- When `design-system.md` has `## Page Layouts` with named subsections (e.g., `### Homepage`, `### Catalog`), match the scope text against page names
-- If scope mentions "homepage" or "landing" → inject the `### Homepage` subsection
-- If scope mentions "catalog" or "product list" → inject `### Catalog`
-- Always include the `## Design Tokens` section (colors, fonts, spacing) regardless of page match
-- Max output: 200 lines (tokens + matched page section)
+#### Scenario: No alias file configured
+- **WHEN** `DESIGN_BRIEF_ALIASES_FILE` is empty or unset and `_DESIGN_BRIEF_ALIASES` is empty
+- **THEN** the alias matching layer is skipped (no aliases to check) and only exact + stem layers are active
+
+#### Scenario: Scaffold alias file deployed
+- **WHEN** `DESIGN_BRIEF_ALIASES_FILE` points to a valid file with alias entries
+- **THEN** those aliases are loaded and used for the alias matching layer
+
+#### Scenario: Runner deploys alias file
+- **WHEN** a scaffold directory contains `docs/design-brief-aliases.txt`
+- **THEN** the runner script copies it to the test project and sets `DESIGN_BRIEF_ALIASES_FILE` in the orchestration config

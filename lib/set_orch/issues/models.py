@@ -10,6 +10,9 @@ from enum import Enum
 from typing import Optional
 
 
+DEFAULT_ISSUE_DIAGNOSED_TIMEOUT_SECS = 3600  # 1 hour
+
+
 class IssueState(str, Enum):
     NEW = "new"
     INVESTIGATING = "investigating"
@@ -196,6 +199,7 @@ class Issue:
     # Timestamps
     updated_at: str = field(default_factory=now_iso)
     resolved_at: Optional[str] = None
+    diagnosed_at: Optional[str] = None
 
     def to_dict(self) -> dict:
         d = {
@@ -227,6 +231,7 @@ class Issue:
             "max_retries": self.max_retries,
             "updated_at": self.updated_at,
             "resolved_at": self.resolved_at,
+            "diagnosed_at": self.diagnosed_at,
         }
         return d
 

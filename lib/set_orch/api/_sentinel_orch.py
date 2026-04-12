@@ -70,30 +70,49 @@ async def sentinel_status(project: str):
 
     Returns {active: false} when file does not exist.
     Adds computed is_active field (true if active and last_event_at within 60s).
+    Surfaces `permanent_error` from the supervisor daemon when the daemon
+    halted due to a deterministic failure (spec typo, missing binary, etc.).
     """
     pp = _resolve_project(project)
     status_file = _sentinel_dir(pp) / "status.json"
     if not status_file.exists():
-        return {"active": False, "is_active": False}
+        data: dict = {"active": False, "is_active": False}
+    else:
+        try:
+            with open(status_file) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            data = {"active": False, "is_active": False}
 
-    try:
-        with open(status_file) as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {"active": False, "is_active": False}
+        # Compute is_active: active + recent heartbeat
+        is_active = False
+        if data.get("active"):
+            last = data.get("last_event_at", "")
+            if last:
+                try:
+                    last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                    age = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                    is_active = age < 60
+                except (ValueError, TypeError):
+                    pass
+        data["is_active"] = is_active
 
-    # Compute is_active: active + recent heartbeat
-    is_active = False
-    if data.get("active"):
-        last = data.get("last_event_at", "")
-        if last:
-            try:
-                last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
-                age = (datetime.now(timezone.utc) - last_dt).total_seconds()
-                is_active = age < 60
-            except (ValueError, TypeError):
-                pass
-    data["is_active"] = is_active
+    # Read supervisor status for permanent_error surfacing. Only surface
+    # the machine-readable reason code — the raw stderr tail contains
+    # tracebacks, environment variables, and CLI args that may leak
+    # internal paths or secrets to unauthenticated clients.
+    sup_status_file = pp / ".set" / "supervisor" / "status.json"
+    if sup_status_file.is_file():
+        try:
+            with open(sup_status_file) as f:
+                sup_data = json.load(f)
+            perm = sup_data.get("permanent_error")
+            if isinstance(perm, dict) and perm.get("code"):
+                data["permanent_error"] = {"code": perm["code"]}
+            if sup_data.get("stop_reason", "").startswith("permanent_error:"):
+                data.setdefault("stop_reason", sup_data["stop_reason"])
+        except (json.JSONDecodeError, OSError):
+            pass
     return data
 
 

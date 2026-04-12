@@ -171,6 +171,8 @@ class IssueManager:
             )
         issue.state = new_state
         issue.updated_at = now_iso()
+        if new_state == IssueState.DIAGNOSED and not issue.diagnosed_at:
+            issue.diagnosed_at = now_iso()
         self.registry.save()
         self.audit.log(issue.id, f"transition:{new_state.value}",
                        from_state=old_state.value, to_state=new_state.value)
@@ -378,6 +380,38 @@ class IssueManager:
             raise ValueError(f"Issue {issue_id} not found")
         self._transition(issue, IssueState.DISMISSED)
 
+    def action_resolve(self, issue_id: str, reason: str = "manual_resolve"):
+        """Operator escape hatch — transition an issue to RESOLVED.
+
+        Used when a diagnosed issue blocks the merge queue and automatic
+        resolution has not fired yet. Goes through _transition so any
+        active investigator/fixer is killed, the state machine validates
+        the transition, and audit entries record the operator rationale.
+        """
+        issue = self.registry.get(issue_id)
+        if not issue:
+            raise ValueError(f"Issue {issue_id} not found")
+        if issue.state == IssueState.INVESTIGATING and self.investigator:
+            try:
+                self.investigator.kill(issue)
+            except Exception:
+                logger.warning(
+                    "Failed to kill investigator on resolve for %s", issue_id, exc_info=True,
+                )
+        elif issue.state in (IssueState.FIXING, IssueState.VERIFYING) and self.fixer:
+            try:
+                self.fixer.kill(issue)
+            except Exception:
+                logger.warning(
+                    "Failed to kill fixer on resolve for %s", issue_id, exc_info=True,
+                )
+        self._transition(issue, IssueState.RESOLVED)
+        from datetime import datetime, timezone
+
+        issue.resolved_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        self.registry.save()
+        self.audit.log(issue.id, "manual_resolve", reason=reason)
+
     def action_cancel(self, issue_id: str):
         issue = self.registry.get(issue_id)
         if not issue:
@@ -450,7 +484,14 @@ class IssueManager:
             severity_hint=severity_hint,
             error_summary=kwargs.get("error_summary", ""),
             mute_match=mute,
+            affected_change=kwargs.get("affected_change"),
         ):
+            logger.info(
+                "Skipping issue registration: severity=%s change=%s summary=%s",
+                severity_hint,
+                kwargs.get("affected_change"),
+                (kwargs.get("error_summary") or "")[:80],
+            )
             return None
 
         issue = self.registry.register(**kwargs)
