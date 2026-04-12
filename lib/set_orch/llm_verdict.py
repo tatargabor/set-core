@@ -150,6 +150,7 @@ def classify_verdict(
     purpose: str = "classify",
     timeout: int = 120,
     event_bus: Any = None,
+    scope_context: str = "",
 ) -> ClassifierResult:
     """Run a second LLM pass to classify primary_output into structured JSON.
 
@@ -179,7 +180,7 @@ def classify_verdict(
         _emit_classifier_event(event_bus, purpose, 0, result)
         return result
 
-    prompt = _build_classifier_prompt(primary_output, schema)
+    prompt = _build_classifier_prompt(primary_output, schema, scope_context=scope_context)
     primary_bytes = len(primary_output.encode("utf-8"))
 
     logger.info(
@@ -242,9 +243,23 @@ def classify_verdict(
 
 # ─── Internal helpers ──────────────────────────────────────────────
 
-def _build_classifier_prompt(primary_output: str, schema: dict) -> str:
+def _build_classifier_prompt(
+    primary_output: str, schema: dict, *, scope_context: str = "",
+) -> str:
     """Construct the Sonnet classifier prompt from schema + primary output."""
     schema_json = json.dumps(schema, indent=2)
+    scope_rule = ""
+    if scope_context:
+        scope_rule = (
+            "7. SCOPE FILTER: This review was for a single change with scope:\n"
+            f"   {scope_context}\n"
+            "   Findings about missing functionality OUTSIDE this scope (e.g., "
+            "\"missing middleware\" when auth is in a different change, \"no "
+            "mutation tests\" when the change has no mutations) are NOT CRITICAL. "
+            "Downgrade such out-of-scope findings to LOW or exclude them. "
+            "Only count findings about actual bugs/issues in code WITHIN the "
+            "diff as CRITICAL.\n"
+        )
     return (
         "You are a gate verdict extractor. Your job is to read the output of "
         "another LLM and produce a structured JSON verdict describing its "
@@ -269,6 +284,7 @@ def _build_classifier_prompt(primary_output: str, schema: dict) -> str:
         "6. Respond with ONLY the JSON object. No preamble, no markdown "
         "fences, no commentary. The response must start with `{` and end "
         "with `}`.\n"
+        f"{scope_rule}"
         "\n"
         "<<<BEGIN OUTPUT>>>\n"
         f"{primary_output}\n"

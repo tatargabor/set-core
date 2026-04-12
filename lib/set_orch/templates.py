@@ -201,6 +201,21 @@ def render_review_prompt(
 ## Change Scope
 {scope}
 
+## Scope Boundaries — CRITICAL
+This change implements ONLY the functionality described in "Change Scope" above.
+Other functionality (authentication, middleware, additional CRUD operations,
+admin panels, etc.) will be handled by SEPARATE changes that are not yet merged.
+
+**DO NOT flag missing features that are outside this change's scope.**
+Specifically:
+- If the change scope does not mention auth/middleware, do NOT flag "missing middleware.ts" as CRITICAL
+- If the change scope does not mention mutations/CRUD, do NOT flag "no mutation E2E tests" as CRITICAL
+- If a feature depends on another change (e.g., cart needs auth, admin needs products), do NOT flag the dependency as missing
+
+You may note genuinely missing scope items as [SUGGESTION] but NEVER as [CRITICAL] or [HIGH].
+Focus your CRITICAL/HIGH findings on bugs, security issues, and quality problems
+WITHIN the code that this diff actually touches.
+
 ## Diff
 ```diff
 {diff_output}
@@ -208,10 +223,10 @@ def render_review_prompt(
 {req_section}
 {design_section}{security_section}{content_section}
 ## Review Criteria
-Check for:
+Check for issues IN THE DIFF ABOVE (not hypothetical missing features):
 1. Security vulnerabilities: SQL injection, XSS, command injection, path traversal
-2. Authentication/authorization gaps: missing auth checks, broken access control
-3. Tenant isolation: can one user/org access another's data?
+2. Authentication/authorization gaps IN CODE THAT EXISTS in the diff
+3. Tenant isolation issues IN CODE THAT EXISTS in the diff
 4. Data integrity: missing validation, race conditions, data loss risks
 5. Error handling: unhandled exceptions that crash the app
 
@@ -226,7 +241,7 @@ Output format:
   FIX: concrete code fix (e.g., "add sessionId to where clause: `where: {{ id: cartItemId, sessionId: getSessionId() }}`")
 
 For CRITICAL and HIGH issues, the FIX field is REQUIRED — provide the exact code change needed.
-Only flag real problems — not style preferences."""
+Only flag real problems in the actual diff — not style preferences, not missing features from other changes."""
 
 
 # ─── Fix Prompt Templates ──────────────────────────────────────────────

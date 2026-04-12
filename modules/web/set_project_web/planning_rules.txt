@@ -106,6 +106,7 @@ Application Startup guide maintenance:
 - Infrastructure/foundational changes that add new setup steps (DB, E2E tooling, env vars, build commands) MUST update the `## Application Startup` section in CLAUDE.md. This section is the canonical reference for agents entering the worktree mid-project. If you add a Prisma DB, document `npx prisma db push`. If you add Playwright, document `npx playwright install --with-deps chromium`. Keep it current.
 
 Framework-specific security patterns (Next.js / React):
+- No test/debug API endpoints: NEVER create `/api/test-*`, `/api/debug-*`, `/api/seed-*` or similar endpoints that expose database content, reset state, or bypass auth. These endpoints ship to production and create security vulnerabilities (password hash exposure, data leaks). Use Prisma seed scripts (`prisma/seed.ts`) for test data, Playwright `globalSetup` for E2E setup, and `prisma studio` for manual inspection.
 - Route protection: create middleware.ts at project root that checks auth for protected route prefixes (/admin, /dashboard, /account). Do NOT put auth checks inside individual route handlers.
 - Prisma ownership patterns: every findUnique/findFirst/update/delete on user-scoped data MUST include the owning entity in the where clause (e.g., { id: params.id, userId: session.user.id }), never just { id: params.id }.
 - Server Actions: validate all inputs with Zod schemas before database operations. Never pass raw formData fields directly to Prisma.

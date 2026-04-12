@@ -1409,6 +1409,7 @@ def review_change(
             REVIEW_SCHEMA,
             purpose="review",
             event_bus=_ev,
+            scope_context=scope,
         )
         if cls_result.error is None:
             cls_critical = cls_result.critical_count
