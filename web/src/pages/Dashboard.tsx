@@ -1,11 +1,10 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useWebSocket, type WSEvent } from '../hooks/useWebSocket'
 import StatusHeader from '../components/StatusHeader'
 import ChangeTable from '../components/ChangeTable'
 import LogPanel from '../components/LogPanel'
 import CheckpointBanner from '../components/CheckpointBanner'
 import { CompletionCard } from '../components/CompletionCard'
-import ResizableSplit from '../components/ResizableSplit'
 import PlanViewer from '../components/PlanViewer'
 import TokenChart from '../components/TokenChart'
 import AuditPanel from '../components/AuditPanel'
@@ -16,7 +15,7 @@ import OrchestrationChat from '../components/OrchestrationChat'
 // SentinelPanel replaced by raw log view
 import ShutdownProgress from '../components/ShutdownProgress'
 import LearningsPanel from '../components/LearningsPanel'
-import ChangeTimelineDetail from '../components/ChangeTimelineDetail'
+const ChangeDagPanel = lazy(() => import('../components/ChangeDagPanel'))
 import BattleView from './BattleView'
 import ActivityView from '../components/ActivityView'
 // useIsMobile removed — no longer needed
@@ -39,7 +38,7 @@ export default function Dashboard({ project, initialTab }: Props) {
   const [checkpoint, setCheckpoint] = useState(false)
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
-  const [changeDetailView, setChangeDetailView] = useState<'log' | 'timeline'>('log')
+  const [changeDetailView, setChangeDetailView] = useState<'log' | 'timeline'>('timeline')
   const [autoFollow, setAutoFollow] = useState(() => {
     try { return localStorage.getItem('set-auto-follow') === '1' } catch { return false }
   })
@@ -317,59 +316,62 @@ export default function Dashboard({ project, initialTab }: Props) {
           </div>
         )}
 
-        {/* Changes tab — with change detail panel when selected */}
+        {/* Changes tab — with change detail panel when selected.
+         * Layout: table auto-sizes to its content (shrink-0 with a 60% cap
+         * so long change lists don't push the detail panel off-screen);
+         * detail panel flex-1 fills the rest. No resizable split — the
+         * table should occupy only what it needs. */}
         {activeTab === 'changes' && (
           selectedChange ? (
-            <ResizableSplit
-              top={
-                <div className="h-full overflow-auto">
-                  <ShutdownProgress project={project} />
-                  <ChangeTable
-                    changes={changes}
-                    project={project}
-                    selected={selectedChange}
-                    onSelect={setSelectedChange}
-                  />
+            <div className="h-full flex flex-col">
+              <div className="shrink-0 max-h-[60%] overflow-auto border-b border-neutral-800">
+                <ShutdownProgress project={project} />
+                <ChangeTable
+                  changes={changes}
+                  project={project}
+                  selected={selectedChange}
+                  onSelect={setSelectedChange}
+                />
+              </div>
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
+                  {(['log', 'timeline'] as const).map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setChangeDetailView(v)}
+                      className={`px-2 py-0.5 text-sm rounded ${changeDetailView === v ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-500 hover:text-neutral-300'}`}
+                    >
+                      {v === 'log' ? 'Log' : 'Timeline'}
+                    </button>
+                  ))}
+                  <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={autoFollow}
+                      onChange={e => setAutoFollow(e.target.checked)}
+                      className="accent-blue-500 w-3.5 h-3.5"
+                    />
+                    <span className="text-sm text-neutral-500">Auto Follow</span>
+                  </label>
                 </div>
-              }
-              bottom={
-                <div className="h-full flex flex-col">
-                  <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
-                    {(['log', 'timeline'] as const).map(v => (
-                      <button
-                        key={v}
-                        onClick={() => setChangeDetailView(v)}
-                        className={`px-2 py-0.5 text-sm rounded ${changeDetailView === v ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-500 hover:text-neutral-300'}`}
-                      >
-                        {v === 'log' ? 'Log' : 'Timeline'}
-                      </button>
-                    ))}
-                    <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={autoFollow}
-                        onChange={e => setAutoFollow(e.target.checked)}
-                        className="accent-blue-500 w-3.5 h-3.5"
-                      />
-                      <span className="text-sm text-neutral-500">Auto Follow</span>
-                    </label>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-auto">
-                    {changeDetailView === 'log' ? (
-                      <LogPanel
-                        orchLines={[]}
-                        selectedChange={selectedChangeInfo}
-                        project={project}
-                        autoFollow={autoFollow}
-                      />
-                    ) : (
-                      selectedChange && <ChangeTimelineDetail project={project} changeName={selectedChange} />
-                    )}
-                  </div>
+                <div className="flex-1 min-h-0 overflow-auto">
+                  {changeDetailView === 'log' ? (
+                    <LogPanel
+                      orchLines={[]}
+                      selectedChange={selectedChangeInfo}
+                      project={project}
+                      autoFollow={autoFollow}
+                    />
+                  ) : (
+                    selectedChange && (
+                      <Suspense fallback={<div className="p-3 text-sm text-neutral-500">Loading DAG...</div>}>
+                        <ChangeDagPanel project={project} changeName={selectedChange} />
+                      </Suspense>
+                    )
+                  )}
                 </div>
-              }
-              defaultRatio={0.55}
-            />
+              </div>
+            </div>
           ) : (
             <div className="h-full overflow-auto">
               <ShutdownProgress project={project} />

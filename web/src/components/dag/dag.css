@@ -1,0 +1,38 @@
+/* Dark theme overrides for @xyflow/react Controls — the default has a
+ * white background + black icons which clash with the dashboard's dark
+ * palette. Scoped to React Flow's own class names so nothing else in
+ * the app is affected. */
+
+.react-flow__controls {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 1px solid rgb(38 38 38);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: rgb(23 23 23) !important;
+  color: rgb(229 229 229) !important;
+  border-bottom: 1px solid rgb(38 38 38) !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-left: none !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 4px !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__controls-button:hover {
+  background: rgb(38 38 38) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: rgb(229 229 229) !important;
+  max-width: 14px;
+  max-height: 14px;
+}
