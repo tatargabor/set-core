@@ -26,15 +26,33 @@ function formatTime(ts: string): string {
   }
 }
 
+function formatTokens(n?: number): string {
+  if (!n) return ''
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
+function shortModel(model?: string): string {
+  if (!model) return ''
+  const m = model.toLowerCase()
+  if (m.includes('opus')) return 'opus'
+  if (m.includes('sonnet')) return 'sonnet'
+  if (m.includes('haiku')) return 'haiku'
+  return model
+}
+
 export default function ImplNode({ data, selected }: Props) {
   const [hovered, setHovered] = useState(false)
   const expanded = hovered
   const isRunning = data.result === 'running'
+  const hasTokens = (data.inputTokens ?? 0) + (data.outputTokens ?? 0) > 0
+  const model = shortModel(data.model)
 
   return (
     <div
       className={`relative rounded-md border bg-neutral-900/80 border-violet-500/40 transition-all duration-150 ${
-        expanded ? 'w-[260px] min-h-[150px] p-2.5' : 'w-[150px] h-[80px] px-2 py-1.5'
+        expanded ? 'w-[260px] min-h-[170px] p-2.5' : 'w-[150px] h-[100px] px-2 py-1.5'
       } ${selected ? 'ring-2 ring-violet-500/60' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -55,6 +73,19 @@ export default function ImplNode({ data, selected }: Props) {
         <span className="text-neutral-700">·</span>
         <span>{formatTime(data.startedAt)}</span>
       </div>
+      {(model || hasTokens) && (
+        <div className="mt-0.5 text-[10px] text-neutral-600 flex items-center gap-1.5">
+          {model && <span className="text-neutral-400">{model}</span>}
+          {model && hasTokens && <span className="text-neutral-700">·</span>}
+          {hasTokens && (
+            <span>
+              <span className="text-neutral-500">{formatTokens(data.inputTokens)}</span>
+              <span className="text-neutral-700">/</span>
+              <span className="text-neutral-500">{formatTokens(data.outputTokens)}</span>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

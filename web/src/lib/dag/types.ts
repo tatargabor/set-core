@@ -38,6 +38,14 @@ export interface AttemptNode {
   verdictSource?: string
   downgrades?: DowngradeEntry[]
   issueRefs?: string[]
+  /** LLM cost/model info joined from /timeline session list. Present only
+   * for nodes whose work was backed by a Claude call (impl, review,
+   * spec-verify, etc.). Gate nodes that run non-LLM commands (build, test,
+   * e2e) do not carry these fields. */
+  model?: string
+  inputTokens?: number
+  outputTokens?: number
+  cacheTokens?: number
 }
 
 export type AttemptOutcome = 'retry' | 'merged' | 'failed' | 'in-progress'

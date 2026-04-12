@@ -13,9 +13,9 @@ export interface LayoutConstants {
 
 export const DEFAULT_LAYOUT: LayoutConstants = {
   nodeWidth: 150,
-  nodeHeight: 80,
+  nodeHeight: 100,
   columnGap: 30,
-  rowHeight: 110,
+  rowHeight: 130,
   attemptGap: 20,
   leftMargin: 20,
   topMargin: 20,

@@ -38,13 +38,13 @@ export default function DagToolbar({
           <button
             key={m}
             onClick={() => onViewModeChange(m)}
-            className={`px-2 py-0.5 text-xs capitalize ${
+            className={`px-2 py-0.5 text-xs ${
               viewMode === m
                 ? 'bg-neutral-800 text-neutral-200'
                 : 'text-neutral-500 hover:text-neutral-300'
             }`}
           >
-            {m === 'dag' ? 'DAG' : 'Linear'}
+            {m === 'dag' ? 'DAG' : 'Log'}
           </button>
         ))}
       </div>

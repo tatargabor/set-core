@@ -21,7 +21,7 @@ import ActivityView from '../components/ActivityView'
 // useIsMobile removed — no longer needed
 // useSentinelData removed — sentinel tab now shows raw log
 import { getDigest, getPlans, getState, getLog, getSentinelLog } from '../lib/api'
-import type { StateData, ChangeInfo } from '../lib/api'
+import type { StateData } from '../lib/api'
 
 type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle' | 'activity'
 
@@ -38,8 +38,10 @@ export default function Dashboard({ project, initialTab }: Props) {
   const [checkpoint, setCheckpoint] = useState(false)
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
-  const [changeDetailView, setChangeDetailView] = useState<'log' | 'timeline'>('timeline')
-  const [autoFollow, setAutoFollow] = useState(() => {
+  // autoFollow drives the "auto-select running change" effect below. The
+  // UI toggle was removed with the Log/Timeline header; the setting now
+  // lives only in localStorage for power users who want to flip it.
+  const [autoFollow] = useState(() => {
     try { return localStorage.getItem('set-auto-follow') === '1' } catch { return false }
   })
   // URL-backed tab state: ?tab=digest&sub=domains
@@ -217,8 +219,6 @@ export default function Dashboard({ project, initialTab }: Props) {
       setSelectedChange(changes[0].name)
     }
   }, [selectedChange, changes])
-  const selectedChangeInfo: ChangeInfo | null =
-    selectedChange ? changes.find((c) => c.name === selectedChange) ?? null : null
   const hasAudit = (state?.phase_audit_results?.length ?? 0) > 0
 
   const tabs: { id: PanelTab; label: string; hidden?: boolean }[] = [
@@ -319,8 +319,8 @@ export default function Dashboard({ project, initialTab }: Props) {
         {/* Changes tab — with change detail panel when selected.
          * Layout: table auto-sizes to its content (shrink-0 with a 60% cap
          * so long change lists don't push the detail panel off-screen);
-         * detail panel flex-1 fills the rest. No resizable split — the
-         * table should occupy only what it needs. */}
+         * ChangeDagPanel fills the rest and carries its own DAG/Log
+         * view toggle. No separate Log/Timeline header here. */}
         {activeTab === 'changes' && (
           selectedChange ? (
             <div className="h-full flex flex-col">
@@ -333,43 +333,10 @@ export default function Dashboard({ project, initialTab }: Props) {
                   onSelect={setSelectedChange}
                 />
               </div>
-              <div className="flex-1 min-h-0 flex flex-col">
-                <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
-                  {(['log', 'timeline'] as const).map(v => (
-                    <button
-                      key={v}
-                      onClick={() => setChangeDetailView(v)}
-                      className={`px-2 py-0.5 text-sm rounded ${changeDetailView === v ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-500 hover:text-neutral-300'}`}
-                    >
-                      {v === 'log' ? 'Log' : 'Timeline'}
-                    </button>
-                  ))}
-                  <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={autoFollow}
-                      onChange={e => setAutoFollow(e.target.checked)}
-                      className="accent-blue-500 w-3.5 h-3.5"
-                    />
-                    <span className="text-sm text-neutral-500">Auto Follow</span>
-                  </label>
-                </div>
-                <div className="flex-1 min-h-0 overflow-auto">
-                  {changeDetailView === 'log' ? (
-                    <LogPanel
-                      orchLines={[]}
-                      selectedChange={selectedChangeInfo}
-                      project={project}
-                      autoFollow={autoFollow}
-                    />
-                  ) : (
-                    selectedChange && (
-                      <Suspense fallback={<div className="p-3 text-sm text-neutral-500">Loading DAG...</div>}>
-                        <ChangeDagPanel project={project} changeName={selectedChange} />
-                      </Suspense>
-                    )
-                  )}
-                </div>
+              <div className="flex-1 min-h-0">
+                <Suspense fallback={<div className="p-3 text-sm text-neutral-500">Loading DAG...</div>}>
+                  <ChangeDagPanel project={project} changeName={selectedChange} />
+                </Suspense>
               </div>
             </div>
           ) : (

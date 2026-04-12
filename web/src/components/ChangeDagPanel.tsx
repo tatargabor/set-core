@@ -11,8 +11,14 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './dag/dag.css'
-import { getChangeJournal, type ChangeJournal } from '../lib/api'
+import {
+  getChangeJournal,
+  getChangeTimeline,
+  type ChangeJournal,
+  type ChangeTimelineData,
+} from '../lib/api'
 import { journalToAttemptGraph } from '../lib/dag/journalToAttemptGraph'
+import { enrichWithSessions } from '../lib/dag/enrichWithSessions'
 import { layoutAttemptGraph } from '../lib/dag/layout'
 import type { AttemptGraph, AttemptNode } from '../lib/dag/types'
 import ChangeTimelineDetail from './ChangeTimelineDetail'
@@ -90,6 +96,7 @@ function DagCanvas({ layout, onNodeClick }: InnerProps) {
 
 export default function ChangeDagPanel({ project, changeName }: Props) {
   const [journal, setJournal] = useState<ChangeJournal | null>(null)
+  const [timeline, setTimeline] = useState<ChangeTimelineData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'dag' | 'linear'>('dag')
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -123,6 +130,17 @@ export default function ChangeDagPanel({ project, changeName }: Props) {
             setError(msg)
           }
         })
+      // /timeline carries per-session model + token info that the journal
+      // doesn't. Failure here is non-fatal — nodes just miss the 4th line.
+      getChangeTimeline(project, changeName)
+        .then((d) => {
+          if (cancelled) return
+          setTimeline(d)
+        })
+        .catch(() => {
+          if (cancelled) return
+          setTimeline(null)
+        })
     }
     load()
     const iv = setInterval(load, 10000)
@@ -135,12 +153,16 @@ export default function ChangeDagPanel({ project, changeName }: Props) {
   const graph = useMemo<AttemptGraph>(() => {
     if (!journal) return EMPTY_GRAPH
     try {
-      return journalToAttemptGraph(journal.entries)
+      const g = journalToAttemptGraph(journal.entries)
+      if (timeline?.sessions) {
+        enrichWithSessions(g, timeline.sessions)
+      }
+      return g
     } catch (err) {
       console.error('journalToAttemptGraph failed for', changeName, err, journal.entries)
       return EMPTY_GRAPH
     }
-  }, [journal, changeName])
+  }, [journal, timeline, changeName])
 
   const layout = useMemo(() => layoutAttemptGraph(graph), [graph])
 
