@@ -1,7 +1,7 @@
 - ALL /api/* routes MUST have authentication middleware — never expose unprotected endpoints
 - NO `as any` type assertions — extend NextAuth/framework types properly via module augmentation
 - NO user-controlled regex — use string prefix/includes matching for postal codes, search, filters
-- bcrypt (or argon2) for password hashing, NEVER sha256/md5/plaintext
+- bcrypt (or argon2) for password hashing in API routes and Server Actions, NEVER sha256/md5/plaintext. NOTE: bcrypt/argon2 are Node.js-only — NEVER import them in middleware.ts (Edge Runtime). Use `jose` for JWT verification in middleware.
 - Rate limiting on auth endpoints (login, register, password reset) — prevent brute force
 - CSRF protection on all state-changing endpoints — use framework-provided tokens
 - `<html lang="...">` attribute MUST be set — required for accessibility and SEO

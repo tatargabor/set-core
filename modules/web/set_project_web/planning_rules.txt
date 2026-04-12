@@ -108,6 +108,13 @@ Application Startup guide maintenance:
 Framework-specific security patterns (Next.js / React):
 - No test/debug API endpoints: NEVER create `/api/test-*`, `/api/debug-*`, `/api/seed-*` or similar endpoints that expose database content, reset state, or bypass auth. These endpoints ship to production and create security vulnerabilities (password hash exposure, data leaks). Use Prisma seed scripts (`prisma/seed.ts`) for test data, Playwright `globalSetup` for E2E setup, and `prisma studio` for manual inspection.
 - Route protection: create middleware.ts at project root that checks auth for protected route prefixes (/admin, /dashboard, /account). Do NOT put auth checks inside individual route handlers.
+- **Next.js middleware runs in Edge Runtime** — it does NOT have access to Node.js APIs. NEVER import the following in middleware.ts:
+  * `bcryptjs` / `bcrypt` — use `jose` for JWT verification instead (Edge-compatible)
+  * `@prisma/client` — use a lightweight token/session check instead of direct DB queries
+  * Any Node.js built-in (`fs`, `crypto.pbkdf2`, `child_process`, etc.)
+  * Auth libraries that use Node.js internals (NextAuth's `auth()` helper is fine — it's Edge-compatible; direct Prisma user lookups are NOT)
+  The correct pattern for middleware auth: decode the JWT/session token with `jose` or `@auth/core`, verify it's valid, check the role claim. Do NOT query the database in middleware. Database lookups for auth belong in Server Components or API routes (which run in Node.js runtime).
+  This is the #1 cause of review gate failures on auth changes — agents import bcrypt in middleware because the review baseline says "use bcrypt for passwords" without specifying WHERE. bcrypt is for API routes and Server Actions only.
 - Prisma ownership patterns: every findUnique/findFirst/update/delete on user-scoped data MUST include the owning entity in the where clause (e.g., { id: params.id, userId: session.user.id }), never just { id: params.id }.
 - Server Actions: validate all inputs with Zod schemas before database operations. Never pass raw formData fields directly to Prisma.
 - CSRF: Next.js Server Actions have built-in CSRF protection — do NOT disable it. For API routes using cookies, verify SameSite=Lax is set.
