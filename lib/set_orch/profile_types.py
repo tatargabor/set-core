@@ -432,7 +432,7 @@ class ProjectType(ABC):
         name = self.info.name
         return config_dir / f"{name}.jsonl"
 
-    def _classify_patterns(self, patterns: list[dict]) -> list[dict]:
+    def _classify_patterns(self, patterns: list[dict], project_path: str = "") -> list[dict]:
         """Classify review patterns as 'template' or 'project' via Sonnet.
 
         Each pattern dict must have 'pattern' and optionally 'fix_hint'.
@@ -465,6 +465,7 @@ class ProjectType(ABC):
             model="sonnet",
             timeout=60,
             extra_args=["--max-turns", "1"],
+            cwd=project_path or None,
         )
 
         if result.exit_code != 0:
@@ -508,7 +509,7 @@ class ProjectType(ABC):
             return
 
         # Classify
-        classified = self._classify_patterns(patterns)
+        classified = self._classify_patterns(patterns, project_path=project_path)
 
         template_patterns = [p for p in classified if p.get("scope") == "template"]
         project_patterns = [p for p in classified if p.get("scope") == "project"]
