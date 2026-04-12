@@ -14,13 +14,18 @@ import json
 import logging
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .git_utils import resolve_head_commit
 
 logger = logging.getLogger(__name__)
+
+
+def _now_iso_local() -> str:
+    """Local-time-with-offset ISO timestamp (matches eccdbea8 contract)."""
+    return datetime.now(timezone.utc).astimezone().isoformat()
 
 
 HARVEST_ARTIFACTS: List[Tuple[str, bool]] = [
@@ -57,13 +62,22 @@ def harvest_worktree(
     """
     dest_root = _resolve_dest_root(project_path, change_name)
 
-    # Idempotency guard: merge_change calls cleanup_worktree which calls
-    # harvest, AND engine._finalize_run calls cleanup_all_worktrees which
-    # also iterates merged changes and calls cleanup_worktree — so a
-    # single successful merge triggers harvest TWICE for the same change.
-    # If the destination already exists with a valid meta file, skip.
-    # Caught on nano-run-20260412-1941 where add-item got harvested twice
-    # 874ms apart, producing a timestamped-collision fallback directory.
+    # Idempotency: merge_change calls cleanup_worktree which calls harvest,
+    # AND engine._finalize_run calls cleanup_all_worktrees which also
+    # iterates merged changes and calls cleanup_worktree — so a single
+    # successful merge triggers harvest TWICE for the same change.
+    #
+    # Strategy:
+    #   - If dest exists with a valid meta file → already harvested, skip.
+    #   - If dest exists without meta → partial/interrupted prior harvest;
+    #     RESUME into the same dir (overwrite, never create a duplicate).
+    #
+    # The earlier implementation created a timestamped sibling dir as a
+    # fallback, which produced collision pairs like
+    #   archives/worktrees/add-item/
+    #   archives/worktrees/add-item.20260412T182459Z/
+    # on nano-run-20260412-1941. A duplicate is never valuable (same
+    # source commit, same files), so resume-in-place is the correct fix.
     meta_check = dest_root / ".harvest-meta.json"
     if dest_root.exists() and meta_check.is_file():
         logger.info(
@@ -73,15 +87,9 @@ def harvest_worktree(
         return dest_root
 
     if dest_root.exists():
-        # Destination exists but meta is missing — partial harvest from a
-        # crashed prior run. Use timestamped fallback so we don't
-        # overwrite whatever is there.
-        ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-        dest_root = dest_root.with_name(f"{change_name}.{ts}")
         logger.warning(
-            "Harvest destination exists without meta for %s — using timestamped fallback %s",
-            change_name,
-            dest_root,
+            "Harvest destination exists without meta for %s — resuming in-place at %s",
+            change_name, dest_root,
         )
 
     dest_root.mkdir(parents=True, exist_ok=True)
@@ -108,7 +116,7 @@ def harvest_worktree(
     commit = resolve_head_commit(wt_path)
 
     meta = {
-        "harvested_at": datetime.utcnow().isoformat() + "Z",
+        "harvested_at": _now_iso_local(),
         "reason": reason,
         "wt_path": wt_path,
         "wt_name": change_name,

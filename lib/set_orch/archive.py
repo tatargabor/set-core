@@ -15,7 +15,7 @@ import logging
 import os
 import shutil
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Union
 
@@ -110,9 +110,12 @@ def archive_and_write(
     if archive_path and reason:
         try:
             commit = resolve_head_commit(str(parent))
+            # Local-with-offset per eccdbea8 timestamp unification.
+            # Note: the archive FILENAME (line ~57) stays in UTC "Z" form
+            # so directory listings sort chronologically by plain name.
             meta = {
                 "reason": reason,
-                "ts": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
                 "commit": commit,
             }
             with open(archive_path + ".meta.json", "w") as f:

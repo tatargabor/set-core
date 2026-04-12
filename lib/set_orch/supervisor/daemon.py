@@ -56,7 +56,11 @@ SIGTERM_GRACE_SECONDS = 30
 
 
 def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    # Local-with-offset, matches lib/set_orch/events.py EventBus and the
+    # eccdbea8 "fix(time): unify timestamp format" contract. Mixing UTC
+    # ("+00:00") and local ("+02:00") in orchestration-events.jsonl breaks
+    # string-ordering in the LLM Call Log and other consumers.
+    return datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat()
 
 
 def _is_alive(pid: int) -> bool:

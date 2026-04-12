@@ -1021,7 +1021,21 @@ def cmd_engine(args):
         # Registering it here would cause duplicate monitors to set status=stopped on exit.
 
         # Signal handlers: SIGTERM, SIGINT, SIGHUP → sys.exit(0) → triggers atexit
+        # cleanup → _graceful_shutdown_ralph_pids → time.sleep(1) loop.
+        #
+        # Re-entrancy: the atexit cleanup path sleeps for up to 90s waiting
+        # for Ralph PIDs to exit. If a second signal arrives during that
+        # window (common case: orchestrator exits voluntarily AND the
+        # supervisor sends SIGTERM in parallel) the handler would raise
+        # SystemExit from inside the atexit callback, producing:
+        #   "Exception ignored in atexit callback: cleanup_orchestrator"
+        # Caught on nano-run-20260412-1941. Swapping the handlers to
+        # SIG_IGN on first entry keeps the cleanup path atomic — SIGKILL
+        # still kills us if the supervisor decides we've timed out.
         def _signal_handler(signum, frame):
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            signal.signal(signal.SIGHUP, signal.SIG_IGN)
             sys.exit(0)
 
         signal.signal(signal.SIGTERM, _signal_handler)

@@ -116,10 +116,14 @@ class TestHarvestWorktree:
         # Destination name is the plain change name, NOT timestamped
         assert dest2.name == "dup"
 
-    def test_destination_without_meta_uses_timestamped_fallback(self, isolated_runtime, caplog):
+    def test_destination_without_meta_resumes_in_place(self, isolated_runtime, caplog):
         """If a crashed prior run left a partial harvest dir with no
-        meta file, a new call uses the timestamped fallback to avoid
-        overwriting whatever is there.
+        meta file, a new call resumes in-place (no sibling collision dir).
+
+        This is the nano-run-20260412-1941 fix: the earlier behavior was
+        to create a `<name>.<ts>` timestamped sibling, producing pairs
+        like `add-item/` + `add-item.20260412T182459Z/` in the archive.
+        Resume-in-place keeps a single canonical dir per change.
         """
         project = isolated_runtime / "proj"
         project.mkdir()
@@ -127,7 +131,6 @@ class TestHarvestWorktree:
         wt.mkdir()
         _make_worktree(wt, {".set/reflection.md": "r1"})
 
-        # Pre-create the dest dir with some orphan file but NO meta
         from set_orch.worktree_harvest import _resolve_dest_root
         dest_root = _resolve_dest_root(str(project), "partial")
         dest_root.mkdir(parents=True, exist_ok=True)
@@ -136,10 +139,17 @@ class TestHarvestWorktree:
         with caplog.at_level("WARNING"):
             dest = harvest_worktree("partial", str(wt), str(project))
         assert dest is not None
-        assert dest != dest_root
-        assert dest.name.startswith("partial.")
+        # Resume in-place — same dir, no timestamped sibling
+        assert dest == dest_root
+        assert dest.name == "partial"
+        # Meta is written, orphan file preserved
+        assert (dest / ".harvest-meta.json").is_file()
+        assert (dest / "orphan.txt").is_file()
+        # No sibling dirs with the same stem
+        siblings = [p for p in dest.parent.iterdir() if p.name.startswith("partial.")]
+        assert siblings == []
         assert any(
-            "without meta" in rec.message.lower() for rec in caplog.records
+            "resuming in-place" in rec.message.lower() for rec in caplog.records
         )
 
     def test_meta_commit_none_when_not_a_git_repo(self, isolated_runtime):

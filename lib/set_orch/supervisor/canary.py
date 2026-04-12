@@ -249,7 +249,7 @@ class CanaryRunner:
         # parse a verdict is still a "we tried" and we don't want to
         # immediately retry on the next poll.
         self.status.last_canary_at = (
-            datetime.datetime.now(datetime.timezone.utc).isoformat()
+            datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat()
         )
 
         canary = CanaryRun(
@@ -294,14 +294,17 @@ class CanaryRunner:
             last_dt = datetime.datetime.fromisoformat(last)
         except ValueError:
             return False
-        delta = (
-            datetime.datetime.now(datetime.timezone.utc) - last_dt
-        ).total_seconds()
+        # Compare aware-to-aware. last_dt may be UTC or local-with-offset
+        # (historical records), both carry tzinfo so subtraction works.
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=datetime.timezone.utc)
+        delta = (now - last_dt).total_seconds()
         return delta < WARN_RATE_LIMIT_SECONDS
 
     def _record_warn(self, signature: str) -> None:
         self.status.canary_warn_log[signature] = (
-            datetime.datetime.now(datetime.timezone.utc).isoformat()
+            datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat()
         )
 
     # ── helpers ──────────────────────────────────────────

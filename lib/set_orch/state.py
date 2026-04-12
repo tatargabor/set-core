@@ -16,7 +16,7 @@ import tempfile
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Generator, Optional
 
 if TYPE_CHECKING:
@@ -108,8 +108,11 @@ def _append_journal(
     seq = _JOURNAL_SEQ_CACHE[path] + 1
     _JOURNAL_SEQ_CACHE[path] = seq
 
+    # Local-with-offset per eccdbea8 timestamp unification — journal
+    # entries are surfaced in the UI alongside event-stream timestamps
+    # and must use the same format to sort correctly as strings.
     entry = {
-        "ts": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds"),
         "field": field_name,
         "old": old_value,
         "new": new_value,
