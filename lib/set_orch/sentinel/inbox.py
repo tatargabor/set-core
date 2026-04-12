@@ -83,7 +83,7 @@ def write_to_inbox(project_path: str, sender: str, content: str) -> dict:
     msg = {
         "from": sender,
         "content": content,
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
     line = json.dumps(msg, ensure_ascii=False) + "\n"
     with open(ipath, "a") as f:

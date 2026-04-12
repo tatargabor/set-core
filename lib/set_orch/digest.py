@@ -358,7 +358,7 @@ def write_digest_output(
             "spec_base_dir": scan_result.spec_base_dir,
             "source_hash": scan_result.source_hash,
             "file_count": scan_result.file_count,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(timezone.utc).astimezone().isoformat(),
             "files": scan_result.files,
             "file_classifications": digest.file_classifications,
             "execution_hints": digest.execution_hints,

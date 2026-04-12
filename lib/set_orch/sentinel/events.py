@@ -30,7 +30,7 @@ class SentinelEventLogger:
     def _emit(self, event_type: str, **kwargs) -> dict:
         """Write a single event to events.jsonl. Returns the event dict."""
         event = {
-            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
             "epoch": int(time.time()),
             "type": event_type,
             **kwargs,

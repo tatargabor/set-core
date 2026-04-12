@@ -98,7 +98,7 @@ def add_project(body: dict):
     projects.append({
         "name": name,
         "path": path,
-        "addedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "addedAt": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
         "project_type": body.get("project_type", body.get("mode", "")),
     })
     _save_projects(projects)

@@ -110,7 +110,7 @@ def _set_completed_at_if_missing(state_file: str, change_name: str) -> None:
     state = load_state(state_file)
     change = _find_change(state, change_name)
     if change and not change.completed_at:
-        update_change_field(state_file, change_name, "completed_at", datetime.now(timezone.utc).isoformat())
+        update_change_field(state_file, change_name, "completed_at", datetime.now(timezone.utc).astimezone().isoformat())
 
 def _final_token_collect(state_file: str, change_name: str, wt_path: str) -> None:
     """Read loop-state.json tokens one last time before worktree cleanup."""

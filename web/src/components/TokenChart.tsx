@@ -142,7 +142,13 @@ export default function TokenChart({ changes, project }: Props) {
     const sorted = [...calls].sort((a, b) => {
       let cmp = 0
       switch (sortKey) {
-        case 'timestamp': cmp = a.timestamp.localeCompare(b.timestamp); break
+        case 'timestamp': {
+          // Parse to epoch so UTC vs local-with-offset strings compare correctly.
+          // String-compare would sort "...+00:00" before "...+02:00" even when
+          // the former represents a later wall-clock time.
+          cmp = (Date.parse(a.timestamp) || 0) - (Date.parse(b.timestamp) || 0)
+          break
+        }
         case 'phase': cmp = getPhase(a.purpose_raw).localeCompare(getPhase(b.purpose_raw)); break
         case 'purpose': cmp = a.purpose.localeCompare(b.purpose); break
         case 'model': cmp = a.model.localeCompare(b.model); break

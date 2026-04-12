@@ -536,7 +536,7 @@ def build_test_coverage(
         failed=failed,
         coverage_pct=round(coverage_pct, 1),
         unbound_tests=unbound_tests,
-        parsed_at=datetime.now(timezone.utc).isoformat(),
+        parsed_at=datetime.now(timezone.utc).astimezone().isoformat(),
     )
     logger.info("Test coverage: %.1f%% (%d/%d reqs), %d passed, %d failed, %d unbound tests",
                  coverage_pct, len(covered), total_testable, passed, failed, len(unbound_tests))
@@ -738,7 +738,7 @@ def generate_test_plan(
     plan = TestPlan(
         entries=entries,
         non_testable=non_testable,
-        generated_at=datetime.now(timezone.utc).isoformat(),
+        generated_at=datetime.now(timezone.utc).astimezone().isoformat(),
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -860,5 +860,5 @@ def validate_coverage(
         complete_count=complete,
         partial_count=partial,
         missing_count=missing,
-        validated_at=datetime.now(timezone.utc).isoformat(),
+        validated_at=datetime.now(timezone.utc).astimezone().isoformat(),
     )

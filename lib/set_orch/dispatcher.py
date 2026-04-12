@@ -16,7 +16,7 @@ import re
 import shutil
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -2005,7 +2005,7 @@ def dispatch_change(
     update_change_field(state_path, change_name, "status", "dispatched", event_bus=event_bus)
     update_change_field(state_path, change_name, "current_step", "planning", event_bus=event_bus)
     update_change_field(state_path, change_name, "worktree_path", wt_path, event_bus=event_bus)
-    update_change_field(state_path, change_name, "started_at", datetime.now().isoformat(), event_bus=event_bus)
+    update_change_field(state_path, change_name, "started_at", datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"), event_bus=event_bus)
 
     # Pre-dispatch hook (call bash hook if it exists)
     hooks_path = os.path.join(SET_TOOLS_ROOT, "lib", "orchestration", "hooks.sh")

@@ -42,8 +42,8 @@ class SentinelStatus:
             "active": True,
             "member": member,
             "session_id": session_id,
-            "started_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "last_event_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "started_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+            "last_event_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
             "poll_interval_s": poll_interval_s,
             "orchestrator_pid": orchestrator_pid,
         }
@@ -54,7 +54,7 @@ class SentinelStatus:
     def heartbeat(self) -> None:
         """Update last_event_at timestamp."""
         data = self.get()
-        data["last_event_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        data["last_event_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
         self._write(data)
         logger.debug("Sentinel heartbeat: session=%s", data.get("session_id", "?"))
 
@@ -63,7 +63,7 @@ class SentinelStatus:
         try:
             data = self.get()
             data["active"] = False
-            data["last_event_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            data["last_event_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
             self._write(data)
             logger.info("Sentinel deactivated: session=%s", data.get("session_id", "?"))
         except Exception:

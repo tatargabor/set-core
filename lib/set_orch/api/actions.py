@@ -37,7 +37,7 @@ async def approve_checkpoint(project: str):
             checkpoints = state.checkpoints
         if checkpoints:
             checkpoints[-1]["approved"] = True
-            checkpoints[-1]["approved_at"] = datetime.now(timezone.utc).isoformat()
+            checkpoints[-1]["approved_at"] = datetime.now(timezone.utc).astimezone().isoformat()
 
         save_state(state, str(sp))
         return {"ok": True}

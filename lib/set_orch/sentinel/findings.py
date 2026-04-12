@@ -85,7 +85,7 @@ class SentinelFindings:
             "change": change,
             "summary": summary,
             "detail": detail,
-            "discovered_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "discovered_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
             "status": "open",
             "iteration": iteration,
         }
@@ -134,7 +134,7 @@ class SentinelFindings:
         data = self._read()
         assessment = {
             "scope": scope,
-            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
             "summary": summary,
             "recommendation": recommendation,
         }

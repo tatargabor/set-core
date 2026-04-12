@@ -10,7 +10,7 @@ import json
 import os
 import sqlite3
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # --- Paths ---
@@ -203,7 +203,7 @@ def flush_session(session_id, project, metrics_records, citations_list=None, mem
         # Compute session summary
         timestamps = [r.get("ts", "") for r in metrics_records if r.get("ts")]
         started_at = min(timestamps) if timestamps else ""
-        ended_at = datetime.utcnow().isoformat() + "Z"
+        ended_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
         total_tokens = sum(r.get("token_estimate", 0) for r in metrics_records)
         citation_count = len(citations_list) if citations_list else 0
 
@@ -249,9 +249,9 @@ def flush_session(session_id, project, metrics_records, citations_list=None, mem
 # --- Read Operations (called from CLI) ---
 
 def _since_clause(since_days):
-    """Build a date cutoff ISO string."""
-    cutoff = datetime.utcnow() - timedelta(days=since_days)
-    return cutoff.isoformat() + "Z"
+    """Build a date cutoff ISO string (local time with offset)."""
+    cutoff = datetime.now(timezone.utc).astimezone() - timedelta(days=since_days)
+    return cutoff.isoformat(timespec="seconds")
 
 
 def query_report(since_days=7, project=None):

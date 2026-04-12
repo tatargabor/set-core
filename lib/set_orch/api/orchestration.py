@@ -142,7 +142,7 @@ def list_plans(project: str):
             plans.append({
                 "filename": f.name,
                 "size": f.stat().st_size,
-                "mtime": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat(),
+                "mtime": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).astimezone().isoformat(),
             })
     return {"plans": plans}
 
@@ -871,10 +871,17 @@ def _read_session_calls(state, project_path: Path, calls: list[dict], skip_keys:
                     if skip_keys and (raw_purpose, change_name or "") in skip_keys:
                         continue
 
+                    # Use local-with-offset timestamp to match event-sourced
+                    # rows (event_bus writes datetime.now(UTC).astimezone()).
+                    # The frontend displays the ISO string verbatim without
+                    # timezone conversion, so we must emit local time with
+                    # the offset suffix — emitting naive UTC here would
+                    # cause session rows to render 1-2h earlier than they
+                    # actually happened vs event-sourced rows.
                     calls.append({
                         "timestamp": datetime.fromtimestamp(
                             st.st_mtime, tz=timezone.utc
-                        ).isoformat(),
+                        ).astimezone().isoformat(),
                         "source": "session",
                         "purpose": label,
                         "purpose_raw": label.lower().replace(" ", "_"),

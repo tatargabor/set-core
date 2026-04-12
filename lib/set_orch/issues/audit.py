@@ -23,7 +23,7 @@ class AuditLog:
     ):
         """Append an audit entry."""
         entry = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(timezone.utc).astimezone().isoformat(),
             "issue_id": issue_id,
             "action": action,
             **detail,
@@ -39,7 +39,7 @@ class AuditLog:
     ):
         """Append an audit entry for a group action."""
         entry = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(timezone.utc).astimezone().isoformat(),
             "group_id": group_id,
             "action": action,
             **detail,

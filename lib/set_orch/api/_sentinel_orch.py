@@ -115,7 +115,7 @@ async def send_sentinel_message(project: str, body: SentinelMessageBody):
     msg = {
         "from": "set-web",
         "content": body.message,
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
     with open(inbox_file, "a") as f:
         f.write(json.dumps(msg, ensure_ascii=False) + "\n")
@@ -143,7 +143,7 @@ async def completion_action(project: str, body: dict):
         "action": action,
         "spec": body.get("spec", ""),
         "from": "set-web",
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
     with open(inbox_file, "a") as f:
         f.write(json.dumps(msg, ensure_ascii=False) + "\n")

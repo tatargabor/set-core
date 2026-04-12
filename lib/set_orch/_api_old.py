@@ -1822,7 +1822,7 @@ def approve_checkpoint(project: str):
             checkpoints = state.checkpoints
         if checkpoints:
             checkpoints[-1]["approved"] = True
-            checkpoints[-1]["approved_at"] = datetime.now(timezone.utc).isoformat()
+            checkpoints[-1]["approved_at"] = datetime.now(timezone.utc).astimezone().isoformat()
 
         save_state(state, str(sp))
         return {"ok": True}
@@ -2422,7 +2422,7 @@ async def send_sentinel_message(project: str, body: SentinelMessageBody):
     msg = {
         "from": "set-web",
         "content": body.message,
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
     with open(inbox_file, "a") as f:
         f.write(json.dumps(msg, ensure_ascii=False) + "\n")
@@ -2450,7 +2450,7 @@ async def completion_action(project: str, body: dict):
         "action": action,
         "spec": body.get("spec", ""),
         "from": "set-web",
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
     with open(inbox_file, "a") as f:
         f.write(json.dumps(msg, ensure_ascii=False) + "\n")
@@ -3095,7 +3095,7 @@ async def submit_score(body: ScoreSubmission):
         "total_changes": body.total_changes,
         "total_tokens": body.total_tokens,
         "achievements": body.achievements[:20],  # max 20
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
 
     # Replace if same player+project with higher score

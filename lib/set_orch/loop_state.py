@@ -94,7 +94,7 @@ def init_loop_state(
         task=task,
         done_criteria=done_criteria,
         max_iterations=max_iter,
-        started_at=datetime.now(timezone.utc).isoformat(),
+        started_at=datetime.now(timezone.utc).astimezone().isoformat(),
         capacity_limit_pct=capacity_limit,
         stall_threshold=stall_threshold,
         iteration_timeout_min=iteration_timeout,
@@ -335,7 +335,7 @@ def write_activity(
         "tokens": tokens,
         "pid": pid or os.getpid(),
         "broadcast": broadcast,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).astimezone().isoformat(),
     }
     try:
         tmp = activity_file + ".tmp"

@@ -664,7 +664,7 @@ async def submit_score(body: ScoreSubmission):
         "total_changes": body.total_changes,
         "total_tokens": body.total_tokens,
         "achievements": body.achievements[:20],  # max 20
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
 
     # Replace if same player+project with higher score

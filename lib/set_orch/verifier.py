@@ -235,7 +235,7 @@ def _append_review_finding(findings_path: str, change_name: str,
 
     entry = {
         "change": change_name,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(),
         "attempt": attempt,
         "issue_count": len(issues),
         "critical_count": sum(1 for i in issues if i["severity"] == "CRITICAL"),
@@ -1899,7 +1899,7 @@ def run_phase_end_e2e(
             "output": e2e_output_truncated,
             "screenshot_dir": screenshot_dir,
             "screenshot_count": screenshot_count,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(timezone.utc).astimezone().isoformat(),
         })
         state.extras["phase_e2e_results"] = results
 
@@ -2621,7 +2621,7 @@ def _execute_review_gate(
 
     _append_review_history(state_file, change_name, {
         "attempt": round_num,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(),
         "review_output": rr.output[:1500],
         "extracted_fixes": _extract_review_fixes(rr.output),
         "diff_summary": diff_summary,
@@ -3524,7 +3524,7 @@ def handle_change_done(
 
     # Mark done and queue merge
     update_change_field(state_file, change_name, "status", "done")
-    update_change_field(state_file, change_name, "completed_at", datetime.now(timezone.utc).isoformat())
+    update_change_field(state_file, change_name, "completed_at", datetime.now(timezone.utc).astimezone().isoformat())
 
     with locked_state(state_file) as state:
         state.changes_since_checkpoint += 1

@@ -1823,7 +1823,7 @@ def _resolve_issues_for_change(change_name: str) -> int:
             data = json.load(f)
         active_states = {"open", "investigating", "diagnosed", "fixing", "awaiting_approval"}
         resolved_count = 0
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(timezone.utc).astimezone().isoformat()
         for issue in data.get("issues", []):
             if issue.get("affected_change") == change_name and issue.get("state") in active_states:
                 issue["state"] = "resolved"
@@ -2265,7 +2265,7 @@ def _archive_completed_to_jsonl(state_file: str) -> None:
                     "status": c.status,
                     "tokens_used": c.tokens_used,
                     "scope": c.scope,
-                    "archived_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "archived_at": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
                 }
                 f.write(json.dumps(entry) + "\n")
         logger.info("Archived %d completed changes to %s", len(completed), archive_path)

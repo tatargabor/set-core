@@ -102,7 +102,7 @@ DONE_STATES = {
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).astimezone().isoformat()
 
 
 def compute_fingerprint(

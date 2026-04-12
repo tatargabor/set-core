@@ -777,7 +777,7 @@ class ProjectType(ABC):
         template_patterns = [p for p in classified if p.get("scope") == "template"]
         project_patterns = [p for p in classified if p.get("scope") == "project"]
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc).astimezone().isoformat()
 
         # --- Template JSONL (flock for concurrency) ---
         #

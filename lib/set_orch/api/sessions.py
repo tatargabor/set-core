@@ -157,7 +157,7 @@ def _list_session_files_for_change(
                 files.append({
                     "id": f.stem,
                     "size": st.st_size,
-                    "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+                    "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).astimezone().isoformat(),
                     "label": label,
                     "full_label": full_label,
                     "model": model,
@@ -375,7 +375,7 @@ def _list_session_files(sessions_dir: Path) -> list[dict]:
                 files.append({
                     "id": f.stem,
                     "size": st.st_size,
-                    "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+                    "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).astimezone().isoformat(),
                     "label": label,
                     "full_label": full_label,
                     "model": model,
