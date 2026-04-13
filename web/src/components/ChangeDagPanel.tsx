@@ -52,30 +52,56 @@ interface InnerProps {
   layout: { nodes: RFNode[]; edges: import('@xyflow/react').Edge[] }
   onNodeClick: (_: unknown, node: RFNode) => void
   autoFollow: boolean
+  changeName: string
 }
 
-function DagCanvas({ layout, onNodeClick, autoFollow }: InnerProps) {
+function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layout.edges)
   const { fitView } = useReactFlow()
   const nodeIdSetRef = useRef<string>(layout.nodes.map((n) => n.id).sort().join(','))
+  const lastFitChangeRef = useRef<string>(changeName)
+  const pendingFitRef = useRef<boolean>(false)
 
+  // Pass 1: push the new layout into React Flow's internal state and flag a
+  // pending fit when appropriate. The fit itself runs in pass 2 once RF has
+  // actually committed the new node positions — otherwise fitView() would
+  // operate on the stale node set.
   useEffect(() => {
     setNodes(layout.nodes)
     setEdges(layout.edges)
-    // Auto-fit gated on autoFollow: when ON, re-fit whenever the set of node
-    // IDs changes (new gate ran, new attempt started, terminal node added).
-    // When OFF, the user's manual pan/zoom is preserved across polls — they
-    // opted out of the camera moving on its own. Plain data-only updates on
-    // existing nodes (running → pass) never trigger a fit in either mode.
+    const prevIdSet = nodeIdSetRef.current
     const newIdSet = layout.nodes.map((n) => n.id).sort().join(',')
-    const changed = newIdSet !== nodeIdSetRef.current
+    const idSetChanged = newIdSet !== prevIdSet
     nodeIdSetRef.current = newIdSet
-    if (changed && autoFollow) {
-      const id = window.setTimeout(() => fitView({ duration: 300, padding: 0.15 }), 60)
-      return () => window.clearTimeout(id)
+    if (!idSetChanged || layout.nodes.length === 0) return
+    // idSetChanged bundles three distinct triggers:
+    //   A) mid-run inside the current change — a new gate/attempt arrived.
+    //      Fit only when autoFollow is on (manual mode keeps the user's pan).
+    //   B) first data arrival after the canvas mounted empty — always fit
+    //      so the DAG doesn't sit at RF's default offset.
+    //   C) change switch — the selected change just changed under us. Always
+    //      fit because a fresh DAG at the previous change's viewport is
+    //      almost certainly clipped off-screen ("kilog"), and the user
+    //      clicked a different row on purpose.
+    const isChangeSwitch = changeName !== lastFitChangeRef.current
+    const wasEmpty = prevIdSet === ''
+    if (autoFollow || isChangeSwitch || wasEmpty) {
+      pendingFitRef.current = true
     }
-  }, [layout, setNodes, setEdges, fitView, autoFollow])
+  }, [layout, setNodes, setEdges, autoFollow, changeName])
+
+  // Pass 2: when `nodes` (React Flow's state) reflects the new layout, fire
+  // the queued fit. Keying this on `nodes` instead of `layout` guarantees
+  // fitView() runs against the committed node positions, not the pending
+  // setNodes() value. The 60ms timeout gives RF one more frame to settle.
+  useEffect(() => {
+    if (!pendingFitRef.current || nodes.length === 0) return
+    pendingFitRef.current = false
+    lastFitChangeRef.current = changeName
+    const id = window.setTimeout(() => fitView({ duration: 300, padding: 0.15 }), 60)
+    return () => window.clearTimeout(id)
+  }, [nodes, changeName, fitView])
 
   return (
     <ReactFlow
@@ -257,7 +283,12 @@ export default function ChangeDagPanel({ project, changeName, autoFollow, onAuto
       {toolbar}
       <div className="flex-1 min-h-0 relative">
         <ReactFlowProvider>
-          <DagCanvas layout={layout} onNodeClick={onNodeClick} autoFollow={autoFollow} />
+          <DagCanvas
+            layout={layout}
+            onNodeClick={onNodeClick}
+            autoFollow={autoFollow}
+            changeName={changeName}
+          />
         </ReactFlowProvider>
       </div>
       <DagDetailPanel node={selectedNode} onClose={() => setSelectedNodeId(null)} />
