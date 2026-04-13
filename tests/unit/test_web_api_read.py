@@ -111,3 +111,54 @@ def test_get_log(client):
 def test_get_log_no_state(client):
     resp = client.get("/api/nonexistent/log")
     assert resp.status_code == 404
+
+
+def test_get_change_journal_missing(client):
+    """No journal file → HTTP 200 with empty shape."""
+    resp = client.get("/api/test-proj/changes/change-a/journal")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data == {"entries": [], "grouped": {}}
+
+
+def test_get_change_journal_404(client):
+    """Unknown change → HTTP 404."""
+    resp = client.get("/api/test-proj/changes/nonexistent/journal")
+    assert resp.status_code == 404
+
+
+def test_get_change_journal_with_entries(client, tmp_project):
+    """Journal file with build+test runs → grouped view."""
+    journals_dir = tmp_project / "set" / "orchestration" / "journals"
+    journals_dir.mkdir(parents=True, exist_ok=True)
+    jf = journals_dir / "change-a.jsonl"
+
+    entries = [
+        {"ts": "2026-04-12T10:00:00.000Z", "field": "build_result", "old": None, "new": "fail", "seq": 1},
+        {"ts": "2026-04-12T10:00:00.500Z", "field": "build_output", "old": None, "new": "err log 1", "seq": 2},
+        {"ts": "2026-04-12T10:00:01.000Z", "field": "gate_build_ms", "old": None, "new": 1234, "seq": 3},
+        {"ts": "2026-04-12T10:05:00.000Z", "field": "build_result", "old": "fail", "new": "pass", "seq": 4},
+        {"ts": "2026-04-12T10:05:00.500Z", "field": "build_output", "old": "err log 1", "new": "ok", "seq": 5},
+        {"ts": "2026-04-12T10:05:01.000Z", "field": "gate_build_ms", "old": 1234, "new": 900, "seq": 6},
+        {"ts": "2026-04-12T10:10:00.000Z", "field": "test_result", "old": None, "new": "pass", "seq": 7},
+    ]
+    jf.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+    resp = client.get("/api/test-proj/changes/change-a/journal")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["entries"]) == 7
+    grouped = data["grouped"]
+    assert "build" in grouped
+    assert len(grouped["build"]) == 2
+    assert grouped["build"][0] == {
+        "run": 1,
+        "result": "fail",
+        "output": "err log 1",
+        "ms": 1234,
+        "ts": "2026-04-12T10:00:00.000Z",
+    }
+    assert grouped["build"][1]["run"] == 2
+    assert grouped["build"][1]["result"] == "pass"
+    assert "test" in grouped
+    assert len(grouped["test"]) == 1
