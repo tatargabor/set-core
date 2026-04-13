@@ -4,6 +4,8 @@ interface Props {
   totalGateRuns: number
   viewMode: 'dag' | 'linear'
   onViewModeChange: (mode: 'dag' | 'linear') => void
+  autoFollow: boolean
+  onAutoFollowChange: (value: boolean) => void
 }
 
 function formatDuration(ms: number): string {
@@ -23,6 +25,8 @@ export default function DagToolbar({
   totalGateRuns,
   viewMode,
   onViewModeChange,
+  autoFollow,
+  onAutoFollowChange,
 }: Props) {
   return (
     <div className="flex items-center gap-4 px-3 py-1.5 border-b border-neutral-800 text-xs text-neutral-500 bg-neutral-950/50">
@@ -33,7 +37,19 @@ export default function DagToolbar({
       <span>
         {totalGateRuns} gate run{totalGateRuns !== 1 ? 's' : ''}
       </span>
-      <div className="ml-auto flex items-center bg-neutral-900 rounded border border-neutral-800">
+      <label
+        className="ml-auto flex items-center gap-1.5 cursor-pointer select-none"
+        title="Track the running change and re-fit the DAG when new nodes arrive"
+      >
+        <input
+          type="checkbox"
+          checked={autoFollow}
+          onChange={(e) => onAutoFollowChange(e.target.checked)}
+          className="accent-blue-500 w-3.5 h-3.5"
+        />
+        <span className="text-xs text-neutral-500">Auto Follow</span>
+      </label>
+      <div className="flex items-center bg-neutral-900 rounded border border-neutral-800">
         {(['dag', 'linear'] as const).map((m) => (
           <button
             key={m}

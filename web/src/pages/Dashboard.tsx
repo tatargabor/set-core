@@ -38,10 +38,12 @@ export default function Dashboard({ project, initialTab }: Props) {
   const [checkpoint, setCheckpoint] = useState(false)
   const [checkpointType, setCheckpointType] = useState<string | null>(null)
   const [selectedChange, setSelectedChange] = useState<string | null>(null)
-  // autoFollow drives the "auto-select running change" effect below. The
-  // UI toggle was removed with the Log/Timeline header; the setting now
-  // lives only in localStorage for power users who want to flip it.
-  const [autoFollow] = useState(() => {
+  // autoFollow drives two coupled behaviors:
+  //   1) selected change tracks the running change (effect below)
+  //   2) the DAG re-fits the viewport when new nodes arrive (ChangeDagPanel)
+  // The checkbox lives in DagToolbar and is passed down via ChangeDagPanel.
+  // Preference persists in localStorage so it survives reloads.
+  const [autoFollow, setAutoFollow] = useState(() => {
     try { return localStorage.getItem('set-auto-follow') === '1' } catch { return false }
   })
   // URL-backed tab state: ?tab=digest&sub=domains
@@ -335,7 +337,12 @@ export default function Dashboard({ project, initialTab }: Props) {
               </div>
               <div className="flex-1 min-h-0">
                 <Suspense fallback={<div className="p-3 text-sm text-neutral-500">Loading DAG...</div>}>
-                  <ChangeDagPanel project={project} changeName={selectedChange} />
+                  <ChangeDagPanel
+                    project={project}
+                    changeName={selectedChange}
+                    autoFollow={autoFollow}
+                    onAutoFollowChange={setAutoFollow}
+                  />
                 </Suspense>
               </div>
             </div>

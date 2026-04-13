@@ -31,6 +31,8 @@ import TerminalNode from './dag/TerminalNode'
 interface Props {
   project: string
   changeName: string
+  autoFollow: boolean
+  onAutoFollowChange: (value: boolean) => void
 }
 
 const NODE_TYPES = {
@@ -49,9 +51,10 @@ const EMPTY_GRAPH: AttemptGraph = {
 interface InnerProps {
   layout: { nodes: RFNode[]; edges: import('@xyflow/react').Edge[] }
   onNodeClick: (_: unknown, node: RFNode) => void
+  autoFollow: boolean
 }
 
-function DagCanvas({ layout, onNodeClick }: InnerProps) {
+function DagCanvas({ layout, onNodeClick, autoFollow }: InnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layout.edges)
   const { fitView } = useReactFlow()
@@ -60,18 +63,19 @@ function DagCanvas({ layout, onNodeClick }: InnerProps) {
   useEffect(() => {
     setNodes(layout.nodes)
     setEdges(layout.edges)
-    // Re-fit whenever the set of node IDs changes (new gate ran, new attempt
-    // started, terminal node added). Plain data-only updates on existing
-    // nodes (running -> pass) don't trigger a fit so user pan/zoom is
-    // preserved between polls.
+    // Auto-fit gated on autoFollow: when ON, re-fit whenever the set of node
+    // IDs changes (new gate ran, new attempt started, terminal node added).
+    // When OFF, the user's manual pan/zoom is preserved across polls — they
+    // opted out of the camera moving on its own. Plain data-only updates on
+    // existing nodes (running → pass) never trigger a fit in either mode.
     const newIdSet = layout.nodes.map((n) => n.id).sort().join(',')
     const changed = newIdSet !== nodeIdSetRef.current
     nodeIdSetRef.current = newIdSet
-    if (changed) {
+    if (changed && autoFollow) {
       const id = window.setTimeout(() => fitView({ duration: 300, padding: 0.15 }), 60)
       return () => window.clearTimeout(id)
     }
-  }, [layout, setNodes, setEdges, fitView])
+  }, [layout, setNodes, setEdges, fitView, autoFollow])
 
   return (
     <ReactFlow
@@ -94,7 +98,7 @@ function DagCanvas({ layout, onNodeClick }: InnerProps) {
   )
 }
 
-export default function ChangeDagPanel({ project, changeName }: Props) {
+export default function ChangeDagPanel({ project, changeName, autoFollow, onAutoFollowChange }: Props) {
   const [journal, setJournal] = useState<ChangeJournal | null>(null)
   const [timeline, setTimeline] = useState<ChangeTimelineData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -190,6 +194,8 @@ export default function ChangeDagPanel({ project, changeName }: Props) {
       totalGateRuns={graph.totalGateRuns}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
+      autoFollow={autoFollow}
+      onAutoFollowChange={onAutoFollowChange}
     />
   )
 
@@ -251,7 +257,7 @@ export default function ChangeDagPanel({ project, changeName }: Props) {
       {toolbar}
       <div className="flex-1 min-h-0 relative">
         <ReactFlowProvider>
-          <DagCanvas layout={layout} onNodeClick={onNodeClick} />
+          <DagCanvas layout={layout} onNodeClick={onNodeClick} autoFollow={autoFollow} />
         </ReactFlowProvider>
       </div>
       <DagDetailPanel node={selectedNode} onClose={() => setSelectedNodeId(null)} />
