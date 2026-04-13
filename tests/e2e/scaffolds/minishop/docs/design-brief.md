@@ -144,6 +144,43 @@ Sections:
      * "Order Total" label: text-gray-600
      * Total amount: text-3xl font-bold text-gray-900
 
+## Page: Customer Login
+
+Route: /login
+Background: bg-gray-100
+Layout: flex items-center justify-center min-h-screen
+
+Sections:
+
+1. Login Card
+   - max-w-md mx-auto bg-white rounded-lg shadow-md p-8
+   - Icon: bg-blue-100 p-3 rounded-full, User lucide icon w-8 h-8 text-blue-600, centered
+   - H1: "Sign In" — text-2xl font-bold text-gray-900 text-center mb-2
+   - Subtitle: "Welcome back to MiniShop" — text-sm text-gray-600 text-center mb-8
+   - Form fields (same styling as Admin Login):
+     * Email: label "Email Address", input with border border-gray-300 rounded-lg
+     * Password: label "Password", placeholder dots
+     * Focus state: focus:ring-2 focus:ring-blue-500 focus:border-transparent
+   - "Sign In" button: w-full bg-blue-600 text-white py-3 rounded-lg font-medium
+   - Error banner (on failed auth): bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-md mb-4
+   - Footer: "Don't have an account? Create one" link text-blue-600 text-sm, centered, links to /register (preserves `returnTo` query param)
+
+## Page: Customer Register
+
+Route: /register
+Background: bg-gray-100
+Layout: flex items-center justify-center min-h-screen
+
+Sections:
+
+1. Register Card
+   - max-w-md mx-auto bg-white rounded-lg shadow-md p-8
+   - Icon: bg-blue-100 p-3 rounded-full, UserPlus lucide icon w-8 h-8 text-blue-600, centered
+   - H1: "Create an account" — text-2xl font-bold text-gray-900 text-center mb-8
+   - Form fields: Name, Email, Password (password min 8 chars hint: text-xs text-gray-500)
+   - "Create account" button: w-full bg-blue-600 text-white py-3 rounded-lg font-medium
+   - Footer: "Already have an account? Sign in" link text-blue-600 text-sm, centered, links to /login
+
 ## Page: Admin Login
 
 Route: /admin
@@ -177,8 +214,8 @@ Sections:
    - Nav links: px-3, each link px-4 py-3 rounded-lg mb-1
      * Active: bg-blue-600 text-white
      * Inactive: text-gray-300 hover:bg-gray-800
-     * Icons: LayoutDashboard, Package (lucide-react), w-5 h-5
-   - Links: Dashboard (/admin/dashboard), Products (/admin/products)
+     * Icons: LayoutDashboard, ShoppingBag, Package (lucide-react), w-5 h-5
+   - Links (order): Dashboard (/admin/dashboard), Orders (/admin/orders), Products (/admin/products)
    - Logout: text-gray-300 hover:bg-gray-800, LogOut icon, mt-4
 
 2. Main Content (flex-1)
@@ -190,8 +227,76 @@ Sections:
        - Layout: flex items-center justify-between
        - Left: label (text-gray-600 text-sm font-medium mb-1) + value (text-4xl font-bold text-gray-900)
        - Right: icon container (bg-blue-100/bg-green-100 p-4 rounded-lg) + icon (w-8 h-8)
-     * Card 1: "Total Products" — Package icon (text-blue-600, bg-blue-100)
-     * Card 2: "Total Orders" — ShoppingBag icon (text-green-600, bg-green-100)
+       - The whole card is wrapped in a Link; hover state: hover:shadow-lg transition-shadow
+     * Card 1: "Total Products" — Package icon (text-blue-600, bg-blue-100) — links to /admin/products
+     * Card 2: "Total Orders" — ShoppingBag icon (text-green-600, bg-green-100) — links to /admin/orders
+
+## Page: Admin Orders
+
+Route: /admin/orders
+Background: bg-gray-50
+Layout: flex min-h-screen (sidebar + content)
+
+Sections:
+
+1. AdminSidebar — left side (shared component; "Orders" entry active)
+
+2. Main Content (flex-1)
+   - Container: max-w-[1280px] mx-auto px-8 py-8
+   - Header row: flex items-center justify-between mb-6
+     * H1: "Orders" — text-3xl font-bold text-gray-900
+     * Status filter: select element w-48, border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700, options: All / Pending / Completed / Cancelled. Updates `?status=` query param on change.
+   - Orders table: bg-white rounded-lg shadow-md overflow-hidden
+     * Header: bg-gray-50 border-b border-gray-200
+     * Header cells: px-6 py-4 text-left text-sm font-semibold text-gray-900
+     * Columns: Order # | Customer | Date | Status | Total | Actions
+     * Body rows: divide-y divide-gray-200, hover:bg-gray-50, cells px-6 py-4 text-sm
+       - Order #: text-gray-900 font-medium, format "#N"
+       - Customer: stacked — user.name (text-gray-900) above user.email (text-xs text-gray-500)
+       - Date: text-gray-600, toLocaleDateString()
+       - Status badge: px-3 py-1 rounded-full text-xs font-medium
+         * Pending: bg-yellow-100 text-yellow-800
+         * Completed: bg-green-100 text-green-800
+         * Cancelled: bg-gray-100 text-gray-700
+       - Total: font-semibold text-gray-900, format "€XX.XX"
+       - Actions: "View" link text-blue-600 hover:text-blue-800 font-medium → /admin/orders/:id
+   - Empty state (no orders match filter): centered flex-col py-16
+     * ShoppingBag icon: w-16 h-16 text-gray-300 mb-4
+     * "No orders yet" — text-lg font-medium text-gray-900
+     * "Orders placed by customers will appear here." — text-sm text-gray-600
+
+## Page: Admin Order Detail
+
+Route: /admin/orders/:id
+Background: bg-gray-50
+Layout: flex min-h-screen (sidebar + content)
+
+Sections:
+
+1. AdminSidebar — left side (shared component; "Orders" entry active)
+
+2. Main Content (flex-1)
+   - Container: max-w-[960px] mx-auto px-8 py-8
+   - Back link: text-gray-600 hover:text-gray-900, ArrowLeft icon + "Back to Orders" → /admin/orders, mb-6
+   - Header row: flex justify-between items-center mb-6
+     * H1: "Order #N" — text-3xl font-bold text-gray-900
+     * Status badge: px-4 py-2 rounded-full text-sm font-medium (same color mapping as Admin Orders list)
+   - Customer card: bg-white rounded-lg shadow-md p-6 mb-6
+     * Label row: text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2 — "Customer"
+     * user.name — text-lg font-semibold text-gray-900
+     * user.email — text-sm text-gray-600
+     * Registered date — text-xs text-gray-500 mt-1
+     * sessionId trace line: text-xs text-gray-400 font-mono mt-3 — format "session: {sessionId}"
+   - Items card: bg-white rounded-lg shadow-md p-6
+     * Date row: text-gray-600 mb-4 — "Placed on {toLocaleString()}"
+     * Items table: border border-gray-200 rounded-lg overflow-hidden
+       - Header: bg-gray-50, columns: Product | Qty | Price | Subtotal
+       - Header cells: px-6 py-4 text-left text-sm font-semibold text-gray-900
+       - Body: divide-y divide-gray-200
+       - Product cell: stacked — variantLabel (text-gray-900) + SKU (text-xs text-gray-500 font-mono)
+     * Total section: flex justify-end mt-6 pt-6 border-t border-gray-200
+       - "Order Total" label: text-gray-600
+       - Total amount: text-3xl font-bold text-gray-900
 
 ## Page: Admin Products
 
@@ -207,8 +312,8 @@ Sections:
    - Nav links: px-3, each link px-4 py-3 rounded-lg mb-1
      * Active: bg-blue-600 text-white
      * Inactive: text-gray-300 hover:bg-gray-800
-     * Icons: LayoutDashboard, Package (lucide-react), w-5 h-5
-   - Links: Dashboard (/admin/dashboard), Products (/admin/products)
+     * Icons: LayoutDashboard, ShoppingBag, Package (lucide-react), w-5 h-5
+   - Links (order): Dashboard (/admin/dashboard), Orders (/admin/orders), Products (/admin/products)
    - Logout: text-gray-300 hover:bg-gray-800, LogOut icon, mt-4
 
 2. Main Content (flex-1)
@@ -236,20 +341,24 @@ Sections:
 - Container: max-w-[1280px] mx-auto px-6 py-4
 - Layout: flex items-center justify-between
 - Left: "MiniShop" logo — text-2xl font-bold text-gray-900, links to /
-- Right: nav links (Products, Cart, Orders, Admin) — text-gray-700 hover:text-gray-900
-- Cart link has ShoppingCart icon (w-5 h-5) + "Cart" text
-- Mobile variant (MobileNavbar): px-4 py-3, logo text-xl, only cart icon (no text links)
+- Right: nav links — text-gray-700 hover:text-gray-900, gap-6
+  * Always visible: Products, Cart (with ShoppingCart icon w-5 h-5 + "Cart" text and item count badge)
+  * Signed-out: "Sign In" link → /login, "Admin" link → /admin
+  * Signed-in (role=USER): Orders link, user menu button (text-gray-700) showing first name with ChevronDown icon; menu contains "Sign Out" (LogOut icon)
+  * Signed-in (role=ADMIN): Orders link, "Admin" link → /admin/dashboard (bolded), user menu with "Sign Out"
+- Cart count badge: if cartCount > 0, small pill bg-blue-600 text-white text-xs rounded-full px-2 py-0.5 after the Cart text
+- Mobile variant (MobileNavbar): px-4 py-3, logo text-xl, only cart icon (with count badge); user menu collapsed into hamburger popover
 
 ### AdminSidebar
-- Used on: Admin Dashboard, Admin Products
+- Used on: Admin Dashboard, Admin Orders, Admin Order Detail, Admin Products
 - DARK theme: w-64 bg-gray-900 text-white min-h-screen
 - Header: p-6, "Admin Panel" — text-xl font-bold
 - Nav links: px-3, each link px-4 py-3 rounded-lg mb-1
-  * Active: bg-blue-600 text-white
+  * Active: bg-blue-600 text-white (active = pathname matches link or a descendant; e.g. /admin/orders/5 keeps Orders active)
   * Inactive: text-gray-300 hover:bg-gray-800
-  * Icons: LayoutDashboard, Package (lucide-react), w-5 h-5
-- Links: Dashboard (/admin/dashboard), Products (/admin/products)
-- Logout: text-gray-300 hover:bg-gray-800, LogOut icon, mt-4, links to /admin
+  * Icons: LayoutDashboard, ShoppingBag, Package (lucide-react), w-5 h-5
+- Links (order): Dashboard (/admin/dashboard), Orders (/admin/orders), Products (/admin/products)
+- Logout: text-gray-300 hover:bg-gray-800, LogOut icon, mt-4, triggers NextAuth signOut → /admin
 
 ### ProductCard
 - Used on: Product Grid, Mobile Product Grid

@@ -9,16 +9,24 @@ globs:
 
 ## Recommended Change Decomposition
 
-The minishop spec covers 6 functional areas. Ideal decomposition:
+The minishop spec covers 7 functional areas. Ideal decomposition:
 
-1. **foundation-setup** (Phase 1) — Prisma schema, seed data, package.json deps, Playwright/Vitest config, globals.css, layout
-2. **auth-navigation** (Phase 1, parallel with foundation or Phase 1 sequential) — NextAuth, middleware, login/register pages, storefront navigation header
+1. **foundation-setup** (Phase 1) — Prisma schema (Order.userId is REQUIRED, not optional), seed data, package.json deps, Playwright/Vitest config, globals.css, layout
+2. **auth-navigation** (Phase 1, after foundation) — NextAuth v5 Credentials + JWT, `/login` + `/register` (customer), `/admin` + `/admin/register` (admin), middleware for `/admin/*` + role gating (USER → 403 on admin), storefront Navbar with signed-in/signed-out variants, Orders link visibility rule
 3. **product-catalog** (Phase 2) — Product grid, detail page, variant selector, catalog E2E tests
-4. **shopping-cart** (Phase 2) — Cart session, add/remove/update, cart page, cart E2E tests
-5. **admin-products** (Phase 2) — Admin CRUD for products/variants, DataTable, admin E2E tests
-6. **checkout-orders** (Phase 3) — Order placement, order history, order detail page, checkout E2E tests
+4. **shopping-cart** (Phase 2) — Cart session (httpOnly `session_id` cookie), add/remove/update, cart page, cart E2E tests. **Cart browsing is anonymous; checkout is login-gated (handled in checkout-orders, not here).**
+5. **checkout-orders** (Phase 3) — `placeOrder` server action asserts auth → creates Order with `userId`, clears cart. `/cart` "Place Order" button swaps to "Sign in to checkout" for anonymous users. Customer `/orders` + `/orders/[id]` with ownership check. On login, the existing `session_id` cookie is preserved so the anonymous cart lineage carries over.
+6. **admin-products** (Phase 3) — Admin CRUD for products/variants, DataTable, admin E2E tests
+7. **admin-orders** (Phase 4, after checkout-orders) — `/admin/orders` list (status filter, sorted by createdAt DESC), `/admin/orders/[id]` detail with customer block + session trace, AdminSidebar "Orders" entry active on descendant routes, Admin Dashboard "Total Orders" card links to /admin/orders
 
-Keep foundation and auth SEPARATE. Keep cart and checkout SEPARATE. This prevents 100K+ token changes that are prone to integration failures.
+Keep foundation and auth SEPARATE. Keep cart and checkout SEPARATE — login-gating lives in checkout, not cart. Keep admin-products and admin-orders SEPARATE — they share only the AdminSidebar (which auth-navigation owns). This prevents 100K+ token changes that are prone to integration failures.
+
+## Auth-flow contract
+
+- The anonymous `session_id` cookie is NEVER rotated on login — both customer login and register must preserve it so CartItem rows tied to `sessionId` remain visible after sign-in.
+- `placeOrder()` MUST start with `const session = await auth(); if (!session) return { error: "Please sign in to place an order" }` — do NOT create a guest Order with `userId = null` (the schema forbids it).
+- `/orders` and `/orders/[id]` server components MUST redirect to `/login?returnTo=<current>` when unauthenticated — not render an empty state.
+- `/admin/*` middleware MUST return 403 (not redirect to /admin) when a USER-role session hits admin routes — silent redirects hide privilege errors.
 
 ## Product Data
 
@@ -49,13 +57,22 @@ Keep foundation and auth SEPARATE. Keep cart and checkout SEPARATE. This prevent
 - Do NOT use plain HTML `<button>`, `<input>`, `<select>` — always use shadcn equivalents
 - Do NOT delete `components.json` or `src/lib/utils.ts` — these are required
 
-## Admin Authentication
+## Authentication
+
+Single `User` model, role-based. Two audiences share the auth pipeline.
 
 - bcrypt for password hashing (devDependency: `bcryptjs`)
-- NextAuth with Credentials provider
-- Admin registration: `/admin/register` (first user becomes admin)
-- Session-based auth with JWT strategy
-- Middleware protects `/admin/*` routes (except login/register)
+- NextAuth v5 Credentials provider, JWT strategy
+- Customer routes: `/login`, `/register` (creates role=USER)
+- Admin routes: `/admin` (login), `/admin/register` (creates role=ADMIN — v1 demo policy, no hardening)
+- Middleware `src/middleware.ts` handles `/admin/*`: unauthenticated → `/admin`; role=USER → 403 page
+- Server actions that mutate user data (`placeOrder`, all `/admin/*` actions) re-check the session — middleware is not the only line of defense
+- `/orders` + `/orders/[id]` are server components that redirect to `/login?returnTo=…` when unauthenticated
+
+## Seed auth users
+
+- 1 admin: `admin@example.com` / `password123` (role=ADMIN)
+- 1 customer: `alice@example.com` / `password123` (role=USER) — pre-seeded so E2E tests can log in without going through registration
 
 ## Seed Data
 

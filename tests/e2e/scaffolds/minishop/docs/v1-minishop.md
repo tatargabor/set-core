@@ -169,14 +169,17 @@ model CartItem {
 
 model Order {
   id        Int         @id @default(autoincrement())
-  sessionId String                        // ties anonymous orders to session
-  userId    Int?                          // optional — linked if logged in
-  user      User?       @relation(fields: [userId], references: [id])
+  sessionId String                        // retained for the cart-lineage audit trail
+  userId    Int                           // required — placing an order needs auth
+  user      User        @relation(fields: [userId], references: [id])
   status    String      @default("PENDING")  // "PENDING" | "COMPLETED" | "CANCELLED"
   total     Int                           // EUR cents, sum of line items
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   items     OrderItem[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])              // admin orders list filters by status + sorts by date
 }
 
 model OrderItem {
@@ -194,6 +197,17 @@ model OrderItem {
 ## Seed Data
 
 Create `prisma/seed.ts`. Seed is idempotent (use `upsert` / `deleteMany` + `createMany` pattern).
+
+### Users
+
+Both seeded via `upsert` with bcrypt-hashed passwords.
+
+| email | password (plain) | role |
+|-------|------------------|------|
+| `admin@example.com` | `password123` | ADMIN |
+| `alice@example.com` | `password123` | USER |
+
+The USER seed exists so E2E checkout tests can sign in without running through the registration flow.
 
 ### Attribute Types
 
@@ -319,7 +333,7 @@ Product detail at `/products/[id]`:
 - **"Add to Cart" button** (disabled with "Out of Stock" text when variant stock=0)
 - Products without attributes show no selectors
 
-Navigation header on all storefront pages (use a `(shop)` route group with shared layout). Header contains: MiniShop logo/brand, Products link, Cart link with item count badge, Orders link. Root `/` redirects to `/products`. Health endpoint at `/api/health`.
+Navigation header on all storefront pages (use a `(shop)` route group with shared layout). Header contains: MiniShop logo/brand, Products link, Cart link with item count badge, Orders link (visible only when logged in), and either a "Sign In" link (anonymous) or a user-menu button showing the name with "Sign Out" action (authenticated). Root `/` redirects to `/products`. Health endpoint at `/api/health`.
 
 Price format: EUR cents → `€1,299.99`. Responsive layout following Figma design.
 
@@ -340,21 +354,51 @@ Server-side cart with anonymous sessions (httpOnly cookie, UUID). Cart items ref
 
 ### Checkout & Orders
 
-Convert cart to order via `placeOrder()` — **transactional**: verify variant stock → create Order + OrderItems (snapshot price + variant label) → decrement variant stock → clear cart. All or nothing.
+Convert cart to order via `placeOrder()` — **transactional**: assert authenticated user → verify variant stock → create Order + OrderItems (snapshot price + variant label) with `userId` from the session → decrement variant stock → clear cart. All or nothing.
 
+- **Login required** to checkout. Anonymous users browsing `/cart` see the "Place Order" button disabled/replaced with a "Sign in to checkout" link to `/login?returnTo=/cart`. Calling the `placeOrder` server action without a session returns an auth error (do not silently create a guest order).
+- On successful login the anonymous cart is preserved — the `session_id` cookie is retained and the same `CartItem` rows continue to belong to the user's active session until order placement clears them. Do NOT overwrite the cookie on login.
 - Empty cart → error
 - Insufficient variant stock → error (no partial order)
-- Order history at `/orders`: list of orders with status, date, total, **"View Details" link** per order
-- Order detail at `/orders/[id]`: **"← Back to Orders" link** at top, line items with variant label + quantity + price, order total
+- Order history at `/orders` (auth required, unauthenticated → redirect to `/login?returnTo=/orders`): list of orders **belonging to the current user** (filtered by `userId`), with status, date, total, **"View Details" link** per order
+- Order detail at `/orders/[id]`: ownership check — a user may only view their own orders (404 otherwise). **"← Back to Orders" link** at top, line items with variant label + quantity + price, order total
 
-### Admin Authentication
+### Authentication
 
-NextAuth v5 with Credentials provider, JWT strategy, bcryptjs. **Only admin routes protected** — storefront stays public.
+NextAuth v5 with Credentials provider, JWT strategy, bcryptjs. Two audiences share a single `User` model (role field: `USER` | `ADMIN`).
 
-- Register → auto-login → admin dashboard
-- Login with wrong credentials → error
-- `/admin/*` requires auth (except `/admin/login`, `/admin/register`)
-- Storefront routes (`/products`, `/cart`, `/orders`) NO auth required
+**Customer auth (USER role)**
+- `/login` — email + password form; success → redirect to `returnTo` query param (default `/products`)
+- `/register` — name + email + password form; success → auto-login → `returnTo` (default `/products`)
+- No email verification, no password reset flow (out of scope for v1)
+- Protected routes: `/cart` may be browsed anonymously, but `/orders` and `/orders/[id]` require auth. `placeOrder` server action asserts auth.
+
+**Admin auth (ADMIN role)**
+- `/admin` — admin login card (design-brief: Admin Login)
+- `/admin/register` — admin registration; the first registered admin gets the ADMIN role automatically; subsequent registrations at this route ALSO get ADMIN (v1 demo policy — documented here, no open-registration hardening)
+- `/admin/*` routes require `role === "ADMIN"`: a USER hitting any `/admin/*` except `/admin`/`/admin/register` → 403 page (not a silent redirect to login; shows "Admin access required")
+
+**Route protection matrix**
+| Route                 | Anonymous | USER      | ADMIN     |
+|-----------------------|-----------|-----------|-----------|
+| `/products`, `/products/[id]` | ✓ | ✓ | ✓ |
+| `/cart` (view)        | ✓ | ✓ | ✓ |
+| `placeOrder` action   | ✗ login | ✓ | ✓ |
+| `/orders`, `/orders/[id]` | ✗ login | ✓ own only | ✓ own only |
+| `/admin` (login)      | ✓ | ✓ | ✓ |
+| `/admin/dashboard` et al. | ✗ | 403 | ✓ |
+
+Middleware (`src/middleware.ts`) enforces `/admin/*` gating. Server actions additionally check the session to fail closed when the middleware is bypassed.
+
+### Admin Order Management
+
+Admin-side order list + detail. Read-only in v1 — no status mutations, no cancellation actions (keeps the test surface small).
+
+- **`/admin/orders`** — paginated orders table. Columns: Order # | Customer (user.name, fallback to email) | Date | Status | Total | Actions ("View"). Rows sorted by `createdAt` DESC. Status filter dropdown at top ("All" / "Pending" / "Completed" / "Cancelled") updates a query param. Empty state: "No orders yet" message.
+- **`/admin/orders/[id]`** — order detail with the same item breakdown as the customer-facing detail page, plus a customer info block (name, email, registered-at) and the raw `sessionId` shown in a faint mono label for traceability. Admin-styled layout (sidebar + main content, matching Admin Products).
+- Admin Dashboard "Total Orders" stat card becomes a link to `/admin/orders`.
+- AdminSidebar gains an "Orders" nav entry (ShoppingBag icon from `lucide-react`) between Dashboard and Products; active state styling matches the rest of the sidebar.
+- All `/admin/orders*` routes require ADMIN role (see route protection matrix).
 
 ### Admin Product Management
 
