@@ -205,13 +205,31 @@ export default function Dashboard({ project, initialTab }: Props) {
     try { localStorage.setItem('set-auto-follow', autoFollow ? '1' : '0') } catch {}
   }, [autoFollow])
 
-  // Auto-follow: select the running change
+  // Auto-follow: select the running change, but only on transitions.
+  //
+  // Previous implementation re-selected the running change on every poll,
+  // which snapped the user back whenever they manually clicked a different
+  // row — the next 5s REST poll reasserted the running change and the
+  // manual click silently disappeared. Track which running change we
+  // last auto-selected and fire setSelectedChange only when that changes
+  // (new change entered `running`, or autoFollow was just turned on with
+  // a running change already in progress). This lets the user park on
+  // any row they want without the pager pulling them back.
+  const lastAutoSelectedRunningRef = useRef<string | null>(null)
   useEffect(() => {
-    if (autoFollow && changes.length > 0) {
-      const running = changes.find(c => c.status === 'running')
-      if (running && running.name !== selectedChange) {
-        setSelectedChange(running.name)
-      }
+    if (!autoFollow) {
+      lastAutoSelectedRunningRef.current = null
+      return
+    }
+    if (changes.length === 0) return
+    const running = changes.find(c => c.status === 'running')
+    if (!running) {
+      lastAutoSelectedRunningRef.current = null
+      return
+    }
+    if (running.name !== lastAutoSelectedRunningRef.current) {
+      lastAutoSelectedRunningRef.current = running.name
+      setSelectedChange(running.name)
     }
   }, [autoFollow, changes])
 

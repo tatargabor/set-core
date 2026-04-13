@@ -133,6 +133,14 @@ export default function ChangeDagPanel({ project, changeName, autoFollow, onAuto
 
   useEffect(() => {
     let cancelled = false
+    // Reset per-change state on every change switch so the graph/layout
+    // memos drop to EMPTY_GRAPH immediately. This makes the "wasEmpty"
+    // trigger in DagCanvas fire reliably when the new journal arrives,
+    // and avoids a flicker where the old change's DAG is briefly
+    // rendered at the new change's viewport during the async fetch.
+    setJournal(null)
+    setTimeline(null)
+    setError(null)
     const load = () => {
       getChangeJournal(project, changeName)
         .then((d) => {
