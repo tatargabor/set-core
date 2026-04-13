@@ -20,6 +20,12 @@ __pycache__/
 
 # Per-worktree agent ephemeral directory
 /.set/
+# Nested .set/ dirs (e.g. web/.set/) — PID-bound runtime state that must
+# not be tracked. Caught on web/.set/agents/2371599.skill leaking into
+# commit 9f1637cf before this rule existed.
+**/.set/agents/
+**/.set/activity.json
+**/.set/supervisor/
 # Runtime state files (legacy — shared runtime now in ~/.local/share/set-core/)
 .set-core/
 .wt-tools/
