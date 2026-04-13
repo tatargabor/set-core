@@ -72,6 +72,8 @@ new → investigating → diagnosed → fixing → fix_verified → resolved
                    ↘ escalated (needs human)
 ```
 
+Issues attached to a change (`affected_change`) auto-resolve when that change successfully merges — `merge_change()` transitions them from `diagnosed` → `fixed` atomically with a full audit trail. This prevents the merge queue from stalling on stale issues that were already addressed. The `diagnosed_at` timestamp feeds a watchdog timer so long-pending issues become visible, and there is a `POST /api/{project}/issues/{id}/resolve` manual-escape endpoint for cases where the auto-resolve heuristic doesn't fire.
+
 ## CLI & API
 
 Issues are accessible via the web dashboard API:
@@ -82,6 +84,7 @@ Issues are accessible via the web dashboard API:
 | `POST /api/{project}/issues/{id}/investigate` | Trigger investigation |
 | `POST /api/{project}/issues/{id}/fix` | Trigger fix |
 | `POST /api/{project}/issues/{id}/dismiss` | Dismiss as false positive |
+| `POST /api/{project}/issues/{id}/resolve` | Manually resolve (e.g., unblock merge queue) |
 | `GET /api/{project}/issues/stats` | Issue statistics |
 | `GET /api/{project}/issues/audit` | Audit trail |
 

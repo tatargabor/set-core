@@ -30,9 +30,25 @@ Click a project to open its orchestration dashboard.
 
 ### Changes Tab
 
-Shows all changes with status, session count, duration, token usage, and quality gate badges (B=build, T=test, S=smoke, R=review, V=spec verify).
+The Changes tab is split in two. On the left, a list of all changes with status, session count, duration, token usage, and quality gate badges (B=build, T=test, S=smoke, R=review, V=spec verify). On the right, the **Change State DAG** — a React Flow graph that visualises every attempt the selected change went through.
 
-![Changes tab](../images/auto/web/tab-changes.png)
+![Changes tab with DAG](../images/auto/web/tab-changes.png)
+
+#### Change State DAG
+
+Each row in the graph is one attempt at the change. Nodes progress left-to-right through the pipeline:
+
+- **Impl node** (violet, ✎ icon) — the agent's code-generation window; shows attempt number and duration.
+- **Gate nodes** — one per gate (build, test, e2e, review, smoke, scope_check, rules, e2e_coverage, merge). Border colour reflects the result (green pass, red fail, amber warn, blue running). Shows the result icon, gate name, duration, timestamp, and a ⟳N badge if the gate ran multiple times.
+- **Terminal node** — final state of the attempt, bold ✓ merged (green) or ✗ failed (red), with total duration.
+- **Retry edges** — curved lines labelled *retry* (gate failure) or *conflict* (merge conflict) loop from the last gate of a failed attempt back to the impl of the next attempt.
+
+The graph is built live from the change journal, so running gates appear as they start. The **toolbar** above the canvas shows attempt count, total duration, gate-run count, and two controls:
+
+- **Auto Follow** — re-fits the viewport when new nodes arrive so the live frontier stays on screen. Disable it to pan and zoom manually.
+- **DAG / Log** — toggles between the graph and the older linear Log view (kept for detail-heavy inspection; same underlying data).
+
+Click any node to open a detail panel below the canvas with verdict source, classifier downgrades, gate output, or session logs for impl nodes. Press Escape or click the close button to dismiss it.
 
 ### Phases Tab
 
@@ -46,11 +62,15 @@ Token usage per change — input, output, and cache breakdown.
 
 ![Tokens tab](../images/auto/web/tab-tokens.png)
 
+### Activity Tab
+
+Gantt-style timeline of every agent session: planning, implementing, gate runs, merge, and idle gaps. Click any span to open a drilldown with per-tool time, LLM-wait time, sub-agent attribution, and overhead.
+
+![Activity tab](../images/auto/web/tab-activity.png)
+
 ### Sessions Tab
 
 Agent session history with commands, worktrees, and iteration progress.
-
-![Sessions tab](../images/auto/web/tab-sessions.png)
 
 ### Log Tab
 
@@ -86,7 +106,7 @@ Structured requirements extracted from the spec, with coverage status showing wh
 
 A compact, information-dense view for monitoring high-parallelism runs. Shows all active changes side-by-side with live status updates.
 
-![Battle view](../images/auto/web/battle-view.png)
+![Battle view](../images/auto/web/tab-battle.png)
 
 ## Secondary Pages
 

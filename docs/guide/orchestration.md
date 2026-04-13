@@ -88,6 +88,8 @@ Every completed change passes through a sequence of quality gates before it can 
 
 If a gate fails, the agent receives the error output and retries (up to `max_verify_retries`, default 2). Gate results are recorded as `VERIFY_GATE` events.
 
+Gate verdicts are parsed by the **unified LLM verdict classifier** (`lib/set_orch/llm_verdict.py`): a small Sonnet second-pass reads the primary output as unstructured text and returns a JSON object describing pass/fail, critical count, and findings. This replaced fragile regex parsing and closes the "silent pass" bug where a retry review that said "3 NOT_FIXED [CRITICAL]" in an unrecognised format slipped through.
+
 ![Changes tab showing gate badges](../images/auto/web/tab-changes.png)
 
 ### 6. Merge
@@ -129,6 +131,21 @@ Gates are driven by the project's **profile** (the `ProjectType` plugin). The pr
 | spec_coverage | Compares change output to digest requirements | `require_full_coverage` |
 
 Gate failures produce structured output in `review-findings.jsonl`, which feeds into the review learnings system — preventing the same mistakes across future changes and runs.
+
+### Review Learnings
+
+The review learnings pipeline closes a loop across changes and runs: each review finding is classified, semantically deduped, and persisted to a per-project checklist. The checklist is then injected into **both** sides of future runs:
+
+- **Agent side** — `input.md` carries a scope-filtered slice of the checklist (filtered by diff content category: auth / api / database / frontend), so agents see only relevant patterns. Between ralph iterations `input.md` is refreshed when the checklist file's mtime advances, so in-flight changes pick up learnings from changes that merged while they were running.
+- **Review side** — the review gate prompt now receives the same checklist and can BLOCK changes that violate past patterns. Previously the "review will BLOCK if violated" header was an empty promise because the checklist never reached the reviewer.
+
+Dedup is LLM-based (Sonnet merge pass) so semantically identical patterns consolidate instead of bloating the 200-entry eviction cap. Severity calibration has an explicit rubric (CRITICAL is reserved for crash/leak/data-loss) and the classifier records any downgrades it applied.
+
+### State Archives and Journals
+
+Every overwrite of a tracked `state.json` field (gate results, outputs, timings, retry context, status, current_step) appends a row to `<orchestration_dir>/journals/<change-name>.jsonl`. A general-purpose `archive_and_write()` helper also snapshots tracked files before overwriting, storing them under `<orchestration_dir>/archives/<relative-path>/<ts>.<ext>`. Post-merge, a worktree harvest copies `.set/reflection.md`, `.set/loop-state.json`, `.set/activity.json`, and `.claude/review-findings.md` into `<orchestration_dir>/archives/worktrees/<change-name>/` so the artefacts survive worktree cleanup.
+
+In the dashboard, each gate tab now shows per-run sub-tabs driven by the journal API — you can inspect earlier Build/Test/E2E/Review attempts, not just the last one. Legacy changes without journals fall back to the single-run view.
 
 ---
 

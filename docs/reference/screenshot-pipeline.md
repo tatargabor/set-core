@@ -28,17 +28,24 @@ make screenshots-app      # consumer app only
 docs/images/auto/
 ├── web/                          # Web dashboard screenshots
 │   ├── manager-project-list.png  # Landing page with all projects
+│   ├── manager-project-detail.png # Manager project detail page
+│   ├── manager-sentinel-chat.png # Sentinel chat page
 │   ├── dashboard-overview.png    # Orchestration dashboard header
-│   ├── tab-changes.png           # Changes tab (gate badges, tokens)
+│   ├── tab-changes.png           # Changes tab (list + Change State DAG panel)
+│   ├── tab-activity.png          # Activity timeline (gate spans, LLM-wait gaps)
+│   ├── tab-activity-drilldown.png # Activity tab with session drilldown open
 │   ├── tab-phases.png            # Phases tab (dependency tree)
 │   ├── tab-tokens.png            # Token usage chart
 │   ├── tab-sessions.png          # Agent session list
 │   ├── tab-log.png               # Orchestration log
-│   ├── tab-learnings.png         # Reflections + gate stats
+│   ├── tab-learnings.png         # Review learnings + gate stats
 │   ├── tab-agent.png             # Agent chat interface
-│   ├── tab-sentinel.png          # Sentinel log
-│   ├── tab-plan.png              # Plan viewer (conditional — only generated when data exists)
+│   ├── tab-sentinel.png          # Sentinel (supervisor daemon) log
+│   ├── tab-battle.png            # Battle view — high-parallelism monitor
 │   ├── tab-digest.png            # Spec digest (if data exists)
+│   ├── tab-digest-e2e.png        # Spec digest E2E coverage sub-view
+│   ├── tab-triage.png            # Triage sub-view (conditional)
+│   ├── tab-plan.png              # Plan viewer (conditional — only generated when data exists)
 │   ├── tab-context.png           # Context analysis (conditional — needs LLM call data)
 │   ├── tab-audit.png             # Audit results (conditional — only generated when data exists)
 │   ├── global-issues.png         # Global issues browser
@@ -49,30 +56,40 @@ docs/images/auto/
 ├── cli/                          # CLI terminal screenshots
 │   ├── set-list.png              # Worktree listing
 │   ├── set-status.png            # Orchestration status
-│   ├── openspec-status.png       # OpenSpec changes (conditional — only generated when data exists)
+│   ├── set-version.png           # Version banner
+│   ├── set-config-editor-list.png # Config editor listing
+│   ├── set-usage.png             # Usage / pricing snapshot
+│   ├── openspec-list.png         # OpenSpec changes (conditional)
 │   ├── set-memory-stats.png      # Memory statistics
-│   └── set-audit-scan.png        # Project health audit
-└── app/                          # Consumer app screenshots
+│   ├── set-memory-health.png     # Memory health summary
+│   ├── set-audit-scan.png        # Project health audit
+│   ├── set-sentinel-finding-list.png # Sentinel findings listing
+│   ├── spec-preview.png          # First lines of the active spec (for docs)
+│   └── design-snapshot-preview.png # First lines of design-snapshot.md
+└── app/                          # Consumer app screenshots (minishop scaffold)
     ├── home.png                  # App homepage
     ├── products.png              # Product listing
     ├── product-detail.png        # Product detail page
     ├── cart.png                  # Shopping cart
+    ├── orders.png                # Customer orders page
     ├── admin-login.png           # Admin login form
+    ├── admin-register.png        # Admin register form
     ├── admin.png                 # Admin dashboard
+    ├── admin-products.png        # Admin product listing
     └── admin-products-new.png    # Admin product creation
 ```
 
 ## Web Dashboard Screenshots
 
 **Script:** `web/tests/e2e/screenshots.spec.ts`
-**Command:** `cd web && E2E_PROJECT=minishop-run-20260312-1630 pnpm screenshot:docs`
+**Command:** `cd web && E2E_PROJECT=minishop-run-20260412-0103 pnpm screenshot:docs`
 
-Captures all dashboard pages via Playwright. Tabs without data for the selected project are automatically skipped.
+Captures all dashboard pages via Playwright. Tabs without data for the selected project are automatically skipped. The `tab-changes.png` capture now shows the Changes list on the left and the Change State DAG (React Flow graph) on the right — picking a project with multiple merged changes and at least one retry makes the DAG more informative.
 
 ### Project selection
 
-- Set `E2E_PROJECT` explicitly: `E2E_PROJECT=minishop-run-20260315-0930 pnpm screenshot:docs`
-- Or use `make screenshots-web` which auto-detects the latest "done" project from the API
+- Set `E2E_PROJECT` explicitly: `E2E_PROJECT=minishop-run-20260412-0103 pnpm screenshot:docs`
+- Or use `make screenshots-web`, which sources `scripts/detect-e2e-project.sh` to pick the latest "done" project with merges from the API. If the auto-detect lands on a tiny run (e.g., a nano smoke), prefer an explicit `E2E_PROJECT` for docs-quality captures.
 
 ### Requirements
 
