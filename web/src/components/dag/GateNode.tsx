@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { AttemptNode, GateResult } from '../../lib/dag/types'
 
@@ -83,12 +82,12 @@ function shortModel(model?: string): string {
 }
 
 export default function GateNode({ data, selected }: Props) {
-  const [hovered, setHovered] = useState(false)
-  // Hover expands the node; click/selection only rings it via the `selected`
-  // prop. Previously expanded was (hovered || selected) which made a clicked
-  // node stay open after the pointer left, and persisted even when another
-  // node was clicked.
-  const expanded = hovered
+  // Node is fixed-size. Click/selection just adds a blue ring; all the
+  // drill-down info (verdict source, downgrades, issue refs, captured
+  // output) lives in DagDetailPanel under the canvas. An earlier version
+  // grew the node on hover to show those fields inline, but that caused
+  // the DAG to visually shift on any mouse movement and duplicated the
+  // detail panel.
   const icon = iconFor(data.result)
   const color = colorFor(data.result)
   const border = borderFor(data.result)
@@ -102,11 +101,9 @@ export default function GateNode({ data, selected }: Props) {
 
   return (
     <div
-      className={`relative rounded-md border bg-neutral-900/80 transition-all duration-150 ${border} ${
-        expanded ? 'w-[260px] min-h-[170px] p-2.5' : 'w-[150px] h-[100px] px-2 py-1.5'
-      } ${selected ? 'ring-2 ring-blue-500/60' : ''}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={`relative rounded-md border bg-neutral-900/80 w-[150px] h-[100px] px-2 py-1.5 ${border} ${
+        selected ? 'ring-2 ring-blue-500/60' : ''
+      }`}
     >
       <Handle type="target" position={Position.Left} style={{ background: '#404040' }} />
       <Handle type="source" position={Position.Right} style={{ background: '#404040' }} />
@@ -149,23 +146,6 @@ export default function GateNode({ data, selected }: Props) {
               <span className="text-neutral-500">{formatTokens(data.outputTokens)}</span>
             </span>
           )}
-        </div>
-      )}
-      {expanded && (
-        <div className="mt-2 border-t border-neutral-800 pt-1.5 space-y-0.5 text-[10px] text-neutral-500">
-          {data.verdictSource && (
-            <div>
-              source <span className="text-neutral-300">{data.verdictSource}</span>
-            </div>
-          )}
-          {hasDowngrade && data.downgrades && data.downgrades.length > 0 && (
-            <div className="text-amber-400">
-              downgrade {data.downgrades[0].from} → {data.downgrades[0].to}
-            </div>
-          )}
-          {data.cacheTokens ? (
-            <div>cache {formatTokens(data.cacheTokens)}</div>
-          ) : null}
         </div>
       )}
     </div>

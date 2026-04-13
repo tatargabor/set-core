@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { AttemptNode } from '../../lib/dag/types'
 
@@ -43,19 +42,17 @@ function shortModel(model?: string): string {
 }
 
 export default function ImplNode({ data, selected }: Props) {
-  const [hovered, setHovered] = useState(false)
-  const expanded = hovered
+  // Fixed-size node with a ring on selection; see GateNode for the
+  // rationale behind dropping the hover-expand.
   const isRunning = data.result === 'running'
   const hasTokens = (data.inputTokens ?? 0) + (data.outputTokens ?? 0) > 0
   const model = shortModel(data.model)
 
   return (
     <div
-      className={`relative rounded-md border bg-neutral-900/80 border-violet-500/40 transition-all duration-150 ${
-        expanded ? 'w-[260px] min-h-[170px] p-2.5' : 'w-[150px] h-[100px] px-2 py-1.5'
-      } ${selected ? 'ring-2 ring-violet-500/60' : ''}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={`relative rounded-md border bg-neutral-900/80 border-violet-500/40 w-[150px] h-[100px] px-2 py-1.5 ${
+        selected ? 'ring-2 ring-violet-500/60' : ''
+      }`}
     >
       <Handle type="target" position={Position.Left} id="top" style={{ background: '#404040' }} />
       <Handle type="target" position={Position.Top} id="topRetry" style={{ background: '#404040' }} />
