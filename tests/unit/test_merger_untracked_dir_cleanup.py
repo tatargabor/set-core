@@ -87,6 +87,47 @@ def test_cleanup_handles_directory_level_untracked(repo_with_untracked_dir):
     assert not (repo / "src" / "components").exists()
 
 
+def test_cleanup_reverts_uncommitted_edits_on_branch_modified_files(tmp_path: Path, monkeypatch):
+    """When the branch modifies file F and main has uncommitted edits to the
+    same F, `_clean_untracked_merge_conflicts` must revert main's edits so the
+    ff-merge proceeds. Uncommitted edits on UNRELATED files must be preserved.
+    """
+    from set_orch.merger import _clean_untracked_merge_conflicts
+
+    repo = tmp_path / "r3"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "package.json").write_text('{"deps":{"a":"1"}}\n')
+    (repo / "unrelated.md").write_text("initial\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "init")
+
+    # Branch modifies package.json.
+    _git(repo, "checkout", "-b", "change/feature")
+    (repo / "package.json").write_text('{"deps":{"a":"1","b":"2"}}\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add b")
+
+    # Main worktree modifies package.json differently (scaffold install edge case),
+    # AND has an unrelated edit that should survive.
+    _git(repo, "checkout", "-q", "main")
+    (repo / "package.json").write_text('{"deps":{"a":"1","c":"3"}}\n')
+    (repo / "unrelated.md").write_text("local work — keep me\n")
+
+    monkeypatch.chdir(repo)
+    _clean_untracked_merge_conflicts("feature")
+
+    # package.json should be reverted to HEAD
+    pkg = (repo / "package.json").read_text()
+    assert '"c":"3"' not in pkg, "main's conflicting edit must be reverted"
+    assert pkg == '{"deps":{"a":"1"}}\n', pkg
+
+    # unrelated.md edit must NOT be reverted
+    assert (repo / "unrelated.md").read_text() == "local work — keep me\n"
+
+
 def test_cleanup_leaves_unrelated_untracked_alone(tmp_path: Path, monkeypatch):
     """Untracked files/dirs the branch does NOT claim must be preserved."""
     from set_orch.merger import _clean_untracked_merge_conflicts

@@ -522,24 +522,71 @@ def _apply_merge_strategies() -> None:
 
 
 def _clean_untracked_merge_conflicts(change_name: str) -> None:
-    """Remove untracked files that would block ff-only merge.
+    """Remove untracked files + revert conflicting uncommitted edits that would
+    block ff-only merge.
 
-    set-project init deploys files (CLAUDE.md, .gitignore, etc.) to the main
-    worktree without committing them. When the branch has these files committed,
-    git merge --ff-only refuses: 'untracked working tree files would be overwritten'.
-    We detect and remove only the conflicting untracked files.
+    set-project init (and its scaffold overlays like shadcn) deploy files —
+    both new untracked files (e.g. src/components/ui/*.tsx) and uncommitted
+    modifications to tracked files (e.g. adding radix deps to package.json) —
+    to the main worktree. When the branch also touches those paths, ff-merge
+    refuses with "untracked working tree files would be overwritten" or
+    "local changes would be overwritten by merge". We detect the specific
+    files the branch touches and (a) delete them if untracked, (b) checkout
+    HEAD to undo uncommitted modifications. The branch's versions then arrive
+    cleanly via the merge.
     """
     branch_ref = f"change/{change_name}"
-    # List files the branch adds that don't exist in current HEAD
-    diff_result = run_command(
+    # List files the branch adds OR modifies relative to HEAD.
+    added = run_command(
         ["git", "diff", "--name-only", "--diff-filter=A", "HEAD", branch_ref],
         timeout=10,
     )
-    if diff_result.exit_code != 0 or not diff_result.stdout.strip():
-        logger.debug("_clean_untracked_merge_conflicts: no added files for %s (exit=%d)", change_name, diff_result.exit_code)
+    modified = run_command(
+        ["git", "diff", "--name-only", "--diff-filter=M", "HEAD", branch_ref],
+        timeout=10,
+    )
+    if added.exit_code != 0 and modified.exit_code != 0:
+        logger.debug(
+            "_clean_untracked_merge_conflicts: git diff failed for %s (added=%d, modified=%d)",
+            change_name, added.exit_code, modified.exit_code,
+        )
         return
 
-    added_files = diff_result.stdout.strip().splitlines()
+    added_files = [f for f in added.stdout.strip().splitlines() if f]
+    modified_by_branch = {f for f in modified.stdout.strip().splitlines() if f}
+
+    # Revert uncommitted edits in working-tree files the branch also modifies.
+    # Only those — never blanket `git checkout` — so user-local work on
+    # unrelated files survives.
+    if modified_by_branch:
+        status_result = run_command(["git", "status", "--porcelain"], timeout=10)
+        locally_modified: set[str] = set()
+        for line in status_result.stdout.splitlines():
+            if not line or len(line) < 3:
+                continue
+            # Porcelain "XY path" — X=index, Y=worktree. Either M indicates edit.
+            x, y = line[0], line[1]
+            if x in ("M", " ") and y in ("M", " ") and (x == "M" or y == "M"):
+                locally_modified.add(line[3:].strip())
+
+        to_revert = sorted(locally_modified & modified_by_branch)
+        if to_revert:
+            r = run_command(
+                ["git", "checkout", "HEAD", "--", *to_revert], timeout=20,
+            )
+            if r.exit_code == 0:
+                logger.info(
+                    "Reverted %d uncommitted edit(s) conflicting with %s merge: %s",
+                    len(to_revert), change_name, ", ".join(to_revert),
+                )
+            else:
+                logger.warning(
+                    "Failed to revert conflicting edits for %s: %s",
+                    change_name, r.stderr[:500],
+                )
+
+    if not added_files:
+        return
 
     # Check which of those are untracked in the working tree. Git collapses
     # fully-untracked directories to a single `?? dir/` entry, so we track
