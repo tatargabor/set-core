@@ -80,6 +80,12 @@ class GateResult:
     stats: Optional[dict] = None
     # Retry context to inject when this gate triggers a retry
     retry_context: str = ""
+    # Infrastructure-failure signal — distinguishes "LLM returned FAIL verdict"
+    # from "LLM exhausted max_turns / timed out". Surfaced on VERIFY_GATE event
+    # data so operators can filter infra anomalies from real code faults.
+    infra_fail: bool = False
+    # Short reason string accompanying infra_fail (e.g. "max_turns", "timeout")
+    terminal_reason: str = ""
 
 
 # Type alias for gate executor functions

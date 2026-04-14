@@ -67,8 +67,30 @@ async def sentinel_start(project: str, body: dict = {}):
     if not spec:
         raise HTTPException(400, "No spec provided and no previous spec found. Pass {\"spec\": \"docs/spec.md\"}")
     _save_spec_path(Path(sup.config.path), spec)
+
+    reset_failed = bool(body.get("reset_failed", False))
+    reset_names: list[str] = []
+    if reset_failed:
+        try:
+            from ..engine import reset_failed_changes
+            state_file = str(Path(sup.config.path) / "orchestration-state.json")
+            if Path(state_file).is_file():
+                reset_names = reset_failed_changes(state_file)
+                logger.info(
+                    "sentinel_start: reset_failed=true, reset %d change(s): %s",
+                    len(reset_names), ", ".join(reset_names) or "<none>",
+                )
+            else:
+                logger.warning("sentinel_start: reset_failed=true but no state file at %s", state_file)
+        except Exception as exc:
+            logger.error("sentinel_start: reset_failed_changes raised: %s", exc, exc_info=True)
+            raise HTTPException(500, f"reset_failed_changes failed: {exc}")
+
     pid = sup.start_sentinel(spec=spec)
-    return {"status": "ok", "pid": pid, "spec": spec}
+    response: dict = {"status": "ok", "pid": pid, "spec": spec}
+    if reset_failed:
+        response["reset_failed_changes"] = reset_names
+    return response
 
 
 @router.post("/api/{project}/sentinel/stop")

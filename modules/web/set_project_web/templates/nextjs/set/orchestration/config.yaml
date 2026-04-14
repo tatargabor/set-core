@@ -5,7 +5,11 @@
 default_model: opus
 
 # Commands — override profile auto-detection if needed
-# test_command: pnpm test
+# test_command runs the unit test gate (vitest/jest). No-op when no test
+# files exist, so leaving it on has no cost on scaffolds without tests.
+# Unit tests catch validator/pure-function regressions before they escalate
+# into slow e2e failures.
+test_command: pnpm test
 # e2e_command: npx playwright test
 # build_command: npx next build
 
@@ -14,7 +18,7 @@ max_parallel: 1
 
 # Quality gates
 review_before_merge: true
-max_verify_retries: 2
+max_verify_retries: 4
 
 # LLM verdict classifier — second Sonnet pass that reads review/spec-verify
 # output and extracts a structured verdict. Defends against silent gate
@@ -34,7 +38,7 @@ max_replan_cycles: 2
 # slower CI runners and test count growth. The e2e gate's timeout guard
 # clause surfaces timeouts as explicit FAILs (no more silent masking), so a
 # value that is too low just wastes wall time instead of hiding regressions.
-e2e_timeout: 600
+e2e_timeout: 3600
 
 # Environment variables injected into every worktree .env
 env_vars:

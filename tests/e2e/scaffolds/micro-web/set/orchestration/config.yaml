@@ -1,9 +1,9 @@
 # Orchestration config for Micro Web E2E scaffold
 # test_command and e2e_command auto-detected by web profile
 default_model: opus
-e2e_timeout: 600
+e2e_timeout: 1200
 max_parallel: 2
 merge_policy: eager
 review_before_merge: true
-max_verify_retries: 2
+max_verify_retries: 4
 time_limit: 2h

@@ -44,7 +44,11 @@ export default function Dashboard({ project, initialTab }: Props) {
   // The checkbox lives in DagToolbar and is passed down via ChangeDagPanel.
   // Preference persists in localStorage so it survives reloads.
   const [autoFollow, setAutoFollow] = useState(() => {
-    try { return localStorage.getItem('set-auto-follow') === '1' } catch { return false }
+    try {
+      // Default to ON — prior manual opt-out is respected via the explicit '0' marker.
+      const v = localStorage.getItem('set-auto-follow')
+      return v === null ? true : v === '1'
+    } catch { return true }
   })
   // URL-backed tab state: ?tab=digest&sub=domains
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
@@ -337,14 +341,18 @@ export default function Dashboard({ project, initialTab }: Props) {
         )}
 
         {/* Changes tab — with change detail panel when selected.
-         * Layout: table auto-sizes to its content (shrink-0 with a 60% cap
-         * so long change lists don't push the detail panel off-screen);
-         * ChangeDagPanel fills the rest and carries its own DAG/Log
-         * view toggle. No separate Log/Timeline header here. */}
+         * Layout: table auto-sizes to its content (shrink-0 with a 50% cap
+         * so the DAG below always gets at least half the viewport, no
+         * matter how long the change list grows); ChangeDagPanel fills the
+         * rest and carries its own DAG/Log view toggle. No separate
+         * Log/Timeline header here. */}
         {activeTab === 'changes' && (
           selectedChange ? (
+            /* Hard 50/50 split — basis-0 + equal grow on both children
+               gives exact halves regardless of content size. shrink-0 is
+               removed so flexbox can compute both heights from basis. */
             <div className="h-full flex flex-col">
-              <div className="shrink-0 max-h-[60%] overflow-auto border-b border-neutral-800">
+              <div className="basis-0 grow shrink min-h-0 overflow-auto border-b border-neutral-800">
                 <ShutdownProgress project={project} />
                 <ChangeTable
                   changes={changes}
@@ -353,7 +361,7 @@ export default function Dashboard({ project, initialTab }: Props) {
                   onSelect={setSelectedChange}
                 />
               </div>
-              <div className="flex-1 min-h-0">
+              <div className="basis-0 grow shrink min-h-0 relative">
                 <Suspense fallback={<div className="p-3 text-sm text-neutral-500">Loading DAG...</div>}>
                   <ChangeDagPanel
                     project={project}

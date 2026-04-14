@@ -55,10 +55,18 @@ interface InnerProps {
   changeName: string
 }
 
+// DAG row stride in layout coordinates (see lib/dag/layout.ts: rowHeight +
+// attemptGap = 130 + 20 = 150). We cap zoom so at most ~2.5 rows fit
+// vertically — prevents the canvas from zooming absurdly in when a change
+// has only one attempt.
+const ROW_STRIDE_PX = 150
+const MAX_ROWS_VISIBLE = 2.5
+
 function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layout.edges)
-  const { fitView } = useReactFlow()
+  const { fitView, setViewport, getViewport } = useReactFlow()
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const nodeIdSetRef = useRef<string>(layout.nodes.map((n) => n.id).sort().join(','))
   const lastFitChangeRef = useRef<string>(changeName)
   const pendingFitRef = useRef<boolean>(false)
@@ -99,28 +107,63 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
     if (!pendingFitRef.current || nodes.length === 0) return
     pendingFitRef.current = false
     lastFitChangeRef.current = changeName
-    const id = window.setTimeout(() => fitView({ duration: 300, padding: 0.15 }), 60)
+    const id = window.setTimeout(() => {
+      const container = containerRef.current
+      if (!container) {
+        fitView({ duration: 300, padding: 0.15 })
+        return
+      }
+      const h = container.clientHeight || 400
+      // Cap zoom so MAX_ROWS_VISIBLE rows fit vertically. E.g. a 600px
+      // container with stride=150 and max=2.5 rows gives zoom ≤ 1.6.
+      const maxZoom = Math.max(0.3, Math.min(2, h / (MAX_ROWS_VISIBLE * ROW_STRIDE_PX)))
+      fitView({ duration: 300, padding: 0.15, maxZoom })
+      // Bottom-anchor: after fitView, compute node bounds and pan so the
+      // last row sits near the bottom of the canvas.
+      window.setTimeout(() => {
+        const ys = nodes.map((n) => {
+          const ny = typeof n.position?.y === 'number' ? n.position.y : 0
+          const nh = (n as { height?: number }).height ?? 100
+          return ny + nh
+        })
+        if (ys.length === 0) return
+        const maxY = Math.max(...ys)
+        const vp = getViewport()
+        // Target: canvas_bottom = zoom * maxY + vp.y + padding
+        // → vp.y = canvas_height - zoom * maxY - bottom_padding
+        const bottomPadding = 24
+        const targetY = h - vp.zoom * maxY - bottomPadding
+        // Only adjust if the content is shorter than container (few rows) —
+        // otherwise fitView's centered result is already appropriate.
+        const contentHeight = vp.zoom * maxY
+        if (contentHeight < h - bottomPadding) {
+          setViewport({ x: vp.x, y: targetY, zoom: vp.zoom }, { duration: 200 })
+        }
+      }, 320)
+    }, 60)
     return () => window.clearTimeout(id)
-  }, [nodes, changeName, fitView])
+  }, [nodes, changeName, fitView, setViewport, getViewport])
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeClick={onNodeClick}
-      nodeTypes={NODE_TYPES}
-      fitView
-      minZoom={0.3}
-      maxZoom={2}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background gap={20} color="#262626" />
-      <Controls showInteractive={false} position="bottom-left" />
-    </ReactFlow>
+    <div ref={containerRef} className="w-full h-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={onNodeClick}
+        nodeTypes={NODE_TYPES}
+        fitView
+        minZoom={0.3}
+        maxZoom={2}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background gap={20} color="#262626" />
+        <Controls showInteractive={false} position="bottom-left" />
+      </ReactFlow>
+    </div>
   )
 }
 

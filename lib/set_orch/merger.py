@@ -1468,7 +1468,7 @@ def _run_integration_gates(
                 )
                 _s2 = _time.monotonic()
                 result = run_command(
-                    ["bash", "-c", actual_cmd], timeout=180, cwd=wt_path, env=e2e_env,
+                    ["bash", "-c", actual_cmd], timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
                 )
                 _s2e = int((_time.monotonic() - _s2) * 1000)
             else:
@@ -1482,7 +1482,7 @@ def _run_integration_gates(
                 )
                 _s2 = _time.monotonic()
                 result = run_command(
-                    ["bash", "-c", e2e_cmd], timeout=180, cwd=wt_path, env=e2e_env,
+                    ["bash", "-c", e2e_cmd], timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
                 )
                 _s2e = int((_time.monotonic() - _s2) * 1000)
 

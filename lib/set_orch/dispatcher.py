@@ -1907,20 +1907,70 @@ def dispatch_change(
 
     # Create or reuse worktree
     project_path = os.getcwd()
-    wt_name = _unique_worktree_name(project_path, change_name)
-    wt_path = f"{project_path}-{wt_name}"
 
-    # Handle existing worktree gracefully — if change is already dispatched/running
-    # with an active worktree, skip instead of creating a -2 suffix duplicate.
-    if os.path.isdir(wt_path):
-        # A pending→dispatched change should never have an existing worktree (Bug #30).
-        logger.info("stale worktree for pending change %s — removing for fresh dispatch", change_name)
-        run_command(["git", "worktree", "remove", wt_path, "--force"], timeout=30)
+    # Reset-failed reuse path: if state already tracks a worktree for this
+    # change (i.e., engine.reset_failed_changes preserved it), the
+    # dispatcher MUST reuse it instead of creating a `-N` collision suffix.
+    # Otherwise the agent gets dropped into a fresh worktree and has to
+    # `/opsx:ff` every artifact again, burning 80k+ tokens on work it had
+    # already committed — the exact bug reset_failed was designed to avoid.
+    #
+    # Derive wt_name from the preserved path so `-2`/`-3` suffixed worktrees
+    # from prior redispatch cycles are honored (the path anchors the branch
+    # name as `change/<wt_name>`). Only reuse if BOTH the dir AND the
+    # matching branch still exist — otherwise fall through to fresh create.
+    preserved_wt = change.worktree_path or ""
+    preserved_wt_name = ""
+    if preserved_wt:
+        expected_prefix = f"{project_path}-"
+        if preserved_wt.startswith(expected_prefix):
+            preserved_wt_name = preserved_wt[len(expected_prefix):]
+            # Worktree dirs created via `set-new` (bash) get a "wt-" prefix in
+            # their basename, but the branch they track is `change/{change_name}`
+            # without that prefix. Strip the "wt-" to get the branch suffix.
+            if preserved_wt_name.startswith("wt-"):
+                preserved_wt_name = preserved_wt_name[len("wt-"):]
+    preserved_branch_ok = False
+    if preserved_wt_name:
+        # Try the derived name first, fall back to the change_name for robustness
+        # against older worktrees whose dir naming predates current conventions.
+        for candidate in (preserved_wt_name, change_name):
+            if run_git(
+                "rev-parse", "--verify", f"change/{candidate}",
+                cwd=project_path, best_effort=True,
+            ).exit_code == 0:
+                preserved_branch_ok = True
+                preserved_wt_name = candidate
+                break
+    if (
+        preserved_wt
+        and preserved_wt_name
+        and os.path.isdir(preserved_wt)
+        and preserved_branch_ok
+    ):
+        logger.info(
+            "dispatch: reusing preserved worktree for %s at %s (reset-failed path)",
+            change_name, preserved_wt,
+        )
+        wt_name = preserved_wt_name
+        wt_path = preserved_wt
+        # Skip the collision-resolution below — the worktree+branch are ours
+        # on purpose, not a stale leftover.
+    else:
+        wt_name = _unique_worktree_name(project_path, change_name)
+        wt_path = f"{project_path}-{wt_name}"
+
+        # Handle existing worktree gracefully — if change is already dispatched/running
+        # with an active worktree, skip instead of creating a -2 suffix duplicate.
         if os.path.isdir(wt_path):
-            import shutil
-            shutil.rmtree(wt_path, ignore_errors=True)
-        run_git("worktree", "prune")
-        # Don't delete the branch yet — it may have committed artifacts worth preserving
+            # A pending→dispatched change should never have an existing worktree (Bug #30).
+            logger.info("stale worktree for pending change %s — removing for fresh dispatch", change_name)
+            run_command(["git", "worktree", "remove", wt_path, "--force"], timeout=30)
+            if os.path.isdir(wt_path):
+                import shutil
+                shutil.rmtree(wt_path, ignore_errors=True)
+            run_git("worktree", "prune")
+            # Don't delete the branch yet — it may have committed artifacts worth preserving
 
     if not os.path.isdir(wt_path):
         branch_name = f"change/{wt_name}"

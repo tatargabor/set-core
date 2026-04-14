@@ -33,6 +33,7 @@ function ProcessRow({ node, depth, project, onRefresh }: {
   const roleLabel = node.role
     ? node.role.charAt(0).toUpperCase() + node.role.slice(1)
     : null
+  const isOrphan = node.role === 'orphan'
 
   // Truncate command for display
   const cmd = node.command.length > 60 ? node.command.slice(0, 57) + '...' : node.command
@@ -44,11 +45,16 @@ function ProcessRow({ node, depth, project, onRefresh }: {
         {depth > 0 && (
           <span className="text-neutral-700 text-xs font-mono">└─</span>
         )}
-        {/* Status dot */}
-        <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-        {/* Role badge */}
+        {/* Status dot — amber for orphan to flag re-parented processes
+            that lost their supervisor (set-loop / playwright leftovers). */}
+        <span className={`w-2 h-2 rounded-full shrink-0 ${isOrphan ? 'bg-amber-400' : 'bg-green-400'}`} />
+        {/* Role badge — red for orphan, blue otherwise */}
         {roleLabel && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300 font-medium shrink-0">
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${
+            isOrphan
+              ? 'bg-red-900/50 text-red-300'
+              : 'bg-blue-900/40 text-blue-300'
+          }`} title={isOrphan ? 'Process matches the project/worktree path but is not under a tracked supervisor — likely a leftover from a killed sentinel.' : undefined}>
             {roleLabel}
           </span>
         )}

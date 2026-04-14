@@ -152,6 +152,14 @@ export function journalToAttemptGraph(
           closeAttemptOnRetry(cur, e.ts)
           openNewAttempt(e.ts)
           pendingRetry = false
+        } else if (cur.outcome === 'failed' || cur.outcome === 'merged') {
+          // Reset cycle: previous attempt reached a terminal state and is
+          // now being redispatched (e.g. via reset_failed). Close history,
+          // open a fresh attempt, and re-arm the terminal flag so the new
+          // run isn't pre-stamped with the prior outcome.
+          cur.retryReason = 'reset-failed'
+          openNewAttempt(e.ts)
+          terminal = 'in-progress'
         }
       } else if (value === 'verify-failed') {
         pendingRetry = true

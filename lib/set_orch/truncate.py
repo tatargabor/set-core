@@ -7,6 +7,18 @@ Three strategies:
 - smart_truncate: head + tail with "[truncated N lines]" marker
 - smart_truncate_structured: same + preserves error/warning lines from middle
 - truncate_with_budget: for named items (rules), returns omitted names
+
+All LLM-bound subprocess output (build/test/e2e/review/spec_verify) MUST go
+through these helpers. Head-only slices like `output[:N]` silently drop the
+tail of stdout, where assertion errors and stack traces live — the impl
+agent then gets setup noise as "feedback" and tends to thrash.
+
+Application sites (kept in sync with tests/unit/test_no_head_only_llm_slices.py):
+- modules/web/set_project_web/gates.py: e2e gate retry_context (Bug A fix)
+- lib/set_orch/verifier.py: phase_e2e_failure_context replan, review_history,
+  review GateResult output, spec_verify output
+- lib/set_orch/merger.py: integration build/test/e2e output
+- lib/set_orch/engine.py, dispatcher.py, templates.py, builder.py: various
 """
 
 from __future__ import annotations

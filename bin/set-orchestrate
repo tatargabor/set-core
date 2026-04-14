@@ -495,32 +495,36 @@ cmd_reset() {
     fi
 
     if [[ "$mode" == "partial" ]]; then
-        # Safe: only reset failed→pending
-        local failed_count
-        failed_count=$(jq '[.changes[] | select(.status == "failed")] | length' "$STATE_FILENAME")
-
-        if [[ "$failed_count" -eq 0 ]]; then
-            echo "Nothing to reset — no failed changes found."
-            return 0
-        fi
-
-        local failed_names
-        failed_names=$(jq -r '[.changes[] | select(.status == "failed") | .name] | join(", ")' "$STATE_FILENAME")
-
-        jq '
-            .status = "running" |
-            .changes = [.changes[] |
-                if .status == "failed" then
-                    .status = "pending" |
-                    .worktree_path = "" |
-                    .ralph_pid = null |
-                    .verify_retry_count = 0
-                else . end
-            ]
-        ' "$STATE_FILENAME" > "${STATE_FILENAME}.tmp" && mv "${STATE_FILENAME}.tmp" "$STATE_FILENAME"
-
-        echo "Partial reset complete: $failed_count failed→pending ($failed_names)"
-        echo "Merged/done changes preserved."
+        # Safe: only reset failed→pending. Delegate to the Python
+        # engine.reset_failed_changes() helper so we get the preservation
+        # logic (keep worktree_path, build retry_context from last gate
+        # outputs, archive worktree logs). Prior jq-based implementation
+        # cleared worktree_path unconditionally, which orphaned committed
+        # work on the change branch — losing N commits of implementation
+        # across dispatcher's "fresh create" fallback.
+        # set-core is installed editable — no sys.path munging needed.
+        python3 -c "
+import sys
+from set_orch.engine import reset_failed_changes
+from set_orch.state import load_state, update_state_field
+state_file = '$STATE_FILENAME'
+names = reset_failed_changes(state_file)
+if not names:
+    print('Nothing to reset — no failed changes found.')
+else:
+    # Clear top-level stopped status so the monitor resumes dispatch.
+    try:
+        state = load_state(state_file)
+        if state.extras.get('status') == 'stopped':
+            update_state_field(state_file, 'status', 'running')
+    except Exception as e:
+        print(f'warning: could not clear top-level status: {e}', file=sys.stderr)
+    print(f'Partial reset complete: {len(names)} failed→pending ({\", \".join(names)})')
+    print('Merged/done changes preserved; worktree + branch retained.')
+" || {
+            error "Python reset helper failed"
+            return 1
+        }
 
     elif [[ "$mode" == "full" ]]; then
         local total_changes

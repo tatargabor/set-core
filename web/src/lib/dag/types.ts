@@ -49,7 +49,7 @@ export interface AttemptNode {
 }
 
 export type AttemptOutcome = 'retry' | 'merged' | 'failed' | 'in-progress'
-export type RetryReason = 'gate-fail' | 'merge-conflict' | 'replan' | 'unknown'
+export type RetryReason = 'gate-fail' | 'merge-conflict' | 'replan' | 'reset-failed' | 'unknown'
 
 export interface Attempt {
   n: number

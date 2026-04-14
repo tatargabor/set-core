@@ -25,6 +25,7 @@ const RETRY_EDGE_COLORS: Record<RetryReason, string> = {
   'gate-fail': '#f59e0b',
   'merge-conflict': '#f97316',
   replan: '#a78bfa',
+  'reset-failed': '#ec4899',
   unknown: '#737373',
 }
 

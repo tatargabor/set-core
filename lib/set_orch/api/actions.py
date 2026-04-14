@@ -395,7 +395,19 @@ def _build_process_tree_node(pid: int) -> dict | None:
 
 
 def _build_project_process_tree(project_path: Path) -> list[dict]:
-    """Build full process tree for a project from PID files."""
+    """Build full process tree for a project from PID files + worktree scan.
+
+    Process discovery is two-phase:
+      1. Tracked roots — sentinel.pid file and state.extras.orchestrator_pid.
+         These build full child-process trees via ps --ppid.
+      2. Orphan scan — any process whose cmdline references the project path
+         or one of its worktree paths but isn't already in a tracked tree.
+         These typically arise when an old sentinel was killed without
+         tearing down its set-loop / claude / playwright children, leaving
+         them re-parented to PID 1 (init). Without this scan, the
+         "Stop All" button can't reach them and the user has to hunt by
+         hand. Marked role=orphan so the UI surfaces them visibly.
+    """
     trees: list[dict] = []
     # Sentinel PID
     sentinel_pid_file = _sentinel_dir(project_path) / "sentinel.pid"
@@ -411,21 +423,90 @@ def _build_project_process_tree(project_path: Path) -> list[dict]:
 
     # Orchestrator PID from state
     sp = _state_path(project_path)
+    worktree_paths: list[str] = []
     if sp.exists():
         try:
             state = load_state(str(sp))
             orch_pid = state.extras.get("orchestrator_pid") or state.extras.get("pid")
             if orch_pid:
                 pid = int(orch_pid)
-                # Skip if already in sentinel tree
                 already_in_tree = any(_find_pid_in_tree(t, pid) for t in trees)
                 if not already_in_tree:
                     node = _build_process_tree_node(pid)
                     if node:
                         node["role"] = "orchestrator"
                         trees.append(node)
+            # Collect worktree paths so the orphan scan finds set-loop /
+            # claude / playwright / next-server processes started in a
+            # worktree even when the supervisor that spawned them is gone.
+            for ch in state.changes:
+                wt = getattr(ch, "worktree_path", "") or ""
+                if wt:
+                    worktree_paths.append(wt)
         except Exception:
             pass
+
+    # ── Orphan scan ─────────────────────────────────────────────────
+    # Search match-paths: project root + all known worktree paths. We use
+    # str(project_path) because runs typically live in <runs_dir>/<run-name>
+    # and worktrees in <runs_dir>/<run-name>-wt-<change>; matching the run
+    # root would also catch in-run processes if the run dir is the cwd.
+    match_paths = {str(project_path)} | set(worktree_paths)
+    tracked_pids: set[int] = set()
+    for t in trees:
+        for p in _collect_all_pids(t):
+            tracked_pids.add(p)
+
+    orphan_pids: list[int] = []
+    try:
+        # ps -eo pid,args — full cmdline across all processes. cwd info is
+        # also useful but cmdline+args is enough for set-loop/claude/playwright
+        # which always include the worktree path explicitly.
+        psr = subprocess.run(
+            ["ps", "-eo", "pid,args", "--no-headers"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if psr.returncode == 0:
+            for line in psr.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    pid_str, args = line.split(None, 1)
+                    pid = int(pid_str)
+                except ValueError:
+                    continue
+                if pid in tracked_pids:
+                    continue
+                # Match if any known path appears in the cmdline. Strict
+                # substring match; project paths are absolute so false
+                # positives are rare in practice.
+                if any(p in args for p in match_paths):
+                    orphan_pids.append(pid)
+    except Exception:
+        pass
+
+    # Build a tree node per orphan, but skip orphans that are descendants
+    # of another orphan (their parent will pull them in via _get_process_children).
+    if orphan_pids:
+        orphan_set = set(orphan_pids)
+        roots: list[int] = []
+        for pid in orphan_pids:
+            try:
+                ppid_r = subprocess.run(
+                    ["ps", "-p", str(pid), "-o", "ppid=", "--no-headers"],
+                    capture_output=True, text=True, timeout=2,
+                )
+                ppid = int(ppid_r.stdout.strip()) if ppid_r.returncode == 0 else 1
+            except Exception:
+                ppid = 1
+            if ppid not in orphan_set:
+                roots.append(pid)
+        for pid in roots:
+            node = _build_process_tree_node(pid)
+            if node:
+                node["role"] = "orphan"
+                trees.append(node)
 
     return trees
 

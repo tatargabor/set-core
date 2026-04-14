@@ -284,4 +284,60 @@ describe('journalToAttemptGraph', () => {
     expect(e2eNodes[0].result).toBe('fail')
     expect(e2eNodes[1].result).toBe('pass')
   })
+
+  it('post-reset cycle (failed → pending → running) opens a new attempt', () => {
+    // Models the engine.reset_failed_changes path: an attempt reaches a
+    // terminal `failed` status, then a fresh dispatch cycles through
+    // pending → dispatched → running. The graph should NOT remain stuck on
+    // the prior failed attempt — a new in-progress attempt must be opened
+    // and the terminal flag must be re-armed.
+    const entries: JournalEntry[] = [
+      entry('2026-04-12T10:00:00.000Z', 'status', 'running', 1, 'dispatched'),
+      entry('2026-04-12T10:00:30.000Z', 'status', 'integrating', 2, 'running'),
+      entry('2026-04-12T10:01:00.000Z', 'build_result', 'pass', 3),
+      entry('2026-04-12T10:02:00.000Z', 'e2e_result', 'fail', 4),
+      entry('2026-04-12T10:02:30.000Z', 'status', 'failed', 5, 'integrating'),
+      // ─── reset_failed unblocks the change ───
+      entry('2026-04-12T10:10:00.000Z', 'status', 'pending', 6, 'failed'),
+      entry('2026-04-12T10:10:01.000Z', 'status', 'running', 7, 'dispatched'),
+      entry('2026-04-12T10:11:00.000Z', 'status', 'integrating', 8, 'running'),
+      entry('2026-04-12T10:12:00.000Z', 'build_result', 'pass', 9),
+      entry('2026-04-12T10:13:00.000Z', 'e2e_result', 'pass', 10),
+      entry('2026-04-12T10:14:00.000Z', 'status', 'merged', 11, 'integrating'),
+    ]
+    const g = journalToAttemptGraph(entries)
+    expect(g.attempts).toHaveLength(2)
+    expect(g.attempts[0].outcome).toBe('failed')
+    expect(g.attempts[0].retryReason).toBe('reset-failed')
+    expect(g.attempts[1].outcome).toBe('merged')
+    expect(g.terminal).toBe('merged')
+    const buildNodes = g.attempts.flatMap((a) => a.nodes).filter((n) => n.kind === 'build')
+    expect(buildNodes).toHaveLength(2)
+    const e2eNodes = g.attempts.flatMap((a) => a.nodes).filter((n) => n.kind === 'e2e')
+    expect(e2eNodes).toHaveLength(2)
+    expect(e2eNodes[0].result).toBe('fail')
+    expect(e2eNodes[1].result).toBe('pass')
+  })
+
+  it('post-reset attempt that is still in progress sets terminal back to in-progress', () => {
+    // Same as above but the new attempt has not finished yet — terminal
+    // must NOT be 'failed' just because an earlier attempt failed.
+    const entries: JournalEntry[] = [
+      entry('2026-04-12T10:00:00.000Z', 'status', 'running', 1, 'dispatched'),
+      entry('2026-04-12T10:00:30.000Z', 'status', 'integrating', 2, 'running'),
+      entry('2026-04-12T10:01:00.000Z', 'build_result', 'pass', 3),
+      entry('2026-04-12T10:02:00.000Z', 'status', 'failed', 4, 'integrating'),
+      entry('2026-04-12T10:10:00.000Z', 'status', 'pending', 5, 'failed'),
+      entry('2026-04-12T10:10:01.000Z', 'status', 'running', 6, 'dispatched'),
+      entry('2026-04-12T10:11:00.000Z', 'status', 'integrating', 7, 'running'),
+      entry('2026-04-12T10:12:00.000Z', 'build_result', 'pass', 8),
+      // e2e still running, no terminal status yet
+    ]
+    const g = journalToAttemptGraph(entries)
+    expect(g.attempts).toHaveLength(2)
+    expect(g.attempts[0].outcome).toBe('failed')
+    expect(g.attempts[0].retryReason).toBe('reset-failed')
+    expect(g.attempts[1].outcome).toBe('in-progress')
+    expect(g.terminal).toBe('in-progress')
+  })
 })

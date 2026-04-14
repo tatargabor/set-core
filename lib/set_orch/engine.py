@@ -61,8 +61,8 @@ class Directives:
     token_budget: int = 0
     auto_replan: bool = False
     max_replan_cycles: int = MAX_REPLAN_CYCLES
-    test_timeout: int = 300
-    max_verify_retries: int = 3
+    test_timeout: int = 600
+    max_verify_retries: int = 4
     e2e_retry_limit: int = DEFAULT_E2E_RETRY_LIMIT
     integration_smoke_blocking: bool = True  # Smoke failures block the merge by default
     integration_smoke_timeout: int = 300  # Per-change smoke run timeout (sibling specs)
@@ -82,7 +82,7 @@ class Directives:
     smoke_health_check_url: str = ""
     smoke_health_check_timeout: int = 30
     e2e_command: str = ""
-    e2e_timeout: int = 600  # 156s measured baseline × ~3.8 headroom for CI/growth
+    e2e_timeout: int = 3600  # 1h ceiling — see verifier.DEFAULT_E2E_TIMEOUT
     e2e_mode: str = "per_change"
     e2e_coverage_threshold: float = 0.8
     e2e_port_base: int = 3100
@@ -1357,6 +1357,314 @@ def _poll_suspended_changes(
 
 # ─── Recovery ──────────────────────────────────────────────────────
 
+
+# Fields cleared when a failed change is reset back to pending.
+# Anything not in this set survives the reset (scope, depends_on, phase, etc.).
+_RESET_FAILED_FIELDS: dict[str, Any] = {
+    "status": "pending",
+    "worktree_path": None,
+    "ralph_pid": None,
+    "current_step": "",
+    "verify_retry_count": 0,
+    "gate_retry_count": 0,
+    "redispatch_count": 0,
+    "merge_retry_count": 0,
+    "integration_e2e_retry_count": 0,
+    "verify_retry_tokens": 0,
+    "gate_retry_tokens": 0,
+    "test_result": None,
+    "build_result": None,
+    "e2e_result": None,
+    "review_result": None,
+    "smoke_result": None,
+    "smoke_e2e_result": None,
+    "scope_check_result": None,
+    "e2e_coverage_result": None,
+    "rules_result": None,
+    "lint_result": None,
+    "spec_coverage_result": None,
+    "integration_gate_fail": "",
+    "failure_reason": "",
+}
+
+
+def _build_reset_retry_context(change: Any, wt_path: str) -> str:
+    """Build the retry_context injected by reset_failed_changes.
+
+    This is the user-facing prompt the agent sees on its next iteration. The
+    framing matters: we need the agent to understand that (a) its previous
+    implementation is still on disk in the worktree, (b) the retry budget
+    was raised so it has fresh attempts, and (c) it MUST fix incrementally
+    rather than scrap-and-rewrite. Earlier runs showed that without this
+    framing, the agent would run `/opsx:ff` and recreate every artifact,
+    burning 80k+ tokens on work it had already done.
+
+    Pulls from the change's recorded gate outputs. Only sections with
+    content are included — keeps the prompt under ~5KB for big contexts.
+    """
+    sections: list[str] = [
+        "# Retry with raised verify budget",
+        "",
+        "Your previous attempts on this change hit the verify retry cap. "
+        "The cap has been raised and your prior work has been preserved — "
+        "this is NOT a fresh dispatch.",
+        "",
+        "## How to proceed",
+        "",
+        "1. **DO NOT run `/opsx:ff`, `/opsx:new`, or recreate `proposal.md`, "
+        "`tasks.md`, or spec files.** They already exist in "
+        "`openspec/changes/<this-change>/` from your earlier iteration. "
+        "Recreating them wastes the token budget and loses context.",
+        "2. **DO NOT rewrite implementation files from scratch.** Your "
+        "previous commits are in this worktree's branch. Run `git log "
+        "--oneline main..HEAD` and `git diff --stat main..HEAD` first to "
+        "see what you built.",
+        "3. **Fix the specific gate failure below.** The e2e / review / "
+        "build output shows exactly what's wrong. Target it surgically.",
+        "4. If the prior implementation is fundamentally misconceived and "
+        "an incremental fix is impossible, say so explicitly in your "
+        "first message and explain — don't silently start over.",
+        "",
+    ]
+
+    # --- Git history from the preserved worktree ---
+    if wt_path and os.path.isdir(wt_path):
+        try:
+            from .subprocess_utils import run_command as _run
+            log_r = _run(["git", "log", "--oneline", "main..HEAD"], cwd=wt_path, timeout=10)
+            if log_r.exit_code == 0 and log_r.stdout.strip():
+                lines = log_r.stdout.strip().splitlines()
+                git_log = "\n".join(lines[:30])
+                if len(lines) > 30:
+                    git_log += f"\n... and {len(lines) - 30} more commits"
+                sections.append(f"## Your previous commits\n\n```\n{git_log}\n```\n")
+            stat_r = _run(["git", "diff", "--stat", "main..HEAD"], cwd=wt_path, timeout=10)
+            if stat_r.exit_code == 0 and stat_r.stdout.strip():
+                lines = stat_r.stdout.strip().splitlines()
+                git_stat = "\n".join(lines[:60])
+                if len(lines) > 60:
+                    git_stat += f"\n... and {len(lines) - 60} more files"
+                sections.append(f"## Files you already changed\n\n```\n{git_stat}\n```\n")
+        except Exception as _e:
+            logger.debug("_build_reset_retry_context: git history extract failed: %s", _e)
+
+    # --- Last gate outputs (truncated) ---
+    extras = getattr(change, "extras", {}) or {}
+
+    def _section(title: str, body: str, limit: int = 3000) -> None:
+        if not body:
+            return
+        snippet = smart_truncate_structured(body, limit)
+        sections.append(f"## {title}\n\n```\n{snippet}\n```\n")
+
+    # Budgets bumped to 30-40K for review/e2e — these are reset-path retry
+    # prompts for changes that hit the retry cap. Tight 2-4K budgets drop
+    # FILE/LINE/FIX pairings mid-finding, which is what caused repeated
+    # impl cycles on the same (misdiagnosed) bug. See OpenSpec change:
+    # fix-retry-context-signal-loss (Bug D audit).
+    e2e_output = extras.get("e2e_output") or ""
+    if e2e_output:
+        _section("Last e2e gate output", e2e_output, limit=30_000)
+    else:
+        e2e_result = getattr(change, "e2e_result", None)
+        if e2e_result and e2e_result != "pass":
+            sections.append(f"## Last e2e gate result\n\n`{e2e_result}` (no captured output — check `.set/logs/`).\n")
+
+    review_output = extras.get("review_output") or ""
+    if review_output:
+        _section("Last review output", review_output, limit=30_000)
+
+    build_output = extras.get("build_output") or ""
+    if build_output:
+        # Build errors are usually concise (stacktrace + offending file).
+        # Smaller budget is fine.
+        _section("Last build output", build_output, limit=5_000)
+
+    test_output = extras.get("test_output") or ""
+    if test_output:
+        _section("Last test output", test_output, limit=10_000)
+
+    failure_reason = getattr(change, "failure_reason", "") or extras.get("failure_reason", "")
+    if failure_reason:
+        sections.append(f"## Recorded failure reason\n\n{failure_reason[:1500]}\n")
+
+    sections.append(
+        "## Summary of what to do first\n\n"
+        "Read the gate output above, inspect the files you already wrote "
+        "(git log + git diff), and make the minimal change that turns the "
+        "failing gate green. If the e2e suite is timing out, focus on "
+        "reducing per-test wait time or splitting the suite — do NOT "
+        "rewrite unrelated working code.",
+    )
+
+    return "\n".join(sections)
+
+
+def reset_failed_changes(
+    state_file: str,
+    *,
+    event_bus: Any = None,
+    destroy_worktree: bool = False,
+) -> list[str]:
+    """Reset all `failed`/`integration-failed` changes back to `pending`.
+
+    Used by the sentinel/start `reset_failed=true` path so the user can resume
+    a stopped run after raising the retry cap or fixing root-cause issues.
+
+    Default behavior preserves the existing worktree + branch + artifacts so
+    the next dispatch resumes the agent's prior work with a freshly-built
+    `retry_context` explaining what failed. This is the intended path: the
+    agent keeps the spec artifacts (`openspec/changes/<name>/`) and the
+    implementation in the worktree, and incrementally fixes the specific
+    gate failure — NOT a full rewrite from scratch (which was the bug
+    pre-2026-04-14: destroying the worktree forced `/opsx:ff` to recreate
+    artifacts, discarding work and looking like a regression from the
+    agent's perspective).
+
+    Set `destroy_worktree=True` only when the worktree is known-corrupt
+    (merge conflicts that cannot be auto-resolved, filesystem damage, or
+    explicit user request to start over). In that mode the worktree is
+    harvested to the orchestration archive before removal.
+
+    Steps:
+    1. Build `retry_context` from the last gate outputs (e2e, review, etc.)
+       with an explicit "incremental fix, do NOT rewrite" directive.
+    2. If `destroy_worktree`: harvest + `git worktree remove --force` +
+       branch delete. Otherwise: log archive only, preserve worktree.
+    3. Reset state fields per `_RESET_FAILED_FIELDS` (but keep retry_context
+       so the next dispatch consumes it in input.md).
+    4. Clear top-level `status=stopped` / `stop_reason=dep_blocked`.
+
+    Returns the list of reset change names.
+    """
+    from .state import WatchdogState
+    from .subprocess_utils import run_command as _run
+
+    state = load_state(state_file)
+    targets = [
+        c for c in state.changes
+        if c.status in ("failed", "integration-failed")
+    ]
+    if not targets:
+        logger.info("reset_failed_changes: no failed changes to reset")
+        return []
+
+    project_dir = os.path.dirname(state_file)
+    reset_names: list[str] = []
+
+    for change in targets:
+        wt_path = change.worktree_path or ""
+        logger.info(
+            "reset_failed_changes: resetting %s (was %s, wt=%s, destroy=%s)",
+            change.name, change.status, wt_path or "<none>", destroy_worktree,
+        )
+
+        # 1. Build retry_context from the last failure outputs BEFORE touching
+        #    the worktree — we need git history and file state to still exist.
+        retry_ctx = _build_reset_retry_context(change, wt_path)
+
+        if destroy_worktree:
+            # 2a. Harvest + remove when explicitly requested
+            if wt_path and os.path.isdir(wt_path):
+                try:
+                    from .worktree_harvest import harvest_worktree
+                    harvest_worktree(change.name, wt_path, project_dir, reason="reset_failed")
+                except Exception:
+                    logger.warning(
+                        "reset_failed_changes: harvest failed for %s",
+                        change.name, exc_info=True,
+                    )
+                branch = ""
+                br = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=wt_path, timeout=10)
+                if br.exit_code == 0:
+                    branch = br.stdout.strip()
+                rm = _run(["git", "worktree", "remove", "--force", wt_path], cwd=project_dir, timeout=30)
+                if rm.exit_code != 0:
+                    logger.warning(
+                        "reset_failed_changes: git worktree remove failed for %s (%s) — falling back to rm",
+                        change.name, rm.stderr.strip()[:200],
+                    )
+                    import shutil
+                    shutil.rmtree(wt_path, ignore_errors=True)
+                if branch and branch not in ("HEAD", "main", "master"):
+                    _run(["git", "branch", "-D", branch], cwd=project_dir, timeout=10)
+        else:
+            # 2b. Preserve worktree. Only archive logs (non-destructive).
+            if wt_path and os.path.isdir(wt_path):
+                try:
+                    from .merger import _archive_worktree_logs
+                    _archive_worktree_logs(change.name, wt_path)
+                except Exception:
+                    logger.debug(
+                        "reset_failed_changes: log archive failed for %s",
+                        change.name, exc_info=True,
+                    )
+
+        # 3. Reset state fields — but NOT worktree_path when preserving it
+        for fname, fvalue in _RESET_FAILED_FIELDS.items():
+            if not destroy_worktree and fname == "worktree_path":
+                continue
+            try:
+                update_change_field(state_file, change.name, fname, fvalue, event_bus=event_bus)
+            except Exception:
+                logger.debug(
+                    "reset_failed_changes: could not reset %s.%s",
+                    change.name, fname, exc_info=True,
+                )
+
+        # 3b. Inject the retry_context so the next dispatch consumes it.
+        if retry_ctx:
+            try:
+                update_change_field(state_file, change.name, "retry_context", retry_ctx, event_bus=event_bus)
+                logger.info(
+                    "reset_failed_changes: set retry_context for %s (%d chars)",
+                    change.name, len(retry_ctx),
+                )
+            except Exception:
+                logger.warning(
+                    "reset_failed_changes: could not set retry_context for %s",
+                    change.name, exc_info=True,
+                )
+
+        # 4. Reset watchdog
+        with locked_state(state_file) as st:
+            ch = next((c for c in st.changes if c.name == change.name), None)
+            if ch is not None:
+                ch.watchdog = WatchdogState(
+                    last_activity_epoch=int(time.time()),
+                    action_hash_ring=[],
+                    consecutive_same_hash=0,
+                    escalation_level=0,
+                    progress_baseline=0,
+                )
+
+        if event_bus:
+            try:
+                event_bus.emit("CHANGE_RESET_FAILED", change=change.name, data={"prev_status": change.status})
+            except Exception:
+                pass
+
+        reset_names.append(change.name)
+
+    # 5. Clear top-level stopped status so the monitor will resume cleanly
+    try:
+        cur = load_state(state_file)
+        if cur.status == "stopped":
+            update_state_field(state_file, "status", "running", event_bus=event_bus)
+        if cur.extras.get("stop_reason"):
+            update_state_field(state_file, "stop_reason", "", event_bus=event_bus)
+        if cur.extras.get("dep_blocked_count"):
+            update_state_field(state_file, "dep_blocked_count", 0, event_bus=event_bus)
+    except Exception:
+        logger.warning("reset_failed_changes: could not clear top-level stop fields", exc_info=True)
+
+    logger.info(
+        "reset_failed_changes: reset %d change(s): %s",
+        len(reset_names), ", ".join(reset_names),
+    )
+    return reset_names
+
+
 def _recover_verify_failed(
     state_file: str, d: Directives, event_bus: Any
 ) -> None:
@@ -1576,10 +1884,11 @@ def _build_gate_retry_context(
                 f"### Regression Failures (your change broke a previously-passing test — fix YOUR app code, do NOT modify the old test)\n{reg}\n"
             )
 
-    # --- Raw E2E Output ---
+    # --- Raw E2E Output (bumped from 2K for tail-preservation of Playwright
+    # assertion errors and stack traces — see Bug D audit) ---
     if e2e_output:
         sections.append(
-            f"### Test Output\n{smart_truncate_structured(e2e_output, 2000)}\n"
+            f"### Test Output\n{smart_truncate_structured(e2e_output, 30_000)}\n"
         )
 
     # --- Original Scope (reference) ---

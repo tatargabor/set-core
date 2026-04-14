@@ -30,6 +30,14 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
+  // Per-test cap. 30s is enough for typical interactions; assertion-heavy
+  // tests can override locally with test.setTimeout().
+  timeout: 30_000,
+  // Global suite cap. Sized for ~150-200 tests at ~3-5s each + login per
+  // test (~3s) + webServer cold start (Next.js prod build can be 30s+) +
+  // prisma seed. 1h gives ample headroom — the set-orch e2e gate timeout
+  // is the outer kill switch (3600s default, see verifier.DEFAULT_E2E_TIMEOUT).
+  globalTimeout: 3_600_000,
   reporter: "html",
   use: {
     baseURL: `http://localhost:${port}`,
@@ -37,6 +45,10 @@ export default defineConfig({
     locale: "en-US",
     screenshot: "on",
     trace: "on-first-retry",
+    // Action and navigation defaults — Playwright's defaults (no timeout)
+    // cause hung tests to consume globalTimeout instead of failing fast.
+    actionTimeout: 10_000,
+    navigationTimeout: 15_000,
   },
   projects: [
     {
@@ -50,7 +62,16 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       ...process.env,
+      // NextAuth v4 (legacy) — kept for back-compat with apps still on v4.
       NEXTAUTH_URL: `http://localhost:${port}`,
+      // NextAuth v5 (Auth.js) — required for the dynamic test ports
+      // (3xxx/4xxx) the e2e gate assigns per worktree. Without these,
+      // every /api/auth/* call throws `UntrustedHost`, which causes
+      // auth-dependent tests to hang waiting for a session that never
+      // arrives — the gate then hits its outer timeout. Setting both
+      // here is safe: playwright.config.ts is never loaded in production.
+      AUTH_URL: `http://localhost:${port}`,
+      AUTH_TRUST_HOST: "true",
     },
   },
   globalSetup: "./tests/e2e/global-setup.ts",

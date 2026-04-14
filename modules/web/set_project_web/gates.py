@@ -640,9 +640,13 @@ def execute_e2e_gate(
                 + "\n".join(f"- {p}" for p in png_files[:10])
             )
 
+    # Preserve error-tail evidence: Playwright assertion errors and stack
+    # traces appear near the end of stdout. A head-only slice drops them and
+    # leaves the impl agent with only prisma setup noise to reason about.
+    from set_orch.truncate import smart_truncate_structured
     result.retry_context = (
         f"E2E tests (Playwright) failed. Fix the failing E2E tests or the code they test.\n\n"
-        f"E2E command: {e2e_command}\nE2E output:\n{e2e_output[:2000]}\n"
+        f"E2E command: {e2e_command}\nE2E output:\n{smart_truncate_structured(e2e_output, 6000)}\n"
         f"{screenshot_hint}\n\n"
         f"Original scope: {scope}"
     )

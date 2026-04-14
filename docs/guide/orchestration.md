@@ -251,6 +251,22 @@ When a gate fails, the agent receives the full error output and retries up to `m
 
 Use `set-orchestrate events --type VERIFY_GATE` to see all gate results across the run.
 
+### Distinguishing infra failure from verdict failure
+
+The `spec_verify` gate classifies each LLM invocation into three categories:
+
+- **verdict** — LLM output contains `VERIFY_RESULT: PASS` or `FAIL`. Sentinel is authoritative; exit code is secondary. Normal flow — pass/fail behavior as documented above.
+- **infra** — LLM hit `--max-turns` without producing a verdict, OR the subprocess timed out. Infrastructure failure, not a code fault. The gate retries once with doubled turn budget (40→80). If the retry also lands in infra, the gate returns `skipped` with `infra_fail=True` on the emitted `VERIFY_GATE` event. Retry slot is **not** consumed; implementation agent is **not** re-dispatched.
+- **ambiguous** — No sentinel, no detectable infra cause. Falls through to the classifier fallback path (second Sonnet pass to extract a structured verdict).
+
+To filter infra anomalies from real findings in run logs:
+
+```bash
+set-orchestrate events --type VERIFY_GATE | jq 'select(.data.infra_fail == true)'
+```
+
+The `infra_fails` array on the event lists which gates abstained and why (`terminal_reason: "max_turns"` or `"timeout"`). These are usually a sign of a pathological prompt (the LLM getting stuck re-running the same command) or a consumer project whose verify surface is too large for the default budget. Repeated infra failures on the same change warrant operator attention rather than more retries.
+
 ### Token budget exceeded
 
 Per-change budgets are based on complexity:

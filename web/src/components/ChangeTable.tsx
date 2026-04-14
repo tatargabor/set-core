@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import type { ChangeInfo } from '../lib/api'
 // Action imports preserved for future re-enable
 // import { stopChange, skipChange, pauseChange, resumeChange } from '../lib/api'
@@ -46,6 +46,23 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
   const [expandedGate, setExpandedGate] = useState<string | null>(null)
   const [screenshotChange, setScreenshotChange] = useState<string | null>(null)
   const isMobile = useIsMobile()
+  const rowRefs = useRef<Map<string, HTMLElement | null>>(new Map())
+
+  // Auto-scroll the selected row into view. Drives two behaviors:
+  //   1) auto-follow flips selectedChange to a new running change → the row
+  //      may be off-screen if the change list is taller than its 50% cap;
+  //      this brings it into view without scrolling the page.
+  //   2) the user clicks a row near the bottom of the visible area → the
+  //      selection highlight stays visible after the surrounding row
+  //      heights shift (e.g. expanded gate detail).
+  // block: 'nearest' avoids re-anchoring when the row is already visible.
+  useEffect(() => {
+    if (!selected) return
+    const el = rowRefs.current.get(selected)
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [selected])
 
   const toggleGate = (e: React.MouseEvent, name: string) => {
     e.stopPropagation()
@@ -72,7 +89,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
           const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result || c.e2e_result || c.spec_coverage_result)
           const isGateExpanded = expandedGate === c.name
           return (
-            <div key={c.name}>
+            <div key={c.name} ref={(el) => { rowRefs.current.set(c.name, el) }}>
               {/* Compact row */}
               <button
                 onClick={() => onSelect?.(c.name)}
@@ -183,6 +200,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
           return (
             <Fragment key={c.name}>
             <tr
+              ref={(el) => { rowRefs.current.set(c.name, el) }}
               onClick={clickable && onSelect ? () => onSelect(c.name) : undefined}
               className={`border-b ${isGateExpanded ? 'border-b-0' : 'border-b'} border-neutral-800/50 transition-colors ${
                 clickable ? 'cursor-pointer hover:bg-neutral-900/50' : ''
