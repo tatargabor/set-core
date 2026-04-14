@@ -652,6 +652,55 @@ def _has_process_in_dir(directory: str) -> bool:
 
 # ─── Monitor Loop ──────────────────────────────────────────────────
 
+
+def check_config_drift(state_file: str, directives_json: str, *, event_bus: Any = None) -> bool:
+    """Warn when `config.yaml` is newer than the parsed `directives.json`.
+
+    The orchestrator parses `directives.json` at startup. When the user edits
+    `config.yaml` after startup without restarting the supervisor, gate
+    behavior diverges silently from the file the user believes is authoritative
+    — a classic "I changed the config and nothing happened" footgun.
+
+    Returns True when drift was detected, False otherwise. Safe to call in a
+    broad try-block; never raises.
+    """
+    try:
+        state_dir = os.path.dirname(os.path.abspath(state_file))
+        cfg_path = os.path.join(state_dir, "set", "orchestration", "config.yaml")
+        directives_file = directives_json if os.path.isfile(directives_json) else None
+        if not directives_file or not os.path.isfile(cfg_path):
+            return False
+        cfg_mtime = os.path.getmtime(cfg_path)
+        dir_mtime = os.path.getmtime(directives_file)
+        if cfg_mtime <= dir_mtime:
+            return False
+        delta = int(cfg_mtime - dir_mtime)
+        logger.warning(
+            "CONFIG_DRIFT: config.yaml (mtime=%d) is newer than directives.json "
+            "(mtime=%d) by %d seconds — restart the supervisor to pick up "
+            "config edits. path=%s",
+            int(cfg_mtime), int(dir_mtime), delta, cfg_path,
+        )
+        if event_bus is not None:
+            try:
+                event_bus.emit(
+                    "CONFIG_DRIFT",
+                    data={
+                        "config_yaml": cfg_path,
+                        "directives_json": directives_file,
+                        "config_mtime": int(cfg_mtime),
+                        "directives_mtime": int(dir_mtime),
+                        "delta_seconds": delta,
+                    },
+                )
+            except Exception:
+                logger.debug("CONFIG_DRIFT event emit failed", exc_info=True)
+        return True
+    except Exception:
+        logger.debug("CONFIG_DRIFT check failed (non-critical)", exc_info=True)
+        return False
+
+
 # Source: monitor.sh monitor_loop() L5-586
 def monitor_loop(
     directives_json: str,
@@ -733,6 +782,9 @@ def monitor_loop(
                 return
 
     d = parse_directives(raw)
+
+    # Surface config drift (config.yaml edited after directives.json parsed).
+    check_config_drift(state_file, directives_json, event_bus=event_bus)
 
     # Register atexit cleanup AFTER lock + directives parsed — prevents duplicate
     # monitors (that fail lock acquisition) from setting status=stopped on exit
@@ -1456,6 +1508,21 @@ def _build_reset_retry_context(change: Any, wt_path: str) -> str:
             return
         snippet = smart_truncate_structured(body, limit)
         sections.append(f"## {title}\n\n```\n{snippet}\n```\n")
+
+    # Structured findings block — when any prior gate emitted a verdict with
+    # `findings: [...]`, render FILE/LINE/FIX verbatim BEFORE the raw outputs.
+    # The agent scans top-down; putting concrete fix instructions above the
+    # raw log reduces the chance of re-diagnosing from scratch. See OpenSpec
+    # change: fix-e2e-infra-systematic (T2.1).
+    try:
+        from .findings import findings_from_dicts, render_findings_block
+        findings_raw = extras.get("findings") or []
+        findings_objs = findings_from_dicts(findings_raw)
+        if findings_objs:
+            sections.append("## Structured findings (from last verdict)")
+            sections.append(render_findings_block(findings_objs, limit=30))
+    except Exception:
+        logger.debug("findings render skipped", exc_info=True)
 
     # Budgets bumped to 30-40K for review/e2e — these are reset-path retry
     # prompts for changes that hit the retry cap. Tight 2-4K budgets drop

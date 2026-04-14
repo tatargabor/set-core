@@ -237,12 +237,19 @@ class ProjectType(ABC):
         """
         return ""
 
-    def e2e_gate_env(self, port: int) -> Dict[str, str]:
-        """Return env vars for e2e gate with isolated port.
+    def e2e_gate_env(self, port: int, *, timeout_seconds: int | None = None,
+                      fresh_server: bool = True) -> Dict[str, str]:
+        """Return env vars for e2e gate with isolated port and gate directive.
 
-        Override in project-type modules to map the port to framework-specific
-        env vars (e.g. PW_PORT for Playwright, PORT for Next.js).
-        Core only generates the unique port number.
+        Override in project-type modules to map the port + gate-level directives
+        to framework-specific env vars (e.g. PW_PORT/PORT for Playwright+Next).
+
+        Args:
+            port: Isolated worktree port.
+            timeout_seconds: Outer gate timeout in seconds. Framework-specific
+                configs should align their own suite-level timeout so the
+                inner framework timeout matches the outer gate budget.
+            fresh_server: Whether to force a fresh dev server (no reuse).
         """
         return {}
 

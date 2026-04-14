@@ -1994,7 +1994,12 @@ def run_phase_end_e2e(
         from .profile_loader import load_profile
         profile = load_profile()
         if hasattr(profile, "e2e_gate_env"):
-            env.update(profile.e2e_gate_env(e2e_port))
+            try:
+                env.update(profile.e2e_gate_env(
+                    e2e_port, timeout_seconds=e2e_timeout, fresh_server=True,
+                ))
+            except TypeError:
+                env.update(profile.e2e_gate_env(e2e_port))
     except Exception:
         pass
 

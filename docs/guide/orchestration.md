@@ -205,6 +205,13 @@ Settings resolve in this order (highest wins):
 3. In-document directives (`## Orchestrator Directives` section in your spec)
 4. Built-in defaults
 
+> **Config edits require supervisor restart.** `set/orchestration/config.yaml`
+> is read once at startup and cached in `directives.json`. Later edits to
+> `config.yaml` DO NOT take effect on a running orchestrator — the engine
+> detects the drift on next restart and logs a `CONFIG_DRIFT` WARNING +
+> event, but it keeps using the directives parsed at startup. To apply
+> changes: stop the supervisor, restart it (it will reparse `config.yaml`).
+
 ### Hooks
 
 Lifecycle hooks run scripts at key transitions:

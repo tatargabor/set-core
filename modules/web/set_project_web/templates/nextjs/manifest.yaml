@@ -23,6 +23,7 @@ core:
   - rules/schema-integrity.md
   - rules/transaction-safety.md
   - rules/seed-conventions.md
+  - rules/web-conventions.md
   - path: vitest.config.ts
     protected: true
   - path: playwright.config.ts
@@ -36,9 +37,13 @@ core:
   - path: src/app/globals.css
     protected: true
   - src/lib/prisma.ts
+  - src/lib/auth/storage-state.ts
   - path: .env.example
     protected: true
   - tests/e2e/global-setup.ts
+  - messages/hu.json
+  - messages/en.json
+  - scripts/check-i18n-completeness.ts
   - path: set/orchestration/config.yaml
     merge: true
   - framework-rules/web/api-design.md

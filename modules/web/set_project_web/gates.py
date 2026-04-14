@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import time
 from typing import TYPE_CHECKING
@@ -299,7 +300,14 @@ def _get_or_create_e2e_baseline(
         baseline_env: dict[str, str] = {}
         if profile is not None and hasattr(profile, "e2e_gate_env"):
             try:
-                baseline_env.update(profile.e2e_gate_env(_E2E_BASELINE_PORT))
+                try:
+                    baseline_env.update(profile.e2e_gate_env(
+                        _E2E_BASELINE_PORT,
+                        timeout_seconds=e2e_timeout,
+                        fresh_server=True,
+                    ))
+                except TypeError:
+                    baseline_env.update(profile.e2e_gate_env(_E2E_BASELINE_PORT))
             except Exception:
                 logger.debug("profile.e2e_gate_env failed for baseline port", exc_info=True)
         baseline_env["PW_PORT"] = str(_E2E_BASELINE_PORT)
@@ -429,11 +437,36 @@ def execute_e2e_gate(
                           output="playwright.config has no webServer — "
                                  "Playwright must manage the dev server via webServer config")
 
-    # Build env with port isolation from profile
+    # Build env with port isolation + gate-budget alignment from profile.
+    # Passing `timeout_seconds` makes Playwright's `globalTimeout` match the
+    # outer gate budget so a 600s gate doesn't get killed while playwright is
+    # still racing its own 3600s cap. `fresh_server=True` signals the webServer
+    # to skip `reuseExistingServer` — zombie-proof, stale-cache-proof.
+    #
+    # Port resolution order:
+    #   1. change.extras.assigned_e2e_port — persisted at dispatch; stable
+    #      across profile reloads, visible in state for observability.
+    #   2. profile.worktree_port(change_name) — deterministic fallback when
+    #      the dispatcher hasn't persisted yet (legacy changes, forward-compat).
     e2e_env: dict[str, str] = {}
-    if profile and hasattr(profile, "worktree_port"):
-        port = profile.worktree_port(change_name)
-        if port > 0 and hasattr(profile, "e2e_gate_env"):
+    try:
+        _assigned = int(change.extras.get("assigned_e2e_port", 0))
+    except (TypeError, ValueError):
+        _assigned = 0
+
+    port = 0
+    if _assigned > 0:
+        port = _assigned
+    elif profile and hasattr(profile, "worktree_port"):
+        port = int(profile.worktree_port(change_name) or 0)
+
+    if port > 0 and profile and hasattr(profile, "e2e_gate_env"):
+        try:
+            e2e_env.update(profile.e2e_gate_env(
+                port, timeout_seconds=e2e_timeout, fresh_server=True,
+            ))
+        except TypeError:
+            # Back-compat for older profile signatures.
             e2e_env.update(profile.e2e_gate_env(port))
     # Fallback: read PORT from worktree .env if profile didn't set it
     if "PW_PORT" not in e2e_env:
@@ -802,3 +835,116 @@ def execute_lint_gate(
         )
 
     return GateResult("lint", "pass")
+
+
+# ─── i18n Completeness Gate ──────────────────────────────────────────
+
+
+def _find_i18n_check_script(wt_path: str) -> str | None:
+    for rel in ("scripts/check-i18n-completeness.ts", "scripts/check-i18n-completeness.mjs"):
+        p = os.path.join(wt_path, rel)
+        if os.path.isfile(p):
+            return rel
+    return None
+
+
+def execute_i18n_check_gate(
+    change_name: str, change: "Change", wt_path: str,
+    profile=None,
+) -> "GateResult":
+    """i18n completeness check — ensures every `t('ns.key')` resolves in every locale.
+
+    Skipped when:
+      - no messages/ dir in worktree
+      - no scripts/check-i18n-completeness.ts
+      - no `useTranslations(` in src/
+
+    Fast (~1-2s). Designed to pre-empt cascading Playwright failures that
+    stem from a single missing translation key.
+    """
+    from set_orch.gate_runner import GateResult
+
+    if not wt_path:
+        return GateResult("i18n_check", "skipped", output="no worktree path")
+
+    messages_dir = os.path.join(wt_path, "messages")
+    if not os.path.isdir(messages_dir):
+        return GateResult("i18n_check", "skipped", output="no messages/ directory")
+
+    locale_files = [
+        f for f in os.listdir(messages_dir)
+        if re.fullmatch(r"[a-z]{2}(-[A-Z]{2})?\.json", f)
+    ]
+    if not locale_files:
+        return GateResult("i18n_check", "skipped", output="no locale files in messages/")
+
+    script_rel = _find_i18n_check_script(wt_path)
+    if not script_rel:
+        return GateResult("i18n_check", "skipped", output="no scripts/check-i18n-completeness.ts")
+
+    src_dir = os.path.join(wt_path, "src")
+    if not os.path.isdir(src_dir):
+        return GateResult("i18n_check", "skipped", output="no src/ directory")
+
+    uses_next_intl = False
+    for root, _dirs, files in os.walk(src_dir):
+        if "node_modules" in root or "/.next" in root:
+            continue
+        for f in files:
+            if not f.endswith((".ts", ".tsx", ".js", ".jsx")):
+                continue
+            try:
+                with open(os.path.join(root, f)) as fh:
+                    content = fh.read(8192)
+                if "useTranslations(" in content or "getTranslations(" in content:
+                    uses_next_intl = True
+                    break
+            except OSError:
+                continue
+        if uses_next_intl:
+            break
+
+    if not uses_next_intl:
+        return GateResult("i18n_check", "skipped", output="no useTranslations/getTranslations usage")
+
+    # Resolve a runner: prefer local tsx, fall back to npx tsx.
+    node_bin = os.path.join(wt_path, "node_modules", ".bin", "tsx")
+    if os.path.isfile(node_bin):
+        cmd = [node_bin, script_rel]
+    else:
+        cmd = ["npx", "--yes", "tsx", script_rel]
+
+    t0 = time.monotonic()
+    try:
+        result = subprocess.run(
+            cmd, cwd=wt_path, capture_output=True, text=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return GateResult(
+            "i18n_check", "fail",
+            output="i18n_check timed out after 30s",
+            retry_context="i18n_check script timed out — inspect scripts/check-i18n-completeness.ts",
+        )
+    except FileNotFoundError:
+        return GateResult("i18n_check", "skipped", output="tsx/npx not available")
+
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    output = (result.stdout or "") + (result.stderr or "")
+
+    if result.returncode == 0:
+        return GateResult(
+            "i18n_check", "pass",
+            output=output[:1500], duration_ms=elapsed_ms,
+        )
+
+    retry_ctx = (
+        "i18n completeness check failed — one or more translation keys referenced in "
+        "the code have no entry in messages/<locale>.json. Missing keys cause cascading "
+        "Playwright failures (hydration errors, runtime MISSING_MESSAGE). Fix: add the "
+        "missing keys listed below to every locale file, mirroring the key set.\n\n"
+        + output[:4000]
+    )
+    return GateResult(
+        "i18n_check", "fail", output=output[:4000],
+        retry_context=retry_ctx, duration_ms=elapsed_ms,
+    )

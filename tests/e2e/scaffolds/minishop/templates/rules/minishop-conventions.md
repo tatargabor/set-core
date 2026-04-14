@@ -79,3 +79,17 @@ Single `User` model, role-based. Two audiences share the auth pipeline.
 - `prisma/seed.ts` using `tsx` runner
 - Idempotent: use `upsert` or check-before-insert
 - Creates: 6 products, 3 attribute types, variants for each product, 1 admin user (admin@example.com / password123)
+
+## See also — universal web anti-patterns
+
+The framework-level `rules/web-conventions.md` (deployed by `set-project init`)
+codifies e2e-failure-prone anti-patterns that apply to every web scaffold:
+
+1. Never `navigator.sendBeacon` for cart/order mutations — await `fetch()` instead.
+2. Upsert with composite unique key that includes the owning entity (userId/recipientEmail).
+3. `data-testid="<feature>-<element>"` naming, kept in sync between component and test.
+4. Use Playwright `storageState` via `lib/auth/storage-state.ts` for admin auth.
+5. Annotate e2e spec files with `// @REQ-...` tags so the orchestrator can
+   attribute failing tests to their owning change.
+
+These apply here too — follow them alongside this scaffold's specific rules.

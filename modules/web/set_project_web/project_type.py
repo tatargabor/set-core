@@ -885,11 +885,23 @@ class WebProjectType(CoreProfile):
         return ["node_modules", ".next", "dist", "build", ".turbo"]
 
     def register_gates(self) -> list:
-        """Register web-specific gates: e2e (Playwright) and lint (forbidden patterns)."""
+        """Register web-specific gates: i18n_check, e2e (Playwright), lint (forbidden patterns)."""
         from set_orch.gate_runner import GateDefinition
-        from .gates import execute_e2e_gate, execute_lint_gate
+        from .gates import execute_e2e_gate, execute_i18n_check_gate, execute_lint_gate
 
         return [
+            GateDefinition(
+                "i18n_check",
+                execute_i18n_check_gate,
+                position="before:e2e",
+                defaults={
+                    # Non-blocking on first rollout. Flip to "run" to block
+                    # via set/orchestration/config.yaml: gate_overrides.i18n_check: run
+                    "infrastructure": "skip", "schema": "skip",
+                    "foundational": "warn", "feature": "warn",
+                    "cleanup-before": "skip", "cleanup-after": "skip",
+                },
+            ),
             GateDefinition(
                 "e2e",
                 execute_e2e_gate,
@@ -1103,9 +1115,21 @@ class WebProjectType(CoreProfile):
         import hashlib
         return int(hashlib.md5(change_name.encode()).hexdigest()[:4], 16) % 1000 + 3100
 
-    def e2e_gate_env(self, port: int) -> dict[str, str]:
-        """Map isolated port to Playwright/Next.js env vars."""
-        return {
+    def e2e_gate_env(self, port: int, *, timeout_seconds: int | None = None,
+                      fresh_server: bool = True) -> dict[str, str]:
+        """Map isolated port + gate directive to Playwright/Next.js env vars.
+
+        Args:
+            port: Worktree-specific PW_PORT (see `worktree_port`).
+            timeout_seconds: Playwright globalTimeout in seconds. When set,
+                exported as `PW_TIMEOUT` so `playwright.config.ts` can align
+                its suite cap with the outer gate budget. Prevents the "gate
+                killed at 600s while playwright thought it had 3600s" mismatch.
+            fresh_server: When True, set `PW_FRESH_SERVER=1` so the Next.js
+                webServer does not reuse a prior instance (stale-cache /
+                zombie-server avoidance).
+        """
+        env = {
             "PW_PORT": str(port),
             "PORT": str(port),
             "PLAYWRIGHT_SCREENSHOT": "on",
@@ -1114,6 +1138,11 @@ class WebProjectType(CoreProfile):
             # dev/test databases, so consent is implicit.
             "PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION": "true",
         }
+        if timeout_seconds is not None and timeout_seconds > 0:
+            env["PW_TIMEOUT"] = str(int(timeout_seconds))
+        if fresh_server:
+            env["PW_FRESH_SERVER"] = "1"
+        return env
 
     def integration_pre_build(self, wt_path: str) -> bool:
         """Run Prisma generate + DB schema sync before integration build gate.

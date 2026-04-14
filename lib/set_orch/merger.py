@@ -701,6 +701,24 @@ def merge_change(
         if event_bus:
             event_bus.emit("MERGE_COMPLETE", change=change_name, data={"result": "success"})
 
+        # Persist the files this merge touched — used by cross-change regression
+        # detection later to attribute a failing test to its owning change. See
+        # OpenSpec change: fix-e2e-infra-systematic (T2.2.5).
+        try:
+            _merged_files = _list_merged_scope_files(source_branch)
+            if _merged_files:
+                _cur = load_state(state_file)
+                _cur_change = _find_change(_cur, change_name)
+                _extras = dict(getattr(_cur_change, "extras", None) or {})
+                _extras["merged_scope_files"] = _merged_files
+                update_change_field(state_file, change_name, "extras", _extras)
+                logger.info(
+                    "Recorded merged_scope_files for %s: %d file(s)",
+                    change_name, len(_merged_files),
+                )
+        except Exception:
+            logger.debug("merged_scope_files capture failed (non-critical)", exc_info=True)
+
         # Auto-resolve any diagnosed issues that were blocking the merge queue.
         # Non-blocking: merger failure here must never undo a successful merge.
         # Project path is derived from state_file — os.getcwd() is fragile
@@ -980,6 +998,64 @@ def _integrate_for_merge(wt_path: str, change_name: str, event_bus: Any = None) 
         run_command(["git", "stash", "pop"], timeout=30, cwd=wt_path)
 
     return "conflict"
+
+
+def _list_merged_scope_files(source_branch: str) -> list[str]:
+    """Return files that a fast-forward merge from `source_branch` brought into main.
+
+    Used to populate `change.extras.merged_scope_files` so later changes can
+    resolve a failing test to its owning merged change (cross-change
+    regression detection). Best-effort: returns `[]` on any git error.
+    """
+    try:
+        # source_branch is now merged; prior_head is HEAD^1 after the merge.
+        # On a fast-forward, the commits from source_branch are already HEAD;
+        # diff between HEAD and the merge-base with the previous mainline
+        # commit gives the files the merge introduced.
+        r = run_command(
+            ["git", "log", "--name-only", "--format=",
+             f"main..{source_branch}", "--"],
+            timeout=20,
+        )
+        if r.exit_code != 0:
+            # After ff-only merge, source branch is equal-to-or-ancestor of main.
+            # Fall back to diffing main~N..main where N=commits from source_branch.
+            r = run_command(
+                ["git", "diff-tree", "--no-commit-id", "--name-only", "-r",
+                 source_branch, "--"],
+                timeout=20,
+            )
+            if r.exit_code != 0:
+                return []
+        files = sorted({
+            ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()
+        })
+        return files
+    except Exception:
+        return []
+
+
+def _current_change_touched_files(wt_path: str) -> list[str]:
+    """Return relative paths of files changed in the current worktree vs main.
+
+    Used by cross-change regression detection to build the "files that overlap
+    a merged change's scope" list in the agent's prescriptive retry_context.
+    Returns `[]` on any error (non-critical).
+    """
+    if not wt_path or not os.path.isdir(wt_path):
+        return []
+    try:
+        r = run_command(
+            ["git", "diff", "--name-only", "main...HEAD"],
+            cwd=wt_path, timeout=20,
+        )
+        if r.exit_code != 0:
+            return []
+        return sorted({
+            ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()
+        })
+    except Exception:
+        return []
 
 
 def _count_skeleton_todos(wt_path: str, change_name: str) -> int:
@@ -1295,7 +1371,16 @@ def _run_integration_gates(
             e2e_port = 4000 + port_offset
             e2e_env = dict(gate_env) if gate_env else {}
             if profile and hasattr(profile, "e2e_gate_env"):
-                e2e_env.update(profile.e2e_gate_env(e2e_port))
+                try:
+                    _e2e_timeout = int(directives.get("e2e_timeout", 3600))
+                except (TypeError, ValueError):
+                    _e2e_timeout = 3600
+                try:
+                    e2e_env.update(profile.e2e_gate_env(
+                        e2e_port, timeout_seconds=_e2e_timeout, fresh_server=True,
+                    ))
+                except TypeError:
+                    e2e_env.update(profile.e2e_gate_env(e2e_port))
             if event_bus:
                 event_bus.emit("GATE_START", change=change_name, data={"gate": "e2e", "phase": "integration"})
 
@@ -1530,6 +1615,52 @@ def _run_integration_gates(
                                 "Note: some inherited smoke tests also failed (non-blocking, "
                                 "not your responsibility).\n\n" + retry_ctx
                             )
+
+                        # Cross-change regression detection — if any failing test
+                        # belongs to an already-merged change, emit CROSS_CHANGE_REGRESSION
+                        # + prepend prescriptive framing so the agent fixes its own
+                        # scope instead of chasing somebody else's test failure.
+                        try:
+                            from .cross_change import (
+                                build_regression_retry_context,
+                                detect_cross_change_regressions,
+                            )
+                            from .findings import extract_e2e_findings
+                            _e2e_findings = extract_e2e_findings(
+                                (result.stdout or "") + (result.stderr or "")
+                            )
+                            _failing_tests = [(f.file, f.title) for f in _e2e_findings]
+                            _touched = _current_change_touched_files(wt_path)
+                            _state_for_resolve = load_state(state_file)
+                            _report = detect_cross_change_regressions(
+                                change_name, _failing_tests,
+                                _state_for_resolve,
+                                current_touched_files=_touched,
+                            )
+                            if _report.has_cross_change_regression:
+                                _prefix = build_regression_retry_context(change_name, _report)
+                                retry_ctx = _prefix + "\n---\n\n" + retry_ctx
+                                logger.warning(
+                                    "CROSS_CHANGE_REGRESSION for %s: %d test(s) owned "
+                                    "by merged change(s): %s",
+                                    change_name, len(_report.regressed_tests),
+                                    sorted(_report.by_owning_change.keys()),
+                                )
+                                if event_bus:
+                                    event_bus.emit(
+                                        "CROSS_CHANGE_REGRESSION", change=change_name,
+                                        data={
+                                            "current_change": change_name,
+                                            "regressed_tests": [
+                                                {"test": t, "owning_change": o}
+                                                for t, o in _report.regressed_tests.items()
+                                            ],
+                                            "touched_files": list(_touched or []),
+                                        },
+                                    )
+                        except Exception:
+                            logger.debug("cross-change detection failed (non-critical)", exc_info=True)
+
                         update_change_field(state_file, change_name, "retry_context", retry_ctx)
                         update_change_field(state_file, change_name, "status", "integration-e2e-failed")
                         update_change_field(state_file, change_name, "integration_gate_fail", "e2e-redispatch")

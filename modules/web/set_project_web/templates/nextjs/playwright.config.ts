@@ -4,6 +4,18 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PW_PORT) || 3000;
 
+// Global suite cap. Driven by PW_TIMEOUT (seconds) so the orchestrator can
+// pass the effective gate budget down — otherwise a gate with a 600s directive
+// would be killed at 600s but playwright would still be in minute-40 of 60,
+// burning the whole gate budget without a useful failure list.
+const globalTimeoutMs = process.env.PW_TIMEOUT
+  ? parseInt(process.env.PW_TIMEOUT, 10) * 1000
+  : 3_600_000;
+
+// When the gate asks for a fresh server (zombie-proof, stale-build-proof),
+// disable Playwright's reuseExistingServer optimization.
+const freshServer = !!process.env.PW_FRESH_SERVER;
+
 // NEXTAUTH_SECRET for the E2E webServer.
 //
 // This MUST be set at config load time (before `webServer.env` spreads
@@ -33,11 +45,12 @@ export default defineConfig({
   // Per-test cap. 30s is enough for typical interactions; assertion-heavy
   // tests can override locally with test.setTimeout().
   timeout: 30_000,
-  // Global suite cap. Sized for ~150-200 tests at ~3-5s each + login per
+  // Global suite cap. Driven by PW_TIMEOUT env (seconds) when set by the gate
+  // runner; defaults to 1h. Sized for ~150-200 tests at ~3-5s each + login per
   // test (~3s) + webServer cold start (Next.js prod build can be 30s+) +
-  // prisma seed. 1h gives ample headroom — the set-orch e2e gate timeout
-  // is the outer kill switch (3600s default, see verifier.DEFAULT_E2E_TIMEOUT).
-  globalTimeout: 3_600_000,
+  // prisma seed. The set-orch e2e gate timeout is the outer kill switch
+  // (3600s default, see verifier.DEFAULT_E2E_TIMEOUT).
+  globalTimeout: globalTimeoutMs,
   reporter: "html",
   use: {
     baseURL: `http://localhost:${port}`,
@@ -59,7 +72,11 @@ export default defineConfig({
   webServer: {
     command: `npx next dev -p ${port}`,
     port,
-    reuseExistingServer: false,
+    // Reuse the dev server only in local dev (no CI, no PW_FRESH_SERVER).
+    // Orchestrated gate runs set PW_FRESH_SERVER=1 for zombie/stale-cache
+    // invulnerability; CI sets CI=1. Local iteration (`pnpm test:e2e` in
+    // VSCode while `pnpm dev` is already running) gets the fast path.
+    reuseExistingServer: !process.env.CI && !freshServer,
     env: {
       ...process.env,
       // NextAuth v4 (legacy) — kept for back-compat with apps still on v4.

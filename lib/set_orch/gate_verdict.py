@@ -157,10 +157,18 @@ class GateVerdict:
     # Severity downgrade audit trail — populated when the classifier lowers
     # a reviewer-tagged severity per the rubric. Each entry: {from, to, summary}.
     downgrades: list = None
+    # Structured findings extracted from the gate output. When non-empty, the
+    # retry_context builder renders FILE/LINE/FIX blocks verbatim instead of
+    # the 1-line summary. Forward-compat: legacy sidecars without this field
+    # still parse cleanly and fall back to `summary` — see
+    # `read_verdict_sidecar` and `engine._build_reset_retry_context`.
+    findings: list = None
 
     def __post_init__(self) -> None:
         if self.downgrades is None:
             self.downgrades = []
+        if self.findings is None:
+            self.findings = []
 
     def to_outcome(self) -> str:
         """Translate to the {success, error, unknown} the session API uses."""
@@ -207,7 +215,7 @@ def read_verdict_sidecar(session_path: Path) -> GateVerdict | None:
         return None
     known = {
         "gate", "verdict", "critical_count", "high_count", "medium_count",
-        "low_count", "source", "change", "summary",
+        "low_count", "source", "change", "summary", "downgrades", "findings",
     }
     clean = {k: v for k, v in data.items() if k in known}
     try:
@@ -231,6 +239,7 @@ def persist_gate_verdict(
     source: str = "",
     summary: str = "",
     downgrades: list | None = None,
+    findings: list | None = None,
 ) -> Path | None:
     """Resolve the new session for the call we just made and write its sidecar.
 
@@ -247,6 +256,15 @@ def persist_gate_verdict(
             claude_session_dir(cwd), marker,
         )
         return None
+    _normalized_findings: list = []
+    for f in (findings or []):
+        if isinstance(f, dict):
+            _normalized_findings.append(f)
+        elif hasattr(f, "to_dict"):
+            _normalized_findings.append(f.to_dict())
+        else:
+            # Unknown shape — skip rather than crash the sidecar write.
+            logger.debug("persist_gate_verdict: ignoring finding of type %s", type(f))
     write_verdict_sidecar(session, GateVerdict(
         gate=gate,
         verdict=verdict,
@@ -258,5 +276,6 @@ def persist_gate_verdict(
         change=change_name,
         summary=summary,
         downgrades=list(downgrades or []),
+        findings=_normalized_findings,
     ))
     return session

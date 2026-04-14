@@ -2020,6 +2020,32 @@ def dispatch_change(
     # Bootstrap
     bootstrap_worktree(project_path, wt_path, change_name=change_name)
 
+    # Persist the deterministic worktree port so the gate runner reads the
+    # same value at e2e time regardless of profile re-instantiation. Without
+    # this the gate re-computes it from scratch — still deterministic, but
+    # opaque to observability and un-overridable. See OpenSpec change:
+    # fix-e2e-infra-systematic (T1.5).
+    try:
+        from .profile_loader import load_profile as _lp, NullProfile as _NP
+        _p_for_port = _lp(project_path)
+        if not isinstance(_p_for_port, _NP) and hasattr(_p_for_port, "worktree_port"):
+            _assigned_port = int(_p_for_port.worktree_port(change_name))
+            if _assigned_port > 0 and int(
+                change.extras.get("assigned_e2e_port", 0)
+            ) != _assigned_port:
+                update_change_field(
+                    state_path, change_name, "extras",
+                    {**change.extras, "assigned_e2e_port": _assigned_port},
+                    event_bus=event_bus,
+                )
+                change.extras["assigned_e2e_port"] = _assigned_port
+                logger.info(
+                    "dispatch %s: persisted assigned_e2e_port=%d",
+                    change_name, _assigned_port,
+                )
+    except Exception:
+        logger.debug("Failed to persist assigned_e2e_port", exc_info=True)
+
     # Config-driven env_vars → .env (after profile bootstrap, overrides profile defaults)
     try:
         _state = load_state(state_path)

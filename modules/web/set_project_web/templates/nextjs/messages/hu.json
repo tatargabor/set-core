@@ -1,0 +1,57 @@
+{
+  "home": {
+    "title": "Üdvözlünk",
+    "subtitle": "Fedezd fel kínálatunkat",
+    "cta": "Kezdjük",
+    "description": "Rövid bemutatkozás a főoldalon."
+  },
+  "nav": {
+    "home": "Főoldal",
+    "about": "Rólunk",
+    "contact": "Kapcsolat",
+    "products": "Termékek",
+    "blog": "Blog",
+    "login": "Bejelentkezés",
+    "logout": "Kijelentkezés",
+    "register": "Regisztráció",
+    "account": "Fiók",
+    "cart": "Kosár",
+    "search": "Keresés",
+    "menu": "Menü",
+    "close": "Bezárás"
+  },
+  "footer": {
+    "copyright": "Minden jog fenntartva",
+    "privacy": "Adatvédelem",
+    "terms": "Felhasználási feltételek",
+    "imprint": "Impresszum",
+    "contact": "Kapcsolat",
+    "social": "Közösségi média",
+    "newsletter": "Hírlevél",
+    "language": "Nyelv"
+  },
+  "common": {
+    "loading": "Betöltés...",
+    "error": "Hiba történt",
+    "retry": "Újra",
+    "save": "Mentés",
+    "cancel": "Mégse",
+    "confirm": "Megerősítés",
+    "delete": "Törlés",
+    "edit": "Szerkesztés",
+    "close": "Bezárás",
+    "back": "Vissza",
+    "next": "Tovább",
+    "previous": "Előző",
+    "submit": "Elküldés",
+    "search": "Keresés",
+    "yes": "Igen",
+    "no": "Nem",
+    "ok": "OK",
+    "required": "Kötelező",
+    "optional": "Opcionális",
+    "notFound": "Nem található",
+    "unauthorized": "Nincs jogosultság",
+    "empty": "Nincs adat"
+  }
+}

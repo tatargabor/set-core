@@ -1,0 +1,57 @@
+{
+  "home": {
+    "title": "Welcome",
+    "subtitle": "Explore our offering",
+    "cta": "Get started",
+    "description": "Short introduction on the home page."
+  },
+  "nav": {
+    "home": "Home",
+    "about": "About",
+    "contact": "Contact",
+    "products": "Products",
+    "blog": "Blog",
+    "login": "Log in",
+    "logout": "Log out",
+    "register": "Register",
+    "account": "Account",
+    "cart": "Cart",
+    "search": "Search",
+    "menu": "Menu",
+    "close": "Close"
+  },
+  "footer": {
+    "copyright": "All rights reserved",
+    "privacy": "Privacy",
+    "terms": "Terms of use",
+    "imprint": "Imprint",
+    "contact": "Contact",
+    "social": "Social",
+    "newsletter": "Newsletter",
+    "language": "Language"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "search": "Search",
+    "yes": "Yes",
+    "no": "No",
+    "ok": "OK",
+    "required": "Required",
+    "optional": "Optional",
+    "notFound": "Not found",
+    "unauthorized": "Unauthorized",
+    "empty": "No data"
+  }
+}

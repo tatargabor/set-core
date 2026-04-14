@@ -88,3 +88,17 @@ These rules catch silent-failure patterns that surfaced repeatedly as review fin
 
 - Product images use placeholder service: `https://placehold.co/400x300/78350F/FFFBEB?text=Product+Name`
 - Use brand colors in placeholder URLs (coffee brown `#78350F` bg, cream `#FFFBEB` fg)
+
+## See also — universal web anti-patterns
+
+The framework-level `rules/web-conventions.md` (deployed by `set-project init`)
+codifies e2e-failure-prone anti-patterns that apply to every web scaffold:
+
+1. Never `navigator.sendBeacon` for cart/order mutations — await `fetch()` instead.
+2. Upsert with composite unique key that includes the owning entity (userId/recipientEmail).
+3. `data-testid="<feature>-<element>"` naming, kept in sync between component and test.
+4. Use Playwright `storageState` via `lib/auth/storage-state.ts` for admin auth.
+5. Annotate e2e spec files with `// @REQ-...` tags so the orchestrator can
+   attribute failing tests to their owning change.
+
+These apply here too — follow them alongside this scaffold's specific rules.
