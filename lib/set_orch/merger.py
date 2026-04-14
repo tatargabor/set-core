@@ -541,26 +541,80 @@ def _clean_untracked_merge_conflicts(change_name: str) -> None:
 
     added_files = diff_result.stdout.strip().splitlines()
 
-    # Check which of those are untracked in the working tree
+    # Check which of those are untracked in the working tree. Git collapses
+    # fully-untracked directories to a single `?? dir/` entry, so we track
+    # both files AND directory prefixes and match added files against either.
+    # Without this, a scaffold that deploys `src/components/ui/button.tsx` as
+    # untracked (common with shadcn overlay) would have only `src/components/`
+    # in the untracked set and no individual file would match — ff-merge then
+    # fails with "untracked working tree files would be overwritten".
     status_result = run_command(["git", "status", "--porcelain"], timeout=10)
-    untracked = set()
+    untracked_files: set[str] = set()
+    untracked_dirs: list[str] = []
     for line in status_result.stdout.splitlines():
-        if line.startswith("?? "):
-            untracked.add(line[3:].strip())
+        if not line.startswith("?? "):
+            continue
+        entry = line[3:].strip()
+        if entry.endswith("/"):
+            untracked_dirs.append(entry)
+        else:
+            untracked_files.add(entry)
+
+    def _is_untracked(path: str) -> bool:
+        if path in untracked_files:
+            return True
+        for d in untracked_dirs:
+            if path.startswith(d):
+                return True
+        return False
 
     removed = []
     for f in added_files:
-        if f in untracked:
+        if _is_untracked(f):
             try:
                 Path(f).unlink()
                 removed.append(f)
             except OSError as _e:
                 logger.debug("Failed to remove untracked conflict file %s: %s", f, _e)
 
+    # Prune now-empty directories left behind by the file deletions. Walk
+    # each untracked dir bottom-up; rmdir each subdir that has no remaining
+    # content. Otherwise the next merge attempt sees an empty `src/components/`
+    # in the working tree and it's reported as untracked again on the next cycle.
+    pruned_dirs: list[str] = []
+    for d in untracked_dirs:
+        try:
+            root = Path(d.rstrip("/"))
+            if not root.is_dir():
+                continue
+            # Walk bottom-up so parent rmdir succeeds after its subdirs are gone.
+            subdirs = sorted(
+                (p for p in root.rglob("*") if p.is_dir()),
+                key=lambda p: len(p.parts),
+                reverse=True,
+            )
+            for sd in subdirs:
+                try:
+                    sd.rmdir()
+                except OSError:
+                    pass  # not empty — leave alone
+            try:
+                root.rmdir()
+                pruned_dirs.append(d)
+            except OSError:
+                pass
+        except OSError:
+            pass
+
     if removed:
         logger.info(
             "Removed %d untracked file(s) conflicting with %s merge: %s",
             len(removed), change_name, ", ".join(removed),
+        )
+    if pruned_dirs:
+        logger.info(
+            "Pruned %d empty untracked dir(s) after cleanup: %s",
+            len(pruned_dirs), ", ".join(pruned_dirs),
         )
 
 
