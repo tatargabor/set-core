@@ -805,14 +805,16 @@ def merge_change(
         # Persist the files this merge touched — used by cross-change regression
         # detection later to attribute a failing test to its owning change. See
         # OpenSpec change: fix-e2e-infra-systematic (T2.2.5).
+        #
+        # update_change_field routes unknown field names into change.extras;
+        # passing "extras" would nest as extras["extras"]. Use the individual
+        # key so it lands at the top of extras where resolve_owning_change reads.
         try:
             _merged_files = _list_merged_scope_files(source_branch)
             if _merged_files:
-                _cur = load_state(state_file)
-                _cur_change = _find_change(_cur, change_name)
-                _extras = dict(getattr(_cur_change, "extras", None) or {})
-                _extras["merged_scope_files"] = _merged_files
-                update_change_field(state_file, change_name, "extras", _extras)
+                update_change_field(
+                    state_file, change_name, "merged_scope_files", _merged_files,
+                )
                 logger.info(
                     "Recorded merged_scope_files for %s: %d file(s)",
                     change_name, len(_merged_files),

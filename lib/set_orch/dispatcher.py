@@ -2033,10 +2033,13 @@ def dispatch_change(
             if _assigned_port > 0 and int(
                 change.extras.get("assigned_e2e_port", 0)
             ) != _assigned_port:
+                # update_change_field routes unknown field names straight into
+                # change.extras[field_name]. Passing literal "extras" would
+                # create change.extras["extras"] = {...}; use the individual
+                # key instead so it lands at the top of extras.
                 update_change_field(
-                    state_path, change_name, "extras",
-                    {**change.extras, "assigned_e2e_port": _assigned_port},
-                    event_bus=event_bus,
+                    state_path, change_name, "assigned_e2e_port",
+                    _assigned_port, event_bus=event_bus,
                 )
                 change.extras["assigned_e2e_port"] = _assigned_port
                 logger.info(
