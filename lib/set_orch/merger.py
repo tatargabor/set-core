@@ -1369,15 +1369,19 @@ def _run_integration_gates(
             # Assign unique port to avoid collisions with parallel agents
             port_offset = int(hashlib.md5(change_name.encode()).hexdigest()[:4], 16) % 1000
             e2e_port = 4000 + port_offset
+            # Resolve e2e_timeout once per gate run — used by the profile env
+            # builder AND the run_command timeouts below. Previously this was
+            # a free name that never got defined in this scope (introduced by
+            # commit ebe3268d); our run surfaced the NameError.
+            try:
+                e2e_timeout = int(directives.get("e2e_timeout", 3600))
+            except (TypeError, ValueError):
+                e2e_timeout = 3600
             e2e_env = dict(gate_env) if gate_env else {}
             if profile and hasattr(profile, "e2e_gate_env"):
                 try:
-                    _e2e_timeout = int(directives.get("e2e_timeout", 3600))
-                except (TypeError, ValueError):
-                    _e2e_timeout = 3600
-                try:
                     e2e_env.update(profile.e2e_gate_env(
-                        e2e_port, timeout_seconds=_e2e_timeout, fresh_server=True,
+                        e2e_port, timeout_seconds=e2e_timeout, fresh_server=True,
                     ))
                 except TypeError:
                     e2e_env.update(profile.e2e_gate_env(e2e_port))
