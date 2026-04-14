@@ -8,7 +8,7 @@ The nextjs web template SHALL ship with a complete baseline `messages/{hu,en}.js
 - **WHEN** `i18n_check` runs during the verify pipeline
 - **THEN** the gate SHALL fail with exit code non-zero
 - **AND** the output SHALL include the line `Missing key: home.heroTitle in messages/hu.json`
-- **AND** the failing gate SHALL block the pipeline BEFORE smoke_e2e runs (saving the ~20s smoke execution on known-broken code)
+- **AND** the failing gate SHALL block the pipeline BEFORE the full e2e gate runs (saving cascading test-wide failures)
 
 #### Scenario: Template ships with baseline keys mirrored across locales
 - **WHEN** `set-project init --project-type web --template nextjs` scaffolds a new project
@@ -89,26 +89,26 @@ The nextjs template seed script SHALL compute SHA-256 of `prisma/schema.prisma`,
 
 The orchestrator SHALL assign each change a stable E2E port computed from `hash(change.name)` modulo a configurable port range starting at `e2e_port_base`. The assignment is persisted in `change.extras.assigned_e2e_port` and flows to `PW_PORT` in the e2e gate env.
 
-#### Scenario: Same change, same port across runs
-- **GIVEN** a change named `promotions-and-email` with `e2e_port_base=3100` and range=100
+#### Scenario: Same change name produces same port across runs
+- **GIVEN** a change name `X` with `e2e_port_base=3100` and `port_range=100`
 - **WHEN** the orchestrator assigns a port for this change
 - **THEN** the same port SHALL be assigned on every orchestrator restart (deterministic hash)
-- **AND** the assigned port SHALL fall in [3100, 3200)
+- **AND** the assigned port SHALL fall in `[3100, 3200)`
 
 #### Scenario: Different changes get non-colliding ports in typical runs
-- **GIVEN** changes `cart-and-session` and `checkout-and-orders`
-- **WHEN** ports are assigned
-- **THEN** the two ports SHALL differ (hash modulo 100 collision is rare; test with known-good seed)
+- **GIVEN** two distinct change names
+- **WHEN** ports are assigned with `port_range=100`
+- **THEN** for a representative set of 20 typical change names in a run, the assigned ports SHALL be pairwise non-colliding (test with a known-good name seed)
 
 ### Requirement: Conventions catch anti-patterns
 
-`templates/core/rules/web-conventions.md` and the craftbrew scaffold conventions SHALL include guidance preventing repeated reviewer-flagged patterns:
+`templates/core/rules/web-conventions.md` and any scaffold-specific conventions SHALL include guidance preventing repeated reviewer-flagged patterns:
 
 - Ban on `navigator.sendBeacon` for cart/order mutations (with fetch+error-handling replacement pattern).
-- Upsert unique-key discriminator rule for user-scoped records (e.g., gift-card includes `recipientEmail` in the unique constraint).
+- Upsert unique-key discriminator rule for user-scoped records (e.g., including a distinguishing field in the unique constraint).
 - testid naming convention: `data-testid="<feature>-<element>"`, same value in both the component and the e2e spec.
 - storageState pattern for admin authentication (referencing a template helper `lib/auth/storage-state.ts`).
-- REQ-id commenting convention on spec scenarios (e.g., `// @REQ-CART-001`) for scope-filtered e2e.
+- REQ-id commenting convention on spec scenarios (e.g., `// @REQ-A-001`) for future scope-filtered e2e.
 
 #### Scenario: Convention rule present in deployed rules
 - **GIVEN** a freshly-scaffolded project

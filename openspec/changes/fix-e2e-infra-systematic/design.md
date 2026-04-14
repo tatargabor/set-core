@@ -1,5 +1,7 @@
 # Design: fix-e2e-infra-systematic
 
+> **Scope note.** This design document describes the full architectural vision including Tier 3 items. The current change's implementation is deliberately limited to Tier 1 (template + gate-runner hardening) and Tier 2 (structured findings + cross-change regression signal) as specified in proposal.md and tasks.md. Tier 3 sections (smart-retry layers, per-gate counters, incremental re-verification, full scope-boundary gate, observability dashboard) are documented here as reference for potential follow-up changes, not as tasks to be executed in this change.
+
 ## Design goals
 
 1. **Fail fast, fix targeted, re-run minimal.** A gate failure should trigger the cheapest applicable fix mechanism, then re-run only what's necessary.
