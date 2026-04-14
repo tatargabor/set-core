@@ -128,12 +128,27 @@ class TestStuckStepCleanup:
 
 
 class TestRestoreOrphanedIntegrating:
-    """Regression: sentinel dying mid-merge leaves change in status=integrating
-    but NOT in merge_queue. Without recovery, it sits there forever, occupying
-    a parallel dispatch slot and never getting merged.
+    """Regression: supervisor restart while a change is status=integrating.
+
+    status=integrating is set by _integrate_main_into_branch at the START of
+    the verify pipeline (before gates run), NOT during merge. On restart we
+    must distinguish:
+      (a) gates passed, only merge_queue.append was lost → safe to re-queue
+      (b) pipeline was mid-gate → must re-run gates, NOT bypass to merge
     """
 
-    def test_integrating_with_worktree_gets_requeued(self, state_dir, tmp_path):
+    # Six pre-merge gate fields _verify_gates_already_passed inspects.
+    _ALL_PASS_GATES = {
+        "build_result": "pass",
+        "test_result": "pass",
+        "review_result": "pass",
+        "scope_check": "pass",
+        "e2e_result": "pass",
+        "spec_coverage_result": "pass",
+    }
+
+    def test_integrating_with_gates_passed_gets_requeued(self, state_dir, tmp_path):
+        """Case (a): all gates passed, just the merge_queue.append was lost."""
         wt = tmp_path / "wt-shopping-cart"
         wt.mkdir()
         _write_state(state_dir, [{
@@ -142,6 +157,7 @@ class TestRestoreOrphanedIntegrating:
             "current_step": "fixing",
             "worktree_path": str(wt),
             "scope": "", "complexity": "S",
+            **self._ALL_PASS_GATES,
         }], merge_queue=[])
 
         _cleanup_orphans(str(state_dir))
@@ -150,6 +166,89 @@ class TestRestoreOrphanedIntegrating:
         assert "shopping-cart" in state["merge_queue"]
         # Status stays integrating — execute_merge_queue will process it
         assert state["changes"][0]["status"] == "integrating"
+
+    def test_integrating_with_gates_incomplete_resets_to_running(
+        self, state_dir, tmp_path,
+    ):
+        """Case (b): restart mid-pipeline, some gates haven't run yet.
+
+        Must re-enter verify pipeline via _poll_active_changes (status=running
+        + ralph_pid=None triggers the dead-agent-with-loop-done path) instead
+        of bypassing to merge.
+        """
+        wt = tmp_path / "wt-a"
+        wt.mkdir()
+        _write_state(state_dir, [{
+            "name": "a",
+            "status": "integrating",
+            "current_step": "fixing",
+            "worktree_path": str(wt),
+            "ralph_pid": 99999999,
+            "scope": "", "complexity": "S",
+            # Only some gates ran before restart
+            "build_result": "pass",
+            "test_result": "pass",
+            # review_result, scope_check, e2e_result, spec_coverage_result = None
+        }], merge_queue=[])
+
+        _cleanup_orphans(str(state_dir))
+
+        state = json.loads(state_dir.read_text())
+        ch = state["changes"][0]
+        assert ch["status"] == "running"
+        assert ch["ralph_pid"] is None
+        assert "a" not in state["merge_queue"]
+
+    def test_integrating_with_spec_verify_fail_resets_to_running(
+        self, state_dir, tmp_path,
+    ):
+        """Regression: the exact craftbrew-run-20260414 scenario.
+
+        spec_verify reported CRITICAL findings, supervisor restarted before
+        retry dispatch happened. Must NOT bypass to merge.
+        """
+        wt = tmp_path / "wt-promotions"
+        wt.mkdir()
+        gates = dict(self._ALL_PASS_GATES)
+        gates["spec_coverage_result"] = "fail"
+        _write_state(state_dir, [{
+            "name": "promotions-and-email",
+            "status": "integrating",
+            "current_step": "fixing",
+            "worktree_path": str(wt),
+            "scope": "", "complexity": "S",
+            **gates,
+        }], merge_queue=[])
+
+        _cleanup_orphans(str(state_dir))
+
+        state = json.loads(state_dir.read_text())
+        ch = state["changes"][0]
+        assert ch["status"] == "running"
+        assert "promotions-and-email" not in state["merge_queue"]
+
+    def test_integrating_with_review_fail_resets_to_running(
+        self, state_dir, tmp_path,
+    ):
+        """review gate failure in the middle of the pipeline must not merge."""
+        wt = tmp_path / "wt-b"
+        wt.mkdir()
+        gates = dict(self._ALL_PASS_GATES)
+        gates["review_result"] = "fail"
+        _write_state(state_dir, [{
+            "name": "b",
+            "status": "integrating",
+            "current_step": "fixing",
+            "worktree_path": str(wt),
+            "scope": "", "complexity": "S",
+            **gates,
+        }], merge_queue=[])
+
+        _cleanup_orphans(str(state_dir))
+
+        state = json.loads(state_dir.read_text())
+        assert state["changes"][0]["status"] == "running"
+        assert "b" not in state["merge_queue"]
 
     def test_integrating_already_in_queue_untouched(self, state_dir, tmp_path):
         wt = tmp_path / "wt-a"
@@ -160,6 +259,7 @@ class TestRestoreOrphanedIntegrating:
             "current_step": "fixing",
             "worktree_path": str(wt),
             "scope": "", "complexity": "S",
+            **self._ALL_PASS_GATES,
         }], merge_queue=["a"])
 
         _cleanup_orphans(str(state_dir))
@@ -178,6 +278,7 @@ class TestRestoreOrphanedIntegrating:
             "current_step": "fixing",
             "worktree_path": "/tmp/this-does-not-exist-12345",
             "scope": "", "complexity": "S",
+            **self._ALL_PASS_GATES,
         }], merge_queue=[])
 
         _cleanup_orphans(str(state_dir))

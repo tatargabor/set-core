@@ -386,33 +386,58 @@ def _cleanup_orphans(state_file: str) -> None:
                 steps_fixed += 1
                 logger.info("Fixed stuck step for %s: %s → done", change.name, old_step)
 
-        # Phase 1b: restore orphaned "integrating" changes to the merge queue.
+        # Phase 1b: recover orphaned "integrating" changes after supervisor
+        # restart.
         #
-        # When the sentinel dies mid-merge (e.g. during a gate-fix sub-dispatch),
-        # a change can be left with status=integrating but absent from
-        # state.merge_queue. _poll_active_changes polls integrating changes
-        # via poll_change() which is a no-op for that state; _self_watchdog
-        # only re-queues orphaned "done" changes; execute_merge_queue only
-        # drains what's in merge_queue. Without this step the change is stuck
-        # forever and occupies an in-flight slot.
+        # status=integrating is written in exactly one place:
+        # verifier.py _integrate_main_into_branch, which runs at the START of
+        # the verify pipeline BEFORE gates execute. The merger never sets this
+        # status. So a restart in this state means either:
+        #   (a) gates already passed; the change is between verifier's
+        #       status=done write and its merge_queue.append — safe to merge.
+        #   (b) the verify pipeline was mid-gate (or a gate reported fail and
+        #       the retry dispatch hadn't happened yet) — NOT safe to merge.
         #
-        # Conservative: only re-queue when worktree still exists on disk.
-        # A missing worktree is handled by _poll_active_changes (line ~1007)
-        # which marks the change stalled.
+        # Distinguishing: _verify_gates_already_passed inspects the persisted
+        # gate-result fields. All blocking gates pass → (a); any None or fail
+        # → (b).
+        #
+        # Case (b) is reset to status=running with ralph_pid=None so the next
+        # _poll_active_changes cycle detects "dead agent + loop_status=done"
+        # and routes back through handle_change_done → full gate pipeline.
+        # Retry counters are intentionally not incremented: a supervisor
+        # restart is an infrastructure event, not a gate failure.
+        #
+        # Conservative: only act when worktree still exists on disk. A
+        # missing worktree is handled by _poll_active_changes (marks stalled).
         for change in st.changes:
             if change.status != "integrating":
-                continue
-            if change.name in st.merge_queue:
                 continue
             wt = change.worktree_path or ""
             if not wt or not os.path.isdir(wt):
                 continue
-            st.merge_queue.append(change.name)
-            queue_restored += 1
-            logger.warning(
-                "Restored orphaned integrating change %s to merge queue "
-                "(worktree=%s)", change.name, wt,
-            )
+
+            if _verify_gates_already_passed(change):
+                if change.name not in st.merge_queue:
+                    st.merge_queue.append(change.name)
+                    queue_restored += 1
+                    logger.warning(
+                        "Restored orphaned integrating %s to merge queue "
+                        "(all pre-merge gates passed, worktree=%s)",
+                        change.name, wt,
+                    )
+            else:
+                # Pipeline interrupted before all gates passed — re-run via
+                # the dead-agent-with-loop-done path, no retry slot consumed.
+                old_status = change.status
+                old_pid = change.ralph_pid
+                change.status = "running"
+                change.ralph_pid = None
+                logger.warning(
+                    "Interrupted integrating %s (gates incomplete) — "
+                    "reset %s→running, pid %s→None for pipeline re-run",
+                    change.name, old_status, old_pid,
+                )
 
     # ── Phase 2: Clean orphaned worktrees ──
     project_dir = os.path.dirname(os.path.abspath(state_file))
@@ -1023,26 +1048,30 @@ def monitor_loop(
 def _verify_gates_already_passed(change: Any) -> bool:
     """Return True if all blocking verify gates have already passed.
 
-    Used on monitor restart to detect changes in "verifying" status where the
-    gates completed successfully but the monitor died before queuing the merge
-    (Bug #5b). Any blocking gate result of "fail" or "critical" → False.
-    A gate with no result (None) → False (gates haven't run yet).
+    Used on monitor restart to detect changes in "verifying" / "integrating"
+    status where the gates completed successfully but the monitor died before
+    queuing the merge (Bug #5b). Any blocking gate result of "fail" or
+    "critical" → False. A gate with no result (None) → False (gates haven't
+    run yet).
+
+    Gate results live in two places: dataclass fields (test/build/review/
+    e2e/smoke) and the extras dict (scope_check, spec_coverage, rules, etc.).
+    scope_check has been written under both "scope_check" and
+    "scope_check_result" over time — accept either.
     """
     _PASS_VALUES = {"pass", "skipped", "warn-fail"}
     _FAIL_VALUES = {"fail", "critical"}
 
     extras = change.extras or {}
 
-    # Collect results from all gates — dataclass fields and extras.
-    # Must check ALL blocking gates, not just a subset. Rules gate result
-    # is not persisted (failure always sets status to verify-failed before
-    # crash window), but e2e and spec_coverage ARE persisted to extras.
+    scope_check = extras.get("scope_check") or extras.get("scope_check_result")
+
     gate_results = [
         change.test_result,
         change.build_result,
         change.review_result,
-        extras.get("scope_check"),
-        extras.get("e2e_result"),
+        change.e2e_result,  # dataclass field, NOT extras
+        scope_check,
         extras.get("spec_coverage_result"),
     ]
 

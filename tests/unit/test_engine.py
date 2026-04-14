@@ -724,16 +724,20 @@ class TestVerifyGatesAlreadyPassed:
     """_verify_gates_already_passed must check all blocking gates."""
 
     def _make_change(self, **overrides):
-        """Create a Change with all gates passing by default."""
+        """Create a Change with all gates passing by default.
+
+        e2e_result is a dataclass field (not extras). scope_check and
+        spec_coverage_result live in extras.
+        """
         defaults = dict(
             name="test-change",
             status="verifying",
             test_result="pass",
             build_result="pass",
             review_result="pass",
+            e2e_result="pass",
             extras={
                 "scope_check": "pass",
-                "e2e_result": "pass",
                 "spec_coverage_result": "pass",
             },
         )
@@ -751,14 +755,8 @@ class TestVerifyGatesAlreadyPassed:
         assert _verify_gates_already_passed(change) is False
 
     def test_failed_e2e_result(self):
-        """Returns False when e2e_result is 'fail' in extras."""
-        change = self._make_change(
-            extras={
-                "scope_check": "pass",
-                "e2e_result": "fail",
-                "spec_coverage_result": "pass",
-            }
-        )
+        """Returns False when e2e_result (dataclass field) is 'fail'."""
+        change = self._make_change(e2e_result="fail")
         assert _verify_gates_already_passed(change) is False
 
     def test_failed_spec_coverage_result(self):
@@ -766,42 +764,44 @@ class TestVerifyGatesAlreadyPassed:
         change = self._make_change(
             extras={
                 "scope_check": "pass",
-                "e2e_result": "pass",
                 "spec_coverage_result": "fail",
             }
         )
         assert _verify_gates_already_passed(change) is False
 
     def test_missing_e2e_result(self):
-        """Returns False when e2e_result is missing from extras (None)."""
-        change = self._make_change(
-            extras={
-                "scope_check": "pass",
-                # e2e_result missing
-                "spec_coverage_result": "pass",
-            }
-        )
+        """Returns False when e2e_result dataclass field is None."""
+        change = self._make_change(e2e_result=None)
         assert _verify_gates_already_passed(change) is False
 
     def test_warn_fail_is_accepted(self):
         """warn-fail counts as passing (non-blocking gate failure)."""
-        change = self._make_change(
-            extras={
-                "scope_check": "pass",
-                "e2e_result": "warn-fail",
-                "spec_coverage_result": "pass",
-            }
-        )
+        change = self._make_change(e2e_result="warn-fail")
         assert _verify_gates_already_passed(change) is True
 
     def test_skipped_is_accepted(self):
         """Skipped gates count as passing."""
         change = self._make_change(
             test_result="skipped",
+            e2e_result="skipped",
             extras={
                 "scope_check": "pass",
-                "e2e_result": "skipped",
                 "spec_coverage_result": "skipped",
+            },
+        )
+        assert _verify_gates_already_passed(change) is True
+
+    def test_scope_check_result_key_accepted(self):
+        """scope_check_result is accepted as alias for scope_check.
+
+        State dumps from real runs (craftbrew-run-20260414) persist this
+        key with the `_result` suffix; gate_runner.commit_results writes
+        the short form. Accept both.
+        """
+        change = self._make_change(
+            extras={
+                "scope_check_result": "pass",
+                "spec_coverage_result": "pass",
             }
         )
         assert _verify_gates_already_passed(change) is True
