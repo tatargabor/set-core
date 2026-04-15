@@ -367,21 +367,26 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
         onClick={() => setScreenshotChange(null)}
       >
         <div
-          className="bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl w-[90vw] max-w-3xl max-h-[80vh] overflow-auto"
+          className="bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl w-[90vw] max-w-5xl flex flex-col"
+          style={{ maxHeight: '90vh' }}
           onClick={e => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 flex-shrink-0">
             <span className="text-sm text-neutral-300 font-medium">Test Artifacts: {screenshotChange}</span>
             <button
               onClick={() => setScreenshotChange(null)}
-              className="text-neutral-500 hover:text-neutral-300"
-            >x</button>
+              className="text-neutral-500 hover:text-neutral-300 text-lg leading-none"
+              title="Close (Esc)"
+            >×</button>
           </div>
-          <ScreenshotGallery
-            project={project}
-            changeName={screenshotChange}
-            onClose={() => setScreenshotChange(null)}
-          />
+          {/* min-h-0 lets the gallery's internal flex layout shrink/grow */}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <ScreenshotGallery
+              project={project}
+              changeName={screenshotChange}
+              onClose={() => setScreenshotChange(null)}
+            />
+          </div>
         </div>
       </div>
     )}

@@ -153,31 +153,24 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   )
 
   return (
-    <div className="flex flex-col" style={{ height: 'min(85vh, 800px)' }}>
-      {/* Row 1: title + close */}
-      <div className="flex items-center justify-between px-4 pt-2 pb-1">
-        <div className="text-sm text-neutral-300 font-medium truncate">
-          Test Artifacts: <span className="text-neutral-500">{changeName}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={loadArtifacts}
-            className="text-xs text-neutral-600 hover:text-neutral-300 px-1.5 py-0.5 rounded hover:bg-neutral-800 transition-colors"
-            title="Re-scan worktree for artifacts"
-          >
-            Refresh
-          </button>
-          <button
-            onClick={onClose}
-            className="text-lg leading-none text-neutral-500 hover:text-neutral-300"
-            title="Close (Esc)"
-          >
-            ×
-          </button>
-        </div>
+    // Fill the parent flex slot — the modal wrapper decides height. We only
+    // need flex-col + min-h-0 so our inner flex children can shrink properly.
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Refresh button is the only chrome we add — the parent modal already
+          renders the "Test Artifacts: <change>" title row + close (×). A
+          second header here just duplicated both. */}
+      <div className="flex items-center justify-end px-4 pt-1 pb-1">
+        <button
+          onClick={loadArtifacts}
+          className="text-xs text-neutral-600 hover:text-neutral-300 px-1.5 py-0.5 rounded hover:bg-neutral-800 transition-colors"
+          title="Re-scan worktree for artifacts"
+        >
+          Refresh
+        </button>
       </div>
 
-      {/* Row 2: attempt TABS (an actual tab bar, not pill filters). */}
+      {/* Row 2: attempt TABS. Counts use ASCII abbreviations (img/file) —
+          the 📷 emoji renders as tofu on systems without an emoji font. */}
       {attempts.length > 0 && (
         <div className="flex items-center gap-0 px-3 border-b border-neutral-800 overflow-x-auto">
           {attempts.length > 1 && (
@@ -188,7 +181,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
             >
               all
               <span className="ml-1 text-[10px] text-neutral-500">
-                {artifacts.length}
+                ({artifacts.length})
               </span>
             </TabBtn>
           )}
@@ -203,7 +196,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
               >
                 attempt #{n}
                 <span className="ml-1 text-[10px] text-neutral-500">
-                  {c.images}📷{c.others > 0 ? ` +${c.others}` : ''}
+                  ({c.images} img{c.others > 0 ? ` +${c.others}` : ''})
                 </span>
               </TabBtn>
             )
