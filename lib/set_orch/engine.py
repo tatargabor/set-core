@@ -455,7 +455,13 @@ def _cleanup_orphans(state_file: str) -> None:
         # Reload state (may have been modified by phase 1)
         state = load_state(state_file)
         change_names = {c.name for c in state.changes}
-        active_statuses = {"running", "pending", "dispatched", "stalled"}
+        # `paused` is recoverable, not terminal: the change has partial
+        # progress (iteration counters, retry_context, committed work on the
+        # branch) that the supervisor must be able to resume from. Dropping
+        # its worktree + deleting its branch destroys that progress and the
+        # committed code with it. Treat paused like other active statuses —
+        # leave the worktree alone so the next dispatch can resume.
+        active_statuses = {"running", "pending", "dispatched", "stalled", "paused"}
 
         # Parse worktree paths
         worktree_paths = []
@@ -542,13 +548,42 @@ def _cleanup_orphans(state_file: str) -> None:
                         logger.warning("Skipping worktree %s: process still running after SIGTERM", change_name)
                         continue
 
-            # Remove the worktree
+            # Archive the worktree before git removes it. Renaming the dir
+            # with a timestamp suffix preserves all uncommitted changes,
+            # test-results/, and agent logs for post-mortem — `git worktree
+            # remove --force` would delete everything on disk. After the
+            # rename `git worktree prune` cleans up the stale admin entry
+            # in the main repo's .git/worktrees/.
+            archived_path = None
+            if os.path.isdir(wt_path):
+                archived_path = f"{wt_path}.removed.{int(time.time())}"
+                try:
+                    os.rename(wt_path, archived_path)
+                    logger.info(
+                        "Archived worktree before removal: %s -> %s",
+                        change_name, archived_path,
+                    )
+                except OSError as exc:
+                    logger.warning(
+                        "Failed to archive worktree %s (%s) — falling back to destructive remove",
+                        change_name, exc,
+                    )
+                    archived_path = None
+
             try:
-                rm_r = run_command(
-                    ["git", "worktree", "remove", "--force", wt_path],
-                    timeout=30,
-                    cwd=project_dir,
-                )
+                if archived_path:
+                    # Worktree dir is gone (renamed). Prune the admin entry.
+                    rm_r = run_command(
+                        ["git", "worktree", "prune"],
+                        timeout=30,
+                        cwd=project_dir,
+                    )
+                else:
+                    rm_r = run_command(
+                        ["git", "worktree", "remove", "--force", wt_path],
+                        timeout=30,
+                        cwd=project_dir,
+                    )
                 if rm_r.exit_code == 0:
                     worktrees_removed += 1
                     logger.info("Removed orphaned worktree: %s (%s)", change_name, reason)
@@ -558,16 +593,6 @@ def _cleanup_orphans(state_file: str) -> None:
                         timeout=10,
                         cwd=project_dir,
                     )
-                    # If the change was paused, reset to pending so it can be
-                    # re-dispatched. Paused changes count as in-flight
-                    # (not in _NOT_IN_FLIGHT_STATUSES) so leaving them paused
-                    # with no worktree permanently occupies a parallel slot.
-                    if change is not None and change.status == "paused":
-                        update_change_field(state_file, change_name, "status", "pending")
-                        logger.info(
-                            "Reset paused change %s to pending (worktree removed — cannot resume)",
-                            change_name,
-                        )
                 else:
                     logger.warning("Failed to remove worktree %s: %s", change_name, rm_r.stderr[:200])
             except Exception:

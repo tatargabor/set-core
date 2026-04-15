@@ -107,6 +107,9 @@ def test_cleanup_orphans_removes_merged_worktree_when_retention_delete(tmp_path,
             r.stdout = wt_list_output
         elif cmd[:3] == ["git", "worktree", "remove"]:
             removed.append(list(cmd))
+        elif cmd[:3] == ["git", "worktree", "prune"]:
+            # `prune` is the post-rename cleanup path; count it as a removal.
+            removed.append(list(cmd))
         elif cmd[:2] == ["git", "status"]:
             r.stdout = ""
         return r
@@ -150,6 +153,9 @@ def test_cleanup_orphans_still_removes_orphan_without_state_entry(tmp_path, monk
         if cmd[:3] == ["git", "worktree", "list"]:
             r.stdout = wt_list_output
         elif cmd[:3] == ["git", "worktree", "remove"]:
+            removed.append(list(cmd))
+        elif cmd[:3] == ["git", "worktree", "prune"]:
+            # `prune` is the post-rename cleanup path; count it as a removal.
             removed.append(list(cmd))
         elif cmd[:2] == ["git", "status"]:
             r.stdout = ""
