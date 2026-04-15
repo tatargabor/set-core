@@ -340,4 +340,46 @@ describe('journalToAttemptGraph', () => {
     expect(g.attempts[1].outcome).toBe('in-progress')
     expect(g.terminal).toBe('in-progress')
   })
+
+  it('renders all post-MVP gate kinds (lint, test_files, e2e_coverage, spec_verify, i18n_check)', () => {
+    // Regression: craftbrew-run-20260415-0146 admin-products attempt #4 ran
+    // build → test → e2e → lint → scope_check → test_files → e2e_coverage →
+    // spec_verify → rules → review. The DAG view was hiding lint, test_files,
+    // and spec_verify because GATE_KINDS was a pre-Tier1/Tier2 allow-list.
+    // All of them must now be visible as gate nodes.
+    const entries: JournalEntry[] = [
+      entry('2026-04-12T10:00:00.000Z', 'status', 'running', 1, 'dispatched'),
+      entry('2026-04-12T10:00:30.000Z', 'status', 'integrating', 2, 'running'),
+      entry('2026-04-12T10:01:00.000Z', 'build_result', 'pass', 3),
+      entry('2026-04-12T10:01:30.000Z', 'test_result', 'pass', 4),
+      entry('2026-04-12T10:02:00.000Z', 'e2e_result', 'pass', 5),
+      entry('2026-04-12T10:02:10.000Z', 'lint_result', 'pass', 6),
+      entry('2026-04-12T10:02:20.000Z', 'scope_check_result', 'pass', 7),
+      entry('2026-04-12T10:02:25.000Z', 'test_files_result', 'pass', 8),
+      entry('2026-04-12T10:02:30.000Z', 'e2e_coverage_result', 'pass', 9),
+      entry('2026-04-12T10:03:00.000Z', 'spec_verify_result', 'pass', 10),
+      entry('2026-04-12T10:03:05.000Z', 'i18n_check_result', 'pass', 11),
+      entry('2026-04-12T10:03:10.000Z', 'rules_result', 'pass', 12),
+      entry('2026-04-12T10:04:00.000Z', 'review_result', 'pass', 13),
+      entry('2026-04-12T10:05:00.000Z', 'status', 'merged', 14, 'integrating'),
+    ]
+    const g = journalToAttemptGraph(entries)
+    expect(g.attempts).toHaveLength(1)
+    const kinds = g.attempts[0].nodes.map((n) => n.kind)
+    // All 11 gate kinds must appear (plus impl → 12 nodes total).
+    expect(kinds).toContain('impl')
+    expect(kinds).toContain('build')
+    expect(kinds).toContain('test')
+    expect(kinds).toContain('e2e')
+    expect(kinds).toContain('lint')
+    expect(kinds).toContain('scope_check')
+    expect(kinds).toContain('test_files')
+    expect(kinds).toContain('e2e_coverage')
+    expect(kinds).toContain('spec_verify')
+    expect(kinds).toContain('i18n_check')
+    expect(kinds).toContain('rules')
+    expect(kinds).toContain('review')
+    // totalGateRuns counts non-impl nodes that have a result.
+    expect(g.totalGateRuns).toBe(11)
+  })
 })

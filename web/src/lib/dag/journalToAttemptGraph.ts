@@ -11,12 +11,16 @@ import type {
 const GATE_KINDS: ReadonlyArray<Exclude<GateKind, 'impl' | 'terminal'>> = [
   'build',
   'test',
+  'test_files',
   'e2e',
+  'e2e_coverage',
   'review',
   'smoke',
   'scope_check',
   'rules',
-  'e2e_coverage',
+  'lint',
+  'spec_verify',
+  'i18n_check',
   'merge',
 ]
 

@@ -8,10 +8,16 @@ function labelToGateKind(label?: string): GateKind | null {
   if (!label) return null
   const l = label.toLowerCase()
   if (l.includes('review')) return 'review'
-  if (l.includes('spec verify') || l.includes('scope')) return 'scope_check'
+  // Spec verify must be tested before the 'scope' fallback because the
+  // phrase "spec verify" would also match 'scope' in some downstream renames.
+  if (l.includes('spec verify') || l.includes('spec_verify')) return 'spec_verify'
+  if (l.includes('scope')) return 'scope_check'
   if (l.includes('rules')) return 'rules'
   if (l.includes('e2e coverage')) return 'e2e_coverage'
   if (l.includes('smoke')) return 'smoke'
+  if (l.includes('lint')) return 'lint'
+  if (l.includes('test files') || l.includes('test_files')) return 'test_files'
+  if (l.includes('i18n')) return 'i18n_check'
   // "Task", "Planning", "Fixing", "" — all belong to impl work
   return null
 }
