@@ -79,7 +79,12 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
   const rfApi = useReactFlow()
   const { fitView, setViewport, getViewport, setCenter } = rfApi
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const nodeIdSetRef = useRef<string>(layout.nodes.map((n) => n.id).sort().join(','))
+  // Initialize to '' (not the current layout's id-set) so the very first
+  // effect tick sees `prevIdSet !== newIdSet` → wasEmpty=true → pendingFit=true.
+  // Previous bug: initializing to the layout's id-set made the first effect
+  // tick no-op; combined with removing ReactFlow's `fitView` prop, it left
+  // the canvas at the default (0,0) viewport — top-anchored, left-hugged.
+  const nodeIdSetRef = useRef<string>('')
   const lastFitChangeRef = useRef<string>(changeName)
   const pendingFitRef = useRef<boolean>(false)
 
