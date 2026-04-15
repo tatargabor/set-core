@@ -178,39 +178,86 @@ real failure. Locally, `retries: 1` masks the bug.
 
 ## 6. Radix Select (shadcn) — opening the dropdown in tests
 
-shadcn `<Select>` uses Radix Select, which renders `<SelectItem>` (with
-`role="option"`) into a PORTAL that only mounts when the trigger is opened.
-Tests that click the trigger then immediately query `getByRole('option', …)`
-flake — the dropdown animation + portal mount lose a ~50-200ms race.
+shadcn `<Select>` uses Radix Select. Three distinct mechanics matter:
 
-**Wrong — click trigger, immediately click option, hope for the best:**
+1. **Portal mount** — `<SelectItem>` (`role="option"`) only renders after the
+   trigger is opened. Querying options before the listbox is visible races.
+2. **Pointer events, not click** — Radix commits the selection on `pointerup`,
+   not `click`. Playwright's `.click()` dispatches mousedown/up + click; Radix
+   closes the portal during mouseup. After that, Playwright tries to verify
+   the click landed on the same element — but the element is already detached.
+   Result: `TimeoutError ... performing click action [hangs]`, even though
+   the selection *did* fire.
+3. **onValueChange → re-render cascade** — selecting an option typically
+   triggers `router.replace(?cat=...)` or a state setter that re-renders the
+   surrounding table/list. Locators captured before the selection point to
+   stale DOM nodes.
+
+### Rule: use keyboard selection — never `dispatchEvent('click')`
+
+**Forbidden — `dispatchEvent` bypasses the real event chain:**
 ```typescript
-await page.locator('[data-testid="type-select"]').click();
-await page.getByRole("option", { name: "Kávé" }).click();  // TimeoutError
-```
-Observed failure signature (craftbrew-run-20260415-0146 admin-products):
-```
-TimeoutError: locator.click: Timeout 10000ms exceeded.
-  - waiting for getByRole('option', { name: 'Kávé' })
-    - locator resolved to <div role="option" ...>
-    - element is visible, enabled and stable
-    - performing click action
-  [times out — click doesn't register because portal handler is still mounting]
+// ❌ DO NOT DO THIS — even if the test "passes", the production code path
+//    is not exercised. Radix listens to pointerdown/pointerup; a synthetic
+//    `click` event via dispatchEvent will not run the same code, so the test
+//    passes while the real user interaction still breaks.
+await page.locator('[role="option"]').evaluate(el =>
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+);
 ```
 
-**Correct — wait for the listbox to appear, then click:**
+**Preferred — keyboard navigation (no click-completion race):**
 ```typescript
-await page.locator('[data-testid="type-select"]').click();
-// Wait for the dropdown content to mount + become interactive.
+const trigger = page.locator('[data-testid="type-select"]');
+await trigger.click();
 await expect(page.getByRole("listbox")).toBeVisible();
-await page.getByRole("option", { name: "Kávé" }).click();
-// Wait for the Select value to reflect the selection before moving on.
-await expect(page.locator('[data-testid="type-select"]')).toContainText("Kávé");
+// First-letter jump: Radix Select supports type-ahead just like a native <select>.
+await page.keyboard.press("K");             // jumps to "Kávé"
+await page.keyboard.press("Enter");         // commits selection, closes portal
+await expect(trigger).toContainText("Kávé"); // confirms selection applied
 ```
 
-Alternative: query `getByRole("option", { name: "Kávé" })` via
-`{ exact: false }` if the label has surrounding text, and always pair with a
-`toBeVisible()` assertion BEFORE clicking.
+Why keyboard: `page.keyboard.press` returns as soon as the key event is
+dispatched — no post-action settling wait, no detached-element race.
+
+**Fallback — mouse click with `noWaitAfter` when keyboard isn't an option:**
+```typescript
+await trigger.click();
+await expect(page.getByRole("listbox")).toBeVisible();
+// noWaitAfter: Playwright does not wait for the element to settle AFTER the
+// click. The click still fires through the real pointer-event chain, but the
+// wait-after step (which hangs when Radix detaches the portal) is skipped.
+await page.getByRole("option", { name: "Kávé" }).click({ noWaitAfter: true });
+await expect(trigger).toContainText("Kávé");
+```
+
+### Rule: re-query locators after selection re-renders the list
+
+After an `onValueChange` filter fires, Next.js re-runs the server component
+and the table re-hydrates. Locators taken *before* the selection are stale:
+
+**Wrong — stored locator becomes detached:**
+```typescript
+const row = page.locator('[data-testid="product-row"]').first();
+await selectCategory("COFFEE");              // triggers router.replace → re-render
+await row.getByRole("link", { name: /edit/i }).click();  // detached → timeout
+```
+
+**Correct — re-query after the filter settles:**
+```typescript
+await selectCategory("COFFEE");
+// Assert the new DOM state has stabilized before continuing.
+await expect(page.locator('[data-testid="product-row"]')).toHaveCount(2);
+const row = page.locator('[data-testid="product-row"]').first();  // re-query
+await row.getByRole("link", { name: /edit/i }).click();
+```
+
+**E2E signatures addressed by this rule:**
+- `locator.click: Timeout 10000ms exceeded ... performing click action` on an
+  option that looks visible+enabled (craftbrew-run-20260415-0146:admin-products
+  REQ-ADM-002:AC-1 — second filter change hung even after listbox-visible).
+- `Element is not attached to the DOM` on a row locator touched after a filter
+  change — the table re-rendered and your locator pointed at the old node.
 
 ## 7. Slug / ID generation for non-ASCII (Hungarian, German, etc.)
 
@@ -295,6 +342,6 @@ current change (see Tier 2: cross-change regression detection).
 | locator timeout on testid element | #3 testid naming |
 | auth-dependent tests fail sporadically | #4 storageState |
 | register succeeds, user sees empty registration page | #5 register→signIn race |
-| `getByRole('option')` click times out | #6 Radix Select portal |
+| `getByRole('option')` click times out — or row detached after filter | #6 Radix Select + re-query |
 | `ű`/`ő` disappears from slugs/IDs | #7 slug NFD normalize |
 | current-change gate fails on another change's test | #8 REQ-id comments |
