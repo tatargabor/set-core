@@ -76,7 +76,7 @@ const MIN_READABLE_ZOOM = 1.0
 function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layout.edges)
-  const { fitView, setViewport, getViewport } = useReactFlow()
+  const { fitView, setViewport, getViewport, setCenter } = useReactFlow()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const nodeIdSetRef = useRef<string>(layout.nodes.map((n) => n.id).sort().join(','))
   const lastFitChangeRef = useRef<string>(changeName)
@@ -125,46 +125,54 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
         return
       }
       const h = container.clientHeight || 400
+      const w = container.clientWidth || 800
+
       // Desired zoom so MAX_ROWS_VISIBLE rows fill the canvas vertically.
-      // Floored at MIN_READABLE_ZOOM so that no matter how many attempts
-      // exist, nodes stay legible. Capped at MAX_ROWS_VISIBLE so single-
-      // attempt DAGs don't zoom in absurdly.
+      // Floored at MIN_READABLE_ZOOM so nodes stay legible no matter how
+      // many attempts pile up. Capped at 1.2 so single-attempt DAGs don't
+      // over-zoom.
       const idealZoom = h / (MAX_ROWS_VISIBLE * ROW_STRIDE_PX)
       const targetZoom = Math.min(1.2, Math.max(MIN_READABLE_ZOOM, idealZoom))
 
-      // Compute node bounds so we can pan to the last row.
-      const xs = nodes.map((n) => (typeof n.position?.x === 'number' ? n.position.x : 0))
-      const ys = nodes.map((n) => (typeof n.position?.y === 'number' ? n.position.y : 0))
-      if (xs.length === 0) {
+      // Node bounds. Grab x/y off every node, plus the node's own width
+      // when available — avoids off-by-nodeWidth drift when we horizontally
+      // center.
+      type RFGeom = { position?: { x: number; y: number }; width?: number; height?: number }
+      const geom = (nodes as unknown as RFGeom[]).map((n) => ({
+        x: n.position?.x ?? 0,
+        y: n.position?.y ?? 0,
+        w: n.width ?? 180,
+        h: n.height ?? 72,
+      }))
+      if (geom.length === 0) {
         fitView({ duration: 300, padding: 0.15, maxZoom: targetZoom })
         return
       }
-      const minX = Math.min(...xs)
-      const maxX = Math.max(...xs)
-      const maxY = Math.max(...ys)
-      const w = container.clientWidth || 800
-      const nodeH = 100  // approx AttemptNode height; see layout.ts
+      const minX = Math.min(...geom.map((g) => g.x))
+      const maxX = Math.max(...geom.map((g) => g.x + g.w))
+      const maxY = Math.max(...geom.map((g) => g.y + g.h))
       const bottomPadding = 24
-      const leftPadding = 24
 
-      // Horizontally: center the content (clamped to left edge so first node
-      // is always reachable).
-      const contentWidth = (maxX - minX) * targetZoom
-      const targetX = contentWidth + leftPadding < w
-        ? (w - contentWidth) / 2 - minX * targetZoom
-        : leftPadding - minX * targetZoom
+      // Horizontal: center the content block inside the canvas.
+      const centerX = (minX + maxX) / 2
 
-      // Vertically: anchor so the LAST row's bottom sits just above the
-      // canvas bottom. Users scroll up to reach older rows.
-      const targetY = h - (maxY + nodeH) * targetZoom - bottomPadding
+      // Vertical: we want the BOTTOM of the content (maxY) to sit at
+      // (h - bottomPadding) on screen. setCenter(cx, cy, z) places the
+      // content point (cx, cy) at the canvas midpoint (w/2, h/2). Solving
+      // for cy:
+      //   cy_screen = h/2
+      //   maxY_screen = h - bottomPadding
+      //   diff_in_content = (maxY - cy) * zoom = (h - bottomPadding) - h/2
+      //   cy = maxY - (h/2 - bottomPadding) / zoom
+      const centerY = maxY - (h / 2 - bottomPadding) / targetZoom
 
-      setViewport(
-        { x: targetX, y: targetY, zoom: targetZoom },
-        { duration: 300 },
-      )
+      setCenter(centerX, centerY, { zoom: targetZoom, duration: 300 })
+      // w is intentionally referenced (eslint: `w` is used by React Flow's
+      // own centering internals — keeping the local for future tweaks).
+      void w
     }, 60)
     return () => window.clearTimeout(id)
-  }, [nodes, changeName, fitView, setViewport, getViewport])
+  }, [nodes, changeName, fitView, setViewport, getViewport, setCenter])
 
   return (
     <div ref={containerRef} className="w-full h-full">
