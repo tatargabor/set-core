@@ -413,6 +413,23 @@ class GatePipeline:
                 entry.name, self.change_name,
                 current_count + 1, limit,
             )
+            # Archive test-results/ for THIS attempt before the agent's next
+            # run overwrites it. Otherwise the dashboard only shows the final
+            # (passing) attempt's artifacts — all intermediate failure
+            # screenshots and error-context files are lost at redispatch.
+            # The attempt number we persist is current_count + 1 because it
+            # was just incremented above as the next attempt's counter.
+            try:
+                _archive_attempt_artifacts(
+                    self.change.worktree_path,
+                    self.change_name,
+                    attempt=current_count,  # the attempt that just FAILED
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Archive attempt-%d artifacts for %s failed: %s",
+                    current_count, self.change_name, exc,
+                )
             self.stop_action = "retry"
             return "retry"
         else:
@@ -566,3 +583,47 @@ def collect_screenshots(
         f" (attempt {attempt})" if attempt is not None else "",
     )
     return sc_count
+
+
+def _archive_attempt_artifacts(
+    wt_path: str,
+    change_name: str,
+    attempt: int,
+) -> int:
+    """Copy the worktree's `test-results/` into `<runtime>/artifacts/<change>/attempt-<N>/`.
+
+    Called right before a gate-retry dispatches so the agent's next run does
+    not overwrite this attempt's failure screenshots, error-context.md files,
+    and Playwright traces. Without this archive the dashboard's screenshots
+    endpoint only surfaces the *final* (passing) attempt's artifacts — every
+    intermediate failure is lost when the agent re-runs Playwright.
+
+    Returns the number of files archived (0 on any error — non-fatal).
+    """
+    if not wt_path or attempt <= 0:
+        return 0
+    src = os.path.join(wt_path, "test-results")
+    if not os.path.isdir(src):
+        return 0
+    try:
+        from .paths import SetRuntime
+        rt = SetRuntime()
+        base = os.path.join(rt.screenshots_dir, "attempts", change_name)
+    except Exception:
+        base = f"set/orchestration/attempts/{change_name}"
+    dest = os.path.join(base, f"attempt-{attempt}", "test-results")
+    os.makedirs(dest, exist_ok=True)
+    try:
+        shutil.copytree(src, dest, dirs_exist_ok=True)
+    except Exception as exc:
+        logger.warning(
+            "Archive attempt-%d for %s: copytree failed: %s",
+            attempt, change_name, exc,
+        )
+        return 0
+    n = len(glob_mod.glob(os.path.join(dest, "**", "*"), recursive=True))
+    logger.info(
+        "Archive attempt-%d for %s: %d files preserved at %s",
+        attempt, change_name, n, dest,
+    )
+    return n

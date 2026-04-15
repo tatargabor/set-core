@@ -258,15 +258,15 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      fetch(`/api/${project}/changes/${c.name}/screenshots`)
-                        .then(r => r.json())
-                        .then(d => {
-                          if (d.artifacts?.length) setScreenshotChange(c.name)
-                        })
-                        .catch(() => {})
+                      // Always open the gallery — it surfaces archived
+                      // previous-attempt artifacts even when the current
+                      // worktree has none, and shows a helpful empty-state
+                      // message otherwise (so "scan does nothing" never
+                      // happens again).
+                      setScreenshotChange(screenshotChange === c.name ? null : c.name)
                     }}
                     className="px-2 py-0.5 text-xs rounded bg-neutral-800/50 text-neutral-600 hover:bg-neutral-700 hover:text-neutral-300 transition-colors"
-                    title="Scan worktree for test artifacts"
+                    title="Open artifact gallery (scans worktree + archived attempts)"
                   >
                     scan
                   </button>

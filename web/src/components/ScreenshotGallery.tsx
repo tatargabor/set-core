@@ -3,11 +3,12 @@ import { useEffect, useState, useMemo } from 'react'
 interface Artifact {
   path: string
   name: string
-  type: string  // "image" | "trace" | "report" | "log"
+  type: string  // "image" | "trace" | "report" | "log" | "video"
   test?: string
   result?: string  // "pass" | "fail" — from profile plugin
   label?: string   // human-readable test name
   meta?: string    // HTML snippet with extra details (populated by profile plugin)
+  attempt?: number // 1..N — which verify-gate attempt produced this file
 }
 
 interface Props {
@@ -20,13 +21,15 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  // null = show all attempts, number = show only that attempt
+  const [attemptFilter, setAttemptFilter] = useState<number | null>(null)
 
   const loadArtifacts = () => {
     setLoading(true)
     fetch(`/api/${project}/changes/${changeName}/screenshots`)
       .then(r => r.json())
       .then((data) => {
-        const items = data.artifacts ?? data.e2e ?? []
+        const items: Artifact[] = data.artifacts ?? data.e2e ?? []
         setArtifacts(items)
       })
       .catch(() => setArtifacts([]))
@@ -35,8 +38,22 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
 
   useEffect(() => { loadArtifacts() }, [project, changeName])
 
-  const images = useMemo(() => artifacts.filter(a => a.type === 'image'), [artifacts])
-  const nonImages = useMemo(() => artifacts.filter(a => a.type !== 'image'), [artifacts])
+  const attempts = useMemo(() => {
+    const s = new Set<number>()
+    for (const a of artifacts) if (typeof a.attempt === 'number') s.add(a.attempt)
+    return [...s].sort((a, b) => a - b)
+  }, [artifacts])
+
+  const filtered = useMemo(() => {
+    if (attemptFilter === null) return artifacts
+    return artifacts.filter(a => a.attempt === attemptFilter)
+  }, [artifacts, attemptFilter])
+
+  // Reset selection when filter changes so we don't point at a hidden image.
+  useEffect(() => { setSelectedIndex(0) }, [attemptFilter])
+
+  const images = useMemo(() => filtered.filter(a => a.type === 'image'), [filtered])
+  const nonImages = useMemo(() => filtered.filter(a => a.type !== 'image'), [filtered])
 
   const serveUrl = (a: Artifact) => {
     // Encode path components but preserve '/' separators for FastAPI {path:path}
@@ -66,7 +83,18 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   }
 
   if (artifacts.length === 0) {
-    return <div className="px-4 py-6 text-sm text-neutral-500">No test artifacts found</div>
+    return (
+      <div className="px-4 py-6 text-sm text-neutral-500 space-y-1">
+        <div>No test artifacts found.</div>
+        <div className="text-xs text-neutral-600">
+          Playwright runs with <code>screenshot: only-on-failure</code> —
+          nothing is written when every test passes. Previous failing
+          attempts would be archived under{' '}
+          <code>set/orchestration/attempts/{changeName}/attempt-N/</code>{' '}
+          but none exist for this change.
+        </div>
+      </div>
+    )
   }
 
   const selected = images[selectedIndex]
@@ -82,12 +110,42 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
     <div className="flex flex-col" style={{ height: 'min(80vh, 700px)' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm text-neutral-300 font-medium">
             {images.length} screenshots
           </span>
           {nonImages.length > 0 && (
             <span className="text-xs text-neutral-500">+ {nonImages.length} other files</span>
+          )}
+          {attempts.length > 1 && (
+            <div className="flex items-center gap-1 ml-2">
+              <span className="text-[11px] text-neutral-500 uppercase tracking-wide">attempt</span>
+              <button
+                onClick={() => setAttemptFilter(null)}
+                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                  attemptFilter === null
+                    ? 'bg-blue-600 text-white'
+                    : 'text-neutral-400 hover:bg-neutral-800'
+                }`}
+                title="Show all attempts"
+              >
+                all
+              </button>
+              {attempts.map(n => (
+                <button
+                  key={n}
+                  onClick={() => setAttemptFilter(n)}
+                  className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                    attemptFilter === n
+                      ? 'bg-blue-600 text-white'
+                      : 'text-neutral-400 hover:bg-neutral-800'
+                  }`}
+                  title={`Show only attempt ${n}`}
+                >
+                  #{n}
+                </button>
+              ))}
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -138,6 +196,11 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
 
           {/* Test name + meta label */}
           <div className="px-4 py-1.5 border-b border-neutral-800 bg-neutral-900/50 flex items-center gap-2">
+            {typeof selected?.attempt === 'number' && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-neutral-700 text-neutral-200">
+                #{selected.attempt}
+              </span>
+            )}
             {selected?.result && (
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
                 selected.result === 'fail'

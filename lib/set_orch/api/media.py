@@ -57,9 +57,61 @@ def get_worktree_reflection(project: str, branch: str):
             return {"content": refl.read_text(errors="replace")}
     raise HTTPException(404, f"Worktree not found: {branch}")
 
+def _scan_archived_attempts(project_path: Path, change_name: str) -> list[dict]:
+    """Return artifacts from `set/orchestration/attempts/<change>/attempt-*/`.
+
+    Gate-retry archive (see gate_runner._archive_attempt_artifacts) writes
+    each failed attempt's test-results/ into a stable path. This function
+    surfaces those so the dashboard can show previous-attempt failures
+    alongside the current attempt's artifacts.
+    """
+    archive_root = project_path / "set" / "orchestration" / "attempts" / change_name
+    if not archive_root.is_dir():
+        return []
+    collected: list[dict] = []
+    for attempt_dir in sorted(archive_root.glob("attempt-*")):
+        if not attempt_dir.is_dir():
+            continue
+        try:
+            attempt_num = int(attempt_dir.name.removeprefix("attempt-"))
+        except ValueError:
+            continue
+        for f in sorted(attempt_dir.rglob("*")):
+            if not f.is_file():
+                continue
+            ext = f.suffix.lower()
+            if ext == ".png":
+                kind = "image"
+            elif ext in (".webm", ".mp4"):
+                kind = "video"
+            elif ext == ".zip":
+                kind = "trace"
+            elif ext == ".md":
+                kind = "report"
+            elif ext in (".log", ".txt"):
+                kind = "log"
+            else:
+                continue
+            collected.append({
+                "path": str(f),
+                "name": f.name,
+                "type": kind,
+                "test": f.parent.name,
+                "attempt": attempt_num,
+            })
+    return collected
+
+
 @router.get("/api/{project}/changes/{name}/screenshots")
 def get_change_screenshots(project: str, name: str):
-    """List test artifacts for a change (screenshots, traces, reports)."""
+    """List test artifacts for a change (screenshots, traces, reports).
+
+    Returns artifacts from both: (a) the worktree's current test-results/
+    (= latest attempt) and (b) archived previous attempts in
+    set/orchestration/attempts/<change>/attempt-N/. Each artifact carries
+    an `attempt` field (int) so the UI can group by attempt. The final
+    passing attempt is labelled with the highest attempt number.
+    """
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
     if not sp.exists():
@@ -69,14 +121,30 @@ def get_change_screenshots(project: str, name: str):
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
 
+    def _pack(current: list[dict], archived: list[dict]) -> dict:
+        # Annotate current (= latest) artifacts with the next attempt number
+        # — archived attempts go from 1..N, current is N+1.
+        next_attempt = (max((a["attempt"] for a in archived), default=0) + 1) if archived else 1
+        for a in current:
+            a.setdefault("attempt", next_attempt)
+        all_artifacts = archived + current
+        all_artifacts.sort(key=lambda x: (x.get("attempt", 0), x.get("name", "")))
+        images = [a for a in all_artifacts if a.get("type") == "image"]
+        return {
+            "artifacts": all_artifacts,
+            "smoke": [],
+            "e2e": images,
+            "attempts": sorted({a.get("attempt", 0) for a in all_artifacts}),
+        }
+
     for c in state.changes:
         if c.name == name:
+            archived = _scan_archived_attempts(project_path, name)
+
             # Try profile-collected artifacts first
             artifacts = c.extras.get("test_artifacts")
             if artifacts:
-                return {"artifacts": artifacts, "smoke": [], "e2e": [
-                    a for a in artifacts if a.get("type") == "image"
-                ]}
+                return _pack(list(artifacts), archived)
 
             # Fallback: live scan from worktree (if no cached artifacts)
             wt_path = c.worktree_path
@@ -94,23 +162,22 @@ def get_change_screenshots(project: str, name: str):
                                 _ch.extras["test_artifacts"] = artifacts
                                 images = [a for a in artifacts if a.get("type") == "image"]
                                 _ch.extras["e2e_screenshot_count"] = len(images)
-                        return {"artifacts": artifacts, "smoke": [], "e2e": [
-                            a for a in artifacts if a.get("type") == "image"
-                        ]}
+                        return _pack(list(artifacts), archived)
                 except Exception:
                     pass
 
             # Final fallback: legacy screenshot dirs
-            result: dict = {"artifacts": [], "smoke": [], "e2e": []}
+            current: list[dict] = []
             e2e_dir = getattr(c, "e2e_screenshot_dir", None) or c.extras.get("e2e_screenshot_dir")
             if e2e_dir:
                 ed = Path(e2e_dir) if os.path.isabs(e2e_dir) else project_path / e2e_dir
                 if ed.is_dir():
                     for f in sorted(ed.rglob("*.png")):
-                        item = {"path": str(f), "name": f.name, "type": "image", "test": f.parent.name}
-                        result["e2e"].append(item)
-                        result["artifacts"].append(item)
-            return result
+                        current.append({
+                            "path": str(f), "name": f.name,
+                            "type": "image", "test": f.parent.name,
+                        })
+            return _pack(current, archived)
     raise HTTPException(404, f"Change not found: {name}")
 
 
