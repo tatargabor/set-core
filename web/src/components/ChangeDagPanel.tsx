@@ -116,90 +116,70 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
     }
   }, [layout, setNodes, setEdges, autoFollow, changeName])
 
-  // Pass 2: when `nodes` (React Flow's state) reflects the new layout, fire
-  // the queued fit. Keying this on `nodes` instead of `layout` guarantees
-  // fitView() runs against the committed node positions, not the pending
-  // setNodes() value. The 60ms timeout gives RF one more frame to settle.
+  // Core fit routine: zoom + pan so the last MAX_ROWS_VISIBLE attempt rows
+  // sit at the bottom of the canvas, horizontally centered. Invoked from
+  // both onInit (first paint) and the useEffect below (layout change).
+  const runBottomAnchorFit = useCallback(() => {
+    if (nodes.length === 0) return
+    const container = containerRef.current
+    if (!container) {
+      fitView({ duration: 300, padding: 0.15 })
+      return
+    }
+    const h = container.clientHeight || 400
+    type RFGeom = {
+      position?: { x: number; y: number }
+      width?: number
+      height?: number
+      measured?: { width?: number; height?: number }
+    }
+    const geom = (nodes as unknown as RFGeom[]).map((n) => ({
+      x: n.position?.x ?? 0,
+      y: n.position?.y ?? 0,
+      w: n.measured?.width ?? n.width ?? 150,
+      h: n.measured?.height ?? n.height ?? 100,
+    }))
+    if (geom.length === 0) {
+      fitView({ duration: 300, padding: 0.15 })
+      return
+    }
+    const sortedYs = [...new Set(geom.map((g) => g.y))].sort((a, b) => a - b)
+    const rowsToShow = Math.max(1, Math.floor(MAX_ROWS_VISIBLE))
+    const visibleYs = sortedYs.slice(-rowsToShow)
+    const visible = geom.filter((g) => visibleYs.includes(g.y))
+    const minX = Math.min(...visible.map((g) => g.x))
+    const maxX = Math.max(...visible.map((g) => g.x + g.w))
+    const minYvis = Math.min(...visible.map((g) => g.y))
+    const maxY = Math.max(...visible.map((g) => g.y + g.h))
+    const bounds = {
+      x: minX,
+      y: minYvis,
+      width: Math.max(1, maxX - minX),
+      height: Math.max(1, maxY - minYvis),
+    }
+    const idealZoom = h / (MAX_ROWS_VISIBLE * ROW_STRIDE_PX)
+    const cappedZoom = Math.min(1.2, Math.max(MIN_READABLE_ZOOM, idealZoom))
+    rfApi.fitBounds(bounds, { duration: 300, padding: 0.08 })
+    window.setTimeout(() => {
+      const vp = getViewport()
+      if (Math.abs(vp.zoom - cappedZoom) > 0.02 && vp.zoom < cappedZoom) {
+        const cx = (minX + maxX) / 2
+        const cy = (minYvis + maxY) / 2
+        setCenter(cx, cy, { zoom: cappedZoom, duration: 200 })
+      }
+    }, 340)
+  }, [nodes, fitView, getViewport, setCenter, rfApi])
+
+  // Pass 2: fire the fit whenever pendingFitRef was set AND nodes have
+  // committed. onInit fires this for the initial mount; this effect
+  // handles subsequent layout changes (new attempts, change switch, etc.).
   useEffect(() => {
     if (!pendingFitRef.current || nodes.length === 0) return
     pendingFitRef.current = false
     lastFitChangeRef.current = changeName
-    const id = window.setTimeout(() => {
-      const container = containerRef.current
-      if (!container) {
-        fitView({ duration: 300, padding: 0.15 })
-        return
-      }
-      const h = container.clientHeight || 400
-
-      // Node bounds via ReactFlow's authoritative rendered sizes — falls
-      // back to known layout constants (see lib/dag/layout.ts:14) only if
-      // RF hasn't measured yet. Using node.measured (RF's post-render
-      // width/height) avoids the 72px default that was collapsing our
-      // bottom-anchor math.
-      type RFGeom = {
-        position?: { x: number; y: number }
-        width?: number
-        height?: number
-        measured?: { width?: number; height?: number }
-      }
-      const geom = (nodes as unknown as RFGeom[]).map((n) => ({
-        x: n.position?.x ?? 0,
-        y: n.position?.y ?? 0,
-        w: n.measured?.width ?? n.width ?? 150,
-        h: n.measured?.height ?? n.height ?? 100,
-      }))
-      if (geom.length === 0) {
-        fitView({ duration: 300, padding: 0.15 })
-        return
-      }
-
-      // Group nodes by row (they share ~equal y in the layout). Use the
-      // tolerance stride/2 to tolerate a few pixels of drift.
-      const sortedYs = [...new Set(geom.map((g) => g.y))].sort((a, b) => a - b)
-
-      // Take the last MAX_ROWS_VISIBLE rows (rounded down). Everything
-      // above stays reachable by scrolling up with the wheel.
-      const rowsToShow = Math.max(1, Math.floor(MAX_ROWS_VISIBLE))
-      const visibleYs = sortedYs.slice(-rowsToShow)
-      const visible = geom.filter((g) => visibleYs.includes(g.y))
-
-      const minX = Math.min(...visible.map((g) => g.x))
-      const maxX = Math.max(...visible.map((g) => g.x + g.w))
-      const minYvis = Math.min(...visible.map((g) => g.y))
-      const maxY = Math.max(...visible.map((g) => g.y + g.h))
-
-      // fitBounds zooms+pans so the given rect fills the canvas with the
-      // requested padding — this is the single idiomatic call that gets
-      // BOTH axes right without manual sign juggling.
-      const bounds = {
-        x: minX,
-        y: minYvis,
-        width: Math.max(1, maxX - minX),
-        height: Math.max(1, maxY - minYvis),
-      }
-
-      // Floor the zoom so small attempt counts don't over-zoom (one attempt
-      // alone would otherwise stretch to fill the canvas at zoom ~3).
-      const idealZoom = h / (MAX_ROWS_VISIBLE * ROW_STRIDE_PX)
-      const cappedZoom = Math.min(1.2, Math.max(MIN_READABLE_ZOOM, idealZoom))
-
-      rfApi.fitBounds(bounds, { duration: 300, padding: 0.08 })
-      // After fitBounds settles, clamp zoom if needed + re-center to the
-      // bottom rows. fitBounds' padding is relative, so the result already
-      // matches the visible-bounds intent — we just enforce the zoom floor.
-      window.setTimeout(() => {
-        const vp = getViewport()
-        if (Math.abs(vp.zoom - cappedZoom) > 0.02 && vp.zoom < cappedZoom) {
-          // Center the bottom-rows block at the desired zoom.
-          const cx = (minX + maxX) / 2
-          const cy = (minYvis + maxY) / 2
-          setCenter(cx, cy, { zoom: cappedZoom, duration: 200 })
-        }
-      }, 340)
-    }, 60)
+    const id = window.setTimeout(() => runBottomAnchorFit(), 60)
     return () => window.clearTimeout(id)
-  }, [nodes, changeName, fitView, setViewport, getViewport, setCenter, rfApi])
+  }, [nodes, changeName, runBottomAnchorFit])
 
   return (
     <div ref={containerRef} className="w-full h-full">
@@ -211,9 +191,16 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
         onNodeClick={onNodeClick}
         nodeTypes={NODE_TYPES}
         // NO `fitView` prop — ReactFlow's built-in fit ignores our readable-
-        // zoom floor and races our own setViewport call. We own the initial
-        // viewport (see the effect above): targetZoom clamped to
-        // [MIN_READABLE_ZOOM, 1.2], bottom-anchored on the last attempt.
+        // zoom floor. Instead we fire our own fitBounds from onInit (which
+        // runs exactly when the RF instance is ready — no 60ms guess), and
+        // again from the useEffect below whenever the layout changes.
+        onInit={() => {
+          pendingFitRef.current = true
+          // Yield one frame so node sizes are measured before we compute
+          // bounds. Without this yield, n.measured is undefined and the
+          // fallback heights (100px) get used — usually correct but brittle.
+          requestAnimationFrame(() => runBottomAnchorFit())
+        }}
         minZoom={0.3}
         maxZoom={2}
         nodesDraggable={false}
