@@ -588,16 +588,87 @@ def _cleanup_orphans(state_file: str) -> None:
     except Exception:
         logger.debug("Artifact collection in cleanup failed (non-critical)", exc_info=True)
 
+    # ── Phase 4: Release stuck issues whose fix_agent is dead ──
+    # Observed on craftbrew-run-20260415-0146: an ISSUE in state="diagnosed"
+    # or "fixing" with fix_agent_pid pointing to a process that died mid-fix
+    # stays active forever. The merger queries _get_issue_owned_changes (which
+    # includes those states) and silently skips the merge with "owned by issue
+    # pipeline", blocking the change indefinitely. Without this phase the
+    # user has to resolve the issues manually via the registry API.
+    issues_released = _release_dead_fix_agent_issues(state_file)
+
     # Summary
-    total = pids_cleared + steps_fixed + worktrees_removed + artifacts_collected + queue_restored
+    total = pids_cleared + steps_fixed + worktrees_removed + artifacts_collected + queue_restored + issues_released
     if total > 0:
         logger.info(
             "Orphan cleanup: %d worktrees removed, %d PIDs cleared, %d steps fixed, "
-            "%d artifacts collected, %d merge queue entries restored",
-            worktrees_removed, pids_cleared, steps_fixed, artifacts_collected, queue_restored,
+            "%d artifacts collected, %d merge queue entries restored, %d issues released",
+            worktrees_removed, pids_cleared, steps_fixed, artifacts_collected,
+            queue_restored, issues_released,
         )
     else:
         logger.debug("Orphan cleanup: nothing to clean")
+
+
+def _release_dead_fix_agent_issues(state_file: str) -> int:
+    """Auto-resolve active issues whose fix_agent_pid is dead.
+
+    An issue with state in {investigating, fixing, diagnosed, awaiting_approval}
+    and a dead fix_agent_pid is an orphaned issue — no one is going to progress
+    it, but it blocks the merger for the affected change (merger calls
+    `_get_issue_owned_changes` which includes those states). Transition such
+    issues to `resolved` so the merge queue can proceed on the next cycle.
+
+    Returns the number of issues auto-released.
+    """
+    try:
+        state_dir = os.path.dirname(os.path.abspath(state_file))
+        registry_path = os.path.join(state_dir, ".set", "issues", "registry.json")
+        if not os.path.isfile(registry_path):
+            return 0
+        with open(registry_path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return 0
+
+    active_states = {"investigating", "fixing", "diagnosed", "awaiting_approval"}
+    released = 0
+    now_iso = datetime.now(timezone.utc).astimezone().isoformat()
+
+    for issue in data.get("issues", []):
+        if issue.get("state") not in active_states:
+            continue
+        pid = issue.get("fix_agent_pid")
+        if not pid:
+            # No fix agent started yet; leave alone.
+            continue
+        try:
+            os.kill(int(pid), 0)
+            # process still alive — leave alone
+            continue
+        except (ProcessLookupError, PermissionError, ValueError, OSError):
+            # fix agent dead
+            pass
+
+        issue["state"] = "resolved"
+        issue["resolved_at"] = now_iso
+        issue["updated_at"] = now_iso
+        issue["fix_agent_pid"] = None
+        logger.warning(
+            "Released stuck issue %s: fix_agent_pid=%s is dead, state was %s, "
+            "affected_change=%s — auto-resolved so merge queue can proceed",
+            issue.get("id"), pid, issue.get("state"), issue.get("affected_change"),
+        )
+        released += 1
+
+    if released > 0:
+        try:
+            with open(registry_path, "w") as f:
+                json.dump(data, f, indent=4)
+        except OSError:
+            logger.warning("Failed to persist released issues", exc_info=True)
+
+    return released
 
 
 def _cwd_in_dir(cwd: str, directory: str) -> bool:

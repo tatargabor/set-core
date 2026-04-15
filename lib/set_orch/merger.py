@@ -806,11 +806,17 @@ def merge_change(
         # detection later to attribute a failing test to its owning change. See
         # OpenSpec change: fix-e2e-infra-systematic (T2.2.5).
         #
+        # Must use `pre_merge_sha..HEAD` (or equivalent) to get the diff of
+        # what the ff-merge just brought in. Using `main..source_branch` would
+        # return [] here because after the ff-merge source_branch is an
+        # ancestor of main — which was the bug observed on
+        # craftbrew-run-20260415-0146 (merged_scope_files stayed empty).
+        #
         # update_change_field routes unknown field names into change.extras;
         # passing "extras" would nest as extras["extras"]. Use the individual
         # key so it lands at the top of extras where resolve_owning_change reads.
         try:
-            _merged_files = _list_merged_scope_files(source_branch)
+            _merged_files = _list_merged_scope_files(pre_merge_sha, source_branch)
             if _merged_files:
                 update_change_field(
                     state_file, change_name, "merged_scope_files", _merged_files,
@@ -818,6 +824,12 @@ def merge_change(
                 logger.info(
                     "Recorded merged_scope_files for %s: %d file(s)",
                     change_name, len(_merged_files),
+                )
+            else:
+                logger.warning(
+                    "merged_scope_files empty for %s — ff-merge brought in "
+                    "no new files? (pre=%s source=%s)",
+                    change_name, pre_merge_sha[:8], source_branch,
                 )
         except Exception:
             logger.debug("merged_scope_files capture failed (non-critical)", exc_info=True)
@@ -1103,33 +1115,35 @@ def _integrate_for_merge(wt_path: str, change_name: str, event_bus: Any = None) 
     return "conflict"
 
 
-def _list_merged_scope_files(source_branch: str) -> list[str]:
-    """Return files that a fast-forward merge from `source_branch` brought into main.
+def _list_merged_scope_files(pre_merge_sha: str, source_branch: str) -> list[str]:
+    """Return files an ff-merge from `source_branch` just brought into main.
 
-    Used to populate `change.extras.merged_scope_files` so later changes can
-    resolve a failing test to its owning merged change (cross-change
-    regression detection). Best-effort: returns `[]` on any git error.
+    Called AFTER the ff-merge has succeeded (HEAD is now at source_branch's
+    tip). `pre_merge_sha` is the mainline HEAD from BEFORE the merge; diffing
+    pre_merge_sha..HEAD gives the exact files the merge introduced.
+
+    Using `main..source_branch` here would return [] — after ff-merge,
+    source_branch is an ancestor of main. Bug observed on
+    craftbrew-run-20260415-0146 (merged_scope_files stayed empty → Tier 2
+    cross-change detection couldn't resolve tests back to owning change).
+
+    Best-effort: returns `[]` on any git error.
     """
+    if not pre_merge_sha:
+        return []
     try:
-        # source_branch is now merged; prior_head is HEAD^1 after the merge.
-        # On a fast-forward, the commits from source_branch are already HEAD;
-        # diff between HEAD and the merge-base with the previous mainline
-        # commit gives the files the merge introduced.
+        # The ff-merge made HEAD == source_branch. Diff the old mainline HEAD
+        # against the new one to get exactly the files brought in.
         r = run_command(
-            ["git", "log", "--name-only", "--format=",
-             f"main..{source_branch}", "--"],
+            ["git", "diff", "--name-only", f"{pre_merge_sha}..HEAD", "--"],
             timeout=20,
         )
         if r.exit_code != 0:
-            # After ff-only merge, source branch is equal-to-or-ancestor of main.
-            # Fall back to diffing main~N..main where N=commits from source_branch.
-            r = run_command(
-                ["git", "diff-tree", "--no-commit-id", "--name-only", "-r",
-                 source_branch, "--"],
-                timeout=20,
+            logger.debug(
+                "_list_merged_scope_files: git diff failed (exit=%d): %s",
+                r.exit_code, (r.stderr or "")[:200],
             )
-            if r.exit_code != 0:
-                return []
+            return []
         files = sorted({
             ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()
         })
