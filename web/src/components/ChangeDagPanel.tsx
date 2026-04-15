@@ -56,11 +56,18 @@ interface InnerProps {
 }
 
 // DAG row stride in layout coordinates (see lib/dag/layout.ts: rowHeight +
-// attemptGap = 130 + 20 = 150). We cap zoom so at most ~2.5 rows fit
-// vertically — prevents the canvas from zooming absurdly in when a change
-// has only one attempt.
+// attemptGap = 130 + 20 = 150). Two bounds shape the default viewport:
+//   - MAX_ROWS_VISIBLE caps zoom-in when there is only one attempt (no
+//     point in stretching one row to fill a 900px canvas).
+//   - MIN_READABLE_ZOOM floors zoom-out for long histories. Without this
+//     floor, a change with 14 attempts rendered every row visible but at
+//     zoom~0.19, which turned every node into an unreadable smudge.
+// When the floor wins, we pan so the LAST attempt sits at the bottom of
+// the canvas (most recent work is what the user wants to see first; older
+// rows stay reachable by scrolling up with the mouse wheel).
 const ROW_STRIDE_PX = 150
 const MAX_ROWS_VISIBLE = 2.5
+const MIN_READABLE_ZOOM = 0.7
 
 function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes)
@@ -114,32 +121,43 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
         return
       }
       const h = container.clientHeight || 400
-      // Cap zoom so MAX_ROWS_VISIBLE rows fit vertically. E.g. a 600px
-      // container with stride=150 and max=2.5 rows gives zoom ≤ 1.6.
-      const maxZoom = Math.max(0.3, Math.min(2, h / (MAX_ROWS_VISIBLE * ROW_STRIDE_PX)))
-      fitView({ duration: 300, padding: 0.15, maxZoom })
-      // Bottom-anchor: after fitView, compute node bounds and pan so the
-      // last row sits near the bottom of the canvas.
-      window.setTimeout(() => {
-        const ys = nodes.map((n) => {
-          const ny = typeof n.position?.y === 'number' ? n.position.y : 0
-          const nh = (n as { height?: number }).height ?? 100
-          return ny + nh
-        })
-        if (ys.length === 0) return
-        const maxY = Math.max(...ys)
-        const vp = getViewport()
-        // Target: canvas_bottom = zoom * maxY + vp.y + padding
-        // → vp.y = canvas_height - zoom * maxY - bottom_padding
-        const bottomPadding = 24
-        const targetY = h - vp.zoom * maxY - bottomPadding
-        // Only adjust if the content is shorter than container (few rows) —
-        // otherwise fitView's centered result is already appropriate.
-        const contentHeight = vp.zoom * maxY
-        if (contentHeight < h - bottomPadding) {
-          setViewport({ x: vp.x, y: targetY, zoom: vp.zoom }, { duration: 200 })
-        }
-      }, 320)
+      // Desired zoom so MAX_ROWS_VISIBLE rows fill the canvas vertically.
+      // Floored at MIN_READABLE_ZOOM so that no matter how many attempts
+      // exist, nodes stay legible. Capped at MAX_ROWS_VISIBLE so single-
+      // attempt DAGs don't zoom in absurdly.
+      const idealZoom = h / (MAX_ROWS_VISIBLE * ROW_STRIDE_PX)
+      const targetZoom = Math.min(1.2, Math.max(MIN_READABLE_ZOOM, idealZoom))
+
+      // Compute node bounds so we can pan to the last row.
+      const xs = nodes.map((n) => (typeof n.position?.x === 'number' ? n.position.x : 0))
+      const ys = nodes.map((n) => (typeof n.position?.y === 'number' ? n.position.y : 0))
+      if (xs.length === 0) {
+        fitView({ duration: 300, padding: 0.15, maxZoom: targetZoom })
+        return
+      }
+      const minX = Math.min(...xs)
+      const maxX = Math.max(...xs)
+      const maxY = Math.max(...ys)
+      const w = container.clientWidth || 800
+      const nodeH = 100  // approx AttemptNode height; see layout.ts
+      const bottomPadding = 24
+      const leftPadding = 24
+
+      // Horizontally: center the content (clamped to left edge so first node
+      // is always reachable).
+      const contentWidth = (maxX - minX) * targetZoom
+      const targetX = contentWidth + leftPadding < w
+        ? (w - contentWidth) / 2 - minX * targetZoom
+        : leftPadding - minX * targetZoom
+
+      // Vertically: anchor so the LAST row's bottom sits just above the
+      // canvas bottom. Users scroll up to reach older rows.
+      const targetY = h - (maxY + nodeH) * targetZoom - bottomPadding
+
+      setViewport(
+        { x: targetX, y: targetY, zoom: targetZoom },
+        { duration: 300 },
+      )
     }, 60)
     return () => window.clearTimeout(id)
   }, [nodes, changeName, fitView, setViewport, getViewport])

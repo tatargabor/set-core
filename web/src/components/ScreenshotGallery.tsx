@@ -21,9 +21,10 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedIndex, setSelectedIndex] = useState(0)
-  // null = show all attempts, number = show only that attempt. Defaults to
-  // the latest attempt once data arrives — that's the most useful entry
-  // point when triaging a run.
+  // Always scoped to a single attempt — no "all" mix-and-match because
+  // viewing 200 thumbnails from multiple attempts at once was not useful.
+  // Defaults to the latest attempt as soon as data lands (triage = start
+  // with the most recent failure).
   const [attemptFilter, setAttemptFilter] = useState<number | null>(null)
   const [otherFilesOpen, setOtherFilesOpen] = useState(false)
 
@@ -57,9 +58,13 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   }, [attempts.length])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
-    if (attemptFilter === null) return artifacts
-    return artifacts.filter(a => a.attempt === attemptFilter)
-  }, [artifacts, attemptFilter])
+    // Before the defaulting effect runs (first render frame), attemptFilter
+    // is still null. Fall back to the latest attempt's artifacts so the
+    // first paint isn't the full union.
+    const n = attemptFilter ?? (attempts.length > 0 ? attempts[attempts.length - 1] : null)
+    if (n === null) return artifacts
+    return artifacts.filter(a => a.attempt === n)
+  }, [artifacts, attemptFilter, attempts])
 
   // Reset selection when filter changes so we don't point at a hidden image.
   useEffect(() => { setSelectedIndex(0) }, [attemptFilter])
@@ -169,28 +174,17 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
         </button>
       </div>
 
-      {/* Row 2: attempt TABS. Counts use ASCII abbreviations (img/file) —
-          the 📷 emoji renders as tofu on systems without an emoji font. */}
+      {/* Attempt TABS. One tab per attempt (no "all" mix — the user asked
+          for the view to always be scoped to a single attempt). */}
       {attempts.length > 0 && (
         <div className="flex items-center gap-0 px-3 border-b border-neutral-800 overflow-x-auto">
-          {attempts.length > 1 && (
-            <TabBtn
-              active={attemptFilter === null}
-              onClick={() => setAttemptFilter(null)}
-              title="Show artifacts from every attempt"
-            >
-              all
-              <span className="ml-1 text-[10px] text-neutral-500">
-                ({artifacts.length})
-              </span>
-            </TabBtn>
-          )}
           {attempts.map(n => {
             const c = attemptCounts.get(n) ?? { images: 0, others: 0 }
+            const effectiveActive = (attemptFilter ?? attempts[attempts.length - 1]) === n
             return (
               <TabBtn
                 key={n}
-                active={attemptFilter === n}
+                active={effectiveActive}
                 onClick={() => setAttemptFilter(n)}
                 title={`attempt #${n}: ${c.images} screenshots, ${c.others} other files`}
               >
