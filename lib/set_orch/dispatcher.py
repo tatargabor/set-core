@@ -3013,6 +3013,62 @@ def resume_stopped_changes(
     return resumed
 
 
+def resume_paused_changes(
+    state_path: str,
+    event_bus: EventBus | None = None,
+    **resume_kwargs: Any,
+) -> int:
+    """Resume changes that were paused by a non-graceful orchestrator shutdown.
+
+    Context
+    -------
+    engine.shutdown() sets every in-flight change to `paused` with the comment
+    "so they resume on restart". But the dispatch loop EXCLUDES paused from
+    ready-to-dispatch (see `change.status not in ("paused", ...)`), and no
+    other routine picks them up either. Without this function, a sentinel
+    restart (or forced kill after the 90s grace period) parks all active
+    changes in "paused" permanently — the user has to manually POST to
+    `/api/.../resume` for each one.
+
+    Behavior
+    --------
+    For each paused change with a valid worktree: call `resume_change` (which
+    replays retry_context and reuses the Claude session cache). Paused changes
+    whose worktree is gone are NOT re-dispatched here — orphan cleanup already
+    transitions those to "pending" in `_cleanup_orphans`.
+
+    Returns
+    -------
+    Number of paused changes resumed.
+
+    See also
+    --------
+    resume_stopped_changes — for changes in "stopped" status (different code
+    path, usually legacy). We keep both because the distinction matters for
+    event emission (CHANGE_RESUMED vs CHANGE_STARTED).
+    """
+    state = load_state(state_path)
+    resumed = 0
+
+    for change in state.changes:
+        if change.status != "paused":
+            continue
+        if not (change.worktree_path and os.path.isdir(change.worktree_path)):
+            # Let orphan cleanup handle it — it'll transition to "pending".
+            logger.info(
+                "skipping resume of paused %s — worktree missing (orphan cleanup will recover)",
+                change.name,
+            )
+            continue
+        logger.info("resuming paused change: %s", change.name)
+        if resume_change(state_path, change.name, event_bus=event_bus, **resume_kwargs):
+            resumed += 1
+
+    if resumed:
+        logger.info("resume_paused_changes: resumed %d change(s)", resumed)
+    return resumed
+
+
 def resume_stalled_changes(
     state_path: str,
     event_bus: EventBus | None = None,

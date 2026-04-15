@@ -861,6 +861,23 @@ def monitor_loop(
     except Exception:
         logger.warning("Orphan cleanup failed (non-critical)", exc_info=True)
 
+    # Auto-resume changes paused by the previous shutdown. Engine.shutdown()
+    # parks in-flight changes as "paused" with the comment "so they resume
+    # on restart", but the dispatch loop EXCLUDES paused from ready-to-
+    # dispatch. Without this step, a sentinel restart (force-kill after 90s
+    # grace) permanently parks active changes until the user manually
+    # POSTs /api/.../resume. See dispatcher.resume_paused_changes.
+    try:
+        from .dispatcher import resume_paused_changes
+        _resumed = resume_paused_changes(state_file, event_bus=event_bus)
+        if _resumed:
+            logger.info(
+                "Auto-resumed %d change(s) paused by prior shutdown",
+                _resumed,
+            )
+    except Exception:
+        logger.warning("Paused-change auto-resume failed (non-critical)", exc_info=True)
+
     logger.info("Monitor loop started (poll every %ds, auto_replan=%s)", poll_interval, d.auto_replan)
 
     # Self-watchdog tracking
