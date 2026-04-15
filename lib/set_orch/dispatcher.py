@@ -2511,6 +2511,15 @@ def dispatch_via_wt_loop(
 
     task_desc = f"Implement {change_name}: {scope[:200]}"
 
+    # Per-iteration timeout. set-loop's CLI default (45m) is too tight for
+    # framework-integration fix cycles on web projects: a single iteration
+    # may burn 40+ minutes when the agent has to iterate through several
+    # Playwright approaches (observed on craftbrew-run-20260415-0146
+    # admin-products — agent was on the right keyboard-nav track but
+    # SIGTERM'd at minute 45 mid-solution, losing context continuity).
+    # 90m gives enough headroom without masking truly stuck agents.
+    iteration_timeout_min = 90
+
     cmd = [
         "set-loop", "start", task_desc,
         "--max", "30",
@@ -2518,13 +2527,15 @@ def dispatch_via_wt_loop(
         "--label", change_name,
         "--model", impl_model,
         "--change", change_name,
+        "--iteration-timeout", str(iteration_timeout_min),
     ]
     if team_mode:
         cmd.append("--team")
 
     logger.info(
-        "dispatch %s with model=%s budget=unlimited (iter limit: --max 30) team=%s",
-        change_name, impl_model, team_mode,
+        "dispatch %s with model=%s budget=unlimited (iter limit: --max 30, "
+        "iter timeout: %dm) team=%s",
+        change_name, impl_model, iteration_timeout_min, team_mode,
     )
 
     # Start set-loop (fire and forget — it daemonizes via tmux)
