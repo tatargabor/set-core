@@ -54,12 +54,20 @@ export default defineConfig({
   // prisma seed. The set-orch e2e gate timeout is the outer kill switch
   // (3600s default, see verifier.DEFAULT_E2E_TIMEOUT).
   globalTimeout: globalTimeoutMs,
-  reporter: "html",
+  // Reporter choice has real memory impact. "html" buffers every screenshot +
+  // trace + result in memory until suite end, which caused SIGKILL (exit 137)
+  // on realistic suites when combined with screenshot: "on". "list" streams
+  // to stdout — parseable by the orchestrator's failure extractor, minimal
+  // memory. Harvested from craftbrew-run-20260415-0146 (agent hit OOM at
+  // 26 tests, fixed it, the fix is now in the template).
+  reporter: "list",
   use: {
     baseURL: `http://localhost:${port}`,
     headless: true,
     locale: "en-US",
-    screenshot: "on",
+    // only-on-failure: screenshots for green tests waste disk and memory with
+    // no diagnostic value. Orchestration reads screenshots from retries anyway.
+    screenshot: "only-on-failure",
     trace: "on-first-retry",
     // Action and navigation defaults — Playwright's defaults (no timeout)
     // cause hung tests to consume globalTimeout instead of failing fast.
@@ -75,6 +83,13 @@ export default defineConfig({
   webServer: {
     command: `npx next dev -p ${port}`,
     port,
+    // 120s instead of Playwright's 60s default. A cold `next dev` compile on
+    // a realistic app (~17 routes, server components, Prisma client gen) can
+    // take 80-100s on first run after a `.next/` invalidation. The default
+    // 60s was hitting webServer timeout BEFORE any test ran — the gate then
+    // exited with no parseable failure list. Harvested from
+    // craftbrew-run-20260415-0146 ab085c99.
+    timeout: 120_000,
     // Reuse the dev server only in local dev (no CI, no PW_FRESH_SERVER).
     // Orchestrated gate runs set PW_FRESH_SERVER=1 for zombie/stale-cache
     // invulnerability; CI sets CI=1. Local iteration (`pnpm test:e2e` in

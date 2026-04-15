@@ -176,7 +176,93 @@ export async function registerAction(input: RegisterInput) {
 passes. The orchestration e2e gate with `PW_FLAKY_FAILS=1` catches this as a
 real failure. Locally, `retries: 1` masks the bug.
 
-## 6. REQ-id comment convention on specs
+## 6. Radix Select (shadcn) — opening the dropdown in tests
+
+shadcn `<Select>` uses Radix Select, which renders `<SelectItem>` (with
+`role="option"`) into a PORTAL that only mounts when the trigger is opened.
+Tests that click the trigger then immediately query `getByRole('option', …)`
+flake — the dropdown animation + portal mount lose a ~50-200ms race.
+
+**Wrong — click trigger, immediately click option, hope for the best:**
+```typescript
+await page.locator('[data-testid="type-select"]').click();
+await page.getByRole("option", { name: "Kávé" }).click();  // TimeoutError
+```
+Observed failure signature (craftbrew-run-20260415-0146 admin-products):
+```
+TimeoutError: locator.click: Timeout 10000ms exceeded.
+  - waiting for getByRole('option', { name: 'Kávé' })
+    - locator resolved to <div role="option" ...>
+    - element is visible, enabled and stable
+    - performing click action
+  [times out — click doesn't register because portal handler is still mounting]
+```
+
+**Correct — wait for the listbox to appear, then click:**
+```typescript
+await page.locator('[data-testid="type-select"]').click();
+// Wait for the dropdown content to mount + become interactive.
+await expect(page.getByRole("listbox")).toBeVisible();
+await page.getByRole("option", { name: "Kávé" }).click();
+// Wait for the Select value to reflect the selection before moving on.
+await expect(page.locator('[data-testid="type-select"]')).toContainText("Kávé");
+```
+
+Alternative: query `getByRole("option", { name: "Kávé" })` via
+`{ exact: false }` if the label has surrounding text, and always pair with a
+`toBeVisible()` assertion BEFORE clicking.
+
+## 7. Slug / ID generation for non-ASCII (Hungarian, German, etc.)
+
+Slug generators must normalize Unicode accents via `NFD`-decomposition +
+combining-mark strip. Naive `toLowerCase().replace(/\s+/g, '-')` loses
+characters like `ű`, `ő`, `ä`, `ß` by dropping them silently instead of
+mapping to their base form.
+
+**Wrong — `ű`/`ő` drop silently, producing truncated slugs:**
+```typescript
+function slugify(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+// slugify("Árvíztűrő tükörfúrógép") → "rv-zt-r-t-k-rf-r-g-p"  (garbage)
+```
+E2E signature (craftbrew-run-20260415-0146 admin-products REQ-ADM-002:
+`meta-title-description-HU-EN`):
+```
+expect(locator).toHaveValue failed
+Expected: "teszt-kave-arviztuero"
+Received: "teszt-kave-arvizturo"   ← ű character lost, chars merged
+```
+
+**Correct — NFD normalize, strip combining marks, then slugify:**
+```typescript
+export function slugify(input: string): string {
+  return input
+    .normalize("NFD")                         // decompose accents
+    .replace(/[\u0300-\u036f]/g, "")          // strip combining marks
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+// slugify("Árvíztűrő tükörfúrógép") → "arvizturo-tukorfurogep"  ✓
+```
+
+For languages where NFD doesn't cover (German `ß`, Nordic `ø`, Turkish `ı`),
+pre-map before normalize:
+```typescript
+const PRE_MAP: Record<string, string> = {
+  ß: "ss", æ: "ae", œ: "oe", ø: "o", å: "aa", ı: "i",
+};
+input = [...input].map(c => PRE_MAP[c] ?? c).join("");
+// then NFD normalize as above
+```
+
+Put this in `src/lib/slug.ts` and import everywhere a slug is generated —
+product slugs, blog post slugs, admin URL segments. **Never inline-duplicate
+the slug logic** — drift between call sites is a common source of "same
+title produces different slugs on different pages" bugs.
+
+## 8. REQ-id comment convention on specs
 
 Every e2e test file should declare the REQ-ids it covers at the top of the
 file. This lets the orchestrator scope-filter `npx playwright test` to only
@@ -206,7 +292,9 @@ current change (see Tier 2: cross-change regression detection).
 |---|---|
 | cart / checkout intermittently empty after navigation | #1 sendBeacon ban |
 | "my X" shows somebody else's X | #2 upsert unique-key |
-| locator timeout on an element that is visible | #3 testid naming |
+| locator timeout on testid element | #3 testid naming |
 | auth-dependent tests fail sporadically | #4 storageState |
 | register succeeds, user sees empty registration page | #5 register→signIn race |
-| current-change gate fails on another change's test | #6 REQ-id comments |
+| `getByRole('option')` click times out | #6 Radix Select portal |
+| `ű`/`ő` disappears from slugs/IDs | #7 slug NFD normalize |
+| current-change gate fails on another change's test | #8 REQ-id comments |
