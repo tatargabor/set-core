@@ -2946,6 +2946,14 @@ def resume_change(
             from .config import auto_detect_test_command
             test_command = auto_detect_test_command(wt_path)
 
+    # Same 90m iteration timeout as initial dispatch — set-loop's CLI default
+    # (45m) SIGTERM's the agent mid-solution on web E2E retries. Without this
+    # override the resume path silently falls back to 45m and every long fix
+    # iteration dies at minute 45 (observed on craftbrew-run-20260415-1225
+    # checkout-and-orders — agent mid-fix SIGTERM'd, 27 E2E failures not
+    # addressed, status=stalled).
+    iteration_timeout_min = 90
+
     cmd = [
         "set-loop", "start", task_desc,
         "--max", str(max_iter),
@@ -2953,6 +2961,7 @@ def resume_change(
         "--label", change_name,
         "--model", impl_model,
         "--change", change_name,
+        "--iteration-timeout", str(iteration_timeout_min),
     ]
     if test_command:
         cmd.extend(["--test-command", test_command])
@@ -2960,8 +2969,8 @@ def resume_change(
         cmd.append("--team")
 
     logger.info(
-        "resume %s with model=%s (done=%s, max=%d) team=%s",
-        change_name, impl_model, done_criteria, max_iter, team_mode,
+        "resume %s with model=%s (done=%s, max=%d, iter timeout=%dm) team=%s",
+        change_name, impl_model, done_criteria, max_iter, iteration_timeout_min, team_mode,
     )
 
     # Start set-loop
