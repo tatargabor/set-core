@@ -371,6 +371,43 @@ def _get_or_create_e2e_baseline(
         os.close(lock_fd)
 
 
+def _kill_stale_listeners_on_port(port: int) -> None:
+    """Kill any process bound to `port` — best-effort, non-fatal on failure.
+
+    Called BEFORE spawning Playwright so a zombie `next start` from a prior
+    crashed gate doesn't hold the port. Playwright's webServer aborts
+    immediately with "port already used" when the port is occupied — its
+    start happens BEFORE globalSetup, so we can't rely on a TypeScript-level
+    kill hook. This must run from the gate-runner itself.
+    """
+    if port <= 0:
+        return
+    try:
+        r = subprocess.run(
+            ["lsof", "-t", "-i", f":{port}"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return
+    if r.returncode not in (0, 1):  # 0=found, 1=none
+        return
+    pids = [p for p in (r.stdout or "").split() if p.isdigit()]
+    if not pids:
+        return
+    logger.warning(
+        "Killing %d stale process(es) bound to port %d: %s",
+        len(pids), port, ", ".join(pids),
+    )
+    for pid_str in pids:
+        try:
+            os.kill(int(pid_str), 9)  # SIGKILL — zombie server, forget graceful
+        except (OSError, ValueError) as exc:
+            logger.debug("kill(%s) failed: %s", pid_str, exc)
+    # Brief settle so the kernel actually releases the socket before playwright
+    # tries to bind. Without this, SO_REUSEADDR races sometimes fail.
+    time.sleep(0.5)
+
+
 def _auto_detect_e2e_command(wt_path: str, profile=None) -> str:
     """Auto-detect e2e command by delegating to the project-type profile."""
     if profile is not None and hasattr(profile, "detect_e2e_command"):
@@ -459,6 +496,17 @@ def execute_e2e_gate(
         port = _assigned
     elif profile and hasattr(profile, "worktree_port"):
         port = int(profile.worktree_port(change_name) or 0)
+
+    # Pre-emptively kill any process bound to our assigned port BEFORE
+    # Playwright boots its webServer. globalSetup runs AFTER the webServer
+    # start, so the "kill stale port" logic in tests/e2e/global-setup.ts
+    # can't protect against a pre-existing zombie — Playwright exits with
+    # "port already used" before globalSetup gets a chance. Doing it here,
+    # at the gate-runner level, catches the failure mode observed on
+    # craftbrew-run-20260415-0146 auth-and-accounts (4 retries all failed
+    # with port-in-use, no parseable failure list).
+    if port > 0:
+        _kill_stale_listeners_on_port(port)
 
     if port > 0 and profile and hasattr(profile, "e2e_gate_env"):
         try:
