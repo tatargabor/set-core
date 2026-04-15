@@ -57,19 +57,35 @@ def get_worktree_reflection(project: str, branch: str):
             return {"content": refl.read_text(errors="replace")}
     raise HTTPException(404, f"Worktree not found: {branch}")
 
-def _scan_archived_attempts(project_path: Path, change_name: str) -> list[dict]:
-    """Return artifacts from `set/orchestration/attempts/<change>/attempt-*/`.
+def _classify_artifact(path: Path) -> str | None:
+    ext = path.suffix.lower()
+    if ext == ".png":
+        return "image"
+    if ext in (".webm", ".mp4"):
+        return "video"
+    if ext == ".zip":
+        return "trace"
+    if ext == ".md":
+        return "report"
+    if ext in (".log", ".txt"):
+        return "log"
+    return None
 
-    Gate-retry archive (see gate_runner._archive_attempt_artifacts) writes
-    each failed attempt's test-results/ into a stable path. This function
-    surfaces those so the dashboard can show previous-attempt failures
-    alongside the current attempt's artifacts.
+
+def _scan_attempt_dir(root: Path) -> list[dict]:
+    """Walk `<root>/attempt-N/**` and return attempt-tagged artifact dicts.
+
+    Two storage layouts both land here:
+      (a) modules/web gates.py:588 writes every successful gate run to
+          `<runtime>/screenshots/e2e/<change>/attempt-N/<test-dir>/*.png`
+      (b) gate_runner._archive_attempt_artifacts writes pre-retry archives to
+          `<runtime>/screenshots/attempts/<change>/attempt-N/test-results/...`
+    Both use the same `attempt-N/` nesting so this single scanner handles both.
     """
-    archive_root = project_path / "set" / "orchestration" / "attempts" / change_name
-    if not archive_root.is_dir():
+    if not root.is_dir():
         return []
     collected: list[dict] = []
-    for attempt_dir in sorted(archive_root.glob("attempt-*")):
+    for attempt_dir in sorted(root.glob("attempt-*")):
         if not attempt_dir.is_dir():
             continue
         try:
@@ -79,18 +95,8 @@ def _scan_archived_attempts(project_path: Path, change_name: str) -> list[dict]:
         for f in sorted(attempt_dir.rglob("*")):
             if not f.is_file():
                 continue
-            ext = f.suffix.lower()
-            if ext == ".png":
-                kind = "image"
-            elif ext in (".webm", ".mp4"):
-                kind = "video"
-            elif ext == ".zip":
-                kind = "trace"
-            elif ext == ".md":
-                kind = "report"
-            elif ext in (".log", ".txt"):
-                kind = "log"
-            else:
+            kind = _classify_artifact(f)
+            if not kind:
                 continue
             collected.append({
                 "path": str(f),
@@ -100,6 +106,41 @@ def _scan_archived_attempts(project_path: Path, change_name: str) -> list[dict]:
                 "attempt": attempt_num,
             })
     return collected
+
+
+def _scan_archived_attempts(project_path: Path, change_name: str) -> list[dict]:
+    """Collect all attempt-tagged artifacts for `change_name`.
+
+    Checks both storage locations:
+      1. Pre-retry archive (`attempts/<change>/attempt-N/`)
+      2. Per-attempt e2e screenshot dir (`screenshots/e2e/<change>/attempt-N/`)
+    """
+    items: list[dict] = []
+    # Location 1: gate_runner archive (project_path/set/... fallback when
+    # SetRuntime isn't available at archive-time).
+    items += _scan_attempt_dir(
+        project_path / "set" / "orchestration" / "attempts" / change_name
+    )
+    # Location 2: runtime-resolved per-attempt e2e screenshots (preferred
+    # path — this is where modules/web/gates.py writes every e2e gate run).
+    try:
+        from ..paths import SetRuntime
+        rt_screenshots = Path(SetRuntime(str(project_path)).screenshots_dir)
+        items += _scan_attempt_dir(rt_screenshots / "e2e" / change_name)
+        items += _scan_attempt_dir(rt_screenshots / "attempts" / change_name)
+    except Exception:
+        pass
+    # Deduplicate on path — the same file could land in multiple roots if a
+    # run was interrupted and resumed.
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for item in items:
+        key = item["path"]
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
 
 
 @router.get("/api/{project}/changes/{name}/screenshots")

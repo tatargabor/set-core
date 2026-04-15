@@ -582,12 +582,21 @@ def execute_e2e_gate(
                 pass  # non-fatal cleanup
     e2e_output = e2e_cmd_result.stdout + e2e_cmd_result.stderr
 
-    # Collect screenshots
+    # Collect screenshots PER ATTEMPT. Without the attempt-N subdir Playwright
+    # would overwrite this attempt's failure screenshots with the next attempt's
+    # failure screenshots (same test-dir name = same target path, dirs_exist_ok
+    # merges file-by-file). By nesting under attempt-N we preserve every
+    # attempt's artifacts for the dashboard gallery's attempt filter.
     try:
         from set_orch.paths import SetRuntime
-        e2e_sc_dir = os.path.join(SetRuntime().screenshots_dir, "e2e", change_name)
+        base_sc_dir = os.path.join(SetRuntime().screenshots_dir, "e2e", change_name)
     except Exception:
-        e2e_sc_dir = f"set/orchestration/e2e-screenshots/{change_name}"
+        base_sc_dir = f"set/orchestration/e2e-screenshots/{change_name}"
+    # verify_retry_count is 0 on the very first e2e run (attempt 1), 1 before
+    # the second run (attempt 2), etc. Store as 1-based `attempt-N` for UI
+    # consistency with the retry archive path.
+    attempt_n = int(getattr(change, "verify_retry_count", 0) or 0) + 1
+    e2e_sc_dir = os.path.join(base_sc_dir, f"attempt-{attempt_n}")
     os.makedirs(e2e_sc_dir, exist_ok=True)
     wt_test_results = os.path.join(wt_path, "test-results")
     if os.path.isdir(wt_test_results):
