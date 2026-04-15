@@ -872,6 +872,52 @@ def monitor_loop(
     global _orchestrator_lock_held
     _orchestrator_lock_held = True
 
+    # Auto-regenerate directives.json when config.yaml is newer — the user
+    # edits config.yaml and restarts the supervisor expecting the change to
+    # take effect, but without this regen the orchestrator keeps using the
+    # stale directives.json (observed: a 90m iteration_timeout edit never
+    # took effect for ~18h on craftbrew-run-20260415-0146 because restart
+    # didn't refresh directives). We regenerate eagerly at startup so the
+    # user's "edit + restart" contract actually holds.
+    try:
+        _state_dir = os.path.dirname(os.path.abspath(state_file))
+        _cfg_path = os.path.join(_state_dir, "set", "orchestration", "config.yaml")
+        if (
+            os.path.isfile(_cfg_path)
+            and os.path.isfile(directives_json)
+            and os.path.getmtime(_cfg_path) > os.path.getmtime(directives_json)
+        ):
+            _state_tmp = load_state(state_file)
+            _input_path = (
+                _state_tmp.extras.get("input_path")
+                or _state_tmp.extras.get("spec_path")
+            )
+            if not _input_path:
+                _plan_path = os.path.join(_state_dir, "orchestration-plan.json")
+                if os.path.isfile(_plan_path):
+                    try:
+                        with open(_plan_path) as _pf:
+                            _plan = json.load(_pf)
+                        _input_path = _plan.get("input_path")
+                    except Exception:
+                        _input_path = None
+            if _input_path and os.path.exists(_input_path):
+                from .config import resolve_directives as _resolve_directives
+                _new = _resolve_directives(_input_path, config_path=_cfg_path)
+                with open(directives_json, "w") as _df:
+                    json.dump(_new, _df, indent=2)
+                logger.info(
+                    "Regenerated directives.json from config.yaml (input=%s)",
+                    _input_path,
+                )
+            else:
+                logger.warning(
+                    "CONFIG_DRIFT detected but cannot regenerate directives — "
+                    "no input_path in state/plan; supervisor will keep stale directives"
+                )
+    except Exception:
+        logger.debug("directives auto-regen failed (non-fatal)", exc_info=True)
+
     # Parse directives — try file path, then JSON string, then state fallback
     raw = None
     if os.path.isfile(directives_json):
@@ -894,6 +940,8 @@ def monitor_loop(
     d = parse_directives(raw)
 
     # Surface config drift (config.yaml edited after directives.json parsed).
+    # After the auto-regen above this should be a no-op; kept for cases where
+    # regen was skipped (missing input_path) so the user still sees the warn.
     check_config_drift(state_file, directives_json, event_bus=event_bus)
 
     # Register atexit cleanup AFTER lock + directives parsed — prevents duplicate

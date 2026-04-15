@@ -106,6 +106,40 @@ class ProjectSupervisor:
         self._orch_proc: Optional[subprocess.Popen] = None
         self._manually_stopped: bool = False
 
+        # Reattach to a still-running sentinel after a set-web restart. The
+        # supervisor's own status.json records the live daemon PID; if the
+        # process is alive we adopt it as-is so the manager keeps observing
+        # instead of treating it as stopped (and refusing to track it). The
+        # sentinel itself runs in its own session so it survives set-web
+        # restarts cleanly.
+        try:
+            status_json = (
+                Path(config.path) / ".set" / "supervisor" / "status.json"
+            )
+            if status_json.is_file():
+                import json as _json
+                persisted = _json.loads(status_json.read_text())
+                persisted_pid = persisted.get("daemon_pid")
+                if (
+                    isinstance(persisted_pid, int)
+                    and persisted_pid > 0
+                    and _is_alive(persisted_pid)
+                    and persisted.get("status") != "stopped"
+                ):
+                    self.sentinel_pid = persisted_pid
+                    self.sentinel_started_at = persisted.get("daemon_started_at")
+                    self.sentinel_spec = persisted.get("spec") or self.sentinel_spec
+                    self.orchestrator_pid = persisted.get("orchestrator_pid")
+                    self.orchestrator_started_at = persisted.get(
+                        "orchestrator_started_at"
+                    )
+                    logger.info(
+                        f"[{config.name}] Reattached to live sentinel "
+                        f"PID={persisted_pid}"
+                    )
+        except (OSError, ValueError, TypeError):
+            pass
+
     def _load_sentinel_prompt(self, spec: Optional[str] = None) -> str:
         """Load sentinel skill file as prompt, with fallback to hardcoded prompt.
 

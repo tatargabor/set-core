@@ -311,6 +311,31 @@ class GatePipeline:
             result.duration_ms = elapsed_ms
             result.gate_name = entry.name
 
+            # Archive test-results/ after every gate run that produced them,
+            # not just before a retry. Without this, a passing attempt whose
+            # screenshots the user wants to review gets clobbered the next
+            # time the agent re-runs Playwright (e.g. during cross-change
+            # debugging). Archive is idempotent — shutil.copytree with
+            # dirs_exist_ok merges file-by-file. The attempt number matches
+            # the retry counter's current value (the attempt that just ran).
+            if entry.name in ("e2e", "test", "smoke"):
+                try:
+                    _attempt_num = (
+                        self.change.extras.get(entry.own_retry_counter, 0)
+                        if entry.own_retry_counter
+                        else self._verify_retry_count
+                    ) + 1
+                    _archive_attempt_artifacts(
+                        self.change.worktree_path,
+                        self.change_name,
+                        attempt=_attempt_num,
+                    )
+                except Exception as exc:
+                    logger.debug(
+                        "Post-gate archive (%s) failed for %s: %s",
+                        entry.name, self.change_name, exc,
+                    )
+
             # Write gate result to state for dashboard visibility
             _gate_state_field = {
                 "build": "build_result", "test": "test_result",

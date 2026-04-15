@@ -182,15 +182,19 @@ class UnifiedService:
                     logger.error("[%s] Issue manager tick failed: %s", name, e)
 
     async def shutdown(self):
-        """Stop all tick loops and supervised processes."""
+        """Stop tick loops only — leave supervised sentinels alive.
+
+        Sentinels run in their own process groups and manage long E2E runs
+        that can take hours. Killing them when set-web restarts destroys
+        in-flight iterations and branches (observed: craftbrew-run
+        20260415-0146 lost 5h of cart-and-session work because a set-web
+        `systemctl restart` triggered this path mid-run). When set-web
+        starts back up it re-attaches via the per-project status markers,
+        so the sentinels survive the restart transparently.
+        """
         for task in self._tick_tasks:
             task.cancel()
-        for name, supervisor in self.supervisors.items():
-            try:
-                supervisor.stop_sentinel()
-            except Exception:
-                pass
-        logger.info("Unified service stopped")
+        logger.info("Unified service stopped (sentinels left running)")
 
     def status(self) -> dict:
         """Overall service status."""

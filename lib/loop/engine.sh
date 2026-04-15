@@ -109,14 +109,30 @@ cmd_run() {
             pkill -9 -P $$ 2>/dev/null || true
         fi
 
-        # Commit any uncommitted work (graceful shutdown WIP preservation)
+        # Commit any uncommitted work (graceful shutdown WIP preservation).
+        # Skip the commit entirely when the working tree contains deleted
+        # files — a shutdown interrupting mid-refactor, or a spurious
+        # test-results/ wipe, can leave committed source files marked
+        # deleted on disk. `git add -A` would stage those deletions and
+        # the resulting wip commit would silently destroy real work
+        # (observed: 1368 lines of cart implementation deleted by a
+        # graceful-shutdown commit during the craftbrew-run-20260415-0146
+        # E2E). When deletions are present, leave the worktree dirty —
+        # the orphan-cleanup archive (rename-with-timestamp) preserves
+        # full state for post-mortem instead.
         if [[ -d "$wt_path" ]]; then
-            local has_changes
-            has_changes=$(git -C "$wt_path" status --porcelain 2>/dev/null | head -1)
-            if [[ -n "$has_changes" ]]; then
-                echo "📦 Committing work-in-progress before exit..."
-                git -C "$wt_path" add -A 2>/dev/null || true
-                git -C "$wt_path" commit -m "wip: graceful shutdown — incomplete task" --no-verify 2>/dev/null || true
+            local porcelain deletion_count modified_count
+            porcelain=$(git -C "$wt_path" status --porcelain 2>/dev/null)
+            deletion_count=$(printf '%s\n' "$porcelain" | grep -c '^.D' || true)
+            modified_count=$(printf '%s\n' "$porcelain" | grep -c '^..[^[:space:]]' || true)
+            if [[ -n "$porcelain" ]]; then
+                if [[ "$deletion_count" -gt 0 ]]; then
+                    echo "⚠️  Shutdown: $deletion_count deleted file(s) in worktree — skipping wip commit to avoid data loss. Worktree state preserved on disk."
+                elif [[ "$modified_count" -gt 0 ]]; then
+                    echo "📦 Committing work-in-progress before exit..."
+                    git -C "$wt_path" add -A 2>/dev/null || true
+                    git -C "$wt_path" commit -m "wip: graceful shutdown — incomplete task" --no-verify 2>/dev/null || true
+                fi
             fi
             # Write last_commit to loop-state
             local head_commit
