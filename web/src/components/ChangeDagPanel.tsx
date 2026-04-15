@@ -77,7 +77,7 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layout.edges)
   const rfApi = useReactFlow()
-  const { fitView, setViewport, getViewport, setCenter } = rfApi
+  const { fitView, getViewport, setCenter } = rfApi
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Initialize to '' (not the current layout's id-set) so the very first
   // effect tick sees `prevIdSet !== newIdSet` → wasEmpty=true → pendingFit=true.
