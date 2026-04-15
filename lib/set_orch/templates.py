@@ -254,6 +254,32 @@ Check for issues IN THE DIFF ABOVE (not hypothetical missing features):
 4. Data integrity: missing validation, race conditions, data loss risks
 5. Error handling: unhandled exceptions that crash the app
 
+## Exhaustive Single-Pass Scan — MANDATORY
+Emit EVERY CRITICAL and HIGH issue you can find in this single review pass.
+Do NOT defer findings to a future round.
+
+When you identify an issue in a function, EXAMINE every other branch of that same function
+for analogous bugs before moving on:
+
+- Found a fail-open in a `try/catch` → check every other catch in the file for the same pattern.
+- Found a missing null-check in the happy path → check the error/fallback paths for the same miss.
+- Found an unchecked cast → check every cast in the same function.
+- Found a race in one transaction → check sibling transactions.
+- Found a missing auth check on one admin route → enumerate EVERY admin route in the diff.
+
+A partial review that surfaces one issue per round is a FAILURE mode — it wastes retry budget
+and ships bugs in adjacent branches that you could have flagged together. For each function
+you flag, include every issue you find in it in THIS review.
+
+Before you emit your findings, run this mental checklist over each file you flagged:
+- [ ] Happy path branches
+- [ ] Every `catch` / `.catch()` / error recovery branch
+- [ ] Every fallback / default / `else` branch
+- [ ] Every concurrent / transactional boundary
+- [ ] Every type coercion / assertion / cast
+- [ ] Every auth / tenant-scope assertion
+If any checklist item has not been actively scanned, scan it now before emitting.
+
 For each issue found, classify severity per the rubric above: CRITICAL, HIGH, MEDIUM, LOW.
 
 Output format:
