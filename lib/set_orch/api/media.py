@@ -130,6 +130,27 @@ def _scan_archived_attempts(project_path: Path, change_name: str) -> list[dict]:
         items += _scan_attempt_dir(rt_screenshots / "attempts" / change_name)
     except Exception:
         pass
+    # Location 3: merger's post-merge archive (flat test-results dump, no
+    # attempt-N nesting). Only consulted when no per-attempt data exists —
+    # this covers older merged changes whose E2E gate ran before the
+    # per-attempt runtime-copy logic landed. Treat the whole dump as the
+    # final (highest) attempt so the UI groups it alongside newer runs.
+    if not items:
+        merger_dump = project_path / "set" / "orchestration" / "artifacts" / change_name / "test-results"
+        if merger_dump.is_dir():
+            for f in sorted(merger_dump.rglob("*")):
+                if not f.is_file():
+                    continue
+                kind = _classify_artifact(f)
+                if not kind:
+                    continue
+                items.append({
+                    "path": str(f),
+                    "name": f.name,
+                    "type": kind,
+                    "test": f.parent.name,
+                    "attempt": 1,
+                })
     # Deduplicate on path — the same file could land in multiple roots if a
     # run was interrupted and resumed.
     seen: set[str] = set()
@@ -145,13 +166,14 @@ def _scan_archived_attempts(project_path: Path, change_name: str) -> list[dict]:
 
 @router.get("/api/{project}/changes/{name}/screenshots")
 def get_change_screenshots(project: str, name: str):
-    """List test artifacts for a change (screenshots, traces, reports).
+    """List test artifacts for a change — runtime archive only.
 
-    Returns artifacts from both: (a) the worktree's current test-results/
-    (= latest attempt) and (b) archived previous attempts in
-    set/orchestration/attempts/<change>/attempt-N/. Each artifact carries
-    an `attempt` field (int) so the UI can group by attempt. The final
-    passing attempt is labelled with the highest attempt number.
+    Reads exclusively from the runtime screenshot archive populated by
+    the E2E gate and the pre-retry archive. The worktree's live
+    `test-results/` is NEVER served: Playwright overwrites it on every
+    run, so paths there go stale the moment the agent re-runs tests.
+    If no archived attempts exist yet, returns an empty list — the UI
+    should show "no artifacts" until the first E2E gate completes.
     """
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
@@ -162,63 +184,17 @@ def get_change_screenshots(project: str, name: str):
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
 
-    def _pack(current: list[dict], archived: list[dict]) -> dict:
-        # Annotate current (= latest) artifacts with the next attempt number
-        # — archived attempts go from 1..N, current is N+1.
-        next_attempt = (max((a["attempt"] for a in archived), default=0) + 1) if archived else 1
-        for a in current:
-            a.setdefault("attempt", next_attempt)
-        all_artifacts = archived + current
-        all_artifacts.sort(key=lambda x: (x.get("attempt", 0), x.get("name", "")))
-        images = [a for a in all_artifacts if a.get("type") == "image"]
-        return {
-            "artifacts": all_artifacts,
-            "smoke": [],
-            "e2e": images,
-            "attempts": sorted({a.get("attempt", 0) for a in all_artifacts}),
-        }
-
     for c in state.changes:
         if c.name == name:
             archived = _scan_archived_attempts(project_path, name)
-
-            # Try profile-collected artifacts first
-            artifacts = c.extras.get("test_artifacts")
-            if artifacts:
-                return _pack(list(artifacts), archived)
-
-            # Fallback: live scan from worktree (if no cached artifacts)
-            wt_path = c.worktree_path
-            if wt_path and os.path.isdir(wt_path):
-                try:
-                    from ..profile_loader import load_profile
-                    profile = load_profile(wt_path)
-                    artifacts = profile.collect_test_artifacts(wt_path)
-                    if artifacts:
-                        # Cache for next request
-                        from ..state import locked_state
-                        with locked_state(str(sp)) as _st:
-                            _ch = next((x for x in _st.changes if x.name == name), None)
-                            if _ch:
-                                _ch.extras["test_artifacts"] = artifacts
-                                images = [a for a in artifacts if a.get("type") == "image"]
-                                _ch.extras["e2e_screenshot_count"] = len(images)
-                        return _pack(list(artifacts), archived)
-                except Exception:
-                    pass
-
-            # Final fallback: legacy screenshot dirs
-            current: list[dict] = []
-            e2e_dir = getattr(c, "e2e_screenshot_dir", None) or c.extras.get("e2e_screenshot_dir")
-            if e2e_dir:
-                ed = Path(e2e_dir) if os.path.isabs(e2e_dir) else project_path / e2e_dir
-                if ed.is_dir():
-                    for f in sorted(ed.rglob("*.png")):
-                        current.append({
-                            "path": str(f), "name": f.name,
-                            "type": "image", "test": f.parent.name,
-                        })
-            return _pack(current, archived)
+            archived.sort(key=lambda x: (x.get("attempt", 0), x.get("name", "")))
+            images = [a for a in archived if a.get("type") == "image"]
+            return {
+                "artifacts": archived,
+                "smoke": [],
+                "e2e": images,
+                "attempts": sorted({a.get("attempt", 0) for a in archived}),
+            }
     raise HTTPException(404, f"Change not found: {name}")
 
 
