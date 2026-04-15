@@ -67,7 +67,7 @@ cmd_run() {
     stall_threshold=$(jq -r '.stall_threshold // 2' "$state_file")
     local max_idle_iters
     max_idle_iters=$(jq -r '.max_idle_iterations // 3' "$state_file")
-    iteration_timeout_min=$(jq -r '.iteration_timeout_min // 45' "$state_file")
+    iteration_timeout_min=$(jq -r '.iteration_timeout_min // 90' "$state_file")
     label=$(jq -r '.label // empty' "$state_file")
     permission_mode=$(jq -r '.permission_mode // "default"' "$state_file")
     local claude_model

@@ -53,7 +53,7 @@ init_loop_state() {
     local done_criteria="$5"
     local capacity_limit="$6"
     local stall_threshold="${7:-$DEFAULT_STALL_THRESHOLD}"
-    local iteration_timeout="${8:-45}"
+    local iteration_timeout="${8:-90}"
     local label="${9:-}"
     local change="${10:-}"
 

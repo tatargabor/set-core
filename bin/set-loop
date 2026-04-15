@@ -91,7 +91,7 @@ Start Options:
   --max <n>                Max iterations (default: 10)
   --stall-threshold <n>    Stall after N commit-less iterations (default: 2)
   --max-idle <n>           Stop after N identical-output iterations (default: 3)
-  --iteration-timeout <n>  Per-iteration timeout in minutes (default: 45)
+  --iteration-timeout <n>  Per-iteration timeout in minutes (default: 90)
   --capacity-limit <pct>   Stop if capacity exceeds (default: 80%)
   --permission-mode <mode> Claude permission mode: auto-accept|allowedTools|plan (default: config)
   --model <name>           Claude model: opus|sonnet|haiku or full ID (default: opus from config)
@@ -144,7 +144,7 @@ cmd_start() {
     local capacity_limit="$DEFAULT_CAPACITY_LIMIT"
     local stall_threshold="$DEFAULT_STALL_THRESHOLD"
     local max_idle_iterations=3
-    local iteration_timeout=45
+    local iteration_timeout=90
     local permission_mode_override=""
     local model_override=""
     local force_start=false
