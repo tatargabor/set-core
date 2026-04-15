@@ -26,13 +26,18 @@ _TEMPLATE = (
 
 
 def test_global_setup_imports_and_helpers_present():
-    """Guard the text of global-setup.ts so the BUILD_COMMIT + kill-stale
-    behaviors don't silently regress if someone edits the file.
+    """Guard the text of global-setup.ts so the BUILD_COMMIT behavior
+    doesn't silently regress if someone edits the file.
     """
     src = _TEMPLATE.read_text()
-    # Stale-process kill (T1.3.1 §1)
-    assert "killStaleProcessOnPort" in src, src
-    assert '"lsof"' in src and '-ti' in src, "must shell out to lsof for port discovery"
+    # NOTE: stale-process kill was MOVED to the gate-runner layer (Python).
+    # globalSetup runs AFTER Playwright's webServer has bound the port, so
+    # kill logic here would kill our own server. See set_project_web.gates
+    # ._kill_stale_listeners_on_port.
+    assert "killStaleProcessOnPort" not in src, (
+        "globalSetup must NOT kill processes on PW_PORT — it would kill "
+        "Playwright's own webServer. That cleanup lives in the gate runner."
+    )
     # Build-commit marker (T1.3.1 §2)
     assert "BUILD_COMMIT" in src
     assert "invalidateStaleBuild" in src

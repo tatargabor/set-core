@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { execSync, spawnSync } from "child_process";
+import { execSync } from "child_process";
 import { createHash } from "crypto";
 import {
   existsSync,
@@ -21,36 +21,6 @@ function log(msg: string): void {
 
 function warn(msg: string): void {
   console.warn(`[global-setup] ${msg}`);
-}
-
-/**
- * Kill any process bound to PW_PORT. A zombie `next start` left over from a
- * previous crashed gate run would otherwise bind the port and cause Playwright's
- * webServer to fail with "port already in use" — then the test suite hangs
- * waiting on a server that never comes up, burning the whole gate budget.
- */
-function killStaleProcessOnPort(port: number): void {
-  if (!port || !Number.isFinite(port)) return;
-  if (process.platform !== "linux" && process.platform !== "darwin") {
-    log(`platform ${process.platform} — skipping stale-process kill`);
-    return;
-  }
-  const lsof = spawnSync("lsof", ["-ti", `:${port}`], { encoding: "utf8" });
-  if (lsof.status === null || !lsof.stdout) return;
-  const pids = lsof.stdout
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter((s) => /^\d+$/.test(s));
-  if (pids.length === 0) return;
-  warn(`killing ${pids.length} stale process(es) on port ${port}: ${pids.join(", ")}`);
-  for (const pid of pids) {
-    try {
-      process.kill(Number(pid), "SIGKILL");
-    } catch (err) {
-      warn(`kill ${pid} failed: ${(err as Error).message}`);
-    }
-  }
 }
 
 /**
@@ -124,10 +94,10 @@ async function globalSetup() {
   // NEXTAUTH_SECRET is generated at the top of playwright.config.ts so the
   // webServer child process inherits it via the `...process.env` spread.
   // globalSetup runs AFTER webServer is spawned and cannot influence its env.
-
-  // Kill any zombie process on our assigned port BEFORE Next.js tries to bind.
-  const port = Number(process.env.PW_PORT || process.env.PORT || 0);
-  killStaleProcessOnPort(port);
+  //
+  // Zombie port cleanup lives in the orchestrator gate-runner (Python side)
+  // because globalSetup runs AFTER Playwright's webServer has already bound
+  // the port — killing anything listening here would kill our own server.
 
   // Stale .next cache causes clientReferenceManifest errors after merges.
   // The BUILD_COMMIT marker replaces the previous "always rm -rf" behavior
