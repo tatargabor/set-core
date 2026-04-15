@@ -371,6 +371,30 @@ def _get_or_create_e2e_baseline(
         os.close(lock_fd)
 
 
+_FLAKY_SUMMARY_RE = re.compile(r"(?:^|\s)(\d+)\s+flaky\b", re.MULTILINE)
+
+
+def _count_flaky_tests(output: str) -> int:
+    """Extract Playwright's "N flaky" count from the summary line.
+
+    Playwright emits a summary like:
+        1 flaky
+          [chromium] > tests/e2e/foo.spec.ts:42 > ...
+        40 passed (45.0s)
+
+    When a test passes only on retry, Playwright exit_code is 0 but the
+    summary reports flaky > 0. We treat flaky > 0 as gate failure in
+    orchestration mode so hidden races don't ship green.
+    """
+    if not output:
+        return 0
+    # Strip ANSI and scan for summary lines. Take MAX across matches
+    # because large suites may print the count multiple times.
+    clean = _ANSI_ESCAPE_RE.sub("", output)
+    counts = [int(m.group(1)) for m in _FLAKY_SUMMARY_RE.finditer(clean)]
+    return max(counts) if counts else 0
+
+
 def _kill_stale_listeners_on_port(port: int) -> None:
     """Kill any process bound to `port` — best-effort, non-fatal on failure.
 
@@ -585,7 +609,20 @@ def execute_e2e_gate(
             change_name, ", ".join(runtime_errors),
         )
 
-    if raw_status == "pass":
+    # Flaky detection — parse Playwright's summary for "N flaky" and treat
+    # it as failure even when exit_code is 0. A test that passes only on
+    # retry is a REAL bug for production users who don't retry. Only applies
+    # when the gate asked for `PW_FLAKY_FAILS=1` in env (orchestration mode);
+    # local dev can still use retries.
+    flaky_count = _count_flaky_tests(e2e_output) if e2e_env.get("PW_FLAKY_FAILS") else 0
+    if flaky_count > 0:
+        logger.warning(
+            "E2E flaky tests detected for %s: %d flaky (orchestration treats "
+            "flaky as failure — set PW_FLAKY_FAILS=0 to allow retries)",
+            change_name, flaky_count,
+        )
+
+    if raw_status == "pass" and flaky_count == 0:
         # Pass the full captured output to gate_runner — it handles
         # pattern-preserving truncation to 32KB at the storage boundary.
         if runtime_errors:
@@ -597,6 +634,37 @@ def execute_e2e_gate(
             output_text = e2e_output
         return GateResult(
             "e2e", "pass", output=output_text,
+            stats=parse_test_output(e2e_output) if e2e_output else None,
+        )
+
+    # Flaky-as-failure path — exit_code was 0 but Playwright reported N flaky.
+    # Treat as fail with a retry_context that names the flakiness root cause.
+    if raw_status == "pass" and flaky_count > 0:
+        scope = change.scope or ""
+        return GateResult(
+            "e2e", "fail",
+            output=(
+                f"E2E: {flaky_count} flaky test(s) — Playwright passed them on retry "
+                f"but they FAILED on first run. Production users do NOT get retries.\n\n"
+                f"Treat flakiness as a real bug: race condition, missing await, "
+                f"dependency-ordering issue, or stale state between tests.\n\n"
+                + e2e_output
+            ),
+            retry_context=(
+                f"E2E gate failed: {flaky_count} test(s) were FLAKY. Playwright passed them "
+                f"on retry (exit_code=0) but they FAILED on the first run. A test that only "
+                f"passes on retry indicates a REAL bug — typically:\n"
+                f"  * A race between DB write and subsequent read (commit timing)\n"
+                f"  * A missing `await` that lets the next step race\n"
+                f"  * Auto-login after registration racing with session cookie propagation\n"
+                f"  * Stale state from a prior test (cleanup / beforeEach missing)\n\n"
+                f"Production users experience the first-run behavior, never the retry. Fix "
+                f"the race/cleanup/await — do NOT add explicit Playwright retries, do NOT "
+                f"add arbitrary waits. Identify and eliminate the root cause.\n\n"
+                f"Check the `test-failed-*.png` screenshots under `test-results/` for the\n"
+                f"first-run failure state — those show exactly what the user sees.\n\n"
+                f"Original scope: {scope}"
+            ),
             stats=parse_test_output(e2e_output) if e2e_output else None,
         )
 

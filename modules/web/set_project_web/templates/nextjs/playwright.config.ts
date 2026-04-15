@@ -41,7 +41,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 1,
+  // Retries hide flakiness. Orchestration gates set PW_FLAKY_FAILS=1 so the
+  // suite runs with 0 retries — any failure is a REAL bug, not hardware jitter.
+  // Local dev keeps the 1-retry comfort; CI (outside orchestration) keeps 2.
+  retries: process.env.PW_FLAKY_FAILS ? 0 : process.env.CI ? 2 : 1,
   // Per-test cap. 30s is enough for typical interactions; assertion-heavy
   // tests can override locally with test.setTimeout().
   timeout: 30_000,

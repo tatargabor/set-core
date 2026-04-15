@@ -134,7 +134,49 @@ test('admin can edit product', async ({ page }) => {
 **E2E signature:** admin tests fail sporadically with "expected
 /admin, got /login" — the session expired or the signin request flaked.
 
-## 5. REQ-id comment convention on specs
+## 5. Registration → auto-login races
+
+A common pattern: `registerAction` calls `prisma.user.create({...})` then
+immediately calls `signIn("credentials", {...})` to auto-log-in the new user.
+This is race-prone — NextAuth's credentials provider re-queries the DB, and
+the session cookie must reach the client before the client-side redirect
+reads it.
+
+**Wrong — silent partial success:**
+```typescript
+"use server";
+export async function registerAction(input: RegisterInput) {
+  await prisma.user.create({ data: { ... } });
+  await signIn("credentials", { email, password, redirect: false });
+  redirect("/fiokom");
+}
+```
+Observed failure: `signIn()` throws `CredentialsSignin`; the page stays on
+`/regisztracio` without an error. User thinks registration failed but actually
+succeeded (their row is in the DB). E2E tests flake: first attempt fails, retry
+passes once timing stabilizes.
+
+**Correct — commit the user, handle the signIn failure explicitly:**
+```typescript
+"use server";
+export async function registerAction(input: RegisterInput) {
+  const user = await prisma.user.create({ data: { ... } });
+  try {
+    await signIn("credentials", { email, password, redirect: false });
+  } catch (err) {
+    // Registration succeeded; auto-login failed. Tell the user to log in.
+    redirect(`/belepes?registered=1&email=${encodeURIComponent(email)}`);
+  }
+  redirect("/fiokom");
+}
+```
+
+**E2E signature:** `REQ-AUTH-*` tests that register-then-expect-redirect flake
+— first run fails with `19× unexpected value "/hu/regisztracio"`, retry
+passes. The orchestration e2e gate with `PW_FLAKY_FAILS=1` catches this as a
+real failure. Locally, `retries: 1` masks the bug.
+
+## 6. REQ-id comment convention on specs
 
 Every e2e test file should declare the REQ-ids it covers at the top of the
 file. This lets the orchestrator scope-filter `npx playwright test` to only
@@ -166,4 +208,5 @@ current change (see Tier 2: cross-change regression detection).
 | "my X" shows somebody else's X | #2 upsert unique-key |
 | locator timeout on an element that is visible | #3 testid naming |
 | auth-dependent tests fail sporadically | #4 storageState |
-| current-change gate fails on another change's test | #5 REQ-id comments |
+| register succeeds, user sees empty registration page | #5 register→signIn race |
+| current-change gate fails on another change's test | #6 REQ-id comments |

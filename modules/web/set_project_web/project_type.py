@@ -1137,6 +1137,13 @@ class WebProjectType(CoreProfile):
             # when invoked by AI agents. Orchestration gates always run against
             # dev/test databases, so consent is implicit.
             "PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION": "true",
+            # Orchestration context — retries HIDE bugs. The craftbrew-run-*
+            # auth-and-accounts gate passed with a legitimate race in
+            # registration→auto-login because Playwright retried the flaky
+            # test and the 2nd attempt passed. Prod users don't get retries.
+            # Setting PW_FLAKY_FAILS=1 means: any failure (even with retries
+            # configured in the template) is a real failure.
+            "PW_FLAKY_FAILS": "1",
         }
         if timeout_seconds is not None and timeout_seconds > 0:
             env["PW_TIMEOUT"] = str(int(timeout_seconds))
