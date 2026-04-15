@@ -1020,6 +1020,24 @@ class WebProjectType(CoreProfile):
                 "message": "Secret-like env var exposed via NEXT_PUBLIC_ prefix — use server-only env vars",
                 "file_glob": "*.ts",
             },
+            {
+                "pattern": r"screenshot\s*:\s*['\"]only-on-failure['\"]",
+                "severity": "critical",
+                "message": "Playwright screenshot mode must be 'on' — every attempt's artifacts are archived per-attempt so the user can verify tests actually re-ran. 'only-on-failure' leaves green runs with zero evidence.",
+                "file_glob": "playwright*.config.*",
+            },
+            {
+                "pattern": r"screenshot\s*:\s*['\"]off['\"]|screenshot\s*:\s*false",
+                "severity": "critical",
+                "message": "Playwright screenshot must not be disabled — the per-attempt archive requires artifacts from every run.",
+                "file_glob": "playwright*.config.*",
+            },
+            {
+                "pattern": r"reporter\s*:\s*['\"]html['\"]",
+                "severity": "warning",
+                "message": "Playwright 'html' reporter buffers all artifacts until suite end — combined with screenshot: 'on' it has caused OOM (SIGKILL) on realistic suites. Use 'list' instead.",
+                "file_glob": "playwright*.config.*",
+            },
         ]
 
     def pre_dispatch_checks(self, change_type: str, wt_path: str) -> List[str]:

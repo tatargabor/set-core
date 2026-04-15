@@ -180,10 +180,21 @@ The orchestrator sets `PW_PORT` env var per worktree (random in 3100-3999) to av
 ```typescript
 const PORT = process.env.PW_PORT ? parseInt(process.env.PW_PORT) : 3100;
 export default defineConfig({
+  // `list` — NOT `html`. `html` buffers every artifact until suite end and
+  // has caused OOM (SIGKILL) when combined with `screenshot: 'on'` on
+  // realistic suites. `list` streams output and is parseable by the
+  // orchestrator's failure extractor.
+  reporter: 'list',
   use: {
     baseURL: `http://localhost:${PORT}`,
     headless: true,  // explicit — never open a browser window in CI/agent pipelines
+    // ALWAYS — pass and fail. The per-attempt archive relies on every
+    // run producing artifacts so the user can verify tests actually
+    // re-executed after a fix. `'only-on-failure'` is FORBIDDEN (flagged
+    // by the rules gate) — a green run with zero screenshots is
+    // indistinguishable from a run that never executed.
     screenshot: 'on',
+    trace: 'on',
   },
   webServer: {
     command: `pnpm dev --port ${PORT}`,
@@ -194,6 +205,13 @@ export default defineConfig({
   globalSetup: './tests/e2e/global-setup.ts',
 });
 ```
+
+### Screenshot capture — MANDATORY per-attempt
+
+- `screenshot: 'on'` — every test, pass and fail. FORBIDDEN: `'only-on-failure'`, `'off'`, `false`. The rules gate flags these as critical.
+- `trace: 'on'` — every test. FORBIDDEN: `'on-first-retry'`, `'off'`. Per-attempt archive needs traces too.
+- `reporter: 'list'` — NOT `'html'` (OOM risk with `screenshot: 'on'`). The rules gate warns on `'html'`.
+- Rationale: The orchestrator archives `test-results/` to `<runtime>/screenshots/e2e/<change>/attempt-N/` after every E2E gate run. A passing run with zero artifacts is indistinguishable from a run that never executed — the user cannot verify the fix actually re-triggered the tests. Always-on capture is the forensic contract.
 
 ## DB Isolation for E2E Tests
 

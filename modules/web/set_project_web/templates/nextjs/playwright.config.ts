@@ -65,10 +65,17 @@ export default defineConfig({
     baseURL: `http://localhost:${port}`,
     headless: true,
     locale: "en-US",
-    // only-on-failure: screenshots for green tests waste disk and memory with
-    // no diagnostic value. Orchestration reads screenshots from retries anyway.
-    screenshot: "only-on-failure",
-    trace: "on-first-retry",
+    // ALWAYS capture screenshots + trace — pass and fail alike. These are the
+    // primary forensic artifact when review gates debate whether "this test
+    // passed because the fix worked" vs "this test passed because it never
+    // actually rendered the change". Skipping green captures hides that from
+    // the dashboard's per-attempt gallery. Memory pressure is mitigated by
+    // `reporter: "list"` above — the OOM incident (craftbrew-run-20260415-0146)
+    // was `html` reporter buffering everything, not the capture mode itself.
+    // Do NOT downgrade to "only-on-failure" — the per-attempt archive relies
+    // on every run having artifacts so the user can verify tests re-executed.
+    screenshot: "on",
+    trace: "on",
     // Action and navigation defaults — Playwright's defaults (no timeout)
     // cause hung tests to consume globalTimeout instead of failing fast.
     actionTimeout: 10_000,
