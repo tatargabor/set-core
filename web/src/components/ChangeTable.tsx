@@ -42,11 +42,54 @@ function changeDuration(c: ChangeInfo): number | undefined {
   return (end - start) / 1000
 }
 
+interface ArtifactCounts {
+  attempts: number
+  files: number
+  images: number
+}
+
 export default function ChangeTable({ changes, project, selected, onSelect }: Props) {
   const [expandedGate, setExpandedGate] = useState<string | null>(null)
   const [screenshotChange, setScreenshotChange] = useState<string | null>(null)
   const isMobile = useIsMobile()
   const rowRefs = useRef<Map<string, HTMLElement | null>>(new Map())
+  // Per-change live artifact counts. Keyed by change name. Populated by
+  // fetching /screenshots lazily — the cached state fields
+  // (e2e_screenshot_count / smoke_screenshot_count) are stale whenever a
+  // new attempt runs, so we refresh here and after the user hits scan.
+  const [artifactCounts, setArtifactCounts] = useState<Record<string, ArtifactCounts>>({})
+
+  const refreshArtifactCounts = (changeName: string) => {
+    fetch(`/api/${project}/changes/${changeName}/screenshots`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d) => {
+        if (!d) return
+        const artifacts: Array<{ type?: string; attempt?: number }> = d.artifacts ?? []
+        const images = artifacts.filter(a => a.type === 'image').length
+        const attempts = new Set(
+          artifacts
+            .map(a => a.attempt)
+            .filter((x): x is number => typeof x === 'number'),
+        ).size
+        setArtifactCounts(prev => ({
+          ...prev,
+          [changeName]: { attempts, files: artifacts.length, images },
+        }))
+      })
+      .catch(() => {})
+  }
+
+  // Initial fetch: one pass for every change that either has a worktree or
+  // any indication of past artifacts. Runs once per change-list change.
+  useEffect(() => {
+    const candidates = changes.filter(c =>
+      c.worktree_path || c.e2e_screenshot_count || c.smoke_screenshot_count,
+    )
+    for (const c of candidates) {
+      refreshArtifactCounts(c.name)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, changes.map(c => c.name).join('|')])
 
   // Auto-scroll the selected row into view. Drives two behaviors:
   //   1) auto-follow flips selectedChange to a new running change → the row
@@ -188,7 +231,12 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
           <th className="text-right px-2 py-2 font-medium">Duration</th>
           <th className="text-right px-2 py-2 font-medium">Tokens</th>
           <th className="text-center px-2 py-2 font-medium">Gates</th>
-          <th className="text-center px-2 py-2 font-medium">Files</th>
+          <th
+            className="text-center px-2 py-2 font-medium"
+            title="Test artifacts: attempts / total files"
+          >
+            Att/Files
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -246,33 +294,55 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                 </div>
               </td>
               <td className="px-2 py-2 text-center">
-                {(c.e2e_screenshot_count || c.smoke_screenshot_count) ? (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setScreenshotChange(screenshotChange === c.name ? null : c.name) }}
-                    className="px-2 py-0.5 text-xs rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors"
-                    title="View test artifacts"
-                  >
-                    {(c.e2e_screenshot_count || 0) + (c.smoke_screenshot_count || 0)} files
-                  </button>
-                ) : c.worktree_path ? (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      // Always open the gallery — it surfaces archived
-                      // previous-attempt artifacts even when the current
-                      // worktree has none, and shows a helpful empty-state
-                      // message otherwise (so "scan does nothing" never
-                      // happens again).
-                      setScreenshotChange(screenshotChange === c.name ? null : c.name)
-                    }}
-                    className="px-2 py-0.5 text-xs rounded bg-neutral-800/50 text-neutral-600 hover:bg-neutral-700 hover:text-neutral-300 transition-colors"
-                    title="Open artifact gallery (scans worktree + archived attempts)"
-                  >
-                    scan
-                  </button>
-                ) : (
-                  <span className="text-neutral-700">—</span>
-                )}
+                {(() => {
+                  // Prefer live counts fetched from /screenshots; fall back to
+                  // the state snapshot only while the first fetch is in flight.
+                  const live = artifactCounts[c.name]
+                  const hasAny =
+                    (live && live.files > 0) ||
+                    c.e2e_screenshot_count || c.smoke_screenshot_count
+                  if (hasAny) {
+                    const attempts = live?.attempts ?? 1
+                    const files =
+                      live?.files ??
+                      ((c.e2e_screenshot_count || 0) + (c.smoke_screenshot_count || 0))
+                    return (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setScreenshotChange(screenshotChange === c.name ? null : c.name)
+                          refreshArtifactCounts(c.name)
+                        }}
+                        className="px-2 py-0.5 text-xs rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors"
+                        title={`${attempts} attempt${attempts === 1 ? '' : 's'} · ${files} file${files === 1 ? '' : 's'} — click to open gallery`}
+                      >
+                        <span className="text-neutral-500">{attempts}</span>
+                        <span className="text-neutral-600 mx-0.5">/</span>
+                        <span>{files}</span>
+                      </button>
+                    )
+                  }
+                  if (c.worktree_path) {
+                    return (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // Always open the gallery — it surfaces archived
+                          // previous-attempt artifacts even when the current
+                          // worktree has none, and refetches counts so the
+                          // column refreshes after a new e2e run.
+                          setScreenshotChange(screenshotChange === c.name ? null : c.name)
+                          refreshArtifactCounts(c.name)
+                        }}
+                        className="px-2 py-0.5 text-xs rounded bg-neutral-800/50 text-neutral-600 hover:bg-neutral-700 hover:text-neutral-300 transition-colors"
+                        title="Open artifact gallery (scans worktree + archived attempts)"
+                      >
+                        scan
+                      </button>
+                    )
+                  }
+                  return <span className="text-neutral-700">—</span>
+                })()}
               </td>
             </tr>
             {isGateExpanded && hasGates && (

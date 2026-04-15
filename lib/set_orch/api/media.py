@@ -227,10 +227,14 @@ _ALLOWED_EXTENSIONS = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
+    ".webm": "video/webm",
+    ".mp4": "video/mp4",
     ".zip": "application/zip",
     ".json": "application/json",
     ".html": "text/html",
     ".log": "text/plain",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
 }
 
 
@@ -251,7 +255,9 @@ def serve_screenshot(project: str, file_path: str):
     media_type = _ALLOWED_EXTENSIONS.get(full_path.suffix.lower())
     if not full_path.exists() or media_type is None:
         raise HTTPException(404, "Artifact not found")
-    # Security: only serve files within the project repo or its worktrees
+    # Security: only serve files within the project repo, its worktrees,
+    # or the runtime screenshots/logs dir (per-attempt archives live there
+    # and outlive the worktrees).
     resolved = full_path.resolve()
     project_path = _resolve_project(project)
     allowed_roots = [project_path.resolve()]
@@ -267,6 +273,16 @@ def serve_screenshot(project: str, file_path: str):
                         allowed_roots.append(wt)
         except Exception:
             pass
+    # Per-attempt archive + runtime screenshot dirs live under
+    # ~/.local/share/set-core/runtime/<project>/. Without this whitelist
+    # the gallery 403s on every archived attempt's image/md/trace.
+    try:
+        from ..paths import SetRuntime
+        rt_root = Path(SetRuntime(str(project_path)).root)
+        if rt_root.is_dir():
+            allowed_roots.append(rt_root.resolve())
+    except Exception:
+        pass
     if not any(resolved.is_relative_to(root) for root in allowed_roots):
         raise HTTPException(403, "Access denied")
     filename = full_path.name
