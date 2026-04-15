@@ -483,9 +483,23 @@ def _cleanup_orphans(state_file: str) -> None:
                 should_remove = True
                 reason = "no state entry"
             elif change.status in ("merged", "done"):
-                # Change completed — worktree should be cleaned
+                # Change completed. HONOR the orchestration.yaml
+                # `worktree_retention` policy here — the merger already
+                # does the same for the fresh-after-merge path. Without
+                # this, a monitor restart (e.g. after sentinel restart
+                # or a new phase kicking off) treated "merged" as free
+                # licence to force-remove, losing the preserved worktree
+                # the user wanted to inspect.
+                from .merger import _resolve_retention
+                retention = _resolve_retention()
+                if retention == "keep":
+                    logger.debug(
+                        "Worktree for %s (%s) kept per retention=keep",
+                        change_name, change.status,
+                    )
+                    continue
                 should_remove = True
-                reason = f"status={change.status}"
+                reason = f"status={change.status}, retention={retention}"
             elif change.status in active_statuses:
                 # Active change — don't touch
                 continue
