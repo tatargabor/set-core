@@ -67,7 +67,11 @@ interface InnerProps {
 // rows stay reachable by scrolling up with the mouse wheel).
 const ROW_STRIDE_PX = 150
 const MAX_ROWS_VISIBLE = 2.5
-const MIN_READABLE_ZOOM = 0.7
+// Hard floor. At zoom < 1.0 the gate-node text becomes smudgy and the user
+// cannot read which gate is which. Raised explicitly — the previous 0.7
+// still let ReactFlow's built-in fitView squeeze 8 rows into 640px at
+// ~0.53 zoom, which is exactly the illegible-smudge case we're preventing.
+const MIN_READABLE_ZOOM = 1.0
 
 function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes)
@@ -171,7 +175,10 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
         nodeTypes={NODE_TYPES}
-        fitView
+        // NO `fitView` prop — ReactFlow's built-in fit ignores our readable-
+        // zoom floor and races our own setViewport call. We own the initial
+        // viewport (see the effect above): targetZoom clamped to
+        // [MIN_READABLE_ZOOM, 1.2], bottom-anchored on the last attempt.
         minZoom={0.3}
         maxZoom={2}
         nodesDraggable={false}

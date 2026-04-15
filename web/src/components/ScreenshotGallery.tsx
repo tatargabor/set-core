@@ -161,23 +161,15 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
     // Fill the parent flex slot — the modal wrapper decides height. We only
     // need flex-col + min-h-0 so our inner flex children can shrink properly.
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Refresh button is the only chrome we add — the parent modal already
-          renders the "Test Artifacts: <change>" title row + close (×). A
-          second header here just duplicated both. */}
-      <div className="flex items-center justify-end px-4 pt-1 pb-1">
-        <button
-          onClick={loadArtifacts}
-          className="text-xs text-neutral-600 hover:text-neutral-300 px-1.5 py-0.5 rounded hover:bg-neutral-800 transition-colors"
-          title="Re-scan worktree for artifacts"
-        >
-          Refresh
-        </button>
-      </div>
-
-      {/* Attempt TABS. One tab per attempt (no "all" mix — the user asked
-          for the view to always be scoped to a single attempt). */}
+      {/* Attempt TABS + Refresh on one row. `overflow-y-hidden` is explicit
+          because `overflow-x-auto` by itself leaves vertical overflow visible,
+          and the tabs' `-mb-px` pulls 1px past the border → a vertical
+          scrollbar would appear on the right side of the tab row. */}
       {attempts.length > 0 && (
-        <div className="flex items-center gap-0 px-3 border-b border-neutral-800 overflow-x-auto">
+        <div
+          className="flex items-center gap-0 px-3 border-b border-neutral-800 overflow-x-auto"
+          style={{ overflowY: 'hidden' }}
+        >
           {attempts.map(n => {
             const c = attemptCounts.get(n) ?? { images: 0, others: 0 }
             const effectiveActive = (attemptFilter ?? attempts[attempts.length - 1]) === n
@@ -195,6 +187,17 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
               </TabBtn>
             )
           })}
+          {/* Refresh sits on the tab-bar baseline on the right, outside the
+              tab group so it doesn't overflow sideways. */}
+          <div className="ml-auto pr-1">
+            <button
+              onClick={loadArtifacts}
+              className="text-xs text-neutral-600 hover:text-neutral-300 px-1.5 py-0.5 rounded hover:bg-neutral-800 transition-colors"
+              title="Re-scan worktree for artifacts"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
       )}
 
