@@ -1340,6 +1340,28 @@ def _has_live_children(pid: int) -> bool:
         return False
 
 
+def _has_commits_since_gate(wt_path: str, last_gate_commit: str) -> bool:
+    """Check if worktree has new commits since the last gate run.
+
+    Used to decide whether a stopped/stuck ralph loop made progress worth
+    re-gating, vs. marking the change as stalled.
+    """
+    if not os.path.isdir(wt_path):
+        return False
+    if not last_gate_commit:
+        return True  # no baseline → assume progress
+    try:
+        result = subprocess.run(
+            ["git", "-C", wt_path, "log", f"{last_gate_commit}..HEAD", "--oneline"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return True  # invalid ref or git error → assume progress (safe)
+        return bool(result.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return True  # on error, assume progress (safe: triggers re-gate not stall)
+
+
 def _is_pid_alive(pid: int) -> bool:
     """Check if a PID exists."""
     try:
@@ -1414,6 +1436,35 @@ def _poll_active_changes(
                     if event_bus:
                         event_bus.emit("CHANGE_DONE", change=change.name)
                     # Fall through to poll_change() below — do NOT mark done or continue
+
+                elif ls_status in ("stopped", "stuck"):
+                    # Agent exited fix loop (not "done" but made an attempt).
+                    # Check for new commits — if the agent committed fixes,
+                    # re-gate immediately instead of waiting for stall timeout.
+                    last_gate = (change.extras or {}).get("last_gate_commit", "")
+                    has_progress = _has_commits_since_gate(wt_path, last_gate)
+                    if has_progress:
+                        logger.info(
+                            "Change %s: agent exited fix loop (loop_status=%s) with new commits "
+                            "— routing to re-gate (skip stall timeout)",
+                            change.name, ls_status,
+                        )
+                        _resolve_issues_for_change(change.name)
+                        if event_bus:
+                            event_bus.emit("CHANGE_DONE", change=change.name)
+                        # Fall through to poll_change() → handle_change_done() → re-gate
+                    else:
+                        logger.warning(
+                            "Change %s: agent exited fix loop (loop_status=%s) with NO new commits "
+                            "— marking stalled",
+                            change.name, ls_status,
+                        )
+                        update_change_field(state_file, change.name, "status", "stalled")
+                        update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                        if event_bus:
+                            event_bus.emit("CHANGE_STALLED", change=change.name,
+                                           data={"reason": f"fix_loop_no_progress_{ls_status}"})
+                        continue
 
                 else:
                     logger.warning(

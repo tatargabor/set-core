@@ -12,6 +12,7 @@ Functions:
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -277,6 +278,22 @@ class GatePipeline:
             "retry"    — blocking failure, retry dispatched
             "failed"   — blocking failure, retries exhausted
         """
+        # Snapshot HEAD before gates run — used by engine to detect progress
+        # when ralph exits with stopped/stuck (FIX 1).
+        if self.change.worktree_path:
+            try:
+                head = subprocess.run(
+                    ["git", "-C", self.change.worktree_path, "rev-parse", "HEAD"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
+                if head:
+                    update_change_field(
+                        self.state_file, self.change_name,
+                        "last_gate_commit", head,
+                    )
+            except Exception as exc:
+                logger.debug("last_gate_commit snapshot failed for %s: %s", self.change_name, exc)
+
         for entry in self._gates:
             if self.stopped:
                 break

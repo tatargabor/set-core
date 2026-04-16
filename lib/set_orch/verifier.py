@@ -3721,12 +3721,31 @@ def handle_change_done(
                 if gd.phase != "pre-merge":
                     continue
                 if gd.name == "e2e":
+                    # Scope E2E to own spec files only (FIX 5) — same as
+                    # merger's two-phase approach. Inherited specs are NOT
+                    # re-run here (they'll be checked at merge integration).
+                    _own_specs: list[str] | None = None
+                    try:
+                        from .merger import _detect_own_spec_files
+                        _own_specs = _detect_own_spec_files(wt_path) or None
+                        if _own_specs:
+                            logger.info(
+                                "Verify gate: scoping e2e to %d own spec(s) for %s: %s",
+                                len(_own_specs), change_name,
+                                [os.path.basename(s) for s in _own_specs],
+                            )
+                    except Exception as exc:
+                        logger.warning(
+                            "Verify gate: own-spec detection failed for %s — falling back to full suite: %s",
+                            change_name, exc,
+                        )
                     pipeline.register(
                         "e2e",
-                        lambda gd=gd: gd.executor(
+                        lambda gd=gd, sf=_own_specs: gd.executor(
                             change_name=change_name, change=change, wt_path=wt_path,
                             e2e_command=e2e_command, e2e_timeout=e2e_timeout,
                             e2e_health_timeout=e2e_health_timeout, profile=profile,
+                            spec_files=sf,
                         ),
                         result_fields=gd.result_fields,
                     )

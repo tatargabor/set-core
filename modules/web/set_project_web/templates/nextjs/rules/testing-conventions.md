@@ -194,7 +194,7 @@ export default defineConfig({
     // by the rules gate) — a green run with zero screenshots is
     // indistinguishable from a run that never executed.
     screenshot: 'on',
-    trace: 'on',
+    trace: 'retain-on-failure',
   },
   webServer: {
     command: `pnpm dev --port ${PORT}`,
@@ -209,9 +209,9 @@ export default defineConfig({
 ### Screenshot capture — MANDATORY per-attempt
 
 - `screenshot: 'on'` — every test, pass and fail. FORBIDDEN: `'only-on-failure'`, `'off'`, `false`. The rules gate flags these as critical.
-- `trace: 'on'` — every test. FORBIDDEN: `'on-first-retry'`, `'off'`. Per-attempt archive needs traces too.
+- `trace: 'retain-on-failure'` — traces every test in memory but only writes `.zip` for failures. Saves ~200 MB/attempt while preserving full forensics for failing tests.
 - `reporter: 'list'` — NOT `'html'` (OOM risk with `screenshot: 'on'`). The rules gate warns on `'html'`.
-- Rationale: The orchestrator archives `test-results/` to `<runtime>/screenshots/e2e/<change>/attempt-N/` after every E2E gate run. A passing run with zero artifacts is indistinguishable from a run that never executed — the user cannot verify the fix actually re-triggered the tests. Always-on capture is the forensic contract.
+- Rationale: Screenshots for every test prove tests actually re-ran (forensic contract). Traces are only needed for debugging failures — passing tests don't need 500KB trace.zip files.
 
 ## DB Isolation for E2E Tests
 

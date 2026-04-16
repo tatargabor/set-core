@@ -33,7 +33,7 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "auto_replan": False,
     "review_before_merge": True,
     "test_timeout": 600,
-    "max_verify_retries": 4,
+    "max_verify_retries": 8,
     "summarize_model": "haiku",
     "review_model": "opus",
     "default_model": "opus",

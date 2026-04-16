@@ -451,12 +451,16 @@ def _auto_detect_e2e_command(wt_path: str, profile=None) -> str:
 def execute_e2e_gate(
     change_name: str, change: "Change", wt_path: str,
     e2e_command: str, e2e_timeout: int, e2e_health_timeout: int,
-    profile=None,
+    profile=None, spec_files: list | None = None,
 ) -> "GateResult":
     """E2E gate: run Playwright tests with baseline comparison.
 
     Only NEW failures (not present on main) count as gate failures.
     Requires Playwright webServer config to manage the dev server.
+
+    If *spec_files* is provided (list of own spec file paths), the gate
+    scopes the Playwright run to those files only — matching the merger's
+    two-phase approach so the verify gate doesn't run 140 inherited tests.
     """
     from set_orch.gate_runner import GateResult
     from set_orch.subprocess_utils import run_command, run_git
@@ -558,6 +562,18 @@ def execute_e2e_gate(
         if not profile.e2e_pre_gate(wt_path, e2e_env):
             return GateResult("e2e", "skipped", output="e2e_pre_gate returned False")
 
+    # Scope to own spec files if provided (verify gate scoping — FIX 5).
+    # Falls back to full suite if profile doesn't support scoping.
+    actual_e2e_cmd = e2e_command
+    if spec_files and profile and hasattr(profile, "e2e_scoped_command"):
+        scoped = profile.e2e_scoped_command(e2e_command, spec_files)
+        if scoped:
+            actual_e2e_cmd = scoped
+            logger.info(
+                "E2E gate: scoped to %d own spec file(s) for %s",
+                len(spec_files), change_name,
+            )
+
     # Run E2E tests.
     # Capture up to 4MB of output — _extract_e2e_failure_ids needs to see
     # every failure entry, including long assertion diffs and stack traces.
@@ -569,7 +585,7 @@ def execute_e2e_gate(
     # smart_truncate_structured with a Playwright-aware keep pattern.
     try:
         e2e_cmd_result = run_command(
-            ["bash", "-c", e2e_command],
+            ["bash", "-c", actual_e2e_cmd],
             timeout=e2e_timeout, cwd=wt_path, env=e2e_env,
             max_output_size=_E2E_CAPTURE_MAX_BYTES,
         )
@@ -798,13 +814,42 @@ def execute_e2e_gate(
                 + "\n".join(f"- {p}" for p in png_files[:10])
             )
 
+    # Cross-change regression detection (FIX 6): classify failures as own
+    # vs inherited so the agent knows which failures it CAN fix.
+    cross_change_hint = ""
+    if new_failures and change_name:
+        own_fail = []
+        cross_fail = []
+        for fid in sorted(new_failures):
+            spec_file = fid.split(":")[0] if ":" in fid else fid
+            spec_base = os.path.basename(spec_file).replace(".spec.ts", "").replace(".spec.js", "")
+            cn_tokens = set(change_name.replace("_", "-").split("-"))
+            sb_tokens = set(spec_base.replace("_", "-").split("-"))
+            if cn_tokens == sb_tokens or change_name == spec_base:
+                own_fail.append(fid)
+            else:
+                cross_fail.append(fid)
+        if cross_fail:
+            cross_change_hint = (
+                "\n\n⚠️ CROSS-CHANGE REGRESSION DETECTED\n"
+                "These failures are in OTHER changes' spec files — your code broke shared functionality:\n"
+                + "".join(f"  - {f} (NOT your spec)\n" for f in cross_fail)
+                + "ACTION: Review your recent changes to shared code (middleware, layout, session, "
+                "API routes, Prisma schema). Revert or reshape the shared code change. "
+                "Do NOT modify the other change's spec file.\n"
+            )
+            if own_fail:
+                cross_change_hint += f"\nYour own spec failures ({len(own_fail)}):\n"
+                cross_change_hint += "".join(f"  - {f}\n" for f in own_fail)
+
     # Preserve error-tail evidence: Playwright assertion errors and stack
     # traces appear near the end of stdout. A head-only slice drops them and
     # leaves the impl agent with only prisma setup noise to reason about.
     from set_orch.truncate import smart_truncate_structured
     result.retry_context = (
         f"E2E tests (Playwright) failed. Fix the failing E2E tests or the code they test.\n\n"
-        f"E2E command: {e2e_command}\nE2E output:\n{smart_truncate_structured(e2e_output, 6000)}\n"
+        f"E2E command: {actual_e2e_cmd}\nE2E output:\n{smart_truncate_structured(e2e_output, 6000)}\n"
+        f"{cross_change_hint}"
         f"{screenshot_hint}\n\n"
         f"Original scope: {scope}"
     )

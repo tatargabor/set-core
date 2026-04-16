@@ -75,7 +75,10 @@ export default defineConfig({
     // Do NOT downgrade to "only-on-failure" — the per-attempt archive relies
     // on every run having artifacts so the user can verify tests re-executed.
     screenshot: "on",
-    trace: "on",
+    // Trace every test in memory but only write .zip for failures.
+    // Saves ~200 MB/attempt in gate archives (140 passing trace.zip's)
+    // while preserving full trace forensics for any failing test.
+    trace: "retain-on-failure",
     // Action and navigation defaults — Playwright's defaults (no timeout)
     // cause hung tests to consume globalTimeout instead of failing fast.
     actionTimeout: 10_000,

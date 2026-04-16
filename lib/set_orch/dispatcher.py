@@ -2928,10 +2928,27 @@ def resume_change(
             done_criteria = "test"
             max_iter = 3
     else:
-        task_desc = f"Continue {change_name}: {change.scope[:200]}"
-        done_criteria = "openspec"
-        max_iter = 30
-        update_change_field(state_path, change_name, "current_step", "implementing", event_bus=event_bus)
+        # No retry_context — normal resume. BUT if the change was previously
+        # in a fix loop (verify_retry_count > 0 and current_step was "fixing"),
+        # preserve fix mode so the agent gets fix-appropriate context.
+        prev_step = change.current_step or "implementing"
+        if prev_step == "fixing" and change.verify_retry_count > 0:
+            logger.info(
+                "resume %s: preserving current_step=fixing (verify_retry_count=%d, retry_context consumed)",
+                change_name, change.verify_retry_count,
+            )
+            update_change_field(state_path, change_name, "current_step", "fixing", event_bus=event_bus)
+            last_ctx = (change.extras or {}).get("last_retry_context", "")
+            if not last_ctx:
+                logger.warning("resume %s: last_retry_context empty — agent gets generic fix prompt", change_name)
+            task_desc = last_ctx or f"Continue fixing {change_name}: {change.scope[:200]}"
+            done_criteria = "test"
+            max_iter = 3
+        else:
+            task_desc = f"Continue {change_name}: {change.scope[:200]}"
+            done_criteria = "openspec"
+            max_iter = 30
+            update_change_field(state_path, change_name, "current_step", "implementing", event_bus=event_bus)
 
     impl_model = resolve_change_model(change, default_model, model_routing)
     # Persist resolved model so verifier uses correct context window size
