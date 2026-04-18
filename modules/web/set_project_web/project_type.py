@@ -1420,166 +1420,95 @@ class WebProjectType(CoreProfile):
         p = Path(project_path) / "v0-export"
         return "v0" if p.is_dir() else "none"
 
-    def copy_design_source_slice(
-        self,
-        change_name: str,
-        scope: str,
-        dest_dir: Path,
-        design_routes: list[str] | None = None,
-        project_path: Path | None = None,
-    ) -> list[Path]:
-        """Populate dest_dir with scope-matched v0-export files.
-
-        dest_dir is typically inside a worktree
-        (<wt>/openspec/changes/<name>/design-source), while project_path
-        points to the consumer project root where v0-export/ and
-        docs/design-manifest.yaml live. When project_path is None (direct
-        unit-test callers), it is derived from dest_dir's ancestry.
-
-        When design_routes is provided (planner-directed), use exact-path
-        lookup against the manifest. Otherwise fall back to scope-keyword
-        substring matching. Shared files are ALWAYS included; missing
-        shared files are a hard error.
-
-        Raises NoMatchingRouteError when no route matches AND the scope
-        is UI-bound (per AC-17b / design D8).
-        """
-        from .v0_manifest import (
-            ManifestError,
-            NoMatchingRouteError,
-            is_ui_bound_scope,
-            load_manifest,
-            match_routes_by_explicit,
-            match_routes_by_scope,
-        )
-
-        # When project_path is supplied (dispatcher path), use it verbatim.
-        # When omitted (legacy unit-test callers), walk up from dest_dir.
-        if project_path is None:
-            project_path = _find_project_root(Path(dest_dir))
-        else:
-            project_path = Path(project_path)
-        manifest_path = project_path / "docs" / "design-manifest.yaml"
-        if not manifest_path.is_file():
-            raise ManifestError(
-                f"design-manifest.yaml not found at {manifest_path}. "
-                f"Run set-design-import to materialize it."
-            )
-        manifest = load_manifest(manifest_path)
-
-        if design_routes:
-            matched = match_routes_by_explicit(manifest, design_routes)
-        else:
-            matched = match_routes_by_scope(manifest, scope)
-            if not matched and is_ui_bound_scope(scope):
-                raise NoMatchingRouteError(
-                    f"scope '{scope}' is UI-bound but no manifest route matched. "
-                    f"Options: (1) add scope_keywords to a route in design-manifest.yaml, "
-                    f"(2) pass design_routes explicitly from the planner, "
-                    f"(3) mark scope non-UI if it genuinely doesn't render a route."
-                )
-
-        dest_dir = Path(dest_dir)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-
-        copied: list[Path] = []
-
-        # Matched-route files + component_deps
-        for r in matched:
-            for rel in (*r.files, *r.component_deps):
-                src = project_path / rel
-                if not src.is_file():
-                    # For imports that resolve outside manifest, skip with warning
-                    import logging as _log
-                    _log.getLogger(__name__).warning(
-                        "design-source slice: missing %s for route %s", src, r.path,
-                    )
-                    continue
-                copied.append(_copy_preserving_structure(src, project_path, dest_dir))
-
-        # Shared files (always included; missing shared = ERROR)
-        missing_shared: list[str] = []
-        for sh in manifest.shared:
-            # sh can be a glob like "v0-export/components/ui/**"
-            src_spec = project_path / sh
-            if sh.endswith("/**"):
-                base = Path(str(src_spec)[: -len("/**")])
-                if not base.is_dir():
-                    missing_shared.append(sh)
-                    continue
-                for src in base.rglob("*"):
-                    if src.is_file():
-                        copied.append(_copy_preserving_structure(src, project_path, dest_dir))
-            else:
-                if not src_spec.is_file():
-                    missing_shared.append(sh)
-                    continue
-                copied.append(_copy_preserving_structure(src_spec, project_path, dest_dir))
-
-        if missing_shared:
-            raise ManifestError(
-                f"manifest declares shared files that are missing from disk: {missing_shared}. "
-                f"Manifest is broken — regenerate with set-design-import --regenerate-manifest."
-            )
-
-        return copied
-
     def get_design_dispatch_context(
         self, change_name: str, scope: str, project_path: Path,
     ) -> str:
         """Return markdown block for input.md Design Source section.
 
-        Contains directory pointer (using change_name), file list, and a
-        token quick-reference extracted from shadcn/globals.css (or v0-export
-        fallback). Capped at 200 lines total.
+        The full v0-export/ is symlinked into the worktree by the
+        dispatcher (see _deploy_v0_export_to_worktree). This markdown
+        block orients the agent:
+          - pointer to v0-export/ as the authoritative design
+          - focus-files list derived from scope-keyword matching against
+            the manifest (hint, not restriction)
+          - always-available shared layer
+          - design tokens quick-ref from :root CSS variables
+
+        Empty string when detect_design_source == "none".
         """
         p = Path(project_path)
-        if (p / "v0-export").is_dir() is False:
-            return ""
-
-        change_slice = p / "openspec" / "changes" / change_name / "design-source"
-        if not change_slice.is_dir():
+        if not (p / "v0-export").is_dir():
             return ""
 
         lines: list[str] = []
         lines.append("## Design Source")
         lines.append("")
         lines.append(
-            f"The authoritative design for this change lives in "
-            f"`openspec/changes/{change_name}/design-source/`. Read the TSX files as visual truth. "
-            f"See `.claude/rules/design-bridge.md` for the refactor policy (allowed vs forbidden)."
+            "This worktree has `v0-export/` — the full v0.app Next.js project "
+            "that is the authoritative design source. Read any file there as "
+            "visual truth. See `.claude/rules/design-bridge.md` for the "
+            "refactor policy (allowed vs forbidden)."
         )
         lines.append("")
-        lines.append("### Files in slice")
-        for f in sorted(change_slice.rglob("*")):
-            if not f.is_file():
-                continue
-            rel = f.relative_to(change_slice)
-            lines.append(f"- `{rel.as_posix()}`")
-        lines.append("")
+
+        focus_files: list[str] = []
+        shared_files: list[str] = []
+        manifest_path = p / "docs" / "design-manifest.yaml"
+        if manifest_path.is_file():
+            from .v0_manifest import load_manifest, match_routes_by_scope
+
+            try:
+                m = load_manifest(manifest_path)
+                matched = match_routes_by_scope(m, scope)
+                for r in matched:
+                    for f in r.files:
+                        if f not in focus_files:
+                            focus_files.append(f)
+                    for f in r.component_deps:
+                        if f not in focus_files:
+                            focus_files.append(f)
+                shared_files = list(m.shared)
+            except Exception:
+                logger.debug(
+                    "manifest parse failed for %s; proceeding without focus list",
+                    manifest_path, exc_info=True,
+                )
+
+        if focus_files:
+            lines.append("### Focus files for this change (hint — `v0-export/` has the full set)")
+            FOCUS_CAP = 20
+            for f in focus_files[:FOCUS_CAP]:
+                lines.append(f"- `{f}`")
+            if len(focus_files) > FOCUS_CAP:
+                lines.append(
+                    f"- … and {len(focus_files) - FOCUS_CAP} more — "
+                    f"see `docs/design-manifest.yaml` for the full route list"
+                )
+            lines.append("")
+
+        if shared_files:
+            lines.append("### Always-available shared layer")
+            for sh in shared_files:
+                lines.append(f"- `{sh}`")
+            lines.append("")
 
         tokens = _extract_globals_tokens(p)
         if tokens:
-            lines.append("### Design Tokens (synced from globals.css)")
-            # No per-token cap — show every :root custom property. Each
-            # token is one line; total is still bounded by the 200-line
-            # block cap below (AC-24 / AC-72). If the token list alone
-            # threatens 200 lines, that is a theme-size anomaly worth
-            # surfacing to the scaffold author, not silently hiding.
+            lines.append("### Design Tokens (synced from globals.css :root)")
             for name, value in tokens:
                 lines.append(f"- `{name}`: `{value}`")
             lines.append("")
 
-        # Hard cap at 200 lines (per AC-24 / AC-72 — spec requirement).
-        # When we hit this, emit a WARNING so the scaffold author knows
-        # the token list exceeded the budget (instead of silent drop).
+        # AC-24 / AC-72: 200-line cap on the context block. The block is a
+        # quick-reference only; the agent reads the full v0-export/ from
+        # the worktree symlink, so truncation here is harmless.
         if len(lines) > 200:
             logger.warning(
                 "design dispatch context for %s exceeded 200-line cap (%d lines) — "
-                "truncating per AC-24/AC-72; trim shared file list or review theme size",
+                "truncating per AC-24/AC-72; agent still has full v0-export/ access",
                 change_name, len(lines),
             )
-            lines = lines[:199] + ["... (truncated at 200-line budget — see log WARNING)"]
+            lines = lines[:199] + ["... (truncated — full design in `v0-export/`)"]
 
         return "\n".join(lines)
 
@@ -1675,31 +1604,6 @@ class WebProjectType(CoreProfile):
 
 
 # ─── Module-level helpers (v0 pipeline) ───────────────────────────────
-
-
-def _find_project_root(dest_dir: Path) -> Path:
-    """Walk up from dest_dir until we see openspec/changes/<name>/design-source and return the project root."""
-    d = dest_dir.resolve()
-    # Expect: <project>/openspec/changes/<change_name>/design-source
-    for _ in range(6):
-        if d.name == "design-source":
-            d = d.parent
-            continue
-        if d.parent.name == "changes" and d.parent.parent.name == "openspec":
-            return d.parent.parent.parent
-        d = d.parent
-    return dest_dir.parent.parent.parent.parent
-
-
-def _copy_preserving_structure(src: Path, project_root: Path, dest_root: Path) -> Path:
-    """Copy src to dest_root preserving path relative to project_root."""
-    import shutil as _shutil
-
-    rel = src.resolve().relative_to(project_root.resolve())
-    out = dest_root / rel
-    out.parent.mkdir(parents=True, exist_ok=True)
-    _shutil.copyfile(src, out)
-    return out
 
 
 def _extract_globals_tokens(project_path: Path) -> list[tuple[str, str]]:

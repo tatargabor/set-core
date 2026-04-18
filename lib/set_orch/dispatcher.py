@@ -148,59 +148,45 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
     return "## Relevant Patterns\n\n" + "\n\n".join(parts)
 
 
-def _populate_design_source_slice(
-    change_name: str,
-    scope: str,
-    project_path: str,
-    wt_path: str,
-    design_routes: list[str] | None = None,
-) -> tuple[str, list[str]]:
-    """Populate <wt>/openspec/changes/<change_name>/design-source/ via profile system.
+def _deploy_v0_export_to_worktree(project_path: str, wt_path: str) -> bool:
+    """Create a symlink <wt>/v0-export -> <project>/v0-export.
 
-    The slice must live in the WORKTREE (not the project root) because the
-    agent runs inside the worktree and reads files from there. Source
-    detection still uses project_path because v0-export/ + design-manifest.yaml
-    are shared across worktrees and live in the project root.
+    Agents get the full v0 design source as a reference tree inside the
+    worktree. The symlink points to the project root's v0-export so
+    updates to the design (e.g., a v2 orchestration run that imports a
+    newer v0 export) propagate to all worktrees without re-deployment.
 
-    Returns (dispatch_context_markdown, copied_files_relpaths). When the
-    profile reports detect_design_source() == "none", returns ("", []) and
-    no directory is created. When the profile reports a design source, the
-    per-change design-source directory is cleaned and repopulated; a
-    profile exception is re-raised by the caller (per D8: fail loud when
-    design is declared).
+    Returns True if the deploy succeeded or was already in place.
+    Returns False if v0-export/ is absent at the project root (non-v0
+    project — caller is a no-op).
     """
     from pathlib import Path
 
-    from .profile_loader import load_profile
+    src = Path(project_path) / "v0-export"
+    if not src.is_dir():
+        return False
 
-    profile = load_profile()
-    source = profile.detect_design_source(Path(project_path))
-    if source == "none":
-        return "", []
+    dst = Path(wt_path) / "v0-export"
+    if dst.is_symlink():
+        return True
+    if dst.exists():
+        logger.warning(
+            "worktree has a non-symlink v0-export at %s; skipping deploy", dst,
+        )
+        return True
 
-    change_dir = Path(wt_path) / "openspec" / "changes" / change_name
-    dest_dir = change_dir / "design-source"
-    # Clean stale files before repopulation (retry-safe).
-    if dest_dir.exists():
-        import shutil as _shutil
-        _shutil.rmtree(dest_dir)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    copied = profile.copy_design_source_slice(
-        change_name, scope, dest_dir,
-        design_routes=design_routes,
-        project_path=Path(project_path),
-    )
-    ctx_md = profile.get_design_dispatch_context(change_name, scope, Path(project_path))
-    copied_rel = [
-        str(Path(p).relative_to(dest_dir)) if Path(p).is_absolute() else str(p)
-        for p in copied
-    ]
-    logger.info(
-        "design-source populated for %s in worktree %s: %d files, source=%s",
-        change_name, wt_path, len(copied_rel), source,
-    )
-    return ctx_md, copied_rel
+    try:
+        # Absolute symlink — simplest correct behavior; the worktree is
+        # always local to this machine. If portability becomes an issue
+        # we can switch to a relative path.
+        dst.symlink_to(src.resolve(), target_is_directory=True)
+        logger.info("deployed v0-export symlink: %s -> %s", dst, src)
+        return True
+    except OSError:
+        logger.error(
+            "failed to create v0-export symlink %s -> %s", dst, src, exc_info=True,
+        )
+        return False
 
 
 def _build_resume_preamble(change_name: str, wt_path: str) -> str:
@@ -2167,13 +2153,14 @@ def dispatch_change(
             for f in no_modify
         ]
 
-    # Design source slice + dispatch context (v0-only pipeline).
+    # Design source deployment + dispatch context (v0-only pipeline).
+    # The full v0-export/ is symlinked into the worktree so the agent has
+    # reference-level access to every design file. The dispatch-context
+    # markdown points to focus files + shared layer + tokens.
     # Per design D8: when the profile declares a design source (!= "none"),
     # ANY exception from the profile methods fails the dispatch loudly with
-    # reason `design-provider-error`. When the profile says "none", any
-    # defensive exception is logged at DEBUG and dispatch continues.
+    # reason `design-provider-error`.
     project_path = os.path.dirname(state_path) or os.getcwd()
-    plan_design_routes = change.extras.get("design_routes") if hasattr(change, "extras") else None
     try:
         from .profile_loader import load_profile as _load_profile_for_design
         _design_profile = _load_profile_for_design()
@@ -2184,16 +2171,15 @@ def dispatch_change(
 
     if _design_source_id != "none":
         try:
-            _ctx_md, _copied = _populate_design_source_slice(
-                change_name, scope, project_path,
-                wt_path=wt_path,
-                design_routes=plan_design_routes,
+            _deploy_v0_export_to_worktree(project_path, wt_path)
+            _ctx_md = _design_profile.get_design_dispatch_context(
+                change_name, scope, Path(project_path),
             )
             if _ctx_md:
                 ctx.design_context = _ctx_md
                 logger.info(
-                    "Design source context injected (%d chars, %d files, source=%s) for %s",
-                    len(_ctx_md), len(_copied), _design_source_id, change_name,
+                    "Design context injected (%d chars, source=%s) for %s",
+                    len(_ctx_md), _design_source_id, change_name,
                 )
         except Exception:
             logger.error(

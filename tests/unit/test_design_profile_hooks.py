@@ -5,12 +5,11 @@ from pathlib import Path
 
 
 def test_null_profile_design_source_defaults():
-    """NullProfile returns 'none' + empty slice + empty context."""
+    """NullProfile returns 'none' + empty context (no design source)."""
     from set_orch.profile_loader import NullProfile
 
     profile = NullProfile()
     assert profile.detect_design_source(Path(".")) == "none"
-    assert profile.copy_design_source_slice("x", "scope", Path(".")) == []
     assert profile.get_design_dispatch_context("x", "scope", Path(".")) == ""
 
 
@@ -20,8 +19,14 @@ def test_core_profile_design_source_defaults():
 
     profile = CoreProfile()
     assert profile.detect_design_source(Path(".")) == "none"
-    assert profile.copy_design_source_slice("x", "scope", Path(".")) == []
     assert profile.get_design_dispatch_context("x", "scope", Path(".")) == ""
+
+
+def test_copy_design_source_slice_removed():
+    """The slicing method is obsolete — agents get full v0-export/ via symlink."""
+    from set_orch.profile_types import ProjectType
+
+    assert not hasattr(ProjectType, "copy_design_source_slice")
 
 
 def test_detect_design_source_returns_plain_str_forward_compat():

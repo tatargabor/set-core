@@ -1,10 +1,10 @@
 # Design Bridge Rule (v0-only pipeline)
 
-## What you get
+## What you have
 
-When your change has a `design-source/` directory (`openspec/changes/<change>/design-source/`), **those TSX files are the design truth**. They come from the project's v0.app export and are sliced to just the routes/components your change covers, plus shared components (`components/ui/**`, layout, header, globals.css).
+Your worktree contains **`v0-export/`** — a symlink (or copy) of the project's v0.app Next.js export. Read any file there as **visual truth**. This is the full design source; your `input.md` may highlight focus files, but you are never limited to those.
 
-If no `design-source/` exists for your change, skip this rule.
+If `v0-export/` is absent in your worktree, skip this rule.
 
 ## Agent contract: integrator, not re-implementer
 
@@ -33,6 +33,15 @@ You **copy** v0's TSX into the project, then adapt the integration layer around 
 - Animation sequence/duration/easing changes
 - Icon library substitution
 - `globals.css` modification — this file is synced from v0-export and the agent MUST NOT touch it
+
+## Reading order
+
+1. **`v0-export/app/<your-route>/page.tsx`** — the canonical implementation for any UI you touch
+2. **`v0-export/components/<component>.tsx`** — components the page imports
+3. **`v0-export/components/ui/**`** — shadcn primitives (use these as-is)
+4. **`v0-export/app/layout.tsx`** + **`globals.css`** — shared shell + tokens
+
+If you need to see how other pages use a shared component for consistency — `Read` any file from `v0-export/`. Nothing is off-limits.
 
 ## The contract is visual, not file-for-file
 
@@ -63,6 +72,7 @@ If you find an actual bug in v0's output (broken link, type error, missing impor
 - Fix it in your worktree while preserving the visual output (classNames, JSX structure)
 - Commit-message prefix: `v0-fix: <short description>`
 - Common v0 bugs: incorrect `Link` href, missing `"use client"` on interactive components, unused imports, `any` where a concrete type would fix a tsc error
+- **Never** modify files *inside* `v0-export/` itself — that directory is a read-only reference. Fix the issue in your own copy in `src/`.
 
 If v0 shows the same concept inconsistently across pages (e.g. some pages use `<Button variant="default">`, others use `<button className="...">` with identical styling): **standardize on the shadcn primitive** across your worktree, document in the commit message. If that causes a fidelity gate failure, escalate to the scaffold author — the fix belongs in the v0 source, not in the agent worktree.
 

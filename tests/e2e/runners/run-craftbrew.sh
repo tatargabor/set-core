@@ -205,6 +205,15 @@ wt/**             merge=ours
 ATTRS
     git config merge.ours.driver true
 
+    # .gitignore for v0-export symlink (dispatcher creates per-worktree
+    # symlink to project root v0-export/). Pattern without trailing slash
+    # so both the project-root directory AND worktree symlinks are ignored.
+    if [[ -f .gitignore ]]; then
+        grep -qxF "v0-export" .gitignore || echo "v0-export" >> .gitignore
+    else
+        echo "v0-export" > .gitignore
+    fi
+
     git add -A
     git commit -m "initial: craftbrew spec"
     git tag v0-spec
