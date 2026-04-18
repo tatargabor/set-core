@@ -103,7 +103,7 @@ def execute_design_fidelity_gate(
     warn_only = _read_warn_only_flag(project_path)
 
     try:
-        outcome = _run_gate(change_name, wt_path, project_path)
+        outcome = _run_gate(change_name, wt_path, project_path, change=change)
     except _GateAbort as e:
         status = "warn-fail" if warn_only else "fail"
         if warn_only:
@@ -172,7 +172,12 @@ class _GateAbort(Exception):
         self.remediation = remediation
 
 
-def _run_gate(change_name: str, wt_path: str, project_path: Path) -> GateOutcome:
+def _run_gate(
+    change_name: str,
+    wt_path: str,
+    project_path: Path,
+    change=None,
+) -> GateOutcome:
     """Run the full gate: skeleton → build ref + agent → diff."""
     from .v0_manifest import load_manifest
 
@@ -184,8 +189,13 @@ def _run_gate(change_name: str, wt_path: str, project_path: Path) -> GateOutcome
         )
     manifest = load_manifest(manifest_path)
 
-    # 1. Skeleton check (fast, no build).
-    skel = run_skeleton_check(Path(wt_path), project_path / "v0-export", manifest)
+    # 1. Skeleton check (fast, no build). Scope-aware: only routes matched
+    # to this change's scope via manifest scope_keywords are required.
+    change_scope = getattr(change, "scope", "") if change is not None else ""
+    skel = run_skeleton_check(
+        Path(wt_path), project_path / "v0-export", manifest,
+        change_scope=change_scope,
+    )
     if skel:
         return GateOutcome(
             status="fail",
@@ -215,26 +225,52 @@ def _run_gate(change_name: str, wt_path: str, project_path: Path) -> GateOutcome
         raise _GateAbort("fixtures-missing", str(e)) from e
 
     # 3. Render reference + capture screenshots. Render agent in worktree.
+    # Scope screenshot/diff to routes matched to this change — sibling routes
+    # won't exist in the agent worktree and would produce guaranteed failures.
+    # When change_scope is empty (missing or non-UI change), fall back to the
+    # full manifest. When scope is set but matches no routes, the change has
+    # no UI footprint — skip the expensive screenshot phase with a pass.
+    if change_scope:
+        from .v0_manifest import match_routes_by_scope
+
+        try:
+            scoped_routes = list(match_routes_by_scope(manifest, change_scope))
+        except Exception:
+            logger.debug("scope match failed; falling back to full manifest", exc_info=True)
+            scoped_routes = list(manifest.routes)
+        if not scoped_routes:
+            logger.info(
+                "design-fidelity: scope matches no routes for %s — gate pass (no UI)",
+                change_name,
+            )
+            return GateOutcome(status="pass", message="scope-no-ui-routes")
+    else:
+        scoped_routes = list(manifest.routes)
+
     outcome = GateOutcome(status="pass")
-    outcome.checked_routes = [r.path for r in manifest.routes]
+    outcome.checked_routes = [r.path for r in scoped_routes]
     diff_root = Path(wt_path) / "gate-results" / "design-fidelity"
     diff_root.mkdir(parents=True, exist_ok=True)
     outcome.diff_images_dir = diff_root
 
     try:
         with render_v0_with_fixtures(project_path / "v0-export", fixtures) as ref:
-            ref_shots = _capture_screenshots(ref.base_url, manifest, diff_root / "_ref")
+            ref_shots = _capture_screenshots(
+                ref.base_url, manifest, diff_root / "_ref", routes=scoped_routes,
+            )
 
             agent_url = _build_and_start_agent(wt_path)
             try:
-                agent_shots = _capture_screenshots(agent_url, manifest, diff_root / "_agent")
+                agent_shots = _capture_screenshots(
+                    agent_url, manifest, diff_root / "_agent", routes=scoped_routes,
+                )
             finally:
                 _stop_agent_server()
     except ReferenceBuildError as e:
         raise _GateAbort("reference-build-failed", str(e)) from e
 
     # 4. Pixelmatch diff
-    for route in manifest.routes:
+    for route in scoped_routes:
         threshold = route.fidelity_threshold or DEFAULT_DIFF_THRESHOLD
         for vp_name, _, _ in VIEWPORTS:
             ref_img = ref_shots.get((route.path, vp_name))
@@ -271,19 +307,47 @@ def run_skeleton_check(
     agent_worktree: Path,
     v0_export: Path,
     manifest,
+    change_scope: str = "",
 ) -> list[SkeletonViolation]:
-    """Structural check — runs BEFORE any build/screenshot."""
+    """Structural check — runs BEFORE any build/screenshot.
+
+    Scope-aware: missing-route violations are only flagged for routes matched
+    to ``change_scope`` via manifest ``scope_keywords``. Each feature-type
+    change only builds its own slice of the app; siblings' routes live in
+    other worktrees and will be present only after those changes merge. If
+    ``change_scope`` is empty or matches no routes, the route inventory
+    check is skipped entirely (the change has no UI footprint by scope).
+    """
     violations: list[SkeletonViolation] = []
 
-    # Route inventory from manifest (truth) vs agent worktree
     manifest_routes = {r.path for r in manifest.routes}
+    deferred = set(getattr(manifest, "deferred_design_routes", []) or [])
     agent_routes = _enumerate_agent_routes(agent_worktree)
-    for p in manifest_routes - agent_routes:
+
+    # Scope-matched routes = this change's own design footprint. When
+    # change_scope is empty (e.g. non-orchestrated runs or legacy callers),
+    # fall back to the full manifest so the check remains useful.
+    expected_routes: set[str] = manifest_routes
+    if change_scope:
+        from .v0_manifest import match_routes_by_scope
+
+        try:
+            matched = match_routes_by_scope(manifest, change_scope)
+            expected_routes = {r.path for r in matched}
+        except Exception:
+            logger.debug("match_routes_by_scope failed; checking full manifest", exc_info=True)
+
+    # Missing-route: only flag routes this change is supposed to build
+    for p in expected_routes - agent_routes:
         violations.append(SkeletonViolation(
             "missing-route",
             f"route {p} exists in manifest but not in agent worktree",
         ))
-    for p in agent_routes - manifest_routes:
+    # Extra-route: agent has a route that's not in the manifest at all
+    # (not the same as "belongs to a sibling change" — those ARE in manifest).
+    # Routes listed in deferred_design_routes are exempt — they exist in the
+    # app but have no v0-export counterpart (e.g. error pages, auth gates).
+    for p in agent_routes - manifest_routes - deferred:
         violations.append(SkeletonViolation(
             "extra-route",
             f"route {p} exists in agent worktree but not in manifest",
@@ -385,8 +449,12 @@ def _has_component_export(file: Path) -> bool:
 
 def _capture_screenshots(
     base_url: str, manifest, output_root: Path,
+    routes=None,
 ) -> dict[tuple[str, str], Path]:
-    """Capture 3 viewports per manifest route using Playwright-Python.
+    """Capture 3 viewports per route using Playwright-Python.
+
+    ``routes`` (list of RouteEntry) overrides ``manifest.routes`` when
+    provided — used to scope capture to the change's own design footprint.
 
     Returns {(route_path, viewport_name): png_path}. Pages that fail to
     render are reported via the returned dict (missing entry signals failure).
@@ -408,7 +476,8 @@ def _capture_screenshots(
             args=["--force-color-profile=srgb", "--disable-web-security"],
         )
         try:
-            for route in manifest.routes:
+            iter_routes = routes if routes is not None else manifest.routes
+            for route in iter_routes:
                 url = base_url.rstrip("/") + route.path.replace("[", "%5B").replace("]", "%5D")
                 for vp_name, w, h in VIEWPORTS:
                     ctx = browser.new_context(
