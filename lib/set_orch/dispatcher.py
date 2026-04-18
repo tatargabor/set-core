@@ -2283,7 +2283,7 @@ def dispatch_change(
     _n_test_entries = 0
     if digest_dir and change_reqs:
         _n_test_entries = len(_load_test_plan(digest_dir, change_reqs))
-    _has_design = "yes" if has_per_change_design else "no"
+    _has_design = "yes" if _design_source_id != "none" else "no"
     _retry_n = change.redispatch_count if hasattr(change, "redispatch_count") else 0
     logger.info(
         "Dispatched %s: requirements=%d, test_plan_entries=%d, "

@@ -45,8 +45,9 @@ def test_valid_zip_import_succeeds(tmp_path: Path):
     summary = import_v0_zip(zip_path, scaffold)
     assert summary.v0_export_dir.is_dir()
     assert (summary.v0_export_dir / "app" / "page.tsx").is_file()
-    # globals.css synced
-    assert (scaffold / "shadcn" / "globals.css").is_file()
+    # globals.css lives in v0-export/ (agent reads via worktree symlink);
+    # no duplicate sync to scaffold/shadcn/ anymore.
+    assert (summary.v0_export_dir / "app" / "globals.css").is_file()
     # Manifest generated
     assert summary.manifest_path.is_file()
 

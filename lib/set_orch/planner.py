@@ -1857,10 +1857,10 @@ def run_planning_pipeline(
                     f"Status: {triage_status.status}. Edit triage.md or set TRIAGE_AUTO_DEFER=true."
                 )
 
-    # 3. Design context: v0 pipeline uses per-change design-source/ populated
-    #    by the dispatcher, not a global snapshot at plan time. The planner
-    #    still reads v0-export/globals.css tokens + design-manifest.yaml for
-    #    design awareness, when they exist.
+    # 3. Design context: v0 pipeline symlinks v0-export/ into each worktree
+    #    at dispatch time. The planner reads design-manifest.yaml + the
+    #    globals.css :root block here to surface route coverage + tokens
+    #    for decomposition awareness.
     design_context = _fetch_design_context(force=bool(replan_ctx))
 
     # 4. Test infra detection
@@ -2152,7 +2152,7 @@ def _extract_globals_root_block(css_path: Path) -> str:
     Keeps every CSS custom property declaration — no per-token cap —
     because the planner uses these to decide which semantic tokens
     exist in the theme (and thus what the agent will find in
-    design-source/).
+    v0-export/).
     """
     import re as _re
 

@@ -142,7 +142,8 @@ source "$LIB_DIR/server-detect.sh" # dev server auto-detection
 source "$LIB_DIR/milestone.sh"     # milestone checkpoint: tag, worktree, dev server
 source "$LIB_DIR/monitor.sh"       # monitor loop (extracted from dispatcher.sh)
 source "$SCRIPT_DIR/../lib/notify-email.sh"  # email notifications via Resend
-source "$SCRIPT_DIR/../lib/design/bridge.sh" # design tool MCP abstraction
+# design bridge removed — v0 pipeline uses the web profile's design
+# provider methods (Python) directly, no bash layer needed.
 
 # ─── Skip ────────────────────────────────────────────────────────────
 

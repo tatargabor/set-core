@@ -1,7 +1,12 @@
 """v0 design manifest: auto-generation, parsing, scope matching.
 
 The manifest maps Next.js App Router routes + shared components to scope
-keywords used by the dispatcher to slice design-source/ per change.
+keywords. Used by:
+  - the fidelity gate for route inventory + skeleton check
+  - WebProjectType.get_design_dispatch_context to generate focus-files
+    hints in the dispatch markdown
+  - WebProjectType.validate_plan_design_coverage for opt-in planner
+    route-coverage enforcement
 
 File format (YAML):
 

@@ -139,14 +139,19 @@ class ProjectType(ABC):
 
     # --- Design source provider (v0-only pipeline) ---
     #
-    # Three-method contract:
+    # Two-method contract:
     #   detect_design_source         → "v0" / "none" / (future plugin identifiers)
-    #   copy_design_source_slice     → populate <dest>/ with scope-matched files
     #   get_design_dispatch_context  → markdown block for input.md Design Source section
     #
-    # Per design D8: when detect_design_source() != "none", the other two methods
-    # MUST succeed or raise — no silent fallback. When detect_design_source()
-    # returns "none", the other two are no-op (empty list / empty string).
+    # The dispatcher symlinks the full design tree (e.g. v0-export/) into
+    # each worktree, so agents always have reference-level access. The
+    # dispatch-context markdown is pure guidance (focus files + shared
+    # layer + tokens), not a restrictive slice.
+    #
+    # Per design D8: when detect_design_source() != "none", the context
+    # method MUST succeed or raise — no silent fallback. When
+    # detect_design_source() returns "none", the context method is a no-op
+    # (empty string).
 
     def detect_design_source(self, project_path: Path) -> str:
         """Return identifier of the design source for this project, or "none".
@@ -162,9 +167,9 @@ class ProjectType(ABC):
     ) -> str:
         """Return markdown for the agent's input.md "## Design Source" section.
 
-        The returned block references openspec/changes/<change_name>/design-source/
-        (so the pointer uses the exact change directory, not a placeholder).
-        Empty string when detect_design_source == "none".
+        The returned block points the agent at the worktree-deployed
+        design tree (e.g. v0-export/) and lists focus files / shared
+        layer / tokens. Empty string when detect_design_source == "none".
         """
         return ""
 

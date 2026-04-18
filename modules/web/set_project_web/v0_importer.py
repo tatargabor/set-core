@@ -5,8 +5,10 @@ from one of two sources:
   - git repo (primary): `v0-git` — works with any provider via system git auth
   - ZIP file (fallback): `v0-zip` — offline / air-gapped
 
-After materialization, syncs globals.css to <scaffold>/shadcn/globals.css
-and generates <scaffold>/docs/design-manifest.yaml.
+After materialization, generates <scaffold>/docs/design-manifest.yaml. The
+dispatcher later symlinks v0-export/ into each worktree so agents read the
+full design tree in-place (including app/globals.css) — no duplicate
+globals.css sync is needed.
 
 Per design D8: when a design source is declared, every operation must
 succeed or hard-fail. No silent fallbacks.
@@ -86,7 +88,6 @@ def import_v0_zip(
     _flatten_single_toplevel(v0_dir)
 
     _validate_v0_structure(v0_dir, scaffold)
-    _sync_globals_css(v0_dir, scaffold)
 
     from .v0_manifest import generate_manifest_from_tree
 
@@ -140,7 +141,6 @@ def import_v0_git(
     _copy_tree_excluding_git(cache_dir, v0_dir)
 
     _validate_v0_structure(v0_dir, scaffold)
-    _sync_globals_css(v0_dir, scaffold)
 
     from .v0_manifest import generate_manifest_from_tree
 
@@ -215,22 +215,6 @@ def _scaffold_ui_library(scaffold: Path) -> str:
     except Exception:
         logger.debug("failed to parse scaffold.yaml at %s", sf, exc_info=True)
         return "shadcn"
-
-
-def _sync_globals_css(v0_dir: Path, scaffold: Path) -> None:
-    """Copy v0-export/app/globals.css to <scaffold>/shadcn/globals.css."""
-    src_candidates = [
-        v0_dir / "app" / "globals.css",
-        v0_dir / "styles" / "globals.css",
-    ]
-    src = next((p for p in src_candidates if p.is_file()), None)
-    if src is None:
-        raise V0ImportError("no globals.css found to sync")
-    dst_dir = scaffold / "shadcn"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst = dst_dir / "globals.css"
-    shutil.copyfile(src, dst)
-    logger.info("synced globals.css: %s → %s", src, dst)
 
 
 def _flatten_single_toplevel(root: Path) -> None:
