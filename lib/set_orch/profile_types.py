@@ -163,13 +163,18 @@ class ProjectType(ABC):
         scope: str,
         dest_dir: Path,
         design_routes: list[str] | None = None,
+        project_path: Path | None = None,
     ) -> list[Path]:
         """Populate dest_dir with scope-matched design files for the named change.
 
-        The dispatcher computes dest_dir; the profile uses change_name for
-        logging/error messages. When design_routes is non-empty, the profile
-        MUST use exact-route lookup (planner-directed). When None or empty,
-        the profile falls back to scope-keyword matching.
+        The dispatcher computes dest_dir (typically under a worktree) and
+        passes project_path pointing to the consumer project root where
+        v0-export/ and design-manifest.yaml live. When project_path is None
+        (direct unit-test callers), the profile may derive it from dest_dir.
+
+        When design_routes is non-empty, the profile MUST use exact-route
+        lookup (planner-directed). When None or empty, the profile falls
+        back to scope-keyword matching.
 
         Returns the list of copied file paths (absolute). Empty list when the
         profile has no design source (detect_design_source == "none").

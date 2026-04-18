@@ -1426,8 +1426,15 @@ class WebProjectType(CoreProfile):
         scope: str,
         dest_dir: Path,
         design_routes: list[str] | None = None,
+        project_path: Path | None = None,
     ) -> list[Path]:
         """Populate dest_dir with scope-matched v0-export files.
+
+        dest_dir is typically inside a worktree
+        (<wt>/openspec/changes/<name>/design-source), while project_path
+        points to the consumer project root where v0-export/ and
+        docs/design-manifest.yaml live. When project_path is None (direct
+        unit-test callers), it is derived from dest_dir's ancestry.
 
         When design_routes is provided (planner-directed), use exact-path
         lookup against the manifest. Otherwise fall back to scope-keyword
@@ -1446,10 +1453,12 @@ class WebProjectType(CoreProfile):
             match_routes_by_scope,
         )
 
-        project_path = Path(dest_dir).resolve().parents[3]  # .../openspec/changes/<name>/design-source → project root
-        # The above assumes dest_dir layout openspec/changes/<change_name>/design-source
-        # We more robustly derive project from dest_dir by walking up until we see openspec/
-        project_path = _find_project_root(Path(dest_dir))
+        # When project_path is supplied (dispatcher path), use it verbatim.
+        # When omitted (legacy unit-test callers), walk up from dest_dir.
+        if project_path is None:
+            project_path = _find_project_root(Path(dest_dir))
+        else:
+            project_path = Path(project_path)
         manifest_path = project_path / "docs" / "design-manifest.yaml"
         if not manifest_path.is_file():
             raise ManifestError(

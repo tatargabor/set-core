@@ -208,8 +208,9 @@ def generate_manifest_from_tree(
 
     _report_scope_keyword_collisions(m)
 
-    # Write YAML + preserve manual lines
-    yaml_text = yaml.safe_dump(m.to_dict(), sort_keys=False)
+    # Write YAML + preserve manual lines. allow_unicode=True keeps HU
+    # accents (á, é, ő, ű, …) readable instead of \xE1-escaped.
+    yaml_text = yaml.safe_dump(m.to_dict(), sort_keys=False, allow_unicode=True)
     if existing_manual_lines:
         yaml_text += "\n# Preserved manual overrides from previous manifest:\n"
         yaml_text += "\n".join(existing_manual_lines) + "\n"

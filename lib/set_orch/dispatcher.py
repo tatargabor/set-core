@@ -152,9 +152,15 @@ def _populate_design_source_slice(
     change_name: str,
     scope: str,
     project_path: str,
+    wt_path: str,
     design_routes: list[str] | None = None,
 ) -> tuple[str, list[str]]:
-    """Populate openspec/changes/<change_name>/design-source/ via profile system.
+    """Populate <wt>/openspec/changes/<change_name>/design-source/ via profile system.
+
+    The slice must live in the WORKTREE (not the project root) because the
+    agent runs inside the worktree and reads files from there. Source
+    detection still uses project_path because v0-export/ + design-manifest.yaml
+    are shared across worktrees and live in the project root.
 
     Returns (dispatch_context_markdown, copied_files_relpaths). When the
     profile reports detect_design_source() == "none", returns ("", []) and
@@ -172,7 +178,7 @@ def _populate_design_source_slice(
     if source == "none":
         return "", []
 
-    change_dir = Path(project_path) / "openspec" / "changes" / change_name
+    change_dir = Path(wt_path) / "openspec" / "changes" / change_name
     dest_dir = change_dir / "design-source"
     # Clean stale files before repopulation (retry-safe).
     if dest_dir.exists():
@@ -181,7 +187,9 @@ def _populate_design_source_slice(
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     copied = profile.copy_design_source_slice(
-        change_name, scope, dest_dir, design_routes=design_routes,
+        change_name, scope, dest_dir,
+        design_routes=design_routes,
+        project_path=Path(project_path),
     )
     ctx_md = profile.get_design_dispatch_context(change_name, scope, Path(project_path))
     copied_rel = [
@@ -189,8 +197,8 @@ def _populate_design_source_slice(
         for p in copied
     ]
     logger.info(
-        "design-source populated for %s: %d files, source=%s",
-        change_name, len(copied_rel), source,
+        "design-source populated for %s in worktree %s: %d files, source=%s",
+        change_name, wt_path, len(copied_rel), source,
     )
     return ctx_md, copied_rel
 
@@ -2178,6 +2186,7 @@ def dispatch_change(
         try:
             _ctx_md, _copied = _populate_design_source_slice(
                 change_name, scope, project_path,
+                wt_path=wt_path,
                 design_routes=plan_design_routes,
             )
             if _ctx_md:
