@@ -297,7 +297,12 @@ def run_skeleton_check(
             src_prefix = f"{v0_export.name}/"
             rel = Path(str(base)[len(src_prefix):]) if str(base).startswith(src_prefix) else base
             agent_candidate = agent_worktree / rel
-            if not agent_candidate.is_dir() and not _resolve_shared_alias(agent_worktree, rel, aliases):
+            src_candidate = agent_worktree / "src" / rel
+            if (
+                not agent_candidate.is_dir()
+                and not src_candidate.is_dir()
+                and not _resolve_shared_alias(agent_worktree, rel, aliases)
+            ):
                 violations.append(SkeletonViolation(
                     "missing-shared-file",
                     f"shared directory {rel} absent in agent worktree",
@@ -306,7 +311,12 @@ def run_skeleton_check(
             src_prefix = f"{v0_export.name}/"
             rel = Path(sh[len(src_prefix):]) if sh.startswith(src_prefix) else Path(sh)
             agent_candidate = agent_worktree / rel
-            if not agent_candidate.is_file() and not _resolve_shared_alias(agent_worktree, rel, aliases):
+            src_candidate = agent_worktree / "src" / rel
+            if (
+                not agent_candidate.is_file()
+                and not src_candidate.is_file()
+                and not _resolve_shared_alias(agent_worktree, rel, aliases)
+            ):
                 violations.append(SkeletonViolation(
                     "missing-shared-file",
                     f"shared file {rel} absent in agent worktree",
@@ -320,6 +330,8 @@ def run_skeleton_check(
         rel = Path(sh[len(src_prefix):]) if sh.startswith(src_prefix) else Path(sh)
         target = agent_worktree / rel
         if not target.is_file():
+            target = agent_worktree / "src" / rel
+        if not target.is_file():
             continue
         if not _has_component_export(target):
             violations.append(SkeletonViolation(
@@ -332,14 +344,18 @@ def run_skeleton_check(
 
 def _enumerate_agent_routes(agent: Path) -> set[str]:
     """Return set of route paths from app/**/page.tsx in agent worktree."""
-    app = agent / "app"
-    if not app.is_dir():
-        return set()
     out: set[str] = set()
-    for page in app.rglob("page.tsx"):
-        parts = list(page.relative_to(app).parts[:-1])
-        parts = [p for p in parts if not (p.startswith("(") and p.endswith(")"))]
-        out.add("/" + "/".join(parts) if parts else "/")
+    for base in [agent / "app", agent / "src" / "app"]:
+        if not base.is_dir():
+            continue
+        for page in base.rglob("page.tsx"):
+            parts = list(page.relative_to(base).parts[:-1])
+            parts = [
+                p for p in parts
+                if not (p.startswith("(") and p.endswith(")"))
+                and p != "[locale]"
+            ]
+            out.add("/" + "/".join(parts) if parts else "/")
     return out
 
 
