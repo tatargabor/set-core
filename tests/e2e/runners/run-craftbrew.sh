@@ -141,24 +141,42 @@ check_existing() {
 # ── Main initialization ──
 
 init_project() {
+    step "Materialize v0 design source into scaffold"
+    # Scaffold declares design_source in scaffold.yaml; this pulls v0-export/
+    # + generates design-manifest.yaml. Must succeed or runner aborts (D8).
+    if grep -q '^design_source:' "$SCAFFOLD_DIR/scaffold.yaml"; then
+        if ! command -v set-design-import &>/dev/null; then
+            die "scaffold.yaml declares design_source but set-design-import not in PATH — install modules/web"
+        fi
+        if [[ ! -d "$SCAFFOLD_DIR/v0-export" ]]; then
+            info "Running set-design-import against scaffold..."
+            set-design-import --scaffold "$SCAFFOLD_DIR" --force || \
+                die "set-design-import failed — check credentials / network (see docs/design-pipeline.md)"
+        else
+            info "v0-export/ already materialized at scaffold; skipping import"
+        fi
+        [[ -d "$SCAFFOLD_DIR/v0-export" ]] || die "v0-export/ missing after import"
+        [[ -f "$SCAFFOLD_DIR/docs/design-manifest.yaml" ]] || die "design-manifest.yaml missing after import"
+        success "v0 design source ready at $SCAFFOLD_DIR"
+    fi
+
     step "Copy spec and design assets"
     mkdir -p "$TEST_DIR/docs"
     cp -r "$SCAFFOLD_DIR/docs/"* "$TEST_DIR/docs/"
 
-    # Copy figma.md to project root if present
-    if [[ -f "$SCAFFOLD_DIR/figma.md" ]]; then
-        cp "$SCAFFOLD_DIR/figma.md" "$TEST_DIR/"
+    # Deploy materialized v0-export/ to the consumer project (the fidelity
+    # gate needs it locally for reference rendering).
+    if [[ -d "$SCAFFOLD_DIR/v0-export" ]]; then
+        info "Deploying v0-export/ to consumer project..."
+        cp -r "$SCAFFOLD_DIR/v0-export" "$TEST_DIR/v0-export"
+        success "v0-export/ deployed"
     fi
 
-    # Generate design-brief.md from figma.md if not already in scaffold
-    if [[ -f "$TEST_DIR/figma.md" && ! -f "$TEST_DIR/docs/design-brief.md" ]]; then
-        info "Generating design-brief.md from figma.md..."
-        if command -v set-design-sync &>/dev/null; then
-            set-design-sync --input "$TEST_DIR/figma.md" --spec-dir "$TEST_DIR/docs/" --output "$TEST_DIR/docs/design-system.md" 2>/dev/null || true
-            [[ -f "$TEST_DIR/docs/design-brief.md" ]] && success "design-brief.md generated" || warn "design-brief.md generation failed"
-        else
-            warn "set-design-sync not found — design-brief.md not generated"
-        fi
+    # Deploy content-fixtures.yaml → .set-orch/v0-fixtures.yaml
+    if [[ -f "$SCAFFOLD_DIR/docs/content-fixtures.yaml" ]]; then
+        mkdir -p "$TEST_DIR/.set-orch"
+        cp "$SCAFFOLD_DIR/docs/content-fixtures.yaml" "$TEST_DIR/.set-orch/v0-fixtures.yaml"
+        info "Fixtures deployed to .set-orch/v0-fixtures.yaml"
     fi
 
     local file_count
@@ -234,14 +252,6 @@ ATTRS
 
     step "Orchestration config"
     mkdir -p set/orchestration
-    # Read design_file from docs/design-system.md if it exists
-    local design_file_url=""
-    local design_system="docs/design-system.md"
-    if [[ -f "$design_system" ]]; then
-        # Extract first figma.com URL (Design or Make)
-        design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' "$design_system" | head -1 || true)
-    fi
-
     cat > set/orchestration/config.yaml <<YAML
 # Orchestration config for CraftBrew E2E
 default_model: opus
@@ -259,11 +269,6 @@ discord:
   enabled: true
   channel_name: craftbrew
 YAML
-
-    if [[ -n "$design_file_url" ]]; then
-        echo "design_file: \"$design_file_url\"" >> set/orchestration/config.yaml
-        success "Design file reference: $design_file_url"
-    fi
     success "Created set/orchestration/config.yaml"
 
     git add -A

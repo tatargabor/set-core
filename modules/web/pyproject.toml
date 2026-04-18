@@ -11,6 +11,7 @@ dependencies = ["pyyaml>=5.0"]
 
 [project.scripts]
 set-project-web = "set_project_web.cli:main"
+set-design-import = "set_project_web.design_import_cli:main"
 
 [project.entry-points."set_tools.project_types"]
 web = "set_project_web:WebProjectType"

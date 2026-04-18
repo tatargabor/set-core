@@ -148,21 +148,51 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
     return "## Relevant Patterns\n\n" + "\n\n".join(parts)
 
 
-def _build_per_change_design(
+def _populate_design_source_slice(
     change_name: str,
     scope: str,
-    design_snapshot_dir: str,
-    wt_path: str,
-) -> bool:
-    """Build per-change design.md via profile system.
+    project_path: str,
+    design_routes: list[str] | None = None,
+) -> tuple[str, list[str]]:
+    """Populate openspec/changes/<change_name>/design-source/ via profile system.
 
-    Delegates to profile.build_per_change_design() which handles
-    project-type-specific design extraction (web: bridge.sh, others: no-op).
+    Returns (dispatch_context_markdown, copied_files_relpaths). When the
+    profile reports detect_design_source() == "none", returns ("", []) and
+    no directory is created. When the profile reports a design source, the
+    per-change design-source directory is cleaned and repopulated; a
+    profile exception is re-raised by the caller (per D8: fail loud when
+    design is declared).
     """
+    from pathlib import Path
+
     from .profile_loader import load_profile
 
     profile = load_profile()
-    return profile.build_per_change_design(change_name, scope, wt_path, design_snapshot_dir)
+    source = profile.detect_design_source(Path(project_path))
+    if source == "none":
+        return "", []
+
+    change_dir = Path(project_path) / "openspec" / "changes" / change_name
+    dest_dir = change_dir / "design-source"
+    # Clean stale files before repopulation (retry-safe).
+    if dest_dir.exists():
+        import shutil as _shutil
+        _shutil.rmtree(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    copied = profile.copy_design_source_slice(
+        change_name, scope, dest_dir, design_routes=design_routes,
+    )
+    ctx_md = profile.get_design_dispatch_context(change_name, scope, Path(project_path))
+    copied_rel = [
+        str(Path(p).relative_to(dest_dir)) if Path(p).is_absolute() else str(p)
+        for p in copied
+    ]
+    logger.info(
+        "design-source populated for %s: %d files, source=%s",
+        change_name, len(copied_rel), source,
+    )
+    return ctx_md, copied_rel
 
 
 def _build_resume_preamble(change_name: str, wt_path: str) -> str:
@@ -1865,7 +1895,6 @@ def dispatch_change(
     input_mode: str = "",
     input_path: str = "",
     digest_dir: str = "",
-    design_snapshot_dir: str = ".",
 ) -> bool:
     """Dispatch a single change to a worktree.
 
@@ -2130,39 +2159,48 @@ def dispatch_change(
             for f in no_modify
         ]
 
-    # Design context (tokens + hierarchy) via profile system
+    # Design source slice + dispatch context (v0-only pipeline).
+    # Per design D8: when the profile declares a design source (!= "none"),
+    # ANY exception from the profile methods fails the dispatch loudly with
+    # reason `design-provider-error`. When the profile says "none", any
+    # defensive exception is logged at DEBUG and dispatch continues.
+    project_path = os.path.dirname(state_path) or os.getcwd()
+    plan_design_routes = change.extras.get("design_routes") if hasattr(change, "extras") else None
     try:
         from .profile_loader import load_profile as _load_profile_for_design
         _design_profile = _load_profile_for_design()
-        _design_ctx = _design_profile.get_design_dispatch_context(scope, design_snapshot_dir)
-        if _design_ctx:
-            ctx.design_context = _design_ctx
-            logger.info("Design context injected (%d chars) for %s", len(_design_ctx), change_name)
-        else:
-            # Check if any design assets exist — distinguishes "no design files in project"
-            # (normal for foundation/data changes) from "files exist but pipeline broke" (real bug)
-            _design_paths = [
-                os.path.join(design_snapshot_dir, "docs", "design-system.md"),
-                os.path.join(design_snapshot_dir, "docs", "design-snapshot.md"),
-                os.path.join(design_snapshot_dir, "docs", "design-brief.md"),
-                os.path.join(design_snapshot_dir, "design-system.md"),
-                os.path.join(design_snapshot_dir, "design-snapshot.md"),
-                os.path.join(design_snapshot_dir, "design-brief.md"),
-            ]
-            _has_design_assets = any(os.path.isfile(p) for p in _design_paths)
-            if _has_design_assets:
-                logger.warning(
-                    "[ANOMALY] Design context EMPTY for %s despite design assets present — "
-                    "agent won't see design tokens/Figma source. Check bridge.sh matcher or timeout.",
-                    change_name,
-                )
-            else:
-                logger.info(
-                    "Design context not available for %s — no design assets in project",
-                    change_name,
-                )
+        _design_source_id = _design_profile.detect_design_source(Path(project_path))
     except Exception:
-        logger.error("Design context enrichment FAILED for %s", change_name, exc_info=True)
+        logger.error("detect_design_source raised for %s", change_name, exc_info=True)
+        _design_source_id = "none"
+
+    if _design_source_id != "none":
+        try:
+            _ctx_md, _copied = _populate_design_source_slice(
+                change_name, scope, project_path,
+                design_routes=plan_design_routes,
+            )
+            if _ctx_md:
+                ctx.design_context = _ctx_md
+                logger.info(
+                    "Design source context injected (%d chars, %d files, source=%s) for %s",
+                    len(_ctx_md), len(_copied), _design_source_id, change_name,
+                )
+        except Exception:
+            logger.error(
+                "design-provider-error for %s (source=%s) — dispatch FAILED",
+                change_name, _design_source_id, exc_info=True,
+            )
+            return False
+    else:
+        try:
+            _ctx_md = _design_profile.get_design_dispatch_context(
+                change_name, scope, Path(project_path),
+            )
+            if _ctx_md:
+                ctx.design_context = _ctx_md
+        except Exception:
+            logger.debug("Defensive design context raised (source=none)", exc_info=True)
 
     # Proactive rule injection (keyword-matched rules from .claude/rules/)
     rule_injection = _build_rule_injection(scope, wt_path)
@@ -2171,36 +2209,6 @@ def dispatch_change(
             ctx.design_context += "\n\n" + rule_injection
         else:
             ctx.design_context = rule_injection
-
-    # Per-change design.md from design-brief.md (rich visual descriptions)
-    has_per_change_design = False
-    try:
-        has_per_change_design = _build_per_change_design(
-            change_name, scope, design_snapshot_dir, wt_path,
-        )
-        if has_per_change_design:
-            if ctx.design_context:
-                dc_lines = ctx.design_context.split("\n")
-                token_lines = []
-                in_tokens = False
-                for line in dc_lines:
-                    if "## Design Tokens" in line or "### Colors" in line or "### Typography" in line:
-                        in_tokens = True
-                    elif in_tokens and line.startswith("## ") and "Design Tokens" not in line:
-                        in_tokens = False
-                    if in_tokens:
-                        token_lines.append(line)
-                tokens_inline = "\n".join(token_lines) if token_lines else ""
-                ctx.design_context = (
-                    tokens_inline + "\n\n"
-                    "**Read `design.md` in this change directory for detailed visual specifications of your pages.**"
-                ).strip()
-            else:
-                ctx.design_context = (
-                    "**Read `design.md` in this change directory for detailed visual specifications of your pages.**"
-                )
-    except Exception:
-        logger.debug("Per-change design.md generation failed (non-fatal)", exc_info=True)
 
     # Setup change in worktree
     _setup_change_in_worktree(
@@ -2642,7 +2650,6 @@ def dispatch_ready_changes(
     input_mode: str = "",
     input_path: str = "",
     digest_dir: str = "",
-    design_snapshot_dir: str = ".",
 ) -> int:
     """Dispatch pending changes respecting deps and parallel limits.
 
@@ -2709,7 +2716,6 @@ def dispatch_ready_changes(
             input_mode=input_mode,
             input_path=input_path,
             digest_dir=digest_dir,
-            design_snapshot_dir=design_snapshot_dir,
         )
         running += 1
         dispatched += 1

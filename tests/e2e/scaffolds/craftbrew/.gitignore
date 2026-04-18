@@ -1,0 +1,5 @@
+# v0-export is materialized at deploy time from the git repo; never committed.
+v0-export/
+
+# v0 import quality report — regenerated each import, not a durable artifact.
+docs/v0-import-report.md

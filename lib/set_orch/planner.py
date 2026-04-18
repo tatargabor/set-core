@@ -541,6 +541,21 @@ def validate_plan(
         except Exception as exc:
             logger.warning("Could not generate spec coverage report: %s", exc)
 
+    # Design-manifest coverage (profile-driven). Layer 1 orchestrates the
+    # call; the concrete profile (e.g. WebProjectType) enforces the rule.
+    try:
+        from .profile_loader import load_profile as _load_design_profile
+
+        _design_profile = _load_design_profile()
+        project_path = Path(plan_path).parent.parent  # …/openspec/changes/<name>/plan.json? fallback to cwd
+        if not project_path.is_dir():
+            project_path = Path.cwd()
+        design_violations = _design_profile.validate_plan_design_coverage(plan, project_path)
+        for v in design_violations:
+            result.errors.append(f"Design coverage: {v}")
+    except Exception:
+        logger.debug("validate_plan_design_coverage raised", exc_info=True)
+
     return result
 
 
@@ -1842,16 +1857,11 @@ def run_planning_pipeline(
                     f"Status: {triage_status.status}. Edit triage.md or set TRIAGE_AUTO_DEFER=true."
                 )
 
-    # 3. Design bridge (detect design MCP, fetch snapshot)
+    # 3. Design context: v0 pipeline uses per-change design-source/ populated
+    #    by the dispatcher, not a global snapshot at plan time. The planner
+    #    still reads v0-export/globals.css tokens + design-manifest.yaml for
+    #    design awareness, when they exist.
     design_context = _fetch_design_context(force=bool(replan_ctx))
-
-    # 3b. Append data model from design sources via profile system
-    if design_context:
-        from .profile_loader import load_profile as _load_dm_profile
-        _dm_profile = _load_dm_profile()
-        _dm_text = _dm_profile.fetch_design_data_model(".")
-        if _dm_text:
-            design_context += "\n\n" + _dm_text
 
     # 4. Test infra detection
     test_infra = detect_test_infra()
@@ -2080,31 +2090,75 @@ def plan_via_agent(
 
 
 def _fetch_design_context(force: bool = False) -> str:
-    """Read committed design snapshot. No runtime MCP fetch.
+    """Load design context for the planner (v0 pipeline).
 
-    Design snapshots are committed artifacts created by `set-figma-fetch`.
-    This function only reads the existing file — it never fetches from MCP.
-    Searches recursively under CWD for design-snapshot.md.
+    The planner needs to see EVERY manifest route (so it can bind each
+    route to a change). Earlier drafts capped the combined output at
+    5000 chars and truncated the manifest mid-route on large scaffolds
+    (22+ routes). We now:
+
+      - never truncate the manifest (planner correctness depends on it)
+      - extract ONLY the :root CSS-variable block from globals.css
+        (strips prose/comments, keeps every token)
+      - leave the non-authoritative vibe brief untruncated
 
     Args:
-        force: Ignored (kept for signature compatibility).
+        force: ignored (kept for signature compatibility).
 
     Returns:
-        Snapshot content (first 5000 chars) or empty string.
+        design context string (no hard size cap) or empty string.
     """
-    # Search recursively under CWD for design files (snapshot or system)
-    for name in ("design-snapshot.md", "design-system.md"):
-        for snap in sorted(Path(".").rglob(name)):
+    parts: list[str] = []
+
+    manifest_path = Path("docs") / "design-manifest.yaml"
+    if manifest_path.is_file():
+        try:
+            parts.append("## Design Manifest (routes)\n" + manifest_path.read_text())
+        except OSError:
+            pass
+
+    globals_candidates = [
+        Path("shadcn") / "globals.css",
+        Path("v0-export") / "app" / "globals.css",
+    ]
+    for g in globals_candidates:
+        if g.is_file():
             try:
-                content = snap.read_text(errors="replace")
-                if content.strip():
-                    logger.info("Design context loaded from %s (%d bytes)", snap, len(content))
-                    return content[:5000]
+                root_block = _extract_globals_root_block(g)
+                if root_block:
+                    parts.append("## Design Tokens (globals.css :root)\n" + root_block)
+                    break
             except OSError:
                 continue
 
-    logger.info("No design-snapshot.md or design-system.md found")
-    return ""
+    brief = Path("docs") / "design-brief.md"
+    if brief.is_file():
+        try:
+            body = brief.read_text(errors="replace")
+            if body.strip():
+                parts.append("## Design Vibe Notes (non-authoritative)\n" + body)
+        except OSError:
+            pass
+
+    if not parts:
+        logger.info("No v0 design manifest or globals.css — planner runs without design context")
+        return ""
+    return "\n\n".join(parts)
+
+
+def _extract_globals_root_block(css_path: Path) -> str:
+    """Return the :root { ... } block from a CSS file, or "" if absent.
+
+    Keeps every CSS custom property declaration — no per-token cap —
+    because the planner uses these to decide which semantic tokens
+    exist in the theme (and thus what the agent will find in
+    design-source/).
+    """
+    import re as _re
+
+    text = css_path.read_text(errors="replace")
+    m = _re.search(r":root\s*\{[^}]*\}", text, _re.DOTALL)
+    return m.group(0) if m else ""
 
 
 def _parse_plan_response(response_text: str) -> dict | None:

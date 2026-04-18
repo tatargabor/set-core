@@ -1,9 +1,12 @@
 """Web project type plugin for SET (ShipExactlyThis)."""
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 from set_orch.profile_loader import CoreProfile
 from set_orch.profile_types import (
@@ -885,9 +888,10 @@ class WebProjectType(CoreProfile):
         return ["node_modules", ".next", "dist", "build", ".turbo"]
 
     def register_gates(self) -> list:
-        """Register web-specific gates: i18n_check, e2e (Playwright), lint (forbidden patterns)."""
+        """Register web-specific gates: i18n_check, e2e, lint, design-fidelity."""
         from set_orch.gate_runner import GateDefinition
         from .gates import execute_e2e_gate, execute_i18n_check_gate, execute_lint_gate
+        from .v0_fidelity_gate import execute_design_fidelity_gate
 
         return [
             GateDefinition(
@@ -923,6 +927,18 @@ class WebProjectType(CoreProfile):
                     "foundational": "run", "feature": "run",
                     "cleanup-before": "warn", "cleanup-after": "skip",
                 },
+            ),
+            GateDefinition(
+                "design-fidelity",
+                execute_design_fidelity_gate,
+                position="end",
+                phase="pre-merge",
+                defaults={
+                    "infrastructure": "skip", "schema": "skip",
+                    "foundational": "skip", "feature": "run",
+                    "cleanup-before": "skip", "cleanup-after": "skip",
+                },
+                run_on_integration=True,
             ),
         ]
 
@@ -1397,134 +1413,245 @@ class WebProjectType(CoreProfile):
 
         return "\n".join(lines)
 
-    # ─── Design Integration (Layer 2) ─────────────────────────────
+    # ─── Design Source Provider (v0) ──────────────────────────────
 
-    def _bridge_path(self) -> str:
-        """Resolve path to lib/design/bridge.sh."""
-        import os
-        root = os.environ.get("SET_TOOLS_ROOT", "")
-        if not root:
-            # Fallback: derive from this package's location
-            root = str(Path(__file__).parent.parent.parent.parent)
-        return os.path.join(root, "lib", "design", "bridge.sh")
+    def detect_design_source(self, project_path: Path) -> str:
+        """Return "v0" when <project_path>/v0-export/ exists, else "none"."""
+        p = Path(project_path) / "v0-export"
+        return "v0" if p.is_dir() else "none"
 
-    def _run_bridge(self, cmd: str, timeout: int = 120) -> str:
-        """Run a bridge.sh function, return stdout or empty string.
+    def copy_design_source_slice(
+        self,
+        change_name: str,
+        scope: str,
+        dest_dir: Path,
+        design_routes: list[str] | None = None,
+    ) -> list[Path]:
+        """Populate dest_dir with scope-matched v0-export files.
 
-        Default timeout 120s — design extraction from large snapshot files
-        can take 10-30s for scope matching + awk parsing.
+        When design_routes is provided (planner-directed), use exact-path
+        lookup against the manifest. Otherwise fall back to scope-keyword
+        substring matching. Shared files are ALWAYS included; missing
+        shared files are a hard error.
+
+        Raises NoMatchingRouteError when no route matches AND the scope
+        is UI-bound (per AC-17b / design D8).
         """
-        import os
-        bridge = self._bridge_path()
-        if not os.path.isfile(bridge):
-            return ""
-        try:
-            r = subprocess.run(
-                ["bash", "-c", f'source "{bridge}" 2>/dev/null && {cmd}'],
-                capture_output=True, text=True, timeout=timeout,
+        from .v0_manifest import (
+            ManifestError,
+            NoMatchingRouteError,
+            is_ui_bound_scope,
+            load_manifest,
+            match_routes_by_explicit,
+            match_routes_by_scope,
+        )
+
+        project_path = Path(dest_dir).resolve().parents[3]  # .../openspec/changes/<name>/design-source → project root
+        # The above assumes dest_dir layout openspec/changes/<change_name>/design-source
+        # We more robustly derive project from dest_dir by walking up until we see openspec/
+        project_path = _find_project_root(Path(dest_dir))
+        manifest_path = project_path / "docs" / "design-manifest.yaml"
+        if not manifest_path.is_file():
+            raise ManifestError(
+                f"design-manifest.yaml not found at {manifest_path}. "
+                f"Run set-design-import to materialize it."
             )
-            return r.stdout.strip() if r.returncode == 0 else ""
-        except subprocess.TimeoutExpired:
-            import logging
-            logging.getLogger(__name__).error(
-                "bridge.sh timed out after %ds: %s", timeout, cmd[:100]
+        manifest = load_manifest(manifest_path)
+
+        if design_routes:
+            matched = match_routes_by_explicit(manifest, design_routes)
+        else:
+            matched = match_routes_by_scope(manifest, scope)
+            if not matched and is_ui_bound_scope(scope):
+                raise NoMatchingRouteError(
+                    f"scope '{scope}' is UI-bound but no manifest route matched. "
+                    f"Options: (1) add scope_keywords to a route in design-manifest.yaml, "
+                    f"(2) pass design_routes explicitly from the planner, "
+                    f"(3) mark scope non-UI if it genuinely doesn't render a route."
+                )
+
+        dest_dir = Path(dest_dir)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        copied: list[Path] = []
+
+        # Matched-route files + component_deps
+        for r in matched:
+            for rel in (*r.files, *r.component_deps):
+                src = project_path / rel
+                if not src.is_file():
+                    # For imports that resolve outside manifest, skip with warning
+                    import logging as _log
+                    _log.getLogger(__name__).warning(
+                        "design-source slice: missing %s for route %s", src, r.path,
+                    )
+                    continue
+                copied.append(_copy_preserving_structure(src, project_path, dest_dir))
+
+        # Shared files (always included; missing shared = ERROR)
+        missing_shared: list[str] = []
+        for sh in manifest.shared:
+            # sh can be a glob like "v0-export/components/ui/**"
+            src_spec = project_path / sh
+            if sh.endswith("/**"):
+                base = Path(str(src_spec)[: -len("/**")])
+                if not base.is_dir():
+                    missing_shared.append(sh)
+                    continue
+                for src in base.rglob("*"):
+                    if src.is_file():
+                        copied.append(_copy_preserving_structure(src, project_path, dest_dir))
+            else:
+                if not src_spec.is_file():
+                    missing_shared.append(sh)
+                    continue
+                copied.append(_copy_preserving_structure(src_spec, project_path, dest_dir))
+
+        if missing_shared:
+            raise ManifestError(
+                f"manifest declares shared files that are missing from disk: {missing_shared}. "
+                f"Manifest is broken — regenerate with set-design-import --regenerate-manifest."
             )
+
+        return copied
+
+    def get_design_dispatch_context(
+        self, change_name: str, scope: str, project_path: Path,
+    ) -> str:
+        """Return markdown block for input.md Design Source section.
+
+        Contains directory pointer (using change_name), file list, and a
+        token quick-reference extracted from shadcn/globals.css (or v0-export
+        fallback). Capped at 200 lines total.
+        """
+        p = Path(project_path)
+        if (p / "v0-export").is_dir() is False:
             return ""
 
-    def build_per_change_design(self, change_name: str, scope: str, wt_path: str, snapshot_dir: str) -> bool:
-        """Build per-change design.md with tokens + matched design brief pages."""
-        import os
-        import logging
-        log = logging.getLogger(__name__)
+        change_slice = p / "openspec" / "changes" / change_name / "design-source"
+        if not change_slice.is_dir():
+            return ""
 
-        # Find design-brief.md
-        brief_path = None
-        for bp in ("docs/design-brief.md", "design-brief.md", "docs/design/design-brief.md"):
-            if os.path.isfile(bp):
-                brief_path = bp
-                break
-        if not brief_path:
-            return False
-
-        # Get matched page sections
-        matched_pages = self._run_bridge(
-            f'design_brief_for_dispatch "{scope}" "{brief_path}"'
+        lines: list[str] = []
+        lines.append("## Design Source")
+        lines.append("")
+        lines.append(
+            f"The authoritative design for this change lives in "
+            f"`openspec/changes/{change_name}/design-source/`. Read the TSX files as visual truth. "
+            f"See `.claude/rules/design-bridge.md` for the refactor policy (allowed vs forbidden)."
         )
-        if not matched_pages:
-            return False
+        lines.append("")
+        lines.append("### Files in slice")
+        for f in sorted(change_slice.rglob("*")):
+            if not f.is_file():
+                continue
+            rel = f.relative_to(change_slice)
+            lines.append(f"- `{rel.as_posix()}`")
+        lines.append("")
 
-        # Get tokens
-        tokens_raw = self._run_bridge(
-            f'design_context_for_dispatch "{scope}" "{snapshot_dir}"'
-        )
-        tokens_section = ""
-        if tokens_raw:
-            lines = tokens_raw.split("\n")
-            in_tokens = False
-            token_lines = []
-            for line in lines:
-                if line.startswith("## Design Tokens"):
-                    in_tokens = True
-                elif in_tokens and line.startswith("## "):
-                    break
-                if in_tokens:
-                    token_lines.append(line)
-            if token_lines:
-                tokens_section = "\n".join(token_lines)
+        tokens = _extract_globals_tokens(p)
+        if tokens:
+            lines.append("### Design Tokens (synced from globals.css)")
+            # No per-token cap — show every :root custom property. Each
+            # token is one line; total is still bounded by the 200-line
+            # block cap below (AC-24 / AC-72). If the token list alone
+            # threatens 200 lines, that is a theme-size anomaly worth
+            # surfacing to the scaffold author, not silently hiding.
+            for name, value in tokens:
+                lines.append(f"- `{name}`: `{value}`")
+            lines.append("")
 
-        # Build content
-        parts = [
-            "# Design Context",
-            "",
-            "Use these EXACT values when implementing UI. Do NOT fall back to framework defaults.",
-            "",
-        ]
-        if tokens_section:
-            parts.append(tokens_section)
-            parts.append("")
-        parts.append(matched_pages)
-        design_content = "\n".join(parts)
+        # Hard cap at 200 lines (per AC-24 / AC-72 — spec requirement).
+        # When we hit this, emit a WARNING so the scaffold author knows
+        # the token list exceeded the budget (instead of silent drop).
+        if len(lines) > 200:
+            logger.warning(
+                "design dispatch context for %s exceeded 200-line cap (%d lines) — "
+                "truncating per AC-24/AC-72; trim shared file list or review theme size",
+                change_name, len(lines),
+            )
+            lines = lines[:199] + ["... (truncated at 200-line budget — see log WARNING)"]
 
-        # Write to worktree
-        change_dir = os.path.join(wt_path, "openspec", "changes", change_name)
-        os.makedirs(change_dir, exist_ok=True)
-        design_path = os.path.join(change_dir, "design.md")
-        try:
-            with open(design_path, "w", encoding="utf-8") as f:
-                f.write(design_content)
-            log.info("Wrote per-change design.md (%d lines) to %s",
-                     len(design_content.split("\n")), design_path)
-            return True
-        except OSError as e:
-            log.warning("Failed to write per-change design.md: %s", e)
-            return False
+        return "\n".join(lines)
 
-    def get_design_dispatch_context(self, scope: str, snapshot_dir: str) -> str:
-        """Return design tokens + component hierarchy + Figma source code."""
-        context = self._run_bridge(
-            f'design_context_for_dispatch "{scope}" "{snapshot_dir}"'
-        )
-        sources = self._run_bridge(
-            f'design_sources_for_dispatch "{scope}" "{snapshot_dir}"',
-            timeout=10,
-        )
-        if sources:
-            context = (context + "\n\n" + sources) if context else sources
-        return context
+    def validate_plan_design_coverage(
+        self, plan: dict, project_path: Path,
+    ) -> list[str]:
+        """Validate every manifest route appears in exactly one change or deferred.
 
-    def build_design_review_section(self, snapshot_dir: str) -> str:
-        """Return design compliance section for code review."""
-        return self._run_bridge(
-            f'build_design_review_section "{snapshot_dir}"',
-            timeout=10,
-        )
+        Opt-in: only triggers when the plan has design-aware fields
+        (any change with non-empty design_routes OR top-level deferred_design_routes).
+        Legacy plans skip validation gracefully.
+        """
+        from .v0_manifest import load_manifest
+
+        p = Path(project_path)
+        manifest_path = p / "docs" / "design-manifest.yaml"
+        if not manifest_path.is_file():
+            return []  # no manifest → nothing to validate
+
+        changes = plan.get("changes") or []
+        deferred = plan.get("deferred_design_routes") or []
+
+        any_design_aware = any(
+            (c.get("design_routes") or []) for c in changes
+        ) or bool(deferred)
+        if not any_design_aware:
+            import logging as _log
+            _log.getLogger(__name__).info(
+                "validate_plan_design_coverage: skipped (no design_routes or deferred_design_routes)",
+            )
+            return []
+
+        manifest = load_manifest(manifest_path)
+        manifest_paths = {r.path for r in manifest.routes}
+        deferred_paths = {d.get("route") for d in deferred if d.get("route")}
+
+        # Every change's design_routes must be in manifest
+        assigned: dict[str, list[str]] = {}
+        violations: list[str] = []
+        for c in changes:
+            for rp in c.get("design_routes") or []:
+                if rp not in manifest_paths:
+                    violations.append(
+                        f"change '{c.get('name')}' lists design_route '{rp}' not in manifest"
+                    )
+                assigned.setdefault(rp, []).append(c.get("name", "<unnamed>"))
+
+        # Every manifest route must be assigned to exactly one change OR deferred
+        for rp in manifest_paths:
+            if rp in deferred_paths:
+                if len(assigned.get(rp, [])) > 0:
+                    violations.append(
+                        f"route {rp} is both deferred AND assigned to {assigned[rp]}"
+                    )
+                continue
+            assignees = assigned.get(rp, [])
+            if not assignees:
+                violations.append(
+                    f"manifest route {rp} is not assigned to any change and not deferred"
+                )
+            elif len(assignees) > 1:
+                violations.append(
+                    f"manifest route {rp} assigned to multiple changes: {assignees}"
+                )
+
+        # Deferred entries must reference real manifest routes and have a reason
+        for d in deferred:
+            if d.get("route") not in manifest_paths:
+                violations.append(
+                    f"deferred_design_routes entry '{d.get('route')}' not in manifest"
+                )
+            if not d.get("reason"):
+                violations.append(
+                    f"deferred_design_routes entry for '{d.get('route')}' missing reason"
+                )
+
+        return violations
 
     def fetch_design_data_model(self, project_path: str) -> str:
-        """Return TypeScript interfaces from Figma source files."""
-        return self._run_bridge(
-            f'design_data_model_section "{project_path}"',
-            timeout=10,
-        )
+        """No longer sourced from Figma — returns empty in v0 pipeline."""
+        return ""
 
     def decompose_hints(self) -> list:
         """Return web-specific decomposition hints for the planner."""
@@ -1536,3 +1663,63 @@ class WebProjectType(CoreProfile):
             "Every feature change with CRUD operations (create/edit/delete) MUST include e2e tests that exercise each operation end-to-end: form fill → submit → verify result appears in list. Do NOT write tests that only verify page loads — test the actual data mutations.",
             "Admin e2e tests MUST verify sidebar/nav is visible on every admin page to catch layout consistency bugs.",
         ]
+
+
+# ─── Module-level helpers (v0 pipeline) ───────────────────────────────
+
+
+def _find_project_root(dest_dir: Path) -> Path:
+    """Walk up from dest_dir until we see openspec/changes/<name>/design-source and return the project root."""
+    d = dest_dir.resolve()
+    # Expect: <project>/openspec/changes/<change_name>/design-source
+    for _ in range(6):
+        if d.name == "design-source":
+            d = d.parent
+            continue
+        if d.parent.name == "changes" and d.parent.parent.name == "openspec":
+            return d.parent.parent.parent
+        d = d.parent
+    return dest_dir.parent.parent.parent.parent
+
+
+def _copy_preserving_structure(src: Path, project_root: Path, dest_root: Path) -> Path:
+    """Copy src to dest_root preserving path relative to project_root."""
+    import shutil as _shutil
+
+    rel = src.resolve().relative_to(project_root.resolve())
+    out = dest_root / rel
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _shutil.copyfile(src, out)
+    return out
+
+
+def _extract_globals_tokens(project_path: Path) -> list[tuple[str, str]]:
+    """Parse :root { --foo: value; } declarations from globals.css.
+
+    Prefers <project_path>/shadcn/globals.css (scaffold-synced) then falls
+    back to v0-export/app/globals.css.
+    """
+    import re
+    import logging as _log
+
+    candidates = [
+        project_path / "shadcn" / "globals.css",
+        project_path / "v0-export" / "app" / "globals.css",
+        project_path / "v0-export" / "styles" / "globals.css",
+    ]
+    src = next((p for p in candidates if p.is_file()), None)
+    if src is None:
+        _log.getLogger(__name__).warning(
+            "globals.css not found under %s — tokens will be empty", project_path,
+        )
+        return []
+
+    text = src.read_text(encoding="utf-8", errors="ignore")
+    root_match = re.search(r":root\s*\{([^}]*)\}", text, re.DOTALL)
+    if not root_match:
+        return []
+    body = root_match.group(1)
+    tokens: list[tuple[str, str]] = []
+    for m in re.finditer(r"(--[A-Za-z0-9_-]+)\s*:\s*([^;]+);", body):
+        tokens.append((m.group(1), m.group(2).strip()))
+    return tokens

@@ -136,39 +136,66 @@ class ProjectType(ABC):
         """File patterns needing serialization when touched by multiple changes."""
         return []
 
-    def design_page_aliases(self) -> dict[str, list[str]]:
-        """Page name → alias list for design brief scope matching.
 
-        Override in modules to add domain-specific aliases (e.g., Hungarian
-        route names). Return empty dict to use bridge.sh defaults.
+    # --- Design source provider (v0-only pipeline) ---
+    #
+    # Three-method contract:
+    #   detect_design_source         → "v0" / "none" / (future plugin identifiers)
+    #   copy_design_source_slice     → populate <dest>/ with scope-matched files
+    #   get_design_dispatch_context  → markdown block for input.md Design Source section
+    #
+    # Per design D8: when detect_design_source() != "none", the other two methods
+    # MUST succeed or raise — no silent fallback. When detect_design_source()
+    # returns "none", the other two are no-op (empty list / empty string).
+
+    def detect_design_source(self, project_path: Path) -> str:
+        """Return identifier of the design source for this project, or "none".
+
+        Return type is plain `str` (not Literal) so future plugins can return
+        values like "figma-v2", "storybook", etc. without ABC changes.
+        Default: "none" (no design source).
         """
-        return {}
+        return "none"
 
-    def build_per_change_design(self, change_name: str, scope: str, wt_path: str, snapshot_dir: str) -> bool:
-        """Build per-change design.md with tokens + matched design brief pages.
+    def copy_design_source_slice(
+        self,
+        change_name: str,
+        scope: str,
+        dest_dir: Path,
+        design_routes: list[str] | None = None,
+    ) -> list[Path]:
+        """Populate dest_dir with scope-matched design files for the named change.
 
-        Override in project-type modules to implement design-specific logic
-        (e.g., web module calls bridge.sh for Figma/shadcn design extraction).
-        Returns True if a per-change design.md was written.
+        The dispatcher computes dest_dir; the profile uses change_name for
+        logging/error messages. When design_routes is non-empty, the profile
+        MUST use exact-route lookup (planner-directed). When None or empty,
+        the profile falls back to scope-keyword matching.
+
+        Returns the list of copied file paths (absolute). Empty list when the
+        profile has no design source (detect_design_source == "none").
         """
-        return False
+        return []
 
-    def get_design_dispatch_context(self, scope: str, snapshot_dir: str) -> str:
-        """Return design context (tokens + component hierarchy) for dispatch prompt.
+    def get_design_dispatch_context(
+        self, change_name: str, scope: str, project_path: Path,
+    ) -> str:
+        """Return markdown for the agent's input.md "## Design Source" section.
 
-        Override in project-type modules to extract design tokens from
-        project-specific sources (Figma snapshots, shadcn config, etc.).
-        Returns design context string or empty string.
+        The returned block references openspec/changes/<change_name>/design-source/
+        (so the pointer uses the exact change directory, not a placeholder).
+        Empty string when detect_design_source == "none".
         """
         return ""
 
-    def build_design_review_section(self, snapshot_dir: str) -> str:
-        """Return design compliance section for code review prompt.
+    def validate_plan_design_coverage(
+        self, plan: dict, project_path: Path,
+    ) -> list[str]:
+        """Validate that a plan covers all design-manifest routes.
 
-        Override in project-type modules to generate design adherence checks.
-        Returns compliance text or empty string.
+        Returns list of violation messages (empty = OK). Default returns [] —
+        Layer 1 is manifest-agnostic; concrete profiles implement the rule.
         """
-        return ""
+        return []
 
     def fetch_design_data_model(self, project_path: str) -> str:
         """Return design data model (TypeScript interfaces, entity definitions).

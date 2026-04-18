@@ -1539,7 +1539,6 @@ def _poll_active_changes(
                 e2e_command=poll_e2e_cmd,
                 e2e_timeout=d.e2e_timeout,
                 event_bus=event_bus,
-                design_snapshot_dir=os.getcwd(),
             )
         except Exception:
             logger.warning("Poll failed for %s", change.name, exc_info=True)
@@ -1627,7 +1626,6 @@ def _poll_suspended_changes(
                     e2e_command=poll_e2e_cmd,
                     e2e_timeout=d.e2e_timeout,
                     event_bus=event_bus,
-                    design_snapshot_dir=os.getcwd(),
                 )
         except Exception:
             logger.debug("Failed to parse loop-state for %s", change.name, exc_info=True)
@@ -2835,7 +2833,6 @@ def _auto_replan_cycle(
         team_mode=d.team_mode,
         context_pruning=d.context_pruning,
         event_bus=event_bus,
-        design_snapshot_dir=os.getcwd(),
         digest_dir=digest_dir,
     )
 
@@ -2972,7 +2969,6 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
             team_mode=d.team_mode,
             context_pruning=d.context_pruning,
             event_bus=event_bus,
-            design_snapshot_dir=os.getcwd(),
             digest_dir=_digest_dir,
         )
     except Exception:

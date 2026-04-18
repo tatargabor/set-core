@@ -84,10 +84,17 @@ These rules catch silent-failure patterns that surfaced repeatedly as review fin
 - Coupon/promo management
 - Review moderation (approve/reject)
 
+## Layout Parity
+
+Admin and shop layouts MUST include the same provider components:
+- `<Toaster>` — required for toast notifications after server actions
+- `<SessionProvider session={await auth()}>` — required for client-side session access
+
+Every server action that mutates data MUST show user feedback (toast.success/toast.error). Never fire-and-forget.
+
 ## Images
 
-- Product images use placeholder service: `https://placehold.co/400x300/78350F/FFFBEB?text=Product+Name`
-- Use brand colors in placeholder URLs (coffee brown `#78350F` bg, cream `#FFFBEB` fg)
+- Product images: use `https://placehold.co/400x300/78350F/FFFBEB?text=Product+Name` with brand colors
 
 ## See also — universal web anti-patterns
 

@@ -23,6 +23,11 @@ Decompose a specification document into an orchestration execution plan.
    - `set/requirements/*.yaml` — active requirements (status: captured or planned)
    - `set/orchestration/config.yaml` or `.claude/orchestration.yaml` — directives
 
+   2b. **Read design-manifest.yaml (v0 pipeline)** — if `docs/design-manifest.yaml` exists
+   - Load every route's `path` + `scope_keywords` into planning context
+   - The manifest is the AUTHORITATIVE route inventory: every route MUST be accounted for in the plan
+   - If no `docs/design-manifest.yaml` exists, skip this step + INFO log; the plan proceeds design-unaware (legacy mode)
+
 3. **Explore the codebase**
    - Use the Agent tool (Explore) to scan for existing implementations matching spec topics
    - Understand what's already built vs what needs to be built
@@ -41,12 +46,11 @@ Decompose a specification document into an orchestration execution plan.
    ```
    List existing specs and active changes to avoid duplication.
 
-6. **Check for design tool** (skip if no design MCP available)
-   - If a design MCP (figma, penpot, sketch, zeplin) is registered in `.claude/settings.json`, query it for:
-     - Frame/page inventory — what screens/views are designed
-     - Component hierarchy — shared components, variants
-   - Map design frames to planned changes (e.g., `design_ref: "frame:Login"`)
-   - If a spec item requires UI but no matching design frame exists, add a `design_gap` ambiguity
+6. **Bind design-manifest routes to changes (v0 pipeline)** — skip if `docs/design-manifest.yaml` was absent in step 2b
+   - Every manifest route MUST end up in EITHER exactly one change's `design_routes: ["/…"]` OR the plan-level `deferred_design_routes: [{route, reason}]` list
+   - A change without UI has `design_routes: []` (explicit empty list)
+   - When spec mentions UI for a page with no matching manifest route, emit a `design_gap` ambiguity with options: (a) regenerate v0 to include the page, (b) remove from spec, (c) accept that fidelity gate will skip for that page
+   - Emit a `design_route_map` debug section in the plan's `reasoning` field showing each route → change binding
 
 7. **Generate the plan**
 
@@ -66,7 +70,7 @@ Decompose a specification document into an orchestration execution plan.
          "has_manual_tasks": false,
          "depends_on": ["other-change-name"],
          "roadmap_item": "The spec section this implements",
-         "design_ref": "frame:PageName or component:ComponentName (optional, from design tool)",
+         "design_routes": ["/", "/kavek"],
          "spec_files": ["path/relative/to/spec-dir.md"],
          "requirements": ["REQ-DOMAIN-001"],
          "also_affects_reqs": ["REQ-CROSS-001"]
@@ -76,6 +80,12 @@ Decompose a specification document into an orchestration execution plan.
        {
          "id": "REQ-DOMAIN-002",
          "reason": "Depends on auth system, planned for next phase"
+       }
+     ],
+     "deferred_design_routes": [
+       {
+         "route": "/admin/settings",
+         "reason": "Phase 2 scope, skipped for this run"
        }
      ],
      "source_items": [
@@ -121,10 +131,11 @@ Decompose a specification document into an orchestration execution plan.
 **Manual tasks:**
 - Set `has_manual_tasks: true` for changes needing external intervention (API keys, DNS, OAuth setup)
 
-**Design gap detection:**
-- If a design tool is available and a change involves UI, include `design_ref` pointing to the relevant frame
-- If the spec describes a page/screen but no matching design frame exists, flag it as a `design_gap` ambiguity in the plan reasoning
-- Changes with design gaps can still proceed but the gap is recorded for user resolution
+**Design manifest binding (v0 pipeline):**
+- When `docs/design-manifest.yaml` exists, every UI change MUST list the routes it implements in `design_routes: ["/…"]`
+- Plan-wide every manifest route must land in exactly one change OR `deferred_design_routes`
+- Changes without UI use `design_routes: []`
+- When the spec mentions a page with no manifest route, flag `design_gap` in the plan's `reasoning` with options (regenerate v0, remove from spec, accept gate skip)
 
 **Project type integration:**
 - If `set/plugins/project-type.yaml` exists, use its verification rules to inform change_type and dependency ordering

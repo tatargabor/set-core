@@ -523,6 +523,11 @@ def init_state(plan_file: str, output_path: str) -> None:
             change.requirements = c["requirements"]
         if "also_affects_reqs" in c:
             change.also_affects_reqs = c["also_affects_reqs"]
+        # v0 design pipeline: per-change explicit route binding from planner.
+        # Layer 1 stores the list in extras; dispatcher forwards it verbatim
+        # to profile.copy_design_source_slice(design_routes=...).
+        if c.get("design_routes"):
+            change.extras["design_routes"] = list(c["design_routes"])
         changes.append(change)
 
     state = OrchestratorState(

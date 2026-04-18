@@ -1,3 +1,9 @@
 project_type: web
 template: nextjs
 ui_library: shadcn
+
+# v0.app design source (primary: git, fallback: zip).
+design_source:
+  type: v0-git
+  repo: https://github.com/tatargabor/v0-craftbrew-e-commerce-design.git
+  ref: main

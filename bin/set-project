@@ -880,6 +880,25 @@ cmd_init() {
         name=$(basename "$git_root")
     fi
 
+    # Figma `.make` file detection — the Figma pipeline is removed. Projects
+    # must migrate to v0.app export (see docs/design-pipeline.md § Migration).
+    local _make_files
+    _make_files=$(find "$git_root" -maxdepth 3 -name '*.make' -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | head -5)
+    if [[ -n "$_make_files" ]]; then
+        error "Figma .make files detected — the Figma pipeline was removed in v0-only-design-pipeline."
+        echo ""
+        echo "Found:"
+        echo "$_make_files" | sed 's/^/  /'
+        echo ""
+        echo "Migrate by:"
+        echo "  1. Regenerate the design in v0.app (see docs/v0-prompts.md for prompt scaffolding)."
+        echo "  2. Push the v0 result to a git repo."
+        echo "  3. Update scaffold.yaml with a design_source block (see docs/design-pipeline.md)."
+        echo "  4. Delete the .make / design-system.md / design-brief-aliases.txt files."
+        echo "  5. Re-run set-project init."
+        exit 2
+    fi
+
     ensure_config
 
     # Check if we're in a worktree (not the main repo)

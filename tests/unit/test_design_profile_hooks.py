@@ -1,108 +1,97 @@
-"""Tests for design profile hooks (Layer 1/2 separation)."""
+"""Tests for design source provider hooks (v0-only pipeline)."""
 
-import os
-import subprocess
-import tempfile
-from unittest.mock import patch, MagicMock
-
-import pytest
+import inspect
+from pathlib import Path
 
 
-def test_core_profile_returns_noop():
-    """CoreProfile base methods return no-op values."""
-    from set_orch.profile_loader import CoreProfile
-
-    profile = CoreProfile()
-    assert profile.build_per_change_design("x", "scope", "/tmp", ".") is False
-    assert profile.get_design_dispatch_context("scope", ".") == ""
-    assert profile.build_design_review_section(".") == ""
-    assert profile.fetch_design_data_model(".") == ""
-
-
-def test_null_profile_returns_noop():
-    """NullProfile base methods return no-op values."""
+def test_null_profile_design_source_defaults():
+    """NullProfile returns 'none' + empty slice + empty context."""
     from set_orch.profile_loader import NullProfile
 
     profile = NullProfile()
-    assert profile.build_per_change_design("x", "scope", "/tmp", ".") is False
-    assert profile.get_design_dispatch_context("scope", ".") == ""
-    assert profile.build_design_review_section(".") == ""
-    assert profile.fetch_design_data_model(".") == ""
+    assert profile.detect_design_source(Path(".")) == "none"
+    assert profile.copy_design_source_slice("x", "scope", Path(".")) == []
+    assert profile.get_design_dispatch_context("x", "scope", Path(".")) == ""
 
 
-def test_web_profile_build_per_change_design_writes_file():
-    """WebProjectType.build_per_change_design() writes design.md when design-brief.md exists."""
-    from set_project_web.project_type import WebProjectType
+def test_core_profile_design_source_defaults():
+    """CoreProfile inherits same defaults (subclasses override)."""
+    from set_orch.profile_loader import CoreProfile
 
-    wp = WebProjectType()
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create design-brief.md
-        docs = os.path.join(tmpdir, "docs")
-        os.makedirs(docs)
-        with open(os.path.join(docs, "design-brief.md"), "w") as f:
-            f.write("## Page: Home\nHero section\n")
-
-        # Mock _run_bridge to return design content
-        with patch.object(wp, "_run_bridge") as mock_bridge:
-            mock_bridge.side_effect = [
-                "## Visual Design: Home\nHero section content",  # design_brief_for_dispatch
-                "## Design Tokens\n### Colors\n- primary: #000",  # design_context_for_dispatch
-            ]
-
-            # Need to be in the tmpdir so _find_design_brief works
-            old_cwd = os.getcwd()
-            os.chdir(tmpdir)
-            try:
-                result = wp.build_per_change_design("test-change", "Home page", tmpdir, tmpdir)
-            finally:
-                os.chdir(old_cwd)
-
-        assert result is True
-        design_path = os.path.join(tmpdir, "openspec", "changes", "test-change", "design.md")
-        assert os.path.isfile(design_path)
-        content = open(design_path).read()
-        assert "Design Context" in content
-        assert "Design Tokens" in content
+    profile = CoreProfile()
+    assert profile.detect_design_source(Path(".")) == "none"
+    assert profile.copy_design_source_slice("x", "scope", Path(".")) == []
+    assert profile.get_design_dispatch_context("x", "scope", Path(".")) == ""
 
 
-def test_web_profile_design_review_calls_bridge():
-    """WebProjectType.build_design_review_section() returns bridge.sh output."""
-    from set_project_web.project_type import WebProjectType
+def test_detect_design_source_returns_plain_str_forward_compat():
+    """Return type is str (not Literal) so plugins can return 'figma-v2' etc."""
+    from set_orch.profile_types import ProjectType
 
-    wp = WebProjectType()
-
-    with patch.object(wp, "_run_bridge", return_value="## Design Compliance\nAll tokens match."):
-        result = wp.build_design_review_section("/some/dir")
-
-    assert "Design Compliance" in result
-    assert "tokens match" in result
+    sig = inspect.signature(ProjectType.detect_design_source)
+    assert sig.return_annotation is str or sig.return_annotation == "str"
 
 
-def test_web_profile_dispatch_context_combines_tokens_and_sources():
-    """WebProjectType.get_design_dispatch_context() combines tokens + sources."""
-    from set_project_web.project_type import WebProjectType
+def test_removed_legacy_methods_absent_from_abc():
+    """Old Figma ABC methods must be gone."""
+    from set_orch.profile_types import ProjectType
 
-    wp = WebProjectType()
-
-    with patch.object(wp, "_run_bridge") as mock_bridge:
-        mock_bridge.side_effect = [
-            "## Design Tokens\nColors here",  # design_context_for_dispatch
-            "## Source Files\nButton.tsx code",  # design_sources_for_dispatch
-        ]
-        result = wp.get_design_dispatch_context("product catalog", ".")
-
-    assert "Design Tokens" in result
-    assert "Source Files" in result
+    for removed in (
+        "build_per_change_design",
+        "build_design_review_section",
+    ):
+        assert not hasattr(ProjectType, removed), f"ProjectType still has {removed}"
 
 
-def test_web_profile_data_model():
-    """WebProjectType.fetch_design_data_model() returns bridge.sh output."""
-    from set_project_web.project_type import WebProjectType
+def test_legacy_get_design_dispatch_context_new_signature():
+    """get_design_dispatch_context now takes (change_name, scope, project_path)."""
+    from set_orch.profile_types import ProjectType
 
-    wp = WebProjectType()
+    sig = inspect.signature(ProjectType.get_design_dispatch_context)
+    params = list(sig.parameters.keys())
+    assert params == ["self", "change_name", "scope", "project_path"]
 
-    with patch.object(wp, "_run_bridge", return_value="interface Product { id: string; name: string; }"):
-        result = wp.fetch_design_data_model(".")
 
-    assert "interface Product" in result
+def test_concrete_web_profile_does_not_retain_old_methods():
+    """WebProjectType must not override removed methods."""
+    try:
+        from set_project_web.project_type import WebProjectType
+    except ImportError:
+        return  # web module not installed
+
+    for removed in (
+        "build_per_change_design",
+        "build_design_review_section",
+    ):
+        assert not hasattr(WebProjectType, removed), \
+            f"WebProjectType still defines {removed}"
+
+
+def test_layer_1_has_no_v0_references():
+    """lib/set_orch/ must not import any v0-specific helpers (Layer 1 abstraction guard)."""
+    import re
+    import os
+
+    core_dir = Path(__file__).resolve().parents[2] / "lib" / "set_orch"
+    assert core_dir.is_dir(), f"core dir not found: {core_dir}"
+
+    v0_import_re = re.compile(
+        r"^\s*(?:from|import)\s+(?:set_project_web\.v0_|.*v0_importer|.*v0_manifest|.*v0_renderer|.*v0_fidelity_gate|.*v0_validator)",
+        re.MULTILINE,
+    )
+    offenders: list[str] = []
+    for p in core_dir.rglob("*.py"):
+        text = p.read_text(encoding="utf-8", errors="ignore")
+        if v0_import_re.search(text):
+            offenders.append(str(p.relative_to(core_dir)))
+    assert not offenders, f"Layer 1 references v0-specific modules: {offenders}"
+
+
+def test_dispatcher_does_not_call_removed_methods():
+    """Dispatcher code must not call build_per_change_design / build_design_review_section."""
+    dispatcher_path = (
+        Path(__file__).resolve().parents[2] / "lib" / "set_orch" / "dispatcher.py"
+    )
+    src = dispatcher_path.read_text(encoding="utf-8")
+    for removed in ("build_per_change_design", "build_design_review_section"):
+        assert removed not in src, f"dispatcher.py still references {removed}"

@@ -1,0 +1,22 @@
+# craftbrew content-fixtures.yaml
+#
+# Used by the design-fidelity gate to render the v0 reference with HU seed
+# data so screenshot diffs don't leak copy differences.
+#
+# Format reference: modules/web/set_project_web/v0_renderer.py:Fixtures.
+
+language: hu
+
+# Literal-string replacements applied across all .tsx/.ts/.jsx/.js files
+# in the temp render copy. Leave empty if v0 was authored directly in HU.
+string_replacements: {}
+
+# Mock data file injection — target paths are relative to v0-export/. If
+# the target doesn't exist, it will be created. Used to feed the v0
+# reference build the same seed data the agent's worktree will use at
+# screenshot time, so only layout/styling differences surface in the diff.
+data_imports: {}
+
+# Free-form mock_data for substitution patterns (unused by the current
+# renderer; reserved for richer substitution strategies).
+mock_data: {}

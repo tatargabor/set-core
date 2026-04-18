@@ -1,43 +1,75 @@
-# Design Tool Integration
+# Design Bridge Rule (v0-only pipeline)
 
-## Design files in this project
+## What you get
 
-The design pipeline uses up to three design files:
+When your change has a `design-source/` directory (`openspec/changes/<change>/design-source/`), **those TSX files are the design truth**. They come from the project's v0.app export and are sliced to just the routes/components your change covers, plus shared components (`components/ui/**`, layout, header, globals.css).
 
-- **`design-system.md`** — Design tokens (colors, fonts, spacing, radii). Always read this for CSS variables.
-- **`design-brief.md`** — Per-page visual descriptions (layout, components, responsive behavior). Read the pages relevant to your change.
-- **`design.md` (per-change)** — If present in `openspec/changes/<name>/`, this contains scope-matched design tokens + visual descriptions specific to your change. Read this FIRST.
+If no `design-source/` exists for your change, skip this rule.
 
-## When a per-change `design.md` exists:
+## Agent contract: integrator, not re-implementer
 
-1. You MUST read `design.md` in your change directory BEFORE implementing any UI component
-2. Use the EXACT color, spacing, typography, and radius values from the Design Tokens section — do NOT fall back to shadcn/ui defaults if they differ from the design
-3. Follow the Visual Design sections for layout structure, component placement, CTA text, and responsive behavior
-4. If the design specifies `bg-[#78350F]` for buttons but your framework default is `bg-primary`, use the design value explicitly
-5. Report design gaps — if you need a design spec that doesn't exist, note it as a `design_gap` in your output
+You **copy** v0's TSX into the project, then adapt the integration layer around it. You do NOT rebuild the UI from a markdown spec.
 
-## When `design-snapshot.md` or `design-system.md` exists (but no per-change design.md):
+### Allowed refactors (encouraged)
 
-1. You MUST read the design file BEFORE implementing any UI component
-2. Use the EXACT token values from the Design Tokens section
-3. Match the component hierarchy structure from the relevant frame
-4. If `design-brief.md` also exists, read the pages relevant to your scope for visual details
+- Extract repeated JSX into reusable component files
+- Rename / move files to project convention (kebab-case, directory structure)
+- Add TypeScript types where v0 used `any` or omitted
+- Convert client→server components when data is server-side — preserve interactivity
+- Replace mock data with Prisma queries / real API calls
+- Add `metadata` exports, Suspense boundaries, `error.tsx`
+- Replace English placeholder copy with HU content from the i18n catalog
+- Replace placeholder images with seed/CMS URLs
+- Add `aria-*` attributes for accessibility
 
-## Orchestration pipeline integration
+### Forbidden changes (caught by the design-fidelity gate)
 
-The design pipeline is automated — these happen without manual intervention:
+- Tailwind className value changes (even "more semantic" alternatives)
+- DOM structure changes (added/removed wrappers, sibling reorder)
+- shadcn primitive substitution (`Button` → custom `<button>`)
+- shadcn variant prop changes (`size`, `variant`, etc.)
+- Spacing token changes (`gap`, `padding`, `margin`)
+- Responsive breakpoint changes
+- Animation sequence/duration/easing changes
+- Icon library substitution
+- `globals.css` modification — this file is synced from v0-export and the agent MUST NOT touch it
 
-- **Pre-orchestration:** `set-design-sync` generates `design-system.md` (tokens) and `design-brief.md` (visual descriptions) from design sources (Figma Make, .make files)
-- **Planner:** reads design files as part of spec, embeds token values in change scope descriptions
-- **Dispatch:** scope-matches `design-brief.md` pages → writes per-change `design.md` with tokens + matched visual descriptions. Agent's `input.md` references this file.
-- **Verify gate:** `build_design_review_section()` adds a design compliance check to the code review prompt — token mismatches are reported as [WARNING], not [CRITICAL]
+## The contract is visual, not file-for-file
 
-## When a design MCP server (figma, penpot, sketch, zeplin) is available but no snapshot exists:
+The fidelity gate (Playwright screenshot + pixel diff across desktop/tablet/mobile) is what enforces the design contract. You're free to refactor the file layout — what must stay constant is the rendered output.
 
-1. You MUST query the design tool for specs BEFORE implementing UI elements: colors, spacing, typography, layout, component structure
-2. Use design tokens from the tool rather than hardcoding values
-3. Match component hierarchy from the design
+### Skeleton check runs first (fast fail)
 
-## When neither design tools nor design files are available:
+Before any build/screenshot, the gate verifies:
+- Every route in `docs/design-manifest.yaml` has a `page.tsx` in your worktree
+- Every `shared:` file from the manifest exists (either at its manifest path or via `shared_aliases` rename)
+- Shared components remain discrete file exports — don't inline a shared component into the page that uses it
 
-Ignore this rule entirely.
+If the skeleton check fails, the gate reports `skeleton-mismatch` with the specific missing/extra items. Fix those before the screenshot diff can even run.
+
+## When uncertain
+
+If you're unsure whether a change is "refactor-safe" or "design-breaking":
+1. Preserve v0's className/JSX exactly
+2. Commit
+3. Let the fidelity gate tell you
+
+Don't pre-emptively change things because you think v0's choice is "wrong" — make the change, let the gate pass, then if you still believe a change is warranted, raise it as a scaffold-author concern (the fix goes in the v0 repo, not the agent worktree).
+
+## v0 source bug policy
+
+If you find an actual bug in v0's output (broken link, type error, missing import):
+
+- Fix it in your worktree while preserving the visual output (classNames, JSX structure)
+- Commit-message prefix: `v0-fix: <short description>`
+- Common v0 bugs: incorrect `Link` href, missing `"use client"` on interactive components, unused imports, `any` where a concrete type would fix a tsc error
+
+If v0 shows the same concept inconsistently across pages (e.g. some pages use `<Button variant="default">`, others use `<button className="...">` with identical styling): **standardize on the shadcn primitive** across your worktree, document in the commit message. If that causes a fidelity gate failure, escalate to the scaffold author — the fix belongs in the v0 source, not in the agent worktree.
+
+## Token source priority
+
+When the framework injects design tokens into your input:
+
+1. `v0-export/app/globals.css` (or `shadcn/globals.css`) — authoritative CSS variables
+2. Optional `docs/design-brief.md` — **non-authoritative** vibe notes (brand personality, AVOID list). Never use this as spec.
+3. If neither exists: use project shadcn/ui defaults; don't invent new variants.

@@ -1389,7 +1389,6 @@ def review_change(
     review_model: str = DEFAULT_REVIEW_MODEL,
     state_file: str = "",
     digest_dir: str = "",
-    design_snapshot_dir: str = "",
     prompt_prefix: str = "",
 ) -> ReviewResult:
     """LLM code review of a change branch. Returns ReviewResult.
@@ -1410,12 +1409,10 @@ def review_change(
     if state_file:
         req_section = build_req_review_section(change_name, state_file, digest_dir)
 
-    # Build design compliance section via profile system
+    # Design compliance now enforced via the design-fidelity integration
+    # gate (web module), not an inline code-review section. See
+    # v0_fidelity_gate.py in modules/web/.
     design_compliance = ""
-    if design_snapshot_dir:
-        from .profile_loader import load_profile as _load_design_profile
-        _dp = _load_design_profile()
-        design_compliance = _dp.build_design_review_section(design_snapshot_dir)
 
     # Load security rules for first review attempt
     security_rules = _load_security_rules(wt_path)
@@ -2704,7 +2701,7 @@ def _execute_e2e_coverage_gate(
 
 def _execute_review_gate(
     change_name: str, change: Change, wt_path: str,
-    review_model: str, state_file: str, design_snapshot_dir: str,
+    review_model: str, state_file: str,
     gc: Any, verify_retry_count: int,
 ) -> "GateResult":
     """Review gate: LLM code review with cumulative feedback."""
@@ -2828,7 +2825,7 @@ def _execute_review_gate(
 
     rr = review_change(
         change_name, wt_path, scope, effective_review_model,
-        state_file=state_file, design_snapshot_dir=design_snapshot_dir,
+        state_file=state_file,
         prompt_prefix=combined_prefix,
     )
 
@@ -3499,7 +3496,6 @@ def handle_change_done(
     e2e_timeout: int = DEFAULT_E2E_TIMEOUT,
     e2e_health_timeout: int = E2E_HEALTH_TIMEOUT,
     event_bus: EventBus | None = None,
-    design_snapshot_dir: str = "",
     **kwargs: Any,
 ) -> None:
     """Full verify gate pipeline: build → test → e2e → scope → review → rules → verify → merge queue.
@@ -3787,7 +3783,7 @@ def handle_change_done(
             "review",
             lambda: _execute_review_gate(
                 change_name, change, wt_path, review_model,
-                state_file, design_snapshot_dir, gc, change.verify_retry_count,
+                state_file, gc, change.verify_retry_count,
             ),
             extra_retries=getattr(gc, "review_extra_retries", 1),
             result_fields=("review_result", "gate_review_ms"),
