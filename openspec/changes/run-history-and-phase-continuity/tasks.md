@@ -103,7 +103,7 @@
 
 - [x] 9.1 Confirm `plan_version` is already written by `_archive_completed_to_jsonl` (landed in the archive fix); extend its test to also confirm plan_version propagates through to the API response. [REQ: plan-version-propagation-on-archive]
 - [x] 9.2 UI: `web/src/components/PhaseView.tsx` groups archive+live entries by `(phase, plan_version)` when two distinct plan versions share a phase number; single-version phases render as before. [REQ: plan-version-propagation-on-archive]
-- [ ] 9.3 Integration test: Phases tab renders "Phase 1 (plan v1)" and "Phase 1 (plan v2)" as separate subheaders when archive has v1 phase-1 entries and live state has v2 phase-1 entries. [REQ: plan-version-propagation-on-archive]
+- [x] 9.3 Integration test: Phases tab renders "Phase 1 (plan v1)" and "Phase 1 (plan v2)" as separate subheaders when archive has v1 phase-1 entries and live state has v2 phase-1 entries. [REQ: plan-version-propagation-on-archive]
 
 ## 10. Token panel archive awareness
 
@@ -153,16 +153,16 @@
 - [x] 14.7 Default selection on first load: `is_live = true` lineage if present, else the one with the newest `last_seen_at`. [REQ: left-sidebar-lineage-list]
 - [x] 14.8 `StatusHeader` status badge stays bound to the **live** lineage (`state.spec_lineage_id`). When selection differs from live, render a text hint "Viewing <display_name> — sentinel running <live display_name>" adjacent to the badge. [REQ: left-sidebar-lineage-list]
 - [x] 14.9 "All lineages" (`__all__`) mode: tables/lists include a `Lineage` column; Phases tab shows a top-level section per lineage; selected state in the sidebar highlights the "All lineages" row. [REQ: left-sidebar-lineage-list]
-- [ ] 14.10 Playwright test: two-lineage fixture → sidebar lists both; clicking v1 while v2 runs filters every tab to v1 AND sentinel continues running v2 AND StatusHeader badge stays on v2. [REQ: left-sidebar-lineage-list]
-- [ ] 14.11 Playwright test: selection survives page reload. [REQ: left-sidebar-lineage-list]
-- [ ] 14.12 Playwright test: "All lineages" mode shows the Lineage column/section on every relevant tab. [REQ: left-sidebar-lineage-list]
+- [x] 14.10 Playwright test: two-lineage fixture → sidebar lists both; clicking v1 while v2 runs filters every tab to v1 AND sentinel continues running v2 AND StatusHeader badge stays on v2. [REQ: left-sidebar-lineage-list]
+- [x] 14.11 Playwright test: selection survives page reload. [REQ: left-sidebar-lineage-list]
+- [x] 14.12 Playwright test: "All lineages" mode shows the Lineage column/section on every relevant tab. [REQ: left-sidebar-lineage-list]
 
 ## 15. PhaseView per-lineage cleanup
 
 - [x] 15.1 `web/src/components/PhaseView.tsx` no longer renders a synthetic "Phase 0" header for untagged legacy entries — post-migration they either carry a real phase or belong to `__unknown__` (which is gated behind an explicit "show unattributed" affordance, not default-visible). [REQ: backfill-migration-for-historic-archive-entries]
 - [x] 15.2 Phase numbers are scoped to the currently selected lineage; switching lineage rebuilds the phase groups from the filtered change list. [REQ: left-sidebar-lineage-list]
-- [ ] 15.3 Playwright test: v1-fixture project renders Phase 1, Phase 2, Phase 3 (v1 spec's phases); switching to v2 renders v2's own phases (fresh numbering). [REQ: left-sidebar-lineage-list]
-- [ ] 15.4 Playwright test: a modern post-migration project does NOT render any "Previous cycles" / "Phase 0 (archived)" synthetic header — regression guard. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 15.3 Playwright test: v1-fixture project renders Phase 1, Phase 2, Phase 3 (v1 spec's phases); switching to v2 renders v2's own phases (fresh numbering). [REQ: left-sidebar-lineage-list]
+- [x] 15.4 Playwright test: a modern post-migration project does NOT render any "Previous cycles" / "Phase 0 (archived)" synthetic header — regression guard. [REQ: backfill-migration-for-historic-archive-entries]
 
 ## 15b. Per-file migration sweep (driven by migration-audit.md)
 
@@ -194,7 +194,7 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 
 ### 15b.d — Web frontend lineage plumbing audit
 
-- [ ] 15b.16 Confirm every `fetch(` in `web/src/**` that hits an orchestration endpoint appends the current `selectedLineage` query parameter via the shared helper. No raw string-literal path fetches outside that helper. Playwright test asserts the Network tab shows `?lineage=<id>` on every relevant request. [REQ: data-endpoints-accept-an-optional-lineage-filter]
+- [x] 15b.16 Confirm every `fetch(` in `web/src/**` that hits an orchestration endpoint appends the current `selectedLineage` query parameter via the shared helper. No raw string-literal path fetches outside that helper. Playwright test asserts the Network tab shows `?lineage=<id>` on every relevant request. [REQ: data-endpoints-accept-an-optional-lineage-filter]
 
 ## 17. Hardcoded-path audit gate
 
@@ -209,8 +209,8 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 ## 16. Final integration + regression
 
 - [x] 16.1 Run the full unit suite (`pytest tests/unit -q`) — confirm 0 regressions. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
-- [ ] 16.2 Run the web E2E suite against a fixture with multi-lineage history, confirm Activity/Tokens/Digest/E2E tabs all render lineage-filtered content. [REQ: data-endpoints-accept-an-optional-lineage-filter]
-- [ ] 16.3 Smoke-test the craftbrew-run-20260418-1719 project: backfill migration attributes its archive entries to `docs/` (its plan's input_path), sidebar shows that lineage, phases 1+2 continue to display under it. No `__legacy__` / `__unknown__` entries expected for a project whose plan file exists. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 16.2 Run the web E2E suite against a fixture with multi-lineage history, confirm Activity/Tokens/Digest/E2E tabs all render lineage-filtered content. [REQ: data-endpoints-accept-an-optional-lineage-filter]
+- [x] 16.3 Smoke-test the craftbrew-run-20260418-1719 project: backfill migration attributes its archive entries to `docs/` (its plan's input_path), sidebar shows that lineage, phases 1+2 continue to display under it. No `__legacy__` / `__unknown__` entries expected for a project whose plan file exists. [REQ: backfill-migration-for-historic-archive-entries]
 - [ ] 16.4 End-to-end scenario: start sentinel on `docs/spec-v1.md`, let it archive a phase, stop it. Start sentinel on `docs/spec-v2.md`. Verify: sidebar shows both lineages, v2 is live default, clicking v1 shows v1's archived content without disturbing v2's execution. [REQ: left-sidebar-lineage-list]
 - [x] 16.5 Document the new files (`orchestration-events-cycle*.jsonl`, `spec-coverage-history.jsonl`, `e2e-manifest-history.jsonl`, `worktrees-history.json`) + lineage selector usage in `docs/` (run-layout reference if present, otherwise note in PR description). [REQ: retained-worktree-history]
 
@@ -258,12 +258,12 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 - [x] AC-19: WHEN events span two sessions THEN a zero-width sentinel:session_boundary span with detail.session_id and detail.session_started_at is emitted at the boundary [REQ: sentinel-session-boundary-markers-in-the-timeline, scenario: two-sentinel-sessions-in-the-run]
 
 ### Plan-version propagation
-- [ ] AC-20: WHEN two plan versions share the same phase number THEN UI renders separate subheaders "Phase N (plan v<X>)" and "Phase N (plan v<X+1>)" [REQ: plan-version-propagation-on-archive, scenario: same-phase-collision]
+- [x] AC-20: WHEN two plan versions share the same phase number THEN UI renders separate subheaders "Phase N (plan v<X>)" and "Phase N (plan v<X+1>)" [REQ: plan-version-propagation-on-archive, scenario: same-phase-collision]
 
 ### Token aggregation
 - [x] AC-21: WHEN state-archive.jsonl has input/output/cache tokens AND worktree was cleaned up THEN top-level token totals include them AND the Tokens panel row shows the values (not dashes) [REQ: token-aggregation-includes-archived-changes, scenario: archived-change-totals]
 - [x] AC-22: WHEN archive entry has session_summary but worktree session dir is absent THEN /api/<project>/llm-calls emits a synthetic aggregate call with source=archive_summary [REQ: token-aggregation-includes-archived-changes, scenario: session-summary-fallback-for-llm-calls]
-- [ ] AC-23: WHEN Tokens panel receives changes with _archived=true THEN archived rows show "(archived)" label, token values come from archive entry, archived rows sort after live rows [REQ: token-panel-renders-archived-rows-explicitly, scenario: archived-row-rendering]
+- [x] AC-23: WHEN Tokens panel receives changes with _archived=true THEN archived rows show "(archived)" label, token values come from archive entry, archived rows sort after live rows [REQ: token-panel-renders-archived-rows-explicitly, scenario: archived-row-rendering]
 
 ### Coverage history
 - [x] AC-24: WHEN a change merges and covers REQs THEN a JSON line is appended to spec-coverage-history.jsonl with change, plan_version, session_id, merged_at, reqs [REQ: coverage-history-append-on-every-merge, scenario: merge-regenerates-coverage]
@@ -310,14 +310,14 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 - [x] AC-42: WHEN GET /api/<project>/lineages is called AND archive has v1 entries AND live is v2 THEN response contains both with metadata (display_name, first/last_seen_at, is_live, change_count, merged_count) [REQ: lineages-listing-endpoint, scenario: two-lineages-present]
 - [x] AC-43: WHEN no record carries spec_lineage_id THEN response contains a single synthetic `__legacy__` lineage entry [REQ: lineages-listing-endpoint, scenario: no-lineage-tags-legacy-project]
 - [x] AC-44: WHEN data endpoints receive ?lineage=__all__ THEN the unfiltered union is returned with each record retaining its spec_lineage_id [REQ: data-endpoints-accept-an-optional-lineage-filter, scenario: all-lineages-merged-view]
-- [ ] AC-45: WHEN dashboard loads first time AND exactly one lineage has is_live=true THEN that lineage is selected AND its sidebar entry is highlighted [REQ: left-sidebar-lineage-list, scenario: default-selection-on-first-load]
-- [ ] AC-45a: WHEN dashboard loads AND no lineage has is_live=true THEN the lineage with the newest last_seen_at is selected [REQ: left-sidebar-lineage-list, scenario: default-when-no-lineage-is-live]
-- [ ] AC-46: WHEN operator clicks v1.md in the sidebar while v2 runs THEN every tab refetches with ?lineage=v1.md AND sentinel continues on v2 AND live-indicator dot stays on v2 [REQ: left-sidebar-lineage-list, scenario: switching-lineage]
-- [ ] AC-46a: WHEN viewing v1.md while sentinel runs v2.md THEN StatusHeader badge reflects v2 AND hint text "Viewing v1.md — sentinel running v2.md" appears [REQ: left-sidebar-lineage-list, scenario: live-badge-decouples-from-view]
-- [ ] AC-47: WHEN operator selects v1.md and reloads THEN selection restores from localStorage; if lineage missing it falls back to default-selection rule [REQ: left-sidebar-lineage-list, scenario: selector-persistence]
-- [ ] AC-48: WHEN "All lineages" is clicked THEN tables tag rows with lineage, Phases shows a section per lineage, sidebar highlights the "All lineages" entry [REQ: left-sidebar-lineage-list, scenario: all-lineages-mode]
+- [x] AC-45: WHEN dashboard loads first time AND exactly one lineage has is_live=true THEN that lineage is selected AND its sidebar entry is highlighted [REQ: left-sidebar-lineage-list, scenario: default-selection-on-first-load]
+- [x] AC-45a: WHEN dashboard loads AND no lineage has is_live=true THEN the lineage with the newest last_seen_at is selected [REQ: left-sidebar-lineage-list, scenario: default-when-no-lineage-is-live]
+- [x] AC-46: WHEN operator clicks v1.md in the sidebar while v2 runs THEN every tab refetches with ?lineage=v1.md AND sentinel continues on v2 AND live-indicator dot stays on v2 [REQ: left-sidebar-lineage-list, scenario: switching-lineage]
+- [x] AC-46a: WHEN viewing v1.md while sentinel runs v2.md THEN StatusHeader badge reflects v2 AND hint text "Viewing v1.md — sentinel running v2.md" appears [REQ: left-sidebar-lineage-list, scenario: live-badge-decouples-from-view]
+- [x] AC-47: WHEN operator selects v1.md and reloads THEN selection restores from localStorage; if lineage missing it falls back to default-selection rule [REQ: left-sidebar-lineage-list, scenario: selector-persistence]
+- [x] AC-48: WHEN "All lineages" is clicked THEN tables tag rows with lineage, Phases shows a section per lineage, sidebar highlights the "All lineages" entry [REQ: left-sidebar-lineage-list, scenario: all-lineages-mode]
 
 ### Lineage-scoped coverage
 - [x] AC-49: WHEN v2 lineage spec declares 3 REQs AND a v2 change merges satisfying all 3 THEN v2 coverage reports 3/3 = 100% AND v1's 120 REQs do NOT appear in v2 response [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: v2-delivers-a-single-new-screen-on-top-of-v1]
-- [ ] AC-50: WHEN v1 delivered /admin AND v2 spec references REQ-ADMIN-001 AND no v2 change has touched it THEN v2 coverage reports REQ-ADMIN-001 uncovered (no filesystem-based auto-mark) [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: pre-existing-code-does-not-pre-fill-coverage]
+- [x] AC-50: WHEN v1 delivered /admin AND v2 spec references REQ-ADMIN-001 AND no v2 change has touched it THEN v2 coverage reports REQ-ADMIN-001 uncovered (no filesystem-based auto-mark) [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: pre-existing-code-does-not-pre-fill-coverage]
 - [x] AC-51: WHEN v1 spec defined A,B,C AND v2 spec defines only B THEN v2 coverage denominator is {B} AND A+C do not appear in v2 response [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: lineage-spec-defines-subset-of-prior-spec]

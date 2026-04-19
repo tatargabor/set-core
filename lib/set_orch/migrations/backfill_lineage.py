@@ -123,11 +123,70 @@ def _phase_hints_from_state_events(project_path: str) -> dict[str, int]:
     return hints
 
 
+def _state_path(project_path: str) -> Optional[str]:
+    """Return the resolver-canonical state.json path, falling back to legacy."""
+    try:
+        from set_orch.paths import LineagePaths
+        canonical = LineagePaths(project_path).state_file
+        if os.path.isfile(canonical):
+            return canonical
+    except Exception:
+        pass
+    legacy = os.path.join(project_path, "orchestration-state.json")
+    if os.path.isfile(legacy):
+        return legacy
+    return None
+
+
+def _migrate_live_state(state_path: str, derived_lineage: str) -> dict:
+    """Tag the live state's untagged per-change entries with `derived_lineage`.
+
+    Mirrors the archive backfill semantics: top-level `spec_lineage_id` and
+    every change without one inherits the plan-derived lineage.  Already-tagged
+    changes are left untouched (modern entries with a different lineage win).
+
+    Returns {"scanned": int, "updated": int, "skipped_already_tagged": int}.
+    """
+    out = {"scanned": 0, "updated": 0, "skipped_already_tagged": 0}
+    try:
+        with open(state_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("backfill_lineage: cannot read live state %s: %s", state_path, exc)
+        return out
+
+    dirty = False
+    if not data.get("spec_lineage_id"):
+        data["spec_lineage_id"] = derived_lineage
+        dirty = True
+
+    for change in data.get("changes", []):
+        out["scanned"] += 1
+        if change.get("spec_lineage_id"):
+            out["skipped_already_tagged"] += 1
+            continue
+        change["spec_lineage_id"] = derived_lineage
+        out["updated"] += 1
+        dirty = True
+
+    if dirty:
+        try:
+            with open(state_path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, indent=2)
+        except OSError as exc:
+            logger.warning("backfill_lineage: cannot rewrite live state %s: %s", state_path, exc)
+            return out
+    return out
+
+
 def migrate_legacy_archive(project_path: str, *, force: bool = False) -> dict:
     """Backfill `spec_lineage_id` + `phase` onto a project's archive entries.
 
     Returns a stats dict: {"scanned": N, "updated": M, "unknown": K,
-    "skipped_already_tagged": S, "skipped_no_archive": bool}.
+    "skipped_already_tagged": S, "skipped_no_archive": bool,
+    "live_state": {...}}.  The `live_state` sub-dict reports what the
+    extension at end-of-migration did to the per-change entries inside
+    the live `state.json` (Section 16.3 fix).
 
     Pass `force=True` to bypass the `.migrated-lineage` idempotency
     marker (useful in tests).
@@ -138,6 +197,7 @@ def migrate_legacy_archive(project_path: str, *, force: bool = False) -> dict:
         "unknown": 0,
         "skipped_already_tagged": 0,
         "skipped_no_archive": False,
+        "live_state": {"scanned": 0, "updated": 0, "skipped_already_tagged": 0},
     }
     runtime_dir = None
     try:
@@ -228,6 +288,21 @@ def migrate_legacy_archive(project_path: str, *, force: bool = False) -> dict:
             }) + "\n")
     except OSError as exc:
         logger.debug("backfill_lineage: marker write failed: %s", exc)
+
+    # Section 16.3 fix — also backfill the live state so that lineage filters
+    # on /api/<project>/state return the migrated changes.  The archive backfill
+    # alone leaves untagged live entries to be bucketed as `__legacy__`, which
+    # contradicts the "plan file exists → no __legacy__" smoke test.
+    if derived_lineage:
+        live = _state_path(project_path)
+        if live:
+            stats["live_state"] = _migrate_live_state(live, derived_lineage)
+            logger.info(
+                "backfill_lineage: project=%s live state scanned=%d updated=%d skipped=%d",
+                project_path, stats["live_state"]["scanned"],
+                stats["live_state"]["updated"],
+                stats["live_state"]["skipped_already_tagged"],
+            )
 
     logger.info(
         "backfill_lineage: project=%s lineage=%s scanned=%d updated=%d unknown=%d",

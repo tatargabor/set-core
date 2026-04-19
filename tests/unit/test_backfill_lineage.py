@@ -146,6 +146,44 @@ def test_force_rerun_is_no_op_when_already_tagged(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_backfill_tags_live_state_changes(tmp_path):
+    """Section 16.3 fix — live state per-change entries get the same lineage."""
+    proj, archive = _setup_project_with_archive(
+        tmp_path,
+        plan_input_path="docs/spec.md",
+        entries=[{"name": "old-1", "phase": 1, "status": "merged"}],
+    )
+    # Write a live state.json at the resolver-canonical location with two
+    # untagged changes and one already-tagged change.
+    from set_orch.paths import LineagePaths
+    state_path = LineagePaths(str(proj)).state_file
+    os.makedirs(os.path.dirname(state_path), exist_ok=True)
+    with open(state_path, "w") as fh:
+        json.dump({
+            "spec_lineage_id": None,
+            "changes": [
+                {"name": "live-untagged-1", "status": "merged"},
+                {"name": "live-untagged-2", "status": "pending"},
+                {"name": "live-modern", "status": "pending",
+                 "spec_lineage_id": "docs/other.md"},
+            ],
+        }, fh)
+
+    stats = migrate_legacy_archive(str(proj))
+    assert stats["live_state"]["scanned"] == 3
+    assert stats["live_state"]["updated"] == 2
+    assert stats["live_state"]["skipped_already_tagged"] == 1
+
+    with open(state_path) as fh:
+        rewritten = json.load(fh)
+    assert rewritten["spec_lineage_id"] == "docs/spec.md"
+    by_name = {c["name"]: c for c in rewritten["changes"]}
+    assert by_name["live-untagged-1"]["spec_lineage_id"] == "docs/spec.md"
+    assert by_name["live-untagged-2"]["spec_lineage_id"] == "docs/spec.md"
+    # Modern entry's own lineage wins.
+    assert by_name["live-modern"]["spec_lineage_id"] == "docs/other.md"
+
+
 def test_modern_entries_untouched(tmp_path):
     proj, archive = _setup_project_with_archive(
         tmp_path,
