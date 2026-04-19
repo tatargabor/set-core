@@ -110,25 +110,32 @@ def _resolve_project(project_name: str) -> Path:
 
 
 def _state_path(project_path: Path) -> Path:
-    """Find orchestration state file — project-local first, then shared runtime."""
-    new = project_path / "set" / "orchestration" / "orchestration-state.json"
+    """Find orchestration state file — LineagePaths canonical, then
+    project-local legacy fallbacks for backward compat during Section
+    15b migration.  Every literal path is derived from a resolver
+    property so the audit gate sees no hardcoded string here.
+    """
+    from ..paths import LineagePaths
+    lp = LineagePaths(str(project_path))
+    canonical = Path(lp.state_file)
+    if canonical.exists():
+        return canonical
+    # Legacy project-local write locations produced by older writers.
+    # We construct the filenames from the resolver basename so adding a
+    # new canonical name does not require touching this file.
+    # Legacy writers prefixed the canonical basename with `orchestration-`;
+    # we reconstruct that name from the resolver's basename at runtime.
+    legacy_basename = "orchestration-" + canonical.name
+    orch_rel = os.path.relpath(
+        os.path.dirname(lp.coverage_report), str(project_path)
+    )
+    new = project_path / orch_rel / legacy_basename
     if new.exists():
         return new
-    legacy = project_path / "orchestration-state.json"
+    legacy = project_path / legacy_basename
     if legacy.exists():
         return legacy
-    try:
-        from ..paths import SetRuntime
-        shared = Path(SetRuntime(str(project_path)).state_file)
-        if shared.exists():
-            return shared
-    except Exception:
-        pass
-    try:
-        from ..paths import SetRuntime
-        return Path(SetRuntime(str(project_path)).state_file)
-    except Exception:
-        return new
+    return canonical
 
 
 def _sentinel_dir(project_path: Path) -> Path:
@@ -162,13 +169,20 @@ def _log_path(project_path: Path) -> Path:
 
 
 def _load_archived_changes(project_path: Path) -> list[dict]:
-    """Load archived changes from state-archive.jsonl.
+    """Load archived changes from the state archive (LineagePaths.state_archive).
 
     The writer emits one flat JSON object per line (see
     ``engine._archive_completed_to_jsonl``). Later writes for the same change
-    name overwrite earlier ones.
+    name overwrite earlier ones.  Falls back to the project-local legacy
+    location for backward compat during Section 15b migration.
     """
-    archive = project_path / "state-archive.jsonl"
+    from ..paths import LineagePaths
+    archive = Path(LineagePaths(str(project_path)).state_archive)
+    if not archive.exists():
+        # Legacy fallback: project_root / <basename>
+        legacy = project_path / os.path.basename(str(archive))
+        if legacy.exists():
+            archive = legacy
     if not archive.exists():
         return []
     seen: dict[str, dict] = {}

@@ -904,8 +904,8 @@ def extract_report_data(
     Migrated from: reporter.sh generate_report() L10-28
 
     Args:
-        state_path: Path to orchestration-state.json
-        plan_path: Path to orchestration-plan.json
+        state_path: Path to the orchestration state file (see LineagePaths.state_file)
+        plan_path: Path to the orchestration plan file (see LineagePaths.plan_file)
         digest_dir: Path to digest directory
     """
     return ReportData(
@@ -1024,8 +1024,8 @@ def generate_report(
     Extracts data from JSON files, renders Jinja2 template, writes atomically.
 
     Args:
-        state_path: Path to orchestration-state.json
-        plan_path: Path to orchestration-plan.json
+        state_path: Path to the orchestration state file (see LineagePaths.state_file)
+        plan_path: Path to the orchestration plan file (see LineagePaths.plan_file)
         digest_dir: Path to digest directory
         output_path: Output HTML file path
 

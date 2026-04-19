@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -129,14 +130,18 @@ def _config_section(project_path: Path) -> str:
 
 
 def _commands_section() -> str:
-    return """## Available commands
+    from .paths import LineagePaths as _LP_cmd
+    _lp = _LP_cmd(os.getcwd())
+    _state = _lp.state_file
+    _events = _lp.events_file
+    return f"""## Available commands
 
 ### Query
-- `cat set/orchestration/orchestration-state.json | python3 -m json.tool` — full state
-- `set-orch-core state query --file set/orchestration/orchestration-state.json --status running` — running changes
-- `set-orch-core state get --file set/orchestration/orchestration-state.json --change <name> --field status` — single field
+- `cat {_state} | python3 -m json.tool` — full state
+- `set-orch-core state query --file {_state} --status running` — running changes
+- `set-orch-core state get --file {_state} --change <name> --field status` — single field
 - `tail -50 .claude/orchestration.log` — recent log lines
-- `tail -20 set/orchestration/orchestration-events.jsonl` — recent events
+- `tail -20 {_events}` — recent events
 - `git worktree list` — active worktrees
 - `set-loop monitor <change-id>` — Ralph loop status
 
@@ -160,16 +165,15 @@ def _commands_section() -> str:
 
 
 def _read_state(project_path: Path) -> dict[str, Any] | str | None:
-    """Read orchestration state. Returns dict, error string, or None."""
-    # Try new location first, then legacy
-    for rel in ["set/orchestration/orchestration-state.json", "orchestration-state.json"]:
-        path = project_path / rel
-        if path.is_file():
-            try:
-                return json.loads(path.read_text())
-            except (json.JSONDecodeError, OSError) as e:
-                logger.warning(f"Failed to read state: {e}")
-                return "State file is unreadable."
+    """Read orchestration state via LineagePaths. Returns dict, error string, or None."""
+    from .paths import LineagePaths as _LP_rs
+    path = Path(_LP_rs(str(project_path)).state_file)
+    if path.is_file():
+        try:
+            return json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Failed to read state: {e}")
+            return "State file is unreadable."
     return None
 
 

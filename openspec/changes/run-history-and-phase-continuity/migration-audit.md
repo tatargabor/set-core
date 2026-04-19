@@ -34,7 +34,7 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 - [x] `lib/set_orch/config.py` — config.yaml READ, specs dir fallback
 - [ ] `lib/set_orch/digest.py` — `DIGEST_DIR` constant → route through resolver
 - [ ] `lib/set_orch/events.py` — events append sites
-- [ ] `lib/set_orch/reporter.py` — state consume, merged_files resolution
+- [x] `lib/set_orch/reporter.py` — state consume, merged_files resolution
 - [ ] `lib/set_orch/auditor.py` — state READ
 - [x] `lib/set_orch/notifications.py` — state READ
 - [x] `lib/set_orch/cross_change.py` — state READ
@@ -55,7 +55,7 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 ### 2.c — API layer (8 files)
 
 - [x] `lib/set_orch/api/orchestration.py` — events READ (dual-location fallback), state READ, archive merge
-- [ ] `lib/set_orch/api/helpers.py` — state_path, log_path, archive path already partly centralised; extend with lineage-aware resolvers
+- [x] `lib/set_orch/api/helpers.py` — state_path, log_path, archive path already partly centralised; extend with lineage-aware resolvers
 - [ ] `lib/set_orch/api/activity.py` — events + rotated files enumeration
 - [x] `lib/set_orch/api/activity_detail.py` — activity-detail-v2-*.jsonl path
 - [x] `lib/set_orch/api/sessions.py` — session file discovery (partly worktree-based — confirm)
