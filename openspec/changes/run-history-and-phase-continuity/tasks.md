@@ -217,99 +217,99 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 ## Acceptance Criteria (from spec scenarios)
 
 ### Event stream rotation
-- [ ] AC-1: WHEN monitor loop triggers `_auto_replan_cycle` for cycle N THEN `orchestration-events.jsonl` is rotated to `orchestration-events-cycle<N>.jsonl` before the new plan is written [REQ: event-stream-rotation-on-replan-and-sentinel-stop, scenario: replan-preserves-previous-cycle-events]
-- [ ] AC-2: WHEN sentinel is stopped while orchestration is not done THEN the live events file is rotated to a new cycle file and a fresh empty live file is created [REQ: event-stream-rotation-on-replan-and-sentinel-stop, scenario: sentinel-clean-stop-rotates-the-live-stream]
-- [ ] AC-3: WHEN rotation fails with OSError THEN the failure is logged at WARNING and replan continues [REQ: event-stream-rotation-on-replan-and-sentinel-stop, scenario: rotation-failure-does-not-block-replan]
+- [x] AC-1: WHEN monitor loop triggers `_auto_replan_cycle` for cycle N THEN `orchestration-events.jsonl` is rotated to `orchestration-events-cycle<N>.jsonl` before the new plan is written [REQ: event-stream-rotation-on-replan-and-sentinel-stop, scenario: replan-preserves-previous-cycle-events]
+- [x] AC-2: WHEN sentinel is stopped while orchestration is not done THEN the live events file is rotated to a new cycle file and a fresh empty live file is created [REQ: event-stream-rotation-on-replan-and-sentinel-stop, scenario: sentinel-clean-stop-rotates-the-live-stream]
+- [x] AC-3: WHEN rotation fails with OSError THEN the failure is logged at WARNING and replan continues [REQ: event-stream-rotation-on-replan-and-sentinel-stop, scenario: rotation-failure-does-not-block-replan]
 
 ### Session summaries
-- [ ] AC-4: WHEN archive writer writes a change with worktree_path THEN the entry includes session_summary with call_count, token fields, first/last ts, total_duration_ms [REQ: archived-session-summaries, scenario: session-summary-fields]
-- [ ] AC-5: WHEN archive reader loads an entry without session_summary THEN the entry is returned as-is without synthesized zeros [REQ: archived-session-summaries, scenario: legacy-archive-entries]
+- [x] AC-4: WHEN archive writer writes a change with worktree_path THEN the entry includes session_summary with call_count, token fields, first/last ts, total_duration_ms [REQ: archived-session-summaries, scenario: session-summary-fields]
+- [x] AC-5: WHEN archive reader loads an entry without session_summary THEN the entry is returned as-is without synthesized zeros [REQ: archived-session-summaries, scenario: legacy-archive-entries]
 
 ### Archive source marker
-- [ ] AC-6: WHEN a legacy entry has no spec_lineage_id AND the project's plan file has input_path=docs/spec.md THEN migration rewrites the entry with spec_lineage_id=docs/spec.md [REQ: backfill-migration-for-historic-archive-entries, scenario: migration-attributes-legacy-entries]
-- [ ] AC-7: WHEN an entry cannot be attributed (no plan file, no snapshots) THEN it becomes spec_lineage_id="__unknown__", phase=null, WARNING logged [REQ: backfill-migration-for-historic-archive-entries, scenario: migration-cannot-recover-attribution]
-- [ ] AC-7a: WHEN migration runs on an already-migrated archive THEN no entries are modified (idempotency) [REQ: backfill-migration-for-historic-archive-entries, scenario: current-writer-entries-untouched]
+- [x] AC-6: WHEN a legacy entry has no spec_lineage_id AND the project's plan file has input_path=docs/spec.md THEN migration rewrites the entry with spec_lineage_id=docs/spec.md [REQ: backfill-migration-for-historic-archive-entries, scenario: migration-attributes-legacy-entries]
+- [x] AC-7: WHEN an entry cannot be attributed (no plan file, no snapshots) THEN it becomes spec_lineage_id="__unknown__", phase=null, WARNING logged [REQ: backfill-migration-for-historic-archive-entries, scenario: migration-cannot-recover-attribution]
+- [x] AC-7a: WHEN migration runs on an already-migrated archive THEN no entries are modified (idempotency) [REQ: backfill-migration-for-historic-archive-entries, scenario: current-writer-entries-untouched]
 
 ### Rotated event concatenation
-- [ ] AC-8: WHEN activity timeline API is invoked AND cycle files exist THEN it reads all cycleN files in ascending order then the live file, ordered by event timestamp [REQ: rotated-event-concatenation-for-readers, scenario: activity-timeline-reads-all-cycles]
-- [ ] AC-9: WHEN /api/<project>/llm-calls is called AND cycle files exist THEN calls from all cycles are interleaved by timestamp [REQ: rotated-event-concatenation-for-readers, scenario: llm-calls-api-includes-rotated-events]
+- [x] AC-8: WHEN activity timeline API is invoked AND cycle files exist THEN it reads all cycleN files in ascending order then the live file, ordered by event timestamp [REQ: rotated-event-concatenation-for-readers, scenario: activity-timeline-reads-all-cycles]
+- [x] AC-9: WHEN /api/<project>/llm-calls is called AND cycle files exist THEN calls from all cycles are interleaved by timestamp [REQ: rotated-event-concatenation-for-readers, scenario: llm-calls-api-includes-rotated-events]
 
 ### Worktree history
-- [ ] AC-10: WHEN cleanup_worktree renames a worktree to .removed.<epoch> THEN a JSON line is appended to worktrees-history.json with purged=false [REQ: retained-worktree-history, scenario: cleanup-writes-history]
-- [ ] AC-11: WHEN set-close --purge runs THEN the .removed dir is deleted AND the history entry's purged field becomes true [REQ: retained-worktree-history, scenario: purge-is-explicit]
-- [ ] AC-12: WHEN set-close runs without --purge THEN the .removed dir remains on disk [REQ: retained-worktree-history, scenario: purge-is-explicit]
+- [x] AC-10: WHEN cleanup_worktree renames a worktree to .removed.<epoch> THEN a JSON line is appended to worktrees-history.json with purged=false [REQ: retained-worktree-history, scenario: cleanup-writes-history]
+- [x] AC-11: WHEN set-close --purge runs THEN the .removed dir is deleted AND the history entry's purged field becomes true [REQ: retained-worktree-history, scenario: purge-is-explicit]
+- [x] AC-12: WHEN set-close runs without --purge THEN the .removed dir remains on disk [REQ: retained-worktree-history, scenario: purge-is-explicit]
 
 ### Spec lineage identity
-- [ ] AC-13a: WHEN sentinel starts with `--spec docs/spec-v1.md` THEN state.spec_lineage_id = "docs/spec-v1.md" and every new Change + archive entry carries that id [REQ: spec-lineage-identity-derived-from-input-path, scenario: sentinel-started-with-spec-v1-md]
-- [ ] AC-13b: WHEN sentinel is restarted with `--spec docs/spec-v2.md` THEN new state.spec_lineage_id = v2 AND previous v1 archive entries remain tagged v1 [REQ: spec-lineage-identity-derived-from-input-path, scenario: operator-switches-to-spec-v2-md]
-- [ ] AC-13c: WHEN an absolute and a relative path refer to the same file THEN both resolve to the same canonical spec_lineage_id [REQ: spec-lineage-identity-derived-from-input-path, scenario: path-canonicalisation]
+- [x] AC-13a: WHEN sentinel starts with `--spec docs/spec-v1.md` THEN state.spec_lineage_id = "docs/spec-v1.md" and every new Change + archive entry carries that id [REQ: spec-lineage-identity-derived-from-input-path, scenario: sentinel-started-with-spec-v1-md]
+- [x] AC-13b: WHEN sentinel is restarted with `--spec docs/spec-v2.md` THEN new state.spec_lineage_id = v2 AND previous v1 archive entries remain tagged v1 [REQ: spec-lineage-identity-derived-from-input-path, scenario: operator-switches-to-spec-v2-md]
+- [x] AC-13c: WHEN an absolute and a relative path refer to the same file THEN both resolve to the same canonical spec_lineage_id [REQ: spec-lineage-identity-derived-from-input-path, scenario: path-canonicalisation]
 
 ### Phase offset (lineage-scoped)
-- [ ] AC-14a: WHEN v1 lineage archive has phases 0,1,2 AND replan output has phases 1,2 THEN they shift to 3,4 under v1 [REQ: phase-offset-within-a-lineage, scenario: replan-continues-a-lineage]
-- [ ] AC-14b: WHEN v1 lineage is stopped and restarted on the same spec with plan phases 1,2 THEN they shift to 3,4 [REQ: phase-offset-within-a-lineage, scenario: restart-same-spec-continues-numbering]
-- [ ] AC-14c: WHEN v1 has archived phases 0,1,2 AND a new sentinel starts with `--spec v2.md` using plan phases 1,2 THEN offset is 0 and phases stay 1,2 [REQ: phase-offset-within-a-lineage, scenario: other-lineages-phases-are-ignored]
-- [ ] AC-14d: WHEN archive has only v1 AND sentinel starts with v2.md THEN v2 numbering is used verbatim (no offset) [REQ: fresh-phase-numbering-for-a-new-lineage, scenario: first-ever-session-on-a-new-spec]
+- [x] AC-14a: WHEN v1 lineage archive has phases 0,1,2 AND replan output has phases 1,2 THEN they shift to 3,4 under v1 [REQ: phase-offset-within-a-lineage, scenario: replan-continues-a-lineage]
+- [x] AC-14b: WHEN v1 lineage is stopped and restarted on the same spec with plan phases 1,2 THEN they shift to 3,4 [REQ: phase-offset-within-a-lineage, scenario: restart-same-spec-continues-numbering]
+- [x] AC-14c: WHEN v1 has archived phases 0,1,2 AND a new sentinel starts with `--spec v2.md` using plan phases 1,2 THEN offset is 0 and phases stay 1,2 [REQ: phase-offset-within-a-lineage, scenario: other-lineages-phases-are-ignored]
+- [x] AC-14d: WHEN archive has only v1 AND sentinel starts with v2.md THEN v2 numbering is used verbatim (no offset) [REQ: fresh-phase-numbering-for-a-new-lineage, scenario: first-ever-session-on-a-new-spec]
 
 ### Sentinel session metadata (sub-dimension)
-- [ ] AC-17a: WHEN sentinel is stopped and restarted on the same lineage THEN both sessions share spec_lineage_id AND each carries its own sentinel_session_id AND lineage UI groups them together [REQ: sentinel-session-id-as-sub-dimension, scenario: multiple-restarts-on-the-same-lineage]
-- [ ] AC-18: WHEN replan fires mid-session THEN sentinel_session_id is preserved on all newly generated changes (not regenerated) [REQ: sentinel-session-id-as-sub-dimension, scenario: session-id-survives-replan]
+- [x] AC-17a: WHEN sentinel is stopped and restarted on the same lineage THEN both sessions share spec_lineage_id AND each carries its own sentinel_session_id AND lineage UI groups them together [REQ: sentinel-session-id-as-sub-dimension, scenario: multiple-restarts-on-the-same-lineage]
+- [x] AC-18: WHEN replan fires mid-session THEN sentinel_session_id is preserved on all newly generated changes (not regenerated) [REQ: sentinel-session-id-as-sub-dimension, scenario: session-id-survives-replan]
 
 ### Session boundary markers
-- [ ] AC-19: WHEN events span two sessions THEN a zero-width sentinel:session_boundary span with detail.session_id and detail.session_started_at is emitted at the boundary [REQ: sentinel-session-boundary-markers-in-the-timeline, scenario: two-sentinel-sessions-in-the-run]
+- [x] AC-19: WHEN events span two sessions THEN a zero-width sentinel:session_boundary span with detail.session_id and detail.session_started_at is emitted at the boundary [REQ: sentinel-session-boundary-markers-in-the-timeline, scenario: two-sentinel-sessions-in-the-run]
 
 ### Plan-version propagation
 - [ ] AC-20: WHEN two plan versions share the same phase number THEN UI renders separate subheaders "Phase N (plan v<X>)" and "Phase N (plan v<X+1>)" [REQ: plan-version-propagation-on-archive, scenario: same-phase-collision]
 
 ### Token aggregation
-- [ ] AC-21: WHEN state-archive.jsonl has input/output/cache tokens AND worktree was cleaned up THEN top-level token totals include them AND the Tokens panel row shows the values (not dashes) [REQ: token-aggregation-includes-archived-changes, scenario: archived-change-totals]
-- [ ] AC-22: WHEN archive entry has session_summary but worktree session dir is absent THEN /api/<project>/llm-calls emits a synthetic aggregate call with source=archive_summary [REQ: token-aggregation-includes-archived-changes, scenario: session-summary-fallback-for-llm-calls]
+- [x] AC-21: WHEN state-archive.jsonl has input/output/cache tokens AND worktree was cleaned up THEN top-level token totals include them AND the Tokens panel row shows the values (not dashes) [REQ: token-aggregation-includes-archived-changes, scenario: archived-change-totals]
+- [x] AC-22: WHEN archive entry has session_summary but worktree session dir is absent THEN /api/<project>/llm-calls emits a synthetic aggregate call with source=archive_summary [REQ: token-aggregation-includes-archived-changes, scenario: session-summary-fallback-for-llm-calls]
 - [ ] AC-23: WHEN Tokens panel receives changes with _archived=true THEN archived rows show "(archived)" label, token values come from archive entry, archived rows sort after live rows [REQ: token-panel-renders-archived-rows-explicitly, scenario: archived-row-rendering]
 
 ### Coverage history
-- [ ] AC-24: WHEN a change merges and covers REQs THEN a JSON line is appended to spec-coverage-history.jsonl with change, plan_version, session_id, merged_at, reqs [REQ: coverage-history-append-on-every-merge, scenario: merge-regenerates-coverage]
-- [ ] AC-25: WHEN replan drops REQs from current plan THEN spec-coverage-history.jsonl entries remain intact and reads still resolve to "merged by foundation-setup (archived)" [REQ: coverage-history-append-on-every-merge, scenario: replan-does-not-wipe-history]
+- [x] AC-24: WHEN a change merges and covers REQs THEN a JSON line is appended to spec-coverage-history.jsonl with change, plan_version, session_id, merged_at, reqs [REQ: coverage-history-append-on-every-merge, scenario: merge-regenerates-coverage]
+- [x] AC-25: WHEN replan drops REQs from current plan THEN spec-coverage-history.jsonl entries remain intact and reads still resolve to "merged by foundation-setup (archived)" [REQ: coverage-history-append-on-every-merge, scenario: replan-does-not-wipe-history]
 - [ ] AC-26: WHEN Digest requests a REQ not under any current-plan change AND history has an archived attribution THEN response includes merged_by, merged_by_archived=true, merged_at [REQ: digest-attribution-uses-history, scenario: req-covered-by-archived-change]
 - [ ] AC-27: WHEN a REQ is neither in live plan nor history THEN it is marked uncovered [REQ: digest-attribution-uses-history, scenario: req-not-in-history-at-all]
 
 ### Per-lineage plan/digest retention
-- [ ] AC-27a: WHEN sentinel starts with --spec v2.md AND current live plan/digest belong to v1 THEN v1 files are renamed with `-<v1-slug>` suffix before v2 gets fresh empty files [REQ: per-lineage-plan-and-digest-retention, scenario: sentinel-opens-a-second-lineage]
+- [x] AC-27a: WHEN sentinel starts with --spec v2.md AND current live plan/digest belong to v1 THEN v1 files are renamed with `-<v1-slug>` suffix before v2 gets fresh empty files [REQ: per-lineage-plan-and-digest-retention, scenario: sentinel-opens-a-second-lineage]
 - [ ] AC-27b: WHEN a consumer reads digest under lineage v1 AND v2 is live THEN the reader uses `digest-<v1-slug>/` not the live `digest/` [REQ: per-lineage-plan-and-digest-retention, scenario: digest-read-honours-lineage]
 - [ ] AC-27c: WHEN a lineage has no saved plan file THEN API returns an explicit unavailable response, not another lineage's data [REQ: per-lineage-plan-and-digest-retention, scenario: plan-read-honours-lineage]
 
 ### E2E manifest history
-- [ ] AC-28: WHEN change merges with passing e2e-manifest.json THEN a line is appended to e2e-manifest-history.jsonl with the full manifest object and metadata [REQ: e2e-manifest-history-append-on-merge, scenario: merge-with-passing-e2e-manifest]
-- [ ] AC-29: WHEN change merges without an e2e-manifest.json THEN no line is appended and absence is logged at DEBUG (not WARNING) [REQ: e2e-manifest-history-append-on-merge, scenario: merge-with-missing-manifest]
+- [x] AC-28: WHEN change merges with passing e2e-manifest.json THEN a line is appended to e2e-manifest-history.jsonl with the full manifest object and metadata [REQ: e2e-manifest-history-append-on-merge, scenario: merge-with-passing-e2e-manifest]
+- [x] AC-29: WHEN change merges without an e2e-manifest.json THEN no line is appended and absence is logged at DEBUG (not WARNING) [REQ: e2e-manifest-history-append-on-merge, scenario: merge-with-missing-manifest]
 - [ ] AC-30: WHEN live plan + history contain 4 distinct changes' manifests THEN Digest/E2E returns all 4 blocks totalled with archived=true flag on historic ones [REQ: digest-e2e-aggregates-across-cycles, scenario: archived-live-blocks]
 - [ ] AC-31: WHEN e2e-manifest-history.jsonl does not exist THEN the API falls back to current live-manifest behaviour without raising [REQ: digest-e2e-aggregates-across-cycles, scenario: legacy-archive-without-history]
 
 ### Centralized path resolver
-- [ ] AC-32a: WHEN a caller asks LineagePaths(project, lineage="v1") for plan_file AND a rotated orchestration-plan-<v1-slug>.json exists THEN the resolver returns that rotated path [REQ: centralized-lineage-aware-path-resolver, scenario: resolver-returns-lineage-specific-path]
-- [ ] AC-32b: WHEN the caller asks for a path under the live lineage THEN the resolver returns the live orchestration-plan.json (not the slugged copy) [REQ: centralized-lineage-aware-path-resolver, scenario: resolver-returns-live-path-for-live-lineage]
-- [ ] AC-32c: WHEN any Bash script needs an orchestration path THEN it calls a helper in bin/set-common.sh that mirrors the Python resolver; no hardcoded literals elsewhere [REQ: centralized-lineage-aware-path-resolver, scenario: bash-helper-mirrors-python-resolver]
+- [x] AC-32a: WHEN a caller asks LineagePaths(project, lineage="v1") for plan_file AND a rotated orchestration-plan-<v1-slug>.json exists THEN the resolver returns that rotated path [REQ: centralized-lineage-aware-path-resolver, scenario: resolver-returns-lineage-specific-path]
+- [x] AC-32b: WHEN the caller asks for a path under the live lineage THEN the resolver returns the live orchestration-plan.json (not the slugged copy) [REQ: centralized-lineage-aware-path-resolver, scenario: resolver-returns-live-path-for-live-lineage]
+- [x] AC-32c: WHEN any Bash script needs an orchestration path THEN it calls a helper in bin/set-common.sh that mirrors the Python resolver; no hardcoded literals elsewhere [REQ: centralized-lineage-aware-path-resolver, scenario: bash-helper-mirrors-python-resolver]
 
 ### Hardcoded-path audit gate
-- [ ] AC-32d: WHEN the audit gate greps code files AND a production file still contains a hardcoded orchestration-path literal outside the resolver THEN the gate FAILS with the file+line in its message AND /opsx:archive is blocked [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: audit-finds-a-residual-literal]
-- [ ] AC-32e: WHEN every code file's literal orchestration-path refs have been replaced by LineagePaths calls (or marked [~] / [/]) THEN the gate PASSES AND /opsx:archive may proceed [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: audit-passes]
-- [ ] AC-32f: WHEN the audit runs THEN it does NOT inspect markdown documentation, YAML templates, or openspec artefacts [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: non-code-files-excluded]
+- [x] AC-32d: WHEN the audit gate greps code files AND a production file still contains a hardcoded orchestration-path literal outside the resolver THEN the gate FAILS with the file+line in its message AND /opsx:archive is blocked [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: audit-finds-a-residual-literal]
+- [x] AC-32e: WHEN every code file's literal orchestration-path refs have been replaced by LineagePaths calls (or marked [~] / [/]) THEN the gate PASSES AND /opsx:archive may proceed [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: audit-passes]
+- [x] AC-32f: WHEN the audit runs THEN it does NOT inspect markdown documentation, YAML templates, or openspec artefacts [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: non-code-files-excluded]
 
 ### Lineage tagging on history records
-- [ ] AC-32: WHEN _archive_completed_to_jsonl writes an entry THEN the entry includes spec_lineage_id sourced from state.spec_lineage_id [REQ: lineage-tagging-on-all-history-records, scenario: archive-entry]
-- [ ] AC-33: WHEN _rotate_event_streams creates orchestration-events-cycleN.jsonl THEN the first line is a CYCLE_HEADER with spec_lineage_id, plan_version, sentinel_session_id, rotated_at [REQ: lineage-tagging-on-all-history-records, scenario: rotated-event-files]
-- [ ] AC-34: WHEN coverage/e2e/worktree history appenders write a line THEN the JSON includes spec_lineage_id [REQ: lineage-tagging-on-all-history-records, scenario: coverage-history-line]
+- [x] AC-32: WHEN _archive_completed_to_jsonl writes an entry THEN the entry includes spec_lineage_id sourced from state.spec_lineage_id [REQ: lineage-tagging-on-all-history-records, scenario: archive-entry]
+- [x] AC-33: WHEN _rotate_event_streams creates orchestration-events-cycleN.jsonl THEN the first line is a CYCLE_HEADER with spec_lineage_id, plan_version, sentinel_session_id, rotated_at [REQ: lineage-tagging-on-all-history-records, scenario: rotated-event-files]
+- [x] AC-34: WHEN coverage/e2e/worktree history appenders write a line THEN the JSON includes spec_lineage_id [REQ: lineage-tagging-on-all-history-records, scenario: coverage-history-line]
 
 ### Lineage-filtered APIs
-- [ ] AC-35: WHEN /api/<project>/activity-timeline?lineage=v1.md is called AND live is v2 THEN only v1-tagged spans are returned [REQ: lineage-filtering-on-the-activity-timeline, scenario: filter-to-v1-while-v2-runs-live]
-- [ ] AC-36: WHEN the endpoint is called without a lineage parameter THEN response equals ?lineage=<state.spec_lineage_id> [REQ: lineage-filtering-on-the-activity-timeline, scenario: lineage-parameter-omitted]
-- [ ] AC-37: WHEN /api/<project>/state?lineage=v1.md is called AND live is v2 THEN token totals include only v1-tagged changes, no v2 contamination [REQ: token-endpoints-honour-lineage-filter, scenario: v1-totals-while-v2-runs]
-- [ ] AC-38: WHEN /api/<project>/llm-calls?lineage=v1.md is called THEN the call list contains only v1-tagged calls [REQ: token-endpoints-honour-lineage-filter, scenario: llm-calls-filtered-by-lineage]
+- [x] AC-35: WHEN /api/<project>/activity-timeline?lineage=v1.md is called AND live is v2 THEN only v1-tagged spans are returned [REQ: lineage-filtering-on-the-activity-timeline, scenario: filter-to-v1-while-v2-runs-live]
+- [x] AC-36: WHEN the endpoint is called without a lineage parameter THEN response equals ?lineage=<state.spec_lineage_id> [REQ: lineage-filtering-on-the-activity-timeline, scenario: lineage-parameter-omitted]
+- [x] AC-37: WHEN /api/<project>/state?lineage=v1.md is called AND live is v2 THEN token totals include only v1-tagged changes, no v2 contamination [REQ: token-endpoints-honour-lineage-filter, scenario: v1-totals-while-v2-runs]
+- [x] AC-38: WHEN /api/<project>/llm-calls?lineage=v1.md is called THEN the call list contains only v1-tagged calls [REQ: token-endpoints-honour-lineage-filter, scenario: llm-calls-filtered-by-lineage]
 - [ ] AC-39: WHEN /api/<project>/digest?lineage=v1.md is called THEN Reqs/AC/E2E consider only v1-tagged records [REQ: coverage-history-carries-lineage, scenario: v1-coverage-snapshot-while-v2-runs]
 - [ ] AC-40: WHEN REQ-X was merged under v1 and never re-merged under v2 AND /digest?lineage=v2 is requested THEN REQ-X is reported uncovered under v2 [REQ: coverage-history-carries-lineage, scenario: req-covered-in-v1-but-not-v2]
 - [ ] AC-41: WHEN /api/<project>/digest/e2e?lineage=v1.md is called THEN only v1-tagged manifest blocks contribute [REQ: e2e-manifest-history-carries-lineage, scenario: v1-e2e-manifest-while-v2-is-running]
 
 ### Lineage selector endpoints + UI
-- [ ] AC-42: WHEN GET /api/<project>/lineages is called AND archive has v1 entries AND live is v2 THEN response contains both with metadata (display_name, first/last_seen_at, is_live, change_count, merged_count) [REQ: lineages-listing-endpoint, scenario: two-lineages-present]
-- [ ] AC-43: WHEN no record carries spec_lineage_id THEN response contains a single synthetic `__legacy__` lineage entry [REQ: lineages-listing-endpoint, scenario: no-lineage-tags-legacy-project]
-- [ ] AC-44: WHEN data endpoints receive ?lineage=__all__ THEN the unfiltered union is returned with each record retaining its spec_lineage_id [REQ: data-endpoints-accept-an-optional-lineage-filter, scenario: all-lineages-merged-view]
+- [x] AC-42: WHEN GET /api/<project>/lineages is called AND archive has v1 entries AND live is v2 THEN response contains both with metadata (display_name, first/last_seen_at, is_live, change_count, merged_count) [REQ: lineages-listing-endpoint, scenario: two-lineages-present]
+- [x] AC-43: WHEN no record carries spec_lineage_id THEN response contains a single synthetic `__legacy__` lineage entry [REQ: lineages-listing-endpoint, scenario: no-lineage-tags-legacy-project]
+- [x] AC-44: WHEN data endpoints receive ?lineage=__all__ THEN the unfiltered union is returned with each record retaining its spec_lineage_id [REQ: data-endpoints-accept-an-optional-lineage-filter, scenario: all-lineages-merged-view]
 - [ ] AC-45: WHEN dashboard loads first time AND exactly one lineage has is_live=true THEN that lineage is selected AND its sidebar entry is highlighted [REQ: left-sidebar-lineage-list, scenario: default-selection-on-first-load]
 - [ ] AC-45a: WHEN dashboard loads AND no lineage has is_live=true THEN the lineage with the newest last_seen_at is selected [REQ: left-sidebar-lineage-list, scenario: default-when-no-lineage-is-live]
 - [ ] AC-46: WHEN operator clicks v1.md in the sidebar while v2 runs THEN every tab refetches with ?lineage=v1.md AND sentinel continues on v2 AND live-indicator dot stays on v2 [REQ: left-sidebar-lineage-list, scenario: switching-lineage]

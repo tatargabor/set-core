@@ -64,17 +64,19 @@ class TestLoadArchivedChanges:
             assert len(result) == 1
             assert result[0]["status"] == "merged"
 
-    def test_missing_phase_defaults_to_zero(self):
-        # Legacy archives (written before the engine fix) lack the phase field.
-        # They should be surfaced under a synthetic Phase 0 so the UI groups
-        # them separately from the live plan.
+    def test_missing_phase_returned_as_is_post_migration(self):
+        # Section 3.4 of run-history-and-phase-continuity dropped the
+        # synthetic `phase = 0` fallback in `_load_archived_changes`.
+        # The reader now returns entries verbatim; the backfill migration
+        # owns phase recovery from state-events JSONLs.
         with tempfile.TemporaryDirectory() as tmp:
             _write_archive(
                 Path(tmp),
                 [{"name": "legacy", "status": "merged"}],
             )
             result = _load_archived_changes(Path(tmp))
-            assert result[0]["phase"] == 0
+            assert "phase" not in result[0]
+            assert result[0]["_archived"] is True
 
     def test_skips_malformed_and_nameless_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
