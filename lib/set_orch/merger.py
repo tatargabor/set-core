@@ -321,7 +321,8 @@ def _archive_test_artifacts(change_name: str, wt_path: str, project_path: str) -
         logger.info("Archived %d test artifacts for %s to %s", count, change_name, dest)
 
         # Rewrite cached artifact paths in state so the dashboard finds them
-        state_path = os.path.join(project_path, "orchestration-state.json")
+        from .paths import LineagePaths as _LP_merge_sp
+        state_path = _LP_merge_sp(project_path).state_file
         if os.path.isfile(state_path):
             try:
                 from .state import locked_state
@@ -628,9 +629,12 @@ def _resolve_retention() -> str:
     """Read worktree_retention from orchestration.yaml, default 'keep'."""
     try:
         from .config import load_config_file
-        path = "set/orchestration/config.yaml"
+        from .paths import LineagePaths as _LP_cfg
+        path = os.path.relpath(
+            _LP_cfg(os.getcwd()).config_yaml, os.getcwd()
+        )
         if not os.path.isfile(path):
-            path = "set/orchestration/config.yaml"  # legacy fallback
+            path = _LP_cfg(os.getcwd()).config_yaml  # absolute resolver path
         config = load_config_file(path)
         result = config.get("worktree_retention", "keep")
         logger.debug("_resolve_retention: %s (from %s)", result, path)
@@ -1438,7 +1442,8 @@ def _detect_own_spec_files(wt_path: str) -> list[str]:
 
     Strategy: compare spec files on current HEAD vs what exists on main.
     Files present in the worktree but NOT on main are "own" (this change added them).
-    Falls back to e2e-manifest.json if comparison fails.
+    Falls back to the per-worktree e2e manifest (LineagePaths.e2e_manifest_for_worktree)
+    if comparison fails.
     Returns relative paths (e.g., "tests/e2e/cart.spec.ts").
     """
     from .subprocess_utils import run_command as _run
@@ -1492,8 +1497,9 @@ def _detect_own_spec_files(wt_path: str) -> list[str]:
     except Exception as _e:
         logger.debug("Git spec detection failed: %s", _e)
 
-    # Fallback: e2e-manifest.json (check actual file existence)
-    manifest = os.path.join(wt_path, "e2e-manifest.json")
+    # Fallback: per-worktree e2e manifest (check actual file existence)
+    from .paths import LineagePaths as _LP_mf
+    manifest = _LP_mf.e2e_manifest_for_worktree(wt_path)
     if os.path.isfile(manifest):
         try:
             data = json.loads(Path(manifest).read_text(encoding="utf-8"))
@@ -2399,11 +2405,12 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 merged += 1
                 if event_bus:
                     event_bus.emit("MERGE_SUCCESS", change=name, data={})
-                # Persist this change into state-archive.jsonl immediately.
-                # Waiting for the next replan is unsafe: a crash or manual
-                # state reset in the interval would drop the merged entry
-                # from history entirely (observed on craftbrew 1719 where
-                # `checkout-flow` merged but never surfaced in the archive).
+                # Persist this change into the lineage archive immediately
+                # (LineagePaths.state_archive). Waiting for the next replan is
+                # unsafe: a crash or manual state reset in the interval would
+                # drop the merged entry from history entirely (observed on a
+                # consumer run where a merged change never surfaced in the
+                # archive).
                 try:
                     from .engine import _archive_completed_to_jsonl
                     _archive_completed_to_jsonl(state_file)
@@ -2668,7 +2675,7 @@ def _post_merge_deps_install(lockfile_conflicted: bool = False, pre_merge_sha: s
 def _extract_change_review_patterns(
     findings_path: str, change_name: str
 ) -> list[dict]:
-    """Extract CRITICAL/HIGH patterns from review-findings.jsonl for a change."""
+    """Extract CRITICAL/HIGH review-findings patterns (LineagePaths.review_findings) for a change."""
     import re
 
     if not os.path.isfile(findings_path):
@@ -2715,10 +2722,9 @@ def _persist_change_review_learnings(change_name: str, state_file: str) -> None:
     try:
         from .profile_loader import load_profile
 
-        findings_dir = os.path.join(
-            os.path.dirname(state_file), "set", "orchestration"
-        )
-        findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+        from .paths import LineagePaths as _LP_rf
+        project_path_local = os.path.dirname(state_file)
+        findings_path = _LP_rf(project_path_local).review_findings
 
         if not os.path.isfile(findings_path):
             logger.debug("_persist_change_review_learnings: findings file missing: %s", findings_path)
@@ -2736,9 +2742,8 @@ def _persist_change_review_learnings(change_name: str, state_file: str) -> None:
         )
 
         # Auto-commit project JSONL to main if it was written
-        proj_jsonl = os.path.join(
-            project_path, "set", "orchestration", "review-learnings.jsonl"
-        )
+        from .paths import LineagePaths as _LP_rl
+        proj_jsonl = _LP_rl(project_path).review_learnings
         if os.path.isfile(proj_jsonl):
             from .subprocess_utils import run_git
             run_git("add", proj_jsonl, cwd=project_path)
