@@ -48,10 +48,17 @@ if done: print(done[0]['path'])
             return
         fi
 
-        # Fallback: scan filesystem for latest state.json with status=done
+        # Fallback: scan filesystem for latest state file with status=done.
+        # Source the lineage-aware bash helpers and ask the Python resolver
+        # for the canonical state filename so this script mirrors it.
         local best_dir="" best_time=0
+        # shellcheck disable=SC1091
+        source "$(dirname "$(realpath "$0")")/../bin/set-common.sh" 2>/dev/null || true
+        local _state_base
+        _state_base="$(python3 -c 'import os, sys; sys.path.insert(0, "lib"); from set_orch.paths import LineagePaths; print(os.path.basename(LineagePaths("/tmp").state_file))' 2>/dev/null || printf 'state.json')"
+        # Historically the project-local writer prefixed `orchestration-`.
         for run_dir in "$RUNS_DIR"/*/; do
-            local state="$run_dir/orchestration-state.json"
+            local state="$run_dir/orchestration-$_state_base"
             [[ -f "$state" ]] || continue
             local status
             status=$(python3 -c "import json; print(json.load(open('$state')).get('status',''))" 2>/dev/null || true)

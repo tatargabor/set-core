@@ -170,22 +170,22 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 
 ### 15b.a — Python core (highest impact first)
 
-- [ ] 15b.1 `lib/set_orch/engine.py` — replace all state/plan/archive/coverage literals with `LineagePaths` calls. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.1 `lib/set_orch/engine.py` — replace all state/plan/archive/coverage literals with `LineagePaths` calls. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.2 `lib/set_orch/_api_old.py` — 17 refs. Decide migrate-or-deprecate; if deprecate, add a blocking test so new code stops importing from it. [REQ: centralized-lineage-aware-path-resolver]
-- [ ] 15b.3 `lib/set_orch/supervisor/daemon.py` — events + state reads via resolver. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.3 `lib/set_orch/supervisor/daemon.py` — events + state reads via resolver. [REQ: centralized-lineage-aware-path-resolver]
 - [ ] 15b.4 `lib/set_orch/merger.py` — manifest, config, state reads. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.5 `lib/set_orch/api/orchestration.py` — drop dual-location fallback; resolver owns it. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.6 `lib/set_orch/dispatcher.py` — manifest WRITE via resolver. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.7 `lib/set_orch/planner.py` — plan + domains WRITE, digest READ. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.8 `lib/set_orch/cli.py` — CLI defaults reference the resolver (compute default at parse time from cwd + current lineage). [REQ: centralized-lineage-aware-path-resolver]
-- [ ] 15b.9 Remaining Python modules in `migration-audit.md` Phase 2 (verifier, recovery, config, digest, events, reporter, auditor, notifications, cross_change, loop_prompt, loop_state, api/helpers, api/activity, api/activity_detail, api/sessions, api/actions, api/sentinel, api/lifecycle, api/media, api/_sentinel_orch, issues/registry, issues/watchdog, issues/manager, manager/service, profile_loader, profile_types, subprocess_utils, state, sentinel/findings, sentinel/orchestrator). One sub-task per file; commit per file or per small cluster. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.9 Remaining Python modules in `migration-audit.md` Phase 2 (verifier, recovery, config, digest, events, reporter, auditor, notifications, cross_change, loop_prompt, loop_state, api/helpers, api/activity, api/activity_detail, api/sessions, api/actions, api/sentinel, api/lifecycle, api/media, api/_sentinel_orch, issues/registry, issues/watchdog, issues/manager, manager/service, profile_loader, profile_types, subprocess_utils, state, sentinel/findings, sentinel/orchestrator). One sub-task per file; commit per file or per small cluster. [REQ: centralized-lineage-aware-path-resolver]
 
 ### 15b.b — Bash migration
 
-- [ ] 15b.10 `bin/set-orchestrate` — dynamic path derivation goes through `set-common.sh` helpers. [REQ: centralized-lineage-aware-path-resolver]
-- [ ] 15b.11 `bin/set-sentinel`, `bin/set-status`, `bin/set-web`, `bin/set-manager`, `bin/set-close`, `bin/set-new`, `bin/set-merge`, `bin/set-harvest`, `bin/set-project` — each reviewed; any orchestration-path literal replaced with a helper call. [REQ: centralized-lineage-aware-path-resolver]
-- [ ] 15b.12 `lib/orchestration/*.sh` + `lib/loop/*.sh` — confirm still in use; if obsoleted by Python cutover, delete the file and mark `[/]` in the audit. Otherwise migrate. [REQ: centralized-lineage-aware-path-resolver]
-- [ ] 15b.13 `scripts/*.sh` — migrate remaining sidecar scripts. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.10 `bin/set-orchestrate` — dynamic path derivation goes through `set-common.sh` helpers. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.11 `bin/set-sentinel`, `bin/set-status`, `bin/set-web`, `bin/set-manager`, `bin/set-close`, `bin/set-new`, `bin/set-merge`, `bin/set-harvest`, `bin/set-project` — each reviewed; any orchestration-path literal replaced with a helper call. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.12 `lib/orchestration/*.sh` + `lib/loop/*.sh` — confirm still in use; each literal replaced with a `lineage_*` helper from `bin/set-common.sh`. Files retained (still sourced by `set-orchestrate`). [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.13 `scripts/*.sh` — migrate remaining sidecar scripts. [REQ: centralized-lineage-aware-path-resolver]
 
 ### 15b.c — Tests
 

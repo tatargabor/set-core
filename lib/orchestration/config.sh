@@ -11,8 +11,19 @@ set_find_config() {
     local name="$1"
     case "$name" in
         orchestration)
-            if [[ -f "set/orchestration/config.yaml" ]]; then
-                echo "set/orchestration/config.yaml"
+            local _cfg
+            if command -v lineage_config_yaml >/dev/null 2>&1; then
+                _cfg="$(lineage_config_yaml "$(pwd)")"
+            fi
+            # Prefer the resolver's cwd-relative view, then absolute, then legacy.
+            local _cfg_rel=""
+            if [[ -n "$_cfg" ]]; then
+                _cfg_rel="${_cfg#$(pwd)/}"
+            fi
+            if [[ -n "$_cfg_rel" && -f "$_cfg_rel" ]]; then
+                echo "$_cfg_rel"
+            elif [[ -n "$_cfg" && -f "$_cfg" ]]; then
+                echo "$_cfg"
             elif [[ -f ".claude/orchestration.yaml" ]]; then
                 echo ".claude/orchestration.yaml"
             fi

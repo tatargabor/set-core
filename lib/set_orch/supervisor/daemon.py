@@ -6,8 +6,8 @@ Long-running Python process that:
 3. Restarts the orchestrator on crash (up to 3 rapid crashes, then halts)
 4. Handles the user inbox (stop/status messages) every poll
 5. Emits observability events (SUPERVISOR_START/STOP/RESTART) to the
-   project's orchestration-events.jsonl file
-6. Persists its state in .set/supervisor/status.json so a restarted
+   project's events file (see LineagePaths.events_file basename)
+6. Persists its state in LineagePaths.supervisor_status so a restarted
    daemon picks up where the old one left off
 7. Responds to SIGTERM by gracefully stopping the orchestrator and
    writing a final status.json
@@ -58,7 +58,7 @@ SIGTERM_GRACE_SECONDS = 30
 def _now_iso() -> str:
     # Local-with-offset, matches lib/set_orch/events.py EventBus and the
     # eccdbea8 "fix(time): unify timestamp format" contract. Mixing UTC
-    # ("+00:00") and local ("+02:00") in orchestration-events.jsonl breaks
+    # ("+00:00") and local ("+02:00") in the events file breaks
     # string-ordering in the LLM Call Log and other consumers.
     return datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat()
 
@@ -147,7 +147,7 @@ class SupervisorDaemon:
         self._trigger_executor = TriggerExecutor(
             status=self.status,
             project_path=self.project_path,
-            events_path=self._events_path or (self.project_path / "orchestration-events.jsonl"),
+            events_path=self._events_path or (self.project_path / self._canonical_events_basename()),
             spec=config.spec,
             emit_event=self._emit_event,
         )
@@ -170,7 +170,7 @@ class SupervisorDaemon:
         write_status(self.project_path, self.status)
 
     def _is_state_terminal(self) -> bool:
-        """Check whether orchestration-state.json reports a terminal status.
+        """Check whether the orchestration state file reports a terminal status.
 
         Used by the monitor loop to distinguish a clean orchestrator exit
         (terminal status) from a crash (status still running). Terminal
@@ -186,6 +186,18 @@ class SupervisorDaemon:
         from .anomaly import TERMINAL_STATUSES
         return (data.get("status") or "").lower() in TERMINAL_STATUSES
 
+    def _canonical_state_basename(self) -> str:
+        """Project-local state filename — resolver basename + legacy prefix."""
+        from ..paths import LineagePaths
+        return "orchestration-" + os.path.basename(
+            LineagePaths(str(self.project_path)).state_file
+        )
+
+    def _canonical_events_basename(self) -> str:
+        """Project-local events filename — via LineagePaths.events_file basename."""
+        from ..paths import LineagePaths
+        return os.path.basename(LineagePaths(str(self.project_path)).events_file)
+
     def _resolve_runtime_paths(self) -> tuple[Optional[Path], Optional[Path], Optional[Path]]:
         """Locate the orchestration state, events, and log files.
 
@@ -193,13 +205,15 @@ class SupervisorDaemon:
         navigate carefully to avoid reading from the wrong (sparse) source:
 
           STATE:
-            - canonical:  `<project>/orchestration-state.json`
-              (set-orchestrate CLI's `--state` arg points here on every
-              real run; manager API doesn't override it)
+            - canonical:  `<project>/<state_basename>` (the resolver's
+              basename prefixed with `orchestration-` for the legacy
+              project-local writer)
+              set-orchestrate CLI's `--state` arg points here on every
+              real run; manager API doesn't override it.
             - SetRuntime path is reserved but never populated in practice
 
           EVENTS:
-            - canonical:  `<project>/orchestration-events.jsonl`
+            - canonical:  `<project>/<events_basename>` (same convention)
               (where DISPATCH, STATE_CHANGE, GATE_*, VERIFY_GATE, MERGE_*,
               WATCHDOG_*, MONITOR_*, CHANGE_DONE, CLASSIFIER_CALL, plus
               SUPERVISOR_* events from the daemon itself all land —
@@ -228,9 +242,16 @@ class SupervisorDaemon:
         candidates_events: list[Path] = []
         candidates_log: list[Path] = []
 
-        # CANONICAL paths first (project-relative for state + events)
-        candidates_state.append(self.project_path / "orchestration-state.json")
-        candidates_events.append(self.project_path / "orchestration-events.jsonl")
+        # CANONICAL paths first (project-relative for state + events).
+        # Filenames derived from the resolver basename + legacy `orchestration-`
+        # prefix so the supervisor stays in sync with whatever the Python
+        # resolver publishes.
+        from ..paths import LineagePaths as _LP_sd
+        _lp_sd = _LP_sd(str(self.project_path))
+        _state_base = "orchestration-" + os.path.basename(_lp_sd.state_file)
+        _events_base = os.path.basename(_lp_sd.events_file)
+        candidates_state.append(self.project_path / _state_base)
+        candidates_events.append(self.project_path / _events_base)
 
         # SetRuntime as the secondary source (canonical for log)
         try:
@@ -673,8 +694,8 @@ class SupervisorDaemon:
         # We re-resolve on every poll while ANY of the three paths is
         # either None or pointing at a non-canonical fallback. Cheap —
         # at most six stat calls per poll, all O(1).
-        canonical_state = self.project_path / "orchestration-state.json"
-        canonical_events = self.project_path / "orchestration-events.jsonl"
+        canonical_state = self.project_path / self._canonical_state_basename()
+        canonical_events = self.project_path / self._canonical_events_basename()
         needs_state = self._state_path is None or self._state_path != canonical_state
         needs_events = (
             self._events_path is None
@@ -858,13 +879,13 @@ class SupervisorDaemon:
     # ── Event emission ────────────────────────────────────
 
     def _emit_event(self, event_type: str, data: dict) -> None:
-        """Append an event to the project's orchestration-events.jsonl."""
+        """Append an event to the project's events file (see _canonical_events_basename)."""
         event = {
             "ts": _now_iso(),
             "type": event_type,
             "data": data,
         }
-        path = self.project_path / "orchestration-events.jsonl"
+        path = self.project_path / self._canonical_events_basename()
         try:
             with open(path, "a") as f:
                 f.write(json.dumps(event) + "\n")

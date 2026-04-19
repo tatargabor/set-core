@@ -80,7 +80,16 @@ send_email() {
 send_summary_email() {
     local reason="${1:-completion}"  # completion, checkpoint, manual
     local project_name="${2:-$(basename "$(pwd)")}"
-    local state_file="${3:-orchestration-state.json}"
+    # Default resolves via the Python resolver so the literal lives there.
+    # Callers should pass an explicit path; this fallback exists for
+    # legacy bash callsites and is best-effort.
+    local _default_state_file
+    if command -v python3 >/dev/null 2>&1; then
+        _default_state_file="$(python3 -c 'import os, sys; sys.path.insert(0, "lib"); from set_orch.paths import LineagePaths; print(LineagePaths(os.getcwd()).state_file)' 2>/dev/null || printf 'state.json')"
+    else
+        _default_state_file="state.json"
+    fi
+    local state_file="${3:-$_default_state_file}"
     local coverage_summary="${4:-}"  # optional coverage summary string
 
     _email_load_env

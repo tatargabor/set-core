@@ -25,12 +25,15 @@ emit_event() {
     local ts
     ts=$(date -Iseconds)
 
-    # Lazy init: derive log path from STATE_FILENAME
+    # Lazy init: derive log path from STATE_FILENAME, else fall back to the
+    # resolver (see bin/set-common.sh::lineage_events_file).
     if [[ -z "$EVENTS_LOG_FILE" ]]; then
         if [[ -n "${STATE_FILENAME:-}" ]]; then
             EVENTS_LOG_FILE="${STATE_FILENAME%.json}-events.jsonl"
+        elif command -v lineage_events_file >/dev/null 2>&1; then
+            EVENTS_LOG_FILE="$(lineage_events_file "$(pwd)")"
         else
-            EVENTS_LOG_FILE="orchestration-events.jsonl"
+            EVENTS_LOG_FILE="events.jsonl"
         fi
     fi
 

@@ -14,7 +14,7 @@ generate_report() {
     # Migrated to: reporter.py generate_report()
     set-orch-core report generate \
         --state "$STATE_FILENAME" \
-        --plan "${PLAN_FILENAME:-orchestration-plan.json}" \
+        --plan "${PLAN_FILENAME:-$(lineage_plan_file "$(pwd)" 2>/dev/null || printf 'plan.json')}" \
         --digest-dir "$DIGEST_DIR" \
         --output "$REPORT_OUTPUT_PATH" \
         > /dev/null

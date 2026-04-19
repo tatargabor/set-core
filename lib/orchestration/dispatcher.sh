@@ -212,7 +212,7 @@ cmd_start() {
             done <<< "$_zombie_pids"
 
             # Verify directives file exists
-            local _directives_file="set/orchestration/directives.json"
+            local _directives_file="$(lineage_directives_file "$(pwd)" 2>/dev/null || printf 'directives.json')"
             if [[ ! -f "$_directives_file" ]]; then
                 # Try to regenerate from state or input
                 if [[ -n "${INPUT_PATH:-}" ]] && [[ -e "${INPUT_PATH:-}" ]]; then
@@ -553,7 +553,7 @@ cmd_start() {
             # trap would write status=stopped before Python starts
             trap - EXIT
             update_state_field "status" '"running"'
-            local _directives_file="set/orchestration/directives.json"
+            local _directives_file="$(lineage_directives_file "$(pwd)" 2>/dev/null || printf 'directives.json')"
             echo "$directives" > "$_directives_file"
             log_info "Exec'ing to Python monitor (fresh start)"
             log_info "  state_file=$STATE_FILENAME"
@@ -683,7 +683,7 @@ cmd_start() {
     # trap would write status=stopped before Python starts
     trap - EXIT
     update_state_field "status" '"running"'
-    local _directives_file="set/orchestration/directives.json"
+    local _directives_file="$(lineage_directives_file "$(pwd)" 2>/dev/null || printf 'directives.json')"
     echo "$directives" > "$_directives_file"
     exec set-orch-core engine monitor \
         --directives "$_directives_file" \

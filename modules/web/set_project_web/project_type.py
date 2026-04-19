@@ -900,7 +900,8 @@ class WebProjectType(CoreProfile):
                 position="before:e2e",
                 defaults={
                     # Non-blocking on first rollout. Flip to "run" to block
-                    # via set/orchestration/config.yaml: gate_overrides.i18n_check: run
+                    # via the orchestration config (LineagePaths.config_yaml):
+                    # gate_overrides.i18n_check: run
                     "infrastructure": "skip", "schema": "skip",
                     "foundational": "warn", "feature": "warn",
                     "cleanup-before": "skip", "cleanup-after": "skip",

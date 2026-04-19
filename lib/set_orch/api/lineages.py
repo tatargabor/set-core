@@ -7,8 +7,8 @@ Implements Section 13 of run-history-and-phase-continuity:
 
 Lineages are discovered from three sources, in order of authority:
   1. The live state's `spec_lineage_id`
-  2. Every entry in `state-archive.jsonl`
-  3. Every line in `.set/supervisor/status-history.jsonl`
+  2. Every entry in the state archive (LineagePaths.state_archive)
+  3. Every line in the supervisor status history (LineagePaths.supervisor_status_history)
 
 A synthetic `__legacy__` lineage is returned when NO record carries a
 `spec_lineage_id` field (corresponds to AC-43).  `__unknown__` shows up

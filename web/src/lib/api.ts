@@ -99,8 +99,8 @@ export interface ChangeInfo {
   session_count?: number
   logs?: string[]
   extras?: Record<string, unknown>
-  // Archive marker — true when the entry was read from state-archive.jsonl
-  // (loaded via orchestration._load_archived_changes). These changes come
+  // Archive marker — true when the entry was read from the lineage-aware
+  // state archive (loaded via orchestration._load_archived_changes). These changes come
   // from earlier replan cycles and are kept around for UI history, but they
   // are no longer part of the live plan.
   _archived?: boolean

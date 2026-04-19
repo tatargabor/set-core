@@ -45,7 +45,7 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 
 ### 2.b — Supervisor / sentinel (6 files)
 
-- [ ] `lib/set_orch/supervisor/daemon.py` — events READ, state READ (13 refs)
+- [x] `lib/set_orch/supervisor/daemon.py` — events READ, state READ (13 refs)
 - [x] `lib/set_orch/supervisor/state.py` — status.json path
 - [x] `lib/set_orch/supervisor/triggers.py` — state consume
 - [x] `lib/set_orch/supervisor/canary.py` — state consume
@@ -114,10 +114,10 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 
 ### 3.b — Legacy shell orchestration (12 files — deprecate or migrate)
 
-- [ ] `lib/orchestration/dispatcher.sh` — directives, specs path
-- [ ] `lib/orchestration/events.sh` — events append
-- [ ] `lib/orchestration/config.sh` — config.yaml detection
-- [ ] `lib/orchestration/digest.sh` — `DIGEST_DIR` default
+- [x] `lib/orchestration/dispatcher.sh` — directives, specs path
+- [x] `lib/orchestration/events.sh` — events append
+- [x] `lib/orchestration/config.sh` — config.yaml detection
+- [x] `lib/orchestration/digest.sh` — `DIGEST_DIR` default
 - [x] `lib/orchestration/merger.sh` (if still referenced)
 - [x] `lib/orchestration/verifier.sh` (if still referenced)
 - [x] `lib/loop/engine.sh` — reflection READ
@@ -149,7 +149,7 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 
 The web UI does NOT touch file paths directly — it goes through the API layer. Migration concern is purely the query-parameter plumbing (`?lineage=...`), already captured in tasks §13-14. Still, audit:
 
-- [ ] `web/src/lib/api.ts` — confirm every fetch helper accepts + forwards `lineage` param
+- [x] `web/src/lib/api.ts` — confirm every fetch helper accepts + forwards `lineage` param
 - [x] `web/src/pages/Dashboard.tsx` — confirm every data-fetching useEffect uses selected lineage
 - [ ] `web/src/components/*` — each tab component: ActivityTimeline, TokensPanel, DigestPanel, PhaseView, ChangeTable, BattleView, SentinelPage, LogPanel, LineageList (new) — spot-check that none bypass the shared fetcher
 

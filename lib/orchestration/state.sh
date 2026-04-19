@@ -722,8 +722,9 @@ generate_summary() {
 # ─── Crash-Safe State Recovery ──────────────────────────────────────
 # Migrated to: wt_orch/state.py reconstruct_state_from_events()
 
-# Rebuild orchestration-state.json from orchestration-events.jsonl by replaying
-# state transitions. Called by sentinel on startup when state appears inconsistent.
+# Rebuild the state file from the events stream by replaying
+# state transitions (see LineagePaths.state_file / .events_file).
+# Called by sentinel on startup when state appears inconsistent.
 # Returns 0 if reconstruction succeeded, 1 if not possible (no events file).
 reconstruct_state_from_events() {
     local events_file="${1:-}"
