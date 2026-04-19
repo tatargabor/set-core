@@ -198,12 +198,12 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 
 ## 17. Hardcoded-path audit gate
 
-- [ ] 17.1 New script `scripts/audit-lineage-paths.sh` runs ripgrep for each of the 18 canonical patterns across `lib/`, `bin/`, `scripts/`, `web/src/`, `tests/`. Exits 0 if every residual match is inside `lib/set_orch/paths.py`, `bin/set-common.sh`, or tests/fixtures that exercise the resolver. Exits non-zero with a per-file listing otherwise. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [x] 17.1 New script `scripts/audit-lineage-paths.sh` runs ripgrep for each of the 18 canonical patterns across `lib/`, `bin/`, `scripts/`, `web/src/`, `tests/`. Exits 0 if every residual match is inside `lib/set_orch/paths.py`, `bin/set-common.sh`, or tests/fixtures that exercise the resolver. Exits non-zero with a per-file listing otherwise. [REQ: hardcoded-path-audit-gate-blocks-archiving]
 - [ ] 17.2 Wire the script into the verify pipeline for this change: `/opsx:verify run-history-and-phase-continuity` invokes it. Non-zero exit blocks `/opsx:archive`. [REQ: hardcoded-path-audit-gate-blocks-archiving]
-- [ ] 17.3 The script writes its diff-style output to `openspec/changes/run-history-and-phase-continuity/audit-report.txt` every time it runs, so reviewers can see exactly which residuals remain. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [x] 17.3 The script writes its diff-style output to `openspec/changes/run-history-and-phase-continuity/audit-report.txt` every time it runs, so reviewers can see exactly which residuals remain. [REQ: hardcoded-path-audit-gate-blocks-archiving]
 - [ ] 17.4 Update `migration-audit.md` checkboxes automatically from the script output (inverse: auto-check rows whose file no longer appears in the residuals list). Store a `--sync-audit` flag. [REQ: hardcoded-path-audit-gate-blocks-archiving]
-- [ ] 17.5 Unit test: fixture project with a known hardcoded literal → script exits non-zero and names the file. [REQ: hardcoded-path-audit-gate-blocks-archiving]
-- [ ] 17.6 Unit test: fixture project with only resolver-routed references → script exits 0. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [x] 17.5 Unit test: fixture project with a known hardcoded literal → script exits non-zero and names the file. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [x] 17.6 Unit test: fixture project with only resolver-routed references → script exits 0. [REQ: hardcoded-path-audit-gate-blocks-archiving]
 - [ ] 17.7 Add a `pre-commit` / pre-push invocation of the script (optional but recommended) so the diff cannot regress silently. [REQ: hardcoded-path-audit-gate-blocks-archiving]
 
 ## 16. Final integration + regression
