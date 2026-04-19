@@ -107,7 +107,7 @@ class Directives:
     monitor_idle_timeout: int = DEFAULT_MONITOR_IDLE_TIMEOUT
     time_limit_secs: int = 0
     # Part 7: dispatcher regenerates input.md between ralph iterations when
-    # the project-level review-learnings.jsonl file is newer. Opt-out for
+    # the project-level review-learnings file (see LineagePaths) is newer. Opt-out for
     # pathological cases where the refresh would add noise (e.g. mass
     # migrations that already carry their own learnings).
     refresh_input_on_learnings_update: bool = True
@@ -2442,11 +2442,13 @@ def _handle_auto_replan(
 def _get_issue_owned_changes() -> set[str]:
     """Return change names actively owned by the issue pipeline.
 
-    Reads .set/issues/registry.json. Changes with active issues
-    (investigating/fixing/awaiting_approval) should not be retried
-    or redispatched by the orchestrator — the issue pipeline handles them.
+    Reads the issues registry (LineagePaths.issues_registry). Changes
+    with active issues (investigating/fixing/awaiting_approval) should
+    not be retried or redispatched by the orchestrator — the issue
+    pipeline handles them.
     """
-    registry_path = os.path.join(os.getcwd(), ".set", "issues", "registry.json")
+    from .paths import LineagePaths as _LP_iss
+    registry_path = _LP_iss(os.getcwd()).issues_registry
     if not os.path.isfile(registry_path):
         return set()
     try:
@@ -2618,7 +2620,9 @@ def _get_domains_needing_replan(state_file: str, domain_data: dict, trigger: str
         failed_changes = [c for c in state.changes if c.status in ("failed", "stalled")]
         # Map change names to domains via requirements
         failed_domains = set()
-        plan_file = os.environ.get("PLAN_FILENAME", "orchestration-plan.json")
+        from .paths import LineagePaths as _LP_df
+        _default_plan = _LP_df.from_state_file(state_file).plan_file
+        plan_file = os.environ.get("PLAN_FILENAME", _default_plan)
         if os.path.isfile(plan_file):
             try:
                 with open(plan_file) as f:
@@ -2678,7 +2682,7 @@ def _auto_replan_cycle(
     #    empty live file (Section 1.2 of run-history-and-phase-continuity).
     _rotate_event_streams(state_file, reason="replan")
 
-    # 1. Archive completed changes to state-archive.jsonl
+    # 1. Archive completed changes to the lineage archive (LineagePaths.state_archive)
     _archive_completed_to_jsonl(state_file)
 
     # 2. Collect replan context
@@ -2688,7 +2692,9 @@ def _auto_replan_cycle(
         return "no_new_work"
 
     # 3. Read plan metadata for input_mode/input_path
-    plan_file = os.environ.get("PLAN_FILENAME", "orchestration-plan.json")
+    from .paths import LineagePaths as _LP_rp
+    _default_plan = _LP_rp.from_state_file(state_file).plan_file
+    plan_file = os.environ.get("PLAN_FILENAME", _default_plan)
     if not os.path.isfile(plan_file):
         logger.error("Replan: plan file not found at %s", plan_file)
         return "error"
@@ -3023,9 +3029,9 @@ def _rotate_plan_and_digest_for_new_lineage(
     """Section 4b.1/4b.2: rename live plan + digest when starting on a new lineage.
 
     Called from the sentinel-start path BEFORE the new lineage's plan is
-    written or its digest is decomposed.  When the on-disk
-    `orchestration-plan.json::input_path` (canonicalised) differs from
-    `new_lineage_id`, the live plan + domains + digest dir get a
+    written or its digest is decomposed.  When the on-disk live plan
+    file's `input_path` (canonicalised) differs from `new_lineage_id`,
+    the live plan + domains + digest dir get a
     `-<old-slug>` sibling rename so the lineage-aware reader can find
     them later.
 
@@ -3587,19 +3593,21 @@ def _send_terminal_notifications(
         total = len(state.changes)
         merged = sum(1 for c in state.changes if c.status == "merged")
 
-        # Regenerate spec-coverage-report.md with live statuses
+        # Regenerate the spec coverage report (LineagePaths.coverage_report) with live statuses
         try:
             from .planner import generate_coverage_report
             import json as _json
             # Use absolute paths based on state_file location
             _project_dir = os.path.dirname(os.path.abspath(state_file))
-            plan_path = os.path.join(_project_dir, "orchestration-plan.json")
+            from .paths import LineagePaths as _LP_tc
+            _lp_tc = _LP_tc.from_state_file(state_file, project_path=_project_dir)
+            plan_path = _lp_tc.plan_file
             plan_data = {}
             if os.path.isfile(plan_path):
                 plan_data = _json.loads(open(plan_path).read())
             # Prefer state_file-relative resolution over SetRuntime (which uses cwd)
-            _default_digest = os.path.join(_project_dir, "set", "orchestration", "digest")
-            _default_coverage = os.path.join(_project_dir, "set", "orchestration", "spec-coverage-report.md")
+            _default_digest = _lp_tc.digest_dir
+            _default_coverage = _lp_tc.coverage_report
             if not os.path.isdir(_default_digest):
                 try:
                     from .paths import SetRuntime
@@ -3656,10 +3664,11 @@ def _generate_report_safe(state_file: str) -> None:
     """Generate HTML report (exception-safe)."""
     try:
         from .reporter import generate_report
+        from .paths import LineagePaths as _LP_hr
         project_dir = os.path.dirname(state_file)
-        orch_dir = os.path.join(project_dir, "set", "orchestration")
-        plan_path = os.path.join(orch_dir, "orchestration-plan.json")
-        digest_dir = os.path.join(orch_dir, "digest")
+        _lp_hr = _LP_hr.from_state_file(state_file, project_path=project_dir)
+        plan_path = _lp_hr.plan_file
+        digest_dir = _lp_hr.digest_dir
         generate_report(
             state_path=state_file,
             plan_path=plan_path,
@@ -3673,9 +3682,13 @@ def _generate_review_findings_summary_safe(state_file: str) -> None:
     """Generate review findings summary from JSONL log (exception-safe)."""
     try:
         from .verifier import generate_review_findings_summary
-        findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
-        findings_path = os.path.join(findings_dir, "review-findings.jsonl")
-        summary_path = os.path.join(findings_dir, "review-findings-summary.md")
+        from .paths import LineagePaths as _LP_rf
+        _project_dir = os.path.dirname(state_file)
+        _lp_rf = _LP_rf.from_state_file(state_file, project_path=_project_dir)
+        findings_path = _lp_rf.review_findings
+        summary_path = os.path.join(
+            os.path.dirname(findings_path), "review-findings-summary.md"
+        )
         result = generate_review_findings_summary(findings_path, summary_path)
         if result:
             logger.info("Review findings summary: %s", result)
@@ -3708,8 +3721,10 @@ def _persist_run_learnings(state_file: str) -> None:
         import re as _re
         pattern_counts: dict[str, set[str]] = {}
 
-        findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
-        findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+        from .paths import LineagePaths as _LP_pr
+        _project_dir = os.path.dirname(state_file)
+        _lp_pr = _LP_pr.from_state_file(state_file, project_path=_project_dir)
+        findings_path = _lp_pr.review_findings
         if os.path.isfile(findings_path):
             with open(findings_path) as f:
                 for line in f:
