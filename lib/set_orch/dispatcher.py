@@ -452,10 +452,10 @@ def _merge_e2e_manifest(
     change_name: str,
     change_reqs: list[str],
 ) -> dict:
-    """Merge a dispatch's REQs into an existing e2e-manifest.json payload.
+    """Merge a dispatch's REQs into an existing e2e manifest payload.
 
     Cumulative semantics: the worktree was just branched from main, so any
-    existing e2e-manifest.json on disk reflects prior merged changes' REQ
+    existing manifest on disk reflects prior merged changes' REQ
     coverage. We MERGE the current change's REQs rather than overwrite —
     otherwise every dispatch wipes the cumulative REQ list and downstream
     tooling (review gate, spec-verify, harvesters) reads a broken history.
@@ -1126,7 +1126,8 @@ _LEARNINGS_SECTION_END = "<!-- /AUTOREFRESH:review-learnings -->"
 
 
 def _learnings_file_path(project_path: str) -> str:
-    return os.path.join(project_path, "set", "orchestration", "review-learnings.jsonl")
+    from .paths import LineagePaths
+    return LineagePaths(project_path).review_learnings
 
 
 def _render_learnings_section(project_path: str) -> str:
@@ -1190,12 +1191,13 @@ def _replace_learnings_section(content: str, new_section: str) -> str:
 def _learnings_refresh_directive(project_path: str) -> bool:
     """Return False if the operator disabled learnings refresh via directive.
 
-    Reads `set/orchestration/directives.json` directly — we cannot import
+    Reads the resolver's directives file directly — we cannot import
     the parsed Directives here because the dispatcher is called from
     contexts that don't have an orchestration state yet. Failure to read
     the directives file defaults to enabled (the spec default).
     """
-    path = os.path.join(project_path, "set", "orchestration", "directives.json")
+    from .paths import LineagePaths
+    path = LineagePaths(project_path).directives_file
     if not os.path.isfile(path):
         return True
     try:
@@ -1598,7 +1600,7 @@ def _build_review_learnings(
 ) -> str:
     """Build compact cross-change review learnings from JSONL.
 
-    Reads review-findings.jsonl, excludes the current change's own findings,
+    Reads the review-findings file, excludes the current change's own findings,
     keeps only CRITICAL+HIGH, clusters by keyword, and returns a compact
     markdown section (max ~15 lines).
 
@@ -1701,10 +1703,14 @@ def _build_review_learnings(
     # Cap at 12 finding lines
     lines = lines[:12]
 
+    from .paths import LineagePaths as _LP_rf
+    _findings_rel = os.path.relpath(
+        _LP_rf(os.getcwd()).review_findings, os.getcwd()
+    )
     return (
         "These patterns caused CRITICAL/HIGH failures in other changes during this run:\n"
         + "\n".join(lines)
-        + f"\n\nFull details: `set/orchestration/review-findings.jsonl`"
+        + f"\n\nFull details: `{_findings_rel}`"
     )
 
 
@@ -2123,7 +2129,8 @@ def dispatch_change(
         logger.debug("Dispatch %s: content categories from scope: %s", change_name, _content_categories)
 
     # Cross-change review learnings (scope-filtered)
-    findings_path = os.path.join(os.path.dirname(state_path), "set", "orchestration", "review-findings.jsonl")
+    from .paths import LineagePaths as _LP_disp
+    findings_path = _LP_disp(os.path.dirname(state_path)).review_findings
     review_learnings = _build_review_learnings(findings_path, change_name, content_categories=_content_categories)
 
     # Profile-based persistent review checklist (cross-run, scope-filtered)

@@ -26,7 +26,7 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 ### 2.a — Core engine & orchestration (READ + WRITE, highest risk)
 
 - [ ] `lib/set_orch/engine.py` — state WRITE, plan WRITE, archive WRITE, coverage WRITE, digest_dir reads (13 refs)
-- [ ] `lib/set_orch/dispatcher.py` — manifest WRITE, directives READ, review-findings references
+- [x] `lib/set_orch/dispatcher.py` — manifest WRITE, directives READ, review-findings references
 - [x] `lib/set_orch/planner.py` — plan WRITE, domains WRITE, digest_dir reads (multiple sites)
 - [ ] `lib/set_orch/merger.py` — manifest READ, config READ, state READ, artifacts dir (10 refs)
 - [ ] `lib/set_orch/verifier.py` — manifest WRITE, coverage consume
