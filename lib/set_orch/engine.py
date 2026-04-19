@@ -894,7 +894,8 @@ def monitor_loop(
                 or _state_tmp.extras.get("spec_path")
             )
             if not _input_path:
-                _plan_path = os.path.join(_state_dir, "orchestration-plan.json")
+                from .paths import LineagePaths as _LP_init
+                _plan_path = _LP_init.from_state_file(state_file).plan_file
                 if os.path.isfile(_plan_path):
                     try:
                         with open(_plan_path) as _pf:
@@ -2702,7 +2703,8 @@ def _auto_replan_cycle(
     replan_trigger = _detect_replan_trigger(state_file)
 
     # 5. Domain-parallel selective replan (digest mode) or single-call (brief/spec)
-    domains_file = os.path.join(os.path.dirname(plan_file), "orchestration-plan-domains.json")
+    from .paths import LineagePaths as _LP_replan
+    domains_file = _LP_replan.from_state_file(state_file).plan_domains_file
     if input_mode == "digest" and os.path.isfile(domains_file):
         # ── Selective Domain-Parallel Replan ──
         from .planner import (
@@ -2946,9 +2948,11 @@ def _rotate_event_streams(state_file: str, reason: str = "rotate") -> Optional[i
     Returns the cycle index assigned to the rotated files, or None if
     there was nothing to rotate (live files absent or empty).
     """
-    orch_dir = os.path.dirname(state_file)
-    live_events = os.path.join(orch_dir, "orchestration-events.jsonl")
-    live_state_events = os.path.join(orch_dir, "orchestration-state-events.jsonl")
+    from .paths import LineagePaths
+    lp = LineagePaths.from_state_file(state_file)
+    orch_dir = lp.orchestration_dir
+    live_events = lp.events_file
+    live_state_events = lp.state_events_file
 
     have_events = os.path.exists(live_events) and os.path.getsize(live_events) > 0
     have_state_events = (
@@ -3028,12 +3032,12 @@ def _rotate_plan_and_digest_for_new_lineage(
     Returns the slug used for the rename, or None when no rotation
     happened (first sentinel ever, or same-lineage restart).
     """
-    from .paths import SetRuntime
+    from .paths import LineagePaths
     from .types import canonicalise_spec_path, slug as _slug
 
-    rt = SetRuntime(project_path)
-    orch = rt.orchestration_dir
-    live_plan = os.path.join(orch, "orchestration-plan.json")
+    lp_live = LineagePaths(project_path)
+    orch = lp_live.orchestration_dir
+    live_plan = lp_live.plan_file
     if not os.path.isfile(live_plan):
         return None
 
@@ -3054,13 +3058,13 @@ def _rotate_plan_and_digest_for_new_lineage(
     if old_lineage == new_lineage_id:
         return None
 
-    old_slug = _slug(old_lineage)
+    # Use LineagePaths bound to the OLD lineage to derive the slugged
+    # destination paths — keeps every literal inside the resolver.
+    lp_old = LineagePaths(project_path, lineage_id=old_lineage)
+    old_slug = lp_old.slug or _slug(old_lineage)
     rename_pairs = [
-        (live_plan, os.path.join(orch, f"orchestration-plan-{old_slug}.json")),
-        (
-            os.path.join(orch, "orchestration-plan-domains.json"),
-            os.path.join(orch, f"orchestration-plan-domains-{old_slug}.json"),
-        ),
+        (live_plan, lp_old.slugged_path(kind="plan_file")),
+        (lp_live.plan_domains_file, lp_old.slugged_path(kind="plan_domains_file")),
     ]
     for src, dst in rename_pairs:
         if os.path.exists(src):
@@ -3195,14 +3199,15 @@ def _compute_session_summary(worktree_path: Optional[str]) -> dict:
 
 
 def _archive_completed_to_jsonl(state_file: str) -> None:
-    """Archive completed changes to state-archive.jsonl before replan.
+    """Archive completed-change records before replan.
 
     Each line is a flat JSON object keyed by change name. Fields mirror the
     live-state dict enough that the UI can group archived entries by phase and
     sum tokens alongside active changes.
     """
+    from .paths import LineagePaths
     state = load_state(state_file)
-    archive_path = os.path.join(os.path.dirname(state_file), "state-archive.jsonl")
+    archive_path = LineagePaths.from_state_file(state_file).state_archive
 
     completed = [
         c for c in state.changes

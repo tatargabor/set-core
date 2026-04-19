@@ -616,6 +616,29 @@ class LineagePaths:
 
     # ---- introspection -----------------------------------------------------
 
+    def slugged_path(self, *, kind: str) -> str:
+        """Return the slug-suffixed sibling for `kind` regardless of existence.
+
+        Used by writers (e.g. the rotation routine) that need to construct
+        the slugged destination path before the file/dir is created.
+        Falls back to the live filename when the resolver targets the
+        live lineage — in which case slugging is a no-op.
+
+        Supported `kind` values: `plan_file`, `plan_domains_file`,
+        `digest_dir`.
+        """
+        if not self._slug:
+            # Live lineage — no slug to apply.
+            return getattr(self, kind)
+        orch = self._runtime.orchestration_dir
+        if kind == "plan_file":
+            return self._slugged(orch, "orchestration-plan", ".json")
+        if kind == "plan_domains_file":
+            return self._slugged(orch, "orchestration-plan-domains", ".json")
+        if kind == "digest_dir":
+            return os.path.join(orch, f"digest-{self._slug}")
+        raise ValueError(f"slugged_path: unknown kind {kind!r}")
+
     def lineage_specific_exists(self, attr: str) -> bool:
         """Return True iff the requested property's slugged copy exists.
 
@@ -647,6 +670,48 @@ class LineagePaths:
     # ---- migration helper --------------------------------------------------
 
     @classmethod
+    def from_state_file(
+        cls, state_file: str, project_path: Optional[str] = None,
+    ) -> "LineagePaths":
+        """Build a LineagePaths from a known `state.json` path.
+
+        The orchestration_dir is taken to be `dirname(state_file)` —
+        canonical SetRuntime layout uses `~/.../runtime/<proj>/orchestration/
+        state.json`, but this classmethod also tolerates non-canonical
+        test layouts where state.json sits at an arbitrary directory.
+
+        Callers that ALSO need project-relative paths (set/orchestration/,
+        .set/) should pass `project_path` so those properties resolve to
+        the right place.
+
+        Lineage attribution is read from the state file itself.
+        """
+        orch_dir = os.path.dirname(os.path.abspath(state_file))
+        runtime_root = os.path.dirname(orch_dir)
+        project_name = os.path.basename(runtime_root) or "_local"
+
+        # Build a SetRuntime-equivalent object whose `orchestration_dir`
+        # resolves to the actual parent of state.json regardless of the
+        # canonical layout.  We achieve this by setting `root` to a value
+        # that, combined with the SetRuntime property formula
+        # `root + "/orchestration"`, yields `orch_dir`.
+        rt = _StateAnchoredRuntime(project_name=project_name, orch_dir=orch_dir)
+
+        live_lineage: Optional[str] = None
+        try:
+            with open(state_file, "r") as fh:
+                state = json.load(fh)
+            live_lineage = state.get("spec_lineage_id")
+        except (OSError, json.JSONDecodeError):
+            pass
+
+        return cls(
+            project_path or runtime_root,
+            lineage_id=LineageId(live_lineage) if live_lineage else None,
+            runtime=rt,
+        )
+
+    @classmethod
     def from_project(cls, project_path: str) -> "LineagePaths":
         """Resolve the live lineage from disk and return a bound resolver.
 
@@ -673,6 +738,27 @@ class LineagePaths:
             lineage_id=LineageId(live_lineage) if live_lineage else None,
             runtime=rt,
         )
+
+
+class _StateAnchoredRuntime(SetRuntime):
+    """SetRuntime variant whose `orchestration_dir` is forced to a given path.
+
+    Used by `LineagePaths.from_state_file` so callers that pass a
+    `state.json` outside the canonical `runtime/<proj>/orchestration/`
+    layout (e.g., test fixtures placing state.json at the project root)
+    still get correctly-relative sibling paths.
+    """
+
+    def __init__(self, project_name: str, orch_dir: str) -> None:
+        # Skip SetRuntime.__init__'s legacy-migration logic — we already
+        # know exactly where orchestration files live.
+        self._project_name = project_name
+        self.root = os.path.dirname(orch_dir)
+        self._orch_dir_override = orch_dir
+
+    @property
+    def orchestration_dir(self) -> str:  # type: ignore[override]
+        return self._orch_dir_override
 
 
 def _cycle_sort_key(path: str) -> tuple:
