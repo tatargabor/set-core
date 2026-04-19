@@ -320,15 +320,17 @@ def get_digest(project: str, lineage: Optional[str] = None):
     project_path = _resolve_project(project)
     effective_lineage = lineage or resolve_lineage_default(project_path)
 
-    # Resolve the digest dir for the requested lineage.
-    digest_dir = project_path / "set" / "orchestration" / "digest"
+    # Resolve the digest dir via LineagePaths.  For non-live lineages
+    # the resolver returns the slug-suffixed sibling (or falls back to
+    # the live dir with a DEBUG log if absent).  Distinguish "missing
+    # entirely" from "fell back" by querying lineage_specific_exists.
+    from ..paths import LineagePaths
+    from ..types import LineageId
+    digest_dir = Path(LineagePaths(str(project_path)).digest_dir)
     if effective_lineage and effective_lineage not in ("__all__", "__legacy__"):
-        from ..types import slug as _slug
-        slugged = project_path / "set" / "orchestration" / f"digest-{_slug(effective_lineage)}"
-        if slugged.is_dir():
-            digest_dir = slugged
-        elif not digest_dir.is_dir():
-            # Neither lineage-specific nor live exists.
+        lp = LineagePaths(str(project_path), lineage_id=LineageId(effective_lineage))
+        digest_dir = Path(lp.digest_dir)
+        if not lp.lineage_specific_exists("digest_dir") and not digest_dir.is_dir():
             return {
                 "exists": False,
                 "lineage_unavailable": True,
@@ -457,7 +459,8 @@ def get_digest_e2e(project: str, lineage: Optional[str] = None):
     seen_changes: set[str] = set()
 
     # History blocks (archived).
-    history_path = project_path / "set" / "orchestration" / "e2e-manifest-history.jsonl"
+    from ..paths import LineagePaths
+    history_path = Path(LineagePaths(str(project_path)).e2e_manifest_history)
     if history_path.is_file():
         try:
             with open(history_path, encoding="utf-8") as fh:
@@ -498,7 +501,7 @@ def get_digest_e2e(project: str, lineage: Optional[str] = None):
                     continue
                 if not c.worktree_path:
                     continue
-                manifest_path = os.path.join(c.worktree_path, "e2e-manifest.json")
+                manifest_path = LineagePaths.e2e_manifest_for_worktree(c.worktree_path)
                 if not os.path.isfile(manifest_path):
                     continue
                 try:
@@ -550,7 +553,8 @@ def _attribute_reqs_from_history(
     `merged_by` + `merged_by_archived = true` + `merged_at` so the
     Digest UI can render archived attribution.
     """
-    history_path = project_path / "set" / "orchestration" / "spec-coverage-history.jsonl"
+    from ..paths import LineagePaths as _LP
+    history_path = Path(_LP(str(project_path)).coverage_history)
     if not history_path.is_file():
         return
     reqs = result.get("requirements")
