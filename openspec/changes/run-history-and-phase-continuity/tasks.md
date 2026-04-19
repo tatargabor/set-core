@@ -73,14 +73,14 @@
 
 ## 6. Phase offset on replan and new session (lineage-scoped)
 
-- [ ] 6.1 Add `compute_phase_offset(state_file, lineage_id) -> int` helper in `lib/set_orch/planner.py` that returns `max(live+archived phases tagged with lineage_id) - 1` (minimum 0). Offset computation reads ONLY records matching `lineage_id`. [REQ: phase-offset-within-a-lineage]
-- [ ] 6.2 Apply the offset in the replan pipeline's plan-write step using the current `state.spec_lineage_id`: shift every new change's `phase` by `compute_phase_offset(state_file, state.spec_lineage_id) - min_new_phase + 1`. Clamp to never produce phase < 1. [REQ: phase-offset-within-a-lineage]
-- [ ] 6.3 Apply the same offset in the initial plan-write path that runs on sentinel start, using the lineage the new sentinel was started with. [REQ: phase-offset-within-a-lineage]
-- [ ] 6.4 When the sentinel starts on a lineage that has NO matching archive/state records, `compute_phase_offset` returns 0 and the planner's native numbering is preserved. [REQ: fresh-phase-numbering-for-a-new-lineage]
-- [ ] 6.5 Unit test: v1 lineage with archived phases 0,1,2 + replan output phases 1,2 → shifted to 3,4 under v1. [REQ: phase-offset-within-a-lineage]
-- [ ] 6.6 Unit test: v1 lineage has archived phases 0,1,2; fresh sentinel start on v2 with plan phases 1,2 → no offset applied, v2 phases remain 1,2. [REQ: fresh-phase-numbering-for-a-new-lineage]
-- [ ] 6.7 Unit test: sentinel restart on v1 (same lineage) picks up from `max(v1 archived) + 1`. [REQ: phase-offset-within-a-lineage]
-- [ ] 6.8 Unit test: brand-new project (empty archive + empty state) applies offset 0. [REQ: fresh-phase-numbering-for-a-new-lineage]
+- [x] 6.1 Add `compute_phase_offset(state_file, lineage_id) -> int` helper in `lib/set_orch/planner.py` that returns `max(live+archived phases tagged with lineage_id) - 1` (minimum 0). Offset computation reads ONLY records matching `lineage_id`. [REQ: phase-offset-within-a-lineage]
+- [x] 6.2 Apply the offset in the replan pipeline's plan-write step using the current `state.spec_lineage_id`: shift every new change's `phase` by `compute_phase_offset(state_file, state.spec_lineage_id) - min_new_phase + 1`. Clamp to never produce phase < 1. [REQ: phase-offset-within-a-lineage]
+- [x] 6.3 Apply the same offset in the initial plan-write path that runs on sentinel start, using the lineage the new sentinel was started with. [REQ: phase-offset-within-a-lineage]
+- [x] 6.4 When the sentinel starts on a lineage that has NO matching archive/state records, `compute_phase_offset` returns 0 and the planner's native numbering is preserved. [REQ: fresh-phase-numbering-for-a-new-lineage]
+- [x] 6.5 Unit test: v1 lineage with archived phases 0,1,2 + replan output phases 1,2 → shifted to 3,4 under v1. [REQ: phase-offset-within-a-lineage]
+- [x] 6.6 Unit test: v1 lineage has archived phases 0,1,2; fresh sentinel start on v2 with plan phases 1,2 → no offset applied, v2 phases remain 1,2. [REQ: fresh-phase-numbering-for-a-new-lineage]
+- [x] 6.7 Unit test: sentinel restart on v1 (same lineage) picks up from `max(v1 archived) + 1`. [REQ: phase-offset-within-a-lineage]
+- [x] 6.8 Unit test: brand-new project (empty archive + empty state) applies offset 0. [REQ: fresh-phase-numbering-for-a-new-lineage]
 
 ## 7. Spec lineage + sentinel session state
 

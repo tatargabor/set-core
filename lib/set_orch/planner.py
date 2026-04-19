@@ -17,7 +17,7 @@ import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -1223,6 +1223,87 @@ def _assign_cross_cutting_ownership(plan_data: dict, profile=None) -> None:
                     break
 
 
+def compute_phase_offset(state_file: str, lineage_id: Optional[str]) -> int:
+    """Return the highest phase number across live+archived records for `lineage_id`.
+
+    Section 6.1 of run-history-and-phase-continuity (resolved per AC-14a):
+    returns `max(phase)` over records whose `spec_lineage_id` equals
+    `lineage_id`.  Used as `offset` by `_apply_phase_offset_to_plan`,
+    which derives `shift = offset - min_new_phase + 1`.  Combined effect:
+    new phases continue exactly one above the lineage's existing maximum.
+
+    When no matching records exist (fresh sentinel start on a new spec),
+    the function returns 0 so the planner's native numbering survives.
+
+    Reading is best-effort: missing state file, malformed archive lines,
+    and missing lineage tags all degrade silently to "no contribution".
+    """
+    if lineage_id is None:
+        return 0
+    max_phase = 0
+
+    # Live state contributions
+    try:
+        from .state import load_state
+        st = load_state(state_file)
+        for c in st.changes:
+            if (c.spec_lineage_id or st.spec_lineage_id) != lineage_id:
+                continue
+            if isinstance(c.phase, int) and c.phase > max_phase:
+                max_phase = c.phase
+    except Exception as exc:
+        logger.debug("compute_phase_offset: state read failed: %s", exc)
+
+    # Archive contributions
+    archive_path = os.path.join(os.path.dirname(state_file), "state-archive.jsonl")
+    if os.path.isfile(archive_path):
+        try:
+            with open(archive_path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if entry.get("spec_lineage_id") != lineage_id:
+                        continue
+                    p = entry.get("phase")
+                    if isinstance(p, int) and p > max_phase:
+                        max_phase = p
+        except OSError as exc:
+            logger.debug("compute_phase_offset: archive read failed: %s", exc)
+
+    return max(max_phase, 0)
+
+
+def _apply_phase_offset_to_plan(
+    plan_data: dict, offset: int, *, min_new_phase: Optional[int] = None,
+) -> None:
+    """Shift every change's `phase` by `offset - min_new_phase + 1`, clamped >= 1.
+
+    Mutates `plan_data["changes"]` in place.  When `min_new_phase` is
+    omitted it is computed from the plan itself.
+    """
+    changes = plan_data.get("changes") or []
+    if not changes:
+        return
+    if min_new_phase is None:
+        min_new_phase = min(
+            (c.get("phase", 1) for c in changes if isinstance(c.get("phase"), int)),
+            default=1,
+        )
+    shift = offset - min_new_phase + 1
+    if shift <= 0:
+        return  # offset already covers existing numbering, nothing to do
+    for c in changes:
+        old = c.get("phase", 1)
+        if not isinstance(old, int):
+            continue
+        c["phase"] = max(old + shift, 1)
+
+
 def enrich_plan_metadata(
     plan_data: dict,
     hash_val: str,
@@ -1271,6 +1352,32 @@ def enrich_plan_metadata(
         "plan_phase": plan_phase,
         "plan_method": plan_method,
     })
+
+    # Section 6.2/6.3 — apply lineage-scoped phase offset.  The planner
+    # always numbers phases starting from 1 based on dependencies; here we
+    # shift them so they continue monotonically from
+    # `max(lineage live + archived phases)` for the SAME lineage.  A new
+    # lineage (no matching records) gets offset 0 — its plan keeps the
+    # planner's native numbering.  Resolution rules:
+    #   - Replan: state_path exists, lineage = state.spec_lineage_id.
+    #   - Initial start: state_path may not yet exist; rely on input_path
+    #     becoming the lineage id at init_state time (offset is 0 anyway
+    #     when the archive is empty, so skipping here is correct).
+    if state_path and os.path.exists(state_path):
+        try:
+            from .state import load_state
+            _st = load_state(state_path)
+            _lineage = _st.spec_lineage_id
+            if _lineage:
+                offset = compute_phase_offset(state_path, _lineage)
+                if offset > 0:
+                    _apply_phase_offset_to_plan(plan_data, offset)
+                    logger.info(
+                        "enrich_plan_metadata: applied phase offset %d for lineage=%s",
+                        offset, _lineage,
+                    )
+        except Exception as exc:
+            logger.debug("enrich_plan_metadata: phase offset skipped (%s)", exc)
 
     # Assign i18n namespaces to changes (non-overlapping, derived from change name)
     for c in plan_data.get("changes", []):

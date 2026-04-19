@@ -2851,29 +2851,29 @@ def _auto_replan_cycle(
 def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
     """Append new plan changes to existing orchestration state.
 
-    Phase numbers from the planner are relative (1, 2, 3...) but existing
-    changes already occupy phases. Offset new phases so they continue after
-    the highest existing phase.
+    Section 6 of run-history-and-phase-continuity moved phase-offset
+    computation to plan-write time (`enrich_plan_metadata`).  By the time
+    a plan reaches this function its `phase` values are already shifted
+    to continue monotonically within the lineage, so this function
+    appends them verbatim and only propagates lineage attribution.
     """
     from .state import Change, locked_state
 
     with locked_state(state_file) as state:
         existing_names = {c.name for c in state.changes}
 
-        # Calculate phase offset: new phases start after the highest existing phase
-        max_existing_phase = max((c.phase for c in state.changes if c.phase), default=0)
-        # Propagate the live state's lineage attribution onto every new change.
-        # Section 7.4: sentinel_session_id is preserved across replan — we do
-        # NOT mint a fresh id here; the running session keeps its identity.
+        # Section 7.4: sentinel_session_id is preserved across replan —
+        # we do NOT mint a fresh id here; the running session keeps its
+        # identity.  Lineage is propagated unchanged.
         live_lineage = state.spec_lineage_id
         live_session = state.sentinel_session_id
         live_session_started = state.sentinel_session_started_at
         added = 0
+        added_phases: list[int] = []
         for c in new_changes:
             if c.get("name") in existing_names:
                 continue
-            raw_phase = c.get("phase", 1)
-            offset_phase = raw_phase + max_existing_phase
+            phase = c.get("phase", 1)
             change = Change(
                 name=c["name"],
                 scope=c.get("scope", ""),
@@ -2882,7 +2882,7 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
                 depends_on=c.get("depends_on", []),
                 roadmap_item=c.get("roadmap_item", ""),
                 model=c.get("model", None),
-                phase=offset_phase,
+                phase=phase,
                 gate_hints=c.get("gate_hints") or None,
                 requirements=c.get("requirements") or None,
                 also_affects_reqs=c.get("also_affects_reqs") or None,
@@ -2892,14 +2892,12 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
             )
             state.changes.append(change)
             added += 1
+            added_phases.append(phase)
         # Register new phases in the phases dict
         if added:
             phases_dict = state.extras.get("phases", {})
-            for c in new_changes:
-                if c.get("name") in existing_names:
-                    continue
-                offset_phase = c.get("phase", 1) + max_existing_phase
-                p_key = str(offset_phase)
+            for p in added_phases:
+                p_key = str(p)
                 if p_key not in phases_dict:
                     phases_dict[p_key] = {
                         "status": "pending",
@@ -2909,8 +2907,10 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
                         "completed_at": None,
                     }
             state.extras["phases"] = phases_dict
-            logger.info("Appended %d new changes to state (phase offset +%d, phases: %s)",
-                        added, max_existing_phase, sorted(phases_dict.keys()))
+            logger.info(
+                "Appended %d new changes to state (phases: %s, lineage=%s)",
+                added, sorted(phases_dict.keys()), live_lineage,
+            )
 
 
 def _next_cycle_index(orch_dir: str) -> int:
