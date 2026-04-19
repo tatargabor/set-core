@@ -364,9 +364,8 @@ def _append_worktree_history(
     if not project_path:
         logger.warning("worktree-history: missing project_path, skipping")
         return
-    history_path = os.path.join(
-        project_path, "set", "orchestration", "worktrees-history.json"
-    )
+    from .paths import LineagePaths
+    history_path = LineagePaths(project_path).worktrees_history
     os.makedirs(os.path.dirname(history_path), exist_ok=True)
     spec_lineage_id = None
     sentinel_session_id = None
@@ -405,13 +404,13 @@ def _append_worktree_history(
 def _mark_worktree_purged(project_path: str, removed_path: str) -> bool:
     """Flip the `purged` flag on the most recent history line for `removed_path`.
 
-    Returns True when a matching line was rewritten.  `worktrees-history.json`
-    is small (one line per worktree archival) so a full rewrite is cheap and
-    keeps the file append-only-ish from the API's perspective.
+    Returns True when a matching line was rewritten.  The worktree
+    history file is small (one line per worktree archival) so a full
+    rewrite is cheap and keeps the file append-only-ish from the API's
+    perspective.
     """
-    history_path = os.path.join(
-        project_path, "set", "orchestration", "worktrees-history.json"
-    )
+    from .paths import LineagePaths
+    history_path = LineagePaths(project_path).worktrees_history
     if not os.path.isfile(history_path):
         return False
     try:
@@ -472,8 +471,11 @@ def _append_coverage_history_for_merge(state_file: str, change_name: str) -> Non
     future digest attribution can scope to a lineage.
     """
     from .paths import LineagePaths
-    lp = LineagePaths.from_state_file(state_file)
-    project_dir = lp.orchestration_dir
+    # Resolve via the project_path that engine writes the state under so
+    # the history file lands at <project>/set/orchestration/, mirroring
+    # what the API and the tests expect.
+    project_dir = os.path.dirname(os.path.abspath(state_file))
+    lp = LineagePaths.from_state_file(state_file, project_path=project_dir)
     plan_path = lp.plan_file
     reqs: list[str] = []
     if os.path.isfile(plan_path):
@@ -505,9 +507,7 @@ def _append_coverage_history_for_merge(state_file: str, change_name: str) -> Non
         "merged_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds"),
         "reqs": reqs,
     }
-    history_path = os.path.join(
-        project_dir, "set", "orchestration", "spec-coverage-history.jsonl"
-    )
+    history_path = lp.coverage_history
     os.makedirs(os.path.dirname(history_path), exist_ok=True)
     try:
         with open(history_path, "a", encoding="utf-8") as fh:
@@ -525,12 +525,14 @@ def _append_e2e_manifest_history_for_merge(
 ) -> None:
     """Section 12.1/12.2: append an e2e-manifest snapshot at every successful merge.
 
-    Skips silently when the worktree has no `e2e-manifest.json` (the spec
-    treats this as DEBUG, not WARNING — many changes produce no e2e tests).
+    Skips silently when the worktree has no per-worktree e2e manifest
+    (the spec treats this as DEBUG, not WARNING — many changes produce
+    no e2e tests).
     """
     if not worktree_path:
         return
-    manifest_path = os.path.join(worktree_path, "e2e-manifest.json")
+    from .paths import LineagePaths
+    manifest_path = LineagePaths.e2e_manifest_for_worktree(worktree_path)
     if not os.path.isfile(manifest_path):
         logger.debug("e2e-manifest-history: no manifest at %s — skipping", manifest_path)
         return
@@ -553,9 +555,9 @@ def _append_e2e_manifest_history_for_merge(
         "spec_lineage_id": spec_lineage_id,
         "manifest": manifest,
     }
-    history_path = os.path.join(
-        project_dir, "set", "orchestration", "e2e-manifest-history.jsonl"
-    )
+    history_path = LineagePaths.from_state_file(
+        state_file, project_path=project_dir,
+    ).e2e_manifest_history
     os.makedirs(os.path.dirname(history_path), exist_ok=True)
     try:
         with open(history_path, "a", encoding="utf-8") as fh:
