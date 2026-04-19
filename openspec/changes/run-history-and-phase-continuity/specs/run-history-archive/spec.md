@@ -1,5 +1,44 @@
 ## ADDED Requirements
 
+### Requirement: Centralized lineage-aware path resolver
+The framework SHALL introduce a single class `LineagePaths` in `lib/set_orch/paths.py` that owns every orchestration path previously hardcoded in scattered call sites (plan file, domains file, digest dir, event streams, state file, state-archive, coverage report, e2e manifest, directives, config, review-findings, review-learnings, artifacts dir, sentinel status, issues registry, worktree reflection). Every Python and Bash call site that reads or writes one of those paths SHALL resolve it through `LineagePaths` (or, for Bash, through equivalent helpers in `bin/set-common.sh`) — no hardcoded `os.path.join(..., "orchestration-plan.json")`, no literal `"set/orchestration/digest"` strings outside the resolver.
+
+#### Scenario: Resolver returns lineage-specific path
+- **WHEN** a caller asks for `LineagePaths(project, lineage_id="docs/spec-v1.md").plan_file()`
+- **AND** a rotated `orchestration-plan-<v1-slug>.json` exists in the project root
+- **THEN** the resolver SHALL return that rotated path
+- **AND** the caller SHALL receive it without knowledge of the rename mechanics
+
+#### Scenario: Resolver returns live path for live lineage
+- **WHEN** a caller asks for `plan_file()` under the lineage that matches `state.spec_lineage_id`
+- **THEN** the resolver SHALL return the live `orchestration-plan.json`
+- **AND** NOT the `-<slug>.json` copy
+
+#### Scenario: Bash helper mirrors Python resolver
+- **WHEN** `bin/set-orchestrate` or any shell script under `bin/` / `lib/orchestration/*.sh` needs an orchestration path
+- **THEN** the path SHALL come from `set-common.sh` helpers (`lineage_plan_file`, `lineage_digest_dir`, etc.) that mirror the Python resolver's contract
+- **AND** the helpers SHALL NOT contain literal `orchestration-plan.json` / `set/orchestration/digest` strings elsewhere in the shell codebase
+
+### Requirement: Hardcoded-path audit gate blocks archiving
+The verify pipeline for this change SHALL run a ripgrep-based audit across `lib/`, `bin/`, `scripts/`, `web/src/` that searches for the 18 canonical orchestration-path patterns outside the resolver module. The gate SHALL FAIL (blocking archive) while any production code file still contains a direct literal match. The audit results SHALL be tracked in `migration-audit.md` in the change directory, with per-file checkboxes updated as migration progresses.
+
+#### Scenario: Audit finds a residual literal
+- **WHEN** the gate greps for `orchestration-state.json` across code files
+- **AND** `lib/set_orch/some_module.py` still contains `open("orchestration-state.json")`
+- **THEN** the gate SHALL report that file + line in its failure message
+- **AND** `migration-audit.md`'s row for that file SHALL remain unchecked
+- **AND** the change SHALL NOT be archivable until the literal is replaced by a `LineagePaths` call
+
+#### Scenario: Audit passes
+- **WHEN** every code file's literal orchestration-path references have been replaced by `LineagePaths` calls (or are confirmed as read-only constants marked `[~]`, or deleted marked `[/]`)
+- **THEN** the gate SHALL pass
+- **AND** `/opsx:archive` MAY proceed
+
+#### Scenario: Non-code files excluded
+- **WHEN** the audit runs
+- **THEN** it SHALL NOT consider markdown documentation, YAML templates, or openspec artefacts
+- **AND** those are handled by a separate (non-blocking) docs sweep after archiving
+
 ### Requirement: Event stream rotation on replan and sentinel-stop
 The orchestrator SHALL rotate the project-level event streams (`orchestration-events.jsonl` and `orchestration-state-events.jsonl`) to `orchestration-events-cycle<N>.jsonl` and `orchestration-state-events-cycle<N>.jsonl` before a new replan cycle begins, and whenever the sentinel stops cleanly, so that each cycle's events are preserved as a separate file.
 

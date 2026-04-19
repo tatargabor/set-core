@@ -1,3 +1,15 @@
+## 0. Centralized lineage path resolver (pre-work for every other workstream)
+
+- [ ] 0.1 Design `LineagePaths` class in `lib/set_orch/paths.py` — accepts `project_path: str, lineage_id: Optional[str] = None`. Every orchestration path property is read-only and either returns a lineage-specific file/dir (when `lineage_id` differs from the live lineage) or the live path. Falls back to live when no lineage-specific file exists, logging at DEBUG. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 0.2 Implement properties covering every pattern in `migration-audit.md` Phase 1: `plan_file`, `plan_domains_file`, `events_file`, `rotated_event_files`, `state_events_file`, `state_file`, `state_archive`, `digest_dir`, `coverage_report`, `coverage_history`, `e2e_manifest_for_worktree`, `e2e_manifest_history`, `supervisor_status`, `supervisor_status_history`, `issues_registry`, `reflection_for_worktree`, `directives_file`, `config_yaml`, `review_learnings`, `review_findings`, `artifacts_dir_for_change`, `specs_archive_dir`, `worktrees_history`. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 0.3 Add `LineageId = NewType("LineageId", str)` in `lib/set_orch/types.py` (or equivalent); every public API in `LineagePaths` uses this type. Mypy run as part of CI catches callers that pass raw `str`. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 0.4 Add a filename-safe `slug(lineage_id: LineageId) -> str` helper; test edge cases (slashes, dots, unicode, very long paths, empty string). [REQ: spec-lineage-identity-derived-from-input-path]
+- [ ] 0.5 Mirror `LineagePaths` as Bash helpers in `bin/set-common.sh` — `lineage_plan_file`, `lineage_digest_dir`, `lineage_state_file`, etc. Every helper echoes the resolved path so shell scripts can consume it via `$(lineage_plan_file "$PROJECT" "$LINEAGE")`. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 0.6 Unit test: `tests/unit/test_lineage_paths.py` covers every property for (a) live lineage, (b) non-live lineage with rotated copy present, (c) non-live lineage with NO rotated copy → logs DEBUG + falls back, (d) `LineageId` typing catches raw str at mypy, (e) slug round-trips for tricky inputs. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 0.7 Unit test: `tests/unit/test_set_common_lineage_helpers.sh` exercises the Bash helpers against a fixture project. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 0.8 Migration helper — a deprecation shim for callers that still pass raw project_path without lineage_id: `LineagePaths.from_project(project_path)` auto-resolves the current live lineage from `state.spec_lineage_id`. Logs WARNING so callers who forgot to pass lineage become visible. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 0.9 Publish `LineagePaths` in the package public API (re-export from `set_orch/__init__.py` if other modules conventionally import from there). [REQ: centralized-lineage-aware-path-resolver]
+
 ## 1. Event stream rotation
 
 - [ ] 1.1 Add `_rotate_event_streams(state_file)` helper in `lib/set_orch/engine.py` that renames `orchestration-events.jsonl` and `orchestration-state-events.jsonl` to `*-cycle<N>.jsonl` (N = next unused integer) and creates fresh empty live files. Wrap in try/except OSError + WARNING log. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
@@ -152,6 +164,48 @@
 - [ ] 15.3 Playwright test: v1-fixture project renders Phase 1, Phase 2, Phase 3 (v1 spec's phases); switching to v2 renders v2's own phases (fresh numbering). [REQ: left-sidebar-lineage-list]
 - [ ] 15.4 Playwright test: a modern post-migration project does NOT render any "Previous cycles" / "Phase 0 (archived)" synthetic header — regression guard. [REQ: backfill-migration-for-historic-archive-entries]
 
+## 15b. Per-file migration sweep (driven by migration-audit.md)
+
+These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below translates a row from the audit into a concrete "replace hardcoded literals with `LineagePaths` calls" commit. Progress tracking on both artefacts stays in sync (check the box here AND in `migration-audit.md`).
+
+### 15b.a — Python core (highest impact first)
+
+- [ ] 15b.1 `lib/set_orch/engine.py` — replace all state/plan/archive/coverage literals with `LineagePaths` calls. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.2 `lib/set_orch/_api_old.py` — 17 refs. Decide migrate-or-deprecate; if deprecate, add a blocking test so new code stops importing from it. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.3 `lib/set_orch/supervisor/daemon.py` — events + state reads via resolver. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.4 `lib/set_orch/merger.py` — manifest, config, state reads. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.5 `lib/set_orch/api/orchestration.py` — drop dual-location fallback; resolver owns it. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.6 `lib/set_orch/dispatcher.py` — manifest WRITE via resolver. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.7 `lib/set_orch/planner.py` — plan + domains WRITE, digest READ. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.8 `lib/set_orch/cli.py` — CLI defaults reference the resolver (compute default at parse time from cwd + current lineage). [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.9 Remaining Python modules in `migration-audit.md` Phase 2 (verifier, recovery, config, digest, events, reporter, auditor, notifications, cross_change, loop_prompt, loop_state, api/helpers, api/activity, api/activity_detail, api/sessions, api/actions, api/sentinel, api/lifecycle, api/media, api/_sentinel_orch, issues/registry, issues/watchdog, issues/manager, manager/service, profile_loader, profile_types, subprocess_utils, state, sentinel/findings, sentinel/orchestrator). One sub-task per file; commit per file or per small cluster. [REQ: centralized-lineage-aware-path-resolver]
+
+### 15b.b — Bash migration
+
+- [ ] 15b.10 `bin/set-orchestrate` — dynamic path derivation goes through `set-common.sh` helpers. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.11 `bin/set-sentinel`, `bin/set-status`, `bin/set-web`, `bin/set-manager`, `bin/set-close`, `bin/set-new`, `bin/set-merge`, `bin/set-harvest`, `bin/set-project` — each reviewed; any orchestration-path literal replaced with a helper call. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.12 `lib/orchestration/*.sh` + `lib/loop/*.sh` — confirm still in use; if obsoleted by Python cutover, delete the file and mark `[/]` in the audit. Otherwise migrate. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.13 `scripts/*.sh` — migrate remaining sidecar scripts. [REQ: centralized-lineage-aware-path-resolver]
+
+### 15b.c — Tests
+
+- [ ] 15b.14 `tests/orchestrator/test-orchestrate-integration.sh` — 84 refs. Introduce test helpers that mirror `LineagePaths`; use the helpers for every path construction. [REQ: centralized-lineage-aware-path-resolver]
+- [ ] 15b.15 `tests/unit/*.py` + `tests/unit/*.sh` — replace hardcoded literals with resolver calls. [REQ: centralized-lineage-aware-path-resolver]
+
+### 15b.d — Web frontend lineage plumbing audit
+
+- [ ] 15b.16 Confirm every `fetch(` in `web/src/**` that hits an orchestration endpoint appends the current `selectedLineage` query parameter via the shared helper. No raw string-literal path fetches outside that helper. Playwright test asserts the Network tab shows `?lineage=<id>` on every relevant request. [REQ: data-endpoints-accept-an-optional-lineage-filter]
+
+## 17. Hardcoded-path audit gate
+
+- [ ] 17.1 New script `scripts/audit-lineage-paths.sh` runs ripgrep for each of the 18 canonical patterns across `lib/`, `bin/`, `scripts/`, `web/src/`, `tests/`. Exits 0 if every residual match is inside `lib/set_orch/paths.py`, `bin/set-common.sh`, or tests/fixtures that exercise the resolver. Exits non-zero with a per-file listing otherwise. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [ ] 17.2 Wire the script into the verify pipeline for this change: `/opsx:verify run-history-and-phase-continuity` invokes it. Non-zero exit blocks `/opsx:archive`. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [ ] 17.3 The script writes its diff-style output to `openspec/changes/run-history-and-phase-continuity/audit-report.txt` every time it runs, so reviewers can see exactly which residuals remain. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [ ] 17.4 Update `migration-audit.md` checkboxes automatically from the script output (inverse: auto-check rows whose file no longer appears in the residuals list). Store a `--sync-audit` flag. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [ ] 17.5 Unit test: fixture project with a known hardcoded literal → script exits non-zero and names the file. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [ ] 17.6 Unit test: fixture project with only resolver-routed references → script exits 0. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+- [ ] 17.7 Add a `pre-commit` / pre-push invocation of the script (optional but recommended) so the diff cannot regress silently. [REQ: hardcoded-path-audit-gate-blocks-archiving]
+
 ## 16. Final integration + regression
 
 - [ ] 16.1 Run the full unit suite (`pytest tests/unit -q`) — confirm 0 regressions. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
@@ -227,6 +281,16 @@
 - [ ] AC-29: WHEN change merges without an e2e-manifest.json THEN no line is appended and absence is logged at DEBUG (not WARNING) [REQ: e2e-manifest-history-append-on-merge, scenario: merge-with-missing-manifest]
 - [ ] AC-30: WHEN live plan + history contain 4 distinct changes' manifests THEN Digest/E2E returns all 4 blocks totalled with archived=true flag on historic ones [REQ: digest-e2e-aggregates-across-cycles, scenario: archived-live-blocks]
 - [ ] AC-31: WHEN e2e-manifest-history.jsonl does not exist THEN the API falls back to current live-manifest behaviour without raising [REQ: digest-e2e-aggregates-across-cycles, scenario: legacy-archive-without-history]
+
+### Centralized path resolver
+- [ ] AC-32a: WHEN a caller asks LineagePaths(project, lineage="v1") for plan_file AND a rotated orchestration-plan-<v1-slug>.json exists THEN the resolver returns that rotated path [REQ: centralized-lineage-aware-path-resolver, scenario: resolver-returns-lineage-specific-path]
+- [ ] AC-32b: WHEN the caller asks for a path under the live lineage THEN the resolver returns the live orchestration-plan.json (not the slugged copy) [REQ: centralized-lineage-aware-path-resolver, scenario: resolver-returns-live-path-for-live-lineage]
+- [ ] AC-32c: WHEN any Bash script needs an orchestration path THEN it calls a helper in bin/set-common.sh that mirrors the Python resolver; no hardcoded literals elsewhere [REQ: centralized-lineage-aware-path-resolver, scenario: bash-helper-mirrors-python-resolver]
+
+### Hardcoded-path audit gate
+- [ ] AC-32d: WHEN the audit gate greps code files AND a production file still contains a hardcoded orchestration-path literal outside the resolver THEN the gate FAILS with the file+line in its message AND /opsx:archive is blocked [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: audit-finds-a-residual-literal]
+- [ ] AC-32e: WHEN every code file's literal orchestration-path refs have been replaced by LineagePaths calls (or marked [~] / [/]) THEN the gate PASSES AND /opsx:archive may proceed [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: audit-passes]
+- [ ] AC-32f: WHEN the audit runs THEN it does NOT inspect markdown documentation, YAML templates, or openspec artefacts [REQ: hardcoded-path-audit-gate-blocks-archiving, scenario: non-code-files-excluded]
 
 ### Lineage tagging on history records
 - [ ] AC-32: WHEN _archive_completed_to_jsonl writes an entry THEN the entry includes spec_lineage_id sourced from state.spec_lineage_id [REQ: lineage-tagging-on-all-history-records, scenario: archive-entry]
