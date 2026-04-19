@@ -861,9 +861,19 @@ def get_activity_timeline(
     project: str,
     from_ts: Optional[str] = Query(None, alias="from"),
     to_ts: Optional[str] = Query(None, alias="to"),
+    lineage: Optional[str] = Query(None),
 ):
-    """Get activity timeline with spans and breakdown for a project."""
+    """Get activity timeline with spans and breakdown for a project.
+
+    Section 13.4: when `?lineage=` is provided, only spans attributable
+    to that lineage are returned.  Spans without a `change` field
+    (project-wide events) pass through unfiltered.
+    """
     project_path = _resolve_project(project)
+
+    # Resolve the effective lineage early so we can filter the spans below.
+    from .lineages import resolve_lineage_default
+    effective_lineage = lineage or resolve_lineage_default(project_path)
 
     # Load events from all sources
     events = _load_events(project_path, from_ts, to_ts)
@@ -978,6 +988,41 @@ def get_activity_timeline(
     except Exception:  # noqa: BLE001
         logger.debug("implementing-span enrichment pass failed", exc_info=True)
 
+    # Section 13.4 — apply lineage filter to spans before breakdown.
+    if effective_lineage and effective_lineage != "__all__":
+        try:
+            from ..state import load_state
+            change_lineage: dict[str, str] = {}
+            sp = _state_path(project_path)
+            if sp.exists():
+                _st = load_state(str(sp))
+                for c in _st.changes:
+                    lid = c.spec_lineage_id or _st.spec_lineage_id
+                    if lid:
+                        change_lineage[c.name] = lid
+            from .helpers import _load_archived_changes
+            for entry in _load_archived_changes(project_path):
+                lid = entry.get("spec_lineage_id")
+                if lid and entry.get("name") not in change_lineage:
+                    change_lineage[entry["name"]] = lid
+            filtered: list[dict] = []
+            for s in spans:
+                ch = s.get("change")
+                # Spans with no change are project-wide (pass-through) OR
+                # session_boundary markers that already carry a lineage.
+                if not ch:
+                    detail_l = (s.get("detail") or {}).get("spec_lineage_id")
+                    if detail_l and detail_l != effective_lineage:
+                        continue
+                    filtered.append(s)
+                    continue
+                ch_lineage = change_lineage.get(ch, "__legacy__")
+                if ch_lineage == effective_lineage:
+                    filtered.append(s)
+            spans = filtered
+        except Exception:
+            logger.debug("activity lineage filter failed", exc_info=True)
+
     # Compute breakdown
     wall_time_ms, activity_time_ms, parallel_efficiency, breakdown = _compute_breakdown(spans)
 
@@ -994,4 +1039,5 @@ def get_activity_timeline(
         "parallel_efficiency": parallel_efficiency,
         "spans": clean_spans,
         "breakdown": breakdown,
+        "effective_lineage": effective_lineage,
     }

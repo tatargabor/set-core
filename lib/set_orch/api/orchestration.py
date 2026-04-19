@@ -31,8 +31,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/api/{project}/state")
-def get_state(project: str):
-    """Get full orchestration state for a project."""
+def get_state(project: str, lineage: Optional[str] = Query(None)):
+    """Get full orchestration state for a project.
+
+    Section 13.4: when `?lineage=` is provided, the merged change list is
+    filtered to that lineage (special value `__all__` returns the union).
+    The top-level state fields (status, plan_version, etc.) are always
+    returned as-is — they describe the LIVE sentinel, not a historical
+    lineage.
+    """
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
     if not sp.exists():
@@ -48,6 +55,14 @@ def get_state(project: str):
             for ac in archived:
                 if ac["name"] not in current_names:
                     data["changes"].append(ac)
+        # Section 13.4 — apply the lineage filter to the merged change list.
+        from .lineages import apply_lineage_filter, resolve_lineage_default
+        effective_lineage = lineage or resolve_lineage_default(project_path)
+        if effective_lineage and effective_lineage != "__all__":
+            data["changes"] = apply_lineage_filter(
+                data.get("changes", []), effective_lineage,
+            )
+        data["effective_lineage"] = effective_lineage
         return data
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
@@ -831,7 +846,11 @@ def get_memory_overview(project: str):
 
 
 @router.get("/api/{project}/llm-calls")
-def get_llm_calls(project: str, limit: int = Query(500, ge=1, le=5000)):
+def get_llm_calls(
+    project: str,
+    limit: int = Query(500, ge=1, le=5000),
+    lineage: Optional[str] = Query(None),
+):
     """Chronological list of all LLM calls: events JSONL + session files.
 
     Combines two sources:
@@ -839,6 +858,11 @@ def get_llm_calls(project: str, limit: int = Query(500, ge=1, le=5000)):
     2. Claude session files per change (implementation sessions with full token data)
 
     Returns sorted by timestamp, most recent first.
+
+    Section 13.4: when `?lineage=` is provided, only calls attributable to
+    that lineage are returned.  Attribution comes from the change's
+    persisted `spec_lineage_id` (live state or archive); calls without an
+    attributable change pass through under `__legacy__`.
     """
     project_path = _resolve_project(project)
     calls: list[dict] = []
@@ -858,9 +882,35 @@ def get_llm_calls(project: str, limit: int = Query(500, ge=1, le=5000)):
     event_keys = {(c["purpose_raw"], c["change"]) for c in calls if c["source"] == "orchestration"}
     _read_session_calls(state, project_path, calls, skip_keys=event_keys)
 
+    # Section 13.4 — apply lineage filter via per-change lineage map.
+    from .lineages import apply_lineage_filter, resolve_lineage_default
+    effective_lineage = lineage or resolve_lineage_default(project_path)
+    if effective_lineage and effective_lineage != "__all__":
+        change_lineage = _build_change_lineage_map(project_path, state)
+        # Tag every call with its change's lineage (default __legacy__).
+        for c in calls:
+            c["spec_lineage_id"] = change_lineage.get(c.get("change", ""), "__legacy__")
+        calls = apply_lineage_filter(calls, effective_lineage)
+
     # Sort chronologically (most recent first) and limit
     calls.sort(key=lambda c: c.get("timestamp", ""), reverse=True)
-    return {"calls": calls[:limit]}
+    return {"calls": calls[:limit], "effective_lineage": effective_lineage}
+
+
+def _build_change_lineage_map(project_path: Path, state) -> dict[str, str]:
+    """Return {change_name: spec_lineage_id} from live state + archive."""
+    out: dict[str, str] = {}
+    if state is not None:
+        for c in state.changes:
+            lid = c.spec_lineage_id or state.spec_lineage_id
+            if lid:
+                out[c.name] = lid
+    archived = _load_archived_changes(project_path)
+    for entry in archived:
+        lid = entry.get("spec_lineage_id")
+        if lid and entry.get("name") not in out:
+            out[entry["name"]] = lid
+    return out
 
 
 def _read_llm_call_events(project_path: Path, calls: list[dict]) -> None:

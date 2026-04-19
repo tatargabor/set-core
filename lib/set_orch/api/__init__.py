@@ -27,6 +27,7 @@ from ._sentinel_orch import router as sentinel_orch_router
 from .learnings import router as learnings_router
 from .activity import router as activity_router
 from .activity_detail import router as activity_detail_router
+from .lineages import router as lineages_router
 
 # Unified router that combines all domain routers
 router = APIRouter()
@@ -39,6 +40,7 @@ router.include_router(sentinel_orch_router)
 router.include_router(learnings_router)
 router.include_router(activity_router)
 router.include_router(activity_detail_router)
+router.include_router(lineages_router)
 
 # Optional routers (sentinel control, issues) — added when lifecycle starts
 # These are registered dynamically in lifecycle.py since they need service instances
