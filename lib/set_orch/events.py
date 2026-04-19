@@ -256,7 +256,7 @@ def _resolve_log_path() -> Path | None:
     Priority:
     1. SetRuntime resolution (shared runtime dir)
     2. Legacy: STATE_FILENAME env var → sibling events file
-    3. Legacy fallback: orchestration-events.jsonl in cwd
+    3. Legacy fallback: LineagePaths.events_file basename in cwd
     """
     try:
         from .paths import SetRuntime
@@ -270,7 +270,8 @@ def _resolve_log_path() -> Path | None:
     if state_file:
         stem = Path(state_file).stem.replace("-state", "")
         return Path(state_file).parent / f"{stem}-events.jsonl"
-    return Path("orchestration-events.jsonl")
+    from .paths import LineagePaths as _LP_ev
+    return Path(os.path.basename(_LP_ev(os.getcwd()).events_file))
 
 
 # Module-level singleton — used by run_claude_logged() to emit LLM_CALL events.

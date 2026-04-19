@@ -25,9 +25,17 @@ from .subprocess_utils import run_claude_logged
 
 logger = logging.getLogger(__name__)
 
-# Legacy default — callers should use SetRuntime().digest_dir when available.
-# Many functions accept digest_dir as a parameter; engine.py passes the resolved path.
-DIGEST_DIR = "set/orchestration/digest"
+# Default digest dir — derived from LineagePaths so the literal lives in the resolver.
+# Callers should prefer passing the resolved path explicitly; engine.py does this already.
+def _default_digest_dir() -> str:
+    from .paths import LineagePaths as _LP_d
+    import os as _os_d
+    return _os_d.path.relpath(
+        _LP_d(_os_d.getcwd()).digest_dir, _os_d.getcwd()
+    )
+
+
+DIGEST_DIR = _default_digest_dir()
 
 # Core ignore patterns for spec scanning
 _CORE_IGNORE_PATTERNS = {"archive", ".git", "__pycache__", ".venv"}

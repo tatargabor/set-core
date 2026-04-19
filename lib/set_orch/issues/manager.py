@@ -233,7 +233,8 @@ class IssueManager:
             return False
 
         import json, os
-        state_path = os.path.join(issue.environment_path, "orchestration-state.json")
+        from ..paths import LineagePaths as _LP_im
+        state_path = _LP_im(issue.environment_path).state_file
         if not os.path.isfile(state_path):
             return False
         try:

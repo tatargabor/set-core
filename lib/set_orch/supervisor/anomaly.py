@@ -10,7 +10,7 @@ triggers through `triggers.execute_triggers()`.
 Trigger types (Phase 2):
 
   process_crash            — orchestrator PID is gone, status not terminal
-  state_stall              — orchestration-state.json mtime unchanged > 5 min
+  state_stall              — state file (LineagePaths.state_file) mtime unchanged > 5 min
   token_stall              — change tokens > 500k AND no state movement 30 min
   integration_failed       — change.status contains "integration" + "failed"
   non_periodic_checkpoint  — CHECKPOINT event with reason != "periodic"

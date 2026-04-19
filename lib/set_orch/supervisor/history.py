@@ -46,7 +46,7 @@ def build_prior_attempts_summary(
     """Read SUPERVISOR_TRIGGER events and produce a prompt-friendly text summary.
 
     Args:
-        events_path: path to orchestration-events.jsonl
+        events_path: path to the events stream (LineagePaths.events_file)
         trigger:     trigger type to filter by (e.g. "integration_failed")
         change:      change name to filter by (empty = match any)
         max_attempts: keep only the most recent N attempts in the summary

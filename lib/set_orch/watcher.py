@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 
 logger = logging.getLogger("set-web.watcher")
@@ -90,23 +91,24 @@ class ProjectWatcher:
         self.log_tailer = LogTailer(self.log_path)
 
     def _find_state(self) -> Path:
-        # Project-local paths (engine writes here from CWD)
-        new = self.project_path / "set" / "orchestration" / "orchestration-state.json"
+        # Resolver-canonical location first; legacy project-local variants
+        # are reconstructed from the resolver basename for backward compat.
+        from .paths import LineagePaths
+        lp = LineagePaths(str(self.project_path))
+        canonical = Path(lp.state_file)
+        if canonical.exists():
+            return canonical
+        legacy_basename = "orchestration-" + canonical.name
+        orch_rel = os.path.relpath(
+            os.path.dirname(lp.coverage_report), str(self.project_path)
+        )
+        new = self.project_path / orch_rel / legacy_basename
         if new.exists():
             return new
-        legacy = self.project_path / "orchestration-state.json"
+        legacy = self.project_path / legacy_basename
         if legacy.exists():
             return legacy
-        # Try shared runtime dir (future: engine may write here)
-        try:
-            from .paths import SetRuntime
-            rt = SetRuntime(str(self.project_path))
-            runtime_state = Path(rt.state_file)
-            if runtime_state.exists():
-                return runtime_state
-        except Exception:
-            pass
-        return new  # default
+        return canonical  # default
 
     def _find_log(self) -> Path:
         # Project-local paths first
@@ -196,7 +198,9 @@ class ProjectWatcher:
                     self._refresh_paths()
                 for change_type, change_path in changes:
                     path = Path(change_path)
-                    if path.name in ("orchestration-state.json", "state.json"):
+                    from .paths import LineagePaths as _LP_wn
+                    _state_base = os.path.basename(_LP_wn(str(self.project_path)).state_file)
+                    if path.name in ("orchestration-" + _state_base, _state_base):
                         self._refresh_paths()
                         await self._handle_state_change(callback)
                     elif path.name == "orchestration.log":

@@ -73,7 +73,8 @@ async def sentinel_start(project: str, body: dict = {}):
     if reset_failed:
         try:
             from ..engine import reset_failed_changes
-            state_file = str(Path(sup.config.path) / "orchestration-state.json")
+            from ..paths import LineagePaths as _LP_sstart
+            state_file = _LP_sstart(str(sup.config.path)).state_file
             if Path(state_file).is_file():
                 reset_names = reset_failed_changes(state_file)
                 logger.info(

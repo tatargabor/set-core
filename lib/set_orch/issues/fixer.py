@@ -59,6 +59,14 @@ class FixRunner:
 
         fix_target = getattr(issue.diagnosis, "fix_target", "consumer") if issue.diagnosis else "consumer"
 
+        from ..paths import LineagePaths
+        _lp_fixer = LineagePaths(issue.environment_path or str(self.set_core_path))
+        state_basename = os.path.basename(_lp_fixer.state_file)
+        config_yaml_rel = os.path.relpath(
+            _lp_fixer.config_yaml,
+            issue.environment_path or str(self.set_core_path),
+        )
+
         if fix_target in ("framework", "both"):
             cwd = str(self.set_core_path)
             prompt = FRAMEWORK_FIX_PROMPT.format(
@@ -68,6 +76,8 @@ class FixRunner:
                 environment=issue.environment,
                 error_summary=issue.error_summary,
                 consumer_project=issue.environment_path or "unknown",
+                state_basename=state_basename,
+                config_yaml=config_yaml_rel,
             )
         else:
             cwd = issue.environment_path or str(self.set_core_path)
@@ -77,6 +87,8 @@ class FixRunner:
                 diagnosis=diag_json,
                 environment=issue.environment,
                 error_summary=issue.error_summary,
+                state_basename=state_basename,
+                config_yaml=config_yaml_rel,
             )
 
         return cwd, prompt
@@ -251,15 +263,15 @@ The proposal, design, specs, and tasks are in `openspec/changes/{change_name}/`.
    ```bash
    for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{{print $2}}' | tail -n +2); do
      cp vitest.config.ts "$wt/vitest.config.ts" 2>/dev/null
+     cp {config_yaml} "$wt/{config_yaml}" 2>/dev/null
      cp playwright.config.ts "$wt/playwright.config.ts" 2>/dev/null
-     cp set/orchestration/config.yaml "$wt/set/orchestration/config.yaml" 2>/dev/null
    done
    ```
 
 4. **Reset blocked changes** so the orchestrator retries (keep merge_retry_count to prevent infinite loops):
    ```bash
    python3 -c "
-   import json; f='orchestration-state.json'; s=json.load(open(f))
+   import json; f='{state_basename}'; s=json.load(open(f))
    for c in s['changes']:
        if c['status'] in ('integration-failed', 'merge-blocked'):
            c['status']='done'
@@ -308,7 +320,7 @@ The bug was detected in consumer project: {consumer_project}
    ```bash
    python3 -c "
    import json, os
-   f = os.path.join('{consumer_project}', 'orchestration-state.json')
+   f = os.path.join('{consumer_project}', '{state_basename}')
    if os.path.exists(f):
        s = json.load(open(f))
        for c in s['changes']:

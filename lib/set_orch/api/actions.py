@@ -132,7 +132,7 @@ def start_orchestration(project: str):
                 spec_path = str(Path(matches[0]).relative_to(project_path))
                 break
     if not spec_path:
-        raise HTTPException(400, "Cannot determine spec path — set 'spec' in set/orchestration/config.yaml")
+        raise HTTPException(400, "Cannot determine spec path — set 'spec' in the orchestration config (LineagePaths.config_yaml)")
 
     # Resolve set-orchestrate binary
     orch_bin = shutil.which("set-orchestrate")

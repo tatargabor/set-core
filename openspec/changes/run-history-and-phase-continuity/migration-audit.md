@@ -32,21 +32,21 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 - [x] `lib/set_orch/verifier.py` — manifest WRITE, coverage consume
 - [x] `lib/set_orch/recovery.py` — state READ
 - [x] `lib/set_orch/config.py` — config.yaml READ, specs dir fallback
-- [ ] `lib/set_orch/digest.py` — `DIGEST_DIR` constant → route through resolver
-- [ ] `lib/set_orch/events.py` — events append sites
+- [x] `lib/set_orch/digest.py` — `DIGEST_DIR` constant → route through resolver
+- [x] `lib/set_orch/events.py` — events append sites
 - [x] `lib/set_orch/reporter.py` — state consume, merged_files resolution
-- [ ] `lib/set_orch/auditor.py` — state READ
+- [x] `lib/set_orch/auditor.py` — state READ
 - [x] `lib/set_orch/notifications.py` — state READ
 - [x] `lib/set_orch/cross_change.py` — state READ
 - [x] `lib/set_orch/loop_prompt.py` — reflection READ
-- [ ] `lib/set_orch/loop_state.py` — review-learnings path reference
+- [x] `lib/set_orch/loop_state.py` — review-learnings path reference
 - [x] `lib/set_orch/cli.py` — default path args (11 refs)
 - [x] `lib/set_orch/cli_entry.py` — serve-time path wiring (verify no hardcoded)
 
 ### 2.b — Supervisor / sentinel (6 files)
 
 - [ ] `lib/set_orch/supervisor/daemon.py` — events READ, state READ (13 refs)
-- [ ] `lib/set_orch/supervisor/state.py` — status.json path
+- [x] `lib/set_orch/supervisor/state.py` — status.json path
 - [x] `lib/set_orch/supervisor/triggers.py` — state consume
 - [x] `lib/set_orch/supervisor/canary.py` — state consume
 - [ ] `lib/set_orch/supervisor/service.py` — spec-path write into status
@@ -56,26 +56,26 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 
 - [x] `lib/set_orch/api/orchestration.py` — events READ (dual-location fallback), state READ, archive merge
 - [x] `lib/set_orch/api/helpers.py` — state_path, log_path, archive path already partly centralised; extend with lineage-aware resolvers
-- [ ] `lib/set_orch/api/activity.py` — events + rotated files enumeration
+- [x] `lib/set_orch/api/activity.py` — events + rotated files enumeration
 - [x] `lib/set_orch/api/activity_detail.py` — activity-detail-v2-*.jsonl path
 - [x] `lib/set_orch/api/sessions.py` — session file discovery (partly worktree-based — confirm)
-- [ ] `lib/set_orch/api/actions.py` — config.yaml, spec path handling
-- [ ] `lib/set_orch/api/sentinel.py` — spec-path handling on start
+- [x] `lib/set_orch/api/actions.py` — config.yaml, spec path handling
+- [x] `lib/set_orch/api/sentinel.py` — spec-path handling on start
 - [x] `lib/set_orch/api/lifecycle.py` — IssueRegistry(project_path) — confirm path
 - [x] `lib/set_orch/api/media.py` — artifact scan
-- [ ] `lib/set_orch/api/_sentinel_orch.py` — sentinel events path
+- [x] `lib/set_orch/api/_sentinel_orch.py` — sentinel events path
 
 ### 2.d — Issues subsystem (3 files)
 
 - [x] `lib/set_orch/issues/registry.py` — `.set/issues/registry.json` path
-- [ ] `lib/set_orch/issues/watchdog.py` — registry path
-- [ ] `lib/set_orch/issues/manager.py` — registry consume
+- [x] `lib/set_orch/issues/watchdog.py` — registry path
+- [x] `lib/set_orch/issues/manager.py` — registry consume
 
 ### 2.e — Manager / profile / misc (5 files)
 
 - [x] `lib/set_orch/manager/service.py` — IssueRegistry + state access
 - [x] `lib/set_orch/profile_loader.py` — default `output_path="docs/spec.md"` — review; may need lineage-aware default
-- [ ] `lib/set_orch/profile_types.py` — review-learnings project-level path
+- [x] `lib/set_orch/profile_types.py` — review-learnings project-level path
 - [x] `lib/set_orch/subprocess_utils.py` — PLAN_FILENAME env var handling
 - [x] `lib/set_orch/state.py` — state load/save centralisation (review if it hardcodes paths)
 - [x] `lib/set_orch/archive.py` — archive_and_write helper (generic; confirm no project-level assumptions)

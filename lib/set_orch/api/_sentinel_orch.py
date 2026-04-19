@@ -169,7 +169,8 @@ async def completion_action(project: str, body: dict):
 
     # Accept action: transition state to 'accepted' so the UI stops showing the banner
     if action == "accept":
-        state_file = pp / "orchestration-state.json"
+        from ..paths import LineagePaths
+        state_file = Path(LineagePaths(str(pp)).state_file)
         if state_file.exists():
             import fcntl
             try:

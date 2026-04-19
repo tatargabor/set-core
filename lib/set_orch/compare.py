@@ -207,11 +207,9 @@ def collect_e2e_results(project_dir: Path) -> dict[str, Any]:
     report_dir = project_dir / "playwright-report"
     result["has_report"] = report_dir.is_dir()
 
-    # Gate results from orchestration state
-    for state_path in [
-        project_dir / "orchestration-state.json",
-        project_dir / "set" / "orchestration" / "orchestration-state.json",
-    ]:
+    # Gate results from orchestration state (resolver-canonical only)
+    from .paths import LineagePaths as _LP_cmp
+    for state_path in [Path(_LP_cmp(str(project_dir)).state_file)]:
         if state_path.is_file():
             try:
                 state = json.loads(state_path.read_text())

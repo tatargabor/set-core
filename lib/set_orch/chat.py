@@ -280,11 +280,9 @@ class ChatSession:
             self._state_watcher = None
 
     async def _watch_state(self) -> None:
-        """Poll orchestration-state.json for changes, push updates to clients."""
-        state_paths = [
-            self.project_path / "set" / "orchestration" / "orchestration-state.json",
-            self.project_path / "orchestration-state.json",
-        ]
+        """Poll the orchestration state (LineagePaths.state_file) for changes."""
+        from .paths import LineagePaths as _LP_chat
+        state_paths = [Path(_LP_chat(str(self.project_path)).state_file)]
         try:
             while True:
                 await asyncio.sleep(5)

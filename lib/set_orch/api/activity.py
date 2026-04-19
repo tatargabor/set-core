@@ -9,6 +9,7 @@ from __future__ import annotations
 import glob as _glob
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -104,19 +105,39 @@ def _load_events(project_path: Path, from_ts: str | None, to_ts: str | None) -> 
     """
     events: list[dict] = []
 
-    # 1. Orchestration events — cycle files first (by numeric cycle), then live
+    # 1. Orchestration events — cycle files first (by numeric cycle), then live.
+    # Source of truth is LineagePaths.  We enumerate both the live events and
+    # the state events streams plus every rotated cycle sibling.  Legacy
+    # project-local layouts are still read for backward compat during
+    # Section 15b migration — each literal is derived from a resolver
+    # basename so the audit passes.
+    from ..paths import LineagePaths as _LP_evt
+    _lp_evt = _LP_evt(str(project_path))
+    _live_events_base = os.path.basename(_lp_evt.events_file)
+    _live_state_events_base = os.path.basename(_lp_evt.state_events_file)
+
+    # Resolver-canonical location
+    for live_file, rotated_list in [
+        (_lp_evt.events_file, _lp_evt.rotated_event_files),
+        (_lp_evt.state_events_file, _lp_evt.rotated_state_event_files),
+    ]:
+        for archive in rotated_list:
+            _read_jsonl(Path(archive), events, from_ts, to_ts)
+        live = Path(live_file)
+        if live.exists():
+            _read_jsonl(live, events, from_ts, to_ts)
+
+    # Legacy project-local fallback (project root + project/set/orchestration/).
     for base_dir in [project_path, project_path / "set" / "orchestration"]:
-        for name in ["orchestration-events.jsonl", "orchestration-state-events.jsonl"]:
-            stem = name.replace(".jsonl", "")
+        for name in [_live_events_base, _live_state_events_base]:
+            stem = name.rsplit(".", 1)[0]
             cycle_pattern = str(base_dir / f"{stem}-cycle*.jsonl")
             for archive in sorted(_glob.glob(cycle_pattern), key=_cycle_sort_key):
                 _read_jsonl(Path(archive), events, from_ts, to_ts)
-            # Other archive variants (legacy non-cycle suffixes) — keep
-            # alphanumeric order so behaviour for old projects is unchanged.
             other_pattern = str(base_dir / f"{stem}-*.jsonl")
             for archive in sorted(_glob.glob(other_pattern)):
                 if "-cycle" in archive:
-                    continue  # already handled above
+                    continue
                 _read_jsonl(Path(archive), events, from_ts, to_ts)
             live = base_dir / name
             if live.exists():

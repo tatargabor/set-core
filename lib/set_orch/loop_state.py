@@ -78,8 +78,8 @@ def _resolve_project_from_wt(wt_path: str) -> Optional[str]:
     """Resolve the main project path from a git worktree path.
 
     Used by the input.md refresh hook so the dispatcher can locate the
-    `set/orchestration/review-learnings.jsonl` file that lives next to
-    the main checkout, not inside the worktree.
+    review-learnings file (LineagePaths.review_learnings) that lives next
+    to the main checkout, not inside the worktree.
     """
     try:
         import subprocess

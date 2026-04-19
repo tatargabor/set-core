@@ -410,7 +410,7 @@ INVESTIGATION_PROMPT = """Investigate and plan a fix for issue {issue_id}.
 ## Framework Knowledge
 
 This project uses **set-core orchestration**:
-- Config: `set/orchestration/config.yaml` — overrides for test/e2e/build commands
+- Config: the orchestration config file (LineagePaths.config_yaml) — overrides for test/e2e/build commands
 - Gates: merger runs build → test → e2e before merging
 - Profile: `set/plugins/project-type.yaml` → web profile auto-detects commands
 - Common fixes:

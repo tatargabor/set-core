@@ -157,8 +157,8 @@ def _collect_lineages(project_path: Path, *, sentinel_running: bool = False) -> 
         if lid == _UNKNOWN:
             rec["diagnostic"] = (
                 "These entries could not be attributed during backfill "
-                "migration — review state-archive.jsonl by hand or purge "
-                "them with a manual edit."
+                "migration — review the state archive (LineagePaths.state_archive) "
+                "by hand or purge them with a manual edit."
             )
 
     # Order: live first, then by last_seen_at desc, then by id.

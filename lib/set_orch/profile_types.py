@@ -850,7 +850,8 @@ class ProjectType(ABC):
         # --- Project JSONL ---
         # No flock needed — single-project access, serial merges.
         if project_patterns:
-            proj_path = os.path.join(project_path, "set", "orchestration", "review-learnings.jsonl")
+            from .paths import LineagePaths as _LP_pt
+            proj_path = _LP_pt(project_path).review_learnings
             os.makedirs(os.path.dirname(proj_path), exist_ok=True)
             existing = []
             if os.path.isfile(proj_path):
@@ -959,7 +960,8 @@ class ProjectType(ABC):
         items: list[tuple[str, str, int]] = []  # (pattern, tag, sort_key)
 
         # 1. Project JSONL (highest priority)
-        proj_path = os.path.join(project_path, "set", "orchestration", "review-learnings.jsonl")
+        from .paths import LineagePaths as _LP_pt2
+        proj_path = _LP_pt2(project_path).review_learnings
         if os.path.isfile(proj_path):
             try:
                 with open(proj_path) as f:

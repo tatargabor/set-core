@@ -8,7 +8,7 @@ stalls (agent crash, missing fix policy, operator inattention) the
 watchdog surfaces it so the supervisor can raise an alert.
 
 The watchdog is invoked from the engine's periodic maintenance path.
-It reads `.set/issues/registry.json` directly — there is no global
+It reads the issues registry (LineagePaths.issues_registry) directly — there is no global
 issue manager singleton in every execution context, so this module
 reuses `IssueRegistry` for file access but does NOT transition state.
 """

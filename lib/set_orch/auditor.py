@@ -74,7 +74,10 @@ def build_audit_prompt(
             from .paths import SetRuntime
             digest_dir = SetRuntime().digest_dir
         except Exception:
-            digest_dir = "set/orchestration/digest"
+            from .paths import LineagePaths as _LP_a
+            digest_dir = os.path.relpath(
+                _LP_a(os.getcwd()).digest_dir, os.getcwd()
+            )
     changes = state.get("changes", [])
 
     # Collect merged changes
@@ -159,7 +162,7 @@ def run_audit(
     cycle: int = 1,
     input_mode: str = "spec",
     input_path: str = "",
-    digest_dir: str = "set/orchestration/digest",
+    digest_dir: str = "",
     review_model: str = "sonnet",
 ) -> AuditResult:
     """Run post-phase audit: build prompt, call LLM, parse result.
@@ -183,6 +186,13 @@ def run_audit(
         input_mode,
         review_model,
     )
+
+    # Default digest_dir comes from the resolver (LineagePaths.digest_dir).
+    if not digest_dir:
+        from .paths import LineagePaths as _LP_ra
+        digest_dir = os.path.relpath(
+            _LP_ra(os.getcwd()).digest_dir, os.getcwd()
+        )
 
     # Build prompt input
     audit_input = build_audit_prompt(

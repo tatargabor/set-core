@@ -1,6 +1,6 @@
 """SupervisorStatus — persisted state for the set-supervisor daemon.
 
-Lives at `<project>/.set/supervisor/status.json`. Contains:
+Lives at LineagePaths.supervisor_status. Contains:
 
 - daemon PID + start time
 - orchestrator PID (the subprocess the daemon wraps)
@@ -43,7 +43,7 @@ class SupervisorStatus:
     poll_cycle: int = 0
     rapid_crashes: int = 0
     rapid_crashes_window_start: float = 0.0
-    events_cursor: int = 0  # byte offset into orchestration-events.jsonl
+    events_cursor: int = 0  # byte offset into the events stream (LineagePaths.events_file)
     last_canary_at: str = ""
     trigger_counters: dict = field(default_factory=dict)
     last_event_at: str = ""

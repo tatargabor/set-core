@@ -174,7 +174,8 @@ class ProjectSupervisor:
         Falls back to "python" (default) if the directive is missing or
         the state file is unreadable. Valid values: python | claude | off.
         """
-        state_file = self.config.path / "orchestration-state.json"
+        from ..paths import LineagePaths
+        state_file = Path(LineagePaths(str(self.config.path)).state_file)
         if not state_file.is_file():
             return "python"
         try:
@@ -588,7 +589,8 @@ class ProjectSupervisor:
     def _is_orchestration_done(self) -> bool:
         """Check if the orchestration state file shows status=done."""
         import json
-        state_file = self.config.path / "orchestration-state.json"
+        from ..paths import LineagePaths
+        state_file = Path(LineagePaths(str(self.config.path)).state_file)
         if not state_file.is_file():
             return False
         try:
