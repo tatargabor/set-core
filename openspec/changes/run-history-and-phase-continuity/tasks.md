@@ -208,11 +208,11 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 
 ## 16. Final integration + regression
 
-- [ ] 16.1 Run the full unit suite (`pytest tests/unit -q`) — confirm 0 regressions. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
+- [x] 16.1 Run the full unit suite (`pytest tests/unit -q`) — confirm 0 regressions. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
 - [ ] 16.2 Run the web E2E suite against a fixture with multi-lineage history, confirm Activity/Tokens/Digest/E2E tabs all render lineage-filtered content. [REQ: data-endpoints-accept-an-optional-lineage-filter]
 - [ ] 16.3 Smoke-test the craftbrew-run-20260418-1719 project: backfill migration attributes its archive entries to `docs/` (its plan's input_path), sidebar shows that lineage, phases 1+2 continue to display under it. No `__legacy__` / `__unknown__` entries expected for a project whose plan file exists. [REQ: backfill-migration-for-historic-archive-entries]
 - [ ] 16.4 End-to-end scenario: start sentinel on `docs/spec-v1.md`, let it archive a phase, stop it. Start sentinel on `docs/spec-v2.md`. Verify: sidebar shows both lineages, v2 is live default, clicking v1 shows v1's archived content without disturbing v2's execution. [REQ: left-sidebar-lineage-list]
-- [ ] 16.5 Document the new files (`orchestration-events-cycle*.jsonl`, `spec-coverage-history.jsonl`, `e2e-manifest-history.jsonl`, `worktrees-history.json`) + lineage selector usage in `docs/` (run-layout reference if present, otherwise note in PR description). [REQ: retained-worktree-history]
+- [x] 16.5 Document the new files (`orchestration-events-cycle*.jsonl`, `spec-coverage-history.jsonl`, `e2e-manifest-history.jsonl`, `worktrees-history.json`) + lineage selector usage in `docs/` (run-layout reference if present, otherwise note in PR description). [REQ: retained-worktree-history]
 
 ## Acceptance Criteria (from spec scenarios)
 

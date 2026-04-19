@@ -146,13 +146,26 @@ Findings feed into the **review learnings** system (see [Orchestration](orchestr
 |------|---------|
 | `orchestration-state.json` | Orchestration state (read by daemon every poll) |
 | `orchestration.log` | Orchestration log (crash diagnosis, anomaly detectors) |
-| `orchestration-events.jsonl` | Event stream (daemon + orchestrator) |
-| `.set/supervisor/status.json` | Daemon status snapshot — PIDs, cursors, baselines |
+| `orchestration-events.jsonl` | Live event stream (daemon + orchestrator) |
+| `orchestration-events-cycle<N>.jsonl` | Sealed cycle from a previous replan or stop+start (rotated by `_rotate_event_streams`) |
+| `orchestration-state-events-cycle<N>.jsonl` | State-events sibling for the same cycle |
+| `state-archive.jsonl` | Append-only archive of completed/skipped/failed changes; each entry carries `spec_lineage_id`, `sentinel_session_id`, `plan_version`, `session_summary` |
+| `orchestration-plan-<slug>.json` | Per-lineage plan retained when the operator switches `--spec` (sibling of the live `orchestration-plan.json`) |
+| `set/orchestration/digest-<slug>/` | Per-lineage digest tree retained on lineage switch |
+| `set/orchestration/spec-coverage-history.jsonl` | Append-only history of every merge's REQ coverage; powers Digest "merged by … (archived)" attribution |
+| `set/orchestration/e2e-manifest-history.jsonl` | Append-only history of every merge's `e2e-manifest.json`; powers `/digest/e2e` aggregation across cycles |
+| `set/orchestration/worktrees-history.json` | One JSON line per `.removed.<epoch>` worktree archival; rewrites `purged=true` after `set-close --purge` |
+| `.set/supervisor/status.json` | Daemon status snapshot — PIDs, cursors, baselines, `spec_lineage_id` |
+| `.set/supervisor/status-history.jsonl` | One archived status snapshot per clean stop, with `rotated_at` |
 | `.set/supervisor/orch-logs/*.log` | Per-spawn orchestrator stdout/stderr |
 | `.set/supervisor/claude-logs/*.log` | Per-trigger ephemeral Claude stdout/stderr |
 | `.set/sentinel/stdout.log` | Daemon stdout (read by the Sentinel tab) |
 | `.set/sentinel/findings.json` | Bugs and observations |
 | `.set/sentinel/inbox/` | User messages to the supervisor |
+
+### Lineage selector
+
+The dashboard sidebar shows every spec lineage discovered for the project — derived from `state.spec_lineage_id`, `state-archive.jsonl` entries, and `.set/supervisor/status-history.jsonl`. Operators can switch to an inactive lineage to inspect its history without disturbing the live sentinel; data tabs (Activity, Tokens, Digest, Phases) accept a `?lineage=<id>` query parameter that defaults to the live lineage when the daemon is running, otherwise the lineage with the newest `last_seen_at`. `?lineage=__all__` returns the union; the synthetic `__legacy__` lineage covers untagged historic entries (legacy projects pre-migration).
 
 ## Tips
 
