@@ -511,10 +511,17 @@ class LineagePaths:
 
     @property
     def digest_dir(self) -> str:
-        live = os.path.join(self._runtime.orchestration_dir, "digest")
+        # The digest tree is decomposed under the project tree, not the
+        # SetRuntime runtime dir — planner.py / engine.py / api code all
+        # write to `<project>/set/orchestration/digest/`.  Per-lineage
+        # siblings (`digest-<slug>/`) live next to the live `digest/`.
+        project_orch = os.path.join(
+            self.project_path, "set", "orchestration",
+        )
+        live = os.path.join(project_orch, "digest")
         if not self._slug:
             return live
-        slugged = os.path.join(self._runtime.orchestration_dir, f"digest-{self._slug}")
+        slugged = os.path.join(project_orch, f"digest-{self._slug}")
         if self.is_live:
             return live
         if os.path.isdir(slugged):
@@ -636,7 +643,8 @@ class LineagePaths:
         if kind == "plan_domains_file":
             return self._slugged(orch, "orchestration-plan-domains", ".json")
         if kind == "digest_dir":
-            return os.path.join(orch, f"digest-{self._slug}")
+            project_orch = os.path.join(self.project_path, "set", "orchestration")
+            return os.path.join(project_orch, f"digest-{self._slug}")
         raise ValueError(f"slugged_path: unknown kind {kind!r}")
 
     def lineage_specific_exists(self, attr: str) -> bool:
@@ -662,7 +670,10 @@ class LineagePaths:
             )
         if attr == "digest_dir":
             return os.path.isdir(
-                os.path.join(self._runtime.orchestration_dir, f"digest-{self._slug}")
+                os.path.join(
+                    self.project_path, "set", "orchestration",
+                    f"digest-{self._slug}",
+                )
             )
         # All other paths are append-only / lineage-tagged at write time.
         return True

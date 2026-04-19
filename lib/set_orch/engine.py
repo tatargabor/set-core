@@ -3083,12 +3083,11 @@ def _rotate_plan_and_digest_for_new_lineage(
             except OSError as exc:
                 logger.warning("rotate_plan: rename %s → %s failed: %s", src, dst, exc)
 
-    # Digest dir lives under the project (set/orchestration/digest/), not in
-    # the runtime dir.  Mirror the rename there.
-    digest_live = os.path.join(project_path, "set", "orchestration", "digest")
-    digest_rotated = os.path.join(
-        project_path, "set", "orchestration", f"digest-{old_slug}",
-    )
+    # Digest dir lives under the project tree.  LineagePaths owns the
+    # canonical location; we resolve via lp_live (digest_dir) for the
+    # source and lp_old.slugged_path() for the destination.
+    digest_live = lp_live.digest_dir
+    digest_rotated = lp_old.slugged_path(kind="digest_dir")
     if os.path.isdir(digest_live):
         try:
             if os.path.exists(digest_rotated):

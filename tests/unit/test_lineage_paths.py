@@ -151,7 +151,11 @@ def test_non_live_lineage_with_rotated_copy(project):
 
     v1_slug = slug(LineageId("docs/spec-v1.md"))
     rotated_plan = os.path.join(rt.orchestration_dir, f"orchestration-plan-{v1_slug}.json")
-    rotated_digest = os.path.join(rt.orchestration_dir, f"digest-{v1_slug}")
+    # Per the codebase contract digest_dir lives under the project tree
+    # (`<project>/set/orchestration/digest`), not the runtime tree.
+    rotated_digest = os.path.join(
+        str(proj), "set", "orchestration", f"digest-{v1_slug}",
+    )
     with open(rotated_plan, "w") as fh:
         json.dump({"plan_version": 1}, fh)
     os.makedirs(rotated_digest, exist_ok=True)
