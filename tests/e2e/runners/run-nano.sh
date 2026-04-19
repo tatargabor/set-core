@@ -13,6 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCAFFOLD_DIR="$SCRIPT_DIR/../scaffolds/nano"
 SPEC_FILE="$SCAFFOLD_DIR/docs/spec.md"
+SPEC_V2_FILE="$SCAFFOLD_DIR/docs/spec-v2.md"
 E2E_RUNS_DIR="${HOME}/.local/share/set-core/e2e-runs"
 BASE_DIR="${WT_E2E_DIR:-$E2E_RUNS_DIR}"
 mkdir -p "$BASE_DIR"
@@ -145,6 +146,14 @@ init_project() {
 
     # Copy spec + design files
     cp "$SPEC_FILE" docs/spec.md
+    # Deploy v2 spec for the lineage handoff scenario.  The v1 sentinel
+    # session uses docs/spec.md; once it finishes, restart with
+    #   --spec docs/spec-v2.md
+    # to exercise the lineage rotation + sidebar plumbing.
+    if [[ -f "$SPEC_V2_FILE" ]]; then
+        cp "$SPEC_V2_FILE" docs/spec-v2.md
+        info "Deployed docs/spec-v2.md (lineage handoff target)"
+    fi
     for df in "$SCAFFOLD_DIR"/docs/design-*.md; do
         [[ -f "$df" ]] && cp "$df" docs/ && info "Deployed $(basename "$df")"
     done
@@ -286,6 +295,15 @@ show_completion() {
     echo "  3. Dispatch agents (parallel worktrees)"
     echo "  4. Verify gates: build → test → e2e → lint → review → rules"
     echo "  5. Merge verified changes to main"
+    echo ""
+    info "After v1 finishes — exercise the lineage handoff (Section 16.4):"
+    echo "  curl -X POST http://localhost:7400/api/$PROJECT_NAME/sentinel/stop"
+    echo "  curl -X POST http://localhost:7400/api/$PROJECT_NAME/sentinel/start \\"
+    echo "       -H 'Content-Type: application/json' -d '{\"spec\":\"docs/spec-v2.md\"}'"
+    echo ""
+    echo "  # Then verify the lineage UI:"
+    echo "  cd $(cd "$SCRIPT_DIR/../../.." && pwd)/web"
+    echo "  E2E_PROJECT=$PROJECT_NAME pnpm exec playwright test lineage"
     echo ""
     warn "Mid-run set-core fixes:"
     echo "  1. set-project init --name $PROJECT_NAME   # re-deploy"
