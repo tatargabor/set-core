@@ -31,13 +31,11 @@ router = APIRouter()
 
 
 def _resolve_findings_file(project_path: Path) -> Optional[Path]:
-    """Find review-findings.jsonl with fallback paths."""
-    for candidate in [
-        project_path / "set" / "orchestration" / "review-findings.jsonl",
-        project_path / "orchestration" / "review-findings.jsonl",
-    ]:
-        if candidate.exists():
-            return candidate
+    """Find the review-findings file via LineagePaths."""
+    from ..paths import LineagePaths as _LP_rf
+    candidate = Path(_LP_rf(str(project_path)).review_findings)
+    if candidate.exists():
+        return candidate
     return None
 
 
@@ -70,7 +68,8 @@ def _read_review_findings(project_path: Path) -> dict:
 
     # Fallback: extract from state.json review_output (always available)
     if not entries:
-        state_file = project_path / "orchestration-state.json"
+        from ..paths import LineagePaths as _LP_st
+        state_file = Path(_LP_st(str(project_path)).state_file)
         if state_file.exists():
             try:
                 with open(state_file) as f:
@@ -142,7 +141,8 @@ def _read_review_findings(project_path: Path) -> dict:
 
 def _compute_gate_stats(project_path: Path) -> dict:
     """Aggregate gate stats from orchestration state."""
-    state_file = project_path / "orchestration-state.json"
+    from ..paths import LineagePaths as _LP_gs
+    state_file = Path(_LP_gs(str(project_path)).state_file)
     if not state_file.exists():
         return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
 
@@ -364,18 +364,16 @@ def _build_change_timeline(project_path: Path, change_name: str) -> dict:
     # Sort by start time
     claude_sessions.sort(key=lambda s: s.get("started", ""))
 
-    # --- Step 2: Collect orchestration events for this change ---
+    # --- Step 2: Collect orchestration events for this change (via LineagePaths) ---
+    from ..paths import LineagePaths as _LP_evt
+    _lp_evt = _LP_evt(str(project_path))
     events_files: list[Path] = []
-    for base_dir in [project_path, project_path / "set" / "orchestration"]:
-        for name in ["orchestration-events.jsonl", "orchestration-state-events.jsonl"]:
-            candidate = base_dir / name
-            if candidate.exists():
-                events_files.append(candidate)
-                stem = name.replace(".jsonl", "")
-                for archive in sorted(_glob.glob(str(base_dir / f"{stem}-*.jsonl"))):
-                    events_files.append(Path(archive))
-        if events_files:
-            break
+    for live in [_lp_evt.events_file, _lp_evt.state_events_file]:
+        live_path = Path(live)
+        if live_path.exists():
+            events_files.append(live_path)
+    for rotated in _lp_evt.rotated_event_files + _lp_evt.rotated_state_event_files:
+        events_files.append(Path(rotated))
 
     gate_events: list[dict] = []
     merge_ts: str | None = None
@@ -705,7 +703,8 @@ async def sign_score(project: str, score: int, changes_done: int, total_tokens: 
 
     # Load actual orchestration state to verify the claimed values
     try:
-        state = load_state(str(pp / "orchestration-state.json"))
+        from ..paths import LineagePaths as _LP_ls
+        state = load_state(_LP_ls(str(pp)).state_file)
         actual_changes = state.get("changes", [])
         actual_done = sum(1 for c in actual_changes if c.get("status") in ("done", "merged", "completed", "skip_merged"))
         actual_tokens = sum((c.get("input_tokens", 0) or 0) + (c.get("output_tokens", 0) or 0) for c in actual_changes)
