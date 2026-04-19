@@ -36,6 +36,10 @@ class SupervisorStatus:
     orchestrator_pid: int = 0
     orchestrator_started_at: str = ""
     spec: str = ""
+    # Section 4c.1: normalised lineage id (project-relative POSIX path of
+    # `spec`).  Kept alongside the legacy `spec` field for backwards
+    # compatibility with consumers reading raw status.json snapshots.
+    spec_lineage_id: str = ""
     poll_cycle: int = 0
     rapid_crashes: int = 0
     rapid_crashes_window_start: float = 0.0
@@ -115,9 +119,25 @@ def read_status(project_path: str | Path) -> SupervisorStatus:
 
 
 def write_status(project_path: str | Path, status: SupervisorStatus) -> None:
-    """Atomically write SupervisorStatus to disk (tmpfile + rename)."""
+    """Atomically write SupervisorStatus to disk (tmpfile + rename).
+
+    Section 4c.1 of run-history-and-phase-continuity: derive
+    `spec_lineage_id` from `spec` if the caller didn't set it, so every
+    status.json carries the normalised lineage even for legacy callers.
+    """
     p = _status_path(project_path)
     p.parent.mkdir(parents=True, exist_ok=True)
+
+    if status.spec and not status.spec_lineage_id:
+        try:
+            from set_orch.types import canonicalise_spec_path
+            status.spec_lineage_id = canonicalise_spec_path(
+                status.spec, str(project_path),
+            )
+        except (ValueError, OSError) as exc:
+            logger.debug("write_status: cannot canonicalise spec=%r: %s",
+                         status.spec, exc)
+
     data = asdict(status)
     fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
     try:
@@ -130,3 +150,44 @@ def write_status(project_path: str | Path, status: SupervisorStatus) -> None:
         except OSError:
             pass
         logger.warning("Could not write supervisor status to %s: %s", p, exc)
+
+
+def append_status_history(project_path: str | Path, status: SupervisorStatus) -> None:
+    """Append the current status to `status-history.jsonl` (Section 4c.2).
+
+    Called from the sentinel clean-stop path so each session's status
+    metadata is retained for later browsing.  Best-effort — logged at
+    WARNING on failure, never raises.
+    """
+    history_path = (
+        Path(project_path) / ".set" / "supervisor" / "status-history.jsonl"
+    )
+    try:
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        # Make sure spec_lineage_id is filled in even if write_status was
+        # never called for this status object.
+        if status.spec and not status.spec_lineage_id:
+            try:
+                from set_orch.types import canonicalise_spec_path
+                status.spec_lineage_id = canonicalise_spec_path(
+                    status.spec, str(project_path),
+                )
+            except (ValueError, OSError):
+                pass
+        rec = asdict(status)
+        rec["rotated_at"] = (
+            __import__("datetime")
+            .datetime.now()
+            .astimezone()
+            .isoformat(timespec="milliseconds")
+        )
+        with open(history_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+        logger.info(
+            "supervisor_status_history: appended (lineage=%s)",
+            status.spec_lineage_id,
+        )
+    except OSError as exc:
+        logger.warning(
+            "supervisor_status_history: append failed: %s", exc,
+        )

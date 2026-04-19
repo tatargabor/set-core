@@ -28,15 +28,15 @@
 
 ## 3. Backfill migration for legacy archives
 
-- [ ] 3.1 Add `migrate_legacy_archive(project_path)` helper in `lib/set_orch/migrations/backfill_lineage.py` that opens `state-archive.jsonl`, iterates entries, and for each entry missing `spec_lineage_id`: reads `orchestration-plan.json::input_path` → canonicalises → stamps the entry. Idempotent (skip entries already tagged). [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 3.2 Where the live-state snapshot at the time of archival can be recovered (e.g., from the state-events jsonl), also backfill `phase` onto entries that lack it. [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 3.3 Unrecoverable entries (no plan file, no snapshot hints) get `spec_lineage_id = "__unknown__"`, `phase = null`, and a WARNING log line. [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 3.4 Remove the existing `if "phase" not in entry: entry["phase"] = 0` fallback in `_load_archived_changes`. Reader returns entries as-is post-migration. [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 3.5 Wire migration into set-web service startup: runs once per project directory the first time the process touches its state. Gate behind a `.migrated-lineage` marker file to avoid repeated scans. [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 3.6 Unit test: legacy entry without `spec_lineage_id` + plan with `input_path = docs/spec.md` → entry is rewritten with `spec_lineage_id = "docs/spec.md"`. [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 3.7 Unit test: legacy entry without plan file → entry becomes `spec_lineage_id = "__unknown__"`, WARNING logged. [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 3.8 Unit test: re-running migration on an already-migrated file changes nothing (idempotency). [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 3.9 Unit test: modern entry with `spec_lineage_id` + `phase` is left untouched by migration. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.1 Add `migrate_legacy_archive(project_path)` helper in `lib/set_orch/migrations/backfill_lineage.py` that opens `state-archive.jsonl`, iterates entries, and for each entry missing `spec_lineage_id`: reads `orchestration-plan.json::input_path` → canonicalises → stamps the entry. Idempotent (skip entries already tagged). [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.2 Where the live-state snapshot at the time of archival can be recovered (e.g., from the state-events jsonl), also backfill `phase` onto entries that lack it. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.3 Unrecoverable entries (no plan file, no snapshot hints) get `spec_lineage_id = "__unknown__"`, `phase = null`, and a WARNING log line. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.4 Remove the existing `if "phase" not in entry: entry["phase"] = 0` fallback in `_load_archived_changes`. Reader returns entries as-is post-migration. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.5 Wire migration into set-web service startup: runs once per project directory the first time the process touches its state. Gate behind a `.migrated-lineage` marker file to avoid repeated scans. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.6 Unit test: legacy entry without `spec_lineage_id` + plan with `input_path = docs/spec.md` → entry is rewritten with `spec_lineage_id = "docs/spec.md"`. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.7 Unit test: legacy entry without plan file → entry becomes `spec_lineage_id = "__unknown__"`, WARNING logged. [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.8 Unit test: re-running migration on an already-migrated file changes nothing (idempotency). [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 3.9 Unit test: modern entry with `spec_lineage_id` + `phase` is left untouched by migration. [REQ: backfill-migration-for-historic-archive-entries]
 
 ## 4. Rotated event concatenation
 
@@ -58,9 +58,9 @@
 
 ## 4c. Supervisor status lineage awareness
 
-- [ ] 4c.1 Add `spec_lineage_id` to `.set/supervisor/status.json` (already has a `spec` field — keep for compatibility but add the normalised lineage id too). Written on sentinel start. [REQ: spec-lineage-identity-derived-from-input-path]
-- [ ] 4c.2 When the sentinel stops cleanly (SIGTERM, stop endpoint), archive the supervisor status snapshot alongside the rotated event files so each session's status metadata is retained: append a JSON line to `.set/supervisor/status-history.jsonl` with the full status + the `rotated_at` timestamp. [REQ: sentinel-session-id-as-sub-dimension]
-- [ ] 4c.3 Unit test: status.json gets spec_lineage_id on sentinel start; status-history.jsonl gains a line on clean stop. [REQ: sentinel-session-id-as-sub-dimension]
+- [x] 4c.1 Add `spec_lineage_id` to `.set/supervisor/status.json` (already has a `spec` field — keep for compatibility but add the normalised lineage id too). Written on sentinel start. [REQ: spec-lineage-identity-derived-from-input-path]
+- [x] 4c.2 When the sentinel stops cleanly (SIGTERM, stop endpoint), archive the supervisor status snapshot alongside the rotated event files so each session's status metadata is retained: append a JSON line to `.set/supervisor/status-history.jsonl` with the full status + the `rotated_at` timestamp. [REQ: sentinel-session-id-as-sub-dimension]
+- [x] 4c.3 Unit test: status.json gets spec_lineage_id on sentinel start; status-history.jsonl gains a line on clean stop. [REQ: sentinel-session-id-as-sub-dimension]
 
 ## 5. Worktree history tracking
 

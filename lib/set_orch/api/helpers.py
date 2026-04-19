@@ -185,8 +185,11 @@ def _load_archived_changes(project_path: Path) -> list[dict]:
             if not name:
                 continue
             entry["_archived"] = True
-            if "phase" not in entry:
-                entry["phase"] = 0
+            # Section 3.4: do NOT synthesize `phase = 0` here.  Backfill
+            # migration (lib/set_orch/migrations/backfill_lineage.py) is
+            # the canonical fill-in-from-state-events path; entries that
+            # still lack `phase` post-migration are genuinely
+            # unattributed and the UI presents them under __unknown__.
             seen[name] = entry
     except OSError:
         return []

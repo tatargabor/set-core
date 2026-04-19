@@ -232,6 +232,22 @@ async def startup(app=None):
     # Start tick loops
     await _service.start_tick_loops()
 
+    # Section 3.5: backfill `spec_lineage_id` + `phase` onto pre-existing
+    # archive entries the first time we touch each project.  Idempotent
+    # via per-project marker file; never blocks startup on failure.
+    try:
+        from set_orch.migrations.backfill_lineage import maybe_migrate_on_startup
+        for project_name, sup in _service.supervisors.items():
+            try:
+                maybe_migrate_on_startup(str(sup.config.path))
+            except Exception:
+                logger.warning(
+                    "lineage backfill: failed for project %s", project_name,
+                    exc_info=True,
+                )
+    except Exception:
+        logger.warning("lineage backfill: skipped (import failed)", exc_info=True)
+
     logger.info("Unified service started with %d projects", len(_service.supervisors))
 
 

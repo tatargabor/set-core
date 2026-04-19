@@ -376,6 +376,23 @@ class ProjectSupervisor:
                 self.config.name, exc,
             )
 
+        # Section 4c.2: archive the current supervisor status snapshot so
+        # the operator can browse historic session metadata after the
+        # daemon's status.json gets overwritten by the next start.
+        try:
+            from ..supervisor.state import (
+                append_status_history,
+                read_status,
+            )
+            current_status = read_status(self.config.path)
+            if current_status.spec or current_status.daemon_pid:
+                append_status_history(self.config.path, current_status)
+        except Exception as exc:
+            logger.debug(
+                "[%s] stop_sentinel: status-history archive skipped (%s)",
+                self.config.name, exc,
+            )
+
     def _kill_orphan_orchestrator(self):
         """Find and kill orchestrator processes for this project that may outlive the sentinel."""
         import subprocess as _sp
