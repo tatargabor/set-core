@@ -137,10 +137,10 @@
 - [x] 13.3 Add `/api/<project>/lineages` endpoint returning the lineage list with metadata (display_name, first/last_seen_at, is_live, change_count, merged_count). `is_live = true` only when the lineage matches `state.spec_lineage_id` AND the sentinel is running. [REQ: lineages-listing-endpoint]
 - [x] 13.4 Accept `?lineage=<id>` (with special value `__all__`) on `/api/<project>/state`, `/api/<project>/activity-timeline`, `/api/<project>/llm-calls`, `/api/<project>/digest`, `/api/<project>/digest/e2e`. Default when omitted is `state.spec_lineage_id` when sentinel running, else the lineage with `max(last_seen_at)`. [REQ: data-endpoints-accept-an-optional-lineage-filter]
 - [x] 13.5 `__unknown__` lineage is returned by `/api/<project>/lineages` only when unrecoverable entries exist post-migration, and is annotated with `diagnostic` note. [REQ: lineages-listing-endpoint]
-- [ ] 13.6 Implement coverage denominator scoping in `/api/<project>/digest` — read the lineage's own input spec file to derive the REQ set, use that as denominator, ignore REQs outside the lineage's spec. [REQ: coverage-denominator-is-the-lineages-own-spec]
+- [x] 13.6 Implement coverage denominator scoping in `/api/<project>/digest` — read the lineage's own input spec file to derive the REQ set, use that as denominator, ignore REQs outside the lineage's spec. [REQ: coverage-denominator-is-the-lineages-own-spec]
 - [x] 13.7 Unit test matrix: each filtered endpoint returns only matching records; `__all__` returns union; omitted defaults to live-or-latest lineage per rule. [REQ: data-endpoints-accept-an-optional-lineage-filter]
-- [ ] 13.8 Unit test: v2 lineage with 3-REQ spec + 1 v2-merged change covering all 3 → coverage reports 3/3 = 100%, v1's 120 REQs do NOT appear in v2 response. [REQ: coverage-denominator-is-the-lineages-own-spec]
-- [ ] 13.9 Unit test: REQ-X in v1 spec, not in v2 spec → GET /digest?lineage=v2 does NOT include REQ-X at all (not as uncovered either). [REQ: coverage-denominator-is-the-lineages-own-spec]
+- [x] 13.8 Unit test: v2 lineage with 3-REQ spec + 1 v2-merged change covering all 3 → coverage reports 3/3 = 100%, v1's 120 REQs do NOT appear in v2 response. [REQ: coverage-denominator-is-the-lineages-own-spec]
+- [x] 13.9 Unit test: REQ-X in v1 spec, not in v2 spec → GET /digest?lineage=v2 does NOT include REQ-X at all (not as uncovered either). [REQ: coverage-denominator-is-the-lineages-own-spec]
 
 ## 14. UI: Left-sidebar lineage list
 
@@ -318,6 +318,6 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 - [ ] AC-48: WHEN "All lineages" is clicked THEN tables tag rows with lineage, Phases shows a section per lineage, sidebar highlights the "All lineages" entry [REQ: left-sidebar-lineage-list, scenario: all-lineages-mode]
 
 ### Lineage-scoped coverage
-- [ ] AC-49: WHEN v2 lineage spec declares 3 REQs AND a v2 change merges satisfying all 3 THEN v2 coverage reports 3/3 = 100% AND v1's 120 REQs do NOT appear in v2 response [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: v2-delivers-a-single-new-screen-on-top-of-v1]
+- [x] AC-49: WHEN v2 lineage spec declares 3 REQs AND a v2 change merges satisfying all 3 THEN v2 coverage reports 3/3 = 100% AND v1's 120 REQs do NOT appear in v2 response [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: v2-delivers-a-single-new-screen-on-top-of-v1]
 - [ ] AC-50: WHEN v1 delivered /admin AND v2 spec references REQ-ADMIN-001 AND no v2 change has touched it THEN v2 coverage reports REQ-ADMIN-001 uncovered (no filesystem-based auto-mark) [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: pre-existing-code-does-not-pre-fill-coverage]
-- [ ] AC-51: WHEN v1 spec defined A,B,C AND v2 spec defines only B THEN v2 coverage denominator is {B} AND A+C do not appear in v2 response [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: lineage-spec-defines-subset-of-prior-spec]
+- [x] AC-51: WHEN v1 spec defined A,B,C AND v2 spec defines only B THEN v2 coverage denominator is {B} AND A+C do not appear in v2 response [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: lineage-spec-defines-subset-of-prior-spec]

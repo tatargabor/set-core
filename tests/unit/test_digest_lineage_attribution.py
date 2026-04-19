@@ -207,6 +207,73 @@ def test_digest_returns_unavailable_when_lineage_has_no_digest(tmp_path, monkeyp
 # ---------------------------------------------------------------------------
 
 
+def test_v2_lineage_uses_v2_spec_as_denominator(tmp_path, monkeypatch):
+    """AC-49: v2 spec declares 3 REQs, v2 change covers all 3 → 3/3.
+    v1's 120 REQs do NOT contaminate v2's response."""
+    from set_orch.api.orchestration import get_digest
+
+    # v2 digest has only 3 REQs.
+    proj = _seed(
+        tmp_path,
+        with_live_digest=True,
+        requirements=[
+            {"id": "REQ-V2-A", "title": "v2 a"},
+            {"id": "REQ-V2-B", "title": "v2 b"},
+            {"id": "REQ-V2-C", "title": "v2 c"},
+        ],
+        history_records=[
+            {"change": "v2-cover-all", "spec_lineage_id": "docs/spec-v2.md",
+             "merged_at": "2026-02", "reqs": ["REQ-V2-A", "REQ-V2-B", "REQ-V2-C"]},
+            # v1 history has many other REQs — must not appear in v2 response.
+            *[{"change": f"v1-{i}", "spec_lineage_id": "docs/spec-v1.md",
+               "merged_at": "2026-01", "reqs": [f"REQ-V1-{i}"]} for i in range(120)],
+        ],
+    )
+    monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
+    monkeypatch.setattr(
+        "set_orch.api.orchestration._state_path",
+        lambda _p: proj / "orchestration-state.json",
+    )
+
+    result = get_digest("proj")  # default = live = docs/spec-v2.md
+    reqs = result["requirements"]["requirements"]
+    # v2's denominator is 3 — v1's 120 REQs absent.
+    assert len(reqs) == 3
+    ids = {r["id"] for r in reqs}
+    assert ids == {"REQ-V2-A", "REQ-V2-B", "REQ-V2-C"}
+    # All three carry archived attribution from history.
+    assert all(r.get("merged_by") == "v2-cover-all" for r in reqs)
+
+
+def test_v1_only_reqs_absent_from_v2_response(tmp_path, monkeypatch):
+    """AC-51: v1 spec defined A,B,C; v2 spec defines only B → v2 response
+    has only B, A+C don't appear at all."""
+    from set_orch.api.orchestration import get_digest
+
+    # v2's digest declares only B.
+    proj = _seed(
+        tmp_path,
+        with_live_digest=True,
+        requirements=[{"id": "REQ-B", "title": "b only"}],
+        history_records=[
+            {"change": "v1-old", "spec_lineage_id": "docs/spec-v1.md",
+             "merged_at": "2026-01",
+             "reqs": ["REQ-A", "REQ-B", "REQ-C"]},
+        ],
+    )
+    monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
+    monkeypatch.setattr(
+        "set_orch.api.orchestration._state_path",
+        lambda _p: proj / "orchestration-state.json",
+    )
+    result = get_digest("proj")  # default = v2 (live)
+    reqs = result["requirements"]["requirements"]
+    # Only REQ-B (in v2's digest) shows up.  REQ-A and REQ-C from v1 history
+    # do NOT bleed into v2's response — they're not in v2's denominator.
+    ids = {r["id"] for r in reqs}
+    assert ids == {"REQ-B"}
+
+
 def test_digest_routes_to_lineage_specific_dir(tmp_path, monkeypatch):
     from set_orch.api.orchestration import get_digest
 
