@@ -341,6 +341,231 @@ def _archive_test_artifacts(change_name: str, wt_path: str, project_path: str) -
 
 
 # Source: merger.sh cleanup_worktree() L521-547
+def _append_worktree_history(
+    project_path: str,
+    change_name: str,
+    original_path: str,
+    removed_path: str,
+    *,
+    purged: bool = False,
+) -> None:
+    """Append a one-line JSON record describing a worktree archival.
+
+    Section 5 of run-history-and-phase-continuity.  The history file is
+    append-only so the API can resolve `.removed.<epoch>` paths back to
+    their owning change.  When `set-close --purge` later removes the
+    `.removed.*` directory, the corresponding history line is rewritten
+    in place with `purged = true` (handled by `_mark_worktree_purged`).
+
+    Best-effort: any OSError is logged at WARNING — never raises.  Lineage
+    attribution is read from `state.json` so the history line carries the
+    same `spec_lineage_id` + `sentinel_session_id` the archive entry has.
+    """
+    if not project_path:
+        logger.warning("worktree-history: missing project_path, skipping")
+        return
+    history_path = os.path.join(
+        project_path, "set", "orchestration", "worktrees-history.json"
+    )
+    os.makedirs(os.path.dirname(history_path), exist_ok=True)
+    spec_lineage_id = None
+    sentinel_session_id = None
+    try:
+        from .paths import SetRuntime
+        from .state import load_state
+        rt = SetRuntime(project_path)
+        if os.path.isfile(rt.state_file):
+            st = load_state(rt.state_file)
+            spec_lineage_id = st.spec_lineage_id
+            sentinel_session_id = st.sentinel_session_id
+    except Exception as exc:
+        logger.debug("worktree-history: state read failed (%s)", exc)
+    record = {
+        "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds"),
+        "change_name": change_name,
+        "original_path": original_path,
+        "removed_path": removed_path,
+        "purged": purged,
+        "spec_lineage_id": spec_lineage_id,
+        "sentinel_session_id": sentinel_session_id,
+    }
+    try:
+        with open(history_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        logger.info(
+            "worktree-history: appended %s -> %s (purged=%s)",
+            change_name, removed_path, purged,
+        )
+    except OSError as exc:
+        logger.warning(
+            "worktree-history: append failed for %s: %s", change_name, exc,
+        )
+
+
+def _mark_worktree_purged(project_path: str, removed_path: str) -> bool:
+    """Flip the `purged` flag on the most recent history line for `removed_path`.
+
+    Returns True when a matching line was rewritten.  `worktrees-history.json`
+    is small (one line per worktree archival) so a full rewrite is cheap and
+    keeps the file append-only-ish from the API's perspective.
+    """
+    history_path = os.path.join(
+        project_path, "set", "orchestration", "worktrees-history.json"
+    )
+    if not os.path.isfile(history_path):
+        return False
+    try:
+        with open(history_path, "r", encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        logger.warning("worktree-history: cannot read %s: %s", history_path, exc)
+        return False
+
+    rewritten = False
+    out: list[str] = []
+    # Iterate in reverse so we only flip the MOST RECENT match.
+    for i in range(len(lines) - 1, -1, -1):
+        line = lines[i].rstrip("\n")
+        if not rewritten and line.strip():
+            try:
+                rec = json.loads(line)
+                if rec.get("removed_path") == removed_path and not rec.get("purged"):
+                    rec["purged"] = True
+                    rec["purged_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds")
+                    out.append(json.dumps(rec))
+                    rewritten = True
+                    continue
+            except json.JSONDecodeError:
+                pass
+        out.append(line)
+    out.reverse()
+    if rewritten:
+        try:
+            with open(history_path, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(out) + "\n")
+            logger.info("worktree-history: marked %s purged", removed_path)
+        except OSError as exc:
+            logger.warning("worktree-history: rewrite failed: %s", exc)
+            return False
+    return rewritten
+
+
+def _read_state_lineage_session_planver(state_file: str) -> tuple[Optional[str], Optional[str], int]:
+    """Pull (spec_lineage_id, sentinel_session_id, plan_version) from state.
+
+    Helper shared by the coverage-history and e2e-manifest-history appenders.
+    Returns sane defaults if state is unreadable so the appenders never raise.
+    """
+    try:
+        st = load_state(state_file)
+        return st.spec_lineage_id, st.sentinel_session_id, st.plan_version
+    except Exception:
+        return None, None, 1
+
+
+def _append_coverage_history_for_merge(state_file: str, change_name: str) -> None:
+    """Section 11.1/11.2: append a coverage snapshot at every successful merge.
+
+    Reads the merged change's REQs from `orchestration-plan.json` so each
+    history line records WHICH REQs the change was supposed to cover.  The
+    line is tagged with `spec_lineage_id` + `sentinel_session_id` so future
+    digest attribution can scope to a lineage.
+    """
+    project_dir = os.path.dirname(os.path.abspath(state_file))
+    plan_path = os.path.join(project_dir, "orchestration-plan.json")
+    reqs: list[str] = []
+    if os.path.isfile(plan_path):
+        try:
+            with open(plan_path) as fh:
+                plan = json.load(fh)
+            for ch in plan.get("changes", []):
+                if ch.get("name") == change_name:
+                    raw = ch.get("requirements") or []
+                    # requirements can be a list of strings or dicts {id: ...}
+                    for r in raw:
+                        if isinstance(r, str):
+                            reqs.append(r)
+                        elif isinstance(r, dict) and "id" in r:
+                            reqs.append(r["id"])
+                    break
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    spec_lineage_id, sentinel_session_id, plan_version = (
+        _read_state_lineage_session_planver(state_file)
+    )
+    record = {
+        "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds"),
+        "change": change_name,
+        "plan_version": plan_version,
+        "session_id": sentinel_session_id,
+        "spec_lineage_id": spec_lineage_id,
+        "merged_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds"),
+        "reqs": reqs,
+    }
+    history_path = os.path.join(
+        project_dir, "set", "orchestration", "spec-coverage-history.jsonl"
+    )
+    os.makedirs(os.path.dirname(history_path), exist_ok=True)
+    try:
+        with open(history_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        logger.info(
+            "coverage-history: appended %s (%d reqs, lineage=%s)",
+            change_name, len(reqs), spec_lineage_id,
+        )
+    except OSError as exc:
+        logger.warning("coverage-history append failed: %s", exc)
+
+
+def _append_e2e_manifest_history_for_merge(
+    state_file: str, change_name: str, worktree_path: str
+) -> None:
+    """Section 12.1/12.2: append an e2e-manifest snapshot at every successful merge.
+
+    Skips silently when the worktree has no `e2e-manifest.json` (the spec
+    treats this as DEBUG, not WARNING — many changes produce no e2e tests).
+    """
+    if not worktree_path:
+        return
+    manifest_path = os.path.join(worktree_path, "e2e-manifest.json")
+    if not os.path.isfile(manifest_path):
+        logger.debug("e2e-manifest-history: no manifest at %s — skipping", manifest_path)
+        return
+    try:
+        with open(manifest_path) as fh:
+            manifest = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("e2e-manifest-history: cannot read %s: %s", manifest_path, exc)
+        return
+
+    project_dir = os.path.dirname(os.path.abspath(state_file))
+    spec_lineage_id, sentinel_session_id, plan_version = (
+        _read_state_lineage_session_planver(state_file)
+    )
+    record = {
+        "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds"),
+        "change": change_name,
+        "plan_version": plan_version,
+        "session_id": sentinel_session_id,
+        "spec_lineage_id": spec_lineage_id,
+        "manifest": manifest,
+    }
+    history_path = os.path.join(
+        project_dir, "set", "orchestration", "e2e-manifest-history.jsonl"
+    )
+    os.makedirs(os.path.dirname(history_path), exist_ok=True)
+    try:
+        with open(history_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        logger.info(
+            "e2e-manifest-history: appended %s (lineage=%s)",
+            change_name, spec_lineage_id,
+        )
+    except OSError as exc:
+        logger.warning("e2e-manifest-history append failed: %s", exc)
+
+
 def cleanup_worktree(change_name: str, wt_path: str, retention: str = "", project_path: str = "") -> None:
     """Clean up worktree and branch after successful merge.
 
@@ -909,6 +1134,20 @@ def merge_change(
         # Collect test artifacts via profile (screenshots, traces, reports)
         _heartbeat("collect_artifacts")
         _collect_test_artifacts(change_name, wt_path, state_file)
+
+        # Sections 11 + 12 of run-history-and-phase-continuity:
+        # append per-merge coverage + e2e-manifest snapshots to the
+        # project-level history JSONLs so the Digest tab can attribute
+        # REQs and aggregate E2E results across cycles.
+        _heartbeat("history_append")
+        try:
+            _append_coverage_history_for_merge(state_file, change_name)
+        except Exception:
+            logger.debug("coverage-history append failed", exc_info=True)
+        try:
+            _append_e2e_manifest_history_for_merge(state_file, change_name, wt_path or "")
+        except Exception:
+            logger.debug("e2e-manifest-history append failed", exc_info=True)
 
         # Regenerate START.md on main from current project state
         try:

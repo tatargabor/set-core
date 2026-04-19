@@ -18,6 +18,11 @@ Options:
   -f, --force             Remove without prompts, delete local branch too
   --keep-branch           Keep the branch after removing worktree
   --delete-remote         Also delete remote branch (with -f or interactive)
+  --purge                 Physically delete the worktree's archived
+                          .removed.<epoch> directory (and flip its
+                          worktrees-history.json entry to purged=true).
+                          Default behaviour stops at the rename so the
+                          historic Claude session JSONLs remain on disk.
   -h, --help              Show this help
 
 Examples:
@@ -25,6 +30,7 @@ Examples:
   set-close add-user-auth --force
   set-close add-user-auth --keep-branch
   set-close add-user-auth --force --delete-remote
+  set-close add-user-auth --purge   # physically remove archived dir
 EOF
 }
 
@@ -41,6 +47,7 @@ main() {
     local force=false
     local keep_branch=false
     local delete_remote=false
+    local purge=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -58,6 +65,10 @@ main() {
                 ;;
             --delete-remote)
                 delete_remote=true
+                shift
+                ;;
+            --purge)
+                purge=true
                 shift
                 ;;
             -h|--help)
@@ -144,11 +155,51 @@ main() {
         fi
     fi
 
-    # Archive worktree dir before removing git entry
+    # --purge: physically delete the most recent .removed.<epoch> sibling for
+    # this worktree and flip its history-line `purged` flag. No rename of the
+    # live worktree happens in this branch — purge is for cleaning up archives.
+    if $purge; then
+        local archived_glob="${wt_path}.removed.*"
+        local target=""
+        # Pick the most recent .removed.* entry by mtime.
+        for cand in $(ls -1dt $archived_glob 2>/dev/null); do
+            target="$cand"
+            break
+        done
+        if [[ -z "$target" ]]; then
+            error "Nothing to purge: no .removed.* archive for $wt_path"
+            exit 1
+        fi
+        info "Purging archived worktree: $target"
+        rm -rf "$target"
+        py=$(set_find_python)
+        set_python "$py" -c "
+import sys
+from set_orch.merger import _mark_worktree_purged
+ok = _mark_worktree_purged(sys.argv[1], sys.argv[2])
+print('purge_marked' if ok else 'no_history_match')
+" "$project_path" "$target"
+        success "Purged $target"
+        return 0
+    fi
+
+    # Archive worktree dir before removing git entry.  Section 5 of
+    # run-history-and-phase-continuity: the canonical naming is
+    # `.removed.<epoch-seconds>` so historic Claude session JSONLs remain
+    # resolvable, and the rename is recorded in worktrees-history.json.
+    local archived=""
     if [[ -d "$wt_path" ]]; then
-        local archived="${wt_path}.archived-$(date +%Y%m%d-%H%M%S)"
+        archived="${wt_path}.removed.$(date +%s)"
         mv "$wt_path" "$archived"
         info "Archived worktree to $archived"
+        # Append the history line — best-effort; failure does not block close.
+        py=$(set_find_python)
+        set_python "$py" -c "
+import sys
+from set_orch.merger import _append_worktree_history
+_append_worktree_history(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+" "$project_path" "$change_id" "$wt_path" "$archived" || \
+            warn "worktrees-history append failed (non-fatal)"
     fi
 
     # Remove worktree

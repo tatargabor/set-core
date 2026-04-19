@@ -3013,6 +3013,99 @@ def _rotate_event_streams(state_file: str, reason: str = "rotate") -> Optional[i
     return cycle_n
 
 
+def _claude_mangle_path(path: str) -> str:
+    """Mangle a worktree path the same way Claude CLI does for ~/.claude/projects/."""
+    return path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")
+
+
+def _compute_session_summary(worktree_path: Optional[str]) -> dict:
+    """Aggregate Claude-session metrics for a worktree about to be archived.
+
+    Section 2.1 of run-history-and-phase-continuity.  Reads every
+    `~/.claude/projects/-<mangled-worktree>/*.jsonl` file (Claude's own
+    session storage) and returns the summary block defined in the spec.
+
+    Missing worktree path or missing session dir produces a zero-valued
+    summary with null timestamps — never raises.
+    """
+    summary = {
+        "call_count": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_create_tokens": 0,
+        "first_call_ts": None,
+        "last_call_ts": None,
+        "total_duration_ms": 0,
+    }
+    if not worktree_path:
+        return summary
+    sessions_dir = (
+        os.path.expanduser("~/.claude/projects/-")
+        + _claude_mangle_path(worktree_path)
+    )
+    if not os.path.isdir(sessions_dir):
+        logger.debug(
+            "compute_session_summary: no session dir at %s", sessions_dir,
+        )
+        return summary
+
+    first_ts: Optional[str] = None
+    last_ts: Optional[str] = None
+    for entry_name in os.listdir(sessions_dir):
+        if not entry_name.endswith(".jsonl"):
+            continue
+        path = os.path.join(sessions_dir, entry_name)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if entry.get("type") != "assistant":
+                        continue
+                    summary["call_count"] += 1
+                    msg = entry.get("message") or {}
+                    usage = msg.get("usage") or {}
+                    summary["input_tokens"] += int(usage.get("input_tokens", 0) or 0)
+                    summary["output_tokens"] += int(usage.get("output_tokens", 0) or 0)
+                    summary["cache_read_tokens"] += int(
+                        usage.get("cache_read_input_tokens", 0) or 0
+                    )
+                    summary["cache_create_tokens"] += int(
+                        usage.get("cache_creation_input_tokens", 0) or 0
+                    )
+                    ts = entry.get("timestamp") or msg.get("created_at") or ""
+                    if ts:
+                        if first_ts is None or ts < first_ts:
+                            first_ts = ts
+                        if last_ts is None or ts > last_ts:
+                            last_ts = ts
+        except OSError as exc:
+            logger.debug(
+                "compute_session_summary: cannot read %s: %s", path, exc,
+            )
+            continue
+
+    summary["first_call_ts"] = first_ts
+    summary["last_call_ts"] = last_ts
+    if first_ts and last_ts:
+        try:
+            from datetime import datetime as _dt
+            t0 = _dt.fromisoformat(first_ts.replace("Z", "+00:00"))
+            t1 = _dt.fromisoformat(last_ts.replace("Z", "+00:00"))
+            summary["total_duration_ms"] = max(
+                int((t1 - t0).total_seconds() * 1000), 0
+            )
+        except (TypeError, ValueError):
+            summary["total_duration_ms"] = 0
+    return summary
+
+
 def _archive_completed_to_jsonl(state_file: str) -> None:
     """Archive completed changes to state-archive.jsonl before replan.
 
@@ -3080,6 +3173,10 @@ def _archive_completed_to_jsonl(state_file: str) -> None:
                     "sentinel_session_started_at": (
                         c.sentinel_session_started_at or state.sentinel_session_started_at
                     ),
+                    # Section 2.2 — embed Claude session aggregates so the
+                    # Tokens / LLM-calls APIs can render this change after
+                    # the worktree has been cleaned up.
+                    "session_summary": _compute_session_summary(c.worktree_path),
                 }
                 f.write(json.dumps(entry) + "\n")
         logger.info("Archived %d completed changes to %s", len(new_completed), archive_path)

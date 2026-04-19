@@ -20,11 +20,11 @@
 
 ## 2. Archive session summaries
 
-- [ ] 2.1 Add `_compute_session_summary(worktree_path: str) -> dict` in `lib/set_orch/engine.py` that scans `~/.claude/projects/-<mangled>/*.jsonl` and returns the aggregate dict defined in spec. [REQ: archived-session-summaries]
-- [ ] 2.2 Extend `_archive_completed_to_jsonl` to set `entry["session_summary"] = _compute_session_summary(c.worktree_path)` when `worktree_path` is set; default to empty dict otherwise. [REQ: archived-session-summaries]
-- [ ] 2.3 Unit test: session summary aggregates call count + token totals + timestamps from a fixture session dir. [REQ: archived-session-summaries]
-- [ ] 2.4 Unit test: archive writer emits `session_summary` with expected keys. [REQ: archived-session-summaries]
-- [ ] 2.5 Unit test: missing session dir produces `session_summary` with zeros/nulls, no exception. [REQ: archived-session-summaries]
+- [x] 2.1 Add `_compute_session_summary(worktree_path: str) -> dict` in `lib/set_orch/engine.py` that scans `~/.claude/projects/-<mangled>/*.jsonl` and returns the aggregate dict defined in spec. [REQ: archived-session-summaries]
+- [x] 2.2 Extend `_archive_completed_to_jsonl` to set `entry["session_summary"] = _compute_session_summary(c.worktree_path)` when `worktree_path` is set; default to empty dict otherwise. [REQ: archived-session-summaries]
+- [x] 2.3 Unit test: session summary aggregates call count + token totals + timestamps from a fixture session dir. [REQ: archived-session-summaries]
+- [x] 2.4 Unit test: archive writer emits `session_summary` with expected keys. [REQ: archived-session-summaries]
+- [x] 2.5 Unit test: missing session dir produces `session_summary` with zeros/nulls, no exception. [REQ: archived-session-summaries]
 
 ## 3. Backfill migration for legacy archives
 
@@ -64,12 +64,12 @@
 
 ## 5. Worktree history tracking
 
-- [ ] 5.1 Add `_append_worktree_history(project_path, change_name, original_path, removed_path)` helper in `lib/set_orch/merger.py` that writes the JSON line defined in spec. [REQ: retained-worktree-history]
-- [ ] 5.2 Call the helper from `cleanup_worktree` right after the rename-to-`.removed.<epoch>` succeeds. [REQ: retained-worktree-history]
-- [ ] 5.3 Add `--purge` flag to `bin/set-close` that deletes the `.removed.*` dir AND updates its history entry to `purged = true`. [REQ: retained-worktree-history]
-- [ ] 5.4 Default `set-close` (no `--purge`) stops at rename — no physical deletion. [REQ: retained-worktree-history]
-- [ ] 5.5 Unit test: cleanup appends the expected JSON line with `purged = false`. [REQ: retained-worktree-history]
-- [ ] 5.6 Unit test: `set-close --purge` deletes the `.removed.*` dir and flips the history line's `purged` flag. [REQ: retained-worktree-history]
+- [x] 5.1 Add `_append_worktree_history(project_path, change_name, original_path, removed_path)` helper in `lib/set_orch/merger.py` that writes the JSON line defined in spec. [REQ: retained-worktree-history]
+- [x] 5.2 Call the helper from `cleanup_worktree` right after the rename-to-`.removed.<epoch>` succeeds. [REQ: retained-worktree-history]
+- [x] 5.3 Add `--purge` flag to `bin/set-close` that deletes the `.removed.*` dir AND updates its history entry to `purged = true`. [REQ: retained-worktree-history]
+- [x] 5.4 Default `set-close` (no `--purge`) stops at rename — no physical deletion. [REQ: retained-worktree-history]
+- [x] 5.5 Unit test: cleanup appends the expected JSON line with `purged = false`. [REQ: retained-worktree-history]
+- [x] 5.6 Unit test: `set-close --purge` deletes the `.removed.*` dir and flips the history line's `purged` flag. [REQ: retained-worktree-history]
 
 ## 6. Phase offset on replan and new session (lineage-scoped)
 
@@ -114,20 +114,20 @@
 
 ## 11. Coverage history append
 
-- [ ] 11.1 Add `_append_coverage_history(project_path, change_name, plan_version, session_id, reqs)` helper in `lib/set_orch/merger.py` that writes the JSON line defined in spec. [REQ: coverage-history-append-on-every-merge]
-- [ ] 11.2 Call the helper from the post-merge coverage regeneration step in `merger.py` (success path only). [REQ: coverage-history-append-on-every-merge]
+- [x] 11.1 Add `_append_coverage_history(project_path, change_name, plan_version, session_id, reqs)` helper in `lib/set_orch/merger.py` that writes the JSON line defined in spec. [REQ: coverage-history-append-on-every-merge]
+- [x] 11.2 Call the helper from the post-merge coverage regeneration step in `merger.py` (success path only). [REQ: coverage-history-append-on-every-merge]
 - [ ] 11.3 Update Digest/Reqs API endpoint to consult `spec-coverage-history.jsonl` for REQs not covered by the live plan, returning `merged_by`, `merged_by_archived = true`, `merged_at`. [REQ: digest-attribution-uses-history]
 - [ ] 11.4 UI: `web/src/components/DigestPanel.tsx` attribution column renders "merged by foundation-setup (archived, YYYY-MM-DD)" for archived-sourced REQ status. [REQ: digest-attribution-uses-history]
-- [ ] 11.5 Unit test: coverage history line has the expected shape and is appended per merge. [REQ: coverage-history-append-on-every-merge]
+- [x] 11.5 Unit test: coverage history line has the expected shape and is appended per merge. [REQ: coverage-history-append-on-every-merge]
 - [ ] 11.6 Unit test: Digest/Reqs API returns the archived attribution for a REQ that only exists in history. [REQ: digest-attribution-uses-history]
 
 ## 12. E2E manifest history append
 
-- [ ] 12.1 Add `_append_e2e_manifest_history(project_path, change_name, plan_version, session_id, manifest)` helper in `lib/set_orch/merger.py`. [REQ: e2e-manifest-history-append-on-merge]
-- [ ] 12.2 Call the helper from the post-merge artifact collection path; skip silently when the worktree has no `e2e-manifest.json`. [REQ: e2e-manifest-history-append-on-merge]
+- [x] 12.1 Add `_append_e2e_manifest_history(project_path, change_name, plan_version, session_id, manifest)` helper in `lib/set_orch/merger.py`. [REQ: e2e-manifest-history-append-on-merge]
+- [x] 12.2 Call the helper from the post-merge artifact collection path; skip silently when the worktree has no `e2e-manifest.json`. [REQ: e2e-manifest-history-append-on-merge]
 - [ ] 12.3 Update Digest/E2E API endpoint to aggregate `e2e-manifest-history.jsonl` lines with the current per-change manifests. [REQ: digest-e2e-aggregates-across-cycles]
 - [ ] 12.4 UI: `web/src/components/DigestPanel.tsx` E2E subtab renders one block per change (live or archived), with `archived = true` blocks styled distinctly; header shows the combined test count. [REQ: digest-e2e-aggregates-across-cycles]
-- [ ] 12.5 Unit test: merge appends the manifest line with correct metadata. [REQ: e2e-manifest-history-append-on-merge]
+- [x] 12.5 Unit test: merge appends the manifest line with correct metadata. [REQ: e2e-manifest-history-append-on-merge]
 - [ ] 12.6 Integration test: Digest/E2E returns live + history blocks combined and correctly totalled. [REQ: digest-e2e-aggregates-across-cycles]
 
 ## 13. Lineage filter plumbing across APIs
