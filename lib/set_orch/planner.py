@@ -564,7 +564,10 @@ def _default_coverage_path() -> str:
         from .paths import SetRuntime
         return SetRuntime().spec_coverage_report
     except Exception:
-        return "set/orchestration/spec-coverage-report.md"
+        from .paths import LineagePaths
+        return os.path.relpath(
+            LineagePaths(os.getcwd()).coverage_report, os.getcwd()
+        )
 
 
 def generate_coverage_report(
@@ -1047,7 +1050,8 @@ def build_decomposition_context(
     # Read max_parallel from directives (state file) if available
     max_parallel = 3  # default
     try:
-        state_path = os.path.join(os.getcwd(), "orchestration-state.json")
+        from .paths import LineagePaths as _LP_ms
+        state_path = _LP_ms(os.getcwd()).state_file
         if os.path.isfile(state_path):
             with open(state_path) as _sf:
                 _sd = json.load(_sf)
@@ -1837,8 +1841,11 @@ def _save_domain_plans(
         rt = SetRuntime(os.getcwd())
         domains_file = LineagePaths(os.getcwd(), runtime=rt).plan_domains_file
     except Exception:
-        # Fallback: legacy path layout, keep behaviour identical to pre-migration
-        domains_file = os.path.join(os.getcwd(), "orchestration-plan-domains.json")
+        # Fallback: resolver without a SetRuntime — use the project-local view.
+        domains_file = os.path.join(
+            os.getcwd(),
+            os.path.basename(LineagePaths(os.getcwd()).plan_domains_file),
+        )
     data = {
         "brief": planning_brief,
         "domain_plans": domain_plans,
@@ -1999,7 +2006,8 @@ def run_planning_pipeline(
     # Read max_parallel from directives
     max_parallel = 3
     try:
-        _sp = os.path.join(os.getcwd(), "orchestration-state.json")
+        from .paths import LineagePaths as _LP_mp
+        _sp = _LP_mp(os.getcwd()).state_file
         if os.path.isfile(_sp):
             with open(_sp) as _sf:
                 _sd = json.load(_sf)
@@ -2108,7 +2116,8 @@ def plan_via_agent(
     """Agent-based planning via worktree + Ralph loop.
 
     Creates a planning worktree, dispatches Ralph with the decomposition
-    skill, waits for completion, extracts orchestration-plan.json.
+    skill, waits for completion, extracts the produced plan file (see
+    LineagePaths.plan_file for the canonical name).
 
     Args:
         spec_path: Path to the spec input file.
@@ -2155,7 +2164,9 @@ def plan_via_agent(
     task_desc = f"Decompose the specification at '{spec_path}' into an orchestration execution plan."
     if phase_hint:
         task_desc += f" Focus on phase: {phase_hint}."
-    task_desc += " Use the /set:decompose skill. Write the result to orchestration-plan.json in the project root."
+    from .paths import LineagePaths as _LP_agent
+    _plan_basename = os.path.basename(_LP_agent(wt_path).plan_file)
+    task_desc += f" Use the /set:decompose skill. Write the result to {_plan_basename} in the project root."
 
     # Dispatch Ralph loop
     env = dict(os.environ)
@@ -2172,7 +2183,7 @@ def plan_via_agent(
     )
 
     # Check if plan was produced
-    agent_plan = Path(wt_path) / "orchestration-plan.json"
+    agent_plan = Path(wt_path) / _plan_basename
     if not agent_plan.is_file():
         logger.error("plan_via_agent: no plan produced (loop rc=%d)", loop_result.exit_code)
         run_command(["set-close", wt_name, "--force"], timeout=30)

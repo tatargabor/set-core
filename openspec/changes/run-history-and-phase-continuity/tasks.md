@@ -176,7 +176,7 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 - [ ] 15b.4 `lib/set_orch/merger.py` — manifest, config, state reads. [REQ: centralized-lineage-aware-path-resolver]
 - [ ] 15b.5 `lib/set_orch/api/orchestration.py` — drop dual-location fallback; resolver owns it. [REQ: centralized-lineage-aware-path-resolver]
 - [ ] 15b.6 `lib/set_orch/dispatcher.py` — manifest WRITE via resolver. [REQ: centralized-lineage-aware-path-resolver]
-- [ ] 15b.7 `lib/set_orch/planner.py` — plan + domains WRITE, digest READ. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.7 `lib/set_orch/planner.py` — plan + domains WRITE, digest READ. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.8 `lib/set_orch/cli.py` — CLI defaults reference the resolver (compute default at parse time from cwd + current lineage). [REQ: centralized-lineage-aware-path-resolver]
 - [ ] 15b.9 Remaining Python modules in `migration-audit.md` Phase 2 (verifier, recovery, config, digest, events, reporter, auditor, notifications, cross_change, loop_prompt, loop_state, api/helpers, api/activity, api/activity_detail, api/sessions, api/actions, api/sentinel, api/lifecycle, api/media, api/_sentinel_orch, issues/registry, issues/watchdog, issues/manager, manager/service, profile_loader, profile_types, subprocess_utils, state, sentinel/findings, sentinel/orchestrator). One sub-task per file; commit per file or per small cluster. [REQ: centralized-lineage-aware-path-resolver]
 
