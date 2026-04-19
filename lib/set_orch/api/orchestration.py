@@ -48,6 +48,17 @@ def get_state(project: str, lineage: Optional[str] = None):
         state = load_state(str(sp))
         data = state.to_dict()
         _enrich_changes(data, project_path)
+        # The Change dataclass does not carry a `plan_version` field — only
+        # the top-level state does — so live changes need an inherited value
+        # for parity with archive entries (which the archive writer stamps
+        # at write time).  Without this, PhaseView's plan-version splitter
+        # (Section 9.2) cannot distinguish per-cycle phase groups for live
+        # changes and the lineage handoff loses its plan-version axis.
+        live_plan_version = data.get("plan_version")
+        if live_plan_version is not None:
+            for c in data.get("changes", []):
+                if c.get("plan_version") is None:
+                    c["plan_version"] = live_plan_version
         # Merge archived changes from previous replan cycles
         archived = _load_archived_changes(project_path)
         if archived:
