@@ -265,6 +265,14 @@ class Change:
     requirements: Optional[list] = None
     also_affects_reqs: Optional[list] = None
 
+    # Lineage + sentinel-session attribution (additive; old states load with None).
+    # `spec_lineage_id` survives replan and same-spec restart so historic entries
+    # remain queryable; `sentinel_session_id` survives replan but is regenerated
+    # at every fresh sentinel start so individual sessions stay distinguishable.
+    spec_lineage_id: Optional[str] = None
+    sentinel_session_id: Optional[str] = None
+    sentinel_session_started_at: Optional[str] = None
+
     # Watchdog state (nested)
     watchdog: Optional[WatchdogState] = None
 
@@ -287,7 +295,10 @@ class Change:
                 "build_output", "test_output", "e2e_output", "model",
             ):
                 d[f.name] = val
-            elif f.name not in ("requirements", "also_affects_reqs", "watchdog", "gate_hints"):
+            elif f.name not in (
+                "requirements", "also_affects_reqs", "watchdog", "gate_hints",
+                "spec_lineage_id", "sentinel_session_id", "sentinel_session_started_at",
+            ):
                 d[f.name] = val
         # Omit None-valued optional fields that weren't in the original
         if self.requirements is not None:
@@ -296,6 +307,12 @@ class Change:
             d["also_affects_reqs"] = self.also_affects_reqs
         if self.gate_hints is not None:
             d["gate_hints"] = self.gate_hints
+        if self.spec_lineage_id is not None:
+            d["spec_lineage_id"] = self.spec_lineage_id
+        if self.sentinel_session_id is not None:
+            d["sentinel_session_id"] = self.sentinel_session_id
+        if self.sentinel_session_started_at is not None:
+            d["sentinel_session_started_at"] = self.sentinel_session_started_at
         d.update(self.extras)
         return d
 
@@ -348,6 +365,14 @@ class OrchestratorState:
     changes_since_checkpoint: int = 0
     cycle_started_at: Optional[str] = None
     last_smoke_pass_commit: str = ""
+
+    # Lineage attribution — `spec_lineage_id` is the canonical project-relative
+    # POSIX path of the `--spec` file the sentinel was last started with.
+    # `sentinel_session_id` is a fresh hex token at every sentinel start; it
+    # survives mid-session replan so all changes a session produced share an id.
+    spec_lineage_id: Optional[str] = None
+    sentinel_session_id: Optional[str] = None
+    sentinel_session_started_at: Optional[str] = None
 
     # Catch-all for unknown fields (directives, replan_cycle, etc.)
     extras: dict[str, Any] = field(default_factory=dict)
@@ -491,11 +516,30 @@ def locked_state(path: str) -> Generator[OrchestratorState, None, None]:
         lock_fd.close()
 
 
-def init_state(plan_file: str, output_path: str) -> None:
+def init_state(
+    plan_file: str,
+    output_path: str,
+    spec_path: Optional[str] = None,
+    project_path: Optional[str] = None,
+    sentinel_session_id: Optional[str] = None,
+) -> None:
     """Initialize orchestration state from a plan file.
 
     Replaces the 40-line jq filter in state.sh init_state().
+
+    Lineage attribution (`spec_lineage_id`, `sentinel_session_id`,
+    `sentinel_session_started_at`) is captured here so every change born of
+    this plan inherits it.  When `spec_path` is omitted we fall back to the
+    plan's persisted `input_path`; when neither is available the state is
+    created without lineage attribution and a WARNING is logged so the
+    caller stays observable.
+
+    Pass `sentinel_session_id` to preserve a session id across plan
+    rewrites (e.g., replan reuses the running sentinel's id); leave `None`
+    at fresh sentinel start to mint a new id.
     """
+    import uuid
+
     with open(plan_file, "r") as f:
         plan = json.load(f)
 
@@ -503,6 +547,36 @@ def init_state(plan_file: str, output_path: str) -> None:
     brief_hash = plan.get("brief_hash", "")
     plan_phase = plan.get("plan_phase", "initial")
     plan_method = plan.get("plan_method", "api")
+
+    # Derive the lineage id from the spec the sentinel was started with,
+    # or fall back to whatever the planner stamped on the plan.  Plans
+    # generated before this change carry no `input_path`, so older runs
+    # land with `spec_lineage_id = None` — readers fall back to
+    # `__legacy__` per the migration spec.
+    resolved_spec = spec_path or plan.get("input_path")
+    spec_lineage_id: Optional[str] = None
+    if resolved_spec:
+        if not project_path:
+            project_path = os.path.dirname(os.path.abspath(plan_file))
+        try:
+            from set_orch.types import canonicalise_spec_path
+            spec_lineage_id = canonicalise_spec_path(resolved_spec, project_path)
+        except (ValueError, OSError) as exc:
+            logger.warning(
+                "init_state: cannot canonicalise spec_path=%r project=%r: %s — "
+                "spec_lineage_id will be None",
+                resolved_spec, project_path, exc,
+            )
+    else:
+        logger.warning(
+            "init_state(plan=%s): no spec_path provided and plan has no "
+            "input_path — state will lack spec_lineage_id, archive entries "
+            "will be tagged __legacy__",
+            plan_file,
+        )
+
+    session_id = sentinel_session_id or uuid.uuid4().hex
+    session_started_at = datetime.now().astimezone().isoformat()
 
     changes = []
     for c in plan.get("changes", []):
@@ -518,6 +592,9 @@ def init_state(plan_file: str, output_path: str) -> None:
             skip_test=c.get("skip_test", False),
             has_manual_tasks=c.get("has_manual_tasks", False),
             phase=c.get("phase", 1),
+            spec_lineage_id=spec_lineage_id,
+            sentinel_session_id=session_id,
+            sentinel_session_started_at=session_started_at,
         )
         if "requirements" in c:
             change.requirements = c["requirements"]
@@ -533,10 +610,16 @@ def init_state(plan_file: str, output_path: str) -> None:
         status="running",
         created_at=datetime.now().astimezone().isoformat(),
         changes=changes,
+        spec_lineage_id=spec_lineage_id,
+        sentinel_session_id=session_id,
+        sentinel_session_started_at=session_started_at,
     )
 
     save_state(state, output_path)
-    logger.info("State initialized: %d changes from %s → %s", len(changes), plan_file, output_path)
+    logger.info(
+        "State initialized: %d changes from %s → %s (lineage=%s session=%s)",
+        len(changes), plan_file, output_path, spec_lineage_id, session_id[:8],
+    )
 
 
 def query_changes(

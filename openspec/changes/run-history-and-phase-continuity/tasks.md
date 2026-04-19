@@ -84,14 +84,14 @@
 
 ## 7. Spec lineage + sentinel session state
 
-- [ ] 7.1 Add `spec_lineage_id: Optional[str]`, `sentinel_session_id: Optional[str]`, `sentinel_session_started_at: Optional[str]` fields to `OrchestratorState` and `Change` in `lib/set_orch/state.py`. [REQ: spec-lineage-identity-derived-from-input-path]
-- [ ] 7.2 At sentinel start, read `--spec` argument → normalise to a project-relative POSIX path → store as `state.spec_lineage_id`. Also generate fresh `sentinel_session_id = uuid.uuid4().hex` and `sentinel_session_started_at = <iso>`. [REQ: spec-lineage-identity-derived-from-input-path]
-- [ ] 7.3 Propagate both `spec_lineage_id` and `sentinel_session_id` onto every Change created (init, replan) and every archive entry. [REQ: spec-lineage-identity-derived-from-input-path]
-- [ ] 7.4 Do NOT regenerate `sentinel_session_id` on replan — preserved for the entire sentinel session. `spec_lineage_id` is always propagated unchanged mid-session. [REQ: sentinel-session-id-as-sub-dimension]
-- [ ] 7.5 Unit test: sentinel start with `--spec docs/spec-v1.md` → `state.spec_lineage_id = "docs/spec-v1.md"`. [REQ: spec-lineage-identity-derived-from-input-path]
-- [ ] 7.6 Unit test: path canonicalisation — absolute and relative paths referring to same file resolve to the same `spec_lineage_id`. [REQ: spec-lineage-identity-derived-from-input-path]
-- [ ] 7.7 Unit test: session_id survives replan; lineage survives replan and restart-same-spec. [REQ: sentinel-session-id-as-sub-dimension]
-- [ ] 7.8 Unit test: session_id is fresh after stop+start; lineage stays the same if the same spec is used again. [REQ: sentinel-session-id-as-sub-dimension]
+- [x] 7.1 Add `spec_lineage_id: Optional[str]`, `sentinel_session_id: Optional[str]`, `sentinel_session_started_at: Optional[str]` fields to `OrchestratorState` and `Change` in `lib/set_orch/state.py`. [REQ: spec-lineage-identity-derived-from-input-path]
+- [x] 7.2 At sentinel start, read `--spec` argument → normalise to a project-relative POSIX path → store as `state.spec_lineage_id`. Also generate fresh `sentinel_session_id = uuid.uuid4().hex` and `sentinel_session_started_at = <iso>`. [REQ: spec-lineage-identity-derived-from-input-path]
+- [x] 7.3 Propagate both `spec_lineage_id` and `sentinel_session_id` onto every Change created (init, replan) and every archive entry. [REQ: spec-lineage-identity-derived-from-input-path]
+- [x] 7.4 Do NOT regenerate `sentinel_session_id` on replan — preserved for the entire sentinel session. `spec_lineage_id` is always propagated unchanged mid-session. [REQ: sentinel-session-id-as-sub-dimension]
+- [x] 7.5 Unit test: sentinel start with `--spec docs/spec-v1.md` → `state.spec_lineage_id = "docs/spec-v1.md"`. [REQ: spec-lineage-identity-derived-from-input-path]
+- [x] 7.6 Unit test: path canonicalisation — absolute and relative paths referring to same file resolve to the same `spec_lineage_id`. [REQ: spec-lineage-identity-derived-from-input-path]
+- [x] 7.7 Unit test: session_id survives replan; lineage survives replan and restart-same-spec. [REQ: sentinel-session-id-as-sub-dimension]
+- [x] 7.8 Unit test: session_id is fresh after stop+start; lineage stays the same if the same spec is used again. [REQ: sentinel-session-id-as-sub-dimension]
 
 ## 8. Activity timeline session markers
 

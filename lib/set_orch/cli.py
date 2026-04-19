@@ -60,7 +60,13 @@ def cmd_state(args):
     )
 
     if args.state_cmd == "init":
-        init_state(args.plan_file, args.output)
+        init_state(
+            args.plan_file,
+            args.output,
+            spec_path=getattr(args, "spec", None),
+            project_path=getattr(args, "project", None),
+            sentinel_session_id=getattr(args, "session_id", None),
+        )
         sys.exit(0)
 
     elif args.state_cmd == "query":
@@ -1397,6 +1403,24 @@ def main():
     s_init = state_sub.add_parser("init", help="Initialize state from plan file")
     s_init.add_argument("--plan-file", required=True, help="Path to plan.json")
     s_init.add_argument("--output", required=True, help="Output state file path")
+    s_init.add_argument(
+        "--spec",
+        default=None,
+        help="Path to the spec the sentinel was started with. Becomes "
+             "spec_lineage_id; falls back to plan.input_path when omitted.",
+    )
+    s_init.add_argument(
+        "--project",
+        default=None,
+        help="Project root directory. Used to canonicalise --spec into a "
+             "project-relative POSIX path. Defaults to the plan file's dir.",
+    )
+    s_init.add_argument(
+        "--session-id",
+        default=None,
+        help="Pre-existing sentinel session id (e.g., for replan reuse). "
+             "Omit to mint a fresh uuid.",
+    )
 
     s_query = state_sub.add_parser("query", help="Query changes by status")
     s_query.add_argument("--file", required=True, help="State file path")

@@ -2856,6 +2856,12 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
 
         # Calculate phase offset: new phases start after the highest existing phase
         max_existing_phase = max((c.phase for c in state.changes if c.phase), default=0)
+        # Propagate the live state's lineage attribution onto every new change.
+        # Section 7.4: sentinel_session_id is preserved across replan — we do
+        # NOT mint a fresh id here; the running session keeps its identity.
+        live_lineage = state.spec_lineage_id
+        live_session = state.sentinel_session_id
+        live_session_started = state.sentinel_session_started_at
         added = 0
         for c in new_changes:
             if c.get("name") in existing_names:
@@ -2874,6 +2880,9 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
                 gate_hints=c.get("gate_hints") or None,
                 requirements=c.get("requirements") or None,
                 also_affects_reqs=c.get("also_affects_reqs") or None,
+                spec_lineage_id=live_lineage,
+                sentinel_session_id=live_session,
+                sentinel_session_started_at=live_session_started,
             )
             state.changes.append(change)
             added += 1
@@ -2937,6 +2946,11 @@ def _archive_completed_to_jsonl(state_file: str) -> None:
     try:
         with open(archive_path, "a") as f:
             for c in new_completed:
+                # Section 13.2 / AC-32: every archive entry is tagged with
+                # the lineage + session id sourced from the change (which
+                # inherited it from state at init/replan time).  The state's
+                # value is the fallback for changes minted before this
+                # change landed, so historic re-archives still get a tag.
                 entry = {
                     "name": c.name,
                     "status": c.status,
@@ -2955,6 +2969,11 @@ def _archive_completed_to_jsonl(state_file: str) -> None:
                     "worktree_path": c.worktree_path,
                     "plan_version": state.plan_version,
                     "archived_at": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
+                    "spec_lineage_id": c.spec_lineage_id or state.spec_lineage_id,
+                    "sentinel_session_id": c.sentinel_session_id or state.sentinel_session_id,
+                    "sentinel_session_started_at": (
+                        c.sentinel_session_started_at or state.sentinel_session_started_at
+                    ),
                 }
                 f.write(json.dumps(entry) + "\n")
         logger.info("Archived %d completed changes to %s", len(new_completed), archive_path)
