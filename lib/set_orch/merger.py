@@ -466,13 +466,15 @@ def _read_state_lineage_session_planver(state_file: str) -> tuple[Optional[str],
 def _append_coverage_history_for_merge(state_file: str, change_name: str) -> None:
     """Section 11.1/11.2: append a coverage snapshot at every successful merge.
 
-    Reads the merged change's REQs from `orchestration-plan.json` so each
-    history line records WHICH REQs the change was supposed to cover.  The
-    line is tagged with `spec_lineage_id` + `sentinel_session_id` so future
-    digest attribution can scope to a lineage.
+    Reads the merged change's REQs from the lineage-aware plan file so
+    each history line records WHICH REQs the change was supposed to cover.
+    The line is tagged with `spec_lineage_id` + `sentinel_session_id` so
+    future digest attribution can scope to a lineage.
     """
-    project_dir = os.path.dirname(os.path.abspath(state_file))
-    plan_path = os.path.join(project_dir, "orchestration-plan.json")
+    from .paths import LineagePaths
+    lp = LineagePaths.from_state_file(state_file)
+    project_dir = lp.orchestration_dir
+    plan_path = lp.plan_file
     reqs: list[str] = []
     if os.path.isfile(plan_path):
         try:
