@@ -181,6 +181,13 @@ export interface StateData {
   phase_audit_results?: AuditResult[]
   current_phase?: number
   phases?: Record<string, PhaseInfo>
+  // Section 7.1 — identity of the spec the current sentinel session is on.
+  spec_lineage_id?: string | null
+  sentinel_session_id?: string | null
+  sentinel_session_started_at?: string | null
+  // Section 13.4 — /state endpoint echoes the effective lineage filter
+  // (either the caller-supplied ?lineage= or the resolver default).
+  effective_lineage?: string | null
 }
 
 export interface WorktreeInfo {
@@ -214,8 +221,35 @@ export function getProjects(): Promise<ProjectInfo[]> {
   return fetchJSON('/projects')
 }
 
-export function getState(project: string): Promise<StateData> {
-  return fetchJSON(`/${project}/state`)
+/**
+ * Append `?lineage=<id>` to a path when a lineage filter is active.
+ * `null` means "no filter — let the API apply its default".  The UI
+ * context in `src/lib/lineage.tsx` manages the current selection; this
+ * helper is the single point where fetchers opt in to filtering.
+ */
+function withLineage(path: string, lineage?: string | null): string {
+  if (lineage == null) return path
+  const sep = path.includes('?') ? '&' : '?'
+  return `${path}${sep}lineage=${encodeURIComponent(lineage)}`
+}
+
+export interface LineageMeta {
+  id: string
+  display_name: string
+  first_seen_at?: string | null
+  last_seen_at?: string | null
+  is_live: boolean
+  change_count: number
+  merged_count: number
+  diagnostic?: string | null
+}
+
+export function getLineages(project: string): Promise<{ lineages: LineageMeta[] }> {
+  return fetchJSON(`/${project}/lineages`)
+}
+
+export function getState(project: string, lineage?: string | null): Promise<StateData> {
+  return fetchJSON(withLineage(`/${project}/state`, lineage))
 }
 
 export function getChanges(project: string): Promise<ChangeInfo[]> {
@@ -408,8 +442,8 @@ export interface DigestData {
   test_coverage?: TestCoverage
 }
 
-export function getDigest(project: string): Promise<DigestData> {
-  return fetchJSON(`/${project}/digest`)
+export function getDigest(project: string, lineage?: string | null): Promise<DigestData> {
+  return fetchJSON(withLineage(`/${project}/digest`, lineage))
 }
 
 // --- Coverage Report ---
@@ -1028,8 +1062,8 @@ export interface LLMCall {
   active?: boolean
 }
 
-export function getLLMCalls(project: string, limit = 500): Promise<{ calls: LLMCall[] }> {
-  return fetchJSON(`/${project}/llm-calls?limit=${limit}`)
+export function getLLMCalls(project: string, limit = 500, lineage?: string | null): Promise<{ calls: LLMCall[] }> {
+  return fetchJSON(withLineage(`/${project}/llm-calls?limit=${limit}`, lineage))
 }
 
 // =====================================================
@@ -1089,10 +1123,12 @@ export function getActivityTimeline(
   project: string,
   from?: string,
   to?: string,
+  lineage?: string | null,
 ): Promise<ActivityTimelineData> {
   const params = new URLSearchParams()
   if (from) params.set('from', from)
   if (to) params.set('to', to)
+  if (lineage != null) params.set('lineage', lineage)
   const qs = params.toString()
   return fetchJSON(`/${project}/activity-timeline${qs ? `?${qs}` : ''}`)
 }

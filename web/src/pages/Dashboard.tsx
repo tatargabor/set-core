@@ -22,6 +22,7 @@ import ActivityView from '../components/ActivityView'
 // useSentinelData removed — sentinel tab now shows raw log
 import { getDigest, getPlans, getState, getLog, getSentinelLog } from '../lib/api'
 import type { StateData } from '../lib/api'
+import { useSelectedLineage } from '../lib/lineage'
 
 type PanelTab = 'changes' | 'phases' | 'plan' | 'tokens' | 'audit' | 'digest' | 'sessions' | 'log' | 'agent' | 'sentinel' | 'learnings' | 'battle' | 'activity'
 
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export default function Dashboard({ project, initialTab }: Props) {
+  const { lineageId } = useSelectedLineage()
   const [state, setState] = useState<StateData | null>(null)
   const stateJsonRef = useRef<string>('')
   const [logLines, setLogLines] = useState<string[]>([])
@@ -99,12 +101,14 @@ export default function Dashboard({ project, initialTab }: Props) {
 
   const { connected } = useWebSocket({ project, onEvent })
 
-  // REST poll fallback — fetch state periodically in case WS watcher is down
+  // REST poll fallback — fetch state periodically in case WS watcher is down.
+  // Lineage selection is threaded into the fetch so tab data stays consistent
+  // with the sidebar selection (Section 14.5).
   useEffect(() => {
     if (!project) return
     let cancelled = false
     const poll = () => {
-      getState(project)
+      getState(project, lineageId)
         .then(d => {
           if (cancelled) return
           const json = JSON.stringify(d)
@@ -120,7 +124,7 @@ export default function Dashboard({ project, initialTab }: Props) {
     // Then poll every 5s
     const iv = setInterval(poll, 5000)
     return () => { cancelled = true; clearTimeout(t); clearInterval(iv) }
-  }, [project])
+  }, [project, lineageId])
 
   // REST log fallback — fetch log via REST if WS doesn't provide it
   useEffect(() => {
@@ -149,19 +153,20 @@ export default function Dashboard({ project, initialTab }: Props) {
     return () => { cancelled = true; clearTimeout(t); clearInterval(iv) }
   }, [project])
 
-  // Check if digest exists (poll until it does)
+  // Check if digest exists (poll until it does) — lineage-filtered so tab
+  // visibility reflects the currently selected lineage's digest.
   useEffect(() => {
     if (!project) return
     let cancelled = false
     const check = () => {
-      getDigest(project)
+      getDigest(project, lineageId)
         .then(d => { if (!cancelled && d.exists) setHasDigest(true) })
         .catch(() => {})
     }
     check()
     const iv = setInterval(check, 15000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [project])
+  }, [project, lineageId])
 
   // Check if plans exist
   useEffect(() => {

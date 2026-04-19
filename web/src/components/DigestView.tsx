@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { getDigest, getCoverageReport, getLog, getProjectSessions, getProjectSession, getChanges, type DigestData, type DigestReq, type TestCoverage, type TestCase, type SessionInfo, type ChangeInfo } from '../lib/api'
+import { useSelectedLineage } from '../lib/lineage'
 import { TuiProgress, TuiStatus, TuiSection } from './tui'
 
 interface Props {
@@ -79,10 +80,11 @@ export default function DigestView({ project }: Props) {
     getChanges(project).then(c => { setChanges(c); setChangesLoaded(true) }).catch(() => { setChanges([]); setChangesLoaded(true) })
   }, [project, tab, changesLoaded])
 
+  const { lineageId } = useSelectedLineage()
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      getDigest(project)
+      getDigest(project, lineageId)
         .then(d => { if (!cancelled) { setData(d); setError(null) } })
         .catch(e => { if (!cancelled) setError(String(e)) })
     }
@@ -90,7 +92,7 @@ export default function DigestView({ project }: Props) {
     // Re-poll until digest exists
     const iv = setInterval(load, 8000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [project])
+  }, [project, lineageId])
 
   // Parse E2E test counts (must be before early returns — React hook rules)
   const e2eStats = useMemo(() => {

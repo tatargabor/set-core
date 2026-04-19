@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { StateData } from '../lib/api'
-import { stopOrchestrator, approve, getManagerProjectStatus, startSentinel, stopSentinel, restartSentinel, getProjectDocs, type ManagerProjectStatus } from '../lib/api'
+import { stopOrchestrator, approve, getManagerProjectStatus, startSentinel, stopSentinel, restartSentinel, getProjectDocs, getState, getLineages, type ManagerProjectStatus, type LineageMeta } from '../lib/api'
+import { ALL_LINEAGES, useSelectedLineage } from '../lib/lineage'
 
 interface Props {
   state: StateData | null
@@ -32,6 +33,12 @@ export default function StatusHeader({ state, connected, project }: Props) {
   const [spec, setSpec] = useState('docs/')
   const [showSpecInput, setShowSpecInput] = useState(false)
   const mgrJsonRef = useRef('')
+  // Section 14.8 — the badge must reflect the LIVE lineage's status even
+  // when the operator is viewing another lineage in the tabs.  We fetch
+  // an unfiltered state alongside the filtered one used by the panels.
+  const [liveState, setLiveState] = useState<StateData | null>(null)
+  const [lineages, setLineages] = useState<LineageMeta[]>([])
+  const { lineageId } = useSelectedLineage()
 
   // Poll manager status for sentinel state
   useEffect(() => {
@@ -57,6 +64,32 @@ export default function StatusHeader({ state, connected, project }: Props) {
     return () => clearTimeout(timer)
   }, [project])
 
+  // Live state (unfiltered) — drives the status badge regardless of the
+  // lineage the tabs are currently viewing.  Poll with the same cadence
+  // as the Dashboard state poll so the two stay in visual sync.
+  useEffect(() => {
+    let cancelled = false
+    let iv: ReturnType<typeof setInterval>
+    const poll = () => {
+      getState(project)
+        .then(d => { if (!cancelled) setLiveState(d) })
+        .catch(() => {})
+    }
+    poll()
+    iv = setInterval(poll, 5000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [project])
+
+  // Lineage metadata for display-name lookups.  We only need it when a
+  // non-live lineage is selected, but fetching once on mount keeps the
+  // dependency graph simple.
+  useEffect(() => {
+    let cancelled = false
+    getLineages(project)
+      .then(d => { if (!cancelled) setLineages(d.lineages) })
+      .catch(() => {})
+  }, [project, state?.spec_lineage_id])
+
   // Fetch spec paths once
   useEffect(() => {
     getProjectDocs(project)
@@ -80,7 +113,20 @@ export default function StatusHeader({ state, connected, project }: Props) {
     finally { setSentinelBusy(false) }
   }
 
-  const statusBadge = state?.status ?? 'idle'
+  // Status badge reflects the LIVE lineage (Section 14.8), not the
+  // currently-viewed one.  `liveState` is the unfiltered /state fetch.
+  const statusBadge = liveState?.status ?? state?.status ?? 'idle'
+  const liveLineageId = liveState?.spec_lineage_id ?? null
+  const viewingAllLineages = lineageId === ALL_LINEAGES
+  const viewingOtherLineage = !viewingAllLineages
+    && lineageId != null
+    && liveLineageId != null
+    && lineageId !== liveLineageId
+  const lookupDisplayName = (id: string | null): string => {
+    if (id == null) return ''
+    const m = lineages.find(l => l.id === id)
+    return m?.display_name ?? id
+  }
   const isActive = ['running', 'planning', 'checkpoint'].includes(statusBadge)
   const badgeColor: Record<string, string> = {
     running: 'bg-green-900 text-green-300',
@@ -138,6 +184,24 @@ export default function StatusHeader({ state, connected, project }: Props) {
           {statusBadge}
         </span>
         <span className={`hidden md:inline-block ${connected ? 'text-green-500' : 'text-red-500'}`} title={connected ? 'Connected' : 'Disconnected'}>{connected ? '\u25CF' : '\u25CB'}</span>
+        {viewingOtherLineage && (
+          <span
+            className="hidden md:inline text-xs text-amber-400 ml-1"
+            title="The tabs below are filtered to a different lineage than the one the sentinel is running."
+            data-testid="lineage-hint"
+          >
+            Viewing {lookupDisplayName(lineageId)} — sentinel running {lookupDisplayName(liveLineageId)}
+          </span>
+        )}
+        {viewingAllLineages && (
+          <span
+            className="hidden md:inline text-xs text-neutral-500 ml-1"
+            title="Tabs show the union of all lineages."
+            data-testid="lineage-hint-all"
+          >
+            Viewing all lineages
+          </span>
+        )}
       </div>
 
       {state && (

@@ -10,6 +10,7 @@ import ManagerIssues from './pages/ManagerIssues'
 import ManagerMutes from './pages/ManagerMutes'
 // SentinelPage removed — controls now in StatusHeader, /sentinel redirects to /orch
 import UnifiedSidebar from './components/UnifiedSidebar'
+import { SelectedLineageProvider } from './lib/lineage'
 import type { StateData } from './lib/api'
 // Import registry to ensure built-in apps are registered
 import './lib/sidebarRegistry'
@@ -56,34 +57,37 @@ function ProjectLayout() {
   const orchStatus = _sidebarState?.status ?? 'idle'
 
   return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-200">
-      {/* Mobile top bar */}
-      <div className="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-2 bg-neutral-950 border-b border-neutral-800 md:hidden">
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 -ml-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
-          aria-label="Open menu"
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M3 5h14M3 10h14M3 15h14" />
-          </svg>
-        </button>
-        <span className="text-sm font-semibold text-neutral-100 truncate">
-          {project || 'SET'}
-        </span>
-        <TuiStatus status={orchStatus} label={false} />
+    <SelectedLineageProvider project={project}>
+      <div className="flex h-screen bg-neutral-950 text-neutral-200">
+        {/* Mobile top bar */}
+        <div className="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-2 bg-neutral-950 border-b border-neutral-800 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 -ml-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+            aria-label="Open menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M3 5h14M3 10h14M3 15h14" />
+            </svg>
+          </button>
+          <span className="text-sm font-semibold text-neutral-100 truncate">
+            {project || 'SET'}
+          </span>
+          <TuiStatus status={orchStatus} label={false} />
+        </div>
+
+        <UnifiedSidebar
+          project={project}
+          sidebarOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          sidebarState={_sidebarState}
+        />
+
+        <main key={project} className="flex-1 overflow-hidden pt-11 md:pt-0">
+          <Outlet />
+        </main>
       </div>
-
-      <UnifiedSidebar
-        project={project}
-        sidebarOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
-
-      <main key={project} className="flex-1 overflow-hidden pt-11 md:pt-0">
-        <Outlet />
-      </main>
-    </div>
+    </SelectedLineageProvider>
   )
 }
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import type { ChangeInfo, LLMCall } from '../lib/api'
 import { getLLMCalls } from '../lib/api'
+import { useSelectedLineage } from '../lib/lineage'
 
 interface Props {
   changes: ChangeInfo[]
@@ -93,10 +94,11 @@ export default function TokenChart({ changes, project }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('timestamp')
   const [sortAsc, setSortAsc] = useState(false)
 
+  const { lineageId } = useSelectedLineage()
   useEffect(() => {
     if (!project) return
-    getLLMCalls(project).then(r => setCalls(r.calls)).catch(() => {})
-  }, [project])
+    getLLMCalls(project, 500, lineageId).then(r => setCalls(r.calls)).catch(() => {})
+  }, [project, lineageId])
 
   const data = useMemo<BarData[]>(() => {
     return changes

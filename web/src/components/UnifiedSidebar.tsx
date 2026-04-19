@@ -3,7 +3,8 @@ import type { LucideIcon } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { getApps, getGlobalItems, type SidebarApp, type SidebarSubItem, type GlobalItem } from '../lib/sidebarRegistry'
 import { useSidebarStats } from '../hooks/useSidebarStats'
-import { restartManager, startManager } from '../lib/api'
+import { restartManager, startManager, type StateData } from '../lib/api'
+import LineageList from './LineageList'
 
 function SidebarIcon({ icon, className }: { icon: string | LucideIcon; className?: string }) {
   if (typeof icon === 'string') {
@@ -17,6 +18,7 @@ interface Props {
   project: string | null
   sidebarOpen: boolean
   onClose: () => void
+  sidebarState?: StateData | null
 }
 
 function resolve(route: string, project: string | null): string {
@@ -49,7 +51,7 @@ function detectActiveApp(apps: SidebarApp[], pathname: string, project: string |
   return apps[0]?.id ?? null
 }
 
-export default function UnifiedSidebar({ project, sidebarOpen, onClose }: Props) {
+export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarState }: Props) {
   const location = useLocation()
   const { issueStats, totalOpen, managerOnline } = useSidebarStats()
   const [restarting, setRestarting] = useState(false)
@@ -85,6 +87,9 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose }: Props)
             <div className="text-sm font-medium text-neutral-200 truncate">{project}</div>
           </div>
         )}
+
+        {/* Lineage selector — rendered between the project-name block and the app menu (Section 14.1). */}
+        {project && <LineageList project={project} sidebarState={sidebarState ?? null} />}
 
         {project ? (
           <>

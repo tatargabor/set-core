@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getActivityTimeline } from '../lib/api'
 import type { ActivityTimelineData, ActivitySpan, ActivityBreakdown } from '../lib/api'
+import { useSelectedLineage } from '../lib/lineage'
 import ActivitySessionDetail from './ActivitySessionDetail'
 
 interface Props {
@@ -418,10 +419,11 @@ export default function ActivityView({ project, isRunning }: Props) {
   const [expandedSpan, setExpandedSpan] = useState<ActivitySpan | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  const { lineageId } = useSelectedLineage()
   const fetchData = useCallback(() => {
     if (!project) return
     setLoading(true)
-    getActivityTimeline(project)
+    getActivityTimeline(project, undefined, undefined, lineageId)
       .then((d) => {
         setData(d)
         setError(null)
@@ -431,7 +433,7 @@ export default function ActivityView({ project, isRunning }: Props) {
       })
       .catch((e) => setError(e?.message || 'Failed to load activity data'))
       .finally(() => setLoading(false))
-  }, [project])
+  }, [project, lineageId])
 
   // Initial fetch
   useEffect(() => {
