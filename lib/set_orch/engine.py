@@ -3013,6 +3013,94 @@ def _rotate_event_streams(state_file: str, reason: str = "rotate") -> Optional[i
     return cycle_n
 
 
+def _rotate_plan_and_digest_for_new_lineage(
+    project_path: str, new_lineage_id: str,
+) -> Optional[str]:
+    """Section 4b.1/4b.2: rename live plan + digest when starting on a new lineage.
+
+    Called from the sentinel-start path BEFORE the new lineage's plan is
+    written or its digest is decomposed.  When the on-disk
+    `orchestration-plan.json::input_path` (canonicalised) differs from
+    `new_lineage_id`, the live plan + domains + digest dir get a
+    `-<old-slug>` sibling rename so the lineage-aware reader can find
+    them later.
+
+    Returns the slug used for the rename, or None when no rotation
+    happened (first sentinel ever, or same-lineage restart).
+    """
+    from .paths import SetRuntime
+    from .types import canonicalise_spec_path, slug as _slug
+
+    rt = SetRuntime(project_path)
+    orch = rt.orchestration_dir
+    live_plan = os.path.join(orch, "orchestration-plan.json")
+    if not os.path.isfile(live_plan):
+        return None
+
+    try:
+        with open(live_plan) as fh:
+            plan = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("rotate_plan: cannot read %s: %s", live_plan, exc)
+        return None
+
+    old_input = plan.get("input_path") or ""
+    if not old_input:
+        return None
+    try:
+        old_lineage = canonicalise_spec_path(old_input, project_path)
+    except (ValueError, OSError):
+        return None
+    if old_lineage == new_lineage_id:
+        return None
+
+    old_slug = _slug(old_lineage)
+    rename_pairs = [
+        (live_plan, os.path.join(orch, f"orchestration-plan-{old_slug}.json")),
+        (
+            os.path.join(orch, "orchestration-plan-domains.json"),
+            os.path.join(orch, f"orchestration-plan-domains-{old_slug}.json"),
+        ),
+    ]
+    for src, dst in rename_pairs:
+        if os.path.exists(src):
+            try:
+                if os.path.exists(dst):
+                    logger.warning(
+                        "rotate_plan: target %s exists, removing before rename", dst,
+                    )
+                    if os.path.isdir(dst):
+                        import shutil
+                        shutil.rmtree(dst)
+                    else:
+                        os.remove(dst)
+                os.rename(src, dst)
+                logger.info("rotate_plan: %s → %s", src, dst)
+            except OSError as exc:
+                logger.warning("rotate_plan: rename %s → %s failed: %s", src, dst, exc)
+
+    # Digest dir lives under the project (set/orchestration/digest/), not in
+    # the runtime dir.  Mirror the rename there.
+    digest_live = os.path.join(project_path, "set", "orchestration", "digest")
+    digest_rotated = os.path.join(
+        project_path, "set", "orchestration", f"digest-{old_slug}",
+    )
+    if os.path.isdir(digest_live):
+        try:
+            if os.path.exists(digest_rotated):
+                import shutil
+                shutil.rmtree(digest_rotated)
+            os.rename(digest_live, digest_rotated)
+            logger.info("rotate_plan: %s → %s", digest_live, digest_rotated)
+        except OSError as exc:
+            logger.warning(
+                "rotate_plan: digest rename %s → %s failed: %s",
+                digest_live, digest_rotated, exc,
+            )
+
+    return old_slug
+
+
 def _claude_mangle_path(path: str) -> str:
     """Mangle a worktree path the same way Claude CLI does for ~/.claude/projects/."""
     return path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")

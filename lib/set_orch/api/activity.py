@@ -52,6 +52,47 @@ def _cycle_sort_key(path: str) -> tuple:
     return (1, int(m.group(1)))
 
 
+def _collect_session_boundaries(project_path: Path) -> list[dict]:
+    """Section 8.1: return one boundary record per sentinel session transition.
+
+    Reads CYCLE_HEADER lines from rotated event files in cycle order and
+    emits a record whenever `sentinel_session_id` differs from the
+    previous header's id.  Returns at most `(N_sessions - 1)` markers per
+    AC-19; the very first session boundary (project start) is omitted.
+    """
+    boundaries: list[dict] = []
+    last_session: Optional[str] = None
+    for base_dir in [project_path, project_path / "set" / "orchestration"]:
+        for stem in ("orchestration-events", "orchestration-state-events"):
+            cycle_pattern = str(base_dir / f"{stem}-cycle*.jsonl")
+            for path in sorted(_glob.glob(cycle_pattern), key=_cycle_sort_key):
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        first = fh.readline().strip()
+                except OSError:
+                    continue
+                if not first:
+                    continue
+                try:
+                    header = json.loads(first)
+                except json.JSONDecodeError:
+                    continue
+                if header.get("type") != "CYCLE_HEADER":
+                    continue
+                sid = header.get("sentinel_session_id")
+                if sid is None or sid == last_session:
+                    continue
+                if last_session is not None:
+                    boundaries.append({
+                        "ts": header.get("ts", ""),
+                        "session_id": sid,
+                        "session_started_at": header.get("ts", ""),
+                        "spec_lineage_id": header.get("spec_lineage_id"),
+                    })
+                last_session = sid
+    return boundaries
+
+
 def _load_events(project_path: Path, from_ts: str | None, to_ts: str | None) -> list[dict]:
     """Load and merge events from orchestration and sentinel JSONL files.
 
@@ -857,6 +898,29 @@ def get_activity_timeline(
 
     # Build spans from events
     spans = _build_spans(events, from_ts, to_ts, active_changes=active_changes)
+
+    # Section 8.1: insert zero-width `sentinel:session_boundary` spans at
+    # every detected session_id transition.  CYCLE_HEADERs carry the
+    # session_id at rotation time; we walk them in order and emit a
+    # marker whenever the id changes.
+    try:
+        boundaries = _collect_session_boundaries(project_path)
+        for b in boundaries:
+            spans.append({
+                "category": "sentinel:session_boundary",
+                "start": b["ts"],
+                "end": b["ts"],
+                "duration_ms": 0,
+                "change": "",
+                "detail": {
+                    "session_id": b.get("session_id"),
+                    "session_started_at": b.get("session_started_at"),
+                    "spec_lineage_id": b.get("spec_lineage_id"),
+                },
+            })
+        spans.sort(key=lambda s: s.get("start", ""))
+    except Exception:
+        logger.debug("session_boundary extraction failed", exc_info=True)
 
     # Enrich implementing spans with per-span aggregates (llm calls, tool calls,
     # subagent count) from the drilldown sub-span data. Without this the

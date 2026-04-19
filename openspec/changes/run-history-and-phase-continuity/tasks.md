@@ -47,12 +47,12 @@
 
 ## 4b. Per-lineage plan and digest retention
 
-- [ ] 4b.1 Add `_rotate_plan_and_digest_for_new_lineage(project_path, new_lineage_id)` helper in `lib/set_orch/engine.py` that, when called at sentinel-start and the current on-disk `orchestration-plan.json` belongs to a different lineage, renames: `orchestration-plan.json` → `orchestration-plan-<old-slug>.json`, `orchestration-plan-domains.json` → `orchestration-plan-domains-<old-slug>.json`, `set/orchestration/digest/` → `set/orchestration/digest-<old-slug>/`. Slug is a filename-safe form of the lineage id. [REQ: per-lineage-plan-and-digest-retention]
-- [ ] 4b.2 Call `_rotate_plan_and_digest_for_new_lineage` from the sentinel-start path BEFORE the new lineage's plan is written or its digest is decomposed. [REQ: per-lineage-plan-and-digest-retention]
+- [x] 4b.1 Add `_rotate_plan_and_digest_for_new_lineage(project_path, new_lineage_id)` helper in `lib/set_orch/engine.py` that, when called at sentinel-start and the current on-disk `orchestration-plan.json` belongs to a different lineage, renames: `orchestration-plan.json` → `orchestration-plan-<old-slug>.json`, `orchestration-plan-domains.json` → `orchestration-plan-domains-<old-slug>.json`, `set/orchestration/digest/` → `set/orchestration/digest-<old-slug>/`. Slug is a filename-safe form of the lineage id. [REQ: per-lineage-plan-and-digest-retention]
+- [x] 4b.2 Call `_rotate_plan_and_digest_for_new_lineage` from the sentinel-start path BEFORE the new lineage's plan is written or its digest is decomposed. [REQ: per-lineage-plan-and-digest-retention]
 - [ ] 4b.3 Update the planner's digest-dir resolution (`planner.py` + `engine.py` sites that do `os.path.join(os.getcwd(), "set", "orchestration", "digest")`) to consult the lineage: if the caller is operating under a non-live lineage, use `set/orchestration/digest-<slug>/` instead of the live dir. [REQ: per-lineage-plan-and-digest-retention]
 - [ ] 4b.4 Update `/api/<project>/digest` (and related endpoints: `requirements`, `coverage-report`) to read the lineage-specific plan and digest files when `?lineage=<id>` is not the live lineage. Return an explicit "plan unavailable for lineage" response if neither `orchestration-plan-<slug>.json` nor the live file matches. [REQ: per-lineage-plan-and-digest-retention]
-- [ ] 4b.5 Migration path for existing projects: if a project has a live plan but no rotated copies yet, the first sentinel start under a different spec triggers the rename — no retroactive work needed. [REQ: per-lineage-plan-and-digest-retention]
-- [ ] 4b.6 Unit test: switching from v1 to v2 at sentinel start renames v1 plan/digest with slug; live files are fresh for v2. [REQ: per-lineage-plan-and-digest-retention]
+- [x] 4b.5 Migration path for existing projects: if a project has a live plan but no rotated copies yet, the first sentinel start under a different spec triggers the rename — no retroactive work needed. [REQ: per-lineage-plan-and-digest-retention]
+- [x] 4b.6 Unit test: switching from v1 to v2 at sentinel start renames v1 plan/digest with slug; live files are fresh for v2. [REQ: per-lineage-plan-and-digest-retention]
 - [ ] 4b.7 Unit test: reading digest under `?lineage=v1` after v2 takeover returns v1's data (from the renamed dir), not v2's live digest. [REQ: per-lineage-plan-and-digest-retention]
 - [ ] 4b.8 Unit test: if a lineage has no saved plan (never been decomposed), API returns an explicit unavailable response rather than falling back to another lineage's data. [REQ: per-lineage-plan-and-digest-retention]
 
@@ -95,8 +95,8 @@
 
 ## 8. Activity timeline session markers
 
-- [ ] 8.1 In `lib/set_orch/api/activity.py`, after event concatenation, scan events for `sentinel_session_id` changes and emit a zero-width `sentinel:session_boundary` span at each boundary with `detail.session_id` + `detail.session_started_at`. [REQ: sentinel-session-boundary-markers-in-the-timeline]
-- [ ] 8.2 Integration test: multi-session fixture → activity timeline contains exactly `(N_sessions - 1)` boundary spans, placed at the right timestamps. [REQ: sentinel-session-boundary-markers-in-the-timeline]
+- [x] 8.1 In `lib/set_orch/api/activity.py`, after event concatenation, scan events for `sentinel_session_id` changes and emit a zero-width `sentinel:session_boundary` span at each boundary with `detail.session_id` + `detail.session_started_at`. [REQ: sentinel-session-boundary-markers-in-the-timeline]
+- [x] 8.2 Integration test: multi-session fixture → activity timeline contains exactly `(N_sessions - 1)` boundary spans, placed at the right timestamps. [REQ: sentinel-session-boundary-markers-in-the-timeline]
 - [ ] 8.3 UI: `web/src/components/ActivityTimeline.tsx` renders `sentinel:session_boundary` spans as full-height dividers with a "Session <short-id>" label. [REQ: sentinel-session-boundary-markers-in-the-timeline]
 
 ## 9. Plan-version propagation verification

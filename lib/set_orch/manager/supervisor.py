@@ -206,6 +206,22 @@ class ProjectSupervisor:
         if not spec:
             raise RuntimeError("supervisor_mode=python requires a spec path")
 
+        # Section 4b.2: rename the live plan + digest if the operator
+        # is starting on a different lineage than the on-disk plan.
+        # Best-effort — failure logs WARNING but never blocks start.
+        try:
+            from ..engine import _rotate_plan_and_digest_for_new_lineage
+            from ..types import canonicalise_spec_path
+            new_lineage = canonicalise_spec_path(spec, str(self.config.path))
+            _rotate_plan_and_digest_for_new_lineage(
+                str(self.config.path), new_lineage,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[%s] start_sentinel: lineage rotation failed: %s",
+                self.config.name, exc,
+            )
+
         try:
             from ..paths import SetRuntime
             log_dir = Path(SetRuntime(str(self.config.path)).sentinel_dir)
