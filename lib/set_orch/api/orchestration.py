@@ -439,6 +439,106 @@ def get_digest(project: str, lineage: Optional[str] = None):
     return result
 
 
+@router.get("/api/{project}/digest/e2e")
+def get_digest_e2e(project: str, lineage: Optional[str] = None):
+    """Aggregate e2e-manifest history + live manifests for the lineage.
+
+    Section 12.3 / AC-30: returns one block per change (live or archived),
+    with `archived = true` on history-sourced entries.  AC-31: when
+    history is missing, falls back to live worktree manifests only.
+
+    Filters by `?lineage=` (default = `resolve_lineage_default`).
+    """
+    from .lineages import resolve_lineage_default
+    project_path = _resolve_project(project)
+    effective_lineage = lineage or resolve_lineage_default(project_path)
+
+    blocks: list[dict] = []
+    seen_changes: set[str] = set()
+
+    # History blocks (archived).
+    history_path = project_path / "set" / "orchestration" / "e2e-manifest-history.jsonl"
+    if history_path.is_file():
+        try:
+            with open(history_path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if effective_lineage and effective_lineage not in ("__all__", "__legacy__"):
+                        rec_lineage = rec.get("spec_lineage_id") or "__legacy__"
+                        if rec_lineage != effective_lineage:
+                            continue
+                    blocks.append({
+                        "change": rec.get("change", ""),
+                        "spec_lineage_id": rec.get("spec_lineage_id"),
+                        "session_id": rec.get("session_id"),
+                        "plan_version": rec.get("plan_version"),
+                        "merged_at": rec.get("merged_at") or rec.get("ts"),
+                        "manifest": rec.get("manifest", {}),
+                        "archived": True,
+                    })
+                    seen_changes.add(rec.get("change", ""))
+        except OSError as exc:
+            logger.debug("digest/e2e: cannot read history: %s", exc)
+
+    # Live blocks — scan running/done changes' worktrees for fresh manifests
+    # not yet archived.
+    sp = _state_path(project_path)
+    if sp.exists():
+        try:
+            state = load_state(str(sp))
+            change_lineage_map = _build_change_lineage_map(project_path, state)
+            for c in state.changes:
+                if c.name in seen_changes:
+                    continue
+                if not c.worktree_path:
+                    continue
+                manifest_path = os.path.join(c.worktree_path, "e2e-manifest.json")
+                if not os.path.isfile(manifest_path):
+                    continue
+                try:
+                    with open(manifest_path) as fh:
+                        manifest = json.load(fh)
+                except (OSError, json.JSONDecodeError):
+                    continue
+                ch_lineage = change_lineage_map.get(c.name) or state.spec_lineage_id
+                if effective_lineage and effective_lineage not in ("__all__", "__legacy__"):
+                    if (ch_lineage or "__legacy__") != effective_lineage:
+                        continue
+                blocks.append({
+                    "change": c.name,
+                    "spec_lineage_id": ch_lineage,
+                    "session_id": c.sentinel_session_id,
+                    "plan_version": state.plan_version,
+                    "merged_at": c.completed_at or c.started_at,
+                    "manifest": manifest,
+                    "archived": False,
+                })
+        except Exception as exc:
+            logger.debug("digest/e2e: live-block enrichment failed: %s", exc)
+
+    # Aggregate totals.
+    total_tests = sum(
+        len(b.get("manifest", {}).get("tests") or []) for b in blocks
+    )
+    total_passed = sum(
+        sum(1 for t in (b.get("manifest", {}).get("tests") or []) if t.get("passed"))
+        for b in blocks
+    )
+
+    return {
+        "blocks": blocks,
+        "total_tests": total_tests,
+        "total_passed": total_passed,
+        "effective_lineage": effective_lineage,
+    }
+
+
 def _attribute_reqs_from_history(
     result: dict, project_path: Path, effective_lineage: Optional[str],
 ) -> None:

@@ -125,10 +125,10 @@
 
 - [x] 12.1 Add `_append_e2e_manifest_history(project_path, change_name, plan_version, session_id, manifest)` helper in `lib/set_orch/merger.py`. [REQ: e2e-manifest-history-append-on-merge]
 - [x] 12.2 Call the helper from the post-merge artifact collection path; skip silently when the worktree has no `e2e-manifest.json`. [REQ: e2e-manifest-history-append-on-merge]
-- [ ] 12.3 Update Digest/E2E API endpoint to aggregate `e2e-manifest-history.jsonl` lines with the current per-change manifests. [REQ: digest-e2e-aggregates-across-cycles]
+- [x] 12.3 Update Digest/E2E API endpoint to aggregate `e2e-manifest-history.jsonl` lines with the current per-change manifests. [REQ: digest-e2e-aggregates-across-cycles]
 - [ ] 12.4 UI: `web/src/components/DigestPanel.tsx` E2E subtab renders one block per change (live or archived), with `archived = true` blocks styled distinctly; header shows the combined test count. [REQ: digest-e2e-aggregates-across-cycles]
 - [x] 12.5 Unit test: merge appends the manifest line with correct metadata. [REQ: e2e-manifest-history-append-on-merge]
-- [ ] 12.6 Integration test: Digest/E2E returns live + history blocks combined and correctly totalled. [REQ: digest-e2e-aggregates-across-cycles]
+- [x] 12.6 Integration test: Digest/E2E returns live + history blocks combined and correctly totalled. [REQ: digest-e2e-aggregates-across-cycles]
 
 ## 13. Lineage filter plumbing across APIs
 
@@ -279,8 +279,8 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 ### E2E manifest history
 - [x] AC-28: WHEN change merges with passing e2e-manifest.json THEN a line is appended to e2e-manifest-history.jsonl with the full manifest object and metadata [REQ: e2e-manifest-history-append-on-merge, scenario: merge-with-passing-e2e-manifest]
 - [x] AC-29: WHEN change merges without an e2e-manifest.json THEN no line is appended and absence is logged at DEBUG (not WARNING) [REQ: e2e-manifest-history-append-on-merge, scenario: merge-with-missing-manifest]
-- [ ] AC-30: WHEN live plan + history contain 4 distinct changes' manifests THEN Digest/E2E returns all 4 blocks totalled with archived=true flag on historic ones [REQ: digest-e2e-aggregates-across-cycles, scenario: archived-live-blocks]
-- [ ] AC-31: WHEN e2e-manifest-history.jsonl does not exist THEN the API falls back to current live-manifest behaviour without raising [REQ: digest-e2e-aggregates-across-cycles, scenario: legacy-archive-without-history]
+- [x] AC-30: WHEN live plan + history contain 4 distinct changes' manifests THEN Digest/E2E returns all 4 blocks totalled with archived=true flag on historic ones [REQ: digest-e2e-aggregates-across-cycles, scenario: archived-live-blocks]
+- [x] AC-31: WHEN e2e-manifest-history.jsonl does not exist THEN the API falls back to current live-manifest behaviour without raising [REQ: digest-e2e-aggregates-across-cycles, scenario: legacy-archive-without-history]
 
 ### Centralized path resolver
 - [x] AC-32a: WHEN a caller asks LineagePaths(project, lineage="v1") for plan_file AND a rotated orchestration-plan-<v1-slug>.json exists THEN the resolver returns that rotated path [REQ: centralized-lineage-aware-path-resolver, scenario: resolver-returns-lineage-specific-path]
@@ -302,9 +302,9 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 - [x] AC-36: WHEN the endpoint is called without a lineage parameter THEN response equals ?lineage=<state.spec_lineage_id> [REQ: lineage-filtering-on-the-activity-timeline, scenario: lineage-parameter-omitted]
 - [x] AC-37: WHEN /api/<project>/state?lineage=v1.md is called AND live is v2 THEN token totals include only v1-tagged changes, no v2 contamination [REQ: token-endpoints-honour-lineage-filter, scenario: v1-totals-while-v2-runs]
 - [x] AC-38: WHEN /api/<project>/llm-calls?lineage=v1.md is called THEN the call list contains only v1-tagged calls [REQ: token-endpoints-honour-lineage-filter, scenario: llm-calls-filtered-by-lineage]
-- [ ] AC-39: WHEN /api/<project>/digest?lineage=v1.md is called THEN Reqs/AC/E2E consider only v1-tagged records [REQ: coverage-history-carries-lineage, scenario: v1-coverage-snapshot-while-v2-runs]
-- [ ] AC-40: WHEN REQ-X was merged under v1 and never re-merged under v2 AND /digest?lineage=v2 is requested THEN REQ-X is reported uncovered under v2 [REQ: coverage-history-carries-lineage, scenario: req-covered-in-v1-but-not-v2]
-- [ ] AC-41: WHEN /api/<project>/digest/e2e?lineage=v1.md is called THEN only v1-tagged manifest blocks contribute [REQ: e2e-manifest-history-carries-lineage, scenario: v1-e2e-manifest-while-v2-is-running]
+- [x] AC-39: WHEN /api/<project>/digest?lineage=v1.md is called THEN Reqs/AC/E2E consider only v1-tagged records [REQ: coverage-history-carries-lineage, scenario: v1-coverage-snapshot-while-v2-runs]
+- [x] AC-40: WHEN REQ-X was merged under v1 and never re-merged under v2 AND /digest?lineage=v2 is requested THEN REQ-X is reported uncovered under v2 [REQ: coverage-history-carries-lineage, scenario: req-covered-in-v1-but-not-v2]
+- [x] AC-41: WHEN /api/<project>/digest/e2e?lineage=v1.md is called THEN only v1-tagged manifest blocks contribute [REQ: e2e-manifest-history-carries-lineage, scenario: v1-e2e-manifest-while-v2-is-running]
 
 ### Lineage selector endpoints + UI
 - [x] AC-42: WHEN GET /api/<project>/lineages is called AND archive has v1 entries AND live is v2 THEN response contains both with metadata (display_name, first/last_seen_at, is_live, change_count, merged_count) [REQ: lineages-listing-endpoint, scenario: two-lineages-present]
