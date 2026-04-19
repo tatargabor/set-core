@@ -1255,7 +1255,8 @@ def compute_phase_offset(state_file: str, lineage_id: Optional[str]) -> int:
         logger.debug("compute_phase_offset: state read failed: %s", exc)
 
     # Archive contributions
-    archive_path = os.path.join(os.path.dirname(state_file), "state-archive.jsonl")
+    from .paths import LineagePaths
+    archive_path = LineagePaths.from_state_file(state_file).state_archive
     if os.path.isfile(archive_path):
         try:
             with open(archive_path, "r", encoding="utf-8") as fh:
@@ -1828,7 +1829,13 @@ def _save_domain_plans(
     domain_plans: dict[str, dict],
 ) -> None:
     """Save Phase 1 brief and Phase 2 domain plans for selective replan."""
-    domains_file = os.path.join(os.getcwd(), "orchestration-plan-domains.json")
+    from .paths import LineagePaths, SetRuntime
+    try:
+        rt = SetRuntime(os.getcwd())
+        domains_file = LineagePaths(os.getcwd(), runtime=rt).plan_domains_file
+    except Exception:
+        # Fallback: legacy path layout, keep behaviour identical to pre-migration
+        domains_file = os.path.join(os.getcwd(), "orchestration-plan-domains.json")
     data = {
         "brief": planning_brief,
         "domain_plans": domain_plans,
