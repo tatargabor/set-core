@@ -94,6 +94,30 @@ Every new history artefact written by this change SHALL carry `spec_lineage_id` 
 - **WHEN** `_append_worktree_history` writes a line
 - **THEN** the JSON object SHALL include `spec_lineage_id`
 
+### Requirement: Per-lineage plan and digest retention
+When a sentinel session opens a new lineage or replan regenerates the decomposed digest, the framework SHALL preserve the prior lineage's plan and digest files before overwriting, so the operator can switch back to an earlier lineage and see its original decomposition, requirements, domain split, and test plan.
+
+#### Scenario: Sentinel opens a second lineage
+- **WHEN** the sentinel is started with `--spec docs/spec-v2.md` and a prior `orchestration-plan.json` on disk belongs to `docs/spec-v1.md`
+- **THEN** before the new plan is written, the existing `orchestration-plan.json` SHALL be copied to `orchestration-plan-<v1-slug>.json` (slug derived from the lineage id, safe for filenames)
+- **AND** the existing `orchestration-plan-domains.json` (if present) SHALL be copied to `orchestration-plan-domains-<v1-slug>.json`
+- **AND** the existing `set/orchestration/digest/` SHALL be renamed to `set/orchestration/digest-<v1-slug>/`
+- **AND** fresh empty `orchestration-plan.json` and `set/orchestration/digest/` SHALL be created for v2
+- **AND** the renamed v1 artefacts SHALL remain in place until an explicit purge operation requests their removal
+
+#### Scenario: Digest read honours lineage
+- **WHEN** a consumer reads the project digest (planner, Digest tab API, coverage computation)
+- **AND** the consumer is operating under a lineage id `<L>`
+- **THEN** the consumer SHALL look for `set/orchestration/digest-<L-slug>/` first
+- **AND** fall back to the live `set/orchestration/digest/` only when `L` matches `state.spec_lineage_id`
+- **AND** SHALL NOT silently use the live digest for a non-matching lineage (returns an empty/uncovered response instead)
+
+#### Scenario: Plan read honours lineage
+- **WHEN** a consumer requests the plan for lineage `<L>`
+- **THEN** the live `orchestration-plan.json` is used when `L` matches the live lineage
+- **AND** `orchestration-plan-<L-slug>.json` is used otherwise
+- **AND** if no lineage-specific plan file exists, the consumer reports the plan as unavailable for that lineage (it is not synthesised from other lineages)
+
 ### Requirement: Retained worktree history
 When a worktree is cleaned up (renamed to `<path>.removed.<epoch>`), the framework SHALL append a JSON line to `worktrees-history.json` capturing the original path, renamed path, change name, and removal timestamp.
 

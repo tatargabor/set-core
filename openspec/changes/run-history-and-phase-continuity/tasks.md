@@ -33,6 +33,23 @@
 - [ ] 4.3 Integration test: multi-cycle fixture project → activity timeline returns spans from cycle 1 + live file, ordered chronologically. [REQ: rotated-event-concatenation-for-readers]
 - [ ] 4.4 Integration test: llm-calls endpoint returns events from both cycle files interleaved by timestamp. [REQ: rotated-event-concatenation-for-readers]
 
+## 4b. Per-lineage plan and digest retention
+
+- [ ] 4b.1 Add `_rotate_plan_and_digest_for_new_lineage(project_path, new_lineage_id)` helper in `lib/set_orch/engine.py` that, when called at sentinel-start and the current on-disk `orchestration-plan.json` belongs to a different lineage, renames: `orchestration-plan.json` → `orchestration-plan-<old-slug>.json`, `orchestration-plan-domains.json` → `orchestration-plan-domains-<old-slug>.json`, `set/orchestration/digest/` → `set/orchestration/digest-<old-slug>/`. Slug is a filename-safe form of the lineage id. [REQ: per-lineage-plan-and-digest-retention]
+- [ ] 4b.2 Call `_rotate_plan_and_digest_for_new_lineage` from the sentinel-start path BEFORE the new lineage's plan is written or its digest is decomposed. [REQ: per-lineage-plan-and-digest-retention]
+- [ ] 4b.3 Update the planner's digest-dir resolution (`planner.py` + `engine.py` sites that do `os.path.join(os.getcwd(), "set", "orchestration", "digest")`) to consult the lineage: if the caller is operating under a non-live lineage, use `set/orchestration/digest-<slug>/` instead of the live dir. [REQ: per-lineage-plan-and-digest-retention]
+- [ ] 4b.4 Update `/api/<project>/digest` (and related endpoints: `requirements`, `coverage-report`) to read the lineage-specific plan and digest files when `?lineage=<id>` is not the live lineage. Return an explicit "plan unavailable for lineage" response if neither `orchestration-plan-<slug>.json` nor the live file matches. [REQ: per-lineage-plan-and-digest-retention]
+- [ ] 4b.5 Migration path for existing projects: if a project has a live plan but no rotated copies yet, the first sentinel start under a different spec triggers the rename — no retroactive work needed. [REQ: per-lineage-plan-and-digest-retention]
+- [ ] 4b.6 Unit test: switching from v1 to v2 at sentinel start renames v1 plan/digest with slug; live files are fresh for v2. [REQ: per-lineage-plan-and-digest-retention]
+- [ ] 4b.7 Unit test: reading digest under `?lineage=v1` after v2 takeover returns v1's data (from the renamed dir), not v2's live digest. [REQ: per-lineage-plan-and-digest-retention]
+- [ ] 4b.8 Unit test: if a lineage has no saved plan (never been decomposed), API returns an explicit unavailable response rather than falling back to another lineage's data. [REQ: per-lineage-plan-and-digest-retention]
+
+## 4c. Supervisor status lineage awareness
+
+- [ ] 4c.1 Add `spec_lineage_id` to `.set/supervisor/status.json` (already has a `spec` field — keep for compatibility but add the normalised lineage id too). Written on sentinel start. [REQ: spec-lineage-identity-derived-from-input-path]
+- [ ] 4c.2 When the sentinel stops cleanly (SIGTERM, stop endpoint), archive the supervisor status snapshot alongside the rotated event files so each session's status metadata is retained: append a JSON line to `.set/supervisor/status-history.jsonl` with the full status + the `rotated_at` timestamp. [REQ: sentinel-session-id-as-sub-dimension]
+- [ ] 4c.3 Unit test: status.json gets spec_lineage_id on sentinel start; status-history.jsonl gains a line on clean stop. [REQ: sentinel-session-id-as-sub-dimension]
+
 ## 5. Worktree history tracking
 
 - [ ] 5.1 Add `_append_worktree_history(project_path, change_name, original_path, removed_path)` helper in `lib/set_orch/merger.py` that writes the JSON line defined in spec. [REQ: retained-worktree-history]
@@ -199,6 +216,11 @@
 - [ ] AC-25: WHEN replan drops REQs from current plan THEN spec-coverage-history.jsonl entries remain intact and reads still resolve to "merged by foundation-setup (archived)" [REQ: coverage-history-append-on-every-merge, scenario: replan-does-not-wipe-history]
 - [ ] AC-26: WHEN Digest requests a REQ not under any current-plan change AND history has an archived attribution THEN response includes merged_by, merged_by_archived=true, merged_at [REQ: digest-attribution-uses-history, scenario: req-covered-by-archived-change]
 - [ ] AC-27: WHEN a REQ is neither in live plan nor history THEN it is marked uncovered [REQ: digest-attribution-uses-history, scenario: req-not-in-history-at-all]
+
+### Per-lineage plan/digest retention
+- [ ] AC-27a: WHEN sentinel starts with --spec v2.md AND current live plan/digest belong to v1 THEN v1 files are renamed with `-<v1-slug>` suffix before v2 gets fresh empty files [REQ: per-lineage-plan-and-digest-retention, scenario: sentinel-opens-a-second-lineage]
+- [ ] AC-27b: WHEN a consumer reads digest under lineage v1 AND v2 is live THEN the reader uses `digest-<v1-slug>/` not the live `digest/` [REQ: per-lineage-plan-and-digest-retention, scenario: digest-read-honours-lineage]
+- [ ] AC-27c: WHEN a lineage has no saved plan file THEN API returns an explicit unavailable response, not another lineage's data [REQ: per-lineage-plan-and-digest-retention, scenario: plan-read-honours-lineage]
 
 ### E2E manifest history
 - [ ] AC-28: WHEN change merges with passing e2e-manifest.json THEN a line is appended to e2e-manifest-history.jsonl with the full manifest object and metadata [REQ: e2e-manifest-history-append-on-merge, scenario: merge-with-passing-e2e-manifest]
