@@ -237,12 +237,15 @@ test.describe('PhaseView per-lineage behaviour (15.3-15.4, 9.3)', () => {
   })
 
   test('9.3 two plan versions with the same phase number render separate subheaders', async ({ page, request }) => {
-    const state = await getLiveState(request)
+    // Probe the union view to discover whether the fixture has a colliding
+    // (phase, plan_version) pair across lineages.  The default view is
+    // lineage-filtered so collisions across lineages are invisible to it.
+    const allRes = await request.get(`/api/${PROJECT}/state?lineage=__all__`)
+    expect(allRes.ok()).toBeTruthy()
+    const allState = await allRes.json() as Awaited<ReturnType<typeof getLiveState>>
 
-    // Bucket live + archived changes by (phase, plan_version) to discover whether
-    // the fixture actually exercises the collision case.
     const seen = new Map<number, Set<string>>()
-    for (const c of state.changes ?? []) {
+    for (const c of allState.changes ?? []) {
       if (c.phase == null) continue
       const pv = c.plan_version == null ? '' : String(c.plan_version)
       const set = seen.get(c.phase) ?? new Set<string>()
@@ -252,21 +255,49 @@ test.describe('PhaseView per-lineage behaviour (15.3-15.4, 9.3)', () => {
     const collidingPhase = [...seen.entries()].find(([, vs]) => vs.size >= 2)
     if (!collidingPhase) test.skip()
 
+    // The dashboard's WebSocket pushes unfiltered state which would race
+    // with our REST-driven __all__ refetch and revert PhaseView to
+    // live-only changes (a known UX gap — WS state pushes are not yet
+    // lineage-aware).  Stub the WebSocket constructor so connections never
+    // open; the REST poll will own the state for the test's duration.
+    await page.addInitScript(() => {
+      // @ts-expect-error - intentionally clobbering for test isolation
+      window.WebSocket = class { constructor(){} close(){} send(){} addEventListener(){} removeEventListener(){} }
+    })
+
     await page.goto(ORCH_BASE)
+    await expect(page.locator('[data-lineage="__all__"]')).toBeVisible()
+    await page.locator('[data-lineage="__all__"]').click()
+    await expect(page.locator('[data-testid="lineage-hint-all"]')).toBeVisible()
     await navigateToTab(page, 'phases')
+    // The REST poll fires after ~2s on lineage change; wait until the
+    // PhaseView contains an archive-sourced group from a different lineage
+    // so we know the union view has settled.
+    await expect.poll(async () =>
+      (await page.locator('[data-testid^="phase-group-"]').all()).length,
+      { timeout: 8000 }
+    ).toBeGreaterThanOrEqual(2)
 
     const [phaseNum, versions] = collidingPhase!
-    const labels = await Promise.all([...versions].map(async v => {
-      // Non-all mode: key format is `${phase}|${planVersion}|` (trailing empty lineage).
-      const header = page.locator(`[data-testid="phase-group-${phaseNum}|${v}|"]`).first()
-      if (await header.count() === 0) return null
-      return header.locator('span.font-medium').first().textContent()
-    }))
-    const rendered = labels.filter(Boolean) as string[]
+    // In __all__ mode the key format is `${phase}|${planVersion}|${lineage}`
+    // (a non-empty lineage segment).  Collect every phase-group header that
+    // matches this phase and plan_version, regardless of which lineage owns it.
+    const allHeaders = await page.locator(`[data-testid^="phase-group-${phaseNum}|"]`).all()
+    const labels: string[] = []
+    for (const h of allHeaders) {
+      const label = await h.locator('span.font-medium').first().textContent()
+      if (label) labels.push(label.trim())
+    }
     // At least two distinct "Phase N (plan v…)" labels when the collision exists.
-    expect(rendered.length).toBeGreaterThanOrEqual(2)
-    for (const label of rendered) {
-      expect(label).toMatch(new RegExp(`Phase ${phaseNum} \\(plan v`))
+    expect(labels.length).toBeGreaterThanOrEqual(2)
+    const renderedVersions = new Set<string>()
+    for (const label of labels) {
+      const m = label.match(new RegExp(`^Phase ${phaseNum} \\(plan v(\\S+)\\)`))
+      if (m) renderedVersions.add(m[1])
+    }
+    expect(renderedVersions.size).toBeGreaterThanOrEqual(2)
+    for (const v of versions) {
+      expect(renderedVersions.has(v)).toBeTruthy()
     }
   })
 })
@@ -296,15 +327,18 @@ test.describe('Lineage network guard (15b.16)', () => {
       }
     })
 
-    // Trigger a fresh round of fetches by clicking the currently-selected
-    // row again (a no-op setter) — not reliable — so instead navigate
-    // between tabs, which each fire their own lineage-scoped fetch.
-    await navigateToTab(page, 'digest')
-    await page.waitForTimeout(500)
-    await navigateToTab(page, 'activity')
-    await page.waitForTimeout(500)
-    await navigateToTab(page, 'tokens')
-    await page.waitForTimeout(500)
+    // Trigger a fresh round of fetches by navigating between tabs, which
+    // each fire their own lineage-scoped fetch.  Some tabs (digest) are
+    // only rendered when the project has the underlying data — fall back
+    // to a tab that is always present so the test still observes a
+    // representative request.
+    const tabs = ['activity', 'tokens', 'digest', 'phases'] as const
+    for (const tab of tabs) {
+      const tabBtn = page.locator(`[data-tab="${tab}"]`)
+      if (await tabBtn.count() === 0) continue
+      await navigateToTab(page, tab)
+      await page.waitForTimeout(400)
+    }
 
     // The sidebar poll from ProjectLayout intentionally omits lineage — it
     // drives the sentinel-badge binding (Section 14.8).  Every OTHER call
