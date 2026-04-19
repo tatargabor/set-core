@@ -1023,8 +1023,11 @@ def build_decomposition_context(
 
     if input_mode == "digest":
         # input_path is the original spec dir (e.g. "docs/"), but digest
-        # output lives in set/orchestration/digest/. Use that instead.
-        digest_dir = os.path.join(os.getcwd(), "set", "orchestration", "digest")
+        # output lives in the lineage-aware location.  Route via
+        # LineagePaths so non-live lineages pick up their `digest-<slug>/`
+        # sibling.
+        from .paths import LineagePaths
+        digest_dir = LineagePaths(os.getcwd()).digest_dir
         input_content = _build_digest_content(digest_dir)
     else:
         try:

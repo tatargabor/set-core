@@ -3294,17 +3294,18 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
     """Dispatch ready changes (exception-safe wrapper)."""
     try:
         from .dispatcher import dispatch_ready_changes
-        # Resolve digest_dir: prefer project-local set/orchestration/digest (where
-        # test-plan.json actually lives), fall back to SetRuntime path.
+        from .paths import LineagePaths
+        # Resolve digest_dir via the lineage-aware resolver so non-live
+        # lineages pick up `digest-<slug>/` and the live one picks up the
+        # canonical project-local digest tree.
         _project_dir = os.path.dirname(state_file) or os.getcwd()
         logger.debug("Dispatch: project_dir=%s (from state_file=%s)", _project_dir, state_file)
-        _digest_dir = os.path.join(_project_dir, "set", "orchestration", "digest")
-        if not os.path.isdir(_digest_dir):
-            try:
-                from .paths import SetRuntime
-                _digest_dir = SetRuntime().digest_dir
-            except Exception:
-                _digest_dir = ""
+        try:
+            _digest_dir = LineagePaths.from_state_file(
+                state_file, project_path=_project_dir,
+            ).digest_dir
+        except Exception:
+            _digest_dir = ""
         if not os.path.isdir(_digest_dir):
             _digest_dir = ""
         if not _digest_dir:
