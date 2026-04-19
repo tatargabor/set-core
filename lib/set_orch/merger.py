@@ -2156,6 +2156,16 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 merged += 1
                 if event_bus:
                     event_bus.emit("MERGE_SUCCESS", change=name, data={})
+                # Persist this change into state-archive.jsonl immediately.
+                # Waiting for the next replan is unsafe: a crash or manual
+                # state reset in the interval would drop the merged entry
+                # from history entirely (observed on craftbrew 1719 where
+                # `checkout-flow` merged but never surfaced in the archive).
+                try:
+                    from .engine import _archive_completed_to_jsonl
+                    _archive_completed_to_jsonl(state_file)
+                except Exception:
+                    logger.debug("state-archive append failed (non-critical)", exc_info=True)
         except Exception:
             logger.warning("Merge failed for %s", name, exc_info=True)
 

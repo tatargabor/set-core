@@ -123,11 +123,24 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
     )
   }
 
+  // Chronological ordering: phase ASC (archived/phase 0 first → future phases
+  // last), then by started_at ASC so in-flight work appears before pending,
+  // then by name for deterministic ties.
+  const sortedChanges = [...changes].sort((a, b) => {
+    const pa = a.phase ?? 1
+    const pb = b.phase ?? 1
+    if (pa !== pb) return pa - pb
+    const ta = a.started_at ? new Date(a.started_at).getTime() : Number.POSITIVE_INFINITY
+    const tb = b.started_at ? new Date(b.started_at).getTime() : Number.POSITIVE_INFINITY
+    if (ta !== tb) return ta - tb
+    return a.name.localeCompare(b.name)
+  })
+
   // Mobile: compact expandable rows
   if (isMobile) {
     return (
       <div className="divide-y divide-neutral-800/50">
-        {changes.map((c) => {
+        {sortedChanges.map((c) => {
           const isExpanded = selected === c.name
           const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result || c.e2e_result || c.spec_coverage_result)
           const isGateExpanded = expandedGate === c.name
@@ -141,7 +154,8 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                 }`}
               >
                 <TuiStatus status={c.status} label={false} />
-                <span className="text-sm text-neutral-200 truncate flex-1">{c.name}</span>
+                <span className="px-1.5 py-0.5 text-xs rounded bg-neutral-800/70 text-neutral-500 shrink-0" title={`Phase ${c.phase ?? 1}`}>P{c.phase ?? 1}</span>
+                <span className="text-sm text-neutral-200 truncate flex-1">{c.name}{c._archived && <span className="ml-1 text-xs text-neutral-600">(archived)</span>}</span>
                 <span className="text-sm text-neutral-500 shrink-0">{formatDuration(changeDuration(c))}</span>
                 <span className="text-sm shrink-0"><TuiStatus status={c.status} /></span>
                 <span className="text-neutral-600 text-sm">{isExpanded ? '▲' : '▼'}</span>
@@ -225,6 +239,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
     <table className="w-full text-sm">
       <thead>
         <tr className="text-sm text-neutral-500 border-b border-neutral-800">
+          <th className="text-center px-2 py-2 font-medium" title="Phase">Ph</th>
           <th className="text-left px-4 py-2 font-medium">Name</th>
           <th className="text-left px-2 py-2 font-medium">Status</th>
           <th className="text-center px-2 py-2 font-medium">Sess</th>
@@ -240,7 +255,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
         </tr>
       </thead>
       <tbody>
-        {changes.map((c) => {
+        {sortedChanges.map((c) => {
           const clickable = !!c.worktree_path
           const isSelected = selected === c.name
           const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result || c.e2e_result || c.spec_coverage_result)
@@ -254,7 +269,15 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                 clickable ? 'cursor-pointer hover:bg-neutral-900/50' : ''
               } ${isSelected ? 'bg-neutral-900/70 border-l-2 border-l-blue-500' : ''}`}
             >
-              <td className="px-4 py-2 text-neutral-200">{c.name}</td>
+              <td className="px-2 py-2 text-center text-xs text-neutral-500" title={`Phase ${c.phase ?? 1}`}>
+                {c.phase ?? 1}
+              </td>
+              <td className="px-4 py-2 text-neutral-200">
+                {c.name}
+                {c._archived && (
+                  <span className="ml-2 text-xs text-neutral-600" title="From an earlier plan cycle — kept for history">(archived)</span>
+                )}
+              </td>
               <td className={`px-2 py-2 font-medium ${tuiStatusColor(c.status)}`}>
                 {c.status}
               </td>
@@ -347,7 +370,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
             </tr>
             {isGateExpanded && hasGates && (
               <tr className="border-b border-neutral-800/50 bg-neutral-950/50">
-                <td colSpan={8}>
+                <td colSpan={9}>
                   <ChangeTimeline change={c} />
                   <GateDetail change={c} />
                 </td>

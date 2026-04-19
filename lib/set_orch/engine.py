@@ -2899,7 +2899,12 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
 
 
 def _archive_completed_to_jsonl(state_file: str) -> None:
-    """Archive completed changes to state-archive.jsonl before replan."""
+    """Archive completed changes to state-archive.jsonl before replan.
+
+    Each line is a flat JSON object keyed by change name. Fields mirror the
+    live-state dict enough that the UI can group archived entries by phase and
+    sum tokens alongside active changes.
+    """
     state = load_state(state_file)
     archive_path = os.path.join(os.path.dirname(state_file), "state-archive.jsonl")
 
@@ -2910,18 +2915,49 @@ def _archive_completed_to_jsonl(state_file: str) -> None:
     if not completed:
         return
 
+    existing: set[str] = set()
+    if os.path.exists(archive_path):
+        try:
+            with open(archive_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        existing.add(json.loads(line).get("name", ""))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+    new_completed = [c for c in completed if c.name not in existing]
+    if not new_completed:
+        return
+
     try:
         with open(archive_path, "a") as f:
-            for c in completed:
+            for c in new_completed:
                 entry = {
                     "name": c.name,
                     "status": c.status,
-                    "tokens_used": c.tokens_used,
+                    "phase": c.phase,
+                    "complexity": c.complexity,
+                    "change_type": c.change_type,
+                    "depends_on": c.depends_on,
                     "scope": c.scope,
+                    "tokens_used": c.tokens_used,
+                    "input_tokens": c.input_tokens,
+                    "output_tokens": c.output_tokens,
+                    "cache_read_tokens": c.cache_read_tokens,
+                    "cache_create_tokens": c.cache_create_tokens,
+                    "started_at": c.started_at,
+                    "completed_at": c.completed_at,
+                    "worktree_path": c.worktree_path,
+                    "plan_version": state.plan_version,
                     "archived_at": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
                 }
                 f.write(json.dumps(entry) + "\n")
-        logger.info("Archived %d completed changes to %s", len(completed), archive_path)
+        logger.info("Archived %d completed changes to %s", len(new_completed), archive_path)
     except OSError:
         logger.warning("Failed to archive completed changes")
 

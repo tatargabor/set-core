@@ -162,8 +162,13 @@ def _log_path(project_path: Path) -> Path:
 
 
 def _load_archived_changes(project_path: Path) -> list[dict]:
-    """Load completed changes from state-archive.jsonl."""
-    archive = project_path / "set" / "orchestration" / "state-archive.jsonl"
+    """Load archived changes from state-archive.jsonl.
+
+    The writer emits one flat JSON object per line (see
+    ``engine._archive_completed_to_jsonl``). Later writes for the same change
+    name overwrite earlier ones.
+    """
+    archive = project_path / "state-archive.jsonl"
     if not archive.exists():
         return []
     seen: dict[str, dict] = {}
@@ -176,10 +181,13 @@ def _load_archived_changes(project_path: Path) -> list[dict]:
                 entry = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            cycle = entry.get("cycle", 0)
-            for c in entry.get("changes", []):
-                c["_archive_cycle"] = cycle
-                seen[c.get("name", "")] = c
+            name = entry.get("name")
+            if not name:
+                continue
+            entry["_archived"] = True
+            if "phase" not in entry:
+                entry["phase"] = 0
+            seen[name] = entry
     except OSError:
         return []
     return list(seen.values())

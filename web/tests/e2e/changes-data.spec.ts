@@ -52,7 +52,8 @@ test('change with no gate results shows dash', async ({ page }) => {
   if (!noGates) return test.skip()
   const row = page.locator('tr', { hasText: noGates.name })
   // The GateBar renders "—" when no gates
-  const gateCell = row.locator('td').nth(5)
+  // Columns: Ph | Name | Status | Sess | Duration | Tokens | Gates | Att/Files
+  const gateCell = row.locator('td').nth(6)
   await expect(gateCell).toContainText('—')
 })
 
@@ -60,7 +61,7 @@ test('merged change with tokens shows non-dash values', async ({ page }) => {
   const withTokens = changes.find(c => c.status === 'merged' && (c.output_tokens ?? 0) > 0)
   if (!withTokens) return test.skip()
   const row = page.locator('tr', { hasText: withTokens.name })
-  const tokenCell = row.locator('td').nth(4)
+  const tokenCell = row.locator('td').nth(5)
   const text = await tokenCell.textContent()
   expect(text).not.toBe('—/—')
   expect(text).not.toBe('0/0')
@@ -70,7 +71,7 @@ test('session count displayed when present', async ({ page }) => {
   const withSessions = changes.find(c => (c.session_count ?? 0) > 0)
   if (!withSessions) return test.skip()
   const row = page.locator('tr', { hasText: withSessions.name })
-  const sessCell = row.locator('td').nth(2)
+  const sessCell = row.locator('td').nth(3)
   await expect(sessCell).toContainText(String(withSessions.session_count))
 })
 
@@ -78,7 +79,7 @@ test('duration shows time format for completed changes', async ({ page }) => {
   const completed = changes.find(c => c.started_at && c.completed_at)
   if (!completed) return test.skip()
   const row = page.locator('tr', { hasText: completed.name })
-  const durCell = row.locator('td').nth(3)
+  const durCell = row.locator('td').nth(4)
   const text = await durCell.textContent()
   // Should match Xm Ys or Xs pattern, not "—"
   expect(text).not.toBe('—')
