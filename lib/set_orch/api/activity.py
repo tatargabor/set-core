@@ -861,7 +861,7 @@ def get_activity_timeline(
     project: str,
     from_ts: Optional[str] = Query(None, alias="from"),
     to_ts: Optional[str] = Query(None, alias="to"),
-    lineage: Optional[str] = Query(None),
+    lineage: Optional[str] = None,
 ):
     """Get activity timeline with spans and breakdown for a project.
 

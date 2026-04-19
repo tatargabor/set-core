@@ -101,16 +101,16 @@
 
 ## 9. Plan-version propagation verification
 
-- [ ] 9.1 Confirm `plan_version` is already written by `_archive_completed_to_jsonl` (landed in the archive fix); extend its test to also confirm plan_version propagates through to the API response. [REQ: plan-version-propagation-on-archive]
+- [x] 9.1 Confirm `plan_version` is already written by `_archive_completed_to_jsonl` (landed in the archive fix); extend its test to also confirm plan_version propagates through to the API response. [REQ: plan-version-propagation-on-archive]
 - [ ] 9.2 UI: `web/src/components/PhaseView.tsx` groups archive+live entries by `(phase, plan_version)` when two distinct plan versions share a phase number; single-version phases render as before. [REQ: plan-version-propagation-on-archive]
 - [ ] 9.3 Integration test: Phases tab renders "Phase 1 (plan v1)" and "Phase 1 (plan v2)" as separate subheaders when archive has v1 phase-1 entries and live state has v2 phase-1 entries. [REQ: plan-version-propagation-on-archive]
 
 ## 10. Token panel archive awareness
 
-- [ ] 10.1 Update token-total aggregation in `lib/set_orch/api/helpers.py::_enrich_changes` (or the equivalent StatusHeader path) to include archive-sourced token fields. [REQ: token-aggregation-includes-archived-changes]
-- [ ] 10.2 In `_read_session_calls`, emit one synthetic `source = "archive_summary"` call per archived change whose worktree session dir is absent but which has `session_summary` data. [REQ: token-aggregation-includes-archived-changes]
+- [x] 10.1 Update token-total aggregation in `lib/set_orch/api/helpers.py::_enrich_changes` (or the equivalent StatusHeader path) to include archive-sourced token fields. [REQ: token-aggregation-includes-archived-changes]
+- [x] 10.2 In `_read_session_calls`, emit one synthetic `source = "archive_summary"` call per archived change whose worktree session dir is absent but which has `session_summary` data. [REQ: token-aggregation-includes-archived-changes]
 - [ ] 10.3 UI: `web/src/components/TokensPanel.tsx` renders `_archived` rows with the "(archived)" label, sorted after live rows, token values sourced from archive entry fields. [REQ: token-panel-renders-archived-rows-explicitly]
-- [ ] 10.4 Integration test: Tokens panel shows all archived + live changes with correct token values after worktree cleanup simulation. [REQ: token-aggregation-includes-archived-changes]
+- [x] 10.4 Integration test: Tokens panel shows all archived + live changes with correct token values after worktree cleanup simulation. [REQ: token-aggregation-includes-archived-changes]
 
 ## 11. Coverage history append
 

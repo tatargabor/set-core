@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/api/{project}/state")
-def get_state(project: str, lineage: Optional[str] = Query(None)):
+def get_state(project: str, lineage: Optional[str] = None):
     """Get full orchestration state for a project.
 
     Section 13.4: when `?lineage=` is provided, the merged change list is
@@ -849,7 +849,7 @@ def get_memory_overview(project: str):
 def get_llm_calls(
     project: str,
     limit: int = Query(500, ge=1, le=5000),
-    lineage: Optional[str] = Query(None),
+    lineage: Optional[str] = None,
 ):
     """Chronological list of all LLM calls: events JSONL + session files.
 
@@ -1104,6 +1104,46 @@ def _read_session_calls(state, project_path: Path, calls: list[dict], skip_keys:
                     pass
         except OSError:
             pass
+
+    # Section 10.2 — synthesize aggregate `archive_summary` calls for
+    # archived changes whose worktree session dir is gone.  Each archive
+    # entry's `session_summary` becomes one synthetic call so the
+    # Tokens / LLM-calls panel can render the change after cleanup.
+    archived = _load_archived_changes(project_path)
+    seen_archive: set[str] = set()
+    for entry in archived:
+        name = entry.get("name", "")
+        summary = entry.get("session_summary") or {}
+        if not name or not summary or name in seen_archive:
+            continue
+        if not (summary.get("call_count") or summary.get("input_tokens")):
+            continue
+        wt = entry.get("worktree_path")
+        # Only emit the synthetic call when the live session dir is
+        # absent — otherwise the per-file loop above already covered it.
+        if wt:
+            mangled = _claude_mangle(wt)
+            if (Path.home() / ".claude" / "projects" / f"-{mangled}").is_dir():
+                continue
+        seen_archive.add(name)
+        ts = summary.get("last_call_ts") or entry.get("archived_at") or ""
+        calls.append({
+            "timestamp": ts,
+            "source": "archive_summary",
+            "purpose": "aggregated",
+            "purpose_raw": "aggregated",
+            "model": "archived",
+            "change": name,
+            "duration_ms": int(summary.get("total_duration_ms", 0) or 0),
+            "input_tokens": int(summary.get("input_tokens", 0) or 0)
+                            + int(summary.get("cache_read_tokens", 0) or 0)
+                            + int(summary.get("cache_create_tokens", 0) or 0),
+            "output_tokens": int(summary.get("output_tokens", 0) or 0),
+            "cache_tokens": int(summary.get("cache_read_tokens", 0) or 0),
+            "exit_code": 0,
+            "active": False,
+            "spec_lineage_id": entry.get("spec_lineage_id"),
+        })
 
 
 def _session_duration_ms(path: Path) -> int:
