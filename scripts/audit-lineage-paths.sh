@@ -173,6 +173,45 @@ if [[ ${#RESIDUALS[@]} -gt 0 ]]; then
     mapfile -t RESIDUALS < <(printf '%s\n' "${RESIDUALS[@]}" | sort -u)
 fi
 
+# Section 17.4: --sync-audit walks migration-audit.md and ticks the box
+# for every row whose file no longer appears in the residuals list.
+if $SYNC_AUDIT; then
+    AUDIT_MD="$REPO_ROOT/openspec/changes/run-history-and-phase-continuity/migration-audit.md"
+    if [[ ! -f "$AUDIT_MD" ]]; then
+        echo "WARNING: --sync-audit: migration-audit.md not found at $AUDIT_MD" >&2
+    else
+        # Build a set of files that still have residuals.
+        declare -A RESIDUAL_FILES=()
+        for r in "${RESIDUALS[@]}"; do
+            f="${r#* }"  # strip leading "PATTERN " from the residual line
+            f="${f%%:*}"  # strip ":<lineno>"
+            RESIDUAL_FILES["$f"]=1
+        done
+        # For each unchecked row in migration-audit.md, tick the box if the
+        # file referenced in the row no longer appears in RESIDUAL_FILES.
+        # Rows are of the form "- [ ] `<path>` — ..." or "- [ ] <path> — ...".
+        TMP_OUT=$(mktemp)
+        ticked=0
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^-\ \[\ \]\ \`([^[:space:]]+)\` ]]; then
+                file="${BASH_REMATCH[1]}"
+                if [[ -z "${RESIDUAL_FILES[$file]:-}" && -f "$REPO_ROOT/$file" ]]; then
+                    line="${line/\[ \]/[x]}"
+                    ticked=$((ticked + 1))
+                fi
+            fi
+            echo "$line" >> "$TMP_OUT"
+        done < "$AUDIT_MD"
+        if [[ $ticked -gt 0 ]]; then
+            mv "$TMP_OUT" "$AUDIT_MD"
+            echo "sync-audit: ticked $ticked rows in migration-audit.md"
+        else
+            rm -f "$TMP_OUT"
+            echo "sync-audit: nothing to tick (all unchecked rows still have residuals)"
+        fi
+    fi
+fi
+
 if [[ -n "$REPORT_PATH" ]]; then
     {
         echo "# Hardcoded-path audit report"
