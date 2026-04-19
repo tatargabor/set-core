@@ -104,6 +104,12 @@ export interface ChangeInfo {
   // from earlier replan cycles and are kept around for UI history, but they
   // are no longer part of the live plan.
   _archived?: boolean
+  // Lineage / cycle metadata (Section 7 + 9 + 13).  Present on both live
+  // and archive-sourced entries once the change has been migrated.
+  spec_lineage_id?: string | null
+  sentinel_session_id?: string | null
+  plan_version?: string | number | null
+  merged_at?: string | null
 }
 
 export interface ContextBreakdown {
@@ -417,8 +423,19 @@ export interface DigestReq {
   scenarios?: DigestScenario[]
 }
 
+export interface ReqAttribution {
+  change: string
+  status: string
+  merged_by?: string | null
+  merged_by_archived?: boolean
+  merged_at?: string | null
+  plan_version?: string | number | null
+}
+
 export interface DigestData {
   exists: boolean
+  lineage_unavailable?: boolean
+  effective_lineage?: string | null
   index?: {
     spec_base_dir: string
     source_hash: string
@@ -432,8 +449,11 @@ export interface DigestData {
     }
   }
   requirements?: DigestReq[] | [{ requirements: DigestReq[] }]
-  coverage?: { coverage?: Record<string, { change: string; status: string }>; uncovered?: string[] }
-  coverage_merged?: { coverage?: Record<string, { change: string; status: string }>; uncovered?: string[] }
+  // The live coverage endpoint surfaces attribution extensions under
+  // coverage.coverage[req_id]: `merged_by` + `merged_by_archived` are
+  // filled by the history-fallback reader (Section 11.3).
+  coverage?: { coverage?: Record<string, ReqAttribution>; uncovered?: string[] }
+  coverage_merged?: { coverage?: Record<string, ReqAttribution>; uncovered?: string[] }
   dependencies?: { dependencies?: { from: string; to: string; type: string }[] }
   ambiguities?: { id: string; type: string; source?: string; section?: string; description: string; affects_requirements?: string[]; resolution?: string; resolution_note?: string }[]
   domains?: Record<string, string>

@@ -1,5 +1,7 @@
+import { useMemo, useState } from 'react'
 import type { ChangeInfo, StateData } from '../lib/api'
 import { TuiStatus, statusColor as tuiStatusColor } from './tui'
+import { useSelectedLineage } from '../lib/lineage'
 import GateBar from './GateBar'
 import StepBar from './StepBar'
 
@@ -7,6 +9,8 @@ interface Props {
   changes: ChangeInfo[]
   state: StateData | null
 }
+
+const UNKNOWN_LINEAGE = '__unknown__'
 
 interface TreeNode {
   change: ChangeInfo
@@ -165,27 +169,83 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
 }
 
 export default function PhaseView({ changes, state }: Props) {
-  if (changes.length === 0) {
+  const { isAll } = useSelectedLineage()
+  const [showUnattributed, setShowUnattributed] = useState(false)
+
+  // Section 15.1 — hide `__unknown__` entries by default.  They are
+  // unrecoverable backfill leftovers and would otherwise pollute the
+  // phase layout with a synthetic group.  An opt-in affordance lets
+  // operators still inspect them.
+  const attributedChanges = useMemo(() => {
+    return changes.filter(c => {
+      if (showUnattributed) return true
+      return c.spec_lineage_id !== UNKNOWN_LINEAGE
+    })
+  }, [changes, showUnattributed])
+  const unattributedCount = useMemo(
+    () => changes.filter(c => c.spec_lineage_id === UNKNOWN_LINEAGE).length,
+    [changes],
+  )
+
+  if (attributedChanges.length === 0 && unattributedCount === 0) {
     return <div className="p-4 text-neutral-500 text-sm">No changes</div>
   }
 
-  // Group by phase
-  const phaseMap = new Map<number, ChangeInfo[]>()
-  for (const c of changes) {
+  // Section 9.2 / AC-20 — when two plan versions share a phase number
+  // we split into separate groups labelled "Phase N (plan vX)".  Single-
+  // version phases render without the suffix to keep the common case
+  // unchanged.  Section 14.9 / AC-48 — when the operator is viewing the
+  // __all__ union we additionally split by lineage so entries from
+  // different specs do not get mixed into one phase group.
+  type GroupKey = { phase: number; planVersion: string | null; lineage: string | null }
+  const groups = new Map<string, ChangeInfo[]>()
+  const groupMeta = new Map<string, GroupKey>()
+  const phaseHasMultipleVersions = new Map<number, Set<string>>()
+  for (const c of attributedChanges) {
     const p = c.phase ?? 1
-    const list = phaseMap.get(p) ?? []
-    list.push(c)
-    phaseMap.set(p, list)
+    const pv = c.plan_version == null ? null : String(c.plan_version)
+    if (pv != null) {
+      const versions = phaseHasMultipleVersions.get(p) ?? new Set<string>()
+      versions.add(pv)
+      phaseHasMultipleVersions.set(p, versions)
+    }
   }
-  const phaseNums = Array.from(phaseMap.keys()).sort((a, b) => a - b)
+  for (const c of attributedChanges) {
+    const p = c.phase ?? 1
+    const pv = c.plan_version == null ? null : String(c.plan_version)
+    const lineage = isAll ? (c.spec_lineage_id ?? null) : null
+    const key = `${p}|${pv ?? ''}|${lineage ?? ''}`
+    const list = groups.get(key) ?? []
+    list.push(c)
+    groups.set(key, list)
+    if (!groupMeta.has(key)) {
+      groupMeta.set(key, { phase: p, planVersion: pv, lineage })
+    }
+  }
+
+  const orderedKeys = Array.from(groups.keys()).sort((a, b) => {
+    const ma = groupMeta.get(a)!
+    const mb = groupMeta.get(b)!
+    if (ma.phase !== mb.phase) return ma.phase - mb.phase
+    const pva = ma.planVersion ?? ''
+    const pvb = mb.planVersion ?? ''
+    if (pva !== pvb) return pva.localeCompare(pvb)
+    return (ma.lineage ?? '').localeCompare(mb.lineage ?? '')
+  })
 
   return (
     <div className="divide-y divide-neutral-800/50">
-      {phaseNums.map(phaseNum => {
-        const phaseChanges = phaseMap.get(phaseNum)!
+      {orderedKeys.map(key => {
+        const meta = groupMeta.get(key)!
+        const phaseChanges = groups.get(key)!
         const tree = buildTree(phaseChanges)
 
-        const extPhase = state?.phases?.[String(phaseNum)]
+        const versionsForPhase = phaseHasMultipleVersions.get(meta.phase)
+        const showVersionLabel = meta.planVersion != null
+          && versionsForPhase != null
+          && versionsForPhase.size > 1
+
+        const extPhase = state?.phases?.[String(meta.phase)]
         const phaseStatus = extPhase?.status ?? derivePhaseStatus(phaseChanges)
 
         const doneCount = phaseChanges.filter(c => TERMINAL_STATUSES.has(c.status)).length
@@ -193,12 +253,21 @@ export default function PhaseView({ changes, state }: Props) {
         const totalTokens = phaseChanges.reduce((s, c) => s + (c.input_tokens ?? 0) + (c.output_tokens ?? 0), 0)
         const totalDuration = phaseChanges.reduce((s, c) => s + (changeDuration(c) ?? 0), 0)
 
+        const headerLabel = showVersionLabel
+          ? `Phase ${meta.phase} (plan v${meta.planVersion})`
+          : `Phase ${meta.phase}`
+
         return (
-          <div key={phaseNum}>
+          <div key={key} data-testid={`phase-group-${key}`}>
             {/* Phase header */}
             <div className="flex items-center gap-3 px-3 py-2.5 bg-neutral-900/50">
               <span className="text-sm">{phaseStatusIcon[phaseStatus] ?? '⏳'}</span>
-              <span className="text-sm font-medium text-neutral-200">Phase {phaseNum}</span>
+              <span className="text-sm font-medium text-neutral-200">{headerLabel}</span>
+              {meta.lineage && (
+                <span className="text-xs text-neutral-500" title={`Lineage: ${meta.lineage}`}>
+                  {meta.lineage}
+                </span>
+              )}
               <span className={`text-sm ${
                 phaseStatus === 'completed' ? 'text-blue-400' :
                 phaseStatus === 'running' ? 'text-green-400' :
@@ -240,6 +309,19 @@ export default function PhaseView({ changes, state }: Props) {
           </div>
         )
       })}
+      {unattributedCount > 0 && (
+        <div className="px-3 py-2 text-xs text-neutral-500 flex items-center gap-2">
+          <span>{unattributedCount} unattributed legacy change{unattributedCount === 1 ? '' : 's'}</span>
+          <button
+            type="button"
+            onClick={() => setShowUnattributed(v => !v)}
+            className="px-2 py-0.5 rounded border border-neutral-700 hover:bg-neutral-800 text-neutral-400"
+            data-testid="toggle-unattributed"
+          >
+            {showUnattributed ? 'Hide unattributed' : 'Show unattributed'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

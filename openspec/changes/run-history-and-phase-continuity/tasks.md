@@ -97,19 +97,19 @@
 
 - [x] 8.1 In `lib/set_orch/api/activity.py`, after event concatenation, scan events for `sentinel_session_id` changes and emit a zero-width `sentinel:session_boundary` span at each boundary with `detail.session_id` + `detail.session_started_at`. [REQ: sentinel-session-boundary-markers-in-the-timeline]
 - [x] 8.2 Integration test: multi-session fixture → activity timeline contains exactly `(N_sessions - 1)` boundary spans, placed at the right timestamps. [REQ: sentinel-session-boundary-markers-in-the-timeline]
-- [ ] 8.3 UI: `web/src/components/ActivityTimeline.tsx` renders `sentinel:session_boundary` spans as full-height dividers with a "Session <short-id>" label. [REQ: sentinel-session-boundary-markers-in-the-timeline]
+- [x] 8.3 UI: `web/src/components/ActivityTimeline.tsx` renders `sentinel:session_boundary` spans as full-height dividers with a "Session <short-id>" label. [REQ: sentinel-session-boundary-markers-in-the-timeline]
 
 ## 9. Plan-version propagation verification
 
 - [x] 9.1 Confirm `plan_version` is already written by `_archive_completed_to_jsonl` (landed in the archive fix); extend its test to also confirm plan_version propagates through to the API response. [REQ: plan-version-propagation-on-archive]
-- [ ] 9.2 UI: `web/src/components/PhaseView.tsx` groups archive+live entries by `(phase, plan_version)` when two distinct plan versions share a phase number; single-version phases render as before. [REQ: plan-version-propagation-on-archive]
+- [x] 9.2 UI: `web/src/components/PhaseView.tsx` groups archive+live entries by `(phase, plan_version)` when two distinct plan versions share a phase number; single-version phases render as before. [REQ: plan-version-propagation-on-archive]
 - [ ] 9.3 Integration test: Phases tab renders "Phase 1 (plan v1)" and "Phase 1 (plan v2)" as separate subheaders when archive has v1 phase-1 entries and live state has v2 phase-1 entries. [REQ: plan-version-propagation-on-archive]
 
 ## 10. Token panel archive awareness
 
 - [x] 10.1 Update token-total aggregation in `lib/set_orch/api/helpers.py::_enrich_changes` (or the equivalent StatusHeader path) to include archive-sourced token fields. [REQ: token-aggregation-includes-archived-changes]
 - [x] 10.2 In `_read_session_calls`, emit one synthetic `source = "archive_summary"` call per archived change whose worktree session dir is absent but which has `session_summary` data. [REQ: token-aggregation-includes-archived-changes]
-- [ ] 10.3 UI: `web/src/components/TokensPanel.tsx` renders `_archived` rows with the "(archived)" label, sorted after live rows, token values sourced from archive entry fields. [REQ: token-panel-renders-archived-rows-explicitly]
+- [x] 10.3 UI: `web/src/components/TokensPanel.tsx` renders `_archived` rows with the "(archived)" label, sorted after live rows, token values sourced from archive entry fields. [REQ: token-panel-renders-archived-rows-explicitly]
 - [x] 10.4 Integration test: Tokens panel shows all archived + live changes with correct token values after worktree cleanup simulation. [REQ: token-aggregation-includes-archived-changes]
 
 ## 11. Coverage history append
@@ -117,7 +117,7 @@
 - [x] 11.1 Add `_append_coverage_history(project_path, change_name, plan_version, session_id, reqs)` helper in `lib/set_orch/merger.py` that writes the JSON line defined in spec. [REQ: coverage-history-append-on-every-merge]
 - [x] 11.2 Call the helper from the post-merge coverage regeneration step in `merger.py` (success path only). [REQ: coverage-history-append-on-every-merge]
 - [x] 11.3 Update Digest/Reqs API endpoint to consult `spec-coverage-history.jsonl` for REQs not covered by the live plan, returning `merged_by`, `merged_by_archived = true`, `merged_at`. [REQ: digest-attribution-uses-history]
-- [ ] 11.4 UI: `web/src/components/DigestPanel.tsx` attribution column renders "merged by foundation-setup (archived, YYYY-MM-DD)" for archived-sourced REQ status. [REQ: digest-attribution-uses-history]
+- [x] 11.4 UI: `web/src/components/DigestPanel.tsx` attribution column renders "merged by foundation-setup (archived, YYYY-MM-DD)" for archived-sourced REQ status. [REQ: digest-attribution-uses-history]
 - [x] 11.5 Unit test: coverage history line has the expected shape and is appended per merge. [REQ: coverage-history-append-on-every-merge]
 - [x] 11.6 Unit test: Digest/Reqs API returns the archived attribution for a REQ that only exists in history. [REQ: digest-attribution-uses-history]
 
@@ -126,7 +126,7 @@
 - [x] 12.1 Add `_append_e2e_manifest_history(project_path, change_name, plan_version, session_id, manifest)` helper in `lib/set_orch/merger.py`. [REQ: e2e-manifest-history-append-on-merge]
 - [x] 12.2 Call the helper from the post-merge artifact collection path; skip silently when the worktree has no `e2e-manifest.json`. [REQ: e2e-manifest-history-append-on-merge]
 - [x] 12.3 Update Digest/E2E API endpoint to aggregate `e2e-manifest-history.jsonl` lines with the current per-change manifests. [REQ: digest-e2e-aggregates-across-cycles]
-- [ ] 12.4 UI: `web/src/components/DigestPanel.tsx` E2E subtab renders one block per change (live or archived), with `archived = true` blocks styled distinctly; header shows the combined test count. [REQ: digest-e2e-aggregates-across-cycles]
+- [x] 12.4 UI: `web/src/components/DigestPanel.tsx` E2E subtab renders one block per change (live or archived), with `archived = true` blocks styled distinctly; header shows the combined test count. [REQ: digest-e2e-aggregates-across-cycles]
 - [x] 12.5 Unit test: merge appends the manifest line with correct metadata. [REQ: e2e-manifest-history-append-on-merge]
 - [x] 12.6 Integration test: Digest/E2E returns live + history blocks combined and correctly totalled. [REQ: digest-e2e-aggregates-across-cycles]
 
@@ -144,23 +144,23 @@
 
 ## 14. UI: Left-sidebar lineage list
 
-- [ ] 14.1 Identify the existing sidebar component (`web/src/components/Sidebar.tsx` or the project menu under the `SET / Ship Exactly This!` header that currently renders `Orchestration / Issues / Memory / Settings`). Add a new `LineageList` section rendered BETWEEN the project-name block and the existing menu items. [REQ: left-sidebar-lineage-list]
-- [ ] 14.2 `LineageList` fetches `/api/<project>/lineages` on mount and when the sentinel's state changes. Renders the "All lineages" entry at the top, then one row per lineage with `display_name` and a green dot when `is_live = true`. [REQ: left-sidebar-lineage-list]
-- [ ] 14.3 Clicking a lineage row sets the selection and triggers a refetch across every tab through the lineage context. [REQ: left-sidebar-lineage-list]
-- [ ] 14.4 Introduce a `SelectedLineageProvider` (React context) so every tab component reads the current selection and appends `?lineage=...` to its data fetches. [REQ: data-endpoints-accept-an-optional-lineage-filter]
-- [ ] 14.5 Update `Dashboard.tsx` data fetchers (state polling, changes list, activity timeline, tokens call list, digest, e2e) to include the lineage query parameter from context. [REQ: data-endpoints-accept-an-optional-lineage-filter]
-- [ ] 14.6 Persist selection in `localStorage` under `set-lineage-<project>`; restore on mount; fall back to default-selection rule when stored id is unknown. [REQ: left-sidebar-lineage-list]
-- [ ] 14.7 Default selection on first load: `is_live = true` lineage if present, else the one with the newest `last_seen_at`. [REQ: left-sidebar-lineage-list]
-- [ ] 14.8 `StatusHeader` status badge stays bound to the **live** lineage (`state.spec_lineage_id`). When selection differs from live, render a text hint "Viewing <display_name> — sentinel running <live display_name>" adjacent to the badge. [REQ: left-sidebar-lineage-list]
-- [ ] 14.9 "All lineages" (`__all__`) mode: tables/lists include a `Lineage` column; Phases tab shows a top-level section per lineage; selected state in the sidebar highlights the "All lineages" row. [REQ: left-sidebar-lineage-list]
+- [x] 14.1 Identify the existing sidebar component (`web/src/components/Sidebar.tsx` or the project menu under the `SET / Ship Exactly This!` header that currently renders `Orchestration / Issues / Memory / Settings`). Add a new `LineageList` section rendered BETWEEN the project-name block and the existing menu items. [REQ: left-sidebar-lineage-list]
+- [x] 14.2 `LineageList` fetches `/api/<project>/lineages` on mount and when the sentinel's state changes. Renders the "All lineages" entry at the top, then one row per lineage with `display_name` and a green dot when `is_live = true`. [REQ: left-sidebar-lineage-list]
+- [x] 14.3 Clicking a lineage row sets the selection and triggers a refetch across every tab through the lineage context. [REQ: left-sidebar-lineage-list]
+- [x] 14.4 Introduce a `SelectedLineageProvider` (React context) so every tab component reads the current selection and appends `?lineage=...` to its data fetches. [REQ: data-endpoints-accept-an-optional-lineage-filter]
+- [x] 14.5 Update `Dashboard.tsx` data fetchers (state polling, changes list, activity timeline, tokens call list, digest, e2e) to include the lineage query parameter from context. [REQ: data-endpoints-accept-an-optional-lineage-filter]
+- [x] 14.6 Persist selection in `localStorage` under `set-lineage-<project>`; restore on mount; fall back to default-selection rule when stored id is unknown. [REQ: left-sidebar-lineage-list]
+- [x] 14.7 Default selection on first load: `is_live = true` lineage if present, else the one with the newest `last_seen_at`. [REQ: left-sidebar-lineage-list]
+- [x] 14.8 `StatusHeader` status badge stays bound to the **live** lineage (`state.spec_lineage_id`). When selection differs from live, render a text hint "Viewing <display_name> — sentinel running <live display_name>" adjacent to the badge. [REQ: left-sidebar-lineage-list]
+- [x] 14.9 "All lineages" (`__all__`) mode: tables/lists include a `Lineage` column; Phases tab shows a top-level section per lineage; selected state in the sidebar highlights the "All lineages" row. [REQ: left-sidebar-lineage-list]
 - [ ] 14.10 Playwright test: two-lineage fixture → sidebar lists both; clicking v1 while v2 runs filters every tab to v1 AND sentinel continues running v2 AND StatusHeader badge stays on v2. [REQ: left-sidebar-lineage-list]
 - [ ] 14.11 Playwright test: selection survives page reload. [REQ: left-sidebar-lineage-list]
 - [ ] 14.12 Playwright test: "All lineages" mode shows the Lineage column/section on every relevant tab. [REQ: left-sidebar-lineage-list]
 
 ## 15. PhaseView per-lineage cleanup
 
-- [ ] 15.1 `web/src/components/PhaseView.tsx` no longer renders a synthetic "Phase 0" header for untagged legacy entries — post-migration they either carry a real phase or belong to `__unknown__` (which is gated behind an explicit "show unattributed" affordance, not default-visible). [REQ: backfill-migration-for-historic-archive-entries]
-- [ ] 15.2 Phase numbers are scoped to the currently selected lineage; switching lineage rebuilds the phase groups from the filtered change list. [REQ: left-sidebar-lineage-list]
+- [x] 15.1 `web/src/components/PhaseView.tsx` no longer renders a synthetic "Phase 0" header for untagged legacy entries — post-migration they either carry a real phase or belong to `__unknown__` (which is gated behind an explicit "show unattributed" affordance, not default-visible). [REQ: backfill-migration-for-historic-archive-entries]
+- [x] 15.2 Phase numbers are scoped to the currently selected lineage; switching lineage rebuilds the phase groups from the filtered change list. [REQ: left-sidebar-lineage-list]
 - [ ] 15.3 Playwright test: v1-fixture project renders Phase 1, Phase 2, Phase 3 (v1 spec's phases); switching to v2 renders v2's own phases (fresh numbering). [REQ: left-sidebar-lineage-list]
 - [ ] 15.4 Playwright test: a modern post-migration project does NOT render any "Previous cycles" / "Phase 0 (archived)" synthetic header — regression guard. [REQ: backfill-migration-for-historic-archive-entries]
 

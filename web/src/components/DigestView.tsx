@@ -29,7 +29,7 @@ function extractReqs(data: DigestData): DigestReq[] {
 
 const DONE_STATUSES = new Set(['done', 'merged', 'completed', 'skip_merged'])
 
-function isReqDone(reqId: string, coverage: Record<string, { change: string; status: string }>): boolean {
+function isReqDone(reqId: string, coverage: Record<string, { status: string }>): boolean {
   const cov = coverage[reqId]
   return !!cov && DONE_STATUSES.has(cov.status)
 }
@@ -37,7 +37,7 @@ function isReqDone(reqId: string, coverage: Record<string, { change: string; sta
 /** Render AC items for a requirement as checkbox-style lines */
 function ACItems({ req, coverage }: {
   req: DigestReq
-  coverage: Record<string, { change: string; status: string }>
+  coverage: Record<string, { status: string }>
 }) {
   const ac = req.acceptance_criteria
   if (!ac || ac.length === 0) return null
@@ -227,6 +227,9 @@ interface E2EChangeGroup {
   ownMs?: number
   smokeCount?: number
   ownCount?: number
+  archived?: boolean
+  mergedAt?: string | null
+  planVersion?: string | number | null
 }
 
 function fmtMs(ms?: number): string {
@@ -253,8 +256,16 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
         ownMs: (c as any).gate_e2e_own_ms || extras.gate_e2e_own_ms as number,
         smokeCount: (c as any).smoke_test_count || extras.smoke_test_count as number,
         ownCount: (c as any).own_test_count || extras.own_test_count as number,
+        archived: Boolean(c._archived),
+        mergedAt: c.merged_at ?? null,
+        planVersion: c.plan_version ?? null,
       })
     }
+    // Live blocks first, archived after, matching 12.4's visual rule.
+    groups.sort((a, b) => {
+      if (a.archived !== b.archived) return a.archived ? 1 : -1
+      return a.change.localeCompare(b.change)
+    })
     return groups
   }, [changes])
 
@@ -286,7 +297,11 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
       {/* Per-change groups */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {byChange.map(g => (
-          <div key={g.change} className="border-b border-neutral-800/30">
+          <div
+            key={g.change}
+            className={`border-b border-neutral-800/30 ${g.archived ? 'opacity-70 bg-neutral-900/10' : ''}`}
+            data-archived={g.archived ? 'true' : undefined}
+          >
             {/* Change header */}
             <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30">
               <span className={`text-xs px-1.5 py-0.5 rounded ${
@@ -295,6 +310,14 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
                 'bg-neutral-800 text-neutral-400'
               }`}>{g.status}</span>
               <span className="text-sm text-neutral-300 font-medium">{g.change}</span>
+              {g.archived && (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-900/50"
+                  title={g.mergedAt ? `archived from cycle ${g.planVersion ?? ''}, merged ${g.mergedAt.slice(0, 10)}` : 'archived'}
+                >
+                  ARCHIVED{g.planVersion ? ` v${g.planVersion}` : ''}
+                </span>
+              )}
               <span className="text-xs text-neutral-500 ml-auto">
                 {g.smokeTests.length + g.ownTests.length} test(s)
               </span>
@@ -385,7 +408,7 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
 
 function OverviewPanel({ reqs, coverage, uncovered, domains }: {
   reqs: DigestReq[]
-  coverage: Record<string, { change: string; status: string }>
+  coverage: Record<string, import("../lib/api").ReqAttribution>
   uncovered: string[]
   domains: Record<string, string>
 }) {
@@ -521,7 +544,7 @@ function TestIcon({ result }: { result: string | null | undefined }) {
 
 function ACPanel({ reqs, coverage, testCoverage }: {
   reqs: DigestReq[]
-  coverage: Record<string, { change: string; status: string }>
+  coverage: Record<string, import("../lib/api").ReqAttribution>
   testCoverage?: TestCoverage | null
 }) {
   const [domainFilter, setDomainFilter] = useState<string | null>(null)
@@ -678,7 +701,14 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                       )}
                       {cov && (
                         <>
-                          <span className="text-neutral-600 truncate max-w-[80px] text-xs">{cov.change}</span>
+                          <span className="text-neutral-600 truncate max-w-[80px] text-xs">
+                            {cov.change}
+                            {cov.merged_by_archived && (
+                              <span className="ml-1 text-amber-400" title={cov.merged_at ? `merged ${cov.merged_at.slice(0, 10)}` : 'archived'}>
+                                (archived{cov.merged_at ? `, ${cov.merged_at.slice(0, 10)}` : ''})
+                              </span>
+                            )}
+                          </span>
                           <TuiStatus status={cov.status} />
                         </>
                       )}
@@ -762,7 +792,7 @@ function CoverageReportPanel({ project }: { project: string }) {
 function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
   domains: Record<string, string>
   reqs: DigestReq[]
-  coverage: Record<string, { change: string; status: string }>
+  coverage: Record<string, import("../lib/api").ReqAttribution>
   dependencies: Dependency[]
   ambiguities: Ambiguity[]
 }) {
@@ -878,7 +908,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
   name: string
   summary: string
   domReqs: DigestReq[]
-  coverage: Record<string, { change: string; status: string }>
+  coverage: Record<string, import("../lib/api").ReqAttribution>
   incoming: { from: string; fromReq: string; toReq: string }[]
   outgoing: { to: string; fromReq: string; toReq: string }[]
   ambiguities: Ambiguity[]
@@ -982,7 +1012,14 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
                         {r.id}
                       </td>
                       <td className="px-1 py-1 text-neutral-400 truncate max-w-[200px]" title={r.brief}>{r.title}</td>
-                      <td className="px-1 py-1 text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '\u2014'}</td>
+                      <td className="px-1 py-1 text-neutral-500 truncate max-w-[140px]">
+                        {cov?.change ?? '\u2014'}
+                        {cov?.merged_by_archived && (
+                          <span className="ml-1 text-xs text-amber-400" title={cov.merged_at ? `merged ${cov.merged_at.slice(0, 10)}` : 'archived'}>
+                            (archived{cov.merged_at ? `, ${cov.merged_at.slice(0, 10)}` : ''})
+                          </span>
+                        )}
+                      </td>
                       <td className="px-1 py-1 w-24">
                         <TuiStatus status={cov?.status ?? 'uncovered'} />
                       </td>
@@ -1081,7 +1118,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
 
 /** Dep Tree — builds change-level dependency graph from digest requirement-level dependencies */
 function DepTreePanel({ coverage, dependencies }: {
-  coverage: Record<string, { change: string; status: string }>
+  coverage: Record<string, import("../lib/api").ReqAttribution>
   dependencies: Dependency[]
 }) {
   // Build change-level edges from requirement-level dependencies

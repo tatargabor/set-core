@@ -198,11 +198,22 @@ export function GanttTimeline({
     ticks.push({ x, label: formatTime(new Date(t).toISOString()) })
   }
 
-  // Build per-category span groups with parallel overlap detection
-  const categorySpans = useMemo(() => {
+  // Build per-category span groups with parallel overlap detection.
+  // `sentinel:session_boundary` is a zero-width marker that does NOT
+  // belong on a normal category lane — peel it off and render it as a
+  // full-height divider in a separate pass (Section 8.3 / AC-19).
+  const SESSION_BOUNDARY = 'sentinel:session_boundary'
+  const { categorySpans, sessionBoundaries } = useMemo(() => {
     const map: Record<string, { span: GanttSpan; x: number; w: number }[]> = {}
     for (const cat of categories) map[cat] = []
+    const boundaries: { span: GanttSpan; x: number }[] = []
     for (const span of spans) {
+      if (span.category === SESSION_BOUNDARY) {
+        const startMs = new Date(span.start).getTime()
+        const x = ((startMs - minTime) / 1000) * pxPerSecond
+        boundaries.push({ span, x })
+        continue
+      }
       const cat = span.category
       if (!map[cat]) continue
       const startMs = new Date(span.start).getTime()
@@ -211,7 +222,7 @@ export function GanttTimeline({
       const w = Math.max(2, ((endMs - startMs) / 1000) * pxPerSecond)
       map[cat].push({ span, x, w })
     }
-    return map
+    return { categorySpans: map, sessionBoundaries: boundaries }
   }, [spans, categories, minTime, pxPerSecond])
 
   const handleMouseEnter = useCallback((e: React.MouseEvent, span: GanttSpan) => {
@@ -301,6 +312,35 @@ export function GanttTimeline({
                   </g>
                 )
               })}
+            </g>
+          )
+        })}
+
+        {/* Section 8.3 — sentinel session boundaries as full-height dividers
+            with a "Session <short-id>" label anchored to the top of the lane. */}
+        {sessionBoundaries.map((b, i) => {
+          const detail = (b.span.detail || {}) as { session_id?: string; session_started_at?: string }
+          const short = detail.session_id ? String(detail.session_id).slice(0, 8) : ''
+          return (
+            <g key={`sb-${i}`} data-testid="session-boundary">
+              <line
+                x1={b.x}
+                y1={headerHeight}
+                x2={b.x}
+                y2={totalHeight}
+                stroke="#f59e0b"
+                strokeWidth={1}
+                strokeDasharray="3,3"
+              />
+              <text
+                x={b.x + 3}
+                y={headerHeight + 10}
+                fill="#f59e0b"
+                fontSize={9}
+                fontFamily="monospace"
+              >
+                Session {short}
+              </text>
             </g>
           )
         })}

@@ -85,6 +85,7 @@ interface BarData {
   cache: number
   total: number
   status: string
+  archived: boolean
 }
 
 type SortKey = 'timestamp' | 'phase' | 'purpose' | 'model' | 'change' | 'source' | 'input_tokens' | 'output_tokens' | 'cache_tokens' | 'duration_ms'
@@ -100,25 +101,35 @@ export default function TokenChart({ changes, project }: Props) {
     getLLMCalls(project, 500, lineageId).then(r => setCalls(r.calls)).catch(() => {})
   }, [project, lineageId])
 
+  // Section 10.3 / AC-23 — archived rows carry the "(archived)" label,
+  // sort AFTER every live row regardless of token totals, and source
+  // their token values from the archive entry's own fields (the state
+  // endpoint already surfaces those for _archived=true entries).
   const data = useMemo<BarData[]>(() => {
-    return changes
+    const prepared = changes
       .filter(c => (c.tokens_used ?? 0) > 0 || (c.input_tokens ?? 0) > 0)
-      .sort((a, b) => (b.tokens_used ?? 0) - (a.tokens_used ?? 0))
       .map(c => {
-        // input_tokens already includes cache_read — split for stacked bar
         const totalInput = c.input_tokens ?? 0
         const cache = c.cache_read_tokens ?? 0
         const rawInput = Math.max(0, totalInput - cache)
+        const label = c._archived ? `${c.name} (archived)` : c.name
         return {
           name: c.name,
-          shortName: c.name.length > 20 ? c.name.slice(0, 18) + '\u2026' : c.name,
+          shortName: label.length > 26 ? label.slice(0, 24) + '\u2026' : label,
           input: rawInput,
           output: c.output_tokens ?? 0,
           cache,
-          total: totalInput + (c.output_tokens ?? 0),  // no double-count
+          total: totalInput + (c.output_tokens ?? 0),
           status: c.status,
+          archived: Boolean(c._archived),
         }
       })
+    // Primary sort: live first, archived last.  Secondary: total tokens desc.
+    prepared.sort((a, b) => {
+      if (a.archived !== b.archived) return a.archived ? 1 : -1
+      return b.total - a.total
+    })
+    return prepared
   }, [changes])
 
   const totals = useMemo(() => {
