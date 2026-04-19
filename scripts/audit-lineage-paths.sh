@@ -55,6 +55,9 @@ ALLOWLIST_BASENAMES=(
     helpers.sh
     # Deprecated by Section 15b.2 — module raises ImportError at top.
     _api_old.py
+    # One-shot migration script — its literals describe the source pattern
+    # being migrated, not a runtime path the framework constructs.
+    migrate-review-learnings.py
 )
 
 # Match by path containment (substring) — anything under these paths is
