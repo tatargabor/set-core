@@ -5,12 +5,23 @@ Two-tier architecture:
 - Per-agent ephemeral: <worktree>/.set/  (loop-state, activity, PID files)
 
 Project name resolution matches the memory system (set_memoryd/lifecycle.py).
+
+Lineage-aware resolution (`LineagePaths`) layers on top of `SetRuntime` to
+provide per-lineage views of the orchestration history while keeping the
+"live" lineage's filenames unchanged.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import subprocess
+from typing import Optional
+
+from set_orch.types import LineageId, slug
+
+logger = logging.getLogger(__name__)
 
 
 # XDG-compliant base directory
@@ -334,3 +345,347 @@ def _ensure_gitignore(project_path: str) -> None:
             f.write(f"# set-core agent runtime directory\n{gitignore_entry}\n")
         else:
             f.write(f"\n# set-core agent runtime directory\n{gitignore_entry}\n")
+
+
+# ---------------------------------------------------------------------------
+# Lineage-aware path resolver
+# ---------------------------------------------------------------------------
+
+
+class LineagePaths:
+    """Per-lineage view of the orchestration filesystem.
+
+    Construction:
+        LineagePaths(project_path, lineage_id="docs/spec-v1.md")
+        LineagePaths(project_path)  # implicit live lineage
+
+    A `LineagePaths` instance is read-only: every property returns a path
+    string, never a file handle.  When the requested lineage is the live
+    lineage (or `lineage_id is None`), live filenames are returned
+    (`orchestration-plan.json`, `digest/`, …).  Otherwise the slug-suffixed
+    sibling is returned (`orchestration-plan-<slug>.json`, `digest-<slug>/`,
+    …) IF it exists on disk; if it does not exist the resolver falls back
+    to the live path and emits a DEBUG log so callers stay observable.
+
+    The "live" determination is driven by `state.spec_lineage_id` written
+    into `state.json` at sentinel start.  Callers that want to bypass the
+    fallback (e.g., the API layer that needs to return `unavailable` rather
+    than live data) should check `is_live` and `lineage_specific_exists()`
+    explicitly before reading.
+    """
+
+    def __init__(
+        self,
+        project_path: str,
+        lineage_id: Optional[LineageId] = None,
+        runtime: Optional[SetRuntime] = None,
+    ) -> None:
+        self.project_path = os.path.abspath(project_path)
+        self.lineage_id: Optional[LineageId] = lineage_id
+        self._runtime = runtime or SetRuntime(self.project_path)
+        self._slug: Optional[str] = slug(lineage_id) if lineage_id else None
+
+    # ---- lineage classification -------------------------------------------
+
+    @property
+    def runtime(self) -> SetRuntime:
+        return self._runtime
+
+    @property
+    def slug(self) -> Optional[str]:
+        return self._slug
+
+    @property
+    def is_live(self) -> bool:
+        """True when this resolver targets the lineage that is currently live.
+
+        Reads the persisted `state.spec_lineage_id` from `state.json`.  If
+        no lineage was provided, treats the resolver as live (the typical
+        callsite).  If state.json is missing or corrupt, returns False so
+        callers do not silently overwrite an unknown other lineage.
+        """
+        if self.lineage_id is None:
+            return True
+        state = self._read_state()
+        return state.get("spec_lineage_id") == self.lineage_id
+
+    def _read_state(self) -> dict:
+        try:
+            with open(self._runtime.state_file, "r") as fh:
+                return json.load(fh)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return {}
+
+    def _resolve(self, live_path: str, slugged_path: str) -> str:
+        """Pick `slugged_path` for non-live lineages when it exists, else live.
+
+        Logs at DEBUG when falling back so we can audit silently-missing
+        lineage-specific files in production logs.
+        """
+        if self.is_live:
+            return live_path
+        if os.path.exists(slugged_path):
+            return slugged_path
+        logger.debug(
+            "LineagePaths fallback: %s missing for lineage=%s — using live %s",
+            slugged_path,
+            self.lineage_id,
+            live_path,
+        )
+        return live_path
+
+    def _slugged(self, base_dir: str, stem: str, suffix: str) -> str:
+        if not self._slug:
+            return os.path.join(base_dir, f"{stem}{suffix}")
+        return os.path.join(base_dir, f"{stem}-{self._slug}{suffix}")
+
+    # ---- shorthand for external callers ------------------------------------
+
+    @property
+    def orchestration_dir(self) -> str:
+        return self._runtime.orchestration_dir
+
+    # ---- core orchestration files (in shared runtime dir) ------------------
+
+    @property
+    def state_file(self) -> str:
+        # state.json is the single live state.  Lineage-specific historic
+        # snapshots are inside `state-archive.jsonl`, not as siblings.
+        return self._runtime.state_file
+
+    @property
+    def state_archive(self) -> str:
+        # state-archive.jsonl is append-only; entries are tagged with
+        # spec_lineage_id and filtered at read time.  No per-lineage copy.
+        return os.path.join(self._runtime.orchestration_dir, "state-archive.jsonl")
+
+    @property
+    def plan_file(self) -> str:
+        live = os.path.join(self._runtime.orchestration_dir, "orchestration-plan.json")
+        slugged = self._slugged(self._runtime.orchestration_dir, "orchestration-plan", ".json")
+        return self._resolve(live, slugged)
+
+    @property
+    def plan_domains_file(self) -> str:
+        live = os.path.join(
+            self._runtime.orchestration_dir, "orchestration-plan-domains.json"
+        )
+        slugged = self._slugged(
+            self._runtime.orchestration_dir, "orchestration-plan-domains", ".json"
+        )
+        return self._resolve(live, slugged)
+
+    @property
+    def events_file(self) -> str:
+        # Live event stream — readers also enumerate `rotated_event_files`
+        # to pick up older cycles' content.
+        return os.path.join(
+            self._runtime.orchestration_dir, "orchestration-events.jsonl"
+        )
+
+    @property
+    def state_events_file(self) -> str:
+        return os.path.join(
+            self._runtime.orchestration_dir, "orchestration-state-events.jsonl"
+        )
+
+    @property
+    def rotated_event_files(self) -> list[str]:
+        """All `orchestration-events-cycle*.jsonl` siblings, sorted ascending."""
+        import glob
+
+        pattern = os.path.join(
+            self._runtime.orchestration_dir, "orchestration-events-cycle*.jsonl"
+        )
+        return sorted(glob.glob(pattern), key=_cycle_sort_key)
+
+    @property
+    def rotated_state_event_files(self) -> list[str]:
+        import glob
+
+        pattern = os.path.join(
+            self._runtime.orchestration_dir,
+            "orchestration-state-events-cycle*.jsonl",
+        )
+        return sorted(glob.glob(pattern), key=_cycle_sort_key)
+
+    @property
+    def digest_dir(self) -> str:
+        live = os.path.join(self._runtime.orchestration_dir, "digest")
+        if not self._slug:
+            return live
+        slugged = os.path.join(self._runtime.orchestration_dir, f"digest-{self._slug}")
+        if self.is_live:
+            return live
+        if os.path.isdir(slugged):
+            return slugged
+        logger.debug(
+            "LineagePaths fallback: digest dir %s missing for lineage=%s — using live %s",
+            slugged,
+            self.lineage_id,
+            live,
+        )
+        return live
+
+    @property
+    def coverage_report(self) -> str:
+        # spec-coverage-report.md lives inside the project under
+        # set/orchestration/ (planner.py writes it relative to cwd).
+        return os.path.join(
+            self.project_path, "set", "orchestration", "spec-coverage-report.md"
+        )
+
+    @property
+    def coverage_history(self) -> str:
+        return os.path.join(
+            self.project_path, "set", "orchestration", "spec-coverage-history.jsonl"
+        )
+
+    @property
+    def e2e_manifest_history(self) -> str:
+        return os.path.join(
+            self.project_path, "set", "orchestration", "e2e-manifest-history.jsonl"
+        )
+
+    @property
+    def worktrees_history(self) -> str:
+        return os.path.join(
+            self.project_path, "set", "orchestration", "worktrees-history.json"
+        )
+
+    @property
+    def directives_file(self) -> str:
+        return os.path.join(
+            self.project_path, "set", "orchestration", "directives.json"
+        )
+
+    @property
+    def config_yaml(self) -> str:
+        return os.path.join(
+            self.project_path, "set", "orchestration", "config.yaml"
+        )
+
+    @property
+    def review_learnings(self) -> str:
+        return os.path.join(
+            self.project_path, "set", "orchestration", "review-learnings.jsonl"
+        )
+
+    @property
+    def review_findings(self) -> str:
+        return os.path.join(
+            self.project_path, "set", "orchestration", "review-findings.jsonl"
+        )
+
+    @property
+    def specs_archive_dir(self) -> str:
+        return os.path.join(self.project_path, "openspec", "changes", "archive")
+
+    # ---- supervisor / sentinel ---------------------------------------------
+
+    @property
+    def supervisor_status(self) -> str:
+        return os.path.join(self.project_path, ".set", "supervisor", "status.json")
+
+    @property
+    def supervisor_status_history(self) -> str:
+        return os.path.join(
+            self.project_path, ".set", "supervisor", "status-history.jsonl"
+        )
+
+    # ---- issues registry ---------------------------------------------------
+
+    @property
+    def issues_registry(self) -> str:
+        return os.path.join(self.project_path, ".set", "issues", "registry.json")
+
+    # ---- per-worktree / per-change resolvers -------------------------------
+
+    @staticmethod
+    def e2e_manifest_for_worktree(worktree_path: str) -> str:
+        return os.path.join(worktree_path, "e2e-manifest.json")
+
+    @staticmethod
+    def reflection_for_worktree(worktree_path: str) -> str:
+        return os.path.join(worktree_path, ".set", "reflection.md")
+
+    def artifacts_dir_for_change(self, change_name: str) -> str:
+        return os.path.join(
+            self.project_path, "openspec", "changes", change_name
+        )
+
+    # ---- introspection -----------------------------------------------------
+
+    def lineage_specific_exists(self, attr: str) -> bool:
+        """Return True iff the requested property's slugged copy exists.
+
+        Useful for API endpoints that must distinguish between "no data"
+        and "fell back to the live lineage's data".
+        """
+        if not self._slug:
+            return True  # live lineage always "exists"
+        # Re-derive the slugged path WITHOUT going through fallback resolution.
+        if attr in ("plan_file",):
+            return os.path.exists(
+                self._slugged(self._runtime.orchestration_dir, "orchestration-plan", ".json")
+            )
+        if attr in ("plan_domains_file",):
+            return os.path.exists(
+                self._slugged(
+                    self._runtime.orchestration_dir,
+                    "orchestration-plan-domains",
+                    ".json",
+                )
+            )
+        if attr == "digest_dir":
+            return os.path.isdir(
+                os.path.join(self._runtime.orchestration_dir, f"digest-{self._slug}")
+            )
+        # All other paths are append-only / lineage-tagged at write time.
+        return True
+
+    # ---- migration helper --------------------------------------------------
+
+    @classmethod
+    def from_project(cls, project_path: str) -> "LineagePaths":
+        """Resolve the live lineage from disk and return a bound resolver.
+
+        Callers that have not yet been migrated to thread `lineage_id` end
+        up here.  We log at WARNING so the residual call sites remain
+        visible while migration is in progress.
+        """
+        rt = SetRuntime(project_path)
+        try:
+            with open(rt.state_file, "r") as fh:
+                state = json.load(fh)
+            live_lineage = state.get("spec_lineage_id")
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            live_lineage = None
+        logger.warning(
+            "LineagePaths.from_project called without explicit lineage_id "
+            "(project=%s, live_lineage=%s) — caller should be migrated to "
+            "pass lineage_id explicitly",
+            project_path,
+            live_lineage,
+        )
+        return cls(
+            project_path,
+            lineage_id=LineageId(live_lineage) if live_lineage else None,
+            runtime=rt,
+        )
+
+
+def _cycle_sort_key(path: str) -> tuple:
+    """Sort `*-cycleN.jsonl` siblings by their integer cycle id.
+
+    Files without a parseable cycle suffix sort first, in path order, so
+    surprising names do not silently disappear from the iteration.
+    """
+    base = os.path.basename(path)
+    # Pull the digit run between '-cycle' and '.jsonl'
+    import re as _re
+
+    m = _re.search(r"-cycle(\d+)\.", base)
+    if not m:
+        return (0, base)
+    return (1, int(m.group(1)))

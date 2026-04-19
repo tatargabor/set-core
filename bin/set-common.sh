@@ -524,6 +524,67 @@ find_shodh_python() {
     return 1
 }
 
+# =============================================================================
+# Lineage-aware path helpers (mirror lib/set_orch/paths.py::LineagePaths)
+# =============================================================================
+#
+# Each helper accepts (project_path, [lineage_id]) and echoes the resolved
+# path.  Lineage-specific paths are returned only when (a) a lineage_id is
+# provided AND (b) the slugged file/dir actually exists; otherwise the live
+# path is returned (mirroring the Python resolver's DEBUG fallback).
+#
+# These wrap the Python implementation so the resolution logic stays in
+# exactly one place.  Bash callers should NEVER hand-craft path literals
+# under set/orchestration/ or the runtime dir.
+
+# Echo the slugified form of a lineage id (matches lib/set_orch.types.slug).
+lineage_slug() {
+    local lineage_id="${1:-}"
+    [[ -z "$lineage_id" ]] && { echo "_unknown"; return 0; }
+    local py
+    py=$(set_find_python)
+    set_python "$py" -c "import sys; from set_orch.types import slug; print(slug(sys.argv[1]))" "$lineage_id"
+}
+
+# Internal: invoke the Python resolver and echo a single property.
+# Usage: _lineage_path_property <property> <project> [lineage_id]
+_lineage_path_property() {
+    local prop="$1" project="$2" lineage="${3:-}"
+    local py
+    py=$(set_find_python)
+    set_python "$py" -c "
+import sys
+from set_orch.paths import LineagePaths
+from set_orch.types import LineageId
+project, prop, lineage = sys.argv[1], sys.argv[2], sys.argv[3] or None
+lp = LineagePaths(project, lineage_id=LineageId(lineage) if lineage else None)
+val = getattr(lp, prop)
+if callable(val):
+    val = val()
+print(val)
+" "$project" "$prop" "$lineage"
+}
+
+lineage_state_file()        { _lineage_path_property state_file "$@"; }
+lineage_state_archive()     { _lineage_path_property state_archive "$@"; }
+lineage_plan_file()         { _lineage_path_property plan_file "$@"; }
+lineage_plan_domains_file() { _lineage_path_property plan_domains_file "$@"; }
+lineage_events_file()       { _lineage_path_property events_file "$@"; }
+lineage_state_events_file() { _lineage_path_property state_events_file "$@"; }
+lineage_digest_dir()        { _lineage_path_property digest_dir "$@"; }
+lineage_coverage_report()   { _lineage_path_property coverage_report "$@"; }
+lineage_coverage_history()  { _lineage_path_property coverage_history "$@"; }
+lineage_e2e_history()       { _lineage_path_property e2e_manifest_history "$@"; }
+lineage_worktrees_history() { _lineage_path_property worktrees_history "$@"; }
+lineage_directives_file()   { _lineage_path_property directives_file "$@"; }
+lineage_config_yaml()       { _lineage_path_property config_yaml "$@"; }
+lineage_review_learnings()  { _lineage_path_property review_learnings "$@"; }
+lineage_review_findings()   { _lineage_path_property review_findings "$@"; }
+lineage_supervisor_status() { _lineage_path_property supervisor_status "$@"; }
+lineage_supervisor_status_history() { _lineage_path_property supervisor_status_history "$@"; }
+lineage_issues_registry()   { _lineage_path_property issues_registry "$@"; }
+lineage_specs_archive_dir() { _lineage_path_property specs_archive_dir "$@"; }
+
 # Color output helpers
 if [[ -t 1 ]]; then
     RED='\033[0;31m'
