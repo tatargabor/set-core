@@ -174,7 +174,7 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 - [x] 15b.2 `lib/set_orch/_api_old.py` — 17 refs. Decide migrate-or-deprecate; if deprecate, add a blocking test so new code stops importing from it. [REQ: centralized-lineage-aware-path-resolver]
 - [ ] 15b.3 `lib/set_orch/supervisor/daemon.py` — events + state reads via resolver. [REQ: centralized-lineage-aware-path-resolver]
 - [ ] 15b.4 `lib/set_orch/merger.py` — manifest, config, state reads. [REQ: centralized-lineage-aware-path-resolver]
-- [ ] 15b.5 `lib/set_orch/api/orchestration.py` — drop dual-location fallback; resolver owns it. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.5 `lib/set_orch/api/orchestration.py` — drop dual-location fallback; resolver owns it. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.6 `lib/set_orch/dispatcher.py` — manifest WRITE via resolver. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.7 `lib/set_orch/planner.py` — plan + domains WRITE, digest READ. [REQ: centralized-lineage-aware-path-resolver]
 - [x] 15b.8 `lib/set_orch/cli.py` — CLI defaults reference the resolver (compute default at parse time from cwd + current lineage). [REQ: centralized-lineage-aware-path-resolver]

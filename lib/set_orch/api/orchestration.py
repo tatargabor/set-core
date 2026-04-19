@@ -311,10 +311,10 @@ def get_digest(project: str, lineage: Optional[str] = None):
     When the lineage has no saved digest, returns
     `{"exists": false, "lineage_unavailable": true}` per AC-27c.
 
-    Section 11.3: REQ attribution falls back to `spec-coverage-history.jsonl`
-    when a REQ isn't covered by any live-plan change but a historic
-    change merged it.  Such entries are flagged with
-    `merged_by_archived = true`.
+    Section 11.3: REQ attribution falls back to the coverage-history file
+    (LineagePaths.coverage_history) when a REQ isn't covered by any
+    live-plan change but a historic change merged it.  Such entries are
+    flagged with `merged_by_archived = true`.
     """
     from .lineages import resolve_lineage_default
     project_path = _resolve_project(project)
@@ -384,7 +384,8 @@ def get_digest(project: str, lineage: Optional[str] = None):
 
     # Attach test coverage from orchestration state if available
     # Coverage can be at state.extras.test_coverage (legacy) or per-change extras
-    state_file = project_path / "orchestration-state.json"
+    from ..paths import LineagePaths as _LP_state
+    state_file = Path(_LP_state(str(project_path)).state_file)
     if state_file.exists():
         try:
             with open(state_file) as f:
@@ -434,7 +435,7 @@ def get_digest(project: str, lineage: Optional[str] = None):
             pass
 
     # Section 11.3: attribute REQs to archived changes when no live-plan
-    # change covers them but spec-coverage-history.jsonl says one did.
+    # change covers them but the coverage-history file (resolver) says one did.
     _attribute_reqs_from_history(result, project_path, effective_lineage)
 
     result["effective_lineage"] = effective_lineage
@@ -547,9 +548,9 @@ def _attribute_reqs_from_history(
 ) -> None:
     """Section 11.3 / AC-26: enrich requirements with archived attribution.
 
-    For every REQ that has no live-plan change owning it, consult
-    `spec-coverage-history.jsonl` to find the most recent merged
-    change (within `effective_lineage`) that covered it.  Attach
+    For every REQ that has no live-plan change owning it, consult the
+    coverage-history file (via LineagePaths) to find the most recent
+    merged change (within `effective_lineage`) that covered it.  Attach
     `merged_by` + `merged_by_archived = true` + `merged_at` so the
     Digest UI can render archived attribution.
     """
@@ -708,7 +709,8 @@ def _enrich_requirements_with_scenarios(result: dict, project_path: Path):
 def get_coverage_report(project: str):
     """Return spec coverage report markdown if it exists."""
     project_path = _resolve_project(project)
-    report = project_path / "set" / "orchestration" / "spec-coverage-report.md"
+    from ..paths import LineagePaths as _LP_cov
+    report = Path(_LP_cov(str(project_path)).coverage_report)
     if not report.exists():
         return {"exists": False}
     try:
@@ -876,10 +878,8 @@ def get_requirements(project: str):
 def get_events(project: str, type: Optional[str] = Query(None), limit: int = Query(500, ge=1, le=5000)):
     """Read orchestration state events, optionally filtered by type."""
     project_path = _resolve_project(project)
-    events_file = project_path / "orchestration-state-events.jsonl"
-    if not events_file.exists():
-        # Try new location
-        events_file = project_path / "set" / "orchestration" / "orchestration-state-events.jsonl"
+    from ..paths import LineagePaths as _LP_evt
+    events_file = Path(_LP_evt(str(project_path)).state_events_file)
     if not events_file.exists():
         return {"events": []}
     events = []

@@ -54,7 +54,7 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 
 ### 2.c — API layer (8 files)
 
-- [ ] `lib/set_orch/api/orchestration.py` — events READ (dual-location fallback), state READ, archive merge
+- [x] `lib/set_orch/api/orchestration.py` — events READ (dual-location fallback), state READ, archive merge
 - [ ] `lib/set_orch/api/helpers.py` — state_path, log_path, archive path already partly centralised; extend with lineage-aware resolvers
 - [ ] `lib/set_orch/api/activity.py` — events + rotated files enumeration
 - [x] `lib/set_orch/api/activity_detail.py` — activity-detail-v2-*.jsonl path
