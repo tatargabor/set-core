@@ -38,19 +38,48 @@ CATEGORY_ORDER = [
 # ─── Event loading ──────────────────────────────────────────────────
 
 
+def _cycle_sort_key(path: str) -> tuple:
+    """Sort `*-cycleN.jsonl` rotated files by their integer cycle id.
+
+    Matches the resolver in lib/set_orch/paths.py so callers see the same
+    ordering across activity and llm-calls readers.
+    """
+    import re as _re
+    base = path.rsplit("/", 1)[-1]
+    m = _re.search(r"-cycle(\d+)\.jsonl$", base)
+    if not m:
+        return (0, base)
+    return (1, int(m.group(1)))
+
+
 def _load_events(project_path: Path, from_ts: str | None, to_ts: str | None) -> list[dict]:
-    """Load and merge events from orchestration and sentinel JSONL files."""
+    """Load and merge events from orchestration and sentinel JSONL files.
+
+    Section 4.1 of run-history-and-phase-continuity: rotated cycle files
+    (`orchestration-events-cycle*.jsonl`, `orchestration-state-events-cycle*.jsonl`)
+    are read in cycle-ascending order BEFORE the live file so the timeline
+    contains the full project history, not just the current cycle.
+    CYCLE_HEADER lines are skipped — they are metadata, not events.
+    """
     events: list[dict] = []
 
-    # 1. Orchestration events
+    # 1. Orchestration events — cycle files first (by numeric cycle), then live
     for base_dir in [project_path, project_path / "set" / "orchestration"]:
         for name in ["orchestration-events.jsonl", "orchestration-state-events.jsonl"]:
-            candidate = base_dir / name
-            if candidate.exists():
-                _read_jsonl(candidate, events, from_ts, to_ts)
-                stem = name.replace(".jsonl", "")
-                for archive in sorted(_glob.glob(str(base_dir / f"{stem}-*.jsonl"))):
-                    _read_jsonl(Path(archive), events, from_ts, to_ts)
+            stem = name.replace(".jsonl", "")
+            cycle_pattern = str(base_dir / f"{stem}-cycle*.jsonl")
+            for archive in sorted(_glob.glob(cycle_pattern), key=_cycle_sort_key):
+                _read_jsonl(Path(archive), events, from_ts, to_ts)
+            # Other archive variants (legacy non-cycle suffixes) — keep
+            # alphanumeric order so behaviour for old projects is unchanged.
+            other_pattern = str(base_dir / f"{stem}-*.jsonl")
+            for archive in sorted(_glob.glob(other_pattern)):
+                if "-cycle" in archive:
+                    continue  # already handled above
+                _read_jsonl(Path(archive), events, from_ts, to_ts)
+            live = base_dir / name
+            if live.exists():
+                _read_jsonl(live, events, from_ts, to_ts)
 
     # 2. Sentinel events
     sentinel_dir = _sentinel_dir(project_path)
@@ -58,7 +87,7 @@ def _load_events(project_path: Path, from_ts: str | None, to_ts: str | None) -> 
     if sentinel_events_file.exists():
         _read_jsonl(sentinel_events_file, events, from_ts, to_ts, source="sentinel")
 
-    # Sort by timestamp
+    # Sort by timestamp; CYCLE_HEADER entries are filtered in _read_jsonl.
     events.sort(key=lambda e: e.get("ts", ""))
     return events
 
@@ -80,6 +109,10 @@ def _read_jsonl(
                 try:
                     ev = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                # CYCLE_HEADER lines are metadata about the rotation point,
+                # not events that should appear on the timeline.
+                if ev.get("type") == "CYCLE_HEADER":
                     continue
                 ts = ev.get("ts", "")
                 if from_ts and ts < from_ts:

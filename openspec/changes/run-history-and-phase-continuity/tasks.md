@@ -12,11 +12,11 @@
 
 ## 1. Event stream rotation
 
-- [ ] 1.1 Add `_rotate_event_streams(state_file)` helper in `lib/set_orch/engine.py` that renames `orchestration-events.jsonl` and `orchestration-state-events.jsonl` to `*-cycle<N>.jsonl` (N = next unused integer) and creates fresh empty live files. Wrap in try/except OSError + WARNING log. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
-- [ ] 1.2 Call `_rotate_event_streams` as the first step inside `_auto_replan_cycle` (before `_archive_completed_to_jsonl`). [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
-- [ ] 1.3 Call `_rotate_event_streams` from the sentinel clean-stop path (manager `/sentinel/stop` endpoint handler + `set-sentinel stop`) when `state.status != "done"`. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
-- [ ] 1.4 Unit test: rotation creates cycleN file, new empty live file, preserves content. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
-- [ ] 1.5 Unit test: rotation failure logs WARNING and replan continues. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
+- [x] 1.1 Add `_rotate_event_streams(state_file)` helper in `lib/set_orch/engine.py` that renames `orchestration-events.jsonl` and `orchestration-state-events.jsonl` to `*-cycle<N>.jsonl` (N = next unused integer) and creates fresh empty live files. Wrap in try/except OSError + WARNING log. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
+- [x] 1.2 Call `_rotate_event_streams` as the first step inside `_auto_replan_cycle` (before `_archive_completed_to_jsonl`). [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
+- [x] 1.3 Call `_rotate_event_streams` from the sentinel clean-stop path (manager `/sentinel/stop` endpoint handler + `set-sentinel stop`) when `state.status != "done"`. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
+- [x] 1.4 Unit test: rotation creates cycleN file, new empty live file, preserves content. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
+- [x] 1.5 Unit test: rotation failure logs WARNING and replan continues. [REQ: event-stream-rotation-on-replan-and-sentinel-stop]
 
 ## 2. Archive session summaries
 
@@ -40,10 +40,10 @@
 
 ## 4. Rotated event concatenation
 
-- [ ] 4.1 Update `lib/set_orch/api/activity.py` event file collection loop to also glob `orchestration-events-cycle*.jsonl` and `orchestration-state-events-cycle*.jsonl` in cycle order, read each into the events list before reading the live files. [REQ: rotated-event-concatenation-for-readers]
-- [ ] 4.2 Update `_read_llm_call_events` in `lib/set_orch/api/orchestration.py` to include rotated cycle files alongside the live file, deduplicating by `(ts, change, purpose)`. [REQ: rotated-event-concatenation-for-readers]
-- [ ] 4.3 Integration test: multi-cycle fixture project → activity timeline returns spans from cycle 1 + live file, ordered chronologically. [REQ: rotated-event-concatenation-for-readers]
-- [ ] 4.4 Integration test: llm-calls endpoint returns events from both cycle files interleaved by timestamp. [REQ: rotated-event-concatenation-for-readers]
+- [x] 4.1 Update `lib/set_orch/api/activity.py` event file collection loop to also glob `orchestration-events-cycle*.jsonl` and `orchestration-state-events-cycle*.jsonl` in cycle order, read each into the events list before reading the live files. [REQ: rotated-event-concatenation-for-readers]
+- [x] 4.2 Update `_read_llm_call_events` in `lib/set_orch/api/orchestration.py` to include rotated cycle files alongside the live file, deduplicating by `(ts, change, purpose)`. [REQ: rotated-event-concatenation-for-readers]
+- [x] 4.3 Integration test: multi-cycle fixture project → activity timeline returns spans from cycle 1 + live file, ordered chronologically. [REQ: rotated-event-concatenation-for-readers]
+- [x] 4.4 Integration test: llm-calls endpoint returns events from both cycle files interleaved by timestamp. [REQ: rotated-event-concatenation-for-readers]
 
 ## 4b. Per-lineage plan and digest retention
 

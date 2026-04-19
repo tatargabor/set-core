@@ -350,6 +350,32 @@ class ProjectSupervisor:
         self.sentinel_spec = None
         self._sentinel_proc = None
 
+        # Section 1.3: rotate the live event streams on a clean stop so the
+        # session's history is sealed under `*-cycleN.jsonl`.  Skipped when
+        # state.status == "done" (orchestration already concluded itself);
+        # always best-effort so a stop still succeeds even if rotation fails.
+        try:
+            from ..paths import SetRuntime
+            from ..engine import _rotate_event_streams
+            from ..state import load_state
+            rt = SetRuntime(str(self.config.path))
+            state_file = rt.state_file
+            if os.path.isfile(state_file):
+                try:
+                    st = load_state(state_file)
+                    if st.status != "done":
+                        _rotate_event_streams(state_file, reason="sentinel_stop")
+                except Exception as exc:
+                    logger.debug(
+                        "[%s] stop_sentinel: skipping rotation (%s)",
+                        self.config.name, exc,
+                    )
+        except Exception as exc:
+            logger.warning(
+                "[%s] stop_sentinel: rotation hook failed: %s",
+                self.config.name, exc,
+            )
+
     def _kill_orphan_orchestrator(self):
         """Find and kill orchestrator processes for this project that may outlive the sentinel."""
         import subprocess as _sp

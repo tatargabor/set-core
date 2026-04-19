@@ -23,6 +23,7 @@ from typing import Any, Optional
 from .root import SET_TOOLS_ROOT
 from .state import (
     OrchestratorState,
+    StateCorruptionError,
     load_state,
     locked_state,
     update_change_field,
@@ -2671,6 +2672,11 @@ def _auto_replan_cycle(
     from .subprocess_utils import run_claude_logged
     from .dispatcher import dispatch_ready_changes
 
+    # 0. Rotate event streams BEFORE anything else so cycle N's history is
+    #    sealed under `*-cycleN.jsonl` and the new cycle starts with an
+    #    empty live file (Section 1.2 of run-history-and-phase-continuity).
+    _rotate_event_streams(state_file, reason="replan")
+
     # 1. Archive completed changes to state-archive.jsonl
     _archive_completed_to_jsonl(state_file)
 
@@ -2905,6 +2911,106 @@ def _append_changes_to_state(state_file: str, new_changes: list[dict]) -> None:
             state.extras["phases"] = phases_dict
             logger.info("Appended %d new changes to state (phase offset +%d, phases: %s)",
                         added, max_existing_phase, sorted(phases_dict.keys()))
+
+
+def _next_cycle_index(orch_dir: str) -> int:
+    """Return the next free `cycleN` integer for rotated event files.
+
+    Inspects both `orchestration-events-cycle*.jsonl` and the state-events
+    sibling so the two streams stay in sync.
+    """
+    import glob as _glob
+    import re as _re
+
+    cycle_re = _re.compile(r"-cycle(\d+)\.jsonl$")
+    seen: set[int] = set()
+    for pattern in (
+        "orchestration-events-cycle*.jsonl",
+        "orchestration-state-events-cycle*.jsonl",
+    ):
+        for path in _glob.glob(os.path.join(orch_dir, pattern)):
+            m = cycle_re.search(os.path.basename(path))
+            if m:
+                seen.add(int(m.group(1)))
+    return (max(seen) + 1) if seen else 1
+
+
+def _rotate_event_streams(state_file: str, reason: str = "rotate") -> Optional[int]:
+    """Seal the current event streams as `*-cycleN.jsonl` and start fresh ones.
+
+    Section 1 of run-history-and-phase-continuity: rotation is best-effort —
+    any OSError is logged at WARNING and the caller continues. The new
+    rotated files get a `CYCLE_HEADER` line as their first record so
+    downstream readers can group events by lineage / session / cycle.
+
+    Returns the cycle index assigned to the rotated files, or None if
+    there was nothing to rotate (live files absent or empty).
+    """
+    orch_dir = os.path.dirname(state_file)
+    live_events = os.path.join(orch_dir, "orchestration-events.jsonl")
+    live_state_events = os.path.join(orch_dir, "orchestration-state-events.jsonl")
+
+    have_events = os.path.exists(live_events) and os.path.getsize(live_events) > 0
+    have_state_events = (
+        os.path.exists(live_state_events) and os.path.getsize(live_state_events) > 0
+    )
+    if not have_events and not have_state_events:
+        logger.debug("rotate_event_streams: nothing to rotate (live streams empty)")
+        return None
+
+    cycle_n = _next_cycle_index(orch_dir)
+    rotated_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds")
+
+    # Read lineage + session from the live state to stamp the header.
+    spec_lineage_id: Optional[str] = None
+    sentinel_session_id: Optional[str] = None
+    plan_version: int = 1
+    try:
+        state = load_state(state_file)
+        spec_lineage_id = state.spec_lineage_id
+        sentinel_session_id = state.sentinel_session_id
+        plan_version = state.plan_version
+    except (StateCorruptionError, OSError):
+        logger.debug("rotate_event_streams: state unreadable, header lineage will be null")
+
+    header = {
+        "type": "CYCLE_HEADER",
+        "ts": rotated_at,
+        "cycle": cycle_n,
+        "reason": reason,
+        "spec_lineage_id": spec_lineage_id,
+        "sentinel_session_id": sentinel_session_id,
+        "plan_version": plan_version,
+    }
+    header_line = json.dumps(header) + "\n"
+
+    def _rotate_one(live_path: str, suffix: str) -> None:
+        if not (os.path.exists(live_path) and os.path.getsize(live_path) > 0):
+            return
+        rotated = os.path.join(orch_dir, f"{suffix}-cycle{cycle_n}.jsonl")
+        try:
+            os.rename(live_path, rotated)
+            with open(rotated, "r") as fh:
+                existing = fh.read()
+            with open(rotated, "w") as fh:
+                fh.write(header_line)
+                fh.write(existing)
+            with open(live_path, "w"):
+                pass  # truncate to empty live file
+            logger.info(
+                "rotate_event_streams: %s → %s (cycle=%d reason=%s)",
+                os.path.basename(live_path), os.path.basename(rotated), cycle_n, reason,
+            )
+        except OSError as exc:
+            logger.warning(
+                "rotate_event_streams: failed to rotate %s (cycle=%d): %s",
+                live_path, cycle_n, exc,
+            )
+
+    _rotate_one(live_events, "orchestration-events")
+    _rotate_one(live_state_events, "orchestration-state-events")
+
+    return cycle_n
 
 
 def _archive_completed_to_jsonl(state_file: str) -> None:

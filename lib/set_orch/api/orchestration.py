@@ -864,11 +864,21 @@ def get_llm_calls(project: str, limit: int = Query(500, ge=1, le=5000)):
 
 
 def _read_llm_call_events(project_path: Path, calls: list[dict]) -> None:
-    """Read LLM_CALL events from ALL orchestration events JSONL files.
+    """Read LLM_CALL events from ALL orchestration event files, live + rotated.
 
-    Two files may exist: orchestration-state-events.jsonl (engine._emit_event)
-    and orchestration-events.jsonl (event_bus from run_claude_logged).
+    Section 4.2 of run-history-and-phase-continuity: include
+    `orchestration-events-cycle*.jsonl` and the state-events siblings so
+    LLM-calls history survives replan rotation.  Calls are deduplicated
+    by `(ts, change, purpose)` because both the runtime event_bus and the
+    engine's _emit_event can emit the same LLM_CALL row.
     """
+    import glob as _glob
+    import re as _re
+
+    def _cycle_key(p: str) -> tuple:
+        m = _re.search(r"-cycle(\d+)\.jsonl$", p.rsplit("/", 1)[-1])
+        return (1, int(m.group(1))) if m else (0, p)
+
     # Resolve runtime events path (where event_bus singleton writes before engine sync)
     runtime_events = None
     try:
@@ -878,18 +888,40 @@ def _read_llm_call_events(project_path: Path, calls: list[dict]) -> None:
     except Exception:
         pass
 
-    candidates = [
-        project_path / "orchestration-state-events.jsonl",
-        project_path / "set" / "orchestration" / "orchestration-state-events.jsonl",
-        project_path / "orchestration-events.jsonl",
-        project_path / "set" / "orchestration" / "orchestration-events.jsonl",
+    base_dirs = [
+        project_path,
+        project_path / "set" / "orchestration",
     ]
+    # Include the runtime dir so rotated cycle files written there are picked up.
+    if runtime_events is not None:
+        base_dirs.append(Path(runtime_events).parent)
+
+    candidates: list[Path] = []
+    for base in base_dirs:
+        for stem in ("orchestration-events", "orchestration-state-events"):
+            cycle_pattern = str(base / f"{stem}-cycle*.jsonl")
+            for f in sorted(_glob.glob(cycle_pattern), key=_cycle_key):
+                candidates.append(Path(f))
+            live = base / f"{stem}.jsonl"
+            if live.exists() and live not in candidates:
+                candidates.append(live)
     if runtime_events and runtime_events not in candidates:
         candidates.append(runtime_events)
+
+    # Collect into a temporary list, then dedup by (ts, change, purpose_raw).
+    raw_calls: list[dict] = []
     for events_file in candidates:
         if not events_file.exists():
             continue
-        _parse_llm_events_file(events_file, calls)
+        _parse_llm_events_file(events_file, raw_calls)
+
+    seen: set[tuple] = set()
+    for c in raw_calls:
+        key = (c.get("timestamp", ""), c.get("change", ""), c.get("purpose_raw", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        calls.append(c)
 
 
 def _parse_llm_events_file(events_file: Path, calls: list[dict]) -> None:
