@@ -1029,6 +1029,11 @@ class WebProjectType(CoreProfile):
                 "severity": "critical",
                 "message": "dangerouslySetInnerHTML with user content is an XSS vector — use a sanitization library",
                 "file_glob": "*.tsx",
+                # Exclude shadcn/ui's canonical chart.tsx — the standard
+                # upstream pattern injects static CSS variables for theme
+                # colors (no user content). Any verbatim copy from v0-export
+                # will include this file; flagging it causes retry cascades.
+                "exclude_glob": "*components/ui/chart.tsx",
             },
             {
                 "pattern": r"NEXT_PUBLIC_(?:SECRET|PASSWORD|TOKEN|PRIVATE_KEY|API_SECRET)",

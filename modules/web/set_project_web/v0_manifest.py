@@ -377,13 +377,56 @@ def _report_scope_keyword_collisions(m: Manifest) -> None:
 def match_routes_by_scope(
     manifest: Manifest,
     scope: str,
+    strict: bool = False,
 ) -> list[RouteEntry]:
     """Return routes whose scope_keywords substring-match the scope text.
 
     Matches multiple routes when the scope spans them; empty when no match.
+
+    When ``strict=True`` (for verification gates), prefer verbatim path
+    mentions (e.g. ``/admin/termekek``) over keyword substring matches.
+    Keyword matching is used only as a fallback when no paths appear in
+    the scope text, and even then requires word-boundary matches to
+    avoid generic DB field names (``slug``, ``id``) matching routes that
+    happen to include dynamic segments.
     """
+    import re as _re
+
     scope_l = (scope or "").lower()
-    matches: list[RouteEntry] = []
+    if not scope_l:
+        return []
+
+    if strict:
+        # Path-first: if any manifest route path appears literally in scope,
+        # use that set and skip keyword fallback entirely.
+        path_matches: list[RouteEntry] = []
+        for r in manifest.routes:
+            rp = r.path.lower()
+            if rp == "/":
+                continue  # bare "/" is too ambiguous to match verbatim
+            # Match as whole path (surrounded by non-word chars or end).
+            if _re.search(r"(?<![\w/])" + _re.escape(rp) + r"(?![\w/])", scope_l):
+                path_matches.append(r)
+        if path_matches:
+            return path_matches
+
+        # Fallback: word-boundary keyword match. Rejects generic keywords
+        # derived from dynamic segments (``slug``, ``id``) that otherwise
+        # cause cross-route false positives.
+        _generic = {"slug", "id", "api"}
+        matches: list[RouteEntry] = []
+        for r in manifest.routes:
+            for k in r.scope_keywords:
+                if not k or k.lower() in _generic:
+                    continue
+                if _re.search(r"\b" + _re.escape(k.lower()) + r"\b", scope_l):
+                    matches.append(r)
+                    break
+        return matches
+
+    # Default (legacy, generous): plain substring match on keywords.
+    # Used by dispatcher's Focus Files hint — over-inclusion is fine there.
+    matches = []
     for r in manifest.routes:
         for k in r.scope_keywords:
             if k and k in scope_l:

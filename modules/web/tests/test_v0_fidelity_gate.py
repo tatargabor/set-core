@@ -22,6 +22,7 @@ class FakeManifest:
     routes: list
     shared: list = field(default_factory=list)
     shared_aliases: dict = field(default_factory=dict)
+    deferred_design_routes: list = field(default_factory=list)
 
 
 def _make_agent_tree(root: Path, routes: list[str], shared_files: list[str] = None) -> None:
@@ -95,6 +96,55 @@ def test_skeleton_check_extra_route(tmp_path: Path):
     assert any(v.status == "extra-route" and "/bonus" in v.detail for v in violations)
 
 
+def test_skeleton_check_scope_aware_ignores_siblings(tmp_path: Path):
+    """A change's skeleton check must not flag routes owned by sibling changes."""
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent = tmp_path / "agent"
+    v0 = tmp_path / "v0-export"
+    v0.mkdir()
+    # Agent built only admin pages — shop routes belong to a sibling change
+    _make_agent_tree(
+        agent, ["/", "/admin", "/admin/termekek"],
+        ["components/header.tsx", "app/layout.tsx"],
+    )
+    manifest = FakeManifest(
+        routes=[
+            FakeRoute("/", scope_keywords=["home"]),
+            FakeRoute("/admin", scope_keywords=["admin"]),
+            FakeRoute("/admin/termekek", scope_keywords=["admin", "termekek"]),
+            FakeRoute("/kosar", scope_keywords=["kosar"]),      # sibling's
+            FakeRoute("/penztar", scope_keywords=["penztar"]),  # sibling's
+        ],
+        shared=["v0-export/components/header.tsx", "v0-export/app/layout.tsx"],
+    )
+    scope = "Build admin dashboard and product management (/admin, /admin/termekek)"
+    violations = run_skeleton_check(agent, v0, manifest, change_scope=scope)
+    # Must NOT flag sibling-owned routes
+    assert not any("/kosar" in v.detail for v in violations), violations
+    assert not any("/penztar" in v.detail for v in violations), violations
+
+
+def test_skeleton_check_scope_catches_own_missing(tmp_path: Path):
+    """Scope-matched missing routes still fire as violations."""
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent = tmp_path / "agent"
+    v0 = tmp_path / "v0-export"
+    v0.mkdir()
+    _make_agent_tree(agent, ["/admin"], ["components/header.tsx", "app/layout.tsx"])
+    manifest = FakeManifest(
+        routes=[
+            FakeRoute("/admin", scope_keywords=["admin"]),
+            FakeRoute("/admin/termekek", scope_keywords=["admin", "termekek"]),
+        ],
+        shared=["v0-export/components/header.tsx", "v0-export/app/layout.tsx"],
+    )
+    violations = run_skeleton_check(agent, v0, manifest, change_scope="admin termekek")
+    # /admin/termekek must be flagged as missing
+    assert any(v.status == "missing-route" and "/admin/termekek" in v.detail for v in violations)
+
+
 def test_skeleton_check_missing_shared_file(tmp_path: Path):
     from set_project_web.v0_fidelity_gate import run_skeleton_check
 
@@ -165,3 +215,216 @@ def test_warn_only_flag_read(tmp_path: Path):
     cfg.write_text(yaml.safe_dump({"gates": {"design-fidelity": {"warn_only": True}}}))
     assert _read_warn_only_flag(tmp_path) is True
     assert _read_warn_only_flag(tmp_path.parent) is False
+
+
+# ─── Token guard + className preservation ──────────────────────────
+
+def _init_git_repo(root: Path) -> None:
+    """Initialize a tiny git repo with a baseline commit so diff works."""
+    import subprocess
+    root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.test"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=root, check=True)
+    (root / "README.md").write_text("x")
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+
+
+def _commit_file(root: Path, rel: str, content: str, msg: str) -> None:
+    import subprocess
+    p = root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content)
+    subprocess.run(["git", "add", rel], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", msg], cwd=root, check=True)
+
+
+def _head_sha(root: Path) -> str:
+    import subprocess
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+
+def test_token_guard_flags_hex_color(tmp_path: Path):
+    from set_project_web.v0_fidelity_gate import run_token_guard_check
+
+    root = tmp_path / "repo"
+    _init_git_repo(root)
+    base = _head_sha(root)
+    _commit_file(
+        root, "src/components/card.tsx",
+        'export const C = () => <div style={{background:"#ff00aa"}} />',
+        "add card with hex color",
+    )
+    vs = run_token_guard_check(root, base)
+    assert any(v.status == "hardcoded-color" and "card.tsx" in v.detail for v in vs), vs
+
+
+def test_token_guard_allows_tokens(tmp_path: Path):
+    from set_project_web.v0_fidelity_gate import run_token_guard_check
+
+    root = tmp_path / "repo"
+    _init_git_repo(root)
+    base = _head_sha(root)
+    _commit_file(
+        root, "src/components/card.tsx",
+        'export const C = () => <div className="bg-primary text-foreground" />',
+        "add card with tokens",
+    )
+    vs = run_token_guard_check(root, base)
+    assert not any(v.status == "hardcoded-color" for v in vs)
+
+
+def test_token_guard_exempts_chart(tmp_path: Path):
+    """shadcn's canonical chart.tsx ships literal CSS vars — not a violation."""
+    from set_project_web.v0_fidelity_gate import run_token_guard_check
+
+    root = tmp_path / "repo"
+    _init_git_repo(root)
+    base = _head_sha(root)
+    _commit_file(
+        root, "src/components/ui/chart.tsx",
+        'export const C = () => <style>{`:root { --primary: #abc123; }`}</style>',
+        "add canonical chart",
+    )
+    vs = run_token_guard_check(root, base)
+    assert not any(v.status == "hardcoded-color" for v in vs)
+
+
+def test_classname_preservation_detects_rewrite(tmp_path: Path):
+    from set_project_web.v0_fidelity_gate import run_classname_preservation_check
+
+    agent = tmp_path / "agent"
+    v0 = tmp_path / "v0-export"
+    # v0 has a button with rich Tailwind tokens
+    (v0 / "components").mkdir(parents=True)
+    (v0 / "components" / "btn.tsx").write_text(
+        'export const B = () => <button className="rounded-lg bg-primary '
+        'text-primary-foreground px-4 py-2 hover:bg-primary/90 '
+        'focus-visible:ring-2 focus-visible:ring-ring shadow-sm '
+        'transition-colors inline-flex items-center" />'
+    )
+    # Agent "rewrote" — only 1 token overlap
+    (agent / "src" / "components").mkdir(parents=True)
+    (agent / "src" / "components" / "btn.tsx").write_text(
+        'export const B = () => <button className="my-custom-btn alt-style" />'
+    )
+    manifest = FakeManifest(
+        routes=[FakeRoute(
+            "/x", component_deps=["v0-export/components/btn.tsx"],
+            scope_keywords=["x"],
+        )],
+    )
+    vs = run_classname_preservation_check(agent, v0, manifest, change_scope="x")
+    assert any(v.status == "classname-rewritten" and "btn.tsx" in v.detail for v in vs), vs
+
+
+def test_classname_preservation_allows_mostly_kept(tmp_path: Path):
+    from set_project_web.v0_fidelity_gate import run_classname_preservation_check
+
+    agent = tmp_path / "agent"
+    v0 = tmp_path / "v0-export"
+    (v0 / "components").mkdir(parents=True)
+    (v0 / "components" / "btn.tsx").write_text(
+        'export const B = () => <button className="rounded-lg bg-primary '
+        'text-primary-foreground px-4 py-2 hover:bg-primary/90" />'
+    )
+    (agent / "src" / "components").mkdir(parents=True)
+    (agent / "src" / "components" / "btn.tsx").write_text(
+        'export const B = () => <button className="rounded-lg bg-primary '
+        'text-primary-foreground px-4 py-2 hover:bg-primary/90 " />'
+    )
+    manifest = FakeManifest(
+        routes=[FakeRoute(
+            "/x", component_deps=["v0-export/components/btn.tsx"],
+            scope_keywords=["x"],
+        )],
+    )
+    vs = run_classname_preservation_check(agent, v0, manifest, change_scope="x")
+    assert not vs
+
+
+def test_classname_preservation_credits_shadcn_imports(tmp_path: Path):
+    """Using <Button>/<Card> shadcn components should count as preserved tokens."""
+    from set_project_web.v0_fidelity_gate import run_classname_preservation_check
+
+    agent = tmp_path / "agent"
+    v0 = tmp_path / "v0-export"
+
+    # v0 has inline Tailwind soup
+    (v0 / "components").mkdir(parents=True)
+    (v0 / "components" / "btn.tsx").write_text(
+        'export const B = () => <button className="rounded-lg bg-primary '
+        'text-primary-foreground px-4 py-2 hover:bg-primary/90 '
+        'focus-visible:ring-2 focus-visible:ring-ring shadow-sm '
+        'transition-colors inline-flex items-center" />'
+    )
+    # Agent rewrites using <Button> from shadcn — own file has FEW tokens
+    (agent / "src" / "components").mkdir(parents=True)
+    (agent / "src" / "components" / "btn.tsx").write_text(
+        'import { Button } from "@/components/ui/button"\n'
+        'export const B = () => <Button>X</Button>'
+    )
+    # The shadcn Button ships the class vocabulary v0 inlined
+    (agent / "src" / "components" / "ui").mkdir(parents=True, exist_ok=True)
+    (agent / "src" / "components" / "ui" / "button.tsx").write_text(
+        'export const Button = ({children}) => <button className='
+        '"rounded-lg bg-primary text-primary-foreground px-4 py-2 '
+        'hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring '
+        'shadow-sm transition-colors inline-flex items-center">{children}</button>'
+    )
+    manifest = FakeManifest(
+        routes=[FakeRoute(
+            "/x", component_deps=["v0-export/components/btn.tsx"],
+            scope_keywords=["x"],
+        )],
+    )
+    vs = run_classname_preservation_check(agent, v0, manifest, change_scope="x")
+    # Must NOT flag: the agent uses shadcn Button which contains the tokens
+    assert not vs, vs
+
+
+def test_deferred_design_routes_accepts_dict_entries(tmp_path: Path):
+    """Schema declares list[dict] for deferred_design_routes; check must not crash."""
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent = tmp_path / "agent"
+    v0 = tmp_path / "v0-export"
+    v0.mkdir()
+    _make_agent_tree(agent, ["/"], ["components/header.tsx", "app/layout.tsx"])
+    manifest = FakeManifest(
+        routes=[FakeRoute("/", scope_keywords=["home"]), FakeRoute("/zzz", scope_keywords=["zzz"])],
+        shared=["v0-export/components/header.tsx", "v0-export/app/layout.tsx"],
+        deferred_design_routes=[{"route": "/zzz", "reason": "not yet implemented"}],
+    )
+    violations = run_skeleton_check(agent, v0, manifest)
+    # /zzz is deferred → must not fire as missing-route
+    assert not any("/zzz" in v.detail for v in violations), violations
+
+
+def test_classname_extract_includes_cva_base(tmp_path: Path):
+    """Shadcn cva(...) first-arg class string must be captured."""
+    from set_project_web.v0_fidelity_gate import _extract_classname_tokens
+
+    text = (
+        'const buttonVariants = cva('
+        '  "inline-flex items-center justify-center rounded-md gap-2",'
+        '  { variants: { size: { default: "h-9 px-4" } } }'
+        ')'
+    )
+    toks = _extract_classname_tokens(text)
+    assert "inline-flex" in toks
+    assert "items-center" in toks
+    assert "rounded-md" in toks
+
+
+def test_classname_token_includes_bracket_modifier(tmp_path: Path):
+    """`text-[1.125rem]` should be one token, not split on `.`."""
+    from set_project_web.v0_fidelity_gate import _extract_classname_tokens
+
+    toks = _extract_classname_tokens('<div className="text-[1.125rem] leading-[1.5]" />')
+    assert "text-[1.125rem]" in toks
+    assert "leading-[1.5]" in toks

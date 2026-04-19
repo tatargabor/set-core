@@ -966,6 +966,7 @@ def execute_lint_gate(
         severity = pat_dict.get("severity", "warning").lower()
         message = pat_dict.get("message", "")
         file_glob = pat_dict.get("file_glob", "")
+        exclude_glob = pat_dict.get("exclude_glob", "")
 
         if not pattern:
             continue
@@ -978,6 +979,8 @@ def execute_lint_gate(
 
         for file_path, line_num, content in added_lines:
             if file_glob and not fnmatch.fnmatch(file_path, file_glob):
+                continue
+            if exclude_glob and fnmatch.fnmatch(file_path, exclude_glob):
                 continue
 
             if regex.search(content):

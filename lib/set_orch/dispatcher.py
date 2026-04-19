@@ -2654,6 +2654,21 @@ def dispatch_ready_changes(
     """
     state = load_state(state_path)
 
+    # Fail-fast halt: if any change has reached terminal "failed" status, do
+    # not dispatch further work. The operator must investigate (fix scope,
+    # reset status, bump retries) before new changes start. Prevents sibling
+    # changes from silently burning tokens while a peer is broken and also
+    # avoids wasting work when the failed change is likely a blocker for
+    # reviewers. To resume: reset the failed change's status (e.g. pending).
+    failed_names = [c.name for c in state.changes if c.status == "failed"]
+    if failed_names:
+        logger.warning(
+            "Halt on failure: %s failed — suppressing new dispatches "
+            "(reset status to pending to resume)",
+            ", ".join(failed_names),
+        )
+        return 0
+
     # Whitelist-based counting: every change that is NOT in a terminal/pending
     # state counts toward the parallel limit. This is safer than blacklisting
     # specific in-flight states — adding a new intermediate status in the

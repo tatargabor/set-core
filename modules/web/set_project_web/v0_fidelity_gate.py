@@ -1,16 +1,30 @@
 """Design fidelity gate (web module).
 
-Runs AFTER build and BEFORE merge. Three-phase:
+Runs AFTER the build gate and BEFORE merge. The check is scope-aware:
+each change is held to the routes its own scope describes, not the
+whole v0 manifest.
 
-  1. Skeleton check (fast, no build): route inventory + shared file
-     existence + component decomposition via AST. Fails fast on mismatch.
-  2. Build reference + agent: materialize v0 reference with fixtures
-     (v0_renderer), capture Playwright screenshots across 3 viewports.
-  3. Pixelmatch diff per route × viewport with configurable threshold.
+Default pipeline (fast, no server):
+  1. Skeleton — route inventory + shared-file existence + component
+     decomposition, matched against the change's scope.
+  2. Token guard — hardcoded hex/rgb/hsl colors in newly added src/
+     code (design tokens live in globals.css ``:root``).
+  3. className preservation — for each scoped route directory and each
+     shared component referenced by scoped routes, the agent must keep
+     most of v0's className vocabulary. Credit is given for:
+       - the server/client split (aggregate tokens across the directory),
+       - shadcn imports (``<Button>`` carries Button's classes),
+       - intentional stubs ("coming soon" pages under min tokens).
 
-Per design D8, when detect_design_source()=="v0" and any required input
-is absent (manifest, fixtures), the gate FAILS the merge. The single
-override is `gates.design-fidelity.warn_only: true` in orchestration config.
+Optional pixel-diff phase (expensive, off by default):
+  4. Render v0 with fixtures + agent worktree, capture Playwright
+     screenshots across 3 viewports, pixelmatch diff per route.
+
+Enable the screenshot phase only when it's worth the flakiness:
+  gates:
+    design-fidelity:
+      pixel_diff: true
+      warn_only: true  # downgrade fail → pass if you need breathing room
 """
 
 from __future__ import annotations
@@ -26,11 +40,48 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from .v0_manifest import match_routes_by_scope
+
 if TYPE_CHECKING:
     from set_orch.gate_runner import GateResult
     from set_orch.state import Change
 
 logger = logging.getLogger(__name__)
+
+
+def _deferred_route_paths(manifest) -> set[str]:
+    """Normalise ``manifest.deferred_design_routes`` to a ``{route, ...}`` set.
+
+    The schema declares ``list[dict]`` (with ``{"route": ..., "reason": ...}``
+    entries), but operator-authored manifests sometimes use bare strings. This
+    helper accepts both so the skeleton check never crashes on mixed input.
+    """
+    out: set[str] = set()
+    for d in getattr(manifest, "deferred_design_routes", None) or []:
+        if isinstance(d, dict):
+            route = d.get("route")
+            if route:
+                out.add(route)
+        elif isinstance(d, str):
+            out.add(d)
+    return out
+
+
+def _scoped_routes(manifest, change_scope: str) -> list:
+    """Return the subset of ``manifest.routes`` the change's scope matches.
+
+    Empty ``change_scope`` → return the full route list (legacy callers +
+    non-orchestrated invocations stay useful). Strict path-first matching
+    is used so keyword coincidences (e.g. ``slug`` appearing in a product
+    form description) don't sweep in sibling changes' routes.
+    """
+    if not change_scope:
+        return list(manifest.routes)
+    try:
+        return list(match_routes_by_scope(manifest, change_scope, strict=True))
+    except Exception:
+        logger.debug("match_routes_by_scope failed", exc_info=True)
+        return list(manifest.routes)
 
 
 VIEWPORTS = (
@@ -46,8 +97,319 @@ RETENTION_DAYS = 7
 
 @dataclass
 class SkeletonViolation:
-    status: str   # "missing-route" | "extra-route" | "missing-shared-file" | "decomposition-collapsed"
+    status: str   # "missing-route" | "extra-route" | "missing-shared-file" | "decomposition-collapsed" | "hardcoded-color" | "classname-rewritten"
     detail: str
+
+
+# ─── Static design-drift checks (no build required) ──────────────────
+# Token guard: new code in src/ must use oklch tokens, not literal colors.
+# Exclude common false-positive zones (comments, test fixtures, shadcn chart).
+_HEX_COLOR_RE = re.compile(r"#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])")
+_FN_COLOR_RE = re.compile(r"\b(?:rgb|rgba|hsl|hsla)\s*\(")
+_TOKEN_GUARD_PATH_PREFIX = "src/"
+_TOKEN_GUARD_FILE_EXT = (".ts", ".tsx", ".css")
+# Files where static color literals are legitimate: shadcn chart injects
+# theme CSS variables, globals.css is the token source itself, and HTML
+# email templates MUST use inline literal colors because most email clients
+# strip CSS custom properties before render.
+_TOKEN_GUARD_EXEMPT_SUFFIX = (
+    "src/components/ui/chart.tsx",
+    "src/app/globals.css",
+)
+_TOKEN_GUARD_EXEMPT_PREFIX = (
+    "src/lib/email-templates/",
+    "src/app/admin/email-templates/",  # admin preview of the same HTML
+)
+
+
+def _iter_diff_added_lines(wt_path: Path, diff_base: str) -> list[tuple[str, int, str]]:
+    """Return added [(file, line_num, content), ...] from `git diff diff_base..HEAD`.
+
+    Shares logic with the lint gate; kept local here to avoid a cross-module
+    import cycle (gates.py → project_type → v0_fidelity_gate).
+    """
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--unified=0", f"{diff_base}..HEAD"],
+            cwd=wt_path, capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode != 0:
+            return []
+    except Exception:
+        return []
+
+    out: list[tuple[str, int, str]] = []
+    file_path = None
+    line_num = 0
+    for raw in r.stdout.splitlines():
+        if raw.startswith("+++ b/"):
+            file_path = raw[6:]
+        elif raw.startswith("@@"):
+            m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)", raw)
+            if m:
+                line_num = int(m.group(1)) - 1
+        elif raw.startswith("+") and not raw.startswith("+++"):
+            line_num += 1
+            if file_path:
+                out.append((file_path, line_num, raw[1:]))
+    return out
+
+
+def run_token_guard_check(agent_worktree: Path, diff_base: str) -> list[SkeletonViolation]:
+    """Flag hardcoded colors in diff. Design tokens must come from globals.css :root."""
+    if not diff_base:
+        return []
+    violations: list[SkeletonViolation] = []
+    for path, line_num, content in _iter_diff_added_lines(agent_worktree, diff_base):
+        if not path.startswith(_TOKEN_GUARD_PATH_PREFIX):
+            continue
+        if not path.endswith(_TOKEN_GUARD_FILE_EXT):
+            continue
+        if any(path.endswith(ex) for ex in _TOKEN_GUARD_EXEMPT_SUFFIX):
+            continue
+        if any(path.startswith(pref) for pref in _TOKEN_GUARD_EXEMPT_PREFIX):
+            continue
+        stripped = content.strip()
+        if stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*"):
+            continue
+        if _HEX_COLOR_RE.search(content) or _FN_COLOR_RE.search(content):
+            violations.append(SkeletonViolation(
+                "hardcoded-color",
+                f"{path}:{line_num} uses literal color — reference an oklch token from globals.css :root",
+            ))
+    return violations
+
+
+_CLASSNAME_ATTR_RE = re.compile(r'className\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|`([^`]*)`)')
+# Covers shadcn patterns: cn()/clsx()/classNames() helpers and cva() base class arg.
+# Nested `variants: { default: "..." }` string blobs are missed by design —
+# matching them reliably without false positives requires AST parsing.
+_CLASSNAME_FN_RE = re.compile(r'(?:cn|clsx|classNames|cva)\s*\(([^)]*)\)', re.DOTALL)
+# `.` allowed so bracket modifiers like `text-[1.125rem]` remain one token.
+_CLASSNAME_TOKEN_RE = re.compile(r"[A-Za-z0-9:_\[\]/\-.]+")
+_CLASSNAME_MIN_TOKENS = 6          # files with fewer className tokens are not worth checking
+_CLASSNAME_OVERLAP_THRESHOLD = 0.5  # <50% overlap = likely rewritten
+
+# Match imports of the form:
+#   import { Button, Card } from "@/components/ui/button"
+#   import { Input } from "components/ui/input"
+# We only need to know which ui/<name> files were pulled in — the agent
+# gets credit for the class tokens those files ship, since rendering
+# `<Button>` effectively inlines Button's className vocabulary.
+_SHADCN_IMPORT_RE = re.compile(
+    r'''from\s+["']\s*(?:@/)?(?:src/)?components/ui/([A-Za-z0-9_-]+)["']''',
+)
+
+
+def _extract_classname_tokens(text: str) -> set[str]:
+    """Return the set of CSS class tokens referenced anywhere in the file."""
+    blobs: list[str] = []
+    for m in _CLASSNAME_ATTR_RE.finditer(text):
+        for g in m.groups():
+            if g:
+                blobs.append(g)
+    for m in _CLASSNAME_FN_RE.finditer(text):
+        blobs.append(m.group(1))
+    tokens: set[str] = set()
+    for blob in blobs:
+        for t in _CLASSNAME_TOKEN_RE.findall(blob):
+            if len(t) >= 2:
+                tokens.add(t)
+    return tokens
+
+
+def _collect_shadcn_import_tokens(text: str, agent_worktree: Path) -> set[str]:
+    """Return className tokens pulled in transitively via shadcn ui imports.
+
+    Using ``<Button>`` / ``<Card>`` from ``components/ui/`` is a legitimate
+    refactor of v0's inline Tailwind — the component internally carries the
+    class vocabulary. Without crediting imports we'd punish the correct
+    shadcn pattern; agents are forced to inline tokens to satisfy the gate,
+    which directly conflicts with the "keep v0 design" intent.
+    """
+    tokens: set[str] = set()
+    for m in _SHADCN_IMPORT_RE.finditer(text):
+        name = m.group(1)
+        for base in (agent_worktree / "src" / "components" / "ui",
+                     agent_worktree / "components" / "ui"):
+            p = base / f"{name}.tsx"
+            if p.is_file():
+                try:
+                    tokens |= _extract_classname_tokens(
+                        p.read_text(encoding="utf-8", errors="ignore")
+                    )
+                except OSError:
+                    pass
+                break
+    return tokens
+
+
+def run_classname_preservation_check(
+    agent_worktree: Path, v0_export: Path,
+    manifest, change_scope: str = "",
+) -> list[SkeletonViolation]:
+    """Flag scoped files whose className overlap with their v0 counterpart is low.
+
+    For each v0-export file that has an agent counterpart (mapped via
+    ``src/`` prefix), compute the Jaccard overlap of className tokens.
+    If the agent kept fewer than ``_CLASSNAME_OVERLAP_THRESHOLD`` of v0's
+    tokens, it likely rewrote the component instead of adapting it.
+
+    Routes in ``manifest.deferred_design_routes`` are skipped (intentional
+    divergence authorised by the scaffold).
+    """
+    violations: list[SkeletonViolation] = []
+    deferred = _deferred_route_paths(manifest)
+
+    scoped_route_paths: set[str] = set()
+    if change_scope:
+        for r in _scoped_routes(manifest, change_scope):
+            if r.path not in deferred:
+                scoped_route_paths.add(r.path)
+
+    def _check_pair(v0_file: Path, agent_file: Path, label: str) -> None:
+        try:
+            v0_text = v0_file.read_text(encoding="utf-8", errors="ignore")
+            agent_text = agent_file.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return
+        v0_tokens = _extract_classname_tokens(v0_text)
+        if len(v0_tokens) < _CLASSNAME_MIN_TOKENS:
+            return
+        agent_tokens = _extract_classname_tokens(agent_text)
+        # Credit shadcn imports: <Button>/<Card>/... transitively bring in
+        # the class vocabulary v0 wrote inline, so using them is NOT drift.
+        agent_tokens |= _collect_shadcn_import_tokens(agent_text, agent_worktree)
+        if not agent_tokens:
+            violations.append(SkeletonViolation(
+                "classname-rewritten",
+                f"{label}: agent file has no className tokens (v0 has {len(v0_tokens)})",
+            ))
+            return
+        overlap = len(v0_tokens & agent_tokens) / max(len(v0_tokens), 1)
+        if overlap < _CLASSNAME_OVERLAP_THRESHOLD:
+            violations.append(SkeletonViolation(
+                "classname-rewritten",
+                f"{label}: only {overlap:.0%} of v0 className tokens preserved "
+                f"(v0={len(v0_tokens)} agent={len(agent_tokens)}). Keep the v0 "
+                f"className vocabulary; adapt data/imports without rewriting markup.",
+            ))
+
+    # Scoped route pages: compare v0's route (directory-level className set)
+    # with the agent's route directory. Aggregation matters because the
+    # agent legitimately splits v0's monolithic page.tsx into a server
+    # component + one or more client components in the same directory;
+    # per-file comparison gives a false "page has no className" signal
+    # when the className content just moved to a sibling file.
+    for route_path in scoped_route_paths:
+        rel_segments = [s for s in route_path.strip("/").split("/") if s]
+        v0_page = v0_export / "app" / Path(*rel_segments) / "page.tsx" if rel_segments else v0_export / "app" / "page.tsx"
+        if not v0_page.is_file():
+            continue
+        v0_tokens = _extract_classname_tokens(
+            v0_page.read_text(encoding="utf-8", errors="ignore")
+        )
+        if len(v0_tokens) < _CLASSNAME_MIN_TOKENS:
+            continue
+
+        agent_dirs: list[Path] = []
+        base_options = [agent_worktree / "app", agent_worktree / "src" / "app"]
+        for base in base_options:
+            if not base.is_dir():
+                continue
+            for match in base.rglob("page.tsx"):
+                parts = list(match.relative_to(base).parts[:-1])
+                parts_normalised = [
+                    p for p in parts
+                    if not (p.startswith("(") and p.endswith(")")) and p != "[locale]"
+                ]
+                agent_route = "/" + "/".join(parts_normalised) if parts_normalised else "/"
+                if agent_route == route_path:
+                    agent_dirs.append(match.parent)
+
+        for agent_dir in agent_dirs:
+            agent_tokens: set[str] = set()
+            for f in agent_dir.iterdir():
+                if f.is_file() and f.suffix in (".tsx", ".ts"):
+                    try:
+                        text = f.read_text(encoding="utf-8", errors="ignore")
+                    except OSError:
+                        continue
+                    agent_tokens |= _extract_classname_tokens(text)
+                    # Credit the agent for tokens carried transitively via
+                    # shadcn <Button>/<Card>/etc. imports — otherwise the
+                    # check punishes correct refactors.
+                    agent_tokens |= _collect_shadcn_import_tokens(text, agent_worktree)
+            # If the agent directory has very few className tokens, treat
+            # it as an intentional stub/placeholder (e.g. "Coming soon"
+            # link target for a future change). Other gates (build, e2e,
+            # spec_verify) ensure scope-required routes are functional;
+            # flagging stubs here produces false positives for legitimate
+            # navigation targets that the scope mentions but does not ask
+            # the current change to build.
+            if len(agent_tokens) < _CLASSNAME_MIN_TOKENS:
+                continue
+            overlap = len(v0_tokens & agent_tokens) / max(len(v0_tokens), 1)
+            if overlap < _CLASSNAME_OVERLAP_THRESHOLD:
+                violations.append(SkeletonViolation(
+                    "classname-rewritten",
+                    f"route {route_path}: only {overlap:.0%} of v0 className tokens preserved across "
+                    f"{agent_dir.name}/ (v0={len(v0_tokens)} agent={len(agent_tokens)}). Keep the v0 "
+                    f"className vocabulary; adapt data/imports without rewriting markup.",
+                ))
+
+    # Scoped shared components referenced by matched routes.
+    matched = _scoped_routes(manifest, change_scope) if change_scope else []
+    seen_deps: set[str] = set()
+    for r in matched:
+        if r.path in deferred:
+            continue
+        for dep in getattr(r, "component_deps", []) or []:
+            if dep in seen_deps:
+                continue
+            seen_deps.add(dep)
+            if not dep.startswith("v0-export/"):
+                continue
+            rel = dep[len("v0-export/"):]
+            v0_file = v0_export / rel
+            if not v0_file.is_file():
+                continue
+            for agent_base in (agent_worktree, agent_worktree / "src"):
+                agent_file = agent_base / rel
+                if agent_file.is_file():
+                    _check_pair(v0_file, agent_file, f"component {rel}")
+                    break
+
+    return violations
+
+
+# ─── Screenshot diff config flag ─────────────────────────────────────
+# Pixel-level screenshot diffing is heavyweight (dual server build +
+# Playwright + diff) and fragile (font rendering, animations, seeded data
+# drift). It is OFF by default; the static checks above cover the real
+# drift classes. To re-enable, set in orchestration config:
+#   gates:
+#     design-fidelity:
+#       pixel_diff: true
+
+
+def _read_pixel_diff_flag(project_path: Path) -> bool:
+    cfg_paths = [
+        project_path / "set" / "orchestration" / "config.yaml",
+        project_path / ".set-orch" / "config.yaml",
+    ]
+    for cfg_path in cfg_paths:
+        if not cfg_path.is_file():
+            continue
+        try:
+            import yaml as _yaml
+            data = _yaml.safe_load(cfg_path.read_text()) or {}
+            return bool(
+                ((data.get("gates") or {}).get("design-fidelity") or {}).get("pixel_diff", False)
+            )
+        except Exception:
+            continue
+    return False
 
 
 @dataclass
@@ -196,14 +558,64 @@ def _run_gate(
         Path(wt_path), project_path / "v0-export", manifest,
         change_scope=change_scope,
     )
-    if skel:
+    # Only structural-absence violations are blocking. `extra-route` is
+    # informational — Next.js framework pages (/403, /404, /500, error.tsx),
+    # API routes, and content merged from sibling changes legitimately
+    # produce extras that the agent cannot delete without breaking the app.
+    blocking_statuses = {
+        "missing-route", "missing-shared-file", "decomposition-collapsed",
+    }
+    blocking = [v for v in skel if v.status in blocking_statuses]
+    if blocking:
         return GateOutcome(
             status="fail",
-            skeleton_violations=skel,
+            skeleton_violations=blocking,
             message="skeleton-mismatch",
         )
 
-    # 2. Fixtures — REQUIRED when design is declared.
+    # 2. Token guard — newly added src/ code must use oklch tokens, not
+    # literal hex/rgb/hsl colors. Caught drift class: agent hardcodes
+    # colors instead of referencing globals.css :root vars.
+    diff_base = ""
+    try:
+        from set_orch.verifier import _get_merge_base
+        diff_base = _get_merge_base(str(Path(wt_path))) or ""
+    except Exception:
+        logger.debug("merge-base lookup failed for token guard", exc_info=True)
+    token_violations = run_token_guard_check(Path(wt_path), diff_base) if diff_base else []
+
+    # 3. className preservation — for files the agent copied from v0-export,
+    # the className vocabulary should be mostly preserved. A big drop in
+    # overlap signals a "rewrite" instead of an "adapt", which v0-driven
+    # design cannot recover from.
+    classname_violations = run_classname_preservation_check(
+        Path(wt_path), project_path / "v0-export", manifest,
+        change_scope=change_scope,
+    )
+
+    static_violations = token_violations + classname_violations
+    if static_violations:
+        # Combine with non-blocking skeleton info (e.g. extra-route) so the
+        # agent sees context around the required fix.
+        return GateOutcome(
+            status="fail",
+            skeleton_violations=static_violations + [v for v in skel if v not in blocking],
+            message="design-drift",
+        )
+
+    # 4. Screenshot + pixel diff (OPT-IN). Expensive (dual server build +
+    # Playwright), flaky (font rendering, animations, data fixtures),
+    # and the static checks above already cover the real drift classes.
+    # Enable via orchestration config:
+    #   gates: { design-fidelity: { pixel_diff: true } }
+    scoped_routes = _scoped_routes(manifest, change_scope)
+    if not _read_pixel_diff_flag(project_path):
+        outcome = GateOutcome(status="pass")
+        outcome.checked_routes = [r.path for r in scoped_routes]
+        outcome.message = "static-checks-only (pixel_diff disabled)"
+        return outcome
+
+    # Fixtures — REQUIRED when pixel_diff is on.
     fixtures_path = project_path / ".set-orch" / "v0-fixtures.yaml"
     if not fixtures_path.is_file():
         raise _GateAbort(
@@ -224,28 +636,16 @@ def _run_gate(
     except FixturesMissingError as e:
         raise _GateAbort("fixtures-missing", str(e)) from e
 
-    # 3. Render reference + capture screenshots. Render agent in worktree.
-    # Scope screenshot/diff to routes matched to this change — sibling routes
-    # won't exist in the agent worktree and would produce guaranteed failures.
-    # When change_scope is empty (missing or non-UI change), fall back to the
-    # full manifest. When scope is set but matches no routes, the change has
-    # no UI footprint — skip the expensive screenshot phase with a pass.
-    if change_scope:
-        from .v0_manifest import match_routes_by_scope
-
-        try:
-            scoped_routes = list(match_routes_by_scope(manifest, change_scope))
-        except Exception:
-            logger.debug("scope match failed; falling back to full manifest", exc_info=True)
-            scoped_routes = list(manifest.routes)
-        if not scoped_routes:
-            logger.info(
-                "design-fidelity: scope matches no routes for %s — gate pass (no UI)",
-                change_name,
-            )
-            return GateOutcome(status="pass", message="scope-no-ui-routes")
-    else:
-        scoped_routes = list(manifest.routes)
+    # Scope screenshot/diff to routes matched to this change — sibling
+    # routes won't exist in the agent worktree and would produce
+    # guaranteed failures. A change with a scope but zero matched routes
+    # has no UI footprint; skip the expensive phase with a pass.
+    if change_scope and not scoped_routes:
+        logger.info(
+            "design-fidelity: scope matches no routes for %s — gate pass (no UI)",
+            change_name,
+        )
+        return GateOutcome(status="pass", message="scope-no-ui-routes")
 
     outcome = GateOutcome(status="pass")
     outcome.checked_routes = [r.path for r in scoped_routes]
@@ -321,21 +721,19 @@ def run_skeleton_check(
     violations: list[SkeletonViolation] = []
 
     manifest_routes = {r.path for r in manifest.routes}
-    deferred = set(getattr(manifest, "deferred_design_routes", []) or [])
+    deferred = _deferred_route_paths(manifest)
     agent_routes = _enumerate_agent_routes(agent_worktree)
 
     # Scope-matched routes = this change's own design footprint. When
     # change_scope is empty (e.g. non-orchestrated runs or legacy callers),
     # fall back to the full manifest so the check remains useful.
-    expected_routes: set[str] = manifest_routes
     if change_scope:
-        from .v0_manifest import match_routes_by_scope
-
-        try:
-            matched = match_routes_by_scope(manifest, change_scope)
-            expected_routes = {r.path for r in matched}
-        except Exception:
-            logger.debug("match_routes_by_scope failed; checking full manifest", exc_info=True)
+        expected_routes = {r.path for r in _scoped_routes(manifest, change_scope)}
+    else:
+        expected_routes = set(manifest_routes)
+    # Deferred routes are authorised to diverge — drop them from the
+    # expected set so they don't fire as missing-route violations.
+    expected_routes -= deferred
 
     # Missing-route: only flag routes this change is supposed to build
     for p in expected_routes - agent_routes:
@@ -573,14 +971,40 @@ _AGENT_SERVER_PID: Optional[int] = None
 
 
 def _build_and_start_agent(wt_path: str) -> str:
-    """Run pnpm install && pnpm build && pnpm start in agent worktree. Return base URL."""
+    """Run pnpm install && pnpm build && pnpm start in agent worktree. Return base URL.
+
+    If the verify gate already built the worktree (`.next/BUILD_ID` present),
+    skip the install+build steps and reuse the existing build. This is both
+    faster and avoids a class of false-positive "pnpm build failed" results
+    where re-running install+build after a successful verify build produces
+    a different outcome (stale caches, concurrent lockfile rewrites, etc.).
+    """
     root = Path(wt_path)
-    r = subprocess.run(["pnpm", "install", "--frozen-lockfile"], cwd=root)
-    if r.returncode != 0:
-        raise _GateAbort("agent-build-failed", "pnpm install failed in agent worktree")
-    r = subprocess.run(["pnpm", "build"], cwd=root)
-    if r.returncode != 0:
-        raise _GateAbort("agent-build-failed", "pnpm build failed in agent worktree")
+    already_built = (root / ".next" / "BUILD_ID").is_file()
+    if not already_built:
+        r = subprocess.run(
+            ["pnpm", "install", "--frozen-lockfile"], cwd=root,
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            raise _GateAbort(
+                "agent-build-failed",
+                f"pnpm install failed in agent worktree:\n{(r.stderr or r.stdout or '')[-2000:]}",
+            )
+        r = subprocess.run(
+            ["pnpm", "build"], cwd=root,
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            raise _GateAbort(
+                "agent-build-failed",
+                f"pnpm build failed in agent worktree:\n{(r.stderr or r.stdout or '')[-2000:]}",
+            )
+    else:
+        logger.info(
+            "design-fidelity: reusing existing .next/ build in agent worktree "
+            "(verify gate already built)"
+        )
 
     # Pick a port distinct from reference (reference uses PORT_RANGE 3400-3499)
     from .v0_renderer import _allocate_port

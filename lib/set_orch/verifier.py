@@ -3745,14 +3745,22 @@ def handle_change_done(
                         ),
                         result_fields=gd.result_fields,
                     )
-                elif gd.name == "lint":
+                else:
+                    # Generic profile gate: standard signature
+                    # (change_name, change, wt_path, profile). Covers lint,
+                    # design-fidelity, i18n_check, and any future profile-
+                    # registered gate without needing a name-keyed branch here.
                     pipeline.register(
-                        "lint",
+                        gd.name,
                         lambda gd=gd: gd.executor(
                             change_name=change_name, change=change, wt_path=wt_path,
                             profile=profile,
                         ),
                         result_fields=gd.result_fields,
+                    )
+                    logger.debug(
+                        "Registered profile gate: %s for %s (generic path)",
+                        gd.name, change_name,
                     )
         except Exception:
             logger.warning("Failed to register profile gates", exc_info=True)
