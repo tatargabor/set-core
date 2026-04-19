@@ -156,6 +156,13 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
      - Add SUGGESTION: "Code pattern deviation: <details>"
      - Recommendation: "Consider following project pattern: <example>"
 
+   **Change-Specific Verify Hook**:
+   - If `<change-dir>/verify-hook.sh` exists, run it: `bash <change-dir>/verify-hook.sh`
+   - The hook owns any repository-wide gate the change wants to enforce (e.g., hardcoded-path audit, migration residuals, schema consistency)
+   - Non-zero exit adds a CRITICAL issue: "Change-specific verify gate failed — see stderr above"
+   - Recommendation: "Fix the residuals the hook reported, re-run the hook, then retry /opsx:verify"
+   - Absence is not an error — the hook is opt-in per change
+
 8. **Generate Verification Report**
 
    **Summary Scorecard**:
