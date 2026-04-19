@@ -303,12 +303,39 @@ def get_plan(project: str, filename: str):
 
 
 @router.get("/api/{project}/digest")
-def get_digest(project: str):
-    """Return digest data: index, requirements, coverage, domains, dependencies, ambiguities."""
+def get_digest(project: str, lineage: Optional[str] = None):
+    """Return digest data: index, requirements, coverage, domains, dependencies, ambiguities.
+
+    Section 13.4 / 4b.4: when `?lineage=` is provided, the endpoint
+    routes to the lineage-specific digest directory (`digest-<slug>/`).
+    When the lineage has no saved digest, returns
+    `{"exists": false, "lineage_unavailable": true}` per AC-27c.
+
+    Section 11.3: REQ attribution falls back to `spec-coverage-history.jsonl`
+    when a REQ isn't covered by any live-plan change but a historic
+    change merged it.  Such entries are flagged with
+    `merged_by_archived = true`.
+    """
+    from .lineages import resolve_lineage_default
     project_path = _resolve_project(project)
+    effective_lineage = lineage or resolve_lineage_default(project_path)
+
+    # Resolve the digest dir for the requested lineage.
     digest_dir = project_path / "set" / "orchestration" / "digest"
+    if effective_lineage and effective_lineage not in ("__all__", "__legacy__"):
+        from ..types import slug as _slug
+        slugged = project_path / "set" / "orchestration" / f"digest-{_slug(effective_lineage)}"
+        if slugged.is_dir():
+            digest_dir = slugged
+        elif not digest_dir.is_dir():
+            # Neither lineage-specific nor live exists.
+            return {
+                "exists": False,
+                "lineage_unavailable": True,
+                "effective_lineage": effective_lineage,
+            }
     if not digest_dir.is_dir():
-        return {"exists": False}
+        return {"exists": False, "effective_lineage": effective_lineage}
 
     result: dict = {"exists": True}
 
@@ -404,7 +431,85 @@ def get_digest(project: str):
         except (json.JSONDecodeError, OSError):
             pass
 
+    # Section 11.3: attribute REQs to archived changes when no live-plan
+    # change covers them but spec-coverage-history.jsonl says one did.
+    _attribute_reqs_from_history(result, project_path, effective_lineage)
+
+    result["effective_lineage"] = effective_lineage
     return result
+
+
+def _attribute_reqs_from_history(
+    result: dict, project_path: Path, effective_lineage: Optional[str],
+) -> None:
+    """Section 11.3 / AC-26: enrich requirements with archived attribution.
+
+    For every REQ that has no live-plan change owning it, consult
+    `spec-coverage-history.jsonl` to find the most recent merged
+    change (within `effective_lineage`) that covered it.  Attach
+    `merged_by` + `merged_by_archived = true` + `merged_at` so the
+    Digest UI can render archived attribution.
+    """
+    history_path = project_path / "set" / "orchestration" / "spec-coverage-history.jsonl"
+    if not history_path.is_file():
+        return
+    reqs = result.get("requirements")
+    if not reqs:
+        return
+    # Locate the actual req list inside the various wrapper shapes.
+    req_list = reqs
+    if isinstance(reqs, list) and len(reqs) == 1 and isinstance(reqs[0], dict) \
+            and "requirements" in reqs[0]:
+        req_list = reqs[0]["requirements"]
+    elif isinstance(reqs, dict) and "requirements" in reqs:
+        req_list = reqs["requirements"]
+    if not isinstance(req_list, list):
+        return
+
+    # Walk history once, building req_id → most-recent (change, merged_at).
+    history_attrib: dict[str, dict] = {}
+    try:
+        with open(history_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                # Filter by lineage when one is selected.
+                if effective_lineage and effective_lineage not in ("__all__", "__legacy__"):
+                    rec_lineage = rec.get("spec_lineage_id") or "__legacy__"
+                    if rec_lineage != effective_lineage:
+                        continue
+                merged_at = rec.get("merged_at") or rec.get("ts") or ""
+                change = rec.get("change") or ""
+                for r_id in rec.get("reqs", []) or []:
+                    prev = history_attrib.get(r_id)
+                    if prev is None or prev["merged_at"] < merged_at:
+                        history_attrib[r_id] = {
+                            "merged_by": change,
+                            "merged_by_archived": True,
+                            "merged_at": merged_at,
+                        }
+    except OSError:
+        return
+
+    if not history_attrib:
+        return
+
+    # Attach archived attribution to REQs without a live merged_by.
+    for req in req_list:
+        if not isinstance(req, dict):
+            continue
+        if req.get("merged_by"):
+            continue
+        rid = req.get("id") or req.get("requirement_id") or req.get("req_id")
+        if not rid:
+            continue
+        if rid in history_attrib:
+            req.update(history_attrib[rid])
 
 
 def _enrich_requirements_with_scenarios(result: dict, project_path: Path):
