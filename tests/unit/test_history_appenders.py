@@ -21,6 +21,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.engine import (
     _archive_completed_to_jsonl,
     _claude_mangle_path,
@@ -55,7 +57,7 @@ def _setup_project_with_state(tmp_path, *, with_lineage=True):
     from set_orch.paths import SetRuntime
     proj = tmp_path / "proj"
     proj.mkdir()
-    plan_path = str(proj / "orchestration-plan.json")
+    plan_path = str(tp.plan_file(proj))
     plan = {
         "plan_version": 3,
         "brief_hash": "h",
@@ -167,7 +169,7 @@ def test_archive_writer_includes_session_summary(tmp_path):
     os.environ["HOME"] = str(tmp_path)
     _archive_completed_to_jsonl(state_path)
 
-    archive_path = proj / "state-archive.jsonl"
+    archive_path = tp.state_archive(proj)
     line = json.loads(archive_path.read_text().splitlines()[0])
     assert "session_summary" in line
     assert line["session_summary"]["call_count"] == 0

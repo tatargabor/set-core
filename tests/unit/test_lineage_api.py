@@ -18,6 +18,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.api.lineages import (
     _ALL,
     _LEGACY,
@@ -44,7 +46,7 @@ def _seed_project(tmp_path, *, live_lineage=None, live_changes=None,
     # api/helpers._state_path looks for orchestration-state.json (note the
     # "orchestration-" prefix); we mirror the canonical layout the API
     # consumes.
-    state_path = proj / "orchestration-state.json"
+    state_path = tp.state_file(proj)
     state = {
         "plan_version": 1,
         "brief_hash": "h",
@@ -59,7 +61,7 @@ def _seed_project(tmp_path, *, live_lineage=None, live_changes=None,
     state_path.write_text(json.dumps(state))
 
     if archive_entries:
-        archive = proj / "state-archive.jsonl"
+        archive = tp.state_archive(proj)
         with open(archive, "w") as fh:
             for e in archive_entries:
                 fh.write(json.dumps(e) + "\n")
@@ -250,7 +252,7 @@ def test_state_endpoint_lineage_filter(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
 
     result = get_state("proj", lineage="docs/spec-v1.md")
@@ -281,7 +283,7 @@ def test_state_endpoint_all_returns_union(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
     result = get_state("proj", lineage=_ALL)
     names = sorted(c["name"] for c in result["changes"])

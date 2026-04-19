@@ -11,6 +11,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.engine import _archive_completed_to_jsonl
 from set_orch.state import init_state
 
@@ -56,7 +58,7 @@ def state_with_completed():
 
 
 def _read_archive(root: str) -> list[dict]:
-    path = os.path.join(root, "state-archive.jsonl")
+    path = tp.state_archive(root)
     if not os.path.exists(path):
         return []
     out = []
@@ -119,7 +121,7 @@ class TestArchiveCompletedToJsonl:
                 )
             init_state(plan_path, state_path)
             _archive_completed_to_jsonl(state_path)
-            assert not os.path.exists(os.path.join(tmp, "state-archive.jsonl"))
+            assert not os.path.exists(tp.state_archive(tmp))
         finally:
             import shutil
             shutil.rmtree(tmp, ignore_errors=True)

@@ -31,6 +31,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.supervisor import daemon as daemon_mod
 from set_orch.supervisor.daemon import SupervisorConfig, SupervisorDaemon
 from set_orch.supervisor.ephemeral import EphemeralResult
@@ -57,8 +59,8 @@ def _build_daemon(
     Forces _resolve_runtime_paths to return project-relative paths so the
     test doesn't have to set up a git repo for SetRuntime.
     """
-    state_path = project_dir / "orchestration-state.json"
-    events_path = project_dir / "orchestration-events.jsonl"
+    state_path = tp.state_file(project_dir)
+    events_path = tp.events_file(project_dir)
     log_path = project_dir / "orchestration.log"
     state_path.write_text(json.dumps(state))
     events_path.write_text("")
@@ -129,7 +131,7 @@ def _build_daemon(
 
 
 def _read_event_types(project_dir: Path) -> list[str]:
-    p = project_dir / "orchestration-events.jsonl"
+    p = tp.events_file(project_dir)
     if not p.is_file():
         return []
     out = []

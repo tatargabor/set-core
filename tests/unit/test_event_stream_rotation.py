@@ -17,6 +17,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.engine import (
     _next_cycle_index,
     _rotate_event_streams,
@@ -54,8 +56,8 @@ def _setup_project(tmp_path):
 
 def _write_live_streams(proj, *, n_events=3, n_state=2):
     """Populate live event streams under proj/orchestration/."""
-    events = proj / "orchestration-events.jsonl"
-    state_events = proj / "orchestration-state-events.jsonl"
+    events = tp.events_file(proj)
+    state_events = tp.state_events_file(proj)
     with open(events, "w") as fh:
         for i in range(n_events):
             fh.write(json.dumps({"type": "EVT", "i": i}) + "\n")
@@ -120,7 +122,7 @@ def test_rotation_seals_live_stream_into_cycle_file(tmp_path):
 
 def test_rotation_with_only_one_stream_present(tmp_path):
     proj, _, state_path = _setup_project(tmp_path)
-    only_events = proj / "orchestration-events.jsonl"
+    only_events = tp.events_file(proj)
     only_events.write_text(json.dumps({"type": "EVT"}) + "\n")
     cycle = _rotate_event_streams(state_path, reason="replan")
     assert cycle == 1
@@ -181,7 +183,7 @@ def test_header_lineage_is_null_when_state_corrupt(tmp_path, caplog):
     # Write an unreadable state.json — corrupted JSON.
     with open(state_path, "w") as fh:
         fh.write("{ this is not json")
-    events = proj / "orchestration-events.jsonl"
+    events = tp.events_file(proj)
     events.write_text(json.dumps({"type": "EVT"}) + "\n")
 
     cycle = _rotate_event_streams(state_path, reason="replan")

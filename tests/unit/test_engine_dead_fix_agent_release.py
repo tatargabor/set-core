@@ -19,6 +19,8 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "lib"))
 
+from tests.lib import test_paths as tp
+
 
 def _seed_registry(state_dir: Path, issues: list[dict]) -> Path:
     reg_dir = state_dir / ".set" / "issues"
@@ -44,7 +46,7 @@ def _dead_pid() -> int:
 def test_dead_fix_agent_issue_is_released(tmp_path: Path):
     from set_orch.engine import _release_dead_fix_agent_issues
 
-    state_file = tmp_path / "orchestration-state.json"
+    state_file = tp.state_file(tmp_path)
     state_file.write_text(json.dumps({"status": "running", "changes": []}))
 
     dead = _dead_pid()
@@ -76,7 +78,7 @@ def test_live_fix_agent_is_left_alone(tmp_path: Path):
     from set_orch.engine import _release_dead_fix_agent_issues
 
     import os
-    state_file = tmp_path / "orchestration-state.json"
+    state_file = tp.state_file(tmp_path)
     state_file.write_text(json.dumps({"status": "running", "changes": []}))
 
     # Our own PID is guaranteed alive.
@@ -101,7 +103,7 @@ def test_no_fix_agent_pid_is_left_alone(tmp_path: Path):
     worker died."""
     from set_orch.engine import _release_dead_fix_agent_issues
 
-    state_file = tmp_path / "orchestration-state.json"
+    state_file = tp.state_file(tmp_path)
     state_file.write_text(json.dumps({"status": "running", "changes": []}))
 
     _seed_registry(tmp_path, [
@@ -118,7 +120,7 @@ def test_terminal_issues_are_left_alone(tmp_path: Path):
     """Issues already resolved/dismissed must not be touched."""
     from set_orch.engine import _release_dead_fix_agent_issues
 
-    state_file = tmp_path / "orchestration-state.json"
+    state_file = tp.state_file(tmp_path)
     state_file.write_text(json.dumps({"status": "running", "changes": []}))
 
     dead = _dead_pid()
@@ -141,6 +143,6 @@ def test_missing_registry_is_no_op(tmp_path: Path):
     """No registry file → return 0 silently (fresh project, no issues)."""
     from set_orch.engine import _release_dead_fix_agent_issues
 
-    state_file = tmp_path / "orchestration-state.json"
+    state_file = tp.state_file(tmp_path)
     state_file.write_text(json.dumps({"status": "running", "changes": []}))
     assert _release_dead_fix_agent_issues(str(state_file)) == 0

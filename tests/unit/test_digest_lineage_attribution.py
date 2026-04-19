@@ -22,6 +22,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 
 @pytest.fixture(autouse=True)
 def isolated_runtime(tmp_path, monkeypatch):
@@ -38,7 +40,7 @@ def _seed(tmp_path, *, with_live_digest=True, with_v1_digest=False,
     proj.mkdir()
 
     # Live state for sentinel/lineage-resolution wiring.
-    state_path = proj / "orchestration-state.json"
+    state_path = tp.state_file(proj)
     state_path.write_text(json.dumps({
         "plan_version": 1, "brief_hash": "h", "plan_phase": "initial",
         "plan_method": "api", "status": "running", "created_at": "2026-01-01",
@@ -98,7 +100,7 @@ def test_digest_attributes_req_to_archived_change(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
 
     result = get_digest("proj")
@@ -126,7 +128,7 @@ def test_digest_does_not_attribute_when_req_not_in_history(tmp_path, monkeypatch
     monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
     result = get_digest("proj")
     reqs = result["requirements"]["requirements"]
@@ -150,7 +152,7 @@ def test_digest_history_filters_by_lineage(tmp_path, monkeypatch):
     monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
     result = get_digest("proj", lineage="docs/spec-v2.md")
     req = result["requirements"]["requirements"][0]
@@ -174,7 +176,7 @@ def test_digest_history_picks_most_recent_attribution(tmp_path, monkeypatch):
     monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
     result = get_digest("proj")
     req = result["requirements"]["requirements"][0]
@@ -194,7 +196,7 @@ def test_digest_returns_unavailable_when_lineage_has_no_digest(tmp_path, monkeyp
     monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
     result = get_digest("proj", lineage="docs/spec-v3.md")
     assert result["exists"] is False
@@ -232,7 +234,7 @@ def test_v2_lineage_uses_v2_spec_as_denominator(tmp_path, monkeypatch):
     monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
 
     result = get_digest("proj")  # default = live = docs/spec-v2.md
@@ -264,7 +266,7 @@ def test_v1_only_reqs_absent_from_v2_response(tmp_path, monkeypatch):
     monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
     result = get_digest("proj")  # default = v2 (live)
     reqs = result["requirements"]["requirements"]
@@ -285,7 +287,7 @@ def test_digest_routes_to_lineage_specific_dir(tmp_path, monkeypatch):
     monkeypatch.setattr("set_orch.api.orchestration._resolve_project", lambda _p: proj)
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
 
     # Default (live) → returns v2's REQ-V2-LIVE.

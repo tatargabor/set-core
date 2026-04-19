@@ -189,8 +189,8 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 
 ### 15b.c — Tests
 
-- [ ] 15b.14 `tests/orchestrator/test-orchestrate-integration.sh` — 84 refs. Introduce test helpers that mirror `LineagePaths`; use the helpers for every path construction. [REQ: centralized-lineage-aware-path-resolver]
-- [ ] 15b.15 `tests/unit/*.py` + `tests/unit/*.sh` — replace hardcoded literals with resolver calls. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.14 `tests/orchestrator/test-orchestrate-integration.sh` — 84 refs. Introduce test helpers that mirror `LineagePaths`; use the helpers for every path construction. [REQ: centralized-lineage-aware-path-resolver]
+- [x] 15b.15 `tests/unit/*.py` + `tests/unit/*.sh` — replace hardcoded literals with resolver calls. [REQ: centralized-lineage-aware-path-resolver]
 
 ### 15b.d — Web frontend lineage plumbing audit
 

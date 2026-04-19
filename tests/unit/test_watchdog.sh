@@ -4,14 +4,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/helpers.sh"
+source "$SCRIPT_DIR/../lib/test_paths.sh"
 
 # ─── Setup ───────────────────────────────────────────────────────────
 
 setup_watchdog_env() {
     local tmp_dir
     tmp_dir=$(mktemp -d)
-    export STATE_FILENAME="$tmp_dir/orchestration-state.json"
-    export PLAN_FILENAME="$tmp_dir/orchestration-plan.json"
+    export STATE_FILENAME="$(tp_state_file "$tmp_dir")"
+    export PLAN_FILENAME="$(tp_plan_file "$tmp_dir")"
     export LOG_FILE="$tmp_dir/orchestration.log"
     export EVENTS_FILE="$tmp_dir/events.jsonl"
     touch "$LOG_FILE" "$EVENTS_FILE"

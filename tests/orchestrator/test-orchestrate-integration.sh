@@ -10,6 +10,9 @@ PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Source common functions
 source "$PROJECT_DIR/bin/set-common.sh"
+# Section 15b.14 — test-only helpers that mirror LineagePaths so this file
+# stops scattering hardcoded orchestration filenames.
+source "$PROJECT_DIR/tests/lib/test_paths.sh"
 
 # Test framework
 TESTS_RUN=0
@@ -228,7 +231,7 @@ echo "--- Merge Pipeline ---"
 test_start "clean merge → status changes to merged"
 REPO=$(setup_test_repo)
 create_feature_branch "$REPO" "test-clean" "feature.txt:hello"
-STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO")"
 STATE_FILENAME="$STATE_FILE"
 PROJECT_PATH="$REPO"
 LOG_FILE="$REPO/orchestrate.log"
@@ -266,7 +269,7 @@ git checkout main --quiet
 echo "different main content" > conflict.txt
 git add conflict.txt && git commit -m "main conflict" --quiet
 
-STATE_FILE="$REPO2/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO2")"
 STATE_FILENAME="$STATE_FILE"
 PROJECT_PATH="$REPO2"
 LOG_FILE="$REPO2/orchestrate.log"
@@ -290,7 +293,7 @@ create_feature_branch "$REPO3" "test-already" "already.txt:done"
 cd "$REPO3"
 git merge "change/test-already" --no-edit --quiet 2>/dev/null
 
-STATE_FILE="$REPO3/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO3")"
 STATE_FILENAME="$STATE_FILE"
 init_test_state "$STATE_FILE" "test-already" "verified"
 
@@ -311,7 +314,7 @@ echo "--- Smoke Pipeline ---"
 # Test 10.1: Smoke pass (blocking mode)
 test_start "smoke pass in blocking mode → smoke_result=pass"
 REPO4=$(setup_test_repo)
-STATE_FILE="$REPO4/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO4")"
 STATE_FILENAME="$STATE_FILE"
 LOG_FILE="$REPO4/orchestrate.log"
 touch "$LOG_FILE"
@@ -342,7 +345,7 @@ assert_equals "done" "$ss"
 # Test 10.2: Smoke fail → fix → pass
 test_start "smoke fail then fix → smoke_result=fixed"
 REPO5=$(setup_test_repo)
-STATE_FILE="$REPO5/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO5")"
 STATE_FILENAME="$STATE_FILE"
 LOG_FILE="$REPO5/orchestrate.log"
 touch "$LOG_FILE"
@@ -390,7 +393,7 @@ assert_equals "1" "$sa"
 # Test 10.3: Smoke fail → fix exhausted
 test_start "smoke fix exhausted → smoke_status=failed"
 REPO6=$(setup_test_repo)
-STATE_FILE="$REPO6/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO6")"
 STATE_FILENAME="$STATE_FILE"
 LOG_FILE="$REPO6/orchestrate.log"
 NOTIFICATION_LOG="$REPO6/notifications.log"
@@ -426,7 +429,7 @@ assert_contains "$(cat "$NOTIFICATION_LOG")" "Smoke FAILED"
 # Test 10.4: Health check fail
 test_start "health check fail → smoke_blocked"
 REPO7=$(setup_test_repo)
-STATE_FILE="$REPO7/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO7")"
 STATE_FILENAME="$STATE_FILE"
 LOG_FILE="$REPO7/orchestrate.log"
 NOTIFICATION_LOG="$REPO7/notifications.log"
@@ -451,7 +454,7 @@ assert_equals "smoke_blocked" "$st"
 # Test 10.5: Smoke non-blocking mode
 test_start "non-blocking smoke fail does not block status"
 REPO8=$(setup_test_repo)
-STATE_FILE="$REPO8/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO8")"
 STATE_FILENAME="$STATE_FILE"
 LOG_FILE="$REPO8/orchestrate.log"
 touch "$LOG_FILE"
@@ -801,7 +804,7 @@ DIGEST_DIR="set/orchestration/digest"
 # Test 5.7: build_req_review_section with valid requirements + digest
 test_start "build_req_review_section returns REQ-IDs and titles"
 REQ_REPO=$(setup_test_repo)
-STATE_FILENAME="$REQ_REPO/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$REQ_REPO")"
 LOG_FILE="$REQ_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$REQ_REPO"
@@ -921,12 +924,12 @@ echo "--- State Init: Requirements ---"
 # Test: init_state copies requirements[] and also_affects_reqs[] from digest-mode plan
 test_start "init_state copies requirements and also_affects_reqs from plan"
 REPO=$(setup_test_repo)
-STATE_FILENAME="$REPO/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$REPO")"
 LOG_FILE="$REPO/orchestrate.log"
 touch "$LOG_FILE"
 
 # Create a mock digest-mode plan with requirements fields
-cat > "$REPO/orchestration-plan.json" <<'PLAN_EOF'
+cat > "$(tp_plan_file "$REPO")" <<'PLAN_EOF'
 {
   "plan_version": 1,
   "brief_hash": "test-hash",
@@ -953,7 +956,7 @@ cat > "$REPO/orchestration-plan.json" <<'PLAN_EOF'
 }
 PLAN_EOF
 
-init_state "$REPO/orchestration-plan.json"
+init_state "$(tp_plan_file "$REPO")"
 
 # Verify requirements[] appear in state
 cart_reqs=$(jq -r '[.changes[] | select(.name == "add-cart") | .requirements[]] | join(",")' "$STATE_FILENAME")
@@ -972,11 +975,11 @@ fi
 # Test: init_state with non-digest plan (no requirements fields) → no empty arrays added
 test_start "init_state omits requirements fields for non-digest plan"
 REPO2=$(setup_test_repo)
-STATE_FILENAME="$REPO2/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$REPO2")"
 LOG_FILE="$REPO2/orchestrate.log"
 touch "$LOG_FILE"
 
-cat > "$REPO2/orchestration-plan.json" <<'PLAN_EOF'
+cat > "$(tp_plan_file "$REPO2")" <<'PLAN_EOF'
 {
   "plan_version": 1,
   "brief_hash": "test-hash",
@@ -992,7 +995,7 @@ cat > "$REPO2/orchestration-plan.json" <<'PLAN_EOF'
 }
 PLAN_EOF
 
-init_state "$REPO2/orchestration-plan.json"
+init_state "$(tp_plan_file "$REPO2")"
 
 # Verify no requirements or also_affects_reqs fields present
 has_reqs=$(jq '.changes[0] | has("requirements")' "$STATE_FILENAME")
@@ -1014,7 +1017,7 @@ echo "--- Final Coverage Assertion ---"
 # Test 6.5: final_coverage_check categorizes correctly
 test_start "final_coverage_check categorizes merged/uncovered/failed"
 COV_REPO=$(setup_test_repo)
-STATE_FILENAME="$COV_REPO/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$COV_REPO")"
 LOG_FILE="$COV_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$COV_REPO"
@@ -1068,7 +1071,7 @@ fi
 # Test 6.6: no digest/coverage.json → returns empty
 test_start "final_coverage_check returns empty with no digest"
 NOCOV_REPO=$(setup_test_repo)
-STATE_FILENAME="$NOCOV_REPO/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$NOCOV_REPO")"
 LOG_FILE="$NOCOV_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$NOCOV_REPO"
@@ -1090,7 +1093,7 @@ assert_equals "" "$cov_output"
 # Test 6.7: all requirements merged → no COVERAGE_GAP event
 test_start "final_coverage_check with all merged emits no COVERAGE_GAP"
 ALLMERGE_REPO=$(setup_test_repo)
-STATE_FILENAME="$ALLMERGE_REPO/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$ALLMERGE_REPO")"
 LOG_FILE="$ALLMERGE_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$ALLMERGE_REPO"
@@ -1141,7 +1144,7 @@ fi
 # Test 6.8: merge-blocked change → reqs categorized as "blocked"
 test_start "final_coverage_check categorizes merge-blocked as blocked"
 BLOCKED_REPO=$(setup_test_repo)
-STATE_FILENAME="$BLOCKED_REPO/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$BLOCKED_REPO")"
 LOG_FILE="$BLOCKED_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$BLOCKED_REPO"
@@ -1193,8 +1196,8 @@ echo "--- HTML Report Generator ---"
 # Test 7.7: generate report with full fixture data
 test_start "generate_report produces HTML with all 4 section headings"
 RPT_REPO=$(setup_test_repo)
-STATE_FILENAME="$RPT_REPO/orchestration-state.json"
-PLAN_FILENAME="$RPT_REPO/orchestration-plan.json"
+STATE_FILENAME="$(tp_state_file "$RPT_REPO")"
+PLAN_FILENAME="$(tp_plan_file "$RPT_REPO")"
 LOG_FILE="$RPT_REPO/orchestrate.log"
 REPORT_OUTPUT_PATH="$RPT_REPO/set/orchestration/report.html"
 touch "$LOG_FILE"
@@ -1287,8 +1290,8 @@ fi
 # Test 7.8: generate report with no digest data
 test_start "generate_report shows 'Not available' without digest"
 NORPT_REPO=$(setup_test_repo)
-STATE_FILENAME="$NORPT_REPO/orchestration-state.json"
-PLAN_FILENAME="$NORPT_REPO/orchestration-plan.json"
+STATE_FILENAME="$(tp_state_file "$NORPT_REPO")"
+PLAN_FILENAME="$(tp_plan_file "$NORPT_REPO")"
 LOG_FILE="$NORPT_REPO/orchestrate.log"
 REPORT_OUTPUT_PATH="$NORPT_REPO/set/orchestration/report.html"
 touch "$LOG_FILE"
@@ -1337,7 +1340,7 @@ echo "--- Report Generation Hooks ---"
 # Test 8.6: generate_report failure does not crash orchestration logic
 test_start "generate_report failure is non-fatal"
 HOOK_REPO=$(setup_test_repo)
-STATE_FILENAME="$HOOK_REPO/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$HOOK_REPO")"
 LOG_FILE="$HOOK_REPO/orchestrate.log"
 touch "$LOG_FILE"
 cd "$HOOK_REPO"
@@ -1373,7 +1376,7 @@ echo "--- Integration: Full Pipeline Scenarios ---"
 # Test 9.1: requirement-aware review prompt construction
 test_start "review prompt has assigned REQs with title+brief and also_affects with awareness note"
 INT_REPO1=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO1/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO1")"
 LOG_FILE="$INT_REPO1/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO1"
@@ -1430,7 +1433,7 @@ fi
 # Test 9.2: coverage enforcement end-to-end
 test_start "populate_coverage enforces REQUIRE_FULL_COVERAGE=true"
 INT_REPO2=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO2/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO2")"
 LOG_FILE="$INT_REPO2/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO2"
@@ -1457,7 +1460,7 @@ cat > "$DIGEST_DIR/requirements.json" <<'REQ_EOF'
 REQ_EOF
 
 # Plan: 8 assigned to changes, 2 (REQ-B-001, REQ-B-002) unassigned
-cat > "$INT_REPO2/orchestration-plan.json" <<'PLAN_EOF'
+cat > "$(tp_plan_file "$INT_REPO2")" <<'PLAN_EOF'
 {
   "plan_version": 1,
   "brief_hash": "test",
@@ -1471,7 +1474,7 @@ PLAN_EOF
 # REQUIRE_FULL_COVERAGE=true → should fail
 export REQUIRE_FULL_COVERAGE=true
 cov_rc=0
-populate_coverage "$INT_REPO2/orchestration-plan.json" 2>/dev/null || cov_rc=$?
+populate_coverage "$(tp_plan_file "$INT_REPO2")" 2>/dev/null || cov_rc=$?
 if [[ "$cov_rc" -ne 0 ]]; then
     test_pass
 else
@@ -1482,14 +1485,14 @@ fi
 test_start "populate_coverage warns but succeeds with REQUIRE_FULL_COVERAGE=false"
 export REQUIRE_FULL_COVERAGE=false
 cov_rc=0
-populate_coverage "$INT_REPO2/orchestration-plan.json" 2>/dev/null || cov_rc=$?
+populate_coverage "$(tp_plan_file "$INT_REPO2")" 2>/dev/null || cov_rc=$?
 assert_equals "0" "$cov_rc"
 unset REQUIRE_FULL_COVERAGE
 
 # Test 9.3: final coverage cross-reference
 test_start "final_coverage_check cross-references coverage with state statuses"
 INT_REPO3=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO3/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO3")"
 LOG_FILE="$INT_REPO3/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO3"
@@ -1541,8 +1544,8 @@ fi
 # Test 9.4: HTML report with full fixture
 test_start "HTML report contains domain names, REQ-IDs, change names, gate results"
 INT_REPO4=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO4/orchestration-state.json"
-PLAN_FILENAME="$INT_REPO4/orchestration-plan.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO4")"
+PLAN_FILENAME="$(tp_plan_file "$INT_REPO4")"
 LOG_FILE="$INT_REPO4/orchestrate.log"
 REPORT_OUTPUT_PATH="$INT_REPO4/set/orchestration/report.html"
 touch "$LOG_FILE"
@@ -1625,8 +1628,8 @@ fi
 # Test 9.5: HTML report graceful degradation
 test_start "HTML report renders plan+execution without digest"
 INT_REPO5=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO5/orchestration-state.json"
-PLAN_FILENAME="$INT_REPO5/orchestration-plan.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO5")"
+PLAN_FILENAME="$(tp_plan_file "$INT_REPO5")"
 LOG_FILE="$INT_REPO5/orchestrate.log"
 REPORT_OUTPUT_PATH="$INT_REPO5/set/orchestration/report.html"
 touch "$LOG_FILE"
@@ -1657,7 +1660,7 @@ fi
 # Test 9.6: review with REQ-ID not in digest
 test_start "review handles ghost REQ-ID with '(not found in digest)'"
 INT_REPO6=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO6/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO6")"
 LOG_FILE="$INT_REPO6/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO6"
@@ -1691,7 +1694,7 @@ fi
 # Test 9.7: coverage with merge-blocked change
 test_start "final_coverage_check reports merge-blocked reqs as blocked"
 INT_REPO7=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO7/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO7")"
 LOG_FILE="$INT_REPO7/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO7"
@@ -1721,7 +1724,7 @@ fi
 # Test 9.8: coverage with removed REQ
 test_start "final_coverage_check excludes removed requirements"
 INT_REPO8=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO8/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO8")"
 LOG_FILE="$INT_REPO8/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO8"
@@ -1757,7 +1760,7 @@ fi
 # Test 9.9: empty requirements array in state
 test_start "build_req_review_section returns empty for empty requirements array"
 INT_REPO9=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO9/orchestration-state.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO9")"
 LOG_FILE="$INT_REPO9/orchestrate.log"
 touch "$LOG_FILE"
 cd "$INT_REPO9"
@@ -1787,8 +1790,8 @@ assert_equals "" "$req_output"
 # Test 9.10: report atomic write
 test_start "generate_report writes atomically via temp file"
 INT_REPO10=$(setup_test_repo)
-STATE_FILENAME="$INT_REPO10/orchestration-state.json"
-PLAN_FILENAME="$INT_REPO10/orchestration-plan.json"
+STATE_FILENAME="$(tp_state_file "$INT_REPO10")"
+PLAN_FILENAME="$(tp_plan_file "$INT_REPO10")"
 LOG_FILE="$INT_REPO10/orchestrate.log"
 REPORT_OUTPUT_PATH="$INT_REPO10/set/orchestration/report.html"
 touch "$LOG_FILE"
@@ -1829,7 +1832,7 @@ echo "--- Smoke Screenshot Artifacts ---"
 test_start "smoke artifact collection → creates attempt-1/ and updates state"
 REPO=$(setup_test_repo)
 create_feature_branch "$REPO" "test-sc-collect" "feature.txt:hello"
-STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO")"
 STATE_FILENAME="$STATE_FILE"
 PROJECT_PATH="$REPO"
 LOG_FILE="$REPO/orchestrate.log"
@@ -1880,7 +1883,7 @@ fi
 # Test: Already-merged sets smoke_result=skip_merged
 test_start "already-merged branch → smoke_result=skip_merged"
 REPO=$(setup_test_repo)
-STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO")"
 STATE_FILENAME="$STATE_FILE"
 PROJECT_PATH="$REPO"
 LOG_FILE="$REPO/orchestrate.log"
@@ -1912,7 +1915,7 @@ assert_equals "skip_merged" "$smoke_res"
 test_start "multi-change context → included in fix prompt when last_smoke_pass_commit set"
 REPO=$(setup_test_repo)
 cd "$REPO"
-STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO")"
 STATE_FILENAME="$STATE_FILE"
 LOG_FILE="$REPO/orchestrate.log"
 touch "$LOG_FILE"
@@ -1942,7 +1945,7 @@ fi
 test_start "cold start → empty last_smoke_pass_commit skips multi-change context"
 REPO=$(setup_test_repo)
 cd "$REPO"
-STATE_FILE="$REPO/orchestration-state.json"
+STATE_FILE="$(tp_state_file "$REPO")"
 STATE_FILENAME="$STATE_FILE"
 init_test_state "$STATE_FILE" "test-cold" "merged"
 # last_smoke_pass_commit is "" by default from init_test_state

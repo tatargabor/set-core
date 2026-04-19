@@ -10,6 +10,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.migrations.backfill_lineage import (
     _MIGRATION_MARKER,
     migrate_legacy_archive,
@@ -42,11 +44,11 @@ def _setup_project_with_archive(tmp_path, *, plan_input_path=None,
         from set_orch.paths import SetRuntime
         rt = SetRuntime(str(proj))
         rt.ensure_dirs()
-        plan_path = os.path.join(rt.orchestration_dir, "orchestration-plan.json")
-        archive_path = os.path.join(rt.orchestration_dir, "state-archive.jsonl")
+        plan_path = tp.plan_file(rt.orchestration_dir)
+        archive_path = tp.state_archive(rt.orchestration_dir)
     else:
-        plan_path = str(proj / "orchestration-plan.json")
-        archive_path = str(proj / "state-archive.jsonl")
+        plan_path = str(tp.plan_file(proj))
+        archive_path = str(tp.state_archive(proj))
 
     if plan_input_path is not None:
         with open(plan_path, "w") as fh:
@@ -211,7 +213,7 @@ def test_loader_no_longer_synthesizes_phase_zero(tmp_path):
     from set_orch.api.helpers import _load_archived_changes
     proj = tmp_path / "proj"
     proj.mkdir()
-    archive = proj / "state-archive.jsonl"
+    archive = tp.state_archive(proj)
     archive.write_text(
         json.dumps({"name": "x", "status": "merged"}) + "\n"
     )

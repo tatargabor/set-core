@@ -10,11 +10,13 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.api.helpers import _load_archived_changes
 
 
 def _write_archive(root: Path, entries: list[dict]) -> None:
-    archive = root / "state-archive.jsonl"
+    archive = tp.state_archive(root)
     with open(archive, "w") as f:
         for entry in entries:
             f.write(json.dumps(entry) + "\n")
@@ -31,7 +33,7 @@ class TestLoadArchivedChanges:
         with tempfile.TemporaryDirectory() as tmp:
             nested = Path(tmp) / "set" / "orchestration"
             nested.mkdir(parents=True)
-            (nested / "state-archive.jsonl").write_text(
+            (tp.state_archive(nested)).write_text(
                 json.dumps({"name": "ghost", "status": "merged"}) + "\n"
             )
             assert _load_archived_changes(Path(tmp)) == []

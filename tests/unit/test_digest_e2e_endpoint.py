@@ -17,6 +17,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 
 @pytest.fixture(autouse=True)
 def isolated_runtime(tmp_path, monkeypatch):
@@ -30,7 +32,7 @@ def _seed(tmp_path, *, history=None, changes=None, live_lineage="docs/spec.md"):
     proj = tmp_path / "proj"
     proj.mkdir()
 
-    state_path = proj / "orchestration-state.json"
+    state_path = tp.state_file(proj)
     state = {
         "plan_version": 1, "brief_hash": "h", "plan_phase": "initial",
         "plan_method": "api", "status": "running", "created_at": "2026-01-01",
@@ -54,7 +56,7 @@ def _patch_resolvers(monkeypatch, proj):
     )
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
 
 

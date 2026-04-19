@@ -21,6 +21,8 @@ from unittest.mock import patch
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "lib"))
 
+from tests.lib import test_paths as tp
+
 
 def _seed_state(path: Path, changes: list[dict]) -> None:
     path.write_text(json.dumps({"status": "running", "changes": changes}))
@@ -82,7 +84,7 @@ def test_resume_paused_integrated_with_monitor_loop_startup(tmp_path: Path):
     state_dir = tmp_path / "proj"
     cfg_dir = state_dir / "set" / "orchestration"
     cfg_dir.mkdir(parents=True)
-    state_file = state_dir / "orchestration-state.json"
+    state_file = tp.state_file(state_dir)
     wt = tmp_path / "wt-paused"
     wt.mkdir()
     _seed_state(state_file, [

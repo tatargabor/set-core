@@ -20,6 +20,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 
 @pytest.fixture(autouse=True)
 def isolated_runtime(tmp_path, monkeypatch):
@@ -34,7 +36,7 @@ def _seed(tmp_path, *, archived_summary, worktree_present):
     proj.mkdir()
 
     # Write a minimal state file.
-    state_path = proj / "orchestration-state.json"
+    state_path = tp.state_file(proj)
     state_path.write_text(json.dumps({
         "plan_version": 2,
         "brief_hash": "h",
@@ -48,7 +50,7 @@ def _seed(tmp_path, *, archived_summary, worktree_present):
     }))
 
     # Write a state-archive.jsonl with one archived change.
-    archive_path = proj / "state-archive.jsonl"
+    archive_path = tp.state_archive(proj)
     wt_path = str(tmp_path / "wt-archived") if worktree_present else "/tmp/no-such-wt-12345"
     if worktree_present:
         os.makedirs(wt_path, exist_ok=True)
@@ -97,7 +99,7 @@ def test_state_endpoint_surfaces_archived_change_tokens(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "set_orch.api.orchestration._state_path",
-        lambda _p: proj / "orchestration-state.json",
+        lambda _p: tp.state_file(proj),
     )
 
     result = get_state("proj")
@@ -178,7 +180,7 @@ def test_llm_calls_does_not_emit_synthetic_when_worktree_dir_present(tmp_path, m
         worktree_present=True,
     )
     # Update the archive entry to point at our worktree.
-    archive_path = proj / "state-archive.jsonl"
+    archive_path = tp.state_archive(proj)
     entry["worktree_path"] = str(wt)
     archive_path.write_text(json.dumps(entry) + "\n")
 

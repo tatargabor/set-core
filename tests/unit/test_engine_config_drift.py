@@ -23,13 +23,15 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "lib"))
 
+from tests.lib import test_paths as tp
+
 
 @pytest.fixture
 def fake_project(tmp_path: Path):
     state_dir = tmp_path / "proj"
     cfg_dir = state_dir / "set" / "orchestration"
     cfg_dir.mkdir(parents=True)
-    state_file = state_dir / "orchestration-state.json"
+    state_file = tp.state_file(state_dir)
     state_file.write_text(json.dumps({"status": "running", "changes": []}))
     return state_file, cfg_dir
 

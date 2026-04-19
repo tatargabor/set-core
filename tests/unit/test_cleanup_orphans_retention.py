@@ -24,6 +24,8 @@ from unittest.mock import patch, MagicMock
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "lib"))
 
+from tests.lib import test_paths as tp
+
 
 def test_cleanup_orphans_skips_merged_worktree_when_retention_keep(tmp_path, monkeypatch):
     """Worktree of a merged change must survive monitor restart when
@@ -38,7 +40,7 @@ def test_cleanup_orphans_skips_merged_worktree_when_retention_keep(tmp_path, mon
     wt = tmp_path / f"{project_name}-wt-foundation-setup"
     wt.mkdir()
 
-    state_file = project_dir / "orchestration-state.json"
+    state_file = tp.state_file(project_dir)
     state_file.write_text(
         '{"status":"running","changes":[{"name":"foundation-setup",'
         '"status":"merged","extras":{}}]}'
@@ -89,7 +91,7 @@ def test_cleanup_orphans_removes_merged_worktree_when_retention_delete(tmp_path,
     wt = tmp_path / "project-wt-foundation-setup"
     wt.mkdir()
 
-    state_file = project_dir / "orchestration-state.json"
+    state_file = tp.state_file(project_dir)
     state_file.write_text(
         '{"status":"running","changes":[{"name":"foundation-setup",'
         '"status":"merged","extras":{}}]}'
@@ -139,7 +141,7 @@ def test_cleanup_orphans_still_removes_orphan_without_state_entry(tmp_path, monk
     wt = tmp_path / "project-wt-ghost-change"
     wt.mkdir()
 
-    state_file = project_dir / "orchestration-state.json"
+    state_file = tp.state_file(project_dir)
     state_file.write_text('{"status":"running","changes":[]}')
 
     wt_list_output = f"worktree {wt}\nbranch refs/heads/change/ghost-change\n"

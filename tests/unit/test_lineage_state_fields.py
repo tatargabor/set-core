@@ -18,6 +18,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.state import (
     Change,
     OrchestratorState,
@@ -238,7 +240,7 @@ def test_archive_entry_carries_lineage_and_session(project):
 
     _archive_completed_to_jsonl(state_path)
 
-    archive_path = os.path.join(project, "state-archive.jsonl")
+    archive_path = tp.state_archive(project)
     with open(archive_path) as fh:
         lines = [json.loads(l) for l in fh if l.strip()]
     assert len(lines) == 1

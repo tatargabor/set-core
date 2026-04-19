@@ -17,6 +17,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.api.activity import _load_events
 from set_orch.api.orchestration import _read_llm_call_events
 
@@ -74,7 +76,7 @@ def project_with_cycles(tmp_path):
                   "output_tokens": 40, "duration_ms": 150}},
     ])
     # Live events (current cycle)
-    with open(proj / "orchestration-events.jsonl", "w") as fh:
+    with open(tp.events_file(proj), "w") as fh:
         fh.write(json.dumps({
             "type": "LLM_CALL", "ts": "2026-01-03T10:00:00+00:00", "change": "shipping",
             "data": {"purpose": "review", "model": "opus", "input_tokens": 50,
@@ -152,9 +154,9 @@ def test_llm_calls_dedup_drops_duplicate_emissions(tmp_path):
     }) + "\n"
     # Both files contain the same event — the engine sometimes writes
     # to two files due to historic dual-emission.
-    with open(proj / "orchestration-events.jsonl", "w") as fh:
+    with open(tp.events_file(proj), "w") as fh:
         fh.write(duplicate_event)
-    with open(proj / "orchestration-state-events.jsonl", "w") as fh:
+    with open(tp.state_events_file(proj), "w") as fh:
         fh.write(duplicate_event)
     calls: list[dict] = []
     _read_llm_call_events(proj, calls)

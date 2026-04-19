@@ -7,13 +7,15 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.lib import test_paths as tp
+
 from set_orch.engine import _cleanup_orphans, _has_process_in_dir
 
 
 @pytest.fixture
 def state_dir(tmp_path):
     """Create a minimal orchestration state for testing."""
-    state_file = tmp_path / "orchestration-state.json"
+    state_file = tp.state_file(tmp_path)
     # Initialize git repo
     import subprocess
     subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)

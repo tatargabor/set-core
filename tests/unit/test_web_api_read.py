@@ -9,6 +9,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from fastapi.testclient import TestClient
 from set_orch.server import create_app
 from set_orch import api as api_module
@@ -28,7 +30,7 @@ def tmp_project(tmp_path):
             {"name": "change-b", "status": "running"},
         ],
     }
-    (orch_dir / "orchestration-state.json").write_text(json.dumps(state))
+    (tp.state_file(orch_dir)).write_text(json.dumps(state))
     (orch_dir / "orchestration.log").write_text("line1\nline2\nline3\n")
     return tmp_path
 

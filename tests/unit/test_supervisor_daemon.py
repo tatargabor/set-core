@@ -22,6 +22,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 
+from tests.lib import test_paths as tp
+
 from set_orch.supervisor.inbox import (
     InboxMessage,
     classify_message,
@@ -218,7 +220,7 @@ class TestDaemonLifecycle:
         from set_orch.supervisor.daemon import SupervisorConfig, SupervisorDaemon
 
         # Create a minimal state file so "project_path" is valid
-        (project_dir / "orchestration-state.json").write_text(
+        (tp.state_file(project_dir)).write_text(
             json.dumps({"status": "running", "changes": []})
         )
 
@@ -264,7 +266,7 @@ class TestDaemonLifecycle:
         assert "orchestrator" in (final_status.stop_reason or "")
 
         # Event log has SUPERVISOR_START + SUPERVISOR_STOP
-        events_path = project_dir / "orchestration-events.jsonl"
+        events_path = tp.events_file(project_dir)
         assert events_path.is_file()
         lines = events_path.read_text().strip().splitlines()
         event_types = []
@@ -284,7 +286,7 @@ class TestDaemonLifecycle:
         # the fake orchestrator to die
         monkeypatch.setattr(daemon_mod, "SIGTERM_GRACE_SECONDS", 2)
 
-        (project_dir / "orchestration-state.json").write_text(
+        (tp.state_file(project_dir)).write_text(
             json.dumps({"status": "running", "changes": []})
         )
 

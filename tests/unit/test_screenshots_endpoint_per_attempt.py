@@ -25,6 +25,8 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "lib"))
 
+from tests.lib import test_paths as tp
+
 
 def _seed_state(project_dir: Path, change_name: str) -> None:
     """Create a minimal orchestration-state.json the endpoint can load."""
@@ -36,7 +38,7 @@ def _seed_state(project_dir: Path, change_name: str) -> None:
             {"name": change_name, "extras": {}, "worktree_path": ""}
         ],
     }
-    (project_dir / "orchestration-state.json").write_text(json.dumps(state))
+    (tp.state_file(project_dir)).write_text(json.dumps(state))
 
 
 def _write_archived_attempt(
