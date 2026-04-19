@@ -2720,8 +2720,9 @@ def _execute_review_gate(
     # Only verify previous findings were fixed, don't scan for new issues
     fix_verification_prefix = ""
     if verify_retry_count > 0:
+        from .paths import LineagePaths as _LP_vrp
         prior_findings = _read_prior_review_findings(
-            os.path.join(os.path.dirname(state_file), "set", "orchestration", "review-findings.jsonl"),
+            _LP_vrp(os.path.dirname(state_file)).review_findings,
             change_name,
         ) if state_file else ""
         if prior_findings:
@@ -2832,8 +2833,8 @@ def _execute_review_gate(
     if not rr.has_critical:
         # Still log any HIGH/MEDIUM findings for post-run analysis
         if rr.output and re.search(r"\[HIGH\]|\[MEDIUM\]", rr.output):
-            findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
-            findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+            from .paths import LineagePaths as _LP_vhm
+            findings_path = _LP_vhm(os.path.dirname(state_file)).review_findings
             _append_review_finding(findings_path, change_name, rr.output, verify_retry_count + 1)
         logger.info("Gate[review] END %s result=pass", change_name)
         return GateResult("review", "pass", output=smart_truncate_structured(rr.output, 5000))
@@ -2855,9 +2856,9 @@ def _execute_review_gate(
         "diff_summary": diff_summary,
     })
 
-    # Persist findings to JSONL for post-run summary
-    findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
-    findings_path = os.path.join(findings_dir, "review-findings.jsonl")
+    # Persist findings to JSONL for post-run summary (LineagePaths.review_findings)
+    from .paths import LineagePaths as _LP_vrf
+    findings_path = _LP_vrf(os.path.dirname(state_file)).review_findings
     _append_review_finding(findings_path, change_name, rr.output, round_num)
 
     # Write/append to review-findings.md in worktree (committed to branch)
@@ -3523,7 +3524,7 @@ def handle_change_done(
     if not wt_path:
         logger.warning("handle_change_done: wt_path empty for %s — critical checks will be skipped", change_name)
 
-    # Update e2e-manifest.json with actual spec files (task 11.1)
+    # Update the per-worktree e2e manifest with actual spec files (task 11.1)
     if wt_path and os.path.isdir(wt_path):
         _e2e_dir = os.path.join(wt_path, "tests", "e2e")
         if os.path.isdir(_e2e_dir):
@@ -3532,16 +3533,17 @@ def handle_change_done(
                 if fn.endswith((".spec.ts", ".spec.js"))
             ])
             if _actual_specs:
-                _manifest_path = os.path.join(wt_path, "e2e-manifest.json")
+                from .paths import LineagePaths as _LP_vm
+                _manifest_path = _LP_vm.e2e_manifest_for_worktree(wt_path)
                 try:
                     _manifest = {}
                     if os.path.isfile(_manifest_path):
                         _manifest = json.loads(Path(_manifest_path).read_text())
                     _manifest["spec_files"] = _actual_specs
                     Path(_manifest_path).write_text(json.dumps(_manifest, indent=2))
-                    logger.info("Updated e2e-manifest.json: %d spec files: %s", len(_actual_specs), _actual_specs)
+                    logger.info("Updated e2e manifest (%s): %d spec files: %s", _manifest_path, len(_actual_specs), _actual_specs)
                 except Exception as _e:
-                    logger.debug("Failed to update e2e-manifest.json: %s", _e)
+                    logger.debug("Failed to update e2e manifest: %s", _e)
 
     # ANOMALY: agent completed with 0 commits (task 3.1)
     if wt_path and os.path.isdir(wt_path):
@@ -3695,8 +3697,8 @@ def handle_change_done(
     )
 
     # Review findings path for prior-findings injection into retry context
-    _findings_dir = os.path.join(os.path.dirname(state_file), "set", "orchestration")
-    _findings_path = os.path.join(_findings_dir, "review-findings.jsonl")
+    from .paths import LineagePaths as _LP_vpf
+    _findings_path = _LP_vpf(os.path.dirname(state_file)).review_findings
 
     # Register gates in execution order
     pipeline.register(

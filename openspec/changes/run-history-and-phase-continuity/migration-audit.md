@@ -29,7 +29,7 @@ Legend for each row: `[ ]` = not migrated · `[x]` = migrated (uses `LineagePath
 - [x] `lib/set_orch/dispatcher.py` — manifest WRITE, directives READ, review-findings references
 - [x] `lib/set_orch/planner.py` — plan WRITE, domains WRITE, digest_dir reads (multiple sites)
 - [x] `lib/set_orch/merger.py` — manifest READ, config READ, state READ, artifacts dir (10 refs)
-- [ ] `lib/set_orch/verifier.py` — manifest WRITE, coverage consume
+- [x] `lib/set_orch/verifier.py` — manifest WRITE, coverage consume
 - [x] `lib/set_orch/recovery.py` — state READ
 - [x] `lib/set_orch/config.py` — config.yaml READ, specs dir fallback
 - [ ] `lib/set_orch/digest.py` — `DIGEST_DIR` constant → route through resolver
