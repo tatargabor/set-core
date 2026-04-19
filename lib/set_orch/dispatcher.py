@@ -495,8 +495,9 @@ def _merge_e2e_manifest(
 
 
 def _write_e2e_manifest(wt_path: str, change_name: str, change_reqs: list[str]) -> None:
-    """Read existing e2e-manifest.json (if any), merge in current change, write back."""
-    manifest_path = os.path.join(wt_path, "e2e-manifest.json")
+    """Read existing manifest (if any), merge in current change, write back."""
+    from .paths import LineagePaths
+    manifest_path = LineagePaths.e2e_manifest_for_worktree(wt_path)
     existing: dict = {}
     if os.path.isfile(manifest_path):
         try:
@@ -513,8 +514,8 @@ def _write_e2e_manifest(wt_path: str, change_name: str, change_reqs: list[str]) 
         with open(manifest_path, "w") as mf:
             json.dump(manifest_data, mf, indent=2)
         logger.info(
-            "Wrote e2e-manifest.json for %s: %d spec files, %d requirements "
-            "(own=%d, prior=%d)",
+            "Wrote per-worktree e2e manifest for %s: %d spec files, %d "
+            "requirements (own=%d, prior=%d)",
             change_name,
             len(manifest_data["spec_files"]),
             len(manifest_data["requirements"]),
@@ -522,7 +523,7 @@ def _write_e2e_manifest(wt_path: str, change_name: str, change_reqs: list[str]) 
             prior_req_count,
         )
     except OSError:
-        logger.debug("Failed to write e2e-manifest.json (non-fatal)")
+        logger.debug("Failed to write per-worktree e2e manifest (non-fatal)")
 
 
 def bootstrap_worktree(project_path: str, wt_path: str, change_name: str = "") -> int:
@@ -2218,7 +2219,7 @@ def dispatch_change(
     from set_orch.dispatcher_schema import append_schema_digest_to_claudemd
     append_schema_digest_to_claudemd(wt_path)
 
-    # Write e2e-manifest.json for ownership detection at gate time.
+    # Write the per-worktree e2e manifest for ownership detection at gate time.
     change_reqs = list(getattr(change, "requirements", []) or [])
     _write_e2e_manifest(wt_path, change_name, change_reqs)
 

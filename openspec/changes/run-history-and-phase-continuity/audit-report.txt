@@ -1,15 +1,12 @@
 # Hardcoded-path audit report
 
-Found 192 residual literal(s):
+Found 193 residual literal(s):
 
+  - e2e-manifest-history\.jsonl lib/set_orch/api/orchestration.py:460
   - e2e-manifest-history\.jsonl lib/set_orch/merger.py:557
-  - e2e-manifest\.json lib/set_orch/dispatcher.py:2221
+  - e2e-manifest\.json lib/set_orch/api/orchestration.py:501
   - e2e-manifest\.json lib/set_orch/dispatcher.py:455
   - e2e-manifest\.json lib/set_orch/dispatcher.py:458
-  - e2e-manifest\.json lib/set_orch/dispatcher.py:498
-  - e2e-manifest\.json lib/set_orch/dispatcher.py:499
-  - e2e-manifest\.json lib/set_orch/dispatcher.py:516
-  - e2e-manifest\.json lib/set_orch/dispatcher.py:525
   - e2e-manifest\.json lib/set_orch/merger.py:1439
   - e2e-manifest\.json lib/set_orch/merger.py:1493
   - e2e-manifest\.json lib/set_orch/merger.py:1494
@@ -57,8 +54,8 @@ Found 192 residual literal(s):
   - orchestration-state-events\.jsonl lib/set_orch/_api_old.py:1626
   - orchestration-state-events\.jsonl lib/set_orch/_api_old.py:1629
   - orchestration-state-events\.jsonl lib/set_orch/_api_old.py:2801
-  - orchestration-state-events\.jsonl lib/set_orch/api/orchestration.py:670
-  - orchestration-state-events\.jsonl lib/set_orch/api/orchestration.py:673
+  - orchestration-state-events\.jsonl lib/set_orch/api/orchestration.py:875
+  - orchestration-state-events\.jsonl lib/set_orch/api/orchestration.py:878
   - orchestration-state\.json lib/notify-email.sh:83
   - orchestration-state\.json lib/orchestration/state.sh:725
   - orchestration-state\.json lib/set_orch/api/helpers.py:114
@@ -72,7 +69,7 @@ Found 192 residual literal(s):
   - orchestration-state\.json lib/set_orch/_api_old.py:2576
   - orchestration-state\.json lib/set_orch/_api_old.py:2744
   - orchestration-state\.json lib/set_orch/_api_old.py:3139
-  - orchestration-state\.json lib/set_orch/api/orchestration.py:358
+  - orchestration-state\.json lib/set_orch/api/orchestration.py:385
   - orchestration-state\.json lib/set_orch/api/_sentinel_orch.py:172
   - orchestration-state\.json lib/set_orch/api/sentinel.py:76
   - orchestration-state\.json lib/set_orch/chat_context.py:135
@@ -116,9 +113,9 @@ Found 192 residual literal(s):
   - review-findings\.jsonl lib/set_orch/_api_old.py:2465
   - review-findings\.jsonl lib/set_orch/_api_old.py:2467
   - review-findings\.jsonl lib/set_orch/_api_old.py:2468
-  - review-findings\.jsonl lib/set_orch/dispatcher.py:1600
-  - review-findings\.jsonl lib/set_orch/dispatcher.py:1706
-  - review-findings\.jsonl lib/set_orch/dispatcher.py:2125
+  - review-findings\.jsonl lib/set_orch/dispatcher.py:1601
+  - review-findings\.jsonl lib/set_orch/dispatcher.py:1707
+  - review-findings\.jsonl lib/set_orch/dispatcher.py:2126
   - review-findings\.jsonl lib/set_orch/engine.py:3677
   - review-findings\.jsonl lib/set_orch/engine.py:3712
   - review-findings\.jsonl lib/set_orch/merger.py:2669
@@ -137,7 +134,7 @@ Found 192 residual literal(s):
   - review-findings\.jsonl scripts/migrate-review-learnings.py:89
   - review-findings\.jsonl scripts/migrate-review-learnings.py:93
   - review-findings\.jsonl scripts/migrate-review-learnings.py:98
-  - review-learnings\.jsonl lib/set_orch/dispatcher.py:1128
+  - review-learnings\.jsonl lib/set_orch/dispatcher.py:1129
   - review-learnings\.jsonl lib/set_orch/engine.py:110
   - review-learnings\.jsonl lib/set_orch/loop_state.py:81
   - review-learnings\.jsonl lib/set_orch/merger.py:2738
@@ -172,12 +169,16 @@ Found 192 residual literal(s):
   - set/orchestration/directives\.json lib/orchestration/dispatcher.sh:215
   - set/orchestration/directives\.json lib/orchestration/dispatcher.sh:556
   - set/orchestration/directives\.json lib/orchestration/dispatcher.sh:686
-  - set/orchestration/directives\.json lib/set_orch/dispatcher.py:1192
+  - set/orchestration/directives\.json lib/set_orch/dispatcher.py:1193
   - \.set/supervisor/status\.json lib/set_orch/supervisor/daemon.py:10
   - \.set/supervisor/status\.json lib/set_orch/supervisor/state.py:3
+  - spec-coverage-history\.jsonl lib/set_orch/api/orchestration.py:314
+  - spec-coverage-history\.jsonl lib/set_orch/api/orchestration.py:435
+  - spec-coverage-history\.jsonl lib/set_orch/api/orchestration.py:548
+  - spec-coverage-history\.jsonl lib/set_orch/api/orchestration.py:553
   - spec-coverage-history\.jsonl lib/set_orch/merger.py:509
   - spec-coverage-report\.md lib/set_orch/_api_old.py:1458
-  - spec-coverage-report\.md lib/set_orch/api/orchestration.py:502
+  - spec-coverage-report\.md lib/set_orch/api/orchestration.py:707
   - spec-coverage-report\.md lib/set_orch/engine.py:3590
   - spec-coverage-report\.md lib/set_orch/engine.py:3602
   - spec-coverage-report\.md lib/set_orch/planner.py:567
