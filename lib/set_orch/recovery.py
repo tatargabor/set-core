@@ -66,9 +66,10 @@ def _is_pid_alive(pid: int) -> bool:
 
 def _validate_project(project_path: Path, target_change: str) -> tuple[OrchestratorState, Change]:
     """Validate project is in a recoverable state. Returns (state, target_change_obj)."""
-    state_file = project_path / "orchestration-state.json"
+    from .paths import LineagePaths as _LP_val
+    state_file = Path(_LP_val(str(project_path)).state_file)
     if not state_file.is_file():
-        raise RecoveryError(f"No orchestration-state.json in {project_path}")
+        raise RecoveryError(f"No state file in {project_path} (resolved {state_file})")
 
     try:
         state = load_state(str(state_file))
@@ -246,8 +247,10 @@ def render_preview(plan: RecoveryPlan, project_path: Path) -> str:
     lines.append("    - status: stopped (requires explicit restart)")
     lines.append("")
 
+    from .paths import LineagePaths as _LP_preview
+    _state_base = os.path.basename(_LP_preview(str(project_path)).state_file)
     lines.append("  Backup:")
-    lines.append(f"    - orchestration-state.json → orchestration-state.json.bak.{plan.backup_tag.split('-', 2)[-1]}")
+    lines.append(f"    - {_state_base} → {_state_base}.bak.{plan.backup_tag.split('-', 2)[-1]}")
     lines.append(f"    - git tag {plan.backup_tag}")
 
     return "\n".join(lines)
@@ -267,9 +270,10 @@ def _kill_zombie_agents(state: OrchestratorState, change_names: list[str]) -> No
 
 
 def _execute_plan(project_path: Path, plan: RecoveryPlan, state: OrchestratorState) -> None:
-    state_file = project_path / "orchestration-state.json"
+    from .paths import LineagePaths as _LP_exec
+    state_file = Path(_LP_exec(str(project_path)).state_file)
     backup_suffix = plan.backup_tag.split("-", 2)[-1]
-    state_backup = project_path / f"orchestration-state.json.bak.{backup_suffix}"
+    state_backup = state_file.with_suffix(state_file.suffix + f".bak.{backup_suffix}")
 
     # Backup state.json
     shutil.copy(str(state_file), str(state_backup))
@@ -419,8 +423,9 @@ def _reset_progress_files(project_path: Path, plan: RecoveryPlan) -> None:
         except (json.JSONDecodeError, OSError, KeyError) as e:
             logger.warning("Failed to clean coverage-merged.json: %s", e)
 
-    # review-findings.jsonl: filter out lines for rolled-back changes
-    review_findings = project_path / "set" / "orchestration" / "review-findings.jsonl"
+    # review-findings: filter out lines for rolled-back changes (LineagePaths.review_findings)
+    from .paths import LineagePaths as _LP_rfc
+    review_findings = Path(_LP_rfc(str(project_path)).review_findings)
     if review_findings.is_file():
         try:
             lines = review_findings.read_text().splitlines()
@@ -433,7 +438,7 @@ def _reset_progress_files(project_path: Path, plan: RecoveryPlan) -> None:
             if removed:
                 logger.info("Removed %d review findings for rolled-back changes", removed)
         except OSError as e:
-            logger.warning("Failed to clean review-findings.jsonl: %s", e)
+            logger.warning("Failed to clean review findings: %s", e)
 
     # runtime logs for rolled-back changes
     runtime_root = Path.home() / ".local" / "share" / "set-core" / "runtime" / project_path.name
@@ -477,7 +482,7 @@ def recover_to_change(
     """Roll back project to the state after target_change was archived.
 
     Args:
-        project_path: Project root (contains orchestration-state.json)
+        project_path: Project root (contains the resolver's state file)
         target_change: Name of merged change to recover to
         dry_run: If True, show plan but don't execute
         yes: If True, skip confirmation prompt
@@ -512,6 +517,8 @@ def recover_to_change(
     print(f"Project rolled back to: {target_change}")
     print(f"Backup tag: {plan.backup_tag}")
     print()
+    from .paths import LineagePaths as _LP_undo
+    _state_base = os.path.basename(_LP_undo(str(project_path)).state_file)
     print("To undo: git reset --hard " + plan.backup_tag)
-    print(f"         cp orchestration-state.json.bak.{plan.backup_tag.split('-', 2)[-1]} orchestration-state.json")
+    print(f"         cp {_state_base}.bak.{plan.backup_tag.split('-', 2)[-1]} {_state_base}")
     return plan
