@@ -12,6 +12,25 @@ import os
 import sys
 
 
+def _default_plan_output() -> str:
+    """CLI default for --output: filename of the live lineage's plan file.
+
+    Delegates to LineagePaths so the literal lives in the resolver alone.
+    """
+    from .paths import LineagePaths
+    return os.path.basename(LineagePaths(os.getcwd()).plan_file)
+
+
+def _default_digest_dir() -> str:
+    """CLI default for --dir: project-relative digest directory path.
+
+    Delegates to LineagePaths so the literal lives in the resolver alone.
+    """
+    from .paths import LineagePaths
+    lp = LineagePaths(os.getcwd())
+    return os.path.relpath(lp.digest_dir, os.getcwd())
+
+
 def cmd_process(args):
     """Dispatch process subcommands."""
     from .process import check_pid, safe_kill, find_orphans
@@ -473,7 +492,7 @@ def cmd_plan(args):
         if plan_method == "agent":
             ok = plan_via_agent(
                 spec_path=args.input_path,
-                plan_filename=args.output or "orchestration-plan.json",
+                plan_filename=args.output or _default_plan_output(),
                 phase_hint=getattr(args, "phase_hint", "") or "",
             )
             if ok:
@@ -492,7 +511,7 @@ def cmd_plan(args):
                     team_mode=getattr(args, "team", False),
                     replan_cycle=getattr(args, "replan_cycle", None),
                 )
-                output_path = args.output or "orchestration-plan.json"
+                output_path = args.output or _default_plan_output()
                 with open(output_path, "w") as f:
                     json.dump(plan_data, f, indent=2)
                 print(json.dumps({
@@ -1072,12 +1091,16 @@ def cmd_digest(args):
         validate_digest,
     )
 
+    # Normalise --dir: None means "use the resolver's live digest dir".
+    if getattr(args, "dir", None) is None and hasattr(args, "dir"):
+        args.dir = _default_digest_dir()
+
     if args.digest_cmd == "run":
         result = run_digest(
             args.spec,
             model=args.model,
             dry_run=args.dry_run,
-            digest_dir=getattr(args, "dir", "set/orchestration/digest"),
+            digest_dir=getattr(args, "dir", None) or _default_digest_dir(),
         )
         if result.validation_warnings:
             for w in result.validation_warnings:
@@ -1568,7 +1591,7 @@ def main():
     pl_run = plan_sub.add_parser("run", help="Run full planning pipeline")
     pl_run.add_argument("--input-mode", required=True, help="Input mode (spec/brief/digest)")
     pl_run.add_argument("--input-path", required=True, help="Input file/dir path")
-    pl_run.add_argument("--output", default="orchestration-plan.json", help="Output plan file")
+    pl_run.add_argument("--output", default=None, help="Output plan file (default: resolver)")
     pl_run.add_argument("--state-file", default="", help="State file (for replan)")
     pl_run.add_argument("--model", default="opus", help="Model for decomposition")
     pl_run.add_argument("--method", default="api", help="Planning method (api/agent)")
@@ -1804,17 +1827,17 @@ def main():
     dig_run.add_argument("--spec", required=True, help="Spec directory or file path")
     dig_run.add_argument("--dry-run", action="store_true", help="Print without writing")
     dig_run.add_argument("--model", default="opus", help="Model for digest")
-    dig_run.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
+    dig_run.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
 
     dig_val = dig_sub.add_parser("validate", help="Validate existing digest")
-    dig_val.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
+    dig_val.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
 
     dig_cov = dig_sub.add_parser("coverage", help="Show coverage report")
-    dig_cov.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
+    dig_cov.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
 
     dig_fresh = dig_sub.add_parser("freshness", help="Check digest freshness")
     dig_fresh.add_argument("--spec", required=True, help="Spec directory or file path")
-    dig_fresh.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
+    dig_fresh.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
 
     dig_scan = dig_sub.add_parser("scan", help="Scan spec directory")
     dig_scan.add_argument("--spec", required=True, help="Spec directory or file path")
@@ -1824,15 +1847,15 @@ def main():
 
     dig_pcov = dig_sub.add_parser("populate-coverage", help="Map requirements to plan changes")
     dig_pcov.add_argument("--plan-file", required=True, help="Plan file path")
-    dig_pcov.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
+    dig_pcov.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
 
     dig_ucov = dig_sub.add_parser("update-coverage", help="Update coverage status for a change")
     dig_ucov.add_argument("--change", required=True, help="Change name")
     dig_ucov.add_argument("--status", required=True, help="New status")
-    dig_ucov.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
+    dig_ucov.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
 
     dig_fcov = dig_sub.add_parser("final-coverage", help="Final coverage check summary")
-    dig_fcov.add_argument("--dir", default="set/orchestration/digest", help="Digest directory")
+    dig_fcov.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
 
     dig_gtriage = dig_sub.add_parser("generate-triage", help="Generate triage.md from ambiguities")
     dig_gtriage.add_argument("--amb-file", required=True, help="Ambiguities JSON file")
