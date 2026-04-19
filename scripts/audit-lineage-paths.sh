@@ -53,6 +53,8 @@ ALLOWLIST_BASENAMES=(
     set-close
     audit-lineage-paths.sh
     helpers.sh
+    # Deprecated by Section 15b.2 — module raises ImportError at top.
+    _api_old.py
 )
 
 # Match by path containment (substring) — anything under these paths is

@@ -1,26 +1,44 @@
-"""REST API endpoints for the set-web dashboard.
+"""DEPRECATED legacy REST API surface — kept for git history only.
 
-Read endpoints for projects, orchestration state, changes, worktrees, activity, logs.
-Write endpoints for approve, stop, skip.
+Section 15b.2 of run-history-and-phase-continuity formally deprecated
+this module.  All endpoints have been re-implemented under
+`set_orch.api.*` (orchestration.py, projects.py, sessions.py, etc.)
+and routed through `LineagePaths` for path resolution.  The legacy
+file remains on disk so `git blame` / `git log` keep working but
+importing it now raises `ImportError` immediately to prevent silent
+re-introductions.
+
+If you need an endpoint that lived here, port it to the new
+`set_orch.api.*` module and drop the literal-path constructions in
+favour of `LineagePaths` calls.
 """
 
 from __future__ import annotations
 
-import fcntl
-import json
-import os
-import re
-import subprocess
-import time
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
+raise ImportError(
+    "set_orch._api_old has been deprecated by Section 15b.2 of "
+    "run-history-and-phase-continuity. Use set_orch.api.* instead. "
+    "See lib/set_orch/api/__init__.py for the canonical router list."
+)
 
-from fastapi import APIRouter, HTTPException, Query
+# The remainder of this file is intentionally unreachable; it is
+# preserved verbatim below so `git blame` / archaeology keep working.
 
-from .process import check_pid, safe_kill
-from .state import load_state, save_state, StateCorruptionError
+import fcntl  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+from concurrent.futures import ThreadPoolExecutor  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Optional  # noqa: E402
+
+from fastapi import APIRouter, HTTPException, Query  # noqa: E402
+
+from .process import check_pid, safe_kill  # noqa: E402
+from .state import load_state, save_state, StateCorruptionError  # noqa: E402
 
 router = APIRouter()
 
