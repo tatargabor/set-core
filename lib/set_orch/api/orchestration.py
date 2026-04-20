@@ -385,10 +385,21 @@ def get_digest(project: str, lineage: Optional[str] = None):
         lineage_basename = os.path.basename(effective_lineage)
         reqs_obj = result.get("requirements")
         if isinstance(reqs_obj, dict) and isinstance(reqs_obj.get("requirements"), list):
+            all_reqs_list = reqs_obj["requirements"]
             filtered = [
-                r for r in reqs_obj["requirements"]
+                r for r in all_reqs_list
                 if not r.get("source") or r.get("source") == lineage_basename
             ]
+            # When the spec lineage is a directory (e.g. `--spec docs/`),
+            # req `source` fields are relative paths like `features/*.md`
+            # that never equal the lineage basename. In that case the
+            # filter would drop every req even though they all belong to
+            # the lineage. Detect this and skip filtering: if the filter
+            # would drop every row that has a source, treat it as the
+            # directory-spec case and keep the full list.
+            has_source = any(r.get("source") for r in all_reqs_list)
+            if has_source and not filtered:
+                filtered = all_reqs_list
             result["requirements"] = {"requirements": filtered}
             allowed_ids = {r.get("id") for r in filtered if r.get("id")}
             # Scope coverage + coverage_merged to the same allow-list so
