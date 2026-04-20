@@ -83,6 +83,12 @@ export default function DigestView({ project }: Props) {
   const { lineageId } = useSelectedLineage()
   useEffect(() => {
     let cancelled = false
+    // Reset the digest payload when the lineage selection flips so the
+    // prior lineage's requirements/coverage do not linger on screen
+    // during the refetch.  The render path degrades to a loading
+    // skeleton when `data` is null.
+    setData(null)
+    setError(null)
     const load = () => {
       getDigest(project, lineageId)
         .then(d => { if (!cancelled) { setData(d); setError(null) } })

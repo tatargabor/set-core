@@ -33,6 +33,10 @@ export default function LearningsPanel({ project }: Props) {
 
   useEffect(() => {
     let cancelled = false
+    // Reset prior lineage's learnings so they do not linger on screen
+    // during the refetch.
+    setData(null)
+    setError(null)
     const load = () => {
       getLearnings(project, lineageId)
         .then(d => { if (!cancelled) { setData(d); setError(null) } })

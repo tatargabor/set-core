@@ -131,6 +131,11 @@ export default function Dashboard({ project, initialTab }: Props) {
   useEffect(() => {
     if (!project) return
     let cancelled = false
+    // Reset the state when the lineage selection flips so the prior
+    // lineage's rows do not linger on screen until the new poll arrives.
+    // Show an explicit loading state instead of stale data.
+    stateJsonRef.current = ''
+    setState(null)
     const poll = () => {
       getState(project, lineageId)
         .then(d => {
@@ -143,7 +148,10 @@ export default function Dashboard({ project, initialTab }: Props) {
         })
         .catch(() => {})
     }
-    // Initial fetch after short delay (give WS a chance first)
+    // Fire the first poll immediately on lineage change — the 2s warm-up
+    // delay is only needed on project mount to let the WS populate state
+    // first.  On lineage flip we want fresh data ASAP.
+    poll()
     const t = setTimeout(poll, 2000)
     // Then poll every 5s
     const iv = setInterval(poll, 5000)

@@ -460,6 +460,13 @@ export default function ActivityView({ project, isRunning }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const { lineageId } = useSelectedLineage()
+  // Reset timeline data when the lineage selection flips so the prior
+  // lineage's spans do not linger on screen during the refetch.
+  useEffect(() => {
+    setData(null)
+    setError(null)
+    setManualZoom(false)
+  }, [lineageId])
   const fetchData = useCallback(() => {
     if (!project) return
     setLoading(true)

@@ -98,6 +98,9 @@ export default function TokenChart({ changes, project }: Props) {
   const { lineageId } = useSelectedLineage()
   useEffect(() => {
     if (!project) return
+    // Clear the prior lineage's calls so stale bars do not linger on
+    // screen during the refetch.
+    setCalls([])
     getLLMCalls(project, 500, lineageId).then(r => setCalls(r.calls)).catch(() => {})
   }, [project, lineageId])
 

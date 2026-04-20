@@ -248,6 +248,15 @@ def _build_spans(
         data = ev.get("data", {})
         source = ev.get("_source", "orchestration")
 
+        # SUPERVISOR_START marks the boundary between sentinel sessions —
+        # every new `set-supervisor` spawn appends one to the shared events
+        # stream.  Reset the planning span state so the next session's
+        # DIGEST_STARTED → DISPATCH pair emits its own planning span
+        # instead of being swallowed by the first session's `planning_emitted`.
+        if etype == "SUPERVISOR_START":
+            planning_start_ts = None
+            planning_emitted = False
+
         # Track last event timestamp per change (orchestration events only,
         # excluding heartbeats which carry no activity signal).
         if (

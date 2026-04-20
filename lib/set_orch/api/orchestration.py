@@ -371,6 +371,42 @@ def get_digest(project: str, lineage: Optional[str] = None):
             except (json.JSONDecodeError, OSError):
                 pass
 
+    # Section 13.6 / coverage-denominator — when a lineage filter is active
+    # and the live digest/ was regenerated across multiple spec files (so
+    # its requirements.json contains rows from several specs), scope the
+    # returned requirements + coverage to the rows whose `source` matches
+    # the lineage's spec basename.  Without this filter the Digest tab
+    # shows the union of every lineage's reqs even though the sidebar
+    # selection is one-lineage.
+    if (
+        effective_lineage
+        and effective_lineage not in ("__all__", "__legacy__")
+    ):
+        lineage_basename = os.path.basename(effective_lineage)
+        reqs_obj = result.get("requirements")
+        if isinstance(reqs_obj, dict) and isinstance(reqs_obj.get("requirements"), list):
+            filtered = [
+                r for r in reqs_obj["requirements"]
+                if not r.get("source") or r.get("source") == lineage_basename
+            ]
+            result["requirements"] = {"requirements": filtered}
+            allowed_ids = {r.get("id") for r in filtered if r.get("id")}
+            # Scope coverage + coverage_merged to the same allow-list so
+            # uncovered counts match the on-screen req list.
+            for cov_key in ("coverage", "coverage_merged"):
+                cov = result.get(cov_key)
+                if not isinstance(cov, dict):
+                    continue
+                inner = cov.get("coverage")
+                if isinstance(inner, dict):
+                    cov["coverage"] = {
+                        k: v for k, v in inner.items() if k in allowed_ids
+                    }
+                if isinstance(cov.get("uncovered"), list):
+                    cov["uncovered"] = [
+                        u for u in cov["uncovered"] if u in allowed_ids
+                    ]
+
     # Read domain summaries
     domains_dir = digest_dir / "domains"
     if domains_dir.is_dir():
