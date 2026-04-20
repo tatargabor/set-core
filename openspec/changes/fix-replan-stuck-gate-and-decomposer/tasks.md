@@ -19,13 +19,13 @@
 
 ## 3. Engine — Stuck-Loop Handler Unification (Layer 1)
 
-- [ ] 3.1 In `lib/set_orch/engine.py::_handle_agent_exit()`, when `ralph_status=stuck` AND `new_commits_since_dispatch > 0`, call `verifier.run_verify_pipeline(change)` directly without writing `status=stalled` [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits]
-- [ ] 3.2 Add `stuck_loop_count` update logic: after each verify-pipeline run following a stuck exit, compare new fingerprint to `last_gate_fingerprint`; increment if same, reset if different [REQ: stuck-loop-circuit-breaker]
-- [ ] 3.3 Ordering: check the threshold BEFORE evaluating reset, per the "Threshold check before reset" clause [REQ: stuck-loop-circuit-breaker]
-- [ ] 3.4 When `stuck_loop_count >= max_stuck_loops` AND fingerprint unchanged, set `status='failed:stuck_no_progress'` and emit `STUCK_LOOP_ESCALATED` event [REQ: stuck-loop-circuit-breaker]
-- [ ] 3.5 Add directive `max_stuck_loops: int = 3` in `lib/set_orch/config.py` defaults [REQ: stuck-loop-circuit-breaker]
-- [ ] 3.6 Integration test: simulate 3 consecutive stuck exits with identical fingerprints → change transitions to `failed:stuck_no_progress` [REQ: stuck-loop-circuit-breaker]
-- [ ] 3.7 Unit test for the ordering edge-case: simultaneous threshold-reached AND fingerprint-changed → threshold does NOT fire, counter resets to 0 [REQ: stuck-loop-circuit-breaker]
+- [x] 3.1 In `lib/set_orch/engine.py::_handle_agent_exit()`, when `ralph_status=stuck` AND `new_commits_since_dispatch > 0`, call `verifier.run_verify_pipeline(change)` directly without writing `status=stalled` [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits]
+- [x] 3.2 Add `stuck_loop_count` update logic: after each verify-pipeline run following a stuck exit, compare new fingerprint to `last_gate_fingerprint`; increment if same, reset if different [REQ: stuck-loop-circuit-breaker]
+- [x] 3.3 Ordering: check the threshold BEFORE evaluating reset, per the "Threshold check before reset" clause [REQ: stuck-loop-circuit-breaker]
+- [x] 3.4 When `stuck_loop_count >= max_stuck_loops` AND fingerprint unchanged, set `status='failed:stuck_no_progress'` and emit `STUCK_LOOP_ESCALATED` event [REQ: stuck-loop-circuit-breaker]
+- [x] 3.5 Add directive `max_stuck_loops: int = 3` in `lib/set_orch/config.py` defaults [REQ: stuck-loop-circuit-breaker]
+- [x] 3.6 Integration test: simulate 3 consecutive stuck exits with identical fingerprints → change transitions to `failed:stuck_no_progress` [REQ: stuck-loop-circuit-breaker]
+- [x] 3.7 Unit test for the ordering edge-case: simultaneous threshold-reached AND fingerprint-changed → threshold does NOT fire, counter resets to 0 [REQ: stuck-loop-circuit-breaker]
 
 ## 4. Engine — Token-Runaway Circuit Breaker (Layer 1)
 

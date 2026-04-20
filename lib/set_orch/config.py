@@ -75,6 +75,26 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "gate_overrides": {},
     "discord": None,
     "completion_timeout": 300,
+    # fix-replan-stuck-gate-and-decomposer: per-change stuck-loop circuit breaker.
+    # After N consecutive `loop_status=stuck` exits with an identical
+    # last_gate_fingerprint, the change is hard-failed and escalated to fix-iss.
+    "max_stuck_loops": 3,
+    # Per-change token-runaway circuit breaker. If input_tokens grow by more than
+    # this delta without the gate fingerprint changing, mark failed:token_runaway.
+    "per_change_token_runaway_threshold": 20_000_000,
+    # Aggregate retry wall-time budget per change (ms). Sum of every retry's
+    # verify-pipeline wall time. Exhaustion escalates to fix-iss.
+    "max_retry_wall_time_ms": 1_800_000,
+    # Gate-retry policy cap — after N cache reuses in a row on the same gate,
+    # the gate runs fully the next time regardless of scope overlap.
+    "max_consecutive_cache_uses": 2,
+    # Decomposer granularity budget — estimated LOC threshold per change.
+    "per_change_estimated_loc_threshold": 1500,
+    "loc_schema_weight": 120,
+    "loc_ambiguity_weight": 80,
+    # Replan divergent-plan reconciliation mode — "enabled" destroys stale
+    # branches/dirs, "dry-run" only writes the manifest.
+    "divergent_plan_dir_cleanup": "enabled",
 }
 
 
@@ -134,6 +154,14 @@ _VALIDATORS: dict[str, tuple[str, str | None]] = {
     "milestones_max_worktrees": ("int", None),
     "e2e_port_base": ("int", None),
     "completion_timeout": ("int_pos", None),
+    "max_stuck_loops": ("int_pos", None),
+    "per_change_token_runaway_threshold": ("int_pos", None),
+    "max_retry_wall_time_ms": ("int_pos", None),
+    "max_consecutive_cache_uses": ("int_pos", None),
+    "per_change_estimated_loc_threshold": ("int_pos", None),
+    "loc_schema_weight": ("int_pos", None),
+    "loc_ambiguity_weight": ("int_pos", None),
+    "divergent_plan_dir_cleanup": ("enum", r"^(enabled|dry-run)$"),
 }
 
 

@@ -119,6 +119,25 @@ class Directives:
     hook_post_merge: str = ""
     hook_on_fail: str = ""
 
+    # fix-replan-stuck-gate-and-decomposer: circuit breakers + retry policy.
+    # After `max_stuck_loops` consecutive `loop_status=stuck` exits with an
+    # identical `last_gate_fingerprint`, the change is hard-failed and
+    # escalated to fix-iss. See retry-loop-completion spec.
+    max_stuck_loops: int = 3
+    # Per-change token-runaway breaker: cumulative input_token growth above
+    # this delta without a gate-fingerprint change trips the breaker.
+    per_change_token_runaway_threshold: int = 20_000_000
+    # Cumulative verify-pipeline wall time budget per change (ms).
+    max_retry_wall_time_ms: int = 1_800_000
+    # Cap on consecutive cached verdicts before forcing a full gate run.
+    max_consecutive_cache_uses: int = 2
+    # Decomposer granularity budget.
+    per_change_estimated_loc_threshold: int = 1500
+    loc_schema_weight: int = 120
+    loc_ambiguity_weight: int = 80
+    # Replan divergent-plan reconciliation mode.
+    divergent_plan_dir_cleanup: str = "enabled"
+
 
 def parse_directives(raw: dict) -> Directives:
     """Parse JSON directives dict into Directives dataclass.
@@ -190,6 +209,24 @@ def parse_directives(raw: dict) -> Directives:
     d.hook_pre_merge = _str(raw, "hook_pre_merge", d.hook_pre_merge)
     d.hook_post_merge = _str(raw, "hook_post_merge", d.hook_post_merge)
     d.hook_on_fail = _str(raw, "hook_on_fail", d.hook_on_fail)
+
+    # fix-replan-stuck-gate-and-decomposer directives
+    d.max_stuck_loops = _int(raw, "max_stuck_loops", d.max_stuck_loops)
+    d.per_change_token_runaway_threshold = _int(
+        raw, "per_change_token_runaway_threshold", d.per_change_token_runaway_threshold,
+    )
+    d.max_retry_wall_time_ms = _int(raw, "max_retry_wall_time_ms", d.max_retry_wall_time_ms)
+    d.max_consecutive_cache_uses = _int(
+        raw, "max_consecutive_cache_uses", d.max_consecutive_cache_uses,
+    )
+    d.per_change_estimated_loc_threshold = _int(
+        raw, "per_change_estimated_loc_threshold", d.per_change_estimated_loc_threshold,
+    )
+    d.loc_schema_weight = _int(raw, "loc_schema_weight", d.loc_schema_weight)
+    d.loc_ambiguity_weight = _int(raw, "loc_ambiguity_weight", d.loc_ambiguity_weight)
+    d.divergent_plan_dir_cleanup = _str(
+        raw, "divergent_plan_dir_cleanup", d.divergent_plan_dir_cleanup,
+    )
 
     # Parse time limit
     tl = raw.get("time_limit", DEFAULT_TIME_LIMIT)
@@ -1364,6 +1401,107 @@ def _has_commits_since_gate(wt_path: str, last_gate_commit: str) -> bool:
         return True  # on error, assume progress (safe: triggers re-gate not stall)
 
 
+def _apply_stuck_loop_counter(
+    state_file: str,
+    change_name: str,
+    max_stuck_loops: int,
+    event_bus: Any,
+) -> bool:
+    """Advance the stuck-loop circuit breaker for a change that just exited stuck.
+
+    Rules (see retry-loop-completion spec):
+      - If `last_gate_fingerprint` is unset, the verifier hasn't written a
+        gate verdict yet → leave counter untouched and return False.
+      - Load the last observed fingerprint from `extras["stuck_fingerprint"]`.
+      - **Threshold-first**: if counter + 1 would reach `max_stuck_loops`
+        AND fingerprint matches the prior one, escalate (mark failed +
+        fire fix-iss) and return True — the caller skips re-gate routing.
+      - Otherwise: if fingerprint matches, increment; if it changed, reset
+        to 0 and record the new fingerprint.
+
+    Returns True when the circuit breaker fires (hard-fail + escalation).
+    """
+    with locked_state(state_file) as state:
+        change = None
+        for c in state.changes:
+            if c.name == change_name:
+                change = c
+                break
+        if change is None:
+            return False
+
+        current_fp = change.last_gate_fingerprint
+        if not current_fp:
+            logger.debug(
+                "stuck-loop counter: %s has no last_gate_fingerprint — skipping",
+                change_name,
+            )
+            return False
+
+        prior_fp = change.extras.get("stuck_fingerprint") if change.extras else None
+        prior_count = int(change.stuck_loop_count or 0)
+
+        # Threshold-first ordering (tasks.md 3.3): if the fingerprint has
+        # changed THIS iteration, reset wins — the breaker does not fire even
+        # if counter would otherwise reach max. If fingerprint is unchanged
+        # (or no prior recorded), increment; fire when we reach the max.
+        fingerprint_stable = prior_fp is None or prior_fp == current_fp
+        new_count = (prior_count + 1) if fingerprint_stable else 0
+        would_trip = fingerprint_stable and new_count >= max_stuck_loops
+
+        change.stuck_loop_count = new_count
+        change.extras["stuck_fingerprint"] = current_fp
+
+        _escalate_pending = False
+        if would_trip:
+            change.status = "failed:stuck_no_progress"
+            logger.error(
+                "Stuck-loop circuit breaker FIRED for %s: %d consecutive stuck "
+                "exits with identical fingerprint %s — escalating to fix-iss",
+                change_name, new_count, current_fp,
+            )
+            if event_bus:
+                event_bus.emit(
+                    "STUCK_LOOP_ESCALATED",
+                    change=change_name,
+                    data={
+                        "stuck_loop_count": new_count,
+                        "fingerprint": current_fp,
+                        "max_stuck_loops": max_stuck_loops,
+                    },
+                )
+            _escalate_pending = True
+        elif fingerprint_stable:
+            logger.info(
+                "stuck-loop counter for %s: %d/%d (fingerprint unchanged %s)",
+                change_name, new_count, max_stuck_loops, current_fp,
+            )
+        else:
+            logger.info(
+                "stuck-loop counter for %s: reset to 0 (fingerprint changed %s → %s)",
+                change_name, prior_fp, current_fp,
+            )
+
+    if _escalate_pending:
+        try:
+            from .issues.manager import escalate_change_to_fix_iss
+            escalate_change_to_fix_iss(
+                state_file=state_file,
+                change_name=change_name,
+                stop_gate="",
+                findings=[],
+                escalation_reason="stuck_no_progress",
+                event_bus=event_bus,
+            )
+        except Exception:
+            logger.warning(
+                "escalate_change_to_fix_iss failed for %s (stuck_no_progress)",
+                change_name, exc_info=True,
+            )
+        return True
+    return False
+
+
 def _is_pid_alive(pid: int) -> bool:
     """Check if a PID exists."""
     try:
@@ -1446,6 +1584,21 @@ def _poll_active_changes(
                     last_gate = (change.extras or {}).get("last_gate_commit", "")
                     has_progress = _has_commits_since_gate(wt_path, last_gate)
                     if has_progress:
+                        # Stuck-loop circuit breaker: consult the current
+                        # last_gate_fingerprint (written by the verifier). If
+                        # it matches the fingerprint from the PRIOR stuck exit,
+                        # increment stuck_loop_count; threshold check BEFORE
+                        # reset (so simultaneous threshold+fingerprint-changed
+                        # lets the fingerprint change win → counter resets).
+                        if ls_status == "stuck":
+                            fired = _apply_stuck_loop_counter(
+                                state_file, change.name, d.max_stuck_loops, event_bus,
+                            )
+                            if fired:
+                                # Change was hard-failed + escalated to fix-iss.
+                                # Skip the re-gate routing.
+                                continue
+
                         logger.info(
                             "Change %s: agent exited fix loop (loop_status=%s) with new commits "
                             "— routing to re-gate (skip stall timeout)",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -502,3 +503,164 @@ class IssueManager:
             if self.notifier:
                 self.notifier.on_registered(issue)
         return issue
+
+
+# ─── Fix-iss Auto-Escalation (section 10 of fix-replan-stuck-gate-and-decomposer)
+# Module-level helper (not on IssueManager) so the engine/verifier can invoke
+# it without holding an IssueManager handle — escalation is a single-shot
+# state mutation + proposal write, driven from circuit breakers.
+
+_FRAMEWORK_PATH_PREFIXES = (
+    "lib/set_orch/",
+    "modules/",
+    "templates/core/rules/",
+    ".claude/rules/",
+)
+
+
+def _classify_fix_target(finding_paths: list[str]) -> str:
+    """Return "framework" if any finding path lives under set-core's own
+    source tree, otherwise "consumer". The distinction decides whether the
+    fix-iss proposal targets set-core (framework bug) or the user project.
+    """
+    for path in finding_paths:
+        if not path:
+            continue
+        for prefix in _FRAMEWORK_PATH_PREFIXES:
+            if path.startswith(prefix):
+                return "framework"
+    return "consumer"
+
+
+def _next_fix_iss_name(openspec_root: str, slug_hint: str) -> str:
+    """Pick the next fix-iss-NNN slug. Scans existing `openspec/changes/`
+    for the highest fix-iss-<N> and increments.
+    """
+    import re
+    changes_dir = os.path.join(openspec_root, "changes")
+    n = 0
+    if os.path.isdir(changes_dir):
+        for entry in os.listdir(changes_dir):
+            m = re.match(r"^fix-iss-(\d{3})", entry)
+            if m:
+                n = max(n, int(m.group(1)))
+    slug = slug_hint or "auto-escalation"
+    return f"fix-iss-{n + 1:03d}-{slug}"
+
+
+def escalate_change_to_fix_iss(
+    *,
+    state_file: str,
+    change_name: str,
+    stop_gate: str,
+    findings: list | None = None,
+    escalation_reason: str = "retry_budget_exhausted",
+    event_bus=None,
+) -> str:
+    """Create a diagnostic fix-iss change for a parent that hit a circuit
+    breaker (retry budget / stuck loop / token runaway).
+
+    Writes `openspec/changes/<fix-iss-name>/proposal.md`, updates the parent
+    change's `fix_iss_child` on state, and emits `FIX_ISS_ESCALATED`.
+
+    Returns the new change name.
+    """
+    import os as _os
+    import re as _re
+    from datetime import datetime as _dt
+    from ..state import locked_state, update_change_field
+
+    # Resolve openspec root from state_file path (state lives alongside
+    # openspec/ under a project root).
+    project_root = _os.path.dirname(_os.path.abspath(state_file))
+    # state_file may live under set/ or similar; walk up until we find openspec/
+    for _ in range(8):
+        if _os.path.isdir(_os.path.join(project_root, "openspec")):
+            break
+        parent = _os.path.dirname(project_root)
+        if parent == project_root:
+            break
+        project_root = parent
+    openspec_root = _os.path.join(project_root, "openspec")
+
+    finding_paths: list[str] = []
+    for f in findings or []:
+        if isinstance(f, dict):
+            p = f.get("file") or f.get("path") or ""
+            if p:
+                finding_paths.append(p)
+        elif hasattr(f, "file") and getattr(f, "file"):
+            finding_paths.append(getattr(f, "file"))
+    target = _classify_fix_target(finding_paths)
+
+    slug_hint = _re.sub(r"[^a-z0-9-]+", "-", change_name.lower()).strip("-")[:20] or "change"
+    fix_iss_name = _next_fix_iss_name(openspec_root, slug_hint)
+
+    change_dir = _os.path.join(openspec_root, "changes", fix_iss_name)
+    _os.makedirs(change_dir, exist_ok=True)
+    proposal_path = _os.path.join(change_dir, "proposal.md")
+
+    # Include runaway metadata in the proposal when available — the circuit
+    # breakers stash baseline/current/delta on the parent change's extras.
+    runaway_section = ""
+    try:
+        from ..state import load_state as _load
+        st = _load(state_file)
+        parent = next((c for c in st.changes if c.name == change_name), None)
+        if parent and escalation_reason == "token_runaway":
+            runaway_section = (
+                "\n### Runaway metadata\n"
+                f"- baseline: {parent.token_runaway_baseline}\n"
+                f"- current input_tokens: {parent.input_tokens}\n"
+                f"- delta: {(parent.input_tokens or 0) - (parent.token_runaway_baseline or 0)}\n"
+            )
+    except Exception:
+        pass
+
+    findings_section = ""
+    if finding_paths:
+        findings_section = "\n### Finding paths\n" + "\n".join(
+            f"- {p}" for p in finding_paths[:20]
+        ) + "\n"
+
+    proposal = f"""## Why
+Parent change `{change_name}` hit a circuit breaker ({escalation_reason}) on
+stop_gate=`{stop_gate or "—"}`. Auto-escalated at {_dt.utcnow().isoformat()}Z.
+
+## What Changes
+Investigate the root cause and produce a targeted fix. Diagnose whether the
+problem is a framework defect or a consumer-project bug before implementing.
+
+## Capabilities
+- investigation-runner
+
+## Impact
+Gated to a single parent change until the diagnosis lands. The parent
+change has been marked `failed:{escalation_reason}` and its dispatch
+slot is released to this fix-iss.
+
+## Fix Target
+{target}
+{findings_section}{runaway_section}
+"""
+    with open(proposal_path, "w") as fh:
+        fh.write(proposal)
+
+    update_change_field(state_file, change_name, "fix_iss_child", fix_iss_name)
+
+    if event_bus is not None:
+        event_bus.emit(
+            "FIX_ISS_ESCALATED",
+            change=change_name,
+            data={
+                "fix_iss_child": fix_iss_name,
+                "escalation_reason": escalation_reason,
+                "target": target,
+                "stop_gate": stop_gate,
+            },
+        )
+    logger.warning(
+        "Auto-escalated %s → %s (reason=%s, target=%s)",
+        change_name, fix_iss_name, escalation_reason, target,
+    )
+    return fix_iss_name
