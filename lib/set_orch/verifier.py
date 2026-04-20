@@ -3769,10 +3769,21 @@ def handle_change_done(
     # ── Run gate pipeline ──
     from .gate_runner import GatePipeline
 
+    _parallel_groups: list[set[str]] = []
+    if profile is not None and hasattr(profile, "parallel_gate_groups"):
+        try:
+            _parallel_groups = list(profile.parallel_gate_groups() or [])
+        except Exception:
+            logger.warning(
+                "parallel_gate_groups() threw — falling back to serial",
+                exc_info=True,
+            )
+
     pipeline = GatePipeline(
         gc, state_file, change_name, change,
         max_retries=effective_max_retries,
         event_bus=event_bus,
+        parallel_groups=_parallel_groups,
     )
 
     # Review findings path for prior-findings injection into retry context
@@ -3946,13 +3957,16 @@ def handle_change_done(
         update_change_field(state_file, change_name, "last_gate_fingerprint", fingerprint)
         if event_bus:
             gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
-            event_bus.emit("VERIFY_GATE", change=change_name, data={
+            _retry_evt: dict = {
                 "result": "retry", "stop_gate": pipeline.stop_gate,
                 "fingerprint": fingerprint,
                 "uncommitted_check": uncommitted_check_result,
                 **{r.gate_name: r.status for r in pipeline.results},
                 "gate_ms": gate_timings,
-            })
+            }
+            if getattr(pipeline, "parallel_group_runs", None):
+                _retry_evt["parallel_group"] = pipeline.parallel_group_runs
+            event_bus.emit("VERIFY_GATE", change=change_name, data=_retry_evt)
         send_notification(
             "set-orchestrate",
             f"Change '{change_name}' failed {pipeline.stop_gate} gate — retrying",
@@ -3966,13 +3980,16 @@ def handle_change_done(
         update_change_field(state_file, change_name, "last_gate_fingerprint", fingerprint)
         if event_bus:
             gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
-            event_bus.emit("VERIFY_GATE", change=change_name, data={
+            _failed_evt: dict = {
                 "result": "failed", "stop_gate": pipeline.stop_gate,
                 "fingerprint": fingerprint,
                 "uncommitted_check": uncommitted_check_result,
                 **{r.gate_name: r.status for r in pipeline.results},
                 "gate_ms": gate_timings,
-            })
+            }
+            if getattr(pipeline, "parallel_group_runs", None):
+                _failed_evt["parallel_group"] = pipeline.parallel_group_runs
+            event_bus.emit("VERIFY_GATE", change=change_name, data=_failed_evt)
         send_notification(
             "set-orchestrate",
             f"Change '{change_name}' failed {pipeline.stop_gate} gate — retries exhausted",
@@ -4051,6 +4068,10 @@ def handle_change_done(
         if _infra_fails:
             _event_data["infra_fail"] = True
             _event_data["infra_fails"] = _infra_fails
+        # Surface any parallel-batch decisions made during this pipeline run
+        # so consumers can see which gates ran concurrently (task 8.5).
+        if getattr(pipeline, "parallel_group_runs", None):
+            _event_data["parallel_group"] = pipeline.parallel_group_runs
         event_bus.emit("VERIFY_GATE", change=change_name, data=_event_data)
 
     # Post-verify hooks (profile — non-blocking)

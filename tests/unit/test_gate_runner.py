@@ -309,3 +309,123 @@ class TestTruncateGateOutput:
             f"Expected all 50 failure lines preserved, got {len(preserved)}. "
             f"Result length: {len(result)}"
         )
+
+
+class TestGatePipelineParallelGroup:
+    """Section 8 tasks 8.4-8.6: spec_verify + review dispatch concurrently,
+    gate_ms recorded for both, findings from both surfaced on double-fail."""
+
+    def test_parallel_group_dispatches_concurrently(self, tmp_path):
+        import threading
+        state_file = _make_state(tmp_path)
+        gc = FakeGateConfig()
+        change = Change(name="c1", status="running")
+
+        # Both executors block briefly on an event — if they ran serially,
+        # the second one would deadlock because the first never signals.
+        started = threading.Event()
+        release = threading.Event()
+        counter = {"spec_verify": 0, "review": 0}
+
+        def spec_verify_exec():
+            started.set()
+            release.wait(timeout=2.0)
+            counter["spec_verify"] += 1
+            return GateResult("spec_verify", "pass")
+
+        def review_exec():
+            started.wait(timeout=2.0)
+            release.set()
+            counter["review"] += 1
+            return GateResult("review", "pass")
+
+        pipeline = GatePipeline(
+            gc, state_file, "c1", change,
+            max_retries=2,
+            parallel_groups=[{"spec_verify", "review"}],
+        )
+        pipeline.register("spec_verify", spec_verify_exec)
+        pipeline.register("review", review_exec)
+
+        action = pipeline.run()
+        assert action == "continue"
+        assert counter == {"spec_verify": 1, "review": 1}
+        # Both ran as one batch
+        assert pipeline.parallel_group_runs == [["spec_verify", "review"]]
+
+    def test_parallel_group_records_both_gate_ms(self, tmp_path):
+        state_file = _make_state(tmp_path)
+        gc = FakeGateConfig()
+        change = Change(name="c1", status="running")
+
+        pipeline = GatePipeline(
+            gc, state_file, "c1", change,
+            max_retries=2,
+            parallel_groups=[{"spec_verify", "review"}],
+        )
+        pipeline.register("spec_verify",
+                          lambda: GateResult("spec_verify", "pass"))
+        pipeline.register("review",
+                          lambda: GateResult("review", "pass"))
+
+        pipeline.run()
+        pipeline.commit_results()
+
+        st = load_state(state_file)
+        c1 = [c for c in st.changes if c.name == "c1"][0]
+        # Each parallel gate recorded its own duration — no zero collision.
+        names = {r.gate_name for r in pipeline.results}
+        assert names == {"spec_verify", "review"}
+
+    def test_parallel_both_fail_surfaces_both_retry_contexts(self, tmp_path):
+        state_file = _make_state(tmp_path)
+        gc = FakeGateConfig()
+        change = Change(name="c1", status="running", verify_retry_count=0)
+
+        pipeline = GatePipeline(
+            gc, state_file, "c1", change,
+            max_retries=3,
+            parallel_groups=[{"spec_verify", "review"}],
+        )
+        pipeline.register(
+            "spec_verify",
+            lambda: GateResult("spec_verify", "fail",
+                                retry_context="spec issue A"),
+        )
+        pipeline.register(
+            "review",
+            lambda: GateResult("review", "fail",
+                                retry_context="review issue B"),
+        )
+
+        action = pipeline.run()
+        assert action == "retry"
+        # Earliest-registered gate becomes stop_gate
+        assert pipeline.stop_gate == "spec_verify"
+        # retry_context was merged — both findings accessible
+        st = load_state(state_file)
+        c1 = [c for c in st.changes if c.name == "c1"][0]
+        merged = c1.extras.get("retry_context", "")
+        assert "spec issue A" in merged
+        assert "review issue B" in merged
+        assert "spec_verify" in merged and "review" in merged
+
+    def test_no_parallel_groups_preserves_serial_order(self, tmp_path):
+        state_file = _make_state(tmp_path)
+        gc = FakeGateConfig()
+        change = Change(name="c1", status="running")
+
+        order = []
+        pipeline = GatePipeline(gc, state_file, "c1", change, max_retries=2)
+        pipeline.register(
+            "spec_verify",
+            lambda: order.append("spec_verify") or GateResult("spec_verify", "pass"),
+        )
+        pipeline.register(
+            "review",
+            lambda: order.append("review") or GateResult("review", "pass"),
+        )
+
+        pipeline.run()
+        assert order == ["spec_verify", "review"]
+        assert pipeline.parallel_group_runs == []

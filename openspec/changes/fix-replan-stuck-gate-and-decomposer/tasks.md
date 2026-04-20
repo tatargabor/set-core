@@ -55,7 +55,7 @@
 - [x] 6.7b Write manifest file `orchestration-cleanup-<epoch>.log` BEFORE any destructive op, listing each branch/dir path with operation and rationale [REQ: reconciler-writes-a-cleanup-manifest-and-honors-dry-run]
 - [x] 6.7c Add directive `divergent_plan_dir_cleanup: str = "enabled"` (values: `enabled`, `dry-run`) in `lib/set_orch/config.py` defaults [REQ: reconciler-writes-a-cleanup-manifest-and-honors-dry-run]
 - [x] 6.8 Assert the sequence: `collect_replan_context()` snapshot taken BEFORE reconciliation so archived dirs don't leak into the prompt [REQ: replan-context-captured-before-reconciliation]
-- [ ] 6.9 Reset `SupervisorStatus.rapid_crashes` to 0 when all current-plan changes reach terminal status AND no replan is pending [REQ: supervisor-rapid_crashes-reset-on-clean-plan-completion]
+- [x] 6.9 Reset `SupervisorStatus.rapid_crashes` to 0 when all current-plan changes reach terminal status AND no replan is pending [REQ: supervisor-rapid_crashes-reset-on-clean-plan-completion]
 - [x] 6.10 Integration test: simulate a divergent replan with dirty worktrees → verify stash refs created, worktrees archived, branches deleted, state reconciled [REQ: divergent-plan-state-reconciliation, worktree-has-uncommitted-changes-during-divergent-plan-reconciliation]
 
 ## 7. Content-Aware Gate Selection (Layer 1 + Web module)
@@ -76,9 +76,9 @@
 - [x] 8.1 In `modules/web/set_project_web/gates.py` (or wherever i18n_check is implemented), change the return type from `warn-fail | pass` to `pass | fail | skipped` [REQ: i18n_check-is-a-hard-fail-gate]
 - [x] 8.2 Update the gate registry/verifier's treatment of `i18n_check`: treat `fail` as a blocking `stop_gate` like any other gate [REQ: i18n_check-is-a-hard-fail-gate]
 - [x] 8.3 Add `WebProjectType.parallel_gate_groups() -> list[set[str]]` returning `[{"spec_verify", "review"}]` by default; `CoreProfile` returns `[]` [REQ: web-profile-exposes-gate-tuning-hooks]
-- [ ] 8.4 In `lib/set_orch/gate_runner.py` (owns parallel dispatch; `verifier.py` calls through it), when a group is active and both gates are in the current gate set, dispatch both concurrently via `concurrent.futures.ThreadPoolExecutor` (process-bound external subprocesses) [REQ: spec_verify-and-review-run-in-parallel]
-- [ ] 8.5 Record both `gate_ms.spec_verify` and `gate_ms.review`; add `parallel_group: [...]` field to the `VERIFY_GATE` event [REQ: spec_verify-and-review-run-in-parallel]
-- [ ] 8.6 If both gates fail, ensure findings from BOTH are surfaced to the retry agent's context even though the `stop_gate` will be the earliest-ordered one [REQ: spec_verify-and-review-run-in-parallel]
+- [x] 8.4 In `lib/set_orch/gate_runner.py` (owns parallel dispatch; `verifier.py` calls through it), when a group is active and both gates are in the current gate set, dispatch both concurrently via `concurrent.futures.ThreadPoolExecutor` (process-bound external subprocesses) [REQ: spec_verify-and-review-run-in-parallel]
+- [x] 8.5 Record both `gate_ms.spec_verify` and `gate_ms.review`; add `parallel_group: [...]` field to the `VERIFY_GATE` event [REQ: spec_verify-and-review-run-in-parallel]
+- [x] 8.6 If both gates fail, ensure findings from BOTH are surfaced to the retry agent's context even though the `stop_gate` will be the earliest-ordered one [REQ: spec_verify-and-review-run-in-parallel]
 - [x] 8.7 Audit `grep -r "warn-fail"` across set-core and built-in templates; replace/remove obsolete references [REQ: i18n_check-is-a-hard-fail-gate]
 - [x] 8.8 Integration test: web change with i18n gap → `VERIFY_GATE` event has `stop_gate: i18n_check, i18n_check: fail` [REQ: i18n_check-is-a-hard-fail-gate]
 
@@ -91,19 +91,19 @@
 - [x] 9.3b Implement `WebProjectType.loc_weights()` in `modules/web/set_project_web/project_type.py` with the declared path→weight mapping: `src/app/admin/**/page.tsx`→350, `src/app/[locale]/**/page.tsx`→200, `src/components/**/*.tsx`→180, `src/server/**/*.ts`→200, `tests/**/*.spec.ts`→150 [REQ: size-estimate-formula-for-change-sizing]
 - [x] 9.3c Implement `_resolve_loc_weight(path, weights)` with longest-glob-wins resolution + specificity tiebreaker in `lib/set_orch/planner.py` [REQ: size-estimate-formula-for-change-sizing]
 - [x] 9.3d Add directives `per_change_estimated_loc_threshold: int = 1500`, `loc_schema_weight: int = 120`, `loc_ambiguity_weight: int = 80` in `lib/set_orch/config.py` defaults [REQ: size-estimate-formula-for-change-sizing]
-- [ ] 9.4 Implement `auto_split_change(change) -> list[Change]` using linked-sibling strategy: group file paths by first-2-segment directory prefix OR by explicit scope sub-headings; emit `<base>-<group-label>-<N>` siblings with sequential `depends_on` chain in the same phase [REQ: linked-sibling-split-strategy]
-- [ ] 9.4a Infer `group-label` from the grouped content: if paths are all under `src/app/admin/<X>/` use `<X>`; if all under `src/server/<X>/` use `<X>-server`; if all under `tests/e2e/` use `tests`; fallback to first-2-segment concat [REQ: linked-sibling-split-strategy]
-- [ ] 9.4b Distribute `requirements`, `also_affects_reqs`, `spec_files`, `resolved_ambiguities` across siblings by file-path affinity; first sibling inherits original `scope` preamble, subsequent siblings get a generated preamble from their grouped content [REQ: linked-sibling-split-strategy]
-- [ ] 9.4c After splitting, recompute `estimated_loc` for each sibling; accept if each is ≤ `threshold * 1.1` (10% grace); otherwise subdivide again [REQ: linked-sibling-split-strategy]
-- [ ] 9.5 Run auto-split BEFORE plan persistence: modify the plan in-memory, revalidate, then return [REQ: linked-sibling-split-strategy]
-- [ ] 9.5a Unit test: `admin-operations` (est 3760) splits into `admin-operations-orders-1 → admin-operations-dashboard-2 → admin-operations-returns-3` with correct `depends_on` [REQ: linked-sibling-split-strategy]
-- [ ] 9.5b Unit test: `promotions-engine` (est 2000) splits into `promotions-engine-server-1 → promotions-engine-admin-2` [REQ: linked-sibling-split-strategy]
-- [ ] 9.5c Unit test: `stories-and-content` (est 900) passes through unchanged [REQ: size-estimate-formula-for-change-sizing]
-- [ ] 9.5d Unit test: pre-split name never appears in output plan [REQ: linked-sibling-split-strategy]
+- [x] 9.4 Implement `auto_split_change(change) -> list[Change]` using linked-sibling strategy: group file paths by first-2-segment directory prefix OR by explicit scope sub-headings; emit `<base>-<group-label>-<N>` siblings with sequential `depends_on` chain in the same phase [REQ: linked-sibling-split-strategy]
+- [x] 9.4a Infer `group-label` from the grouped content: if paths are all under `src/app/admin/<X>/` use `<X>`; if all under `src/server/<X>/` use `<X>-server`; if all under `tests/e2e/` use `tests`; fallback to first-2-segment concat [REQ: linked-sibling-split-strategy]
+- [x] 9.4b Distribute `requirements`, `also_affects_reqs`, `spec_files`, `resolved_ambiguities` across siblings by file-path affinity; first sibling inherits original `scope` preamble, subsequent siblings get a generated preamble from their grouped content [REQ: linked-sibling-split-strategy]
+- [x] 9.4c After splitting, recompute `estimated_loc` for each sibling; accept if each is ≤ `threshold * 1.1` (10% grace); otherwise subdivide again [REQ: linked-sibling-split-strategy]
+- [x] 9.5 Run auto-split BEFORE plan persistence: modify the plan in-memory, revalidate, then return [REQ: linked-sibling-split-strategy]
+- [x] 9.5a Unit test: `admin-operations` (est 3760) splits into `admin-operations-orders-1 → admin-operations-dashboard-2 → admin-operations-returns-3` with correct `depends_on` [REQ: linked-sibling-split-strategy]
+- [x] 9.5b Unit test: `promotions-engine` (est 2000) splits into `promotions-engine-server-1 → promotions-engine-admin-2` [REQ: linked-sibling-split-strategy]
+- [x] 9.5c Unit test: `stories-and-content` (est 900) passes through unchanged [REQ: size-estimate-formula-for-change-sizing]
+- [x] 9.5d Unit test: pre-split name never appears in output plan [REQ: linked-sibling-split-strategy]
 - [x] 9.6 Populate `touched_file_globs` on each change: parse the scope paragraph, collect explicit file paths + add wildcard parents for each directory mentioned [REQ: content-hints-for-gate-selection]
-- [ ] 9.7 Update the decomposer prompt schema in `lib/set_orch/templates/` or `modules/web/set_project_web/planning_rules.txt` to document the `skip_test` guard and the `touched_file_globs` output field [REQ: skip_test-guarded-by-scope-file-path-content, content-hints-for-gate-selection]
+- [x] 9.7 Update the decomposer prompt schema in `lib/set_orch/templates/` or `modules/web/set_project_web/planning_rules.txt` to document the `skip_test` guard and the `touched_file_globs` output field [REQ: skip_test-guarded-by-scope-file-path-content, content-hints-for-gate-selection]
 - [x] 9.8 Unit tests: validate_plan rejects skip_test with server/ scope; accepts skip_test with scaffolding-only scope [REQ: skip_test-guarded-by-scope-file-path-content]
-- [ ] 9.9 Unit tests: auto-split on 15-requirement change produces ≥3 splits with correct `depends_on` [REQ: granularity-budget-with-auto-split]
+- [x] 9.9 Unit tests: auto-split on 15-requirement change produces ≥3 splits with correct `depends_on` [REQ: granularity-budget-with-auto-split]
 
 ## 10. Investigation / fix-iss Auto-Escalation (Layer 1)
 
@@ -115,7 +115,7 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 - [x] 10.4 In `verifier.run_verify_pipeline()`, on retry-budget exhaustion (`review 5/5`, other gates `4/4`), invoke `escalate_change_to_fix_iss(..., escalation_reason="retry_budget_exhausted")`; set parent `status='failed:retry_budget_exhausted'` and `fix_iss_child=<new_name>` [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
 - [x] 10.5 Hook from stuck-loop escalation (completes the work in task 3.4): same call with `escalation_reason="stuck_no_progress"` and set `fix_iss_child` [REQ: stuck-loop-circuit-breaker-also-triggers-fix-iss]
 - [x] 10.6 Hook from token-runaway (completes the work in task 4.2): same call with `escalation_reason="token_runaway"` and include runaway metadata (baseline, current, delta) in the proposal [REQ: token-runaway-also-triggers-fix-iss]
-- [ ] 10.7 Dispatcher routes to `fix_iss_child` on the next monitor poll after escalation [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
+- [x] 10.7 Dispatcher routes to `fix_iss_child` on the next monitor poll after escalation [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
 - [x] 10.8 Integration test: a change that exhausts review budget → fix-iss proposal appears in `openspec/changes/fix-iss-*/proposal.md` with correct `Target` [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
 - [x] 10.9 Integration test: stuck-loop escalation produces fix-iss with `escalation_reason=stuck_no_progress` and parent `fix_iss_child` populated [REQ: stuck-loop-circuit-breaker-also-triggers-fix-iss]
 - [x] 10.10 Integration test: token-runaway escalation produces fix-iss with runaway metadata in proposal body [REQ: token-runaway-also-triggers-fix-iss]
@@ -147,7 +147,7 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 - [x] 13.1 Add `retry_wall_time_ms: int = 0` to the Change dataclass; increment by each retry's verify-pipeline wall time [REQ: aggregate-retry-wall-time-budget]
 - [x] 13.2 Add directive `max_retry_wall_time_ms: int = 1_800_000` (30 min) in `lib/set_orch/config.py` [REQ: aggregate-retry-wall-time-budget]
 - [x] 13.3 After each verify-pipeline run in `run_verify_pipeline()`, if `change.retry_wall_time_ms >= max_retry_wall_time_ms`, emit `RETRY_WALL_TIME_EXHAUSTED` event with `{change, cumulative_ms, retry_count}`, set `change.status = "failed:retry_wall_time_exhausted"`, invoke `escalate_change_to_fix_iss(..., escalation_reason="retry_wall_time_exhausted")` [REQ: aggregate-retry-wall-time-budget]
-- [ ] 13.4 Integration test: 5 retries of 400s each → 3rd or 4th retry trips the wall-time budget and escalates [REQ: aggregate-retry-wall-time-budget]
+- [x] 13.4 Integration test: 5 retries of 400s each → 3rd or 4th retry trips the wall-time budget and escalates [REQ: aggregate-retry-wall-time-budget]
 
 ## 11. End-to-End Validation
 

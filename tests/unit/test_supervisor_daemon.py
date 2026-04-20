@@ -334,3 +334,76 @@ class TestDaemonLifecycle:
         final_status = read_status(project_dir)
         assert final_status.status == "stopped"
         assert "inbox_stop" in (final_status.stop_reason or "")
+
+
+class TestRapidCrashesResetOnPlanCompletion:
+    """Task 6.9 — reset rapid_crashes when plan completes cleanly."""
+
+    def _make_daemon(self, project_dir, rapid_crashes=2):
+        from set_orch.supervisor.daemon import SupervisorConfig, SupervisorDaemon
+        cfg = SupervisorConfig(
+            project_path=str(project_dir),
+            spec="docs/spec.md",
+            orch_binary="/bin/sh",
+        )
+        daemon = SupervisorDaemon(cfg)
+        daemon.status.rapid_crashes = rapid_crashes
+        daemon.status.rapid_crashes_window_start = time.time()
+        return daemon
+
+    def test_reset_when_all_changes_terminal_no_replan(self, project_dir):
+        daemon = self._make_daemon(project_dir, rapid_crashes=2)
+        before = time.time()
+        state = {
+            "status": "done",
+            "changes": [
+                {"name": "a", "status": "merged"},
+                {"name": "b", "status": "skipped"},
+                {"name": "c", "status": "failed"},
+            ],
+        }
+        daemon._maybe_reset_rapid_crashes(state)
+        assert daemon.status.rapid_crashes == 0
+        # Window anchor advances to "now" (not left at epoch 0.0), so the
+        # next crash starts a fresh rapid-crash window.
+        assert daemon.status.rapid_crashes_window_start >= before
+
+    def test_no_reset_mid_plan_with_running_change(self, project_dir):
+        daemon = self._make_daemon(project_dir, rapid_crashes=2)
+        state = {
+            "status": "running",
+            "changes": [
+                {"name": "a", "status": "merged"},
+                {"name": "b", "status": "running"},
+            ],
+        }
+        daemon._maybe_reset_rapid_crashes(state)
+        assert daemon.status.rapid_crashes == 2
+
+    def test_no_reset_during_replan_attempt(self, project_dir):
+        daemon = self._make_daemon(project_dir, rapid_crashes=2)
+        state = {
+            "status": "running",
+            "replan_attempt": 1,
+            "changes": [
+                {"name": "a", "status": "merged"},
+                {"name": "b", "status": "failed"},
+            ],
+        }
+        daemon._maybe_reset_rapid_crashes(state)
+        assert daemon.status.rapid_crashes == 2
+
+    def test_no_op_when_counter_already_zero(self, project_dir):
+        daemon = self._make_daemon(project_dir, rapid_crashes=0)
+        daemon.status.rapid_crashes_window_start = 123.4
+        state = {"changes": [{"name": "a", "status": "done"}]}
+        daemon._maybe_reset_rapid_crashes(state)
+        # window_start should NOT be clobbered on no-op
+        assert daemon.status.rapid_crashes == 0
+        assert daemon.status.rapid_crashes_window_start == 123.4
+
+    def test_no_reset_when_changes_list_empty(self, project_dir):
+        daemon = self._make_daemon(project_dir, rapid_crashes=3)
+        state = {"status": "running", "changes": []}
+        daemon._maybe_reset_rapid_crashes(state)
+        assert daemon.status.rapid_crashes == 3

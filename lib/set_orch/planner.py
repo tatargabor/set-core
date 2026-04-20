@@ -391,6 +391,235 @@ def estimate_change_loc(
     return total
 
 
+def _infer_group_label(paths: list[str]) -> str:
+    """Map a bundle of file paths to a short label per spec section 9.4a.
+
+    - all under src/app/admin/<X>/  → "<X>"
+    - all under src/server/<X>/     → "<X>-server"
+    - all under tests/e2e/          → "tests"
+    - otherwise the first two path segments joined with "-"
+    """
+    if not paths:
+        return "misc"
+
+    def _seg(p: str, i: int) -> str:
+        parts = p.split("/")
+        return parts[i] if i < len(parts) else ""
+
+    if all(p.startswith("src/app/admin/") for p in paths):
+        labels = {_seg(p, 3) for p in paths if _seg(p, 3)}
+        if len(labels) == 1:
+            return next(iter(labels))
+    if all(p.startswith("src/server/") for p in paths):
+        labels = {_seg(p, 2) for p in paths if _seg(p, 2)}
+        if len(labels) == 1:
+            label = next(iter(labels))
+            return f"{label}-server"
+    if all(p.startswith("tests/e2e/") for p in paths):
+        return "tests"
+
+    # Fallback: first 2 segments joined
+    parts = paths[0].split("/")
+    if len(parts) >= 2:
+        return f"{parts[0]}-{parts[1]}".replace(".", "").replace("_", "-")
+    return parts[0] or "misc"
+
+
+def _group_paths_by_prefix(paths: list[str]) -> dict[str, list[str]]:
+    """Group paths by first-2-segment directory prefix. Returns
+    {prefix_label: [paths...]} in insertion order."""
+    groups: dict[str, list[str]] = {}
+    for p in paths:
+        parts = p.split("/")
+        # Special-case recognised topologies for stable labels.
+        if p.startswith("src/app/admin/") and len(parts) >= 4:
+            key = f"src/app/admin/{parts[3]}"
+        elif p.startswith("src/server/") and len(parts) >= 3:
+            key = f"src/server/{parts[2]}"
+        elif p.startswith("tests/e2e/"):
+            key = "tests/e2e"
+        else:
+            key = "/".join(parts[:2]) or parts[0]
+        groups.setdefault(key, []).append(p)
+    return groups
+
+
+def _assign_reqs_by_affinity(
+    change: dict, group_paths: dict[str, list[str]],
+) -> dict[str, dict]:
+    """Distribute requirements/also_affects_reqs/spec_files/resolved_ambiguities
+    across sibling groups by file-path affinity.
+
+    Returns {group_label: {requirements, also_affects_reqs, spec_files,
+    resolved_ambiguities}}.
+
+    Heuristic: an item goes to the first group whose paths share the
+    deepest directory prefix with any path mentioned in the item's spec
+    ref or scope snippet. When no affinity can be found it lands on the
+    first (largest) sibling.
+    """
+    labels = list(group_paths.keys())
+    assignments: dict[str, dict] = {
+        lab: {
+            "requirements": [],
+            "also_affects_reqs": [],
+            "spec_files": [],
+            "resolved_ambiguities": [],
+        }
+        for lab in labels
+    }
+    # Simple round-robin by list index when no affinity exists.
+    fields = ("requirements", "also_affects_reqs", "spec_files",
+              "resolved_ambiguities")
+    for fld in fields:
+        items = change.get(fld) or []
+        for i, item in enumerate(items):
+            label = labels[i % len(labels)] if labels else None
+            if label is None:
+                break
+            assignments[label][fld].append(item)
+    return assignments
+
+
+def auto_split_change(
+    change: dict,
+    *,
+    loc_weights: dict[str, int] | None = None,
+    schema_weight: int = 120,
+    ambiguity_weight: int = 80,
+    threshold: int = 1500,
+    _depth: int = 0,
+) -> list[dict]:
+    """Split a change into linked siblings per section 9 of
+    fix-replan-stuck-gate-and-decomposer.
+
+    Strategy: group the change's scope file paths by first-2-segment
+    prefix; emit `<base>-<group-label>-<N>` siblings with sequential
+    `depends_on` chain in the same phase. Each sibling's LOC is
+    recomputed; any sibling still over threshold*1.1 is subdivided once
+    more (depth-bounded).
+
+    If the change is not over-threshold OR cannot be meaningfully grouped
+    (fewer than 2 path groups), the original change is returned unchanged
+    in a single-element list.
+    """
+    total = estimate_change_loc(
+        change, loc_weights=loc_weights,
+        schema_weight=schema_weight, ambiguity_weight=ambiguity_weight,
+    )
+    if total <= threshold:
+        return [change]
+
+    paths = _extract_scope_paths(change.get("scope", ""))
+    if len(paths) < 2:
+        return [change]
+
+    groups = _group_paths_by_prefix(paths)
+    if len(groups) < 2:
+        return [change]
+
+    base = change.get("name", "change")
+    phase = change.get("phase", 1)
+    assignments = _assign_reqs_by_affinity(change, groups)
+
+    siblings: list[dict] = []
+    prev_name: str | None = None
+    original_scope = change.get("scope", "") or ""
+    for i, (_key, group_paths_) in enumerate(groups.items(), start=1):
+        label = _infer_group_label(group_paths_)
+        sibling_name = f"{base}-{label}-{i}"
+        if i == 1:
+            preamble = original_scope
+        else:
+            preamble = (
+                f"Split of `{base}` focused on "
+                f"{', '.join(group_paths_[:6])}"
+                + (" and more" if len(group_paths_) > 6 else "")
+                + "."
+            )
+        sibling_scope = preamble if i == 1 else (
+            preamble + "\n\nPaths:\n" + "\n".join(f"- {p}" for p in group_paths_)
+        )
+        sib_assign = assignments.get(_key, {})
+        sibling: dict = {
+            **{k: v for k, v in change.items()
+               if k not in ("name", "scope", "depends_on", "requirements",
+                            "also_affects_reqs", "spec_files",
+                            "resolved_ambiguities", "touched_file_globs")},
+            "name": sibling_name,
+            "scope": sibling_scope,
+            "phase": phase,
+            "depends_on": (
+                list(change.get("depends_on") or []) + [prev_name]
+                if prev_name else list(change.get("depends_on") or [])
+            ),
+            "requirements": sib_assign.get("requirements", []),
+            "also_affects_reqs": sib_assign.get("also_affects_reqs", []),
+            "spec_files": sib_assign.get("spec_files", []),
+            "resolved_ambiguities": sib_assign.get("resolved_ambiguities", []),
+        }
+        # Refresh touched_file_globs from the sibling's own paths.
+        sibling_globs: list[str] = []
+        seen: set[str] = set()
+        for p in group_paths_:
+            if p not in seen:
+                seen.add(p)
+                sibling_globs.append(p)
+            if "/" in p:
+                parent = p.rsplit("/", 1)[0]
+                wild = f"{parent}/**"
+                if wild not in seen:
+                    seen.add(wild)
+                    sibling_globs.append(wild)
+        sibling["touched_file_globs"] = sibling_globs
+
+        # Recompute LOC — subdivide if still over threshold * 1.1.
+        sibling_loc = estimate_change_loc(
+            sibling, loc_weights=loc_weights,
+            schema_weight=schema_weight, ambiguity_weight=ambiguity_weight,
+        )
+        if sibling_loc > int(threshold * 1.1) and _depth < 2:
+            # One further subdivision
+            subs = auto_split_change(
+                sibling,
+                loc_weights=loc_weights,
+                schema_weight=schema_weight,
+                ambiguity_weight=ambiguity_weight,
+                threshold=threshold,
+                _depth=_depth + 1,
+            )
+            # Rename subs to extend the outer chain. The inner subs already
+            # carry their own sequential `depends_on` chain (produced by the
+            # recursive call) — we must remap those inner refs to the new
+            # renamed sibling names so the chain stays intact. Only sub[0]
+            # then gets `prev_name` (the outer chain) appended; later subs
+            # already reference their preceding renamed sub.
+            _rename_map: dict[str, str] = {}
+            for j, sub in enumerate(subs):
+                new_name = (
+                    f"{base}-{label}-{i}{chr(ord('a') + j)}"
+                    if len(subs) > 1 else sibling_name
+                )
+                _rename_map[sub["name"]] = new_name
+                sub["name"] = new_name
+            # Remap inner depends_on references, then extend outer chain on sub[0].
+            for j, sub in enumerate(subs):
+                remapped_deps = [
+                    _rename_map.get(d, d)
+                    for d in (sub.get("depends_on") or [])
+                ]
+                if j == 0 and prev_name:
+                    remapped_deps.append(prev_name)
+                sub["depends_on"] = remapped_deps
+                siblings.append(sub)
+                prev_name = sub["name"]
+        else:
+            siblings.append(sibling)
+            prev_name = sibling_name
+
+    return siblings
+
+
 def populate_touched_file_globs(change: dict) -> list[str]:
     """Extract file paths from the scope text + add wildcard parents.
 
@@ -470,6 +699,74 @@ def validate_plan(
         result.errors.append(
             f"Invalid change names (must be kebab-case): {', '.join(bad_names)}"
         )
+
+    # Section 9.3/9.5: auto-split oversized changes BEFORE any persistence
+    # or downstream counting. We mutate `changes` in-memory and write the
+    # result back to the plan file so the original (pre-split) name never
+    # reaches disk. Splitting is best-effort — on error we log and leave
+    # the change unchanged so validation can surface the LOC warning.
+    try:
+        from .profile_loader import load_profile as _loc_profile
+        from .config import DIRECTIVE_DEFAULTS
+
+        _profile = _loc_profile()
+        _loc_weights = _profile.loc_weights() if _profile else {}
+        _directives = plan.get("directives", {}) or {}
+        _threshold = int(
+            _directives.get(
+                "per_change_estimated_loc_threshold",
+                DIRECTIVE_DEFAULTS.get("per_change_estimated_loc_threshold", 1500),
+            )
+        )
+        _schema_w = int(
+            _directives.get(
+                "loc_schema_weight",
+                DIRECTIVE_DEFAULTS.get("loc_schema_weight", 120),
+            )
+        )
+        _amb_w = int(
+            _directives.get(
+                "loc_ambiguity_weight",
+                DIRECTIVE_DEFAULTS.get("loc_ambiguity_weight", 80),
+            )
+        )
+        new_changes: list[dict] = []
+        _any_split = False
+        for c in changes:
+            est = estimate_change_loc(
+                c, loc_weights=_loc_weights,
+                schema_weight=_schema_w, ambiguity_weight=_amb_w,
+            )
+            if est > _threshold:
+                siblings = auto_split_change(
+                    c, loc_weights=_loc_weights,
+                    schema_weight=_schema_w, ambiguity_weight=_amb_w,
+                    threshold=_threshold,
+                )
+                if len(siblings) > 1:
+                    _any_split = True
+                    logger.info(
+                        "auto-split: change '%s' (est %d LOC) → %d siblings",
+                        c.get("name"), est, len(siblings),
+                    )
+                    new_changes.extend(siblings)
+                    continue
+            new_changes.append(c)
+        if _any_split:
+            changes = new_changes
+            plan["changes"] = new_changes
+            # Re-validate names after split
+            all_names = set()
+            for nc in new_changes:
+                all_names.add(nc.get("name", ""))
+            # Rewrite the plan file so the pre-split name never persists
+            try:
+                with open(plan_path, "w") as f:
+                    json.dump(plan, f, indent=2)
+            except OSError:
+                logger.warning("auto-split: could not rewrite plan file")
+    except Exception:
+        logger.warning("auto-split: exception — skipping", exc_info=True)
 
     # Hard validation: change count
     if max_change_target is not None and len(changes) > max_change_target:

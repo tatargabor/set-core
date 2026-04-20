@@ -548,6 +548,82 @@ def _next_fix_iss_name(openspec_root: str, slug_hint: str) -> str:
     return f"fix-iss-{n + 1:03d}-{slug}"
 
 
+def _claim_fix_iss_dir(openspec_root: str, slug_hint: str) -> tuple[str, str]:
+    """Atomically claim the next fix-iss-NNN directory name.
+
+    Uses `os.mkdir` (NOT `makedirs(exist_ok=True)`) so two concurrent
+    callers cannot both claim the same slug. On collision we bump N and
+    retry. Returns (fix_iss_name, change_dir_path).
+    """
+    import re
+    changes_dir = os.path.join(openspec_root, "changes")
+    os.makedirs(changes_dir, exist_ok=True)
+    slug = slug_hint or "auto-escalation"
+    # Start from the current max + 1 and try upward on collision.
+    n = 0
+    for entry in os.listdir(changes_dir):
+        m = re.match(r"^fix-iss-(\d{3})", entry)
+        if m:
+            n = max(n, int(m.group(1)))
+    for attempt in range(20):
+        candidate = f"fix-iss-{n + 1 + attempt:03d}-{slug}"
+        candidate_dir = os.path.join(changes_dir, candidate)
+        try:
+            os.mkdir(candidate_dir)
+            return candidate, candidate_dir
+        except FileExistsError:
+            continue
+    raise RuntimeError(
+        "Could not claim a unique fix-iss-NNN slug after 20 attempts — "
+        "concurrent escalations colliding on the same changes/ directory"
+    )
+
+
+def _register_fix_iss_in_state(
+    state_file: str, parent_name: str, fix_iss_name: str, target: str,
+) -> None:
+    """Append the auto-created fix-iss to state.changes so the dispatcher
+    picks it up on the next monitor poll.
+
+    Phase is the parent's phase + 1 by default — the fix-iss should run
+    AFTER the failed parent (which is now terminal), not concurrently with
+    peers that may still be running. It carries `depends_on=[parent]` only
+    as a breadcrumb; the phase bump is what actually orders execution.
+    """
+    from ..state import Change, locked_state
+    with locked_state(state_file) as state:
+        if any(c.name == fix_iss_name for c in state.changes):
+            return
+        parent = next((c for c in state.changes if c.name == parent_name), None)
+        parent_phase = parent.phase if parent else 1
+        change = Change(
+            name=fix_iss_name,
+            scope=(
+                f"Auto-escalated diagnostic change for `{parent_name}` "
+                f"(target={target}). See proposal.md for findings."
+            ),
+            complexity="S",
+            change_type="fix",
+            depends_on=[parent_name] if parent else [],
+            phase=parent_phase + 1,
+            status="pending",
+            spec_lineage_id=(parent.spec_lineage_id if parent else None),
+            sentinel_session_id=(parent.sentinel_session_id if parent else None),
+            sentinel_session_started_at=(
+                parent.sentinel_session_started_at if parent else None
+            ),
+        )
+        state.changes.append(change)
+        # Register the new phase in the phases dict so phase-gate logic lets
+        # the fix-iss dispatch. Copy the parent's phase entry structure.
+        phases = state.extras.get("phases")
+        if isinstance(phases, dict):
+            key = str(change.phase)
+            if key not in phases:
+                phases[key] = {"status": "pending"}
+            state.extras["phases"] = phases
+
+
 def escalate_change_to_fix_iss(
     *,
     state_file: str,
@@ -594,10 +670,9 @@ def escalate_change_to_fix_iss(
     target = _classify_fix_target(finding_paths)
 
     slug_hint = _re.sub(r"[^a-z0-9-]+", "-", change_name.lower()).strip("-")[:20] or "change"
-    fix_iss_name = _next_fix_iss_name(openspec_root, slug_hint)
-
-    change_dir = _os.path.join(openspec_root, "changes", fix_iss_name)
-    _os.makedirs(change_dir, exist_ok=True)
+    # Claim an exclusive fix-iss-NNN directory via os.mkdir so concurrent
+    # escalations for the same parent cannot collide on the proposal file.
+    fix_iss_name, change_dir = _claim_fix_iss_dir(openspec_root, slug_hint)
     proposal_path = _os.path.join(change_dir, "proposal.md")
 
     # Include runaway metadata in the proposal when available — the circuit
@@ -647,6 +722,17 @@ slot is released to this fix-iss.
         fh.write(proposal)
 
     update_change_field(state_file, change_name, "fix_iss_child", fix_iss_name)
+
+    # Register the fix-iss change in state so the next monitor poll will
+    # dispatch it (task 10.7). Without this the proposal on disk is invisible
+    # to dispatch_ready_changes() which iterates state.changes only.
+    try:
+        _register_fix_iss_in_state(state_file, change_name, fix_iss_name, target)
+    except Exception:
+        logger.warning(
+            "Could not register fix-iss %s in orchestration state — "
+            "operator must add it manually", fix_iss_name, exc_info=True,
+        )
 
     if event_bus is not None:
         event_bus.emit(

@@ -106,3 +106,43 @@ def test_successive_escalations_increment_number(state_file):
     # First starts at fix-iss-001, second at fix-iss-002
     assert n1 != n2
     assert n1 < n2  # lexical ordering of the zero-padded number
+
+
+def test_escalation_registers_fix_iss_in_state(state_file):
+    """Task 10.7 — fix-iss is added to state.changes so the dispatcher
+    picks it up on the next monitor poll."""
+    new_name = escalate_change_to_fix_iss(
+        state_file=state_file, change_name="parent",
+        stop_gate="review",
+        findings=[{"file": "lib/set_orch/engine.py"}],
+        escalation_reason="retry_budget_exhausted",
+    )
+    st = load_state(state_file)
+    fix_iss = next((c for c in st.changes if c.name == new_name), None)
+    assert fix_iss is not None, "fix-iss not appended to state.changes"
+    assert fix_iss.status == "pending"
+    # Phase is bumped past the parent so the fix-iss runs after — the
+    # parent's phase default is 1 in the fixture.
+    parent = next(c for c in st.changes if c.name == "parent")
+    assert fix_iss.phase == parent.phase + 1
+    assert parent.name in (fix_iss.depends_on or [])
+
+
+def test_escalation_idempotent_on_repeat_call(state_file):
+    """Re-invoking escalate with the same name does not duplicate the change."""
+    # Force the same fix-iss name by checking state after first call
+    n1 = escalate_change_to_fix_iss(
+        state_file=state_file, change_name="parent",
+        stop_gate="review", findings=[],
+        escalation_reason="retry_budget_exhausted",
+    )
+    st1 = load_state(state_file)
+    count1 = sum(1 for c in st1.changes if c.name == n1)
+    assert count1 == 1
+
+    # Manually call the registration helper again — should be a no-op
+    from set_orch.issues.manager import _register_fix_iss_in_state
+    _register_fix_iss_in_state(state_file, "parent", n1, "framework")
+    st2 = load_state(state_file)
+    count2 = sum(1 for c in st2.changes if c.name == n1)
+    assert count2 == 1

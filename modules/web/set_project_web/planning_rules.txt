@@ -119,3 +119,13 @@ Framework-specific security patterns (Next.js / React):
 - Server Actions: validate all inputs with Zod schemas before database operations. Never pass raw formData fields directly to Prisma.
 - CSRF: Next.js Server Actions have built-in CSRF protection — do NOT disable it. For API routes using cookies, verify SameSite=Lax is set.
 - XSS: never use dangerouslySetInnerHTML with user-supplied content. If rich text is needed, sanitize with DOMPurify on the server before rendering.
+
+skip_test guard (task 9.7 of fix-replan-stuck-gate-and-decomposer):
+- `skip_test=true` is REJECTED by the validator whenever the change's scope text mentions any of `server/`, `actions/`, `handlers/`, `services/`, `validators/`, `/lib/business/`, `/api/`.
+- `skip_test=true` is ACCEPTED only when every scope path is under `scaffolding/`, `public/`, `messages/`, `prisma/`, `docs/`, or matches `*.config.*`, `*.json`, `*.yaml`, `*.toml`.
+- Do NOT emit `skip_test=true` for changes that create business logic, server actions, validators, or API handlers — even if you believe the tests "already exist" elsewhere. Let the verify pipeline run the test gate so regressions surface.
+
+touched_file_globs output field (task 9.7):
+- Every change SHOULD emit a `touched_file_globs` list in the plan JSON listing the explicit file paths (with wildcard parent fallbacks) the change will touch. The content-aware gate selector consumes this field to decide whether `design-fidelity`, `e2e`, and `i18n_check` gates should run.
+- Example: a change that edits `src/app/cart/page.tsx` SHOULD list `["src/app/cart/page.tsx", "src/app/cart/**"]`. Populating the wildcard parent lets the selector also react when the agent modifies adjacent files in the same directory.
+- If `touched_file_globs` is omitted the planner infers it from the scope text, but the inferred list is lossy — authoring the list explicitly produces better gate coverage.

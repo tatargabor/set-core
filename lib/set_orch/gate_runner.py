@@ -235,6 +235,7 @@ class GatePipeline:
         *,
         max_retries: int = 2,
         event_bus: Any = None,
+        parallel_groups: Optional[list[set[str]]] = None,
     ) -> None:
         self.gc = gc
         self.state_file = state_file
@@ -242,6 +243,13 @@ class GatePipeline:
         self.change = change
         self.max_retries = max_retries
         self.event_bus = event_bus
+        # Parallel-group hint from the project profile (section 8 of
+        # fix-replan-stuck-gate-and-decomposer). Gates whose names all fall
+        # into the same group (and are registered adjacently) are dispatched
+        # concurrently via a ThreadPoolExecutor. Empty/None → serial.
+        self.parallel_groups: list[set[str]] = [
+            set(g) for g in (parallel_groups or [])
+        ]
 
         self._gates: list[_GateEntry] = []
         self.results: list[GateResult] = []
@@ -249,6 +257,10 @@ class GatePipeline:
         self.stop_action: str = ""  # "retry" or "failed"
         self.stop_gate: str = ""  # which gate caused the stop
         self._verify_retry_count = change.verify_retry_count
+        # Tracks which gate names ran as one parallel batch — the verifier
+        # reads this when emitting VERIFY_GATE so consumers can see the
+        # concurrency decision (parallel_group: [...] field).
+        self.parallel_group_runs: list[list[str]] = []
 
     def register(
         self,
@@ -269,6 +281,39 @@ class GatePipeline:
         ))
         logger.debug("Gate registered: %s for %s (retry_counter=%s, extra_retries=%d)",
                       name, self.change_name, own_retry_counter or "shared", extra_retries)
+
+    def _parallel_group_for(self, gate_name: str) -> Optional[frozenset[str]]:
+        """Return the parallel group (as a frozenset) that contains gate_name,
+        or None if the gate is not in any parallel group."""
+        for g in self.parallel_groups:
+            if gate_name in g:
+                return frozenset(g)
+        return None
+
+    def _execute_single_entry(self, entry: _GateEntry) -> tuple[GateResult, int]:
+        """Execute one gate executor. Returns (result, elapsed_ms).
+
+        Does NOT handle skip, post-gate state writes, or retry logic — the
+        caller stitches those back together after the (possibly parallel)
+        batch finishes.
+        """
+        start_ms = int(time.monotonic() * 1000)
+        try:
+            result = entry.executor()
+        except Exception:
+            logger.warning(
+                "Gate %s threw exception for %s",
+                entry.name, self.change_name, exc_info=True,
+            )
+            result = GateResult(
+                gate_name=entry.name,
+                status="fail",
+                output="gate executor threw exception",
+            )
+        elapsed_ms = int(time.monotonic() * 1000) - start_ms
+        result.duration_ms = elapsed_ms
+        result.gate_name = entry.name
+        return result, elapsed_ms
 
     def run(self) -> str:
         """Execute all registered gates in order.
@@ -294,9 +339,13 @@ class GatePipeline:
             except Exception as exc:
                 logger.debug("last_gate_commit snapshot failed for %s: %s", self.change_name, exc)
 
-        for entry in self._gates:
+        # Iterate with an index so we can advance past a parallel batch in one step.
+        i = 0
+        while i < len(self._gates):
             if self.stopped:
                 break
+
+            entry = self._gates[i]
 
             # Skip check
             if not self.gc.should_run(entry.name):
@@ -308,104 +357,233 @@ class GatePipeline:
                     "Verify gate: %s SKIPPED for %s (gate_profile)",
                     entry.name, self.change_name,
                 )
+                i += 1
                 continue
 
-            # Execute
-            start_ms = int(time.monotonic() * 1000)
-            try:
-                result = entry.executor()
-            except Exception:
-                logger.warning(
-                    "Gate %s threw exception for %s",
-                    entry.name, self.change_name, exc_info=True,
-                )
-                result = GateResult(
-                    gate_name=entry.name,
-                    status="fail",
-                    output="gate executor threw exception",
-                )
-            elapsed_ms = int(time.monotonic() * 1000) - start_ms
-            result.duration_ms = elapsed_ms
-            result.gate_name = entry.name
+            # Parallel-batch detection: if this gate is in a parallel group
+            # shared with one or more adjacent registered gates (each also
+            # should_run), dispatch them all concurrently. The registration
+            # order is preserved for stop_gate selection.
+            group = self._parallel_group_for(entry.name)
+            batch: list[_GateEntry] = [entry]
+            if group is not None:
+                j = i + 1
+                while j < len(self._gates):
+                    nxt = self._gates[j]
+                    if nxt.name in group and self.gc.should_run(nxt.name):
+                        batch.append(nxt)
+                        j += 1
+                    else:
+                        break
 
-            # Archive test-results/ after every gate run that produced them,
-            # not just before a retry. Without this, a passing attempt whose
-            # screenshots the user wants to review gets clobbered the next
-            # time the agent re-runs Playwright (e.g. during cross-change
-            # debugging). Archive is idempotent — shutil.copytree with
-            # dirs_exist_ok merges file-by-file. The attempt number matches
-            # the retry counter's current value (the attempt that just ran).
-            if entry.name in ("e2e", "test", "smoke"):
-                try:
-                    _attempt_num = (
-                        self.change.extras.get(entry.own_retry_counter, 0)
-                        if entry.own_retry_counter
-                        else self._verify_retry_count
-                    ) + 1
-                    _archive_attempt_artifacts(
-                        self.change.worktree_path,
-                        self.change_name,
-                        attempt=_attempt_num,
-                    )
-                except Exception as exc:
-                    logger.debug(
-                        "Post-gate archive (%s) failed for %s: %s",
-                        entry.name, self.change_name, exc,
-                    )
-
-            # Write gate result to state for dashboard visibility
-            _gate_state_field = {
-                "build": "build_result", "test": "test_result",
-                "e2e": "e2e_result", "smoke": "smoke_result",
-                "review": "review_result", "scope_check": "scope_check_result",
-                "rules": "rules_result", "e2e_coverage": "e2e_coverage_result",
-            }.get(entry.name)
-            _gate_ms_field = {
-                "build": "gate_build_ms", "test": "gate_test_ms",
-                "e2e": "gate_e2e_ms", "review": "gate_review_ms",
-                "smoke": "gate_smoke_ms", "scope_check": "gate_scope_check_ms",
-                "rules": "gate_rules_ms", "e2e_coverage": "gate_e2e_coverage_ms",
-            }.get(entry.name)
-            _gate_output_field = {
-                "build": "build_output", "test": "test_output", "e2e": "e2e_output",
-                "review": "review_output", "smoke": "smoke_output",
-                "scope_check": "scope_check_output", "rules": "rules_output",
-                "e2e_coverage": "e2e_coverage_output",
-            }.get(entry.name)
-            if _gate_state_field and self.state_file:
-                update_change_field(self.state_file, self.change_name, _gate_state_field, result.status)
-            if _gate_ms_field and self.state_file:
-                update_change_field(self.state_file, self.change_name, _gate_ms_field, elapsed_ms)
-            if _gate_output_field and self.state_file and result.output:
-                update_change_field(self.state_file, self.change_name, _gate_output_field, _truncate_gate_output(entry.name, result.output))
-
-            # Handle result
-            if result.status == "pass":
-                self.results.append(result)
-                logger.info(
-                    "Verify gate: %s passed for %s (%dms)",
-                    entry.name, self.change_name, elapsed_ms,
-                )
-
-            elif result.status == "fail":
-                if self.gc.is_blocking(entry.name):
-                    self.results.append(result)
-                    action = self._handle_blocking_failure(entry, result)
+            if len(batch) > 1:
+                action = self._run_parallel_batch(batch)
+                i += len(batch)
+                if action is not None:
                     return action
-                else:
-                    # Non-blocking: convert to warn-fail
-                    result.status = "warn-fail"
-                    self.results.append(result)
-                    logger.warning(
-                        "Verify gate: %s failed for %s — non-blocking (gate=%s)",
-                        entry.name, self.change_name, self.gc.get(entry.name, "?"),
-                    )
+                continue
 
-            else:
-                # "skipped", "warn-fail", or other — pass through
-                self.results.append(result)
+            # Single-gate execution (default path)
+            result, elapsed_ms = self._execute_single_entry(entry)
+            i += 1
+            self._persist_gate_result(entry, result, elapsed_ms)
+            action = self._finalize_result(entry, result, elapsed_ms)
+            if action is not None:
+                return action
 
         return "continue"
+
+    _GATE_STATE_FIELDS = {
+        "build": "build_result", "test": "test_result",
+        "e2e": "e2e_result", "smoke": "smoke_result",
+        "review": "review_result", "scope_check": "scope_check_result",
+        "rules": "rules_result", "e2e_coverage": "e2e_coverage_result",
+    }
+    _GATE_MS_FIELDS = {
+        "build": "gate_build_ms", "test": "gate_test_ms",
+        "e2e": "gate_e2e_ms", "review": "gate_review_ms",
+        "smoke": "gate_smoke_ms", "scope_check": "gate_scope_check_ms",
+        "rules": "gate_rules_ms", "e2e_coverage": "gate_e2e_coverage_ms",
+    }
+    _GATE_OUTPUT_FIELDS = {
+        "build": "build_output", "test": "test_output", "e2e": "e2e_output",
+        "review": "review_output", "smoke": "smoke_output",
+        "scope_check": "scope_check_output", "rules": "rules_output",
+        "e2e_coverage": "e2e_coverage_output",
+    }
+
+    def _persist_gate_result(
+        self, entry: _GateEntry, result: GateResult, elapsed_ms: int,
+    ) -> None:
+        """Archive artifacts + write gate-result fields to state."""
+        # Archive test-results/ after every gate run that produced them
+        if entry.name in ("e2e", "test", "smoke"):
+            try:
+                _attempt_num = (
+                    self.change.extras.get(entry.own_retry_counter, 0)
+                    if entry.own_retry_counter
+                    else self._verify_retry_count
+                ) + 1
+                _archive_attempt_artifacts(
+                    self.change.worktree_path,
+                    self.change_name,
+                    attempt=_attempt_num,
+                )
+            except Exception as exc:
+                logger.debug(
+                    "Post-gate archive (%s) failed for %s: %s",
+                    entry.name, self.change_name, exc,
+                )
+
+        state_field = self._GATE_STATE_FIELDS.get(entry.name)
+        ms_field = self._GATE_MS_FIELDS.get(entry.name)
+        output_field = self._GATE_OUTPUT_FIELDS.get(entry.name)
+        if state_field and self.state_file:
+            update_change_field(
+                self.state_file, self.change_name, state_field, result.status,
+            )
+        if ms_field and self.state_file:
+            update_change_field(
+                self.state_file, self.change_name, ms_field, elapsed_ms,
+            )
+        if output_field and self.state_file and result.output:
+            update_change_field(
+                self.state_file, self.change_name, output_field,
+                _truncate_gate_output(entry.name, result.output),
+            )
+
+    def _finalize_result(
+        self, entry: _GateEntry, result: GateResult, elapsed_ms: int,
+    ) -> Optional[str]:
+        """Append a completed result and decide whether to stop.
+
+        Returns None on continue, "retry" or "failed" on a blocking stop.
+        """
+        if result.status == "pass":
+            self.results.append(result)
+            logger.info(
+                "Verify gate: %s passed for %s (%dms)",
+                entry.name, self.change_name, elapsed_ms,
+            )
+            return None
+
+        if result.status == "fail":
+            if self.gc.is_blocking(entry.name):
+                self.results.append(result)
+                return self._handle_blocking_failure(entry, result)
+            # Non-blocking: convert to warn-fail
+            result.status = "warn-fail"
+            self.results.append(result)
+            logger.warning(
+                "Verify gate: %s failed for %s — non-blocking (gate=%s)",
+                entry.name, self.change_name,
+                self.gc.get(entry.name, "?"),
+            )
+            return None
+
+        # "skipped", "warn-fail", or other — pass through
+        self.results.append(result)
+        return None
+
+    def _run_parallel_batch(self, batch: list[_GateEntry]) -> Optional[str]:
+        """Dispatch a batch of independent gates concurrently.
+
+        Returns None on continue, or "retry"/"failed" on the earliest
+        blocking failure. When multiple gates fail in the batch the
+        earliest-registered one becomes `stop_gate`, but retry_context is
+        merged from ALL failed gates so the retry agent sees both finding
+        sets (task 8.6).
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        names = [e.name for e in batch]
+        self.parallel_group_runs.append(names)
+        logger.info(
+            "Verify gate: dispatching %d gates in parallel for %s: %s",
+            len(batch), self.change_name, names,
+        )
+
+        results_by_idx: dict[int, tuple[GateResult, int]] = {}
+        with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+            futures = {
+                pool.submit(self._execute_single_entry, entry): idx
+                for idx, entry in enumerate(batch)
+            }
+            # Wait for every future. _execute_single_entry already catches
+            # per-gate exceptions and returns a fail GateResult; a raise
+            # from .result() here would be hard infra (OOM / pool shutdown)
+            # — surface it as a fail slot so VERIFY_GATE can still emit.
+            for fut, idx in futures.items():
+                try:
+                    results_by_idx[idx] = fut.result()
+                except Exception as exc:
+                    logger.error(
+                        "Parallel gate future raised unexpectedly: %s",
+                        exc, exc_info=True,
+                    )
+                    _entry = batch[idx]
+                    results_by_idx[idx] = (
+                        GateResult(
+                            gate_name=_entry.name,
+                            status="fail",
+                            output=f"future raised: {exc}",
+                        ),
+                        0,
+                    )
+
+        # Persist each in registration order so state writes stay deterministic.
+        for idx, entry in enumerate(batch):
+            result, elapsed_ms = results_by_idx[idx]
+            self._persist_gate_result(entry, result, elapsed_ms)
+
+        # Outcome: find the earliest-registered blocking failure.
+        earliest_fail_idx = None
+        merged_retry_context_parts: list[str] = []
+        for idx, entry in enumerate(batch):
+            result, _ = results_by_idx[idx]
+            if result.status == "fail" and self.gc.is_blocking(entry.name):
+                if earliest_fail_idx is None:
+                    earliest_fail_idx = idx
+                if result.retry_context:
+                    merged_retry_context_parts.append(
+                        f"## From gate: {entry.name}\n{result.retry_context}"
+                    )
+
+        if earliest_fail_idx is None:
+            # No blocking failure — finalize each result in registration order
+            # and continue. Non-blocking fails get warn-fail conversion here.
+            for idx, entry in enumerate(batch):
+                result, elapsed_ms = results_by_idx[idx]
+                action = self._finalize_result(entry, result, elapsed_ms)
+                if action is not None:
+                    return action
+            return None
+
+        # Blocking failure in the batch. First, append the non-failing and
+        # non-blocking-fail results (in order) so they are visible to
+        # commit_results. Then merge retry contexts from all failed gates and
+        # call _handle_blocking_failure on the earliest failer.
+        for idx, entry in enumerate(batch):
+            if idx == earliest_fail_idx:
+                continue
+            result, elapsed_ms = results_by_idx[idx]
+            if result.status == "fail":
+                if self.gc.is_blocking(entry.name):
+                    # Record peer blocking failures — don't re-run budget logic
+                    self.results.append(result)
+                else:
+                    result.status = "warn-fail"
+                    self.results.append(result)
+            else:
+                self.results.append(result)
+
+        stop_result, _ = results_by_idx[earliest_fail_idx]
+        stop_entry = batch[earliest_fail_idx]
+        # Merge retry contexts — earliest-registered is first, then peers
+        if len(merged_retry_context_parts) > 1:
+            stop_result.retry_context = "\n\n".join(merged_retry_context_parts)
+        self.results.append(stop_result)
+        return self._handle_blocking_failure(stop_entry, stop_result)
 
     def _handle_blocking_failure(
         self, entry: _GateEntry, result: GateResult,

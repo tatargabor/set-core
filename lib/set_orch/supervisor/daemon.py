@@ -652,6 +652,7 @@ class SupervisorDaemon:
                 new_change_statuses[name] = (change.get("status") or "").lower()
             self.status.last_change_statuses = new_change_statuses
             self.status.last_orch_status = (ctx.state.get("status") or "").lower()
+            self._maybe_reset_rapid_crashes(ctx.state)
         self.status.crossed_token_stall_thresholds = sorted(
             ctx.crossed_token_stall_thresholds
         )
@@ -678,6 +679,37 @@ class SupervisorDaemon:
                 self._stop_requested = True
                 self._stop_reason = "terminal_state"
                 break
+
+    def _maybe_reset_rapid_crashes(self, state: dict) -> None:
+        """Reset rapid_crashes to 0 when all current-plan changes are terminal
+        and no replan is pending.
+
+        The rapid_crashes counter should not persist across a clean plan cycle.
+        If the orchestrator is mid-replan (`replan_attempt > 0`) we keep the
+        counter — the replan may crash and we still want to bound restart
+        attempts. We only reset when the plan has truly come to rest.
+        """
+        if self.status.rapid_crashes <= 0:
+            return
+        change_terminal = frozenset({"merged", "failed", "skipped", "done"})
+        changes = state.get("changes") or []
+        if not changes:
+            return
+        for c in changes:
+            status = (c.get("status") or "").lower()
+            if status not in change_terminal:
+                return
+        if int(state.get("replan_attempt") or 0) > 0:
+            return
+        prior = self.status.rapid_crashes
+        self.status.rapid_crashes = 0
+        # Anchor the fresh window at `now` so the next crash (if any) starts
+        # a clean window instead of appearing carried over from the epoch.
+        self.status.rapid_crashes_window_start = time.time()
+        logger.info(
+            "[supervisor] rapid_crashes reset on plan completion (was: %d)",
+            prior,
+        )
 
     def _build_anomaly_context(self) -> AnomalyContext:
         """Snapshot all the inputs detectors need this poll cycle."""
