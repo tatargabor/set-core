@@ -373,6 +373,19 @@ class ProjectType(ABC):
         """
         return {}
 
+    def parallel_gate_groups(self) -> list[set[str]]:
+        """Return groups of gate names that may be dispatched concurrently.
+
+        Each set in the returned list is one group — gates within a group
+        have no data dependency on each other and can run side-by-side in
+        a thread pool. Default is `[]` (no parallelism). WebProjectType
+        returns `[{"spec_verify", "review"}]` — both are independent LLM
+        gates that burn ~60-120s wall time each, halving verify latency
+        when run together (section 8 of
+        fix-replan-stuck-gate-and-decomposer).
+        """
+        return []
+
     def content_tag_to_gates(self) -> dict[str, set[str]]:
         """Return a mapping of content tag → set of gate names to force-run.
 

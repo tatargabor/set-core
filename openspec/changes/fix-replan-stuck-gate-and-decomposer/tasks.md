@@ -73,14 +73,14 @@
 
 ## 8. Web Gate Tuning (Layer 2 — web module)
 
-- [ ] 8.1 In `modules/web/set_project_web/gates.py` (or wherever i18n_check is implemented), change the return type from `warn-fail | pass` to `pass | fail | skipped` [REQ: i18n_check-is-a-hard-fail-gate]
-- [ ] 8.2 Update the gate registry/verifier's treatment of `i18n_check`: treat `fail` as a blocking `stop_gate` like any other gate [REQ: i18n_check-is-a-hard-fail-gate]
-- [ ] 8.3 Add `WebProjectType.parallel_gate_groups() -> list[set[str]]` returning `[{"spec_verify", "review"}]` by default; `CoreProfile` returns `[]` [REQ: web-profile-exposes-gate-tuning-hooks]
+- [x] 8.1 In `modules/web/set_project_web/gates.py` (or wherever i18n_check is implemented), change the return type from `warn-fail | pass` to `pass | fail | skipped` [REQ: i18n_check-is-a-hard-fail-gate]
+- [x] 8.2 Update the gate registry/verifier's treatment of `i18n_check`: treat `fail` as a blocking `stop_gate` like any other gate [REQ: i18n_check-is-a-hard-fail-gate]
+- [x] 8.3 Add `WebProjectType.parallel_gate_groups() -> list[set[str]]` returning `[{"spec_verify", "review"}]` by default; `CoreProfile` returns `[]` [REQ: web-profile-exposes-gate-tuning-hooks]
 - [ ] 8.4 In `lib/set_orch/gate_runner.py` (owns parallel dispatch; `verifier.py` calls through it), when a group is active and both gates are in the current gate set, dispatch both concurrently via `concurrent.futures.ThreadPoolExecutor` (process-bound external subprocesses) [REQ: spec_verify-and-review-run-in-parallel]
 - [ ] 8.5 Record both `gate_ms.spec_verify` and `gate_ms.review`; add `parallel_group: [...]` field to the `VERIFY_GATE` event [REQ: spec_verify-and-review-run-in-parallel]
 - [ ] 8.6 If both gates fail, ensure findings from BOTH are surfaced to the retry agent's context even though the `stop_gate` will be the earliest-ordered one [REQ: spec_verify-and-review-run-in-parallel]
-- [ ] 8.7 Audit `grep -r "warn-fail"` across set-core and built-in templates; replace/remove obsolete references [REQ: i18n_check-is-a-hard-fail-gate]
-- [ ] 8.8 Integration test: web change with i18n gap → `VERIFY_GATE` event has `stop_gate: i18n_check, i18n_check: fail` [REQ: i18n_check-is-a-hard-fail-gate]
+- [x] 8.7 Audit `grep -r "warn-fail"` across set-core and built-in templates; replace/remove obsolete references [REQ: i18n_check-is-a-hard-fail-gate]
+- [x] 8.8 Integration test: web change with i18n gap → `VERIFY_GATE` event has `stop_gate: i18n_check, i18n_check: fail` [REQ: i18n_check-is-a-hard-fail-gate]
 
 ## 9. Decomposer — skip_test Guard + Granularity Budget (Layer 1)
 

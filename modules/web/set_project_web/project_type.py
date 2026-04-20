@@ -898,12 +898,13 @@ class WebProjectType(CoreProfile):
                 "i18n_check",
                 execute_i18n_check_gate,
                 position="before:e2e",
+                # i18n_check is now a HARD-fail gate (section 8 task 8.1):
+                # a missing Hungarian translation key cascades into multiple
+                # Playwright failures at merge time, so we stop at verify and
+                # retry with the missing keys in the findings section.
                 defaults={
-                    # Non-blocking on first rollout. Flip to "run" to block
-                    # via the orchestration config (LineagePaths.config_yaml):
-                    # gate_overrides.i18n_check: run
                     "infrastructure": "skip", "schema": "skip",
-                    "foundational": "warn", "feature": "warn",
+                    "foundational": "run", "feature": "run",
                     "cleanup-before": "skip", "cleanup-after": "skip",
                 },
             ),
@@ -958,6 +959,15 @@ class WebProjectType(CoreProfile):
             },
         }
         return overrides.get(change_type, {})
+
+    def parallel_gate_groups(self) -> list[set[str]]:
+        """Run spec_verify + review concurrently — both are independent
+        LLM gates with ~60-120s wall time each. Dispatching them in a
+        single ThreadPoolExecutor pool halves verify latency for the
+        typical feature change (section 8 of
+        fix-replan-stuck-gate-and-decomposer).
+        """
+        return [{"spec_verify", "review"}]
 
     def content_classifier_rules(self) -> dict[str, list[str]]:
         """Map Next.js/Playwright file layout to content tags used by the
