@@ -535,9 +535,11 @@ export function getRequirements(project: string): Promise<RequirementsData> {
 
 // --- Project Sessions ---
 
-export function getProjectSessions(project: string, change?: string | null): Promise<{ sessions: SessionInfo[] }> {
+export function getProjectSessions(
+  project: string, change?: string | null, lineage?: string | null,
+): Promise<{ sessions: SessionInfo[] }> {
   if (change) return fetchJSON(`/${project}/changes/${change}/sessions`)
-  return fetchJSON(`/${project}/sessions`)
+  return fetchJSON(withLineage(`/${project}/sessions`, lineage))
 }
 
 export function getProjectSession(project: string, sessionId: string, tail = 200, change?: string | null): Promise<{ lines: string[]; session_id: string }> {
@@ -757,8 +759,10 @@ export interface LearningsData {
 
 // --- Learnings endpoints ---
 
-export function getLearnings(project: string): Promise<LearningsData> {
-  return fetchJSON(`/${project}/learnings`)
+export function getLearnings(
+  project: string, lineage?: string | null,
+): Promise<LearningsData> {
+  return fetchJSON(withLineage(`/${project}/learnings`, lineage))
 }
 
 export function getReviewFindings(project: string): Promise<ReviewFindingsData> {

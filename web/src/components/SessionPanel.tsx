@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getProjectSessions, getProjectSession, type SessionInfo } from '../lib/api'
+import { useSelectedLineage } from '../lib/lineage'
 
 interface Props {
   project: string
@@ -31,6 +32,7 @@ function colorLine(line: string): string {
 }
 
 export default function SessionPanel({ project, change }: Props) {
+  const { lineageId } = useSelectedLineage()
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [lines, setLines] = useState<string[]>([])
@@ -43,19 +45,21 @@ export default function SessionPanel({ project, change }: Props) {
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 
-  // Reset state when change switches
+  // Reset state when change OR lineage switches.  A lineage flip means a
+  // different set of per-change sessions — drop the current selection so
+  // stale ids do not surface in the new lineage's view.
   useEffect(() => {
     setSelected(null)
     setSessions([])
     setLines([])
     setError(null)
-  }, [change])
+  }, [change, lineageId])
 
-  // Load session list
+  // Load session list (lineage-filtered when no specific change is pinned).
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      getProjectSessions(project, change)
+      getProjectSessions(project, change, lineageId)
         .then(d => {
           if (cancelled) return
           setSessions(d.sessions)
@@ -69,7 +73,7 @@ export default function SessionPanel({ project, change }: Props) {
     load()
     const iv = setInterval(load, 15000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [project, change])
+  }, [project, change, lineageId])
 
   // Load selected session content — project-level endpoint searches all dirs
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getLearnings, type LearningsData, type ReviewFindingEntry, type ReflectionEntry, type GateStatEntry } from '../lib/api'
+import { useSelectedLineage } from '../lib/lineage'
 
 type Section = 'all' | 'reflections' | 'review' | 'gates' | 'sentinel'
 
@@ -25,6 +26,7 @@ function formatMs(ms: number): string {
 }
 
 export default function LearningsPanel({ project }: Props) {
+  const { lineageId } = useSelectedLineage()
   const [data, setData] = useState<LearningsData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [section, setSection] = useState<Section>('all')
@@ -32,14 +34,14 @@ export default function LearningsPanel({ project }: Props) {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      getLearnings(project)
+      getLearnings(project, lineageId)
         .then(d => { if (!cancelled) { setData(d); setError(null) } })
         .catch(e => { if (!cancelled) setError(e.message) })
     }
     load()
     const iv = setInterval(load, 15000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [project])
+  }, [project, lineageId])
 
   if (error) {
     return <div className="p-4 text-red-400 text-sm">{error}</div>

@@ -235,6 +235,42 @@ def apply_lineage_filter(
     return out
 
 
+def changes_in_lineage(
+    project_path: Path, lineage_id: Optional[str],
+) -> Optional[set[str]]:
+    """Return the set of change names belonging to ``lineage_id``.
+
+    Reads the live state + the state archive and buckets every change by
+    ``spec_lineage_id``.  Returns ``None`` when the caller passed
+    ``__all__`` or no lineage at all (meaning: do not filter).
+
+    Used by endpoints whose records are keyed on change name (sessions,
+    learnings) so they can join with the lineage tag without each record
+    needing its own ``spec_lineage_id`` field.
+    """
+    if lineage_id is None or lineage_id == _ALL:
+        return None
+    names: set[str] = set()
+    state_path = _state_path(project_path)
+    try:
+        if state_path.exists():
+            with open(state_path) as fh:
+                state_data = json.load(fh)
+            live_lineage = state_data.get("spec_lineage_id")
+            for c in state_data.get("changes", []):
+                lid = c.get("spec_lineage_id") or live_lineage or _LEGACY
+                if lid == lineage_id:
+                    names.add(c.get("name", ""))
+    except (OSError, json.JSONDecodeError):
+        pass
+    for entry in _load_archived_changes(project_path):
+        lid = entry.get("spec_lineage_id") or _LEGACY
+        if lid == lineage_id:
+            names.add(entry.get("name", ""))
+    names.discard("")
+    return names
+
+
 # ---------------------------------------------------------------------------
 # /api/{project}/lineages endpoint
 # ---------------------------------------------------------------------------

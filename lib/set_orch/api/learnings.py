@@ -39,8 +39,14 @@ def _resolve_findings_file(project_path: Path) -> Optional[Path]:
     return None
 
 
-def _read_review_findings(project_path: Path) -> dict:
-    """Read and parse review findings from JSONL or state.json review_output fallback."""
+def _read_review_findings(
+    project_path: Path, *, name_filter: Optional[set[str]] = None,
+) -> dict:
+    """Read and parse review findings from JSONL or state.json review_output fallback.
+
+    When ``name_filter`` is provided, only entries whose ``change`` name is
+    in the set are kept (used by the lineage filter on /learnings).
+    """
     entries = []
     pattern_counts: dict[str, int] = {}
 
@@ -91,6 +97,10 @@ def _read_review_findings(project_path: Path) -> dict:
             except (json.JSONDecodeError, OSError):
                 pass
 
+    # Apply lineage filter (Section 14.5 follow-up).
+    if name_filter is not None:
+        entries = [e for e in entries if e.get("change") in name_filter]
+
     # Keyword-based clustering for fuzzy matching across variations
     _CLUSTERS = {
         "no-auth": ["no auth", "no authentication", "zero authentication", "without auth"],
@@ -139,8 +149,14 @@ def _read_review_findings(project_path: Path) -> dict:
     return {"entries": entries, "summary": summary, "recurring_patterns": recurring}
 
 
-def _compute_gate_stats(project_path: Path) -> dict:
-    """Aggregate gate stats from orchestration state."""
+def _compute_gate_stats(
+    project_path: Path, *, name_filter: Optional[set[str]] = None,
+) -> dict:
+    """Aggregate gate stats from orchestration state.
+
+    When ``name_filter`` is provided, only changes whose ``name`` is in
+    the set contribute to the totals (lineage filter from /learnings).
+    """
     from ..paths import LineagePaths as _LP_gs
     state_file = Path(_LP_gs(str(project_path)).state_file)
     if not state_file.exists():
@@ -153,6 +169,8 @@ def _compute_gate_stats(project_path: Path) -> dict:
         return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
 
     changes = state_data.get("changes", [])
+    if name_filter is not None:
+        changes = [c for c in changes if c.get("name") in name_filter]
     if not changes:
         return {"per_gate": {}, "retry_summary": {}, "per_change_type": {}}
 
@@ -276,8 +294,14 @@ def _compute_gate_stats(project_path: Path) -> dict:
     }
 
 
-def _collect_reflections(project_path: Path) -> dict:
-    """Aggregate reflections across all worktrees."""
+def _collect_reflections(
+    project_path: Path, *, name_filter: Optional[set[str]] = None,
+) -> dict:
+    """Aggregate reflections across all worktrees.
+
+    When ``name_filter`` is provided, only reflections whose change name is
+    in the set are kept (lineage filter from /learnings).
+    """
     worktrees = _list_worktrees(project_path)
     reflections = []
     for wt in worktrees:
@@ -292,6 +316,10 @@ def _collect_reflections(project_path: Path) -> dict:
             continue
         branch = wt.get("branch", "")
         change = branch.removeprefix("set/") if branch.startswith("set/") else branch
+        # Common prefix used by the worktree branch naming convention.
+        change = change.removeprefix("change/")
+        if name_filter is not None and change not in name_filter:
+            continue
         reflections.append({"change": change, "branch": branch, "content": content})
 
     return {
@@ -545,9 +573,18 @@ def get_change_timeline(project: str, name: str):
 
 
 @router.get("/api/{project}/learnings")
-def get_learnings(project: str):
-    """Unified learnings endpoint: reflections + review findings + gate stats + sentinel."""
+def get_learnings(project: str, lineage: Optional[str] = None):
+    """Unified learnings endpoint: reflections + review findings + gate stats + sentinel.
+
+    Section 14.5 follow-up: when ``?lineage=`` is provided, every aggregate
+    is filtered to changes belonging to that lineage.  ``__all__`` returns
+    the union; an omitted parameter falls back to the resolver default.
+    """
     pp = _resolve_project(project)
+
+    from .lineages import changes_in_lineage, resolve_lineage_default
+    effective_lineage = lineage or resolve_lineage_default(pp)
+    name_filter = changes_in_lineage(pp, effective_lineage)
 
     # Sentinel findings
     sentinel_data = {"findings": [], "assessments": []}
@@ -557,12 +594,21 @@ def get_learnings(project: str):
             sentinel_data = json.loads(findings_file.read_text())
         except (json.JSONDecodeError, OSError):
             pass
+    if name_filter is not None:
+        sentinel_data = {
+            "findings": [
+                f for f in sentinel_data.get("findings", [])
+                if f.get("change") in name_filter
+            ],
+            "assessments": sentinel_data.get("assessments", []),
+        }
 
     return {
-        "reflections": _collect_reflections(pp),
-        "review_findings": _read_review_findings(pp),
-        "gate_stats": _compute_gate_stats(pp),
+        "reflections": _collect_reflections(pp, name_filter=name_filter),
+        "review_findings": _read_review_findings(pp, name_filter=name_filter),
+        "gate_stats": _compute_gate_stats(pp, name_filter=name_filter),
         "sentinel_findings": sentinel_data,
+        "effective_lineage": effective_lineage,
     }
 
 

@@ -568,7 +568,7 @@ def _parse_session_jsonl(path: Path, tail: int) -> list[str]:
 
 
 @router.get("/api/{project}/sessions")
-def list_project_sessions(project: str):
+def list_project_sessions(project: str, lineage: Optional[str] = None):
     """List all Claude session files across the project and all change worktrees.
 
     Aggregates sessions from:
@@ -577,12 +577,22 @@ def list_project_sessions(project: str):
 
     Each session entry includes a 'change' field with the change name (or empty
     for project-level sessions).
+
+    Section 14.5 follow-up: when ``?lineage=`` is provided, per-change
+    sessions are filtered to changes belonging to that lineage.  Project-
+    level sessions (sentinel, planner, digest) are tied to the orchestrator
+    daemon, not a lineage, and stay visible regardless of the filter.
     """
     project_path = _resolve_project(project)
+
+    from .lineages import changes_in_lineage, resolve_lineage_default
+    effective_lineage = lineage or resolve_lineage_default(project_path)
+    name_filter = changes_in_lineage(project_path, effective_lineage)
+
     seen_ids: set[str] = set()
     all_sessions: list[dict] = []
 
-    # Source 1: Project-level sessions
+    # Source 1: Project-level sessions (always visible — daemon-scoped).
     proj_mangled = _claude_mangle(str(project_path))
     proj_dir = Path.home() / ".claude" / "projects" / f"-{proj_mangled}"
     if proj_dir.is_dir():
@@ -591,12 +601,14 @@ def list_project_sessions(project: str):
             entry["change"] = ""
             all_sessions.append(entry)
 
-    # Source 2: Per-change worktree sessions
+    # Source 2: Per-change worktree sessions (lineage-filtered).
     sp = _state_path(project_path)
     if sp.exists():
         try:
             state = load_state(str(sp))
             for change in state.changes:
+                if name_filter is not None and change.name not in name_filter:
+                    continue
                 if change.worktree_path:
                     mangled = _claude_mangle(change.worktree_path)
                     d = Path.home() / ".claude" / "projects" / f"-{mangled}"
@@ -610,7 +622,7 @@ def list_project_sessions(project: str):
             pass
 
     all_sessions.sort(key=lambda x: x["mtime"], reverse=True)
-    return {"sessions": all_sessions}
+    return {"sessions": all_sessions, "effective_lineage": effective_lineage}
 
 
 @router.get("/api/{project}/sessions/{session_id}")
