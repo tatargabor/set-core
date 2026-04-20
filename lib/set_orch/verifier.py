@@ -456,6 +456,37 @@ def _extract_test_failures(test_output: str) -> str:
 # ─── Unified Retry Context ──────────────────────────────────────────
 
 
+def _render_cached_gates_section(change: "Change | None") -> str:
+    """Render a '## Cached Gates' section for the retry prompt.
+
+    Section 12.15 of fix-replan-stuck-gate-and-decomposer. Lists every gate
+    whose prior verdict is currently being reused (consecutive_cache_uses
+    > 0). The agent uses this to know which prior findings still hold.
+
+    Returns "" when there are no cached gates to report.
+    """
+    if change is None:
+        return ""
+    tracking = getattr(change, "gate_retry_tracking", None) or {}
+    cached_entries = [
+        (name, entry) for name, entry in tracking.items()
+        if entry and getattr(entry, "consecutive_cache_uses", 0) > 0
+    ]
+    if not cached_entries:
+        return ""
+    lines = ["## Cached Gates"]
+    lines.append(
+        "The following gates reused their prior verdict (no re-run) — "
+        "their findings still apply unless you've modified their scope:",
+    )
+    cached_entries.sort(key=lambda kv: kv[0])
+    for name, entry in cached_entries:
+        sha = (entry.last_verdict_sha or "?")[:8]
+        reuses = entry.consecutive_cache_uses
+        lines.append(f"- **{name}** — reused from {sha} ({reuses}× consecutive)")
+    return "\n".join(lines)
+
+
 def _build_unified_retry_context(
     build_output: str = "",
     test_output: str = "",
@@ -464,6 +495,7 @@ def _build_unified_retry_context(
     max_attempts: int = 3,
     change_name: str = "",
     findings_path: str = "",
+    change: "Change | None" = None,
 ) -> str:
     """Build a single structured retry block combining all gate results.
 
@@ -512,6 +544,13 @@ def _build_unified_retry_context(
         prior = _read_prior_review_findings(findings_path, change_name)
         if prior:
             sections.append(prior)
+
+    # Section 12.15: surface cached-gate verdicts so the agent knows
+    # which prior findings still hold.
+    cached = _render_cached_gates_section(change)
+    if cached:
+        sections.append("")
+        sections.append(cached)
 
     return "\n".join(sections)
 
@@ -2549,6 +2588,7 @@ def _execute_build_gate(
                 max_attempts=3,
                 change_name=change_name,
                 findings_path=findings_path,
+                change=change,
             )
             + f"\n\nOriginal scope: {scope}"
         )
@@ -2599,6 +2639,7 @@ def _execute_test_gate(
                 test_output=tr.output,
                 change_name=change_name,
                 findings_path=findings_path,
+                change=change,
             )
             + f"\n\nOriginal scope: {scope}"
         )
@@ -3779,11 +3820,24 @@ def handle_change_done(
                 exc_info=True,
             )
 
+    # Pull max_consecutive_cache_uses from directives (section 12, default 2).
+    _mccu = 2
+    try:
+        with locked_state(state_file) as _st_mccu:
+            _mccu_val = (_st_mccu.extras.get("directives", {}) or {}).get(
+                "max_consecutive_cache_uses", 2,
+            )
+            _mccu = int(_mccu_val) if _mccu_val is not None else 2
+    except Exception:
+        _mccu = 2
+
     pipeline = GatePipeline(
         gc, state_file, change_name, change,
         max_retries=effective_max_retries,
         event_bus=event_bus,
         parallel_groups=_parallel_groups,
+        profile=profile,
+        max_consecutive_cache_uses=_mccu,
     )
 
     # Review findings path for prior-findings injection into retry context
@@ -3834,6 +3888,7 @@ def handle_change_done(
                             e2e_command=e2e_command, e2e_timeout=e2e_timeout,
                             e2e_health_timeout=e2e_health_timeout, profile=profile,
                             spec_files=sf,
+                            scoped_subset=pipeline._gate_scoped_subset.get("e2e"),
                         ),
                         result_fields=gd.result_fields,
                     )

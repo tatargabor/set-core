@@ -184,6 +184,45 @@ class WatchdogState:
 
 
 @dataclass
+class GateRetryEntry:
+    """Per-gate retry tracking (section 12 of
+    fix-replan-stuck-gate-and-decomposer).
+
+    consecutive_cache_uses — number of consecutive retries where the gate's
+    verdict was reused from cache. Resets to 0 on any full run.
+    Force-invalidated by the `max_consecutive_cache_uses` directive.
+
+    last_verdict_sha — sidecar SHA of the most recent FULL gate verdict.
+    Referenced by cache-reuse events (`GATE_CACHED`) and injected into the
+    retry prompt under the `## Cached Gates` section.
+
+    last_run_retry_index — the `verify_retry_index` value at which the
+    last full run happened. Used to distinguish "full run this retry" from
+    "full run some retries ago".
+    """
+
+    consecutive_cache_uses: int = 0
+    last_verdict_sha: Optional[str] = None
+    last_run_retry_index: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        d: dict[str, Any] = {"consecutive_cache_uses": self.consecutive_cache_uses}
+        if self.last_verdict_sha is not None:
+            d["last_verdict_sha"] = self.last_verdict_sha
+        if self.last_run_retry_index is not None:
+            d["last_run_retry_index"] = self.last_run_retry_index
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict) -> GateRetryEntry:
+        return cls(
+            consecutive_cache_uses=int(data.get("consecutive_cache_uses", 0)),
+            last_verdict_sha=data.get("last_verdict_sha"),
+            last_run_retry_index=data.get("last_run_retry_index"),
+        )
+
+
+@dataclass
 class Change:
     """A single change in the orchestration state."""
 
@@ -279,6 +318,15 @@ class Change:
     gate_recheck_done: bool = False
     touched_file_globs: list[str] = field(default_factory=list)
 
+    # Per-gate retry policy tracking (section 12 of
+    # fix-replan-stuck-gate-and-decomposer).
+    # gate_retry_tracking — keyed by gate name → GateRetryEntry. Produced by
+    # gate_runner when a gate is cache-reused or full-run.
+    # verify_retry_index — 0 on the first verify-pipeline run for a change
+    # (policy always `always`); ≥1 on subsequent retries (policy consulted).
+    gate_retry_tracking: dict[str, GateRetryEntry] = field(default_factory=dict)
+    verify_retry_index: int = 0
+
     # Context window metrics (optional — absent on old state files)
     context_tokens_start: Optional[int] = None  # cache_create_tokens after iteration 1
     context_tokens_end: Optional[int] = None    # total_cache_create at loop completion
@@ -318,6 +366,11 @@ class Change:
             val = getattr(self, f.name)
             if f.name == "watchdog" and val is not None:
                 d["watchdog"] = val.to_dict()
+            elif f.name == "gate_retry_tracking":
+                if val:
+                    d["gate_retry_tracking"] = {
+                        k: entry.to_dict() for k, entry in val.items()
+                    }
             elif val is not None or f.name in (
                 "worktree_path", "ralph_pid", "started_at", "completed_at",
                 "current_step",
@@ -362,6 +415,12 @@ class Change:
         for k, v in data.items():
             if k == "watchdog" and isinstance(v, dict):
                 kwargs["watchdog"] = WatchdogState.from_dict(v)
+            elif k == "gate_retry_tracking" and isinstance(v, dict):
+                kwargs["gate_retry_tracking"] = {
+                    gate_name: GateRetryEntry.from_dict(entry)
+                    for gate_name, entry in v.items()
+                    if isinstance(entry, dict)
+                }
             elif k in known:
                 kwargs[k] = v
             else:

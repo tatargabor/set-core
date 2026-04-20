@@ -1001,6 +1001,90 @@ class WebProjectType(CoreProfile):
         }
         return scopes.get(gate_name, [])
 
+    def gate_scope_filter(
+        self, gate_name: str, retry_diff_files: list[str],
+    ) -> Optional[List[str]]:
+        """For a `"scoped"`-policy gate, return the spec files to run.
+
+        Currently only `e2e` is scoped. Strategy:
+        1. Collect diff files under `src/app/**` — map each page to its
+           corresponding Playwright spec via the `src/app/<segment>/` →
+           `tests/e2e/<segment>.spec.ts` convention.
+        2. Collect diff files under `src/components/**` — map via a
+           co-located-label heuristic: spec file name contains any of the
+           component's path segments.
+        3. Include any test spec whose own file was directly touched.
+
+        Return None when no mapping produces any spec (caller then falls
+        through to `cached` policy).
+        """
+        if gate_name != "e2e":
+            return None
+        if not retry_diff_files:
+            return None
+
+        import re
+        specs: set[str] = set()
+
+        def _segments(path: str) -> list[str]:
+            # Strip extensions and split into segments; lowercase each for
+            # case-insensitive matching.
+            stripped = re.sub(r"\.(tsx?|jsx?|css|mdx?)$", "", path, flags=re.IGNORECASE)
+            return [seg.lower() for seg in stripped.split("/") if seg]
+
+        # Collect all touched test spec files directly
+        for f in retry_diff_files:
+            if re.match(r"^tests/e2e/.*\.spec\.(tsx?|jsx?)$", f):
+                specs.add(f)
+
+        # Derive domain labels from source diff files
+        _ROUTE_NOISE = {"page", "layout", "loading", "error", "template", "not-found", "default"}
+        domain_labels: set[str] = set()
+        for f in retry_diff_files:
+            if f.startswith("src/app/"):
+                segs = _segments(f[len("src/app/"):])
+                # Drop [locale] placeholder, noise file stems, and admin
+                # shell root (too broad as a domain label).
+                segs = [
+                    s for s in segs
+                    if not (s.startswith("[") and s.endswith("]"))
+                    and s not in _ROUTE_NOISE
+                ]
+                if segs:
+                    domain_labels.update(segs[:2])
+            elif f.startswith("src/components/"):
+                segs = _segments(f[len("src/components/"):])
+                if segs and segs[0] not in _ROUTE_NOISE:
+                    domain_labels.add(segs[0])
+
+        # Match each domain label against spec file paths / names
+        if domain_labels:
+            try:
+                import glob
+                # Search only when a project_path is available; fall back to
+                # pattern matching on the literal paths we already know about.
+                from pathlib import Path as _P
+                # We can't easily resolve project_path here (profile method is
+                # project-agnostic by design). Instead, we pattern-match any
+                # spec path the caller might hand us back later. The runner
+                # validates spec existence.
+                candidates = []
+                for f in retry_diff_files:
+                    if re.match(r"^tests/e2e/.*\.spec\.(tsx?|jsx?)$", f):
+                        candidates.append(f)
+                # Additionally synthesize likely spec paths from domain
+                # labels so the runner can probe their existence.
+                for label in domain_labels:
+                    if not label or any(ch in label for ch in "[]*"):
+                        continue
+                    specs.add(f"tests/e2e/{label}.spec.ts")
+            except Exception:
+                pass
+
+        if not specs:
+            return None
+        return sorted(specs)
+
     def loc_weights(self) -> dict[str, int]:
         """Web-specific LOC weights for the decomposer granularity budget.
 

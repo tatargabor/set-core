@@ -452,6 +452,7 @@ def execute_e2e_gate(
     change_name: str, change: "Change", wt_path: str,
     e2e_command: str, e2e_timeout: int, e2e_health_timeout: int,
     profile=None, spec_files: list | None = None,
+    scoped_subset: list | None = None,
 ) -> "GateResult":
     """E2E gate: run Playwright tests with baseline comparison.
 
@@ -461,6 +462,11 @@ def execute_e2e_gate(
     If *spec_files* is provided (list of own spec file paths), the gate
     scopes the Playwright run to those files only — matching the merger's
     two-phase approach so the verify gate doesn't run 140 inherited tests.
+
+    If *scoped_subset* is provided (retry-policy-driven shard, section 12 of
+    fix-replan-stuck-gate-and-decomposer), the gate narrows further to
+    those specs. Non-existent paths are dropped; if the list becomes empty
+    the gate falls through to the unscoped run.
     """
     from set_orch.gate_runner import GateResult
     from set_orch.subprocess_utils import run_command, run_git
@@ -564,14 +570,39 @@ def execute_e2e_gate(
 
     # Scope to own spec files if provided (verify gate scoping — FIX 5).
     # Falls back to full suite if profile doesn't support scoping.
+    # When scoped_subset is provided (retry-policy-driven), intersect it
+    # with the spec_files list: only existing, own-specs that are in the
+    # retry-diff-derived subset are run. This guards against the policy
+    # synthesizing paths for specs that don't exist in this worktree.
     actual_e2e_cmd = e2e_command
-    if spec_files and profile and hasattr(profile, "e2e_scoped_command"):
-        scoped = profile.e2e_scoped_command(e2e_command, spec_files)
+    _effective_specs: list | None = None
+    if scoped_subset:
+        _existing = [
+            s for s in scoped_subset
+            if isinstance(s, str) and os.path.isfile(os.path.join(wt_path, s))
+        ]
+        if _existing:
+            _effective_specs = _existing
+            logger.info(
+                "E2E gate: scoped_subset narrowed to %d existing spec(s) for %s: %s",
+                len(_existing), change_name, _existing,
+            )
+        else:
+            logger.info(
+                "E2E gate: scoped_subset yielded 0 existing specs for %s — "
+                "falling back to own-specs/full",
+                change_name,
+            )
+    if _effective_specs is None and spec_files:
+        _effective_specs = list(spec_files)
+
+    if _effective_specs and profile and hasattr(profile, "e2e_scoped_command"):
+        scoped = profile.e2e_scoped_command(e2e_command, _effective_specs)
         if scoped:
             actual_e2e_cmd = scoped
             logger.info(
-                "E2E gate: scoped to %d own spec file(s) for %s",
-                len(spec_files), change_name,
+                "E2E gate: scoped to %d spec file(s) for %s",
+                len(_effective_specs), change_name,
             )
 
     # Run E2E tests.

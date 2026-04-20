@@ -23,7 +23,7 @@ import shutil
 
 import re
 
-from .state import Change, locked_state, update_change_field
+from .state import Change, GateRetryEntry, locked_state, update_change_field
 from .truncate import smart_truncate, smart_truncate_structured
 
 
@@ -236,6 +236,8 @@ class GatePipeline:
         max_retries: int = 2,
         event_bus: Any = None,
         parallel_groups: Optional[list[set[str]]] = None,
+        profile: Any = None,
+        max_consecutive_cache_uses: int = 2,
     ) -> None:
         self.gc = gc
         self.state_file = state_file
@@ -250,6 +252,21 @@ class GatePipeline:
         self.parallel_groups: list[set[str]] = [
             set(g) for g in (parallel_groups or [])
         ]
+        # Per-gate retry policy plumbing (section 12 of
+        # fix-replan-stuck-gate-and-decomposer). `profile` may be None for
+        # CoreProfile / no-profile paths — in that case every gate behaves
+        # as `"always"` (no caching, no scoping).
+        self.profile = profile
+        self.max_consecutive_cache_uses = max(1, int(max_consecutive_cache_uses))
+        self._gate_retry_policy: dict[str, str] = {}
+        if profile is not None and hasattr(profile, "gate_retry_policy"):
+            try:
+                self._gate_retry_policy = dict(profile.gate_retry_policy() or {})
+            except Exception:
+                logger.warning(
+                    "gate_retry_policy() threw — defaulting all gates to always",
+                    exc_info=True,
+                )
 
         self._gates: list[_GateEntry] = []
         self.results: list[GateResult] = []
@@ -261,6 +278,16 @@ class GatePipeline:
         # reads this when emitting VERIFY_GATE so consumers can see the
         # concurrency decision (parallel_group: [...] field).
         self.parallel_group_runs: list[list[str]] = []
+        # Scoped-subset filter passed to gate executors at runtime (e.g.
+        # Playwright spec subset). Gates read this via kwargs from the
+        # register-time closure (see verifier.py register call sites).
+        self._gate_scoped_subset: dict[str, list[str]] = {}
+        # Tracks which gates were cached this run so commit_results can
+        # persist updated tracking state.
+        self._gate_cached_this_run: dict[str, str] = {}  # gate_name → reuse reason
+        self._gate_full_ran_this_run: set[str] = set()
+        # Memoized retry diff files (current HEAD vs prior full-run baseline).
+        self._retry_diff_cache: dict[str, list[str]] = {}
 
     def register(
         self,
@@ -281,6 +308,245 @@ class GatePipeline:
         ))
         logger.debug("Gate registered: %s for %s (retry_counter=%s, extra_retries=%d)",
                       name, self.change_name, own_retry_counter or "shared", extra_retries)
+
+    def _retry_diff_files(self, baseline_sha: str) -> list[str]:
+        """Return files touched since `baseline_sha` in the worktree.
+
+        Memoized per baseline so multiple gates with the same prior-full-run
+        commit don't re-shell out to git.
+        """
+        if not baseline_sha or not self.change.worktree_path:
+            return []
+        if baseline_sha in self._retry_diff_cache:
+            return self._retry_diff_cache[baseline_sha]
+        try:
+            out = subprocess.run(
+                ["git", "-C", self.change.worktree_path,
+                 "diff", "--name-only", baseline_sha, "HEAD"],
+                capture_output=True, text=True, timeout=10,
+            )
+            files = [line for line in out.stdout.splitlines() if line.strip()]
+        except Exception as exc:
+            logger.warning(
+                "retry_diff_files(%s) failed for %s: %s",
+                baseline_sha[:8], self.change_name, exc,
+            )
+            files = []
+        self._retry_diff_cache[baseline_sha] = files
+        logger.debug(
+            "retry_diff_files(%s..HEAD) for %s: %d files",
+            baseline_sha[:8], self.change_name, len(files),
+        )
+        return files
+
+    def _diff_touches_scope(
+        self, diff_files: list[str], scope_globs: list[str],
+    ) -> bool:
+        """Return True if any diff file matches any scope glob."""
+        if not scope_globs or not diff_files:
+            return False
+        import fnmatch
+        for pattern in scope_globs:
+            for f in diff_files:
+                # fnmatch treats `**` as `*` — Path-style `**` matching requires
+                # splitting the pattern. Use pathspec-style comparison via
+                # re-rooting the glob: pattern `src/**` should match `src/a/b`.
+                if fnmatch.fnmatch(f, pattern):
+                    return True
+                # Manual `**` handling: replace `**/` with `*/.../*/` match by
+                # checking prefix+suffix against segments.
+                if "**" in pattern:
+                    parts = pattern.split("**", 1)
+                    prefix = parts[0].rstrip("/")
+                    suffix = parts[1].lstrip("/")
+                    if f.startswith(prefix):
+                        remainder = f[len(prefix):].lstrip("/")
+                        if not suffix:
+                            return True
+                        if fnmatch.fnmatch(remainder, suffix) or fnmatch.fnmatch(
+                            remainder.rsplit("/", 1)[-1] if "/" in remainder else remainder,
+                            suffix,
+                        ):
+                            return True
+        return False
+
+    _NEW_API_SURFACE_PATTERNS = [
+        re.compile(r"^\+\s*export\s+(async\s+)?function\s+\w+", re.MULTILINE),
+        re.compile(r"^\+\s*export\s+const\s+\w+\s*=\s*async", re.MULTILINE),
+        re.compile(r"^\+\s*model\s+\w+\s*\{", re.MULTILINE),
+        re.compile(
+            r"^\+\s*export\s+async\s+function\s+(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b",
+            re.MULTILINE,
+        ),
+    ]
+
+    def _diff_has_new_api_surface(self, baseline_sha: str) -> bool:
+        """Scan the retry diff for new exported APIs / Prisma models.
+
+        Returns True if the unified diff contains any `+export function`,
+        `+export const X = async`, `+model X {`, or `+export async function
+        (GET|POST|…)` added line. These signals indicate a new public API
+        surface that a cached verdict cannot reason about.
+        """
+        if not baseline_sha or not self.change.worktree_path:
+            return False
+        try:
+            out = subprocess.run(
+                ["git", "-C", self.change.worktree_path,
+                 "diff", "--unified=0", baseline_sha, "HEAD"],
+                capture_output=True, text=True, timeout=15,
+            )
+            text = out.stdout or ""
+        except Exception:
+            return False
+        for pat in self._NEW_API_SURFACE_PATTERNS:
+            if pat.search(text):
+                return True
+        return False
+
+    def _policy_for(self, gate_name: str) -> str:
+        """Resolve retry policy for a gate. Defaults to `always`."""
+        return self._gate_retry_policy.get(gate_name, "always")
+
+    def _prior_tracking(self, gate_name: str) -> GateRetryEntry:
+        """Return (or create) the per-gate tracking entry on self.change."""
+        tracking = self.change.gate_retry_tracking
+        if gate_name not in tracking:
+            tracking[gate_name] = GateRetryEntry()
+        return tracking[gate_name]
+
+    def _try_cache_reuse(self, gate_name: str) -> Optional[tuple[str, str]]:
+        """Check whether `gate_name` can reuse its prior verdict.
+
+        Returns (reason, prior_sha) on cache hit (reason explains why it was
+        reused — for logging), or None on cache miss (caller runs full).
+        """
+        # On the first verify-pipeline run (verify_retry_index==0), never
+        # cache — this is the "first run ignores policy" rule.
+        if int(self.change.verify_retry_index or 0) == 0:
+            return None
+
+        entry = self._prior_tracking(gate_name)
+        prior_sha = entry.last_verdict_sha
+        if not prior_sha:
+            # No prior full run to reuse; must run fully.
+            return None
+
+        # Cap: after N consecutive cache reuses, force a full run.
+        if entry.consecutive_cache_uses >= self.max_consecutive_cache_uses:
+            logger.info(
+                "Cache invalidated for %s on %s: cache-use cap reached (%d >= %d)",
+                gate_name, self.change_name,
+                entry.consecutive_cache_uses, self.max_consecutive_cache_uses,
+            )
+            return None
+
+        # Scope check: does the retry diff touch any cache-scope glob?
+        scope_globs: list[str] = []
+        if self.profile is not None and hasattr(self.profile, "gate_cache_scope"):
+            try:
+                scope_globs = list(self.profile.gate_cache_scope(gate_name) or [])
+            except Exception:
+                scope_globs = []
+        diff_files = self._retry_diff_files(prior_sha)
+        if self._diff_touches_scope(diff_files, scope_globs):
+            logger.info(
+                "Cache invalidated for %s on %s: diff-touches-scope",
+                gate_name, self.change_name,
+            )
+            return None
+
+        # New API surface check: block cache reuse if the diff adds exports.
+        if self._diff_has_new_api_surface(prior_sha):
+            logger.info(
+                "Cache invalidated for %s on %s: new-api-surface-detected",
+                gate_name, self.change_name,
+            )
+            return None
+
+        return ("reuse", prior_sha)
+
+    def _try_scoped_run(
+        self, gate_name: str,
+    ) -> Optional[list[str]]:
+        """Return a scoped subset for a `"scoped"`-policy gate, or None to
+        fall through to cached policy.
+        """
+        if int(self.change.verify_retry_index or 0) == 0:
+            return None
+        if self.profile is None or not hasattr(self.profile, "gate_scope_filter"):
+            return None
+
+        entry = self._prior_tracking(gate_name)
+        prior_sha = entry.last_verdict_sha
+        if not prior_sha:
+            return None
+        diff_files = self._retry_diff_files(prior_sha)
+        if not diff_files:
+            return None
+        try:
+            subset = self.profile.gate_scope_filter(gate_name, diff_files)
+        except Exception:
+            logger.warning(
+                "gate_scope_filter(%s) threw for %s — falling through",
+                gate_name, self.change_name, exc_info=True,
+            )
+            subset = None
+        if not subset:
+            return None
+
+        # Scoped runs still respect the cache-use cap — 2 consecutive
+        # scoped retries, then the 3rd forces a full run.
+        if entry.consecutive_cache_uses >= self.max_consecutive_cache_uses:
+            logger.info(
+                "Scoped run forced to full for %s on %s: cache-use cap",
+                gate_name, self.change_name,
+            )
+            return None
+        return list(subset)
+
+    def _emit_gate_cached(self, gate_name: str, prior_sha: str) -> None:
+        """Emit GATE_CACHED event for observability."""
+        if self.event_bus is None:
+            return
+        try:
+            self.event_bus.emit(
+                "GATE_CACHED",
+                change=self.change_name,
+                data={
+                    "gate": gate_name,
+                    "prior_sha": prior_sha,
+                    "retry_index": int(self.change.verify_retry_index or 0),
+                },
+            )
+        except Exception as exc:
+            logger.debug(
+                "GATE_CACHED emit failed for %s/%s: %s",
+                self.change_name, gate_name, exc,
+            )
+
+    def _record_cache_reuse(self, entry: _GateEntry, prior_sha: str) -> None:
+        """Record a cache reuse: append a 'pass' GateResult with 0 ms,
+        emit GATE_CACHED, and mark the gate in self._gate_cached_this_run.
+
+        The reused verdict is trusted: we report pass. This is load-bearing
+        for downstream VERIFY_GATE aggregation — treating cache reuse as
+        "pass" preserves existing retry semantics (no new stop_gate).
+        """
+        result = GateResult(
+            gate_name=entry.name,
+            status="pass",
+            output=f"cache reuse from {prior_sha[:8]}",
+            duration_ms=0,
+        )
+        self.results.append(result)
+        self._persist_gate_result(entry, result, 0)
+        self._gate_cached_this_run[entry.name] = prior_sha
+        self._emit_gate_cached(entry.name, prior_sha)
+        logger.info(
+            "Verify gate: %s CACHED for %s (prior=%s)",
+            entry.name, self.change_name, prior_sha[:8],
+        )
 
     def _parallel_group_for(self, gate_name: str) -> Optional[frozenset[str]]:
         """Return the parallel group (as a frozenset) that contains gate_name,
@@ -360,6 +626,36 @@ class GatePipeline:
                 i += 1
                 continue
 
+            # Per-gate retry policy (section 12). `cached`: try to reuse
+            # prior verdict; `scoped`: try to shard the gate; `always`:
+            # normal execution. The policy is consulted only on
+            # verify_retry_index >= 1 (first run always runs fully).
+            _policy = self._policy_for(entry.name)
+            if _policy == "scoped":
+                _subset = self._try_scoped_run(entry.name)
+                if _subset is not None:
+                    # Record subset for the gate executor to consume.
+                    self._gate_scoped_subset[entry.name] = _subset
+                    logger.info(
+                        "Scoped gate: %s running on %d subset item(s) for %s: %s",
+                        entry.name, len(_subset), self.change_name, _subset,
+                    )
+                else:
+                    # Fall through to cached policy (per D10).
+                    _cache_hit = self._try_cache_reuse(entry.name)
+                    if _cache_hit is not None:
+                        _reason, _prior_sha = _cache_hit
+                        self._record_cache_reuse(entry, _prior_sha)
+                        i += 1
+                        continue
+            elif _policy == "cached":
+                _cache_hit = self._try_cache_reuse(entry.name)
+                if _cache_hit is not None:
+                    _reason, _prior_sha = _cache_hit
+                    self._record_cache_reuse(entry, _prior_sha)
+                    i += 1
+                    continue
+
             # Parallel-batch detection: if this gate is in a parallel group
             # shared with one or more adjacent registered gates (each also
             # should_run), dispatch them all concurrently. The registration
@@ -371,6 +667,10 @@ class GatePipeline:
                 while j < len(self._gates):
                     nxt = self._gates[j]
                     if nxt.name in group and self.gc.should_run(nxt.name):
+                        # Don't pull in a peer that was just cache-reused.
+                        if nxt.name in self._gate_cached_this_run:
+                            j += 1
+                            continue
                         batch.append(nxt)
                         j += 1
                     else:
@@ -385,6 +685,7 @@ class GatePipeline:
 
             # Single-gate execution (default path)
             result, elapsed_ms = self._execute_single_entry(entry)
+            self._gate_full_ran_this_run.add(entry.name)
             i += 1
             self._persist_gate_result(entry, result, elapsed_ms)
             action = self._finalize_result(entry, result, elapsed_ms)
@@ -535,6 +836,7 @@ class GatePipeline:
         for idx, entry in enumerate(batch):
             result, elapsed_ms = results_by_idx[idx]
             self._persist_gate_result(entry, result, elapsed_ms)
+            self._gate_full_ran_this_run.add(entry.name)
 
         # Outcome: find the earliest-registered blocking failure.
         earliest_fail_idx = None
@@ -730,6 +1032,37 @@ class GatePipeline:
 
                 # Update verify_retry_count from pipeline state
                 c.verify_retry_count = self._verify_retry_count
+
+                # Persist per-gate retry tracking (section 12). Full runs
+                # capture current HEAD as the new baseline + reset cache
+                # counter. Cache reuses increment the counter and keep
+                # the prior baseline.
+                _head_sha = ""
+                if self.change.worktree_path:
+                    try:
+                        _head_sha = subprocess.run(
+                            ["git", "-C", self.change.worktree_path,
+                             "rev-parse", "HEAD"],
+                            capture_output=True, text=True, timeout=5,
+                        ).stdout.strip()
+                    except Exception:
+                        _head_sha = ""
+
+                _tracking = dict(c.gate_retry_tracking or {})
+                for gate_name in self._gate_full_ran_this_run:
+                    _entry = _tracking.get(gate_name) or GateRetryEntry()
+                    _entry.consecutive_cache_uses = 0
+                    if _head_sha:
+                        _entry.last_verdict_sha = _head_sha
+                    _entry.last_run_retry_index = int(
+                        self.change.verify_retry_index or 0,
+                    )
+                    _tracking[gate_name] = _entry
+                for gate_name in self._gate_cached_this_run:
+                    _entry = _tracking.get(gate_name) or GateRetryEntry()
+                    _entry.consecutive_cache_uses += 1
+                    _tracking[gate_name] = _entry
+                c.gate_retry_tracking = _tracking
 
                 break
 
