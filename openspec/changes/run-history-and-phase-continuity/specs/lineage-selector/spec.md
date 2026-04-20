@@ -19,7 +19,7 @@ The API SHALL expose `/api/<project>/lineages`, returning every distinct `spec_l
 - **AND** the UI SHALL NOT show `__unknown__` in the sidebar unless the user expands a "show unattributed" affordance (opt-in, not default-visible)
 
 ### Requirement: Data endpoints accept an optional lineage filter
-Every orchestration data endpoint that returns per-change or per-event records SHALL accept an optional `?lineage=<id>` query parameter; when supplied, the response SHALL include only records tagged with that lineage. When omitted, the response defaults to the live lineage (`state.spec_lineage_id`). Passing `?lineage=__all__` SHALL return the unfiltered union.
+Every orchestration data endpoint that returns per-change or per-event records SHALL accept an optional `?lineage=<id>` query parameter; when supplied, the response SHALL include only records tagged with that lineage. When omitted, the response defaults to the live lineage (`state.spec_lineage_id`). Backend accepts the legacy `?lineage=__all__` sentinel for backwards compatibility with any external consumer, but the dashboard UI no longer exposes an "All lineages" selection — mixing cycles with shared phase numbers from runs that may be days apart proved more confusing than useful.
 
 #### Scenario: Filtered /state
 - **WHEN** the client calls `GET /api/<project>/state?lineage=v1.md`
@@ -40,9 +40,10 @@ Every orchestration data endpoint that returns per-change or per-event records S
 - **THEN** the response SHALL be equivalent to `?lineage=<state.spec_lineage_id>` when the sentinel is running
 - **AND** equivalent to the most-recently-active lineage otherwise (the one with the newest `last_seen_at` among all discovered lineages)
 
-#### Scenario: All-lineages merged view
-- **WHEN** the client calls `GET /api/<project>/state?lineage=__all__`
-- **THEN** every lineage's records SHALL be returned in a single response, each record retaining its `spec_lineage_id` so the client can regroup visually
+#### Scenario: All-lineages merged view (backend-only compatibility shim)
+- **WHEN** an external consumer calls `GET /api/<project>/state?lineage=__all__`
+- **THEN** every lineage's records SHALL be returned in a single response, each record retaining its `spec_lineage_id`
+- **AND** the dashboard UI SHALL NOT emit this request from any user-facing control — the sentinel is always viewed through exactly one lineage
 
 ### Requirement: Left-sidebar lineage list
 The existing project sidebar (the menu that currently shows the project name header followed by Orchestration / Issues / Memory / Settings items) SHALL render a `Lineages` section between the project name and the existing menu items, listing every lineage returned by `/api/<project>/lineages` as a clickable entry.
@@ -50,7 +51,6 @@ The existing project sidebar (the menu that currently shows the project name hea
 #### Scenario: Sidebar renders the lineage list
 - **WHEN** the project has two lineages (v1 archived, v2 live)
 - **THEN** the sidebar SHALL render under the project name header:
-  - An "All lineages" entry (applies filter `__all__`)
   - One entry per lineage with the lineage `display_name`
   - A small green dot on the entry whose `is_live = true`
   - The existing `Orchestration / Issues / Memory / Settings` entries BELOW the lineage list
@@ -75,11 +75,6 @@ The existing project sidebar (the menu that currently shows the project name hea
 - **WHEN** the operator selects `v1.md` and reloads the page
 - **THEN** on reload the selection SHALL restore `v1.md` from `localStorage` under key `set-lineage-<project>`
 - **AND** if that lineage no longer exists (e.g., project cleanup), the selector SHALL fall back to the default-selection rule silently
-
-#### Scenario: All-lineages mode
-- **WHEN** the operator clicks the "All lineages" entry
-- **THEN** the tabs SHALL render in "merged" mode: tables/lists are tagged per-row with the lineage name, and the Phases tab shows a top-level section per lineage
-- **AND** the sidebar SHALL highlight the "All lineages" entry
 
 #### Scenario: Live-badge decouples from view
 - **WHEN** the operator is viewing `v1.md` while the sentinel runs `v2.md`

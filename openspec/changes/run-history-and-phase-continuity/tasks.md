@@ -152,10 +152,10 @@
 - [x] 14.6 Persist selection in `localStorage` under `set-lineage-<project>`; restore on mount; fall back to default-selection rule when stored id is unknown. [REQ: left-sidebar-lineage-list]
 - [x] 14.7 Default selection on first load: `is_live = true` lineage if present, else the one with the newest `last_seen_at`. [REQ: left-sidebar-lineage-list]
 - [x] 14.8 `StatusHeader` status badge stays bound to the **live** lineage (`state.spec_lineage_id`). When selection differs from live, render a text hint "Viewing <display_name> — sentinel running <live display_name>" adjacent to the badge. [REQ: left-sidebar-lineage-list]
-- [x] 14.9 "All lineages" (`__all__`) mode: tables/lists include a `Lineage` column; Phases tab shows a top-level section per lineage; selected state in the sidebar highlights the "All lineages" row. [REQ: left-sidebar-lineage-list]
+- [x] 14.9 "All lineages" (`__all__`) mode removed from the UI — mixing cycles with shared phase numbers from runs days apart proved more confusing than useful. Backend keeps the `?lineage=__all__` sentinel for external consumers but the sidebar no longer renders the entry. [REQ: left-sidebar-lineage-list]
 - [x] 14.10 Playwright test: two-lineage fixture → sidebar lists both; clicking v1 while v2 runs filters every tab to v1 AND sentinel continues running v2 AND StatusHeader badge stays on v2. [REQ: left-sidebar-lineage-list]
 - [x] 14.11 Playwright test: selection survives page reload. [REQ: left-sidebar-lineage-list]
-- [x] 14.12 Playwright test: "All lineages" mode shows the Lineage column/section on every relevant tab. [REQ: left-sidebar-lineage-list]
+- [x] 14.12 Playwright test: sidebar does NOT render an "All lineages" entry; clicking between per-lineage rows is the only switching control. Regression guard that the removed entry does not creep back in. [REQ: left-sidebar-lineage-list]
 
 ## 15. PhaseView per-lineage cleanup
 
@@ -315,7 +315,7 @@ These tasks mirror `migration-audit.md`'s checklist 1:1. Each task below transla
 - [x] AC-46: WHEN operator clicks v1.md in the sidebar while v2 runs THEN every tab refetches with ?lineage=v1.md AND sentinel continues on v2 AND live-indicator dot stays on v2 [REQ: left-sidebar-lineage-list, scenario: switching-lineage]
 - [x] AC-46a: WHEN viewing v1.md while sentinel runs v2.md THEN StatusHeader badge reflects v2 AND hint text "Viewing v1.md — sentinel running v2.md" appears [REQ: left-sidebar-lineage-list, scenario: live-badge-decouples-from-view]
 - [x] AC-47: WHEN operator selects v1.md and reloads THEN selection restores from localStorage; if lineage missing it falls back to default-selection rule [REQ: left-sidebar-lineage-list, scenario: selector-persistence]
-- [x] AC-48: WHEN "All lineages" is clicked THEN tables tag rows with lineage, Phases shows a section per lineage, sidebar highlights the "All lineages" entry [REQ: left-sidebar-lineage-list, scenario: all-lineages-mode]
+- [x] AC-48: "All lineages" removed from UI — sidebar no longer renders that entry; Phases stays single-lineage scoped to the selected row [REQ: left-sidebar-lineage-list, scenario: sidebar-renders-the-lineage-list]
 
 ### Lineage-scoped coverage
 - [x] AC-49: WHEN v2 lineage spec declares 3 REQs AND a v2 change merges satisfying all 3 THEN v2 coverage reports 3/3 = 100% AND v1's 120 REQs do NOT appear in v2 response [REQ: coverage-denominator-is-the-lineages-own-spec, scenario: v2-delivers-a-single-new-screen-on-top-of-v1]

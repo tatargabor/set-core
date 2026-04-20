@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ChangeInfo, StateData } from '../lib/api'
 import { TuiStatus, statusColor as tuiStatusColor } from './tui'
-import { useSelectedLineage } from '../lib/lineage'
 import GateBar from './GateBar'
 import StepBar from './StepBar'
 
@@ -169,7 +168,8 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
 }
 
 export default function PhaseView({ changes, state }: Props) {
-  const { isAll } = useSelectedLineage()
+  // All-lineages mode was removed — the view is always lineage-scoped to
+  // the sidebar selection, so phase groups no longer split by lineage.
   const [showUnattributed, setShowUnattributed] = useState(false)
 
   // Section 15.1 — hide `__unknown__` entries by default.  They are
@@ -213,13 +213,12 @@ export default function PhaseView({ changes, state }: Props) {
   for (const c of attributedChanges) {
     const p = c.phase ?? 1
     const pv = c.plan_version == null ? null : String(c.plan_version)
-    const lineage = isAll ? (c.spec_lineage_id ?? null) : null
-    const key = `${p}|${pv ?? ''}|${lineage ?? ''}`
+    const key = `${p}|${pv ?? ''}|`
     const list = groups.get(key) ?? []
     list.push(c)
     groups.set(key, list)
     if (!groupMeta.has(key)) {
-      groupMeta.set(key, { phase: p, planVersion: pv, lineage })
+      groupMeta.set(key, { phase: p, planVersion: pv, lineage: null })
     }
   }
 

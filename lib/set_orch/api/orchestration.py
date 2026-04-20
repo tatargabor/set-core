@@ -148,6 +148,10 @@ def get_change(project: str, name: str):
                     except (json.JSONDecodeError, OSError):
                         pass
             return d
+    # Fall back to archive for changes that no longer appear in live state.
+    for entry in _load_archived_changes(project_path):
+        if entry.get("name") == name:
+            return entry
     raise HTTPException(404, f"Change not found: {name}")
 
 
@@ -261,8 +265,13 @@ def get_change_journal(project: str, name: str):
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
 
+    # Archived changes should still expose their journal — the file lives
+    # at <project>/journals/<name>.jsonl regardless of whether the entry
+    # is live or in state-archive.jsonl.
     if not any(c.name == name for c in state.changes):
-        raise HTTPException(404, f"Change not found: {name}")
+        archived_names = {e.get("name") for e in _load_archived_changes(project_path)}
+        if name not in archived_names:
+            raise HTTPException(404, f"Change not found: {name}")
 
     journal_path = Path(os.path.dirname(str(sp))) / "journals" / f"{name}.jsonl"
     entries = _load_journal_entries(journal_path)

@@ -33,7 +33,8 @@ The activity timeline endpoint SHALL honour the optional `?lineage=<id>` query p
 - **WHEN** the client calls the endpoint without a `lineage` parameter
 - **THEN** the response SHALL be equivalent to `?lineage=<state.spec_lineage_id>` (live lineage is the default)
 
-#### Scenario: All-lineages mode
-- **WHEN** the client calls the endpoint with `?lineage=__all__`
+#### Scenario: All-lineages mode (backend-only compatibility shim)
+- **WHEN** an external consumer calls the endpoint with `?lineage=__all__`
 - **THEN** every span SHALL be returned regardless of lineage
-- **AND** each span SHALL carry its `detail.spec_lineage_id` so the UI can regroup visually
+- **AND** each span SHALL carry its `detail.spec_lineage_id` so the caller can regroup
+- **AND** the dashboard UI SHALL NOT emit this request from any user-facing control

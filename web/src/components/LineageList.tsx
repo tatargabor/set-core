@@ -40,8 +40,14 @@ export default function LineageList({ project, sidebarState }: Props) {
       // Selections stored in localStorage win unless the stored id is not
       // present in the fresh list.
       const knownIds = new Set(resp.lineages.map(l => l.id))
-      knownIds.add(ALL_LINEAGES)
-      if (lineageId != null && !knownIds.has(lineageId)) {
+      // `__all__` is no longer exposed in the UI — if a stored selection
+      // still references it, fall through so the default-selection rule
+      // replaces it with a concrete lineage on the next render.
+      if (lineageId != null && lineageId !== ALL_LINEAGES && !knownIds.has(lineageId)) {
+        setLineageId(null)
+        return
+      }
+      if (lineageId === ALL_LINEAGES) {
         setLineageId(null)
         return
       }
@@ -99,18 +105,6 @@ export default function LineageList({ project, sidebarState }: Props) {
   return (
     <div className="px-2 py-2 border-b border-neutral-800">
       <div className="px-2 pb-1 text-xs text-neutral-500 uppercase tracking-wider">Lineages</div>
-      <button
-        type="button"
-        onClick={() => setLineageId(ALL_LINEAGES)}
-        className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-          lineageId === ALL_LINEAGES
-            ? 'bg-neutral-800 text-neutral-100'
-            : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
-        }`}
-        data-lineage="__all__"
-      >
-        <span className="flex-1 text-left">All lineages</span>
-      </button>
       {sorted.map((l) => (
         <button
           key={l.id}

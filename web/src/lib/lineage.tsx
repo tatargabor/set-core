@@ -8,23 +8,24 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
+// Kept as an exported constant for backwards compatibility with any
+// external tooling that may reference it, but the UI no longer exposes
+// the "All lineages" selection — flipping between specs that happen to
+// share phase numbers proved more confusing than useful in practice.
 export const ALL_LINEAGES = '__all__'
 
 export interface SelectedLineageCtx {
   /**
-   * The currently selected lineage id, or `ALL_LINEAGES` for the union
-   * view, or `null` when the caller has not yet resolved a default.
-   * Consumers should treat `null` the same as "use API default" — the
-   * lineage filter is simply omitted from the query string.
+   * The currently selected lineage id, or `null` when the caller has
+   * not yet resolved a default.  Consumers should treat `null` the
+   * same as "use API default" — the lineage filter is simply omitted
+   * from the query string.
    */
   lineageId: string | null
   setLineageId: (id: string | null) => void
-  /** True when `lineageId === ALL_LINEAGES`. */
-  isAll: boolean
   /**
    * Append the `lineage` query-string parameter to a path.  Returns the
-   * path unchanged when no lineage is selected.  When the caller wants
-   * explicit `__all__`, the provider forwards it.
+   * path unchanged when no lineage is selected.
    */
   withLineage(path: string): string
 }
@@ -81,7 +82,6 @@ export function SelectedLineageProvider({ project, children }: Props) {
   const value = useMemo<SelectedLineageCtx>(() => ({
     lineageId,
     setLineageId,
-    isAll: lineageId === ALL_LINEAGES,
     withLineage(path: string): string {
       if (lineageId == null) return path
       const sep = path.includes('?') ? '&' : '?'
@@ -100,7 +100,6 @@ export function useSelectedLineage(): SelectedLineageCtx {
     return {
       lineageId: null,
       setLineageId: () => {},
-      isAll: false,
       withLineage: (p: string) => p,
     }
   }

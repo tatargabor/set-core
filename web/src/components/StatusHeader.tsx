@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { StateData } from '../lib/api'
 import { stopOrchestrator, approve, getManagerProjectStatus, startSentinel, stopSentinel, restartSentinel, getProjectDocs, getState, getLineages, type ManagerProjectStatus, type LineageMeta } from '../lib/api'
-import { ALL_LINEAGES, useSelectedLineage } from '../lib/lineage'
+import { useSelectedLineage } from '../lib/lineage'
 
 interface Props {
   state: StateData | null
@@ -117,9 +117,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
   // currently-viewed one.  `liveState` is the unfiltered /state fetch.
   const statusBadge = liveState?.status ?? state?.status ?? 'idle'
   const liveLineageId = liveState?.spec_lineage_id ?? null
-  const viewingAllLineages = lineageId === ALL_LINEAGES
-  const viewingOtherLineage = !viewingAllLineages
-    && lineageId != null
+  const viewingOtherLineage = lineageId != null
     && liveLineageId != null
     && lineageId !== liveLineageId
   const lookupDisplayName = (id: string | null): string => {
@@ -191,15 +189,6 @@ export default function StatusHeader({ state, connected, project }: Props) {
             data-testid="lineage-hint"
           >
             Viewing {lookupDisplayName(lineageId)} — sentinel running {lookupDisplayName(liveLineageId)}
-          </span>
-        )}
-        {viewingAllLineages && (
-          <span
-            className="hidden md:inline text-xs text-neutral-500 ml-1"
-            title="Tabs show the union of all lineages."
-            data-testid="lineage-hint-all"
-          >
-            Viewing all lineages
           </span>
         )}
       </div>
