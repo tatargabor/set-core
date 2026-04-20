@@ -3878,8 +3878,53 @@ def handle_change_done(
             result_fields=("review_result", "gate_review_ms"),
         )
 
-    # Execute pipeline
+    # Execute pipeline — record wall time so we can enforce the cumulative
+    # retry budget (section 13 of fix-replan-stuck-gate-and-decomposer).
+    _pipeline_start_ms = int(time.monotonic() * 1000)
     action = pipeline.run()
+    _pipeline_wall_ms = int(time.monotonic() * 1000) - _pipeline_start_ms
+
+    # Update the change's cumulative retry wall time BEFORE checking
+    # against the budget so the final retry's wall time still counts.
+    _new_wall_total = int(change.retry_wall_time_ms or 0) + _pipeline_wall_ms
+    update_change_field(state_file, change_name, "retry_wall_time_ms", _new_wall_total)
+
+    # Read budget from directives; 0/None disables the check.
+    _state_for_dir = load_state(state_file)
+    _dir = _state_for_dir.extras.get("directives", {}) if _state_for_dir.extras else {}
+    _wall_budget = int(_dir.get("max_retry_wall_time_ms", 1_800_000) or 0)
+    if _wall_budget > 0 and _new_wall_total >= _wall_budget:
+        logger.error(
+            "retry wall-time budget exhausted for %s: %d >= %d ms — escalating to fix-iss",
+            change_name, _new_wall_total, _wall_budget,
+        )
+        update_change_field(state_file, change_name, "status", "failed:retry_wall_time_exhausted")
+        if event_bus:
+            event_bus.emit(
+                "RETRY_WALL_TIME_EXHAUSTED",
+                change=change_name,
+                data={
+                    "cumulative_ms": _new_wall_total,
+                    "budget_ms": _wall_budget,
+                    "retry_count": change.verify_retry_count + 1,
+                },
+            )
+        try:
+            from .issues.manager import escalate_change_to_fix_iss
+            escalate_change_to_fix_iss(
+                state_file=state_file,
+                change_name=change_name,
+                stop_gate=pipeline.stop_gate,
+                findings=[],
+                escalation_reason="retry_wall_time_exhausted",
+                event_bus=event_bus,
+            )
+        except Exception:
+            logger.warning(
+                "escalate_change_to_fix_iss failed for %s (retry_wall_time_exhausted)",
+                change_name, exc_info=True,
+            )
+        return
 
     # Handle retry/fail — resume agent if needed
     if action == "retry":
@@ -3923,6 +3968,31 @@ def handle_change_done(
             f"Change '{change_name}' failed {pipeline.stop_gate} gate — retries exhausted",
             "critical",
         )
+        # Section 10 task 10.4: auto-escalate to fix-iss on retry-budget
+        # exhaustion. Parent is already marked "failed" by the pipeline;
+        # we just upgrade the status and create the diagnostic child.
+        update_change_field(state_file, change_name, "status", "failed:retry_budget_exhausted")
+        try:
+            _findings: list[dict] = []
+            for r in pipeline.results:
+                stats = getattr(r, "stats", None) or {}
+                for f in stats.get("findings", []) or []:
+                    if isinstance(f, dict):
+                        _findings.append(f)
+            from .issues.manager import escalate_change_to_fix_iss
+            escalate_change_to_fix_iss(
+                state_file=state_file,
+                change_name=change_name,
+                stop_gate=pipeline.stop_gate,
+                findings=_findings,
+                escalation_reason="retry_budget_exhausted",
+                event_bus=event_bus,
+            )
+        except Exception:
+            logger.warning(
+                "escalate_change_to_fix_iss failed for %s (retry_budget_exhausted)",
+                change_name, exc_info=True,
+            )
         return
 
     # ── All gates passed — commit results and queue merge ──

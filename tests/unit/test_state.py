@@ -944,6 +944,22 @@ class TestChangeSchemaAdditions:
         c = Change.from_dict(old)
         assert c.touched_file_globs == []
 
+    def test_retry_wall_time_ms_default_zero(self):
+        c = Change(name="x")
+        assert c.retry_wall_time_ms == 0
+        d = c.to_dict()
+        assert d["retry_wall_time_ms"] == 0
+
+    def test_retry_wall_time_ms_roundtrip(self):
+        c = Change(name="x", retry_wall_time_ms=500_000)
+        restored = Change.from_dict(c.to_dict())
+        assert restored.retry_wall_time_ms == 500_000
+
+    def test_retry_wall_time_ms_missing_loads_zero(self):
+        old = {"name": "x"}
+        c = Change.from_dict(old)
+        assert c.retry_wall_time_ms == 0
+
     def test_all_new_fields_together_roundtrip(self):
         """Regression test: combining every new field must not collide
         with each other in to_dict/from_dict."""

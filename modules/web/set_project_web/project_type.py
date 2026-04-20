@@ -960,6 +960,47 @@ class WebProjectType(CoreProfile):
         }
         return overrides.get(change_type, {})
 
+    def gate_retry_policy(self) -> dict[str, str]:
+        """Web retry-policy declaration (section 12 of
+        fix-replan-stuck-gate-and-decomposer).
+
+        Cheap gates (build/test/scope_check/test_files/e2e_coverage/
+        rules/lint/i18n_check) re-run fully on every retry. Expensive
+        LLM gates (review/spec_verify/design-fidelity) use `cached` —
+        the retry re-uses the prior verdict unless the diff touches the
+        gate's scope. E2e uses `scoped` — only spec files whose
+        corresponding page transitively imports the diff are re-run.
+        """
+        return {
+            "build": "always",
+            "test": "always",
+            "scope_check": "always",
+            "test_files": "always",
+            "e2e_coverage": "always",
+            "rules": "always",
+            "lint": "always",
+            "i18n_check": "always",
+            "review": "cached",
+            "spec_verify": "cached",
+            "design-fidelity": "cached",
+            "e2e": "scoped",
+        }
+
+    def gate_cache_scope(self, gate_name: str) -> list[str]:
+        """Declare the file-glob scope whose modification invalidates a
+        cached-policy gate's verdict. A retry whose diff touches ANY
+        matched file forces a full re-run of the gate.
+        """
+        scopes = {
+            "review": ["src/**", "tests/**", "prisma/**"],
+            "spec_verify": ["src/**", "prisma/**", "openspec/specs/**"],
+            "design-fidelity": [
+                "src/**/*.tsx", "src/**/*.css",
+                "public/design-tokens.json", "tailwind.config.ts",
+            ],
+        }
+        return scopes.get(gate_name, [])
+
     def loc_weights(self) -> dict[str, int]:
         """Web-specific LOC weights for the decomposer granularity budget.
 

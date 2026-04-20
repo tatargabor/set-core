@@ -247,6 +247,12 @@ class Change:
     verify_retry_count: int = 0
     redispatch_count: int = 0
     merge_retry_count: int = 0
+    # Cumulative verify-pipeline wall-time budget (section 13 of
+    # fix-replan-stuck-gate-and-decomposer). Incremented after each retry
+    # by its pipeline.run() wall time. When the total exceeds
+    # `max_retry_wall_time_ms`, the change is hard-failed +
+    # `retry_wall_time_exhausted` escalated to fix-iss.
+    retry_wall_time_ms: int = 0
 
     # Stuck-loop + gate-state fingerprinting (fix-replan-stuck-gate-and-decomposer).
     # stuck_loop_count: consecutive `loop_status=stuck` exits where the verifier

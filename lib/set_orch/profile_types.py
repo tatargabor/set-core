@@ -373,6 +373,37 @@ class ProjectType(ABC):
         """
         return {}
 
+    def gate_retry_policy(self) -> dict[str, str]:
+        """Return per-gate retry policy declaration.
+
+        Values are one of: `"always"` (re-run fully on every retry —
+        default, safe), `"cached"` (reuse prior verdict unless retry
+        diff invalidates the cache), `"scoped"` (run on a subset
+        filtered by the retry diff).
+
+        Empty map on CoreProfile — every gate is implicitly `"always"`.
+        Web profile declares cached for review/spec_verify/design-fidelity
+        and scoped for e2e. See section 12 of
+        fix-replan-stuck-gate-and-decomposer.
+        """
+        return {}
+
+    def gate_cache_scope(self, gate_name: str) -> list[str]:
+        """Return glob patterns whose modification invalidates the cache
+        for a `"cached"`-policy gate. Empty list → no scope (cache
+        always invalidated by any diff).
+        """
+        return []
+
+    def gate_scope_filter(
+        self, gate_name: str, retry_diff_files: list[str],
+    ) -> Optional[List[str]]:
+        """For a `"scoped"`-policy gate, return the subset of test files
+        to run given the retry diff, or None to fall through to cached
+        policy. CoreProfile default: None.
+        """
+        return None
+
     def loc_weights(self) -> dict[str, int]:
         """Return file-glob → LOC-estimate weight mapping.
 
