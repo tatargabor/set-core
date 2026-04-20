@@ -37,11 +37,11 @@
 
 ## 5. Supervisor — Exponential Back-off (Layer 1)
 
-- [ ] 5.1 In `lib/set_orch/supervisor/anomaly.py` trigger executor, before emitting any `SUPERVISOR_TRIGGER`, compute `tuple_key = f"{trigger}::{change or ''}::{reason_hash}"` [REQ: trigger_backoffs-persisted-in-supervisorstatus]
-- [ ] 5.2 If `trigger_backoffs[tuple_key]` exists and `now < back_off_until`, SKIP emission (no event written) [REQ: exponential-back-off-on-retry_budget_exhausted]
-- [ ] 5.3 On `skipped: retry_budget_exhausted`, set or advance back-off: steps 60, 120, 240, 480, 600 (cap) [REQ: exponential-back-off-on-retry_budget_exhausted]
-- [ ] 5.4 Clear the tuple's entry from `trigger_backoffs` when `is_triggered()` returns False on a subsequent poll [REQ: exponential-back-off-on-retry_budget_exhausted]
-- [ ] 5.5 Unit test with a fake clock: verify 15s polling produces exactly 1 event in first 60s, 1 event at 60-120s, etc., not a stream [REQ: exponential-back-off-on-retry_budget_exhausted]
+- [x] 5.1 In `lib/set_orch/supervisor/anomaly.py` trigger executor, before emitting any `SUPERVISOR_TRIGGER`, compute `tuple_key = f"{trigger}::{change or ''}::{reason_hash}"` [REQ: trigger_backoffs-persisted-in-supervisorstatus]
+- [x] 5.2 If `trigger_backoffs[tuple_key]` exists and `now < back_off_until`, SKIP emission (no event written) [REQ: exponential-back-off-on-retry_budget_exhausted]
+- [x] 5.3 On `skipped: retry_budget_exhausted`, set or advance back-off: steps 60, 120, 240, 480, 600 (cap) [REQ: exponential-back-off-on-retry_budget_exhausted]
+- [x] 5.4 Clear the tuple's entry from `trigger_backoffs` when `is_triggered()` returns False on a subsequent poll [REQ: exponential-back-off-on-retry_budget_exhausted]
+- [x] 5.5 Unit test with a fake clock: verify 15s polling produces exactly 1 event in first 60s, 1 event at 60-120s, etc., not a stream [REQ: exponential-back-off-on-retry_budget_exhausted]
 
 ## 6. Replan Reconciliation (Layer 1)
 

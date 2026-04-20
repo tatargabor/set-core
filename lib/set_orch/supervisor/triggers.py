@@ -22,6 +22,7 @@ log and the spawn subprocess.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
@@ -33,6 +34,34 @@ from .ephemeral import EphemeralResult, spawn_ephemeral_claude
 from .history import build_prior_attempts_summary
 from .prompts import build_trigger_prompt
 from .state import SupervisorStatus
+
+
+# fix-replan-stuck-gate-and-decomposer section 5: exponential back-off steps
+# applied per (trigger, change, reason_hash) tuple when a trigger hits
+# retry_budget_exhausted. Each successive exhaustion advances to the next
+# step; the value is capped at the last entry. Values in seconds.
+BACKOFF_STEPS_SECONDS: tuple[int, ...] = (60, 120, 240, 480, 600)
+
+
+def _reason_hash(reason: str) -> str:
+    """Stable 12-char hex of a trigger's reason string.
+
+    Used in the back-off tuple key so the same trigger+change but a
+    different reason (e.g. retry budget of 1 vs retry_budget_exhausted)
+    gets its own back-off window.
+    """
+    return hashlib.sha1(
+        (reason or "").encode("utf-8", errors="replace"),
+    ).hexdigest()[:12]
+
+
+def _backoff_tuple_key(trig: AnomalyTrigger) -> str:
+    """Build the canonical trigger_backoffs key: "{trigger}::{change}::{reason_hash}".
+
+    `change` is "" for orchestration-scoped triggers (log_silence, etc.).
+    """
+    change = trig.change or ""
+    return f"{trig.type}::{change}::{_reason_hash(trig.reason or '')}"
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +138,17 @@ class TriggerExecutor:
 
     def execute(self, triggers: list[AnomalyTrigger]) -> list[TriggerOutcome]:
         """Run the given triggers in priority order. Returns one outcome per."""
+        # Clear back-off entries for tuples whose detector's condition is no
+        # longer firing this poll — otherwise a transient stall that later
+        # recovers would keep suppressing a fresh occurrence far into the
+        # future. (Section 5 task 5.4: "clear when is_triggered() returns
+        # False on a subsequent poll".)
+        active_keys = {_backoff_tuple_key(t) for t in triggers}
+        to_clear = [k for k in list(self.status.trigger_backoffs.keys())
+                    if k not in active_keys]
+        for k in to_clear:
+            del self.status.trigger_backoffs[k]
+
         outcomes: list[TriggerOutcome] = []
         for trig in sorted(triggers, key=lambda t: t.priority):
             outcome = self._execute_one(trig)
@@ -139,7 +179,43 @@ class TriggerExecutor:
     # ── dispatch ─────────────────────────────────────────
 
     def _execute_one(self, trig: AnomalyTrigger) -> TriggerOutcome:
+        # Section 5 task 5.2: back-off window. If the tuple is currently
+        # suppressed, SKIP emission entirely (no SUPERVISOR_TRIGGER event
+        # written, no Claude spawn). We still return a TriggerOutcome so
+        # the caller can observe the skip if needed.
+        tuple_key = _backoff_tuple_key(trig)
+        now = self.clock()
+        backoff_entry = self.status.trigger_backoffs.get(tuple_key)
+        if backoff_entry:
+            back_off_until = float(backoff_entry.get("back_off_until", 0) or 0)
+            if now < back_off_until:
+                logger.debug(
+                    "[supervisor] trigger %s suppressed by back-off (key=%s, "
+                    "step=%s, %.1fs remaining)",
+                    trig.type, tuple_key,
+                    backoff_entry.get("step"),
+                    back_off_until - now,
+                )
+                return TriggerOutcome(
+                    trigger=trig,
+                    skipped_reason="back_off_active",
+                )
+
         if self._budget_exhausted(trig):
+            # Section 5 task 5.3: advance the back-off step on each repeat
+            # exhaustion. Step 0 → 60s, 1 → 120s, …, cap at 600s.
+            prior_step = int(backoff_entry.get("step", 0)) if backoff_entry else 0
+            next_step = min(prior_step + 1, len(BACKOFF_STEPS_SECONDS))
+            window = BACKOFF_STEPS_SECONDS[min(next_step - 1, len(BACKOFF_STEPS_SECONDS) - 1)]
+            self.status.trigger_backoffs[tuple_key] = {
+                "step": next_step,
+                "back_off_until": now + window,
+            }
+            logger.info(
+                "[supervisor] trigger %s retry_budget_exhausted → back-off "
+                "step=%d window=%ds (key=%s)",
+                trig.type, next_step, window, tuple_key,
+            )
             self._record_skip(trig, "retry_budget_exhausted")
             return TriggerOutcome(trigger=trig, skipped_reason="retry_budget_exhausted")
         if self._rate_limit_hit():
