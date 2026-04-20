@@ -960,6 +960,21 @@ class WebProjectType(CoreProfile):
         }
         return overrides.get(change_type, {})
 
+    def loc_weights(self) -> dict[str, int]:
+        """Web-specific LOC weights for the decomposer granularity budget.
+
+        Heavier weights for admin pages + server modules → those changes
+        trip the per-change LOC threshold sooner and auto-split into
+        linked siblings. Lighter weights for tests and shared components.
+        """
+        return {
+            "src/app/admin/**/page.tsx": 350,
+            "src/app/[locale]/**/page.tsx": 200,
+            "src/components/**/*.tsx": 180,
+            "src/server/**/*.ts": 200,
+            "tests/**/*.spec.ts": 150,
+        }
+
     def parallel_gate_groups(self) -> list[set[str]]:
         """Run spec_verify + review concurrently — both are independent
         LLM gates with ~60-120s wall time each. Dispatching them in a

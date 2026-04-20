@@ -285,6 +285,137 @@ def detect_test_infra(project_dir: str = ".") -> TestInfra:
 _KEBAB_CASE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
+# ── Section 9 helpers (skip_test guard + granularity budget) ────────────
+# See openspec change fix-replan-stuck-gate-and-decomposer for rationale.
+
+# Tell-tale substrings that prove a change's scope touches server-side or
+# business-logic code. If any of these appears in the scope AND
+# skip_test=true is set, the plan is rejected by validate_plan.
+_SKIP_TEST_GUARDED_PATHS: tuple[str, ...] = (
+    "server/", "actions/", "handlers/", "services/",
+    "validators/", "/lib/business/", "/api/",
+)
+
+# Whitelisted substrings/extensions — if every path mentioned in the scope
+# is under one of these, skip_test=true is accepted.
+_SKIP_TEST_WHITELIST_PREFIXES: tuple[str, ...] = (
+    "scaffolding/", "public/", "messages/", "prisma/", "docs/",
+)
+_SKIP_TEST_WHITELIST_SUFFIXES: tuple[str, ...] = (
+    ".config.", ".json", ".yaml", ".toml",
+)
+
+
+def _skip_test_violation(scope_text: str) -> str:
+    """Return a human-readable violation string if `scope_text` mentions
+    server/business-logic paths that forbid skip_test, otherwise "".
+
+    Conservative: checks for substring presence rather than parsing
+    explicit paths. False positives are acceptable (the user can rename
+    the change), false negatives would let real bugs through.
+    """
+    text = scope_text or ""
+    for frag in _SKIP_TEST_GUARDED_PATHS:
+        if frag in text:
+            return frag.rstrip("/")
+    return ""
+
+
+def _extract_scope_paths(scope_text: str) -> list[str]:
+    """Extract file-like paths from a scope paragraph.
+
+    Finds tokens matching a simple path pattern: one or more
+    directory-slug/... fragments optionally followed by a file name with
+    extension. Used by `touched_file_globs` population and the skip_test
+    whitelist check.
+    """
+    if not scope_text:
+        return []
+    pattern = re.compile(
+        r"\b([a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.*-]+)+(?:\.[a-zA-Z0-9_*-]+)?)",
+    )
+    return [m.group(1) for m in pattern.finditer(scope_text)]
+
+
+def _resolve_loc_weight(path: str, weights: dict[str, int], default: int = 150) -> int:
+    """Longest-glob-wins resolution of a file path → LOC weight.
+
+    On ties (two globs of the same length match), the more specific one
+    wins — specificity measured by the number of `/` separators in the
+    glob (deeper paths are more specific).
+    """
+    best: tuple[int, int, int] = (-1, -1, default)  # (glob_len, specificity, weight)
+    from .gate_registry import _glob_to_regex
+
+    for glob, weight in (weights or {}).items():
+        try:
+            if not _glob_to_regex(glob).match(path):
+                continue
+        except Exception:
+            continue
+        specificity = glob.count("/")
+        glen = len(glob)
+        if (glen, specificity) > (best[0], best[1]):
+            best = (glen, specificity, weight)
+    return best[2]
+
+
+def estimate_change_loc(
+    change: dict,
+    *,
+    loc_weights: dict[str, int] | None = None,
+    schema_weight: int = 120,
+    ambiguity_weight: int = 80,
+) -> int:
+    """Compute the LOC estimate for a change per the spec formula:
+
+        Σ(loc_weight(path) for path in scope.paths)
+      + (# schema/model references) * schema_weight
+      + (# unresolved ambiguities)   * ambiguity_weight
+
+    Fallback weight for unknown paths is 150.
+    """
+    weights = loc_weights or {}
+    paths = _extract_scope_paths(change.get("scope", ""))
+    total = 0
+    for p in paths:
+        total += _resolve_loc_weight(p, weights)
+
+    # Schema + ambiguity surcharges — best-effort text scan.
+    scope = change.get("scope", "")
+    schema_hits = scope.count("model ") + scope.count("prisma") + scope.count("schema")
+    amb_hits = scope.count("ambiguity") + scope.count("TBD") + scope.count("?")
+    total += schema_hits * schema_weight
+    total += amb_hits * ambiguity_weight
+
+    return total
+
+
+def populate_touched_file_globs(change: dict) -> list[str]:
+    """Extract file paths from the scope text + add wildcard parents.
+
+    Returns the new `touched_file_globs` list. Mutates the `change` dict.
+    """
+    paths = _extract_scope_paths(change.get("scope", ""))
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+        # Also add wildcard parent: `src/app/page.tsx` → `src/app/**`
+        # so content classifier matches even when the agent commits an
+        # unrelated file under the same directory.
+        if "/" in p:
+            parent = p.rsplit("/", 1)[0]
+            wild = f"{parent}/**"
+            if wild not in seen:
+                seen.add(wild)
+                out.append(wild)
+    change["touched_file_globs"] = out
+    return out
+
+
 def validate_plan(
     plan_path: str,
     digest_dir: str | None = None,
@@ -368,6 +499,19 @@ def validate_plan(
                 f"Change '{cname}' scope is {len(scope)} chars (max 2000). "
                 "Split the change or reduce scope."
             )
+
+        # Section 9.1-9.2: skip_test guard. `skip_test=true` is only
+        # allowed for scaffolding/docs/config changes; server-side logic
+        # must carry tests. Enforced by scanning the scope text for
+        # tell-tale file-path fragments.
+        if c.get("skip_test") is True:
+            violation = _skip_test_violation(scope)
+            if violation:
+                result.errors.append(
+                    f"Change '{cname}' has skip_test=true but scope mentions "
+                    f"{violation} — server/business logic requires tests. "
+                    "Remove skip_test or narrow the scope."
+                )
 
     # Check depends_on references exist
     all_deps = set()

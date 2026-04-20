@@ -373,6 +373,20 @@ class ProjectType(ABC):
         """
         return {}
 
+    def loc_weights(self) -> dict[str, int]:
+        """Return file-glob → LOC-estimate weight mapping.
+
+        Used by `planner.estimate_change_loc()` to predict implementation
+        size and decide whether a change should be auto-split. Empty map
+        on CoreProfile — every path falls back to the default 150 LOC.
+
+        Web profile declares higher weights for complex Next.js routes
+        (admin pages, server routes) so those changes are split more
+        eagerly than simple component edits. See section 9 of
+        fix-replan-stuck-gate-and-decomposer.
+        """
+        return {}
+
     def parallel_gate_groups(self) -> list[set[str]]:
         """Return groups of gate names that may be dispatched concurrently.
 

@@ -84,13 +84,13 @@
 
 ## 9. Decomposer — skip_test Guard + Granularity Budget (Layer 1)
 
-- [ ] 9.1 In `lib/set_orch/planner.py::validate_plan()`, add a file-path-substring scan on each change's `scope` for the guard list (`server/`, `actions/`, `handlers/`, `services/`, `validators/`, `/lib/business/`, `/api/`); if any match AND `skip_test=true`, validation fails [REQ: skip_test-guarded-by-scope-file-path-content]
-- [ ] 9.2 Add a reverse whitelist: `skip_test=true` is allowed only when ALL scope paths are under `scaffolding/`, `public/`, `messages/`, `prisma/`, `docs/`, or match `*.config.*` / `*.json` / `*.yaml` / `*.toml` [REQ: skip_test-guarded-by-scope-file-path-content]
-- [ ] 9.3 In `validate_plan()`, compute `estimated_loc(change)` per the size-estimate formula; if over threshold, trigger auto-split [REQ: size-estimate-formula-for-change-sizing]
-- [ ] 9.3a Add `ProjectType.loc_weights() -> dict[str, int]` to the ABC in `lib/set_orch/profile_types.py` returning `{}` (all paths fall back to default 150) on `CoreProfile` [REQ: size-estimate-formula-for-change-sizing]
-- [ ] 9.3b Implement `WebProjectType.loc_weights()` in `modules/web/set_project_web/project_type.py` with the declared path→weight mapping: `src/app/admin/**/page.tsx`→350, `src/app/[locale]/**/page.tsx`→200, `src/components/**/*.tsx`→180, `src/server/**/*.ts`→200, `tests/**/*.spec.ts`→150 [REQ: size-estimate-formula-for-change-sizing]
-- [ ] 9.3c Implement `_resolve_loc_weight(path, weights)` with longest-glob-wins resolution + specificity tiebreaker in `lib/set_orch/planner.py` [REQ: size-estimate-formula-for-change-sizing]
-- [ ] 9.3d Add directives `per_change_estimated_loc_threshold: int = 1500`, `loc_schema_weight: int = 120`, `loc_ambiguity_weight: int = 80` in `lib/set_orch/config.py` defaults [REQ: size-estimate-formula-for-change-sizing]
+- [x] 9.1 In `lib/set_orch/planner.py::validate_plan()`, add a file-path-substring scan on each change's `scope` for the guard list (`server/`, `actions/`, `handlers/`, `services/`, `validators/`, `/lib/business/`, `/api/`); if any match AND `skip_test=true`, validation fails [REQ: skip_test-guarded-by-scope-file-path-content]
+- [x] 9.2 Add a reverse whitelist: `skip_test=true` is allowed only when ALL scope paths are under `scaffolding/`, `public/`, `messages/`, `prisma/`, `docs/`, or match `*.config.*` / `*.json` / `*.yaml` / `*.toml` [REQ: skip_test-guarded-by-scope-file-path-content]
+- [x] 9.3 In `validate_plan()`, compute `estimated_loc(change)` per the size-estimate formula; if over threshold, trigger auto-split [REQ: size-estimate-formula-for-change-sizing]
+- [x] 9.3a Add `ProjectType.loc_weights() -> dict[str, int]` to the ABC in `lib/set_orch/profile_types.py` returning `{}` (all paths fall back to default 150) on `CoreProfile` [REQ: size-estimate-formula-for-change-sizing]
+- [x] 9.3b Implement `WebProjectType.loc_weights()` in `modules/web/set_project_web/project_type.py` with the declared path→weight mapping: `src/app/admin/**/page.tsx`→350, `src/app/[locale]/**/page.tsx`→200, `src/components/**/*.tsx`→180, `src/server/**/*.ts`→200, `tests/**/*.spec.ts`→150 [REQ: size-estimate-formula-for-change-sizing]
+- [x] 9.3c Implement `_resolve_loc_weight(path, weights)` with longest-glob-wins resolution + specificity tiebreaker in `lib/set_orch/planner.py` [REQ: size-estimate-formula-for-change-sizing]
+- [x] 9.3d Add directives `per_change_estimated_loc_threshold: int = 1500`, `loc_schema_weight: int = 120`, `loc_ambiguity_weight: int = 80` in `lib/set_orch/config.py` defaults [REQ: size-estimate-formula-for-change-sizing]
 - [ ] 9.4 Implement `auto_split_change(change) -> list[Change]` using linked-sibling strategy: group file paths by first-2-segment directory prefix OR by explicit scope sub-headings; emit `<base>-<group-label>-<N>` siblings with sequential `depends_on` chain in the same phase [REQ: linked-sibling-split-strategy]
 - [ ] 9.4a Infer `group-label` from the grouped content: if paths are all under `src/app/admin/<X>/` use `<X>`; if all under `src/server/<X>/` use `<X>-server`; if all under `tests/e2e/` use `tests`; fallback to first-2-segment concat [REQ: linked-sibling-split-strategy]
 - [ ] 9.4b Distribute `requirements`, `also_affects_reqs`, `spec_files`, `resolved_ambiguities` across siblings by file-path affinity; first sibling inherits original `scope` preamble, subsequent siblings get a generated preamble from their grouped content [REQ: linked-sibling-split-strategy]
@@ -100,9 +100,9 @@
 - [ ] 9.5b Unit test: `promotions-engine` (est 2000) splits into `promotions-engine-server-1 → promotions-engine-admin-2` [REQ: linked-sibling-split-strategy]
 - [ ] 9.5c Unit test: `stories-and-content` (est 900) passes through unchanged [REQ: size-estimate-formula-for-change-sizing]
 - [ ] 9.5d Unit test: pre-split name never appears in output plan [REQ: linked-sibling-split-strategy]
-- [ ] 9.6 Populate `touched_file_globs` on each change: parse the scope paragraph, collect explicit file paths + add wildcard parents for each directory mentioned [REQ: content-hints-for-gate-selection]
+- [x] 9.6 Populate `touched_file_globs` on each change: parse the scope paragraph, collect explicit file paths + add wildcard parents for each directory mentioned [REQ: content-hints-for-gate-selection]
 - [ ] 9.7 Update the decomposer prompt schema in `lib/set_orch/templates/` or `modules/web/set_project_web/planning_rules.txt` to document the `skip_test` guard and the `touched_file_globs` output field [REQ: skip_test-guarded-by-scope-file-path-content, content-hints-for-gate-selection]
-- [ ] 9.8 Unit tests: validate_plan rejects skip_test with server/ scope; accepts skip_test with scaffolding-only scope [REQ: skip_test-guarded-by-scope-file-path-content]
+- [x] 9.8 Unit tests: validate_plan rejects skip_test with server/ scope; accepts skip_test with scaffolding-only scope [REQ: skip_test-guarded-by-scope-file-path-content]
 - [ ] 9.9 Unit tests: auto-split on 15-requirement change produces ≥3 splits with correct `depends_on` [REQ: granularity-budget-with-auto-split]
 
 ## 10. Investigation / fix-iss Auto-Escalation (Layer 1)
