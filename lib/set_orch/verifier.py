@@ -10,6 +10,7 @@ handle_change_done)
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import json
 import logging
 import os
@@ -2111,6 +2112,66 @@ def run_phase_end_e2e(
 # Source: verifier.sh poll_change (lines 597-778)
 
 
+def _compute_gate_fingerprint(
+    stop_gate: str,
+    results: list[Any] | None = None,
+    finding_ids: list[str] | None = None,
+) -> str:
+    """Return a stable short SHA of (stop_gate, sorted(finding_ids)).
+
+    The circuit breakers (stuck-loop + token-runaway) compare fingerprints
+    across iterations: identical fingerprints across N stuck exits mean the
+    gate signature is unchanged — nothing has been fixed. If callers pass
+    raw `GateResult` objects via `results`, we derive finding_ids from
+    failing gate names so pass→pass vs fail→fail stay distinguishable.
+    """
+    ids: list[str] = list(finding_ids or [])
+    for r in results or []:
+        status = getattr(r, "status", "")
+        if status in ("fail", "warn-fail"):
+            ids.append(f"gate:{getattr(r, 'gate_name', '?')}:{status}")
+        # Structured findings stashed on stats/extras take precedence.
+        stats = getattr(r, "stats", None) or {}
+        for f in (stats.get("findings") or []):
+            if isinstance(f, dict) and f.get("fingerprint"):
+                ids.append(f"find:{f['fingerprint']}")
+    payload = json.dumps(
+        [stop_gate or "pass", sorted(set(ids))],
+        sort_keys=True, ensure_ascii=False,
+    )
+    return "sha256:" + hashlib.sha256(
+        payload.encode("utf-8", errors="replace"),
+    ).hexdigest()[:16]
+
+
+def _has_commits_since_stall(wt_path: str, since_epoch: int) -> int:
+    """Return the count of commits on HEAD since the given wall-clock epoch.
+
+    Used by the stale-detection guard: if the agent exited stuck/stopped but
+    committed fixes after the last stall marker, we must NOT re-write
+    `status=stalled` — the engine's re-gate handler will pick it up instead.
+    Returns 0 on any git error (fail-closed: keep existing stall behavior).
+    """
+    if not wt_path or not os.path.isdir(wt_path) or since_epoch <= 0:
+        return 0
+    try:
+        import subprocess as _sp
+        result = _sp.run(
+            [
+                "git", "-C", wt_path, "log",
+                f"--since=@{int(since_epoch)}",
+                "--oneline",
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return 0
+        return sum(1 for ln in result.stdout.splitlines() if ln.strip())
+    except (OSError, Exception) as exc:
+        logger.debug("_has_commits_since_stall: git log failed for %s: %s", wt_path, exc)
+        return 0
+
+
 def _read_loop_state(wt_path: str) -> dict:
     """Read loop-state.json from worktree .claude/ directory."""
     loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
@@ -2417,6 +2478,24 @@ def poll_change(
         if recheck.get("status") == "done":
             handle_change_done(change_name, state_file, **kwargs)
             return "done"
+
+        # Stale-detection guard: before writing status=stalled, check whether
+        # the agent has committed fixes since the last stall marker. If yes,
+        # the engine's _poll_active_changes handler will route to re-gate —
+        # overwriting status here would mask progress and fool the watchdog
+        # into thinking the change is idle.
+        prior_stall = int(change.extras.get("stalled_at", 0) or 0) if change.extras else 0
+        # If we have no prior stall, use a 1h look-back window so a freshly
+        # dispatched stuck agent with new commits is still detected.
+        baseline_epoch = prior_stall if prior_stall > 0 else int(time.time()) - 3600
+        new_commits = _has_commits_since_stall(wt_path, baseline_epoch)
+        if new_commits > 0 and ralph_status == "stuck":
+            logger.debug(
+                "Skipping stall write for %s: %d new commits since %d (engine will re-gate)",
+                change_name, new_commits, baseline_epoch,
+            )
+            return ralph_status
+
         logger.warning("Change %s %s — marking stalled for watchdog", change_name, ralph_status)
         update_change_field(state_file, change_name, "status", "stalled")
         update_change_field(state_file, change_name, "stalled_at", int(time.time()))
@@ -3808,10 +3887,13 @@ def handle_change_done(
         from .dispatcher import resume_change
         resume_change(state_file, change_name)
         pipeline.commit_results()
+        fingerprint = _compute_gate_fingerprint(pipeline.stop_gate, pipeline.results)
+        update_change_field(state_file, change_name, "last_gate_fingerprint", fingerprint)
         if event_bus:
             gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
             event_bus.emit("VERIFY_GATE", change=change_name, data={
                 "result": "retry", "stop_gate": pipeline.stop_gate,
+                "fingerprint": fingerprint,
                 "uncommitted_check": uncommitted_check_result,
                 **{r.gate_name: r.status for r in pipeline.results},
                 "gate_ms": gate_timings,
@@ -3825,10 +3907,13 @@ def handle_change_done(
 
     if action == "failed":
         pipeline.commit_results()
+        fingerprint = _compute_gate_fingerprint(pipeline.stop_gate, pipeline.results)
+        update_change_field(state_file, change_name, "last_gate_fingerprint", fingerprint)
         if event_bus:
             gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
             event_bus.emit("VERIFY_GATE", change=change_name, data={
                 "result": "failed", "stop_gate": pipeline.stop_gate,
+                "fingerprint": fingerprint,
                 "uncommitted_check": uncommitted_check_result,
                 **{r.gate_name: r.status for r in pipeline.results},
                 "gate_ms": gate_timings,
@@ -3850,6 +3935,12 @@ def handle_change_done(
         "Verify gate: %s total %dms (retries=%d, retry_tokens=%d)",
         change_name, summary.get("total_ms", 0), gate_retry_count, gate_retry_tokens,
     )
+
+    # Pass path — compute + persist fingerprint too so the circuit breakers
+    # can distinguish "passed" signatures across iterations ("pass" vs "pass
+    # with warn-fails" are different gate states).
+    pass_fingerprint = _compute_gate_fingerprint("", pipeline.results)
+    update_change_field(state_file, change_name, "last_gate_fingerprint", pass_fingerprint)
 
     if event_bus:
         _gate_names = [
@@ -3875,6 +3966,7 @@ def handle_change_done(
             "gates_skipped": [g for g in _gate_names if not gc.should_run(g)],
             "gates_warn_only": [g for g in _gate_names if gc.is_warn_only(g)],
             "gate_ms": gate_timings,
+            "fingerprint": pass_fingerprint,
         }
         if _infra_fails:
             _event_data["infra_fail"] = True

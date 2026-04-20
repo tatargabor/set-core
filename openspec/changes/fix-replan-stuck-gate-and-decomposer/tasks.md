@@ -11,11 +11,11 @@
 
 ## 2. Verifier — Single Fingerprint Writer + Stale-Branch Guard (Layer 1)
 
-- [ ] 2.1 Implement `_compute_gate_fingerprint(gate_result) -> str` in `lib/set_orch/verifier.py` returning stable SHA-hash of `(stop_gate, sorted(finding_ids))` [REQ: verifier-writes-last_gate_fingerprint-after-gate-completion]
-- [ ] 2.2 In `run_verify_pipeline()`, write `change.last_gate_fingerprint` in the same state transaction as the `VERIFY_GATE` event emission [REQ: verifier-writes-last_gate_fingerprint-after-gate-completion]
-- [ ] 2.3 Guard the stale-detection branch that writes `status=stalled` on `ralph_status ∈ {stopped, stalled, stuck}`: before writing, query `git log --since=<stalled_at>` and skip the write if new commits exist [REQ: verifier-stale-detection-branch-checks-commit-progress]
-- [ ] 2.4 Add DEBUG log `Skipping stall write: <N> new commits since <T0>` when the guard fires [REQ: verifier-stale-detection-branch-checks-commit-progress]
-- [ ] 2.5 Remove the verifier's `Change <name> stuck — marking stalled for watchdog` WARNING write from the path where `loop_status=stuck` AND `new_commits_since_dispatch > 0` [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits]
+- [x] 2.1 Implement `_compute_gate_fingerprint(gate_result) -> str` in `lib/set_orch/verifier.py` returning stable SHA-hash of `(stop_gate, sorted(finding_ids))` [REQ: verifier-writes-last_gate_fingerprint-after-gate-completion]
+- [x] 2.2 In `run_verify_pipeline()`, write `change.last_gate_fingerprint` in the same state transaction as the `VERIFY_GATE` event emission [REQ: verifier-writes-last_gate_fingerprint-after-gate-completion]
+- [x] 2.3 Guard the stale-detection branch that writes `status=stalled` on `ralph_status ∈ {stopped, stalled, stuck}`: before writing, query `git log --since=<stalled_at>` and skip the write if new commits exist [REQ: verifier-stale-detection-branch-checks-commit-progress]
+- [x] 2.4 Add DEBUG log `Skipping stall write: <N> new commits since <T0>` when the guard fires [REQ: verifier-stale-detection-branch-checks-commit-progress]
+- [x] 2.5 Remove the verifier's `Change <name> stuck — marking stalled for watchdog` WARNING write from the path where `loop_status=stuck` AND `new_commits_since_dispatch > 0` [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits]
 
 ## 3. Engine — Stuck-Loop Handler Unification (Layer 1)
 
