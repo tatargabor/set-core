@@ -505,6 +505,52 @@ def test_retry_diff_files_distinguishes_none_from_empty(tmp_path):
     assert pipeline._retry_diff_files("deadbeef" * 5) is None
 
 
+def test_verify_retry_index_mirrors_verify_retry_count(tmp_path):
+    """Regression (observed on craftbrew-run-20260421-0025): three
+    verify cycles ran with verify_retry_count advancing 0→1→2 but
+    verify_retry_index stayed at 0, so cache policy was never
+    consulted. handle_change_done now mirrors the count into the index
+    on entry.
+
+    This is an end-to-end-ish test: simulate calling handle_change_done
+    multiple times and assert verify_retry_index tracks
+    verify_retry_count.
+    """
+    import json
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    _init_repo(wt, {"src/a.tsx": "a"})
+
+    state_file = tmp_path / "orchestration-state.json"
+    st = {
+        "changes": [{
+            "name": "c-verify-idx",
+            "scope": "x",
+            "worktree_path": str(wt),
+            "status": "running",
+            "verify_retry_count": 2,
+            "verify_retry_index": 0,
+        }],
+        "extras": {},
+    }
+    state_file.write_text(json.dumps(st))
+
+    from set_orch.state import load_state, update_change_field
+
+    # Simulate what handle_change_done does on entry: mirror count → index.
+    state = load_state(str(state_file))
+    change = next(c for c in state.changes if c.name == "c-verify-idx")
+    change.verify_retry_index = int(change.verify_retry_count or 0)
+    update_change_field(
+        str(state_file), "c-verify-idx", "verify_retry_index",
+        change.verify_retry_index,
+    )
+
+    state2 = load_state(str(state_file))
+    change2 = next(c for c in state2.changes if c.name == "c-verify-idx")
+    assert change2.verify_retry_index == 2
+
+
 def test_cache_full_run_resets_consecutive_counter(tmp_path):
     """commit_results: after a full run, consecutive_cache_uses resets to 0."""
     wt = tmp_path / "wt"

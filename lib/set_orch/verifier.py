@@ -3641,6 +3641,18 @@ def handle_change_done(
     wt_path = change.worktree_path or ""
     verify_retry_count = change.verify_retry_count
 
+    # Section 12 task 12.8: `verify_retry_index` distinguishes first run
+    # (0 → policy bypassed, every gate runs fully) from retries (≥1 →
+    # cached/scoped policy consulted). Mirror it from `verify_retry_count`
+    # on entry so the pipeline sees the correct index for THIS run; the
+    # pipeline itself increments `verify_retry_count` on blocking
+    # failures, so the NEXT invocation observes the bumped value.
+    change.verify_retry_index = int(verify_retry_count or 0)
+    update_change_field(
+        state_file, change_name, "verify_retry_index",
+        change.verify_retry_index,
+    )
+
     if not wt_path:
         logger.warning("handle_change_done: wt_path empty for %s — critical checks will be skipped", change_name)
 
